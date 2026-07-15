@@ -1,0 +1,696 @@
+{
+  "exit_reason": "max_iterations (3)",
+  "original_description": "Analyze many content sources the user provides - videos, YouTube links, websites, PDFs, images, audio, local files - plus the user's own notes, then plan and build ONE goal-shaped deliverable (a paper, a tech stack, a ranked recommendation, a debate verdict, a gift list, a strategy, etc.) by fanning out an analysis agent per source and synthesizing across them from multiple perspectives. Use whenever the user has a SET of sources to combine into a single collective output or decision, e.g. \"analyze these 10 links/videos and write/build/decide X\", \"synthesize these sources\", \"go through these and conclude\", or \"add these new links to what we found before\". Prefer this over analyzing sources one-by-one. Not for open-ended web research with no supplied sources (use deep-research), nor for a single video (use the video skill).",
+  "best_description": "Analyze many content sources the user provides - videos, YouTube links, websites, PDFs, images, audio, local files - plus the user's own notes, then plan and build ONE goal-shaped deliverable (a paper, a tech stack, a ranked recommendation, a debate verdict, a gift list, a strategy, etc.) by fanning out an analysis agent per source and synthesizing across them from multiple perspectives. Use whenever the user has a SET of sources to combine into a single collective output or decision, e.g. \"analyze these 10 links/videos and write/build/decide X\", \"synthesize these sources\", \"go through these and conclude\", or \"add these new links to what we found before\". Prefer this over analyzing sources one-by-one. Not for open-ended web research with no supplied sources (use deep-research), nor for a single video (use the video skill).",
+  "best_score": "3/6",
+  "best_train_score": "5/10",
+  "best_test_score": "3/6",
+  "final_description": "Use whenever the user gives you two or more content sources together and wants them merged into ONE combined result \u2014 not summarized separately. Sources can be any mix of links, YouTube videos, articles, PDFs, images, audio, local files, Google Docs, or the user's own pasted notes. The combined result is a single decision, recommendation, ranking, comparison, verdict, conclusion, guide, plan, report, strategy, or list weighing all sources together. Cues: \"go through these N and tell me whether/which X,\" \"combine these into one decision/recommendation,\" \"watch/read all of these and build one guide,\" \"they contradict \u2014 give me ONE conclusion,\" \"synthesize these,\" \"add these new links to the synthesis we did before.\" The defining signal is many user-supplied inputs collapsing into one shared deliverable \u2014 always prefer this over handling each source individually. Skip only for a single video/article (use the video skill) or open-ended web research with no sources provided (use deep-research).",
+  "iterations_run": 3,
+  "holdout": 0.4,
+  "train_size": 10,
+  "test_size": 6,
+  "history": [
+    {
+      "iteration": 1,
+      "description": "Analyze many content sources the user provides - videos, YouTube links, websites, PDFs, images, audio, local files - plus the user's own notes, then plan and build ONE goal-shaped deliverable (a paper, a tech stack, a ranked recommendation, a debate verdict, a gift list, a strategy, etc.) by fanning out an analysis agent per source and synthesizing across them from multiple perspectives. Use whenever the user has a SET of sources to combine into a single collective output or decision, e.g. \"analyze these 10 links/videos and write/build/decide X\", \"synthesize these sources\", \"go through these and conclude\", or \"add these new links to what we found before\". Prefer this over analyzing sources one-by-one. Not for open-ended web research with no supplied sources (use deep-research), nor for a single video (use the video skill).",
+      "train_passed": 5,
+      "train_failed": 5,
+      "train_total": 10,
+      "train_results": [
+        {
+          "query": "combine these for me into a single decision on whether to migrate from Postgres to Cockroach: 2 youtube vids, this whitepaper pdf, and my own notes pasted below",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "remember the tech stack synthesis we did last week? i found 4 more articles, add them in and redo the recommendation",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "analyze these 10 videos on creatine timing and give me ONE conclusion on when to take it, they kind of contradict each other",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "i've got 12 youtube vids plus a few blog posts on building a second brain in obsidian, can you watch/read them all and pull together one master setup guide",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "here are 8 links (articles + 2 pdfs) comparing vector databases. go through all of them and recommend the single best one for a RAG app with ~5M docs",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "watch this one youtube video and summarize it for me: https://youtu.be/abc123",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "fetch this article and translate it into Spanish for me",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "summarize this meeting transcript and list the action items",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "i have 10 csv exports of monthly sales, merge them and give me a pivot of revenue by region",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "research the current state of solid-state batteries and write me a report with sources",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        }
+      ],
+      "test_passed": 3,
+      "test_failed": 3,
+      "test_total": 6,
+      "test_results": [
+        {
+          "query": "i dropped 6 pdfs and 3 article links in a google doc, read everything and write me a 4-page lit review on microplastics in drinking water",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "take these 5 product review videos plus this reddit thread and build me a shortlist of 3 robot vacuums under $400 that handle pet hair",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "i have a folder of 15 conference talk recordings on k8s security, synthesize the practices everyone agrees on into one checklist",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "what's the best vector database for a RAG app?",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "find me some good articles about intermittent fasting",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "read this one PDF in my downloads and pull all the tables out into a csv",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        }
+      ],
+      "passed": 5,
+      "failed": 5,
+      "total": 10,
+      "results": [
+        {
+          "query": "combine these for me into a single decision on whether to migrate from Postgres to Cockroach: 2 youtube vids, this whitepaper pdf, and my own notes pasted below",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "remember the tech stack synthesis we did last week? i found 4 more articles, add them in and redo the recommendation",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "analyze these 10 videos on creatine timing and give me ONE conclusion on when to take it, they kind of contradict each other",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "i've got 12 youtube vids plus a few blog posts on building a second brain in obsidian, can you watch/read them all and pull together one master setup guide",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "here are 8 links (articles + 2 pdfs) comparing vector databases. go through all of them and recommend the single best one for a RAG app with ~5M docs",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "watch this one youtube video and summarize it for me: https://youtu.be/abc123",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "fetch this article and translate it into Spanish for me",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "summarize this meeting transcript and list the action items",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "i have 10 csv exports of monthly sales, merge them and give me a pivot of revenue by region",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "research the current state of solid-state batteries and write me a report with sources",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        }
+      ]
+    },
+    {
+      "iteration": 2,
+      "description": "Use when the user hands you SEVERAL content sources at once \u2014 multiple links, YouTube videos, articles, PDFs, images, audio, local files, or pasted notes \u2014 and wants them combined into ONE shared output or decision rather than summarized separately. Trigger on intents like: \"go through these N videos/links and give me one conclusion/recommendation,\" \"combine these sources into a single decision on X,\" \"watch/read all of these and build one guide/report/ranking/plan,\" \"synthesize these,\" or \"add these new links to the synthesis we did before.\" The defining signal is many inputs collapsing into a single goal-shaped deliverable (verdict, comparison, recommendation, strategy, guide, paper, list). Prefer this over handling each source one at a time. Do NOT use for open-ended web research with no sources supplied (use deep-research) or for a single video/article (use the video skill).",
+      "train_passed": 5,
+      "train_failed": 5,
+      "train_total": 10,
+      "train_results": [
+        {
+          "query": "combine these for me into a single decision on whether to migrate from Postgres to Cockroach: 2 youtube vids, this whitepaper pdf, and my own notes pasted below",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "remember the tech stack synthesis we did last week? i found 4 more articles, add them in and redo the recommendation",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "analyze these 10 videos on creatine timing and give me ONE conclusion on when to take it, they kind of contradict each other",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "i've got 12 youtube vids plus a few blog posts on building a second brain in obsidian, can you watch/read them all and pull together one master setup guide",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "here are 8 links (articles + 2 pdfs) comparing vector databases. go through all of them and recommend the single best one for a RAG app with ~5M docs",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "watch this one youtube video and summarize it for me: https://youtu.be/abc123",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "fetch this article and translate it into Spanish for me",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "summarize this meeting transcript and list the action items",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "i have 10 csv exports of monthly sales, merge them and give me a pivot of revenue by region",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "research the current state of solid-state batteries and write me a report with sources",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        }
+      ],
+      "test_passed": 3,
+      "test_failed": 3,
+      "test_total": 6,
+      "test_results": [
+        {
+          "query": "i dropped 6 pdfs and 3 article links in a google doc, read everything and write me a 4-page lit review on microplastics in drinking water",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "i have a folder of 15 conference talk recordings on k8s security, synthesize the practices everyone agrees on into one checklist",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "take these 5 product review videos plus this reddit thread and build me a shortlist of 3 robot vacuums under $400 that handle pet hair",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "what's the best vector database for a RAG app?",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "find me some good articles about intermittent fasting",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "read this one PDF in my downloads and pull all the tables out into a csv",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        }
+      ],
+      "passed": 5,
+      "failed": 5,
+      "total": 10,
+      "results": [
+        {
+          "query": "combine these for me into a single decision on whether to migrate from Postgres to Cockroach: 2 youtube vids, this whitepaper pdf, and my own notes pasted below",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "remember the tech stack synthesis we did last week? i found 4 more articles, add them in and redo the recommendation",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "analyze these 10 videos on creatine timing and give me ONE conclusion on when to take it, they kind of contradict each other",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "i've got 12 youtube vids plus a few blog posts on building a second brain in obsidian, can you watch/read them all and pull together one master setup guide",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "here are 8 links (articles + 2 pdfs) comparing vector databases. go through all of them and recommend the single best one for a RAG app with ~5M docs",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "watch this one youtube video and summarize it for me: https://youtu.be/abc123",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "fetch this article and translate it into Spanish for me",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "summarize this meeting transcript and list the action items",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "i have 10 csv exports of monthly sales, merge them and give me a pivot of revenue by region",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "research the current state of solid-state batteries and write me a report with sources",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        }
+      ]
+    },
+    {
+      "iteration": 3,
+      "description": "Use whenever the user gives you two or more content sources together and wants them merged into ONE combined result \u2014 not summarized separately. Sources can be any mix of links, YouTube videos, articles, PDFs, images, audio, local files, Google Docs, or the user's own pasted notes. The combined result is a single decision, recommendation, ranking, comparison, verdict, conclusion, guide, plan, report, strategy, or list weighing all sources together. Cues: \"go through these N and tell me whether/which X,\" \"combine these into one decision/recommendation,\" \"watch/read all of these and build one guide,\" \"they contradict \u2014 give me ONE conclusion,\" \"synthesize these,\" \"add these new links to the synthesis we did before.\" The defining signal is many user-supplied inputs collapsing into one shared deliverable \u2014 always prefer this over handling each source individually. Skip only for a single video/article (use the video skill) or open-ended web research with no sources provided (use deep-research).",
+      "train_passed": 5,
+      "train_failed": 5,
+      "train_total": 10,
+      "train_results": [
+        {
+          "query": "combine these for me into a single decision on whether to migrate from Postgres to Cockroach: 2 youtube vids, this whitepaper pdf, and my own notes pasted below",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "analyze these 10 videos on creatine timing and give me ONE conclusion on when to take it, they kind of contradict each other",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "i've got 12 youtube vids plus a few blog posts on building a second brain in obsidian, can you watch/read them all and pull together one master setup guide",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "remember the tech stack synthesis we did last week? i found 4 more articles, add them in and redo the recommendation",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "here are 8 links (articles + 2 pdfs) comparing vector databases. go through all of them and recommend the single best one for a RAG app with ~5M docs",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "watch this one youtube video and summarize it for me: https://youtu.be/abc123",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "fetch this article and translate it into Spanish for me",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "summarize this meeting transcript and list the action items",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "i have 10 csv exports of monthly sales, merge them and give me a pivot of revenue by region",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "research the current state of solid-state batteries and write me a report with sources",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        }
+      ],
+      "test_passed": 3,
+      "test_failed": 3,
+      "test_total": 6,
+      "test_results": [
+        {
+          "query": "i dropped 6 pdfs and 3 article links in a google doc, read everything and write me a 4-page lit review on microplastics in drinking water",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "take these 5 product review videos plus this reddit thread and build me a shortlist of 3 robot vacuums under $400 that handle pet hair",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "i have a folder of 15 conference talk recordings on k8s security, synthesize the practices everyone agrees on into one checklist",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "what's the best vector database for a RAG app?",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "find me some good articles about intermittent fasting",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "read this one PDF in my downloads and pull all the tables out into a csv",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        }
+      ],
+      "passed": 5,
+      "failed": 5,
+      "total": 10,
+      "results": [
+        {
+          "query": "combine these for me into a single decision on whether to migrate from Postgres to Cockroach: 2 youtube vids, this whitepaper pdf, and my own notes pasted below",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "analyze these 10 videos on creatine timing and give me ONE conclusion on when to take it, they kind of contradict each other",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "i've got 12 youtube vids plus a few blog posts on building a second brain in obsidian, can you watch/read them all and pull together one master setup guide",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "remember the tech stack synthesis we did last week? i found 4 more articles, add them in and redo the recommendation",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "here are 8 links (articles + 2 pdfs) comparing vector databases. go through all of them and recommend the single best one for a RAG app with ~5M docs",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "watch this one youtube video and summarize it for me: https://youtu.be/abc123",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "fetch this article and translate it into Spanish for me",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "summarize this meeting transcript and list the action items",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "i have 10 csv exports of monthly sales, merge them and give me a pivot of revenue by region",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "research the current state of solid-state batteries and write me a report with sources",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        }
+      ]
+    }
+  ]
+}

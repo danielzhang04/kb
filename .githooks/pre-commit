@@ -1,0 +1,11 @@
+#!/bin/sh
+# Versioned hook (activated via: git config core.hooksPath .githooks)
+# Keep .claude/skills in sync with skills/curated on every commit that touches skills.
+if git diff --cached --name-only | grep -q "^skills/curated/"; then
+  python scripts/sync_skills.py || exit 1
+  git add .claude/skills
+fi
+python scripts/sync_skills.py --check || {
+  echo "commit blocked: .claude/skills drifted from skills/curated (run: python scripts/sync_skills.py)";
+  exit 1;
+}
