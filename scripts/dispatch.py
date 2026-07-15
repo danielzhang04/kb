@@ -28,9 +28,7 @@ def parse_heartbeat(path: Path) -> list[dict]:
     return data.get("cadences", [])
 
 
-def due(cadence: dict, today: datetime.date, already_ran: set[str]) -> bool:
-    if cadence["name"] in already_ran:
-        return False
+def due(cadence: dict, today: datetime.date) -> bool:
     schedule = cadence.get("schedule", "")
     if schedule == "daily":
         return True
@@ -59,16 +57,23 @@ def run(repo_root: Path, tier: str, agent_id: str,
     # ledger.append shards by wall-clock day (ledger._shard); read the same shard so
     # idempotency holds even when `today` is injected for scheduling (tests, backfill).
     ledger_day = datetime.date.today().isoformat()
-    ran = {r["cadence"] for r in ledger.read_day(repo_root, "dispatch", ledger_day)}
+    ran = {f"{r['project']}:{r['cadence']}"
+           for r in ledger.read_day(repo_root, "dispatch", ledger_day)}
     emitted: list[Path] = []
     for project, hb in _heartbeats(repo_root):
-        for cadence in parse_heartbeat(hb):
-            if cadence.get("tier") != tier or not due(cadence, today, ran):
+        try:
+            cadences = parse_heartbeat(hb)
+        except Exception as err:  # noqa: BLE001 — one bad heartbeat must not halt the fleet
+            print(f"WARN: skipping {project} heartbeat: {err}")
+            continue
+        for cadence in cadences:
+            key = f"{project}:{cadence['name']}"
+            if cadence.get("tier") != tier or key in ran or not due(cadence, today):
                 continue
             card = cards.new_card(
                 project=project,
                 action=f"cadence:{cadence['name']}",
-                target=str(hb.parent.relative_to(repo_root)),
+                target=hb.parent.relative_to(repo_root).as_posix(),
                 risk_tier=cadence.get("risk-tier", "T1"),
                 body="## Work order\n\n" + cadence.get("prompt", "").strip() + "\n",
             )
