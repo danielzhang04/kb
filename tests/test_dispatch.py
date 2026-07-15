@@ -103,13 +103,27 @@ def _write_project(repo: Path, name: str, content: str) -> None:
 
 
 def test_same_cadence_name_across_projects_both_dispatch(tmp_path):
-    _write_project(tmp_path, "proj-a", NIGHTLY_HB)
-    _write_project(tmp_path, "proj-b", NIGHTLY_HB)
+    # Discriminating sequence: proj-a's ledger entry for the shared cadence name
+    # `nightly-review` must NOT suppress proj-b's identically-named cadence. Under a
+    # name-only dedup key this fails at step 2 below; the composed project:cadence key passes.
+    import cards
+    repo = make_repo(tmp_path)  # proj-a only, HB declares daily/cloud `nightly-review`
     day = datetime.date(2026, 7, 14)
-    first = dispatch.run(tmp_path, "cloud", "dispatcher-cloud", today=day)
-    assert len(first) == 2  # same cadence name in two projects -> both dispatch
-    second = dispatch.run(tmp_path, "cloud", "dispatcher-cloud", today=day)
-    assert len(second) == 0  # idempotent, per-project keys already ran
+
+    # 1) proj-a alone -> exactly one cloud card (nightly-review) on this Tuesday
+    first = dispatch.run(repo, "cloud", "dispatcher-cloud", today=day)
+    assert len(first) == 1
+    assert cards.parse(first[0]).meta["project"] == "proj-a"
+
+    # 2) add proj-b with the SAME cadence name; same day -> proj-b must still dispatch
+    _write_project(repo, "proj-b", HB)
+    second = dispatch.run(repo, "cloud", "dispatcher-cloud", today=day)
+    assert len(second) == 1
+    assert cards.parse(second[0]).meta["project"] == "proj-b"
+
+    # 3) everything already ran -> idempotent, nothing more emitted
+    third = dispatch.run(repo, "cloud", "dispatcher-cloud", today=day)
+    assert len(third) == 0
 
 
 def test_malformed_heartbeat_skips_project_not_run(tmp_path):
