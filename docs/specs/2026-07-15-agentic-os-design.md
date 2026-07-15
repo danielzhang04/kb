@@ -31,6 +31,10 @@ A personal agent operations platform: many agents (Claude Code primary; Codex CL
 | Non-Claude agents | In scope; **Claude-first sequencing** — Codex/Gemini wired in during month 1 after conventions stabilize |
 | Hard autonomy ceiling | Credentials and money — see §8 for the precise, enforceable wording |
 | ecc | Installed as managed plugin (`ecc@ecc`, user scope, toggleable); repo cloned at `C:\Users\danie\repos\ecc` as reference library |
+| Claude plan | Max 20x — ample Routine/rate headroom for a multi-agent fleet |
+| Alerts | v1: phone push (Omnara + Claude app). Month 1: Telegram digest bot, per-workflow channels if traffic warrants |
+| Broker | Omnara first (free tier); Happy as the OSS fallback |
+| Data policy | Monorepo-all-cloud OK (nothing highly sensitive); `_private/` gitignored desktop-only zone baked into the schema for future use — credentials never in the KB, ever |
 
 ## 3. Topology
 
@@ -84,7 +88,7 @@ kb/
   STOP                         # (only present when halting — see §9 kill switch)
 ```
 
-**Size discipline & durability:** the git repo holds text only. Bulk binaries (video, datasets) live in `_data/` (gitignored), synced to **Google Drive** (already connected) via rclone or Drive for Desktop; restore = re-sync from Drive + `git clone`. Git-LFS is not used in v1 (GitHub free LFS caps at ~1 GB storage/bandwidth — one media ingest would blow it). The "$0 infrastructure" claim in §10 is scoped to the text KB; `_data/` rides existing Drive storage.
+**Size discipline & durability:** the git repo holds text only. Bulk binaries (video, datasets) live in `_data/` (gitignored), synced to **Google Drive** (already connected) via rclone or Drive for Desktop; restore = re-sync from Drive + `git clone`. **Private zone:** any `_private/` directory (root-level or per-project) is likewise gitignored and Drive-synced — desktop-only, readable by local agents, structurally invisible to cloud sessions and GitHub. Git-LFS is not used in v1 (GitHub free LFS caps at ~1 GB storage/bandwidth — one media ingest would blow it). The "$0 infrastructure" claim in §10 is scoped to the text KB; `_data/` rides existing Drive storage.
 
 **Non-Claude access:** Codex/Gemini/one-off agents operate on worktrees of the same checkout on the desktop. All agent writes follow the §3.1 branch model. Deny-rules block secrets paths.
 
