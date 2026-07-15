@@ -17,7 +17,7 @@ MANIFEST = "MANIFEST.json"
 
 def _hash_dir(d: Path) -> str:
     h = hashlib.sha256()
-    for f in sorted(d.rglob("*")):
+    for f in sorted(d.rglob("*"), key=lambda p: p.relative_to(d).as_posix()):
         if f.is_file():
             h.update(str(f.relative_to(d)).replace("\\", "/").encode())
             h.update(f.read_bytes())
