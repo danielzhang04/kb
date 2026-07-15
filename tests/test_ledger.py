@@ -23,3 +23,19 @@ def test_read_day_merges_shards(tmp_path):
     rows = ledger.read_day(tmp_path, "cost", today)
     assert len(rows) == 2
     assert ledger.cost_today(tmp_path) == 0.35
+
+
+def test_append_heterogeneous_records_keeps_header_alignment(tmp_path):
+    today = datetime.date.today().isoformat()
+    ledger.append(tmp_path, "cost", "agent-a", {"step": "plan", "model": "opus", "usd": "0.10"})
+    ledger.append(tmp_path, "cost", "agent-a", {"usd": "0.20"})
+    rows = ledger.read_day(tmp_path, "cost", today)
+    assert len(rows) == 2
+    assert ledger.cost_today(tmp_path) == 0.30
+
+
+def test_cost_today_skips_malformed_usd(tmp_path):
+    ledger.append(tmp_path, "cost", "agent-a", {"usd": "0.10"})
+    ledger.append(tmp_path, "cost", "agent-a", {"usd": "n/a"})
+    ledger.append(tmp_path, "cost", "agent-a", {"usd": ""})
+    assert ledger.cost_today(tmp_path) == 0.10

@@ -18,10 +18,15 @@ def _shard(repo_root: Path, kind: str, agent: str, day: str | None = None) -> Pa
 def append(repo_root: Path, kind: str, agent: str, record: dict) -> Path:
     p = _shard(repo_root, kind, agent)
     p.parent.mkdir(parents=True, exist_ok=True)
-    fields = sorted(record)
     is_new = not p.exists()
+    if is_new:
+        fields = sorted(record)
+    else:
+        with p.open(encoding="utf-8", newline="") as f:
+            header = f.readline()
+        fields = next(csv.reader([header], delimiter="\t"))
     with p.open("a", encoding="utf-8", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=fields, delimiter="\t")
+        w = csv.DictWriter(f, fieldnames=fields, delimiter="\t", extrasaction="ignore")
         if is_new:
             w.writeheader()
         w.writerow(record)
@@ -39,6 +44,13 @@ def read_day(repo_root: Path, kind: str, day: str) -> list[dict]:
     return rows
 
 
+def _to_usd(value) -> float:
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def cost_today(repo_root: Path) -> float:
     today = datetime.date.today().isoformat()
-    return round(sum(float(r.get("usd", 0) or 0) for r in read_day(repo_root, "cost", today)), 6)
+    return round(sum(_to_usd(r.get("usd", 0)) for r in read_day(repo_root, "cost", today)), 6)
