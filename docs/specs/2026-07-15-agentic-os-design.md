@@ -277,6 +277,7 @@ Budget guard: per-step cost logging (sharded), pre-run daily-limit check, cheap-
 | Monorepo growth / bulk media | `_data/` + Google Drive sync with restore steps; text-only repo; periodic archive pass |
 | Windows Update reboots mid-task | Queue cards + committed state = resumable; active hours configured; cloud carries time-critical loops |
 | Silent model rerouting | Per-step responding-model-id assertion in preamble; mismatch = wake-me card (§6) |
+| GitHub Free: no private branch protection | Accepted v1; local approvals.py only; revisit month 1 |
 
 ## 15. Resolved questions log
 
