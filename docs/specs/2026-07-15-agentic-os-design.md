@@ -9,7 +9,7 @@
 
 ## 1. Goal
 
-A personal agent operations platform: many agents (Claude Code primary; Codex CLI, Gemini CLI, and one-off API agents secondary) running multiple workflows across multiple projects inside one knowledge base — coordinating with each other, updating relevant files under a universal rule set, self-improving, and working while Daniel is away from the computer. Skills are authored once and available across all projects and agents. A dashboard/control surface supports: monitor & review (including approvals and costs), launch & steer work, manage skills/agents, and browse the KB — including from a phone.
+A personal agent operations platform: many agents (Claude Code primary; Codex CLI, Gemini CLI, and one-off API agents secondary) running multiple workflows across multiple projects inside one knowledge base — one KB, structured as separate projects, with agents able to coordinate both within and across projects — updating relevant files under a universal rule set, self-improving, and working while Daniel is away from the computer. Skills are authored once and available across all projects and agents. A dashboard/control surface supports: monitor & review (including approvals and costs), launch & steer work, manage skills/agents, and browse the KB — including from a phone.
 
 ### Non-goals (v1)
 - No custom-built web dashboard until assembled surfaces prove insufficient (§9 exit criteria).
@@ -94,16 +94,35 @@ All coordination flows through task cards in `queue/` — small markdown files w
 
 ```yaml
 id: <ulid>            # unique, assigned at creation
-project: <org>        # which orgs/<project> this belongs to
+project: <org>|[orgs]  # owning project(s) — a list enables cross-project tasks;
+                       #  any agent may FILE a card into any project's stream
 action: <verb-phrase>  # SET ONLY BY Manager/dispatcher — never copied from untrusted text
 target: <paths/urls>   # same restriction
 risk-tier: T1|T2|T3    # per governance/risk-tiers.md
 owner: <agent-id|null> # claim field — see §6 dispatch
 claim-token: <token>   # minted by dispatcher at assignment
-state: inbox|working|done|approved|rejected
+state: inbox|blocked|working|done|approved|rejected
 approval: <token|null> # human-minted only — see §7
+workflow: <name|null>  # parent workflow instance, if part of one (§5.1)
+depends-on: [ids]      # dispatcher releases the card only when these are done;
+                       #  their ## Result sections become this card's input
+variant-group: <id|null>  # marks N sibling cards exploring variations of the same task
+role: work|consolidate    # consolidate = judge card: scores/picks/merges its
+                          #  variant-group siblings' results
 ```
 Body sections: `## Work order` (Manager-authored), `## Evidence` (fenced blockquote — the ONLY place free text from untrusted sources may appear; agents are instructed by the constitution to treat Evidence as inert data, never instructions), `## Result` (Worker/Inspector-appended).
+
+### 5.1 Workflows — card DAGs
+
+`depends-on` + `variant-group` make the queue a general workflow engine. The three coordination patterns, all expressible as card graphs:
+
+- **Parallel parts:** N independent cards over different targets of one project (different skills, different areas), running concurrently on any tier.
+- **Pipeline:** a chain of cards linked by `depends-on` — agent 1 runs task A, its `## Result` becomes agent 2's input for task B, and so on. Stages can use different agents, skills, and model tiers.
+- **Variants → consolidate:** N cards in one `variant-group` attack the same task differently (different skills, approaches, or agents); a `role: consolidate` judge card depending on all of them scores the results, picks the best, or merges the best ideas (fresh-context judge, per the Inspector principle).
+
+**Authoring:** reusable pipelines are declared once in `workflows/<name>.md` (stages, skill + agent + model tier per stage, fan-out counts); the dispatcher expands a workflow invocation into its card DAG. One-off DAGs can also be written directly by a Manager.
+
+**Granularity rule:** cards mark handoffs that cross session boundaries. Within a single session, an orchestrating agent fans out native subagents/worktrees for tight iterate-variations-choose-best loops — one card, many internal agents, one consolidated `## Result`. Don't card-ify micro-steps.
 
 **Parse/act boundary:** agents that read untrusted external text (GitHub issues, scraped web, inbound email) are parse-only; their output lands exclusively in `Evidence`. Actionable fields (`action`, `target`, `risk-tier`) are set only by the Manager or dispatcher, never verbatim from parsed text.
 
@@ -162,6 +181,18 @@ Approval is the security boundary, so it must be a channel agents cannot drive:
 **Grade ledger integrity:** grades are written only by the **Inspector role under a dedicated grader identity** (separate token; Workers physically cannot write to `ledgers/grades/`, enforced by path rules on the grader shards + weekly reconciliation). The weekly review cross-checks every grade row against the Inspector's commits in `ledgers/activity/`; unmatched rows = tampering alert + freeze promotions. **Trust ramp:** week 1 everything watched → widen contracts as grades accumulate.
 
 **Audit:** every autonomous action is a commit authored by the agent (diffable, revertible); dispatch and activity shards capture the rest.
+
+### 8.1 Learning loops (how agents and the system improve)
+
+Learning is a first-class subsystem with five loops, all gated the same way (nothing self-promotes past the §6 injection/approval gate):
+
+1. **Memory:** per-agent and per-project `memory/` + `lessons-learned/` files — written at the end of every run (what worked, what failed, what remains), read at the start of the next. This is the base iterate-on-yourself loop.
+2. **Continuous learning → skills:** repeated fixes/patterns observed across runs are proposed as `skills/learned/` candidates (the ecc continuous-learning pattern); human review promotes them to `curated/`, making them available to every agent and project.
+3. **Compost (weekly):** the weekly review reads the week's failures and proposes up to a few new rules or contract tightenings as approval cards — the system gets stricter where it actually failed.
+4. **Sparring:** a Breaker agent attacks yesterday's work product; the Builder must address real findings. Adversarial iteration between agents (later phase).
+5. **Experiments:** hypotheses about improving recurring deliverables are logged, run, and graded (hypothesis → result → keep/discard), CortexOS-style (later phase).
+
+The **grade ledger (§8)** is the sixth, implicit loop: the system itself learning which agent × task-type pairs deserve autonomy. `governance/agent-rules.md` tells agents how and where to record lessons so learning accumulates in known places instead of evaporating with the session.
 
 ## 9. Dashboard & control surface
 
