@@ -1,0 +1,6 @@
+# The curated skills source and its generated .claude/skills mirror are hashed
+# byte-for-byte by scripts/sync_skills.py (the drift/tamper detector). Pin them
+# to LF so the sha256 manifest is identical on Windows and the Linux cloud VM;
+# otherwise autocrlf smudging produces false drift on checkout.
+/skills/curated/** text eol=lf
+/.claude/skills/** text eol=lf
