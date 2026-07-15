@@ -1,0 +1,103 @@
+"""Task cards — the coordination unit. Schema: governance/card-schema.md (spec section 5)."""
+from __future__ import annotations
+
+import secrets
+import time
+from dataclasses import dataclass
+from pathlib import Path
+
+import yaml
+
+STATES = ("inbox", "blocked", "working", "done", "approvals", "approved", "rejected")
+RISK_TIERS = ("T1", "T2", "T3")
+REQUIRED = ("id", "project", "action", "target", "risk-tier", "state")
+STATE_DIR = {
+    "inbox": "inbox", "blocked": "inbox",
+    "working": "working",
+    "done": "done", "rejected": "done",
+    "approvals": "approvals", "approved": "approvals",
+}
+LEGAL = {
+    "inbox": {"working", "blocked"},
+    "blocked": {"inbox"},
+    "working": {"done", "approvals", "blocked"},
+    "approvals": {"approved", "rejected"},
+    "approved": {"done"},
+    "done": set(), "rejected": set(),
+}
+
+
+class ValidationError(Exception):
+    pass
+
+
+@dataclass
+class Card:
+    meta: dict
+    body: str
+    path: Path | None = None
+
+
+def new_id() -> str:
+    return f"{int(time.time()):08x}-{secrets.token_hex(4)}"
+
+
+def _validate(meta: dict) -> None:
+    for key in REQUIRED:
+        if meta.get(key) in (None, ""):
+            raise ValidationError(f"missing required field: {key}")
+    if meta["risk-tier"] not in RISK_TIERS:
+        raise ValidationError(f"risk-tier must be one of {RISK_TIERS}")
+    if meta["state"] not in STATES:
+        raise ValidationError(f"unknown state: {meta['state']}")
+
+
+def new_card(project, action, target, risk_tier, body: str = "", **extra) -> Card:
+    meta = {
+        "id": new_id(), "project": project, "action": action, "target": target,
+        "risk-tier": risk_tier, "owner": None, "claim-token": None,
+        "state": "inbox", "approval": None, "workflow": None,
+        "depends-on": [], "variant-group": None, "role": "work",
+    }
+    meta.update(extra)
+    _validate(meta)
+    return Card(meta=meta, body=body)
+
+
+def parse(path: Path) -> Card:
+    text = Path(path).read_text(encoding="utf-8")
+    if not text.startswith("---\n"):
+        raise ValidationError(f"{path}: no frontmatter")
+    _, fm, body = text.split("---\n", 2)
+    meta = yaml.safe_load(fm)
+    _validate(meta)
+    return Card(meta=meta, body=body.lstrip("\n"), path=Path(path))
+
+
+def save(card: Card, queue_root: Path) -> Path:
+    _validate(card.meta)
+    dest = Path(queue_root) / STATE_DIR[card.meta["state"]] / f"{card.meta['id']}.md"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    fm = yaml.safe_dump(card.meta, sort_keys=False, allow_unicode=True)
+    dest.write_text(f"---\n{fm}---\n\n{card.body}", encoding="utf-8")
+    card.path = dest
+    return dest
+
+
+def claim(card: Card, agent_id: str) -> None:
+    card.meta["owner"] = agent_id
+    card.meta["claim-token"] = secrets.token_hex(8)
+
+
+def transition(card: Card, new_state: str, queue_root: Path) -> Path:
+    old = card.meta["state"]
+    if new_state not in LEGAL.get(old, set()):
+        raise ValidationError(f"illegal transition {old} -> {new_state}")
+    if new_state == "working" and not card.meta.get("owner"):
+        raise ValidationError("cannot start working an unowned card (dispatchers assign)")
+    old_path = card.path or (Path(queue_root) / STATE_DIR[old] / f"{card.meta['id']}.md")
+    card.meta["state"] = new_state
+    new_path = save(card, queue_root)
+    if old_path.exists() and old_path != new_path:
+        old_path.unlink()
+    return new_path
