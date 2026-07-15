@@ -16,7 +16,7 @@ target: <paths/urls>   # same restriction
 risk-tier: T1|T2|T3    # per governance/risk-tiers.md
 owner: <agent-id|null> # claim field — see §6 dispatch
 claim-token: <token>   # minted by dispatcher at assignment
-state: inbox|blocked|working|done|approved|rejected
+state: inbox|blocked|working|done|approvals|approved|rejected
 approval: <token|null> # human-minted only — see §7
 workflow: <name|null>  # parent workflow instance, if part of one (§5.1)
 depends-on: [ids]      # dispatcher releases the card only when these are done;
