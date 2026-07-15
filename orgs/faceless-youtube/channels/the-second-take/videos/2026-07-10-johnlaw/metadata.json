@@ -1,0 +1,84 @@
+{
+  "schema": "faceless-youtube/metadata@1",
+  "channel": "the-second-take",
+  "video_slug": "2026-07-10-johnlaw",
+  "source_idea_id": "ST-028",
+  "generated": "2026-07-10",
+  "status": "metadata-drafted",
+
+  "defaults": {
+    "privacy_status": "private",
+    "made_for_kids": false,
+    "contains_synthetic_media": true,
+    "default_language": "en",
+    "default_audio_language": "en",
+    "license": "youtube",
+    "embeddable": true
+  },
+
+  "long_form": {
+    "title_primary": "The Gambler Who Invented Paper Money and Broke France",
+    "title_challengers": [
+      "A Convicted Killer Talked France Into Printing Money",
+      "He Invented Paper Money. Then It Destroyed France."
+    ],
+    "description": "Three hundred years ago, the most powerful man in France was a Scottish gambler who had once been sentenced to death for killing a man. In about five years, he invented modern paper money, made a whole city rich, and vaporized the lot.\n\nJohn Law was not a simple con man. He was a genuine visionary who talked bankrupt, post-Louis-XIV France into the most radical money experiment in history: throw out gold, print paper money from a national bank he ran, and bundle it with shares in the Mississippi Company, a monopoly on a colony that produced almost nothing. For about a year the shares rocketed from 500 livres to 10,000, Paris lost its mind, and the word millionaire was born. But Law ran the bank, the company, and the national treasury all at once, so France ended up printing money to prop up its own stock, which is the exact thing that destroyed the money. This is how paper money and central banking were invented, and how they blew up a whole country the very first time they were tried.\n\nChapters:\n00:00 A gambler runs the French economy\n1:06 Sentenced to death, then on the run\n1:31 His radical idea: money is just paper\n2:43 The bank that printed money\n3:12 Selling shares in a swamp\n3:46 One man, three levers\n4:26 Millionaire is born on the rue Quincampoix\n5:11 The crack in the paper\n5:51 Printing money to prop its own stock\n7:20 The fall, and the idea he left behind\n\n#FinanceHistory #JohnLaw #MississippiBubble #EconomicHistory\n\nThe Second Take uses AI-assisted narration and illustration to tell true money stories.\nThis channel is history and entertainment, not financial advice.\n\nSources:\n- \"John Law (economist),\" Wikipedia: the 1671 Edinburgh birth into a banking family, the gambling years, the 1694 duel and killing of Beau Wilson, the murder conviction and escape, the paper-money theory, the 1715 death of Louis XIV and the Regency's debt, the Banque Générale (1716) becoming the Banque Royale (1718), the Mississippi Company (1717) and its absorption of the bank plus France's taxes, coinage, and debt, the Jan 1720 Controller-General appointment, the 1720 collapse and forced-legal-tender measures, the flight from France, and the 1729 death in Venice.\n- Economic-history accounts of the Mississippi Bubble (Mississippi History Now; Britannica, \"Mississippi Bubble\"): the share-price path (~500 livres in January 1719 to ~10,000 by December, and back to ~500 by 1721), the rue Quincampoix frenzy, the coining of the word millionaire, and the run on the bank.",
+    "tags": [
+      "John Law",
+      "John Law economist",
+      "Mississippi Bubble",
+      "Mississippi Company",
+      "history of paper money",
+      "first stock market bubble",
+      "Banque Royale",
+      "history of central banking",
+      "Regency France",
+      "1720 financial crisis",
+      "how paper money works",
+      "economic history",
+      "finance documentary",
+      "history of money",
+      "The Second Take"
+    ],
+    "hashtags": ["#FinanceHistory", "#JohnLaw", "#MississippiBubble", "#EconomicHistory"],
+    "category_id": "27",
+    "category_name": "Education",
+    "chapters": [
+      {"time": "00:00", "label": "A gambler runs the French economy"},
+      {"time": "1:06", "label": "Sentenced to death, then on the run"},
+      {"time": "1:31", "label": "His radical idea: money is just paper"},
+      {"time": "2:43", "label": "The bank that printed money"},
+      {"time": "3:12", "label": "Selling shares in a swamp"},
+      {"time": "3:46", "label": "One man, three levers"},
+      {"time": "4:26", "label": "Millionaire is born on the rue Quincampoix"},
+      {"time": "5:11", "label": "The crack in the paper"},
+      {"time": "5:51", "label": "Printing money to prop its own stock"},
+      {"time": "7:20", "label": "The fall, and the idea he left behind"}
+    ],
+    "chapters_status": "estimated-from-script — re-time after render before publish",
+    "thumbnail": {
+      "primary": {
+        "text": "He printed it himself",
+        "concept": "Pairs with 'The Gambler Who Invented Paper Money and Broke France.' One dominant object: a fan of playing cards held like a poker hand, except each card is an ornate 18th-century French paper banknote, with the last card in the fan blank and worthless. Clean 2.5D vector, flat cel shading, single-color field, ~60% negative space, no face. The one red accent is a cracked red royal wax seal on the middle note. The cards-made-of-money image fuses the gambler and the paper-money inventor, and 'He printed it himself' opens the loop (a private gambler printing a nation's money) without restating the title."
+      },
+      "challengers": [
+        {
+          "text": "From death row",
+          "concept": "Pairs with 'A Convicted Killer Talked France Into Printing Money.' One dominant object: an old hand-crank printing press pouring out a neat stack of paper banknotes, with a duelling sword leaning against its side. Clean 2.5D vector, flat cel, single-color field, >=55% negative space, no face. The one red accent is a red condemned/wanted stamp on the top note. Overlay 'From death row' pairs with the killer-to-finance-minister title, not a restatement."
+        },
+        {
+          "text": "500 to 0",
+          "concept": "Pairs with 'He Invented Paper Money. Then It Destroyed France.' One dominant object: a stock-chart line drawn as a ribbon of paper banknotes rocketing up and then plunging to the floor, set over a faint outline of France. Clean 2.5D vector, flat cel, single-color field, >=55% negative space, no face. The one red accent is the plunging tail of the ribbon rendered in red. Overlay '500 to 0' names the share round-trip and the ruin the title promises."
+        }
+      ]
+    },
+    "pinned_comment": "The part that gets me: John Law wasn't really a con man. He genuinely came up with ideas we run every modern economy on, paper money, a central bank, using borrowed money to grow, and then proved in real time exactly how they break. So which was he to you: a visionary a century ahead of his time, or a reckless gambler who talked a whole country into betting with him?",
+    "ab_experiment": {
+      "eligible": true,
+      "dimension": "title_and_thumbnail",
+      "note": "YouTube Studio-only (Test & Compare, desktop, long-form). Data API v3 cannot submit this. Set up manually: pick title_primary+challengers and thumbnail primary+challengers. The three test genuinely different framings within the locked vindication / forbidden-knowledge lever — (primary) the audacity (a gambler invented paper money and broke France), (challenger 1) the character shock (a convicted killer talked France into printing money), (challenger 2) the invention-plus-ruin (he invented paper money, then it destroyed France)."
+    }
+  },
+
+  "shorts": []
+}

@@ -1,0 +1,475 @@
+{
+  "channel": "the-second-take",
+  "engine": "gemini-3-pro-image",
+  "characters": {
+    "base": {
+      "role": "BASE TEMPLATE / rig anchor — not an on-screen character; seeds the cast for form.",
+      "head_tone": "#f5ead6",
+      "base": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    "macgregor": {
+      "role": "Gregor MacGregor — the con-man 'Cazique of Poyais'; recurring lead antagonist.",
+      "head_tone": "#d9ac82",
+      "costume": "PINNED canonical outfit: deep crimson hussar coat with gold frogging, gold fringed epaulettes, silver-ribboned gold order-star medal (his self-awarded-decorations identity tag), dark trousers, dark boots; swept dark-brown hair + mutton-chop sideburns. Every appearance renders in this unless the shot deliberately authors a change (e.g. prince regalia over it).",
+      "base": "channels/the-second-take/visual-kit/refs/macgregor/macgregor-base.png"
+    },
+    "bolivar": {
+      "role": "Simón Bolívar — the South-American liberator general; MacGregor's celebrated comrade-in-arms (appears L18).",
+      "head_tone": "#b39a63",
+      "costume": "PINNED canonical outfit: dark navy-blue liberator general's military coat with gold epaulettes and gold trim, a single bright red ceremonial sash worn diagonally across the chest, a black liberator's bicorne hat worn corner-forward, dark trousers and boots; short dark curly hair with prominent dark sideburns. Every appearance renders in this unless the shot deliberately authors a change.",
+      "base": "channels/the-second-take/visual-kit/refs/bolivar/bolivar.png"
+    },
+    "mosquito-king": {
+      "role": "The Miskito Coast king who granted MacGregor the Poyais land in 1820 (appears L19–L20).",
+      "head_tone": "#8a5a3c",
+      "costume": "PINNED canonical outfit: a tall gold crown and a full-length ornate red-and-gold patterned ceremonial robe with British-influenced regalia (gold braiding, epaulettes, a red-and-gold patterned mantle over the shoulders); short dark hair. Every appearance renders in this unless the shot deliberately authors a change.",
+      "base": "channels/the-second-take/visual-kit/refs/mosquito-king/mosquito-king.png"
+    },
+    "strangeways": {
+      "base": "channels/the-second-take/visual-kit/refs/strangeways/strangeways.png",
+      "head_tone": "#f5ead6",
+      "role": "Captain Thomas Strangeways — the fictitious 'author' of the Poyais guidebook (invented by MacGregor to sell the con); a bookish naval author-captain. Appears L35/L43/L44.",
+      "costume": "PINNED canonical outfit: plain dark navy double-breasted captain coat with a high collar and two rows of small brass buttons, thin round wire spectacles, short neat dark-brown hair combed down over the sides, dark trousers and boots. Renders in this unless a shot authors a change."
+    },
+    "hastie": {
+      "base": "channels/the-second-take/visual-kit/refs/hastie/hastie.png",
+      "head_tone": "#f5ead6",
+      "role": "James Hastie — a weary Scottish sawyer and a leader of the Poyais settler survivors; signs the sworn statement exposing the fraud. Appears L104/L106.",
+      "costume": "PINNED canonical outfit: worn brown working-man coat over a tan waistcoat and dark neckcloth, tousled greying-brown hair, sturdy build, plain trousers and boots. Renders in this unless a shot authors a change."
+    }
+  },
+  "assets": [
+    {
+      "name": "action-slump",
+      "file": "channels/the-second-take/visual-kit/refs/base/action-slump.png",
+      "character": "base",
+      "kind": "action",
+      "tag": "slump",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "base",
+      "file": "channels/the-second-take/visual-kit/refs/base/base.png",
+      "character": "base",
+      "kind": "base",
+      "tag": "neutral",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "expr-deadpan",
+      "file": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+      "character": "base",
+      "kind": "expression",
+      "tag": "deadpan",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "expr-delighted",
+      "file": "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
+      "character": "base",
+      "kind": "expression",
+      "tag": "delighted",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "expr-skeptical",
+      "file": "channels/the-second-take/visual-kit/refs/base/expr-skeptical.png",
+      "character": "base",
+      "kind": "expression",
+      "tag": "skeptical",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "expr-smug",
+      "file": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
+      "character": "base",
+      "kind": "expression",
+      "tag": "smug",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "expr-surprised",
+      "file": "channels/the-second-take/visual-kit/refs/base/expr-surprised.png",
+      "character": "base",
+      "kind": "expression",
+      "tag": "surprised",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "expr-worried",
+      "file": "channels/the-second-take/visual-kit/refs/base/expr-worried.png",
+      "character": "base",
+      "kind": "expression",
+      "tag": "worried",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "expr-confused",
+      "file": "channels/the-second-take/visual-kit/refs/base/expr-confused.png",
+      "character": "base",
+      "kind": "expression",
+      "tag": "confused",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "action-armscrossed",
+      "file": "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png",
+      "character": "base",
+      "kind": "action",
+      "tag": "arms-crossed",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "expr-pleading",
+      "file": "channels/the-second-take/visual-kit/refs/base/expr-pleading.png",
+      "character": "base",
+      "kind": "expression",
+      "tag": "pleading",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "action-celebrate",
+      "file": "channels/the-second-take/visual-kit/refs/base/action-celebrate.png",
+      "character": "base",
+      "kind": "action",
+      "tag": "celebrate",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "macgregor-base",
+      "file": "channels/the-second-take/visual-kit/refs/macgregor/macgregor-base.png",
+      "character": "macgregor",
+      "kind": "identity",
+      "tag": "base",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/macgregor/macgregor-base.png"
+    },
+    {
+      "name": "expr-annoyed",
+      "file": "channels/the-second-take/visual-kit/refs/base/expr-annoyed.png",
+      "character": "base",
+      "kind": "expression",
+      "tag": "annoyed",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "expr-fear",
+      "file": "channels/the-second-take/visual-kit/refs/base/expr-fear.png",
+      "character": "base",
+      "kind": "expression",
+      "tag": "fear",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "expr-talking",
+      "file": "channels/the-second-take/visual-kit/refs/base/expr-talking.png",
+      "character": "base",
+      "kind": "expression",
+      "tag": "talking",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "expr-thinking",
+      "file": "channels/the-second-take/visual-kit/refs/base/expr-thinking.png",
+      "character": "base",
+      "kind": "expression",
+      "tag": "thinking",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "expr-crestfallen",
+      "file": "channels/the-second-take/visual-kit/refs/base/expr-crestfallen.png",
+      "character": "base",
+      "kind": "expression",
+      "tag": "crestfallen",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "expr-eyeroll",
+      "file": "channels/the-second-take/visual-kit/refs/base/expr-eyeroll.png",
+      "character": "base",
+      "kind": "expression",
+      "tag": "eyeroll",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "expr-laughing",
+      "file": "channels/the-second-take/visual-kit/refs/base/expr-laughing.png",
+      "character": "base",
+      "kind": "expression",
+      "tag": "laughing",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "expr-caught",
+      "file": "channels/the-second-take/visual-kit/refs/base/expr-caught.png",
+      "character": "base",
+      "kind": "expression",
+      "tag": "caught",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "expr-shock",
+      "file": "channels/the-second-take/visual-kit/refs/base/expr-shock.png",
+      "character": "base",
+      "kind": "expression",
+      "tag": "shock",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "action-shrug",
+      "file": "channels/the-second-take/visual-kit/refs/base/action-shrug.png",
+      "character": "base",
+      "kind": "action",
+      "tag": "shrug",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "action-walk",
+      "file": "channels/the-second-take/visual-kit/refs/base/action-walk.png",
+      "character": "base",
+      "kind": "action",
+      "tag": "walk",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "action-powerstance",
+      "file": "channels/the-second-take/visual-kit/refs/base/action-powerstance.png",
+      "character": "base",
+      "kind": "action",
+      "tag": "power-stance",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "action-salute",
+      "file": "channels/the-second-take/visual-kit/refs/base/action-salute.png",
+      "character": "base",
+      "kind": "action",
+      "tag": "salute",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "action-thumbsup",
+      "file": "channels/the-second-take/visual-kit/refs/base/action-thumbsup.png",
+      "character": "base",
+      "kind": "action",
+      "tag": "thumbs-up",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "action-thumbsdown",
+      "file": "channels/the-second-take/visual-kit/refs/base/action-thumbsdown.png",
+      "character": "base",
+      "kind": "action",
+      "tag": "thumbs-down",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "action-accuse",
+      "file": "channels/the-second-take/visual-kit/refs/base/action-accuse.png",
+      "character": "base",
+      "kind": "action",
+      "tag": "accuse",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "action-headinhands",
+      "file": "channels/the-second-take/visual-kit/refs/base/action-headinhands.png",
+      "character": "base",
+      "kind": "action",
+      "tag": "head-in-hands",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "action-offering",
+      "file": "channels/the-second-take/visual-kit/refs/base/action-offering.png",
+      "character": "base",
+      "kind": "action",
+      "tag": "offering",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "action-present",
+      "file": "channels/the-second-take/visual-kit/refs/base/action-present.png",
+      "character": "base",
+      "kind": "action",
+      "tag": "present",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "sit",
+      "file": "channels/the-second-take/visual-kit/refs/base/sit.png",
+      "character": "base",
+      "kind": "pose",
+      "tag": "sit",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "facepalm",
+      "file": "channels/the-second-take/visual-kit/refs/base/facepalm.png",
+      "character": "base",
+      "kind": "pose",
+      "tag": "facepalm",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "surrender",
+      "file": "channels/the-second-take/visual-kit/refs/base/surrender.png",
+      "character": "base",
+      "kind": "pose",
+      "tag": "surrender",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "kneel-beg",
+      "file": "channels/the-second-take/visual-kit/refs/base/kneel-beg.png",
+      "character": "base",
+      "kind": "pose",
+      "tag": "kneel-beg",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "point-at-thing",
+      "file": "channels/the-second-take/visual-kit/refs/base/point-at-thing.png",
+      "character": "base",
+      "kind": "pose",
+      "tag": "point-at-thing",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "back-to-viewer",
+      "file": "channels/the-second-take/visual-kit/refs/base/back-to-viewer.png",
+      "character": "base",
+      "kind": "pose",
+      "tag": "back-to-viewer",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "hold-one-hand",
+      "file": "channels/the-second-take/visual-kit/refs/base/hold-one-hand.png",
+      "character": "base",
+      "kind": "pose",
+      "tag": "hold-one-hand",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "hold-both-hands",
+      "file": "channels/the-second-take/visual-kit/refs/base/hold-both-hands.png",
+      "character": "base",
+      "kind": "pose",
+      "tag": "hold-both-hands",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "hold-paper-by-sides",
+      "file": "channels/the-second-take/visual-kit/refs/base/hold-paper-by-sides.png",
+      "character": "base",
+      "kind": "pose",
+      "tag": "hold-paper-by-sides",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "carry-by-handle",
+      "file": "channels/the-second-take/visual-kit/refs/base/carry-by-handle.png",
+      "character": "base",
+      "kind": "pose",
+      "tag": "carry-by-handle",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "sign-with-pen",
+      "file": "channels/the-second-take/visual-kit/refs/base/sign-with-pen.png",
+      "character": "base",
+      "kind": "pose",
+      "tag": "sign-with-pen",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "reach-to-take",
+      "file": "channels/the-second-take/visual-kit/refs/base/reach-to-take.png",
+      "character": "base",
+      "kind": "pose",
+      "tag": "reach-to-take",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "handoff",
+      "file": "channels/the-second-take/visual-kit/refs/base/handoff.png",
+      "character": "base",
+      "kind": "interaction",
+      "tag": "handoff",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "fistbump",
+      "file": "channels/the-second-take/visual-kit/refs/base/fistbump.png",
+      "character": "base",
+      "kind": "interaction",
+      "tag": "fistbump",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "walk-left",
+      "file": "channels/the-second-take/visual-kit/refs/base/walk-left.png",
+      "character": "base",
+      "kind": "pose",
+      "tag": "walk-left",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "walk-right",
+      "file": "channels/the-second-take/visual-kit/refs/base/walk-right.png",
+      "character": "base",
+      "kind": "pose",
+      "tag": "walk-right",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "whisper-aside",
+      "file": "channels/the-second-take/visual-kit/refs/base/whisper-aside.png",
+      "character": "base",
+      "kind": "pose",
+      "tag": "whisper-aside",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "3q-turn-right",
+      "file": "channels/the-second-take/visual-kit/refs/base/3q-turn-right.png",
+      "character": "base",
+      "kind": "pose",
+      "tag": "3q-turn-right",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "handshake",
+      "file": "channels/the-second-take/visual-kit/refs/base/handshake.png",
+      "character": "base",
+      "kind": "interaction",
+      "tag": "handshake",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "expr-greedy",
+      "file": "channels/the-second-take/visual-kit/refs/base/expr-greedy.png",
+      "character": "base",
+      "kind": "expression",
+      "tag": "greedy",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "bolivar",
+      "file": "channels/the-second-take/visual-kit/refs/bolivar/bolivar.png",
+      "character": "bolivar",
+      "kind": "identity",
+      "tag": "base",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/bolivar/bolivar.png"
+    },
+    {
+      "name": "mosquito-king",
+      "file": "channels/the-second-take/visual-kit/refs/mosquito-king/mosquito-king.png",
+      "character": "mosquito-king",
+      "kind": "identity",
+      "tag": "base",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/mosquito-king/mosquito-king.png"
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "_doc": "Music sourcing brief for music-forge. Bucket keys = the channel's CASUAL-COMEDIC mood taxonomy (spec 2026-07-11-phase3-music-lane-arc-design.md A1, Crayon-Capital idiom, NOT cinematic). Keys become audio-tokens.json music_pools keys; incompetech_seeds feed fetch_incompetech (CC-BY). dur_s = a loopable section length. This is the ONLY home for sourcing config; final beds live in audio/beds + music_pools.",
+  "defaults": {
+    "top_n": 10,
+    "norm_lufs": -20.0,
+    "incompetech_url": "https://incompetech.com/music/royalty-free/mp3-royaltyfree/{name}.mp3"
+  },
+  "buckets": {
+    "casual-bed": {
+      "mood_use": "DEFAULT workhorse bed — wry, dry, laid-back groove (slightly noir/neutral, NOT cheerful) under most narration. Cheerful/bouncy is the 'upbeat' opt-in only; a super-cheerful bed under fraud/human-cost stories reads tonally wrong (register doctrine: default wry, cheerful opt-in).",
+      "incompetech_seeds": ["Mining by Moonlight"],
+      "clap_prompts": ["a laid-back bluesy noir detective-lounge groove", "a smooth cool jazzy underscore that sits under narration"],
+      "dur_s": [15, 600],
+      "pick_n": 3
+    },
+    "upbeat": {
+      "mood_use": "energetic playful lift — the fun/absurd money bits (still casual-comedic, not a fanfare)",
+      "incompetech_seeds": ["Monkeys Spinning Monkeys", "The Show Must Be Go", "Life of Riley", "Cheery Monday", "Pina Colada", "Killers"],
+      "clap_prompts": ["an upbeat cheerful playful comedic tune", "a bright bouncy happy underscore"],
+      "dur_s": [15, 600],
+      "pick_n": 2
+    },
+    "sneaky": {
+      "mood_use": "light comedic tiptoe / mischief — the 'here's the con' stretches (quirky, NOT cinematic tension)",
+      "incompetech_seeds": ["Sneaky Snitch", "Scheming Weasel faster", "Sneaky Adventure", "Investigations", "Covert Affair", "Marty Gots a Plan", "Clash Defiant"],
+      "clap_prompts": ["a sneaky mischievous comedic tiptoe tune", "a playful quirky spy-caper underscore"],
+      "dur_s": [15, 600],
+      "pick_n": 2
+    }
+  }
+}

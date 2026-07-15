@@ -1,0 +1,86 @@
+{
+  "schema": "faceless-youtube/metadata@1",
+  "channel": "the-second-take",
+  "video_slug": "2026-07-10-nauru",
+  "source_idea_id": "ST-008",
+  "generated": "2026-07-10",
+  "status": "metadata-drafted",
+
+  "defaults": {
+    "privacy_status": "private",
+    "made_for_kids": false,
+    "contains_synthetic_media": true,
+    "default_language": "en",
+    "default_audio_language": "en",
+    "license": "youtube",
+    "embeddable": true
+  },
+
+  "long_form": {
+    "title_primary": "The Richest Country on Earth Ran on Bird Poop",
+    "title_challengers": [
+      "They Had the Highest Income on Earth. Then It Ran Out.",
+      "A Nation Got Rich on Guano and Blew It on a Flop Musical"
+    ],
+    "description": "For a few years, the richest country on Earth per capita was an 8-square-mile Pacific island whose entire economy was fossilized bird poop. Then the money vanished.\n\nNauru sat on some of the purest phosphate on the planet, thousands of years of seabird guano turned to rock, and after independence in 1968 it became one of the richest places on Earth per capita. To dig the phosphate out, it strip-mined about 80% of its own island into a grey moonscape. And it poured the fortune into a national trust meant to outlive the mining, a skyscraper in Melbourne, a national airline, and, most famously, a flop West End musical about Leonardo da Vinci. This is the forensic follow-the-money: how a A$1.3 billion trust fell to around A$300 million, why the musical was the emblem and not the cause, and how a country with nothing left to sell ended up renting itself out.\n\nChapters:\n00:00 The richest country on Earth, and where it all went\n0:34 A fortune made of bird poop\n1:59 The two catches baked into the miracle\n2:34 The fund that was supposed to last forever\n3:52 The da Vinci musical\n4:36 The myth vs. what really happened\n5:08 A$1.3 billion to A$300 million\n5:50 What the digging left behind\n6:41 Nothing left to sell but itself\n7:27 Renting out the island\n\n#FinanceHistory #Nauru #ResourceCurse #EconomicCollapse\n\nThe Second Take uses AI-assisted narration and illustration to tell true money stories.\nThis channel is history and entertainment, not financial advice.\n\nSources:\n- \"Economy of Nauru,\" Wikipedia: the highest-income-per-capita-after-independence framing, the 2004 phosphate export figure (~US$640,000), and the offshore-banking blacklisting.\n- Interesting Engineering, \"How phosphate mining ruined the island of Nauru\": the guano origin and purity, the ~80% strip-mined moonscape, Air Nauru, the fortune squandered, and the obesity/diabetes and poverty figures.\n- \"Leonardo the Musical: A Portrait of Love,\" Wikipedia, and mental_floss, \"The Leonardo da Vinci Musical Financed by Guano\": the June 1993 opening and 37-performance close, Duke Minks and his pop-band background, and the ~2 million pound loss.\n- \"Nauru Phosphate Royalties Trust,\" Wikipedia, and Cainz, \"The Cursed Island\": the A$1.3 billion (1991) to ~A$300 million (2004) collapse, Nauru House as the jewel of the holdings, and its 2004 sale to cover debts.\n- The Conversation, \"Australia's 'enduring' offshore processing deal with Nauru,\" and \"Nauru Regional Processing Centre,\" Wikipedia: the 2001 Pacific Solution start, the open/close/reopen timeline, and the detention centre as most of government revenue.\n- CIMSEC, \"Nauru: A Lesson in Failure,\" and reporting on the Melnikov estimate and FATF/US Treasury action: the ~$70 billion 1998 laundering estimate, the passport sales, and the blacklisting.",
+    "tags": [
+      "Nauru",
+      "Nauru phosphate",
+      "richest country per capita",
+      "resource curse",
+      "Nauru trust fund",
+      "bird poop economy",
+      "guano",
+      "Nauru history",
+      "Leonardo the Musical",
+      "Nauru Phosphate Royalties Trust",
+      "sovereign wealth fund collapse",
+      "Nauru detention centre",
+      "phosphate mining",
+      "economic collapse",
+      "Pacific island history",
+      "finance documentary",
+      "The Second Take"
+    ],
+    "hashtags": ["#FinanceHistory", "#Nauru", "#ResourceCurse", "#EconomicCollapse"],
+    "category_id": "27",
+    "category_name": "Education",
+    "chapters": [
+      {"time": "00:00", "label": "The richest country on Earth, and where it all went"},
+      {"time": "0:34", "label": "A fortune made of bird poop"},
+      {"time": "1:59", "label": "The two catches baked into the miracle"},
+      {"time": "2:34", "label": "The fund that was supposed to last forever"},
+      {"time": "3:52", "label": "The da Vinci musical"},
+      {"time": "4:36", "label": "The myth vs. what really happened"},
+      {"time": "5:08", "label": "A$1.3 billion to A$300 million"},
+      {"time": "5:50", "label": "What the digging left behind"},
+      {"time": "6:41", "label": "Nothing left to sell but itself"},
+      {"time": "7:27", "label": "Renting out the island"}
+    ],
+    "chapters_status": "estimated-from-script — re-time after render before publish",
+    "thumbnail": {
+      "primary": {
+        "text": "Made of bird poop",
+        "concept": "Pairs with 'The Richest Country on Earth Ran on Bird Poop.' One dominant object: a small island-shaped mound of pale, chalky guano/white rock with a tiny gold crown perched on top, clean 2.5D vector, flat cel shading, on a single-color field with ~60% negative space, no face. The one red accent is a small red price tag / dollar sign hanging off the crown. Overlay 'Made of bird poop' sits under a literal crown, so title + thumbnail open the loop together (the richest place on Earth, and it is a pile of bird poop) without either restating the other."
+      },
+      "challengers": [
+        {
+          "text": "Then: gone",
+          "concept": "Pairs with 'They Had the Highest Income on Earth. Then It Ran Out.' One dominant object: a single island split down the middle, one half lush green with a faint gold shimmer, the other half grey jagged mined-out moonscape, clean 2.5D vector, flat cel, single-color field, >=55% negative space, no face. The one red accent is a red arrow crashing downward across the split. Overlay 'Then: gone' delivers the collapse the title promises, not a restatement."
+        },
+        {
+          "text": "37 nights",
+          "concept": "Pairs with 'A Nation Got Rich on Guano and Blew It on a Flop Musical.' One dominant object: a lone West End theatre marquee lit by a single spotlight over an empty stage, with a small pale-white (guano) dollar sign on the playbill, clean 2.5D vector, flat cel, single-color field, >=55% negative space, no face. The one red accent is a small red CLOSED banner across the marquee. Overlay '37 nights' is the flop's real run length, pairing with the title's absurd bet rather than repeating it."
+        }
+      ]
+    },
+    "pinned_comment": "The part that stays with me: the trust fund was the one genuinely smart thing they did, the plan for the day the phosphate ran out, and it still shrank from about 1.3 billion to 300 million. What's the wildest line item to you: the Melbourne skyscraper an 8-square-mile island owned outright, the airline that could reportedly fly a tenth of the whole country at once, or the da Vinci musical that ran 37 nights?",
+    "ab_experiment": {
+      "eligible": true,
+      "dimension": "title_and_thumbnail",
+      "note": "YouTube Studio-only (Test & Compare, desktop, long-form). Data API v3 cannot submit this. Set up manually: pick title_primary+challengers and thumbnail primary+challengers. The three test genuinely different framings within the locked vindication / forbidden-knowledge lever, tilted here toward tragedy/curiosity — (primary) the absurdity itself (the richest place on Earth ran on bird poop), (challenger 1) the collapse/tragedy arc (highest income, then it ran out), (challenger 2) the forensic-icon angle (the fortune blown on a 37-night flop musical)."
+    }
+  },
+
+  "shorts": []
+}

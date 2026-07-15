@@ -1,0 +1,87 @@
+{
+  "schema": "faceless-youtube/metadata@1",
+  "channel": "the-second-take",
+  "video_slug": "2026-07-04-poyais",
+  "source_idea_id": "ST-009",
+  "generated": "2026-07-08",
+  "status": "metadata-drafted",
+
+  "defaults": {
+    "privacy_status": "private",
+    "made_for_kids": false,
+    "contains_synthetic_media": true,
+    "default_language": "en",
+    "default_audio_language": "en",
+    "license": "youtube",
+    "embeddable": true
+  },
+
+  "long_form": {
+    "title_primary": "The Prince Who Sold a Country That Didn't Exist",
+    "title_challengers": [
+      "The Fake Country That Fooled the Stock Exchange",
+      "The Paradise Brochure That Got Its Buyers Killed"
+    ],
+    "description": "In 1822, London investors bought land, banknotes, and government bonds for Poyais, a young Central American nation with a prince, a capital city, and a national bank. None of it existed.\n\nThis is the story of Gregor MacGregor, the Scottish war hero who invented an entire country, crowned himself its prince, and sold its debt on the floor of the London Stock Exchange right next to Colombia and Peru. It's also the story of the roughly 250 people who sold everything they owned and sailed for a five-star paradise that turned out to be empty jungle. How one confident man with letterhead and a title manufactured a country out of nothing, why the smartest money in Europe lined up to buy it, and what was actually waiting on the beach when the ships arrived.\n\nChapters:\n00:00 The country that never was\n0:39 A war hero and 8 million acres of jungle\n2:11 Inventing a prince, a capital, and a guidebook\n2:55 Fake banknotes and land for two shillings an acre\n4:13 Selling a nation's bonds on the real exchange\n5:55 What was actually waiting on the beach\n6:31 The rainy season, and the ones who came home\n8:01 How the con man walked away\n\n#FinanceHistory #Poyais #GregorMacGregor #Scams\n\nThe Second Take uses AI-assisted narration and illustration to tell true money stories.\nThis channel is history and entertainment, not financial advice.\n\nSources:\n- \"Gregor MacGregor,\" Wikipedia (featured article, sourced to David Sinclair's The Land That Never Was and Tamar Frankel's The Ponzi Scheme Puzzle): the guidebook claims, banknote / land / bond mechanics, named victims, the Black River deaths, the survivors' affidavit, the French acquittal, and the Venezuela death.\n- \"Gregor MacGregor,\" Undiscovered Scotland biography: the two ships and settler counts, the 200,000 pound London loan, and the guidebook.\n- \"Thomas Strangeways\" (pseud.), Sketch of the Mosquito Shore, including the Territory of Poyais (Edinburgh/London, 1822): the primary guidebook and its climate, harvest, and gold claims.\n- Tamar Frankel, The Ponzi Scheme Puzzle, plus economic-history accounts of the 1822 London Latin-American sovereign-bond boom and collapse.\n- Aggregated reputable secondary accounts (The Hustle; History Skills; the Poyais Scheme genealogy record): the ship and settler numbers, the death toll, the Edinburgh cobbler, and James Hastie.",
+    "tags": [
+      "Poyais",
+      "Gregor MacGregor",
+      "Poyais scam",
+      "Poyais scheme",
+      "fake country",
+      "Cazique of Poyais",
+      "MacGregor fraud",
+      "greatest cons in history",
+      "biggest con in history",
+      "financial history",
+      "London Stock Exchange 1822",
+      "Latin American bond bubble",
+      "1820s financial bubble",
+      "sovereign bond scam",
+      "history of scams",
+      "Mosquito Coast",
+      "money documentary",
+      "finance documentary",
+      "forgotten history",
+      "The Second Take"
+    ],
+    "hashtags": ["#FinanceHistory", "#Poyais", "#GregorMacGregor", "#Scams"],
+    "category_id": "27",
+    "category_name": "Education",
+    "chapters": [
+      {"time": "00:00", "label": "The country that never was"},
+      {"time": "0:39", "label": "A war hero and 8 million acres of jungle"},
+      {"time": "2:11", "label": "Inventing a prince, a capital, and a guidebook"},
+      {"time": "2:55", "label": "Fake banknotes and land for two shillings an acre"},
+      {"time": "4:13", "label": "Selling a nation's bonds on the real exchange"},
+      {"time": "5:55", "label": "What was actually waiting on the beach"},
+      {"time": "6:31", "label": "The rainy season, and the ones who came home"},
+      {"time": "8:01", "label": "How the con man walked away"}
+    ],
+    "chapters_status": "estimated-from-script — re-time after render before publish",
+    "thumbnail": {
+      "primary": {
+        "text": "Population: 0",
+        "concept": "One dominant clean-2.5D-vector money object: an ornately engraved Poyais banknote (the fake currency) centered on a flat single-color field, ~60% negative space, no face. The one red accent is an official-looking wax seal / stamp on the note. The engraved 'landscape' vignette on the note is a blank empty cutout, so the note looks fully legit but the country pictured inside it is missing. Overlay 'Population: 0' is a reframe of the title's promise (the note is real-looking; the nation has nobody), not a restatement of 'Didn't Exist'."
+      },
+      "challengers": [
+        {
+          "text": "Spot the fake",
+          "concept": "Pairs with 'The Fake Country That Fooled the Stock Exchange.' A single ornate government-bond certificate stamped POYAIS sitting in a neat row of otherwise identical real sovereign bond certificates (Colombia, Peru), clean 2.5D vector on a single-color field, ≥50% negative space. One red accent circle rings the Poyais certificate. Turns the thumbnail into an anomaly-hunt; overlay 'Spot the fake' is the reframe, not the title."
+        },
+        {
+          "text": "As advertised",
+          "concept": "Pairs with 'The Paradise Brochure That Got Its Buyers Killed.' Before/after split: the lavish Poyais guidebook lying open — the left page a golden five-star capital city (opera house, cathedral, gold rivers), the right page a bare, empty beach and jungle. Clean 2.5D vector, single-color backdrop, one red accent on the seam between the two pages. Overlay 'As advertised' is a dry sarcastic verdict (reframe), never a face, ≥50% clean composition."
+        }
+      ]
+    },
+    "pinned_comment": "The part that still gets me: when the survivors finally made it home, six of them signed a sworn statement defending MacGregor and blaming the man he'd left in charge. After Poyais had cost them nearly everything, they still couldn't believe the prince had meant them any harm. If you'd sailed for Poyais and lived, do you think you'd have believed him too?",
+    "ab_experiment": {
+      "eligible": true,
+      "dimension": "title_and_thumbnail",
+      "note": "YouTube Studio-only (Test & Compare, desktop, long-form). Data API v3 cannot submit this. Set up manually: pick title_primary+challengers and thumbnail primary+challengers. The three test genuinely different framings within the locked vindication/forbidden-knowledge lever — (primary) the prince who sold a country, (challenger 1) the fake nation's bonds fooling the real stock exchange, (challenger 2) the paradise brochure and the settler deaths."
+    }
+  },
+
+  "shorts": []
+}

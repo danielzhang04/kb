@@ -1,0 +1,78 @@
+{
+  "id": "AAGIi62-sAU",
+  "slug": "oversimplified-prohibition",
+  "channel": "oversimplified",
+  "dur_s": 2023,
+  "measured_dur_s": 2022.8,
+  "transcript_source": "channels/the-second-take/visual-kit/research/motion-logs/_frames-prohibition-p1/prohibition.en.vtt",
+  "transcript_segments": 1136,
+  "confidence_contract": "reliable = load-bearing (sets dials); directional = low-confidence, never a dial (SFX+music tangled in the residual; beats are inferred).",
+  "reliable": {
+    "loudness": {
+      "lufs": -21.5,
+      "lra": 4.6,
+      "true_peak": -0.2
+    },
+    "speech": {
+      "n_regions": 371,
+      "speaking_s": 1815.1,
+      "wpm": 210.0,
+      "words": 6353,
+      "gaps": {
+        "n": 370,
+        "median": 0.3,
+        "p25": 0.3,
+        "p75": 0.4
+      }
+    },
+    "music": {
+      "presence_pct": 61.5,
+      "dips": {
+        "n": 370,
+        "median_depth_db": 22.81,
+        "median_dur_s": 0.5
+      },
+      "ducking_depth_db": 1.59
+    },
+    "breath_by_acoustic_bucket": {
+      "short_percussive": {
+        "n": 461,
+        "n_with_pause": 89,
+        "pause_rate": 0.193,
+        "median_pause_when_paused": 0.9
+      },
+      "sustained_loud": {
+        "n": 22,
+        "n_with_pause": 3,
+        "pause_rate": 0.136,
+        "median_pause_when_paused": 0.6
+      },
+      "mid": {
+        "n": 143,
+        "n_with_pause": 24,
+        "pause_rate": 0.168,
+        "median_pause_when_paused": 0.4
+      }
+    }
+  },
+  "directional": {
+    "_note": "SFX and music hits are not separable in the demucs residual; onset-derived numbers are a proxy BAND. Beats are transcript-inferred + caption-quality-dependent: the 'act' count (>=2s caption gap) is noisy on auto-caption tracks and is NOT used; dip-alignment uses PUNCHLINES only. Never a dial.",
+    "onset_density_per_min": 18.57,
+    "onsets_n": 626,
+    "beats": {
+      "n": 1136,
+      "kinds": {
+        "act": 297,
+        "punchline": 324,
+        "plain": 515
+      }
+    },
+    "dip_on_punchline": {
+      "dips_total": 370,
+      "punchlines": 324,
+      "dips_on_a_punchline": 178,
+      "punchlines_with_a_dip": 128
+    },
+    "clap_sfx_dist": null
+  }
+}

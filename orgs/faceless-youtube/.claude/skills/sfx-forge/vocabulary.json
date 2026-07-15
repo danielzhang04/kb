@@ -1,0 +1,339 @@
+{
+  "_doc": "SFX sourcing brief for sfx-forge/forge.py. Reference-derived (motion-logs event classes + comedic identity). This is the ONLY home for sourcing config (queries/prompts/bands); final pools live in the channel audio-tokens.json. fires_now=false roles are sourced but cannot be exercised in-context until card/element overlays are used (Phase-3).",
+  "defaults": {
+    "page_size": 40,
+    "top_n": 6,
+    "max_download": 30
+  },
+  "roles": {
+    "whoosh": {
+      "scene_use": "scene transition \u2014 swoosh for a minor move, big-stick for a major scene change",
+      "queries": [
+        "whoosh transition",
+        "swoosh",
+        "whoosh"
+      ],
+      "clap_prompts": [
+        "a short whoosh transition sound",
+        "a quick swoosh"
+      ],
+      "dur_s": [
+        0.15,
+        1.2
+      ],
+      "fires_now": true,
+      "pick_n": 2
+    },
+    "riser": {
+      "scene_use": "tension build-up in the pause right before a big reveal lands",
+      "queries": [
+        "cinematic riser",
+        "tension riser build up",
+        "uplifter swell",
+        "long riser",
+        "suspense build up",
+        "riser sweep"
+      ],
+      "clap_prompts": [
+        "a rising tension riser sweep",
+        "an uplifter build up"
+      ],
+      "dur_s": [
+        1.0,
+        3.5
+      ],
+      "fires_now": true,
+      "pick_n": 2
+    },
+    "boom": {
+      "scene_use": "a heavy thing lands \u2014 an object drops in (FICTION stamp), or a punchy hit on emphasis",
+      "queries": [
+        "cinematic boom impact",
+        "deep hit",
+        "impact thud"
+      ],
+      "clap_prompts": [
+        "a deep dramatic boom impact",
+        "a cinematic hit"
+      ],
+      "dur_s": [
+        0.3,
+        2.0
+      ],
+      "fires_now": true,
+      "pick_n": 2
+    },
+    "boing": {
+      "scene_use": "an absurd/ridiculous beat \u2014 a comedic bounce on something silly",
+      "queries": [
+        "cartoon boing",
+        "boing spring",
+        "sproing"
+      ],
+      "clap_prompts": [
+        "a comedic cartoon boing",
+        "a springy sproing"
+      ],
+      "dur_s": [
+        0.15,
+        1.0
+      ],
+      "fires_now": true,
+      "pick_n": 1
+    },
+    "record_scratch": {
+      "scene_use": "the wait-what \u2014 narration halts on an ironic or surprising contradiction",
+      "queries": [
+        "record scratch",
+        "vinyl needle scratch",
+        "dj scratch stop"
+      ],
+      "clap_prompts": [
+        "a vinyl record scratch stop",
+        "a needle scratch"
+      ],
+      "dur_s": [
+        0.2,
+        1.5
+      ],
+      "fires_now": true,
+      "pick_n": 1
+    },
+    "cash": {
+      "scene_use": "money punchline \u2014 a big number lands ('...walked away with $7B' pause ka-ching)",
+      "queries": [
+        "cash register",
+        "kaching",
+        "ka-ching",
+        "cash register bell",
+        "till bell"
+      ],
+      "clap_prompts": [
+        "a cash register ka-ching",
+        "a bright register bell"
+      ],
+      "dur_s": [
+        0.2,
+        2.5
+      ],
+      "fires_now": true,
+      "pick_n": 1
+    },
+    "sting": {
+      "scene_use": "dramatic dun-dun-dunnn \u2014 a dark turn or reveal (the trap springs, the fraud is exposed)",
+      "queries": [
+        "dun dun dun",
+        "dramatic dun dun dunnn",
+        "suspense dramatic sting",
+        "ominous reveal sting",
+        "shock dramatic hit",
+        "dramatic revelation"
+      ],
+      "clap_prompts": [
+        "a dramatic dun-dun-dun sting",
+        "an ominous suspense sting"
+      ],
+      "dur_s": [
+        0.3,
+        2.5
+      ],
+      "fires_now": true,
+      "pick_n": 1
+    },
+    "womp": {
+      "scene_use": "deflation/failure \u2014 the sad-trombone on a flop or letdown",
+      "queries": [
+        "sad trombone",
+        "trombone fail",
+        "womp trombone",
+        "descending trombone",
+        "wah wah wah"
+      ],
+      "clap_prompts": [
+        "a sad trombone womp womp womp",
+        "a descending failure trombone"
+      ],
+      "dur_s": [
+        0.4,
+        4.0
+      ],
+      "fires_now": true,
+      "pick_n": 1
+    },
+    "pop": {
+      "scene_use": "a card/element/prop pops onto screen",
+      "queries": [
+        "cartoon pop",
+        "bubble pop",
+        "ui pop"
+      ],
+      "clap_prompts": [
+        "a short cartoon pop",
+        "a bubble pop"
+      ],
+      "dur_s": [
+        0.05,
+        0.4
+      ],
+      "fires_now": false,
+      "pick_n": 3
+    },
+    "stamp": {
+      "scene_use": "a stamp slams onto a document (the FICTION stamp)",
+      "queries": [
+        "rubber stamp",
+        "ink stamp thud",
+        "stamp paper"
+      ],
+      "clap_prompts": [
+        "a rubber stamp thud",
+        "an ink stamp on paper"
+      ],
+      "dur_s": [
+        0.1,
+        0.6
+      ],
+      "fires_now": false,
+      "pick_n": 1
+    },
+    "tick": {
+      "scene_use": "a counter rolling up ($0 -> $7B, tick-tick-tick) or text typing on",
+      "queries": [
+        "typewriter key",
+        "tick click",
+        "keyboard type"
+      ],
+      "clap_prompts": [
+        "a typewriter key click",
+        "a single tick"
+      ],
+      "dur_s": [
+        0.03,
+        0.25
+      ],
+      "fires_now": false,
+      "pick_n": 2
+    },
+    "pluck": {
+      "scene_use": "each item appearing in a bulleted/list reveal",
+      "queries": [
+        "pizzicato pluck",
+        "ui blip",
+        "harp pluck",
+        "string pluck note",
+        "notification blip",
+        "marimba plink"
+      ],
+      "clap_prompts": [
+        "a soft ui pluck blip",
+        "a short pizzicato pluck"
+      ],
+      "dur_s": [
+        0.05,
+        0.9
+      ],
+      "fires_now": false,
+      "pick_n": 2,
+      "dropped": true
+    },
+    "ding": {
+      "scene_use": "success/correct \u2014 a positive confirmation ping",
+      "queries": [
+        "correct answer ding",
+        "quiz correct chime",
+        "success bell ding",
+        "right answer",
+        "positive notification chime",
+        "level up ding"
+      ],
+      "clap_prompts": [
+        "a correct-answer success ding",
+        "a positive chime"
+      ],
+      "dur_s": [
+        0.1,
+        1.8
+      ],
+      "fires_now": false,
+      "pick_n": 1
+    },
+    "buzzer": {
+      "scene_use": "wrong/denied \u2014 harsh buzzer for 'wrong', softer for 'access denied'",
+      "queries": [
+        "wrong answer buzzer",
+        "error buzzer",
+        "fail buzzer",
+        "incorrect buzz"
+      ],
+      "clap_prompts": [
+        "a wrong-answer buzzer",
+        "an error buzz"
+      ],
+      "dur_s": [
+        0.2,
+        1.5
+      ],
+      "fires_now": false,
+      "pick_n": 2
+    },
+    "sparkle": {
+      "scene_use": "a magic/idea moment \u2014 a lightbulb realization, or a wondrous reveal (Poyais introduced)",
+      "queries": [
+        "magic sparkle",
+        "twinkle shimmer",
+        "magic chime",
+        "fairy sparkle"
+      ],
+      "clap_prompts": [
+        "a magic sparkle shimmer",
+        "a twinkle chime"
+      ],
+      "dur_s": [
+        0.3,
+        2.2
+      ],
+      "fires_now": false,
+      "pick_n": 2
+    },
+    "thud": {
+      "scene_use": "a small object lands/drops with a soft thud",
+      "queries": [
+        "soft thud",
+        "plop",
+        "object drop thud",
+        "heavy plop"
+      ],
+      "clap_prompts": [
+        "a soft thud",
+        "a plop drop"
+      ],
+      "dur_s": [
+        0.1,
+        0.9
+      ],
+      "fires_now": false,
+      "pick_n": 3
+    },
+    "powerdown": {
+      "scene_use": "scene-end downswing \u2014 'and then it was all gone' at a chapter close",
+      "queries": [
+        "power down",
+        "powering down descending",
+        "shutdown sound",
+        "power off",
+        "descending downswing",
+        "tv turn off"
+      ],
+      "clap_prompts": [
+        "a power-down descending sound",
+        "a shutting-off downswing"
+      ],
+      "dur_s": [
+        0.3,
+        2.0
+      ],
+      "fires_now": false,
+      "pick_n": 1
+    }
+  }
+}
