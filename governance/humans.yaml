@@ -1,0 +1,3 @@
+# Git author names whose approvals count as human. Keep in sync with your git config.
+humans:
+  - "Daniel Zhang"

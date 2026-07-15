@@ -1,0 +1,15 @@
+# secrets — never committed
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# bulk / private zones (Drive-synced, desktop-only)
+_data/
+_private/
+
+# python
+__pycache__/
+*.pyc
+.pytest_cache/
