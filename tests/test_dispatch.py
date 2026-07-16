@@ -453,6 +453,109 @@ def test_release_never_routes_queues_for_me_child_to_inbox(tmp_path):
     assert reread.meta["assurance_class"] == "signed-only"
 
 
+# --------------------------------------------------------------------------- #
+# Task 4.2 -- role-tagged cards + auto inspect sibling + main-ref standing-auth
+# --------------------------------------------------------------------------- #
+#
+# solo-cadence (SOLO_HB, above) is already committed onto the repo's local
+# `main` via _repo_on_main -- reused here as the base for an inspected cadence
+# and for the main-ref divergence check, same discriminating trick
+# test_standing_auth_requires_main_ref (tests/test_promotion.py) uses.
+
+INSPECT_HB = """# Heartbeat — kb
+
+```yaml
+cadences:
+  - name: solo-inspected
+    schedule: daily
+    tier: cloud
+    risk-tier: T1
+    inspect: true
+    prompt: |
+      Do a thing that gets inspected.
+```
+"""
+
+BAD_ROLE_HB = """# Heartbeat — kb
+
+```yaml
+cadences:
+  - name: bad-role-cadence
+    schedule: daily
+    tier: cloud
+    risk-tier: T1
+    role: manager
+    prompt: |
+      Has an invalid role value (must be one of cards.ROLES).
+```
+"""
+
+
+def test_cadence_emits_work_and_inspect_sibling(tmp_path):
+    import cards
+    repo = _repo_on_main(tmp_path, INSPECT_HB)
+    emitted = dispatch.run(repo, "cloud", "dispatcher-cloud",
+                           today=datetime.date(2026, 7, 14))
+    assert len(emitted) == 2
+    parsed = [cards.parse(p) for p in emitted]
+    work = next(c for c in parsed if c.meta["role"] == "work")
+    inspect = next(c for c in parsed if c.meta["role"] == "inspect")
+
+    assert work.meta["action"] == "cadence:solo-inspected"
+    assert work.meta["state"] == "inbox"  # standing-authorized -> acts-alone
+    assert work.meta["owner"] == "dispatcher-cloud"
+
+    assert inspect.meta["depends-on"] == [work.meta["id"]]
+    assert inspect.meta["state"] == "blocked"  # never released before its dep exists
+    # role-identity owner, never the dispatching agent -- routines/roles/inspector.md
+    assert inspect.meta["owner"] == "inspector@agents.local"
+    # SECURITY: sibling must not carry a BROADER autonomy than the work card's
+    # own promotion.decide()-computed verdict.
+    assert inspect.meta["autonomy"] == work.meta["autonomy"]
+    assert inspect.meta["assurance_class"] == work.meta["assurance_class"]
+
+
+def test_standing_auth_only_from_main_ref(tmp_path):
+    import cards
+    repo = _repo_on_main(tmp_path, SOLO_HB)  # solo-cadence committed onto local main
+
+    # Diverge the WORKING TREE only: add a second cadence never authored on
+    # main. Prepended (not appended) so solo-cadence stays the LAST list item
+    # in both the committed and the working-tree copy -- otherwise the FENCE
+    # regex's `(.*?)\n\`\`\`` trailing-newline handling would make solo-cadence's
+    # own `prompt` field read back differently depending on what follows it,
+    # a parsing artifact unrelated to what this test is actually proving.
+    rogue_hb = SOLO_HB.replace("cadences:\n", """cadences:
+  - name: rogue-cadence
+    schedule: daily
+    tier: cloud
+    risk-tier: T1
+    prompt: |
+      Never authored on main.
+""", 1)
+    (repo / "HEARTBEAT.md").write_text(rogue_hb, encoding="utf-8")
+
+    emitted = dispatch.run(repo, "cloud", "dispatcher-cloud",
+                           today=datetime.date(2026, 7, 14))
+    by_action = {cards.parse(p).meta["action"]: cards.parse(p) for p in emitted}
+
+    solo = by_action["cadence:solo-cadence"]
+    assert solo.meta["state"] == "inbox"
+    assert solo.meta["autonomy"] == "acts-alone"
+
+    rogue = by_action["cadence:rogue-cadence"]
+    assert rogue.meta["state"] == "approvals"
+    assert rogue.meta["autonomy"] == "queues-for-me"
+
+
+def test_invalid_role_cadence_fails_closed_no_card(tmp_path, capsys):
+    repo = _repo_on_main(tmp_path, BAD_ROLE_HB)
+    emitted = dispatch.run(repo, "cloud", "dispatcher-cloud",
+                           today=datetime.date(2026, 7, 14))
+    assert emitted == []
+    assert "bad-role-cadence" in capsys.readouterr().out
+
+
 def test_release_does_not_thread_into_a_non_depends_on_card(tmp_path):
     """A card with an empty depends-on (the common case -- every existing
     cadence-emitted card) must be completely untouched by the release pass."""

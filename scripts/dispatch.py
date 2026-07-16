@@ -184,6 +184,50 @@ def release_dependents(repo_root: Path) -> list[Path]:
     return released
 
 
+# --------------------------------------------------------------------------- #
+# Task 4.2 -- role-tagged cards + auto inspect sibling + main-ref standing-auth
+# --------------------------------------------------------------------------- #
+#
+# `role` (cards.ROLES: scout|manage|work|inspect|consolidate) defaults to
+# "work" per cadence (`cadence.get("role", "work")`) and flows straight into
+# cards.new_card, which validates the enum (Task 4.4/4.7) -- so an unknown role
+# value raises cards.ValidationError. We fail closed the same way the
+# heartbeat parser already fails closed on a wholly-malformed heartbeat (print
+# a WARN, skip, keep going -- see the `except Exception` around
+# `parse_heartbeat` below) but at CADENCE granularity instead of whole-heartbeat
+# granularity: one cadence with a typo'd `role` must not withhold every other
+# cadence in the same HEARTBEAT.md from dispatching. No card is emitted and
+# nothing is written to the dispatch ledger for a bad-role cadence, so it is
+# retried (and re-warned) on every future run until a human fixes the
+# HEARTBEAT.md -- there is no silent, permanent drop.
+#
+# `inspect: true` on a cadence additionally emits a paired `role: inspect`
+# sibling card that `depends-on: [<work-card-id>]`, modelled on
+# routines/roles/inspector.md's fresh-context-grader contract:
+#   * SECURITY: the sibling must never carry a BROADER autonomy than the work
+#     card's own promotion.decide()-computed verdict -- an inspector that could
+#     auto-act on a cadence nobody vouched for would be a privilege-escalation
+#     side channel wearing a grading hat. We reuse the IDENTICAL
+#     autonomy/assurance_class already computed for the work card (same
+#     cadence -> same standing-auth + earned-status inputs), which trivially
+#     satisfies "same-or-stricter": it is never looser.
+#   * The sibling ALWAYS starts `state: blocked` with the above `depends-on`,
+#     regardless of its autonomy verdict -- it cannot reach `inbox` before the
+#     work it grades exists. Task 4.1's release_dependents() is the only thing
+#     that can ever move it out of `blocked`, and it already refuses to
+#     release a `queues-for-me`-stamped child to `inbox`
+#     (test_release_never_routes_queues_for_me_child_to_inbox) -- so a sibling
+#     that inherits queues-for-me simply stays blocked here; routing it to a
+#     human is out of scope for dispatch (cards.py's LEGAL map has no
+#     blocked -> approvals transition for dispatch to use even if it tried).
+#   * The sibling's `owner` is the ROLE identity `inspector@agents.local` (per
+#     routines/roles/inspector.md: "never the underlying model/agent name"),
+#     never the dispatching agent_id -- so a grade can never appear to come
+#     from the same identity that dispatched (or later, executed) the work
+#     card it grades.
+INSPECTOR_IDENTITY = "inspector@agents.local"
+
+
 def parse_heartbeat(path: Path) -> list[dict]:
     m = FENCE.search(Path(path).read_text(encoding="utf-8"))
     if not m:
@@ -256,19 +300,47 @@ def run(repo_root: Path, tier: str, agent_id: str,
                 autonomy = promotion.QUEUES_FOR_ME
                 assurance_class = "possession-eligible"
             state = "inbox" if autonomy == promotion.ACTS_ALONE else "approvals"
-            card = cards.new_card(
-                project=project,
-                action=f"cadence:{cadence['name']}",
-                target=hb.parent.relative_to(repo_root).as_posix(),
-                risk_tier=cadence.get("risk-tier", "T1"),
-                body="## Work order\n\n" + cadence.get("prompt", "").strip() + "\n",
-                state=state, autonomy=autonomy, assurance_class=assurance_class,
-            )
+            target = hb.parent.relative_to(repo_root).as_posix()
+            role = cadence.get("role", "work")
+            try:
+                card = cards.new_card(
+                    project=project,
+                    action=f"cadence:{cadence['name']}",
+                    target=target,
+                    risk_tier=cadence.get("risk-tier", "T1"),
+                    body="## Work order\n\n" + cadence.get("prompt", "").strip() + "\n",
+                    state=state, autonomy=autonomy, assurance_class=assurance_class,
+                    role=role,
+                )
+            except cards.ValidationError as err:
+                # Fail closed at CADENCE granularity (see the Task 4.2 comment
+                # above): skip only this cadence, never the whole heartbeat.
+                print(f"WARN: skipping cadence {project}/{cadence['name']}: {err}")
+                continue
             cards.claim(card, agent_id)
             emitted.append(cards.save(card, Path(repo_root) / "queue"))
             ledger.append(repo_root, "dispatch", agent_id,
                           {"date": today.isoformat(), "cadence": cadence["name"],
                            "project": project, "card": card.meta["id"]})
+
+            if cadence.get("inspect"):
+                try:
+                    sibling = cards.new_card(
+                        project=project,
+                        action=f"cadence:{cadence['name']}:inspect",
+                        target=target,
+                        risk_tier=cadence.get("risk-tier", "T1"),
+                        body=("## Work order\n\nInspect the paired work card "
+                              f"{card.meta['id']} per routines/roles/inspector.md.\n"),
+                        state="blocked", autonomy=autonomy,
+                        assurance_class=assurance_class, role="inspect",
+                        **{"depends-on": [card.meta["id"]]},
+                    )
+                except cards.ValidationError as err:  # pragma: no cover -- role="inspect" is always valid
+                    print(f"WARN: skipping inspect sibling for {project}/{cadence['name']}: {err}")
+                else:
+                    cards.claim(sibling, INSPECTOR_IDENTITY)
+                    emitted.append(cards.save(sibling, Path(repo_root) / "queue"))
     return emitted
 
 
