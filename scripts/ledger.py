@@ -18,7 +18,9 @@ def _shard(repo_root: Path, kind: str, agent: str, day: str | None = None) -> Pa
 def append(repo_root: Path, kind: str, agent: str, record: dict) -> Path:
     p = _shard(repo_root, kind, agent)
     p.parent.mkdir(parents=True, exist_ok=True)
-    is_new = not p.exists()
+    # A 0-byte shard (crash between create and header write) has no header to read;
+    # treat it as new so we write the header instead of silently dropping the record.
+    is_new = not p.exists() or p.stat().st_size == 0
     if is_new:
         fields = sorted(record)
     else:

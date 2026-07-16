@@ -4,9 +4,9 @@ You are agent `dispatcher-cloud` operating in the kb repo. Follow CLAUDE.md (the
 
 1. git fetch origin && git checkout ops && git pull --rebase origin ops
 2. Run `python scripts/preamble.py`. On failure: write a wake-me card describing the failure
-   into queue/inbox/ (risk-tier T1), commit + push ops, STOP. (If `python` is unavailable or
-   lacks yaml, retry with `python3`; install pyyaml via pip if missing:
-   `python -m pip install --quiet pyyaml`.)
+   into queue/inbox/ (risk-tier T1), commit + push ops, STOP. (Cloud VM: `python` works.
+   Desktop fallback: never bare `python` — the pinned-interpreter wrapper
+   scripts/desktop_dispatch.ps1 owns local scheduled runs.)
 3. Run `python scripts/dispatch.py --tier cloud --agent dispatcher-cloud`.
 4. For each card the dispatcher just emitted (it prints the paths): set its state to
    `working` (you are the owner), execute its `## Work order` exactly, write `## Result`,

@@ -57,7 +57,7 @@ def run(repo_root: Path, tier: str, agent_id: str,
     # ledger.append shards by wall-clock day (ledger._shard); read the same shard so
     # idempotency holds even when `today` is injected for scheduling (tests, backfill).
     ledger_day = datetime.date.today().isoformat()
-    ran = {f"{r['project']}:{r['cadence']}"
+    ran = {(r['project'], r['cadence'])
            for r in ledger.read_day(repo_root, "dispatch", ledger_day)}
     emitted: list[Path] = []
     for project, hb in _heartbeats(repo_root):
@@ -67,7 +67,7 @@ def run(repo_root: Path, tier: str, agent_id: str,
             print(f"WARN: skipping {project} heartbeat: {err}")
             continue
         for cadence in cadences:
-            key = f"{project}:{cadence['name']}"
+            key = (project, cadence['name'])
             if cadence.get("tier") != tier or key in ran or not due(cadence, today):
                 continue
             card = cards.new_card(
