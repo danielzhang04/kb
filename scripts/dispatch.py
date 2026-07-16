@@ -228,6 +228,73 @@ def release_dependents(repo_root: Path) -> list[Path]:
 INSPECTOR_IDENTITY = "inspector@agents.local"
 
 
+# --------------------------------------------------------------------------- #
+# Task 3.6 -- fail-closed tier-partition rule (D5 invariant #10)              #
+# --------------------------------------------------------------------------- #
+#
+# Every cadence must be scheduled by EXACTLY one of the two dispatcher tiers.
+# The existing `cadence.get("tier") != tier` check in run()'s per-cadence loop
+# already makes a *valid* ("cloud" xor "desktop") tier value mutually
+# exclusive between the two dispatchers -- but it silently drops a cadence
+# whose `tier` is missing, misspelled, or otherwise not one of the two known
+# values: neither dispatcher's `!= tier` check ever matches such a cadence, so
+# it is (correctly) never scheduled by either, but nobody is ever told. That
+# is a silent fail-closed, not a fail-closed-and-visible one. This closes that
+# gap: an invalid tier is reported once via a T1 wake-me card so a human fixes
+# the HEARTBEAT.md, rather than the cadence quietly never running forever.
+#
+# Dedupe choice: scan the ENTIRE queue/ tree (every state dir, not just
+# inbox/) for a pre-existing card with this exact `action` + `target` before
+# filing a new one. This is deliberately NOT keyed off the per-day dispatch
+# ledger (unlike the rest of run()'s idempotency, `ran`/`ledger_day`) because
+# a misconfigured `tier` is a static config error, not a schedule -- it would
+# otherwise still be "due" and re-detected (and re-filed) every single day
+# until a human edits the HEARTBEAT.md. Scanning existing cards means exactly
+# one wake-me is ever filed per (project, cadence name) for as long as that
+# card exists anywhere in the queue, however many times either dispatcher
+# tier runs, on however many days -- it naturally stops once a human moves it
+# to done/ AND fixes the tier (a fixed tier no longer hits this branch at
+# all). Fail-open on an unparseable existing card (skip just that one file):
+# under-detecting a duplicate here only ever costs one extra wake-me card, it
+# never hides an integrity problem the way silently over-detecting would.
+UNKNOWN_TIER_ACTION = "wake-me:unknown-tier"
+
+
+def _unknown_tier_target(project: str, cadence: dict) -> str:
+    return f"{project}:{cadence.get('name', '<unnamed>')}"
+
+
+def _wake_already_filed(repo_root: Path, action: str, target: str) -> bool:
+    queue_root = Path(repo_root) / "queue"
+    if not queue_root.exists():
+        return False
+    for path in queue_root.glob("*/*.md"):
+        try:
+            existing = cards.parse(path)
+        except Exception:  # noqa: BLE001 — fail open: skip an unparseable card
+            continue
+        if existing.meta.get("action") == action and existing.meta.get("target") == target:
+            return True
+    return False
+
+
+def _emit_unknown_tier_wake(repo_root: Path, project: str, cadence: dict) -> Path | None:
+    target = _unknown_tier_target(project, cadence)
+    if _wake_already_filed(repo_root, UNKNOWN_TIER_ACTION, target):
+        return None
+    name = cadence.get("name", "<unnamed>")
+    body = (
+        "## Work order\n\n"
+        f"Cadence `{name}` in project `{project}` declares an invalid/missing "
+        f"`tier` ({cadence.get('tier')!r}) — must be exactly \"cloud\" or "
+        "\"desktop\". Fail-closed: this cadence is not scheduled by either "
+        "dispatcher until a human fixes its HEARTBEAT.md `tier` field.\n"
+    )
+    card = cards.new_card(project=project, action=UNKNOWN_TIER_ACTION, target=target,
+                          risk_tier="T1", body=body)
+    return cards.save(card, Path(repo_root) / "queue")
+
+
 def parse_heartbeat(path: Path) -> list[dict]:
     m = FENCE.search(Path(path).read_text(encoding="utf-8"))
     if not m:
@@ -279,6 +346,9 @@ def run(repo_root: Path, tier: str, agent_id: str,
             print(f"WARN: skipping {project} heartbeat: {err}")
             continue
         for cadence in cadences:
+            if cadence.get("tier") not in ("cloud", "desktop"):
+                _emit_unknown_tier_wake(repo_root, project, cadence)
+                continue
             key = (project, cadence['name'])
             if cadence.get("tier") != tier or key in ran or not due(cadence, today):
                 continue

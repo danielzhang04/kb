@@ -556,6 +556,78 @@ def test_invalid_role_cadence_fails_closed_no_card(tmp_path, capsys):
     assert "bad-role-cadence" in capsys.readouterr().out
 
 
+# --------------------------------------------------------------------------- #
+# Task 3.6 -- fail-closed tier-partition rule (D5 invariants closing gaps)    #
+# --------------------------------------------------------------------------- #
+
+BAD_TIER_HB = """# Heartbeat
+
+```yaml
+cadences:
+  - name: mystery-cadence
+    schedule: daily
+    tier: gpu
+    risk-tier: T1
+    prompt: |
+      Do a thing on an unknown tier.
+```
+"""
+
+
+def test_unknown_tier_skipped_with_wake_me(tmp_path):
+    import cards
+    _write_project(tmp_path, "proj-a", BAD_TIER_HB)
+    day = datetime.date(2026, 7, 14)
+
+    cloud_emitted = dispatch.run(tmp_path, "cloud", "dispatcher-cloud", today=day)
+    assert not any(cards.parse(p).meta.get("action") == "cadence:mystery-cadence"
+                  for p in cloud_emitted)
+
+    desktop_emitted = dispatch.run(tmp_path, "desktop", "dispatcher-desktop", today=day)
+    assert not any(cards.parse(p).meta.get("action") == "cadence:mystery-cadence"
+                  for p in desktop_emitted)
+
+    def _wake_cards():
+        return [cards.parse(p) for p in (tmp_path / "queue").glob("*/*.md")
+                if cards.parse(p).meta.get("action") == "wake-me:unknown-tier"]
+
+    wakes = _wake_cards()
+    assert len(wakes) == 1
+    assert wakes[0].meta["risk-tier"] == "T1"
+    assert "proj-a" in wakes[0].meta["target"]
+    assert "mystery-cadence" in wakes[0].meta["target"]
+
+    # dedupe: repeated runs by EITHER dispatcher must not spam a second wake-me
+    # for the same cadence.
+    dispatch.run(tmp_path, "cloud", "dispatcher-cloud", today=day)
+    dispatch.run(tmp_path, "desktop", "dispatcher-desktop", today=day)
+    assert len(_wake_cards()) == 1
+
+
+def test_no_cadence_claimable_by_both_dispatchers(tmp_path):
+    """D5 #10: the tier partition is exclusive -- a cadence can only ever be
+    claimed by the dispatcher matching its own declared `tier`, never both,
+    no matter how many times either dispatcher runs the same day."""
+    import cards
+    repo = make_repo(tmp_path)  # nightly-review/weekly-audit=cloud, heavy-render=desktop
+    day = datetime.date(2026, 7, 14)  # Tuesday: nightly-review + heavy-render due
+
+    cloud_emitted = dispatch.run(repo, "cloud", "dispatcher-cloud", today=day)
+    desktop_emitted = dispatch.run(repo, "desktop", "dispatcher-desktop", today=day)
+
+    cloud_actions = {cards.parse(p).meta["action"] for p in cloud_emitted}
+    desktop_actions = {cards.parse(p).meta["action"] for p in desktop_emitted}
+
+    assert cloud_actions == {"cadence:nightly-review"}
+    assert desktop_actions == {"cadence:heavy-render"}
+    assert cloud_actions.isdisjoint(desktop_actions)
+
+    # Idempotent re-runs by BOTH dispatchers must not additionally claim
+    # anything -- proving neither tier can later pick up the other's cadence.
+    assert dispatch.run(repo, "cloud", "dispatcher-cloud", today=day) == []
+    assert dispatch.run(repo, "desktop", "dispatcher-desktop", today=day) == []
+
+
 def test_release_does_not_thread_into_a_non_depends_on_card(tmp_path):
     """A card with an empty depends-on (the common case -- every existing
     cadence-emitted card) must be completely untouched by the release pass."""
