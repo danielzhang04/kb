@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { fileURLToPath } from 'node:url';
 import { kbBrowserRoutes } from './kb/routes';
 import { registerRegistry } from './registry/routes';
+import { registerHub } from './hub/index';
 
 /** Loopback-only bind. Network location is never a trust boundary (ordering law 4). */
 export const HOST = '127.0.0.1';
@@ -23,6 +24,7 @@ export function buildApp(): FastifyInstance {
 
   app.register(kbBrowserRoutes); // D0.5: read-only KB browser (GET-only /api/kb/*)
   registerRegistry(app); // D0.6: read-only registries (GET-only /api/registry/*)
+  registerHub(app, { repoRoot: process.env.DASHBOARD_REPO_ROOT }); // D0.4: SSE/WS hub + Origin/Host guard (/events, /ws)
 
   return app;
 }
