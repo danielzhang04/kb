@@ -155,7 +155,14 @@ by an agent — they are listed in sequence with exact instructions for Daniel.
 
 ### HUMAN GATE 0.2 — Configure the cloud routine `kb-nightly-dispatcher`
 - [ ] claude.ai → routine: grant clone access to the **private `kb`** repo only.
-- [ ] Permissions → enable **"Allow unrestricted branch pushes" for `kb`** (the I4 fix).
+- [ ] **NOTE (divergence, confirmed 2026-07-16):** the **"Allow unrestricted branch pushes"**
+  toggle is **unreachable in this claude.ai account** — the routine editor's **Permissions tab is
+  absent** (staged rollout), and there is **no programmatic substitute** for the toggle. Per
+  Daniel's decision the cloud leg therefore uses `routines/nightly.md`'s **try-direct-push-then-PR
+  (human-merge) fallback**: it attempts `git push origin ops` and, if the platform rejects the
+  direct write, opens a `claude/ops-sync-<date>` PR targeting `ops` that **Daniel merges** (the
+  routine never merges). Upgrades — enabling the toggle once the Permissions tab appears, or
+  owner-configured PR auto-merge — are **deliberately deferred**.
 - [ ] Environment → Network = **Trusted**; **Setup script** installs **`pyyaml`** and **ensures
   `gpg` is present** (the cloud VM is the one env where gpg is guaranteed for signed-approval
   verification; desktop/CI treat gpg as optional, see 1.2/1.3/1.5); **Connectors: remove all**.
@@ -220,6 +227,10 @@ push is `git push origin ops` (already correct — assert, don't change semantic
 - [ ] Confirm the carve-out **acted alone**: the `nightly-review` cadence card went straight to
   `queue/done/` (NOT to `queue/approvals/`), and no write landed outside the 0.4 allow-list
   (in particular, `ledgers/grades/**` and `ledgers/activity/**` were untouched by the run).
+- [ ] The Run-now transcript must record **which push path was taken** — **DIRECT-PUSH** or
+  **PR-AWAITING-HUMAN-MERGE** (per 0.2's Permissions-tab divergence). If it is the **PR path**,
+  **Daniel merging that `claude/ops-sync-<date>` PR (targeting `ops`) is part of completing this
+  gate** — the coordination writes are not on `ops` until the human merge lands.
 - [ ] This gate does **not** verify signed approvals (no keyring/ref/record exists yet). The
   "cloud-only cycle proven" milestone's signed-approval clause is deferred to **0.5b**.
 
