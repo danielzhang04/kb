@@ -211,53 +211,78 @@ def test_payload_list_vs_scalar_target_distinct():
     assert approvals.payload_hash(scalar) != approvals.payload_hash(listed)
 
 
-# --- approved_by_human: end-to-end + laundering resistance ---
+# --- 1.2: two entry points — signed-ref gate + possession gate ---
+# (approved_by_human() and its _git/_make_repo/_approved_card end-to-end test
+#  were removed with the local-author trust model; the laundering assertion is
+#  re-expressed by the T10 topology tests and the legit-approval assertion by
+#  test_verify_signed_approval_offline_ok below.)
 
-def _git(repo, *args, name="Test Human", email="human@example.com"):
-    subprocess.run(
-        ["git", "-c", f"user.name={name}", "-c", f"user.email={email}",
-         "-c", "commit.gpgsign=false", *args],
-        cwd=repo, check=True, capture_output=True, text=True)
-
-
-def _make_repo(tmp_path):
-    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True, text=True)
-    (tmp_path / "governance").mkdir()
-    (tmp_path / "governance" / "humans.yaml").write_text(
-        'humans:\n  - "Test Human"\n', encoding="utf-8")
+def _pin_now_to_fixture(monkeypatch, meta, minutes=1):
+    pinned = (datetime.datetime.fromisoformat(meta["commit_date"])
+              + datetime.timedelta(minutes=minutes))
+    monkeypatch.setattr(approvals, "_now", lambda: pinned)
 
 
-def _approved_card(tmp_path, target, wo_text):
-    body = f"## Work order\n{wo_text}\n"
-    wo_hash = approvals.content_hash(approvals.work_order_of(body))
-    card = cards.new_card("proj", "act", target, "T3", body=body,
-                          state="approved", approval=wo_hash)
-    return cards.save(card, tmp_path / "queue")
-
-
-def test_approved_by_human_end_to_end(tmp_path):
-    _make_repo(tmp_path)
-
-    # Legit case: human commits an approved card whose hash it introduced.
-    path = _approved_card(tmp_path, "tgt", "do the thing")
-    _git(tmp_path, "add", "-A")
-    _git(tmp_path, "commit", "-m", "human approves")
-    ok, reason = approvals.approved_by_human(path, tmp_path)
+@skip_no_gpg
+def test_verify_signed_approval_offline_ok(tmp_path, monkeypatch):
+    repo, meta = _load_signed_fixture(tmp_path)
+    _pin_now_to_fixture(monkeypatch, meta)
+    ok, reason = approvals.verify_signed_approval(repo / meta["card_rel"], repo)
     assert ok and reason == "ok"
 
-    # Laundering case: agent introduces the approval hash, then a human makes
-    # an unrelated later edit to the same file. Binding to the -S setting
-    # commit must still see the agent as the author -> reject.
-    path2 = _approved_card(tmp_path, "tgt2", "laundered thing")
-    _git(tmp_path, "add", "-A")
-    _git(tmp_path, "commit", "-m", "agent sets approval",
-         name="agent-x", email="a@a")
-    with open(path2, "a", encoding="utf-8") as fh:
-        fh.write("\n")
-    _git(tmp_path, "add", "-A")
-    _git(tmp_path, "commit", "-m", "human unrelated edit")
-    ok2, reason2 = approvals.approved_by_human(path2, tmp_path)
-    assert not ok2
+
+def test_unsigned_or_agent_pushed_rejected(tmp_path):
+    # An ordinary (unsigned) commit introducing the record -> reject. Runs
+    # everywhere: with gpg the unsigned commit yields no VALIDSIG; without gpg
+    # the wrapper fails closed. Either way, a signature-failure rejection.
+    repo, sha, rel, path = _make_unsigned_repo(tmp_path)
+    ok, reason = approvals.verify_signed_approval(path, repo)
+    assert not ok
+
+
+def test_keyring_missing_fails_closed(tmp_path):
+    # The pinned keyring is absent but everything else about the record is
+    # valid -> must still REJECT (never "skip -> pass").
+    repo, meta = _load_signed_fixture(tmp_path, keyring=False)
+    ok, reason = approvals.verify_signed_approval(repo / meta["card_rel"], repo)
+    assert not ok
+
+
+@skip_no_gpg
+def test_valid_signature_wrong_author_rejected(tmp_path, monkeypatch):
+    # GOOD web-flow signature, but the merge-commit author-email is NOT in the
+    # humans allow-list ("anyone with merge access" case) -> reject.
+    repo, meta = _load_signed_fixture(tmp_path, human_emails=["nobody@else.test"])
+    _pin_now_to_fixture(monkeypatch, meta)
+    ok, reason = approvals.verify_signed_approval(repo / meta["card_rel"], repo)
+    assert not ok and "author" in reason.lower()
+
+
+def test_forged_author_without_signature_rejected(tmp_path):
+    # Author string matches an allow-listed human but there is no valid
+    # signature -> reject (proves author.login/%an trust is gone).
+    repo, sha, rel, path = _make_unsigned_repo(
+        tmp_path, author_email="daniel@example.com",
+        human_emails=("daniel@example.com",))
+    ok, reason = approvals.verify_signed_approval(path, repo)
+    assert not ok
+
+
+def test_assurance_field_roundtrip(tmp_path):
+    # A possession-class record is rejected by the signed verifier, and the
+    # telegram verifier accepts a valid possession record.
+    repo, sha, rel, path = _make_unsigned_repo(tmp_path, assurance="possession")
+    ok, reason = approvals.verify_signed_approval(path, repo)
+    assert not ok and "signed" in reason.lower()
+
+    ok2, reason2 = approvals.verify_telegram_approval(path, repo)
+    assert ok2 and reason2 == "ok"
+    assert cards.parse(path).meta.get("assurance") == "possession"
+
+
+def test_approved_by_human_is_removed():
+    # The local-author trust function is gone (its trust model was replaced).
+    assert not hasattr(approvals, "approved_by_human")
 
 
 # --- 1.3: offline gpg verify wrapper + hardened status parser ---

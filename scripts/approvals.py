@@ -1,8 +1,20 @@
 """Human-only approval verification (spec s7).
 
-verdict() is pure logic (tested); approved_by_human() wires it to git + files.
-v1 limitation: local git author is advisory; GitHub branch protection on the
-approvals path is the enforced gate. Belt and suspenders.
+Two entry points, both fail-closed:
+
+* ``verify_signed_approval`` — the signed channel. The approval record must be
+  introduced by a commit that is web-flow-signed and verified OFFLINE against
+  the pinned ``governance/web-flow.gpg`` keyring (proving GitHub, not a local
+  agent, performed the merge), the merge-commit author-email must be in
+  ``governance/humans.yaml`` (the human who clicked merge), the recomputed I3
+  ``payload_hash`` must match the record, and the approval must be unexpired.
+* ``verify_telegram_approval`` — the possession channel. A tap-minted record
+  (``assurance: possession``) whose full payload hash matches the re-read card
+  and is unexpired; the ``from.id`` allow-list is enforced upstream at mint time.
+
+``verdict()`` remains a pure, well-tested primitive. The former
+``approved_by_human()`` local-git-author check is gone: a spoofable ``%an`` /
+``author.login`` string is no longer a trust input.
 """
 from __future__ import annotations
 
@@ -28,6 +40,11 @@ _GNUPG_PREFIX = "[GNUPG:] "
 # present means the signature is NOT good.
 _BAD_SIG_TOKENS = ("REVKEYSIG", "EXPKEYSIG", "EXPSIG")
 _GPG_TIMEOUT = 30
+
+
+def _now() -> datetime.datetime:
+    """Current UTC time — a seam so tests can pin 'now' deterministically."""
+    return datetime.datetime.now(datetime.timezone.utc)
 
 
 def content_hash(text: str) -> str:
@@ -198,29 +215,149 @@ def verdict(state, author, humans, approval_field, work_order_hash,
     return True, "ok"
 
 
-def approved_by_human(card_path: Path, repo_root: Path) -> tuple[bool, str]:
-    card = cards.parse(card_path)
-    humans_file = Path(repo_root) / "governance" / "humans.yaml"
-    humans = (yaml.safe_load(humans_file.read_text(encoding="utf-8")) or {}).get("humans", [])
-    try:
-        wo_hash = content_hash(work_order_of(card.body))
-    except ValueError:
-        return False, "card has no work order section"
+def _human_emails(repo_root: Path) -> set[str]:
+    """Verified human emails from governance/humans.yaml (lower-cased).
 
-    # Bind the approver to the commit that INTRODUCED the approval value, not
-    # the last commit touching the file. A falsy approval can't be laundered
-    # into acceptance by a later unrelated human commit, so reject it early.
+    The signed channel matches the merge-commit author-email against this set.
+    The legacy ``humans:`` name list is advisory only (no longer a trust input),
+    so an emails source (top-level ``emails:`` or a per-human ``github_email`` /
+    ``email``) MUST exist — absent, the caller fails closed. Gate 1.8 adds this
+    data to the real governance file.
+    """
+    path = Path(repo_root) / "governance" / "humans.yaml"
+    if not path.exists():
+        return set()
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    emails: set[str] = set()
+    for e in data.get("emails", []) or []:
+        if isinstance(e, str):
+            emails.add(e.strip().lower())
+    for human in data.get("humans", []) or []:
+        if isinstance(human, dict):
+            for key in ("github_email", "email", "emails"):
+                val = human.get(key)
+                if isinstance(val, str):
+                    emails.add(val.strip().lower())
+                elif isinstance(val, list):
+                    emails.update(x.strip().lower() for x in val if isinstance(x, str))
+    return emails
+
+
+def _introducing_commit(card_path: Path, repo_root: Path) -> str | None:
+    """SHA of the most recent commit touching the record file (the merge/record
+    commit on the approvals ref), or None."""
+    rel = str(Path(card_path).relative_to(repo_root)).replace("\\", "/")
+    try:
+        out = _run(["git", "log", "-1", "--format=%H", "--", f":(literal){rel}"],
+                   cwd=repo_root).stdout.strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+    return out or None
+
+
+def _commit_age(sha: str, repo_root: Path) -> datetime.timedelta | None:
+    try:
+        iso = _run(["git", "show", "-s", "--format=%aI", str(sha)],
+                   cwd=repo_root).stdout.strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+    if not iso:
+        return None
+    return _now() - datetime.datetime.fromisoformat(iso)
+
+
+def _expiry_ok(card: cards.Card, age: datetime.timedelta | None) -> tuple[bool, str]:
+    if age is None:
+        return False, "cannot determine approval commit age"
+    if age < datetime.timedelta(0):
+        return False, "approval author date is in the future (clock skew or forgery?)"
+    if age > MAX_AGE:
+        return False, f"approval is stale (> {MAX_AGE})"
+    expires = card.meta.get("expires")
+    if expires:
+        try:
+            exp = datetime.datetime.fromisoformat(str(expires))
+        except ValueError:
+            return False, "approval has an unparseable 'expires' field"
+        if _now() >= exp:
+            return False, "approval has expired"
+    return True, "ok"
+
+
+def verify_signed_approval(card_path: Path, repo_root: Path) -> tuple[bool, str]:
+    """Fail-closed signed-channel trust chain (I1). Returns (ok, reason)."""
+    repo_root = Path(repo_root)
+    try:
+        card = cards.parse(card_path)
+    except Exception as exc:  # noqa: BLE001 — any parse failure rejects
+        return False, f"card does not parse: {exc}"
+
+    if card.meta.get("assurance") != "signed":
+        return False, "record is not a signed-channel approval (assurance != 'signed')"
+    if card.meta.get("state") != "approved":
+        return False, f"card state is '{card.meta.get('state')}', not 'approved'"
+
     approval = card.meta.get("approval")
     if not approval:
         return False, "card has no approval value"
-    rel = str(Path(card_path).relative_to(repo_root)).replace("\\", "/")
-    out = subprocess.run(
-        ["git", "log", "-1", "--format=%an%n%aI", f"-S{approval}",
-         "--", f":(literal){rel}"],
-        cwd=repo_root, capture_output=True, text=True, check=True).stdout.strip().splitlines()
-    if len(out) < 2:
-        return False, "no commit set the approval value"
-    author, iso = out[0], out[1]
-    age = datetime.datetime.now(datetime.timezone.utc) - datetime.datetime.fromisoformat(iso)
-    return verdict(card.meta["state"], author, humans,
-                   approval, wo_hash, age)
+    try:
+        recomputed = payload_hash(card)
+    except ValueError:
+        return False, "card has no work order section"
+    if approval != recomputed:
+        return False, "approval hash does not match action+target+work order (content changed after approval?)"
+
+    allow = _human_emails(repo_root)
+    if not allow:
+        return False, "no verified human emails configured in humans.yaml (fail closed)"
+
+    sha = _introducing_commit(card_path, repo_root)
+    if not sha:
+        return False, "no commit introduced the approval record"
+    good, signer, author_email = _verify_commit_signature(sha, repo_root)
+    if not good:
+        return False, f"web-flow signature verification failed: {signer}"
+    if not author_email or author_email.strip().lower() not in allow:
+        return False, f"merge-commit author email '{author_email}' is not an allow-listed human"
+
+    return _expiry_ok(card, _commit_age(sha, repo_root))
+
+
+def verify_telegram_approval(card_path: Path, repo_root: Path) -> tuple[bool, str]:
+    """Fail-closed possession-channel checks. Returns (ok, reason).
+
+    The tap's ``from.id`` allow-list and tier admissibility (never novel/
+    first-time T3, per O9) are enforced upstream at mint time (telegram_poll /
+    notify); here we re-verify the record is possession-class, its full payload
+    hash still matches the re-read card, and it is unexpired.
+    """
+    repo_root = Path(repo_root)
+    try:
+        card = cards.parse(card_path)
+    except Exception as exc:  # noqa: BLE001
+        return False, f"card does not parse: {exc}"
+
+    if card.meta.get("assurance") != "possession":
+        return False, "record is not a possession-channel approval (assurance != 'possession')"
+    if card.meta.get("state") != "approved":
+        return False, f"card state is '{card.meta.get('state')}', not 'approved'"
+
+    approval = card.meta.get("approval")
+    if not approval:
+        return False, "card has no approval value"
+    try:
+        recomputed = payload_hash(card)
+    except ValueError:
+        return False, "card has no work order section"
+    if approval != recomputed:
+        return False, "approval hash does not match action+target+work order (content changed after approval?)"
+
+    expires = card.meta.get("expires")
+    if expires:
+        try:
+            exp = datetime.datetime.fromisoformat(str(expires))
+        except ValueError:
+            return False, "approval has an unparseable 'expires' field"
+        if _now() >= exp:
+            return False, "approval has expired"
+    return True, "ok"
