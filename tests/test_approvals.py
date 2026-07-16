@@ -1,10 +1,88 @@
 import datetime
+import shutil
 import subprocess
+from pathlib import Path
 
 import pytest
 
 import approvals
 import cards
+
+HAS_GPG = shutil.which("gpg") is not None
+skip_no_gpg = pytest.mark.skipif(not HAS_GPG, reason="gpg not installed")
+
+
+# --- shared fixtures/helpers (used by the 1.3 wrapper + 1.2 chain tests) ---
+#
+# gpg SIGNING/keygen needs a working gpg-agent, which will not start under a
+# Windows-style GNUPGHOME on this box (MSYS gpg). Signature VERIFICATION needs
+# no agent, so instead of signing at test time we ship a pre-signed fixture repo
+# (tests/fixtures/signed-approval/) generated where the agent works, and drive
+# every real-signature assertion off it. Fail-closed / author-trust cases use
+# UNSIGNED repos built here (no gpg needed) so they run everywhere.
+
+import json
+
+_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "signed-approval"
+
+
+def _load_signed_fixture(tmp_path, human_emails=None, keyring=True):
+    """Clone the pre-signed fixture repo into tmp_path, check out its work tree,
+    optionally rewrite the humans.yaml allow-list or drop the keyring. Returns
+    (repo_path, meta_dict)."""
+    meta = json.loads((_FIXTURE / "meta.json").read_text(encoding="utf-8"))
+    repo = tmp_path / "signed"
+    subprocess.run(["git", "clone", "-q", str(_FIXTURE / "repo.bundle"), str(repo)],
+                   check=True, capture_output=True, text=True)
+    subprocess.run(["git", "-C", str(repo), "checkout", "-q", "main"],
+                   capture_output=True, text=True)
+    if human_emails is not None:
+        emails = "".join(f'  - "{e}"\n' for e in human_emails)
+        (repo / "governance" / "humans.yaml").write_text(
+            'humans:\n  - "Daniel Zhang"\nemails:\n' + emails, encoding="utf-8")
+    if not keyring:
+        (repo / "governance" / "web-flow.gpg").unlink()
+    return repo, meta
+
+
+def _make_unsigned_repo(tmp_path, author_email="daniel@example.com",
+                        human_emails=("daniel@example.com",), assurance="signed",
+                        with_keyring=True, state="approved",
+                        expires_delta=datetime.timedelta(hours=1)):
+    """A repo whose HEAD commit is UNSIGNED (needs no gpg) — for fail-closed,
+    author-trust, and possession tests. Copies the fixture's real web-flow key
+    when ``with_keyring`` so the only defect is the missing signature."""
+    repo = tmp_path / "unsigned"
+    (repo / "governance").mkdir(parents=True)
+    (repo / "queue" / "approvals").mkdir(parents=True)
+    if with_keyring:
+        shutil.copyfile(_FIXTURE / "web-flow.gpg", repo / "governance" / "web-flow.gpg")
+    emails = "".join(f'  - "{e}"\n' for e in human_emails)
+    (repo / "governance" / "humans.yaml").write_text(
+        'humans:\n  - "Daniel Zhang"\nemails:\n' + emails, encoding="utf-8")
+    body = "## Work order\ndo the approved thing\n"
+    card = cards.new_card("proj", "deploy", "svc-a", "T3", body=body,
+                          state=state, assurance=assurance)
+    card.meta["approval"] = approvals.payload_hash(card)
+    now = datetime.datetime.now(datetime.timezone.utc)
+    card.meta["expires"] = (now + expires_delta).isoformat()
+    path = cards.save(card, repo / "queue")
+    rel = str(path.relative_to(repo)).replace("\\", "/")
+
+    def g(*args):
+        subprocess.run(["git", *args], cwd=repo, check=True,
+                       capture_output=True, text=True)
+
+    g("init")
+    g("config", "user.name", "Daniel Zhang")
+    g("config", "user.email", author_email)
+    g("config", "core.autocrlf", "false")
+    g("config", "commit.gpgsign", "false")
+    g("add", "-A")
+    g("commit", "-m", "approve card")
+    sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo,
+                         capture_output=True, text=True).stdout.strip()
+    return repo, sha, rel, path
 
 
 def test_content_hash_stable():
@@ -180,3 +258,72 @@ def test_approved_by_human_end_to_end(tmp_path):
     _git(tmp_path, "commit", "-m", "human unrelated edit")
     ok2, reason2 = approvals.approved_by_human(path2, tmp_path)
     assert not ok2
+
+
+# --- 1.3: offline gpg verify wrapper + hardened status parser ---
+
+def test_verify_wrapper_no_gpg(tmp_path, monkeypatch):
+    monkeypatch.setattr(approvals.shutil, "which", lambda _n: None)
+    ok, reason, email = approvals._verify_commit_signature("deadbeef", tmp_path)
+    assert ok is False and reason == "gpg unavailable" and email is None
+
+
+@skip_no_gpg
+def test_verify_wrapper_ok(tmp_path):
+    repo, meta = _load_signed_fixture(tmp_path)
+    ok, signer, email = approvals._verify_commit_signature(meta["sha"], repo)
+    assert ok is True
+    assert signer and "noreply@github.com" in signer
+    assert email == meta["author_email"]
+
+
+@skip_no_gpg
+def test_verify_wrapper_bad_sig(tmp_path):
+    repo, meta = _load_signed_fixture(tmp_path)
+    # Swap in a DIFFERENT (valid) key as the pinned keyring: import succeeds but
+    # the commit's real web-flow signature can't be verified under it -> no
+    # VALIDSIG -> fail closed.
+    shutil.copyfile(_FIXTURE / "other-key.gpg", repo / "governance" / "web-flow.gpg")
+    ok, detail, email = approvals._verify_commit_signature(meta["sha"], repo)
+    assert ok is False
+
+
+def test_revoked_key_rejected_despite_validsig():
+    status = (
+        "[GNUPG:] NEWSIG\n"
+        "[GNUPG:] GOODSIG DEADBEEF GitHub <noreply@github.com>\n"
+        "[GNUPG:] VALIDSIG AAAA 2026-01-01 1700000000 0 4 0 1 8 00 AAAA\n"
+        "[GNUPG:] REVKEYSIG DEADBEEF GitHub <noreply@github.com>\n"
+    )
+    ok, detail = approvals._evaluate_status(status)
+    assert ok is False and "REVKEYSIG" in detail
+
+
+def test_expired_key_rejected_despite_validsig():
+    for tok in ("EXPKEYSIG", "EXPSIG"):
+        status = (
+            "[GNUPG:] VALIDSIG AAAA 2026-01-01 1700000000 0 4 0 1 8 00 AAAA\n"
+            f"[GNUPG:] {tok} DEADBEEF GitHub <noreply@github.com>\n"
+        )
+        ok, detail = approvals._evaluate_status(status)
+        assert ok is False and tok in detail
+
+
+def test_status_tokens_anchored_to_gnupg_prefix():
+    # (a) bogus GOOD: the substring VALIDSIG appears only in a human-readable
+    #     line and inside a UID, never as a real [GNUPG:] status token -> reject.
+    bogus_good = (
+        'gpg: Good signature from "VALIDSIG faker <x@y>"\n'
+        "[GNUPG:] GOODSIG DEAD VALIDSIG-lookalike <x@y>\n"
+        "[GNUPG:] NO_PUBKEY DEAD\n"
+    )
+    ok, _ = approvals._evaluate_status(bogus_good)
+    assert ok is False
+    # (b) bogus reject: REVKEYSIG appears only inside a UID string; the real
+    #     status token stream is a clean VALIDSIG -> good, not falsely rejected.
+    bogus_reject = (
+        "[GNUPG:] GOODSIG DEAD REVKEYSIG-in-name <x@y>\n"
+        "[GNUPG:] VALIDSIG AAAA 2026-01-01 1700000000 0 4 0 1 8 00 AAAA\n"
+    )
+    ok2, _ = approvals._evaluate_status(bogus_reject)
+    assert ok2 is True

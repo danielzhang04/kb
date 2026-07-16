@@ -9,7 +9,10 @@ from __future__ import annotations
 import datetime
 import hashlib
 import json
+import os
+import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 import yaml
@@ -17,6 +20,14 @@ import yaml
 import cards
 
 MAX_AGE = datetime.timedelta(hours=24)
+
+# gpg machine-readable status stream: only lines with this literal prefix carry
+# trustworthy tokens; the token is the first field after the prefix.
+_GNUPG_PREFIX = "[GNUPG:] "
+# A revoked / expired key or signature can still emit VALIDSIG — any of these
+# present means the signature is NOT good.
+_BAD_SIG_TOKENS = ("REVKEYSIG", "EXPKEYSIG", "EXPSIG")
+_GPG_TIMEOUT = 30
 
 
 def content_hash(text: str) -> str:
@@ -45,6 +56,95 @@ def approval_payload(card: cards.Card) -> str:
 
 def payload_hash(card: cards.Card) -> str:
     return content_hash(approval_payload(card))
+
+
+def _evaluate_status(status_text: str) -> tuple[bool, str]:
+    """Verdict from gpg's ``--status``/``--raw`` machine-readable stream.
+
+    Tokens are read ONLY from lines beginning with the literal ``[GNUPG:] ``
+    prefix, and only as the first whitespace field after it — never a substring
+    match against the whole output (an attacker-controlled UID/comment could
+    otherwise smuggle a token substring). GOOD iff ``VALIDSIG`` is present AND
+    none of ``REVKEYSIG`` / ``EXPKEYSIG`` / ``EXPSIG`` is present. Fail closed.
+    Returns (good, signer_identity_or_reason).
+    """
+    tokens: list[str] = []
+    signer = None
+    for line in status_text.splitlines():
+        if not line.startswith(_GNUPG_PREFIX):
+            continue
+        rest = line[len(_GNUPG_PREFIX):].split(maxsplit=1)
+        if not rest:
+            continue
+        token = rest[0]
+        tokens.append(token)
+        if token == "GOODSIG" and len(rest) > 1:
+            # GOODSIG <keyid> <user-id>
+            sub = rest[1].split(maxsplit=1)
+            signer = sub[1] if len(sub) > 1 else rest[1]
+    for bad in _BAD_SIG_TOKENS:
+        if bad in tokens:
+            return False, bad
+    if "VALIDSIG" not in tokens:
+        return False, "no VALIDSIG status token"
+    return True, signer or "unknown signer"
+
+
+def _run(cmd, cwd=None, env=None):
+    return subprocess.run(cmd, cwd=cwd, env=env, capture_output=True,
+                          text=True, errors="replace", timeout=_GPG_TIMEOUT)
+
+
+def _verify_commit_signature(sha, repo_root) -> tuple[bool, str | None, str | None]:
+    """Offline verify a commit's web-flow signature against the pinned keyring.
+
+    Imports ``governance/web-flow.gpg`` into a SHORT scratch GNUPGHOME under
+    %TEMP% (Windows gpg-agent socket-path limit) and runs
+    ``git verify-commit --raw`` — proving GitHub, not a local agent, produced
+    the commit. The verdict is driven only by the [GNUPG:]-anchored status
+    tokens. Every gpg/git call has a subprocess timeout so a hung gpg-agent
+    cannot wedge the run.
+
+    Returns ``(good, signer_identity_or_reason, author_email_or_None)``. A
+    missing gpg binary returns ``(False, "gpg unavailable", None)``.
+    """
+    repo_root = Path(repo_root)
+    if shutil.which("gpg") is None:
+        return False, "gpg unavailable", None
+    # author email is independent of the signature (git, not gpg)
+    try:
+        author_email = _run(["git", "show", "-s", "--format=%ae", str(sha)],
+                            cwd=repo_root).stdout.strip() or None
+    except FileNotFoundError:
+        return False, "git unavailable", None
+    except subprocess.TimeoutExpired:
+        return False, "git show timed out", None
+    keyring = repo_root / "governance" / "web-flow.gpg"
+    if not keyring.exists():
+        return False, "keyring missing", author_email
+    scratch = tempfile.mkdtemp(prefix="kbgpg-")
+    env = {**os.environ, "GNUPGHOME": scratch}
+    try:
+        try:
+            _run(["gpg", "--homedir", scratch, "--batch", "--import", str(keyring)], env=env)
+        except FileNotFoundError:
+            return False, "gpg unavailable", author_email
+        except subprocess.TimeoutExpired:
+            return False, "gpg import timed out", author_email
+        # Judge import success by key PRESENCE, not the --import exit code
+        # (gpg --import can exit 2 even on success on Windows/MSYS).
+        listed = _run(["gpg", "--homedir", scratch, "--list-keys"], env=env)
+        if not listed.stdout.strip():
+            return False, "keyring import produced no keys", author_email
+        try:
+            res = _run(["git", "-c", "gpg.program=gpg", "verify-commit", "--raw", str(sha)],
+                       cwd=repo_root, env=env)
+        except subprocess.TimeoutExpired:
+            return False, "verify-commit timed out", author_email
+        good, detail = _evaluate_status((res.stderr or "") + (res.stdout or ""))
+        return good, detail, author_email
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
 
 
 def work_order_of(body: str) -> str:
