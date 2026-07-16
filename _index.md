@@ -5,6 +5,8 @@ One knowledge base, many projects, many agents. Rules: `CLAUDE.md`. Schema: `gov
 ## Projects
 <!-- projects:start -->
 - [faceless-youtube](orgs/faceless-youtube/_index.md) — automated faceless YouTube content business
+- [kb-ops](orgs/kb-ops/_index.md)
+- [atlas-prep](orgs/atlas-prep/_index.md)
 <!-- projects:end -->
 
 ## System
