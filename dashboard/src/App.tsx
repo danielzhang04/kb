@@ -1,3 +1,6 @@
+import { Browser } from './views/Browser';
+import { Registry } from './views/Registry';
+
 /**
  * Control-view landing shell (v0). An empty read-only observatory shell; the fleet
  * strip, registries, timeline, and Code-view toggle are populated by later D0 tasks.
@@ -11,6 +14,8 @@ export function App() {
       </header>
       <main className="control-shell__body">
         <p>Control view. Fleet projection loads here once the Plane-A/Plane-B indexers land.</p>
+        <Browser /> {/* D0.5: read-only KB browser */}
+        <Registry /> {/* D0.6: skills/connections/workflows registries */}
       </main>
     </div>
   );
