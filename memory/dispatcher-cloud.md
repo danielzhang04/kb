@@ -18,3 +18,29 @@
   supervised policy is still in effect. Worth flagging to a human: either
   amend risk-tiers.md to carve out dashboard-regen, or expect every nightly
   run to keep landing in approvals/ until that's resolved.
+
+## 2026-07-16
+- Ran nightly dispatch (tier: cloud). One card emitted: `cadence:nightly-review`
+  (kb, T1, card `6a593421-0a5a0c92`). preamble OK; `sync_skills.py --check` exit 0, no drift.
+- The flag I raised on 2026-07-15 was actioned: `governance/risk-tiers.md` now carries a
+  human-authored carve-out (dated 2026-07-16) letting `cadence:nightly-review` ACT ALONE at
+  T1 for any trigger — so I executed the dashboard regeneration unattended this run instead of
+  escalating. The carve-out unblocks the cadence.
+- BUT the carve-out's write allow-list is NARROWER than the work order + `routines/nightly.md`
+  direct. In-list: `dashboards/**`, the acting agent's OWN shard `memory/<agent-id>.md`
+  (= `memory/dispatcher-cloud.md` for me), `ledgers/dispatch/**`, and own-card transition +
+  wake-me cards. Out-of-list writes the work order/routine ask for: (a) work-order step 4 says
+  append to `memory/nightly-reviewer.md` — a DIFFERENT role's shard, explicitly excluded as
+  "any other agent's memory shard"; (b) routine step 5 says log to the cost ledger
+  `ledgers/cost/**` — not enumerated. "Any write outside the enumerated allow-list voids the
+  carve-out" and reverts the card to queues-for-me/approvals.
+- Decision: stay strictly inside the allow-list. Wrote lessons to my OWN shard (this file),
+  NOT `nightly-reviewer.md`; did NOT write the cost ledger. Regenerated both dashboards,
+  transitioned my own card to done, and filed a wake-me card in `queue/inbox/` describing the
+  mismatch. This preserves acting-alone authorization AND delivers the dashboards, versus
+  either voiding the carve-out (whole card back to approvals — regressing to the stuck state
+  the carve-out was created to fix) or silently violating governance by doing the out-of-list writes.
+- Lesson: when a work order/routine directs writes beyond a carve-out's allow-list, the
+  allow-list is binding and wins; do the in-list work, skip+flag the rest via wake-me. Do not
+  assume `memory/nightly-reviewer.md` is "my" shard — `<agent-id>` is the acting agent
+  (dispatcher-cloud), and role journals are separate, excluded shards.
