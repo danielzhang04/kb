@@ -1,0 +1,86 @@
+# .codex/config.toml — Task 5.4 (Wave 5, m1-fleet). Conservative-by-default
+# posture for the Codex CLI desktop worker: workspace-write sandbox, a
+# conservative (ask-first) approval policy, network OFF by default, and
+# deny/exclude rules covering the credential-store paths a Codex subprocess
+# must never read, write, or inherit via env passthrough.
+#
+# =============================================================================
+# FLAG FOR HUMAN VERIFICATION — HUMAN GATE 5.0 (verify Codex tool behavior)
+# and HUMAN GATE 5.7 (first `codex login --device-auth` + install), per
+# docs/plans/2026-07-16-m1-fleet-implementation.md and
+# docs/specs/2026-07-16-m1-fleet-architecture.md D3/O8.
+#
+# This repo has NO prior Codex CLI documentation or reference config to check
+# key names against (grepped docs/ and scripts/: only prose mentions of
+# `codex exec`, `codex login --device-auth`, and `~/.codex/auth.json` — never
+# an actual config.toml key). Every key name below is this worker's
+# best-effort reconstruction from general knowledge of the Codex CLI schema,
+# NOT a confirmed fact. Verify each one against the installed CLI's own
+# `codex --help` / config docs before Wave 5 goes live. Individually flagged
+# below where uncertainty is highest.
+# =============================================================================
+
+# VERIFIED (gate-5.0 doc research, July 2026): the hard billing guard. Docs
+# (learn.chatgpt.com/docs/config-file/config-reference): "Only allow ChatGPT
+# login or only allow API key login … If the active credentials don't match
+# the configured restrictions, Codex logs the user out and exits." This is
+# the enforced guarantee against silent metered-API billing (O8/decision 5);
+# the softer `preferred_auth_method` is reported unreliable (openai/codex
+# issue #2733) and is deliberately NOT used. Re-confirm on the installed CLI
+# at HUMAN GATE 5.7.
+forced_login_method = "chatgpt"
+
+# FLAG: exact enum values unverified. Intent: the most conservative approval
+# posture the CLI offers — ask before running anything that isn't a small
+# known-safe read-only set. If the installed CLI uses different enum spelling
+# (e.g. "on-request" as the default-safe tier), correct this to whichever
+# value is documented as MOST conservative, not merely "not never".
+approval_policy = "untrusted"
+
+# FLAG: key name unverified. Intent: confine writes to the repo working tree
+# only — never a full-disk / "danger" sandbox mode.
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+# Network OFF by default. This must be flipped to true only via an explicit,
+# reviewed config change (never implicitly) — mirrors the D0 isolation
+# invariant (no untrusted-web ingest, no Custom/Full network) applied to the
+# minting host elsewhere in the fleet.
+network_access = false
+
+# Deliberately left unset: writable_roots defaults to the workspace tree
+# itself in workspace-write mode. It is NOT widened here so that any future
+# expansion is a reviewed, visible diff to this file rather than a silent
+# scope-creep at runtime.
+# writable_roots = []
+
+# -----------------------------------------------------------------------
+# Secret-path deny/exclude rules.
+#
+# FLAG (highest-uncertainty item in this file): the Codex sandbox model, as
+# best understood, is primarily an ALLOW-list for writes (writable_roots)
+# rather than an arbitrary-path DENY-list — there may be no native
+# `[sandbox_workspace_write.deny]`-shaped key at all. This table is written
+# defensively: if the installed CLI honors a deny/exclude-style key, it
+# should live here; if it does not, these paths remain load-bearing as
+# human-reviewed documentation, checked off at HUMAN GATE 5.0/5.7
+# install-verification, of what must NEVER appear inside writable_roots or
+# be readable by a spawned Codex subprocess.
+# -----------------------------------------------------------------------
+[sandbox_workspace_write.deny]
+paths = [
+  "~/.codex/auth.json",  # the ChatGPT-subscription auth object itself (D3/O8) — a Codex subprocess must never read or exfiltrate its own auth store
+  "~/.claude/",           # Claude Code's own credential/session store — a different agent's trust boundary
+  "~/.ssh/",              # SSH private keys, incl. the Phase-A/B git-transport deploy key (5.8/5.9) — trust-anchor invariant: never readable by a worker subprocess
+]
+
+[shell_environment_policy]
+# FLAG: key/table name unverified, but `exclude`-style env-var filtering for
+# subprocess environments is a plausible, defensible shape for this CLI
+# family. Never pass the desktop Telegram-poll cadence's ambient bot-token
+# env var (scripts/desktop_poll.ps1: $env:KB_TELEGRAM_BOT_TOKEN, sourced
+# ONLY from Windows Credential Manager, never the repo) through to a spawned
+# Codex subprocess — Windows Credential Manager itself is OS-level and out of
+# scope for this file, so this is the one ambient-env-var passthrough this
+# config can and must exclude by name.
+exclude = ["KB_TELEGRAM_BOT_TOKEN"]
