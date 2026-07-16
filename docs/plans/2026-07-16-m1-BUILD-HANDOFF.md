@@ -9,8 +9,11 @@ ECC GateGuard fact-forces the first Bash/Write — state the facts and retry.
 
 ## DONE before this handoff (all durable, all Opus-verified)
 - **Fleet Wave 0** proven: cloud Run-now worked (DIRECT-PUSH), carve-out acts alone, dashboards regen.
-- **Fleet Wave 1** build + all human gates done; approvals security core fixed (F1–F8) and
-  re-reviewed. **Wave-1 exit status: PENDING O1 — flip to COMPLETE once Daniel signs off O1.**
+- **Fleet Wave 1 COMPLETE.** Build + all human gates done; approvals security core fixed (F1–F8),
+  re-reviewed (READY-FOR-O1), N1 hardened + N2 flagged for Wave 3; **O1 APPROVED by Daniel 2026-07-16**
+  (accepted residual: cloud-sandbox merge-capability unverified — probe in Wave 2 before any cloud T3
+  path; desktop agents are git-transport-only so cannot mint a web-flow signature). Suite 84 passed
+  (with gpg) / 75 passed + 9 skipped (without). Branch `claude/m1-fleet` unpushed→push+PR to main next.
 - **Dashboard D0** (read-only observatory) complete: 11 commits, 93 tests green, integrates as one app.
 - Branches: `claude/m1-fleet` (fleet code, unpushed — PR to main after O1), `claude/m1-dashboard`
   (dashboard D0, unpushed — PR to main), `ops` = coordination truth. Worktrees under
