@@ -64,14 +64,29 @@ def new_card(project, action, target, risk_tier, body: str = "", **extra) -> Car
     return Card(meta=meta, body=body)
 
 
-def parse(path: Path) -> Card:
-    text = Path(path).read_text(encoding="utf-8")
+def parse_text(text: str, path: Path | None = None) -> Card:
+    """Parse card frontmatter+body from an in-memory string.
+
+    The single source of truth for card parsing; ``parse`` reads a file and
+    delegates here. Callers that already hold the exact bytes (e.g. the approval
+    verifier reading ``git show <sha>:<rel>`` — the committed, signed object
+    rather than the mutable working tree) parse without a filesystem round-trip.
+
+    Newlines are normalised to ``\\n`` so parsing is identical whether the bytes
+    came from ``read_text`` (universal-newline) or a raw ``git show`` blob that
+    may carry CRLF.
+    """
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
     if not text.startswith("---\n"):
         raise ValidationError(f"{path}: no frontmatter")
     _, fm, body = text.split("---\n", 2)
     meta = yaml.safe_load(fm)
     _validate(meta)
-    return Card(meta=meta, body=body.lstrip("\n"), path=Path(path))
+    return Card(meta=meta, body=body.lstrip("\n"), path=Path(path) if path else None)
+
+
+def parse(path: Path) -> Card:
+    return parse_text(Path(path).read_text(encoding="utf-8"), Path(path))
 
 
 def save(card: Card, queue_root: Path) -> Path:

@@ -20,6 +20,29 @@ def test_routine_ensures_pyyaml_and_targets_ops():
             )
 
 
+def test_routine_uses_new_verifier_and_hash_note():
+    text = ROUTINE.read_text(encoding="utf-8")
+
+    # Step 4b must call the new verifier(s), and must NOT reference the removed
+    # local-author function (1.2 deleted approved_by_human).
+    assert "verify_signed_approval" in text, (
+        "step 4b must verify with approvals.py verify_signed_approval"
+    )
+    assert "approved_by_human" not in text, (
+        "the removed approved_by_human must no longer be referenced"
+    )
+
+    # The hash note must say the hash binds action + target + work order,
+    # not the stale 'only the `## Work order` prose'.
+    assert re.search(r"action.{0,40}target.{0,40}work[ -]?order", text,
+                     re.IGNORECASE), (
+        "hash note must state the hash binds action + target + work order"
+    )
+    assert "only the `## Work order`" not in text, (
+        "stale hash note ('only the `## Work order` prose') must be gone"
+    )
+
+
 def test_routine_push_fallback_is_pr_human_merge():
     text = ROUTINE.read_text(encoding="utf-8")
 

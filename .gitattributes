@@ -4,3 +4,11 @@
 # otherwise autocrlf smudging produces false drift on checkout.
 /skills/curated/** text=auto eol=lf
 /.claude/skills/** text=auto eol=lf
+
+# Signed-approval verification fixture — the gpg keyrings, the git bundle, and
+# meta.json must be byte-identical on Windows and the Linux cloud VM (autocrlf
+# smudging would corrupt the ASCII-armored keys / the committed signed blobs).
+/tests/fixtures/signed-approval/repo.bundle binary
+/tests/fixtures/signed-approval/web-flow.gpg -text
+/tests/fixtures/signed-approval/other-key.gpg -text
+/tests/fixtures/signed-approval/meta.json -text
