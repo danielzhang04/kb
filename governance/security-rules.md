@@ -10,3 +10,6 @@
   3. No network calls except to APIs the skill's manifest declares
   4. No reads outside repo + declared paths; no writes outside its project
   5. Provenance manifest present (source, author, hash)
+- Gemini is deferred for month 1 on privacy grounds — its free tier trains on submitted data; the
+month-1 non-Claude worker is Codex CLI only. The adapter pattern remains generic for a future
+capped/paid or privacy-cleared Gemini path.
