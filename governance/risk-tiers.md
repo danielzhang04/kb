@@ -21,6 +21,7 @@ following enumerated allow-list. It does NOT queue-for-me while every write stay
 - `dashboards/**`
 - the agent's own memory shard `memory/<agent-id>.md`
 - `ledgers/dispatch/**` (the cadence's own dispatch rows only)
+`ledgers/cost/**` (the cadence's own cost rows only — a non-integrity ledger)
 - the cadence's **own** card `queue/` state transition — moving *its own* card to `queue/done/`
   with a `## Result` — and emitting **wake-me cards into `queue/inbox/`** (this is queueing work
   for a human/dispatcher, not acting on it)

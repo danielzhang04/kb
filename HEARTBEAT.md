@@ -12,7 +12,7 @@ cadences:
       2. Run: python scripts/sync_skills.py --check  — on drift, write a wake-me card; do NOT fix silently.
       3. Use the dashboard-generator skill to rewrite dashboards/executive.md and
          dashboards/handover.md.
-      4. Append a lessons line to memory/nightly-reviewer.md.
+      4. Append a lessons line to your own memory shard memory/<agent-id>.md
       5. Commit ONLY dashboards/ memory/ queue/ ledgers/ changes to ops and push.
   - name: weekly-audit
     schedule: weekly:sat
