@@ -50,3 +50,20 @@ An Inspector's output is a pinned grade row (plus paired activity row) that `scr
 reads to decide acts-alone eligibility for a `(worker, project, task_type, tier)` key. It does not
 proceed to fix, redo, or re-scope the work itself — a failing grade goes back to a Manager to
 re-card, not to the Inspector to patch.
+
+## Git identity (desktop)
+
+On the **desktop** tier only, run these commands once inside the Inspector's desktop worktree
+before grading — LOCAL config, never `--global` (a global identity would make every other role on
+that box commit as the Inspector too):
+
+```
+git config user.name "inspector"
+git config user.email "inspector@agents.local"
+```
+
+Why: a distinct git author is the only place this is a grade-integrity signal. `scripts/reconcile.py`
+(Task 3.2) cross-checks that the commit introducing a grade row — and its paired activity row — is
+authored by `inspector@agents.local`; a mismatch quarantines the row and freezes the promotion loop.
+On the cloud tier every commit carries Daniel's own identity regardless of role, so there is no
+distinct author to check there — cloud grading relies on the `inspector_id` field alone.
