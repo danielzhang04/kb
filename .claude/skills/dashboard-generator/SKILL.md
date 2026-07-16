@@ -28,5 +28,5 @@ _Generated: <UTC timestamp>_
 Plain English, <= 300 words, for the human returning after time away:
 what happened, what is waiting on them, what the system will do next unattended.
 
-Rules: this is a T1 acts-alone task; write ONLY these two files; commit to ops with
+Rules: this is a T1 task under standing authorization (human-authored cadence; governance/risk-tiers.md); write ONLY these two files; commit to ops with
 message "chore(dashboards): nightly regeneration".
