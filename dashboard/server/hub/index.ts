@@ -1,0 +1,67 @@
+/**
+ * Hub composition. Wires the origin/Host guard, the SSE and read-WS transports, and the in-memory
+ * event bus onto a Fastify instance, and (optionally) bridges the live Plane-A file-watch onto the
+ * bus. This is the single entry point registered by the daemon (`server/index.ts`).
+ *
+ * Ordering law 4: Origin/Host validation is present from the first served byte — every hub route and
+ * every WS upgrade is validated — even though no write surface exists in v0. It is the invariant the
+ * later (write/steering) waves inherit.
+ */
+import type { FastifyInstance } from 'fastify';
+import { createBus } from './bus';
+import type { EventBus } from './bus';
+import { wirePlaneA } from './bus';
+import { registerSse } from './sse';
+import { registerReadWs } from './ws';
+import { originPlugin, resolveAllowedOrigins } from '../security/origin';
+import type { AllowedOrigins } from '../security/origin';
+
+// Make the bus reachable for later tasks/the daemon (e.g. wiring the live Plane-B tail).
+declare module 'fastify' {
+  interface FastifyInstance {
+    hubBus: EventBus;
+  }
+}
+
+export interface HubOptions {
+  /** The allowlist the Origin/Host guard enforces. Defaults to {@link resolveAllowedOrigins}. */
+  allowedOrigins?: AllowedOrigins;
+  /** When set, the live Plane-A file-watch is bridged onto the bus for this repo checkout. */
+  repoRoot?: string;
+}
+
+/**
+ * Register the read-only hub. Returns the event bus (also decorated as `app.hubBus`).
+ *
+ * The origin guard and the two transports are mounted in an encapsulated child scope so `/healthz`
+ * (a pre-auth liveness probe on the root) stays reachable while every hub data route and WS upgrade
+ * is validated. Within that scope the WS plugin is registered BEFORE the guard so a refused upgrade's
+ * raw socket is cleanly torn down by the plugin's own onResponse cleanup.
+ */
+export function registerHub(app: FastifyInstance, opts: HubOptions = {}): EventBus {
+  const allowedOrigins: AllowedOrigins = opts.allowedOrigins ?? resolveAllowedOrigins();
+  const bus = createBus();
+  app.decorate('hubBus', bus);
+
+  app.register(async (scope) => {
+    await registerReadWs(scope, bus, { allowedOrigins });
+    originPlugin(scope, { allowedOrigins });
+    registerSse(scope, bus);
+  });
+
+  if (opts.repoRoot) {
+    // Fire-and-forget so the daemon's `ready`/`listen` is not blocked on the initial repo scan; the
+    // watcher is closed when the app closes.
+    const watching = wirePlaneA(bus, opts.repoRoot);
+    app.addHook('onClose', async () => {
+      try {
+        const watcher = await watching;
+        await watcher.close();
+      } catch {
+        // ignore — best-effort teardown
+      }
+    });
+  }
+
+  return bus;
+}

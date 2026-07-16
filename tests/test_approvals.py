@@ -1,10 +1,91 @@
 import datetime
+import shutil
 import subprocess
+from pathlib import Path
 
 import pytest
 
 import approvals
 import cards
+
+HAS_GPG = shutil.which("gpg") is not None
+skip_no_gpg = pytest.mark.skipif(not HAS_GPG, reason="gpg not installed")
+
+
+# --- shared fixtures/helpers (used by the 1.3 wrapper + 1.2 chain tests) ---
+#
+# gpg SIGNING/keygen needs a working gpg-agent, which will not start under a
+# Windows-style GNUPGHOME on this box (MSYS gpg). Signature VERIFICATION needs
+# no agent, so instead of signing at test time we ship a pre-signed fixture repo
+# (tests/fixtures/signed-approval/) generated where the agent works, and drive
+# every real-signature assertion off it. Fail-closed / author-trust cases use
+# UNSIGNED repos built here (no gpg needed) so they run everywhere.
+
+import json
+
+_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "signed-approval"
+
+
+def _load_signed_fixture(tmp_path, human_emails=None, keyring=True):
+    """Clone the pre-signed fixture repo into tmp_path, check out its work tree,
+    optionally rewrite the humans.yaml allow-list or drop the keyring. Returns
+    (repo_path, meta_dict)."""
+    meta = json.loads((_FIXTURE / "meta.json").read_text(encoding="utf-8"))
+    repo = tmp_path / "signed"
+    subprocess.run(["git", "clone", "-q", str(_FIXTURE / "repo.bundle"), str(repo)],
+                   check=True, capture_output=True, text=True)
+    # The fixture's HEAD is the protected `approvals` ref (the merged state that
+    # carries governance/ + the record). Real GitHub PR-merge topology.
+    subprocess.run(["git", "-C", str(repo), "checkout", "-q", "approvals"],
+                   capture_output=True, text=True)
+    if human_emails is not None:
+        emails = "".join(f'  - "{e}"\n' for e in human_emails)
+        (repo / "governance" / "humans.yaml").write_text(
+            'humans:\n  - "Daniel Zhang"\nemails:\n' + emails, encoding="utf-8")
+    if not keyring:
+        (repo / "governance" / "web-flow.gpg").unlink()
+    return repo, meta
+
+
+def _make_unsigned_repo(tmp_path, author_email="daniel@example.com",
+                        human_emails=("daniel@example.com",), assurance="signed",
+                        with_keyring=True, state="approved", risk_tier="T3",
+                        expires_delta=datetime.timedelta(hours=1)):
+    """A repo whose HEAD commit is UNSIGNED (needs no gpg) — for fail-closed,
+    author-trust, and possession tests. Copies the fixture's real web-flow key
+    when ``with_keyring`` so the only defect is the missing signature."""
+    repo = tmp_path / "unsigned"
+    (repo / "governance").mkdir(parents=True)
+    (repo / "queue" / "approvals").mkdir(parents=True)
+    if with_keyring:
+        shutil.copyfile(_FIXTURE / "web-flow.gpg", repo / "governance" / "web-flow.gpg")
+    emails = "".join(f'  - "{e}"\n' for e in human_emails)
+    (repo / "governance" / "humans.yaml").write_text(
+        'humans:\n  - "Daniel Zhang"\nemails:\n' + emails, encoding="utf-8")
+    body = "## Work order\ndo the approved thing\n"
+    card = cards.new_card("proj", "deploy", "svc-a", risk_tier, body=body,
+                          state=state, assurance=assurance)
+    card.meta["approval"] = approvals.payload_hash(card)
+    now = datetime.datetime.now(datetime.timezone.utc)
+    if expires_delta is not None:
+        card.meta["expires"] = (now + expires_delta).isoformat()
+    path = cards.save(card, repo / "queue")
+    rel = str(path.relative_to(repo)).replace("\\", "/")
+
+    def g(*args):
+        subprocess.run(["git", *args], cwd=repo, check=True,
+                       capture_output=True, text=True)
+
+    g("init")
+    g("config", "user.name", "Daniel Zhang")
+    g("config", "user.email", author_email)
+    g("config", "core.autocrlf", "false")
+    g("config", "commit.gpgsign", "false")
+    g("add", "-A")
+    g("commit", "-m", "approve card")
+    sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo,
+                         capture_output=True, text=True).stdout.strip()
+    return repo, sha, rel, path
 
 
 def test_content_hash_stable():
@@ -97,50 +178,246 @@ def test_verdict_rejects_future_dated():
     assert not ok and "future" in reason
 
 
-# --- approved_by_human: end-to-end + laundering resistance ---
+# --- 1.1: approval_payload / payload_hash canonical serializer ---
 
-def _git(repo, *args, name="Test Human", email="human@example.com"):
-    subprocess.run(
-        ["git", "-c", f"user.name={name}", "-c", f"user.email={email}",
-         "-c", "commit.gpgsign=false", *args],
-        cwd=repo, check=True, capture_output=True, text=True)
-
-
-def _make_repo(tmp_path):
-    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True, text=True)
-    (tmp_path / "governance").mkdir()
-    (tmp_path / "governance" / "humans.yaml").write_text(
-        'humans:\n  - "Test Human"\n', encoding="utf-8")
-
-
-def _approved_card(tmp_path, target, wo_text):
-    body = f"## Work order\n{wo_text}\n"
-    wo_hash = approvals.content_hash(approvals.work_order_of(body))
-    card = cards.new_card("proj", "act", target, "T3", body=body,
-                          state="approved", approval=wo_hash)
-    return cards.save(card, tmp_path / "queue")
+def test_payload_binds_action_and_target():
+    body = "## Work order\ndo the thing\n"
+    c1 = cards.new_card("proj", "deploy", "svc-a", "T3", body=body)
+    c2 = cards.new_card("proj", "delete", "svc-a", "T3", body=body)  # diff action
+    c3 = cards.new_card("proj", "deploy", "svc-b", "T3", body=body)  # diff target
+    assert approvals.payload_hash(c1) != approvals.payload_hash(c2)
+    assert approvals.payload_hash(c1) != approvals.payload_hash(c3)
+    # The old content_hash(work_order_of(body)) collides across all three,
+    # proving the action+target fold-in is what distinguishes them.
+    wo = approvals.content_hash(approvals.work_order_of(body))
+    assert wo == approvals.content_hash(approvals.work_order_of(c2.body))
+    assert wo == approvals.content_hash(approvals.work_order_of(c3.body))
 
 
-def test_approved_by_human_end_to_end(tmp_path):
-    _make_repo(tmp_path)
+def test_payload_is_order_stable():
+    body = "## Work order\nstuff\n"
+    c1 = cards.new_card("proj", "act", "tgt", "T3", body=body)
+    assert approvals.payload_hash(c1) == approvals.payload_hash(c1)
+    # Same three canonical fields but extra frontmatter / different key order
+    # must not change the hash (payload is built from the three fields only).
+    c2 = cards.new_card("proj", "act", "tgt", "T3", body=body,
+                        owner="worker-x", workflow="wf", role="work")
+    assert approvals.payload_hash(c1) == approvals.payload_hash(c2)
 
-    # Legit case: human commits an approved card whose hash it introduced.
-    path = _approved_card(tmp_path, "tgt", "do the thing")
-    _git(tmp_path, "add", "-A")
-    _git(tmp_path, "commit", "-m", "human approves")
-    ok, reason = approvals.approved_by_human(path, tmp_path)
+
+def test_payload_list_vs_scalar_target_distinct():
+    body = "## Work order\nstuff\n"
+    scalar = cards.new_card("proj", "act", "a,b", "T3", body=body)
+    listed = cards.new_card("proj", "act", ["a", "b"], "T3", body=body)
+    # A naive "join list with ," would collide these; JSON-encoding the target
+    # keeps the scalar string and the list distinct.
+    assert approvals.payload_hash(scalar) != approvals.payload_hash(listed)
+
+
+# --- 1.2: two entry points — signed-ref gate + possession gate ---
+# (approved_by_human() and its _git/_make_repo/_approved_card end-to-end test
+#  were removed with the local-author trust model; the laundering assertion is
+#  re-expressed by the T10 topology tests and the legit-approval assertion by
+#  test_verify_signed_approval_offline_ok below.)
+
+def _pin_now_to_fixture(monkeypatch, meta, minutes=1):
+    pinned = (datetime.datetime.fromisoformat(meta["commit_date"])
+              + datetime.timedelta(minutes=minutes))
+    monkeypatch.setattr(approvals, "_now", lambda: pinned)
+
+
+@skip_no_gpg
+def test_verify_signed_approval_offline_ok(tmp_path, monkeypatch):
+    repo, meta = _load_signed_fixture(tmp_path)
+    _pin_now_to_fixture(monkeypatch, meta)
+    res = approvals.verify_signed_approval(
+        repo / meta["card_rel"], repo, pinned_fingerprints={meta["fingerprint"]})
+    ok, reason = res
     assert ok and reason == "ok"
+    # F5: the verified, committed bytes are returned to the caller/executor.
+    assert res.card is not None and res.card.meta["action"] == "deploy"
+    assert res.payload and "action:" in res.payload
 
-    # Laundering case: agent introduces the approval hash, then a human makes
-    # an unrelated later edit to the same file. Binding to the -S setting
-    # commit must still see the agent as the author -> reject.
-    path2 = _approved_card(tmp_path, "tgt2", "laundered thing")
-    _git(tmp_path, "add", "-A")
-    _git(tmp_path, "commit", "-m", "agent sets approval",
-         name="agent-x", email="a@a")
-    with open(path2, "a", encoding="utf-8") as fh:
-        fh.write("\n")
-    _git(tmp_path, "add", "-A")
-    _git(tmp_path, "commit", "-m", "human unrelated edit")
-    ok2, reason2 = approvals.approved_by_human(path2, tmp_path)
-    assert not ok2
+
+def test_unsigned_or_agent_pushed_rejected(tmp_path):
+    # An ordinary (unsigned) commit introducing the record -> reject. Runs
+    # everywhere: with gpg the unsigned commit yields no VALIDSIG; without gpg
+    # the wrapper fails closed. Either way, a signature-failure rejection.
+    repo, sha, rel, path = _make_unsigned_repo(tmp_path)
+    ok, reason = approvals.verify_signed_approval(path, repo)
+    assert not ok
+
+
+def test_keyring_missing_fails_closed(tmp_path):
+    # The pinned keyring is absent but everything else about the record is
+    # valid -> must still REJECT (never "skip -> pass").
+    repo, meta = _load_signed_fixture(tmp_path, keyring=False)
+    ok, reason = approvals.verify_signed_approval(repo / meta["card_rel"], repo)
+    assert not ok
+
+
+@skip_no_gpg
+def test_valid_signature_wrong_author_rejected(tmp_path, monkeypatch):
+    # GOOD web-flow signature, but the merge-commit author-email is NOT in the
+    # humans allow-list ("anyone with merge access" case) -> reject.
+    repo, meta = _load_signed_fixture(tmp_path, human_emails=["nobody@else.test"])
+    _pin_now_to_fixture(monkeypatch, meta)
+    ok, reason = approvals.verify_signed_approval(
+        repo / meta["card_rel"], repo, pinned_fingerprints={meta["fingerprint"]})
+    assert not ok and "author" in reason.lower()
+
+
+def test_forged_author_without_signature_rejected(tmp_path):
+    # Author string matches an allow-listed human but there is no valid
+    # signature -> reject (proves author.login/%an trust is gone).
+    repo, sha, rel, path = _make_unsigned_repo(
+        tmp_path, author_email="daniel@example.com",
+        human_emails=("daniel@example.com",))
+    ok, reason = approvals.verify_signed_approval(path, repo)
+    assert not ok
+
+
+def test_assurance_field_roundtrip(tmp_path):
+    # A possession-class record is rejected by the signed verifier, and the
+    # telegram verifier accepts a valid possession record. Possession is only
+    # admissible below T3 (F4), so use a T2 record for the accept case.
+    repo, sha, rel, path = _make_unsigned_repo(
+        tmp_path, assurance="possession", risk_tier="T2")
+    ok, reason = approvals.verify_signed_approval(path, repo)
+    assert not ok and "signed" in reason.lower()
+
+    ok2, reason2 = approvals.verify_telegram_approval(path, repo)
+    assert ok2 and reason2 == "ok"
+    assert cards.parse(path).meta.get("assurance") == "possession"
+
+
+def test_approved_by_human_is_removed():
+    # The local-author trust function is gone (its trust model was replaced).
+    assert not hasattr(approvals, "approved_by_human")
+
+
+# --- possession-channel hardening: F3 (expiry) + F4 (tier admissibility) ------
+
+def test_possession_missing_expires_rejected(tmp_path):
+    # F3: a possession record with NO `expires` must reject (never valid forever).
+    repo, sha, rel, path = _make_unsigned_repo(
+        tmp_path, assurance="possession", risk_tier="T2", expires_delta=None)
+    assert "expires" not in cards.parse(path).meta
+    ok, reason = approvals.verify_telegram_approval(path, repo)
+    assert not ok and "expires" in reason.lower(), reason
+
+
+def test_possession_expired_rejected(tmp_path):
+    # F3: an already-past `expires` rejects.
+    repo, sha, rel, path = _make_unsigned_repo(
+        tmp_path, assurance="possession", risk_tier="T2",
+        expires_delta=datetime.timedelta(hours=-1))
+    ok, reason = approvals.verify_telegram_approval(path, repo)
+    assert not ok and "expired" in reason.lower(), reason
+
+
+def test_possession_novel_t3_rejected(tmp_path):
+    # F4: possession is never admissible for a novel/first-time T3 action, even
+    # with a valid hash + unexpired expires. It needs the signed channel.
+    repo, sha, rel, path = _make_unsigned_repo(
+        tmp_path, assurance="possession", risk_tier="T3")
+    ok, reason = approvals.verify_telegram_approval(path, repo)
+    assert not ok and "t3" in reason.lower(), reason
+
+
+def test_possession_stale_beyond_max_age_rejected(tmp_path, monkeypatch):
+    # F3: even with a far-future `expires`, a possession record older than
+    # MAX_AGE (by its introducing commit) is clamped and rejected.
+    repo, sha, rel, path = _make_unsigned_repo(
+        tmp_path, assurance="possession", risk_tier="T2",
+        expires_delta=datetime.timedelta(days=3650))
+    future = (datetime.datetime.now(datetime.timezone.utc)
+              + approvals.MAX_AGE + datetime.timedelta(hours=1))
+    monkeypatch.setattr(approvals, "_now", lambda: future)
+    ok, reason = approvals.verify_telegram_approval(path, repo)
+    assert not ok and "stale" in reason.lower(), reason
+
+
+# --- 1.3: offline gpg verify wrapper + hardened status parser ---
+
+def test_verify_wrapper_no_gpg(tmp_path, monkeypatch):
+    monkeypatch.setattr(approvals.shutil, "which", lambda _n: None)
+    ok, reason, email = approvals._verify_commit_signature("deadbeef", tmp_path)
+    assert ok is False and reason == "gpg unavailable" and email is None
+
+
+@skip_no_gpg
+def test_verify_wrapper_ok(tmp_path):
+    repo, meta = _load_signed_fixture(tmp_path)
+    ok, signer, email = approvals._verify_commit_signature(
+        meta["sha"], repo, pinned={meta["fingerprint"]})
+    assert ok is True
+    assert signer and "noreply@github.com" in signer
+    assert email == meta["author_email"]
+
+
+@skip_no_gpg
+def test_verify_wrapper_fingerprint_pin_enforced(tmp_path):
+    # F6: a GOOD web-flow signature whose VALIDSIG fingerprint is NOT the pinned
+    # web-flow fingerprint must be rejected (a rotated-out / extra key in the
+    # keyring must not newly authorise).
+    repo, meta = _load_signed_fixture(tmp_path)
+    ok, detail, email = approvals._verify_commit_signature(
+        meta["sha"], repo, pinned={"0000000000000000000000000000000000000000"})
+    assert ok is False and "pinned" in detail.lower()
+    # …and the real fixture fingerprint accepts.
+    ok2, _, _ = approvals._verify_commit_signature(
+        meta["sha"], repo, pinned={meta["fingerprint"]})
+    assert ok2 is True
+
+
+@skip_no_gpg
+def test_verify_wrapper_bad_sig(tmp_path):
+    repo, meta = _load_signed_fixture(tmp_path)
+    # Swap in a DIFFERENT (valid) key as the pinned keyring: import succeeds but
+    # the commit's real web-flow signature can't be verified under it -> no
+    # VALIDSIG -> fail closed.
+    shutil.copyfile(_FIXTURE / "other-key.gpg", repo / "governance" / "web-flow.gpg")
+    ok, detail, email = approvals._verify_commit_signature(meta["sha"], repo)
+    assert ok is False
+
+
+def test_revoked_key_rejected_despite_validsig():
+    status = (
+        "[GNUPG:] NEWSIG\n"
+        "[GNUPG:] GOODSIG DEADBEEF GitHub <noreply@github.com>\n"
+        "[GNUPG:] VALIDSIG AAAA 2026-01-01 1700000000 0 4 0 1 8 00 AAAA\n"
+        "[GNUPG:] REVKEYSIG DEADBEEF GitHub <noreply@github.com>\n"
+    )
+    ok, detail = approvals._evaluate_status(status)
+    assert ok is False and "REVKEYSIG" in detail
+
+
+def test_expired_key_rejected_despite_validsig():
+    for tok in ("EXPKEYSIG", "EXPSIG"):
+        status = (
+            "[GNUPG:] VALIDSIG AAAA 2026-01-01 1700000000 0 4 0 1 8 00 AAAA\n"
+            f"[GNUPG:] {tok} DEADBEEF GitHub <noreply@github.com>\n"
+        )
+        ok, detail = approvals._evaluate_status(status)
+        assert ok is False and tok in detail
+
+
+def test_status_tokens_anchored_to_gnupg_prefix():
+    # (a) bogus GOOD: the substring VALIDSIG appears only in a human-readable
+    #     line and inside a UID, never as a real [GNUPG:] status token -> reject.
+    bogus_good = (
+        'gpg: Good signature from "VALIDSIG faker <x@y>"\n'
+        "[GNUPG:] GOODSIG DEAD VALIDSIG-lookalike <x@y>\n"
+        "[GNUPG:] NO_PUBKEY DEAD\n"
+    )
+    ok, _ = approvals._evaluate_status(bogus_good)
+    assert ok is False
+    # (b) bogus reject: REVKEYSIG appears only inside a UID string; the real
+    #     status token stream is a clean VALIDSIG -> good, not falsely rejected.
+    bogus_reject = (
+        "[GNUPG:] GOODSIG DEAD REVKEYSIG-in-name <x@y>\n"
+        "[GNUPG:] VALIDSIG AAAA 2026-01-01 1700000000 0 4 0 1 8 00 AAAA\n"
+    )
+    ok2, _ = approvals._evaluate_status(bogus_reject)
+    assert ok2 is True

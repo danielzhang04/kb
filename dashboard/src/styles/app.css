@@ -1,0 +1,230 @@
+/*
+ * SPA shell styling (D0.9). Mobile-first / phone-friendly: a single column by default, promoted to a
+ * two-column board at >=768px. The dashboard is installable as a PWA (D0.10) so the layout must read
+ * well at phone width. Dark by default (mission-control), light via prefers-color-scheme.
+ */
+
+:root {
+  --bg: #0f1419;
+  --bg-panel: #1a2029;
+  --bg-elevated: #232b36;
+  --fg: #e6edf3;
+  --fg-dim: #9aa7b4;
+  --accent: #4c9eff;
+  --accent-quiet: #24507f;
+  --border: #2d3742;
+  --error: #ff6b6b;
+  --gap: 0.75rem;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f6f8fa;
+    --bg-panel: #ffffff;
+    --bg-elevated: #eef1f4;
+    --fg: #1f2328;
+    --fg-dim: #57606a;
+    --accent: #0969da;
+    --accent-quiet: #cfe4ff;
+    --border: #d0d7de;
+    --error: #cf222e;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  line-height: 1.45;
+}
+
+/* ---- App shell ---- */
+.app-shell__topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap);
+  padding: 0.5rem 0.9rem;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.app-shell__title {
+  font-size: 1rem;
+  margin: 0;
+  flex: 1 1 auto;
+}
+
+.app-shell__tabs {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.app-shell__tab {
+  background: var(--bg-elevated);
+  color: var(--fg-dim);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.35rem 0.8rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+.app-shell__tab--active {
+  background: var(--accent-quiet);
+  color: var(--fg);
+  border-color: var(--accent);
+}
+
+.app-shell__badge {
+  font-size: 0.72rem;
+  color: var(--fg-dim);
+  white-space: nowrap;
+}
+
+.app-shell__body {
+  padding: 0.75rem;
+}
+
+/* ---- Fleet strip ---- */
+.fleet-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap);
+  margin-bottom: var(--gap);
+}
+
+.fleet-strip__stat,
+.fleet-strip__usage {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem 0.9rem;
+  min-width: 5.5rem;
+}
+
+.fleet-strip__usage {
+  flex: 1 1 12rem;
+}
+
+.fleet-strip__value {
+  display: block;
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.fleet-strip__label {
+  display: block;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-dim);
+}
+
+.fleet-strip__sub {
+  font-size: 0.78rem;
+  color: var(--fg-dim);
+}
+
+.fleet-strip__mix {
+  margin: 0.35rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.78rem;
+  color: var(--fg);
+}
+
+/* ---- Control board grid ---- */
+.control__grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--gap);
+}
+
+.control__col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  min-width: 0;
+}
+
+.control__pane,
+.org-states {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem;
+  overflow-x: auto;
+}
+
+.control__pane h2,
+.org-states h2 {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+}
+
+@media (min-width: 768px) {
+  .control__grid {
+    grid-template-columns: 2fr 1fr;
+  }
+}
+
+/* ---- Org states ---- */
+.org-states__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.org-states__item h3 {
+  margin: 0 0 0.2rem;
+  font-size: 0.85rem;
+  color: var(--accent);
+}
+
+.org-states__item p {
+  margin: 0.1rem 0;
+  font-size: 0.82rem;
+}
+
+.org-states__blocked {
+  color: var(--error);
+}
+
+/* ---- Code view stub ---- */
+.code-view {
+  background: var(--bg-panel);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 1.5rem;
+  color: var(--fg-dim);
+}
+
+/* ---- Shared read-only panes (browser / registry / timeline) ---- */
+.kb-browser,
+.registry,
+.timeline {
+  font-size: 0.85rem;
+}
+
+.kb-browser__error,
+.timeline__empty,
+.registry__empty,
+.org-states__empty {
+  color: var(--fg-dim);
+}
+
+button {
+  color: inherit;
+}

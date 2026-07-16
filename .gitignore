@@ -13,3 +13,7 @@ _private/
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# dashboard (Node) — build + deps never committed
+dashboard/node_modules/
+dashboard/dist/
