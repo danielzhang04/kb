@@ -350,11 +350,15 @@ def _rel_in_repo(card_path: Path, repo_root: Path) -> str | None:
 
 def _resolve_approvals_ref(repo_root: Path, explicit: str | None = None) -> str:
     """The protected approvals ref to verify against. An explicit argument wins;
-    otherwise resolve a local ``approvals`` / ``origin/approvals`` branch; else
-    fall back to ``HEAD`` (production always passes/has the ref — F5)."""
+    otherwise prefer the protected ``origin/approvals`` (only Daniel can merge
+    into it) over the agent-writable local ``approvals`` branch; else fall back
+    to ``HEAD`` (production always passes/has the ref — F5). N1: resolving the
+    local branch first would let a misbehaving ops-tier agent point its in-clone
+    ``refs/heads/approvals`` at an older genuinely-signed approval and choose
+    which is treated as current (bounded replay/suppression, not forgery)."""
     if explicit:
         return explicit
-    for ref in ("refs/heads/approvals", "refs/remotes/origin/approvals"):
+    for ref in ("refs/remotes/origin/approvals", "refs/heads/approvals"):
         try:
             r = _run(["git", "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"],
                      cwd=repo_root)
@@ -543,6 +547,7 @@ def verify_telegram_approval(card_path, repo_root, approvals_ref=None) -> Verify
         return VerifyResult(False, "approval hash does not match action+target+work order (content changed after approval?)")
 
     # F4: possession is never admissible for a novel/first-time T3 action.
+    # SECURITY-TODO(wave3/N2): 'established-fast-lane' is a self-declared frontmatter flag — an ops-writer can set it. Novelty MUST be recomputed at verify time from the authoritative grades ledger via promotion.decide().assurance_class (Wave 3). Until then, the mint-time Telegram from.id allowlist (Wave 2) is the primary possession gate; this is defense-in-depth only.
     if card.meta.get("risk-tier") == "T3" and not card.meta.get("established-fast-lane"):
         return VerifyResult(
             False,

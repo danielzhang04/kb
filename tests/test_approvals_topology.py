@@ -134,6 +134,11 @@ def test_merge_topology_binds_to_true_signing_commit(tmp_path, monkeypatch):
                          encoding="utf-8")
     _git(repo, "add", "-A")
     _git(repo, "commit", "-m", "later unsigned touch")
+    # The tamper is on the PROTECTED ref (per this test's premise), so advance
+    # refs/remotes/origin/approvals to it — otherwise the gate binds to the stale
+    # signed state and would reject on working-tree divergence instead of on the
+    # unsigned introducing commit (N1 now prefers the protected remote ref).
+    _git(repo, "update-ref", "refs/remotes/origin/approvals", "HEAD")
 
     # sanity: the hash still matches, proving the rejection is topological, not
     # a content-hash mismatch
@@ -258,3 +263,51 @@ def test_keyring_missing_fails_closed(tmp_path):
     repo, meta = _load_signed_fixture(tmp_path, keyring=False)
     ok, reason = approvals.verify_signed_approval(repo / meta["card_rel"], repo)
     assert not ok
+
+
+# --- N1: prefer the protected remote ref over the agent-writable local branch -
+
+def _repo_with_both_approvals_refs(tmp_path):
+    """A repo where BOTH refs/heads/approvals (agent-writable in-clone) and
+    refs/remotes/origin/approvals (the protected ref only Daniel can merge into)
+    exist, pointing at DIFFERENT commits."""
+    repo = tmp_path / "both-refs"
+    (repo / "governance").mkdir(parents=True)
+    (repo / "a.txt").parent.mkdir(parents=True, exist_ok=True)
+    _git(repo, "init")
+    _git(repo, "config", "user.name", "Daniel Zhang")
+    _git(repo, "config", "user.email", "daniel@example.com")
+    _git(repo, "config", "core.autocrlf", "false")
+    _git(repo, "config", "commit.gpgsign", "false")
+    (repo / "a.txt").write_text("remote\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-m", "remote-side commit")
+    remote_sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo,
+                                capture_output=True, text=True).stdout.strip()
+    # The protected ref lives as a remote-tracking ref.
+    _git(repo, "update-ref", "refs/remotes/origin/approvals", remote_sha)
+    # A DIFFERENT, agent-writable local branch of the same name.
+    (repo / "a.txt").write_text("local-agent-writable\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-m", "local-side commit (agent-writable)")
+    local_sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo,
+                               capture_output=True, text=True).stdout.strip()
+    _git(repo, "update-ref", "refs/heads/approvals", local_sha)
+    assert remote_sha != local_sha
+    return repo
+
+
+def test_resolve_prefers_protected_remote_ref_over_local(tmp_path):
+    # N1: when both exist, the protected refs/remotes/origin/approvals must win
+    # the fallback over the agent-writable refs/heads/approvals. Otherwise a
+    # misbehaving ops-tier agent could point a local `approvals` branch at an
+    # older genuinely-signed approval and control which is treated as current
+    # (bounded replay/suppression within MAX_AGE).
+    repo = _repo_with_both_approvals_refs(tmp_path)
+    assert approvals._resolve_approvals_ref(repo) == "refs/remotes/origin/approvals"
+
+
+def test_resolve_explicit_arg_wins_over_both(tmp_path):
+    # An explicit approvals_ref argument still takes precedence over both refs.
+    repo = _repo_with_both_approvals_refs(tmp_path)
+    assert approvals._resolve_approvals_ref(repo, "refs/heads/main") == "refs/heads/main"
