@@ -30,6 +30,17 @@
 # at HUMAN GATE 5.7.
 forced_login_method = "chatgpt"
 
+# VERIFIED (gate 5.0, hand-checked by Daniel 2026-07-16 against the official
+# auth doc): cli_auth_credentials_store = file | keyring | auto. "keyring
+# stores credentials in your operating system credential store" — on this box
+# that is Windows Credential Manager, the same store as the Telegram bot
+# token, so no plaintext token file sits on disk (the doc says to treat
+# auth.json "like a password"). Daniel picked keyring at gate 5.0.
+# Consequence for scripts/agent_runner.ps1: auth presence/staleness is probed
+# via `codex login status` (exit 0 = logged in) alone — an auth.json
+# file-existence check would false-fail under keyring storage.
+cli_auth_credentials_store = "keyring"
+
 # FLAG: exact enum values unverified. Intent: the most conservative approval
 # posture the CLI offers — ask before running anything that isn't a small
 # known-safe read-only set. If the installed CLI uses different enum spelling
