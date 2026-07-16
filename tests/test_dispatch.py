@@ -628,6 +628,111 @@ def test_no_cadence_claimable_by_both_dispatchers(tmp_path):
     assert dispatch.run(repo, "desktop", "dispatcher-desktop", today=day) == []
 
 
+# --------------------------------------------------------------------------- #
+# Task 5.2 -- optional `agent:` cadence key routes card ownership             #
+# --------------------------------------------------------------------------- #
+#
+# A cadence may name a worker via `agent:`; dispatch writes it into the WORK
+# card's owner via cards.claim(card, agent) instead of the dispatching
+# agent_id. Absent `agent:` is a no-op (backward-compatible: owner stays the
+# dispatcher, exactly as every pre-5.2 test above already proves).
+
+AGENT_KEY_HB = """# Heartbeat — kb
+
+```yaml
+cadences:
+  - name: agent-cadence
+    schedule: daily
+    tier: cloud
+    risk-tier: T1
+    agent: codex-worker
+    prompt: |
+      Do a thing as codex-worker.
+```
+"""
+
+
+def test_agent_key_sets_owner(tmp_path):
+    import cards
+    _write_project(tmp_path, "proj-a", AGENT_KEY_HB)
+    emitted = dispatch.run(tmp_path, "cloud", "dispatcher-cloud",
+                           today=datetime.date(2026, 7, 14))
+    assert len(emitted) == 1
+    c = cards.parse(emitted[0])
+    assert c.meta["owner"] == "codex-worker"
+
+
+def test_absent_agent_key_keeps_dispatcher_owner(tmp_path):
+    import cards
+    # regression: no `agent:` key anywhere in this heartbeat -> owner stays the
+    # dispatching agent_id, exactly as before Task 5.2.
+    repo = make_repo(tmp_path)
+    emitted = dispatch.run(repo, tier="cloud", agent_id="dispatcher-cloud",
+                           today=datetime.date(2026, 7, 14))
+    assert len(emitted) == 1
+    c = cards.parse(emitted[0])
+    assert c.meta["owner"] == "dispatcher-cloud"
+
+
+# THINK+COVER: does `agent:` interact with promotion.decide()? decide() takes a
+# `worker=` argument that keys the earned-autonomy grade-streak lookup
+# (promotion.status()). A cadence's `agent:` key names a distinct EXECUTING
+# identity -- so that identity's own streak, not the dispatcher's, must govern
+# its autonomy verdict. Otherwise a freshly-named, zero-track-record worker
+# would inherit whatever acts-alone streak the DISPATCHER happens to have
+# earned for itself, which is a privilege-escalation bug, not a convenience.
+# This proves worker=<named agent> is what decide() actually evaluates: a full
+# earned T1 streak recorded under "codex-worker" (not under the dispatcher,
+# "dispatcher-cloud") is what promotes agent-cadence to acts-alone.
+
+AGENT_KEY_UNPROVEN_HB = """# Heartbeat — kb
+
+```yaml
+cadences:
+  - name: agent-cadence
+    schedule: daily
+    tier: cloud
+    risk-tier: T1
+    agent: codex-worker
+    prompt: |
+      Do a thing as codex-worker.
+```
+"""
+
+
+def _grade_row(*, worker, project, task_type, tier="T1", score=95, ts="000000"):
+    return {"worker": worker, "project": project, "task_type": task_type,
+            "tier": tier, "card_id": "c", "score": score, "pass": score >= 90,
+            "rubric_version": "1", "inspector_id": "inspector", "ts": ts}
+
+
+def test_agent_key_streak_governs_named_worker_not_dispatcher(tmp_path):
+    import cards
+    import ledger
+
+    _write_project(tmp_path, "proj-a", AGENT_KEY_UNPROVEN_HB)
+    (tmp_path / "governance").mkdir()
+    (tmp_path / "governance" / "graders.yaml").write_text(
+        "graders:\n  - inspector\n", encoding="utf-8")
+    # A full T1 window (10 runs, all >= the 90 bar) recorded under the NAMED
+    # agent, "codex-worker" -- never under "dispatcher-cloud", which has no
+    # grade history for this key at all.
+    for i in range(10):
+        ledger.append(tmp_path, "grades", f"w{i}",
+                      _grade_row(worker="codex-worker", project="proj-a",
+                                 task_type="cadence:agent-cadence", ts=f"{i:06d}"))
+
+    emitted = dispatch.run(tmp_path, "cloud", "dispatcher-cloud",
+                           today=datetime.date(2026, 7, 14))
+    assert len(emitted) == 1
+    c = cards.parse(emitted[0])
+    assert c.meta["owner"] == "codex-worker"
+    # Earned by codex-worker's own streak, not the dispatcher's (which has none
+    # for this key) -- proves worker=<named agent>, not worker=agent_id.
+    assert c.meta["autonomy"] == "acts-alone"
+    assert c.meta["state"] == "inbox"
+
+
 def test_release_does_not_thread_into_a_non_depends_on_card(tmp_path):
     """A card with an empty depends-on (the common case -- every existing
     cadence-emitted card) must be completely untouched by the release pass."""

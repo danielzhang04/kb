@@ -352,16 +352,33 @@ def run(repo_root: Path, tier: str, agent_id: str,
             key = (project, cadence['name'])
             if cadence.get("tier") != tier or key in ran or not due(cadence, today):
                 continue
+            # Task 5.2 -- optional `agent:` cadence key routes card ownership to a
+            # named worker (backward-compatible: absent `agent:` keeps the current
+            # dispatcher, agent_id, as owner). `owner` is what cards.claim() below
+            # stamps onto the WORK card; the inspect sibling further down is
+            # UNCHANGED by this -- it always claims as INSPECTOR_IDENTITY per the
+            # Task 4.2 comment above, never the cadence's named agent.
+            owner = cadence.get("agent", agent_id)
             # decide() called on the TRUSTED read path only: grades_rows=None lets
             # it read+filter ledgers/grades/ itself via governance/graders.yaml
             # (trust-anchor invariant) rather than trusting raw ledger rows handed
             # in from here. main_ref is likewise left to resolve itself, so it
             # prefers the protected refs/remotes/origin/main over the agent-writable
             # local main.
+            #
+            # worker=owner (not the bare agent_id): a cadence's `agent:` key names
+            # a distinct EXECUTING identity, and earned-autonomy is a property of
+            # WHO does the work, not who dispatched it. Keying the streak lookup
+            # on the dispatcher's own agent_id regardless of `agent:` would let a
+            # freshly-named, zero-track-record worker inherit the dispatcher's own
+            # earned acts-alone streak -- a privilege-escalation bug wearing a
+            # convenience hat, not a neutral default. `owner` collapses to
+            # agent_id exactly when `agent:` is absent, so this is a no-op for
+            # every pre-5.2 cadence and every existing test.
             heartbeat_rel = hb.relative_to(repo_root).as_posix()
             decision = promotion.decide(
                 cadence, repo_root,
-                worker=agent_id, project=project, today=today,
+                worker=owner, project=project, today=today,
                 heartbeat_rel=heartbeat_rel, grades_rows=None,
             )
             autonomy = decision["autonomy"]
@@ -387,7 +404,7 @@ def run(repo_root: Path, tier: str, agent_id: str,
                 # above): skip only this cadence, never the whole heartbeat.
                 print(f"WARN: skipping cadence {project}/{cadence['name']}: {err}")
                 continue
-            cards.claim(card, agent_id)
+            cards.claim(card, owner)
             emitted.append(cards.save(card, Path(repo_root) / "queue"))
             ledger.append(repo_root, "dispatch", agent_id,
                           {"date": today.isoformat(), "cadence": cadence["name"],
