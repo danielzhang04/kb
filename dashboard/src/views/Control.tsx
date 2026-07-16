@@ -1,0 +1,164 @@
+/**
+ * Control-view landing — the mission-control board (D0.9, Option B / adopted default Q1).
+ *
+ * It COMPOSES the existing read-only views (it does not reimplement them): a fleet strip rolled up
+ * from the Plane-A snapshot (agents, running count, USAGE — never spend), the org STATEs, the live
+ * spectator Timeline entry, and the KB Browser + Registry panes. Live updates arrive over the hub's
+ * SSE stream (D0.4): a Plane-A delta bumps the SSE tick, which re-fetches the whole snapshot (the bus
+ * carries lightweight deltas, not full index frames — see server/hub/bus.ts).
+ *
+ * Data source: the `snapshot` prop (tests / an already-loaded parent) or a self-fetch of `/api/index`
+ * (D0.9 server route). Every pane degrades to an empty-safe state; nothing here writes.
+ */
+import { useEffect, useState } from 'react';
+import type { PlaneAIndex } from '../../server/planeA/indexer';
+import { Browser } from './Browser';
+import { Registry } from './Registry';
+import { Timeline } from './Timeline';
+import { useSse } from '../lib/sseClient';
+
+const EMPTY_INDEX: PlaneAIndex = {
+  cards: {},
+  ledgers: {
+    dispatch: { count: 0, cards: 0, byProject: {} },
+    cost: { stepCount: 0, perModelSteps: {}, modelMix: {}, usdPresent: false },
+    grades: { count: 0, rows: [] },
+    activity: { count: 0, rows: [] },
+  },
+  orgStates: [],
+};
+
+/** Distinct non-null card owners across every state bucket = the agents currently on the board. */
+function agentCount(index: PlaneAIndex): number {
+  const owners = new Set<string>();
+  for (const bucket of Object.values(index.cards)) {
+    for (const c of bucket) {
+      if (typeof c.meta.owner === 'string' && c.meta.owner) owners.add(c.meta.owner);
+    }
+  }
+  return owners.size;
+}
+
+function FleetStrip({ index }: { index: PlaneAIndex }): React.JSX.Element {
+  const agents = agentCount(index);
+  const running = index.cards.working?.length ?? 0;
+  const approvals = index.cards.approvals?.length ?? 0;
+  const mix = Object.entries(index.ledgers.cost.modelMix).sort((a, b) => b[1] - a[1]);
+
+  return (
+    <section className="fleet-strip" aria-label="Fleet status">
+      <div className="fleet-strip__stat" data-testid="fleet-agents">
+        <span className="fleet-strip__value">{agents}</span>
+        <span className="fleet-strip__label">agents</span>
+      </div>
+      <div className="fleet-strip__stat" data-testid="fleet-running">
+        <span className="fleet-strip__value">{running}</span>
+        <span className="fleet-strip__label">running</span>
+      </div>
+      <div className="fleet-strip__stat" data-testid="fleet-approvals">
+        <span className="fleet-strip__value">{approvals}</span>
+        <span className="fleet-strip__label">approvals</span>
+      </div>
+      {/*
+        USAGE, never spend: we surface step counts + model mix and deliberately suppress the USD
+        figure (it exists in the ledger but is never shown here — see server/planeA/ledgers.ts).
+      */}
+      <div className="fleet-strip__usage" data-testid="fleet-usage">
+        <span className="fleet-strip__label">USAGE</span>
+        <span className="fleet-strip__sub">{index.ledgers.cost.stepCount} steps</span>
+        {mix.length > 0 ? (
+          <ul className="fleet-strip__mix">
+            {mix.map(([model, share]) => (
+              <li key={model}>
+                {model} · {Math.round(share * 100)}%
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <span className="fleet-strip__sub">no usage yet</span>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function OrgStates({ index }: { index: PlaneAIndex }): React.JSX.Element {
+  return (
+    <section className="org-states" aria-label="Org states">
+      <h2>Org STATE</h2>
+      {index.orgStates.length === 0 ? (
+        <p className="org-states__empty">No org STATE files found.</p>
+      ) : (
+        <ul className="org-states__list">
+          {index.orgStates.map((s) => (
+            <li key={s.project} className="org-states__item">
+              <h3>{s.project}</h3>
+              <p className="org-states__now">
+                <strong>Now:</strong> {s.now || '—'}
+              </p>
+              <p className="org-states__next">
+                <strong>Next:</strong> {s.next || '—'}
+              </p>
+              {s.blocked && s.blocked !== '(nothing blocked)' ? (
+                <p className="org-states__blocked">
+                  <strong>Blocked:</strong> {s.blocked}
+                </p>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/** Control landing. Accepts a snapshot directly (tests) or self-fetches `/api/index` and refreshes on SSE. */
+export function Control({ snapshot }: { snapshot?: PlaneAIndex } = {}): React.JSX.Element {
+  const [fetched, setFetched] = useState<PlaneAIndex | null>(null);
+  // A Plane-A delta on the hub bumps `count`; we refetch the snapshot on each tick (skipped when a
+  // snapshot is supplied directly, and a no-op under jsdom where EventSource is absent).
+  const { count } = useSse('/events');
+
+  useEffect(() => {
+    if (snapshot) return;
+    let cancelled = false;
+    fetch('/api/index')
+      .then((r) => r.json() as Promise<PlaneAIndex>)
+      .then((d) => {
+        if (!cancelled) setFetched(d);
+      })
+      .catch(() => {
+        /* read-only board: on failure keep the empty-safe scaffold, never crash the shell */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [snapshot, count]);
+
+  const index = snapshot ?? fetched ?? EMPTY_INDEX;
+
+  return (
+    <div className="control" aria-label="Control view">
+      <FleetStrip index={index} />
+      <div className="control__grid">
+        <div className="control__col control__col--wide">
+          <section className="control__pane" aria-label="Live timeline">
+            <h2>Live timeline</h2>
+            <Timeline />
+          </section>
+          <section className="control__pane" aria-label="KB browser">
+            <h2>Knowledge base</h2>
+            <Browser />
+          </section>
+        </div>
+        <div className="control__col">
+          <OrgStates index={index} />
+          <section className="control__pane" aria-label="Registry">
+            <h2>Registry</h2>
+            <Registry />
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+}
