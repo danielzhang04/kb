@@ -42,7 +42,8 @@ def _load_signed_fixture(tmp_path, name="signed", human_emails=None, keyring=Tru
     repo = tmp_path / name
     subprocess.run(["git", "clone", "-q", str(_FIXTURE / "repo.bundle"), str(repo)],
                    check=True, capture_output=True, text=True)
-    subprocess.run(["git", "-C", str(repo), "checkout", "-q", "main"],
+    # HEAD is the protected `approvals` ref (real GitHub PR-merge topology).
+    subprocess.run(["git", "-C", str(repo), "checkout", "-q", "approvals"],
                    capture_output=True, text=True)
     if human_emails is not None:
         emails = "".join(f'  - "{e}"\n' for e in human_emails)
@@ -90,25 +91,44 @@ def _make_unsigned_repo(tmp_path, name="unsigned", author_email="daniel@example.
     return repo, path
 
 
-# --- T10 merge-topology: bind to the TRUE signing commit (anti-laundering) ---
+def _pin(meta):
+    """The fixture's own web-flow fingerprint — the test's pinned trust anchor
+    (production pins the real GitHub fingerprint via WEB_FLOW_FINGERPRINTS)."""
+    return {meta["fingerprint"]}
+
+
+# --- T10 merge-topology: bind to the TRUE signing (merge) commit --------------
 
 @skip_no_gpg
 def test_merge_topology_binds_to_true_signing_commit(tmp_path, monkeypatch):
-    # Baseline: the fixture's record is introduced by a real web-flow-signed
-    # commit -> the gate binds to THAT commit and accepts.
+    # The fixture mirrors real GitHub PR-merge topology: an UNSIGNED agent commit
+    # on approval/<id> introduces the record file; a web-flow-SIGNED, no-ff merge
+    # commit brings it onto the protected `approvals` ref. `git log -1 -- <path>`
+    # (history simplification) points at the UNSIGNED agent commit — verifying
+    # THAT would reject every genuine approval (the F2 blocker). The gate must
+    # instead bind to the merge commit along the ref's first-parent history.
     repo, meta = _load_signed_fixture(tmp_path)
     _pin_now_to_fixture(monkeypatch, meta)
     card_path = repo / meta["card_rel"]
-    ok, reason = approvals.verify_signed_approval(card_path, repo)
+
+    # sanity: the buggy `git log -1` and the correct first-parent lookup disagree,
+    # and the correct one is the signed merge commit.
+    naive = subprocess.run(["git", "log", "-1", "--format=%H", "--", meta["card_rel"]],
+                           cwd=repo, capture_output=True, text=True).stdout.strip()
+    assert naive == meta["agent_sha"], "expected git log -1 to pick the unsigned PR commit"
+    assert naive != meta["sha"]
+
+    ok, reason = approvals.verify_signed_approval(
+        card_path, repo, pinned_fingerprints=_pin(meta))
     assert ok, reason
 
-    # Laundering attempt: a LATER, UNSIGNED commit rewrites the record file. The
-    # old signed commit still exists in history, but it is no longer the commit
-    # that introduced the current record. The `approval` hash is preserved (the
-    # tamper appends a NEW '## ' section, so work_order_of is unchanged), so the
-    # ONLY thing that changes is the introducing commit's signature status.
-    # The gate must bind to the tampering commit and REJECT — never launder the
-    # old signature onto the new content.
+    # Laundering attempt: a LATER, UNSIGNED commit rewrites the record file on the
+    # protected ref. The old signed merge still exists in history, but it is no
+    # longer the commit that introduced the current record along first-parent.
+    # The `approval` hash is preserved (the tamper appends a NEW '## ' section, so
+    # work_order_of is unchanged), so the ONLY thing that changes is the
+    # introducing commit's signature status. The gate must bind to the tampering
+    # commit and REJECT — never launder the old signature onto the new content.
     card_path.write_text(card_path.read_text(encoding="utf-8")
                          + "\n## Note\nlaundered by a later unsigned commit\n",
                          encoding="utf-8")
@@ -119,16 +139,20 @@ def test_merge_topology_binds_to_true_signing_commit(tmp_path, monkeypatch):
     # a content-hash mismatch
     assert approvals.payload_hash(cards.parse(card_path)) == cards.parse(card_path).meta["approval"]
 
-    ok2, reason2 = approvals.verify_signed_approval(card_path, repo)
+    ok2, reason2 = approvals.verify_signed_approval(
+        card_path, repo, pinned_fingerprints=_pin(meta))
     assert not ok2
     assert "signature" in reason2.lower(), reason2
 
 
-# --- T10 frontmatter binding via git show <sha>:<path> -----------------------
+# --- F1 working-tree/committed-blob binding via git show <sha>:<path> ---------
 
 def test_frontmatter_change_after_signing_fails(tmp_path, monkeypatch):
     # The signed blob binds action+target (I3). Changing a frontmatter field in
-    # the working tree after signing breaks the recomputed payload_hash.
+    # the working tree after signing makes the working tree diverge from the
+    # signed object — the gate binds to `git show <sha>:<rel>`, not the mutable
+    # working tree, and rejects. (Runs without gpg: the divergence is caught
+    # before the signature stage, so this backstops the fixture everywhere.)
     repo, meta = _load_signed_fixture(tmp_path)
     _pin_now_to_fixture(monkeypatch, meta)
     card_path = repo / meta["card_rel"]
@@ -145,8 +169,33 @@ def test_frontmatter_change_after_signing_fails(tmp_path, monkeypatch):
     fm = yaml.safe_dump(card.meta, sort_keys=False, allow_unicode=True)
     card_path.write_text(f"---\n{fm}---\n\n{card.body}", encoding="utf-8")
 
-    ok, reason = approvals.verify_signed_approval(card_path, repo)
-    assert not ok and "hash" in reason.lower(), reason
+    ok, reason = approvals.verify_signed_approval(
+        card_path, repo, pinned_fingerprints=_pin(meta))
+    assert not ok and "working tree" in reason.lower(), reason
+
+
+def test_worktree_tamper_with_matching_hash_rejected(tmp_path, monkeypatch):
+    # F1 PoC (the BLOCKER): take a legitimately signed approval, overwrite the
+    # WORKING-TREE file with a hostile action/target AND a self-computed matching
+    # hash (do NOT commit). The naive hash check passes (the attacker re-hashed),
+    # but verification must bind to the committed signed bytes and REJECT — the
+    # bytes we authorise must be the bytes we authenticated.
+    repo, meta = _load_signed_fixture(tmp_path)
+    _pin_now_to_fixture(monkeypatch, meta)
+    card_path = repo / meta["card_rel"]
+
+    card = cards.parse(card_path)
+    card.meta["action"] = "rm-rf"
+    card.meta["target"] = "prod-db"
+    card.meta["approval"] = approvals.payload_hash(card)  # attacker self-hashes
+    assert approvals.payload_hash(card) == card.meta["approval"]  # internally consistent
+    fm = yaml.safe_dump(card.meta, sort_keys=False, allow_unicode=True)
+    card_path.write_text(f"---\n{fm}---\n\n{card.body}", encoding="utf-8")
+
+    ok, reason = approvals.verify_signed_approval(
+        card_path, repo, pinned_fingerprints=_pin(meta))
+    assert not ok, "hostile working-tree overwrite must never verify"
+    assert "working tree" in reason.lower() or "signed record" in reason.lower(), reason
 
 
 # --- valid signature + non-allowlisted author -> reject ----------------------
@@ -157,7 +206,8 @@ def test_valid_signature_wrong_author_rejected(tmp_path, monkeypatch):
     # humans allow-list ("anyone with merge access" case) -> reject.
     repo, meta = _load_signed_fixture(tmp_path, human_emails=["nobody@else.test"])
     _pin_now_to_fixture(monkeypatch, meta)
-    ok, reason = approvals.verify_signed_approval(repo / meta["card_rel"], repo)
+    ok, reason = approvals.verify_signed_approval(
+        repo / meta["card_rel"], repo, pinned_fingerprints=_pin(meta))
     assert not ok and "author" in reason.lower(), reason
 
 
@@ -176,7 +226,8 @@ def test_expiry_rejected(tmp_path, monkeypatch):
     repo, meta = _load_signed_fixture(tmp_path, name="stale")
     # pin now well past MAX_AGE from the signing commit -> stale
     _pin_now_to_fixture(monkeypatch, meta, delta=datetime.timedelta(hours=25))
-    ok, reason = approvals.verify_signed_approval(repo / meta["card_rel"], repo)
+    ok, reason = approvals.verify_signed_approval(
+        repo / meta["card_rel"], repo, pinned_fingerprints=_pin(meta))
     assert not ok and "stale" in reason.lower(), reason
 
 
@@ -185,7 +236,8 @@ def test_future_dated_rejected(tmp_path, monkeypatch):
     repo, meta = _load_signed_fixture(tmp_path, name="future")
     # pin now BEFORE the signing commit -> negative age (clock skew / forgery)
     _pin_now_to_fixture(monkeypatch, meta, delta=datetime.timedelta(hours=-2))
-    ok, reason = approvals.verify_signed_approval(repo / meta["card_rel"], repo)
+    ok, reason = approvals.verify_signed_approval(
+        repo / meta["card_rel"], repo, pinned_fingerprints=_pin(meta))
     assert not ok and "future" in reason.lower(), reason
 
 

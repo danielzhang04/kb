@@ -34,7 +34,9 @@ def _load_signed_fixture(tmp_path, human_emails=None, keyring=True):
     repo = tmp_path / "signed"
     subprocess.run(["git", "clone", "-q", str(_FIXTURE / "repo.bundle"), str(repo)],
                    check=True, capture_output=True, text=True)
-    subprocess.run(["git", "-C", str(repo), "checkout", "-q", "main"],
+    # The fixture's HEAD is the protected `approvals` ref (the merged state that
+    # carries governance/ + the record). Real GitHub PR-merge topology.
+    subprocess.run(["git", "-C", str(repo), "checkout", "-q", "approvals"],
                    capture_output=True, text=True)
     if human_emails is not None:
         emails = "".join(f'  - "{e}"\n' for e in human_emails)
@@ -47,7 +49,7 @@ def _load_signed_fixture(tmp_path, human_emails=None, keyring=True):
 
 def _make_unsigned_repo(tmp_path, author_email="daniel@example.com",
                         human_emails=("daniel@example.com",), assurance="signed",
-                        with_keyring=True, state="approved",
+                        with_keyring=True, state="approved", risk_tier="T3",
                         expires_delta=datetime.timedelta(hours=1)):
     """A repo whose HEAD commit is UNSIGNED (needs no gpg) — for fail-closed,
     author-trust, and possession tests. Copies the fixture's real web-flow key
@@ -61,11 +63,12 @@ def _make_unsigned_repo(tmp_path, author_email="daniel@example.com",
     (repo / "governance" / "humans.yaml").write_text(
         'humans:\n  - "Daniel Zhang"\nemails:\n' + emails, encoding="utf-8")
     body = "## Work order\ndo the approved thing\n"
-    card = cards.new_card("proj", "deploy", "svc-a", "T3", body=body,
+    card = cards.new_card("proj", "deploy", "svc-a", risk_tier, body=body,
                           state=state, assurance=assurance)
     card.meta["approval"] = approvals.payload_hash(card)
     now = datetime.datetime.now(datetime.timezone.utc)
-    card.meta["expires"] = (now + expires_delta).isoformat()
+    if expires_delta is not None:
+        card.meta["expires"] = (now + expires_delta).isoformat()
     path = cards.save(card, repo / "queue")
     rel = str(path.relative_to(repo)).replace("\\", "/")
 
@@ -227,8 +230,13 @@ def _pin_now_to_fixture(monkeypatch, meta, minutes=1):
 def test_verify_signed_approval_offline_ok(tmp_path, monkeypatch):
     repo, meta = _load_signed_fixture(tmp_path)
     _pin_now_to_fixture(monkeypatch, meta)
-    ok, reason = approvals.verify_signed_approval(repo / meta["card_rel"], repo)
+    res = approvals.verify_signed_approval(
+        repo / meta["card_rel"], repo, pinned_fingerprints={meta["fingerprint"]})
+    ok, reason = res
     assert ok and reason == "ok"
+    # F5: the verified, committed bytes are returned to the caller/executor.
+    assert res.card is not None and res.card.meta["action"] == "deploy"
+    assert res.payload and "action:" in res.payload
 
 
 def test_unsigned_or_agent_pushed_rejected(tmp_path):
@@ -254,7 +262,8 @@ def test_valid_signature_wrong_author_rejected(tmp_path, monkeypatch):
     # humans allow-list ("anyone with merge access" case) -> reject.
     repo, meta = _load_signed_fixture(tmp_path, human_emails=["nobody@else.test"])
     _pin_now_to_fixture(monkeypatch, meta)
-    ok, reason = approvals.verify_signed_approval(repo / meta["card_rel"], repo)
+    ok, reason = approvals.verify_signed_approval(
+        repo / meta["card_rel"], repo, pinned_fingerprints={meta["fingerprint"]})
     assert not ok and "author" in reason.lower()
 
 
@@ -270,8 +279,10 @@ def test_forged_author_without_signature_rejected(tmp_path):
 
 def test_assurance_field_roundtrip(tmp_path):
     # A possession-class record is rejected by the signed verifier, and the
-    # telegram verifier accepts a valid possession record.
-    repo, sha, rel, path = _make_unsigned_repo(tmp_path, assurance="possession")
+    # telegram verifier accepts a valid possession record. Possession is only
+    # admissible below T3 (F4), so use a T2 record for the accept case.
+    repo, sha, rel, path = _make_unsigned_repo(
+        tmp_path, assurance="possession", risk_tier="T2")
     ok, reason = approvals.verify_signed_approval(path, repo)
     assert not ok and "signed" in reason.lower()
 
@@ -285,6 +296,48 @@ def test_approved_by_human_is_removed():
     assert not hasattr(approvals, "approved_by_human")
 
 
+# --- possession-channel hardening: F3 (expiry) + F4 (tier admissibility) ------
+
+def test_possession_missing_expires_rejected(tmp_path):
+    # F3: a possession record with NO `expires` must reject (never valid forever).
+    repo, sha, rel, path = _make_unsigned_repo(
+        tmp_path, assurance="possession", risk_tier="T2", expires_delta=None)
+    assert "expires" not in cards.parse(path).meta
+    ok, reason = approvals.verify_telegram_approval(path, repo)
+    assert not ok and "expires" in reason.lower(), reason
+
+
+def test_possession_expired_rejected(tmp_path):
+    # F3: an already-past `expires` rejects.
+    repo, sha, rel, path = _make_unsigned_repo(
+        tmp_path, assurance="possession", risk_tier="T2",
+        expires_delta=datetime.timedelta(hours=-1))
+    ok, reason = approvals.verify_telegram_approval(path, repo)
+    assert not ok and "expired" in reason.lower(), reason
+
+
+def test_possession_novel_t3_rejected(tmp_path):
+    # F4: possession is never admissible for a novel/first-time T3 action, even
+    # with a valid hash + unexpired expires. It needs the signed channel.
+    repo, sha, rel, path = _make_unsigned_repo(
+        tmp_path, assurance="possession", risk_tier="T3")
+    ok, reason = approvals.verify_telegram_approval(path, repo)
+    assert not ok and "t3" in reason.lower(), reason
+
+
+def test_possession_stale_beyond_max_age_rejected(tmp_path, monkeypatch):
+    # F3: even with a far-future `expires`, a possession record older than
+    # MAX_AGE (by its introducing commit) is clamped and rejected.
+    repo, sha, rel, path = _make_unsigned_repo(
+        tmp_path, assurance="possession", risk_tier="T2",
+        expires_delta=datetime.timedelta(days=3650))
+    future = (datetime.datetime.now(datetime.timezone.utc)
+              + approvals.MAX_AGE + datetime.timedelta(hours=1))
+    monkeypatch.setattr(approvals, "_now", lambda: future)
+    ok, reason = approvals.verify_telegram_approval(path, repo)
+    assert not ok and "stale" in reason.lower(), reason
+
+
 # --- 1.3: offline gpg verify wrapper + hardened status parser ---
 
 def test_verify_wrapper_no_gpg(tmp_path, monkeypatch):
@@ -296,10 +349,26 @@ def test_verify_wrapper_no_gpg(tmp_path, monkeypatch):
 @skip_no_gpg
 def test_verify_wrapper_ok(tmp_path):
     repo, meta = _load_signed_fixture(tmp_path)
-    ok, signer, email = approvals._verify_commit_signature(meta["sha"], repo)
+    ok, signer, email = approvals._verify_commit_signature(
+        meta["sha"], repo, pinned={meta["fingerprint"]})
     assert ok is True
     assert signer and "noreply@github.com" in signer
     assert email == meta["author_email"]
+
+
+@skip_no_gpg
+def test_verify_wrapper_fingerprint_pin_enforced(tmp_path):
+    # F6: a GOOD web-flow signature whose VALIDSIG fingerprint is NOT the pinned
+    # web-flow fingerprint must be rejected (a rotated-out / extra key in the
+    # keyring must not newly authorise).
+    repo, meta = _load_signed_fixture(tmp_path)
+    ok, detail, email = approvals._verify_commit_signature(
+        meta["sha"], repo, pinned={"0000000000000000000000000000000000000000"})
+    assert ok is False and "pinned" in detail.lower()
+    # …and the real fixture fingerprint accepts.
+    ok2, _, _ = approvals._verify_commit_signature(
+        meta["sha"], repo, pinned={meta["fingerprint"]})
+    assert ok2 is True
 
 
 @skip_no_gpg
