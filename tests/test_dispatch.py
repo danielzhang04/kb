@@ -321,3 +321,150 @@ def test_frozen_forces_queue(tmp_path):
     c = cards.parse(emitted[0])
     assert c.meta["state"] == "approvals"
     assert c.meta["autonomy"] == "queues-for-me"
+
+
+# --------------------------------------------------------------------------- #
+# Task 4.1 -- depends-on DAG release logic (dispatch.py's release pass)      #
+# --------------------------------------------------------------------------- #
+#
+# The release pass is a distinct, additive concern from the per-cadence loop
+# above: it walks existing queue/ cards looking for `blocked` children with a
+# non-empty `depends-on`, and releases them to `inbox` (threading dep `##
+# Result` sections into the body) only once every dep is `done`. It runs
+# unconditionally inside dispatch.run() -- it is not gated by cadence `tier` --
+# because it concerns the queue's existing DAG state, not heartbeat cadences.
+
+def _bare_repo(tmp_path: Path) -> Path:
+    """A repo root with no heartbeats at all -- run() should still execute the
+    release pass (and simply emit zero cadence cards)."""
+    return tmp_path
+
+
+def _make_dep(queue_root: Path, *, state: str, result_body: str | None = None):
+    import cards
+    body = "## Work order\n\ndo the dep\n"
+    if result_body is not None:
+        body += f"\n## Result\n\n{result_body}\n"
+    dep = cards.new_card(project="kb", action="dep-action", target="dep-target",
+                         risk_tier="T1", body=body, state=state)
+    cards.save(dep, queue_root)
+    return dep
+
+
+def _make_blocked_child(queue_root: Path, *, depends_on: list[str], **extra):
+    import cards
+    meta_extra = {"state": "blocked", "depends-on": depends_on}
+    meta_extra.update(extra)
+    child = cards.new_card(project="kb", action="child-action", target="child-target",
+                           risk_tier="T1", body="## Work order\n\ndo the child\n",
+                           **meta_extra)
+    cards.save(child, queue_root)
+    return child
+
+
+def test_child_blocked_until_deps_done(tmp_path):
+    import cards
+    repo = _bare_repo(tmp_path)
+    queue_root = repo / "queue"
+    # Dep exists but is NOT done yet (still "working") -> child must stay blocked.
+    dep = _make_dep(queue_root, state="working", result_body="dep output")
+    child = _make_blocked_child(queue_root, depends_on=[dep.meta["id"]])
+
+    dispatch.run(repo, "cloud", "dispatcher-cloud", today=datetime.date(2026, 7, 14))
+
+    reread = cards.parse(child.path)
+    assert reread.meta["state"] == "blocked"
+    assert reread.meta["depends-on"] == [dep.meta["id"]]
+
+
+def test_child_released_with_results_threaded(tmp_path):
+    import cards
+    repo = _bare_repo(tmp_path)
+    queue_root = repo / "queue"
+    dep1 = _make_dep(queue_root, state="done", result_body="first dep's output")
+    dep2 = _make_dep(queue_root, state="done", result_body="second dep's output")
+    child = _make_blocked_child(queue_root, depends_on=[dep1.meta["id"], dep2.meta["id"]])
+
+    dispatch.run(repo, "cloud", "dispatcher-cloud", today=datetime.date(2026, 7, 14))
+
+    reread = cards.parse(child.path)
+    assert reread.meta["state"] == "inbox"
+    assert "first dep's output" in reread.body
+    assert "second dep's output" in reread.body
+    # Original work order survives the threading.
+    assert "do the child" in reread.body
+
+
+def test_child_stays_blocked_when_one_dep_not_done(tmp_path):
+    import cards
+    repo = _bare_repo(tmp_path)
+    queue_root = repo / "queue"
+    dep1 = _make_dep(queue_root, state="done", result_body="first dep's output")
+    dep2 = _make_dep(queue_root, state="working", result_body="second dep's output")
+    child = _make_blocked_child(queue_root, depends_on=[dep1.meta["id"], dep2.meta["id"]])
+
+    dispatch.run(repo, "cloud", "dispatcher-cloud", today=datetime.date(2026, 7, 14))
+
+    reread = cards.parse(child.path)
+    assert reread.meta["state"] == "blocked"
+
+
+def test_child_stays_blocked_when_dep_card_unparseable(tmp_path):
+    import cards
+    repo = _bare_repo(tmp_path)
+    queue_root = repo / "queue"
+    dep = _make_dep(queue_root, state="done", result_body="dep output")
+    child = _make_blocked_child(queue_root, depends_on=[dep.meta["id"]])
+    # Corrupt the dep card on disk after it was created -- fail-closed must
+    # leave the child blocked rather than raise or silently release it.
+    dep.path.write_text("not a card at all, no frontmatter", encoding="utf-8")
+
+    dispatch.run(repo, "cloud", "dispatcher-cloud", today=datetime.date(2026, 7, 14))
+
+    reread = cards.parse(child.path)
+    assert reread.meta["state"] == "blocked"
+
+
+def test_release_never_routes_queues_for_me_child_to_inbox(tmp_path):
+    """Security invariant: a blocked child whose OWN routing verdict was
+    `queues-for-me` (destined for human approval) must never be act-alone
+    released into `inbox` just because its deps finished -- and the pass must
+    never upgrade its stamped autonomy/assurance_class either. cards.py's LEGAL
+    map only allows blocked -> inbox (no blocked -> approvals), so the release
+    pass's only safe move for such a card is to leave it blocked; some other,
+    out-of-scope mechanism is responsible for eventually routing it to
+    approvals. This proves the depends-on release pass cannot be used as a
+    side channel to bypass an approvals gate."""
+    import cards
+    import promotion
+    repo = _bare_repo(tmp_path)
+    queue_root = repo / "queue"
+    dep = _make_dep(queue_root, state="done", result_body="dep output")
+    child = _make_blocked_child(
+        queue_root, depends_on=[dep.meta["id"]],
+        autonomy=promotion.QUEUES_FOR_ME, assurance_class="signed-only",
+    )
+
+    dispatch.run(repo, "cloud", "dispatcher-cloud", today=datetime.date(2026, 7, 14))
+
+    reread = cards.parse(child.path)
+    assert reread.meta["state"] == "blocked"
+    assert reread.meta["autonomy"] == promotion.QUEUES_FOR_ME
+    assert reread.meta["assurance_class"] == "signed-only"
+
+
+def test_release_does_not_thread_into_a_non_depends_on_card(tmp_path):
+    """A card with an empty depends-on (the common case -- every existing
+    cadence-emitted card) must be completely untouched by the release pass."""
+    import cards
+    repo = _bare_repo(tmp_path)
+    queue_root = repo / "queue"
+    plain = cards.new_card(project="kb", action="a", target="t", risk_tier="T1",
+                           body="## Work order\n\nplain\n", state="inbox")
+    cards.save(plain, queue_root)
+
+    dispatch.run(repo, "cloud", "dispatcher-cloud", today=datetime.date(2026, 7, 14))
+
+    reread = cards.parse(plain.path)
+    assert reread.meta["state"] == "inbox"
+    assert reread.body == plain.body

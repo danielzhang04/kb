@@ -70,6 +70,120 @@ def _carveout_voided(cadence: dict, agent_id: str) -> bool:
     return any(not _carveout_write_allowed(w, agent_id) for w in writes)
 
 
+# --------------------------------------------------------------------------- #
+# Task 4.1 -- depends-on DAG release logic (DAG keystone)                    #
+# --------------------------------------------------------------------------- #
+#
+# A release pass over queue/ cards, wholly separate from the per-cadence loop
+# in run() below: it releases a `blocked` child card to `inbox` once every id
+# in its `depends-on` list names a card in `queue/done/`, threading each dep's
+# `## Result` section verbatim into the child's body first. It is additive --
+# it never touches the cadence-emission loop, ledger dedup, or promotion.decide
+# -- and it runs unconditionally in run() (not gated by `tier`), since it
+# concerns existing queue DAG state, not heartbeat cadences.
+#
+# SECURITY: `## Result` text from a dep card is untrusted-ish worker output --
+# it is threaded as INERT DATA under its own clearly-labelled heading, never
+# parsed/executed/interpreted. And this pass must never be a side channel
+# around the approvals gate: it only ever performs the `blocked -> inbox`
+# transition (the one cards.py's LEGAL map allows), and only for a child whose
+# OWN stamped autonomy is not `queues-for-me`. A card whose own routing verdict
+# was queues-for-me (destined for approvals) is left blocked -- this pass never
+# upgrades autonomy/assurance_class and never acts-alone-releases such a card.
+# Fail closed throughout: any parse error, on the child or on a dep, leaves the
+# child blocked.
+RESULT_HEADING = "## Result"
+
+
+def _first_section(body: str, heading: str) -> str:
+    """Fence-aware extraction of the first top-level `heading` section.
+
+    Mirrors approvals.work_order_of's algorithm (column-0 '## ' headings only,
+    fenced code blocks never count as headings, first occurrence wins) but is
+    reimplemented here, parameterized by heading, so dispatch.py needn't import
+    a card-verification helper out of approvals.py for an unrelated concern.
+    Raises ValueError if `heading` never appears unfenced at column 0.
+    """
+    lines: list[str] = []
+    capture = False
+    fenced = False
+    found = False
+    done = False
+    for line in body.splitlines():
+        if line.startswith("```"):
+            fenced = not fenced
+            if capture:
+                lines.append(line)
+            continue
+        is_heading = (not fenced) and line.startswith("## ")
+        if is_heading:
+            if capture:
+                capture = False
+                done = True
+            elif not done and line == heading:
+                capture = True
+                found = True
+            continue
+        if capture:
+            lines.append(line)
+    if not found:
+        raise ValueError(f"no {heading!r} section")
+    return "\n".join(lines).strip()
+
+
+def release_dependents(repo_root: Path) -> list[Path]:
+    """Release `blocked` cards whose `depends-on` cards are all `done`.
+
+    Only cards already sitting in queue/inbox/ (cards.STATE_DIR maps both
+    "inbox" and "blocked" there) with state == "blocked" and a non-empty
+    `depends-on` are candidates. Returns the paths released this call.
+    """
+    queue_root = Path(repo_root) / "queue"
+    inbox_dir = queue_root / "inbox"
+    done_dir = queue_root / "done"
+    released: list[Path] = []
+    if not inbox_dir.exists():
+        return released
+    for path in sorted(inbox_dir.glob("*.md")):
+        try:
+            child = cards.parse(path)
+        except Exception:  # noqa: BLE001 — fail closed: unparseable card, skip it
+            continue
+        if child.meta.get("state") != "blocked":
+            continue
+        deps = child.meta.get("depends-on") or []
+        if not deps:
+            continue
+        # A child whose own routing verdict was queues-for-me is destined for
+        # human approval; this pass may never act-alone-release it to inbox,
+        # and must never touch its autonomy/assurance_class either.
+        if child.meta.get("autonomy") == promotion.QUEUES_FOR_ME:
+            continue
+        results: list[tuple[str, str]] = []
+        all_done = True
+        for dep_id in deps:
+            dep_path = done_dir / f"{dep_id}.md"
+            if not dep_path.exists():
+                all_done = False
+                break
+            try:
+                dep_card = cards.parse(dep_path)
+                result_text = _first_section(dep_card.body, RESULT_HEADING)
+            except Exception:  # noqa: BLE001 — fail closed: any dep parse error blocks release
+                all_done = False
+                break
+            results.append((dep_id, result_text))
+        if not all_done:
+            continue
+        threaded = "\n\n".join(
+            f"## Result from {dep_id}\n\n{text}" for dep_id, text in results
+        )
+        child.body = child.body.rstrip("\n") + "\n\n" + threaded + "\n"
+        cards.transition(child, "inbox", queue_root)
+        released.append(child.path)
+    return released
+
+
 def parse_heartbeat(path: Path) -> list[dict]:
     m = FENCE.search(Path(path).read_text(encoding="utf-8"))
     if not m:
@@ -109,6 +223,10 @@ def run(repo_root: Path, tier: str, agent_id: str,
     ledger_day = datetime.date.today().isoformat()
     ran = {(r['project'], r['cadence'])
            for r in ledger.read_day(repo_root, "dispatch", ledger_day)}
+    # Task 4.1 -- depends-on DAG release pass. Runs unconditionally (not
+    # tier-gated): it concerns existing queue/ DAG state, not heartbeat
+    # cadences, and is fully additive to the per-cadence loop below.
+    release_dependents(repo_root)
     emitted: list[Path] = []
     for project, hb in _heartbeats(repo_root):
         try:
