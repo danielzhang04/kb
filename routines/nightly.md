@@ -7,6 +7,10 @@ You are agent `dispatcher-cloud` operating in the kb repo. Follow CLAUDE.md (the
    into queue/inbox/ (risk-tier T1), commit + push ops, STOP. (Cloud VM: `python` works.
    Desktop fallback: never bare `python` — the pinned-interpreter wrapper
    scripts/desktop_dispatch.ps1 owns local scheduled runs.)
+2a. Ensure pyyaml is importable: if `python -c "import yaml"` fails, run
+   `python -m pip install --user pyyaml`, then re-check with `python -c "import yaml"`.
+   If it still fails, write a wake-me card into queue/inbox/ (risk-tier T1), commit + push
+   ops, and STOP — do not continue without pyyaml.
 3. Run `python scripts/dispatch.py --tier cloud --agent dispatcher-cloud`.
 4. For each card the dispatcher just emitted (it prints the paths): set its state to
    `working` (you are the owner), execute its `## Work order` exactly, write `## Result`,
@@ -20,5 +24,5 @@ You are agent `dispatcher-cloud` operating in the kb repo. Follow CLAUDE.md (the
 5. Log each model step to the cost ledger:
    python -c "import sys; sys.path.insert(0,'scripts'); import ledger; ledger.append('.','cost','dispatcher-cloud',{'step':'<step>','model':'<model-id>','usd':'0.0'})"
 6. Commit ONLY coordination paths (queue/ ledgers/ memory/ dashboards/ orgs/*/STATE.md)
-   to ops; push. If push is rejected: pull --rebase and retry once; on second failure,
-   leave state uncommitted and write a wake-me card.
+   to ops; `git push origin ops`. If push is rejected: pull --rebase and retry once; on
+   second failure, leave state uncommitted and write a wake-me card.
