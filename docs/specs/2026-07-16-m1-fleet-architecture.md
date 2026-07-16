@@ -134,9 +134,10 @@ signature; keep novel/first-time T3 on the PR path." The synthesis makes it expl
 ### D1. Approval mechanism
 **Decision:** Rewrite `scripts/approvals.py` around a **signed, protected approval ref** as the
 real gate, with the Telegram possession-path layered on top for low-stakes convenience.
-- Approval records land at `approvals/<card-id>.yaml` on a **dedicated protected `approvals`
-  branch** (keeps `main`/KB content clean; dispatchers must fetch it). Record binds `card`,
-  `work-order-hash`, `action`, `target`, `expires`.
+- Approval records land as the **full approval card** at `queue/approvals/<card-id>.md` (with the
+  `## Work order` body, so the verifier can re-parse and re-hash it — not a flat `.yaml` dict) on a
+  **dedicated protected `approvals` branch** (keeps `main`/KB content clean; dispatchers must fetch
+  it). Record binds `card`, `work-order-hash`, `action`, `target`, `expires`.
 - New trust chain (all must hold, fail-closed): (1) record on the protected ref; (2) the
   introducing commit is **web-flow-signed and verified OFFLINE** via a repo-pinned
   `governance/web-flow.gpg` keyring (`git verify-commit` inside a scratch GNUPGHOME) — **no online
