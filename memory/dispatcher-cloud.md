@@ -44,3 +44,10 @@
   allow-list is binding and wins; do the in-list work, skip+flag the rest via wake-me. Do not
   assume `memory/nightly-reviewer.md` is "my" shard — `<agent-id>` is the acting agent
   (dispatcher-cloud), and role journals are separate, excluded shards.
+
+## Run 2026-07-16 (nightly)
+- Preamble OK, pyyaml importable. `dispatch.py --tier cloud` emitted 0 cards → no work orders,
+  no approvals to verify this run.
+- Logged one ledger step (nightly-dispatch, usd 0.0). Committed only ledgers/; direct push to
+  ops succeeded (DIRECT-PUSH path, no branch restriction hit this run).
+- Quiet run: nothing actionable, so no wake-me card.
