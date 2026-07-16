@@ -97,6 +97,42 @@ def test_verdict_rejects_future_dated():
     assert not ok and "future" in reason
 
 
+# --- 1.1: approval_payload / payload_hash canonical serializer ---
+
+def test_payload_binds_action_and_target():
+    body = "## Work order\ndo the thing\n"
+    c1 = cards.new_card("proj", "deploy", "svc-a", "T3", body=body)
+    c2 = cards.new_card("proj", "delete", "svc-a", "T3", body=body)  # diff action
+    c3 = cards.new_card("proj", "deploy", "svc-b", "T3", body=body)  # diff target
+    assert approvals.payload_hash(c1) != approvals.payload_hash(c2)
+    assert approvals.payload_hash(c1) != approvals.payload_hash(c3)
+    # The old content_hash(work_order_of(body)) collides across all three,
+    # proving the action+target fold-in is what distinguishes them.
+    wo = approvals.content_hash(approvals.work_order_of(body))
+    assert wo == approvals.content_hash(approvals.work_order_of(c2.body))
+    assert wo == approvals.content_hash(approvals.work_order_of(c3.body))
+
+
+def test_payload_is_order_stable():
+    body = "## Work order\nstuff\n"
+    c1 = cards.new_card("proj", "act", "tgt", "T3", body=body)
+    assert approvals.payload_hash(c1) == approvals.payload_hash(c1)
+    # Same three canonical fields but extra frontmatter / different key order
+    # must not change the hash (payload is built from the three fields only).
+    c2 = cards.new_card("proj", "act", "tgt", "T3", body=body,
+                        owner="worker-x", workflow="wf", role="work")
+    assert approvals.payload_hash(c1) == approvals.payload_hash(c2)
+
+
+def test_payload_list_vs_scalar_target_distinct():
+    body = "## Work order\nstuff\n"
+    scalar = cards.new_card("proj", "act", "a,b", "T3", body=body)
+    listed = cards.new_card("proj", "act", ["a", "b"], "T3", body=body)
+    # A naive "join list with ," would collide these; JSON-encoding the target
+    # keeps the scalar string and the list distinct.
+    assert approvals.payload_hash(scalar) != approvals.payload_hash(listed)
+
+
 # --- approved_by_human: end-to-end + laundering resistance ---
 
 def _git(repo, *args, name="Test Human", email="human@example.com"):

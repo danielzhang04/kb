@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import datetime
 import hashlib
+import json
 import subprocess
 from pathlib import Path
 
@@ -20,6 +21,30 @@ MAX_AGE = datetime.timedelta(hours=24)
 
 def content_hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def approval_payload(card: cards.Card) -> str:
+    """Canonical I3 payload: action + target + work-order prose.
+
+    ``action`` and ``target`` are JSON-encoded (sorted keys, explicit
+    separators) so the payload is *injective across types* — a scalar
+    ``"a,b"`` and a list ``["a", "b"]`` serialize differently and never
+    collide (a bare comma-join would collapse them). The payload is built
+    from the three fields explicitly, so frontmatter key order / whitespace
+    does not affect the hash.
+    """
+    action = card.meta.get("action")
+    target = card.meta.get("target")
+    enc = lambda v: json.dumps(v, sort_keys=True, separators=(",", ":"))
+    return (
+        f"action:{enc(action)}\n"
+        f"target:{enc(target)}\n"
+        f"work-order:\n{work_order_of(card.body)}"
+    )
+
+
+def payload_hash(card: cards.Card) -> str:
+    return content_hash(approval_payload(card))
 
 
 def work_order_of(body: str) -> str:
