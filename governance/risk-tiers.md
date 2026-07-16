@@ -14,3 +14,19 @@ Standing authorization (decided 2026-07-15): a cadence a human authored and comm
 HEARTBEAT.md on protected `main` is pre-approved at its declared risk tier — the human
 approved it by authoring it. Earned per-task-type autonomy (the grade ledger) governs
 everything agents generate themselves.
+Carve-out — `cadence:nightly-review` (added 2026-07-16): the human-authored `nightly-review`
+cadence (declared `risk-tier: T1` in the root `HEARTBEAT.md` on protected `main`) is authorized to
+**act alone at T1 for any trigger** — scheduled or manual Run-now — with its writes limited to the
+following enumerated allow-list. It does NOT queue-for-me while every write stays inside this list:
+- `dashboards/**`
+- the agent's own memory shard `memory/<agent-id>.md`
+- `ledgers/dispatch/**` (the cadence's own dispatch rows only)
+- the cadence's **own** card `queue/` state transition — moving *its own* card to `queue/done/`
+  with a `## Result` — and emitting **wake-me cards into `queue/inbox/`** (this is queueing work
+  for a human/dispatcher, not acting on it)
+
+Excluded from the carve-out (verbatim): `ledgers/grades/**` and `ledgers/activity/**` (integrity
+streams), any **other** agent's memory shard, `governance/**`, `orgs/*/contract.md`, and any project
+work tree. Any write outside the enumerated allow-list — including any of the excluded paths — voids
+the carve-out for that run, which reverts to queues-for-me (the card goes to `queue/approvals/`).
+This carve-out names `nightly-review` only; no other cadence inherits it.
