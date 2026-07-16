@@ -17,7 +17,7 @@
 - **Cross-platform scripts:** everything in `scripts/` must run on Windows (desktop) and Linux (cloud VM): `pathlib` everywhere, no shell-outs except git/gh, UTF-8 explicit.
 - **Card schema is law:** all coordination through cards conforming to `governance/card-schema.md` (spec §5). `action`/`target` never copied from untrusted text; free untrusted text only in `## Evidence`.
 - **Risk tiers:** T1/T2/T3 per spec §8; T4 (credentials-as-objects, money) is never carded.
-- **Python commands:** use `python` (3.11+ assumed on PATH; on Windows `py -3.11` works identically). Tests: `python -m pytest tests -q` from repo root.
+- **Python commands:** use `python` (3.11+ assumed on PATH; on Windows use the py launcher; bare python may resolve to a pip-less msys build). Tests: `python -m pytest tests -q` from repo root.
 - **Commits:** stage explicit paths (never `git add -A` — mirrors faceless-youtube operating law), end commit messages with `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`.
 
 ## File Structure (target)
