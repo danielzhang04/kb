@@ -2,6 +2,12 @@
 
 .claude/skills is GENERATED (committed so cloud sessions get it) — never hand-edit.
 Drift between manifest and content = tampering (spec s6).
+
+Adapter renderers (RENDERERS map) project skills/curated/* into other agents'
+native formats under the same authoritative-sync + SHA-256 drift-guard model.
+Only `codex` ships today; `render_gemini` etc. can be added later without
+restructuring — each renderer is a pure `(repo_root) -> (artifact_path, text)`
+function, and sync()/check() drive them generically.
 """
 from __future__ import annotations
 
@@ -30,6 +36,33 @@ def _dirs(repo_root: Path):
     return curated, mirror
 
 
+def render_codex(repo_root: Path) -> tuple[Path, str]:
+    """Pure renderer: skills/curated/* -> deterministic .codex/skills-catalog.md.
+
+    Returns (artifact_path, rendered_text). No filesystem writes here — sync()
+    writes it, check() re-derives it read-only to compare against the manifest.
+    """
+    curated, _ = _dirs(repo_root)
+    catalog = Path(repo_root) / ".codex" / "skills-catalog.md"
+    names = sorted(p.name for p in curated.iterdir() if p.is_dir()) if curated.exists() else []
+    lines = [
+        "# Codex Skills Catalog",
+        "",
+        "Generated from skills/curated/ by scripts/sync_skills.py — do not hand-edit.",
+        "",
+    ]
+    lines.extend(f"- {name}" for name in names)
+    text = "\n".join(lines) + "\n"
+    return catalog, text
+
+
+# Adapter dispatch, kept generic: add render_gemini etc. here later without
+# restructuring sync()/check(). Only codex ships today.
+RENDERERS = {
+    "codex": render_codex,
+}
+
+
 def sync(repo_root: Path) -> dict:
     curated, mirror = _dirs(repo_root)
     mirror.mkdir(parents=True, exist_ok=True)
@@ -47,25 +80,60 @@ def sync(repo_root: Path) -> dict:
         if existing.is_dir() and existing.name not in wanted:
             shutil.rmtree(existing)
     (mirror / MANIFEST).write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+    for _adapter, render_fn in RENDERERS.items():
+        artifact, text = render_fn(repo_root)
+        artifact.parent.mkdir(parents=True, exist_ok=True)
+        # newline="" disables universal-newline translation on write (Windows
+        # would otherwise turn our "\n" into "\r\n", desyncing the on-disk
+        # bytes from the digest computed over `text`).
+        artifact.write_text(text, encoding="utf-8", newline="")
+        digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        adapter_manifest = artifact.parent / MANIFEST
+        adapter_manifest.write_text(
+            json.dumps({artifact.name: digest}, indent=2), encoding="utf-8"
+        )
+
     return manifest
 
 
 def check(repo_root: Path) -> list[str]:
     _, mirror = _dirs(repo_root)
     mf = mirror / MANIFEST
+    problems: list[str] = []
     if not mf.exists():
-        return ["no manifest — run sync"]
-    manifest = json.loads(mf.read_text(encoding="utf-8"))
-    problems = []
-    for name, digest in manifest.items():
-        d = mirror / name
-        if not d.exists():
-            problems.append(f"{name}: mirrored copy missing")
-        elif _hash_dir(d) != digest:
-            problems.append(f"{name}: mirrored copy does not match manifest (tampering/drift)")
-    for d in mirror.iterdir():
-        if d.is_dir() and d.name not in manifest:
-            problems.append(f"{d.name}: unmanifested skill in mirror")
+        problems.append("no manifest — run sync")
+    else:
+        manifest = json.loads(mf.read_text(encoding="utf-8"))
+        for name, digest in manifest.items():
+            d = mirror / name
+            if not d.exists():
+                problems.append(f"{name}: mirrored copy missing")
+            elif _hash_dir(d) != digest:
+                problems.append(f"{name}: mirrored copy does not match manifest (tampering/drift)")
+        for d in mirror.iterdir():
+            if d.is_dir() and d.name not in manifest:
+                problems.append(f"{d.name}: unmanifested skill in mirror")
+
+    for adapter, render_fn in RENDERERS.items():
+        artifact, expected_text = render_fn(repo_root)
+        adapter_manifest = artifact.parent / MANIFEST
+        if not adapter_manifest.exists():
+            problems.append(f"{adapter}: no manifest — run sync")
+            continue
+        adapter_data = json.loads(adapter_manifest.read_text(encoding="utf-8"))
+        expected_digest = adapter_data.get(artifact.name)
+        if expected_digest is None:
+            problems.append(f"{adapter}: {artifact.name} missing from manifest")
+            continue
+        if not artifact.exists():
+            problems.append(f"{adapter}: {artifact.name} missing")
+            continue
+        actual_digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
+        if actual_digest != expected_digest:
+            problems.append(
+                f"{adapter}: {artifact.name} does not match manifest (tampering/drift)"
+            )
     return problems
 
 
