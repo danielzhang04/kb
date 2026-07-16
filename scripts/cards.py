@@ -10,6 +10,7 @@ import yaml
 
 STATES = ("inbox", "blocked", "working", "done", "approvals", "approved", "rejected")
 RISK_TIERS = ("T1", "T2", "T3")
+ROLES = ("scout", "manage", "work", "inspect", "consolidate")
 REQUIRED = ("id", "project", "action", "target", "risk-tier", "state")
 STATE_DIR = {
     "inbox": "inbox", "blocked": "inbox",
@@ -50,6 +51,8 @@ def _validate(meta: dict) -> None:
         raise ValidationError(f"risk-tier must be one of {RISK_TIERS}")
     if meta["state"] not in STATES:
         raise ValidationError(f"unknown state: {meta['state']}")
+    if meta.get("role") and meta["role"] not in ROLES:
+        raise ValidationError(f"role must be one of {ROLES}")
 
 
 def new_card(project, action, target, risk_tier, body: str = "", **extra) -> Card:

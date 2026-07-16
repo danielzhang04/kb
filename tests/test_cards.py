@@ -47,3 +47,13 @@ def test_unowned_card_cannot_start_working(tmp_path):
     cards.save(c, tmp_path)
     with pytest.raises(cards.ValidationError):
         cards.transition(c, "working", tmp_path)
+
+
+def test_invalid_role_rejected():
+    with pytest.raises(cards.ValidationError):
+        cards.new_card("p", "a", "t", "T1", role="bogus")
+
+
+def test_default_role_is_work():
+    c = cards.new_card("p", "a", "t", "T1")
+    assert c.meta["role"] == "work"
