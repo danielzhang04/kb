@@ -32,9 +32,12 @@
 # branches -- NOT ops-push. So every card mutation this runner makes (state
 # transition, `## Result` append) lands on a per-run `codex/<agent>-<ts>` branch,
 # never on `ops`, even though card state is normally "coordination state" per the
-# constitution. A human/dispatcher reconciles `codex/*` branches back into `ops`
-# out-of-band until HUMAN GATE 5.9 grants the scoped ops-push path -- that
-# reconciliation step is NOT wired by this script; it is what the human wires later.
+# constitution. Gate 5.9 (Daniel, 2026-07-16) chose the PR PATH for Phase B: the
+# runner pushes its per-run codex/* branch at run end; a human or the cloud leg
+# opens/merges the PR into ops (the `protect-ops-main-from-workers` ruleset blocks
+# this key from direct ops/main pushes). The runner itself never opens PRs and
+# never merges -- it holds no REST/gh capability (trust-anchor invariant); the
+# PR-open/merge leg stays human/cloud, mirroring the cloud leg's ops-sync fallback.
 
 param(
     [Parameter(Mandatory = $true)]
@@ -309,6 +312,22 @@ ledger.append(Path(r'$RepoRoot'), 'cost', '$Agent', {
 "@
 
     Write-RunnerLog ("card-done id=$cardId agent=$Agent model=$modelId codex-exit=$codexExit interpreter=$py")
+}
+
+# --- Phase B ops-write path (gate 5.9 decision, Daniel, 2026-07-16: PR path) ----------
+# The per-run codex/* branch is pushed over the git-transport deploy key; the PR into
+# `ops` is opened/merged by a human or the cloud leg (this runner NEVER opens PRs --
+# it holds no REST/gh capability by the trust-anchor invariant, and NEVER merges).
+# The `protect-ops-main-from-workers` ruleset blocks this key from pushing ops/main
+# directly, so the push below can only ever land on the codex/* work branch.
+git -C $RepoRoot push origin $workBranch
+if ($LASTEXITCODE -ne 0) {
+    Write-RunnerLog ("push-failed agent=$Agent branch=$workBranch exit=$LASTEXITCODE -- work remains local; human must reconcile")
+    New-WakeMeCard $py "agent_runner:$Agent:push-failed" "Pushing work branch '$workBranch' failed (exit $LASTEXITCODE). Card results from this run exist only locally on that branch; a human must push/reconcile it and check the deploy-key/remote wiring (HUMAN GATE 5.10)."
+    if ($overallExit -eq 0) { $overallExit = 1 }
+}
+else {
+    Write-RunnerLog ("pushed agent=$Agent branch=$workBranch -- awaiting PR into ops (human or cloud leg opens/merges; runner never does)")
 }
 
 Write-RunnerLog ("run-complete agent=$Agent branch=$workBranch overall-exit=$overallExit interpreter=$py")
