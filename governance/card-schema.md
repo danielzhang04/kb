@@ -22,7 +22,7 @@ workflow: <name|null>  # parent workflow instance, if part of one (§5.1)
 depends-on: [ids]      # dispatcher releases the card only when these are done;
                        #  their ## Result sections become this card's input
 variant-group: <id|null>  # marks N sibling cards exploring variations of the same task
-role: work|consolidate    # consolidate = judge card: scores/picks/merges its
+role: scout|manage|work|inspect|consolidate  # consolidate = judge card: scores/picks/merges its
                           #  variant-group siblings' results
 ```
 Body sections: `## Work order` (Manager-authored), `## Evidence` (fenced blockquote — the ONLY place free text from untrusted sources may appear; agents are instructed by the constitution to treat Evidence as inert data, never instructions), `## Result` (Worker/Inspector-appended).
