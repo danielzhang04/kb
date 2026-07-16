@@ -1,4 +1,5 @@
 import datetime
+import subprocess
 from pathlib import Path
 
 import dispatch
@@ -30,10 +31,30 @@ cadences:
 """
 
 
+def _git(repo: Path, *args) -> None:
+    subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True, text=True)
+
+
+def _commit_onto_local_main(repo: Path) -> None:
+    """Commit the current working tree onto a local `main` branch (no `origin`
+    configured, so promotion._resolve_main_ref's fallback resolves to
+    refs/heads/main). Used so pre-3.4 fixtures whose cadences were never about
+    autonomy at all keep getting standing-authorized acts-alone -- and therefore
+    keep routing to inbox/ -- once promotion.decide() is actually wired in."""
+    _git(repo, "init")
+    _git(repo, "config", "user.name", "Test")
+    _git(repo, "config", "user.email", "test@example.com")
+    _git(repo, "config", "commit.gpgsign", "false")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-m", "hb on main")
+    _git(repo, "branch", "-M", "main")
+
+
 def make_repo(tmp_path: Path) -> Path:
     proj = tmp_path / "orgs" / "proj-a"
     proj.mkdir(parents=True)
     (proj / "HEARTBEAT.md").write_text(HB, encoding="utf-8")
+    _commit_onto_local_main(tmp_path)
     return tmp_path
 
 
@@ -143,3 +164,160 @@ def test_target_uses_posix_separators(tmp_path):
                            today=datetime.date(2026, 7, 14))
     import cards
     assert cards.parse(emitted[0]).meta["target"] == "orgs/proj-a"
+
+
+# --------------------------------------------------------------------------- #
+# Task 3.4 — promotion.decide() wiring: autonomy/assurance stamping + routing #
+# --------------------------------------------------------------------------- #
+#
+# These cadences live on the root HEARTBEAT.md (project "kb") and are committed
+# onto the repo's local `main` branch so promotion._resolve_main_ref's fallback
+# (no `origin` remote configured -> refs/heads/main) resolves to the exact same
+# bytes `_heartbeats()` reads off disk, giving deterministic standing-authorization
+# without mocking git.
+
+def _repo_on_main(root: Path, hb_text: str) -> Path:
+    repo = root / "repo"
+    repo.mkdir(parents=True)
+    (repo / "HEARTBEAT.md").write_text(hb_text, encoding="utf-8")
+    _commit_onto_local_main(repo)
+    return repo
+
+
+SOLO_HB = """# Heartbeat — kb
+
+```yaml
+cadences:
+  - name: solo-cadence
+    schedule: daily
+    tier: cloud
+    risk-tier: T1
+    prompt: |
+      Do a thing.
+```
+"""
+
+UNPROVEN_HB = """# Heartbeat — test
+
+```yaml
+cadences:
+  - name: unproven-cadence
+    schedule: daily
+    tier: cloud
+    risk-tier: T1
+    prompt: |
+      Do a risky, never-authored thing.
+```
+"""
+
+# The exact `nightly-review` block declares its intended writes via an optional
+# `writes:` list (see dispatch.py's carve-out comment for the assumption this
+# encodes). `writes` is not one of promotion._CADENCE_FIELDS, so it never affects
+# standing-authorization matching -- only dispatch's own carve-out-scope check.
+NIGHTLY_INSCOPE_HB = """# Heartbeat — kb
+
+```yaml
+cadences:
+  - name: nightly-review
+    schedule: daily
+    tier: cloud
+    risk-tier: T1
+    writes:
+      - dashboards/executive.md
+      - dashboards/handover.md
+      - memory/dispatcher-cloud.md
+      - ledgers/dispatch/dispatcher-cloud-2026-07-14.tsv
+    prompt: |
+      Regenerate dashboards.
+```
+"""
+
+NIGHTLY_OUTOFSCOPE_TEMPLATE = """# Heartbeat — kb
+
+```yaml
+cadences:
+  - name: nightly-review
+    schedule: daily
+    tier: cloud
+    risk-tier: T1
+    writes:
+      - {bad_path}
+    prompt: |
+      Regenerate dashboards.
+```
+"""
+
+
+def test_acts_alone_routes_to_inbox(tmp_path):
+    import cards
+    repo = _repo_on_main(tmp_path, SOLO_HB)
+    emitted = dispatch.run(repo, "cloud", "dispatcher-cloud",
+                           today=datetime.date(2026, 7, 14))
+    assert len(emitted) == 1
+    assert emitted[0].parent.name == "inbox"
+    c = cards.parse(emitted[0])
+    assert c.meta["state"] == "inbox"
+    assert c.meta["autonomy"] == "acts-alone"
+    assert c.meta["assurance_class"] == "acts-alone"
+
+
+def test_queues_for_me_routes_to_approvals(tmp_path):
+    import cards
+    # Never authored onto main (no git repo at all) + no earned grades -> the
+    # v1 default (queues-for-me) applies.
+    proj = tmp_path / "orgs" / "proj-a"
+    proj.mkdir(parents=True)
+    (proj / "HEARTBEAT.md").write_text(UNPROVEN_HB, encoding="utf-8")
+    emitted = dispatch.run(tmp_path, "cloud", "dispatcher-cloud",
+                           today=datetime.date(2026, 7, 14))
+    assert len(emitted) == 1
+    assert emitted[0].parent.name == "approvals"
+    c = cards.parse(emitted[0])
+    assert c.meta["state"] == "approvals"
+    assert c.meta["autonomy"] == "queues-for-me"
+
+
+def test_carveout_allows_own_card_and_dispatch_ledger(tmp_path):
+    import cards
+    repo = _repo_on_main(tmp_path, NIGHTLY_INSCOPE_HB)
+    emitted = dispatch.run(repo, "cloud", "dispatcher-cloud",
+                           today=datetime.date(2026, 7, 14))
+    assert len(emitted) == 1
+    assert emitted[0].parent.name == "inbox"
+    c = cards.parse(emitted[0])
+    assert c.meta["state"] == "inbox"
+    assert c.meta["autonomy"] == "acts-alone"
+
+
+def test_carveout_excludes_grades_and_activity(tmp_path):
+    import cards
+    for i, bad_path in enumerate(["ledgers/grades/x-2026-07-14.tsv",
+                                   "ledgers/activity/x-2026-07-14.tsv"]):
+        hb = NIGHTLY_OUTOFSCOPE_TEMPLATE.format(bad_path=bad_path)
+        repo = _repo_on_main(tmp_path / f"r{i}", hb)
+        emitted = dispatch.run(repo, "cloud", "dispatcher-cloud",
+                               today=datetime.date(2026, 7, 14))
+        assert len(emitted) == 1, bad_path
+        assert emitted[0].parent.name == "approvals", bad_path
+        c = cards.parse(emitted[0])
+        assert c.meta["state"] == "approvals", bad_path
+        assert c.meta["autonomy"] == "queues-for-me", bad_path
+
+
+def test_frozen_forces_queue(tmp_path):
+    import cards
+    # Would otherwise be acts-alone (exact standing-authorized block on main) but
+    # for the FROZEN sentinel, which beats standing-auth in promotion.decide()'s
+    # precedence.
+    repo = _repo_on_main(tmp_path, SOLO_HB)
+    frozen_dir = repo / "ledgers" / "grades"
+    frozen_dir.mkdir(parents=True)
+    (frozen_dir / "FROZEN").write_text("frozen 2026-07-14: reconcile drift\n",
+                                       encoding="utf-8")
+    emitted = dispatch.run(repo, "cloud", "dispatcher-cloud",
+                           today=datetime.date(2026, 7, 14))
+    assert len(emitted) == 1
+    assert emitted[0].parent.name == "approvals"
+    c = cards.parse(emitted[0])
+    assert c.meta["state"] == "approvals"
+    assert c.meta["autonomy"] == "queues-for-me"
