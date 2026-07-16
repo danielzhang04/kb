@@ -1,0 +1,35 @@
+{
+  "name": "kb-dashboard",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "kb Mission Control — optional local web daemon projecting the fleet's live state (v0 read-only).",
+  "engines": {
+    "node": "24.18.0",
+    "npm": "11.16.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "dev:server": "node server/index.ts",
+    "start": "node server/index.ts",
+    "build": "vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fastify/websocket": "^11.3.0",
+    "chokidar": "^5.0.0",
+    "fastify": "^5.10.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.1.5",
+    "vitest": "^4.1.10"
+  }
+}
