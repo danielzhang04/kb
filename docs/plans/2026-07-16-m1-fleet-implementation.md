@@ -85,7 +85,11 @@ This FINAL applies the two review lenses (repo-reality + ordering-safety). The l
 - **`decide()` emits an `assurance_class`** (`T3-novel` signed-only vs `T3-established`
   fast-lane/possession-eligible); 2.4 consumes it; a first-ever-T3 → no-possession-button test is
   added. (ordering-safety MINOR 6)
-- Minor wording/coverage fixes: pre-commit-hook claim removed (sync is manual / nightly `--check`);
+- Minor wording/coverage fixes: pre-commit-hook claim **corrected** (there IS an active hook —
+  `.githooks/pre-commit` via `core.hooksPath`; it auto-runs `sync_skills.py` + auto-stages
+  `.claude/skills` on any commit touching `skills/curated/`, and runs `sync_skills.py --check` on
+  **every** commit, blocking on drift — so 3.5's inspector-skill commit auto-syncs/auto-stages, and
+  5.1 must extend the hook's `check()` to also cover the new `.codex/skills-catalog.md`);
   scaffold test asserts **≥1** tiered cadence; nightly.md prose edits are explicitly merged to `ops`.
   (repo-reality MINOR 6/7/8)
 
@@ -210,7 +214,9 @@ push is `git push origin ops` (already correct — assert, don't change semantic
   `dashboards/executive.md` + `dashboards/handover.md` (today's date); the cadence card in
   `queue/done/` with a `## Result`; the ops-advancing commit was **authored in the cloud**
   (author/timestamp vs run time); Task Scheduler `kb-desktop-dispatcher` stayed **Disabled**; the
-  push landed on `ops` directly.
+  push landed on `ops` directly. **Note:** `dashboards/executive.md` and `dashboards/handover.md` exist
+  only on the **`ops`** branch (not on `claude/m1-fleet` or `main`), so run every check in this gate
+  against an **`ops` checkout** — do not look for these files on the work branch or on `main`.
 - [ ] Confirm the carve-out **acted alone**: the `nightly-review` cadence card went straight to
   `queue/done/` (NOT to `queue/approvals/`), and no write landed outside the 0.4 allow-list
   (in particular, `ledgers/grades/**` and `ledgers/activity/**` were untouched by the run).
@@ -255,10 +261,20 @@ so both channels bind the **same** hash.
   would collide — proves the fold-in).
 - `test_payload_is_order_stable`: same card serialized twice → identical hash; whitespace/key-order
   in frontmatter does not change it (payload is built from the three fields explicitly, not raw YAML).
+- `test_payload_list_vs_scalar_target_distinct` **(NEW — injectivity/security):** a card with
+  `target: "a,b"` (scalar string) and a card with `target: ["a","b"]` (list), identical in every other
+  field, produce **different** `payload_hash`. A naive "join list with `,`" serialization collides
+  these two; JSON-encoding the `target` field keeps them distinct. (Guards the rolled-back run's
+  list-vs-scalar hash-collision finding.)
 
-**Implementation.** `approval_payload` returns e.g.
-`"action:{action}\ntarget:{target}\nwork-order:\n{work_order_of(body)}"` (target normalized: if it
-is a list, join with `,`; POSIX separators). `payload_hash = content_hash(approval_payload(card))`.
+**Implementation.** `approval_payload` builds the canonical string from the three fields explicitly,
+**JSON-encoding `action` and `target`** so the payload is injective across scalar-vs-list values —
+e.g. `f"action:{json.dumps(action, sort_keys=True, separators=(',', ':'))}\n"
+f"target:{json.dumps(target, sort_keys=True, separators=(',', ':'))}\n"
+f"work-order:\n{work_order_of(body)}"`. **Do NOT** join a list target with `,` into a bare string:
+`target: "a,b"` (scalar) and `target: ["a","b"]` (list) would then serialize identically and collide.
+`json.dumps` with `sort_keys=True` and explicit `separators` gives a stable, type-distinguishing
+encoding (`"a,b"` vs `["a","b"]` differ). `payload_hash = content_hash(approval_payload(card))`.
 
 **Verification.** `python -m pytest tests/test_approvals.py -q` green for the two new cases.
 
@@ -329,6 +345,13 @@ mirrors the existing suite's `-c commit.gpgsign=false` stance (test_approvals.py
 environment is not assumed to have signing configured. Month-1 exit #7 ("all pytest green") must hold
 on a box without gpg (skips, not errors).
 
+**Windows/MSYS note (this desktop box).** When a test or the wrapper (1.3) actually invokes gpg on
+Windows: (a) gpg-agent can fail to start under long Windows paths, so keep the scratch `GNUPGHOME`
+path **short** — create it under `%TEMP%` (e.g. `C:\Users\<user>\AppData\Local\Temp\...`), not a deep
+nested worktree path — or gpg-agent socket creation intermittently fails; (b) `gpg --import` can exit
+with code **2 even on success** on this platform, so **judge import success by key presence in the
+scratch keyring** (`gpg --list-keys <fpr>` after import), **not** by the `--import` exit code.
+
 **Verification.** Full `tests/test_approvals.py` green (with gpg: signing tests run; without gpg:
 they skip and fixture-based tests still run); `verdict()` regression cases unchanged.
 
@@ -348,11 +371,34 @@ call.
 identity + author-email; `skipif` no gpg), `test_verify_wrapper_bad_sig` (tampered → False),
 `test_verify_wrapper_no_gpg` (simulate missing binary via a monkeypatched PATH → fails closed with a
 clear reason, not a crash — this test runs everywhere).
+- `test_revoked_key_rejected_despite_validsig` **(NEW — security):** a status stream carrying both
+  `VALIDSIG` and `REVKEYSIG` → wrapper returns `(False, …)`. (May feed the parser a canned `[GNUPG:]`
+  status fixture rather than requiring a real revoked key, so it runs without gpg.)
+- `test_expired_key_rejected_despite_validsig` **(NEW — security):** a status stream with `VALIDSIG`
+  plus `EXPKEYSIG` (or `EXPSIG`) → `(False, …)`.
+- `test_status_tokens_anchored_to_gnupg_prefix` **(NEW — security):** a signature whose UID/comment
+  text literally contains the substring `VALIDSIG` (or `REVKEYSIG`) but whose real `[GNUPG:]` status
+  lines do **not** → the wrapper's verdict is driven only by the prefixed status lines (a bogus GOOD
+  from a substring match, or a bogus reject, is proven impossible).
 
 **Implementation.** Create a temp dir as `GNUPGHOME`, `gpg --import governance/web-flow.gpg`, then
-`git -c gpg.program=gpg verify-commit --raw <sha>`; parse `VALIDSIG` / signer; read author email via
+`git -c gpg.program=gpg verify-commit --raw <sha>`; read author email via
 `git show -s --format=%ae <sha>`. Never leak the temp dir; `errors="replace"`; on `FileNotFoundError`
 (no gpg) return `(False, "gpg unavailable", None)`.
+
+**Verdict hardening (security finding from the rolled-back run — MUST):**
+- **`VALIDSIG` alone is NOT "good".** A revoked or expired key/signature can still emit `VALIDSIG`.
+  The signature is GOOD **only when `VALIDSIG` is present AND none of `REVKEYSIG` / `EXPKEYSIG` /
+  `EXPSIG` is present.** Any of those three present → return `(False, "<token>", None)` (fail closed).
+- **Anchor token parsing to the `[GNUPG:]` status prefix.** Parse status tokens **only** from lines
+  that start with the literal `[GNUPG:] ` prefix (the `--status-fd`/`--raw` machine-readable stream);
+  take the token as the first field after that prefix. **Never** substring-match `VALIDSIG` (or any
+  token) against the whole `verify-commit` output — an attacker-controlled UID/comment string could
+  otherwise inject a token substring. This is why the wrapper reads the raw status lines, not the
+  human-readable text.
+- **Subprocess timeouts everywhere.** Every `gpg` and `git` invocation (`--import`, `verify-commit`,
+  `show`) runs with an explicit `subprocess` `timeout=` so a hung gpg-agent cannot wedge the run;
+  on `TimeoutExpired` return fail-closed with a clear reason.
 
 **Verification.** `python -m pytest tests/test_approvals.py -k verify_wrapper -q` green (signing cases
 skip without gpg; the no-gpg case always runs).
@@ -756,9 +802,14 @@ against an explicit rubric (correctness, scope-adherence, evidence-quality, safe
 compliance; bars per `risk-tiers.md`).
 
 **Files touched:** `skills/curated/inspector/SKILL.md` (+ references); must pass
-`scripts/scan_skill.py` + human read-through. **Mirroring to `.claude/skills` / `.codex` is via the
-manual `python scripts/sync_skills.py` run (or caught read-only by the nightly `sync_skills --check`)
-— there is no pre-commit hook in this repo.**
+`scripts/scan_skill.py` + human read-through. **Mirroring to `.claude/skills` is AUTOMATED at commit
+time: this repo has an active pre-commit hook (`.githooks/pre-commit`, wired via `git config
+core.hooksPath .githooks`). Because this task's commit touches `skills/curated/`, the hook runs
+`python scripts/sync_skills.py` and then `git add .claude/skills` for you (auto-sync + auto-stage), so
+the mirrored files land in the same commit; the hook then runs `python scripts/sync_skills.py --check`
+on the result and blocks the commit if any drift remains. (The `--check` runs on EVERY commit in the
+repo, not just skill commits.) A manual `sync_skills.py` run is only needed if you want to inspect the
+render before committing.**
 
 **Failing/verification tests:** `python scripts/scan_skill.py skills/curated/inspector` → 0 findings;
 `python scripts/sync_skills.py --check` → clean after an explicit `python scripts/sync_skills.py`.
@@ -919,7 +970,7 @@ existing idly.
 **Commit message:** `feat(projects): scaffold kb-ops + atlas-prep with ≥1 tiered conservative cadence each`
 
 ### HUMAN GATE 4.7 — `governance/card-schema.md`: extend the `role` enum (agent PROPOSES)
-- [ ] Agent proposes broadening line-26 `role: work|consolidate` → `scout|manage|work|inspect|
+- [ ] Agent proposes broadening line-25 `role: work|consolidate` → `scout|manage|work|inspect|
   consolidate`; **Daniel** commits it on `main` (must land with/just before 4.4 so schema and
   validator agree).
 
@@ -947,14 +998,26 @@ authoritative-sync + SHA-256 drift-guard model as `.claude/skills`. Keep the ada
 **Files touched:** `scripts/sync_skills.py` (add `render_codex(repo_root)`, fold its output hash into
 `MANIFEST.json` / a codex manifest); `tests/test_sync_skills.py`.
 
+**Pre-commit-hook coverage (repo reality).** `.githooks/pre-commit` (active via `core.hooksPath`) runs
+`python scripts/sync_skills.py --check` on **every** commit and blocks on drift — but today that
+`check()` covers **only `.claude/skills`**. The new `.codex/skills-catalog.md` must be caught at commit
+time too. **Extend `check()`** (the hook already calls `sync_skills.py --check`, so widening `check()`
+gives commit-time coverage of the codex catalog for free — no hook-script edit needed). Add a named
+failing test asserting `check()` (hence the pre-commit hook) fails when the codex catalog drifts.
+
 **Failing tests first:** `test_render_codex_writes_catalog` (`.codex/skills-catalog.md` exists,
 lists curated skills); `test_codex_catalog_drift_detected` (tampering the catalog is caught by
-`check()`); keep existing `.claude/skills` sync tests green.
+`check()`); `test_check_covers_codex_catalog_drift` **(NEW)** — after a valid sync, mutating
+`.codex/skills-catalog.md` makes `sync_skills.py --check` (the exact command the pre-commit hook runs)
+exit non-zero, proving the codex catalog is now inside the commit-time drift guard, not only
+`.claude/skills`; keep existing `.claude/skills` sync tests green.
 
 **Implementation.** A `render_codex` that writes a deterministic catalog + records its SHA-256; extend
-`check()` to include the codex catalog. Do not add Gemini.
+`check()` to include the codex catalog **alongside `.claude/skills`** (so the pre-commit hook's
+`--check` call blocks a drifted codex catalog at commit time). Do not add Gemini.
 
-**Verification.** `python -m pytest tests/test_sync_skills.py -q` green; `--check` clean after sync.
+**Verification.** `python -m pytest tests/test_sync_skills.py -q` green; `--check` clean after sync;
+`test_check_covers_codex_catalog_drift` red before the `check()` extension, green after.
 
 **Commit message:** `feat(sync): render_codex skills catalog under drift-guard (generic renderer map)`
 
@@ -1144,7 +1207,8 @@ cadence; `enforce_admins on`.
   Within Wave 3, 3.1/3.2/3.3/3.5 are independent files (parallel); 3.4 depends on 3.1+3.3; 3.6
   depends on 3.1–3.4.
 - **Wave 4 shares `dispatch.py` with Wave 3 (3.4) and Wave 5 (5.2)** — serialize all `dispatch.py`
-  edits through **one** worktree to avoid churn: land them in the order **3.4 → 4.1 → 4.2 → 5.2**
+  edits through **one** worktree to avoid churn: land them in the order **3.4 → 4.1 → 4.2 → 5.2 → D1**
+  **(dashboard plan's sessionId-at-claim edit — see `docs/plans/2026-07-16-dashboard-implementation.md`)**
   (each is an additive edit to `run()`; re-run `tests/test_dispatch.py` after each). Wave-4's
   non-dispatch tasks (4.3 role templates, 4.5 scaffolds) parallelize freely; 4.4 (`cards.py`) is
   independent but must land with/just after the 4.7 schema patch.
