@@ -198,7 +198,7 @@ schema field. See the disposition log at the end.
    human-committed proposals — an agent may only PROPOSE the exact text (into the PR body or a
    `docs/proposals/*.md` scratch file); Daniel commits it.
 7. **HIGH-EFFORT security lines are not routine.** The **dispatcher-side WebAuthn verifier (D2.3)**
-   and the **Broker daemon (D3.2)** are carved out as human-reviewed security work with an explicit
+   and the **Broker daemon (D3.3)** are carved out as human-reviewed security work with an explicit
    design/threat-review gate before merge — a subtle bug in either silently defeats the whole gate /
    grants new lateral-movement capability. They are **NOT** ordinary agent-buildable tasks.
 8. **STOP / preamble before any spawn or launch.** Per the constitution, `scripts/preamble.py` runs
