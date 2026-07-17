@@ -10,6 +10,27 @@ import { render, screen, cleanup, within, fireEvent } from '@testing-library/rea
 import { Agents, deriveRoster } from './Agents';
 import type { PlaneAIndex } from '../../server/planeA/indexer';
 import type { ParsedCard } from '../../server/planeA/cards';
+import type { AgentRosterEntry } from '../../server/agents/roster';
+
+/** Build a full roster entry with sane defaults, overriding only the fields a test cares about. */
+function entry(over: Partial<AgentRosterEntry> & { id: string }): AgentRosterEntry {
+  return {
+    role: null,
+    working: false,
+    current: null,
+    projects: [],
+    cardCount: 0,
+    ledger: { dispatches: 0, steps: 0, days: 0, lastActive: null },
+    sources: [],
+    effective: { runtime: 'claude', model: 'claude-opus-4-8', sourceRuntime: 'policy', sourceModel: 'policy' },
+    declared: false,
+    runnerBound: false,
+    declaredRuntime: null,
+    declaredModel: null,
+    description: null,
+    ...over,
+  };
+}
 
 function card(owner: string | null, state: string, extra: Partial<ParsedCard['meta']> = {}): ParsedCard {
   return {
@@ -131,6 +152,57 @@ describe('Agents view', () => {
     const chip = screen.getByTestId('agent-claude-m1-routing-chip');
     expect((chip as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getAllByTestId('agent-claude-m1-routing-nudge').length).toBeGreaterThan(0);
+  });
+
+  describe('C7.4 — declared / runner-bound status', () => {
+    // A declared agent id that owns no cards and wrote no ledgers, honestly flagged runner-bound:false.
+    const DECLARED_ROSTER: AgentRosterEntry[] = [
+      entry({
+        id: 'composer-scribe',
+        role: 'writer',
+        declared: true,
+        runnerBound: false,
+        declaredRuntime: 'claude',
+        declaredModel: 'claude-sonnet-5',
+        description: 'Drafts long-form copy',
+      }),
+      // A declared agent a human has bound to a runner → runnable.
+      entry({ id: 'codex-a', role: 'worker', declared: true, runnerBound: true, declaredRuntime: 'codex' }),
+      // Not declared, but its id is a registry default_worker → also runnable.
+      entry({ id: 'worker-desktop', role: 'worker', declared: false, runnerBound: false, sources: ['ledger'] }),
+    ];
+
+    it('surfaces a declared-but-idle agent with a "declared — no runner" status', () => {
+      render(<Agents roster={DECLARED_ROSTER} routing={ROUTING as never} sessionToken="tok" />);
+      const row = screen.getByTestId('agent-row-composer-scribe');
+      // The declared identity surfaces even with zero cards + zero ledger activity.
+      expect(within(row).getByText('composer-scribe')).toBeTruthy();
+      const binding = within(row).getByTestId('agent-binding-composer-scribe');
+      expect(within(binding).getByText('declared')).toBeTruthy();
+      expect(within(binding).getByText('no runner')).toBeTruthy();
+      // Its declared role + runtime are shown (role in its column, runtime in the binding cell).
+      expect(within(row).getByText('writer')).toBeTruthy();
+      expect(within(binding).getByText('claude')).toBeTruthy();
+    });
+
+    it('shows the runnable state for a runner-bound agent and for a default_worker id', () => {
+      render(<Agents roster={DECLARED_ROSTER} routing={ROUTING as never} sessionToken="tok" />);
+      // Declared + human-bound → runner-bound.
+      const bound = within(screen.getByTestId('agent-row-codex-a')).getByTestId('agent-binding-codex-a');
+      expect(within(bound).getByText('runner-bound')).toBeTruthy();
+      expect(within(bound).queryByText('no runner')).toBeNull();
+      // Not declared, but a registry default_worker → also runnable.
+      const dw = within(screen.getByTestId('agent-row-worker-desktop')).getByTestId('agent-binding-worker-desktop');
+      expect(within(dw).getByText('observed')).toBeTruthy();
+      expect(within(dw).getByText('runner-bound')).toBeTruthy();
+    });
+
+    it('keeps the existing per-agent routing control rendering for declared agents', () => {
+      render(<Agents roster={DECLARED_ROSTER} routing={ROUTING as never} sessionToken="tok" />);
+      // The governed routing chip is still present + enabled for a declared agent.
+      const chip = screen.getByTestId('agent-composer-scribe-routing-chip');
+      expect((chip as HTMLButtonElement).disabled).toBe(false);
+    });
   });
 
   it('degrades to a calm empty state when no agents are on the board', () => {
