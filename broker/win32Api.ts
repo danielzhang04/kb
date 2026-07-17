@@ -194,9 +194,10 @@ export function loadWin32Api(): Win32Api {
     }
   })();
 
-  /** Owner-only SECURITY_ATTRIBUTES (built ONCE). null → SDDL failed; caller passes null SA and relies on
-   *  the per-connection SID check (the load-bearing control). The LocalAlloc'd SD is kept for daemon life
-   *  (one allocation, not per-connection — no leak growth). */
+  /** Owner-only SECURITY_ATTRIBUTES (built ONCE). null → the daemon SID or SDDL construction failed; in
+   *  that case `createPipe` returns null (fail closed) — the control pipe is NEVER created with a null SA,
+   *  which would grant the DEFAULT named-pipe DACL (any local user could connect). The LocalAlloc'd SD is
+   *  kept for daemon life (one allocation, not per-connection — no leak growth). */
   const securityAttributes: Buffer | null = ((): Buffer | null => {
     if (!daemonSid) return null;
     try {
@@ -293,12 +294,16 @@ export function loadWin32Api(): Win32Api {
 
     createPipe: (name: string, firstInstance: boolean): PipeHandle | null => {
       try {
+        // M-1: FAIL CLOSED if the owner-only SA could not be built. A null SA would give the default
+        // named-pipe DACL (any local account could connect) — never create the control pipe that way.
+        // A failed SDDL/SA construction is a hard boot failure, not a silent downgrade.
+        if (!securityAttributes) return null;
         let openMode = PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED;
         if (firstInstance) openMode |= FILE_FLAG_FIRST_PIPE_INSTANCE;
         const pipeMode = PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS;
         const h = CreateNamedPipeW(
           name, openMode, pipeMode, PIPE_UNLIMITED_INSTANCES,
-          PIPE_BUFFER_BYTES, PIPE_BUFFER_BYTES, 0, securityAttributes ?? null,
+          PIPE_BUFFER_BYTES, PIPE_BUFFER_BYTES, 0, securityAttributes,
         );
         if (badHandle(h)) return null;
         const ev = CreateEventW(null, 1, 0, null); // manual-reset (1), initially non-signaled (0)
