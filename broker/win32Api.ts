@@ -66,6 +66,12 @@ interface KoffiLib {
   view(ptr: unknown, len: number): Uint8Array;
 }
 
+/** A Medium mandatory-integrity label (`S:...(ML;...;ME)`) present in the SACL of an SDDL. Used by BOTH
+ *  the token-file allowlist verify and the pipe SACL read-back verify (LOW-1). Pure — unit-tested. */
+export function sddlHasMediumLabel(sddl: string): boolean {
+  return /S:[A-Z]*\(ML;[^)]*;ME\)/.test(sddl);
+}
+
 /**
  * Pure allowlist check for a token-file security descriptor's SDDL (extracted for unit testing): the DACL
  * must grant ONLY the daemon SID and SYSTEM (nothing else — a stricter allowlist than a broad-trustee
@@ -81,9 +87,7 @@ export function sddlIsOwnerOnly(sddl: string, ownerSid: string): boolean {
   if (trustees.length === 0) return false;
   const everyTrusteeAllowed = trustees.every((t) => t === ownerSid || SYSTEM_SDDL_ALIASES.has(t));
   const hasOwner = trustees.includes(ownerSid);
-  // Medium mandatory label (ML) at level ME present in the SACL.
-  const hasMediumLabel = /S:[A-Z]*\(ML;[^)]*;ME\)/.test(sddl);
-  return everyTrusteeAllowed && hasOwner && hasMediumLabel;
+  return everyTrusteeAllowed && hasOwner && sddlHasMediumLabel(sddl);
 }
 
 /** The full native surface: peer-credential + pipe transport + the daemon's own SID (for expectedOwnerId). */
@@ -127,6 +131,7 @@ const GENERIC_WRITE = 0x40000000;
 const CREATE_ALWAYS = 2;
 const FILE_ATTRIBUTE_NORMAL = 0x80;
 const SE_FILE_OBJECT = 1;
+const SE_KERNEL_OBJECT = 6;
 const DACL_SECURITY_INFORMATION = 0x00000004;
 const LABEL_SECURITY_INFORMATION = 0x00000010;
 const FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000;
@@ -182,6 +187,8 @@ export function loadWin32Api(): Win32Api {
   const LocalFree = k32.func('__stdcall', 'LocalFree', HANDLE, [HANDLE]);
   const GetNamedSecurityInfoW = adv.func('__stdcall', 'GetNamedSecurityInfoW', 'uint32',
     ['str16', 'int', 'uint32', 'void *', 'void *', 'void *', 'void *', 'void *']);
+  const GetSecurityInfo = adv.func('__stdcall', 'GetSecurityInfo', 'uint32',
+    [HANDLE, 'int', 'uint32', 'void *', 'void *', 'void *', 'void *', 'void *']);
   // 4th arg = LPWSTR* (we pass our own slot so we get the raw pointer to LocalFree it — no leak); 5th =
   // PULONG length (chars incl. NUL). We read the string from the pointer via koffi.view (see verify below).
   const ConvertSecurityDescriptorToStringSecurityDescriptorW = adv.func('__stdcall',
@@ -289,6 +296,30 @@ export function loadWin32Api(): Win32Api {
 
   const asConn = (handle: PipeHandle): Conn => handle as Conn;
 
+  /** Convert an already-obtained security descriptor (`pSD`) to an SDDL string for `secInfo`, reading the
+   *  returned wide string via koffi.view and LocalFree-ing it (no leak). Returns null on failure. Does NOT
+   *  free `pSD` — the caller owns it. Shared by the token-file and pipe SACL read-back verifies. */
+  function sddlFromSecurityDescriptor(pSD: unknown, secInfo: number): string | null {
+    const strBuf = koffi.alloc(HANDLE, 1);
+    const lenBuf = koffi.alloc('uint32', 1);
+    let strPtr: unknown = null;
+    try {
+      if (!ConvertSecurityDescriptorToStringSecurityDescriptorW(pSD, SDDL_REVISION_1, secInfo, strBuf, lenBuf)) return null;
+      strPtr = koffi.decode(strBuf, HANDLE);
+      const charLen = koffi.decode(lenBuf, 'uint32') as number;
+      if (!charLen || charLen > 4096) return null;
+      return Buffer.from(koffi.view(strPtr, charLen * 2)).toString('utf16le').replace(/\0[\s\S]*$/, '').trim();
+    } finally {
+      if (strPtr != null) {
+        try {
+          LocalFree(strPtr);
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+  }
+
   /** Reset the OVERLAPPED + event before starting a new overlapped op on this connection. */
   function prep(conn: Conn): void {
     ResetEvent(conn.ev);
@@ -389,27 +420,10 @@ export function loadWin32Api(): Win32Api {
         const rc = GetNamedSecurityInfoW(filePath, SE_FILE_OBJECT, secInfo, null, null, null, null, sd2) as number;
         if (rc !== 0) return false;
         const pSD2 = koffi.decode(sd2, HANDLE);
-        const strBuf = koffi.alloc(HANDLE, 1);
-        const lenBuf = koffi.alloc('uint32', 1);
-        let strPtr: unknown = null;
         try {
-          if (!ConvertSecurityDescriptorToStringSecurityDescriptorW(pSD2, SDDL_REVISION_1, secInfo, strBuf, lenBuf)) {
-            return false;
-          }
-          strPtr = koffi.decode(strBuf, HANDLE);
-          const charLen = koffi.decode(lenBuf, 'uint32') as number;
-          if (!charLen || charLen > 4096) return false;
-          const bytes = Buffer.from(koffi.view(strPtr, charLen * 2)); // wchar_t = 2 bytes
-          const dacl = bytes.toString('utf16le').replace(/\0[\s\S]*$/, '').trim();
-          return sddlIsOwnerOnly(dacl, daemonSid);
+          const sddl = sddlFromSecurityDescriptor(pSD2, secInfo);
+          return sddl != null && sddlIsOwnerOnly(sddl, daemonSid);
         } finally {
-          if (strPtr != null) {
-            try {
-              LocalFree(strPtr);
-            } catch {
-              /* ignore */
-            }
-          }
           try {
             LocalFree(pSD2);
           } catch {
@@ -486,6 +500,29 @@ export function loadWin32Api(): Win32Api {
         if (badHandle(h)) {
           h = null;
           return null;
+        }
+        // LOW-1: read the pipe's SD back and assert the Medium mandatory label (S:...;ME) actually took —
+        // symmetric to the token-file verify. If a host silently dropped the label (e.g. the daemon runs
+        // below Medium and lacks the privilege to set a Medium SACL), fail closed rather than run without
+        // the same-user Low-IL/AppContainer exclusion. (Only the label is checked: Windows normalizes the
+        // DACL's GENERIC_ALL to object-specific rights on read-back, so a DACL allowlist would false-fail.)
+        {
+          const sd = koffi.alloc(HANDLE, 1);
+          const secInfo = DACL_SECURITY_INFORMATION | LABEL_SECURITY_INFORMATION;
+          if ((GetSecurityInfo(h, SE_KERNEL_OBJECT, secInfo, null, null, null, null, sd) as number) !== 0) {
+            return null; // finally closes h
+          }
+          const pSD = koffi.decode(sd, HANDLE);
+          try {
+            const sddl = sddlFromSecurityDescriptor(pSD, secInfo);
+            if (sddl == null || !sddlHasMediumLabel(sddl)) return null; // finally closes h
+          } finally {
+            try {
+              LocalFree(pSD);
+            } catch {
+              /* ignore */
+            }
+          }
         }
         ev = CreateEventW(null, 1, 0, null); // manual-reset (1), initially non-signaled (0)
         if (badHandle(ev)) {

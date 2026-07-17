@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { sddlIsOwnerOnly } from './win32Api.ts';
+import { sddlIsOwnerOnly, sddlHasMediumLabel } from './win32Api.ts';
 
 // Pure allowlist logic for the token-file security descriptor (L-2 residual: allowlist, not blocklist).
 // No koffi involved — importing win32Api.ts does not load the native addon until loadWin32Api() is called.
@@ -34,5 +34,18 @@ describe('sddlIsOwnerOnly', () => {
   it('REJECTS an empty DACL and a missing owner sid arg', () => {
     expect(sddlIsOwnerOnly(`D:P${LABEL}`, SID)).toBe(false);
     expect(sddlIsOwnerOnly(`D:P(A;;FA;;;${SID})(A;;FA;;;SY)${LABEL}`, '')).toBe(false);
+  });
+});
+
+// The pipe SACL read-back verify (LOW-1) checks ONLY the label — Windows normalizes the pipe DACL's
+// GENERIC_ALL to object-specific rights on read-back, so a full DACL allowlist would false-fail.
+describe('sddlHasMediumLabel (pipe SACL read-back verify)', () => {
+  it('detects a Medium label, incl. the AI flag + reordered policy flags a read-back may produce', () => {
+    expect(sddlHasMediumLabel('D:P(A;;FA;;;S-1-5-32-544)S:(ML;;NW;;;ME)')).toBe(true);
+    expect(sddlHasMediumLabel('D:PAI(A;;FA;;;WD)S:AI(ML;;NWNRNX;;;ME)')).toBe(true);
+  });
+  it('returns false when no label / a below-Medium label is present', () => {
+    expect(sddlHasMediumLabel('D:P(A;;FA;;;WD)')).toBe(false);
+    expect(sddlHasMediumLabel('D:P(A;;FA;;;WD)S:(ML;;NW;;;LW)')).toBe(false);
   });
 });
