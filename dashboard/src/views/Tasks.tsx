@@ -16,9 +16,18 @@
  * empty states rather than crashing the shell. The App routes `tasks` to a placeholder today; this view
  * stands alone until the integrator adds the `case`.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import type { ParsedCard, CardFieldValue } from '../../server/planeA/cards';
 import type { PlaneAIndex } from '../../server/planeA/indexer';
+import type { Session } from '../lib/authClient';
+import {
+  EMPTY_ROUTING,
+  fetchRouting,
+  postCardRouting,
+  type RoutingSnapshot,
+  type CardRoutingView,
+} from '../lib/routingClient';
+import { RoutingControl } from './routingControls';
 import { renderMarkdown } from '../lib/markdown';
 import '../styles/views/tasks.css';
 
@@ -168,13 +177,81 @@ function StateGroup({
   );
 }
 
-function DetailPane({ card }: { card: ParsedCard }): React.JSX.Element {
+/** Per-card routing bar (R2.3): stamped runtime/model chips (or "unrouted"), effective-if-redispatched,
+ *  and a governed card-scope override toggle. Card frontmatter is the TOP-precedence routing input. */
+function CardRoutingBar({
+  cardId,
+  view,
+  registry,
+  canAct,
+  onApply,
+  onClear,
+}: {
+  cardId: string;
+  view: CardRoutingView | undefined;
+  registry: RoutingSnapshot['policy']['runtimes'];
+  canAct: boolean;
+  onApply: (runtime: string, model: string) => Promise<{ ok: boolean; reason?: string }>;
+  onClear: () => Promise<{ ok: boolean; reason?: string }>;
+}): React.JSX.Element {
+  const stamped = view?.stamped ?? { runtime: null, model: null };
+  const routed = stamped.runtime || stamped.model;
+  return (
+    <div className="v-routing-bar" data-testid={`card-routing-bar-${cardId}`}>
+      <span className="v-routing-bar__label">routing</span>
+      {routed ? (
+        <span className="v-routing-bar__stamp mc-mono">
+          {stamped.runtime ?? '—'} / {stamped.model ?? '—'}
+        </span>
+      ) : (
+        <span className="v-routing-bar__unrouted mc-mono">unrouted (legacy)</span>
+      )}
+      <span className="v-routing-bar__label">if redispatched</span>
+      <RoutingControl
+        label={cardId}
+        testIdPrefix={`card-${cardId}`}
+        registry={registry}
+        effective={view?.effective ?? null}
+        canAct={canAct}
+        canClear={Boolean(routed)}
+        onApply={(runtime, model) => onApply(runtime, model)}
+        onClear={onClear}
+      />
+    </div>
+  );
+}
+
+function DetailPane({
+  card,
+  routingView,
+  registry,
+  canAct,
+  onApplyRouting,
+  onClearRouting,
+}: {
+  card: ParsedCard;
+  routingView: CardRoutingView | undefined;
+  registry: RoutingSnapshot['policy']['runtimes'];
+  canAct: boolean;
+  onApplyRouting: (cardId: string, runtime: string, model: string) => Promise<{ ok: boolean; reason?: string }>;
+  onClearRouting: (cardId: string) => Promise<{ ok: boolean; reason?: string }>;
+}): React.JSX.Element {
   const fields = orderedFields(card);
   const body = card.body.trim();
+  const cardId = String(card.meta.id);
   return (
     <aside className="v-tasks__detail" aria-label="Card detail">
-      <h2 className="v-tasks__detail-id mc-mono">{String(card.meta.id)}</h2>
+      <h2 className="v-tasks__detail-id mc-mono">{cardId}</h2>
       <p className="v-tasks__detail-caption">Card content below is rendered as inert data.</p>
+
+      <CardRoutingBar
+        cardId={cardId}
+        view={routingView}
+        registry={registry}
+        canAct={canAct}
+        onApply={(runtime, model) => onApplyRouting(cardId, runtime, model)}
+        onClear={() => onClearRouting(cardId)}
+      />
 
       <dl className="v-tasks__frontmatter">
         {fields.map(([key, value]) => (
@@ -198,9 +275,22 @@ function DetailPane({ card }: { card: ParsedCard }): React.JSX.Element {
   );
 }
 
-/** Tasks view. Accepts cards-by-state directly (tests) or self-fetches the Plane-A snapshot. */
-export function Tasks({ data }: { data?: CardsByState } = {}): React.JSX.Element {
+/** Tasks view. Accepts cards-by-state directly (tests) or self-fetches the Plane-A snapshot. Per-card
+ *  routing (R2.3) comes from `/api/routing`; the card-scope toggle writes card frontmatter through the
+ *  governed, audited card-routing endpoint. */
+export function Tasks({
+  data,
+  routing,
+  sessionToken,
+  onRequestSession,
+}: {
+  data?: CardsByState;
+  routing?: RoutingSnapshot;
+  sessionToken?: string;
+  onRequestSession?: () => Promise<Session | null>;
+} = {}): React.JSX.Element {
   const [fetched, setFetched] = useState<CardsByState | null>(null);
+  const [routingState, setRoutingState] = useState<RoutingSnapshot | null>(routing ?? null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -219,7 +309,44 @@ export function Tasks({ data }: { data?: CardsByState } = {}): React.JSX.Element
     };
   }, [data]);
 
+  const refreshRouting = useCallback(async () => {
+    try {
+      setRoutingState(await fetchRouting());
+    } catch {
+      /* keep last-known routing */
+    }
+  }, []);
+
+  useEffect(() => {
+    if (routing) return;
+    void refreshRouting();
+  }, [routing, refreshRouting]);
+
   const cards = data ?? fetched ?? EMPTY;
+  const routingSnap = routing ?? routingState ?? EMPTY_ROUTING;
+  const canAct = Boolean(sessionToken) || Boolean(onRequestSession);
+
+  async function resolveToken(): Promise<string | undefined> {
+    if (sessionToken) return sessionToken;
+    if (onRequestSession) return (await onRequestSession())?.token ?? undefined;
+    return undefined;
+  }
+
+  async function applyCardRouting(cardId: string, runtime: string, model: string): Promise<{ ok: boolean; reason?: string }> {
+    const token = await resolveToken();
+    if (!token) return { ok: false, reason: 'no session' };
+    const res = await postCardRouting({ op: 'set', cardId, runtime, model }, token);
+    if (res.ok) await refreshRouting();
+    return res;
+  }
+
+  async function clearCardRouting(cardId: string): Promise<{ ok: boolean; reason?: string }> {
+    const token = await resolveToken();
+    if (!token) return { ok: false, reason: 'no session' };
+    const res = await postCardRouting({ op: 'clear', cardId }, token);
+    if (res.ok) await refreshRouting();
+    return res;
+  }
 
   // Flat lookup so selection resolves regardless of which state bucket a card sits in.
   const byId = useMemo(() => {
@@ -252,7 +379,14 @@ export function Tasks({ data }: { data?: CardsByState } = {}): React.JSX.Element
       </div>
 
       {selected ? (
-        <DetailPane card={selected} />
+        <DetailPane
+          card={selected}
+          routingView={routingSnap.cards[String(selected.meta.id)]}
+          registry={routingSnap.policy.runtimes}
+          canAct={canAct}
+          onApplyRouting={applyCardRouting}
+          onClearRouting={clearCardRouting}
+        />
       ) : (
         <aside className="v-tasks__placeholder" aria-label="Card detail">
           Select a card to see its frontmatter and body.

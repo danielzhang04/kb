@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { kbBrowserRoutes } from './kb/routes.ts';
 import { registerRegistry } from './registry/routes.ts';
 import { registerPlaneA } from './planeA/routes.ts';
+import { registerRoutingRead } from './routing/routes.ts';
 import { registerHub } from './hub/index.ts';
 import { registerWriteSurface } from './http/surface.ts';
 
@@ -31,6 +32,7 @@ export function buildApp(): FastifyInstance {
   app.register(kbBrowserRoutes); // D0.5: read-only KB browser (GET-only /api/kb/*)
   registerRegistry(app); // D0.6: read-only registries (GET-only /api/registry/*)
   registerPlaneA(app); // D0.9: read-only Plane-A snapshot for the Control landing (GET /api/index)
+  registerRoutingRead(app); // R2.1/R2.4: read-only effective-routing projection (GET /api/routing)
   registerHub(app, { repoRoot: process.env.DASHBOARD_REPO_ROOT }); // D0.4: SSE/WS hub + Origin/Host guard (/events, /ws)
   registerWriteSurface(app); // U2: governed write surface (origin -> rate-limit -> session -> gate -> audit)
 
