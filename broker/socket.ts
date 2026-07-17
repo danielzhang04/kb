@@ -49,11 +49,37 @@ export type PeerCredentialReader = (conn: Socket) => PeerCredential | null;
  *  what a not-enforced boundary collapses to. Never returns a permissive credential. */
 export const defaultPeerReader: PeerCredentialReader = () => null;
 
-/** The daemon's own OS owner id, for comparison against a connecting peer's. POSIX: the uid. Windows:
- *  the `USERNAME` (a real named-pipe owner read replaces this at deploy). */
-export function resolveExpectedOwnerId(env: Record<string, string | undefined> = process.env): string {
-  const getuid = (process as NodeJS.Process & { getuid?: () => number }).getuid;
-  if (typeof getuid === 'function') return String(getuid.call(process));
+/** Injectable inputs to `resolveExpectedOwnerId` (platform + the win32 SID source), so the boot can supply
+ *  the native SID resolver and tests can exercise every branch hermetically. */
+export interface ExpectedOwnerIdDeps {
+  platform?: NodeJS.Platform;
+  getuid?: (() => number) | undefined;
+  /** On win32, resolves the daemon's OWN SID string (from its process token). Injected by the boot from
+   *  broker/win32Api.ts (`currentSidString`). socket.ts stays free of the native FFI, so there is NO pure
+   *  default — an un-provided win32 resolve throws (fail closed) rather than falling back to a weaker id. */
+  win32SidProvider?: () => string | null;
+}
+
+/**
+ * The daemon's own OS owner id, for SID/uid-vs-peer comparison in `authenticateConnection`.
+ *   • POSIX  → the numeric uid (`getuid()`), matching `peerBoundary.ts`'s `ownerId`.
+ *   • win32  → the daemon's own SID string via the injected `win32SidProvider` (the SAME token query the
+ *     per-connection peer read uses in broker/win32PipeServer.ts), so the comparison is SID-vs-SID end to
+ *     end. This REPLACES the old `USERNAME` heuristic. If no SID can be resolved, this THROWS — the boot
+ *     must fail closed rather than run with an unverifiable daemon identity.
+ */
+export function resolveExpectedOwnerId(
+  env: Record<string, string | undefined> = process.env,
+  deps: ExpectedOwnerIdDeps = {},
+): string {
+  const getuid = 'getuid' in deps ? deps.getuid : (process as NodeJS.Process & { getuid?: () => number }).getuid?.bind(process);
+  if (typeof getuid === 'function') return String(getuid());
+  const platform = deps.platform ?? process.platform;
+  if (platform === 'win32') {
+    const sid = deps.win32SidProvider?.() ?? null;
+    if (!sid) throw new Error('daemon SID unavailable on win32 (no SID provider); fail-closed');
+    return sid;
+  }
   return env.USERNAME ?? env.USER ?? 'unknown-owner';
 }
 

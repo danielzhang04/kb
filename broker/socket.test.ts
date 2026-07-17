@@ -61,8 +61,17 @@ describe('broker/socket authenticateConnection', () => {
     expect(defaultPeerReader({} as never)).toBeNull();
   });
 
-  it('resolveExpectedOwnerId yields a stable non-empty owner id for the daemon', () => {
-    expect(resolveExpectedOwnerId({ USERNAME: 'daniel' }).length).toBeGreaterThan(0);
+  it('resolveExpectedOwnerId returns the numeric uid on POSIX', () => {
+    expect(resolveExpectedOwnerId({}, { getuid: () => 1000 })).toBe('1000');
+  });
+
+  it('resolveExpectedOwnerId returns the daemon SID on win32 via the injected provider (SID-vs-SID)', () => {
+    const sid = 'S-1-5-21-11-22-33-1001';
+    expect(resolveExpectedOwnerId({}, { platform: 'win32', getuid: undefined, win32SidProvider: () => sid })).toBe(sid);
+  });
+
+  it('resolveExpectedOwnerId FAILS CLOSED (throws) on win32 when the SID cannot be resolved', () => {
+    expect(() => resolveExpectedOwnerId({}, { platform: 'win32', getuid: undefined, win32SidProvider: () => null })).toThrow(/fail-closed/);
   });
 });
 
