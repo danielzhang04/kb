@@ -6,7 +6,8 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
-import { Control } from './Control';
+import { Control, StopControls } from './Control';
+import { LaunchControls } from './launchControls';
 import { App } from '../App';
 import type { PlaneAIndex } from '../../server/planeA/indexer';
 import type { ParsedCard } from '../../server/planeA/cards';
@@ -79,22 +80,24 @@ describe('Control view', () => {
     expect(screen.getByText('Building the Plane-A indexer.')).toBeTruthy();
   });
 
-  it('lands on Control view by default, Code view reachable by one toggle', () => {
+  it('lands on the Home rollup by default, another view reachable via the sidebar nav', () => {
+    // U3: the App shell's default nav item is "Home", which now routes to the Home rollup view (the
+    // Control component is dormant/unrouted — still exported and unit-tested directly, above).
     render(<App />);
 
-    // Default landing is the Control view; Code view is not mounted yet.
-    expect(screen.getByLabelText('Control view')).toBeTruthy();
-    expect(screen.queryByLabelText('Code view')).toBeNull();
+    // Default landing is the Home view; the Files view is not mounted yet.
+    expect(screen.getByLabelText('Home view')).toBeTruthy();
+    expect(screen.queryByLabelText('Files view')).toBeNull();
 
-    // One toggle switches to Code view.
-    fireEvent.click(screen.getByRole('button', { name: 'Code' }));
-    expect(screen.getByLabelText('Code view')).toBeTruthy();
-    expect(screen.queryByLabelText('Control view')).toBeNull();
+    // The sidebar's Files nav item switches to the Files view.
+    fireEvent.click(screen.getByRole('button', { name: 'Files' }));
+    expect(screen.getByLabelText('Files view')).toBeTruthy();
+    expect(screen.queryByLabelText('Home view')).toBeNull();
 
-    // And one toggle back to Control.
-    fireEvent.click(screen.getByRole('button', { name: 'Control' }));
-    expect(screen.getByLabelText('Control view')).toBeTruthy();
-    expect(screen.queryByLabelText('Code view')).toBeNull();
+    // And the Home nav item switches back to the Home rollup.
+    fireEvent.click(screen.getByRole('button', { name: 'Home' }));
+    expect(screen.getByLabelText('Home view')).toBeTruthy();
+    expect(screen.queryByLabelText('Files view')).toBeNull();
   });
 });
 
@@ -170,9 +173,11 @@ describe('Control view — D2.6 launch/rerun controls', () => {
   });
 });
 
-describe('Control view — D2.8 stop-floor controls', () => {
+// U1: StopControls was relocated out of the Board's right column into the shell's pinned
+// Session/Stop floor (App.tsx). It is exported from ./Control and exercised directly here.
+describe('Stop-floor controls (D2.8, relocated to the shell in U1)', () => {
   it('disables every stop control without a sessionToken, and never calls fetch on submit', () => {
-    render(<Control snapshot={SNAPSHOT} />);
+    render(<StopControls />);
 
     expect((screen.getByRole('button', { name: 'Request stop' }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole('button', { name: 'Pause cadence' }) as HTMLButtonElement).disabled).toBe(true);
@@ -186,7 +191,7 @@ describe('Control view — D2.8 stop-floor controls', () => {
   });
 
   it('the nuclear STOP button stays disabled until the confirm checkbox is checked, even with a session', () => {
-    render(<Control snapshot={SNAPSHOT} sessionToken="fake-session-token" />);
+    render(<StopControls sessionToken="fake-session-token" />);
 
     const nukeButton = screen.getByRole('button', { name: 'STOP everything' }) as HTMLButtonElement;
     expect(nukeButton.disabled).toBe(true);
@@ -208,7 +213,7 @@ describe('Control view — D2.8 stop-floor controls', () => {
       }),
     );
 
-    render(<Control snapshot={SNAPSHOT} sessionToken="fake-session-token" />);
+    render(<StopControls sessionToken="fake-session-token" />);
     fireEvent.change(screen.getByLabelText('Card id to stop'), { target: { value: 'card-1' } });
     fireEvent.submit(screen.getByLabelText('Request card stop'));
 
@@ -230,10 +235,81 @@ describe('Control view — D2.8 stop-floor controls', () => {
       }),
     );
 
-    render(<Control snapshot={SNAPSHOT} sessionToken="fake-session-token" />);
+    render(<StopControls sessionToken="fake-session-token" />);
     fireEvent.click(screen.getByLabelText('Confirm nuclear STOP'));
     fireEvent.submit(screen.getByLabelText('Nuclear STOP'));
 
     await waitFor(() => expect(screen.getByTestId('nuke-status').textContent).toMatch(/refused: unauthenticated/));
+  });
+});
+
+// U5.1 — point-of-action passkey mint. With `onRequestSession` wired (the shell floor / Home do this),
+// the governed controls are enabled WITHOUT a standing session and a submit runs the ceremony inline,
+// then POSTs with the freshly-minted bearer. This replaces the retired floor "Sign in" chrome.
+describe('point-of-action session mint (U5.1)', () => {
+  it('StopControls: enabled via onRequestSession, mints on submit, POSTs the minted bearer', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        calls.push({ url, init });
+        if (url === '/api/write/stop-card') {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({ state: 'halting' }) } as Response);
+        }
+        return new Promise(() => {});
+      }),
+    );
+    const onRequestSession = vi.fn(async () => ({ token: 'minted-tok', expiresAt: Date.now() + 60_000 }));
+
+    render(<StopControls onRequestSession={onRequestSession} />);
+
+    // No standing session, but the ceremony is wired → the control is actionable, not walled.
+    expect((screen.getByRole('button', { name: 'Request stop' }) as HTMLButtonElement).disabled).toBe(false);
+
+    fireEvent.change(screen.getByLabelText('Card id to stop'), { target: { value: 'card-9' } });
+    fireEvent.submit(screen.getByLabelText('Request card stop'));
+
+    await waitFor(() => expect(screen.getByTestId('stop-card-status').textContent).toContain('halting'));
+    expect(onRequestSession).toHaveBeenCalledTimes(1);
+    const call = calls.find((c) => c.url === '/api/write/stop-card');
+    expect((call?.init?.headers as Record<string, string>)?.authorization).toBe('Bearer minted-tok');
+  });
+
+  it('LaunchControls: enabled via onRequestSession, mints on submit, POSTs the minted bearer', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        calls.push({ url, init });
+        if (url === '/api/write/launch') {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({ cardId: 'c-1' }) } as Response);
+        }
+        return new Promise(() => {});
+      }),
+    );
+    const onRequestSession = vi.fn(async () => ({ token: 'minted-tok', expiresAt: Date.now() + 60_000 }));
+
+    render(<LaunchControls onRequestSession={onRequestSession} />);
+
+    expect((screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.submit(screen.getByLabelText('Launch card'));
+
+    await waitFor(() => expect(screen.getByTestId('launch-status').textContent).toContain('c-1'));
+    expect(onRequestSession).toHaveBeenCalledTimes(1);
+    const call = calls.find((c) => c.url === '/api/write/launch');
+    expect((call?.init?.headers as Record<string, string>)?.authorization).toBe('Bearer minted-tok');
+  });
+
+  it('a refused/absent passkey (onRequestSession → null) stays a no-op with a quiet nudge', async () => {
+    const fetchMock = vi.fn(() => new Promise(() => {}));
+    vi.stubGlobal('fetch', fetchMock);
+    const onRequestSession = vi.fn(async () => null);
+
+    render(<LaunchControls onRequestSession={onRequestSession} />);
+    fireEvent.submit(screen.getByLabelText('Launch card'));
+
+    await waitFor(() => expect(onRequestSession).toHaveBeenCalled());
+    expect(screen.getByTestId('launch-status').textContent).toMatch(/sign in with your passkey/i);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

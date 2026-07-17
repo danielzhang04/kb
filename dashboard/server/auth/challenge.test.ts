@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
-import { buildChallenge, canonicalCardPayload, contentHash, parseChallenge, workOrderOf } from './challenge';
-import type { CardMeta } from '../planeA/cards';
+import { buildChallenge, canonicalCardPayload, contentHash, parseChallenge, workOrderOf } from './challenge.ts';
+import type { CardMeta } from '../planeA/cards.ts';
 
 /** A representative T3 card body — only the `## Work order` section enters the hash (fence-aware). */
 const BASE_BODY = '## Work order\ndo the thing\n\n## Evidence\ninert\n';

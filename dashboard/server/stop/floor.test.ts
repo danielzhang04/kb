@@ -10,16 +10,16 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { mintSession } from '../auth/session';
-import type { SessionConfig } from '../auth/session';
+import { mintSession } from '../auth/session.ts';
+import type { SessionConfig } from '../auth/session.ts';
 import {
   pauseCadence,
   requestStop,
   sigkillBackstop,
   writeStop,
   STOP_CARD_SCRIPT,
-} from './floor';
-import type { FloorDeps, OpsGitRunner, PyRunResult, PyRunner, SessionInput } from './floor';
+} from './floor.ts';
+import type { FloorDeps, OpsGitRunner, PyRunResult, PyRunner, SessionInput } from './floor.ts';
 
 const SECRET = Buffer.from('floor-test-secret-do-not-reuse');
 const SESSION_CONFIG: SessionConfig = { secret: SECRET, now: () => 1_700_000_000_000 };

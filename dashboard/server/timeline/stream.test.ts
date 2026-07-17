@@ -2,11 +2,11 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtemp, rm, writeFile, appendFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { streamSession } from './stream';
-import { tailFrom } from '../planeB/tailer';
-import { foldRecords } from '../../src/lib/timelineModel';
-import { createBus } from '../hub/bus';
-import type { HubEvent } from '../hub/bus';
+import { streamSession } from './stream.ts';
+import { tailFrom } from '../planeB/tailer.ts';
+import { foldRecords } from '../../src/lib/timelineModel.ts';
+import { createBus } from '../hub/bus.ts';
+import type { HubEvent } from '../hub/bus.ts';
 
 const tmpDirs: string[] = [];
 async function scratch(): Promise<string> {

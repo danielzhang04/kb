@@ -1,0 +1,122 @@
+// @vitest-environment jsdom
+/**
+ * U4 — command palette, exercised through the real App shell. It opens on Ctrl/Cmd+K, filters
+ * destinations, navigates on Enter, shows greyed soon items as non-actionable, and — critically — is a
+ * SHORTCUT NEVER A BYPASS: running an act command issues no governed (write/verify/auth) network call.
+ */
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+import { App } from '../App';
+import { resetFleetData } from '../flyout/useFleetData';
+import { ALL_COMMANDS } from './paletteModel';
+
+/** URL fragments of the governed (state-changing / auth) endpoints the palette must never call. */
+const GOVERNED = /\/api\/(write|approvals\/verify|auth)/;
+
+function fetchCalls(): unknown[][] {
+  return (fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+}
+
+function openPalette(): void {
+  fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true });
+}
+
+/** The palette input specifically (other views render their own comboboxes, e.g. launch selects). */
+function paletteInput(): HTMLElement {
+  return screen.getByRole('combobox', { name: 'Search commands and destinations' });
+}
+
+beforeEach(() => {
+  resetFleetData();
+  // Every view/self-fetch stubbed to never resolve → empty-safe scaffolds; call log still recorded.
+  vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
+});
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
+
+describe('command palette — open/close', () => {
+  it('opens on Ctrl+K and closes on Esc', () => {
+    render(<App />);
+    expect(screen.queryByRole('dialog', { name: 'Command palette' })).toBeNull();
+
+    openPalette();
+    expect(screen.getByRole('dialog', { name: 'Command palette' })).toBeTruthy();
+
+    fireEvent.keyDown(paletteInput(), { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Command palette' })).toBeNull();
+  });
+
+  it('opens on Cmd+K (metaKey) too', () => {
+    render(<App />);
+    fireEvent.keyDown(document.body, { key: 'k', metaKey: true });
+    expect(screen.getByRole('dialog', { name: 'Command palette' })).toBeTruthy();
+  });
+});
+
+describe('command palette — navigate', () => {
+  it('filters destinations as you type', () => {
+    render(<App />);
+    openPalette();
+    fireEvent.change(paletteInput(), { target: { value: 'workflows' } });
+
+    expect(screen.getAllByRole('option').length).toBeLessThan(ALL_COMMANDS.length);
+    expect(screen.getByTestId('palette-cmd-nav:workflows')).toBeTruthy();
+    expect(screen.queryByTestId('palette-cmd-nav:home')).toBeNull();
+  });
+
+  it('navigates on Enter (view changes, palette closes)', () => {
+    render(<App />);
+    openPalette();
+    fireEvent.change(paletteInput(), { target: { value: 'workflows' } });
+    fireEvent.keyDown(paletteInput(), { key: 'Enter' });
+
+    expect(screen.getByLabelText('Workflows view')).toBeTruthy();
+    expect(screen.queryByRole('dialog', { name: 'Command palette' })).toBeNull();
+  });
+
+  it('shows greyed soon destinations but they are non-actionable', () => {
+    render(<App />);
+    openPalette();
+    fireEvent.change(paletteInput(), { target: { value: 'terminal' } });
+
+    const opt = screen.getByTestId('palette-cmd-nav:terminal');
+    expect(opt.getAttribute('aria-disabled')).toBe('true');
+
+    fireEvent.keyDown(paletteInput(), { key: 'Enter' });
+    // Enter on a disabled row is inert: still on Home, palette stays open.
+    expect(screen.getByLabelText('Home view')).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: 'Command palette' })).toBeTruthy();
+  });
+});
+
+describe('command palette — act is a shortcut, never a bypass', () => {
+  const runByQuery = (q: string): void => {
+    openPalette();
+    const input = paletteInput();
+    fireEvent.change(input, { target: { value: q } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+  };
+
+  it('Launch task opens the Home launch surface without any governed call', () => {
+    render(<App />);
+    runByQuery('dispatch'); // unique keyword of the Launch shortcut
+    expect(screen.getByLabelText('Launch card')).toBeTruthy();
+    expect(fetchCalls().filter((c) => GOVERNED.test(String(c[0])))).toHaveLength(0);
+  });
+
+  it('Approve opens Approvals; Stop focuses the floor — neither hits a governed endpoint', () => {
+    render(<App />);
+
+    runByQuery('corroborate'); // unique keyword of the Approve shortcut
+    expect(screen.getByLabelText('Approvals inbox')).toBeTruthy();
+
+    runByQuery('passkey'); // unique keyword of the Stop / Session shortcut
+    // Focus moved into the pinned floor, not a network call.
+    const floor = screen.getByTestId('stop-floor');
+    expect(floor.contains(document.activeElement)).toBe(true);
+
+    expect(fetchCalls().filter((c) => GOVERNED.test(String(c[0])))).toHaveLength(0);
+  });
+});

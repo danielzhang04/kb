@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtemp, mkdir, rm, writeFile, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { buildSubagentTree } from './subagents';
-import type { SubagentNode } from './subagents';
+import { buildSubagentTree } from './subagents.ts';
+import type { SubagentNode } from './subagents.ts';
 
 const tmpDirs: string[] = [];
 async function scratch(): Promise<string> {

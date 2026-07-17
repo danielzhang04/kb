@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { readOrgStates } from './states';
+import { readOrgStates } from './states.ts';
 
 const REPO_A = fileURLToPath(new URL('../__fixtures__/repo-a/', import.meta.url));
 

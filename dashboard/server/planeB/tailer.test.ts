@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile, appendFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Buffer } from 'node:buffer';
-import { tailFrom, parseRecord, SKIP_RECORD_TYPES } from './tailer';
+import { tailFrom, parseRecord, SKIP_RECORD_TYPES } from './tailer.ts';
 
 const tmpDirs: string[] = [];
 async function scratch(): Promise<string> {

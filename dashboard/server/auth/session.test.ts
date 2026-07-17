@@ -10,8 +10,8 @@ import {
   mintSession,
   mintSessionFromVerifiedAssertion,
   verifySession,
-} from './session';
-import type { SessionConfig } from './session';
+} from './session.ts';
+import type { SessionConfig } from './session.ts';
 
 const SECRET = Buffer.from('unit-test-secret-do-not-reuse');
 

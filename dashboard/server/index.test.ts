@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { buildApp } from './index';
+import { buildApp } from './index.ts';
 
 let app: FastifyInstance | undefined;
 

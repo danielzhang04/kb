@@ -1,0 +1,278 @@
+/*
+ * ============================================================================
+ * FOLDER VIEW (U3) — shared explorer behind Files + Projects
+ * ============================================================================
+ * A two-pane VS-Code-style browser: lazily-expanding directory tree LEFT,
+ * rendered file content RIGHT (markdown rendered-first at reading width).
+ * Styling ONLY — the read-only data flow lives in folderView.tsx.
+ *
+ * Signature obeyed (docs/design-brief.md §E–F): hairline borders everywhere;
+ * indent guides drawn in --border; chevrons in --fg-faint; the ACTIVE file node
+ * wears the single left-border accent language (2px --accent-strong), learned
+ * once and reused; reading pane at base size / 1.6 line-height (comfort over
+ * density); mono tabular-nums for the path + commit hashes; 150–200ms ease-out
+ * transitions only. Tokens only; dark default + light remap carry for free.
+ * Banned (glass/gradient/glow/rainbow) never appears.
+ * ============================================================================
+ */
+
+.v-folder {
+  display: grid;
+  grid-template-columns: minmax(200px, 300px) 1fr;
+  gap: var(--space-6);
+  align-items: start;
+  min-width: 0;
+}
+
+/* ---- LEFT: directory tree ---------------------------------------------- */
+.v-folder__tree {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+  overflow: auto;
+  min-width: 0;
+}
+
+.v-folder__error {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--error);
+}
+
+.v-folder__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.v-folder__node {
+  min-width: 0;
+}
+
+/* Nested children sit under an indent guide — a single hairline in --border,
+ * the VS-Code explorer language. One guide per level, no color, no glow. */
+.v-folder__children {
+  margin-left: var(--space-3);
+  padding-left: var(--space-2);
+  border-left: 1px solid var(--border);
+}
+
+/* Every tree row is a full-width selectable button. A 2px transparent left rail
+ * keeps geometry stable across states; only the active file paints it accent. */
+.v-folder__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: 100%;
+  background: transparent;
+  color: var(--fg-dim);
+  border: none;
+  border-left: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  font: inherit;
+  font-size: var(--text-base);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 160ms ease-out,
+    color 160ms ease-out,
+    border-color 160ms ease-out;
+}
+
+.v-folder__row:hover {
+  background: var(--bg-elevated);
+  color: var(--fg-primary);
+}
+
+.v-folder__row:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: -2px;
+}
+
+/* Selected file = the single left-border-accent language, reused from the nav. */
+.v-folder__row--active {
+  background: var(--accent-quiet);
+  color: var(--fg-primary);
+  border-left-color: var(--accent-strong);
+  font-weight: 500;
+}
+
+.v-folder__chevron {
+  flex: 0 0 auto;
+  width: 1em;
+  text-align: center;
+  font-size: 0.7em;
+  color: var(--fg-faint);
+}
+
+/* Files have no chevron — a spacer keeps their name column aligned with dirs. */
+.v-folder__chevron--spacer {
+  visibility: hidden;
+}
+
+.v-folder__name {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.v-folder__row--dir .v-folder__name {
+  color: var(--fg-primary);
+}
+
+/* ---- RIGHT: rendered content ------------------------------------------- */
+.v-folder__content {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-6);
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.v-folder__placeholder {
+  color: var(--fg-faint);
+  font-size: var(--text-sm);
+}
+
+.v-folder__doc-head {
+  margin: 0 0 var(--space-4);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.v-folder__doc-path {
+  font-size: var(--text-sm);
+  color: var(--fg-dim);
+  word-break: break-all;
+}
+
+/* Reading comfort beats density: base size, generous 1.6 line-height. */
+.v-folder__markdown {
+  font-size: var(--text-base);
+  line-height: 1.6;
+  color: var(--fg-primary);
+  max-width: 78ch;
+}
+
+.v-folder__markdown h1,
+.v-folder__markdown h2,
+.v-folder__markdown h3,
+.v-folder__markdown h4,
+.v-folder__markdown h5,
+.v-folder__markdown h6 {
+  line-height: 1.2;
+  margin: var(--space-6) 0 var(--space-2);
+  font-weight: 600;
+}
+
+.v-folder__markdown h1 {
+  font-size: var(--text-xl);
+}
+.v-folder__markdown h2 {
+  font-size: var(--text-lg);
+}
+.v-folder__markdown h3 {
+  font-size: var(--text-md);
+}
+
+.v-folder__markdown p,
+.v-folder__markdown ul,
+.v-folder__markdown blockquote {
+  margin: 0 0 var(--space-3);
+}
+
+.v-folder__markdown a {
+  color: var(--accent-strong);
+  text-decoration: none;
+}
+
+.v-folder__markdown a:hover {
+  text-decoration: underline;
+}
+
+.v-folder__markdown code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.05em 0.35em;
+}
+
+/* Fenced code: a sunken well, mono, scrolls rather than wrapping wide lines. */
+.v-folder__markdown pre {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-3);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sunken);
+  overflow-x: auto;
+}
+
+.v-folder__markdown pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: var(--text-base);
+  line-height: 1.6;
+}
+
+.v-folder__markdown blockquote {
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--border-strong);
+  color: var(--fg-dim);
+}
+
+/* Non-markdown files: verbatim text in a sunken reading well. */
+.v-folder__raw {
+  margin: 0;
+  padding: var(--space-3);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sunken);
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+  line-height: 1.6;
+  color: var(--fg-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+}
+
+/* ---- File history (collapsed by default) ------------------------------- */
+.v-folder__history {
+  margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+  font-size: var(--text-sm);
+  color: var(--fg-dim);
+}
+
+.v-folder__history > summary {
+  cursor: pointer;
+  color: var(--fg-dim);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.v-folder__history-list {
+  margin: var(--space-3) 0 0;
+  padding-left: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.v-folder__history-list code {
+  color: var(--fg-primary);
+}

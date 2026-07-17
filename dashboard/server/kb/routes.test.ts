@@ -1,7 +1,7 @@
 import Fastify from 'fastify';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { kbBrowserRoutes } from './routes';
+import { kbBrowserRoutes } from './routes.ts';
 
 const REPO_A = fileURLToPath(new URL('../__fixtures__/repo-a/', import.meta.url));
 

@@ -7,12 +7,12 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { watch } from 'chokidar';
 import type { FSWatcher } from 'chokidar';
-import { groupByState, parseCardFrontmatter } from './cards';
-import type { ParsedCard } from './cards';
-import { rollupLedgers } from './ledgers';
-import type { LedgerRollup } from './ledgers';
-import { readOrgStates } from './states';
-import type { OrgState } from './states';
+import { groupByState, parseCardFrontmatter } from './cards.ts';
+import type { ParsedCard } from './cards.ts';
+import { rollupLedgers } from './ledgers.ts';
+import type { LedgerRollup } from './ledgers.ts';
+import { readOrgStates } from './states.ts';
+import type { OrgState } from './states.ts';
 
 export interface PlaneAIndex {
   cards: Record<string, ParsedCard[]>;

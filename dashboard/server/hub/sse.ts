@@ -4,7 +4,7 @@
  * is enforced by the hub scope's `onRequest` guard (see {@link registerHub}) before this handler runs.
  */
 import type { FastifyInstance } from 'fastify';
-import type { EventBus, HubEvent } from './bus';
+import type { EventBus, HubEvent } from './bus.ts';
 
 export function registerSse(app: FastifyInstance, bus: EventBus): void {
   app.get('/events', (req, reply) => {

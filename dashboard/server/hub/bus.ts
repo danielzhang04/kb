@@ -3,9 +3,9 @@
  * a single message-granular stream that the SSE and read-WS transports fan out to subscribers. It is
  * disposable and holds no state beyond its subscriber set — git stays the database.
  */
-import { watchPlaneA } from '../planeA/indexer';
-import type { PlaneADelta } from '../planeA/indexer';
-import type { TranscriptRecord } from '../planeB/tailer';
+import { watchPlaneA } from '../planeA/indexer.ts';
+import type { PlaneADelta } from '../planeA/indexer.ts';
+import type { TranscriptRecord } from '../planeB/tailer.ts';
 import type { FSWatcher } from 'chokidar';
 
 /**

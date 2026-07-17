@@ -7,8 +7,8 @@ import Fastify from 'fastify';
 import type { FastifyInstance } from 'fastify';
 import type { FSWatcher } from 'chokidar';
 import WebSocket from 'ws';
-import { registerReadWs } from './ws';
-import { createBus, wirePlaneA } from './bus';
+import { registerReadWs } from './ws.ts';
+import { createBus, wirePlaneA } from './bus.ts';
 
 const REPO_A = fileURLToPath(new URL('../__fixtures__/repo-a/', import.meta.url));
 

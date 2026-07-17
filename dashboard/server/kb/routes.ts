@@ -8,7 +8,7 @@
 import type { FastifyInstance, FastifyPluginOptions } from 'fastify';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { fileHistory, listTree, readFile, PathEscapeError } from './browser';
+import { fileHistory, listTree, readFile, PathEscapeError } from './browser.ts';
 
 export interface KbBrowserOptions extends FastifyPluginOptions {
   /** Absolute path to the KB checkout the daemon projects. Defaults to the repo the daemon lives in. */

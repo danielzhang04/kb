@@ -17,30 +17,34 @@
  *      it is never caught and silently retried with `--no-verify`.
  */
 
-import { writeFileSync } from 'node:fs';
-import { mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
-import { verifySession } from '../auth/session';
-import type { SessionConfig } from '../auth/session';
-import { resolveWithin, PathEscapeError } from '../kb/browser';
-import { routeWrite, defaultGitRunner, defaultPrOpener } from './branch';
-import type { GitRunner, PrOpener, RouteOptions, Target } from './branch';
+import { writeFileSync, mkdirSync, realpathSync, lstatSync, existsSync } from 'node:fs';
+import { dirname, relative, resolve, sep, isAbsolute } from 'node:path';
+import { verifySession } from '../auth/session.ts';
+import type { SessionConfig } from '../auth/session.ts';
+import { resolveWithin, PathEscapeError } from '../kb/browser.ts';
+import { routeWrite, defaultGitRunner, defaultPrOpener } from './branch.ts';
+import type { GitRunner, PrOpener, RouteOptions, Target } from './branch.ts';
 
 export type SaveOutcome =
   | { ok: true; target: Target }
   | { ok: false; status: 401 | 400 | 403 | 500; reason: string };
 
-/** Relpath prefixes/files that are human-edited only, never writable through the dashboard. */
-const GOVERNANCE_ONLY = ['governance/'];
-const GOVERNANCE_FILES = new Set(['CLAUDE.md', 'AGENTS.md', 'GEMINI.md']);
+/** Path prefixes/files that are human-edited only, never writable through the dashboard. Compared
+ *  case-INSENSITIVELY (the deploy FS is case-insensitive NTFS: `claude.md` and `Governance/` alias the
+ *  real protected paths), against the path RESOLVED relative to repoRoot — not the raw client relpath. */
+const GOVERNANCE_ONLY_PREFIXES = ['governance/'];
+const GOVERNANCE_FILES_LOWER = new Set(['claude.md', 'agents.md', 'gemini.md']);
 
-function normalize(relpath: string): string {
-  return relpath.replace(/\\/g, '/').replace(/^\/+/, '');
-}
-
-function isGovernanceOnly(relpath: string): boolean {
-  const norm = normalize(relpath);
-  return GOVERNANCE_ONLY.some((p) => norm.startsWith(p)) || GOVERNANCE_FILES.has(norm);
+/**
+ * True when `abs` (already confined under `repoRoot` by `resolveWithin`) targets a human-edited-only
+ * path: the root constitution files or anything under `governance/`. Enforced on the resolved path
+ * relative to `repoRoot`, lower-cased, so a case variant on a case-insensitive filesystem
+ * (`claude.md`, `GOVERNANCE/risk-tiers.md`, `Governance/budget.yaml`) cannot slip past the carve-out.
+ */
+function isGovernanceOnly(repoRoot: string, abs: string): boolean {
+  const rel = relative(resolve(repoRoot), abs).split(sep).join('/').replace(/^\/+/, '').toLowerCase();
+  if (GOVERNANCE_FILES_LOWER.has(rel)) return true;
+  return GOVERNANCE_ONLY_PREFIXES.some((p) => rel === p.replace(/\/$/, '') || rel.startsWith(p));
 }
 
 export interface SaveInput {
@@ -79,11 +83,32 @@ export async function save(input: SaveInput): Promise<SaveOutcome> {
     throw err;
   }
 
-  if (isGovernanceOnly(input.relpath)) {
+  if (isGovernanceOnly(input.repoRoot, abs)) {
     return { ok: false, status: 403, reason: 'governance/** and the constitution files are human-edited only' };
   }
 
   mkdirSync(dirname(abs), { recursive: true });
+
+  // MED-2: resolveWithin is purely LEXICAL — a symlink planted under repoRoot (e.g. notes/x ->
+  // ../../governance/budget.yaml) passes it, and writeFileSync would then follow the link and escape
+  // the root under the daemon identity (which holds the ops push credential). Re-confine on the REAL
+  // path: realpath the (now-created) parent dir and re-check containment, and refuse to overwrite a
+  // target that is itself a symlink. Fail closed.
+  const rootReal = realpathSync(resolve(input.repoRoot));
+  let parentReal: string;
+  try {
+    parentReal = realpathSync(dirname(abs));
+  } catch {
+    return { ok: false, status: 400, reason: 'refusing to resolve the write directory' };
+  }
+  const relParent = relative(rootReal, parentReal);
+  if (relParent !== '' && (relParent === '..' || relParent.startsWith('..' + sep) || isAbsolute(relParent))) {
+    return { ok: false, status: 400, reason: 'refusing to write through a symlink that escapes the repo root' };
+  }
+  if (existsSync(abs) && lstatSync(abs).isSymbolicLink()) {
+    return { ok: false, status: 400, reason: 'refusing to overwrite through a symlink' };
+  }
+
   writeFileSync(abs, input.content, 'utf-8');
 
   const routeOptions: RouteOptions = {

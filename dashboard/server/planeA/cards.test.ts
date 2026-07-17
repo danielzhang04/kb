@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { groupByState, parseCardFrontmatter } from './cards';
+import { groupByState, parseCardFrontmatter } from './cards.ts';
 
 const REPO_A = fileURLToPath(new URL('../__fixtures__/repo-a/', import.meta.url));
 

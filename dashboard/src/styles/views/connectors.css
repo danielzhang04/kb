@@ -1,0 +1,88 @@
+/*
+ * Connectors view (U3) — MCP integrations. Dense .mc-table of per-project server→tools wiring.
+ * Signature adherence: hairline borders, mono tabular-nums for server ids / project / tool counts,
+ * status dot reuses --status-done for the static "allowed" grant, scope reads as a quiet mono tag
+ * (label difference, NOT a new hue) per the no-rainbow-badges rule. No accent wash, no glow/gradient.
+ * Tokens only; light + dark inherited from app.css :root remaps.
+ */
+
+.v-connectors__title {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.v-connectors__count {
+  color: var(--fg-faint);
+  font-weight: 400;
+}
+
+.v-connectors__empty {
+  color: var(--fg-dim);
+  font-size: var(--text-base);
+}
+
+.v-connectors__table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
+}
+
+.v-connectors__table {
+  min-width: 42rem;
+}
+
+.v-connectors__table th,
+.v-connectors__table td {
+  padding: var(--space-2) var(--space-3);
+  vertical-align: middle;
+}
+
+/* Connection cell: mono server id over a dim, truncated tool list (full list in title tooltip). */
+.v-connectors__server {
+  display: block;
+  color: var(--fg-primary);
+  font-size: var(--text-sm);
+}
+
+.v-connectors__tools-list {
+  display: block;
+  max-width: 22rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-xs);
+  color: var(--fg-faint);
+}
+
+/* Scope tag — mono, hairline, neutral. Global vs project differ by weight/border, never by hue. */
+.v-connectors__scope {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--fg-dim);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+  line-height: 1.6;
+}
+
+.v-connectors__scope--global {
+  color: var(--fg-primary);
+  border-color: var(--border-strong);
+}
+
+.v-connectors__col-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.v-connectors__status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--fg-dim);
+}

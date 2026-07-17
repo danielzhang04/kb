@@ -2,7 +2,11 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { registerSwFromWindow } from './lib/registerSw';
+import { initTheme } from './lib/theme';
 import './styles/app.css';
+
+// Pin the persisted theme (dark default) BEFORE first paint so an OS-light machine never flashes light.
+initTheme();
 
 const rootEl = document.getElementById('root');
 if (!rootEl) {
