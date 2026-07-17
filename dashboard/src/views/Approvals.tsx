@@ -25,7 +25,7 @@
 import { useState } from 'react';
 import type { ParsedCard } from '../../server/planeA/cards';
 import { buttonsFor } from '../../server/approvals/assurance';
-import { workOrderOf } from '../../server/auth/challenge';
+import { workOrderOf } from '../../server/auth/workOrder';
 import '../styles/views/approvals.css';
 
 export type ApprovalChannel = 'signed' | 'possession' | 'webauthn';

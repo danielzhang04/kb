@@ -1,58 +1,14 @@
 import { open } from 'node:fs/promises';
 import { Buffer } from 'node:buffer';
+// The pure parsing primitives (`TranscriptRecord`, `SKIP_RECORD_TYPES`, `parseRecord`) live in
+// `./record.ts` — no node builtins — so the browser Vibe stream client can reuse `parseRecord`
+// WITHOUT pulling this file's `node:fs`/`node:buffer` into the client bundle. Re-exported below so
+// server-side callers of these from `tailer.ts` keep working unchanged; `tailFrom` (which needs the
+// node builtins) stays here.
+import { SKIP_RECORD_TYPES, parseRecord, type TranscriptRecord } from './record.ts';
 
-/**
- * Plane-B transcript record. Only the fields the dashboard reads are typed; the
- * on-disk records carry many more keys, kept under the index signature.
- */
-export interface TranscriptRecord {
-  type?: string;
-  message?: {
-    model?: string;
-    usage?: unknown;
-    content?: unknown;
-    [k: string]: unknown;
-  };
-  [k: string]: unknown;
-}
-
-/**
- * Record types that are NOT timeline content and are dropped by the tailer
- * (allowlist-by-exclusion: everything not here — chiefly `assistant`/`user` —
- * is kept). Aligned to the record types OBSERVED in real kb sessions.
- *
- * `system` is a conscious skip: it carries session metadata, not timeline
- * content. `summary` is a defensive entry — never observed in a sampled kb
- * session, included belt-and-suspenders (its presence here is not evidence it
- * occurs).
- */
-export const SKIP_RECORD_TYPES: ReadonlySet<string> = new Set([
-  'attachment',
-  'last-prompt',
-  'mode',
-  'permission-mode',
-  'ai-title',
-  'system',
-  'file-history-snapshot',
-  'file-history-delta',
-  'queue-operation',
-  'summary', // defensive — not observed in kb sessions
-]);
-
-/**
- * Parse one complete JSONL line into a record. Returns `null` for blank /
- * whitespace-only lines and for lines that fail to parse (a defensive tailer
- * never crashes the stream on one malformed line).
- */
-export function parseRecord(line: string): TranscriptRecord | null {
-  const trimmed = line.trim();
-  if (trimmed === '') return null;
-  try {
-    return JSON.parse(trimmed) as TranscriptRecord;
-  } catch {
-    return null;
-  }
-}
+export { SKIP_RECORD_TYPES, parseRecord } from './record.ts';
+export type { TranscriptRecord } from './record.ts';
 
 export interface TailResult {
   /** Kept (non-skipped) records parsed from complete newline-terminated lines. */
