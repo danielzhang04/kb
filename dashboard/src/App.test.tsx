@@ -40,12 +40,14 @@ describe('App shell — entity-first sidebar navigation', () => {
       'Atlas',
       'Terminal',
       'Workflows',
+      'Pipeline',
       'Agents',
       'Tasks',
       'Projects',
       'Files',
       'Connectors',
       'Ledgers',
+      'Sentinel',
     ]) {
       expect(screen.getByRole('button', { name: new RegExp(`^${label}`) })).toBeTruthy();
     }
@@ -53,7 +55,9 @@ describe('App shell — entity-first sidebar navigation', () => {
 
   it('does not render any dropped verb-IA destination', () => {
     render(<App />);
-    for (const dropped of ['Board', 'Editor', 'Vibe', 'Registry', 'Pipeline', 'Sentinel']) {
+    // D3.4 makes `Pipeline` and D3.5 makes `Sentinel` real destinations again, so neither is in the
+    // dropped set any more.
+    for (const dropped of ['Board', 'Editor', 'Vibe', 'Registry']) {
       expect(screen.queryByRole('button', { name: new RegExp(`^${dropped}$`) })).toBeNull();
     }
   });
@@ -145,15 +149,48 @@ describe('App shell — entity-first sidebar navigation', () => {
     }
   });
 
-  it('greyed "soon" items (Atlas, Terminal) are unclickable and never become active', () => {
+  it('routes the Sentinel destination to the layer-panel set with its four sub-tabs (D3.5)', () => {
     render(<App />);
-    for (const label of ['Atlas', 'Terminal']) {
-      const btn = screen.getByRole('button', { name: new RegExp(`^${label}`) }) as HTMLButtonElement;
-      expect(btn.disabled).toBe(true);
-      fireEvent.click(btn);
+    const btn = screen.getByRole('button', { name: 'Sentinel' }) as HTMLButtonElement;
+    expect(btn.disabled).toBe(false);
+    fireEvent.click(btn);
+    expect(btn.getAttribute('aria-current')).toBe('page');
+
+    // The layer-panel host mounts with its four sub-tabs; Sentinel (liveness) is the default panel.
+    const view = screen.getByLabelText('Sentinel view');
+    const tablist = within(view).getByRole('tablist', { name: 'Layer panels' });
+    for (const label of ['Sentinel', 'Quartermaster', 'Flight Recorder', 'Atlas']) {
+      expect(within(tablist).getByRole('tab', { name: label })).toBeTruthy();
     }
-    // Still on the default Home view — every disabled click was a no-op.
+    expect(within(view).getByLabelText('Sentinel panel')).toBeTruthy();
+
+    // Switching sub-tabs swaps the active panel without leaving the destination.
+    fireEvent.click(within(tablist).getByRole('tab', { name: 'Quartermaster' }));
+    expect(screen.getByLabelText('Quartermaster panel')).toBeTruthy();
+    fireEvent.click(within(tablist).getByRole('tab', { name: 'Flight Recorder' }));
+    expect(screen.getByLabelText('Flight Recorder panel')).toBeTruthy();
+  });
+
+  it('the greyed "soon" item (Atlas) is unclickable and never becomes active', () => {
+    render(<App />);
+    // Atlas is the only remaining greyed stub — Terminal went live in D3.2.
+    const btn = screen.getByRole('button', { name: /^Atlas/ }) as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    fireEvent.click(btn);
+    // Still on the default Home view — the disabled click was a no-op.
     expect(screen.getByLabelText('Home view')).toBeTruthy();
+  });
+
+  it('routes the live Terminal destination (D3.2 PTY pane) to its real view', () => {
+    render(<App />);
+    const btn = screen.getByRole('button', { name: /^Terminal/ }) as HTMLButtonElement;
+    expect(btn.disabled).toBe(false);
+    fireEvent.click(btn);
+    expect(btn.getAttribute('aria-current')).toBe('page');
+    // The real Terminal view mounts (session-gated: it shows the passkey prompt, not the U3 placeholder).
+    const view = screen.getByLabelText('Terminal view');
+    expect(view.textContent ?? '').not.toMatch(/built in U3/i);
+    expect(view.textContent ?? '').toMatch(/passkey/i);
   });
 
   it('the sidebar-wide collapse toggle switches the shell into rail mode and back', () => {

@@ -39,9 +39,15 @@ import { Timeline } from './views/Timeline';
 import { Workflows } from './views/Workflows';
 import { Connectors } from './views/Connectors';
 import { Tasks } from './views/Tasks';
+import { Pipeline } from './views/Pipeline';
 import { Agents } from './views/Agents';
 import { Projects } from './views/Projects';
 import { Ledgers } from './views/Ledgers';
+import { Sentinel } from './views/panels/Sentinel';
+import { Quartermaster } from './views/panels/Quartermaster';
+import { FlightRecorder } from './views/panels/FlightRecorder';
+import { Atlas } from './views/panels/Atlas';
+import { Terminal } from './views/Terminal';
 import { DeployOutcome } from './composer/DeployOutcome';
 import type { SeedKind } from './composer/artifactTypes';
 import { fetchPending } from './lib/approvalsClient';
@@ -298,6 +304,40 @@ function ComposerView({
   return <DeployOutcome sessionToken={sessionToken} initialKind={initialKind} onBack={onClose} />;
 }
 
+/** The read-only layer panels, reachable from the single `sentinel` nav destination via an underline-tab
+ *  bar (the Registry internal-tab pattern — one nav entry, four panels behind it). Sentinel (liveness) is
+ *  the default tab; Atlas is a static future-layer stub. Each panel self-fetches its own read-only source. */
+const LAYER_PANELS = [
+  { id: 'sentinel', label: 'Sentinel', render: () => <Sentinel /> },
+  { id: 'quartermaster', label: 'Quartermaster', render: () => <Quartermaster /> },
+  { id: 'recorder', label: 'Flight Recorder', render: () => <FlightRecorder /> },
+  { id: 'atlas', label: 'Atlas', render: () => <Atlas /> },
+] as const;
+
+function LayerPanels(): React.JSX.Element {
+  const [tab, setTab] = useState<(typeof LAYER_PANELS)[number]['id']>('sentinel');
+  const active = LAYER_PANELS.find((p) => p.id === tab) ?? LAYER_PANELS[0];
+  return (
+    <section className="v-panels" aria-label="Sentinel view">
+      <div className="v-panels__tabs" role="tablist" aria-label="Layer panels">
+        {LAYER_PANELS.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            role="tab"
+            aria-selected={tab === p.id}
+            className={`v-panels__tab${tab === p.id ? ' v-panels__tab--active' : ''}`}
+            onClick={() => setTab(p.id)}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+      {active.render()}
+    </section>
+  );
+}
+
 /** Route a destination to its view. A destination with a dedicated view gets one case here; only the
  *  greyed soon/future stubs fall through to the shared placeholder. Home is the default rollup landing
  *  and hosts the governed Launch/Rerun surface, so it receives the session token (the [+ New ▾] → Task
@@ -307,11 +347,17 @@ function ViewBody({
   sessionToken,
   onNavigate,
   onRequestSession,
+  onOpenCard,
+  taskSelectedId,
 }: {
   view: DestinationId;
   sessionToken?: string;
   onNavigate: (id: DestinationId) => void;
   onRequestSession: () => Promise<Session | null>;
+  /** Pipeline canvas click-through: open a card in the Tasks detail pane. */
+  onOpenCard: (cardId: string) => void;
+  /** The card the Tasks view should open on mount (set by a pipeline click-through). */
+  taskSelectedId?: string;
 }): React.JSX.Element {
   switch (view) {
     case 'home':
@@ -331,7 +377,18 @@ function ViewBody({
     case 'agents':
       return <Agents sessionToken={sessionToken} onRequestSession={onRequestSession} />;
     case 'tasks':
-      return <Tasks sessionToken={sessionToken} onRequestSession={onRequestSession} />;
+      return (
+        <Tasks
+          sessionToken={sessionToken}
+          onRequestSession={onRequestSession}
+          initialSelectedId={taskSelectedId}
+        />
+      );
+    case 'pipeline':
+      // D3.4 — React Flow canvas over the queue's depends-on DAG. Its governed node toggle reuses the
+      // card-routing write; a node click-through opens that card in the Tasks detail surface. Pipeline
+      // renders its own aria-labelled section.
+      return <Pipeline sessionToken={sessionToken} onRequestSession={onRequestSession} onOpenCard={onOpenCard} />;
     case 'projects':
       return (
         <section aria-label="Projects view">
@@ -340,6 +397,13 @@ function ViewBody({
       );
     case 'ledgers':
       return <Ledgers />;
+    case 'sentinel':
+      // D3.5 — the layer-panel set (Sentinel / Quartermaster / Flight Recorder / Atlas) behind sub-tabs.
+      return <LayerPanels />;
+    case 'terminal':
+      // D3.2 — the PTY pane. Session-gated: it renders a passkey prompt and connects nothing without a
+      // session, and it NEVER spawns anything itself (it signals the fleet-identity host over WS).
+      return <Terminal sessionToken={sessionToken} />;
     case 'connectors':
       return <Connectors />;
     case 'files':
@@ -363,6 +427,8 @@ export function App(): React.JSX.Element {
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerKind, setComposerKind] = useState<SeedKind>('idea');
   const [theme, setTheme] = useState<ThemeChoice>(() => readThemeChoice());
+  // Card id a Pipeline node click-through wants opened in the Tasks detail pane.
+  const [openCardId, setOpenCardId] = useState<string | undefined>(undefined);
   const approvalsCount = useApprovalsCount();
 
   // Ctrl/Cmd+K toggles the command palette anywhere in the shell.
@@ -390,6 +456,12 @@ export function App(): React.JSX.Element {
   const goTo = (id: DestinationId): void => {
     setComposerOpen(false);
     setView(id);
+  };
+
+  // Pipeline canvas click-through: open the card in the Tasks detail pane and jump there.
+  const openCardInTasks = (cardId: string): void => {
+    setOpenCardId(cardId);
+    goTo('tasks');
   };
 
   // Run a palette command. The palette is a SHORTCUT, never a bypass: this only changes the active view
@@ -480,6 +552,8 @@ export function App(): React.JSX.Element {
             sessionToken={session?.token}
             onNavigate={goTo}
             onRequestSession={requestSession}
+            onOpenCard={openCardInTasks}
+            taskSelectedId={openCardId}
           />
         )}
       </main>

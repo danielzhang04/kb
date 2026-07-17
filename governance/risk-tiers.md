@@ -31,3 +31,10 @@ streams), any **other** agent's memory shard, `governance/**`, `orgs/*/contract.
 work tree. Any write outside the enumerated allow-list — including any of the excluded paths — voids
 the carve-out for that run, which reverts to queues-for-me (the card goes to `queue/approvals/`).
 This carve-out names `nightly-review` only; no other cadence inherits it.
+
+## Approval channels (D2.13, decided 2026-07-17)
+Approval tokens are tiered by channel:
+- **T3 (merge to main, external publishing, deploys) → dashboard/WebAuthn-signed channel ONLY.**
+  The weak/unsigned transport (e.g. Telegram) MUST NOT authorize a T3 action.
+- T1–T2 may be approved over the weak channel.
+- T4 is never carded (unchanged).

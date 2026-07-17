@@ -19,8 +19,9 @@ describe('paletteModel — command set', () => {
     expect(byId.get('home')?.disabled).toBe(false);
     // …soon/future destinations are present but non-actionable, with their hint visible.
     expect(byId.get('atlas')?.disabled).toBe(true);
-    expect(byId.get('terminal')?.disabled).toBe(true);
-    expect(byId.get('terminal')?.hint).toBe('D3');
+    // Terminal went live in D3.2 — actionable, no greyed hint.
+    expect(byId.get('terminal')?.disabled).toBe(false);
+    expect(byId.get('terminal')?.hint).toBeUndefined();
   });
 
   it('act commands are shortcuts to a governed SURFACE, never an endpoint', () => {
