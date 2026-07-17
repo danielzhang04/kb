@@ -40,6 +40,7 @@ describe('App shell — entity-first sidebar navigation', () => {
       'Atlas',
       'Terminal',
       'Workflows',
+      'Pipeline',
       'Agents',
       'Tasks',
       'Projects',
@@ -53,7 +54,7 @@ describe('App shell — entity-first sidebar navigation', () => {
 
   it('does not render any dropped verb-IA destination', () => {
     render(<App />);
-    for (const dropped of ['Board', 'Editor', 'Vibe', 'Registry', 'Pipeline', 'Sentinel']) {
+    for (const dropped of ['Board', 'Editor', 'Vibe', 'Registry', 'Sentinel']) {
       expect(screen.queryByRole('button', { name: new RegExp(`^${dropped}$`) })).toBeNull();
     }
   });

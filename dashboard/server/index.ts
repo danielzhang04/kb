@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { kbBrowserRoutes } from './kb/routes.ts';
 import { registerRegistry } from './registry/routes.ts';
 import { registerPlaneA } from './planeA/routes.ts';
+import { registerDag } from './dag/routes.ts';
 import { registerRoutingRead } from './routing/routes.ts';
 import { registerAgents } from './agents/routes.ts';
 import { registerHub } from './hub/index.ts';
@@ -33,6 +34,7 @@ export function buildApp(): FastifyInstance {
   app.register(kbBrowserRoutes); // D0.5: read-only KB browser (GET-only /api/kb/*)
   registerRegistry(app); // D0.6: read-only registries (GET-only /api/registry/*)
   registerPlaneA(app); // D0.9: read-only Plane-A snapshot for the Control landing (GET /api/index)
+  registerDag(app); // D3.4: read-only pipeline DAG projection over depends-on (GET /api/dag)
   registerRoutingRead(app); // R2.1/R2.4: read-only effective-routing projection (GET /api/routing)
   registerAgents(app); // read-only fleet roster (GET /api/agents): queue owners ∪ ledger writers ∪ roles
   registerHub(app, { repoRoot: process.env.DASHBOARD_REPO_ROOT }); // D0.4: SSE/WS hub + Origin/Host guard (/events, /ws)

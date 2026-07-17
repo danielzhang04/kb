@@ -39,6 +39,7 @@ import { Timeline } from './views/Timeline';
 import { Workflows } from './views/Workflows';
 import { Connectors } from './views/Connectors';
 import { Tasks } from './views/Tasks';
+import { Pipeline } from './views/Pipeline';
 import { Agents } from './views/Agents';
 import { Projects } from './views/Projects';
 import { Ledgers } from './views/Ledgers';
@@ -307,11 +308,17 @@ function ViewBody({
   sessionToken,
   onNavigate,
   onRequestSession,
+  onOpenCard,
+  taskSelectedId,
 }: {
   view: DestinationId;
   sessionToken?: string;
   onNavigate: (id: DestinationId) => void;
   onRequestSession: () => Promise<Session | null>;
+  /** Pipeline canvas click-through: open a card in the Tasks detail pane. */
+  onOpenCard: (cardId: string) => void;
+  /** The card the Tasks view should open on mount (set by a pipeline click-through). */
+  taskSelectedId?: string;
 }): React.JSX.Element {
   switch (view) {
     case 'home':
@@ -331,7 +338,18 @@ function ViewBody({
     case 'agents':
       return <Agents sessionToken={sessionToken} onRequestSession={onRequestSession} />;
     case 'tasks':
-      return <Tasks sessionToken={sessionToken} onRequestSession={onRequestSession} />;
+      return (
+        <Tasks
+          sessionToken={sessionToken}
+          onRequestSession={onRequestSession}
+          initialSelectedId={taskSelectedId}
+        />
+      );
+    case 'pipeline':
+      // D3.4 — React Flow canvas over the queue's depends-on DAG. Its governed node toggle reuses the
+      // card-routing write; a node click-through opens that card in the Tasks detail surface. Pipeline
+      // renders its own aria-labelled section.
+      return <Pipeline sessionToken={sessionToken} onRequestSession={onRequestSession} onOpenCard={onOpenCard} />;
     case 'projects':
       return (
         <section aria-label="Projects view">
@@ -363,6 +381,8 @@ export function App(): React.JSX.Element {
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerKind, setComposerKind] = useState<SeedKind>('idea');
   const [theme, setTheme] = useState<ThemeChoice>(() => readThemeChoice());
+  // Card id a Pipeline node click-through wants opened in the Tasks detail pane.
+  const [openCardId, setOpenCardId] = useState<string | undefined>(undefined);
   const approvalsCount = useApprovalsCount();
 
   // Ctrl/Cmd+K toggles the command palette anywhere in the shell.
@@ -390,6 +410,12 @@ export function App(): React.JSX.Element {
   const goTo = (id: DestinationId): void => {
     setComposerOpen(false);
     setView(id);
+  };
+
+  // Pipeline canvas click-through: open the card in the Tasks detail pane and jump there.
+  const openCardInTasks = (cardId: string): void => {
+    setOpenCardId(cardId);
+    goTo('tasks');
   };
 
   // Run a palette command. The palette is a SHORTCUT, never a bypass: this only changes the active view
@@ -480,6 +506,8 @@ export function App(): React.JSX.Element {
             sessionToken={session?.token}
             onNavigate={goTo}
             onRequestSession={requestSession}
+            onOpenCard={openCardInTasks}
+            taskSelectedId={openCardId}
           />
         )}
       </main>

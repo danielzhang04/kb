@@ -39,6 +39,7 @@ describe('nav/config', () => {
     ]);
     expect(NAV_SECTIONS[1].items.map((d) => d.id)).toEqual([
       'workflows',
+      'pipeline',
       'agents',
       'tasks',
       'projects',
@@ -69,7 +70,9 @@ describe('nav/config', () => {
 
   it('drops every superseded verb-IA destination', () => {
     const ids = new Set<string>(ALL.map((d) => d.id));
-    for (const dropped of ['board', 'editor', 'vibe', 'skills', 'registry', 'pipeline', 'sentinel']) {
+    // D3.4 un-defers `pipeline` (the depends-on DAG canvas) into the entities group — it is no longer
+    // a dropped destination. The rest of the superseded verb-IA set stays gone.
+    for (const dropped of ['board', 'editor', 'vibe', 'skills', 'registry', 'sentinel']) {
       expect(ids.has(dropped)).toBe(false);
     }
     // "timeline" and "browser" were renamed to entity destinations, not kept.
@@ -92,6 +95,7 @@ describe('nav/config', () => {
       'approvals',
       'activity',
       'workflows',
+      'pipeline',
       'agents',
       'tasks',
       'projects',

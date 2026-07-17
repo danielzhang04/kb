@@ -13,7 +13,7 @@
  *   ── (divider, below the [+ New] menu) ──
  *   Home · Approvals(n) · Activity · Atlas(soon) · Terminal(soon — D3)
  *   ── (divider) ──
- *   Workflows · Agents · Tasks · Projects · Files
+ *   Workflows · Pipeline · Agents · Tasks · Projects · Files
  *   ── (divider) ──
  *   Connectors · Ledgers
  *   ── pinned floor ──  Session · STOP  (a shell region in App.tsx, not a nav destination)
@@ -34,6 +34,7 @@ export type DestinationId =
   | 'atlas'
   | 'terminal'
   | 'workflows'
+  | 'pipeline'
   | 'agents'
   | 'tasks'
   | 'projects'
@@ -81,6 +82,7 @@ export const NAV_SECTIONS: NavSection[] = [
     id: 'entities',
     items: [
       { id: 'workflows', label: 'Workflows', icon: '⧉', status: 'live' },
+      { id: 'pipeline', label: 'Pipeline', icon: '⋔', status: 'live' },
       { id: 'agents', label: 'Agents', icon: '◉', status: 'live' },
       { id: 'tasks', label: 'Tasks', icon: '☰', status: 'live' },
       { id: 'projects', label: 'Projects', icon: '▤', status: 'live' },

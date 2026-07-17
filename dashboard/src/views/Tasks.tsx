@@ -294,15 +294,19 @@ export function Tasks({
   routing,
   sessionToken,
   onRequestSession,
+  initialSelectedId,
 }: {
   data?: CardsByState;
   routing?: RoutingSnapshot;
   sessionToken?: string;
   onRequestSession?: () => Promise<Session | null>;
+  /** Card id to open in the detail pane on mount — used by the Pipeline canvas click-through so a node
+   *  jump lands directly on that card's full frontmatter/body/routing surface. */
+  initialSelectedId?: string;
 } = {}): React.JSX.Element {
   const [fetched, setFetched] = useState<CardsByState | null>(null);
   const [routingState, setRoutingState] = useState<RoutingSnapshot | null>(routing ?? null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(initialSelectedId ?? null);
 
   useEffect(() => {
     if (data) return;
