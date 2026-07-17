@@ -14,9 +14,10 @@ import { useEffect, useState } from 'react';
 import type { PlaneAIndex } from '../../../server/planeA/indexer';
 import '../../styles/views/panels.css';
 
-/** The stable committed-trace permalink for a card: `traces/<card-id>/` (serves the distilled index.html). */
+/** The stable committed-trace permalink for a card: `traces/<card-id>/` (serves the distilled index.html).
+ *  The id is percent-encoded so a card id carrying `../` or other URL metacharacters cannot escape `traces/`. */
 export function tracePermalink(cardId: string): string {
-  return `traces/${cardId}/`;
+  return `traces/${encodeURIComponent(cardId)}/`;
 }
 
 /** Derive the completed-card ids from a Plane-A snapshot (the cards that carry a committed trace). */
