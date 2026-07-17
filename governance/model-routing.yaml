@@ -1,0 +1,46 @@
+# governance/model-routing.yaml — Phase R "standard plan" (human-committed).
+#
+# The durable, human-authored routing policy. scripts/routing.py:resolve() reads it at card-claim time
+# and maps (role x risk-tier) -> a runtime + a model. This formalizes the model-tier prose in
+# routines/roles/*.md (scout=Haiku, manager=Opus, worker=Sonnet/Codex, inspector=Opus) into something
+# code enforces. Human-edited ONLY (CLAUDE.md): an agent may PROPOSE edits in docs/proposals/, Daniel
+# commits them here. Precedence (exactly one winner): card frontmatter > queue/routing-override.yaml >
+# THIS FILE > built-in safe default. See docs/proposals/model-routing-yaml-proposal.md §4.
+
+version: 1
+
+runtimes:
+  claude:
+    default_worker: worker-desktop
+    aliases:
+      opus:   claude-opus-4-8     # manager / inspector / consolidate tier
+      sonnet: claude-sonnet-5     # worker (volume) tier
+      haiku:  claude-haiku-4-5    # scout (cheap fan-out) tier
+    known_models: [claude-opus-4-8, claude-sonnet-5, claude-haiku-4-5]
+  codex:
+    default_worker: codex-worker  # the identity agent_runner.ps1 -Agent codex-worker owns
+    aliases:
+      codex: gpt-5.6-sol          # observed in ~/.codex/config.toml model_availability_nux on this box
+                                  #  (codex-cli 0.144.5, 2026-07-17); the codex runner does NOT pass
+                                  #  --model today, so for codex-runtime cards `model` is a RECORDED
+                                  #  INTENT the routed-vs-ran audit checks against the read-back id,
+                                  #  not a hard input.
+    known_models: [gpt-5.6-sol]
+  # gemini: deferred. Add a block here when it onboards; no code change needed beyond listing its
+  #   known_models — resolve() is data-driven off this registry.
+
+policy:
+  scout:
+    "*": { runtime: claude, model: haiku }      # scouts are cheap and disposable
+  manage:
+    "*": { runtime: claude, model: opus }       # managers make the trusted judgment calls
+  work:
+    T1: { runtime: claude, model: sonnet }
+    T2: { runtime: claude, model: sonnet }
+    T3: { runtime: claude, model: opus }        # T3 coding gets the strong tier
+  inspect:
+    "*": { runtime: claude, model: opus }       # grading runs on the strongest tier, fresh context
+  consolidate:
+    "*": { runtime: claude, model: opus }       # consolidate = fresh-context judge (Inspector principle)
+
+role_default: { runtime: claude, model: sonnet }
