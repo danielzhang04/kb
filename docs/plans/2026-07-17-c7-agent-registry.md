@@ -205,16 +205,17 @@ identities and (codex) keyring credentials. Three options:
   "declared — no runner yet").
 - The operator sets the agent's effective default runtime/model via the **already-shipped** governed
   agent-scope override control in the Agents view (`Agents.tsx:309-334`) — WebAuthn-gated, audited.
-- Cards can now be *addressed* to the agent (a cadence `agent: <id>` pin, or a Composer task with that
-  owner if/when task-owner selection is added — out of v1 scope).
+- Cards can now be *addressed* to the agent — a cadence `agent: <id>` pin, **or an operator-assigned
+  owner on a launched Task (C7.7, pulled into v1)**.
+
+**v1 ALSO delivers (scope expansion, Daniel 2026-07-17 — "declare + assign work now"):** task-owner
+assignment — an operator assigns a launched card's `owner` to a declared agent so an already-bound
+runner executes it. Designed in full as **C7.7** below.
 
 **v1 explicitly DEFERS:**
 - Runner provisioning / scheduled-task creation / credential handling (permanent human gate).
 - Flipping `runner-bound` to `true` (human-only edit, mirroring how `codex-worker` was onboarded via
   `agent-rules.md` rule 7 — a human decision, not a dashboard write).
-- Task-owner selection in Composer (assigning a launched card's `owner` to a chosen agent). Cadence
-  `agent:` pins already exist server-side; wiring an owner picker into the task Composer flow is a
-  follow-on.
 - Auto-writing the routing-override on deploy (see Flagged #3 — recommend keeping the file deploy and the
   override write as two separate governed actions in v1).
 
@@ -329,12 +330,120 @@ Ordered so every step is independently green. Test files to **extend** are named
   `deploy()` → `/api/write/save` unchanged (no `workBranch`), and the outcome strip reports the branch/PR
   target. Extend `dashboard/src/composer/DeployOutcome.test.tsx` + `deploy.test.ts` with an agent plan
   fixture. (deploy.ts itself unchanged — this is a coverage/wiring step.)
-- **C7.6 — (Flagged #5, optional) server-side impersonation/collision guard.** If approved: reject a
-  deployed `agents/<id>.md` whose `id` collides with `humans.yaml` or an existing runtime identity.
-  New small validator + test; **must not** touch the frozen files. Gated on Flagged #5.
+- **C7.6 — server-side impersonation/collision guard (Flagged #5, ACCEPTED — Daniel 2026-07-17).** Reject a
+  deployed `agents/<id>.md` whose `id` collides case-insensitively with a `governance/humans.yaml`
+  name/handle or shadows an existing runtime identity. New small validator + test; **must not** touch the
+  frozen files.
+- **C7.7 — task-owner assignment (Composer/Launch → run on an existing runner).** Detailed design section
+  below. Adds an optional, closed-set `owner` picker to the Task launch flow, a server-side owner
+  validator (`launch.ts` gate), owner→claim + effective-routing stamping, and a runner-bound warning.
+  Extend `dashboard/server/write/launch.test.ts`, `dashboard/server/write/routes` tests, and
+  `dashboard/src/views/launchControls`/`Control`/`Home` test suites. **New Flagged #7** (runtime/model
+  stamping at assignment) must be approved before build.
 
-Deferred to a later chunk (not C7): runner provisioning, task-owner selection in Composer,
-auto-chaining the override write, flipping `runner-bound` from the UI.
+Deferred to a later chunk (not C7): runner provisioning, auto-chaining the override write on deploy,
+flipping `runner-bound` from the UI.
+
+---
+
+## C7.7 — task-owner assignment (Composer → run on an existing runner)
+
+**Goal (Daniel's "declare + assign work now"):** let a WebAuthn operator assign a launched Task's `owner`
+to a declared/registered agent id, so an **already-bound** runner (`agent_runner.ps1` matching
+`card.owner == its -Agent id`, `agent_runner.ps1:160-191`) claims and executes it.
+
+### Current-state trace (where owner is — and isn't — set today)
+- The dashboard Launch form POSTs only `{project, action, target, riskTier, body}`
+  (`launchControls.tsx:109`) → route `/api/write/launch` reads exactly those fields
+  (`routes.ts:104-110`) → `launchCard` builds a `LaunchSpec` with no owner (`launch.ts:203-216`) →
+  `CARD_OP_SCRIPT` calls `cards.new_card(project, action, target, riskTier, body)` (`launch.ts:111-115`).
+- `cards.new_card` hard-codes **`owner: None`** (`cards.py:93`) and never calls `claim`. So **every
+  dashboard-launched card today is unowned** — no runner matches `owner==null`, so it just sits in
+  `inbox`. There is no owner field anywhere in the launch path to hijack; C7.7 *adds* the first one.
+- Owner is normally set by the dispatcher via `cards.claim(card, owner)` (which sets `owner` + mints a
+  `claim-token`, `cards.py:151-153`), called at `dispatch.py:532`. C7.7 performs the equivalent `claim`
+  in the launch path, from a **trusted** (WebAuthn-gated) operator choice.
+
+### Constraint 1 — owner is dispatcher-only, never from untrusted text (reconciled)
+`card-schema.md:14,18` restricts `owner`/`action`/`target` to the Manager/dispatcher and forbids copying
+them from untrusted text. The `/api/write/launch` path is already **preamble-gated then WebAuthn-session
+gated** (`launch.ts:171-191`) — the operator holding a passkey session **is** a trusted
+dispatcher-equivalent (the same standing that lets them set `action`/`target`/`riskTier` today). The
+reconciliation is therefore: an operator-set owner is legitimate **iff it comes from a closed set of
+declared/registered agent ids, never a freeform string.** The client offers a **`<select>` populated
+from the roster** (declared agents ∪ registered runtime `default_worker` ids), and — critically — the
+**server re-validates against that same closed set** (Constraint 2). The picker is honest-preview; the
+server is the boundary.
+
+### Constraint 2 — server-side owner validation (the boundary)
+- Add optional `owner?: string` to `LaunchSpec` (`launch.ts:42-51`); the route reads `body.owner`
+  (`routes.ts:104-110`), forwarding `undefined` when absent (backward-compatible: no owner → today's
+  unowned-card behaviour, byte-for-byte).
+- **New server validator** (in `launch.ts`, inside `launchCard` **before** the `runPy` call, or a tiny
+  `agents/registry.ts` helper `readAssignableOwners(repoRoot)`): the valid-owner set is enumerated
+  **server-side from the filesystem**, never from the client —
+  1. declared agents: `readDeclaredAgents(repoRoot)` (the C7.3 reader over `agents/*.md`), ∪
+  2. registered runtime workers: each `runtimes.<rt>.default_worker` in `governance/model-routing.yaml`
+     (`policy.ts loadPolicy`; today `worker-desktop`, `codex-worker`, `model-routing.yaml:13,21`).
+  A launch whose `owner` is non-empty and **not** in that set is refused with a new
+  `owner-not-registered` outcome → HTTP 400 (mirrors the `launchStatus` map, `routes.ts:44-55`). Also
+  apply the existing `CARD_ID_RE`-style filename/glob-safety guard (`routes.ts:40`) to `owner` before it
+  reaches any glob/path — reject separators, `..`, glob metachars. No card is filed on refusal.
+- Injecting owner into the card: extend `CARD_OP_SCRIPT`'s `"new"` branch (`launch.ts:111-115`) to call
+  `cards.claim(card, op["owner"])` when `owner` is present — the **same** primitive the dispatcher uses,
+  so the claim-token is minted identically and the schema stays authoritative (`cards.py:151-153`).
+
+### Constraint 3 — runtime-consistency (recommended: stamp from effective routing)
+A card owned by a codex agent but whose resolved runtime is `claude` (or vice-versa) is **refused** by the
+bound runner's pre-exec assertion (`assert_runtime.py`, `agent_runner.ps1:222-229`) and sits idle; the
+dispatch owner-runtime cross-check that would otherwise wake+skip (`dispatch.py:346-364, 522-532`) does
+**not** run on a dashboard-launched card (that card is already owned + in `inbox`; dispatch only
+resolves/claims cadence-emitted cards in `run()`), so a mismatch would fail **silently** at the runner.
+
+**v1 recommendation: stamp the card's `runtime` (and `model`) from the assigned agent's EFFECTIVE routing
+at claim time, so owner↔runtime agree by construction.** The server already has a pure TS resolver —
+`effectiveForAgent(id, policy, override)` (`roster.ts:19,69`; `routing/effective.ts`) — which returns the
+same `{runtime, model}` the Python resolver would (precedence: card frontmatter > `routing-override.yaml`
+agent entry > `model-routing.yaml` policy role×tier > safe default; `routing.py:249-308`,
+`model-routing.yaml:32-46`). `launchCard` computes `effectiveForAgent(owner, …)` and passes
+`runtime`/`model` into `CARD_OP_SCRIPT`, which stamps them via `cards.stamp_routing` (`cards.py:161-167`)
+in the same claim step. Result: the bound runner's `assert_runtime` passes, and there is no owner↔runtime
+mismatch for dispatch to wake+skip. This mirrors the already-shipped governed `setCardRouting` write
+(`routes.ts:258-281`) — stamping card runtime/model from a trusted, resolver-sourced value is existing
+practice, not a new authority. **This is Flagged #7** (stamping runtime/model at assignment).
+_Alternatives:_ (b) **warn only** — leave `runtime` null; the runner's "legacy/no-runtime → proceed" path
+(`agent_runner.ps1:220`) then runs it under whatever the bound runner is, which is fine for a same-runtime
+agent but silently wrong on a mismatch; (c) **block** the launch if the agent's effective runtime can't be
+resolved — too strict for v1. Recommend (a): least-surprising, no silent idle cards, fully governed.
+
+### Constraint 4 — only existing-runner agents actually run (runner-bound selectability)
+An agent with `runner-bound: false` assigned as owner → the card is claimed but no runner exists, so it
+sits in `inbox` unclaimed. **Recommendation: the picker MAY select `runner-bound: false` agents, but
+renders a clear inline warning** — "will not execute until a runner is bound to <id>." Rationale: this is
+exactly Daniel's "declare + assign work now" flow — queue work against a freshly-declared identity you are
+about to bind a runner for. The card is legitimately parked, not lost. The server validation
+(Constraint 2) still requires the id be **registered** (a declared `agents/*.md` file or a `default_worker`);
+`runner-bound` gates the *warning*, not selectability. _Alternative:_ restrict the picker to
+`runner-bound: true` / `default_worker` ids only — rejected as it defeats the stated "assign now, bind
+soon" intent; the warning carries the honesty instead.
+
+### Files to change (all additive to the launch path)
+- `dashboard/src/views/launchControls.tsx` — add an optional `owner` `<select>` (roster-sourced; blank =
+  unowned, today's behaviour) + the runner-bound warning; include `owner` in the POST body (`:109`) only
+  when chosen.
+- `dashboard/server/write/launch.ts` — `LaunchSpec.owner?`, closed-set validation, `effectiveForAgent`
+  stamping, `cards.claim`+`stamp_routing` in `CARD_OP_SCRIPT`, new `owner-not-registered` outcome.
+- `dashboard/server/write/routes.ts` — read `body.owner`, owner safety guard, map the new refusal to 400.
+- `dashboard/server/agents/` — `readAssignableOwners(repoRoot)` (declared agents ∪ default_workers),
+  reusing the C7.3 `readDeclaredAgents`.
+- **No change** to `deploy.ts`, `branch.ts`, `governedSave.ts`, or the frozen files.
+
+### Test home
+`dashboard/server/write/launch.test.ts` (RED first): owner in registered set → card filed + `claim`ed +
+runtime/model stamped from effective routing; owner **not** in set → `owner-not-registered`, no card
+filed; absent owner → unchanged unowned-card path; a codex-agent owner stamps `runtime: codex`. Route-level
+owner-safety in the `routes` test suite; the `<select>` + warning in `launchControls`/`Control`/`Home`
+view tests.
 
 ---
 
@@ -391,6 +500,19 @@ sync. _Rationale:_ avoids adding a pre-commit hook to the durable path (skills h
 the `.claude/skills` curated mirror; `branch.ts:19-22`). _Alternative:_ add validation-on-commit later if
 malformed agent files become a problem.
 
+**#7 — (NEW, surfaced by C7.7) Does operator owner-assignment stamp the card's `runtime`/`model`?**
+_Recommend:_ **Yes — stamp `runtime`/`model` from the assigned agent's effective routing
+(`effectiveForAgent`) at claim time**, so owner↔runtime agree by construction and the bound runner's
+`assert_runtime` passes (`agent_runner.ps1:222-229`) rather than the card silently sitting idle on a
+mismatch. _Rationale:_ the value is resolver-sourced (precedence `routing.py:249-308`), not untrusted
+text, and set by a WebAuthn-gated dispatcher-equivalent — the same standing that already lets the shipped
+`setCardRouting` governed write stamp card runtime/model (`routes.ts:258-281`); `card-schema.md:39-48`'s
+"dispatcher/routing-set only" rule is satisfied. _Alternatives:_ **warn-only** (leave `runtime` null → the
+runner's legacy-proceed path `agent_runner.ps1:220` runs it under the bound runtime — fine for a
+same-runtime agent, silently wrong on a mismatch) or **block** the launch when the runtime can't resolve
+(too strict for v1). This decision is scoped to the launch/assignment path only; it does **not** change
+how dispatch routes cadence cards.
+
 ---
 
 ## Frozen-file checkpoint (hard review gate)
@@ -430,3 +552,22 @@ any nonzero delta fails review outright.
    (`artifactTypes.ts:238-241`).
 9. **Roster read is fail-open on a sparse/malformed checkout** (missing `agents/` → empty, like
    `readRoles` `:158-160`) and a malformed agent file must not crash `buildRoster`.
+
+### C7.7 (task-owner assignment) additions
+10. **Closed-set owner, no freeform string.** The launch `owner` must be validated **server-side** against
+    the filesystem-enumerated set (declared `agents/*.md` ∪ registered `default_worker` ids from
+    `model-routing.yaml`), never trusted from the client. A non-registered owner → 400 `owner-not-registered`,
+    **no card filed**. The `<select>` is honest-preview only (`card-schema.md:14,18` reconciliation: the
+    WebAuthn operator is a trusted dispatcher-equivalent, but only over a closed set).
+11. **Owner string safety.** Apply the `CARD_ID_RE`-class guard (`routes.ts:40`) to `owner` before it
+    reaches any `queue_root.glob`/path — reject separators, `..`, glob metachars.
+12. **Runtime-consistency stamping (Flagged #7).** If adopted, `runtime`/`model` are stamped **only** from
+    the resolver (`effectiveForAgent`), never from client input, via `cards.stamp_routing` — so
+    owner-assignment can never create the owner↔runtime mismatch that dispatch would wake+skip
+    (`dispatch.py:346-364`) or the runner would refuse (`agent_runner.ps1:222-229`).
+13. **No privilege beyond the existing launch gate.** Owner-assignment adds no new auth surface: it rides
+    the already preamble-then-WebAuthn-gated `/api/write/launch` (`launch.ts:171-191`); it never provisions
+    a runner, never touches credentials, and a `runner-bound:false` owner simply parks the card (warned in
+    the UI), it does not force execution.
+14. **Backward-compatibility.** An absent `owner` must preserve today's exact unowned-card path
+    (`cards.new_card` owner=null, no `claim`) — the new field is strictly additive.
