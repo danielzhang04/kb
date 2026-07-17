@@ -6,7 +6,7 @@ import { parseYaml } from '../routing/yaml.ts';
 import type { PolicyDoc, OverrideDoc } from '../routing/policy.ts';
 import type { PlaneAIndex } from '../planeA/indexer.ts';
 import type { ParsedCard } from '../planeA/cards.ts';
-import { listAgents, buildRoster, readLedgerWriters, readRoles, roleFor } from './roster.ts';
+import { listAgents, buildRoster, readLedgerWriters, readRoles, roleFor, readDeclaredAgents } from './roster.ts';
 
 const POLICY = parseYaml(`version: 1
 runtimes:
@@ -151,5 +151,102 @@ describe('buildRoster (union of queue owners + ledger writers + roles)', () => {
   it('is empty-safe: no cards, no ledgers, no roles → empty roster', () => {
     const bare = mkdtempSync(join(tmpdir(), 'roster-empty-'));
     expect(buildRoster(indexOf([]), bare, POLICY, { overrides: [] })).toEqual([]);
+  });
+});
+
+/** Write a temp repo with an `agents/` dir populated with the given `<name>.md` -> content files. */
+function repoWithAgents(files: Record<string, string>): string {
+  const root = mkdtempSync(join(tmpdir(), 'roster-declared-'));
+  mkdirSync(join(root, 'agents'), { recursive: true });
+  for (const [name, content] of Object.entries(files)) {
+    writeFileSync(join(root, 'agents', name), content);
+  }
+  return root;
+}
+
+const AGENT_FILE = `---
+id: research-worker
+role: work
+runtime: codex
+model: gpt-5.6-sol
+runner-bound: false
+description: Volume worker for kb-ops housekeeping.
+---
+
+# Agent: research-worker
+
+Notes — inert prose.
+`;
+
+describe('readDeclaredAgents / buildRoster declared source (C7.3)', () => {
+  it('reads declared agents/*.md frontmatter (id, role, runtime, model, runner-bound, description)', () => {
+    const declared = readDeclaredAgents(repoWithAgents({ 'research-worker.md': AGENT_FILE }));
+    expect(declared.get('research-worker')).toEqual({
+      id: 'research-worker',
+      role: 'work',
+      runtime: 'codex',
+      model: 'gpt-5.6-sol',
+      runnerBound: false,
+      description: 'Volume worker for kb-ops housekeeping.',
+    });
+  });
+
+  it('reads runner-bound: true as runnerBound true', () => {
+    const bound = AGENT_FILE.replace('runner-bound: false', 'runner-bound: true');
+    expect(readDeclaredAgents(repoWithAgents({ 'research-worker.md': bound })).get('research-worker')?.runnerBound).toBe(true);
+  });
+
+  it('a declared-only agent (no cards, no ledgers) surfaces with role/runtime from its file and runnerBound false', () => {
+    const root = repoWithAgents({ 'research-worker.md': AGENT_FILE });
+    const entry = buildRoster(indexOf([]), root, POLICY, { overrides: [] }).find((r) => r.id === 'research-worker');
+    expect(entry).toBeDefined();
+    expect(entry!.declared).toBe(true);
+    expect(entry!.runnerBound).toBe(false);
+    expect(entry!.role).toBe('work');
+    expect(entry!.declaredRuntime).toBe('codex');
+    expect(entry!.declaredModel).toBe('gpt-5.6-sol');
+    expect(entry!.description).toBe('Volume worker for kb-ops housekeeping.');
+    expect(entry!.cardCount).toBe(0);
+    expect(entry!.sources).toEqual([]); // neither a card owner nor a ledger writer
+  });
+
+  it('a declared id that also owns cards merges into ONE entry (declared ∧ queue)', () => {
+    const root = repoWithAgents({ 'research-worker.md': AGENT_FILE });
+    const index = indexOf([card({ id: 'c1', owner: 'research-worker', state: 'working', action: 'build', project: 'kb' })]);
+    const matches = buildRoster(index, root, POLICY, { overrides: [] }).filter((r) => r.id === 'research-worker');
+    expect(matches).toHaveLength(1);
+    expect(matches[0].declared).toBe(true);
+    expect(matches[0].working).toBe(true);
+    expect(matches[0].cardCount).toBe(1);
+    expect(matches[0].sources).toEqual(['queue']);
+    expect(matches[0].role).toBe('work'); // declared role annotates the merged entry
+  });
+
+  it('a missing agents/ dir yields no declared agents and does not crash buildRoster', () => {
+    const bare = mkdtempSync(join(tmpdir(), 'roster-noagents-'));
+    expect(readDeclaredAgents(bare).size).toBe(0);
+    expect(buildRoster(indexOf([]), bare, POLICY, { overrides: [] })).toEqual([]);
+  });
+
+  it('a malformed agent file is skipped, not fatal', () => {
+    const root = repoWithAgents({
+      'research-worker.md': AGENT_FILE,
+      'broken.md': 'no frontmatter here at all\njust prose\n',
+    });
+    const declared = readDeclaredAgents(root);
+    expect(declared.has('research-worker')).toBe(true);
+    expect(declared.has('broken')).toBe(false);
+    const roster = buildRoster(indexOf([]), root, POLICY, { overrides: [] });
+    expect(roster.map((r) => r.id)).toContain('research-worker');
+    expect(roster.map((r) => r.id)).not.toContain('broken');
+  });
+
+  it('a non-declared agent (queue/ledger only) has declared false and runnerBound false', () => {
+    const root = repoWithAgents({ 'research-worker.md': AGENT_FILE });
+    const index = indexOf([card({ id: 'c1', owner: 'worker-desktop', state: 'inbox', action: 'x', project: 'kb' })]);
+    const entry = buildRoster(index, root, POLICY, { overrides: [] }).find((r) => r.id === 'worker-desktop');
+    expect(entry!.declared).toBe(false);
+    expect(entry!.runnerBound).toBe(false);
+    expect(entry!.declaredRuntime).toBeNull();
   });
 });

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtemp, rm, readFile } from 'node:fs/promises';
-import { writeFileSync, readFileSync, symlinkSync } from 'node:fs';
+import { writeFileSync, readFileSync, symlinkSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { mintSession } from '../auth/session.ts';
@@ -265,6 +265,120 @@ describe('save — governance/ is never writable through this path', () => {
     }
     // The real constitution file was never touched by any of the case-variant attempts.
     expect(readFileSync(join(repo, 'CLAUDE.md'), 'utf-8')).toBe('REAL CONSTITUTION');
+  });
+});
+
+describe('save — C7.6 agent id-collision / anti-impersonation guard', () => {
+  // Seed the two governance files the guard READS (never writes): the human name/handle registry and the
+  // runtime worker-identity registry.
+  function seedGovernance(repo: string): void {
+    mkdirSync(join(repo, 'governance'), { recursive: true });
+    writeFileSync(join(repo, 'governance', 'humans.yaml'), 'humans:\n  - "Daniel Zhang"\n  - "danielzhang04"\n', 'utf-8');
+    writeFileSync(
+      join(repo, 'governance', 'model-routing.yaml'),
+      'version: 1\nruntimes:\n  claude:\n    default_worker: worker-desktop\n  codex:\n    default_worker: codex-worker\n',
+      'utf-8',
+    );
+  }
+
+  it('refuses a NEW agents/<id>.md whose id collides with a humans.yaml handle (400, no write, no git)', async () => {
+    const repo = await scratch();
+    seedGovernance(repo);
+    const { runner, calls } = recorder();
+    const result = await save({
+      repoRoot: repo,
+      relpath: 'agents/danielzhang04.md',
+      content: '---\nid: danielzhang04\nrole: work\nrunner-bound: false\n---\nforged\n',
+      sessionToken: validToken(),
+      sessionConfig: CONFIG,
+      runGit: runner,
+      openPr: noopPrOpener,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(400);
+      expect(result.reason).toMatch(/agent-id-collision/);
+    }
+    expect(calls).toHaveLength(0);
+  });
+
+  it('refuses a NEW agents/<id>.md colliding case-insensitively with a runtime worker identity (400)', async () => {
+    const repo = await scratch();
+    seedGovernance(repo);
+    const { runner, calls } = recorder();
+    const result = await save({
+      repoRoot: repo,
+      relpath: 'agents/Codex-Worker.md',
+      content: '---\nid: Codex-Worker\n---\nforged\n',
+      sessionToken: validToken(),
+      sessionConfig: CONFIG,
+      runGit: runner,
+      openPr: noopPrOpener,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(400);
+      expect(result.reason).toMatch(/agent-id-collision/);
+    }
+    expect(calls).toHaveLength(0);
+  });
+
+  it('allows a FRESH non-colliding agents/<id>.md (durable, PR opened, file written)', async () => {
+    const repo = await scratch();
+    seedGovernance(repo);
+    const { runner: runGit } = recorder();
+    const prRequests: unknown[] = [];
+    const openPr: PrOpener = (_repoRoot, req) => {
+      prRequests.push(req);
+    };
+    const result = await save({
+      repoRoot: repo,
+      relpath: 'agents/research-worker.md',
+      content: '---\nid: research-worker\nrole: work\nrunner-bound: false\n---\nnotes\n',
+      sessionToken: validToken(),
+      sessionConfig: CONFIG,
+      runGit,
+      openPr,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.target).toBe('durable');
+    expect(prRequests).toHaveLength(1);
+    expect(readFileSync(join(repo, 'agents', 'research-worker.md'), 'utf-8')).toContain('research-worker');
+  });
+
+  it('allows EDITING an already-existing agents/<id>.md even if the id collides (edit exception)', async () => {
+    const repo = await scratch();
+    seedGovernance(repo);
+    mkdirSync(join(repo, 'agents'), { recursive: true });
+    writeFileSync(join(repo, 'agents', 'worker-desktop.md'), '---\nid: worker-desktop\n---\noriginal\n', 'utf-8');
+    const { runner: runGit } = recorder();
+    const result = await save({
+      repoRoot: repo,
+      relpath: 'agents/worker-desktop.md',
+      content: '---\nid: worker-desktop\n---\nedited\n',
+      sessionToken: validToken(),
+      sessionConfig: CONFIG,
+      runGit,
+      openPr: noopPrOpener,
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it('does NOT affect a non-agents/ save whose filename matches a reserved identity', async () => {
+    const repo = await scratch();
+    seedGovernance(repo);
+    const { runner: runGit } = recorder();
+    const result = await save({
+      repoRoot: repo,
+      relpath: 'docs/notes/danielzhang04.md',
+      content: 'plain notes, not an agent declaration',
+      sessionToken: validToken(),
+      sessionConfig: CONFIG,
+      runGit,
+      openPr: noopPrOpener,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.target).toBe('durable');
   });
 });
 
