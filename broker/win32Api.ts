@@ -113,6 +113,10 @@ const READ_CHUNK = 8192;
 const MAX_LINE_BYTES = 64 * 1024;
 const MAX_READ_ITERS = 64;
 const DRAIN_TIMEOUT_MS = 2000;
+/** F3: a connected client must send its complete request line within this bound, or the connection is
+ *  cancelled + closed. A legit client sends immediately; this only bounds an idle/slow-loris DoS that
+ *  connects (consuming an instance + spawning a replacement) then never sends a newline nor disconnects. */
+const REQUEST_READ_TIMEOUT_MS = 10_000;
 
 let cached: Win32Api | null = null;
 
@@ -283,7 +287,7 @@ export function loadWin32Api(): Win32Api {
     });
   }
 
-  async function readChunk(conn: Conn): Promise<Buffer | null> {
+  async function readChunk(conn: Conn, timeoutMs: number): Promise<Buffer | null> {
     prep(conn);
     const buf = Buffer.allocUnsafe(READ_CHUNK);
     const rn = koffi.alloc('uint32', 1);
@@ -294,9 +298,18 @@ export function loadWin32Api(): Win32Api {
       return n > 0 ? Buffer.from(buf.subarray(0, n)) : null;
     }
     if (lastErr() !== ERROR_IO_PENDING) return null; // broken pipe / error → EOF
-    const res = await pollOverlapped(conn);
+    const res = await pollOverlapped(conn, timeoutMs);
     dbg(`readChunk: poll ok=${res.ok} n=${res.n}`);
-    if (!res.ok || res.n === 0) return null;
+    if (!res.ok) {
+      // Timeout/cancel/error: abort the pending read so the handle can be closed cleanly (F3).
+      try {
+        CancelIoEx(conn.h, conn.ov);
+      } catch {
+        /* ignore */
+      }
+      return null;
+    }
+    if (res.n === 0) return null;
     return Buffer.from(buf.subarray(0, res.n));
   }
 
@@ -476,9 +489,21 @@ export function loadWin32Api(): Win32Api {
 
     readLine: async (handle: PipeHandle): Promise<string | null> => {
       const conn = asConn(handle);
+      // F3: bound the whole accept→complete-line phase. Each chunk gets the remaining budget; on expiry
+      // readChunk cancels the pending read and returns null → the connection is rejected + closed.
+      const deadline = Date.now() + REQUEST_READ_TIMEOUT_MS;
       let acc = Buffer.alloc(0);
       for (let iter = 0; iter < MAX_READ_ITERS; iter++) {
-        const chunk = await readChunk(conn);
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) {
+          try {
+            CancelIoEx(conn.h, conn.ov);
+          } catch {
+            /* ignore */
+          }
+          return null;
+        }
+        const chunk = await readChunk(conn, remaining);
         if (chunk === null) return acc.length > 0 ? acc.toString('utf-8') : null;
         acc = Buffer.concat([acc, chunk]);
         const nl = acc.indexOf(0x0a);
