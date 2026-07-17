@@ -796,6 +796,182 @@ def test_due_paused_check_is_repo_root_aware_and_backward_compatible():
     assert dispatch.due(weekly, tue) is False
 
 
+# --------------------------------------------------------------------------- #
+# Phase R1.3 -- routing resolution at claim + owner-by-runtime                 #
+# --------------------------------------------------------------------------- #
+#
+# A tmp-path policy fixture (governance/model-routing.yaml does NOT exist in the
+# repo yet -- Daniel commits it at gate R1.0). work/T1 routes to codex, work/T3
+# to claude, so a single policy exercises both owner-by-runtime branches.
+
+R1_POLICY = """\
+version: 1
+runtimes:
+  claude:
+    default_worker: worker-desktop
+    aliases:
+      opus: claude-opus-4-8
+      sonnet: claude-sonnet-5
+      haiku: claude-haiku-4-5
+    known_models: [claude-opus-4-8, claude-sonnet-5, claude-haiku-4-5]
+  codex:
+    default_worker: codex-worker
+    aliases:
+      codex: gpt-5-codex
+    known_models: [gpt-5-codex]
+policy:
+  work:
+    T1: { runtime: codex, model: codex }
+    T3: { runtime: claude, model: opus }
+role_default: { runtime: claude, model: sonnet }
+"""
+
+
+def _write_r1_policy(repo: Path) -> None:
+    gov = repo / "governance"
+    gov.mkdir(parents=True, exist_ok=True)
+    (gov / "model-routing.yaml").write_text(R1_POLICY, encoding="utf-8")
+
+
+def _hb(name, *, tier="cloud", risk="T1", extra_lines=""):
+    lines = [
+        "# Heartbeat — kb", "", "```yaml", "cadences:",
+        f"  - name: {name}", f"    schedule: daily", f"    tier: {tier}",
+        f"    risk-tier: {risk}",
+    ]
+    for line in extra_lines.splitlines():
+        if line.strip():
+            lines.append("    " + line)
+    lines += ["    prompt: |", "      Do the thing.", "```", ""]
+    return "\n".join(lines)
+
+
+def test_run_stamps_routing_from_policy(tmp_path):
+    import cards
+    # work/T3, no agent, inspect sibling -> stamp claude/opus on the WORK card
+    # only, never the inspect sibling.
+    repo = _repo_on_main(tmp_path, _hb("routed-work", risk="T3", extra_lines="inspect: true"))
+    _write_r1_policy(repo)
+    emitted = dispatch.run(repo, "cloud", "dispatcher-cloud",
+                           today=datetime.date(2026, 7, 14))
+    parsed = [cards.parse(p) for p in emitted]
+    work = next(c for c in parsed if c.meta["role"] == "work")
+    inspect = next(c for c in parsed if c.meta["role"] == "inspect")
+    assert work.meta["runtime"] == "claude"
+    assert work.meta["model"] == "claude-opus-4-8"
+    # the inspect sibling is never stamped -- a fresh session grades it later.
+    assert inspect.meta["runtime"] is None
+    assert inspect.meta["model"] is None
+
+
+def test_run_owner_selected_from_resolved_runtime(tmp_path):
+    import cards
+    # work/T1 -> codex (policy) with no cadence agent -> owner == codex-worker.
+    repo_codex = _repo_on_main(tmp_path / "c", _hb("codex-work", risk="T1"))
+    _write_r1_policy(repo_codex)
+    emitted = dispatch.run(repo_codex, "cloud", "dispatcher-cloud",
+                           today=datetime.date(2026, 7, 14))
+    c = cards.parse(emitted[0])
+    assert c.meta["owner"] == "codex-worker"
+    assert c.meta["runtime"] == "codex"
+
+    # work/T3 -> claude (policy), no agent -> owner == claude default_worker.
+    repo_claude = _repo_on_main(tmp_path / "d", _hb("claude-work", risk="T3"))
+    _write_r1_policy(repo_claude)
+    emitted2 = dispatch.run(repo_claude, "cloud", "dispatcher-cloud",
+                            today=datetime.date(2026, 7, 14))
+    c2 = cards.parse(emitted2[0])
+    assert c2.meta["owner"] == "worker-desktop"
+    assert c2.meta["runtime"] == "claude"
+
+
+def test_cadence_agent_still_wins_for_owner(tmp_path):
+    import cards
+    # Pins agent: codex-worker AND carries a card-frontmatter runtime/model that
+    # resolves to codex -> the pinned owner is kept, the registered runtime
+    # agrees, routing stamps codex verbatim.
+    repo = _repo_on_main(tmp_path, _hb(
+        "pinned-codex", risk="T1",
+        extra_lines="agent: codex-worker\nruntime: codex\nmodel: gpt-5-codex"))
+    _write_r1_policy(repo)
+    emitted = dispatch.run(repo, "cloud", "dispatcher-cloud",
+                           today=datetime.date(2026, 7, 14))
+    c = cards.parse(emitted[0])
+    assert c.meta["owner"] == "codex-worker"
+    assert c.meta["runtime"] == "codex"
+    assert c.meta["model"] == "gpt-5-codex"
+
+
+def test_pinned_owner_runtime_conflict_emits_wake_and_skips(tmp_path):
+    import cards
+    # Pins agent: codex-worker but policy (work/T3) routes to claude -> conflict:
+    # wake-me:owner-runtime-mismatch, and the work card is NOT dispatched.
+    repo = _repo_on_main(tmp_path, _hb(
+        "conflict", risk="T3", extra_lines="agent: codex-worker"))
+    _write_r1_policy(repo)
+    emitted = dispatch.run(repo, "cloud", "dispatcher-cloud",
+                           today=datetime.date(2026, 7, 14))
+    actions = {cards.parse(p).meta["action"] for p in emitted}
+    assert "cadence:conflict" not in actions  # skipped
+    wakes = [cards.parse(p) for p in (repo / "queue").glob("*/*.md")
+             if cards.parse(p).meta.get("action") == "wake-me:owner-runtime-mismatch"]
+    assert len(wakes) == 1
+    assert "conflict" in wakes[0].meta["target"]
+
+
+def test_card_frontmatter_override_wins_in_dispatch(tmp_path):
+    import cards
+    # A cadence carrying runtime/model (self-route) stamps those verbatim over
+    # policy (work/T3 would otherwise be claude/opus).
+    repo = _repo_on_main(tmp_path, _hb(
+        "self-route", risk="T3",
+        extra_lines="runtime: claude\nmodel: claude-haiku-4-5"))
+    _write_r1_policy(repo)
+    emitted = dispatch.run(repo, "cloud", "dispatcher-cloud",
+                           today=datetime.date(2026, 7, 14))
+    c = cards.parse(emitted[0])
+    assert c.meta["runtime"] == "claude"
+    assert c.meta["model"] == "claude-haiku-4-5"  # card override, not policy opus
+
+
+def test_unroutable_card_emits_wake_and_skips(tmp_path):
+    import cards
+    # A cadence naming an unknown model -> RoutingError -> wake-me:unroutable-card,
+    # and the work card is NOT dispatched (never a silent default substitution).
+    repo = _repo_on_main(tmp_path, _hb(
+        "bad-model", risk="T1",
+        extra_lines="runtime: claude\nmodel: claude-ultra-9"))
+    _write_r1_policy(repo)
+    emitted = dispatch.run(repo, "cloud", "dispatcher-cloud",
+                           today=datetime.date(2026, 7, 14))
+    actions = {cards.parse(p).meta["action"] for p in emitted}
+    assert "cadence:bad-model" not in actions  # skipped, never dispatched
+    wakes = [cards.parse(p) for p in (repo / "queue").glob("*/*.md")
+             if cards.parse(p).meta.get("action") == "wake-me:unroutable-card"]
+    assert len(wakes) == 1
+    assert "bad-model" in wakes[0].meta["target"]
+
+    # dedupe: a second run does not file a second wake-me.
+    dispatch.run(repo, "cloud", "dispatcher-cloud", today=datetime.date(2026, 7, 15))
+    wakes2 = [cards.parse(p) for p in (repo / "queue").glob("*/*.md")
+              if cards.parse(p).meta.get("action") == "wake-me:unroutable-card"]
+    assert len(wakes2) == 1
+
+
+def test_routing_absent_policy_keeps_dispatcher_owner_and_safe_default(tmp_path):
+    import cards
+    # No policy file at all (the reality until gate R1.0): owner stays the
+    # dispatcher (default_worker_for -> None -> fallback), and the card is
+    # stamped with the built-in safe default.
+    import routing
+    repo = make_repo(tmp_path)
+    emitted = dispatch.run(repo, "cloud", "dispatcher-cloud",
+                           today=datetime.date(2026, 7, 14))
+    c = cards.parse(emitted[0])
+    assert c.meta["owner"] == "dispatcher-cloud"
+    assert (c.meta["runtime"], c.meta["model"]) == routing.SAFE_DEFAULT
+
+
 def test_release_does_not_thread_into_a_non_depends_on_card(tmp_path):
     """A card with an empty depends-on (the common case -- every existing
     cadence-emitted card) must be completely untouched by the release pass."""

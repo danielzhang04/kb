@@ -18,6 +18,13 @@ STATES = ("inbox", "blocked", "working", "done", "approvals", "approved", "rejec
           "stop-requested", "halting", "halted")
 RISK_TIERS = ("T1", "T2", "T3")
 ROLES = ("scout", "manage", "work", "inspect", "consolidate")
+# Execution runtimes a card may be routed to (Phase R1). Validated only when the
+# `runtime` field is present/truthy -- exactly the `role`/`ROLES` rule -- so
+# legacy cards (no `runtime` key) and freshly-minted cards (runtime: None) stay
+# valid. Concrete `model` ids are NOT enum-checked here: they are validated
+# against the runtime registry by scripts/routing.resolve(), so cards.py need
+# not couple to governance/model-routing.yaml. Gemini is deferred (memory).
+RUNTIMES = ("claude", "codex")
 REQUIRED = ("id", "project", "action", "target", "risk-tier", "state")
 STATE_DIR = {
     "inbox": "inbox", "blocked": "inbox",
@@ -74,6 +81,10 @@ def _validate(meta: dict) -> None:
         raise ValidationError(f"unknown state: {meta['state']}")
     if meta.get("role") and meta["role"] not in ROLES:
         raise ValidationError(f"role must be one of {ROLES}")
+    # Routing runtime (Phase R1): validate only when present/truthy, mirroring
+    # the `role`/`ROLES` rule above. runtime: None / absent (legacy) is valid.
+    if meta.get("runtime") and meta["runtime"] not in RUNTIMES:
+        raise ValidationError(f"runtime must be one of {RUNTIMES}")
 
 
 def new_card(project, action, target, risk_tier, body: str = "", **extra) -> Card:
@@ -88,6 +99,14 @@ def new_card(project, action, target, risk_tier, body: str = "", **extra) -> Car
         # the cloud self-executing carve-out case (D1.1's stamp_session call
         # in dispatch.run()). Optional and inert -- never parsed/executed.
         "session-id": None,
+        # Phase R1 routing fields. SET BY the dispatcher/routing layer ONLY
+        # (never parsed from untrusted card text -- same rule as action/target);
+        # resolved at claim time from the routing precedence and stamped via
+        # stamp_routing. null on a fresh card and on every legacy card. `model`
+        # is a concrete id (validated against the runtime registry by
+        # routing.resolve, not here). Inert metadata; never executed.
+        "runtime": None,
+        "model": None,
     }
     meta.update(extra)
     _validate(meta)
@@ -137,6 +156,15 @@ def claim(card: Card, agent_id: str) -> None:
 def stamp_session(card: Card, session_id: str) -> None:
     """Set the Plane-A<->Plane-B join key. Inert metadata: never parsed/executed."""
     card.meta["session-id"] = session_id
+
+
+def stamp_routing(card: Card, runtime: str, model: str) -> None:
+    """Persist the resolved routing decision onto the card (Phase R1), mirroring
+    stamp_session: a two-line setter that mutates card.meta but does not save.
+    The dispatcher calls this at the claim anchor with the concrete
+    (runtime, model) that routing.resolve() returned. Inert metadata."""
+    card.meta["runtime"] = runtime
+    card.meta["model"] = model
 
 
 def transition(card: Card, new_state: str, queue_root: Path) -> Path:

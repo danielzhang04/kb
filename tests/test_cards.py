@@ -113,6 +113,56 @@ def test_legal_stop_ladder_transitions(tmp_path):
         cards.transition(done_card, "stop-requested", tmp_path)
 
 
+# --------------------------------------------------------------------------- #
+# Phase R1.2 -- optional runtime/model routing fields + stamp_routing         #
+# --------------------------------------------------------------------------- #
+
+def test_new_card_has_null_runtime_and_model_by_default():
+    c = cards.new_card("p", "a", "t", "T1")
+    assert "runtime" in c.meta and c.meta["runtime"] is None
+    assert "model" in c.meta and c.meta["model"] is None
+
+
+def test_stamp_routing_sets_fields(tmp_path):
+    c = cards.new_card("p", "a", "t", "T1")
+    cards.stamp_routing(c, "claude", "claude-opus-4-8")
+    assert c.meta["runtime"] == "claude"
+    assert c.meta["model"] == "claude-opus-4-8"
+    p = cards.save(c, tmp_path)
+    reread = cards.parse(p)
+    assert reread.meta["runtime"] == "claude"
+    assert reread.meta["model"] == "claude-opus-4-8"
+
+
+def test_missing_routing_fields_still_validate(tmp_path):
+    c = cards.new_card("p", "a", "t", "T1")
+    del c.meta["runtime"]  # simulate a legacy on-disk card predating the fields
+    del c.meta["model"]
+    p = cards.save(c, tmp_path)
+    reread = cards.parse(p)  # must not raise ValidationError
+    assert "runtime" not in reread.meta
+    assert "model" not in reread.meta
+
+
+def test_invalid_runtime_rejected_when_present():
+    with pytest.raises(cards.ValidationError):
+        cards.new_card("p", "a", "t", "T1", runtime="gpt")  # not in RUNTIMES
+
+
+def test_null_or_absent_runtime_not_rejected(tmp_path):
+    # runtime: None (fresh card) and absent (legacy) both validate -- mirror role.
+    c = cards.new_card("p", "a", "t", "T1")  # runtime defaults to None
+    cards.save(c, tmp_path)
+    assert c.meta["runtime"] is None
+
+
+def test_model_is_free_form_not_enum_checked():
+    # cards.py deliberately does NOT validate concrete model ids (routing.resolve
+    # does, against the registry) -- so an arbitrary model string is accepted here.
+    c = cards.new_card("p", "a", "t", "T1", runtime="claude", model="some-future-model")
+    assert c.meta["model"] == "some-future-model"
+
+
 def test_existing_transitions_unchanged(tmp_path):
     assert cards.LEGAL["inbox"] == {"working", "blocked"}
     assert cards.LEGAL["blocked"] == {"inbox"}
