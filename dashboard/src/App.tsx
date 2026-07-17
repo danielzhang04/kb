@@ -42,6 +42,7 @@ import { Tasks } from './views/Tasks';
 import { Agents } from './views/Agents';
 import { Projects } from './views/Projects';
 import { Ledgers } from './views/Ledgers';
+import { Terminal } from './views/Terminal';
 import { DeployOutcome } from './composer/DeployOutcome';
 import type { SeedKind } from './composer/artifactTypes';
 import { fetchPending } from './lib/approvalsClient';
@@ -340,6 +341,10 @@ function ViewBody({
       );
     case 'ledgers':
       return <Ledgers />;
+    case 'terminal':
+      // D3.2 — the PTY pane. Session-gated: it renders a passkey prompt and connects nothing without a
+      // session, and it NEVER spawns anything itself (it signals the fleet-identity host over WS).
+      return <Terminal sessionToken={sessionToken} />;
     case 'connectors':
       return <Connectors />;
     case 'files':

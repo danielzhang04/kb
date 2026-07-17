@@ -11,7 +11,7 @@
  * §E/§F visual rule remain authoritative.
  *
  *   ── (divider, below the [+ New] menu) ──
- *   Home · Approvals(n) · Activity · Atlas(soon) · Terminal(soon — D3)
+ *   Home · Approvals(n) · Activity · Atlas(soon) · Terminal(live — D3.2)
  *   ── (divider) ──
  *   Workflows · Agents · Tasks · Projects · Files
  *   ── (divider) ──
@@ -20,7 +20,8 @@
  *
  * Live day-one views: Home, Approvals, Activity, Workflows, Files, Connectors. Agents/Tasks/Projects/
  * Ledgers are reachable nav items that land on a U3 placeholder (the nav skeleton is real; the view
- * lands next wave). Atlas/Terminal are greyed + disabled "soon" stubs.
+ * lands next wave). Terminal is LIVE as of D3.2 (the PTY pane); Atlas remains a greyed + disabled
+ * "soon" stub.
  */
 
 /** A destination's build state. `live` is reachable now; `soon`/`future` render greyed + disabled. */
@@ -74,7 +75,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { id: 'approvals', label: 'Approvals', icon: '✓', status: 'live' },
       { id: 'activity', label: 'Activity', icon: '≡', status: 'live' },
       { id: 'atlas', label: 'Atlas', icon: '◈', status: 'soon', hint: 'soon' },
-      { id: 'terminal', label: 'Terminal', icon: '⌨', status: 'soon', hint: 'D3' },
+      { id: 'terminal', label: 'Terminal', icon: '⌨', status: 'live' },
     ],
   },
   {
