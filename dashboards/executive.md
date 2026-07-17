@@ -1,35 +1,55 @@
 # Executive Dashboard
-_Generated: 2026-07-16 19:45 UTC by dispatcher-cloud_
+_Generated: 2026-07-17 08:35 UTC by housekeeping-agent_
 
 ## Action required
-- **Wake-me (T1) — governance/work-order mismatch:** the `nightly-review` work order
-  and `routines/nightly.md` direct writes that fall **outside** the `cadence:nightly-review`
-  carve-out allow-list added to `governance/risk-tiers.md` today: `memory/nightly-reviewer.md`
-  (a role shard ≠ the acting agent's own `memory/dispatcher-cloud.md`) and `ledgers/cost/**`
-  (only `ledgers/dispatch/**` is enumerated). See wake-me card in `queue/inbox/`. Human to
-  reconcile: either broaden the carve-out or trim the work order/routine.
-- No approvals cards pending.
+None — no cards in `queue/approvals/`, no wake-me cards in `queue/inbox/`.
 
 ## Queue
 | state | count |
 | --- | --- |
-| inbox | 1 (wake-me, this run) |
+| inbox | 0 |
 | working | 0 |
 | approvals | 0 |
-| done | 2 |
+| done | 4 |
 
 ## Last 24h
-- Cadence **kb-nightly-review** — dispatched 2026-07-16 (card `6a593421-0a5a0c92`) and
-  2026-07-15 (card `6a581e05-36cf29da`, executed via desktop fallback after human approval).
-- Cost: **$0.00 of $5.00** daily limit used (all logged model steps subscription-billed, usd 0.0). Remaining $5.00.
-- Health: `python scripts/preamble.py` -> PREAMBLE OK; `python scripts/sync_skills.py --check` -> exit 0, no drift.
-- Notable: this run acted alone under the new nightly-review carve-out — regenerated both
-  dashboards and wrote its own memory shard, staying strictly inside the allow-list; deferred
-  the two out-of-list writes to a human via wake-me card rather than voiding the carve-out.
+- **Fleet build:** Waves 0–5 complete and merged to `main` (PR #6 `claude/m1-fleet` + the Wave
+  2–5 series: role-tagged DAG dispatch, grader/promotion loop, Telegram possession channel,
+  Codex worker onboarding behind the boundary).
+- **Dashboard:** D0–D2 merged to `main` via PR #7 — WebAuthn registration/assertion + canonical
+  content-hash (D2.1–D2.3, incl. the body-binding fix closing the D2.11 residual), governed
+  CodeMirror save and card launch/rerun (D2.5–D2.6), triple-gated vibe-code chat (D2.7),
+  files-only STOP ladder (D2.8), append-only audit log + rate-limiting (D2.9), out-of-band
+  approval-confirmation push (D2.10), approvals inbox with typed renderers (D2.4). `ops` is
+  merged current with `main` (`b416e0f`).
+- **0.5b approvals card closed** — `queue/approvals/6a5950ae-19654711.md` (stale since 2026-07-16,
+  action `verify-05b-signed-approval-honoring`) moved to `queue/done/` (commit `ebf1898` on
+  `ops`). This card's own staged approval hit a flat-YAML formatting bug and was reverted before
+  any human merge; a corrected sibling proof card was staged, and Daniel merged a genuine
+  web-flow-signed approval into the protected `approvals` ref (`e26b6ed`). Housekeeping
+  independently re-ran the current `approvals.verify_signed_approval()` offline against that
+  merged record (ephemeral worktree, nothing committed/pushed) and got `(True, "ok")` — gate
+  0.5b (offline signed-approval honoring) is proven. Full evidence trail is in the card's
+  `## Result`.
+- **Nightly cadence:** `kb-nightly-review` ran 2026-07-16 (card `6a593421-0a5a0c92`); the
+  governance carve-out/work-order mismatch flagged that run (wake-me card `928ae6e8-ae68c27e`)
+  has since been resolved and closed.
+- **Cost:** $0.00 of $5.00 daily limit used today. Remaining $5.00.
+- **Health:** `py -3 scripts/preamble.py` -> PREAMBLE OK; `py -3 scripts/sync_skills.py --check`
+  -> exit 0, no drift.
 
 ## Projects
+- **kb-ops** — scaffolded 2026-07-16; STATE "Now" empty, nothing in flight yet.
+- **atlas-prep** — scaffolded 2026-07-16; STATE "Now" empty, nothing in flight yet.
 - **faceless-youtube** — scaffolded 2026-07-15; STATE "Now" empty, nothing in flight yet.
+- **Dashboard UI phase** (not an org, but active work): in progress on `claude/m1-dashboard`
+  (Mission Control shell scaffold, `8531dec`, merged current with `main`), not yet merged.
 
 ## Anomalies
-- Governance/work-order mismatch (see Action required) — recurs every nightly run until reconciled.
-- No stale (>48h) `working/` cards, no skill-registry drift, preamble passing, budget well under ceiling.
+- Minor, non-urgent: the sibling proof card `6a5958cf-f01e6715` that carried the real signed
+  approval for gate 0.5b was itself never executed — it still sits unclaimed on the `approvals`
+  branch (`queue/approvals/`, `## Result` empty). Harmless (it already served its purpose
+  proving the mechanism); left untouched by this housekeeping run since that branch is out of
+  scope.
+- Otherwise none: no stale (>48h) `working/` cards, no skill-registry drift, preamble passing,
+  budget well under ceiling.
