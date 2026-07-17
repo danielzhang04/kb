@@ -1,0 +1,155 @@
+/*
+ * Command palette (U4). Raycast-style centered overlay. Solid bg-elevated panel, hairline border, one
+ * overlay shadow — NO backdrop blur, NO glass/gradient/glow (brief §F). The active row uses the shared
+ * left-border accent selection language. Motion stays within the 150–200ms ease-out band.
+ */
+.mc-palette__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  /* A calm scrim — a flat low-opacity black, not a blur wash. */
+  background: rgba(0, 0, 0, 0.4);
+  padding-top: 14vh;
+  animation: mc-palette-fade 150ms ease-out;
+}
+
+.mc-palette {
+  width: min(40rem, 92vw);
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-overlay);
+  overflow: hidden;
+  animation: mc-palette-rise 160ms ease-out;
+}
+
+@keyframes mc-palette-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes mc-palette-rise {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mc-palette__backdrop,
+  .mc-palette {
+    animation: none;
+  }
+}
+
+.mc-palette__input {
+  flex: 0 0 auto;
+  width: 100%;
+  background: var(--bg-sunken);
+  color: var(--fg-primary);
+  border: none;
+  border-bottom: 1px solid var(--border);
+  padding: var(--space-3) var(--space-4);
+  font: inherit;
+  font-size: var(--text-md);
+  outline: none;
+}
+
+.mc-palette__input::placeholder {
+  color: var(--fg-faint);
+}
+
+.mc-palette__list {
+  flex: 1 1 auto;
+  list-style: none;
+  margin: 0;
+  padding: var(--space-1);
+  overflow-y: auto;
+}
+
+.mc-palette__group {
+  display: block;
+  padding: var(--space-2) var(--space-2) var(--space-1);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  color: var(--fg-faint);
+}
+
+.mc-palette__opt {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  background: transparent;
+  color: var(--fg-dim);
+  /* 2px left rail (transparent until selected) keeps geometry stable — see the ACTIVE/SELECTED
+   * LANGUAGE note in app.css. Only the selected row paints the accent border. */
+  border: 1px solid transparent;
+  border-left: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  font: inherit;
+  font-size: var(--text-md);
+  text-align: left;
+  cursor: pointer;
+}
+
+.mc-palette__opt--selected {
+  background: var(--accent-quiet);
+  color: var(--fg-primary);
+  border-left-color: var(--accent-strong);
+}
+
+.mc-palette__opt--disabled {
+  color: var(--fg-faint);
+  cursor: not-allowed;
+}
+
+.mc-palette__opt--disabled.mc-palette__opt--selected {
+  background: var(--bg-panel);
+  border-left-color: var(--border-strong);
+}
+
+.mc-palette__opt-icon {
+  flex: 0 0 auto;
+  width: 1.1em;
+  text-align: center;
+  color: var(--fg-faint);
+}
+
+.mc-palette__opt--selected .mc-palette__opt-icon {
+  color: var(--accent);
+}
+
+.mc-palette__opt-label {
+  flex: 1 1 auto;
+}
+
+.mc-palette__opt-hint {
+  flex: 0 0 auto;
+  font-size: var(--text-xs);
+  color: var(--fg-faint);
+}
+
+.mc-palette__empty {
+  padding: var(--space-4);
+  text-align: center;
+  color: var(--fg-faint);
+  font-size: var(--text-sm);
+}

@@ -16,7 +16,7 @@
  * icon rail (icons keep a hover tooltip via the native title attribute). Destinations flagged
  * `soon`/`future` render greyed + disabled.
  */
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import {
   NAV_SECTIONS,
   DEFAULT_DESTINATION,
@@ -25,6 +25,11 @@ import {
   type NavDestination,
 } from './nav/config';
 import { NewMenu } from './nav/NewMenu';
+import { CommandPalette } from './palette/CommandPalette';
+import type { PaletteCommand } from './palette/paletteModel';
+import { Flyout } from './flyout/Flyout';
+import { useFleetData } from './flyout/useFleetData';
+import { FLYOUT_DESTINATIONS, summaryFor, type FlyoutSummary } from './flyout/flyoutModel';
 import { StopControls } from './views/Control';
 import { Home } from './views/Home';
 import { ApprovalsLive } from './views/ApprovalsLive';
@@ -62,22 +67,46 @@ function useApprovalsCount(): number {
   return count;
 }
 
-function NavItem({
+export function NavItem({
   item,
   active,
   badge,
   onSelect,
+  summary,
+  flyoutDelay = 150,
 }: {
   item: NavDestination;
   active: DestinationId;
   badge?: number;
   onSelect: (id: DestinationId) => void;
+  /** Live contents summary for the hover-flyout, or undefined for items without one. */
+  summary?: FlyoutSummary | null;
+  /** Delay before the flyout opens on hover/focus (ms). Injectable for tests. */
+  flyoutDelay?: number;
 }): React.JSX.Element {
   const disabled = !isLive(item);
+  const hasFlyout = Boolean(summary && !summary.empty);
+  const [flyoutOpen, setFlyoutOpen] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => () => clearTimeout(timerRef.current), []);
+
+  const scheduleFlyout = (): void => {
+    if (!hasFlyout) return;
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setFlyoutOpen(true), flyoutDelay);
+  };
+  const closeFlyout = (): void => {
+    clearTimeout(timerRef.current);
+    setFlyoutOpen(false);
+  };
+
   return (
-    <li>
+    <li className="mc-nav-item__li">
       <button
         type="button"
+        ref={btnRef}
         className={`mc-nav-item${active === item.id ? ' mc-nav-item--active' : ''}${
           disabled ? ' mc-nav-item--disabled' : ''
         }`}
@@ -85,7 +114,20 @@ function NavItem({
         title={item.hint ? `${item.label} · ${item.hint}` : item.label}
         aria-current={active === item.id ? 'page' : undefined}
         disabled={disabled}
-        onClick={() => onSelect(item.id)}
+        onClick={() => {
+          closeFlyout();
+          onSelect(item.id);
+        }}
+        onMouseEnter={scheduleFlyout}
+        onMouseLeave={closeFlyout}
+        onFocus={scheduleFlyout}
+        onBlur={closeFlyout}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape' && flyoutOpen) {
+            e.stopPropagation();
+            closeFlyout();
+          }
+        }}
       >
         <span className="mc-nav-item__icon mc-mono" aria-hidden="true">
           {item.icon}
@@ -99,6 +141,7 @@ function NavItem({
           <span className="mc-nav-item__hint">{item.hint}</span>
         ) : null}
       </button>
+      <Flyout open={flyoutOpen} id={item.id} summary={summary} anchor={btnRef} />
     </li>
   );
 }
@@ -159,6 +202,18 @@ function Sidebar({
   session: Session | null;
   onSignIn: () => void;
 }): React.JSX.Element {
+  // One shared snapshot feeds every flyout (module-cached + SSE-refreshed) — no per-hover fetch.
+  const { index, registry } = useFleetData();
+  const summaries = useMemo(() => {
+    const m = new Map<DestinationId, FlyoutSummary | null>();
+    for (const section of NAV_SECTIONS) {
+      for (const item of section.items) {
+        if (FLYOUT_DESTINATIONS.has(item.id)) m.set(item.id, summaryFor(item.id, index, registry));
+      }
+    }
+    return m;
+  }, [index, registry]);
+
   return (
     <nav className="mc-sidebar" aria-label="Primary navigation">
       <div className="mc-sidebar__brand">
@@ -188,6 +243,7 @@ function Sidebar({
                   active={active}
                   badge={item.id === 'approvals' ? approvalsCount : undefined}
                   onSelect={onSelect}
+                  summary={summaries.get(item.id)}
                 />
               ))}
             </ul>
@@ -281,7 +337,31 @@ export function App(): React.JSX.Element {
   const [view, setView] = useState<DestinationId>(DEFAULT_DESTINATION);
   const [rail, setRail] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const approvalsCount = useApprovalsCount();
+
+  // Ctrl/Cmd+K toggles the command palette anywhere in the shell.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // Run a palette command. The palette is a SHORTCUT, never a bypass: this only changes the active view
+  // (navigate) and/or focuses the pinned Session/Stop floor — it never calls a governed endpoint.
+  const handlePaletteRun = (cmd: PaletteCommand): void => {
+    if (cmd.focusFloor) {
+      const btn = document.querySelector<HTMLElement>('[data-testid="stop-floor"] button');
+      if (typeof btn?.scrollIntoView === 'function') btn.scrollIntoView({ block: 'nearest' });
+      btn?.focus();
+    }
+    if (cmd.target) setView(cmd.target);
+  };
 
   const handleSignIn = (): void => {
     // WebAuthn login -> short-TTL bearer. Fail-closed: a refused ceremony (no passkey) leaves the floor
@@ -319,6 +399,11 @@ export function App(): React.JSX.Element {
       <main className="mc-main">
         <ViewBody view={view} sessionToken={session?.token} onNavigate={setView} />
       </main>
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        onRun={handlePaletteRun}
+      />
     </div>
   );
 }
