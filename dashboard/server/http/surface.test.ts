@@ -196,6 +196,63 @@ describe('write surface — composition chain', () => {
     expect(res.json()).toMatchObject({ error: 'fleet-frozen' });
     expect(audit.rows).toHaveLength(0);
   });
+
+  it('C7.7 — rejects a launch owner that is not filename-safe with 400 bad-owner (before the gate module)', async () => {
+    ({ app } = buildApp({ runPreamble: okPreamble, runPy: okPy }));
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/write/launch',
+      headers: headers(true),
+      payload: { project: 'kb', action: 'demo:x', target: '.', riskTier: 'T1', owner: 'evil/../x' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ error: 'bad-owner' });
+  });
+
+  it('C7.7 — rejects a launch owner absent from the filesystem-enumerated closed set with 400 owner-not-registered', async () => {
+    // REPO_A has no agents/ dir and no model-routing.yaml → the assignable set is empty → any owner refused.
+    ({ app } = buildApp({ runPreamble: okPreamble, runPy: okPy }));
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/write/launch',
+      headers: headers(true),
+      payload: { project: 'kb', action: 'demo:x', target: '.', riskTier: 'T1', owner: 'ghost-agent' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ error: 'owner-not-registered' });
+  });
+
+  it('C7.7 — a declared agent owner (enumerated from agents/*.md) is claimed + routing-stamped end to end', async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'c77-owner-'));
+    mkdirSync(join(repoRoot, 'agents'), { recursive: true });
+    writeFileSync(
+      join(repoRoot, 'agents', 'codex-runner.md'),
+      ['---', 'id: codex-runner', 'role: work', 'runtime: codex', 'runner-bound: false', 'description: test runner', '---', '', '# Agent: codex-runner', ''].join('\n'),
+    );
+    // Recording py captures exactly what the launch path would shell — the resolver-sourced owner + routing.
+    const calls: Array<{ jsonArg: string }> = [];
+    const recPy: PyRunner = (_repo, _code, jsonArg) => {
+      calls.push({ jsonArg });
+      return { exitCode: 0, stdout: JSON.stringify({ id: 'owned-77', path: 'queue/inbox/owned-77.md' }), stderr: '' };
+    };
+    const audit = recordingAudit();
+    ({ app } = buildApp({ repoRoot, appendAudit: audit.fn, runPreamble: okPreamble, runPy: recPy }));
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/write/launch',
+      headers: headers(true),
+      payload: { project: 'kb', action: 'demo:x', target: '.', riskTier: 'T2', owner: 'codex-runner' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ ok: true, cardId: 'owned-77' });
+    expect(calls).toHaveLength(1);
+    const payload = JSON.parse(calls[0].jsonArg) as { kind: string; owner: string; runtime: string; model: string };
+    expect(payload).toMatchObject({ kind: 'new', owner: 'codex-runner' });
+    // Routing is resolver-sourced (effectiveForAgent) — present + concrete, never client input.
+    expect(typeof payload.runtime).toBe('string');
+    expect(typeof payload.model).toBe('string');
+  });
 });
 
 describe('write surface — FINDING 1: server owns the durable work branch (no client-controlled push)', () => {

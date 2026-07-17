@@ -103,11 +103,11 @@ export const DEFAULT_DESTINATION: DestinationId = 'home';
  *  the menu's shape says "bring an idea, iterate", not "pick an entity type". `idea` opens the Composer
  *  convergence surface in idea mode; `workflow`/`skill`/`project` open the SAME surface pre-seeded to that
  *  type (secondary entry points into the one flow); `task` keeps its day-one route to the governed launch
- *  surface (Home). `agent` stays greyed — deferred to the agent-registry chunk (plan Flagged #4). */
+ *  surface (Home). C7.2 un-defers `agent` — the first-class agent-registry entry point. */
 export interface NewMenuEntry {
   id: 'idea' | 'task' | 'workflow' | 'skill' | 'project' | 'agent';
   label: string;
-  /** Whether the item is actionable (fires onCreate). All but `agent` are actionable now. */
+  /** Whether the item is actionable (fires onCreate). Every entry is actionable now. */
   enabled: boolean;
   /** Optional trailing hint shown even on an enabled item (e.g. the idea entry's "Composer"). */
   hint?: string;
@@ -119,5 +119,5 @@ export const NEW_MENU_ENTRIES: NewMenuEntry[] = [
   { id: 'workflow', label: 'Workflow', enabled: true },
   { id: 'skill', label: 'Skill', enabled: true },
   { id: 'project', label: 'Project', enabled: true },
-  { id: 'agent', label: 'Agent', enabled: false, hint: 'soon' },
+  { id: 'agent', label: 'Agent', enabled: true },
 ];

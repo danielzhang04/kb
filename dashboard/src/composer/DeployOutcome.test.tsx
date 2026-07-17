@@ -10,6 +10,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent, within, waitFor } from '@testing-library/react';
 import { DeployOutcome } from './DeployOutcome';
+import { toDeploy } from './artifactTypes';
 import type { DeployResult } from './deploy';
 import type { DeployPlan } from './artifactTypes';
 
@@ -122,6 +123,52 @@ describe('DeployOutcome — governed deploy + results strip', () => {
     expect(deployImpl.mock.calls[1][0]).not.toMatchObject({ relpath: 'orgs/demo/contract.md' });
     // That file now reads as saved.
     expect(await screen.findByTestId('followup-done:orgs/demo/STATE.md')).toBeTruthy();
+  });
+
+  it('agent_deploy_surfaces_durable_pr_target_and_agent_save', async () => {
+    // C7.5 — Composer's agent DRAFT FORM is a later chunk (agent is intentionally not a chip yet, per
+    // Composer.test), so we exercise DeployOutcome's governed deploy machinery over a REAL agent DeployPlan
+    // via the follow-up save path: the primary returns an agent outcome whose follow-up IS the
+    // agents/<slug>.md file, and clicking Save fires that agent plan through the same deploy() the save
+    // path uses. This confirms an agent plan flows the durable /api/write/save route and the strip reports
+    // the PR target — while deploy.test.ts pins the exact endpoint/body/no-workBranch wiring.
+    const agentPlan = toDeploy('agent', {
+      id: 'research-worker',
+      role: 'work',
+      runtime: 'claude',
+      description: 'Volume worker.',
+      body: '# Agent: research-worker\n',
+    });
+    const deployImpl = vi
+      .fn<DeployFn>()
+      .mockResolvedValueOnce({
+        ok: true,
+        kind: 'agent',
+        target: 'claude/agent-research-worker → PR to main',
+        followUps: [{ relpath: agentPlan.relpath, content: agentPlan.content }],
+      })
+      .mockResolvedValue({ ok: true, kind: 'agent', target: 'claude/agent-research-worker → PR #9' });
+
+    // A concrete draft form is needed to press Deploy; project is used purely as the scaffolding trigger.
+    render(<DeployOutcome sessionToken="tok" initialKind="project" onBack={() => {}} deployImpl={deployImpl} />);
+    fireEvent.change(screen.getByLabelText('Project name'), { target: { value: 'demo' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Deploy' }));
+
+    // The outcome strip reports the durable / PR target for the agent deploy.
+    const strip = await screen.findByTestId('composer-outcome');
+    expect(strip.textContent).toMatch(/PR to main/);
+
+    // The agents/<slug>.md follow-up deploys as a durable agents/ save (kind agent, endpoint save).
+    fireEvent.click(screen.getByRole('button', { name: `Save ${agentPlan.relpath}` }));
+    await waitFor(() => expect(deployImpl).toHaveBeenCalledTimes(2));
+    expect(deployImpl.mock.calls[1][0]).toMatchObject({
+      kind: 'agent',
+      relpath: 'agents/research-worker.md',
+      endpoint: 'save',
+      branchClass: 'durable',
+    });
+    expect((deployImpl.mock.calls[1][0] as DeployPlan).content).toContain('runner-bound: false');
+    expect(await screen.findByTestId('followup-done:agents/research-worker.md')).toBeTruthy();
   });
 
   it('no outcome strip until a deploy has happened', () => {

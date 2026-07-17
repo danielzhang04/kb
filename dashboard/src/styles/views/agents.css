@@ -105,6 +105,67 @@
   color: var(--fg-dim);
 }
 
+/*
+ * Binding cell (C7.4) — declared-vs-observed provenance + runner-bound status. Neutral, no hue
+ * taxonomy: registered-but-inert reads as muted/dashed (like the model placeholder), runnable reads
+ * as a quiet solid chip. Identity, not action → no accent.
+ */
+.v-agents__binding {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.v-agents__provenance {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+  line-height: 1.6;
+  border: 1px solid var(--border);
+}
+
+/* Declared: authoritative agents/<id>.md — a touch more present than merely-observed. */
+.v-agents__provenance--declared {
+  color: var(--fg-dim);
+  background: var(--bg-elevated);
+}
+
+/* Observed: unioned in from card/ledger activity only, no declaration. */
+.v-agents__provenance--observed {
+  color: var(--fg-faint);
+  background: transparent;
+  border-style: dashed;
+}
+
+.v-agents__runner {
+  font-size: var(--text-xs);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+  line-height: 1.6;
+}
+
+/* Runnable — a runner claims its cards: quiet solid chip. */
+.v-agents__runner--bound {
+  color: var(--fg-dim);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+}
+
+/* Declared but inert — no runner yet: muted + dashed, mirroring the disabled-slot signature. */
+.v-agents__runner--unbound {
+  color: var(--fg-faint);
+  background: var(--bg-sunken);
+  border: 1px dashed var(--border-strong);
+}
+
+.v-agents__declared-runtime {
+  font-size: var(--text-xs);
+  color: var(--fg-faint);
+}
+
 /* Last-active date — identifier-shaped → mono tabular. */
 .v-agents__last-active {
   font-size: var(--text-sm);
