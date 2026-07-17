@@ -42,6 +42,10 @@ import { Tasks } from './views/Tasks';
 import { Agents } from './views/Agents';
 import { Projects } from './views/Projects';
 import { Ledgers } from './views/Ledgers';
+import { Sentinel } from './views/panels/Sentinel';
+import { Quartermaster } from './views/panels/Quartermaster';
+import { FlightRecorder } from './views/panels/FlightRecorder';
+import { Atlas } from './views/panels/Atlas';
 import { DeployOutcome } from './composer/DeployOutcome';
 import type { SeedKind } from './composer/artifactTypes';
 import { fetchPending } from './lib/approvalsClient';
@@ -298,6 +302,40 @@ function ComposerView({
   return <DeployOutcome sessionToken={sessionToken} initialKind={initialKind} onBack={onClose} />;
 }
 
+/** The read-only layer panels, reachable from the single `sentinel` nav destination via an underline-tab
+ *  bar (the Registry internal-tab pattern — one nav entry, four panels behind it). Sentinel (liveness) is
+ *  the default tab; Atlas is a static future-layer stub. Each panel self-fetches its own read-only source. */
+const LAYER_PANELS = [
+  { id: 'sentinel', label: 'Sentinel', render: () => <Sentinel /> },
+  { id: 'quartermaster', label: 'Quartermaster', render: () => <Quartermaster /> },
+  { id: 'recorder', label: 'Flight Recorder', render: () => <FlightRecorder /> },
+  { id: 'atlas', label: 'Atlas', render: () => <Atlas /> },
+] as const;
+
+function LayerPanels(): React.JSX.Element {
+  const [tab, setTab] = useState<(typeof LAYER_PANELS)[number]['id']>('sentinel');
+  const active = LAYER_PANELS.find((p) => p.id === tab) ?? LAYER_PANELS[0];
+  return (
+    <section className="v-panels" aria-label="Sentinel view">
+      <div className="v-panels__tabs" role="tablist" aria-label="Layer panels">
+        {LAYER_PANELS.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            role="tab"
+            aria-selected={tab === p.id}
+            className={`v-panels__tab${tab === p.id ? ' v-panels__tab--active' : ''}`}
+            onClick={() => setTab(p.id)}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+      {active.render()}
+    </section>
+  );
+}
+
 /** Route a destination to its view. A destination with a dedicated view gets one case here; only the
  *  greyed soon/future stubs fall through to the shared placeholder. Home is the default rollup landing
  *  and hosts the governed Launch/Rerun surface, so it receives the session token (the [+ New ▾] → Task
@@ -340,6 +378,9 @@ function ViewBody({
       );
     case 'ledgers':
       return <Ledgers />;
+    case 'sentinel':
+      // D3.5 — the layer-panel set (Sentinel / Quartermaster / Flight Recorder / Atlas) behind sub-tabs.
+      return <LayerPanels />;
     case 'connectors':
       return <Connectors />;
     case 'files':

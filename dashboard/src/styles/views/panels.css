@@ -1,0 +1,200 @@
+/*
+ * Layer panels (D3.5) — Sentinel / Quartermaster / Flight Recorder / Atlas.
+ * One per-view CSS file for the whole panel set. Warm Claude-dark tokens only (src/styles/app.css);
+ * theme-agnostic (works under [data-theme=light] via the same tokens). Signature rules applied:
+ *   - hairline borders, no shadows; dense .mc-table rows shared with the rest of the app
+ *   - mono tabular-nums on every id / count / model identifier / date
+ *   - NO decorative accent — status is carried by the semantic .mc-status-dot vocabulary only;
+ *     the usage mix bar is a neutral fg-faint fill (accent is reserved for the active sub-tab underline)
+ * All classes are panel-scoped (.v-panel__…) and shared across the four panels.
+ */
+
+.v-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  font-size: var(--text-base);
+}
+
+.v-panel__header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.v-panel__title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.v-panel__soon {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-faint);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+  font-weight: 500;
+}
+
+.v-panel__note {
+  font-size: var(--text-xs);
+  color: var(--fg-faint);
+}
+
+.v-panel__note code {
+  font-size: var(--text-xs);
+  color: var(--fg-dim);
+}
+
+/* Summary tiles — flat hairline panels, mono tabular xl values (shared shape with the Ledgers view). */
+.v-panel__tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.v-panel__tile {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  min-width: 6rem;
+}
+
+.v-panel__tile-value {
+  display: block;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-xl);
+  font-weight: 650;
+  color: var(--fg-primary);
+}
+
+.v-panel__tile-label {
+  display: block;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-dim);
+}
+
+/* Section blocks wrapping the dense tables. */
+.v-panel__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.v-panel__section-title {
+  margin: 0;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--fg-dim);
+  font-weight: 600;
+}
+
+.v-panel__num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* Liveness / blocked status cell — a semantic dot + its label. */
+.v-panel__status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.v-panel__muted {
+  color: var(--fg-faint);
+}
+
+/* Model-mix meter — a neutral bar (no decorative accent). */
+.v-panel__mix {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.v-panel__mix-track {
+  flex: 1 1 auto;
+  height: 4px;
+  min-width: 3rem;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.v-panel__mix-fill {
+  height: 100%;
+  background: var(--fg-faint);
+}
+
+.v-panel__mix-pct {
+  font-size: var(--text-xs);
+  color: var(--fg-dim);
+  min-width: 2.6rem;
+  text-align: right;
+}
+
+/* Flight Recorder permalink — a plain neutral link (no decorative accent). */
+.v-panel__link {
+  color: var(--fg-dim);
+  text-decoration: none;
+  border-bottom: 1px solid var(--border-strong);
+}
+
+.v-panel__link:hover {
+  color: var(--fg-primary);
+}
+
+/* Calm empty state — not an error. */
+.v-panel__empty {
+  color: var(--fg-dim);
+  padding: var(--space-4) var(--space-1);
+  font-size: var(--text-sm);
+}
+
+/* ---- Layer sub-tabs (the Sentinel destination hosts the four panels behind an underline-tab bar) ---- */
+.v-panels {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.v-panels__tabs {
+  display: flex;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--border);
+}
+
+.v-panels__tab {
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--fg-dim);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: var(--space-1) var(--space-3);
+  margin-bottom: -1px;
+  cursor: pointer;
+}
+
+.v-panels__tab:hover {
+  color: var(--fg-primary);
+}
+
+.v-panels__tab--active {
+  color: var(--fg-primary);
+  border-bottom-color: var(--accent-strong);
+}

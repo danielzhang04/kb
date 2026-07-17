@@ -44,7 +44,8 @@ describe('nav/config', () => {
       'projects',
       'files',
     ]);
-    expect(NAV_SECTIONS[2].items.map((d) => d.id)).toEqual(['connectors', 'ledgers']);
+    // D3.5 — Sentinel joins the system group (hosts the read-only layer panels behind sub-tabs).
+    expect(NAV_SECTIONS[2].items.map((d) => d.id)).toEqual(['connectors', 'ledgers', 'sentinel']);
   });
 
   it('every destination has a unique id, a label, an icon and a valid status', () => {
@@ -69,7 +70,9 @@ describe('nav/config', () => {
 
   it('drops every superseded verb-IA destination', () => {
     const ids = new Set<string>(ALL.map((d) => d.id));
-    for (const dropped of ['board', 'editor', 'vibe', 'skills', 'registry', 'pipeline', 'sentinel']) {
+    // NOTE: `sentinel` was re-introduced in D3.5 as a real system destination (layer panels), so it is
+    // deliberately NOT in this dropped set any more.
+    for (const dropped of ['board', 'editor', 'vibe', 'skills', 'registry', 'pipeline']) {
       expect(ids.has(dropped)).toBe(false);
     }
     // "timeline" and "browser" were renamed to entity destinations, not kept.
@@ -98,6 +101,7 @@ describe('nav/config', () => {
       'files',
       'connectors',
       'ledgers',
+      'sentinel',
     ] as const) {
       expect(status(id)).toBe('live');
     }
