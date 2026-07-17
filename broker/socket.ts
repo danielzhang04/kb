@@ -30,6 +30,8 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { createServer } from 'node:net';
 import type { Server, Socket } from 'node:net';
 import type { SessionOwner } from './index.ts';
+import { ownerBoundedReader } from './peerBoundary.ts';
+import type { OwnerBoundary } from './peerBoundary.ts';
 
 /** A resolved peer identity. `ownerId` is the OS owner normalised to a string (uid on POSIX, resolved
  *  account on Windows). `pid` is informational (audit/debug), never the auth decision on its own. */
@@ -42,7 +44,9 @@ export interface PeerCredential {
 export type PeerCredentialReader = (conn: Socket) => PeerCredential | null;
 
 /** Fail-closed default: no standard Node API exposes peer credentials, so reject until a real reader is
- *  wired at deploy (flagged for D3.6). Never returns a permissive credential. */
+ *  wired. The concrete reader is `ownerBoundedReader` (broker/peerBoundary.ts, D3.6), selected via
+ *  `createSecureControlSocket`; this default remains the reject-all fallback when none is injected and is
+ *  what a not-enforced boundary collapses to. Never returns a permissive credential. */
 export const defaultPeerReader: PeerCredentialReader = () => null;
 
 /** The daemon's own OS owner id, for comparison against a connecting peer's. POSIX: the uid. Windows:
@@ -153,8 +157,19 @@ export function createControlSocket(deps: ControlSocketDeps): Server {
         return;
       }
 
+      // LOW-1: the peer read is injected platform code (a real reader may stat the fs or, in a future
+      // native variant, call into the OS). A throw here must be treated as an UNRESOLVED credential
+      // (→ null → reject), never propagate as an uncaught exception out of this 'data' handler where it
+      // would crash the daemon. Fail-closed on throw is at least as strict as the null default.
+      let peerCred: PeerCredential | null = null;
+      try {
+        peerCred = peerReader(conn);
+      } catch {
+        peerCred = null;
+      }
+
       const auth = authenticateConnection(
-        { peerCred: peerReader(conn), token: req.token },
+        { peerCred, token: req.token },
         deps.auth,
       );
       if (!auth.ok) {
@@ -173,4 +188,34 @@ export function createControlSocket(deps: ControlSocketDeps): Server {
     });
   });
   return server;
+}
+
+/** Deps for `createSecureControlSocket`: the control-socket wiring minus `peerReader` (derived from the
+ *  boundary) plus the established OS-owner boundary. */
+export interface SecureControlSocketDeps {
+  socketPath: string;
+  owner: SessionOwner;
+  auth: SocketAuthContext;
+  dispatch: (owner: SessionOwner, req: ControlRequest) => unknown;
+  /** The result of `establishOwnerBoundary(socketPath)` (broker/peerBoundary.ts). Its `enforced` flag
+   *  selects the peer reader: enforced → the daemon-owner reader; not enforced → the fail-closed default. */
+  boundary: OwnerBoundary;
+}
+
+/**
+ * Compose the control socket with the concrete, boundary-derived peer reader. The caller's flow is:
+ *   1. `const boundary = establishOwnerBoundary({ socketPath })`  — apply + verify the OS restriction.
+ *   2. `const server = createSecureControlSocket({ ..., boundary })`.
+ *   3. `server.listen(socketPath)`; then `secureSocketFile(boundary)` to tighten the socket inode.
+ * When the boundary is NOT enforced (win32, permission failure, …) the reader is fail-closed, so the
+ * socket rejects every connection on the peer check — never a permissive fallback.
+ */
+export function createSecureControlSocket(deps: SecureControlSocketDeps): Server {
+  return createControlSocket({
+    socketPath: deps.socketPath,
+    owner: deps.owner,
+    auth: deps.auth,
+    dispatch: deps.dispatch,
+    peerReader: ownerBoundedReader(deps.boundary),
+  });
 }
