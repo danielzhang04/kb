@@ -17,7 +17,15 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "allowImportingTsExtensions": true,
-    "noEmit": true
+    "noEmit": true,
+    // D3.3 — the Broker (`../broker`) joins this workspace but sits ABOVE `dashboard/node_modules`, so
+    // TS's node_modules walk from a `broker/*.test.ts` file cannot reach the toolchain packages that
+    // live here. Map the bare specifiers the Broker tests use back into this dir's node_modules. (Runtime
+    // resolution is already fine — vitest resolves from its own config root; this is a tsc-only aid.)
+    "paths": {
+      "vitest": ["./node_modules/vitest"],
+      "vitest/*": ["./node_modules/vitest/*"]
+    }
   },
-  "include": ["server", "src", "vite.config.ts", "vitest.config.ts"]
+  "include": ["server", "src", "vite.config.ts", "vitest.config.ts", "../broker/**/*.ts"]
 }
