@@ -212,6 +212,37 @@ def test_runner_stamps_session_before_work():
     )
 
 
+def test_push_remote_is_parameterized_and_defaults_to_origin():
+    """The work-branch push must go over a PARAMETERIZED remote, not a
+    hardcoded `origin` — non-Claude workers (e.g. codex-worker) push over a
+    deploy-key-bound remote so the push can't bypass the
+    protect-ops-main-from-workers ruleset via Daniel's HTTPS `origin` credential.
+    Default must remain 'origin' for backward compatibility with existing callers.
+    """
+    text = _text()
+
+    assert re.search(r"\[string\]\$PushRemote\s*=\s*'origin'", text), (
+        "must declare an optional -PushRemote param defaulting to 'origin' "
+        "(backward compatible with every existing caller that omits it)"
+    )
+
+    # The per-run work-branch push (Phase B) must use $PushRemote, never a
+    # hardcoded `origin` literal.
+    assert re.search(r"git\s+-C\s+\$RepoRoot\s+push\s+\$PushRemote\s+\$workBranch", text), (
+        "the work-branch push must use $PushRemote, not a hardcoded 'origin'"
+    )
+
+    # No non-comment line may still hardcode `push origin` for the work branch.
+    for line in _non_comment_lines(text):
+        assert not re.search(r"push\s+origin\s+\$workBranch", line), (
+            f"work-branch push must not hardcode 'origin': {line!r}"
+        )
+
+    # The read-only ops fetch/checkout pulls must remain untouched (still
+    # literally `origin` — those are Daniel's HTTPS pulls, not the worker push).
+    assert "git pull --rebase origin ops" in text
+
+
 def test_runner_asserts_runtime_before_work():
     """Phase R1.4 -- the runner must invoke scripts/assert_runtime.py (its
     runtime pre-exec assertion) BEFORE the card transitions to `working` /
