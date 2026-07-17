@@ -79,20 +79,23 @@ describe('Control view', () => {
     expect(screen.getByText('Building the Plane-A indexer.')).toBeTruthy();
   });
 
-  it('lands on Control view by default, Code view reachable by one toggle', () => {
+  it('lands on Control view by default, Code view reachable via the sidebar nav', () => {
+    // D1: the App shell renamed its "Control" nav item to "Board" (sidebar nav — see App.tsx /
+    // App.test.tsx) but the Control component itself is unchanged and still self-labels
+    // aria-label="Control view".
     render(<App />);
 
     // Default landing is the Control view; Code view is not mounted yet.
     expect(screen.getByLabelText('Control view')).toBeTruthy();
     expect(screen.queryByLabelText('Code view')).toBeNull();
 
-    // One toggle switches to Code view.
+    // The sidebar's Code nav item switches to Code view.
     fireEvent.click(screen.getByRole('button', { name: 'Code' }));
     expect(screen.getByLabelText('Code view')).toBeTruthy();
     expect(screen.queryByLabelText('Control view')).toBeNull();
 
-    // And one toggle back to Control.
-    fireEvent.click(screen.getByRole('button', { name: 'Control' }));
+    // And the Board nav item switches back to Control.
+    fireEvent.click(screen.getByRole('button', { name: 'Board' }));
     expect(screen.getByLabelText('Control view')).toBeTruthy();
     expect(screen.queryByLabelText('Code view')).toBeNull();
   });
