@@ -47,6 +47,8 @@ function launchStatus(outcome: Extract<LaunchOutcome, { ok: false }>): number {
       return 503;
     case 'unauthenticated':
       return 401;
+    case 'owner-not-registered':
+      return 400;
     case 'card-op-failed':
       return 500;
     default:
@@ -100,6 +102,14 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
   scope.post('/api/write/launch', { preHandler }, async (req, reply: FastifyReply) => {
     const session = verifiedSession(req);
     const body = asRecord(req.body);
+    // C7.7 — an OPTIONAL operator-assigned owner. Absent/empty → today's unowned-card path. When present,
+    // reject a non-filename-safe owner (separators/traversal/glob metachars) with the same CARD_ID_RE-class
+    // guard used for cardId, BEFORE it reaches launch.ts's closed-set check / cards.claim. launch.ts's
+    // filesystem-enumerated closed-set validation remains the authoritative boundary.
+    const owner = typeof body.owner === 'string' && body.owner !== '' ? body.owner : undefined;
+    if (owner !== undefined && !CARD_ID_RE.test(owner)) {
+      return reply.code(400).send({ error: 'bad-owner', reason: 'owner must be filename-safe' });
+    }
     const outcome = launchCard(
       {
         project: (body.project as string | string[]) ?? '',
@@ -108,6 +118,7 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
         riskTier: str(body.riskTier) as RiskTier,
         body: typeof body.body === 'string' ? body.body : undefined,
         dependsOn: Array.isArray(body.dependsOn) ? (body.dependsOn as string[]) : undefined,
+        owner,
       },
       { token: session?.token, config: ctx.sessionConfig },
       { repoRoot: ctx.repoRoot, runPreamble: ctx.runPreamble, runPy: ctx.runPy },
