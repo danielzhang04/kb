@@ -52,19 +52,25 @@ const nodeRequire = createRequire(new URL('../dashboard/package.json', import.me
 type KoffiFn = (...args: unknown[]) => unknown;
 /** The minimal koffi surface this module uses (typed locally so we don't couple to koffi's own d.ts). */
 interface KoffiLib {
-  load(dll: string): { func(convention: string, name: string, ret: string, args: string[]): KoffiFn };
+  load(dll: string): { func(convention: string, name: string, ret: string, args: unknown[]): KoffiFn };
   struct(name: string, fields: Record<string, string>): unknown;
   alloc(type: unknown, count: number): Buffer;
   decode(buf: unknown, offsetOrType: unknown, type?: unknown, length?: unknown): unknown;
   encode(buf: unknown, type: unknown, value: unknown, count?: number): void;
   address(ptr: unknown): number | bigint;
   sizeof(type: unknown): number;
+  out(type: unknown): unknown;
+  pointer(type: unknown): unknown;
 }
 
 /** The full native surface: peer-credential + pipe transport + the daemon's own SID (for expectedOwnerId). */
 export interface Win32Api extends Win32PeerFfi, Win32PipeTransport {
   /** The daemon's own SID string (from GetCurrentProcess's token), or null if unresolved. */
   currentSidString(): string | null;
+  /** Write `data` to `path` with an explicit owner-only DACL (daemon SID + SYSTEM), then read the DACL
+   *  back and VERIFY it grants no broad trustee. Returns false on any failure (→ caller unlinks + fails
+   *  closed). The win32 analogue of the POSIX 0600 + stat-verify token file (L-2). */
+  writeOwnerOnlyFile(path: string, data: string): boolean;
 }
 
 /** Production per-connection handle: a pipe instance handle + its OVERLAPPED event and buffer. Opaque to
@@ -93,6 +99,14 @@ const INVALID_HANDLE = 0xffffffffffffffffn;
 const ERROR_IO_PENDING = 997;
 const ERROR_IO_INCOMPLETE = 996;
 const ERROR_PIPE_CONNECTED = 535;
+// Token-file DACL (L-2).
+const GENERIC_WRITE = 0x40000000;
+const CREATE_ALWAYS = 2;
+const FILE_ATTRIBUTE_NORMAL = 0x80;
+const SE_FILE_OBJECT = 1;
+const DACL_SECURITY_INFORMATION = 0x00000004;
+/** SDDL substrings for broad trustees a token file must NOT grant (Everyone, Authenticated Users, Users…). */
+const BROAD_TRUSTEES = ['S-1-1-0', ';WD)', ';AU)', ';BU)', ';AN)', ';WD;', ';AU;', 'S-1-5-11', 'S-1-5-32-545'];
 
 const POLL_MS = 10;
 const READ_CHUNK = 8192;
@@ -136,6 +150,14 @@ export function loadWin32Api(): Win32Api {
   const GetTokenInformation = adv.func('__stdcall', 'GetTokenInformation', 'bool', [HANDLE, 'int', 'void *', 'uint32', 'uint32 *']);
   const ConvertStringSecurityDescriptorToSecurityDescriptorW = adv.func('__stdcall',
     'ConvertStringSecurityDescriptorToSecurityDescriptorW', 'bool', ['str16', 'uint32', 'void *', 'void *']);
+  const CreateFileW = k32.func('__stdcall', 'CreateFileW', HANDLE,
+    ['str16', 'uint32', 'uint32', 'void *', 'uint32', 'uint32', HANDLE]);
+  const LocalFree = k32.func('__stdcall', 'LocalFree', HANDLE, [HANDLE]);
+  const GetNamedSecurityInfoW = adv.func('__stdcall', 'GetNamedSecurityInfoW', 'uint32',
+    ['str16', 'int', 'uint32', 'void *', 'void *', 'void *', 'void *', 'void *']);
+  const ConvertSecurityDescriptorToStringSecurityDescriptorW = adv.func('__stdcall',
+    'ConvertSecurityDescriptorToStringSecurityDescriptorW', 'bool',
+    ['void *', 'uint32', 'uint32', koffi.out(koffi.pointer('str16')), 'void *']);
 
   const SECURITY_ATTRIBUTES = koffi.struct('SECURITY_ATTRIBUTES', {
     nLength: 'uint32',
@@ -280,6 +302,65 @@ export function loadWin32Api(): Win32Api {
 
   cached = {
     currentSidString: () => daemonSid,
+
+    writeOwnerOnlyFile: (filePath: string, data: string): boolean => {
+      try {
+        if (!daemonSid) return false;
+        // Owner-only file DACL: full access to the daemon SID + SYSTEM, protected (P = no inheritance).
+        const sddl = `D:P(A;;FA;;;${daemonSid})(A;;FA;;;SY)`;
+        const sdOut = koffi.alloc(HANDLE, 1);
+        if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl, SDDL_REVISION_1, sdOut, null)) return false;
+        const pSD = koffi.decode(sdOut, HANDLE);
+        const sa = koffi.alloc(SECURITY_ATTRIBUTES, 1);
+        koffi.encode(sa, SECURITY_ATTRIBUTES, {
+          nLength: koffi.sizeof(SECURITY_ATTRIBUTES),
+          lpSecurityDescriptor: pSD,
+          bInheritHandle: 0,
+        });
+        // CREATE_ALWAYS with an explicit SD → the new file's DACL is exactly the SDDL above (used verbatim,
+        // not inherited). Synchronous handle: a 64-byte token writes instantly (boot path, not per-conn).
+        const h = CreateFileW(filePath, GENERIC_WRITE, 0, sa, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, null);
+        try {
+          LocalFree(pSD);
+        } catch {
+          /* ignore */
+        }
+        if (badHandle(h)) return false;
+        let wrote = false;
+        try {
+          const bytes = Buffer.from(data, 'utf-8');
+          const wn = koffi.alloc('uint32', 1);
+          wrote = Boolean(WriteFile(h, bytes, bytes.length, wn, null)) && (koffi.decode(wn, 'uint32') as number) === bytes.length;
+        } finally {
+          CloseHandle(h);
+        }
+        if (!wrote) return false;
+        // VERIFY: read the file's DACL back as an SDDL string; it must name the daemon SID and NO broad
+        // trustee (Everyone / Authenticated Users / Users). Symmetry with the POSIX 0600 + stat-verify.
+        const sd2 = koffi.alloc(HANDLE, 1);
+        const rc = GetNamedSecurityInfoW(filePath, SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, null, null, null, null, sd2) as number;
+        if (rc !== 0) return false;
+        const pSD2 = koffi.decode(sd2, HANDLE);
+        try {
+          const holder: (string | null)[] = [null];
+          if (!ConvertSecurityDescriptorToStringSecurityDescriptorW(pSD2, SDDL_REVISION_1, DACL_SECURITY_INFORMATION, holder, null)) {
+            return false;
+          }
+          const dacl = String(holder[0] ?? '');
+          if (!dacl.includes(daemonSid)) return false;
+          if (BROAD_TRUSTEES.some((b) => dacl.includes(b))) return false;
+          return true;
+        } finally {
+          try {
+            LocalFree(pSD2);
+          } catch {
+            /* ignore */
+          }
+        }
+      } catch {
+        return false;
+      }
+    },
 
     getClientPid: (handle: PipeHandle): number | null => {
       try {

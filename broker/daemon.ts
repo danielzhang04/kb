@@ -20,7 +20,7 @@
  * that broker/verbs.ts depends on — importing the boot's transport/dispatch graph into index.ts would
  * create an index↔verbs runtime import cycle. pm2.config.cjs points `script` here.
  */
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, statSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { SessionOwner } from './index.ts';
@@ -36,8 +36,8 @@ import { loadWin32Api } from './win32Api.ts';
 
 /** Where the control socket + its token file live for a platform. POSIX: under `$XDG_RUNTIME_DIR` (or
  *  `$HOME/.kb-broker`), a trusted, non-world-writable, daemon-owned root (see peerBoundary.ts caller
- *  precondition). win32: a per-user pipe name + a token file under `%LOCALAPPDATA%` (owner-only by the
- *  profile ACL). */
+ *  precondition). win32: a per-user pipe name + a token file under `%LOCALAPPDATA%` (given an explicit
+ *  owner-only DACL + verify by writeTokenFile, not merely the inherited profile ACL). */
 export function resolveControlPaths(
   platform: NodeJS.Platform,
   env: Record<string, string | undefined>,
@@ -55,16 +55,37 @@ export function resolveControlPaths(
   return { socketPath: join(dir, 'control.sock'), tokenPath: join(dir, 'control.token') };
 }
 
-/** Write the per-boot token to an owner-only file. POSIX: dir 0700 + file 0600. win32: dir under the
- *  user profile (owner-only ACL by default). NEVER logs the token. */
+/** Write the per-boot token to an owner-only file, with an explicit restriction AND a post-write verify on
+ *  BOTH platforms (L-2). POSIX: dir 0700 + file 0600, then stat-verify no group/other bits. win32: create
+ *  with an explicit owner-only DACL (daemon SID + SYSTEM) via win32Api, then read the DACL back and verify
+ *  it grants no broad trustee. On any verification failure the file is unlinked and the boot fails closed.
+ *  NEVER logs the token. */
 export function writeTokenFile(tokenPath: string, token: string, platform: NodeJS.Platform): void {
   const dir = dirname(tokenPath);
   if (platform === 'win32') {
     mkdirSync(dir, { recursive: true });
-    writeFileSync(tokenPath, token, { encoding: 'utf-8' });
+    // Explicit owner-only DACL + post-write DACL read-back verify (inside writeOwnerOnlyFile).
+    if (!loadWin32Api().writeOwnerOnlyFile(tokenPath, token)) {
+      try {
+        rmSync(tokenPath, { force: true });
+      } catch {
+        /* ignore */
+      }
+      throw new Error('failed to write/verify an owner-only token file (win32); fail-closed');
+    }
   } else {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     writeFileSync(tokenPath, token, { encoding: 'utf-8', mode: 0o600 });
+    // Post-write stat-verify: a pre-existing file / umask surprise must not leave it group/other-readable.
+    const st = statSync(tokenPath);
+    if ((st.mode & 0o077) !== 0) {
+      try {
+        rmSync(tokenPath, { force: true });
+      } catch {
+        /* ignore */
+      }
+      throw new Error(`token file '${tokenPath}' is group/other-accessible (mode ${(st.mode & 0o777).toString(8)}); fail-closed`);
+    }
   }
 }
 
