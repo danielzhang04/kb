@@ -22,6 +22,7 @@ import { useEffect, useState } from 'react';
 import type { PlaneAIndex } from '../../server/planeA/indexer';
 import type { ParsedCard } from '../../server/planeA/cards';
 import type { DestinationId } from '../nav/config';
+import type { Session } from '../lib/authClient';
 import { useSse } from '../lib/sseClient';
 import { LaunchControls } from './launchControls';
 import '../styles/views/home.css';
@@ -356,10 +357,13 @@ export function Home({
   snapshot,
   sessionToken,
   onNavigate,
+  onRequestSession,
 }: {
   snapshot?: PlaneAIndex;
   sessionToken?: string;
   onNavigate?: (id: DestinationId) => void;
+  /** U5.1 — forwarded to LaunchControls for point-of-action passkey minting (App-wired). */
+  onRequestSession?: () => Promise<Session | null>;
 } = {}): React.JSX.Element {
   const [fetched, setFetched] = useState<PlaneAIndex | null>(null);
   // A Plane-A delta on the hub bumps `count`; we refetch the snapshot on each tick (skipped when a
@@ -393,7 +397,7 @@ export function Home({
         </div>
         <div className="v-home__col">
           <UsagePanel index={index} />
-          <LaunchControls sessionToken={sessionToken} variant="home" />
+          <LaunchControls sessionToken={sessionToken} variant="home" onRequestSession={onRequestSession} />
         </div>
       </div>
     </div>

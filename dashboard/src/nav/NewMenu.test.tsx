@@ -22,7 +22,24 @@ describe('NewMenu', () => {
     expect(screen.getByRole('menu', { name: 'Create new' })).toBeTruthy();
   });
 
-  it('fires onCreate("task") for Task only; the rest are disabled', () => {
+  it('is idea-first: Idea is the first, enabled, Composer-flagged entry', () => {
+    const onCreate = vi.fn();
+    render(<NewMenu onCreate={onCreate} />);
+    fireEvent.click(screen.getByRole('button', { name: 'New' }));
+
+    const items = screen.getAllByRole('menuitem');
+    // The freeform "Idea…" leads the menu (shape says "bring an idea, iterate").
+    expect(items[0].textContent).toMatch(/Idea/);
+    const idea = screen.getByRole('menuitem', { name: /Idea/ }) as HTMLButtonElement;
+    expect(idea.disabled).toBe(false);
+    expect(idea.textContent).toMatch(/composer/i);
+
+    fireEvent.click(idea);
+    expect(onCreate).toHaveBeenCalledWith('idea');
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('fires onCreate("task") for Task; the entity types are disabled', () => {
     const onCreate = vi.fn();
     render(<NewMenu onCreate={onCreate} />);
     fireEvent.click(screen.getByRole('button', { name: 'New' }));
@@ -34,7 +51,7 @@ describe('NewMenu', () => {
     }
     expect(onCreate).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole('menuitem', { name: /Task/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /^Task/ }));
     expect(onCreate).toHaveBeenCalledTimes(1);
     expect(onCreate).toHaveBeenCalledWith('task');
     // Menu closes after a successful create.

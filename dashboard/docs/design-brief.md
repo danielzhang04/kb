@@ -6,6 +6,22 @@ over-engineered. Scalable IA with room to grow (Atlas, Sentinel, more agents/wor
 Build agents execute against this. Self-contained only — no external fonts/CDNs; hand-written CSS.
 **Design + build work runs on Opus 4.8** (Daniel's directive — he lives in this UI and iterates on it).
 
+> **Daniel override 2026-07-17 (review round 1 → U5.1): no decorative accent color; Claude-dark warm
+> near-black; terracotta retired from chrome (semantic status colors only).** The tokens below are
+> superseded for chrome. The `--accent-strong / --accent / --accent-quiet` trio now resolves to a
+> NEUTRAL white/opacity hierarchy (dark: near-white `#ededea` / muted `#a3a099` / `rgba(255,255,255,.06)`
+> wash; light: warm near-black `#2b2925` / `#6b6558` / `rgba(0,0,0,.05)`). All structural chrome — nav
+> selection, KPI tiles, buttons, links, focus outlines, tab underlines, left-borders — is neutral; the
+> active/selected device stays a left-border but in the neutral near-white/near-black, over a subtle
+> raised wash. Dark surfaces are the warm Claude-desktop family: `--bg-base #262624`, panel `#2b2a27`,
+> elevated `#34322e`, sunken `#1c1b19`; fg `#f5f4ef / #b8b5ad / #82807a`; hairlines `rgba(255,255,255,.08)`.
+> **EXCEPTION — semantic status colors stay** (they encode data, not decoration): running/ok green
+> `#5cae7e`, error/STOP red `#e0554a`, warning amber `#e0a040`, tier T1/T2/T3, and the T3 warning border.
+> No new decorative color may be introduced. Light stays warm cream. Dark is the default and is pinned
+> as an explicit `[data-theme=dark]` (beats the OS `prefers-color-scheme`); a quiet topbar toggle
+> switches to `[data-theme=light]` and persists the choice to `localStorage['mc-theme']`. The exact
+> live values are the source of truth in `src/styles/app.css` and `src/lib/theme.ts`.
+
 ## A) Palette — warm Claude-dark (dark = default)
 
 Surfaces: `--bg-sunken #14110E` (code gutters/inputs/terminal), `--bg-base #1B1815` (app shell),
@@ -99,10 +115,11 @@ pattern): centered overlay, navigate (any destination incl. greyed/future) + act
 ## F) Signature details + anti-patterns
 
 Signature: (1) hairline borders everywhere, shadows almost nowhere; (2) mono tabular-nums for every
-id/hash/tier/count/timestamp — the sans/mono contrast reads as "engineered"; (3) left-border accent
+id/hash/tier/count/timestamp — the sans/mono contrast reads as "engineered"; (3) left-border marker
 for active/selected everywhere (nav/tabs/tree/tool row) — one language learned once; (4) restrained
-motion 150-200ms ease-out opacity/transform, no bounce/spring/parallax; (5) one accent used sparingly
-— terracotta on primary buttons/focus/active-border/T3-error only, never a decorative wash.
+motion 150-200ms ease-out opacity/transform, no bounce/spring/parallax; (5) NO decorative accent
+(Daniel override 2026-07-17, see §A note) — all chrome is a neutral near-white/near-black over a subtle
+raised wash; colour is reserved for semantic status only (green/red/amber/tier/STOP), never a wash.
 Anti-patterns: (1) rainbow status/badge soup — new taxonomies get shape/label/mono differences, not new
 hues; (2) glassmorphism/gradients/glow — reads as generic AI-template; (3) cramming growth into Board.
 

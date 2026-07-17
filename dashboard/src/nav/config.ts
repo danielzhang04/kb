@@ -99,15 +99,21 @@ export const NAV_SECTIONS: NavSection[] = [
 /** The default landing destination (Home). */
 export const DEFAULT_DESTINATION: DestinationId = 'home';
 
-/** The [+ New ▾] menu entries. Only `task` is enabled day one; the rest are greyed with a "Composer"
- *  hint (they arrive when the Composer surface lands). `task` navigates to the governed launch surface. */
+/** The [+ New ▾] menu entries (U5.1 — idea-first). The FIRST entry is a freeform "Idea…" — the menu's
+ *  shape now says "bring an idea, iterate", not "pick an entity type". `idea` is clickable (opens the
+ *  Composer placeholder) but carries a "Composer — soon" hint; `task` is the working entry that routes
+ *  to the governed launch surface. The remaining entity types are greyed until the Composer lands. */
 export interface NewMenuEntry {
-  id: 'task' | 'workflow' | 'skill' | 'project' | 'agent';
+  id: 'idea' | 'task' | 'workflow' | 'skill' | 'project' | 'agent';
   label: string;
+  /** Whether the item is actionable (fires onCreate). Both `idea` and `task` are actionable day one. */
   enabled: boolean;
+  /** Optional trailing hint shown even on an enabled item (e.g. the idea entry's "Composer — soon"). */
+  hint?: string;
 }
 
 export const NEW_MENU_ENTRIES: NewMenuEntry[] = [
+  { id: 'idea', label: 'Idea…', enabled: true, hint: 'Composer — soon' },
   { id: 'task', label: 'Task', enabled: true },
   { id: 'workflow', label: 'Workflow', enabled: false },
   { id: 'skill', label: 'Skill', enabled: false },

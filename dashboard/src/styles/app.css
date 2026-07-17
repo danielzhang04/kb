@@ -3,9 +3,10 @@
  * MISSION CONTROL DESIGN SYSTEM (U1 — reconciled to docs/design-brief.md)
  * ============================================================================
  * Desktop-first / desktop-only. Aesthetic = warm Claude-desktop dark: warm
- * charcoal surfaces (never pure black, never blue-gray), a terracotta accent
- * used sparingly, hairline borders doing most of the work, shadows almost
- * nowhere. Sleek/calm/refined, not a cold terminal. Monospace (tabular figures)
+ * near-black surfaces (never pure black, never blue-gray), a NEUTRAL white/opacity
+ * hierarchy for all chrome (NO decorative accent colour — Daniel override 2026-07-17;
+ * terracotta retired, semantic status colours only), hairline borders doing most of
+ * the work, shadows almost nowhere. Sleek/calm/refined, not a cold terminal. Monospace (tabular figures)
  * is reserved for anything identifier-shaped (ids/hashes/tiers/counts/
  * timestamps); sans for everything else — that sans/mono contrast is a
  * signature ("engineered").
@@ -18,7 +19,7 @@
  * TOKENS (extend, don't fork):
  *   Color      --bg-sunken / --bg-base / --bg-panel / --bg-elevated
  *              --fg-primary / --fg-dim / --fg-faint
- *              --accent-strong / --accent / --accent-quiet   (warm terracotta family)
+ *              --accent-strong / --accent / --accent-quiet   (NEUTRAL white/opacity — no colour)
  *              --border / --border-strong
  *              --error / --warning / --success
  *              --status-running / --status-done / --status-blocked / --status-idle
@@ -53,38 +54,41 @@
  */
 
 :root {
-  /* ---- Color: surfaces (warm charcoal — never pure black / never blue-gray) ---- */
-  --bg-sunken: #14110e; /* code gutters / inputs / terminal — deepest */
-  --bg-base: #1b1815; /* app shell */
-  --bg-panel: #221e1a; /* cards / sidebar / panes — workhorse */
-  --bg-elevated: #2b2620; /* popovers / palette / hover */
+  /* ---- Color: surfaces (warm near-black — Claude-desktop-dark family; never pure black / never blue-gray) ---- */
+  --bg-sunken: #1c1b19; /* code gutters / inputs / terminal — deepest */
+  --bg-base: #262624; /* app shell (Claude-dark base) */
+  --bg-panel: #2b2a27; /* cards / sidebar / panes — workhorse (a hair raised) */
+  --bg-elevated: #34322e; /* popovers / palette / hover — raised surface */
 
   /* ---- Color: foreground (warm off-white / warm gray) ---- */
-  --fg-primary: #f2ede4;
-  --fg-dim: #b3a99b;
-  --fg-faint: #766d61;
+  --fg-primary: #f5f4ef;
+  --fg-dim: #b8b5ad;
+  --fg-faint: #82807a;
 
-  /* ---- Color: accent (terracotta — used sparingly) ---- */
-  --accent-strong: #d97757; /* buttons / links / focus / active underline+border */
-  --accent: #c15f3c; /* icons / active nav indicator / badge fill */
-  --accent-quiet: #3a2a20; /* selected wash */
+  /* ---- Color: accent — NEUTRAL white/opacity hierarchy (Daniel override 2026-07-17: no decorative
+   * accent colour in chrome; terracotta retired). These tokens drive ALL structural chrome (nav
+   * selection, KPI tiles, buttons, links, focus, tab underlines, left-borders) so redefining them here
+   * neutralises every consumer at once. Semantic status colour lives in the separate tokens below. ---- */
+  --accent-strong: #ededea; /* buttons / links / focus / active underline+border (near-white) */
+  --accent: #a3a099; /* active nav icon tint / secondary (muted neutral) */
+  --accent-quiet: rgba(245, 244, 239, 0.06); /* selected wash — subtle raised, not a colour */
 
-  /* ---- Color: borders (warm hairlines) ---- */
-  --border: #332d26;
-  --border-strong: #453d33;
+  /* ---- Color: borders (neutral hairlines) ---- */
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
 
-  /* ---- Color: semantic ---- */
+  /* ---- Color: semantic (KEPT — these encode data, not decoration) ---- */
   --error: #e0554a;
   --warning: #e0a040;
   --success: #5cae7e;
 
-  /* ---- Color: status (fleet card state) ---- */
-  --status-running: #e0a040;
+  /* ---- Color: status (fleet card state — semantic, kept) ---- */
+  --status-running: #5cae7e;
   --status-done: #5cae7e;
   --status-blocked: #e0554a;
-  --status-idle: #766d61;
+  --status-idle: #82807a;
 
-  /* ---- Color: risk tier (escalating warmth = risk) ---- */
+  /* ---- Color: risk tier (semantic, kept — escalating warmth = risk) ---- */
   --tier-t1: #8a8175;
   --tier-t2: #c9922e;
   --tier-t3: #c1503a;
@@ -128,32 +132,36 @@
 
 /* Light remap — applies on OS light preference ONLY when no explicit theme is pinned. The
  * [data-theme=...] blocks below have higher specificity (0,2,0 vs 0,1,0) and win regardless. */
+/* Light theme — warm cream, but the accent is NEUTRALISED to warm near-black for coherence with the
+ * dark-first neutral direction (Daniel override 2026-07-17). Surfaces stay warm cream; semantic status
+ * hues are kept. NOTE: dark is the app default — main.tsx pins [data-theme=dark] explicitly so this
+ * media query only takes effect for an OS-light user who has NOT chosen a theme; the toggle always wins. */
 @media (prefers-color-scheme: light) {
   :root {
-    --bg-sunken: #ede7dc;
-    --bg-base: #fbf8f3;
+    --bg-sunken: #ece7dd;
+    --bg-base: #faf8f3;
     --bg-panel: #ffffff;
-    --bg-elevated: #f4efe6;
+    --bg-elevated: #f3efe7;
 
-    --fg-primary: #221d17;
-    --fg-dim: #6b6255;
-    --fg-faint: #9c9284;
+    --fg-primary: #262421;
+    --fg-dim: #6b6558;
+    --fg-faint: #9a9488;
 
-    --accent-strong: #b5551f;
-    --accent: #a2481e;
-    --accent-quiet: #f1ddd0;
+    --accent-strong: #2b2925;
+    --accent: #6b6558;
+    --accent-quiet: rgba(0, 0, 0, 0.05);
 
-    --border: #e4ded2;
-    --border-strong: #d6cdbd;
+    --border: rgba(0, 0, 0, 0.1);
+    --border-strong: rgba(0, 0, 0, 0.16);
 
     --error: #c4322a;
     --warning: #b67a1e;
     --success: #2f8f5b;
 
-    --status-running: #b67a1e;
+    --status-running: #2f8f5b;
     --status-done: #2f8f5b;
     --status-blocked: #c4322a;
-    --status-idle: #9c9284;
+    --status-idle: #9a9488;
 
     --tier-t1: #7a7266;
     --tier-t2: #a97423;
@@ -167,30 +175,30 @@
 
 /* Explicit theme pin — wins over the media query above. */
 :root[data-theme='light'] {
-  --bg-sunken: #ede7dc;
-  --bg-base: #fbf8f3;
+  --bg-sunken: #ece7dd;
+  --bg-base: #faf8f3;
   --bg-panel: #ffffff;
-  --bg-elevated: #f4efe6;
+  --bg-elevated: #f3efe7;
 
-  --fg-primary: #221d17;
-  --fg-dim: #6b6255;
-  --fg-faint: #9c9284;
+  --fg-primary: #262421;
+  --fg-dim: #6b6558;
+  --fg-faint: #9a9488;
 
-  --accent-strong: #b5551f;
-  --accent: #a2481e;
-  --accent-quiet: #f1ddd0;
+  --accent-strong: #2b2925;
+  --accent: #6b6558;
+  --accent-quiet: rgba(0, 0, 0, 0.05);
 
-  --border: #e4ded2;
-  --border-strong: #d6cdbd;
+  --border: rgba(0, 0, 0, 0.1);
+  --border-strong: rgba(0, 0, 0, 0.16);
 
   --error: #c4322a;
   --warning: #b67a1e;
   --success: #2f8f5b;
 
-  --status-running: #b67a1e;
+  --status-running: #2f8f5b;
   --status-done: #2f8f5b;
   --status-blocked: #c4322a;
-  --status-idle: #9c9284;
+  --status-idle: #9a9488;
 
   --tier-t1: #7a7266;
   --tier-t2: #a97423;
@@ -202,30 +210,30 @@
 }
 
 :root[data-theme='dark'] {
-  --bg-sunken: #14110e;
-  --bg-base: #1b1815;
-  --bg-panel: #221e1a;
-  --bg-elevated: #2b2620;
+  --bg-sunken: #1c1b19;
+  --bg-base: #262624;
+  --bg-panel: #2b2a27;
+  --bg-elevated: #34322e;
 
-  --fg-primary: #f2ede4;
-  --fg-dim: #b3a99b;
-  --fg-faint: #766d61;
+  --fg-primary: #f5f4ef;
+  --fg-dim: #b8b5ad;
+  --fg-faint: #82807a;
 
-  --accent-strong: #d97757;
-  --accent: #c15f3c;
-  --accent-quiet: #3a2a20;
+  --accent-strong: #ededea;
+  --accent: #a3a099;
+  --accent-quiet: rgba(245, 244, 239, 0.06);
 
-  --border: #332d26;
-  --border-strong: #453d33;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
 
   --error: #e0554a;
   --warning: #e0a040;
   --success: #5cae7e;
 
-  --status-running: #e0a040;
+  --status-running: #5cae7e;
   --status-done: #5cae7e;
   --status-blocked: #e0554a;
-  --status-idle: #766d61;
+  --status-idle: #82807a;
 
   --tier-t1: #8a8175;
   --tier-t2: #c9922e;
@@ -268,6 +276,11 @@ button {
  * App shell — desktop-first left sidebar + slim topbar + main content
  * ============================================================================
  */
+/* The shell is pinned to EXACTLY the viewport height (dvh handles mobile browser chrome; vh is the
+ * fallback) and clips its own overflow. This is load-bearing for the full-height sidebar (U5.1 item 7):
+ * because the shell never grows past the viewport, the sidebar (which spans both grid rows) is always a
+ * full-height column, its nav scrolls internally, and the Session·STOP floor stays pinned on screen at
+ * every zoom. Vertical overflow lives in `.mc-main` (and `.mc-nav`), never on <body>. */
 .app-shell {
   display: grid;
   grid-template-columns: var(--sidebar-w) 1fr;
@@ -275,7 +288,9 @@ button {
   grid-template-areas:
     'sidebar topbar'
     'sidebar main';
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
   transition: grid-template-columns 160ms ease-out;
 }
 
@@ -290,8 +305,8 @@ button {
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  padding: var(--space-4) var(--space-2);
-  gap: var(--space-4);
+  padding: var(--space-3) var(--space-2);
+  gap: var(--space-3);
   overflow: hidden;
 }
 
@@ -323,12 +338,32 @@ button {
   background: var(--bg-elevated);
 }
 
+/* The flexible MIDDLE zone of the full-height sidebar: it takes the space between the [+ New] header
+ * and the pinned floor, and scrolls INTERNALLY when cramped (zoomed / short viewport). `min-height: 0`
+ * is required so this flex item can shrink below its content size and actually scroll instead of
+ * pushing the floor off-screen. */
 .mc-nav {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-2);
   flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+.mc-nav::-webkit-scrollbar {
+  width: 6px;
+}
+
+.mc-nav::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: var(--radius-sm);
+}
+
+.mc-nav::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 /* ---- [+ New] menu (pinned above the first divider) ---- */
@@ -346,9 +381,9 @@ button {
   color: var(--fg-dim);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-1) var(--space-3);
   font: inherit;
-  font-size: var(--text-md);
+  font-size: var(--text-sm);
   font-weight: 500;
   text-align: left;
   cursor: pointer;
@@ -363,7 +398,7 @@ button {
   flex: 0 0 auto;
   width: 1.1em;
   text-align: center;
-  color: var(--accent);
+  color: var(--fg-dim);
 }
 
 .mc-new__label {
@@ -427,12 +462,12 @@ button {
   font-style: italic;
 }
 
-/* ---- Nav sections (unlabelled groups, hairline dividers only — Linear pattern) ---- */
+/* ---- Nav sections (unlabelled groups, hairline dividers only — Linear pattern; dense) ---- */
 .mc-nav__divider {
   height: 0;
   border: 0;
   border-top: 1px solid var(--border);
-  margin: var(--space-1) var(--space-2);
+  margin: 2px var(--space-2);
 }
 
 /* The divider above the very first group sits flush under the [+ New] menu. */
@@ -443,12 +478,13 @@ button {
 .mc-nav-section__items {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: 2px;
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
+/* Dense ~29px rows (Linear-like): 5px block padding + text-sm + the 1px transparent frame. */
 .mc-nav-item {
   display: flex;
   align-items: center;
@@ -461,9 +497,9 @@ button {
   border: 1px solid transparent;
   border-left: 2px solid transparent;
   border-radius: var(--radius-md);
-  padding: var(--space-2) var(--space-3);
+  padding: 5px var(--space-3);
   font: inherit;
-  font-size: var(--text-md);
+  font-size: var(--text-sm);
   text-align: left;
   cursor: pointer;
 }
@@ -508,7 +544,7 @@ button {
   font-family: var(--font-mono);
 }
 
-/* Pending-count badge (Approvals). Accent fill, mono tabular — a count, not a new hue taxonomy. */
+/* Pending-count badge (Approvals). Neutral raised pill, mono tabular — a count, not a hue taxonomy. */
 .mc-nav-item__badge {
   flex: 0 0 auto;
   min-width: 1.4em;
@@ -516,10 +552,11 @@ button {
   font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
   color: var(--fg-primary);
-  background: var(--accent);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   padding: 0 var(--space-1);
-  line-height: 1.5;
+  line-height: 1.4;
 }
 
 /* ---- Rail mode: icon-only 48px sidebar, labels/section chrome collapse away (icons keep a
@@ -546,23 +583,31 @@ button {
   gap: var(--space-2);
 }
 
-/* ---- Session / Stop floor (pinned bottom, hairline-separated, always reachable) ---- */
+/* ============================================================================
+ * Session / Stop floor (U5.1 redesign) — pinned bottom, hairline-separated, always reachable.
+ * Minimal + dignified + well-spaced: a quiet passive session indicator (no sign-in/out chrome —
+ * the passkey ceremony now runs at point-of-action) above a restrained STOP surface. STOP stays
+ * unmistakable via the semantic --error only — no glow, no gradient.
+ * ============================================================================ */
 .mc-sidebar__floor {
   margin-top: auto;
   border-top: 1px solid var(--border);
   padding-top: var(--space-3);
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--space-3);
 }
 
+/* Passive session indicator — a dot + quiet label, informational only (NOT a button). */
 .mc-session {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   padding: 0 var(--space-2);
-  font-size: var(--text-sm);
-  color: var(--fg-dim);
+  font-size: var(--text-xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
 }
 
 .mc-session__label {
@@ -577,13 +622,107 @@ button {
   border-radius: 0;
   padding: 0;
   overflow: visible;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }
 
 .mc-sidebar__floor .control__stop h2 {
+  margin: 0;
   font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.07em;
   color: var(--fg-faint);
+}
+
+/* Each governed form is a tidy stacked group, well spaced from its neighbour. */
+.mc-sidebar__floor .control__stop form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.mc-sidebar__floor .control__stop input[type='text'],
+.mc-sidebar__floor .control__stop input:not([type]) {
+  width: 100%;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--fg-primary);
+  font: inherit;
+  font-size: var(--text-sm);
+  padding: var(--space-1) var(--space-2);
+}
+
+.mc-sidebar__floor .control__stop input:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: -1px;
+}
+
+/* Scoped (non-nuclear) buttons: quiet, full-width, hairline. */
+.mc-sidebar__floor .control__stop button {
+  width: 100%;
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  color: var(--fg-dim);
+  cursor: pointer;
+}
+
+.mc-sidebar__floor .control__stop button:hover:not(:disabled) {
+  color: var(--fg-primary);
+}
+
+.mc-sidebar__floor .control__stop button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mc-sidebar__floor .control__stop-warning {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--fg-faint);
+}
+
+.mc-sidebar__floor .control__stop [data-testid$='-status'],
+.mc-sidebar__floor .control__stop p {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--fg-dim);
+}
+
+/* Nuclear STOP: a restrained danger control — semantic red outline that fills red on hover, and its
+ * confirm checkbox row. Unmistakable, never decorative; no glow/gradient. */
+.mc-sidebar__floor .control__stop-nuke {
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+
+.mc-sidebar__floor .control__stop-nuke label {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--fg-dim);
+  cursor: pointer;
+}
+
+.mc-sidebar__floor .control__stop-nuke button {
+  border-color: var(--error);
+  color: var(--error);
+  background: transparent;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.mc-sidebar__floor .control__stop-nuke button:not(:disabled):hover {
+  background: var(--error);
+  color: var(--bg-base);
 }
 
 /* Rail-mode: floor collapses to a single stop glyph; the detail forms hide. */
@@ -637,12 +776,43 @@ button {
   white-space: nowrap;
 }
 
-/* ---- Main content ---- */
+/* Quiet theme toggle — a subtle icon button (dark default, light on demand; choice persisted). */
+.mc-theme-toggle {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-faint);
+  font-size: var(--text-md);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.mc-theme-toggle:hover {
+  color: var(--fg-primary);
+  background: var(--bg-elevated);
+  border-color: var(--border);
+}
+
+.mc-theme-toggle:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 1px;
+}
+
+/* ---- Main content — the only vertical scroll region besides the sidebar nav; the shell body itself
+ * never scrolls (see .app-shell). `min-height: 0` lets the grid row clamp so this cell scrolls. ---- */
 .mc-main {
   grid-area: main;
   padding: var(--space-8);
   overflow-y: auto;
   min-width: 0;
+  min-height: 0;
 }
 
 /* ============================================================================
@@ -808,10 +978,12 @@ button {
   cursor: not-allowed;
 }
 
+/* Primary = neutral near-white fill (dark theme) / near-black fill (light theme) with the shell base
+ * colour as its text — a Linear/Claude-dark solid button, no accent hue. */
 .mc-btn--primary {
   background: var(--accent-strong);
   border-color: var(--accent-strong);
-  color: #ffffff;
+  color: var(--bg-base);
 }
 
 .mc-btn--quiet {

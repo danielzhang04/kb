@@ -106,17 +106,23 @@ describe('nav/config', () => {
     expect(status('terminal')).toBe('soon');
   });
 
-  it('the [+ New] menu enables only Task; the rest are greyed for the Composer', () => {
+  it('the [+ New] menu is idea-first: Idea + Task enabled; the entity types greyed for the Composer', () => {
+    // U5.1 — the freeform "Idea…" leads; the menu's shape says "bring an idea, iterate".
     expect(NEW_MENU_ENTRIES.map((e) => e.id)).toEqual([
+      'idea',
       'task',
       'workflow',
       'skill',
       'project',
       'agent',
     ]);
+    const idea = NEW_MENU_ENTRIES.find((e) => e.id === 'idea');
+    expect(idea?.enabled).toBe(true);
+    // Idea is enabled-looking but flagged as a not-yet-real Composer surface.
+    expect(idea?.hint).toMatch(/composer/i);
     const task = NEW_MENU_ENTRIES.find((e) => e.id === 'task');
     expect(task?.enabled).toBe(true);
-    for (const entry of NEW_MENU_ENTRIES.filter((e) => e.id !== 'task')) {
+    for (const entry of NEW_MENU_ENTRIES.filter((e) => e.id !== 'task' && e.id !== 'idea')) {
       expect(entry.enabled).toBe(false);
     }
   });

@@ -67,12 +67,44 @@ describe('App shell — entity-first sidebar navigation', () => {
   it('pins the Session/Stop floor in the shell, present regardless of the active view', () => {
     render(<App />);
     expect(screen.getByTestId('stop-floor')).toBeTruthy();
-    expect(screen.getByTestId('session-state').textContent).toMatch(/signed out/i);
+    // U5.1 — the floor carries a passive session indicator, NOT sign-in/out chrome.
+    expect(screen.getByTestId('session-state').textContent).toMatch(/session/i);
+    expect(screen.queryByRole('button', { name: /sign in/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /sign out/i })).toBeNull();
     expect(screen.getByLabelText('Stop floor')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'STOP everything' })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Workflows' }));
     expect(screen.getByLabelText('Stop floor')).toBeTruthy();
+  });
+
+  it('lays the sidebar out as a full-height column: [+ New] header, scrollable nav, pinned floor last', () => {
+    // U5.1 item 7 — the sidebar is a three-zone flex column pinned to the viewport height. jsdom can't
+    // compute the 100dvh/zoom layout, so this pins the STRUCTURE the CSS relies on: the middle nav zone
+    // exists (it carries overflow-y:auto), and the Session·STOP floor is the LAST child of the sidebar
+    // so margin-top:auto pins it to the bottom rather than letting it be pushed off-screen mid-column.
+    render(<App />);
+    const sidebar = screen.getByLabelText('Primary navigation');
+    expect(sidebar.querySelector('.mc-nav')).toBeTruthy();
+    expect(sidebar.lastElementChild?.getAttribute('data-testid')).toBe('stop-floor');
+    // The [+ New] header zone sits inside the sidebar, above the nav list.
+    expect(within(sidebar).getByRole('button', { name: 'New' })).toBeTruthy();
+  });
+
+  it('exposes a quiet theme toggle that flips the pinned data-theme and persists the choice', () => {
+    window.localStorage.clear();
+    document.documentElement.removeAttribute('data-theme');
+    render(<App />);
+
+    const toggle = screen.getByRole('button', { name: /switch to light theme/i });
+    fireEvent.click(toggle);
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+    expect(window.localStorage.getItem('mc-theme')).toBe('light');
+
+    // Toggling back returns to dark (the app default) and re-persists.
+    fireEvent.click(screen.getByRole('button', { name: /switch to dark theme/i }));
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+    expect(window.localStorage.getItem('mc-theme')).toBe('dark');
   });
 
   it('routes each live destination to its mapped view', () => {
@@ -142,7 +174,7 @@ describe('App shell — entity-first sidebar navigation', () => {
 });
 
 describe('App shell — [+ New ▾] menu', () => {
-  it('opens a menu with only Task enabled; the rest are disabled with a Composer hint', () => {
+  it('opens an idea-first menu: Idea + Task enabled; the entity types disabled with a Composer hint', () => {
     render(<App />);
 
     const trigger = screen.getByRole('button', { name: 'New' });
@@ -151,12 +183,30 @@ describe('App shell — [+ New ▾] menu', () => {
     expect(trigger.getAttribute('aria-expanded')).toBe('true');
 
     const menu = screen.getByRole('menu', { name: 'Create new' });
-    expect((within(menu).getByRole('menuitem', { name: /Task/ }) as HTMLButtonElement).disabled).toBe(false);
+    // The freeform "Idea…" leads and is enabled-looking; Task is the working entry.
+    expect(within(menu).getAllByRole('menuitem')[0].textContent).toMatch(/Idea/);
+    expect((within(menu).getByRole('menuitem', { name: /Idea/ }) as HTMLButtonElement).disabled).toBe(false);
+    expect((within(menu).getByRole('menuitem', { name: /^Task/ }) as HTMLButtonElement).disabled).toBe(false);
     for (const label of ['Workflow', 'Skill', 'Project', 'Agent']) {
       const item = within(menu).getByRole('menuitem', { name: new RegExp(label) }) as HTMLButtonElement;
       expect(item.disabled).toBe(true);
       expect(item.getAttribute('title')).toBe('Composer');
     }
+  });
+
+  it('Idea opens the Composer placeholder over the current view; Back returns', () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'New' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Idea/ }));
+
+    // The Composer placeholder replaces the view body; the Home view is not mounted while it is open.
+    expect(screen.getByLabelText('Composer')).toBeTruthy();
+    expect(screen.queryByLabelText('Home view')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(screen.queryByLabelText('Composer')).toBeNull();
+    expect(screen.getByLabelText('Home view')).toBeTruthy();
   });
 
   it('Task navigates to the governed launch surface (Home) and closes the menu', () => {

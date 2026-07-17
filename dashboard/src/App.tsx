@@ -23,6 +23,7 @@ import {
   isLive,
   type DestinationId,
   type NavDestination,
+  type NewMenuEntry,
 } from './nav/config';
 import { NewMenu } from './nav/NewMenu';
 import { CommandPalette } from './palette/CommandPalette';
@@ -44,6 +45,7 @@ import { Ledgers } from './views/Ledgers';
 import { fetchPending } from './lib/approvalsClient';
 import { useSse } from './lib/sseClient';
 import { signIn, type Session } from './lib/authClient';
+import { readThemeChoice, persistThemeChoice, applyTheme, type ThemeChoice } from './lib/theme';
 
 /** Live count of pending approvals for the sidebar badge. Reuses the same `fetchPending` + SSE-tick
  *  pattern as {@link ApprovalsLive}, so the count refreshes when a card is promoted without a reload.
@@ -147,38 +149,35 @@ export function NavItem({
 }
 
 /**
- * The Session/Stop floor — pinned to the bottom of the sidebar, hairline-separated, always visible. It
- * surfaces the real WebAuthn session state (a passkey login mints a short-TTL bearer via
- * `authClient.signIn`) and the relocated {@link StopControls} (scoped stop + nuclear STOP). Signed out,
- * a "Sign in" button runs the ceremony; fail-closed pre-passkey, the server refuses and the floor stays
- * signed out. In rail mode the detail collapses to a single stop glyph.
+ * The Session/Stop floor (U5.1 redesign) — pinned to the bottom of the sidebar, hairline-separated,
+ * always visible. Daniel's review round 1 retired the explicit sign-in/sign-out chrome: there is no
+ * "Sign in" button and no "Signed in/out" label. Instead a QUIET, passive indicator reflects whether a
+ * session is currently held, and the WebAuthn ceremony (`authClient.signIn`, unchanged) now runs at
+ * point-of-action — the governed {@link StopControls} below receive `onRequestSession`, so attempting a
+ * stop without a session mints one inline rather than gating behind a sign-in wall. In rail mode the
+ * detail collapses to a single stop glyph.
  */
 function SessionStopFloor({
   session,
-  onSignIn,
+  onRequestSession,
 }: {
   session: Session | null;
-  onSignIn: () => void;
+  onRequestSession: () => Promise<Session | null>;
 }): React.JSX.Element {
-  const signedIn = session !== null;
+  const active = session !== null;
   return (
     <div className="mc-sidebar__floor" data-testid="stop-floor">
-      <div className="mc-session" data-testid="session-state" title="WebAuthn session">
+      <div className="mc-session" data-testid="session-state" title="Session state">
         <span
-          className={`mc-status-dot ${signedIn ? 'mc-status-dot--running' : 'mc-status-dot--idle'}`}
+          className={`mc-status-dot ${active ? 'mc-status-dot--running' : 'mc-status-dot--idle'}`}
           aria-hidden="true"
         />
-        <span className="mc-session__label">{signedIn ? 'Signed in' : 'Signed out'}</span>
-        {signedIn ? null : (
-          <button type="button" className="mc-session__signin" onClick={onSignIn}>
-            Sign in
-          </button>
-        )}
+        <span className="mc-session__label">{active ? 'session active' : 'session'}</span>
       </div>
       <span className="mc-sidebar__floor-rail" aria-hidden="true" title="Stop floor">
         ⏻
       </span>
-      <StopControls />
+      <StopControls sessionToken={session?.token} onRequestSession={onRequestSession} />
     </div>
   );
 }
@@ -191,16 +190,16 @@ function Sidebar({
   onToggleRail,
   approvalsCount,
   session,
-  onSignIn,
+  onRequestSession,
 }: {
   active: DestinationId;
   onSelect: (id: DestinationId) => void;
-  onCreate: (id: 'task' | 'workflow' | 'skill' | 'project' | 'agent') => void;
+  onCreate: (id: NewMenuEntry['id']) => void;
   rail: boolean;
   onToggleRail: () => void;
   approvalsCount: number;
   session: Session | null;
-  onSignIn: () => void;
+  onRequestSession: () => Promise<Session | null>;
 }): React.JSX.Element {
   // One shared snapshot feeds every flyout (module-cached + SSE-refreshed) — no per-hover fetch.
   const { index, registry } = useFleetData();
@@ -250,7 +249,7 @@ function Sidebar({
           </Fragment>
         ))}
       </div>
-      <SessionStopFloor session={session} onSignIn={onSignIn} />
+      <SessionStopFloor session={session} onRequestSession={onRequestSession} />
     </nav>
   );
 }
@@ -280,6 +279,24 @@ function ComingSoon({ id }: { id: DestinationId }): React.JSX.Element {
   );
 }
 
+/** Composer placeholder — the [+ New ▾] → "Idea…" entry opens this. The freeform composer (bring an
+ *  idea, iterate) is not built yet, so this is a dignified, enabled-looking stub, not a greyed dead-end.
+ *  A quiet "Back" returns to the underlying view. */
+function ComposerPlaceholder({ onClose }: { onClose: () => void }): React.JSX.Element {
+  return (
+    <section className="code-view" aria-label="Composer">
+      <h2>Composer — soon</h2>
+      <p>
+        Start from an idea and iterate — the freeform composer lands in a later wave. For now, use
+        [+ New] → Task to file a governed card directly.
+      </p>
+      <button type="button" className="mc-btn mc-btn--quiet" onClick={onClose}>
+        Back
+      </button>
+    </section>
+  );
+}
+
 /** Route a destination to its view. A destination with a dedicated view gets one case here; only the
  *  greyed soon/future stubs fall through to the shared placeholder. Home is the default rollup landing
  *  and hosts the governed Launch/Rerun surface, so it receives the session token (the [+ New ▾] → Task
@@ -288,14 +305,16 @@ function ViewBody({
   view,
   sessionToken,
   onNavigate,
+  onRequestSession,
 }: {
   view: DestinationId;
   sessionToken?: string;
   onNavigate: (id: DestinationId) => void;
+  onRequestSession: () => Promise<Session | null>;
 }): React.JSX.Element {
   switch (view) {
     case 'home':
-      return <Home sessionToken={sessionToken} onNavigate={onNavigate} />;
+      return <Home sessionToken={sessionToken} onNavigate={onNavigate} onRequestSession={onRequestSession} />;
     case 'approvals':
       // Live GET /api/approvals feed (refreshed on SSE), onVerify -> POST /api/approvals/verify.
       return <ApprovalsLive sessionToken={sessionToken} />;
@@ -338,6 +357,9 @@ export function App(): React.JSX.Element {
   const [rail, setRail] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // The [+ New ▾] → "Idea…" entry opens the Composer placeholder over the current view.
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [theme, setTheme] = useState<ThemeChoice>(() => readThemeChoice());
   const approvalsCount = useApprovalsCount();
 
   // Ctrl/Cmd+K toggles the command palette anywhere in the shell.
@@ -352,6 +374,21 @@ export function App(): React.JSX.Element {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  const toggleTheme = (): void => {
+    setTheme((prev) => {
+      const next: ThemeChoice = prev === 'dark' ? 'light' : 'dark';
+      applyTheme(next);
+      persistThemeChoice(next);
+      return next;
+    });
+  };
+
+  // Navigate to a destination, closing the transient Composer placeholder if it was open.
+  const goTo = (id: DestinationId): void => {
+    setComposerOpen(false);
+    setView(id);
+  };
+
   // Run a palette command. The palette is a SHORTCUT, never a bypass: this only changes the active view
   // (navigate) and/or focuses the pinned Session/Stop floor — it never calls a governed endpoint.
   const handlePaletteRun = (cmd: PaletteCommand): void => {
@@ -360,34 +397,46 @@ export function App(): React.JSX.Element {
       if (typeof btn?.scrollIntoView === 'function') btn.scrollIntoView({ block: 'nearest' });
       btn?.focus();
     }
-    if (cmd.target) setView(cmd.target);
+    if (cmd.target) goTo(cmd.target);
   };
 
-  const handleSignIn = (): void => {
-    // WebAuthn login -> short-TTL bearer. Fail-closed: a refused ceremony (no passkey) leaves the floor
-    // signed out; the error is intentionally not surfaced as a blocking modal in v0.
-    void signIn()
-      .then((s) => setSession(s))
-      .catch(() => setSession(null));
-  };
+  // Point-of-action session mint. Runs the WebAuthn ceremony (`authClient.signIn`, unchanged) and holds
+  // the minted bearer in app state so every governed surface can use it. Replaces the retired floor
+  // "Sign in" button: governed controls call this inline when they need a session. Fail-closed — a
+  // refused/absent passkey resolves to null and the action stays a no-op.
+  const requestSession = (): Promise<Session | null> =>
+    signIn()
+      .then((s) => {
+        setSession(s);
+        return s;
+      })
+      .catch(() => {
+        setSession(null);
+        return null;
+      });
 
-  // [+ New ▾] → Task navigates to Home, which hosts the governed Launch/Rerun surface. The other
-  // entries are disabled in the menu, so only 'task' reaches here.
-  const handleCreate = (id: 'task' | 'workflow' | 'skill' | 'project' | 'agent'): void => {
-    if (id === 'task') setView('home');
+  // [+ New ▾] → "Idea…" opens the Composer placeholder; → "Task" lands on the governed launch surface
+  // (Home). The remaining entity types are disabled in the menu, so only these two reach here.
+  const handleCreate = (id: NewMenuEntry['id']): void => {
+    if (id === 'idea') {
+      setComposerOpen(true);
+    } else if (id === 'task') {
+      setComposerOpen(false);
+      setView('home');
+    }
   };
 
   return (
     <div className={`app-shell${rail ? ' app-shell--rail' : ''}`}>
       <Sidebar
         active={view}
-        onSelect={setView}
+        onSelect={goTo}
         onCreate={handleCreate}
         rail={rail}
         onToggleRail={() => setRail((r) => !r)}
         approvalsCount={approvalsCount}
         session={session}
-        onSignIn={handleSignIn}
+        onRequestSession={requestSession}
       />
       <header className="mc-topbar">
         <h1 className="mc-topbar__title">kb mission control</h1>
@@ -395,9 +444,27 @@ export function App(): React.JSX.Element {
           <span className="mc-status-dot mc-status-dot--running" aria-hidden="true" />
           v0 · read-only observatory
         </span>
+        <button
+          type="button"
+          className="mc-theme-toggle"
+          onClick={toggleTheme}
+          aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+          title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+        >
+          <span aria-hidden="true">{theme === 'dark' ? '☾' : '☀'}</span>
+        </button>
       </header>
       <main className="mc-main">
-        <ViewBody view={view} sessionToken={session?.token} onNavigate={setView} />
+        {composerOpen ? (
+          <ComposerPlaceholder onClose={() => setComposerOpen(false)} />
+        ) : (
+          <ViewBody
+            view={view}
+            sessionToken={session?.token}
+            onNavigate={goTo}
+            onRequestSession={requestSession}
+          />
+        )}
       </main>
       <CommandPalette
         open={paletteOpen}

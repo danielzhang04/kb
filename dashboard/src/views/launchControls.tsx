@@ -11,6 +11,7 @@
  */
 import { useState } from 'react';
 import type { FormEvent } from 'react';
+import type { Session } from '../lib/authClient';
 
 type Variant = 'control' | 'home';
 
@@ -59,11 +60,24 @@ function cls(value: string): string | undefined {
 export function LaunchControls({
   sessionToken,
   variant = 'control',
+  onRequestSession,
 }: {
   sessionToken?: string;
   variant?: Variant;
+  /** U5.1 — point-of-action passkey mint. When supplied (App-wired), the buttons are enabled without a
+   *  standing session and a submit runs the WebAuthn ceremony inline instead of gating behind a wall.
+   *  Absent (direct component tests / dormant Control) → the fail-closed disabled+nudge behaviour. */
+  onRequestSession?: () => Promise<Session | null>;
 }): React.JSX.Element {
   const c = CHROME[variant];
+
+  // Resolve a usable bearer: the standing session, else the inline ceremony (if wired), else none.
+  async function resolveToken(): Promise<string | undefined> {
+    if (sessionToken) return sessionToken;
+    if (onRequestSession) return (await onRequestSession())?.token;
+    return undefined;
+  }
+  const canAct = Boolean(sessionToken) || Boolean(onRequestSession);
 
   const [project, setProject] = useState('');
   const [action, setAction] = useState('');
@@ -78,14 +92,20 @@ export function LaunchControls({
 
   async function submitLaunch(e: FormEvent): Promise<void> {
     e.preventDefault();
-    if (!sessionToken) {
+    // Fail-closed with no way to mint (no token, no wired ceremony): a synchronous nudge, no fetch.
+    if (!canAct) {
+      setLaunchStatus('no session — sign in with your passkey first');
+      return;
+    }
+    const token = await resolveToken();
+    if (!token) {
       setLaunchStatus('no session — sign in with your passkey first');
       return;
     }
     try {
       const res = await fetch('/api/write/launch', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${sessionToken}` },
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
         body: JSON.stringify({ project, action, target, riskTier, body }),
       });
       const data = (await res.json()) as { cardId?: string; reason?: string };
@@ -97,14 +117,19 @@ export function LaunchControls({
 
   async function submitRerun(e: FormEvent): Promise<void> {
     e.preventDefault();
-    if (!sessionToken) {
+    if (!canAct) {
+      setRerunStatus('no session — sign in with your passkey first');
+      return;
+    }
+    const token = await resolveToken();
+    if (!token) {
       setRerunStatus('no session — sign in with your passkey first');
       return;
     }
     try {
       const res = await fetch('/api/write/rerun', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${sessionToken}` },
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
         body: JSON.stringify({ cardId: rerunCardId, feedback }),
       });
       const data = (await res.json()) as { cardId?: string; reason?: string };
@@ -119,7 +144,7 @@ export function LaunchControls({
   return (
     <section className={cls(c.section)} aria-label="Launch and rerun" data-testid={c.sectionTestId}>
       <h2 className={cls(c.title)}>Launch / rerun</h2>
-      {!sessionToken ? (
+      {!canAct ? (
         <p className={cls(c.warning)}>Sign in with your passkey to launch or rerun cards.</p>
       ) : null}
       <form className={cls(c.form)} aria-label="Launch card" onSubmit={(e) => void submitLaunch(e)}>
@@ -161,7 +186,7 @@ export function LaunchControls({
           value={body}
           onChange={(e) => setBody(e.target.value)}
         />
-        <button className={cls(c.launchButton)} type="submit" disabled={!sessionToken}>
+        <button className={cls(c.launchButton)} type="submit" disabled={!canAct}>
           Launch
         </button>
       </form>
@@ -186,7 +211,7 @@ export function LaunchControls({
           value={feedback}
           onChange={(e) => setFeedback(e.target.value)}
         />
-        <button className={cls(c.rerunButton)} type="submit" disabled={!sessionToken}>
+        <button className={cls(c.rerunButton)} type="submit" disabled={!canAct}>
           Rerun
         </button>
       </form>

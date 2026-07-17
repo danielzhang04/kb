@@ -18,6 +18,7 @@ import { Registry } from './Registry';
 import { Timeline } from './Timeline';
 import { LaunchControls } from './launchControls';
 import { useSse } from '../lib/sseClient';
+import type { Session } from '../lib/authClient';
 
 const EMPTY_INDEX: PlaneAIndex = {
   cards: {},
@@ -123,7 +124,16 @@ function OrgStates({ index }: { index: PlaneAIndex }): React.JSX.Element {
  * as `LaunchControls` above. The nuclear control additionally requires an explicit confirm checkbox
  * (armed, not a single accidental click) before its submit button is even enabled.
  */
-export function StopControls({ sessionToken }: { sessionToken?: string }): React.JSX.Element {
+export function StopControls({
+  sessionToken,
+  onRequestSession,
+}: {
+  sessionToken?: string;
+  /** U5.1 — point-of-action passkey mint (App-wired from the shell floor). When supplied the controls
+   *  are enabled without a standing session and a submit runs the WebAuthn ceremony inline; absent
+   *  (direct component tests) → the fail-closed disabled+nudge behaviour is unchanged. */
+  onRequestSession?: () => Promise<Session | null>;
+}): React.JSX.Element {
   const [cardId, setCardId] = useState('');
   const [stopCardStatus, setStopCardStatus] = useState<string | null>(null);
 
@@ -133,16 +143,28 @@ export function StopControls({ sessionToken }: { sessionToken?: string }): React
   const [confirmNuke, setConfirmNuke] = useState(false);
   const [nukeStatus, setNukeStatus] = useState<string | null>(null);
 
+  async function resolveToken(): Promise<string | undefined> {
+    if (sessionToken) return sessionToken;
+    if (onRequestSession) return (await onRequestSession())?.token;
+    return undefined;
+  }
+  const canAct = Boolean(sessionToken) || Boolean(onRequestSession);
+
   async function submitStopCard(e: FormEvent): Promise<void> {
     e.preventDefault();
-    if (!sessionToken) {
+    if (!canAct) {
+      setStopCardStatus('no session — sign in with your passkey first');
+      return;
+    }
+    const token = await resolveToken();
+    if (!token) {
       setStopCardStatus('no session — sign in with your passkey first');
       return;
     }
     try {
       const res = await fetch('/api/write/stop-card', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${sessionToken}` },
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
         body: JSON.stringify({ cardId }),
       });
       const data = (await res.json()) as { state?: string; reason?: string };
@@ -154,14 +176,19 @@ export function StopControls({ sessionToken }: { sessionToken?: string }): React
 
   async function submitPauseCadence(e: FormEvent): Promise<void> {
     e.preventDefault();
-    if (!sessionToken) {
+    if (!canAct) {
+      setPauseStatus('no session — sign in with your passkey first');
+      return;
+    }
+    const token = await resolveToken();
+    if (!token) {
       setPauseStatus('no session — sign in with your passkey first');
       return;
     }
     try {
       const res = await fetch('/api/write/pause-cadence', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${sessionToken}` },
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
         body: JSON.stringify({ name: cadenceName }),
       });
       const data = (await res.json()) as { path?: string; reason?: string };
@@ -173,18 +200,23 @@ export function StopControls({ sessionToken }: { sessionToken?: string }): React
 
   async function submitNuke(e: FormEvent): Promise<void> {
     e.preventDefault();
-    if (!sessionToken) {
+    if (!confirmNuke) {
+      setNukeStatus('confirm the nuclear STOP checkbox first');
+      return;
+    }
+    if (!canAct) {
       setNukeStatus('no session — sign in with your passkey first');
       return;
     }
-    if (!confirmNuke) {
-      setNukeStatus('confirm the nuclear STOP checkbox first');
+    const token = await resolveToken();
+    if (!token) {
+      setNukeStatus('no session — sign in with your passkey first');
       return;
     }
     try {
       const res = await fetch('/api/write/stop', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${sessionToken}` },
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
         body: JSON.stringify({}),
       });
       const data = (await res.json()) as { reason?: string };
@@ -197,13 +229,13 @@ export function StopControls({ sessionToken }: { sessionToken?: string }): React
   return (
     <section className="control__pane control__stop" aria-label="Stop floor">
       <h2>Stop floor</h2>
-      {!sessionToken ? (
+      {!canAct ? (
         <p className="control__stop-warning">Sign in with your passkey to use stop controls.</p>
       ) : null}
 
       <form aria-label="Request card stop" onSubmit={(e) => void submitStopCard(e)}>
         <input aria-label="Card id to stop" value={cardId} onChange={(e) => setCardId(e.target.value)} />
-        <button type="submit" disabled={!sessionToken}>
+        <button type="submit" disabled={!canAct}>
           Request stop
         </button>
       </form>
@@ -211,7 +243,7 @@ export function StopControls({ sessionToken }: { sessionToken?: string }): React
 
       <form aria-label="Pause cadence" onSubmit={(e) => void submitPauseCadence(e)}>
         <input aria-label="Cadence name" value={cadenceName} onChange={(e) => setCadenceName(e.target.value)} />
-        <button type="submit" disabled={!sessionToken}>
+        <button type="submit" disabled={!canAct}>
           Pause cadence
         </button>
       </form>
@@ -227,7 +259,7 @@ export function StopControls({ sessionToken }: { sessionToken?: string }): React
           />
           Confirm — freeze the WHOLE fleet
         </label>
-        <button type="submit" disabled={!sessionToken || !confirmNuke}>
+        <button type="submit" disabled={!canAct || !confirmNuke}>
           STOP everything
         </button>
       </form>

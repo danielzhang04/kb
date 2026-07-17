@@ -60,25 +60,30 @@ export function NewMenu({ onCreate }: { onCreate: (id: NewMenuEntry['id']) => vo
       </button>
       {open ? (
         <ul className="mc-new__menu" role="menu" aria-label="Create new">
-          {NEW_MENU_ENTRIES.map((entry) => (
-            <li key={entry.id} role="none">
-              <button
-                type="button"
-                role="menuitem"
-                className={`mc-new__item${entry.enabled ? '' : ' mc-new__item--disabled'}`}
-                disabled={!entry.enabled}
-                title={entry.enabled ? undefined : 'Composer'}
-                onClick={() => {
-                  if (!entry.enabled) return;
-                  onCreate(entry.id);
-                  close();
-                }}
-              >
-                <span className="mc-new__item-label">{entry.label}</span>
-                {entry.enabled ? null : <span className="mc-new__item-hint">Composer</span>}
-              </button>
-            </li>
-          ))}
+          {NEW_MENU_ENTRIES.map((entry) => {
+            // Enabled items may still carry a hint (the idea entry's "Composer — soon"); disabled
+            // entity types fall back to a plain "Composer" hint.
+            const hint = entry.hint ?? (entry.enabled ? undefined : 'Composer');
+            return (
+              <li key={entry.id} role="none">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={`mc-new__item${entry.enabled ? '' : ' mc-new__item--disabled'}`}
+                  disabled={!entry.enabled}
+                  title={hint}
+                  onClick={() => {
+                    if (!entry.enabled) return;
+                    onCreate(entry.id);
+                    close();
+                  }}
+                >
+                  <span className="mc-new__item-label">{entry.label}</span>
+                  {hint ? <span className="mc-new__item-hint">{hint}</span> : null}
+                </button>
+              </li>
+            );
+          })}
         </ul>
       ) : null}
     </div>
