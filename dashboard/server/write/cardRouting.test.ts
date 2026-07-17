@@ -194,6 +194,97 @@ describe('setCardRouting — governed write via scripts/cards.py + ops commit', 
   });
 });
 
+describe('setCardRouting — approval-lock guard (routing frozen under an active approval)', () => {
+  /** Pre-plant an EXISTING card in its state dir so the guard can read its authoritative frontmatter
+   *  state before any write is attempted. approvals + approved both live under queue/approvals/. */
+  function plant(cardId: string, state: string, dir: string): void {
+    const d = join(repo, 'queue', dir);
+    mkdirSync(d, { recursive: true });
+    const fm = [
+      `id: ${cardId}`,
+      'owner: claude/ops',
+      `state: ${state}`,
+      'action: push-remote',
+      'target: t',
+      'risk-tier: T3',
+      'role: work',
+      'runtime: null',
+      'model: null',
+    ].join('\n');
+    writeFileSync(join(d, `${cardId}.md`), `---\n${fm}\n---\n\n## Work order\n\nx\n`, 'utf-8');
+  }
+
+  it('refuses a set on a card in `approvals` state (409 approval-locked); no py, no git, file untouched', async () => {
+    plant('card-appr', 'approvals', 'approvals');
+    const before = readFileSync(join(repo, 'queue', 'approvals', 'card-appr.md'), 'utf-8');
+    const seen: { code: string; op: any }[] = [];
+    const { runner, calls } = recorder();
+    const rows: AuditEvent[] = [];
+    const audit: LocalAuditAppend = (_r, e) => {
+      rows.push(e);
+      return { ts: 'x', ...e } as AuditRow;
+    };
+    const r = await setCardRouting(
+      { repoRoot: repo, cardId: 'card-appr', sessionToken: token(), sessionConfig: CONFIG },
+      { runtime: 'codex', model: 'gpt-5-codex' },
+      { runPy: fakePy(seen), runGit: runner, appendAudit: audit },
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.status).toBe(409);
+      expect(r.error).toBe('approval-locked');
+    }
+    expect(seen).toHaveLength(0); // py never invoked — no write
+    expect(calls).toHaveLength(0); // no ops commit
+    expect(rows).toHaveLength(0); // refused writes are NOT audited (house convention)
+    expect(readFileSync(join(repo, 'queue', 'approvals', 'card-appr.md'), 'utf-8')).toBe(before);
+  });
+
+  it('refuses a set on a card in `approved` state (409 approval-locked); no py, no git', async () => {
+    plant('card-apd', 'approved', 'approvals'); // approved cards live in queue/approvals/ (STATE_DIR)
+    const seen: { code: string; op: any }[] = [];
+    const { runner, calls } = recorder();
+    const r = await setCardRouting(
+      { repoRoot: repo, cardId: 'card-apd', sessionToken: token(), sessionConfig: CONFIG },
+      { runtime: 'codex', model: 'gpt-5-codex' },
+      { runPy: fakePy(seen), runGit: runner, appendAudit: noAudit },
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.status).toBe(409);
+      expect(r.error).toBe('approval-locked');
+    }
+    expect(seen).toHaveLength(0);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('also refuses a CLEAR on an approval-locked card (no routing mutation of any kind under an approval)', async () => {
+    plant('card-appr2', 'approvals', 'approvals');
+    const seen: { code: string; op: any }[] = [];
+    const { runner, calls } = recorder();
+    const r = await clearCardRouting(
+      { repoRoot: repo, cardId: 'card-appr2', sessionToken: token(), sessionConfig: CONFIG },
+      { runPy: fakePy(seen), runGit: runner, appendAudit: noAudit },
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.status).toBe(409);
+    expect(seen).toHaveLength(0);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('a working/inbox card is NOT approval-locked — the write proceeds as today', async () => {
+    plant('card-inbox', 'inbox', 'inbox');
+    const seen: { code: string; op: any }[] = [];
+    const r = await setCardRouting(
+      { repoRoot: repo, cardId: 'card-inbox', sessionToken: token(), sessionConfig: CONFIG },
+      { runtime: 'codex', model: 'gpt-5-codex' },
+      { runPy: fakePy(seen), runGit: recorder().runner, appendAudit: noAudit },
+    );
+    expect(r.ok).toBe(true);
+    expect(seen).toHaveLength(1); // py ran — write proceeded
+  });
+});
+
 describe('setCardRouting — symlink guard on the card path (LOW-1)', () => {
   it('refuses a card whose queue path escapes via a symlinked parent; py never runs, target intact', async () => {
     const outside = mkdtempSync(join(tmpdir(), 'card-outside-'));

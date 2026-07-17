@@ -57,6 +57,11 @@ const PRIMARY_STATES = new Set(['inbox', 'working', 'approvals', 'done']);
 /** Frontmatter keys shown first, in this order; any remaining keys follow in insertion order. */
 const FIELD_ORDER = ['id', 'action', 'target', 'risk-tier', 'owner', 'state', 'project', 'depends-on'];
 
+/** Card states under an active human approval — a per-card routing swap is refused here, mirroring the
+ *  server-side approval-lock guard (cardRouting.ts). Both `approvals` and `approved` live in
+ *  queue/approvals/. We disable the toggle upfront rather than let the user attempt a doomed write. */
+const APPROVAL_LOCKED_STATES = new Set(['approvals', 'approved']);
+
 const EMPTY: CardsByState = {};
 
 function tierClass(tier: string): '' | 'mc-badge--t1' | 'mc-badge--t2' | 'mc-badge--t3' {
@@ -181,6 +186,7 @@ function StateGroup({
  *  and a governed card-scope override toggle. Card frontmatter is the TOP-precedence routing input. */
 function CardRoutingBar({
   cardId,
+  cardState,
   view,
   registry,
   canAct,
@@ -188,6 +194,7 @@ function CardRoutingBar({
   onClear,
 }: {
   cardId: string;
+  cardState: string;
   view: CardRoutingView | undefined;
   registry: RoutingSnapshot['policy']['runtimes'];
   canAct: boolean;
@@ -196,6 +203,8 @@ function CardRoutingBar({
 }): React.JSX.Element {
   const stamped = view?.stamped ?? { runtime: null, model: null };
   const routed = stamped.runtime || stamped.model;
+  // Under an active approval, freeze the toggle upfront (the server refuses the write regardless).
+  const lockedReason = APPROVAL_LOCKED_STATES.has(cardState) ? 'under approval — routing frozen' : null;
   return (
     <div className="v-routing-bar" data-testid={`card-routing-bar-${cardId}`}>
       <span className="v-routing-bar__label">routing</span>
@@ -214,6 +223,7 @@ function CardRoutingBar({
         effective={view?.effective ?? null}
         canAct={canAct}
         canClear={Boolean(routed)}
+        lockedReason={lockedReason}
         onApply={(runtime, model) => onApply(runtime, model)}
         onClear={onClear}
       />
@@ -246,6 +256,7 @@ function DetailPane({
 
       <CardRoutingBar
         cardId={cardId}
+        cardState={String(card.meta.state)}
         view={routingView}
         registry={registry}
         canAct={canAct}

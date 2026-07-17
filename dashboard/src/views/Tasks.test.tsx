@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { render, screen, cleanup, fireEvent, within } from '@testing-library/react';
 import { Tasks, type CardsByState } from './Tasks';
 import type { ParsedCard } from '../../server/planeA/cards';
+import type { RoutingSnapshot } from '../lib/routingClient';
 
 afterEach(cleanup);
 
@@ -85,6 +86,47 @@ describe('Tasks view', () => {
     // The raw HTML survives as escaped text, and no <img> element is ever created.
     expect(detail.querySelector('img')).toBeNull();
     expect(detail.textContent).toContain('<img src=x onerror=alert(1)>');
+  });
+
+  it('locks the per-card routing toggle for a card under an active approval (approvals state)', () => {
+    const routing: RoutingSnapshot = {
+      policy: {
+        version: 1,
+        runtimes: { claude: { default_worker: 'worker-desktop', aliases: {}, known_models: ['claude-opus-4-8'] } },
+        matrix: {},
+        role_default: null,
+      },
+      agents: [],
+      cards: {},
+      audit: { mismatches: [], overrides: [] },
+      overrides: [],
+    };
+    render(<Tasks data={fixture} routing={routing} sessionToken="tok" />);
+    // card-300 is in `approvals` — selecting it must present a disabled, locked routing chip.
+    fireEvent.click(screen.getByTestId('task-row-card-300'));
+    const chip = screen.getByTestId('card-card-300-routing-chip') as HTMLButtonElement;
+    expect(chip.disabled).toBe(true);
+    expect(screen.getByTestId('card-card-300-routing-locked')).toBeTruthy();
+  });
+
+  it('leaves the per-card routing toggle usable for a working card (not approval-locked)', () => {
+    const routing: RoutingSnapshot = {
+      policy: {
+        version: 1,
+        runtimes: { claude: { default_worker: 'worker-desktop', aliases: {}, known_models: ['claude-opus-4-8'] } },
+        matrix: {},
+        role_default: null,
+      },
+      agents: [],
+      cards: {},
+      audit: { mismatches: [], overrides: [] },
+      overrides: [],
+    };
+    render(<Tasks data={fixture} routing={routing} sessionToken="tok" />);
+    fireEvent.click(screen.getByTestId('task-row-card-200')); // working
+    const chip = screen.getByTestId('card-card-200-routing-chip') as HTMLButtonElement;
+    expect(chip.disabled).toBe(false);
+    expect(screen.queryByTestId('card-card-200-routing-locked')).toBeNull();
   });
 
   it('renders calm empty groups when there are no cards at all', () => {

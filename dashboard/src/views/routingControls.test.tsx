@@ -91,6 +91,43 @@ describe('RoutingControl — governed submit (with session)', () => {
     await vi.waitFor(() => expect(onClear).toHaveBeenCalledTimes(1));
   });
 
+  it('when lockedReason is set, disables the chip, shows a quiet inline message, and never opens the popover', () => {
+    const onApply = vi.fn();
+    render(
+      <RoutingControl
+        label="card-300"
+        testIdPrefix="card-300"
+        registry={REGISTRY}
+        effective={POLICY_EFFECTIVE}
+        canAct
+        lockedReason="under approval — routing frozen"
+        onApply={onApply}
+      />,
+    );
+    const chip = screen.getByTestId('card-300-routing-chip') as HTMLButtonElement;
+    expect(chip.disabled).toBe(true);
+    const locked = screen.getByTestId('card-300-routing-locked');
+    expect(locked.textContent).toContain('under approval');
+    fireEvent.click(chip); // no-op: disabled
+    expect(screen.queryByTestId('card-300-routing-pop')).toBeNull();
+    expect(onApply).not.toHaveBeenCalled();
+  });
+
+  it('surfaces a governed 409 refusal legibly inside the popover (quiet status line)', async () => {
+    const onApply = vi.fn(async () => ({
+      ok: false,
+      reason: 'card is under an active approval; routing is frozen until it executes or the approval is rescinded',
+    }));
+    render(
+      <RoutingControl label="a" testIdPrefix="a" registry={REGISTRY} effective={POLICY_EFFECTIVE} canAct onApply={onApply} />,
+    );
+    fireEvent.click(screen.getByTestId('a-routing-chip'));
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    await vi.waitFor(() => expect(onApply).toHaveBeenCalledTimes(1));
+    const status = await screen.findByTestId('a-routing-status');
+    expect(status.textContent).toContain('under an active approval');
+  });
+
   it('renders an unroutable marker for a fail-loud card', () => {
     render(
       <RoutingControl

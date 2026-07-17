@@ -274,6 +274,9 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
         ? await clearCardRouting(input, routingDeps)
         : await setCardRouting(input, { runtime: str(body.runtime), model: str(body.model) }, routingDeps);
     if (outcome.ok) return reply.code(200).send(outcome);
-    return reply.code(outcome.status).send({ error: 'card-routing-refused', reason: outcome.reason });
+    // A card under an active approval refuses with a distinct `approval-locked` (409); every other
+    // refusal keeps the generic `card-routing-refused` code. No audit on either — refused writes do not
+    // amplify into an ops pull-rebase-push (FINDING 3), and the module already skips its own audit here.
+    return reply.code(outcome.status).send({ error: outcome.error ?? 'card-routing-refused', reason: outcome.reason });
   });
 }
