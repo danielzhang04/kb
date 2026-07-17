@@ -47,6 +47,7 @@ describe('App shell — entity-first sidebar navigation', () => {
       'Files',
       'Connectors',
       'Ledgers',
+      'Sentinel',
     ]) {
       expect(screen.getByRole('button', { name: new RegExp(`^${label}`) })).toBeTruthy();
     }
@@ -54,7 +55,9 @@ describe('App shell — entity-first sidebar navigation', () => {
 
   it('does not render any dropped verb-IA destination', () => {
     render(<App />);
-    for (const dropped of ['Board', 'Editor', 'Vibe', 'Registry', 'Sentinel']) {
+    // D3.4 makes `Pipeline` and D3.5 makes `Sentinel` real destinations again, so neither is in the
+    // dropped set any more.
+    for (const dropped of ['Board', 'Editor', 'Vibe', 'Registry']) {
       expect(screen.queryByRole('button', { name: new RegExp(`^${dropped}$`) })).toBeNull();
     }
   });
@@ -144,6 +147,28 @@ describe('App shell — entity-first sidebar navigation', () => {
       const view = screen.getByLabelText(`${label} view`);
       expect(view.textContent ?? '').not.toMatch(/built in U3/i);
     }
+  });
+
+  it('routes the Sentinel destination to the layer-panel set with its four sub-tabs (D3.5)', () => {
+    render(<App />);
+    const btn = screen.getByRole('button', { name: 'Sentinel' }) as HTMLButtonElement;
+    expect(btn.disabled).toBe(false);
+    fireEvent.click(btn);
+    expect(btn.getAttribute('aria-current')).toBe('page');
+
+    // The layer-panel host mounts with its four sub-tabs; Sentinel (liveness) is the default panel.
+    const view = screen.getByLabelText('Sentinel view');
+    const tablist = within(view).getByRole('tablist', { name: 'Layer panels' });
+    for (const label of ['Sentinel', 'Quartermaster', 'Flight Recorder', 'Atlas']) {
+      expect(within(tablist).getByRole('tab', { name: label })).toBeTruthy();
+    }
+    expect(within(view).getByLabelText('Sentinel panel')).toBeTruthy();
+
+    // Switching sub-tabs swaps the active panel without leaving the destination.
+    fireEvent.click(within(tablist).getByRole('tab', { name: 'Quartermaster' }));
+    expect(screen.getByLabelText('Quartermaster panel')).toBeTruthy();
+    fireEvent.click(within(tablist).getByRole('tab', { name: 'Flight Recorder' }));
+    expect(screen.getByLabelText('Flight Recorder panel')).toBeTruthy();
   });
 
   it('greyed "soon" items (Atlas, Terminal) are unclickable and never become active', () => {

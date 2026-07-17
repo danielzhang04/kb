@@ -40,7 +40,8 @@ export type DestinationId =
   | 'projects'
   | 'files'
   | 'connectors'
-  | 'ledgers';
+  | 'ledgers'
+  | 'sentinel';
 
 export interface NavDestination {
   id: DestinationId;
@@ -94,6 +95,9 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { id: 'connectors', label: 'Connectors', icon: '⛓', status: 'live' },
       { id: 'ledgers', label: 'Ledgers', icon: '▦', status: 'live' },
+      // D3.5 — the Sentinel destination hosts the read-only layer panels (Sentinel / Quartermaster /
+      // Flight Recorder / Atlas) behind an underline-tab bar. One nav entry; panels reachable from it.
+      { id: 'sentinel', label: 'Sentinel', icon: '◎', status: 'live' },
     ],
   },
 ];

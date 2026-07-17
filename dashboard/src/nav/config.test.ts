@@ -45,7 +45,8 @@ describe('nav/config', () => {
       'projects',
       'files',
     ]);
-    expect(NAV_SECTIONS[2].items.map((d) => d.id)).toEqual(['connectors', 'ledgers']);
+    // D3.5 — Sentinel joins the system group (hosts the read-only layer panels behind sub-tabs).
+    expect(NAV_SECTIONS[2].items.map((d) => d.id)).toEqual(['connectors', 'ledgers', 'sentinel']);
   });
 
   it('every destination has a unique id, a label, an icon and a valid status', () => {
@@ -70,9 +71,10 @@ describe('nav/config', () => {
 
   it('drops every superseded verb-IA destination', () => {
     const ids = new Set<string>(ALL.map((d) => d.id));
-    // D3.4 un-defers `pipeline` (the depends-on DAG canvas) into the entities group — it is no longer
-    // a dropped destination. The rest of the superseded verb-IA set stays gone.
-    for (const dropped of ['board', 'editor', 'vibe', 'skills', 'registry', 'sentinel']) {
+    // D3.4 un-defers `pipeline` (the depends-on DAG canvas) into the entities group and D3.5 re-introduces
+    // `sentinel` as a real system destination (the layer panels) — both are now live destinations and are
+    // deliberately NOT in this dropped set any more. The rest of the superseded verb-IA set stays gone.
+    for (const dropped of ['board', 'editor', 'vibe', 'skills', 'registry']) {
       expect(ids.has(dropped)).toBe(false);
     }
     // "timeline" and "browser" were renamed to entity destinations, not kept.
@@ -102,6 +104,7 @@ describe('nav/config', () => {
       'files',
       'connectors',
       'ledgers',
+      'sentinel',
     ] as const) {
       expect(status(id)).toBe('live');
     }
