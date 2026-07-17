@@ -39,23 +39,34 @@ describe('NewMenu', () => {
     expect(screen.queryByRole('menu')).toBeNull();
   });
 
-  it('fires onCreate("task") for Task; the entity types are disabled', () => {
+  it('fires onCreate for Task and the secondary entity pickers; only Agent is disabled', () => {
     const onCreate = vi.fn();
     render(<NewMenu onCreate={onCreate} />);
     fireEvent.click(screen.getByRole('button', { name: 'New' }));
 
-    for (const label of ['Workflow', 'Skill', 'Project', 'Agent']) {
-      const item = screen.getByRole('menuitem', { name: new RegExp(label) }) as HTMLButtonElement;
-      expect(item.disabled).toBe(true);
-      fireEvent.click(item);
-    }
+    // Agent stays deferred (disabled) — clicking it is a no-op.
+    const agent = screen.getByRole('menuitem', { name: /Agent/ }) as HTMLButtonElement;
+    expect(agent.disabled).toBe(true);
+    fireEvent.click(agent);
     expect(onCreate).not.toHaveBeenCalled();
+    // Close the still-open menu so the loop below re-opens from a known (closed) state.
+    fireEvent.keyDown(screen.getByRole('button', { name: 'New' }), { key: 'Escape' });
 
-    fireEvent.click(screen.getByRole('menuitem', { name: /^Task/ }));
-    expect(onCreate).toHaveBeenCalledTimes(1);
-    expect(onCreate).toHaveBeenCalledWith('task');
-    // Menu closes after a successful create.
-    expect(screen.queryByRole('menu')).toBeNull();
+    // Each enabled entry fires onCreate with its own id and closes the menu.
+    for (const [label, id] of [
+      [/^Task/, 'task'],
+      [/Workflow/, 'workflow'],
+      [/Skill/, 'skill'],
+      [/Project/, 'project'],
+    ] as const) {
+      fireEvent.click(screen.getByRole('button', { name: 'New' }));
+      const item = screen.getByRole('menuitem', { name: label }) as HTMLButtonElement;
+      expect(item.disabled).toBe(false);
+      fireEvent.click(item);
+      expect(onCreate).toHaveBeenLastCalledWith(id);
+      expect(screen.queryByRole('menu')).toBeNull();
+    }
+    expect(onCreate).toHaveBeenCalledTimes(4);
   });
 
   it('closes on Escape', () => {

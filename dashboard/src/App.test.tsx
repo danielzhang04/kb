@@ -174,7 +174,7 @@ describe('App shell — entity-first sidebar navigation', () => {
 });
 
 describe('App shell — [+ New ▾] menu', () => {
-  it('opens an idea-first menu: Idea + Task enabled; the entity types disabled with a Composer hint', () => {
+  it('opens an idea-first menu: idea/task/workflow/skill/project enabled; only Agent disabled', () => {
     render(<App />);
 
     const trigger = screen.getByRole('button', { name: 'New' });
@@ -183,25 +183,25 @@ describe('App shell — [+ New ▾] menu', () => {
     expect(trigger.getAttribute('aria-expanded')).toBe('true');
 
     const menu = screen.getByRole('menu', { name: 'Create new' });
-    // The freeform "Idea…" leads and is enabled-looking; Task is the working entry.
+    // The freeform "Idea…" leads; Task + the three secondary entity pickers are all actionable now.
     expect(within(menu).getAllByRole('menuitem')[0].textContent).toMatch(/Idea/);
-    expect((within(menu).getByRole('menuitem', { name: /Idea/ }) as HTMLButtonElement).disabled).toBe(false);
-    expect((within(menu).getByRole('menuitem', { name: /^Task/ }) as HTMLButtonElement).disabled).toBe(false);
-    for (const label of ['Workflow', 'Skill', 'Project', 'Agent']) {
-      const item = within(menu).getByRole('menuitem', { name: new RegExp(label) }) as HTMLButtonElement;
-      expect(item.disabled).toBe(true);
-      expect(item.getAttribute('title')).toBe('Composer');
+    for (const label of [/Idea/, /^Task/, /Workflow/, /Skill/, /Project/]) {
+      expect((within(menu).getByRole('menuitem', { name: label }) as HTMLButtonElement).disabled).toBe(false);
     }
+    // Agent stays deferred (plan Flagged #4).
+    const agent = within(menu).getByRole('menuitem', { name: /Agent/ }) as HTMLButtonElement;
+    expect(agent.disabled).toBe(true);
   });
 
-  it('Idea opens the Composer placeholder over the current view; Back returns', () => {
+  it('idea_opens_composer_in_idea_mode over the current view; Back returns', () => {
     render(<App />);
 
     fireEvent.click(screen.getByRole('button', { name: 'New' }));
     fireEvent.click(screen.getByRole('menuitem', { name: /Idea/ }));
 
-    // The Composer placeholder replaces the view body; the Home view is not mounted while it is open.
+    // The Composer surface replaces the view body, pre-seeded to `idea`; Home is not mounted while open.
     expect(screen.getByLabelText('Composer')).toBeTruthy();
+    expect(screen.getByTestId('composer-type').textContent).toMatch(/idea/);
     expect(screen.queryByLabelText('Home view')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
@@ -209,7 +209,36 @@ describe('App shell — [+ New ▾] menu', () => {
     expect(screen.getByLabelText('Home view')).toBeTruthy();
   });
 
-  it('Task navigates to the governed launch surface (Home) and closes the menu', () => {
+  it('skill_entry_opens_composer_preseeded (and workflow/project likewise)', () => {
+    for (const [label, kind] of [
+      [/Skill/, 'skill'],
+      [/Workflow/, 'workflow'],
+      [/Project/, 'project'],
+    ] as const) {
+      render(<App />);
+      fireEvent.click(screen.getByRole('button', { name: 'New' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: label }));
+
+      // The same Composer surface opens, pre-seeded to the picked type.
+      expect(screen.getByLabelText('Composer')).toBeTruthy();
+      expect(screen.getByTestId('composer-type').textContent).toMatch(new RegExp(kind));
+      cleanup();
+    }
+  });
+
+  it('agent_entry_remains_disabled and never opens the Composer', () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'New' }));
+
+    const agent = screen.getByRole('menuitem', { name: /Agent/ }) as HTMLButtonElement;
+    expect(agent.disabled).toBe(true);
+    fireEvent.click(agent);
+    // A disabled click is a no-op: no Composer, still on Home.
+    expect(screen.queryByLabelText('Composer')).toBeNull();
+    expect(screen.getByLabelText('Home view')).toBeTruthy();
+  });
+
+  it('task_entry_still_routes_to_launch_surface (Home) and closes the menu', () => {
     render(<App />);
 
     // Move off Home first so the navigation is observable.

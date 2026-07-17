@@ -75,6 +75,10 @@ export interface ComposerProps {
   onBack: () => void;
   /** Injected chat stream (DI seam, mirrors ComposerChat). Composer wraps it to compose the seed. */
   stream?: ComposerStreamFn;
+  /** Optional slot rendered inside the draft panel, right after the Deploy button. C5 mounts the governed
+   *  deploy-outcome strip here so the result appears where the operator pressed Deploy. Purely additive:
+   *  when omitted (C3's original contract) the panel renders exactly as before. */
+  renderOutcome?: React.ReactNode;
 }
 
 /** Today's date (YYYY-MM-DD) for the project template's `{{date}}`. This is the ONE impurity the UI owns
@@ -152,6 +156,7 @@ export function Composer({
   onDeploy,
   onBack,
   stream = defaultComposerStream,
+  renderOutcome,
 }: ComposerProps): React.JSX.Element {
   const [kind, setKind] = useState<SeedKind>(initialKind);
   const [form, setForm] = useState<FormState>(initialForm);
@@ -279,6 +284,9 @@ export function Composer({
               >
                 Deploy
               </button>
+
+              {/* C5 mounts the governed deploy-outcome strip here (result / refusal / follow-up saves). */}
+              {renderOutcome}
             </>
           )}
         </aside>

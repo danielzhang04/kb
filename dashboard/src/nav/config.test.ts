@@ -106,8 +106,8 @@ describe('nav/config', () => {
     expect(status('terminal')).toBe('soon');
   });
 
-  it('the [+ New] menu is idea-first: Idea + Task enabled; the entity types greyed for the Composer', () => {
-    // U5.1 — the freeform "Idea…" leads; the menu's shape says "bring an idea, iterate".
+  it('the [+ New] menu is idea-first with the Composer live: idea/task/workflow/skill/project enabled; agent greyed', () => {
+    // C5 — the freeform "Idea…" leads; the menu's shape says "bring an idea, iterate".
     expect(NEW_MENU_ENTRIES.map((e) => e.id)).toEqual([
       'idea',
       'task',
@@ -118,12 +118,14 @@ describe('nav/config', () => {
     ]);
     const idea = NEW_MENU_ENTRIES.find((e) => e.id === 'idea');
     expect(idea?.enabled).toBe(true);
-    // Idea is enabled-looking but flagged as a not-yet-real Composer surface.
+    // Idea leads into the (now live) Composer convergence surface.
     expect(idea?.hint).toMatch(/composer/i);
-    const task = NEW_MENU_ENTRIES.find((e) => e.id === 'task');
-    expect(task?.enabled).toBe(true);
-    for (const entry of NEW_MENU_ENTRIES.filter((e) => e.id !== 'task' && e.id !== 'idea')) {
-      expect(entry.enabled).toBe(false);
+    // Task + the three secondary entity pickers are all actionable now.
+    for (const id of ['task', 'workflow', 'skill', 'project'] as const) {
+      expect(NEW_MENU_ENTRIES.find((e) => e.id === id)?.enabled).toBe(true);
     }
+    // Agent stays deferred (plan Flagged #4).
+    const agent = NEW_MENU_ENTRIES.find((e) => e.id === 'agent');
+    expect(agent?.enabled).toBe(false);
   });
 });
