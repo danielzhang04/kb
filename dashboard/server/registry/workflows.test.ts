@@ -26,4 +26,25 @@ describe('indexWorkflows (render-if-present)', () => {
     expect(idx.present).toBe(true);
     expect(idx.items.map((w) => w.id).sort()).toEqual(['wf_build', 'wf_review']);
   });
+
+  it('surfaces name + status from frontmatter, defaulting when absent', () => {
+    const root = mkdtempSync(join(tmpdir(), 'registry-workflows-meta-'));
+    const wfDir = join(root, 'workflows');
+    mkdirSync(wfDir, { recursive: true });
+    writeFileSync(
+      join(wfDir, 'wf_ship.md'),
+      '---\nname: Ship review\nstatus: active\n---\n# ship\n',
+    );
+    // No frontmatter → name falls back to the id, status to `registered`.
+    writeFileSync(join(wfDir, 'wf_bare.md'), '# just a heading\n');
+
+    const idx = indexWorkflows(root);
+    const ship = idx.items.find((w) => w.id === 'wf_ship')!;
+    expect(ship.name).toBe('Ship review');
+    expect(ship.status).toBe('active');
+
+    const bare = idx.items.find((w) => w.id === 'wf_bare')!;
+    expect(bare.name).toBe('wf_bare');
+    expect(bare.status).toBe('registered');
+  });
 });

@@ -32,23 +32,27 @@ describe('Workflows view', () => {
     expect(container.querySelector('[class*="blocked"]')).toBeNull();
   });
 
-  it('lists registered workflows with id, path, and a status marker', () => {
+  it('lists registered workflows with name, id, path, and a live status marker', () => {
     render(
       <Workflows
         data={{
           present: true,
           items: [
-            { id: 'wf_ship-review', path: 'workflows/wf_ship-review.md' },
-            { id: 'wf_nightly-sweep', path: 'workflows/wf_nightly-sweep.md' },
+            { id: 'wf_ship-review', path: 'workflows/wf_ship-review.md', name: 'Ship review', status: 'active' },
+            { id: 'wf_nightly-sweep', path: 'workflows/wf_nightly-sweep.md', name: 'wf_nightly-sweep', status: 'registered' },
           ],
         }}
       />,
     );
+    // The human name renders; when it differs from the id, the mono id is shown alongside it.
+    expect(screen.getByText('Ship review')).toBeTruthy();
     expect(screen.getByText('wf_ship-review')).toBeTruthy();
     expect(screen.getByText('workflows/wf_ship-review.md')).toBeTruthy();
+    // A name equal to the id renders once (no duplicate id chip).
     expect(screen.getByText('wf_nightly-sweep')).toBeTruthy();
-    // Each row carries the neutral "registered" status marker.
-    expect(screen.getAllByText('registered')).toHaveLength(2);
+    // Each row carries its own status from the read model.
+    expect(screen.getByText('active')).toBeTruthy();
+    expect(screen.getByText('registered')).toBeTruthy();
     expect(screen.queryByTestId('workflows-empty')).toBeNull();
   });
 

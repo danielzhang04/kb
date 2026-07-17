@@ -86,14 +86,28 @@ function UsageBadge({ turn }: { turn: Turn }): React.JSX.Element | null {
   );
 }
 
+/** Extract a `HH:MM:SS` clock from an ISO-8601 timestamp — deterministic, no locale/TZ shift. */
+function formatClock(ts: string | null): string | null {
+  if (!ts) return null;
+  const t = ts.indexOf('T');
+  if (t === -1) return null;
+  const m = /^(\d{2}:\d{2}:\d{2})/.exec(ts.slice(t + 1));
+  return m ? m[1] : null;
+}
+
 function TurnBlock({ turn }: { turn: Turn }): React.JSX.Element {
+  const clock = formatClock(turn.timestamp);
   return (
     <section className="v-activity__turn" aria-label={`turn ${turn.index}`}>
       <header className="v-activity__turn-head">
         <span className="v-activity__ordinal">#{turn.index}</span>
-        {/* Actor: the model is the only identifier the message-granular fold carries — the
-            transcript timestamp is not part of TimelineModel, so we lead with the actor, not a
-            fabricated clock. */}
+        {/* Turn timestamp (the transcript record's ISO clock), mono + tabular-nums. */}
+        {clock ? (
+          <time className="v-activity__ts" dateTime={turn.timestamp ?? undefined}>
+            {clock}
+          </time>
+        ) : null}
+        {/* Actor: the model that produced the turn. */}
         {turn.model ? <span className="v-activity__actor">{turn.model}</span> : null}
         <UsageBadge turn={turn} />
       </header>

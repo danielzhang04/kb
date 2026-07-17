@@ -11,15 +11,32 @@
  * Read-only, self-fetching: it keeps the U2.5 wrapper's pattern (fetch `/api/registry`, read the
  * `workflows` slice), degrading to the designed empty state on any failure rather than crashing.
  *
- * DATA GAP (reported upward): `WorkflowEntry` today carries only `{ id, path }` — there is no `name`
- * distinct from `id`, and no `status` field. This view renders `id` as the name and a neutral
- * "registered" marker; a real status/name needs a server-side schema addition (out of U3 scope).
+ * The read-API gap is now closed: `WorkflowEntry` carries `name` + `status` (read from each workflow
+ * file's frontmatter, falling back to the id and `registered` respectively), so real entries render
+ * with a human name and a live status marker rather than a hardcoded label.
  */
 import { useEffect, useState } from 'react';
 import type { WorkflowsIndex } from '../../server/registry/workflows';
 import '../styles/views/workflows.css';
 
 const EMPTY: WorkflowsIndex = { present: false, items: [] };
+
+/** Map a workflow status to a shared status-dot modifier (no new hue taxonomy). Unknown → idle. */
+function statusDot(status: string): 'running' | 'idle' | 'error' | 'blocked' {
+  switch (status.toLowerCase()) {
+    case 'running':
+    case 'active':
+      return 'running';
+    case 'failed':
+    case 'error':
+      return 'error';
+    case 'blocked':
+    case 'paused':
+      return 'blocked';
+    default:
+      return 'idle';
+  }
+}
 
 /** Accepts workflows data directly (tests) or self-fetches the registry index. */
 export function Workflows({ data }: { data?: WorkflowsIndex } = {}): React.JSX.Element {
@@ -76,11 +93,17 @@ export function Workflows({ data }: { data?: WorkflowsIndex } = {}): React.JSX.E
           <tbody>
             {workflows.items.map((w) => (
               <tr key={w.id} className="v-workflows__row" data-testid={`workflow-row-${w.id}`}>
-                <td className="v-workflows__cell-id mc-mono">{w.id}</td>
+                <td className="v-workflows__cell-id">
+                  <span className="v-workflows__wf-name">{w.name}</span>
+                  {w.name !== w.id ? <span className="v-workflows__wf-id mc-mono">{w.id}</span> : null}
+                </td>
                 <td className="v-workflows__cell-path mc-mono">{w.path}</td>
                 <td className="v-workflows__cell-status">
-                  <span className="mc-status-dot mc-status-dot--idle" aria-hidden="true" />
-                  <span className="v-workflows__status-label">registered</span>
+                  <span
+                    className={`mc-status-dot mc-status-dot--${statusDot(w.status)}`}
+                    aria-hidden="true"
+                  />
+                  <span className="v-workflows__status-label">{w.status}</span>
                 </td>
               </tr>
             ))}

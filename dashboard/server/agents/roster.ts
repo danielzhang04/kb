@@ -1,10 +1,20 @@
 /**
- * R2.2 — the Agents-view roster, server side. One row per known agent id (derived from card ownership,
- * the only place agent identity surfaces in the read API), each annotated with its EFFECTIVE runtime +
- * model + per-field provenance from the R2.1 projection (`effectiveForAgent`). Read-only, pure.
+ * The Agents-view roster, server side.
+ *
+ * `listAgents` (R2.2) is the card-ownership projection: one row per non-null card `owner`, annotated
+ * with EFFECTIVE runtime/model/provenance from the R2.1 projection (`effectiveForAgent`). It is pure
+ * and still backs `/api/routing`.
+ *
+ * `buildRoster` closes the read-API gap: the FULL roster is the union of card owners, ledger writers
+ * (derived from `ledgers/<kind>/<writer>-<date>.tsv` filenames), and the `routines/roles/` catalog —
+ * so an agent that only shows up in the ledgers (or is idle) still appears, with its role + ledger
+ * activity. Reads the filesystem; degrades gracefully on a sparse checkout (missing dirs → empty).
  */
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { PlaneAIndex } from '../planeA/indexer.ts';
 import type { ParsedCard } from '../planeA/cards.ts';
+import { parseLedgerName } from '../planeA/ledgers.ts';
 import type { PolicyDoc, OverrideDoc } from '../routing/policy.ts';
 import { effectiveForAgent } from '../routing/effective.ts';
 import type { Effective } from '../routing/effective.ts';
@@ -61,6 +71,151 @@ export function listAgents(index: PlaneAIndex, policy: PolicyDoc, override: Over
   }
 
   return rows.sort((a, b) => {
+    if (a.working !== b.working) return a.working ? -1 : 1;
+    return a.id.localeCompare(b.id);
+  });
+}
+
+/** Ledger-derived activity for one writer/agent id (from ledger filenames + row counts). */
+export interface AgentLedgerActivity {
+  /** dispatch rows written by this agent. */
+  dispatches: number;
+  /** cost/step rows written by this agent. */
+  steps: number;
+  /** distinct days this agent wrote any ledger. */
+  days: number;
+  /** most recent `YYYY-MM-DD` this agent wrote a ledger, or null. */
+  lastActive: string | null;
+}
+
+/** One roster entry, unioned across queue owners + ledger writers, annotated with role + routing. */
+export interface AgentRosterEntry {
+  id: string;
+  /** The role this agent occupies (matched against `routines/roles/*`), or null when unknown. */
+  role: string | null;
+  working: boolean;
+  current: { action: string; id: string } | null;
+  projects: string[];
+  cardCount: number;
+  ledger: AgentLedgerActivity;
+  /** Where this id was observed: any of `queue` (owns cards) and `ledger` (wrote ledgers). */
+  sources: Array<'queue' | 'ledger'>;
+  effective: Effective;
+}
+
+const EMPTY_ACTIVITY: AgentLedgerActivity = { dispatches: 0, steps: 0, days: 0, lastActive: null };
+
+/** Count data rows in a TSV (non-blank lines minus the header). Header-only / missing → 0. */
+function countRows(path: string): number {
+  try {
+    const lines = readFileSync(path, 'utf-8').split(/\r?\n/).filter((l) => l.trim() !== '');
+    return Math.max(0, lines.length - 1);
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Scan every ledger kind for `<writer>-<date>.tsv` files and aggregate per-writer activity. dispatch/
+ * files feed `dispatches`, cost/ files feed `steps`; all kinds contribute to `days`/`lastActive`.
+ * Missing `ledgers/` → an empty map (degrade gracefully; the live checkout may have only .gitkeep).
+ */
+export function readLedgerWriters(repoRoot: string): Map<string, AgentLedgerActivity> {
+  const out = new Map<string, AgentLedgerActivity & { _days: Set<string> }>();
+  const ensure = (id: string): AgentLedgerActivity & { _days: Set<string> } => {
+    let a = out.get(id);
+    if (!a) {
+      a = { dispatches: 0, steps: 0, days: 0, lastActive: null, _days: new Set() };
+      out.set(id, a);
+    }
+    return a;
+  };
+
+  for (const kind of ['dispatch', 'cost', 'grades', 'activity']) {
+    const dir = join(repoRoot, 'ledgers', kind);
+    if (!existsSync(dir)) continue;
+    for (const name of readdirSync(dir)) {
+      if (!name.endsWith('.tsv')) continue;
+      const parsed = parseLedgerName(name);
+      if (!parsed) continue;
+      const a = ensure(parsed.writer);
+      const rows = countRows(join(dir, name));
+      if (kind === 'dispatch') a.dispatches += rows;
+      else if (kind === 'cost') a.steps += rows;
+      a._days.add(parsed.date);
+      if (a.lastActive === null || parsed.date > a.lastActive) a.lastActive = parsed.date;
+    }
+  }
+
+  const result = new Map<string, AgentLedgerActivity>();
+  for (const [id, a] of out) {
+    result.set(id, { dispatches: a.dispatches, steps: a.steps, days: a._days.size, lastActive: a.lastActive });
+  }
+  return result;
+}
+
+/** The role catalog — filenames under `routines/roles/*.md` (e.g. `worker`, `manager`). Missing → []. */
+export function readRoles(repoRoot: string): string[] {
+  const dir = join(repoRoot, 'routines', 'roles');
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((n) => n.endsWith('.md'))
+    .map((n) => n.replace(/\.md$/, ''))
+    .sort();
+}
+
+/** Match an agent id to a role: a role name that is a hyphen-token of the id (e.g. `worker-desktop` → `worker`). */
+export function roleFor(agentId: string, roles: string[]): string | null {
+  const tokens = new Set(agentId.split(/[-_]/));
+  for (const role of roles) {
+    if (tokens.has(role)) return role;
+  }
+  // Fall back to a substring match so ids like `dispatcher-cloud` still map when no exact token hits.
+  for (const role of roles) {
+    if (agentId.includes(role)) return role;
+  }
+  return null;
+}
+
+/**
+ * Build the full agent roster: the UNION of queue-card owners (`listAgents`) and ledger writers,
+ * each annotated with its role (from `routines/roles/`), ledger activity, provenance `sources`, and
+ * effective routing. Agents that only appear in ledgers still surface (idle, 0 cards). Sorted
+ * working-first, then id-alphabetical.
+ */
+export function buildRoster(
+  index: PlaneAIndex,
+  repoRoot: string,
+  policy: PolicyDoc,
+  override: OverrideDoc,
+): AgentRosterEntry[] {
+  const cardRows = listAgents(index, policy, override);
+  const byId = new Map(cardRows.map((r) => [r.id, r]));
+  const writers = readLedgerWriters(repoRoot);
+  const roles = readRoles(repoRoot);
+
+  const ids = new Set<string>([...byId.keys(), ...writers.keys()]);
+  const entries: AgentRosterEntry[] = [];
+  for (const id of ids) {
+    const cr = byId.get(id);
+    const ledger = writers.get(id) ?? EMPTY_ACTIVITY;
+    const sources: Array<'queue' | 'ledger'> = [];
+    if (cr) sources.push('queue');
+    if (writers.has(id)) sources.push('ledger');
+    entries.push({
+      id,
+      role: roleFor(id, roles),
+      working: cr?.working ?? false,
+      current: cr?.current ?? null,
+      projects: cr?.projects ?? [],
+      cardCount: cr?.cardCount ?? 0,
+      ledger,
+      sources,
+      effective: cr?.effective ?? effectiveForAgent(id, policy, override),
+    });
+  }
+
+  return entries.sort((a, b) => {
     if (a.working !== b.working) return a.working ? -1 : 1;
     return a.id.localeCompare(b.id);
   });
