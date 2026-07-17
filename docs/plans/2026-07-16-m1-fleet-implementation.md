@@ -444,7 +444,10 @@ carries `approval == payload_hash(card)`, `assurance: signed`, `expires`); `test
 notify, and issues **no** PR-open/REST call — assert on the fake runner); `test_stage_cloud_opens_pr`
 (with the cloud `opener`, the helper calls the injected `open_pr`, still no merge).
 
-**Implementation.** Build the record dict, write `approvals/<card-id>.yaml`, commit on
+**Implementation.** Re-stamp the parsed card (`state: approved`, `assurance: signed`,
+`approval: payload_hash(card)`, `expires`) preserving its `## Work order` body, and save it as the
+**full approval card** at `queue/approvals/<card-id>.md` (the format `verify_signed_approval`
+re-parses and re-hashes — NOT a flat `.yaml` record dict, which the verifier cannot recompute), commit on
 `approval/<card-id>`, then invoke the injected `opener`. Return the PR ref (cloud) or branch ref
 (desktop) for the notify formatter.
 

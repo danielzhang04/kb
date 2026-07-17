@@ -8,22 +8,44 @@ from pathlib import Path
 
 import yaml
 
-STATES = ("inbox", "blocked", "working", "done", "approvals", "approved", "rejected")
+STATES = ("inbox", "blocked", "working", "done", "approvals", "approved", "rejected",
+          # Steering-floor transient states (D1.3, dashboard plan): a files-only
+          # cooperative stop ladder a WORKING card can be walked through --
+          # stop-requested (asked to stop) -> halting (acknowledged, winding down)
+          # -> halted (stopped; terminal). SIGKILL is the backstop if a worker
+          # never polls for stop-requested. Purely additive: no existing state,
+          # dir mapping, or transition is changed by this.
+          "stop-requested", "halting", "halted")
 RISK_TIERS = ("T1", "T2", "T3")
+ROLES = ("scout", "manage", "work", "inspect", "consolidate")
 REQUIRED = ("id", "project", "action", "target", "risk-tier", "state")
 STATE_DIR = {
     "inbox": "inbox", "blocked": "inbox",
     "working": "working",
     "done": "done", "rejected": "done",
     "approvals": "approvals", "approved": "approvals",
+    # All three steering-floor states resolve to working/: an in-flight card
+    # being stopped stays visible where it ran rather than jumping to a new
+    # directory mid-stop (design choice, D1.3/D1.4).
+    "stop-requested": "working", "halting": "working", "halted": "working",
 }
 LEGAL = {
     "inbox": {"working", "blocked"},
     "blocked": {"inbox"},
-    "working": {"done", "approvals", "blocked"},
+    # working may additionally be walked into the stop ladder; every other
+    # existing target (done/approvals/blocked) is untouched.
+    "working": {"done", "approvals", "blocked", "stop-requested"},
     "approvals": {"approved", "rejected"},
     "approved": {"done"},
     "done": set(), "rejected": set(),
+    # The stop ladder itself: working -> stop-requested -> halting -> halted.
+    # No state other than "working" may transition INTO stop-requested (their
+    # target sets above are unchanged), and halted is terminal -- no transition
+    # out of it (SIGKILL is the only way past it, and that is not a queue-state
+    # transition at all).
+    "stop-requested": {"halting"},
+    "halting": {"halted"},
+    "halted": set(),
 }
 
 
@@ -50,6 +72,8 @@ def _validate(meta: dict) -> None:
         raise ValidationError(f"risk-tier must be one of {RISK_TIERS}")
     if meta["state"] not in STATES:
         raise ValidationError(f"unknown state: {meta['state']}")
+    if meta.get("role") and meta["role"] not in ROLES:
+        raise ValidationError(f"role must be one of {ROLES}")
 
 
 def new_card(project, action, target, risk_tier, body: str = "", **extra) -> Card:
@@ -58,6 +82,12 @@ def new_card(project, action, target, risk_tier, body: str = "", **extra) -> Car
         "risk-tier": risk_tier, "owner": None, "claim-token": None,
         "state": "inbox", "approval": None, "workflow": None,
         "depends-on": [], "variant-group": None, "role": "work",
+        # The Plane-A<->Plane-B join key (D1.1/D1.4): the EXECUTING worker's
+        # Claude Code session id, stamped by the worker runner at
+        # transition-to-working (D1.2), or by the dispatcher itself only for
+        # the cloud self-executing carve-out case (D1.1's stamp_session call
+        # in dispatch.run()). Optional and inert -- never parsed/executed.
+        "session-id": None,
     }
     meta.update(extra)
     _validate(meta)
@@ -102,6 +132,11 @@ def save(card: Card, queue_root: Path) -> Path:
 def claim(card: Card, agent_id: str) -> None:
     card.meta["owner"] = agent_id
     card.meta["claim-token"] = secrets.token_hex(8)
+
+
+def stamp_session(card: Card, session_id: str) -> None:
+    """Set the Plane-A<->Plane-B join key. Inert metadata: never parsed/executed."""
+    card.meta["session-id"] = session_id
 
 
 def transition(card: Card, new_state: str, queue_root: Path) -> Path:

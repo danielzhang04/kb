@@ -2,8 +2,19 @@
 
 When a card is routed to the ``approvals`` boundary, ``stage()`` computes its
 canonical I3 ``payload_hash`` (so Daniel never types a 64-char hash), writes the
-``approvals/<card-id>.yaml`` record, commits it on branch ``approval/<card-id>``,
-and then hands off to an **injected** ``opener`` callable.
+``queue/approvals/<card-id>.md`` record, commits it on branch
+``approval/<card-id>``, and then hands off to an **injected** ``opener`` callable.
+
+The record is the **full card itself**, re-stamped for the signed channel — NOT
+a flat YAML dict. This is the load-bearing interop contract with the consumer,
+``approvals.verify_signed_approval``: it parses the committed record with
+``cards.parse`` (requires frontmatter + body) and recomputes ``payload_hash``
+over action + target + the ``## Work order`` prose, comparing to the record's
+``approval`` frontmatter field. A flat dict (the earlier bug) can never parse as a
+card nor carry a work order, so nothing it produced could ever verify. The record
+path is ``queue/approvals/<id>.md`` because ``cards.STATE_DIR['approved']`` maps
+there and that is exactly where the verifier + ``routines/nightly.md`` step 4b
+read the ``approved`` record.
 
 Two hard invariants (ordering-law 4):
 
@@ -26,8 +37,6 @@ from __future__ import annotations
 import datetime
 import subprocess
 from pathlib import Path
-
-import yaml
 
 import approvals
 import cards
@@ -70,11 +79,18 @@ def stage(card_path, repo_root, opener, runner=None, now=None,
           expires_delta=approvals.MAX_AGE):
     """Stage a signed-channel approval PR for ``card_path``.
 
-    Writes ``approvals/<card-id>.yaml`` (``approval == payload_hash(card)``,
-    ``assurance: signed``, ``expires``), commits it on ``approval/<card-id>``,
-    then invokes the injected ``opener(branch, repo_root, runner)``. Returns the
-    ref the opener yields (a PR ref for the cloud leg, the branch ref for the
-    desktop leg). Never merges; never hard-codes a transport.
+    Writes ``queue/approvals/<card-id>.md`` as the **full card**, re-stamped with
+    ``state: approved``, ``assurance: signed``, ``approval == payload_hash(card)``
+    and ``expires``, while preserving the original body (including the exact
+    ``## Work order`` section). Commits it on ``approval/<card-id>``, then invokes
+    the injected ``opener(branch, repo_root, runner)``. Returns the ref the opener
+    yields (a PR ref for the cloud leg, the branch ref for the desktop leg). Never
+    merges; never hard-codes a transport.
+
+    The record MUST be a card the consumer can parse and re-hash: ``approval`` is
+    computed by the same ``approvals.payload_hash`` the verifier recomputes over
+    action + target + work-order, so a genuine web-flow-signed merge of this record
+    passes ``approvals.verify_signed_approval`` byte-for-byte.
     """
     runner = runner or _git_runner
     repo_root = Path(repo_root)
@@ -83,28 +99,20 @@ def stage(card_path, repo_root, opener, runner=None, now=None,
     branch = f"approval/{card_id}"
 
     now = now or _now()
-    record = {
-        "id": card_id,
-        "project": card.meta.get("project"),
-        "action": card.meta.get("action"),
-        "target": card.meta.get("target"),
-        "risk-tier": card.meta.get("risk-tier"),
-        "state": "approved",
-        "assurance": "signed",
-        "approval": approvals.payload_hash(card),
-        "expires": (now + expires_delta).isoformat(),
-    }
+    # Re-stamp the card in place for the signed channel. payload_hash reads only
+    # action/target/work-order, so setting state/assurance first does not perturb
+    # it; the original body (incl. '## Work order') is carried through untouched.
+    card.meta["state"] = "approved"
+    card.meta["assurance"] = "signed"
+    card.meta["approval"] = approvals.payload_hash(card)
+    card.meta["expires"] = (now + expires_delta).isoformat()
 
     # Isolate the record on its own branch off the current ref.
     runner(["checkout", "-b", branch], cwd=repo_root)
 
-    rec_dir = repo_root / "approvals"
-    rec_dir.mkdir(parents=True, exist_ok=True)
-    rec_path = rec_dir / f"{card_id}.yaml"
-    rec_path.write_text(
-        yaml.safe_dump(record, sort_keys=False, allow_unicode=True),
-        encoding="utf-8",
-    )
+    # cards.save routes an ``approved`` card to queue/approvals/<id>.md — the
+    # single location the verifier and routines/nightly.md step 4b both read.
+    rec_path = cards.save(card, repo_root / "queue")
 
     rel = str(rec_path.relative_to(repo_root)).replace("\\", "/")
     runner(["add", "--", rel], cwd=repo_root)
