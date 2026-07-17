@@ -59,6 +59,7 @@ interface FakeTransportOpts {
   line?: string | null;
   readRejects?: boolean;
   firstCreateNull?: boolean;
+  replacementCreateNull?: boolean; // first createPipe succeeds; the replacement returns null (F5)
 }
 function fakeTransport(opts: FakeTransportOpts = {}) {
   const created: Array<{ firstInstance: boolean; handle: PipeHandle }> = [];
@@ -71,6 +72,7 @@ function fakeTransport(opts: FakeTransportOpts = {}) {
   const transport: Win32PipeTransport = {
     createPipe: (_name, firstInstance) => {
       if (opts.firstCreateNull && created.length === 0) return null;
+      if (opts.replacementCreateNull && created.length >= 1) return null;
       const h = `h${++counter}`;
       created.push({ firstInstance, handle: h });
       written.set(h, []);
@@ -242,5 +244,26 @@ describe('createWin32PipeServer.listen fail-closed', () => {
       dispatch: () => ({ ok: true }),
     });
     await expect(server.listen()).rejects.toThrow(/fail-closed/);
+  });
+
+  it('invokes onFatal when a replacement instance cannot be created after a client connects (F5)', async () => {
+    const t = fakeTransport({ line: JSON.stringify({ token: TOKEN, verb: 'list' }), replacementCreateNull: true });
+    let fatal = false;
+    const server = createWin32PipeServer({
+      pipeName: '\\\\.\\pipe\\kb-test',
+      transport: t.transport,
+      peerFfi: fakePeerFfi(),
+      auth: authCtx,
+      owner: {} as SessionOwner,
+      dispatch: () => ({ ok: true }),
+      onFatal: () => {
+        fatal = true;
+      },
+    });
+    await server.listen();
+    await tick();
+    await tick();
+    expect(fatal).toBe(true); // no listener would remain → daemon requests a clean restart
+    await server.close();
   });
 });

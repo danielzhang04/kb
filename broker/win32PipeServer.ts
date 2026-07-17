@@ -106,6 +106,10 @@ export interface Win32PipeServerDeps {
   dispatch: (owner: SessionOwner, req: ControlRequest) => unknown;
   /** Optional diagnostic sink for rejected/failed connections. MUST NOT be used to log tokens. */
   onError?: (err: unknown) => void;
+  /** Invoked when a replacement accepting instance can't be created after a client connects — i.e. no
+   *  listener would remain (F5). Default: `process.exit(71)` so PM2 restarts a clean daemon. Injected so
+   *  tests can assert the behavior without terminating the test process. */
+  onFatal?: () => void;
 }
 
 /**
@@ -115,6 +119,7 @@ export interface Win32PipeServerDeps {
  */
 export function createWin32PipeServer(deps: Win32PipeServerDeps): ControlTransport {
   const { pipeName, transport, peerFfi, auth, owner, dispatch, onError } = deps;
+  const onFatal = deps.onFatal ?? ((): void => process.exit(71));
   const live = new Set<PipeHandle>();
   const inflight = new Set<Promise<void>>();
   let closed = false;
@@ -192,7 +197,13 @@ export function createWin32PipeServer(deps: Win32PipeServerDeps): ControlTranspo
       return;
     }
     // A client connected. Put a fresh instance into accept BEFORE handling, so concurrent clients work.
-    if (!closed) spawnInstance(false);
+    // F5: if the replacement can't be created, NO instance is left listening — no new client could ever
+    // connect. Rather than silently stall until manual restart, invoke onFatal (default process.exit(71))
+    // so PM2 restarts a clean daemon. (Not a squat: FIRST_PIPE_INSTANCE is only on the first instance.)
+    if (!closed && !spawnInstance(false)) {
+      report(new Error('replacement pipe instance could not be created; no listener remains — requesting restart'));
+      onFatal();
+    }
     try {
       await handleConnection(handle);
     } catch (err) {
