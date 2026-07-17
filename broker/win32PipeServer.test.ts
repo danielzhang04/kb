@@ -82,7 +82,7 @@ function fakeTransport(opts: FakeTransportOpts = {}) {
         ? Promise.resolve()
         : new Promise<void>((_resolve, reject) => pendingAccept.set(handle, reject)),
     readLine: (_h) => (opts.readRejects ? Promise.reject(new Error('read blew up')) : Promise.resolve(opts.line ?? null)),
-    write: (handle, data) => {
+    write: async (handle, data) => {
       written.get(handle)!.push(data);
       return true;
     },

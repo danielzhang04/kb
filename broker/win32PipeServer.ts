@@ -71,8 +71,9 @@ export interface Win32PipeTransport {
   /** Async read up to and including the first newline; resolves the request line WITHOUT the trailing
    *  newline, or `null` on EOF/error. */
   readLine(handle: PipeHandle): Promise<string | null>;
-  /** Write a full response string; returns false on any failure (never throws). */
-  write(handle: PipeHandle, data: string): boolean;
+  /** Write a full response string, polling for completion with a bounded timeout (never blocks the event
+   *  loop); resolves false on any failure/timeout (never throws). */
+  write(handle: PipeHandle, data: string): Promise<boolean>;
   /** Async FlushFileBuffers (waits for the client to drain the response); never rejects (best-effort). */
   flush(handle: PipeHandle): Promise<void>;
   /** DisconnectNamedPipe + CloseHandle — idempotent, never throws. */
@@ -150,8 +151,9 @@ export function createWin32PipeServer(deps: Win32PipeServerDeps): ControlTranspo
     try {
       req = JSON.parse(line) as ControlRequest;
     } catch {
-      transport.write(handle, JSON.stringify({ ok: false, error: 'malformed request line' }) + '\n');
-      await flushSafe(handle);
+      if (await transport.write(handle, JSON.stringify({ ok: false, error: 'malformed request line' }) + '\n')) {
+        await flushSafe(handle);
+      }
       return;
     }
 
@@ -159,8 +161,9 @@ export function createWin32PipeServer(deps: Win32PipeServerDeps): ControlTranspo
     const peerCred = resolveClientCredential(handle, peerFfi);
     const authResult = authenticateConnection({ peerCred, token: req.token }, auth);
     if (!authResult.ok) {
-      transport.write(handle, JSON.stringify({ ok: false, error: `unauthenticated: ${authResult.reason}` }) + '\n');
-      await flushSafe(handle);
+      if (await transport.write(handle, JSON.stringify({ ok: false, error: `unauthenticated: ${authResult.reason}` }) + '\n')) {
+        await flushSafe(handle);
+      }
       return;
     }
 
@@ -170,8 +173,9 @@ export function createWin32PipeServer(deps: Win32PipeServerDeps): ControlTranspo
     } catch (err) {
       result = { ok: false, error: (err as Error).message };
     }
-    transport.write(handle, JSON.stringify(result) + '\n');
-    await flushSafe(handle);
+    if (await transport.write(handle, JSON.stringify(result) + '\n')) {
+      await flushSafe(handle);
+    }
   }
 
   /** Accept on `handle`, spin up a replacement instance so the next client can connect concurrently, then

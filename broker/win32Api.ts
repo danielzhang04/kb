@@ -380,7 +380,7 @@ export function loadWin32Api(): Win32Api {
       throw new Error('control request line read exceeded max iterations; fail-closed');
     },
 
-    write: (handle: PipeHandle, data: string): boolean => {
+    write: async (handle: PipeHandle, data: string): Promise<boolean> => {
       try {
         const conn = asConn(handle);
         prep(conn);
@@ -390,11 +390,20 @@ export function loadWin32Api(): Win32Api {
         dbg(`write: WriteFile ret=${ok} err=${ok ? 0 : lastErr()}`);
         if (ok) return (koffi.decode(wn, 'uint32') as number) === bytes.length;
         if (lastErr() !== ERROR_IO_PENDING) return false;
-        // Small responses usually complete immediately; wait synchronously (briefly) for completion.
-        dbg('write: GetOverlappedResult(wait=TRUE) ...');
-        const done = GetOverlappedResult(conn.h, conn.ov, wn, 1);
-        dbg(`write: GetOverlappedResult done=${done}`);
-        return Boolean(done) && (koffi.decode(wn, 'uint32') as number) === bytes.length;
+        // L-1: poll for completion bounded by DRAIN_TIMEOUT_MS — NEVER block the event loop. A response
+        // larger than the pipe buffer to an authenticated client that never drains would otherwise stall
+        // the daemon. On timeout/error, abort the pending write (CancelIoEx); the caller disconnects.
+        const res = await pollOverlapped(conn, DRAIN_TIMEOUT_MS);
+        dbg(`write: poll ok=${res.ok} n=${res.n}`);
+        if (!res.ok) {
+          try {
+            CancelIoEx(conn.h, conn.ov);
+          } catch {
+            /* ignore */
+          }
+          return false;
+        }
+        return res.n === bytes.length;
       } catch {
         return false;
       }
