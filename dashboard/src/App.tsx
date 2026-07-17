@@ -42,7 +42,8 @@ import { Tasks } from './views/Tasks';
 import { Agents } from './views/Agents';
 import { Projects } from './views/Projects';
 import { Ledgers } from './views/Ledgers';
-import { ComposerChat } from './composer/ComposerChat';
+import { Composer } from './composer/Composer';
+import type { DeployPlan } from './composer/artifactTypes';
 import { fetchPending } from './lib/approvalsClient';
 import { useSse } from './lib/sseClient';
 import { signIn, type Session } from './lib/authClient';
@@ -280,22 +281,15 @@ function ComingSoon({ id }: { id: DestinationId }): React.JSX.Element {
   );
 }
 
-/** Composer view — the [+ New ▾] → "Idea…" entry opens this. C1 mounts a real, gated, multi-turn chat
- *  pane ({@link ComposerChat}) here; the full convergence UI (type chip, draft preview) is C3, which
- *  extends this container. A quiet "Back" preserves the placeholder's return-to-underlying-view affordance. */
+/** Composer view — the [+ New ▾] → "Idea…" entry opens this. C3's {@link Composer} is the convergence
+ *  surface: it owns the "Composer" aria-label and the "Back" return-to-underlying-view affordance, the
+ *  type chip, the multi-turn chat pane, and the draft-preview panel. The real governed deploy dispatcher
+ *  (C4) is wired here by C5; until then Deploy is a no-op (the draft still validates and previews). */
 function ComposerView({ onClose, sessionToken }: { onClose: () => void; sessionToken?: string }): React.JSX.Element {
-  return (
-    <section className="composer-view" aria-label="Composer">
-      <div className="composer-view__header">
-        <h2>Composer</h2>
-        <button type="button" className="mc-btn mc-btn--quiet" onClick={onClose}>
-          Back
-        </button>
-      </div>
-      <p className="composer-view__lede">Start from an idea and iterate with a governed Claude session.</p>
-      <ComposerChat sessionToken={sessionToken} />
-    </section>
-  );
+  const onDeploy = (_plan: DeployPlan): void => {
+    /* C5 wires C4's governed deploy dispatcher here (POST /api/write/launch | /api/write/save). */
+  };
+  return <Composer sessionToken={sessionToken} onDeploy={onDeploy} onBack={onClose} />;
 }
 
 /** Route a destination to its view. A destination with a dedicated view gets one case here; only the
