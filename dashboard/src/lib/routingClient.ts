@@ -81,6 +81,11 @@ export async function fetchRouting(fetchImpl: FetchLike = fetch): Promise<Routin
 export interface WriteResult {
   ok: boolean;
   reason?: string;
+  /** HTTP status of the governed write (present on failure) — lets a caller distinguish e.g. a 409
+   *  `approval-locked` refusal from a generic 400/401 without a second request. */
+  status?: number;
+  /** The server's machine-readable error code on refusal (e.g. `approval-locked`). */
+  error?: string;
 }
 
 /** POST a per-agent (or per-scope) routing-override set/clear. Requires a WebAuthn bearer. */
@@ -111,6 +116,8 @@ export async function postCardRouting(
     headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
     body: JSON.stringify(body),
   });
-  const data = (await res.json().catch(() => ({}))) as { reason?: string };
-  return { ok: res.ok, reason: data.reason };
+  const data = (await res.json().catch(() => ({}))) as { reason?: string; error?: string };
+  // Surface status + error code so a caller (e.g. the pipeline node toggle) can freeze on a 409
+  // `approval-locked` refusal WITHOUT a retry and WITHOUT a second write path.
+  return { ok: res.ok, reason: data.reason, status: res.status, error: data.error };
 }

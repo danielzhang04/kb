@@ -39,12 +39,14 @@ describe('nav/config', () => {
     ]);
     expect(NAV_SECTIONS[1].items.map((d) => d.id)).toEqual([
       'workflows',
+      'pipeline',
       'agents',
       'tasks',
       'projects',
       'files',
     ]);
-    expect(NAV_SECTIONS[2].items.map((d) => d.id)).toEqual(['connectors', 'ledgers']);
+    // D3.5 — Sentinel joins the system group (hosts the read-only layer panels behind sub-tabs).
+    expect(NAV_SECTIONS[2].items.map((d) => d.id)).toEqual(['connectors', 'ledgers', 'sentinel']);
   });
 
   it('every destination has a unique id, a label, an icon and a valid status', () => {
@@ -69,7 +71,10 @@ describe('nav/config', () => {
 
   it('drops every superseded verb-IA destination', () => {
     const ids = new Set<string>(ALL.map((d) => d.id));
-    for (const dropped of ['board', 'editor', 'vibe', 'skills', 'registry', 'pipeline', 'sentinel']) {
+    // D3.4 un-defers `pipeline` (the depends-on DAG canvas) into the entities group and D3.5 re-introduces
+    // `sentinel` as a real system destination (the layer panels) — both are now live destinations and are
+    // deliberately NOT in this dropped set any more. The rest of the superseded verb-IA set stays gone.
+    for (const dropped of ['board', 'editor', 'vibe', 'skills', 'registry']) {
       expect(ids.has(dropped)).toBe(false);
     }
     // "timeline" and "browser" were renamed to entity destinations, not kept.
@@ -92,18 +97,21 @@ describe('nav/config', () => {
       'approvals',
       'activity',
       'workflows',
+      'pipeline',
       'agents',
       'tasks',
       'projects',
       'files',
       'connectors',
       'ledgers',
+      'sentinel',
     ] as const) {
       expect(status(id)).toBe('live');
     }
-    // Greyed "soon" stubs — present in the IA, not yet reachable.
+    // Terminal is LIVE as of D3.2 (the PTY pane).
+    expect(status('terminal')).toBe('live');
+    // Atlas remains a greyed "soon" stub — present in the IA, not yet reachable.
     expect(status('atlas')).toBe('soon');
-    expect(status('terminal')).toBe('soon');
   });
 
   it('the [+ New] menu is idea-first with the Composer live: idea + every entity type enabled (C7.2 un-defers agent)', () => {

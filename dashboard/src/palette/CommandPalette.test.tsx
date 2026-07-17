@@ -79,9 +79,10 @@ describe('command palette — navigate', () => {
   it('shows greyed soon destinations but they are non-actionable', () => {
     render(<App />);
     openPalette();
-    fireEvent.change(paletteInput(), { target: { value: 'terminal' } });
+    // Atlas is the remaining greyed "soon" stub (Terminal went live in D3.2).
+    fireEvent.change(paletteInput(), { target: { value: 'atlas' } });
 
-    const opt = screen.getByTestId('palette-cmd-nav:terminal');
+    const opt = screen.getByTestId('palette-cmd-nav:atlas');
     expect(opt.getAttribute('aria-disabled')).toBe('true');
 
     fireEvent.keyDown(paletteInput(), { key: 'Enter' });

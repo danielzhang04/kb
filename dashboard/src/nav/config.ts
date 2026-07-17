@@ -11,16 +11,17 @@
  * §E/§F visual rule remain authoritative.
  *
  *   ── (divider, below the [+ New] menu) ──
- *   Home · Approvals(n) · Activity · Atlas(soon) · Terminal(soon — D3)
+ *   Home · Approvals(n) · Activity · Atlas(soon) · Terminal(live — D3.2)
  *   ── (divider) ──
- *   Workflows · Agents · Tasks · Projects · Files
+ *   Workflows · Pipeline · Agents · Tasks · Projects · Files
  *   ── (divider) ──
  *   Connectors · Ledgers
  *   ── pinned floor ──  Session · STOP  (a shell region in App.tsx, not a nav destination)
  *
  * Live day-one views: Home, Approvals, Activity, Workflows, Files, Connectors. Agents/Tasks/Projects/
  * Ledgers are reachable nav items that land on a U3 placeholder (the nav skeleton is real; the view
- * lands next wave). Atlas/Terminal are greyed + disabled "soon" stubs.
+ * lands next wave). Terminal is LIVE as of D3.2 (the PTY pane); Atlas remains a greyed + disabled
+ * "soon" stub.
  */
 
 /** A destination's build state. `live` is reachable now; `soon`/`future` render greyed + disabled. */
@@ -34,12 +35,14 @@ export type DestinationId =
   | 'atlas'
   | 'terminal'
   | 'workflows'
+  | 'pipeline'
   | 'agents'
   | 'tasks'
   | 'projects'
   | 'files'
   | 'connectors'
-  | 'ledgers';
+  | 'ledgers'
+  | 'sentinel';
 
 export interface NavDestination {
   id: DestinationId;
@@ -74,13 +77,14 @@ export const NAV_SECTIONS: NavSection[] = [
       { id: 'approvals', label: 'Approvals', icon: '✓', status: 'live' },
       { id: 'activity', label: 'Activity', icon: '≡', status: 'live' },
       { id: 'atlas', label: 'Atlas', icon: '◈', status: 'soon', hint: 'soon' },
-      { id: 'terminal', label: 'Terminal', icon: '⌨', status: 'soon', hint: 'D3' },
+      { id: 'terminal', label: 'Terminal', icon: '⌨', status: 'live' },
     ],
   },
   {
     id: 'entities',
     items: [
       { id: 'workflows', label: 'Workflows', icon: '⧉', status: 'live' },
+      { id: 'pipeline', label: 'Pipeline', icon: '⋔', status: 'live' },
       { id: 'agents', label: 'Agents', icon: '◉', status: 'live' },
       { id: 'tasks', label: 'Tasks', icon: '☰', status: 'live' },
       { id: 'projects', label: 'Projects', icon: '▤', status: 'live' },
@@ -92,6 +96,9 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { id: 'connectors', label: 'Connectors', icon: '⛓', status: 'live' },
       { id: 'ledgers', label: 'Ledgers', icon: '▦', status: 'live' },
+      // D3.5 — the Sentinel destination hosts the read-only layer panels (Sentinel / Quartermaster /
+      // Flight Recorder / Atlas) behind an underline-tab bar. One nav entry; panels reachable from it.
+      { id: 'sentinel', label: 'Sentinel', icon: '◎', status: 'live' },
     ],
   },
 ];
