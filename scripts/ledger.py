@@ -5,7 +5,7 @@ import csv
 import datetime
 from pathlib import Path
 
-KINDS = ("dispatch", "cost", "activity", "grades")
+KINDS = ("dispatch", "cost", "activity", "grades", "approvals")
 
 
 def _shard(repo_root: Path, kind: str, agent: str, day: str | None = None) -> Path:
@@ -56,3 +56,34 @@ def _to_usd(value) -> float:
 def cost_today(repo_root: Path) -> float:
     today = datetime.date.today().isoformat()
     return round(sum(_to_usd(r.get("usd", 0)) for r in read_day(repo_root, "cost", today)), 6)
+
+
+# --- git-native cursor (task 2.3): idempotency across stateless restarts ---
+#
+# A plain int file under ledgers/approvals/, NOT a TSV row — the poller reads
+# it once at start and overwrites it (not appends) so there is exactly one
+# current value per cursor `name`, committed on `ops` like everything else
+# under ledgers/.
+
+def _cursor_path(repo_root: Path, name: str) -> Path:
+    return Path(repo_root) / "ledgers" / "approvals" / f"{name}-cursor"
+
+
+def read_cursor(repo_root: Path, name: str, default: int = 0) -> int:
+    p = _cursor_path(repo_root, name)
+    if not p.exists():
+        return default
+    text = p.read_text(encoding="utf-8").strip()
+    if not text:
+        return default
+    try:
+        return int(text)
+    except ValueError:
+        return default
+
+
+def write_cursor(repo_root: Path, name: str, value: int) -> Path:
+    p = _cursor_path(repo_root, name)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(str(int(value)), encoding="utf-8")
+    return p

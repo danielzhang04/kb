@@ -24,4 +24,19 @@ cadences:
       improvement proposals as cards in queue/inbox/ (risk-tier T1, unowned is fine —
       note in body they await dispatch); anything requiring human decision goes to
       queue/approvals/ as an approval card.
+  - name: grades-reconcile
+    schedule: weekly:sat
+    tier: desktop
+    risk-tier: T1
+    prompt: |
+      1. Run: py -3 scripts/preamble.py  — if it fails, stop and write a wake-me card
+         into queue/inbox/ explaining why.
+      2. Run: py -3 scripts/reconcile.py --tier desktop
+      3. If reconcile exits non-zero, it FROZE the loop: it already wrote
+         ledgers/grades/FROZEN with the quarantine reason and filed a T1 wake-me card
+         into queue/inbox/. Do not re-run it and do not clear the sentinel by hand —
+         confirm the wake-me card exists, then stop.
+      4. If reconcile exits 0 ("reconcile: clean"), append a lessons line to
+         memory/<agent-id>.md noting the clean run, then commit ONLY ledgers/ queue/
+         memory/ changes to ops and push.
 ```

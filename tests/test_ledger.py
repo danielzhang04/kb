@@ -41,6 +41,28 @@ def test_cost_today_skips_malformed_usd(tmp_path):
     assert ledger.cost_today(tmp_path) == 0.10
 
 
+def test_approvals_kind_registered(tmp_path):
+    today = datetime.date.today().isoformat()
+    ledger.append(tmp_path, "approvals", "agent-a", {
+        "ts": "2026-07-16T00:00:00+00:00", "update_id": 1, "card_id": "abc",
+        "decision": "approve", "from_id": 111, "result": "approved",
+    })
+    p = tmp_path / "ledgers" / "approvals" / f"agent-a-{today}.tsv"
+    assert p.exists()
+    rows = ledger.read_day(tmp_path, "approvals", today)
+    assert len(rows) == 1
+    assert rows[0]["result"] == "approved"
+
+
+def test_cursor_roundtrip(tmp_path):
+    assert ledger.read_cursor(tmp_path, "telegram") == 0  # absent -> default
+    p = ledger.write_cursor(tmp_path, "telegram", 42)
+    assert p == tmp_path / "ledgers" / "approvals" / "telegram-cursor"
+    assert ledger.read_cursor(tmp_path, "telegram") == 42
+    ledger.write_cursor(tmp_path, "telegram", 43)
+    assert ledger.read_cursor(tmp_path, "telegram") == 43  # overwritten, not appended
+
+
 def test_append_recovers_zero_byte_shard(tmp_path):
     today = datetime.date.today().isoformat()
     # A shard file exists but is 0 bytes (e.g. crash between create and write).

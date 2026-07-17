@@ -1,0 +1,14 @@
+# governance/graders.yaml — Gate 3.7 grader trust anchor.
+#
+# Allow-lists the grader identities scripts/promotion.py:trusted_grades() accepts. A grade row in
+# ledgers/grades/** only counts toward autonomy promotion when its `inspector_id` field exactly
+# matches an entry here. Absent or empty -> allowed_graders() returns the empty set -> EVERY grade
+# row is untrusted -> trusted_grades() returns [] (fail closed, promotion.py's trust-anchor
+# invariant). Human-edited only; agents must not write here (CLAUDE.md).
+#
+# `inspector_id` is always the literal role identity "inspector@agents.local" (never the
+# underlying model/agent name) — see routines/roles/inspector.md and
+# skills/curated/inspector/references/emitting-grades.md, both of which pin every
+# grade.record_grade(...) call to this exact string regardless of which model or tier graded.
+graders:
+  - id: inspector@agents.local

@@ -11,8 +11,6 @@ network, no real tokens, no real repository state required.
 """
 import functools
 
-import yaml
-
 import approvals
 import cards
 import stage_approval
@@ -38,18 +36,25 @@ def _make_card(tmp_path, action="deploy", target="svc-a"):
     return repo, card, path
 
 
-def test_stage_writes_record_with_hash(tmp_path):
+def test_stage_writes_record_as_full_card(tmp_path):
+    # The record is the FULL CARD the verifier parses + re-hashes, at
+    # queue/approvals/<id>.md (cards.STATE_DIR['approved']) — not a flat YAML dict.
     repo, card, path = _make_card(tmp_path)
     runner = FakeRunner()
     ref = stage_approval.stage(path, repo, opener=lambda b, r, run: "pr-ref", runner=runner)
     assert ref == "pr-ref"
 
-    record_path = repo / "approvals" / f"{card.meta['id']}.yaml"
+    record_path = repo / "queue" / "approvals" / f"{card.meta['id']}.md"
     assert record_path.exists()
-    data = yaml.safe_load(record_path.read_text(encoding="utf-8"))
-    assert data["approval"] == approvals.payload_hash(card)
-    assert data["assurance"] == "signed"
-    assert "expires" in data and data["expires"]
+    staged = cards.parse(record_path)                     # must parse as a card
+    assert staged.meta["state"] == "approved"
+    assert staged.meta["assurance"] == "signed"
+    # approval == payload_hash recomputed over the SAME record the verifier reads,
+    # and over the original card (action+target+work-order are carried unchanged).
+    assert staged.meta["approval"] == approvals.payload_hash(staged)
+    assert staged.meta["approval"] == approvals.payload_hash(card)
+    assert staged.meta.get("expires")
+    assert "## Work order" in staged.body                 # body preserved for re-hash
 
 
 def test_stage_never_merges(tmp_path):
