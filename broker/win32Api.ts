@@ -408,6 +408,10 @@ export function loadWin32Api(): Win32Api {
     },
 
     createPipe: (name: string, firstInstance: boolean): PipeHandle | null => {
+      // F6: track the pipe + event handles so a throw AFTER creating them (e.g. koffi.alloc(OVERLAPPED))
+      // closes them in the catch instead of leaking. Nulled once ownership transfers to the returned Conn.
+      let h: unknown = null;
+      let ev: unknown = null;
       try {
         // M-1: FAIL CLOSED if the owner-only SA could not be built. A null SA would give the default
         // named-pipe DACL (any local account could connect) — never create the control pipe that way.
@@ -416,20 +420,43 @@ export function loadWin32Api(): Win32Api {
         let openMode = PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED;
         if (firstInstance) openMode |= FILE_FLAG_FIRST_PIPE_INSTANCE;
         const pipeMode = PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS;
-        const h = CreateNamedPipeW(
+        h = CreateNamedPipeW(
           name, openMode, pipeMode, PIPE_UNLIMITED_INSTANCES,
           PIPE_BUFFER_BYTES, PIPE_BUFFER_BYTES, 0, securityAttributes,
         );
-        if (badHandle(h)) return null;
-        const ev = CreateEventW(null, 1, 0, null); // manual-reset (1), initially non-signaled (0)
-        if (badHandle(ev)) {
-          CloseHandle(h);
+        if (badHandle(h)) {
+          h = null;
           return null;
         }
+        ev = CreateEventW(null, 1, 0, null); // manual-reset (1), initially non-signaled (0)
+        if (badHandle(ev)) {
+          ev = null;
+          return null; // catch/finally-equivalent below closes h
+        }
         const ov = koffi.alloc(OVERLAPPED, 1);
-        return { h, ev, ov, closed: false } satisfies Conn;
+        const conn: Conn = { h, ev, ov, closed: false };
+        h = null; // ownership transferred to conn — don't close in the cleanup path
+        ev = null;
+        return conn;
       } catch {
         return null;
+      } finally {
+        // Close anything still owned here (a mid-construction failure/throw): the returned-conn path nulled
+        // both, so this only fires on a failure path — no double close.
+        if (ev !== null) {
+          try {
+            CloseHandle(ev);
+          } catch {
+            /* ignore */
+          }
+        }
+        if (h !== null) {
+          try {
+            CloseHandle(h);
+          } catch {
+            /* ignore */
+          }
+        }
       }
     },
 
