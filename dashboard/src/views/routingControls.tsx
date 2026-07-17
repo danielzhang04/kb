@@ -52,6 +52,10 @@ export interface RoutingControlProps {
   ttl?: boolean;
   /** Whether a "clear override" affordance should show (an override/stamp currently exists). */
   canClear?: boolean;
+  /** When set, the control is frozen: the chip is disabled and this quiet reason is shown inline. Used
+   *  by the Tasks card-scope toggle when the card is under an active approval (approvals/approved) — the
+   *  server refuses the write too, so this is an upfront, legible mirror of that refusal (no new colors). */
+  lockedReason?: string | null;
   onApply: (runtime: string, model: string, expires: string | null) => Promise<WriteResult>;
   onClear?: () => Promise<WriteResult>;
   testIdPrefix: string;
@@ -82,7 +86,7 @@ function EffectiveChip({ effective }: { effective?: EffectiveOrUnroutable | null
 }
 
 export function RoutingControl(props: RoutingControlProps): React.JSX.Element {
-  const { label, registry, effective, canAct, ttl = false, canClear = false, onApply, onClear, testIdPrefix } = props;
+  const { label, registry, effective, canAct, ttl = false, canClear = false, lockedReason = null, onApply, onClear, testIdPrefix } = props;
   const runtimeNames = Object.keys(registry);
   const effectiveRuntime = effective && !('unroutable' in effective && effective.unroutable) ? effective.runtime : undefined;
   const initialRuntime = effectiveRuntime && runtimeNames.includes(effectiveRuntime) ? effectiveRuntime : runtimeNames[0] ?? '';
@@ -123,6 +127,7 @@ export function RoutingControl(props: RoutingControlProps): React.JSX.Element {
   }
 
   const noRegistry = runtimeNames.length === 0;
+  const locked = Boolean(lockedReason);
 
   return (
     <span className="v-routing" data-testid={`${testIdPrefix}-routing`}>
@@ -133,8 +138,8 @@ export function RoutingControl(props: RoutingControlProps): React.JSX.Element {
         aria-label={`Routing for ${label}`}
         aria-haspopup="dialog"
         aria-expanded={open}
-        disabled={!canAct || noRegistry}
-        title={canAct ? 'Change routing' : 'Sign in with your passkey to change routing'}
+        disabled={!canAct || noRegistry || locked}
+        title={locked ? (lockedReason as string) : canAct ? 'Change routing' : 'Sign in with your passkey to change routing'}
         onClick={() => setOpen((o) => !o)}
       >
         <EffectiveChip effective={effective} />
@@ -144,9 +149,13 @@ export function RoutingControl(props: RoutingControlProps): React.JSX.Element {
         <span className="v-routing__nudge" data-testid={`${testIdPrefix}-routing-nudge`}>
           sign in to change
         </span>
+      ) : locked ? (
+        <span className="v-routing__nudge" data-testid={`${testIdPrefix}-routing-locked`}>
+          {lockedReason}
+        </span>
       ) : null}
 
-      {open && canAct ? (
+      {open && canAct && !locked ? (
         <div className="v-routing__pop mc-panel" role="dialog" aria-label={`Set routing for ${label}`} data-testid={`${testIdPrefix}-routing-pop`}>
           <label className="v-routing__field">
             <span className="v-routing__field-label">runtime</span>
