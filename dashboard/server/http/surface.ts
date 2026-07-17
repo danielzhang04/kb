@@ -25,6 +25,7 @@ import type { SurfaceContext } from './context.ts';
 import { registerAuthRoutes } from '../auth/routes.ts';
 import { registerWriteRoutes } from '../write/routes.ts';
 import { registerVibeRoutes } from '../vibe/routes.ts';
+import { registerComposerRoutes } from '../composer/routes.ts';
 import { registerApprovalsRoutes } from '../approvals/routes.ts';
 
 /** dashboard/server/http/surface.ts -> ../../../ is the repo root. Overridable via env / tests. */
@@ -66,6 +67,7 @@ export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext =
     registerAuthRoutes(scope, ctx);
     registerWriteRoutes(scope, ctx);
     registerVibeRoutes(scope, ctx);
+    registerComposerRoutes(scope, ctx);
     registerApprovalsRoutes(scope, ctx);
   });
 }

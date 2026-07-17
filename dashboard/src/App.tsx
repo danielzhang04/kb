@@ -42,6 +42,7 @@ import { Tasks } from './views/Tasks';
 import { Agents } from './views/Agents';
 import { Projects } from './views/Projects';
 import { Ledgers } from './views/Ledgers';
+import { ComposerChat } from './composer/ComposerChat';
 import { fetchPending } from './lib/approvalsClient';
 import { useSse } from './lib/sseClient';
 import { signIn, type Session } from './lib/authClient';
@@ -279,20 +280,20 @@ function ComingSoon({ id }: { id: DestinationId }): React.JSX.Element {
   );
 }
 
-/** Composer placeholder — the [+ New ▾] → "Idea…" entry opens this. The freeform composer (bring an
- *  idea, iterate) is not built yet, so this is a dignified, enabled-looking stub, not a greyed dead-end.
- *  A quiet "Back" returns to the underlying view. */
-function ComposerPlaceholder({ onClose }: { onClose: () => void }): React.JSX.Element {
+/** Composer view — the [+ New ▾] → "Idea…" entry opens this. C1 mounts a real, gated, multi-turn chat
+ *  pane ({@link ComposerChat}) here; the full convergence UI (type chip, draft preview) is C3, which
+ *  extends this container. A quiet "Back" preserves the placeholder's return-to-underlying-view affordance. */
+function ComposerView({ onClose, sessionToken }: { onClose: () => void; sessionToken?: string }): React.JSX.Element {
   return (
-    <section className="code-view" aria-label="Composer">
-      <h2>Composer — soon</h2>
-      <p>
-        Start from an idea and iterate — the freeform composer lands in a later wave. For now, use
-        [+ New] → Task to file a governed card directly.
-      </p>
-      <button type="button" className="mc-btn mc-btn--quiet" onClick={onClose}>
-        Back
-      </button>
+    <section className="composer-view" aria-label="Composer">
+      <div className="composer-view__header">
+        <h2>Composer</h2>
+        <button type="button" className="mc-btn mc-btn--quiet" onClick={onClose}>
+          Back
+        </button>
+      </div>
+      <p className="composer-view__lede">Start from an idea and iterate with a governed Claude session.</p>
+      <ComposerChat sessionToken={sessionToken} />
     </section>
   );
 }
@@ -456,7 +457,7 @@ export function App(): React.JSX.Element {
       </header>
       <main className="mc-main">
         {composerOpen ? (
-          <ComposerPlaceholder onClose={() => setComposerOpen(false)} />
+          <ComposerView onClose={() => setComposerOpen(false)} sessionToken={session?.token} />
         ) : (
           <ViewBody
             view={view}
