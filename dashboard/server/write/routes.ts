@@ -18,6 +18,9 @@ import { isProtectedBranch } from './branch.ts';
 import { launchCard, rerunAsDependsOn } from './launch.ts';
 import type { LaunchOutcome, RiskTier } from './launch.ts';
 import { writeStop, requestStop, pauseCadence } from '../stop/floor.ts';
+import { setOverride, clearOverride } from './routingOverride.ts';
+import type { OverrideScope } from './routingOverride.ts';
+import { setCardRouting, clearCardRouting } from './cardRouting.ts';
 import { requireSession, verifiedSession } from '../http/middleware.ts';
 import type { SurfaceContext } from '../http/context.ts';
 import { auditFn } from '../http/context.ts';
@@ -216,5 +219,63 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
       return reply.code(200).send({ ok: true, path: outcome.path });
     }
     return reply.code(401).send({ error: outcome.reason, detail: outcome.detail });
+  });
+
+  // R2.2 — per-agent / per-scope routing override write. UNLIKE the routes above, the routing-override
+  // and card-routing MODULES own their own D2.9 audit row (they are unit-tested at the module level for
+  // it), so these routes do NOT call `audit(...)` — they are a thin outcome->HTTP map over the module.
+  scope.post('/api/write/routing-override', { preHandler }, async (req, reply: FastifyReply) => {
+    const session = verifiedSession(req);
+    const body = asRecord(req.body);
+    const op = str(body.op);
+    const routingDeps = {
+      runGit: ctx.saveGit,
+      openPr: ctx.openPr,
+      appendAudit: ctx.appendAudit,
+      auditGit: ctx.opsGit,
+      now: ctx.now,
+    };
+    const input = { repoRoot: ctx.repoRoot, sessionToken: session?.token, sessionConfig: ctx.sessionConfig };
+    const outcome =
+      op === 'clear'
+        ? await clearOverride(input, { scope: str(body.scope) as OverrideScope, key: str(body.key) }, routingDeps)
+        : await setOverride(
+            input,
+            {
+              scope: str(body.scope) as OverrideScope,
+              key: str(body.key),
+              runtime: typeof body.runtime === 'string' ? body.runtime : null,
+              model: typeof body.model === 'string' ? body.model : null,
+              expires: typeof body.expires === 'string' ? body.expires : null,
+            },
+            routingDeps,
+          );
+    if (outcome.ok) return reply.code(200).send(outcome);
+    return reply.code(outcome.status).send({ error: 'routing-override-refused', reason: outcome.reason });
+  });
+
+  // R2.3 — per-card routing write (card frontmatter runtime/model — top precedence). D3.4's inline
+  // DAG-node toggle will reuse setCardRouting unchanged.
+  scope.post('/api/write/card-routing', { preHandler }, async (req, reply: FastifyReply) => {
+    const session = verifiedSession(req);
+    const body = asRecord(req.body);
+    const cardId = str(body.cardId);
+    if (!CARD_ID_RE.test(cardId)) {
+      return reply.code(400).send({ error: 'bad-card-id', reason: 'cardId must be filename-safe' });
+    }
+    const routingDeps = {
+      runPy: ctx.runPy,
+      runGit: ctx.saveGit,
+      appendAudit: ctx.appendAudit,
+      auditGit: ctx.opsGit,
+      now: ctx.now,
+    };
+    const input = { repoRoot: ctx.repoRoot, cardId, sessionToken: session?.token, sessionConfig: ctx.sessionConfig };
+    const outcome =
+      str(body.op) === 'clear'
+        ? await clearCardRouting(input, routingDeps)
+        : await setCardRouting(input, { runtime: str(body.runtime), model: str(body.model) }, routingDeps);
+    if (outcome.ok) return reply.code(200).send(outcome);
+    return reply.code(outcome.status).send({ error: 'card-routing-refused', reason: outcome.reason });
   });
 }

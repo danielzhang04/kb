@@ -1,0 +1,177 @@
+/*
+ * R2 — per-entity routing control (chip + governed popover) + routing-audit strip. Neutral Claude-dark:
+ * mono model ids, provenance as a muted mono tag, semantic status dots only, hairline borders. No new
+ * hue taxonomy, no glow/gradient. Tokens only; light + dark inherited from app.css :root remaps.
+ */
+
+.v-routing {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.v-routing__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+  color: var(--fg-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.v-routing__chip:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+.v-routing__chip:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+
+.v-routing__model {
+  font-size: var(--text-sm);
+}
+
+.v-routing__model--none {
+  color: var(--fg-faint);
+}
+
+/* Provenance tag: muted, small, mono. Differences are read as TEXT, not colour. */
+.v-routing__src {
+  font-size: var(--text-xs);
+  color: var(--fg-faint);
+  text-transform: lowercase;
+}
+
+/* An override (a human pin) is the only provenance rendered a touch stronger — still neutral, no hue. */
+.v-routing__src--override,
+.v-routing__src--card {
+  color: var(--fg-dim);
+  font-weight: 600;
+}
+
+.v-routing__unroutable {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+}
+
+.v-routing__nudge {
+  font-size: var(--text-xs);
+  color: var(--fg-faint);
+}
+
+/* Popover: a small elevated panel anchored under the chip. */
+.v-routing__pop {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  left: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 16rem;
+  padding: var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+}
+
+.v-routing__field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.v-routing__field-label {
+  font-size: var(--text-xs);
+  color: var(--fg-dim);
+}
+
+.v-routing__field select {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+  color: var(--fg-primary);
+  font-size: var(--text-sm);
+}
+
+.v-routing__actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.v-routing__status {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--fg-dim);
+}
+
+/* ---- Per-card routing bar (Tasks detail) ---- */
+.v-routing-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) 0;
+}
+
+.v-routing-bar__label {
+  font-size: var(--text-xs);
+  color: var(--fg-dim);
+}
+
+.v-routing-bar__stamp {
+  font-size: var(--text-sm);
+}
+
+.v-routing-bar__unrouted {
+  font-size: var(--text-sm);
+  color: var(--fg-faint);
+}
+
+/* ---- Routing-audit strip (Agents) ---- */
+.v-routing-audit {
+  margin: var(--space-4) 0 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
+}
+
+.v-routing-audit__title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.v-routing-audit__empty {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--fg-faint);
+}
+
+.v-routing-audit__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  font-size: var(--text-sm);
+  border-top: 1px solid var(--border);
+}
+
+.v-routing-audit__row:first-of-type {
+  border-top: none;
+}
