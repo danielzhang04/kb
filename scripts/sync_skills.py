@@ -129,7 +129,15 @@ def check(repo_root: Path) -> list[str]:
         if not artifact.exists():
             problems.append(f"{adapter}: {artifact.name} missing")
             continue
-        actual_digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
+        # Normalize CRLF -> LF before hashing: the manifest digest is computed
+        # over the LF text render_codex() produced, but core.autocrlf=true
+        # materializes the committed file with CRLF on a fresh checkout —
+        # hashing raw bytes would flag false "drift" in every new worktree and
+        # block all commits there. Real tampering still changes the normalized
+        # bytes, so the guard's strength is unchanged.
+        actual_digest = hashlib.sha256(
+            artifact.read_bytes().replace(b"\r\n", b"\n")
+        ).hexdigest()
         if actual_digest != expected_digest:
             problems.append(
                 f"{adapter}: {artifact.name} does not match manifest (tampering/drift)"

@@ -194,3 +194,62 @@ def test_digest_uses_injected_reader_not_the_real_file(tmp_path):
 
     assert calls == ["dashboards/executive.md"]
     assert "Wake-me (T1)" in text
+
+
+# --------------------------------------------------------------------------- #
+# confirm_approval_executed(): out-of-band dispatcher confirmation push       #
+# (Task D2.10) -- mis-sign detector. Text MUST come from the dispatcher's own #
+# verified view of the card, never from anything a requester/dashboard could  #
+# have supplied, or a tampered request could confirm itself.                  #
+# --------------------------------------------------------------------------- #
+
+def test_confirm_push_sourced_from_dispatcher_view(tmp_path):
+    # The on-disk/requester-supplied card claims a different action than what
+    # the dispatcher's own verification (D2.3: pinned-hash TOCTOU-safe execute)
+    # actually confirmed. If the push ever echoed the card's own fields instead
+    # of the dispatcher's verified_view, a tampered request could confirm
+    # itself on the out-of-band channel -- exactly what this push must catch.
+    repo, card, path = _make_card(tmp_path, tier="T3", action="dashboard-claimed-deploy")
+    send_fn = RecordingSend()
+    verified_view = {
+        "id": card.meta["id"],
+        "action": "dispatcher-verified-deploy",
+        "target": "svc-real",
+        "risk-tier": "T3",
+    }
+
+    result = notify.confirm_approval_executed(
+        card, verified_view,
+        transport=object(), chat_id="chat-1", send_fn=send_fn,
+    )
+
+    sent_text = send_fn.calls[0]["text"]
+    # sourced from the dispatcher's verified view...
+    assert "dispatcher-verified-deploy" in sent_text
+    # ...never from the card's own (potentially tampered / dashboard-supplied)
+    # action field.
+    assert "dashboard-claimed-deploy" not in sent_text
+    assert result["sent"] == {"ok": True}
+
+
+def test_confirm_push_names_action_and_tier(tmp_path):
+    repo, card, path = _make_card(tmp_path, tier="T2", action="restart")
+    send_fn = RecordingSend()
+    verified_view = {
+        "id": card.meta["id"],
+        "action": "restart",
+        "target": "svc-a",
+        "risk-tier": "T2",
+    }
+
+    result = notify.confirm_approval_executed(
+        card, verified_view,
+        transport=object(), chat_id="chat-1", send_fn=send_fn,
+    )
+
+    sent_text = send_fn.calls[0]["text"]
+    assert "restart" in sent_text
+    assert "T2" in sent_text
+    assert card.meta["id"] in sent_text
+    assert send_fn.calls[0]["buttons"] is None
+    assert result["sent"] == {"ok": True}
