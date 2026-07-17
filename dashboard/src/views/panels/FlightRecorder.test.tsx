@@ -17,6 +17,12 @@ describe('tracePermalink', () => {
   it('is the stable traces/<card-id>/ directory permalink shape', () => {
     expect(tracePermalink('card-77')).toBe('traces/card-77/');
   });
+
+  it('percent-encodes a hostile id so it cannot escape traces/ (LOW-2)', () => {
+    // A card id carrying path metacharacters must not normalize out of traces/.
+    expect(tracePermalink('../../etc/secret')).toBe('traces/..%2F..%2Fetc%2Fsecret/');
+    expect(tracePermalink('a/b')).toBe('traces/a%2Fb/');
+  });
 });
 
 describe('FlightRecorder panel', () => {
