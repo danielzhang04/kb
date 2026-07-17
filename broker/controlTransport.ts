@@ -8,8 +8,9 @@
  *   • POSIX  → a `net.Server` unix-domain socket whose same-user identity is enforced by an OS 0700
  *              owner-only parent dir (broker/peerBoundary.ts). `createSecureControlSocket` wires it.
  *   • win32  → a native koffi-managed named-pipe server (broker/win32PipeServer.ts) that performs a REAL
- *              per-connection SID check (GetNamedPipeClientProcessId → token SID vs the daemon's own SID),
- *              because Node's `net` API does not expose the server pipe handle needed to read the peer.
+ *              per-connection SID check by IMPERSONATING the client (TOCTOU-free) vs the daemon's own SID,
+ *              plus an owner-only pipe DACL (defense-in-depth), because Node's `net` API does not expose
+ *              the server pipe handle needed to read the peer.
  *
  * `ControlTransport` is the common lifecycle both expose to the daemon boot (broker/index.ts): `listen()`
  * (throws on a hard bind failure — e.g. a squatted win32 pipe name — so boot fails closed) and `close()`.

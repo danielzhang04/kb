@@ -86,8 +86,8 @@ describe.skipIf(!onWin32)('win32 pipe server REAL integration (koffi + net clien
   it('peer read forced to fail → rejected (peer-credential), even with the correct token', async () => {
     const pipeName = uniquePipe();
     const api = loadWin32Api();
-    // Real transport, but a peer FFI whose client-PID read fails → SID unresolved → fail closed.
-    const failingPeer: Win32PeerFfi = { getClientPid: () => null, getProcessSidBytes: () => null };
+    // Real transport, but a peer FFI whose impersonated SID read fails → fail closed (even w/ valid token).
+    const failingPeer: Win32PeerFfi = { getClientSidBytes: () => null, getClientPid: () => null };
     let dispatched = false;
     const sid = api.currentSidString()!;
     const server = createWin32PipeServer({

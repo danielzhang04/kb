@@ -19,14 +19,23 @@
  * FILE_FLAG_FIRST_PIPE_INSTANCE (if the name already exists, creation fails → squatting defense → the
  * boot fails closed); replacements are created without it.
  *
+ * ── PEER CHECK: IMPERSONATION (TOCTOU-free, load-bearing) ───────────────────────────────────────────
+ * The client SID is read by IMPERSONATING the pipe's actual client (ImpersonateNamedPipeClient →
+ * OpenThreadToken → TokenUser SID; win32Api.ts), NOT by resolving a stored client PID to a process — a
+ * PID could be recycled to a daemon-owned process between the PID read and the token open. Impersonation
+ * reads the client token bound to THIS connection at check time, so the peer factor is race-free and is
+ * the LOAD-BEARING cross-user control. The owner-only pipe SDDL DACL (win32Api.ts) is enforced too
+ * (mandatory — createPipe fails closed without it), as defense-in-depth. The peer read must run after the
+ * client has written (handleConnection awaits readLine first), which impersonation requires.
+ *
  * ── FAIL-CLOSED / NEVER-CRASH ───────────────────────────────────────────────────────────────────────
  * Every per-connection step is wrapped so ANY throw (a koffi marshalling error, a peer-read failure, a
  * malformed request) results in the connection being rejected/closed — never an uncaught exception out
  * of an async callback that would crash the daemon (review invariant LOW-1). The peer SID is resolved
- * fail-closed: any failure at GetNamedPipeClientProcessId / OpenProcess / OpenProcessToken /
- * GetTokenInformation / SID-parse yields `null`, which `authenticateConnection` rejects. The auth
- * decision reuses the SAME pure `authenticateConnection` core as the POSIX socket — auth logic is never
- * forked. Every handle is closed on every path (DisconnectNamedPipe + CloseHandle).
+ * fail-closed: any failure at ImpersonateNamedPipeClient / OpenThreadToken / GetTokenInformation /
+ * SID-parse yields `null`, which `authenticateConnection` rejects. The auth decision reuses the SAME pure
+ * `authenticateConnection` core as the POSIX socket — auth logic is never forked. Every handle is closed
+ * on every path (DisconnectNamedPipe + CloseHandle).
  */
 import { authenticateConnection } from './socket.ts';
 import type { ControlRequest, PeerCredential, SocketAuthContext } from './socket.ts';
@@ -41,11 +50,14 @@ export type PipeHandle = unknown;
  *  testable without koffi. Each method returns `null` on ANY failure (fail closed); it never throws for
  *  an expected OS error (a throw is still caught upstream and treated as null). */
 export interface Win32PeerFfi {
-  /** GetNamedPipeClientProcessId(handle) → the connected client's PID, or null on failure. */
+  /** IMPERSONATE the connected client (ImpersonateNamedPipeClient → OpenThreadToken →
+   *  GetTokenInformation(TokenUser)) and return its raw SID bytes, or null on ANY failure (fail closed).
+   *  TOCTOU-free: reads the client token bound to THIS connection at check time (no PID→process race).
+   *  The bytes are parsed by `parseSidString` (crash-proof). This is the auth-load-bearing peer read. */
+  getClientSidBytes(handle: PipeHandle): Uint8Array | null;
+  /** GetNamedPipeClientProcessId(handle) → the connected client's PID. INFORMATIONAL ONLY (audit) — never
+   *  part of the auth decision (which uses the impersonated SID). */
   getClientPid(handle: PipeHandle): number | null;
-  /** OpenProcess(QUERY_LIMITED)+OpenProcessToken(QUERY)+GetTokenInformation(TokenUser) → the raw SID
-   *  bytes for `pid`, or null on failure. The bytes are parsed by `parseSidString` (crash-proof). */
-  getProcessSidBytes(pid: number): Uint8Array | null;
 }
 
 /** The pipe TRANSPORT FFI surface — create/accept/read/write/flush/close. Injected for hermetic tests. */
@@ -67,15 +79,15 @@ export interface Win32PipeTransport {
   closeConnection(handle: PipeHandle): void;
 }
 
-/** Resolve the connecting peer's SID (+pid), or `null` on ANY failure (→ connection rejected). Wraps the
- *  whole chain so a throw anywhere (incl. a malformed SID that makes `parseSidString` throw) → null. */
+/** Resolve the connecting peer's SID (+ informational pid), or `null` on ANY failure (→ connection
+ *  rejected). The SID (auth-load-bearing) comes from impersonation; the pid is audit-only. Wraps the whole
+ *  chain so a throw anywhere (incl. a malformed SID that makes `parseSidString` throw) → null. */
 export function resolveClientCredential(handle: PipeHandle, ffi: Win32PeerFfi): PeerCredential | null {
   try {
-    const pid = ffi.getClientPid(handle);
-    if (pid == null) return null;
-    const bytes = ffi.getProcessSidBytes(pid);
+    const bytes = ffi.getClientSidBytes(handle);
     if (!bytes) return null;
     const ownerId = parseSidString(bytes); // may throw on malformed bytes → caught below → null
+    const pid = ffi.getClientPid(handle) ?? undefined; // informational only (never the auth decision)
     return { ownerId, pid };
   } catch {
     return null;

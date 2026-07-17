@@ -16,14 +16,22 @@
  * `GetLastError()` reads happen on the MAIN thread immediately after the sync call that set them, so the
  * thread-local semantics are correct.
  *
+ * ── TWO ENFORCED CROSS-USER CONTROLS (both mandatory) ───────────────────────────────────────────────
+ *   1. LOAD-BEARING: a per-connection peer SID check via IMPERSONATION —
+ *      ImpersonateNamedPipeClient → OpenThreadToken → GetTokenInformation(TokenUser) → SID, compared to
+ *      the daemon's own process SID. This reads the pipe's ACTUAL client token at check time, so it is
+ *      TOCTOU-free (no GetNamedPipeClientProcessId→OpenProcess PID-recycle race).
+ *   2. DEFENSE-IN-DEPTH: an owner-only SDDL security descriptor on the pipe (only the daemon SID + SYSTEM
+ *      may connect). It is MANDATORY too — `createPipe` fails closed if the SA cannot be built (M-1) — so
+ *      a null/default DACL is never used; the SID check is what the security argument rests on.
+ *
  * VERIFIED EMPIRICALLY on Node 24.18.0 win32-x64 (koffi 3.1.1, prebuilt binary):
  *   • CreateNamedPipeW(FILE_FLAG_FIRST_PIPE_INSTANCE | FILE_FLAG_OVERLAPPED | PIPE_REJECT_REMOTE_CLIENTS)
- *     with an owner-only SDDL security descriptor (defense-in-depth; the per-connection SID check is the
- *     load-bearing control).
+ *     with the owner-only SDDL SA.
  *   • overlapped ConnectNamedPipe/ReadFile/WriteFile polled on the main loop (heartbeat never stalls).
- *   • GetNamedPipeClientProcessId → OpenProcess(QUERY_LIMITED) → OpenProcessToken(QUERY) →
- *     GetTokenInformation(TokenUser) → SID bytes parsed by broker/win32Sid.ts (crash-proof; NOT
- *     ConvertSidToStringSidW, whose returned wide-string pointer segfaults koffi.decode).
+ *   • ImpersonateNamedPipeClient → OpenThreadToken(OpenAsSelf) → GetTokenInformation(TokenUser) → SID
+ *     bytes parsed by broker/win32Sid.ts (crash-proof; NOT ConvertSidToStringSidW, whose returned
+ *     wide-string pointer segfaults koffi.decode). RevertToSelf ALWAYS runs (synchronous window only).
  *   • response delivery is confirmed by a final overlapped "drain" read that completes with
  *     ERROR_BROKEN_PIPE once the client has read the response and closed (replaces FlushFileBuffers).
  *
@@ -78,7 +86,6 @@ const PIPE_WAIT = 0x0;
 const PIPE_REJECT_REMOTE_CLIENTS = 0x8;
 const PIPE_UNLIMITED_INSTANCES = 255;
 const PIPE_BUFFER_BYTES = 8192;
-const PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
 const TOKEN_QUERY = 0x0008;
 const TOKEN_USER_CLASS = 1;
 const SDDL_REVISION_1 = 1;
@@ -118,11 +125,14 @@ export function loadWin32Api(): Win32Api {
   const CancelIoEx = k32.func('__stdcall', 'CancelIoEx', 'bool', [HANDLE, 'void *']);
   const DisconnectNamedPipe = k32.func('__stdcall', 'DisconnectNamedPipe', 'bool', [HANDLE]);
   const GetNamedPipeClientProcessId = k32.func('__stdcall', 'GetNamedPipeClientProcessId', 'bool', [HANDLE, 'uint32 *']);
-  const OpenProcess = k32.func('__stdcall', 'OpenProcess', HANDLE, ['uint32', 'int', 'uint32']);
   const GetCurrentProcess = k32.func('__stdcall', 'GetCurrentProcess', HANDLE, []);
   const CloseHandle = k32.func('__stdcall', 'CloseHandle', 'bool', [HANDLE]);
   const GetLastError = k32.func('__stdcall', 'GetLastError', 'uint32', []);
   const OpenProcessToken = adv.func('__stdcall', 'OpenProcessToken', 'bool', [HANDLE, 'uint32', 'void *']);
+  const OpenThreadToken = adv.func('__stdcall', 'OpenThreadToken', 'bool', [HANDLE, 'uint32', 'int', 'void *']);
+  const GetCurrentThread = k32.func('__stdcall', 'GetCurrentThread', HANDLE, []);
+  const ImpersonateNamedPipeClient = adv.func('__stdcall', 'ImpersonateNamedPipeClient', 'bool', [HANDLE]);
+  const RevertToSelf = adv.func('__stdcall', 'RevertToSelf', 'bool', []);
   const GetTokenInformation = adv.func('__stdcall', 'GetTokenInformation', 'bool', [HANDLE, 'int', 'void *', 'uint32', 'uint32 *']);
   const ConvertStringSecurityDescriptorToSecurityDescriptorW = adv.func('__stdcall',
     'ConvertStringSecurityDescriptorToSecurityDescriptorW', 'bool', ['str16', 'uint32', 'void *', 'void *']);
@@ -158,26 +168,31 @@ export function loadWin32Api(): Win32Api {
     return a === 0n || a === INVALID_HANDLE;
   };
 
-  /** SID bytes from a process handle's TokenUser, or null on any failure. Parses no strings (crash-proof). */
+  /** TokenUser SID bytes from an open access token, or null on any failure. Parses no strings (crash-proof). */
+  function sidBytesFromToken(hToken: unknown): Uint8Array | null {
+    const lenBuf = koffi.alloc('uint32', 1);
+    GetTokenInformation(hToken, TOKEN_USER_CLASS, null, 0, lenBuf); // size probe (expected to "fail")
+    const len = koffi.decode(lenBuf, 'uint32') as number;
+    if (len === 0 || len > 4096) return null;
+    const info = koffi.alloc('uint8', len);
+    if (!GetTokenInformation(hToken, TOKEN_USER_CLASS, info, len, lenBuf)) return null;
+    // TOKEN_USER { SID_AND_ATTRIBUTES { PSID Sid; DWORD Attributes } } — first field is the PSID, which
+    // points INSIDE `info`. Read the offset, then copy the SID bytes out of the koffi-owned buffer.
+    const psid = addrOf(koffi.decode(info, HANDLE));
+    const base = addrOf(info);
+    const off = Number(psid - base);
+    if (!Number.isFinite(off) || off < 0 || off >= len) return null;
+    const bytes = koffi.decode(info, off, 'uint8', len - off) as ArrayLike<number>;
+    return Uint8Array.from(bytes);
+  }
+
+  /** SID bytes from a PROCESS handle's token (used for the daemon's OWN SID). */
   function sidBytesForProcessHandle(hProc: unknown): Uint8Array | null {
     const tokBuf = koffi.alloc(HANDLE, 1);
     if (!OpenProcessToken(hProc, TOKEN_QUERY, tokBuf)) return null;
     const hToken = koffi.decode(tokBuf, HANDLE);
     try {
-      const lenBuf = koffi.alloc('uint32', 1);
-      GetTokenInformation(hToken, TOKEN_USER_CLASS, null, 0, lenBuf); // size probe (expected to "fail")
-      const len = koffi.decode(lenBuf, 'uint32') as number;
-      if (len === 0 || len > 4096) return null;
-      const info = koffi.alloc('uint8', len);
-      if (!GetTokenInformation(hToken, TOKEN_USER_CLASS, info, len, lenBuf)) return null;
-      // TOKEN_USER { SID_AND_ATTRIBUTES { PSID Sid; DWORD Attributes } } — first field is the PSID, which
-      // points INSIDE `info`. Read the offset, then copy the SID bytes out of the koffi-owned buffer.
-      const psid = addrOf(koffi.decode(info, HANDLE));
-      const base = addrOf(info);
-      const off = Number(psid - base);
-      if (!Number.isFinite(off) || off < 0 || off >= len) return null;
-      const bytes = koffi.decode(info, off, 'uint8', len - off) as ArrayLike<number>;
-      return Uint8Array.from(bytes);
+      return sidBytesFromToken(hToken);
     } finally {
       CloseHandle(hToken);
     }
@@ -278,17 +293,36 @@ export function loadWin32Api(): Win32Api {
       }
     },
 
-    getProcessSidBytes: (pid: number): Uint8Array | null => {
+    // H/L-1 (TOCTOU-free peer read): impersonate the pipe's ACTUAL client and read its token SID, rather
+    // than GetNamedPipeClientProcessId→OpenProcess (whose stored PID could be recycled to a daemon-owned
+    // process between the PID read and OpenProcess). This is fully SYNCHRONOUS — no await between
+    // ImpersonateNamedPipeClient and RevertToSelf — so no other event-loop work runs while impersonating.
+    // MUST be called only after the client has written (the caller awaits readLine first). Fail closed on
+    // any error. RevertToSelf ALWAYS runs (finally); a failed revert is a privilege hazard → exit hard so
+    // PM2 restarts a clean daemon rather than continue mis-impersonated.
+    getClientSidBytes: (handle: PipeHandle): Uint8Array | null => {
+      const conn = asConn(handle);
+      let impersonating = false;
       try {
-        const hProc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
-        if (badHandle(hProc)) return null;
+        if (!ImpersonateNamedPipeClient(conn.h)) return null;
+        impersonating = true;
+        const tokBuf = koffi.alloc(HANDLE, 1);
+        // OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, OpenAsSelf=TRUE, &token). OpenAsSelf=TRUE reads
+        // the token using the daemon's own security context (not the impersonated one) so it succeeds.
+        if (!OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, 1, tokBuf)) return null;
+        const hToken = koffi.decode(tokBuf, HANDLE);
         try {
-          return sidBytesForProcessHandle(hProc);
+          return sidBytesFromToken(hToken);
         } finally {
-          CloseHandle(hProc);
+          CloseHandle(hToken);
         }
       } catch {
         return null;
+      } finally {
+        if (impersonating && !RevertToSelf()) {
+          process.stderr.write('[kb-broker] FATAL: RevertToSelf failed; exiting to avoid a leaked impersonation\n');
+          process.exit(70);
+        }
       }
     },
 

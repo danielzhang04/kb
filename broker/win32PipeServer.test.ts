@@ -40,18 +40,18 @@ const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
 interface FakePeerOpts {
   pidNull?: boolean;
-  sidBytesNull?: boolean;
+  sidNull?: boolean; // impersonation / thread-token / token-query failed → SID bytes null (fail closed)
   malformedSid?: boolean;
   sid?: string; // which SID the peer resolves to (default: daemon → match)
 }
 function fakePeerFfi(opts: FakePeerOpts = {}): Win32PeerFfi {
   return {
-    getClientPid: () => (opts.pidNull ? null : 4321),
-    getProcessSidBytes: () => {
-      if (opts.sidBytesNull) return null;
+    getClientSidBytes: () => {
+      if (opts.sidNull) return null;
       if (opts.malformedSid) return new Uint8Array([1, 5]); // too short → parseSidString throws
       return sidBytes(opts.sid ?? DAEMON_SID);
     },
+    getClientPid: () => (opts.pidNull ? null : 4321), // informational only
   };
 }
 
@@ -132,15 +132,16 @@ async function drive(opts: {
 }
 
 describe('resolveClientCredential (fail-closed peer SID resolution)', () => {
-  it('resolves { ownerId, pid } when pid + SID bytes are available', () => {
+  it('resolves { ownerId (impersonated SID), pid (informational) } when both are available', () => {
     const cred = resolveClientCredential('h', fakePeerFfi());
     expect(cred).toEqual({ ownerId: DAEMON_SID, pid: 4321 });
   });
-  it('returns null when the client PID cannot be read', () => {
-    expect(resolveClientCredential('h', fakePeerFfi({ pidNull: true }))).toBeNull();
+  it('returns null when the impersonated client SID cannot be read (fail closed)', () => {
+    expect(resolveClientCredential('h', fakePeerFfi({ sidNull: true }))).toBeNull();
   });
-  it('returns null when the token SID bytes cannot be read', () => {
-    expect(resolveClientCredential('h', fakePeerFfi({ sidBytesNull: true }))).toBeNull();
+  it('still resolves (pid is informational) when only the client PID cannot be read', () => {
+    // pid null does NOT reject — the auth decision is the impersonated SID, not the pid.
+    expect(resolveClientCredential('h', fakePeerFfi({ pidNull: true }))).toEqual({ ownerId: DAEMON_SID, pid: undefined });
   });
   it('returns null (never throws) when the SID bytes are malformed', () => {
     expect(resolveClientCredential('h', fakePeerFfi({ malformedSid: true }))).toBeNull();
@@ -166,16 +167,16 @@ describe('createWin32PipeServer connection handling', () => {
     expect(r.firstResponses[0]).toContain('unauthenticated: bad-token');
   });
 
-  it('rejects (peer-credential) when the client PID cannot be read — even with a valid token', async () => {
-    const r = await drive({ line: JSON.stringify({ token: TOKEN, verb: 'list' }), peer: { pidNull: true } });
+  it('rejects (peer-credential) when the impersonated client SID cannot be read — even with a valid token', async () => {
+    const r = await drive({ line: JSON.stringify({ token: TOKEN, verb: 'list' }), peer: { sidNull: true } });
     expect(r.dispatchCalls.length).toBe(0);
     expect(r.firstResponses[0]).toContain('unauthenticated: peer-credential');
   });
 
-  it('rejects (peer-credential) when the token SID bytes cannot be read', async () => {
-    const r = await drive({ line: JSON.stringify({ token: TOKEN, verb: 'list' }), peer: { sidBytesNull: true } });
-    expect(r.dispatchCalls.length).toBe(0);
-    expect(r.firstResponses[0]).toContain('unauthenticated: peer-credential');
+  it('accepts even when the informational client PID cannot be read (pid is not the auth factor)', async () => {
+    const r = await drive({ line: JSON.stringify({ token: TOKEN, verb: 'list' }), peer: { pidNull: true } });
+    expect(r.dispatchCalls.length).toBe(1);
+    expect(r.firstResponses[0]).toContain('sessions');
   });
 
   it('rejects (peer-credential) when the SID bytes are malformed (parse throws → null)', async () => {
