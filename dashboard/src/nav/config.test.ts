@@ -108,9 +108,10 @@ describe('nav/config', () => {
     ] as const) {
       expect(status(id)).toBe('live');
     }
-    // Greyed "soon" stubs — present in the IA, not yet reachable.
+    // Terminal is LIVE as of D3.2 (the PTY pane).
+    expect(status('terminal')).toBe('live');
+    // Atlas remains a greyed "soon" stub — present in the IA, not yet reachable.
     expect(status('atlas')).toBe('soon');
-    expect(status('terminal')).toBe('soon');
   });
 
   it('the [+ New] menu is idea-first with the Composer live: idea + every entity type enabled (C7.2 un-defers agent)', () => {

@@ -171,15 +171,26 @@ describe('App shell — entity-first sidebar navigation', () => {
     expect(screen.getByLabelText('Flight Recorder panel')).toBeTruthy();
   });
 
-  it('greyed "soon" items (Atlas, Terminal) are unclickable and never become active', () => {
+  it('the greyed "soon" item (Atlas) is unclickable and never becomes active', () => {
     render(<App />);
-    for (const label of ['Atlas', 'Terminal']) {
-      const btn = screen.getByRole('button', { name: new RegExp(`^${label}`) }) as HTMLButtonElement;
-      expect(btn.disabled).toBe(true);
-      fireEvent.click(btn);
-    }
-    // Still on the default Home view — every disabled click was a no-op.
+    // Atlas is the only remaining greyed stub — Terminal went live in D3.2.
+    const btn = screen.getByRole('button', { name: /^Atlas/ }) as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    fireEvent.click(btn);
+    // Still on the default Home view — the disabled click was a no-op.
     expect(screen.getByLabelText('Home view')).toBeTruthy();
+  });
+
+  it('routes the live Terminal destination (D3.2 PTY pane) to its real view', () => {
+    render(<App />);
+    const btn = screen.getByRole('button', { name: /^Terminal/ }) as HTMLButtonElement;
+    expect(btn.disabled).toBe(false);
+    fireEvent.click(btn);
+    expect(btn.getAttribute('aria-current')).toBe('page');
+    // The real Terminal view mounts (session-gated: it shows the passkey prompt, not the U3 placeholder).
+    const view = screen.getByLabelText('Terminal view');
+    expect(view.textContent ?? '').not.toMatch(/built in U3/i);
+    expect(view.textContent ?? '').toMatch(/passkey/i);
   });
 
   it('the sidebar-wide collapse toggle switches the shell into rail mode and back', () => {
