@@ -17,6 +17,7 @@ import yaml
 import cards
 import ledger
 import promotion
+import routing
 
 WEEKDAYS = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6}
 FENCE = re.compile(r"```yaml\s*\n(.*?)\n```", re.DOTALL)
@@ -295,6 +296,74 @@ def _emit_unknown_tier_wake(repo_root: Path, project: str, cadence: dict) -> Pat
     return cards.save(card, Path(repo_root) / "queue")
 
 
+# --------------------------------------------------------------------------- #
+# Phase R1.3 -- routing resolution at claim + owner-by-runtime                 #
+# --------------------------------------------------------------------------- #
+#
+# Routing is resolved for the WORK card right at the claim anchor, from the
+# one-winner precedence (card > queue/routing-override.yaml >
+# governance/model-routing.yaml > safe default; see scripts/routing.py). Two
+# fail-loud-and-skip paths mirror the existing UNKNOWN_TIER wake exactly (same
+# dedupe via _wake_already_filed, same one-card-per-(action,target) posture):
+#   * an UNKNOWN *named* model (routing.RoutingError) -> wake-me:unroutable-card,
+#     and the cadence's work card is NOT dispatched -- never a silent
+#     substitution of a default model for a card that named an unknown one.
+#   * a cadence that pins `agent:` whose registered runtime disagrees with the
+#     resolved runtime -> wake-me:owner-runtime-mismatch, and skip -- rather than
+#     mis-owning the card to a runner that would then fail its own pre-exec
+#     runtime assertion (agent_runner.ps1 / scripts/assert_runtime.py).
+# Everything here is additive to run(): with no policy file committed yet (gate
+# R1.0), routing.resolve returns the safe default and default_worker_for returns
+# None, so owner selection collapses to the pre-R1 behaviour (dispatcher/pinned
+# agent) -- every existing dispatch path is unchanged but for cards now carrying
+# a stamped runtime/model.
+UNROUTABLE_ACTION = "wake-me:unroutable-card"
+OWNER_RUNTIME_MISMATCH_ACTION = "wake-me:owner-runtime-mismatch"
+
+
+def _routing_wake_target(project: str, cadence: dict) -> str:
+    return f"{project}:{cadence.get('name', '<unnamed>')}"
+
+
+def _emit_unroutable_wake(repo_root: Path, project: str, cadence: dict) -> Path | None:
+    target = _routing_wake_target(project, cadence)
+    if _wake_already_filed(repo_root, UNROUTABLE_ACTION, target):
+        return None
+    name = cadence.get("name", "<unnamed>")
+    body = (
+        "## Work order\n\n"
+        f"Cadence `{name}` in project `{project}` resolved to a model that is not "
+        "in its runtime's `known_models` (governance/model-routing.yaml). "
+        "Fail-loud: this card is NOT dispatched and no default model is "
+        "substituted for it. Fix the card/override/policy model id (or add it to "
+        "the runtime registry) so routing resolves to a known model.\n"
+    )
+    card = cards.new_card(project=project, action=UNROUTABLE_ACTION, target=target,
+                          risk_tier="T1", body=body)
+    return cards.save(card, Path(repo_root) / "queue")
+
+
+def _emit_owner_runtime_mismatch_wake(repo_root: Path, project: str, cadence: dict,
+                                      owner: str, resolved_runtime: str,
+                                      owner_runtime: str) -> Path | None:
+    target = _routing_wake_target(project, cadence)
+    if _wake_already_filed(repo_root, OWNER_RUNTIME_MISMATCH_ACTION, target):
+        return None
+    name = cadence.get("name", "<unnamed>")
+    body = (
+        "## Work order\n\n"
+        f"Cadence `{name}` in project `{project}` pins `agent: {owner}` (a "
+        f"`{owner_runtime}`-runtime worker) but routing resolved the card to "
+        f"runtime `{resolved_runtime}`. Fail-loud: this card is NOT dispatched "
+        "rather than mis-owned to a runner that would refuse it at its own "
+        "runtime pre-exec assertion. Reconcile the cadence's `agent:` with the "
+        "routing policy/override for this card.\n"
+    )
+    card = cards.new_card(project=project, action=OWNER_RUNTIME_MISMATCH_ACTION,
+                          target=target, risk_tier="T1", body=body)
+    return cards.save(card, Path(repo_root) / "queue")
+
+
 def parse_heartbeat(path: Path) -> list[dict]:
     m = FENCE.search(Path(path).read_text(encoding="utf-8"))
     if not m:
@@ -351,6 +420,13 @@ def run(repo_root: Path, tier: str, agent_id: str,
     # tier-gated): it concerns existing queue/ DAG state, not heartbeat
     # cadences, and is fully additive to the per-cadence loop below.
     release_dependents(repo_root)
+    # Phase R1.3 -- load the routing policy + override ONCE per run (both fail
+    # open to a safe default / empty on absent/corrupt; neither ever raises).
+    # The policy file does not exist until gate R1.0, so this is {}/empty today
+    # and routing.resolve returns the built-in safe default -- see run()'s
+    # per-cadence routing block below.
+    routing_policy = routing.load_policy(repo_root)
+    routing_override = routing.load_override(repo_root)
     emitted: list[Path] = []
     for project, hb in _heartbeats(repo_root):
         try:
@@ -411,13 +487,53 @@ def run(repo_root: Path, tier: str, agent_id: str,
                     body="## Work order\n\n" + cadence.get("prompt", "").strip() + "\n",
                     state=state, autonomy=autonomy, assurance_class=assurance_class,
                     role=role,
+                    # Phase R1.3 -- a cadence MAY carry dispatcher-authored
+                    # `runtime:`/`model:` keys (the self-route / pre-set-card case);
+                    # they flow onto the card as the highest-precedence routing
+                    # input for resolve() below. Absent -> None (pure policy/
+                    # override routing). new_card enum-validates `runtime`, so a
+                    # bad value fails closed here at cadence granularity like any
+                    # other ValidationError. HEARTBEAT.md is dispatcher-authored
+                    # config (like `agent:`/`role:`), NOT untrusted card text.
+                    runtime=cadence.get("runtime"), model=cadence.get("model"),
                 )
             except cards.ValidationError as err:
                 # Fail closed at CADENCE granularity (see the Task 4.2 comment
                 # above): skip only this cadence, never the whole heartbeat.
                 print(f"WARN: skipping cadence {project}/{cadence['name']}: {err}")
                 continue
-            cards.claim(card, owner)
+            # Phase R1.3 -- resolve routing for the WORK card at the claim anchor.
+            # An unknown named model fails LOUD (wake + skip): never mis-driven,
+            # never silently substituted.
+            try:
+                routed = routing.resolve(card.meta, role,
+                                         cadence.get("risk-tier", "T1"),
+                                         routing_policy, routing_override)
+            except routing.RoutingError:
+                _emit_unroutable_wake(repo_root, project, cadence)
+                continue
+            # Owner-by-runtime (no race: `owner` is single-valued, one runner
+            # picks it up). An explicit cadence `agent:` still wins the OWNER, but
+            # its registered runtime must agree with the resolved runtime (else
+            # wake + skip rather than mis-own). With no `agent:`, claim as the
+            # resolved runtime's default_worker; when the registry has no worker
+            # for it (e.g. policy absent), fall back to the dispatcher (`owner`),
+            # preserving every pre-R1 path.
+            if "agent" in cadence:
+                owner_runtime = routing.runtime_of_worker(routing_policy, owner)
+                if owner_runtime is not None and owner_runtime != routed.runtime:
+                    _emit_owner_runtime_mismatch_wake(
+                        repo_root, project, cadence, owner,
+                        routed.runtime, owner_runtime)
+                    continue
+                claim_owner = owner
+            else:
+                claim_owner = routing.default_worker_for(routing_policy, routed.runtime) or owner
+            cards.claim(card, claim_owner)
+            # Phase R1.3 -- stamp the resolved (runtime, model) onto the WORK card
+            # only (never the inspect sibling: a future fresh session grades it).
+            # Mirrors the stamp_session line below.
+            cards.stamp_routing(card, routed.runtime, routed.model)
             # D1.1: `session_id` is populated ONLY for the cloud self-executing
             # carve-out case (the dispatcher claiming a card for its OWN
             # already-running session, per the Task D1.1 scope note above the
