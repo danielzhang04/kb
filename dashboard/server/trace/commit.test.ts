@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { commitTraceToOps, writeTrace, writeTraceFile } from './commit';
-import type { OpsGitRunner } from './commit';
+import { commitTraceToOps, writeTrace, writeTraceFile } from './commit.ts';
+import type { OpsGitRunner } from './commit.ts';
 
 const tmpDirs: string[] = [];
 async function scratch(): Promise<string> {

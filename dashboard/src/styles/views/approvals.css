@@ -1,0 +1,238 @@
+/*
+ * ============================================================================
+ * APPROVALS view (U3) — security-critical two-pane inbox
+ * ============================================================================
+ * Styling + layout ONLY. The client's verify/corroborate logic and the
+ * show-then-prompt ordering invariant are untouched here — CSS makes the
+ * visual hierarchy STATE that invariant, it never enforces it.
+ *
+ * Layout: LEFT = ranked pending list (mono id + tier badge, highest tier
+ * first; a T3 row wears a tier-t3 red LEFT-border — the badge + border ARE
+ * the language, no glow). RIGHT = the corroboration panel, wrapped in a
+ * border-strong frame with a "what your signature covers" caption so the
+ * operator reads what they're signing BEFORE any biometric prompt.
+ *
+ * Tokens only (docs/design-brief.md §A–F). Dark is default; every color
+ * resolves through a var() so the light remap in app.css carries for free.
+ * Signature obeyed: hairline borders, mono tabular-nums for ids/tiers,
+ * left-border accent = the single selected marker, 150–200ms ease-out only,
+ * one terracotta accent. Banned (glass/gradient/glow/rainbow) never appears.
+ * ============================================================================
+ */
+
+.v-approvals {
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) 1fr;
+  gap: var(--space-6);
+  align-items: start;
+  min-width: 0;
+}
+
+/* ---- LEFT: ranked pending list ---------------------------------------- */
+.v-approvals__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.v-approvals__list-head {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  color: var(--fg-dim);
+}
+
+/* Row = a full-width selectable button. A 2px transparent left rail keeps
+ * geometry stable across states; only the active/T3 marker paints it. */
+.v-approvals__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  background: var(--bg-panel);
+  color: var(--fg-dim);
+  border: 1px solid var(--border);
+  border-left: 2px solid transparent;
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  font: inherit;
+  font-size: var(--text-base);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 160ms ease-out,
+    border-color 160ms ease-out,
+    color 160ms ease-out;
+}
+
+.v-approvals__row:hover {
+  background: var(--bg-elevated);
+  color: var(--fg-primary);
+}
+
+.v-approvals__row:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: -1px;
+}
+
+/* T3 waiting: red left-border + the tier badge. NO glow — the border IS the
+ * treatment. Retained under selection (selection recolors it to accent). */
+.v-approvals__row--t3 {
+  border-left-color: var(--tier-t3);
+}
+
+/* Selected = the single left-border-accent language, learned once, reused. */
+.v-approvals__row--selected {
+  background: var(--accent-quiet);
+  color: var(--fg-primary);
+  border-left-color: var(--accent-strong);
+  font-weight: 500;
+}
+
+.v-approvals__row-id {
+  flex: 1 1 auto;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-variant-ligatures: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.v-approvals__row-badge {
+  flex: 0 0 auto;
+}
+
+/* ---- RIGHT: corroboration panel --------------------------------------- */
+
+/* Border-STRONG frame: this pane is weightier than a resting card — it holds
+ * what the signature covers. Still border-only (no shadow, no glow). */
+.v-approvals__panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  min-width: 0;
+}
+
+/* T3 selected: the frame echoes the tier-t3 language with a left accent —
+ * border only, never a glow or a fill wash. */
+.v-approvals__panel--t3 {
+  border-left: 2px solid var(--tier-t3);
+}
+
+.v-approvals__panel-head {
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+/* "This is what your signature covers" — states the ordering invariant. */
+.v-approvals__caption {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--fg-dim);
+}
+
+.v-approvals__fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-4);
+}
+
+.v-approvals__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+}
+
+.v-approvals__field-label {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-faint);
+}
+
+.v-approvals__field-value {
+  font-size: var(--text-base);
+  color: var(--fg-primary);
+}
+
+/* ids / actions / tiers are identifier-shaped -> mono tabular. */
+.v-approvals__field-value--mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-variant-ligatures: none;
+}
+
+/* Work-order body: a sunken reading well, mono, wraps, never truncates —
+ * the operator must be able to read every signed line. */
+.v-approvals__work-order {
+  margin: 0;
+  padding: var(--space-3);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sunken);
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+  line-height: 1.6;
+  color: var(--fg-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+}
+
+/* ---- Verify channels (present only when available; never disabled ghosts) */
+.v-approvals__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+/* ---- Placeholder (pending exist, none selected yet) ------------------- */
+.v-approvals__placeholder {
+  background: var(--bg-panel);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-8) var(--space-4);
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--fg-dim);
+}
+
+/* ---- Empty state (nothing waiting) — calm, not alarming --------------- */
+.v-approvals__empty {
+  grid-column: 1 / -1;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-12) var(--space-4);
+  text-align: center;
+  color: var(--fg-dim);
+}
+
+.v-approvals__empty-title {
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-md);
+  font-weight: 500;
+  color: var(--fg-primary);
+}
+
+.v-approvals__empty-sub {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--fg-faint);
+}

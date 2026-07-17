@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { joinToolResults } from './join';
-import type { TranscriptRecord } from './tailer';
+import { joinToolResults } from './join.ts';
+import type { TranscriptRecord } from './tailer.ts';
 
 describe('joinToolResults', () => {
   it('joins tool_result.tool_use_id to tool_use.id', () => {

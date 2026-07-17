@@ -1,0 +1,163 @@
+/*
+ * ============================================================================
+ * PROJECTS view (U3) — every org as a folder-style landing grid
+ * ============================================================================
+ * Landing: a grid of hairline project cards (project name in mono + cheap,
+ * honest metadata tags read from the org's own tree). Click a card to browse
+ * that org's subtree via the shared FolderView (folder.css), with a breadcrumb
+ * back to the grid. Shares the Files design language by construction.
+ *
+ * Signature obeyed (docs/design-brief.md §E–F): hairline borders; mono
+ * tabular-nums for project ids + counts; ONE terracotta accent (card hover
+ * border + active breadcrumb only); 150–200ms ease-out; no glass/gradient/glow;
+ * metadata is a calm tag/count taxonomy, never rainbow badges. Tokens only;
+ * dark default + light remap carry for free.
+ * ============================================================================
+ */
+
+.v-projects {
+  min-width: 0;
+}
+
+/* ---- Landing header ---------------------------------------------------- */
+.v-projects__header {
+  margin: 0 0 var(--space-6);
+}
+
+.v-projects__title {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.v-projects__subtitle {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-sm);
+  color: var(--fg-dim);
+}
+
+/* ---- States ----------------------------------------------------------- */
+.v-projects__loading,
+.v-projects__empty {
+  color: var(--fg-dim);
+  font-size: var(--text-sm);
+}
+
+.v-projects__error {
+  color: var(--error);
+  font-size: var(--text-sm);
+}
+
+/* ---- Project grid ----------------------------------------------------- */
+.v-projects__grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-4);
+}
+
+/* A card is a full flat hairline panel button. Hover lifts the border to the
+ * accent — the one terracotta touch, no fill wash, no shadow, no glow. */
+.v-projects__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: 100%;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-left: 2px solid transparent;
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 160ms ease-out,
+    border-color 160ms ease-out;
+}
+
+.v-projects__card:hover {
+  background: var(--bg-elevated);
+  border-left-color: var(--accent-strong);
+}
+
+.v-projects__card:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: -1px;
+}
+
+.v-projects__card-name {
+  font-size: var(--text-md);
+  font-weight: 500;
+  color: var(--fg-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.v-projects__card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* Presence tags: a calm mono chip, hairline framed — a label difference, not a
+ * new hue. STATE.md / _index.md read as "this org has the file", nothing more. */
+.v-projects__tag {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--fg-dim);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+  line-height: 1.6;
+}
+
+.v-projects__count {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  color: var(--fg-faint);
+}
+
+/* ---- Breadcrumb (project browse) -------------------------------------- */
+.v-projects__breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-sm);
+}
+
+.v-projects__crumb-back {
+  background: transparent;
+  border: none;
+  color: var(--accent-strong);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  padding: 0;
+  cursor: pointer;
+}
+
+.v-projects__crumb-back:hover {
+  text-decoration: underline;
+}
+
+.v-projects__crumb-sep {
+  color: var(--fg-faint);
+}
+
+.v-projects__crumb-current {
+  color: var(--fg-primary);
+}
+
+/* Give the opened project's explorer the same full-height treatment as Files. */
+.v-projects .v-folder__tree,
+.v-projects .v-folder__content {
+  max-height: calc(100vh - var(--topbar-h) - var(--space-8) * 2 - var(--space-8));
+}

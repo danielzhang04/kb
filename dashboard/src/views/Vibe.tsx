@@ -20,8 +20,8 @@ import { useCallback, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { foldRecords } from '../lib/timelineModel';
 import type { TimelineModel } from '../lib/timelineModel';
-import { parseRecord } from '../../server/planeB/tailer';
-import type { TranscriptRecord } from '../../server/planeB/tailer';
+import { parseRecord } from '../../server/planeB/record';
+import type { TranscriptRecord } from '../../server/planeB/record';
 import { Timeline } from './Timeline';
 
 export interface VibeStreamOutcome {

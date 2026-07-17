@@ -6,8 +6,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import Fastify from 'fastify';
 import type { FastifyInstance } from 'fastify';
 import type { FSWatcher } from 'chokidar';
-import { registerSse } from './sse';
-import { createBus, wirePlaneA } from './bus';
+import { registerSse } from './sse.ts';
+import { createBus, wirePlaneA } from './bus.ts';
 
 const REPO_A = fileURLToPath(new URL('../__fixtures__/repo-a/', import.meta.url));
 

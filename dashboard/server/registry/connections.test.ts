@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { indexConnections } from './connections';
+import { indexConnections } from './connections.ts';
 
 const REGISTRY_A = fileURLToPath(new URL('../__fixtures__/registry-a/', import.meta.url));
 

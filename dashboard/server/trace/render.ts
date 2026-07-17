@@ -18,11 +18,11 @@
  */
 
 import { dirname } from 'node:path';
-import { tailFrom } from '../planeB/tailer';
-import type { TranscriptRecord } from '../planeB/tailer';
-import { joinToolResults } from '../planeB/join';
-import { buildSubagentTree } from '../planeB/subagents';
-import type { SubagentNode } from '../planeB/subagents';
+import { tailFrom } from '../planeB/tailer.ts';
+import type { TranscriptRecord } from '../planeB/tailer.ts';
+import { joinToolResults } from '../planeB/join.ts';
+import { buildSubagentTree } from '../planeB/subagents.ts';
+import type { SubagentNode } from '../planeB/subagents.ts';
 
 /**
  * Tool payloads whose JSON serialization exceeds this many bytes are elided to a summary in the

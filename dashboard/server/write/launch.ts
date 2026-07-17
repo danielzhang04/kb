@@ -31,10 +31,10 @@
  * asserts against `## Feedback`, with this note inline.
  */
 import { execFileSync } from 'node:child_process';
-import { verifySession } from '../auth/session';
-import type { SessionConfig } from '../auth/session';
-import { assertFleetRunnable, defaultPreambleRunner } from './preambleGate';
-import type { PreambleRunner } from './preambleGate';
+import { verifySession } from '../auth/session.ts';
+import type { SessionConfig } from '../auth/session.ts';
+import { assertFleetRunnable, defaultPreambleRunner } from './preambleGate.ts';
+import type { PreambleRunner } from './preambleGate.ts';
 
 export type RiskTier = 'T1' | 'T2' | 'T3';
 

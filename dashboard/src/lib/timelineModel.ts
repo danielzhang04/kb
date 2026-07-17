@@ -11,8 +11,8 @@
  * The surface is message-granular (thinking → tool_use → tool_result, per-turn usage): there is NO
  * intra-turn token claim here — that arrives only with the v2 Broker.
  */
-import { joinToolResults } from '../../server/planeB/join';
-import type { TranscriptRecord } from '../../server/planeB/tailer';
+import { joinToolResults } from '../../server/planeB/join.ts';
+import type { TranscriptRecord } from '../../server/planeB/tailer.ts';
 
 /** Per-turn token usage, read from `message.usage` (message-granular, not intra-turn). */
 export interface TurnUsage {

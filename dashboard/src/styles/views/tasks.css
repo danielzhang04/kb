@@ -1,0 +1,305 @@
+/*
+ * ============================================================================
+ * TASKS view (U3) — the whole card queue, state-grouped, with a detail pane
+ * ============================================================================
+ * Layout: LEFT a scrollable column of state groups (each a dense table); RIGHT
+ * a sticky detail pane (frontmatter key/value + rendered card body). Tokens
+ * only (docs/design-brief.md §A–F); dark is default, the light remap in app.css
+ * carries through every var().
+ *
+ * Signature obeyed: hairline borders (shadows almost nowhere); mono tabular-nums
+ * for every id/tier/owner/project/count; the 2px left-border accent is the ONE
+ * selected marker (reused from nav/approvals — learned once); one terracotta
+ * accent, never a decorative wash; 150–200ms ease-out only. Banned (glass /
+ * gradient / glow / rainbow badge soup) never appears — new state taxonomies
+ * ride the shared status-dot + label, not new hues.
+ * ============================================================================
+ */
+
+.v-tasks {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+  gap: var(--space-6);
+  align-items: start;
+  min-width: 0;
+}
+
+/* ---- LEFT: state groups ------------------------------------------------ */
+.v-tasks__groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  min-width: 0;
+}
+
+.v-tasks__group {
+  min-width: 0;
+}
+
+.v-tasks__group-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+}
+
+.v-tasks__group-title {
+  margin: 0;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  color: var(--fg-dim);
+}
+
+/* A count, not a hue — mono tabular in a quiet pill. */
+.v-tasks__group-count {
+  font-size: var(--text-xs);
+  color: var(--fg-faint);
+  background: var(--bg-elevated);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+  min-width: 1.4em;
+  text-align: center;
+}
+
+.v-tasks__group-empty {
+  margin: 0;
+  padding: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--fg-faint);
+  background: var(--bg-panel);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+}
+
+/* ---- Dense table ------------------------------------------------------- */
+.v-tasks__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-base);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.v-tasks__table thead th {
+  padding: var(--space-1) var(--space-2);
+  text-align: left;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+  color: var(--fg-faint);
+  border-bottom: 1px solid var(--border);
+}
+
+.v-tasks__row {
+  /* 2px transparent left rail keeps geometry stable; only selection paints it. */
+  border-left: 2px solid transparent;
+  cursor: pointer;
+  transition:
+    background 160ms ease-out,
+    border-color 160ms ease-out,
+    color 160ms ease-out;
+}
+
+.v-tasks__row td {
+  padding: var(--space-2) var(--space-2);
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.v-tasks__row:last-child td {
+  border-bottom: none;
+}
+
+.v-tasks__row:hover {
+  background: var(--bg-elevated);
+}
+
+.v-tasks__row:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: -2px;
+}
+
+/* Selected = the single left-border-accent language, reused. */
+.v-tasks__row--selected {
+  background: var(--accent-quiet);
+  border-left-color: var(--accent-strong);
+}
+
+.v-tasks__cell-id {
+  font-size: var(--text-sm);
+  color: var(--fg-primary);
+  white-space: nowrap;
+}
+
+.v-tasks__cell-action {
+  color: var(--fg-primary);
+}
+
+.v-tasks__cell-owner,
+.v-tasks__cell-project {
+  font-size: var(--text-sm);
+  color: var(--fg-dim);
+  white-space: nowrap;
+}
+
+.v-tasks__cell--faint {
+  color: var(--fg-faint);
+}
+
+/* ---- RIGHT: detail pane ------------------------------------------------ */
+.v-tasks__detail,
+.v-tasks__placeholder {
+  position: sticky;
+  top: var(--space-4);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  min-width: 0;
+}
+
+.v-tasks__detail {
+  padding: var(--space-4);
+  max-height: calc(100vh - var(--topbar-h) - var(--space-12));
+  overflow-y: auto;
+}
+
+.v-tasks__placeholder {
+  border: 1px dashed var(--border);
+  padding: var(--space-12) var(--space-4);
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--fg-dim);
+}
+
+.v-tasks__detail-id {
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  line-height: 1.2;
+  word-break: break-word;
+}
+
+.v-tasks__detail-caption {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--fg-dim);
+}
+
+/* ---- Frontmatter key/value block (mono, aligned) ---------------------- */
+.v-tasks__frontmatter {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sunken);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.v-tasks__fm-row {
+  display: grid;
+  grid-template-columns: minmax(0, 9em) minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: baseline;
+}
+
+.v-tasks__fm-key {
+  font-size: var(--text-sm);
+  color: var(--fg-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.v-tasks__fm-val {
+  font-size: var(--text-sm);
+  color: var(--fg-primary);
+  word-break: break-word;
+}
+
+/* ---- Rendered card body (inert) --------------------------------------- */
+.v-tasks__body {
+  font-size: var(--text-base);
+  line-height: 1.6;
+  color: var(--fg-primary);
+  word-break: break-word;
+}
+
+.v-tasks__body h1,
+.v-tasks__body h2,
+.v-tasks__body h3,
+.v-tasks__body h4 {
+  font-size: var(--text-md);
+  font-weight: 600;
+  margin: var(--space-4) 0 var(--space-2);
+  color: var(--fg-primary);
+}
+
+.v-tasks__body h1:first-child,
+.v-tasks__body h2:first-child,
+.v-tasks__body h3:first-child {
+  margin-top: 0;
+}
+
+.v-tasks__body p {
+  margin: 0 0 var(--space-2);
+}
+
+.v-tasks__body ul {
+  margin: 0 0 var(--space-2);
+  padding-left: var(--space-4);
+}
+
+.v-tasks__body li {
+  margin: var(--space-1) 0;
+}
+
+.v-tasks__body code {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.05em 0.35em;
+}
+
+.v-tasks__body pre {
+  margin: 0 0 var(--space-2);
+  padding: var(--space-3);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sunken);
+  overflow-x: auto;
+}
+
+.v-tasks__body pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: var(--text-base);
+  line-height: 1.6;
+}
+
+.v-tasks__body blockquote {
+  margin: 0 0 var(--space-2);
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--border-strong);
+  color: var(--fg-dim);
+}
+
+.v-tasks__body a {
+  color: var(--accent-strong);
+}
+
+.v-tasks__body-empty {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--fg-faint);
+}

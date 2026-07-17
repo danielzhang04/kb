@@ -19,10 +19,10 @@
  * tests stay hermetic (no real `py` binary, no real `queue/` tree) and the DI seam is consistent
  * dashboard-wide.
  */
-import type { PlaneAIndex } from '../planeA/indexer';
-import type { ParsedCard } from '../planeA/cards';
-import { defaultPyRunner } from '../write/launch';
-import type { PyRunner, PyRunResult } from '../write/launch';
+import type { PlaneAIndex } from '../planeA/indexer.ts';
+import type { ParsedCard } from '../planeA/cards.ts';
+import { defaultPyRunner } from '../write/launch.ts';
+import type { PyRunner, PyRunResult } from '../write/launch.ts';
 
 export type ApprovalChannel = 'signed' | 'possession' | 'webauthn';
 

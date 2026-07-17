@@ -6,7 +6,7 @@
  */
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
-import { indexRepo } from './indexer';
+import { indexRepo } from './indexer.ts';
 
 /** dashboard/server/planeA/routes.ts → ../../../ is the repo root. Overridable for tests/config. */
 export function resolveRepoRoot(): string {

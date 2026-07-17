@@ -8,7 +8,7 @@
  * the value `promotion.decide()` emitted for this card — novelty is decided there (O9), never
  * recomputed here"). `buttonsFor` is the dashboard-side twin of that rule.
  */
-import type { ParsedCard } from '../planeA/cards';
+import type { ParsedCard } from '../planeA/cards.ts';
 
 /**
  * Mirrors `scripts/notify.py`'s `POSSESSION_ADMISSIBLE` frozenset EXACTLY — the only two assurance

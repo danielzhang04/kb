@@ -9,14 +9,14 @@
  */
 import { dirname, join } from 'node:path';
 import { readFile } from 'node:fs/promises';
-import { tailFrom } from '../planeB/tailer';
-import type { TranscriptRecord } from '../planeB/tailer';
-import { buildSubagentTree } from '../planeB/subagents';
-import type { SubagentNode } from '../planeB/subagents';
-import { foldRecords } from '../../src/lib/timelineModel';
-import type { SubagentInput, TimelineModel } from '../../src/lib/timelineModel';
-import { publishTailDelta } from '../hub/bus';
-import type { EventBus } from '../hub/bus';
+import { tailFrom } from '../planeB/tailer.ts';
+import type { TranscriptRecord } from '../planeB/tailer.ts';
+import { buildSubagentTree } from '../planeB/subagents.ts';
+import type { SubagentNode } from '../planeB/subagents.ts';
+import { foldRecords } from '../../src/lib/timelineModel.ts';
+import type { SubagentInput, TimelineModel } from '../../src/lib/timelineModel.ts';
+import { publishTailDelta } from '../hub/bus.ts';
+import type { EventBus } from '../hub/bus.ts';
 
 export interface StreamResult {
   /** The new records tailed on this pass (post-skip, post-offset). */

@@ -1,7 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { tailFrom } from './tailer';
-import { joinToolResults } from './join';
+import { tailFrom } from './tailer.ts';
+import { joinToolResults } from './join.ts';
 
 /** A `.meta.json` sidecar for a spawned subagent. */
 export interface SubagentMeta {

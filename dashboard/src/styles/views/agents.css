@@ -1,0 +1,127 @@
+/*
+ * Agents view (U3) — fleet roster. Dense .mc-table of agents derived from card ownership.
+ * Signature adherence: hairline borders (inherited from .mc-table), mono tabular-nums for ids/counts,
+ * status dots reuse the shared --status-* tokens, no new hue taxonomy, no glow/gradient. The single
+ * terracotta accent is spent only on the active-nav elsewhere — this view stays quiet/neutral.
+ * Tokens only; light + dark inherited from app.css :root remaps.
+ */
+
+.v-agents__title {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.v-agents__count {
+  color: var(--fg-faint);
+  font-weight: 400;
+}
+
+.v-agents__empty {
+  color: var(--fg-dim);
+  font-size: var(--text-base);
+}
+
+/* Table scrolls inside its own well rather than spilling the page — dense-data pattern. */
+.v-agents__table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
+}
+
+.v-agents__table {
+  min-width: 40rem;
+}
+
+/* Vertical rhythm a touch airier than the default dense table — a roster, not a log. */
+.v-agents__table th,
+.v-agents__table td {
+  padding: var(--space-2) var(--space-3);
+  vertical-align: middle;
+}
+
+/* Agent cell: status dot + mono id + a small state word. */
+.v-agents__agent {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.v-agents__state {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--fg-faint);
+}
+
+/* "Doing" cell: action (sans) beside the mono card id. */
+.v-agents__doing {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.v-agents__action {
+  color: var(--fg-primary);
+}
+
+.v-agents__card-id {
+  font-size: var(--text-sm);
+  color: var(--fg-dim);
+}
+
+.v-agents__idle {
+  color: var(--fg-faint);
+}
+
+/* Project chips — mono, hairline, neutral (not the accent; scope/identity, not action). */
+.v-agents__projects {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.v-agents__proj {
+  font-size: var(--text-xs);
+  color: var(--fg-dim);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+  line-height: 1.6;
+}
+
+.v-agents__col-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Disabled model placeholder — a visual slot for the Phase-R per-agent model toggle. Deliberately
+ * muted and inert: no accent, reduced opacity, help cursor to signal "not yet interactive".
+ */
+.v-agents__model {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.5rem;
+  font-size: var(--text-xs);
+  color: var(--fg-faint);
+  background: var(--bg-sunken);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-2);
+  line-height: 1.7;
+  opacity: 0.7;
+  cursor: help;
+}
+
+.v-agents__note {
+  margin: var(--space-3) 0 0;
+  font-size: var(--text-xs);
+  color: var(--fg-faint);
+  line-height: 1.5;
+}

@@ -5,14 +5,14 @@
  * `claude` binary, touches a real STOP file, or touches a real `ledgers/audit/**` file. Fully hermetic.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { mintSession } from '../auth/session';
-import type { SessionConfig } from '../auth/session';
-import type { PreambleRunner } from '../write/preambleGate';
-import type { AuditEvent, AuditRow } from '../audit/log';
-import { rateLimit, lockout } from '../security/ratelimit';
-import type { LockoutGuard } from '../security/ratelimit';
-import { spawnVibe } from './session';
-import type { SessionInput, VibeDeps, VibeHandlers, VibeProcess, VibeSpawner } from './session';
+import { mintSession } from '../auth/session.ts';
+import type { SessionConfig } from '../auth/session.ts';
+import type { PreambleRunner } from '../write/preambleGate.ts';
+import type { AuditEvent, AuditRow } from '../audit/log.ts';
+import { rateLimit, lockout } from '../security/ratelimit.ts';
+import type { LockoutGuard } from '../security/ratelimit.ts';
+import { spawnVibe } from './session.ts';
+import type { SessionInput, VibeDeps, VibeHandlers, VibeProcess, VibeSpawner } from './session.ts';
 
 const SECRET = Buffer.from('vibe-test-secret-do-not-reuse');
 const SESSION_CONFIG: SessionConfig = { secret: SECRET, now: () => 1_700_000_000_000 };

@@ -35,18 +35,18 @@
  * tail and static replay already share — a vibe-code session renders through that one code path too.
  */
 import { spawn as spawnChildProcess } from 'node:child_process';
-import { verifySession } from '../auth/session';
-import type { SessionConfig } from '../auth/session';
-import { assertFleetRunnable, defaultPreambleRunner } from '../write/preambleGate';
-import type { PreambleRunner } from '../write/preambleGate';
-import { appendAudit as defaultAppendAudit } from '../audit/log';
-import type { AppendAuditOptions, AuditRow, OpsGitRunner } from '../audit/log';
-import { rateLimit, lockout } from '../security/ratelimit';
-import type { LockoutGuard } from '../security/ratelimit';
-import { parseRecord } from '../planeB/tailer';
-import type { TranscriptRecord } from '../planeB/tailer';
-import { foldRecords } from '../../src/lib/timelineModel';
-import type { TimelineModel } from '../../src/lib/timelineModel';
+import { verifySession } from '../auth/session.ts';
+import type { SessionConfig } from '../auth/session.ts';
+import { assertFleetRunnable, defaultPreambleRunner } from '../write/preambleGate.ts';
+import type { PreambleRunner } from '../write/preambleGate.ts';
+import { appendAudit as defaultAppendAudit } from '../audit/log.ts';
+import type { AppendAuditOptions, AuditRow, OpsGitRunner } from '../audit/log.ts';
+import { rateLimit, lockout } from '../security/ratelimit.ts';
+import type { LockoutGuard } from '../security/ratelimit.ts';
+import { parseRecord } from '../planeB/tailer.ts';
+import type { TranscriptRecord } from '../planeB/tailer.ts';
+import { foldRecords } from '../../src/lib/timelineModel.ts';
+import type { TimelineModel } from '../../src/lib/timelineModel.ts';
 
 /** The bearer session token plus the config needed to verify it (mirrors `write/launch.ts`'s shape). */
 export interface SessionInput {

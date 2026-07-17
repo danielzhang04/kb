@@ -16,6 +16,7 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
+    "allowImportingTsExtensions": true,
     "noEmit": true
   },
   "include": ["server", "src", "vite.config.ts", "vitest.config.ts"]

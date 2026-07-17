@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import Fastify from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
-import { registerRegistry } from './routes';
+import { registerRegistry } from './routes.ts';
 
 const REGISTRY_A = fileURLToPath(new URL('../__fixtures__/registry-a/', import.meta.url));
 
