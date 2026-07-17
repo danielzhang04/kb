@@ -1,0 +1,191 @@
+/**
+ * C2 — the pure artifact-type registry (the convergence spine). These tests pin the seed prompts, the
+ * per-kind draft schemas, and the deploy mapping so a later edit can't silently break the contract the
+ * convergence UI (C3) and the deploy dispatcher (C4) depend on.
+ *
+ * The registry is PURE: no I/O, no network, no React, no Date.now. Every assertion below is deterministic.
+ * The one place the server is ground truth — the coordination-vs-durable split — is cross-checked against
+ * the exact prefixes `server/write/branch.ts#classifyTarget` uses (queue/ ledgers/ traces/ → coordination,
+ * everything else durable), mirrored locally in the registry (a client-pure module may not import a server
+ * module).
+ */
+import { describe, expect, it } from 'vitest';
+import {
+  seedTemplate,
+  validateDraft,
+  toDeploy,
+  ARTIFACT_KINDS,
+  type ArtifactKind,
+  type TaskDraft,
+  type SkillDraft,
+  type WorkflowDraft,
+  type ProjectDraft,
+} from './artifactTypes';
+
+describe('composer/artifactTypes — seeds', () => {
+  it('idea_seed_asks_for_type_disambiguation', () => {
+    const seed = seedTemplate('idea', 'a bot that watches the queue and pings me');
+    // Idea-first is binding: the unknown seed must ask the model to help decide which type the idea
+    // wants to become, and must name the four v1 kinds.
+    expect(seed).toMatch(/which (type|kind)/i);
+    for (const kind of ['task', 'workflow', 'skill', 'project']) {
+      expect(seed.toLowerCase()).toContain(kind);
+    }
+    // The operator's idea text is woven into the seed so the first turn has context.
+    expect(seed).toContain('a bot that watches the queue and pings me');
+    // `agent` is EXCLUDED from v1 (deferred to a later registry-design chunk) — the disambiguation seed
+    // must not offer it as a choosable type.
+    expect(seed).not.toMatch(/\bagent\b/i);
+  });
+
+  it('every concrete kind has a house-authored seed carrying its deploy contract', () => {
+    for (const kind of ARTIFACT_KINDS) {
+      const seed = seedTemplate(kind, 'my idea');
+      expect(seed.length).toBeGreaterThan(0);
+      expect(seed).toContain('my idea');
+    }
+  });
+});
+
+describe('composer/artifactTypes — draft schemas', () => {
+  it('task_draft_maps_to_launch_fields', () => {
+    const draft: TaskDraft = {
+      project: 'm1-dashboard',
+      action: 'build',
+      target: 'src/foo.ts',
+      riskTier: 'T2',
+      body: 'do the thing',
+    };
+    expect(validateDraft('task', draft)).toEqual([]);
+    const plan = toDeploy('task', draft);
+    // A Task maps to exactly the fields LaunchControls POSTs to /api/write/launch (server truth:
+    // scripts/cards.py#_validate REQUIRED project/action/target/risk-tier).
+    expect(plan.launchFields).toEqual({
+      project: 'm1-dashboard',
+      action: 'build',
+      target: 'src/foo.ts',
+      riskTier: 'T2',
+      body: 'do the thing',
+    });
+  });
+
+  it('task draft reports problems for missing fields and a bad risk tier', () => {
+    const bad: TaskDraft = { project: '', action: '', target: '', riskTier: 'T9' as TaskDraft['riskTier'], body: '' };
+    const problems = validateDraft('task', bad);
+    const fields = problems.map((p) => p.field);
+    expect(fields).toContain('project');
+    expect(fields).toContain('action');
+    expect(fields).toContain('target');
+    expect(fields).toContain('riskTier');
+  });
+
+  it('skill_draft_requires_name_and_description_frontmatter', () => {
+    const ok: SkillDraft = { name: 'Queue Watcher', description: 'pings on new inbox cards', body: '# body' };
+    expect(validateDraft('skill', ok)).toEqual([]);
+
+    const missing: SkillDraft = { name: '', description: '', body: '' };
+    const fields = validateDraft('skill', missing).map((p) => p.field);
+    // registry/skills.ts reads exactly `name` + `description` frontmatter — both are required.
+    expect(fields).toContain('name');
+    expect(fields).toContain('description');
+  });
+
+  it('workflow_draft_requires_wf_prefixed_filename', () => {
+    const ok: WorkflowDraft = { filename: 'wf_nightly.md', body: 'steps' };
+    expect(validateDraft('workflow', ok)).toEqual([]);
+
+    const badName = validateDraft('workflow', { filename: 'nightly.md', body: 'steps' });
+    expect(badName.map((p) => p.field)).toContain('filename');
+
+    const badBody = validateDraft('workflow', { filename: 'wf_nightly.md', body: '' });
+    expect(badBody.map((p) => p.field)).toContain('body');
+  });
+
+  it('project_draft_renders_four_template_files', () => {
+    const draft: ProjectDraft = { name: 'atlas', date: '2026-07-17' };
+    expect(validateDraft('project', draft)).toEqual([]);
+    const plan = toDeploy('project', draft);
+
+    // Primary action is ONE file — the rendered _index.md (Daniel's v1 decision: multi-file artifacts
+    // deploy the primary file only; the other three ride along as followUps the UI can offer as saves).
+    expect(plan.relpath).toBe('orgs/atlas/_index.md');
+    expect(plan.content).toContain('atlas — index');
+    expect(plan.content).not.toContain('{{name}}');
+
+    const all = [plan, ...(plan.followUps ?? [])];
+    expect(all.map((f) => f.relpath).sort()).toEqual([
+      'orgs/atlas/HEARTBEAT.md',
+      'orgs/atlas/STATE.md',
+      'orgs/atlas/_index.md',
+      'orgs/atlas/contract.md',
+    ]);
+    // Placeholders are fully substituted across every rendered file.
+    for (const f of all) {
+      expect(f.content).not.toContain('{{name}}');
+      expect(f.content).not.toContain('{{date}}');
+    }
+    // {{date}} was actually filled where the template uses it (STATE.md).
+    const state = all.find((f) => f.relpath.endsWith('STATE.md'))!;
+    expect(state.content).toContain('2026-07-17');
+  });
+
+  it('invalid_draft_reports_problems_and_blocks_deploy', () => {
+    const bad: SkillDraft = { name: '', description: '', body: '' };
+    const problems = validateDraft('skill', bad);
+    expect(problems.length).toBeGreaterThan(0);
+    // Deploy is blocked at the registry level: toDeploy refuses an invalid draft rather than emitting a
+    // half-formed plan the UI might send to a governed endpoint.
+    expect(() => toDeploy('skill', bad)).toThrow();
+  });
+});
+
+describe('composer/artifactTypes — deploy mapping', () => {
+  it('toDeploy_task_is_coordination_others_durable', () => {
+    const task = toDeploy('task', {
+      project: 'p',
+      action: 'a',
+      target: 't',
+      riskTier: 'T1',
+      body: '',
+    });
+    expect(task.kind).toBe('task');
+    expect(task.branchClass).toBe('coordination');
+    expect(task.endpoint).toBe('launch');
+    // Agreement with classifyTarget: a coordination relpath starts with one of queue/ ledgers/ traces/.
+    expect(task.relpath.startsWith('queue/')).toBe(true);
+
+    const durable: Array<[ArtifactKind, unknown]> = [
+      ['skill', { name: 'n', description: 'd', body: 'b' } satisfies SkillDraft],
+      ['workflow', { filename: 'wf_x.md', body: 'b' } satisfies WorkflowDraft],
+      ['project', { name: 'proj', date: '2026-07-17' } satisfies ProjectDraft],
+    ];
+    for (const [kind, draft] of durable) {
+      const plan = toDeploy(kind, draft as never);
+      expect(plan.branchClass).toBe('durable');
+      expect(plan.endpoint).toBe('save');
+      // None of the durable relpaths fall under a coordination prefix.
+      for (const prefix of ['queue/', 'ledgers/', 'traces/']) {
+        expect(plan.relpath.startsWith(prefix)).toBe(false);
+      }
+    }
+  });
+
+  it('skill_targets_learned_tier_never_curated', () => {
+    const plan = toDeploy('skill', { name: 'Queue Watcher', description: 'd', body: 'b' });
+    // Daniel's binding decision: Composer skills land in the LEARNED tier (never mirrored/synced by the
+    // sync_skills hook); a human promotes to curated later. The path must be skills/learned/<slug>/SKILL.md.
+    expect(plan.relpath).toMatch(/^skills\/learned\/[a-z0-9-]+\/SKILL\.md$/);
+    expect(plan.relpath).not.toContain('curated');
+    // Frontmatter the registry reads is present in the emitted content.
+    expect(plan.content).toContain('name: Queue Watcher');
+    expect(plan.content).toContain('description: d');
+  });
+
+  it('workflow deploy targets workflows/wf_<name>.md durable-save', () => {
+    const plan = toDeploy('workflow', { filename: 'wf_nightly.md', body: 'the steps' });
+    expect(plan.relpath).toBe('workflows/wf_nightly.md');
+    expect(plan.content).toContain('the steps');
+    expect(plan.branchClass).toBe('durable');
+    expect(plan.endpoint).toBe('save');
+  });
+});
