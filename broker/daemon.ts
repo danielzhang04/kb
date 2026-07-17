@@ -20,7 +20,7 @@
  * that broker/verbs.ts depends on — importing the boot's transport/dispatch graph into index.ts would
  * create an index↔verbs runtime import cycle. pm2.config.cjs points `script` here.
  */
-import { mkdirSync, writeFileSync, statSync, rmSync } from 'node:fs';
+import { mkdirSync, writeFileSync, statSync, lstatSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { SessionOwner } from './index.ts';
@@ -57,11 +57,24 @@ export function resolveControlPaths(
 
 /** Write the per-boot token to an owner-only file, with an explicit restriction AND a post-write verify on
  *  BOTH platforms (L-2). POSIX: dir 0700 + file 0600, then stat-verify no group/other bits. win32: create
- *  with an explicit owner-only DACL (daemon SID + SYSTEM) via win32Api, then read the DACL back and verify
- *  it grants no broad trustee. On any verification failure the file is unlinked and the boot fails closed.
- *  NEVER logs the token. */
+ *  with an explicit owner-only DACL (daemon SID + SYSTEM) + a Medium integrity label via win32Api, then read
+ *  the DACL back and verify it grants ONLY the daemon SID + SYSTEM (allowlist). Either verification failing
+ *  unlinks the file and fails the boot closed. F7: refuse to write through a pre-positioned symlink/reparse
+ *  point at the token path. NEVER logs the token. */
 export function writeTokenFile(tokenPath: string, token: string, platform: NodeJS.Platform): void {
   const dir = dirname(tokenPath);
+  // F7: if something already sits at the token path and it is a symlink/junction/reparse point, refuse —
+  // writing through it could redirect the token to an attacker-chosen location. (win32 additionally opens
+  // with FILE_FLAG_OPEN_REPARSE_POINT so a race-created reparse point is not followed either.)
+  let existing: ReturnType<typeof lstatSync> | null = null;
+  try {
+    existing = lstatSync(tokenPath);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err; // not-exists is fine; anything else is fatal
+  }
+  if (existing?.isSymbolicLink()) {
+    throw new Error(`token path '${tokenPath}' is a symlink/reparse point; refusing to write through it; fail-closed`);
+  }
   if (platform === 'win32') {
     mkdirSync(dir, { recursive: true });
     // Explicit owner-only DACL + post-write DACL read-back verify (inside writeOwnerOnlyFile).

@@ -63,6 +63,27 @@ interface KoffiLib {
   sizeof(type: unknown): number;
   out(type: unknown): unknown;
   pointer(type: unknown): unknown;
+  view(ptr: unknown, len: number): Uint8Array;
+}
+
+/**
+ * Pure allowlist check for a token-file security descriptor's SDDL (extracted for unit testing): the DACL
+ * must grant ONLY the daemon SID and SYSTEM (nothing else — a stricter allowlist than a broad-trustee
+ * blocklist), and a Medium mandatory-integrity label must be present. Returns false on anything unexpected.
+ */
+export function sddlIsOwnerOnly(sddl: string, ownerSid: string): boolean {
+  if (!ownerSid) return false;
+  const SYSTEM_SDDL_ALIASES = new Set(['SY', 'S-1-5-18']);
+  // DACL run: `D:` + optional flag letters + zero-or-more (ACE) groups, stopping before the SACL `S:`.
+  const dm = sddl.match(/D:[A-Z]*((?:\([^)]*\))*)/);
+  if (!dm) return false;
+  const trustees = [...dm[1].matchAll(/\(([^)]*)\)/g)].map((m) => m[1].split(';').pop() ?? '');
+  if (trustees.length === 0) return false;
+  const everyTrusteeAllowed = trustees.every((t) => t === ownerSid || SYSTEM_SDDL_ALIASES.has(t));
+  const hasOwner = trustees.includes(ownerSid);
+  // Medium mandatory label (ML) at level ME present in the SACL.
+  const hasMediumLabel = /S:[A-Z]*\(ML;[^)]*;ME\)/.test(sddl);
+  return everyTrusteeAllowed && hasOwner && hasMediumLabel;
 }
 
 /** The full native surface: peer-credential + pipe transport + the daemon's own SID (for expectedOwnerId). */
@@ -107,8 +128,8 @@ const CREATE_ALWAYS = 2;
 const FILE_ATTRIBUTE_NORMAL = 0x80;
 const SE_FILE_OBJECT = 1;
 const DACL_SECURITY_INFORMATION = 0x00000004;
-/** SDDL substrings for broad trustees a token file must NOT grant (Everyone, Authenticated Users, Users…). */
-const BROAD_TRUSTEES = ['S-1-1-0', ';WD)', ';AU)', ';BU)', ';AN)', ';WD;', ';AU;', 'S-1-5-11', 'S-1-5-32-545'];
+const LABEL_SECURITY_INFORMATION = 0x00000010;
+const FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000;
 
 const POLL_MS = 10;
 const READ_CHUNK = 8192;
@@ -161,9 +182,11 @@ export function loadWin32Api(): Win32Api {
   const LocalFree = k32.func('__stdcall', 'LocalFree', HANDLE, [HANDLE]);
   const GetNamedSecurityInfoW = adv.func('__stdcall', 'GetNamedSecurityInfoW', 'uint32',
     ['str16', 'int', 'uint32', 'void *', 'void *', 'void *', 'void *', 'void *']);
+  // 4th arg = LPWSTR* (we pass our own slot so we get the raw pointer to LocalFree it — no leak); 5th =
+  // PULONG length (chars incl. NUL). We read the string from the pointer via koffi.view (see verify below).
   const ConvertSecurityDescriptorToStringSecurityDescriptorW = adv.func('__stdcall',
     'ConvertSecurityDescriptorToStringSecurityDescriptorW', 'bool',
-    ['void *', 'uint32', 'uint32', koffi.out(koffi.pointer('str16')), 'void *']);
+    ['void *', 'uint32', 'uint32', 'void *', 'uint32 *']);
 
   const SECURITY_ATTRIBUTES = koffi.struct('SECURITY_ATTRIBUTES', {
     nLength: 'uint32',
@@ -325,8 +348,9 @@ export function loadWin32Api(): Win32Api {
     writeOwnerOnlyFile: (filePath: string, data: string): boolean => {
       try {
         if (!daemonSid) return false;
-        // Owner-only file DACL: full access to the daemon SID + SYSTEM, protected (P = no inheritance).
-        const sddl = `D:P(A;;FA;;;${daemonSid})(A;;FA;;;SY)`;
+        // DACL: daemon SID + SYSTEM only (protected — P). SACL label S:(ML;;NRNWNX;;;ME) (F4): a same-user
+        // LOW-integrity process cannot read (NR), write (NW) or execute (NX) up to this Medium file.
+        const sddl = `D:P(A;;FA;;;${daemonSid})(A;;FA;;;SY)S:(ML;;NRNWNX;;;ME)`;
         const sdOut = koffi.alloc(HANDLE, 1);
         if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl, SDDL_REVISION_1, sdOut, null)) return false;
         const pSD = koffi.decode(sdOut, HANDLE);
@@ -336,9 +360,12 @@ export function loadWin32Api(): Win32Api {
           lpSecurityDescriptor: pSD,
           bInheritHandle: 0,
         });
-        // CREATE_ALWAYS with an explicit SD → the new file's DACL is exactly the SDDL above (used verbatim,
-        // not inherited). Synchronous handle: a 64-byte token writes instantly (boot path, not per-conn).
-        const h = CreateFileW(filePath, GENERIC_WRITE, 0, sa, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, null);
+        // CREATE_ALWAYS + explicit SD → the new file's DACL/label are exactly the SDDL above (verbatim, not
+        // inherited). FILE_FLAG_OPEN_REPARSE_POINT (F7): never traverse a race-created symlink/junction at
+        // the path — open the reparse point itself, so the token can't be redirected to an attacker target.
+        const h = CreateFileW(
+          filePath, GENERIC_WRITE, 0, sa, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, null,
+        );
         try {
           LocalFree(pSD);
         } catch {
@@ -354,22 +381,35 @@ export function loadWin32Api(): Win32Api {
           CloseHandle(h);
         }
         if (!wrote) return false;
-        // VERIFY: read the file's DACL back as an SDDL string; it must name the daemon SID and NO broad
-        // trustee (Everyone / Authenticated Users / Users). Symmetry with the POSIX 0600 + stat-verify.
+        // VERIFY (residual: ALLOWLIST): read the file's DACL + label back and assert the DACL grants ONLY
+        // the daemon SID + SYSTEM and the Medium label is present. The SDDL string is read via koffi.view
+        // from the LocalAlloc'd pointer and then LocalFree'd (residual: no leak).
         const sd2 = koffi.alloc(HANDLE, 1);
-        const rc = GetNamedSecurityInfoW(filePath, SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, null, null, null, null, sd2) as number;
+        const secInfo = DACL_SECURITY_INFORMATION | LABEL_SECURITY_INFORMATION;
+        const rc = GetNamedSecurityInfoW(filePath, SE_FILE_OBJECT, secInfo, null, null, null, null, sd2) as number;
         if (rc !== 0) return false;
         const pSD2 = koffi.decode(sd2, HANDLE);
+        const strBuf = koffi.alloc(HANDLE, 1);
+        const lenBuf = koffi.alloc('uint32', 1);
+        let strPtr: unknown = null;
         try {
-          const holder: (string | null)[] = [null];
-          if (!ConvertSecurityDescriptorToStringSecurityDescriptorW(pSD2, SDDL_REVISION_1, DACL_SECURITY_INFORMATION, holder, null)) {
+          if (!ConvertSecurityDescriptorToStringSecurityDescriptorW(pSD2, SDDL_REVISION_1, secInfo, strBuf, lenBuf)) {
             return false;
           }
-          const dacl = String(holder[0] ?? '');
-          if (!dacl.includes(daemonSid)) return false;
-          if (BROAD_TRUSTEES.some((b) => dacl.includes(b))) return false;
-          return true;
+          strPtr = koffi.decode(strBuf, HANDLE);
+          const charLen = koffi.decode(lenBuf, 'uint32') as number;
+          if (!charLen || charLen > 4096) return false;
+          const bytes = Buffer.from(koffi.view(strPtr, charLen * 2)); // wchar_t = 2 bytes
+          const dacl = bytes.toString('utf16le').replace(/\0[\s\S]*$/, '').trim();
+          return sddlIsOwnerOnly(dacl, daemonSid);
         } finally {
+          if (strPtr != null) {
+            try {
+              LocalFree(strPtr);
+            } catch {
+              /* ignore */
+            }
+          }
           try {
             LocalFree(pSD2);
           } catch {
