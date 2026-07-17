@@ -57,10 +57,17 @@ function cls(value: string): string | undefined {
   return value === '' ? undefined : value;
 }
 
+/** C7.7 — one selectable owner for the launch picker. `runnerBound` drives the honest inline warning. */
+export interface OwnerOption {
+  id: string;
+  runnerBound: boolean;
+}
+
 export function LaunchControls({
   sessionToken,
   variant = 'control',
   onRequestSession,
+  owners = [],
 }: {
   sessionToken?: string;
   variant?: Variant;
@@ -68,6 +75,10 @@ export function LaunchControls({
    *  standing session and a submit runs the WebAuthn ceremony inline instead of gating behind a wall.
    *  Absent (direct component tests / dormant Control) → the fail-closed disabled+nudge behaviour. */
   onRequestSession?: () => Promise<Session | null>;
+  /** C7.7 — the closed set of assignable owners (declared agents ∪ registered default_workers), for the
+   *  optional owner `<select>`. HONEST PREVIEW ONLY — the server re-validates against the filesystem-
+   *  enumerated set and is the authoritative boundary. Empty (default) → blank/unowned is the only choice. */
+  owners?: OwnerOption[];
 }): React.JSX.Element {
   const c = CHROME[variant];
 
@@ -83,8 +94,15 @@ export function LaunchControls({
   const [action, setAction] = useState('');
   const [target, setTarget] = useState('');
   const [riskTier, setRiskTier] = useState<'T1' | 'T2' | 'T3'>('T1');
+  const [owner, setOwner] = useState('');
   const [body, setBody] = useState('');
   const [launchStatus, setLaunchStatus] = useState<string | null>(null);
+
+  // C7.7 — the selected owner's runner-bound status. `false` (declared, no runner) → an honest inline
+  // warning: the card is legitimately PARKED until a runner is bound. Selection is still allowed ("assign
+  // now, bind soon"); the server closed-set check — not the warning — gates registration.
+  const selectedOwner = owners.find((o) => o.id === owner) ?? null;
+  const showUnboundWarning = selectedOwner !== null && !selectedOwner.runnerBound;
 
   const [rerunCardId, setRerunCardId] = useState('');
   const [feedback, setFeedback] = useState('');
@@ -103,10 +121,13 @@ export function LaunchControls({
       return;
     }
     try {
+      // C7.7 — include `owner` ONLY when chosen; a blank owner preserves today's unowned-card launch.
+      const payload: Record<string, unknown> = { project, action, target, riskTier, body };
+      if (owner) payload.owner = owner;
       const res = await fetch('/api/write/launch', {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-        body: JSON.stringify({ project, action, target, riskTier, body }),
+        body: JSON.stringify(payload),
       });
       const data = (await res.json()) as { cardId?: string; reason?: string };
       setLaunchStatus(res.ok ? `launched ${data.cardId}` : `refused: ${data.reason ?? res.status}`);
@@ -179,6 +200,24 @@ export function LaunchControls({
           <option value="T2">T2</option>
           <option value="T3">T3</option>
         </select>
+        <select
+          className={cls(c.input)}
+          aria-label="Owner"
+          value={owner}
+          onChange={(e) => setOwner(e.target.value)}
+        >
+          <option value="">unowned</option>
+          {owners.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.runnerBound ? o.id : `${o.id} (no runner)`}
+            </option>
+          ))}
+        </select>
+        {showUnboundWarning ? (
+          <p className={cls(c.warning)} data-testid="owner-unbound-warning" role="alert">
+            will not execute until a runner is bound to {owner}
+          </p>
+        ) : null}
         <textarea
           className={cls(c.input)}
           aria-label="Work order body"
