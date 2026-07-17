@@ -26,6 +26,7 @@ import { routeWrite, defaultGitRunner, defaultPrOpener } from './branch.ts';
 import type { GitRunner, PrOpener, RouteOptions, Target } from './branch.ts';
 import { parseYaml } from '../routing/yaml.ts';
 import { loadPolicy } from '../routing/policy.ts';
+import { parseCardFrontmatter } from '../planeA/cards.ts';
 
 export type SaveOutcome =
   | { ok: true; target: Target }
@@ -179,6 +180,14 @@ function agentRunnerBoundForbidden(repoRoot: string, abs: string, content: strin
  * Reuses the SAME canonical registry `routingOverride.ts#validateSet` reads (`loadPolicy` from
  * `routing/policy.ts`, `policy.runtimes[<rt>].known_models`) rather than inventing a second reader.
  *
+ * Parses frontmatter via the SAME shared reader `readDeclaredAgents` uses (`parseCardFrontmatter`,
+ * `planeA/cards.ts`) rather than an ad-hoc whole-content regex, so the guard and the roster can never
+ * disagree on what `model:`/`runtime:` a card declares (review MED-1: a whole-content regex with
+ * looser key matching than `parseCardFrontmatter`'s `line.slice(0, colon).trim()` let a
+ * space-before-colon key like `model : gpt-9000-fake` slip past this guard while the roster still read
+ * it as a real `model` field — silently clamped later at launch. Frontmatter-scoping also fixes LOW-1:
+ * a `model:`-shaped line in the BODY prose can no longer false-trigger this guard).
+ *
  * Scope — a deliberate judgment call: the check fires ONLY when BOTH (a) a `runtime:` is declared AND
  * that runtime is registered in the policy, AND (b) a `model:` is declared. `model:` omitted is legal
  * (the design lets an agent inherit the role x tier policy model — R2.1/C7.9) and always passes. An
@@ -199,15 +208,18 @@ function agentModelKnownGuard(repoRoot: string, abs: string, content: string): s
   const rel = relative(resolve(repoRoot), abs).split(sep).join('/').replace(/^\/+/, '');
   if (!/^agents\/[^/]+\.md$/i.test(rel)) return null;
 
-  const modelMatch = /^\s*model:\s*(.+?)\s*$/im.exec(content);
-  if (!modelMatch) return null; // model omitted: legal, inherits the role x tier policy model
-  const model = modelMatch[1].replace(/^["']|["']$/g, '').trim();
-  if (model === '') return null;
+  let meta: Record<string, unknown>;
+  try {
+    meta = parseCardFrontmatter(content).meta as Record<string, unknown>;
+  } catch {
+    return null; // unterminated/absent frontmatter -> readDeclaredAgents skips it too; fail open, consistent
+  }
 
-  const runtimeMatch = /^\s*runtime:\s*(.+?)\s*$/im.exec(content);
-  if (!runtimeMatch) return null; // no declared runtime -> nothing to validate the model against
-  const runtime = runtimeMatch[1].replace(/^["']|["']$/g, '').trim();
-  if (runtime === '') return null;
+  const model = typeof meta.model === 'string' ? meta.model.trim() : '';
+  if (model === '') return null; // model omitted: legal, inherits the role x tier policy model
+
+  const runtime = typeof meta.runtime === 'string' ? meta.runtime.trim() : '';
+  if (runtime === '') return null; // no declared runtime -> nothing to validate the model against
 
   const policy = loadPolicy(repoRoot);
   const spec = policy.runtimes?.[runtime];
