@@ -80,23 +80,23 @@ describe('Control view', () => {
   });
 
   it('lands on Control view by default, another view reachable via the sidebar nav', () => {
-    // U1: the App shell's default nav item is "Board"; the Control component itself is unchanged and
-    // still self-labels aria-label="Control view". (The old CodeView stub was retired from the nav.)
+    // U2.5: the App shell's default nav item is "Home" (entity-first IA); the Control component itself
+    // is unchanged and still self-labels aria-label="Control view".
     render(<App />);
 
-    // Default landing is the Control view; the Editor view is not mounted yet.
+    // Default landing is the Control (Home) view; the Files view is not mounted yet.
     expect(screen.getByLabelText('Control view')).toBeTruthy();
-    expect(screen.queryByLabelText('Editor')).toBeNull();
+    expect(screen.queryByLabelText('Files view')).toBeNull();
 
-    // The sidebar's Editor nav item switches to the Editor view.
-    fireEvent.click(screen.getByRole('button', { name: 'Editor' }));
-    expect(screen.getByLabelText('Editor')).toBeTruthy();
+    // The sidebar's Files nav item switches to the Files view.
+    fireEvent.click(screen.getByRole('button', { name: 'Files' }));
+    expect(screen.getByLabelText('Files view')).toBeTruthy();
     expect(screen.queryByLabelText('Control view')).toBeNull();
 
-    // And the Board nav item switches back to Control.
-    fireEvent.click(screen.getByRole('button', { name: 'Board' }));
+    // And the Home nav item switches back to Control.
+    fireEvent.click(screen.getByRole('button', { name: 'Home' }));
     expect(screen.getByLabelText('Control view')).toBeTruthy();
-    expect(screen.queryByLabelText('Editor')).toBeNull();
+    expect(screen.queryByLabelText('Files view')).toBeNull();
   });
 });
 

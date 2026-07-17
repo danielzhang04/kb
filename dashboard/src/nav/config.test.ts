@@ -1,13 +1,16 @@
 /**
- * U1 — nav config module. The sidebar IA is a single typed array (one entry per destination) so a
- * new layer/agent/workflow is a one-line config add. These tests pin the config's SHAPE and the
- * brief's §D grouping/ordering/greying so a later edit can't silently drop or mis-tier a destination.
+ * U2.5 — nav config module (entity-first IA). The sidebar IA is a single typed array of divider-
+ * separated, UNLABELLED groups (one entry per destination). These tests pin the config's SHAPE and the
+ * locked entity-first grouping/ordering/greying so a later edit can't silently drop, re-tier, or
+ * re-introduce a group label / a dropped destination.
  */
 import { describe, expect, it } from 'vitest';
 import {
   NAV_SECTIONS,
   DEFAULT_DESTINATION,
+  NEW_MENU_ENTRIES,
   isLive,
+  type NavSection,
   type NavStatus,
   type DestinationId,
 } from './config';
@@ -16,17 +19,37 @@ const ALL = NAV_SECTIONS.flatMap((s) => s.items);
 const STATUSES: NavStatus[] = ['live', 'soon', 'future'];
 
 describe('nav/config', () => {
-  it('is a grouped array of four sections in brief order', () => {
-    expect(NAV_SECTIONS.map((s) => s.label)).toEqual(['Operate', 'Build', 'Knowledge', 'System']);
+  it('is three unlabelled, divider-separated groups in the locked order', () => {
+    expect(NAV_SECTIONS.map((s) => s.id)).toEqual(['primary', 'entities', 'system']);
     for (const section of NAV_SECTIONS) {
       expect(section.id).toBeTruthy();
       expect(section.items.length).toBeGreaterThan(0);
+      // Entity-first IA: sections carry NO human label — there is nothing to render as a group header.
+      expect((section as NavSection & { label?: unknown }).label).toBeUndefined();
     }
+  });
+
+  it('orders each group exactly as the locked IA', () => {
+    expect(NAV_SECTIONS[0].items.map((d) => d.id)).toEqual([
+      'home',
+      'approvals',
+      'activity',
+      'atlas',
+      'terminal',
+    ]);
+    expect(NAV_SECTIONS[1].items.map((d) => d.id)).toEqual([
+      'workflows',
+      'agents',
+      'tasks',
+      'projects',
+      'files',
+    ]);
+    expect(NAV_SECTIONS[2].items.map((d) => d.id)).toEqual(['connectors', 'ledgers']);
   });
 
   it('every destination has a unique id, a label, an icon and a valid status', () => {
     const ids = ALL.map((d) => d.id);
-    expect(new Set(ids).size).toBe(ids.length); // ids unique across ALL sections
+    expect(new Set(ids).size).toBe(ids.length);
     for (const dest of ALL) {
       expect(dest.label.length).toBeGreaterThan(0);
       expect(dest.icon.length).toBeGreaterThan(0);
@@ -44,35 +67,57 @@ describe('nav/config', () => {
     }
   });
 
-  it('lands on Board by default and Board is a live Operate destination', () => {
-    expect(DEFAULT_DESTINATION).toBe('board');
-    const board = ALL.find((d) => d.id === 'board');
-    expect(board && isLive(board)).toBe(true);
-    // Board is the first item of the first section.
-    expect(NAV_SECTIONS[0].items[0].id).toBe('board');
+  it('drops every superseded verb-IA destination', () => {
+    const ids = new Set<string>(ALL.map((d) => d.id));
+    for (const dropped of ['board', 'editor', 'vibe', 'skills', 'registry', 'pipeline', 'sentinel']) {
+      expect(ids.has(dropped)).toBe(false);
+    }
+    // "timeline" and "browser" were renamed to entity destinations, not kept.
+    expect(ids.has('timeline')).toBe(false);
+    expect(ids.has('browser')).toBe(false);
   });
 
-  it('exposes the brief §D destinations with the right build states', () => {
+  it('lands on Home by default, and Home is the first live item of the first group', () => {
+    expect(DEFAULT_DESTINATION).toBe('home');
+    const home = ALL.find((d) => d.id === 'home');
+    expect(home && isLive(home)).toBe(true);
+    expect(NAV_SECTIONS[0].items[0].id).toBe('home');
+  });
+
+  it('exposes the entity-first destinations with the right build states', () => {
     const status = (id: DestinationId) => ALL.find((d) => d.id === id)?.status;
-    // Reachable now.
-    for (const id of ['board', 'approvals', 'timeline', 'editor', 'vibe', 'registry', 'browser'] as const) {
+    // Reachable now (real view or U3 placeholder).
+    for (const id of [
+      'home',
+      'approvals',
+      'activity',
+      'workflows',
+      'agents',
+      'tasks',
+      'projects',
+      'files',
+      'connectors',
+      'ledgers',
+    ] as const) {
       expect(status(id)).toBe('live');
     }
-    // Greyed placeholders (soon/future) — present in the IA, not yet built.
+    // Greyed "soon" stubs — present in the IA, not yet reachable.
+    expect(status('atlas')).toBe('soon');
     expect(status('terminal')).toBe('soon');
-    for (const id of ['pipeline', 'atlas', 'agents', 'ledgers', 'sentinel'] as const) {
-      expect(status(id)).toBe('future');
-    }
   });
 
-  it('places each destination in its brief §D group', () => {
-    const group = (id: DestinationId) =>
-      NAV_SECTIONS.find((s) => s.items.some((d) => d.id === id))?.id;
-    expect(group('board')).toBe('operate');
-    expect(group('terminal')).toBe('operate');
-    expect(group('editor')).toBe('build');
-    expect(group('registry')).toBe('build');
-    expect(group('browser')).toBe('knowledge');
-    expect(group('sentinel')).toBe('system');
+  it('the [+ New] menu enables only Task; the rest are greyed for the Composer', () => {
+    expect(NEW_MENU_ENTRIES.map((e) => e.id)).toEqual([
+      'task',
+      'workflow',
+      'skill',
+      'project',
+      'agent',
+    ]);
+    const task = NEW_MENU_ENTRIES.find((e) => e.id === 'task');
+    expect(task?.enabled).toBe(true);
+    for (const entry of NEW_MENU_ENTRIES.filter((e) => e.id !== 'task')) {
+      expect(entry.enabled).toBe(false);
+    }
   });
 });

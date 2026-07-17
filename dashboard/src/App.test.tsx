@@ -1,18 +1,18 @@
 // @vitest-environment jsdom
 /**
- * U1 — App shell: desktop-first left-sidebar navigation, grouped into collapsible sections
- * (Operate / Build / Knowledge / System per `src/nav/config.ts`) with a pinned-bottom Session/Stop
- * floor. Clicking a live item swaps the main content; greyed ("soon"/"future") items never become
- * active; a section header toggles that section's item list; a sidebar-wide toggle collapses to an
- * icon rail; the stop floor is present regardless of the active view.
+ * U2.5 — App shell: desktop-first left-sidebar navigation driven by the entity-first IA in
+ * `src/nav/config.ts`. The groups are UNLABELLED (hairline dividers only — no uppercase group headers,
+ * no per-section collapse); a [+ New ▾] menu sits above the first divider (only Task enabled). Clicking
+ * a live item swaps the main content; greyed ("soon") items never become active; a sidebar-wide toggle
+ * collapses to an icon rail; the Session/Stop floor is present regardless of the active view.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, within } from '@testing-library/react';
 import { App } from './App';
 
 beforeEach(() => {
-  // Control/Registry/Approvals/Browser/Timeline self-fetch on mount; a never-resolving stub keeps
-  // every view on its empty-safe scaffold without real network or post-mount state churn.
+  // Views self-fetch on mount; a never-resolving stub keeps every view on its empty-safe scaffold
+  // (and keeps the sidebar approvals-count at 0, so no badge) without real network or state churn.
   vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
 });
 afterEach(() => {
@@ -20,103 +20,106 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('App shell — sidebar navigation', () => {
-  it('renders a sidebar grouped into sections, each with its nav items', () => {
+describe('App shell — entity-first sidebar navigation', () => {
+  it('renders the sidebar as unlabelled groups (dividers, no group headers) with every nav item', () => {
     render(<App />);
 
     expect(screen.getByLabelText('Primary navigation')).toBeTruthy();
-    for (const section of ['Operate', 'Build', 'Knowledge', 'System']) {
-      expect(screen.getByRole('button', { name: section })).toBeTruthy();
+
+    // No verb-group headers survive the entity-first regroup.
+    for (const oldGroup of ['Operate', 'Build', 'Knowledge', 'System']) {
+      expect(screen.queryByRole('button', { name: oldGroup })).toBeNull();
     }
+    // Divider-only separators are present instead (one per group).
+    expect(screen.getAllByRole('separator').length).toBe(3);
+
     for (const label of [
-      'Board',
+      'Home',
       'Approvals',
-      'Timeline',
-      'Terminal',
-      'Editor',
-      'Vibe',
-      'Pipeline',
-      'Registry',
-      'Browser',
+      'Activity',
       'Atlas',
+      'Terminal',
+      'Workflows',
       'Agents',
+      'Tasks',
+      'Projects',
+      'Files',
+      'Connectors',
       'Ledgers',
-      'Sentinel',
     ]) {
       expect(screen.getByRole('button', { name: new RegExp(`^${label}`) })).toBeTruthy();
     }
   });
 
-  it('lands on the Board (Control) view by default', () => {
+  it('does not render any dropped verb-IA destination', () => {
+    render(<App />);
+    for (const dropped of ['Board', 'Editor', 'Vibe', 'Registry', 'Pipeline', 'Sentinel']) {
+      expect(screen.queryByRole('button', { name: new RegExp(`^${dropped}$`) })).toBeNull();
+    }
+  });
+
+  it('lands on Home (Control) view by default', () => {
     render(<App />);
     expect(screen.getByLabelText('Control view')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Board' }).getAttribute('aria-current')).toBe('page');
+    expect(screen.getByRole('button', { name: 'Home' }).getAttribute('aria-current')).toBe('page');
   });
 
   it('pins the Session/Stop floor in the shell, present regardless of the active view', () => {
     render(<App />);
-    // WebAuthn session placeholder + the relocated stop controls are always in the shell.
     expect(screen.getByTestId('stop-floor')).toBeTruthy();
     expect(screen.getByTestId('session-state').textContent).toMatch(/signed out/i);
     expect(screen.getByLabelText('Stop floor')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'STOP everything' })).toBeTruthy();
 
-    // Switch away from the Board — the floor is still there.
-    fireEvent.click(screen.getByRole('button', { name: 'Registry' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Workflows' }));
     expect(screen.getByLabelText('Stop floor')).toBeTruthy();
   });
 
-  it('clicking a live nav item switches the active view', () => {
+  it('routes each live destination to its mapped view', () => {
     render(<App />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Registry' }));
-    expect(screen.getByRole('button', { name: 'Registry' }).getAttribute('aria-current')).toBe('page');
+    fireEvent.click(screen.getByRole('button', { name: 'Workflows' }));
+    expect(screen.getByRole('button', { name: 'Workflows' }).getAttribute('aria-current')).toBe('page');
+    expect(screen.getByLabelText('Workflows view')).toBeTruthy();
     expect(screen.queryByLabelText('Control view')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Approvals' }));
     expect(screen.getByLabelText('Approvals inbox')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Timeline' }));
-    expect(screen.getByLabelText('Timeline view')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Activity' }));
+    expect(screen.getByLabelText('Activity view')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Vibe' }));
-    expect(screen.getByLabelText('Vibe-code chat')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Connectors' }));
+    expect(screen.getByLabelText('Connectors view')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Browser' }));
-    expect(screen.getByLabelText('KB browser view')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Files' }));
+    expect(screen.getByLabelText('Files view')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Board' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Home' }));
     expect(screen.getByLabelText('Control view')).toBeTruthy();
   });
 
-  it('greyed "soon"/"future" nav items are unclickable and never become the active view', () => {
+  it('routes reachable-but-unbuilt destinations (Agents/Tasks/Projects/Ledgers) to the U3 placeholder', () => {
     render(<App />);
+    for (const label of ['Agents', 'Tasks', 'Projects', 'Ledgers']) {
+      const btn = screen.getByRole('button', { name: label }) as HTMLButtonElement;
+      expect(btn.disabled).toBe(false);
+      fireEvent.click(btn);
+      expect(btn.getAttribute('aria-current')).toBe('page');
+      const placeholder = screen.getByLabelText(`${label} view`);
+      expect(placeholder.textContent).toMatch(/built in U3/i);
+    }
+  });
 
-    for (const label of ['Terminal', 'Pipeline', 'Atlas', 'Agents', 'Ledgers', 'Sentinel']) {
+  it('greyed "soon" items (Atlas, Terminal) are unclickable and never become active', () => {
+    render(<App />);
+    for (const label of ['Atlas', 'Terminal']) {
       const btn = screen.getByRole('button', { name: new RegExp(`^${label}`) }) as HTMLButtonElement;
       expect(btn.disabled).toBe(true);
       fireEvent.click(btn);
     }
-    // Still on the default Board view — every disabled click was a no-op.
+    // Still on the default Home view — every disabled click was a no-op.
     expect(screen.getByLabelText('Control view')).toBeTruthy();
-  });
-
-  it('a section header toggles that section — collapsing Build hides its items but leaves others', () => {
-    render(<App />);
-
-    const buildHeader = screen.getByRole('button', { name: 'Build' });
-    expect(buildHeader.getAttribute('aria-expanded')).toBe('true');
-    expect(screen.getByRole('button', { name: 'Editor' })).toBeTruthy();
-
-    fireEvent.click(buildHeader);
-    expect(buildHeader.getAttribute('aria-expanded')).toBe('false');
-    expect(screen.queryByRole('button', { name: 'Editor' })).toBeNull();
-    // Other sections are untouched.
-    expect(screen.getByRole('button', { name: 'Board' })).toBeTruthy();
-
-    fireEvent.click(buildHeader);
-    expect(buildHeader.getAttribute('aria-expanded')).toBe('true');
-    expect(screen.getByRole('button', { name: 'Editor' })).toBeTruthy();
   });
 
   it('the sidebar-wide collapse toggle switches the shell into rail mode and back', () => {
@@ -128,11 +131,56 @@ describe('App shell — sidebar navigation', () => {
     fireEvent.click(toggle);
     const expanded = screen.getByRole('button', { name: 'Expand sidebar' });
     expect(expanded.getAttribute('aria-pressed')).toBe('true');
-
-    // Nav items are still present/reachable in rail mode (CSS hides labels, not the DOM/a11y tree).
-    expect(screen.getByRole('button', { name: 'Board' })).toBeTruthy();
+    // Nav items stay reachable in rail mode (CSS hides labels, not the DOM/a11y tree).
+    expect(screen.getByRole('button', { name: 'Home' })).toBeTruthy();
 
     fireEvent.click(expanded);
     expect(screen.getByRole('button', { name: 'Collapse sidebar' })).toBeTruthy();
+  });
+});
+
+describe('App shell — [+ New ▾] menu', () => {
+  it('opens a menu with only Task enabled; the rest are disabled with a Composer hint', () => {
+    render(<App />);
+
+    const trigger = screen.getByRole('button', { name: 'New' });
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(trigger);
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+
+    const menu = screen.getByRole('menu', { name: 'Create new' });
+    expect((within(menu).getByRole('menuitem', { name: /Task/ }) as HTMLButtonElement).disabled).toBe(false);
+    for (const label of ['Workflow', 'Skill', 'Project', 'Agent']) {
+      const item = within(menu).getByRole('menuitem', { name: new RegExp(label) }) as HTMLButtonElement;
+      expect(item.disabled).toBe(true);
+      expect(item.getAttribute('title')).toBe('Composer');
+    }
+  });
+
+  it('Task navigates to the governed launch surface (Home) and closes the menu', () => {
+    render(<App />);
+
+    // Move off Home first so the navigation is observable.
+    fireEvent.click(screen.getByRole('button', { name: 'Workflows' }));
+    expect(screen.getByLabelText('Workflows view')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'New' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Task/ }));
+
+    // Home hosts the Launch/rerun surface; the menu is closed after the action.
+    expect(screen.getByLabelText('Control view')).toBeTruthy();
+    expect(screen.getByLabelText('Launch card')).toBeTruthy();
+    expect(screen.queryByRole('menu', { name: 'Create new' })).toBeNull();
+  });
+
+  it('Escape closes the menu', () => {
+    render(<App />);
+    const trigger = screen.getByRole('button', { name: 'New' });
+    fireEvent.click(trigger);
+    expect(screen.getByRole('menu', { name: 'Create new' })).toBeTruthy();
+
+    fireEvent.keyDown(trigger, { key: 'Escape' });
+    expect(screen.queryByRole('menu', { name: 'Create new' })).toBeNull();
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
   });
 });

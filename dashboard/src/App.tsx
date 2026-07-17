@@ -1,106 +1,106 @@
 /**
- * SPA shell (U1 foundation). Desktop-first "Mission Control" shell: a fixed left sidebar owns
+ * SPA shell (U2.5 — entity-first IA). Desktop-first "Mission Control" shell: a fixed left sidebar owns
  * primary navigation, a slim topbar carries the app title and a fleet-status glance, and the main
- * region renders whichever view is active. A pinned-bottom Session/Stop floor lives in the sidebar
- * so the WebAuthn session state and the fleet-stop controls are always reachable — never hunted for.
+ * region renders whichever view is active. A pinned-bottom Session/Stop floor lives in the sidebar so
+ * the WebAuthn session state and the fleet-stop controls are always reachable — never hunted for.
  *
- * Navigation is a hand-rolled `useState` switch rather than a router dependency — the v0/v1 surface
- * is a fixed, known set of top-level views (no URL/nested routing is needed until D3 adds real
- * sub-routes), so a `react-router` dep is not warranted here.
+ * Navigation is a hand-rolled `useState` switch rather than a router dependency — the v0/v1 surface is
+ * a fixed, known set of top-level views (no URL/nested routing is needed until D3 adds real sub-routes),
+ * so a `react-router` dep is not warranted here.
  *
- * The nav is GROUPED and collapsible, driven entirely by `NAV_SECTIONS` in `src/nav/config.ts`. A
- * new layer/agent/workflow is ONE entry in that config; a `live` destination also gets one `case`
- * in the body switch below. Sections collapse independently; the whole sidebar collapses to a 48px
+ * The nav is driven entirely by `NAV_SECTIONS` in `src/nav/config.ts`, rendered as UNLABELLED groups
+ * separated by hairline dividers (entity-first IA — no uppercase group headers; supersedes brief §D's
+ * verb grouping). A [+ New ▾] menu sits above the first divider. A new destination is ONE entry in that
+ * config; a destination with a dedicated view also gets one `case` in the body switch below (everything
+ * else lands on the shared U3 {@link ComingSoon} placeholder). The whole sidebar collapses to a 48px
  * icon rail (icons keep a hover tooltip via the native title attribute). Destinations flagged
- * `soon`/`future` render greyed + disabled — the eventual destination is visible without pretending
- * the feature exists.
+ * `soon`/`future` render greyed + disabled.
  */
-import { useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import {
   NAV_SECTIONS,
   DEFAULT_DESTINATION,
   isLive,
   type DestinationId,
   type NavDestination,
-  type NavSection,
 } from './nav/config';
+import { NewMenu } from './nav/NewMenu';
 import { Control, StopControls } from './views/Control';
 import { ApprovalsLive } from './views/ApprovalsLive';
-import { Registry } from './views/Registry';
 import { Browser } from './views/Browser';
 import { Timeline } from './views/Timeline';
-import { Editor } from './views/Editor';
-import { Vibe } from './views/Vibe';
+import { Workflows } from './views/Workflows';
+import { Connectors } from './views/Connectors';
+import { fetchPending } from './lib/approvalsClient';
+import { useSse } from './lib/sseClient';
 import { signIn, type Session } from './lib/authClient';
 
-function NavSectionGroup({
-  section,
+/** Live count of pending approvals for the sidebar badge. Reuses the same `fetchPending` + SSE-tick
+ *  pattern as {@link ApprovalsLive}, so the count refreshes when a card is promoted without a reload.
+ *  Cheap: one GET per SSE tick; on failure it silently keeps the last-known count. */
+function useApprovalsCount(): number {
+  const [count, setCount] = useState(0);
+  const { count: tick } = useSse('/events');
+  useEffect(() => {
+    let alive = true;
+    fetchPending()
+      .then((cards) => {
+        if (alive) setCount(cards.length);
+      })
+      .catch(() => {
+        /* transient failure: keep the last-known count; the next SSE tick retries */
+      });
+    return () => {
+      alive = false;
+    };
+  }, [tick]);
+  return count;
+}
+
+function NavItem({
+  item,
   active,
-  expanded,
-  rail,
-  onToggle,
+  badge,
   onSelect,
 }: {
-  section: NavSection;
+  item: NavDestination;
   active: DestinationId;
-  expanded: boolean;
-  rail: boolean;
-  onToggle: () => void;
+  badge?: number;
   onSelect: (id: DestinationId) => void;
 }): React.JSX.Element {
+  const disabled = !isLive(item);
   return (
-    <div className="mc-nav-section">
+    <li>
       <button
         type="button"
-        className="mc-nav-section__header"
-        aria-expanded={expanded}
-        onClick={onToggle}
+        className={`mc-nav-item${active === item.id ? ' mc-nav-item--active' : ''}${
+          disabled ? ' mc-nav-item--disabled' : ''
+        }`}
+        // Rail-mode hover tooltip (VS Code activity-bar / Linear pattern).
+        title={item.hint ? `${item.label} · ${item.hint}` : item.label}
+        aria-current={active === item.id ? 'page' : undefined}
+        disabled={disabled}
+        onClick={() => onSelect(item.id)}
       >
-        <span
-          className={`mc-nav-section__caret${expanded ? '' : ' mc-nav-section__caret--collapsed'}`}
-          aria-hidden="true"
-        >
-          ▸
+        <span className="mc-nav-item__icon mc-mono" aria-hidden="true">
+          {item.icon}
         </span>
-        <span className="mc-nav-section__label">{section.label}</span>
+        <span className="mc-nav-item__label">{item.label}</span>
+        {badge && badge > 0 ? (
+          <span className="mc-nav-item__badge mc-mono" aria-label={`${badge} pending`}>
+            {badge}
+          </span>
+        ) : item.hint ? (
+          <span className="mc-nav-item__hint">{item.hint}</span>
+        ) : null}
       </button>
-      {/* Rail mode keeps items in the DOM (labels hidden via CSS) so every destination stays
-       *  reachable; a collapsed section still hides its items. */}
-      {expanded || rail ? (
-        <ul className="mc-nav-section__items">
-          {section.items.map((item) => {
-            const disabled = !isLive(item);
-            return (
-              <li key={item.id}>
-                <button
-                  type="button"
-                  className={`mc-nav-item${active === item.id ? ' mc-nav-item--active' : ''}${
-                    disabled ? ' mc-nav-item--disabled' : ''
-                  }`}
-                  // Rail-mode hover tooltip (VS Code activity-bar / Linear pattern).
-                  title={item.hint ? `${item.label} · ${item.hint}` : item.label}
-                  aria-current={active === item.id ? 'page' : undefined}
-                  disabled={disabled}
-                  onClick={() => onSelect(item.id)}
-                >
-                  <span className="mc-nav-item__icon mc-mono" aria-hidden="true">
-                    {item.icon}
-                  </span>
-                  <span className="mc-nav-item__label">{item.label}</span>
-                  {item.hint ? <span className="mc-nav-item__hint">{item.hint}</span> : null}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      ) : null}
-    </div>
+    </li>
   );
 }
 
 /**
- * The Session/Stop floor — pinned to the bottom of the sidebar, hairline-separated, always visible.
- * It surfaces the real WebAuthn session state (U2: a passkey login mints a short-TTL bearer via
+ * The Session/Stop floor — pinned to the bottom of the sidebar, hairline-separated, always visible. It
+ * surfaces the real WebAuthn session state (a passkey login mints a short-TTL bearer via
  * `authClient.signIn`) and the relocated {@link StopControls} (scoped stop + nuclear STOP). Signed out,
  * a "Sign in" button runs the ceremony; fail-closed pre-passkey, the server refuses and the floor stays
  * signed out. In rail mode the detail collapses to a single stop glyph.
@@ -138,20 +138,22 @@ function SessionStopFloor({
 function Sidebar({
   active,
   onSelect,
+  onCreate,
   rail,
   onToggleRail,
+  approvalsCount,
   session,
   onSignIn,
 }: {
   active: DestinationId;
   onSelect: (id: DestinationId) => void;
+  onCreate: (id: 'task' | 'workflow' | 'skill' | 'project' | 'agent') => void;
   rail: boolean;
   onToggleRail: () => void;
+  approvalsCount: number;
   session: Session | null;
   onSignIn: () => void;
 }): React.JSX.Element {
-  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
-
   return (
     <nav className="mc-sidebar" aria-label="Primary navigation">
       <div className="mc-sidebar__brand">
@@ -166,19 +168,25 @@ function Sidebar({
           {rail ? '»' : '«'}
         </button>
       </div>
+      <NewMenu onCreate={onCreate} />
       <div className="mc-nav">
+        {/* Unlabelled groups: a hairline divider before each section, NO group header (Linear pattern).
+         *  The divider above the first section also separates it from the [+ New] menu. */}
         {NAV_SECTIONS.map((section) => (
-          <NavSectionGroup
-            key={section.id}
-            section={section}
-            active={active}
-            expanded={!collapsedSections[section.id]}
-            rail={rail}
-            onToggle={() =>
-              setCollapsedSections((prev) => ({ ...prev, [section.id]: !prev[section.id] }))
-            }
-            onSelect={onSelect}
-          />
+          <Fragment key={section.id}>
+            <div className="mc-nav__divider" role="separator" />
+            <ul className="mc-nav-section__items">
+              {section.items.map((item) => (
+                <NavItem
+                  key={item.id}
+                  item={item}
+                  active={active}
+                  badge={item.id === 'approvals' ? approvalsCount : undefined}
+                  onSelect={onSelect}
+                />
+              ))}
+            </ul>
+          </Fragment>
         ))}
       </div>
       <SessionStopFloor session={session} onSignIn={onSignIn} />
@@ -186,58 +194,62 @@ function Sidebar({
   );
 }
 
-/** Flatten the config once so the body switch can look up a destination's label/hint for the
- *  greyed placeholder without re-walking sections. */
+/** Flatten the config once so the body switch can look up a destination's label/hint for the greyed
+ *  placeholder without re-walking sections. */
 const DEST_BY_ID: Record<string, NavDestination> = Object.fromEntries(
   NAV_SECTIONS.flatMap((s) => s.items).map((d) => [d.id, d]),
 );
 
-/** Placeholder body for a not-yet-built destination (soon/future). Unreachable in practice — its
- *  nav item is disabled — but keeps the body switch total and self-documenting. */
+/** Placeholder body for a destination whose real view has not been built yet. Reachable live items
+ *  (Agents/Tasks/Projects/Ledgers) land here until U3 fills them in; the greyed soon/future stubs
+ *  (Atlas/Terminal) also fall through here to keep the body switch total. */
 function ComingSoon({ id }: { id: DestinationId }): React.JSX.Element {
   const dest = DEST_BY_ID[id];
-  const hint = dest?.hint;
+  const live = dest ? isLive(dest) : false;
   return (
     <section className="code-view" aria-label={`${dest?.label ?? id} view`}>
       <h2>{dest?.label ?? id}</h2>
       <p>
-        Arrives{' '}
-        {hint === 'D3' || hint === 'D3/v2'
-          ? 'in D3 behind its WebAuthn + threat-review gate'
-          : 'in a later wave'}
-        . Nothing to view or steer here yet.
+        {live
+          ? 'The navigation is in place; this view is built in U3.'
+          : dest?.hint === 'D3'
+            ? 'Arrives in D3 behind its WebAuthn + threat-review gate. Nothing to view or steer here yet.'
+            : 'Arrives in a later wave. Nothing to view or steer here yet.'}
       </p>
     </section>
   );
 }
 
-/** Route a live destination to its view. New live destination = one more case here (data only for
- *  everything else). Editor/Vibe mount read-only-safe: no session token is wired yet (U2), so their
- *  governed actions stay disabled and they degrade gracefully. */
-function ViewBody({ view, sessionToken }: { view: DestinationId; sessionToken?: string }): React.JSX.Element {
+/** Route a destination to its view. A destination with a dedicated view gets one case here; everything
+ *  else falls through to the shared U3 placeholder. Home hosts the governed Launch/Rerun surface, so it
+ *  receives the session token (the [+ New ▾] → Task action navigates here). */
+function ViewBody({
+  view,
+  sessionToken,
+}: {
+  view: DestinationId;
+  sessionToken?: string;
+}): React.JSX.Element {
   switch (view) {
-    case 'board':
-      return <Control />;
+    case 'home':
+      return <Control sessionToken={sessionToken} />;
     case 'approvals':
-      // U2: live GET /api/approvals feed (refreshed on SSE), onVerify -> POST /api/approvals/verify.
+      // Live GET /api/approvals feed (refreshed on SSE), onVerify -> POST /api/approvals/verify.
       return <ApprovalsLive sessionToken={sessionToken} />;
-    case 'timeline':
-      // Standalone full-view Timeline (same live feed the Board embeds). Self-fetches its replay.
+    case 'activity':
+      // Standalone full-view live feed (same replay the Home board embeds). Self-fetches.
       return (
-        <section aria-label="Timeline view">
+        <section aria-label="Activity view">
           <Timeline />
         </section>
       );
-    case 'editor':
-      // Read-only-safe mount: no file selected / no session yet (wired in U2).
-      return <Editor relpath="" />;
-    case 'vibe':
-      return <Vibe />;
-    case 'registry':
-      return <Registry />;
-    case 'browser':
+    case 'workflows':
+      return <Workflows />;
+    case 'connectors':
+      return <Connectors />;
+    case 'files':
       return (
-        <section aria-label="KB browser view">
+        <section aria-label="Files view">
           <Browser />
         </section>
       );
@@ -250,6 +262,7 @@ export function App(): React.JSX.Element {
   const [view, setView] = useState<DestinationId>(DEFAULT_DESTINATION);
   const [rail, setRail] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
+  const approvalsCount = useApprovalsCount();
 
   const handleSignIn = (): void => {
     // WebAuthn login -> short-TTL bearer. Fail-closed: a refused ceremony (no passkey) leaves the floor
@@ -259,13 +272,21 @@ export function App(): React.JSX.Element {
       .catch(() => setSession(null));
   };
 
+  // [+ New ▾] → Task navigates to Home, which hosts the governed Launch/Rerun surface. The other
+  // entries are disabled in the menu, so only 'task' reaches here.
+  const handleCreate = (id: 'task' | 'workflow' | 'skill' | 'project' | 'agent'): void => {
+    if (id === 'task') setView('home');
+  };
+
   return (
     <div className={`app-shell${rail ? ' app-shell--rail' : ''}`}>
       <Sidebar
         active={view}
         onSelect={setView}
+        onCreate={handleCreate}
         rail={rail}
         onToggleRail={() => setRail((r) => !r)}
+        approvalsCount={approvalsCount}
         session={session}
         onSignIn={handleSignIn}
       />
