@@ -129,6 +129,18 @@ export interface VibeDeps {
   appendAudit?: (repoRoot: string, event: Parameters<typeof defaultAppendAudit>[1], options?: AppendAuditOptions) => AuditRow;
   runGit?: OpsGitRunner;
   now?: () => Date;
+  /** Audit action label for this spawn (default `vibe-spawn`). Composer overrides it to `composer-turn`
+   *  (review F2) so a Composer turn is a DISTINCT audit verb from a raw vibe spawn — same single sink,
+   *  same exactly-one-row invariant, just a truthful action name. */
+  auditAction?: string;
+  /** Extra detail fields merged into this call's single audit row (alongside `promptLength`). Composer
+   *  uses it to record whether the turn was a resume + a redacted resume target (review F2). */
+  auditDetail?: Record<string, unknown>;
+  /** An OPTIONAL extra refusal gate, run AFTER the session + rate-limit gates pass (so it is keyed by
+   *  the verified subject) and BEFORE `deps.spawn` is ever called. It never REPLACES a gate — it only
+   *  adds a refusal. Composer uses it to enforce the issued-id/subject resume binding (review F1). A
+   *  refusal is audited exactly once (like every other refusal) and returned as `resume-denied`. */
+  preSpawnGuard?: (owner: string) => { ok: true } | { ok: false; detail: string };
 }
 
 export type VibeSpawnOutcome =
@@ -136,7 +148,10 @@ export type VibeSpawnOutcome =
   | { ok: false; reason: 'fleet-frozen'; problems: string[] }
   | { ok: false; reason: 'unauthenticated'; detail: string }
   | { ok: false; reason: 'rate-limited'; retryAfterMs: number }
-  | { ok: false; reason: 'locked-out'; retryAfterMs: number };
+  | { ok: false; reason: 'locked-out'; retryAfterMs: number }
+  // review F1 — an additional pre-spawn refusal (Composer's issued-id/subject resume binding). Never
+  // produced by the raw vibe route (which sets no `preSpawnGuard`).
+  | { ok: false; reason: 'resume-denied'; detail: string };
 
 /** Buffers raw stdout chunks into complete stream-json lines, parsing each with the shared
  *  `parseRecord` (D0.3) — malformed/partial lines never crash the session, mirroring `tailFrom`'s own
@@ -174,14 +189,15 @@ export function spawnVibe(
   const appendAuditFn = deps.appendAudit ?? defaultAppendAudit;
 
   function audited(outcome: VibeSpawnOutcome, owner?: string): VibeSpawnOutcome {
-    const detail: Record<string, unknown> = { promptLength: prompt.length };
+    // Extra caller detail (Composer's resume fields) rides in the SAME single row — never a second sink.
+    const detail: Record<string, unknown> = { promptLength: prompt.length, ...deps.auditDetail };
     if (!outcome.ok && 'problems' in outcome) detail.problems = outcome.problems;
     if (!outcome.ok && 'detail' in outcome) detail.refusalDetail = outcome.detail;
     if (!outcome.ok && 'retryAfterMs' in outcome) detail.retryAfterMs = outcome.retryAfterMs;
     appendAuditFn(
       deps.repoRoot,
       {
-        action: 'vibe-spawn',
+        action: deps.auditAction ?? 'vibe-spawn',
         owner,
         result: outcome.ok ? 'spawned' : outcome.reason,
         detail,
@@ -220,6 +236,16 @@ export function spawnVibe(
       },
       owner,
     );
+  }
+
+  // 3b. Optional pre-spawn guard (review F1): an ADDITIONAL refusal keyed by the verified subject, run
+  //     only after the three gates above pass and before any spawn. Composer enforces its issued-id /
+  //     subject resume binding here. This never weakens gates 1–3 — it can only refuse further.
+  if (deps.preSpawnGuard) {
+    const guard = deps.preSpawnGuard(owner);
+    if (!guard.ok) {
+      return audited({ ok: false, reason: 'resume-denied', detail: guard.detail }, owner);
+    }
   }
 
   // 4. Spawn — the ONLY point in this function a real `claude` child process is created.
