@@ -1,24 +1,29 @@
 /**
- * Agents view (U3) — the fleet roster: who exists, who's working, and on what.
+ * Agents view — the fleet roster with per-agent model routing (R2.2).
  *
- * HONEST v1 PROJECTION. There is no canonical agent-registry endpoint; the only place agent identity
- * surfaces in the read-only API is the `owner` field of cards. So the roster is DERIVED from
- * `/api/index` (Plane-A snapshot): every distinct non-null card `owner` is an agent, its status is
- * "working" iff it owns a card in the `working` state, and its "doing" line is that working card's
- * action + id. Projects come from the agent's owned cards. Card count is owned-card count.
+ * The roster is DERIVED from `/api/index` (Plane-A snapshot): every distinct non-null card `owner` is an
+ * agent, working iff it owns a `working` card. Per-agent ROUTING (effective runtime/model + provenance,
+ * and the governed toggle) comes from `/api/routing` (R2.1 projection). The model cell is now a live
+ * governed control: it shows the effective model (mono) + provenance tag, and — with a WebAuthn session —
+ * opens a popover to write an agent-scope override (audited, ops pull-rebase-push) or clear it. Fail-closed
+ * like launchControls: without a session the control is disabled with a nudge; a point-of-action mint runs
+ * inline when `onRequestSession` is wired.
  *
- * KNOWN GAPS (feed the Phase R2 work order — see the note rendered under the table and the build
- * report): (1) last-seen / per-agent activity is NOT derivable — the ledger rollup in `/api/index`
- * collapses all rows and discards writer identity + dates. (2) Per-agent model is Phase R2; the model
- * cell is a DISABLED visual placeholder ("—") — no writes, no toggle. (3) An idle agent that owns no
- * card is invisible (no registry to enumerate from). (4) MCP connections attach to projects, not
- * agents — they live in the Connectors view, not here.
- *
- * Read-only. Self-fetches `/api/index` (same empty-safe pattern as Control) or takes a snapshot.
+ * A routing-audit strip (R2.4) surfaces routed-vs-ran mismatches + expiring/expired overrides, read-only.
+ * Read-only for the roster; every routing mutation is a governed, audited server write.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import type { PlaneAIndex } from '../../server/planeA/indexer';
 import type { ParsedCard } from '../../server/planeA/cards';
+import type { Session } from '../lib/authClient';
+import {
+  EMPTY_ROUTING,
+  fetchRouting,
+  postRoutingOverride,
+  type RoutingSnapshot,
+  type EffectiveView,
+} from '../lib/routingClient';
+import { RoutingControl } from './routingControls';
 import '../styles/views/agents.css';
 
 const EMPTY_INDEX: PlaneAIndex = {
@@ -35,7 +40,6 @@ const EMPTY_INDEX: PlaneAIndex = {
 interface AgentRow {
   id: string;
   working: boolean;
-  /** The card the agent is actively working, if any — its action + id feed the "doing" cell. */
   current: { action: string; id: string } | null;
   projects: string[];
   cardCount: number;
@@ -48,10 +52,7 @@ function projectsOf(card: ParsedCard): string[] {
   return typeof p === 'string' && p !== '' ? [p] : [];
 }
 
-/**
- * Derive the roster from the snapshot: group every card by its non-null owner, then project each
- * agent's status/current-card/projects/count. Sorted working-first, then id-alphabetical.
- */
+/** Derive the roster from the snapshot (working-first, then id-alphabetical). */
 export function deriveRoster(index: PlaneAIndex): AgentRow[] {
   const byOwner = new Map<string, ParsedCard[]>();
   for (const bucket of Object.values(index.cards)) {
@@ -83,21 +84,65 @@ export function deriveRoster(index: PlaneAIndex): AgentRow[] {
   });
 }
 
-/**
- * Per-agent model cell. Phase-R2 model routing lands a real per-agent toggle here; until then this is
- * a DISABLED visual slot — a muted mono "—" chip with a hint. It never writes and has no toggle.
- */
-function ModelPlaceholder(): React.JSX.Element {
+/** True when either field of an agent's effective routing was supplied by an override entry. */
+function hasOverride(effective: EffectiveView | undefined): boolean {
+  return effective?.sourceRuntime === 'override' || effective?.sourceModel === 'override';
+}
+
+/** The routing-audit strip (R2.4): routed-vs-ran mismatches + expiring/expired overrides. Read-only. */
+function RoutingAuditStrip({ audit }: { audit: RoutingSnapshot['audit'] }): React.JSX.Element | null {
+  const stale = audit.overrides.filter((o) => o.expired || o.expiringSoon);
+  if (audit.mismatches.length === 0 && stale.length === 0) {
+    return (
+      <section className="v-routing-audit" aria-label="Routing audit">
+        <h3 className="v-routing-audit__title">Routing audit</h3>
+        <p className="v-routing-audit__empty">No routed-vs-ran mismatches; no stale overrides.</p>
+      </section>
+    );
+  }
   return (
-    <span className="v-agents__model mc-mono" aria-disabled="true" title="model routing — Phase R">
-      —
-    </span>
+    <section className="v-routing-audit" aria-label="Routing audit">
+      <h3 className="v-routing-audit__title">Routing audit</h3>
+      {audit.mismatches.map((m) => (
+        <div className="v-routing-audit__row" key={`mm-${m.cardId}`} data-testid={`routing-mismatch-${m.cardId}`}>
+          <span className={`mc-status-dot mc-status-dot--${m.kind === 'runtime' ? 'error' : 'blocked'}`} aria-hidden="true" />
+          <span className="mc-mono">{m.cardId}</span>
+          <span>
+            routed <span className="mc-mono">{m.routedModel || m.routedRuntime}</span> · ran{' '}
+            <span className="mc-mono">{m.ranModel}</span>
+          </span>
+          <span className="v-routing__src mc-mono">{m.kind} mismatch</span>
+        </div>
+      ))}
+      {stale.map((o) => (
+        <div className="v-routing-audit__row" key={`ov-${o.scope}-${o.key}`} data-testid={`routing-stale-${o.key}`}>
+          <span className={`mc-status-dot mc-status-dot--${o.expired ? 'error' : 'blocked'}`} aria-hidden="true" />
+          <span className="mc-mono">
+            {o.scope}:{o.key}
+          </span>
+          <span>
+            override <span className="mc-mono">{o.model ?? o.runtime ?? '—'}</span>{' '}
+            {o.expired ? 'expired' : 'expiring'} <span className="mc-mono">{o.expires}</span>
+          </span>
+        </div>
+      ))}
+    </section>
   );
 }
 
-/** Agents view. Accepts a snapshot directly (tests) or self-fetches `/api/index`. */
-export function Agents({ snapshot }: { snapshot?: PlaneAIndex } = {}): React.JSX.Element {
+export function Agents({
+  snapshot,
+  routing,
+  sessionToken,
+  onRequestSession,
+}: {
+  snapshot?: PlaneAIndex;
+  routing?: RoutingSnapshot;
+  sessionToken?: string;
+  onRequestSession?: () => Promise<Session | null>;
+} = {}): React.JSX.Element {
   const [fetched, setFetched] = useState<PlaneAIndex | null>(null);
+  const [routingState, setRoutingState] = useState<RoutingSnapshot | null>(routing ?? null);
 
   useEffect(() => {
     if (snapshot) return;
@@ -108,15 +153,39 @@ export function Agents({ snapshot }: { snapshot?: PlaneAIndex } = {}): React.JSX
         if (!cancelled) setFetched(d);
       })
       .catch(() => {
-        /* read-only view: on failure keep the empty-safe scaffold, never crash the shell */
+        /* read-only view: keep the empty-safe scaffold */
       });
     return () => {
       cancelled = true;
     };
   }, [snapshot]);
 
+  const refreshRouting = useCallback(async () => {
+    try {
+      setRoutingState(await fetchRouting());
+    } catch {
+      /* keep last-known routing on failure */
+    }
+  }, []);
+
+  useEffect(() => {
+    if (routing) return; // caller supplied routing (tests) — do not self-fetch
+    void refreshRouting();
+  }, [routing, refreshRouting]);
+
   const index = snapshot ?? fetched ?? EMPTY_INDEX;
+  const routingSnap = routing ?? routingState ?? EMPTY_ROUTING;
   const roster = deriveRoster(index);
+
+  const effectiveById = new Map(routingSnap.agents.map((a) => [a.id, a.effective]));
+  const registry = routingSnap.policy.runtimes;
+  const canAct = Boolean(sessionToken) || Boolean(onRequestSession);
+
+  async function resolveToken(): Promise<string | undefined> {
+    if (sessionToken) return sessionToken;
+    if (onRequestSession) return (await onRequestSession())?.token ?? undefined;
+    return undefined;
+  }
 
   return (
     <section className="v-agents" aria-label="Agents view">
@@ -177,7 +246,32 @@ export function Agents({ snapshot }: { snapshot?: PlaneAIndex } = {}): React.JSX
                     </td>
                     <td className="mc-mono v-agents__col-num">{a.cardCount}</td>
                     <td>
-                      <ModelPlaceholder />
+                      <RoutingControl
+                        label={a.id}
+                        testIdPrefix={`agent-${a.id}`}
+                        registry={registry}
+                        effective={effectiveById.get(a.id) ?? null}
+                        canAct={canAct}
+                        ttl
+                        canClear={hasOverride(effectiveById.get(a.id))}
+                        onApply={async (runtime, model, expires) => {
+                          const token = await resolveToken();
+                          if (!token) return { ok: false, reason: 'no session' };
+                          const res = await postRoutingOverride(
+                            { op: 'set', scope: 'agent', key: a.id, runtime, model, expires },
+                            token,
+                          );
+                          if (res.ok) await refreshRouting();
+                          return res;
+                        }}
+                        onClear={async () => {
+                          const token = await resolveToken();
+                          if (!token) return { ok: false, reason: 'no session' };
+                          const res = await postRoutingOverride({ op: 'clear', scope: 'agent', key: a.id }, token);
+                          if (res.ok) await refreshRouting();
+                          return res;
+                        }}
+                      />
                     </td>
                   </tr>
                 ))}
@@ -185,11 +279,13 @@ export function Agents({ snapshot }: { snapshot?: PlaneAIndex } = {}): React.JSX
             </table>
           </div>
           <p className="v-agents__note">
-            Roster derived from card ownership. Last-seen and per-agent activity aren&rsquo;t available
-            from the current index; per-agent model routing arrives in Phase&nbsp;R.
+            Roster derived from card ownership. The model cell shows effective routing (source tag);
+            with a passkey session it writes a governed, audited agent-scope override.
           </p>
         </>
       )}
+
+      <RoutingAuditStrip audit={routingSnap.audit} />
     </section>
   );
 }

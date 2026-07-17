@@ -328,9 +328,9 @@ function ViewBody({
     case 'workflows':
       return <Workflows />;
     case 'agents':
-      return <Agents />;
+      return <Agents sessionToken={sessionToken} onRequestSession={onRequestSession} />;
     case 'tasks':
-      return <Tasks />;
+      return <Tasks sessionToken={sessionToken} onRequestSession={onRequestSession} />;
     case 'projects':
       return (
         <section aria-label="Projects view">

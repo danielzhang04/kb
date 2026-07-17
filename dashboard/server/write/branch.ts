@@ -116,6 +116,9 @@ export interface RouteOptions {
   /** Extra push attempts (each preceded by a reconciling `pull --rebase`) after the first — coordination
    *  route only, per CLAUDE.md's "rejected push -> re-read state, reconcile, retry". */
   maxRetryPushes?: number;
+  /** Extra coordination relpaths staged into the SAME commit as the primary relpath (MED-3: an audit row
+   *  committed atomically with the change it records — one commit, one push). Coordination route only. */
+  alsoStage?: string[];
 }
 
 function defaultMessage(relpath: string): string {
@@ -157,8 +160,9 @@ export function routeCoordination(repoRoot: string, relpath: string, options: Ro
   const message = options.message ?? defaultMessage(relpath);
   const maxRetryPushes = options.maxRetryPushes ?? 3;
 
+  const stagePaths = [relpath, ...(options.alsoStage ?? [])];
   runGit(repoRoot, ['pull', '--rebase', 'origin', 'ops']);
-  runGit(repoRoot, ['add', '--', relpath]);
+  runGit(repoRoot, ['add', '--', ...stagePaths]);
   runGit(repoRoot, ['commit', '-m', message]);
 
   let lastErr: unknown;

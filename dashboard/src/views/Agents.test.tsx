@@ -6,7 +6,7 @@
  * disabled Phase-R placeholder, and thin data degrades to a calm empty state.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, cleanup, within } from '@testing-library/react';
+import { render, screen, cleanup, within, fireEvent } from '@testing-library/react';
 import { Agents, deriveRoster } from './Agents';
 import type { PlaneAIndex } from '../../server/planeA/indexer';
 import type { ParsedCard } from '../../server/planeA/cards';
@@ -88,17 +88,49 @@ describe('Agents view', () => {
     expect(idle.querySelector('.mc-status-dot--idle')).toBeTruthy();
   });
 
-  it('renders a disabled Phase-R model placeholder in every agent row and never a live control', () => {
-    render(<Agents snapshot={SNAPSHOT} />);
-    const chips = screen.getAllByTitle('model routing — Phase R');
-    expect(chips).toHaveLength(2); // one per agent row
-    for (const chip of chips) {
-      expect(chip.getAttribute('aria-disabled')).toBe('true');
-      expect(chip.textContent).toBe('—');
-    }
-    // The placeholder is inert — it is not a button/select/toggle.
-    expect(screen.queryByRole('button', { name: /model/i })).toBeNull();
-    expect(screen.queryByRole('combobox')).toBeNull();
+  const ROUTING = {
+    policy: {
+      version: 1,
+      runtimes: {
+        claude: { default_worker: 'worker-desktop', aliases: {}, known_models: ['claude-opus-4-8', 'claude-sonnet-5'] },
+        codex: { default_worker: 'codex-worker', aliases: {}, known_models: ['gpt-5-codex'] },
+      },
+      matrix: {},
+      role_default: null,
+    },
+    agents: [
+      { id: 'claude-m1', effective: { runtime: 'claude', model: 'claude-opus-4-8', sourceRuntime: 'policy', sourceModel: 'policy' } },
+      { id: 'codex-a', effective: { runtime: 'codex', model: 'gpt-5-codex', sourceRuntime: 'override', sourceModel: 'override' } },
+    ],
+    cards: {},
+    audit: { mismatches: [], overrides: [] },
+    overrides: [],
+  } as const;
+
+  it('renders a live effective-model chip per agent with its provenance tag (R2.2)', () => {
+    render(<Agents snapshot={SNAPSHOT} routing={ROUTING as never} sessionToken="tok" />);
+    const row = screen.getByTestId('agent-row-claude-m1');
+    expect(within(row).getByText('claude-opus-4-8')).toBeTruthy();
+    expect(within(row).getByText('policy')).toBeTruthy();
+    // With a session, the chip is an enabled control (not the old inert placeholder).
+    const chip = screen.getByTestId('agent-claude-m1-routing-chip');
+    expect((chip as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('shows a Clear-override affordance only when the agent has an override, after opening the popover', () => {
+    render(<Agents snapshot={SNAPSHOT} routing={ROUTING as never} sessionToken="tok" />);
+    fireEvent.click(screen.getByTestId('agent-codex-a-routing-chip'));
+    expect(screen.getByTestId('agent-codex-a-routing-clear')).toBeTruthy();
+    // The policy-sourced agent has no clear affordance.
+    fireEvent.click(screen.getByTestId('agent-claude-m1-routing-chip'));
+    expect(screen.queryByTestId('agent-claude-m1-routing-clear')).toBeNull();
+  });
+
+  it('is fail-closed without a session: the chip is disabled and a sign-in nudge shows', () => {
+    render(<Agents snapshot={SNAPSHOT} routing={ROUTING as never} />);
+    const chip = screen.getByTestId('agent-claude-m1-routing-chip');
+    expect((chip as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getAllByTestId('agent-claude-m1-routing-nudge').length).toBeGreaterThan(0);
   });
 
   it('degrades to a calm empty state when no agents are on the board', () => {
