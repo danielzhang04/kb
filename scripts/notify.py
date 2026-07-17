@@ -58,6 +58,13 @@ def _pending_text(card: cards.Card, assurance_class: str) -> str:
     )
 
 
+def _confirm_text(verified_view: dict) -> str:
+    return (
+        f"You approved card {verified_view['id']}: {verified_view['action']}, "
+        f"tier {verified_view['risk-tier']}"
+    )
+
+
 def notify_pending(
     card_path,
     assurance_class: str,
@@ -101,6 +108,41 @@ def notify_pending(
     sent = send_fn(transport, chat_id, message, buttons=buttons)
 
     return {"staged": staged, "buttons": buttons, "sent": sent}
+
+
+def confirm_approval_executed(
+    card: cards.Card,
+    verified_view: dict,
+    *,
+    transport,
+    chat_id,
+    send_fn=telegram_send.send,
+) -> dict:
+    """Push an independent, out-of-band confirmation once the dispatcher has
+    executed an approval (Task D2.10 -- design section 3.5 WYSIWYS residual).
+
+    ``verified_view`` MUST be the dispatcher's OWN post-verification view of
+    the card -- e.g. the fields D2.3's pinned-hash TOCTOU-safe execute path
+    re-derives after checking the WebAuthn assertion against the on-disk card
+    at execute time (the ``content_hash`` preimage: ``action`` + ``risk-tier``
+    + ``owner`` + ``target``, per D1.2). ``card`` is accepted separately (the
+    plan's fixed signature) purely for identification/logging by the caller;
+    this function never reads ``card.meta`` to build the pushed text.
+
+    This is deliberately NOT ``notify_pending``: there is no ``text=``
+    override seam here, and no field is ever taken from a dashboard-rendered
+    request. The confirmation text is built exclusively from
+    ``verified_view``, so a tampered request cannot use this push to confirm
+    itself -- a mismatch between what a (possibly compromised) dashboard
+    displayed and what the dispatcher actually verified becomes visible on
+    this second channel.
+
+    Returns ``{"sent": ...}`` -- whatever the injected ``send_fn`` (default
+    ``telegram_send.send``) returned.
+    """
+    text = _confirm_text(verified_view)
+    sent = send_fn(transport, chat_id, text, buttons=None)
+    return {"sent": sent}
 
 
 def _parse_sections(text: str) -> tuple[str, dict[str, str]]:
