@@ -51,3 +51,13 @@
 - Logged one ledger step (nightly-dispatch, usd 0.0). Committed only ledgers/; direct push to
   ops succeeded (DIRECT-PUSH path, no branch restriction hit this run).
 - Quiet run: nothing actionable, so no wake-me card.
+
+## 2026-07-17 nightly run
+- Preamble OK, pyyaml importable. `dispatch.py --tier cloud` emitted 1 card
+  (`6a59c5fb-606586f8`, cadence:nightly-review) — executed its work order directly.
+- `sync_skills.py --check` exit 0 (no drift); regenerated both dashboards from live state
+  (queue: 1 working / 4 done, approvals empty; cost $0 of $5; 3 orgs idle).
+- Prior executive.md carried rich PR history (waves/dashboard PRs) not reconstructable from
+  live state alone — dashboard-generator says rebuild from queue+ledger+STATE, so I wrote a
+  current-state-grounded version rather than carrying forward unverifiable claims.
+- No approvals to verify this run; no wake-me needed.
