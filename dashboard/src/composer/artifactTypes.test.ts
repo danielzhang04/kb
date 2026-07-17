@@ -20,6 +20,7 @@ import {
   type SkillDraft,
   type WorkflowDraft,
   type ProjectDraft,
+  type AgentDraft,
 } from './artifactTypes';
 
 describe('composer/artifactTypes — seeds', () => {
@@ -28,14 +29,13 @@ describe('composer/artifactTypes — seeds', () => {
     // Idea-first is binding: the unknown seed must ask the model to help decide which type the idea
     // wants to become, and must name the four v1 kinds.
     expect(seed).toMatch(/which (type|kind)/i);
-    for (const kind of ['task', 'workflow', 'skill', 'project']) {
+    for (const kind of ['task', 'workflow', 'skill', 'project', 'agent']) {
       expect(seed.toLowerCase()).toContain(kind);
     }
     // The operator's idea text is woven into the seed so the first turn has context.
     expect(seed).toContain('a bot that watches the queue and pings me');
-    // `agent` is EXCLUDED from v1 (deferred to a later registry-design chunk) — the disambiguation seed
-    // must not offer it as a choosable type.
-    expect(seed).not.toMatch(/\bagent\b/i);
+    // C7 un-defers `agent`: the disambiguation seed now offers it as a fifth convergence target.
+    expect(seed.toLowerCase()).toContain('agent');
   });
 
   it('every concrete kind has a house-authored seed carrying its deploy contract', () => {
@@ -218,5 +218,95 @@ describe('composer/artifactTypes — F4 client-side path-traversal rejection', (
       expect(problems.map((p) => p.field)).toContain('name');
       expect(() => toDeploy('project', { name, date: '2026-07-17' })).toThrow();
     }
+  });
+});
+
+describe('composer/artifactTypes — agent kind (C7.1)', () => {
+  // The registered-vs-runnable reality (plan Flagged #2): the file DECLARES an identity; the client is an
+  // honest preview only — the server owns the authoritative registry / impersonation checks (C7.6).
+  const validAgent: AgentDraft = {
+    id: 'research-worker',
+    role: 'work',
+    runtime: 'claude',
+    model: 'claude-sonnet-5',
+    projects: ['kb-ops'],
+    description: 'Volume worker for kb-ops housekeeping cards.',
+    body: '# Agent: research-worker\n',
+  };
+
+  it('agent is a member of ARTIFACT_KINDS', () => {
+    expect(ARTIFACT_KINDS).toContain('agent');
+  });
+
+  it('valid_agent_draft_has_no_problems', () => {
+    expect(validateDraft('agent', validAgent)).toEqual([]);
+  });
+
+  it('model is optional but must be non-empty when present', () => {
+    expect(validateDraft('agent', { ...validAgent, model: undefined })).toEqual([]);
+    expect(validateDraft('agent', { ...validAgent, model: '   ' }).map((p) => p.field)).toContain('model');
+  });
+
+  it('requires id + description and a valid role + runtime', () => {
+    const bad: AgentDraft = {
+      id: '',
+      role: 'boss' as AgentDraft['role'],
+      runtime: 'gpt' as AgentDraft['runtime'],
+      description: '',
+    };
+    const fields = validateDraft('agent', bad).map((p) => p.field);
+    expect(fields).toContain('id');
+    expect(fields).toContain('role');
+    expect(fields).toContain('runtime');
+    expect(fields).toContain('description');
+  });
+
+  it('rejects an id carrying path traversal / separators / a leading dot (F4 guard)', () => {
+    // id becomes agents/<slug>.md, the card owner, the routing-override key, and a git user.name — this is
+    // the load-bearing check. Mirrors the existing skill/project traversal tests.
+    for (const id of ['..', '../../etc', 'a/b', '.hidden', 'a\\b']) {
+      const problems = validateDraft('agent', { ...validAgent, id });
+      expect(problems.map((p) => p.field)).toContain('id');
+      expect(() => toDeploy('agent', { ...validAgent, id })).toThrow();
+    }
+  });
+
+  it('rejects an id that shadows a reserved runtime identity (anti-impersonation honest preview)', () => {
+    // The AUTHORITATIVE humans.yaml / existing-agent collision check is SERVER-SIDE (C7.6) — this is only
+    // the honest client preview over the small mirrored reserved set.
+    for (const id of ['worker-desktop', 'codex-worker', 'Codex-Worker', 'CODEX-WORKER']) {
+      expect(validateDraft('agent', { ...validAgent, id }).map((p) => p.field)).toContain('id');
+    }
+  });
+
+  it('toDeploy emits a durable agents/<slug>.md save with runner-bound hard-coded false', () => {
+    const plan = toDeploy('agent', validAgent);
+    expect(plan.kind).toBe('agent');
+    expect(plan.relpath).toBe('agents/research-worker.md');
+    expect(plan.branchClass).toBe('durable');
+    expect(plan.endpoint).toBe('save');
+    // The registry NEVER writes runner-bound: true (plan Flagged #2 — a human binds a runner).
+    expect(plan.content).toContain('runner-bound: false');
+    expect(plan.content).not.toContain('runner-bound: true');
+    // The declared identity + defaults land in the frontmatter.
+    expect(plan.content).toContain('id: research-worker');
+    expect(plan.content).toContain('role: work');
+    expect(plan.content).toContain('runtime: claude');
+    // agents/ is not a coordination prefix — durable, PR-to-main.
+    for (const prefix of ['queue/', 'ledgers/', 'traces/']) {
+      expect(plan.relpath.startsWith(prefix)).toBe(false);
+    }
+  });
+
+  it('slugifies the id into the relpath segment', () => {
+    const plan = toDeploy('agent', { ...validAgent, id: 'Nightly Auditor' });
+    expect(plan.relpath).toBe('agents/nightly-auditor.md');
+  });
+
+  it('agent kind seed states the schema and the declare-vs-run (runner) reality', () => {
+    const seed = seedTemplate('agent', 'a nightly ledger auditor');
+    expect(seed).toContain('a nightly ledger auditor');
+    expect(seed).toMatch(/agents\//); // names the agents/<id>.md home
+    expect(seed.toLowerCase()).toMatch(/runner/); // registered-vs-runnable honesty
   });
 });

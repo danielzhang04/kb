@@ -174,7 +174,7 @@ describe('App shell — entity-first sidebar navigation', () => {
 });
 
 describe('App shell — [+ New ▾] menu', () => {
-  it('opens an idea-first menu: idea/task/workflow/skill/project enabled; only Agent disabled', () => {
+  it('opens an idea-first menu with every entity type actionable (C7.2 un-defers Agent)', () => {
     render(<App />);
 
     const trigger = screen.getByRole('button', { name: 'New' });
@@ -183,14 +183,11 @@ describe('App shell — [+ New ▾] menu', () => {
     expect(trigger.getAttribute('aria-expanded')).toBe('true');
 
     const menu = screen.getByRole('menu', { name: 'Create new' });
-    // The freeform "Idea…" leads; Task + the three secondary entity pickers are all actionable now.
+    // The freeform "Idea…" leads; every entity picker — including Agent (C7.2) — is actionable now.
     expect(within(menu).getAllByRole('menuitem')[0].textContent).toMatch(/Idea/);
-    for (const label of [/Idea/, /^Task/, /Workflow/, /Skill/, /Project/]) {
+    for (const label of [/Idea/, /^Task/, /Workflow/, /Skill/, /Project/, /Agent/]) {
       expect((within(menu).getByRole('menuitem', { name: label }) as HTMLButtonElement).disabled).toBe(false);
     }
-    // Agent stays deferred (plan Flagged #4).
-    const agent = within(menu).getByRole('menuitem', { name: /Agent/ }) as HTMLButtonElement;
-    expect(agent.disabled).toBe(true);
   });
 
   it('idea_opens_composer_in_idea_mode over the current view; Back returns', () => {
@@ -226,16 +223,17 @@ describe('App shell — [+ New ▾] menu', () => {
     }
   });
 
-  it('agent_entry_remains_disabled and never opens the Composer', () => {
+  it('agent_entry_opens_composer_preseeded (C7.2)', () => {
     render(<App />);
     fireEvent.click(screen.getByRole('button', { name: 'New' }));
 
     const agent = screen.getByRole('menuitem', { name: /Agent/ }) as HTMLButtonElement;
-    expect(agent.disabled).toBe(true);
+    expect(agent.disabled).toBe(false);
     fireEvent.click(agent);
-    // A disabled click is a no-op: no Composer, still on Home.
-    expect(screen.queryByLabelText('Composer')).toBeNull();
-    expect(screen.getByLabelText('Home view')).toBeTruthy();
+    // C7.2 — Agent opens the Composer surface pre-seeded to `agent` (its dedicated draft form lands later).
+    expect(screen.getByLabelText('Composer')).toBeTruthy();
+    expect(screen.getByTestId('composer-type').textContent).toMatch(/agent/);
+    expect(screen.queryByLabelText('Home view')).toBeNull();
   });
 
   it('task_entry_still_routes_to_launch_surface (Home) and closes the menu', () => {

@@ -23,13 +23,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { ComposerChat } from './ComposerChat';
 import { defaultComposerStream } from './chatClient';
 import type { ComposerStreamFn } from './chatClient';
-import {
-  ARTIFACT_KINDS,
-  RISK_TIERS,
-  seedTemplate,
-  toDeploy,
-  validateDraft,
-} from './artifactTypes';
+import { RISK_TIERS, seedTemplate, toDeploy, validateDraft } from './artifactTypes';
 import type {
   ArtifactKind,
   DeployPlan,
@@ -43,9 +37,12 @@ import type {
 } from './artifactTypes';
 import '../styles/views/composer.css';
 
-/** The seedable chips: `idea` (unknown, idea-first entry) then the four concrete v1 kinds. `agent` is
- *  intentionally absent — deferred per the plan's Flagged #4. */
-const CHIP_KINDS: SeedKind[] = ['idea', ...ARTIFACT_KINDS];
+/** The seedable chips: `idea` (unknown, idea-first entry) then the concrete kinds that have a draft form.
+ *  `agent` is a member of ARTIFACT_KINDS (C7.1 — the registry/deploy spine) but its Composer DRAFT FORM
+ *  is a later chunk, so it is intentionally NOT listed as a chip here (see Composer.test
+ *  `agent_is_not_offered_as_a_type`). This list is explicit rather than derived from ARTIFACT_KINDS so a
+ *  new registry kind never silently grows a half-built chip. */
+const CHIP_KINDS: SeedKind[] = ['idea', 'task', 'workflow', 'skill', 'project'];
 
 const CHIP_LABEL: Record<SeedKind, string> = {
   idea: 'Idea',
@@ -53,6 +50,8 @@ const CHIP_LABEL: Record<SeedKind, string> = {
   workflow: 'Workflow',
   skill: 'Skill',
   project: 'Project',
+  // `agent` is not a chip yet (its draft form is deferred); the label satisfies the total map type.
+  agent: 'Agent',
 };
 
 /** Legible branch-class line for the preview: the governed discipline the write routes through. */
@@ -360,6 +359,10 @@ function DraftForm({
           <Field label="Project date" value={form.projDate} onChange={(v) => setField('projDate', v)} />
         </div>
       );
+    case 'agent':
+      // `agent` has no chip / draft form yet (its Composer form is a later chunk); buildDraft returns null
+      // for it, so this branch is never actually rendered. Present only to keep the switch exhaustive.
+      return <></>;
   }
 }
 

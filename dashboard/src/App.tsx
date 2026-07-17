@@ -419,13 +419,21 @@ export function App(): React.JSX.Element {
       });
 
   // [+ New ▾] routing (C5): "Idea…" opens the Composer surface in idea mode; the "Workflow"/"Skill"/
-  // "Project" entity pickers open the SAME surface pre-seeded to that type; "Task" keeps its day-one route
-  // to the governed launch surface (Home). "Agent" is disabled in the menu, so it never reaches here.
+  // "Project"/"Agent" entity pickers open the SAME surface pre-seeded to that type; "Task" keeps its
+  // day-one route to the governed launch surface (Home). C7.2 un-defers "Agent" — it opens the Composer
+  // pre-seeded to `agent` (its dedicated draft form lands in a later chunk; until then the operator
+  // converges via the chat / picks a concrete type).
   const handleCreate = (id: NewMenuEntry['id']): void => {
     if (id === 'task') {
       setComposerOpen(false);
       setView('home');
-    } else if (id === 'idea' || id === 'workflow' || id === 'skill' || id === 'project') {
+    } else if (
+      id === 'idea' ||
+      id === 'workflow' ||
+      id === 'skill' ||
+      id === 'project' ||
+      id === 'agent'
+    ) {
       setComposerKind(id);
       setComposerOpen(true);
     }

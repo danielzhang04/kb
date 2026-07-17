@@ -14,8 +14,10 @@
  *                                  endpoint, followUps?} the dispatcher maps to /api/write/launch|save.
  *
  * Binding decisions folded in (Daniel, 2026-07-17):
- *   - v1 kinds are task | workflow | skill | project (+ the `idea`/unknown seed state). `agent` is
- *     EXCLUDED — deferred to a later registry-design chunk.
+ *   - kinds are task | workflow | skill | project | agent (+ the `idea`/unknown seed state). C7 un-defers
+ *     `agent`: a first-class fleet identity declared as a durable agents/<id>.md record (PR to main). The
+ *     client is an HONEST PREVIEW only — the server owns the authoritative registry / impersonation checks
+ *     (C7.6). Declaring an agent is NOT making it run: a human binds a runner (runner-bound stays false).
  *   - Multi-file artifacts deploy the PRIMARY FILE ONLY in v1. Skill → skills/learned/<slug>/SKILL.md
  *     (the LEARNED tier — binding, never curated, so the sync_skills curated-mirror hook is never
  *     tripped). Project → orgs/<name>/_index.md rendered from templates/_index.md (the other three
@@ -24,8 +26,8 @@
  *   - Task maps to the launch endpoint's fields {project, action, target, riskTier, body}.
  */
 
-/** The concrete v1 artifact kinds. `agent` is intentionally absent (deferred). */
-export const ARTIFACT_KINDS = ['task', 'workflow', 'skill', 'project'] as const;
+/** The concrete artifact kinds. `agent` (C7) is a first-class fleet identity declared as agents/<id>.md. */
+export const ARTIFACT_KINDS = ['task', 'workflow', 'skill', 'project', 'agent'] as const;
 export type ArtifactKind = (typeof ARTIFACT_KINDS)[number];
 
 /** The seedable states: the four concrete kinds plus `idea` (the unknown, idea-first entry point). */
@@ -74,6 +76,29 @@ export interface ProjectDraft {
   date: string;
 }
 
+/** Agent draft (C7) — the declarative fleet-identity record. `id`/`role`/`runtime`/`model` are exactly
+ *  the tuple the roster displays and the routing resolver consumes; `projects`/`description` are advisory
+ *  display metadata. `runner-bound` is NOT a draft field — the registry hard-codes it false (a human binds
+ *  a runner). The client validates shape only; the SERVER owns the authoritative registry / impersonation
+ *  checks (C7.6). */
+export interface AgentDraft {
+  /** Identity string. Becomes agents/<id>.md, the card owner, the routing-override key, and git user.name —
+   *  MUST be a single safe path segment (the F4 guard). */
+  id: string;
+  /** One of cards.ROLES — the behavioral template (routines/roles/<role>.md). */
+  role: string;
+  /** Declared default execution engine — a registered runtime. */
+  runtime: string;
+  /** Optional declared default concrete model id (omit to inherit the role×tier policy model). */
+  model?: string;
+  /** Advisory scope hint: projects this agent works. [] / omitted = fleet-wide. */
+  projects?: string[];
+  /** One-line human description for the roster / Agents view. */
+  description: string;
+  /** Optional freeform Markdown body (inert prose). */
+  body?: string;
+}
+
 /** Map a kind to its draft type (used only for local typing; callers pass the concrete shapes). */
 export type DraftFor<K extends ArtifactKind> = K extends 'task'
   ? TaskDraft
@@ -81,7 +106,26 @@ export type DraftFor<K extends ArtifactKind> = K extends 'task'
     ? SkillDraft
     : K extends 'workflow'
       ? WorkflowDraft
-      : ProjectDraft;
+      : K extends 'project'
+        ? ProjectDraft
+        : AgentDraft;
+
+// ── Agent mirrored constants (honest previews — the server owns the authoritative checks) ─────────────
+//
+// These mirror server-side source-of-truth the client-pure module may not import, EXACTLY as
+// COORDINATION_PREFIXES / RISK_TIERS are mirrored above. Each is an honest preview only; the server's
+// routing-override set + governed-save impersonation guard (C7.6) do the authoritative validation.
+
+/** Mirror of scripts/cards.py ROLES — the behavioral-template roles. */
+const AGENT_ROLES = ['scout', 'manage', 'work', 'inspect', 'consolidate'] as const;
+
+/** Mirror of governance/model-routing.yaml runtimes. The server override-set does the AUTHORITATIVE
+ *  registry check (a runtime must be one governance already blesses). */
+const AGENT_RUNTIMES = ['claude', 'codex'] as const;
+
+/** Small mirrored set of existing runtime identities an agent id must not shadow (anti-impersonation
+ *  honest preview). The AUTHORITATIVE humans.yaml / existing-agent collision check is SERVER-SIDE (C7.6). */
+const RESERVED_AGENT_IDS = ['worker-desktop', 'codex-worker'] as const;
 
 // ── Deploy plan ────────────────────────────────────────────────────────────────────────────────────
 
@@ -239,8 +283,8 @@ function renderTemplate(template: string, name: string, date: string): string {
 // deploy contract) the operator could have typed themselves — NOT untrusted external text. The seed is
 // the FIRST turn's prompt (composed with the operator's idea), never sourced from a card body.
 
-/** The idea-first disambiguation seed — asks the model to help decide which of the four v1 types the
- *  idea wants to become. IDEA-FIRST is binding; `agent` is not offered (excluded from v1). */
+/** The idea-first disambiguation seed — asks the model to help decide which type the idea wants to become.
+ *  IDEA-FIRST is binding; C7 adds `agent` as a fifth convergence target. */
 function ideaSeed(idea: string): string {
   return [
     'You are helping an operator turn a raw idea into a typed, deployable kb artifact.',
@@ -248,11 +292,13 @@ function ideaSeed(idea: string): string {
     'The idea:',
     idea,
     '',
-    'First, help decide which TYPE this idea wants to become — do not assume. The four v1 kinds are:',
+    'First, help decide which TYPE this idea wants to become — do not assume. The kinds are:',
     '- task — a single governed work order filed as a queue card (project, action, target, risk tier).',
     '- workflow — a reusable multi-step procedure saved as workflows/wf_<name>.md.',
     '- skill — a packaged capability saved as skills/learned/<slug>/SKILL.md (name + description + body).',
     '- project — a new orgs/<name>/ workspace scaffolded from the standard templates.',
+    '- agent — a first-class fleet identity (id, role, runtime) declared as agents/<id>.md. Declaring it',
+    '  registers the identity + its defaults; a human must bind a runner before its cards actually run.',
     '',
     'Ask the operator any clarifying question needed to disambiguate, then recommend one type and explain',
     'why. Once the type is chosen the conversation re-seeds with that type’s creation prompt.',
@@ -291,6 +337,18 @@ function kindSeed(kind: ArtifactKind, idea: string): string {
         '(_index.md, STATE.md, contract.md, HEARTBEAT.md). Choose a short slug-like name. Deploy is',
         'durable: the rendered _index.md is the primary save (work branch → PR to main); the other',
         'three files are offered as follow-up saves.',
+      ].join('\n');
+    case 'agent':
+      return [
+        ...header,
+        'Draft an AGENT — a first-class fleet identity declared as agents/<id>.md (YAML frontmatter).',
+        'Schema: id (a single safe path segment — it becomes the card owner, git user.name, and the',
+        'routing-override key), role (scout|manage|work|inspect|consolidate), runtime (claude|codex),',
+        'an optional model, optional projects, and a one-line description.',
+        'IMPORTANT — declaring an agent is NOT the same as making it run: the file registers the identity',
+        'and its declared defaults, but a human must bind a runner before its cards execute (runner-bound',
+        'stays false until then). Deploy is durable: work branch → PR to main (the human merge admits the',
+        'identity to the fleet).',
       ].join('\n');
   }
 }
@@ -352,6 +410,37 @@ function validateProject(draft: ProjectDraft): Problem[] {
   return problems;
 }
 
+function validateAgent(draft: AgentDraft): Problem[] {
+  const problems: Problem[] = [];
+  requireNonEmpty(problems, 'id', draft.id, 'id is required');
+  // review F4 — the id becomes agents/<slug>.md, the card owner, the routing-override key, and git
+  // user.name; reject traversal / separators / leading-dot / empty slug. This is the load-bearing check.
+  const idProblem = nameSegmentProblem('id', draft.id);
+  if (idProblem) problems.push(idProblem);
+  // Anti-impersonation honest preview: reject an id that shadows an existing runtime identity. The
+  // AUTHORITATIVE humans.yaml / existing-agent collision check is SERVER-SIDE (C7.6) — this is a preview.
+  if (typeof draft.id === 'string') {
+    const norm = draft.id.trim().toLowerCase();
+    if (RESERVED_AGENT_IDS.some((r) => r === norm)) {
+      problems.push({ field: 'id', message: `id "${draft.id.trim()}" is a reserved runtime identity` });
+    }
+  }
+  // role / runtime are mirrored closed sets (server owns the authoritative registry check).
+  if (!(AGENT_ROLES as readonly string[]).includes(draft.role)) {
+    problems.push({ field: 'role', message: `role must be one of ${AGENT_ROLES.join(', ')}` });
+  }
+  if (!(AGENT_RUNTIMES as readonly string[]).includes(draft.runtime)) {
+    problems.push({ field: 'runtime', message: `runtime must be one of ${AGENT_RUNTIMES.join(', ')}` });
+  }
+  // model is optional; if present it must be non-empty (concrete registry validation is the server's job
+  // at override-set time — the client cannot read the live policy).
+  if (draft.model !== undefined) {
+    requireNonEmpty(problems, 'model', draft.model, 'model, if set, must be non-empty');
+  }
+  requireNonEmpty(problems, 'description', draft.description, 'description is required');
+  return problems;
+}
+
 /** Validate a proposed draft for `kind`. An empty array means the draft is deploy-ready. */
 export function validateDraft<K extends ArtifactKind>(kind: K, draft: DraftFor<K>): Problem[] {
   switch (kind) {
@@ -363,6 +452,8 @@ export function validateDraft<K extends ArtifactKind>(kind: K, draft: DraftFor<K
       return validateWorkflow(draft as WorkflowDraft);
     case 'project':
       return validateProject(draft as ProjectDraft);
+    case 'agent':
+      return validateAgent(draft as AgentDraft);
     default:
       // Exhaustiveness: an unhandled kind is a programming error, not a runtime input.
       return [{ field: 'kind', message: `unknown kind: ${String(kind)}` }];
@@ -447,6 +538,29 @@ function projectPlan(draft: ProjectDraft): DeployPlan {
   };
 }
 
+function agentPlan(draft: AgentDraft): DeployPlan {
+  const slug = slugify(draft.id);
+  const relpath = `agents/${slug}.md`;
+  // Frontmatter mirrors the roster/routing tuple. `runner-bound: false` is HARD-CODED — the registry
+  // DECLARES an identity; only a human flips it true after binding a runner (plan Flagged #2). agents/ is
+  // not a coordination prefix, so classifyRelpath resolves durable (work branch → PR to main).
+  const lines = ['---', `id: ${draft.id}`, `role: ${draft.role}`, `runtime: ${draft.runtime}`];
+  if (draft.model !== undefined && draft.model.trim() !== '') lines.push(`model: ${draft.model}`);
+  if (draft.projects && draft.projects.length > 0) lines.push(`projects: [${draft.projects.join(', ')}]`);
+  lines.push('runner-bound: false');
+  lines.push(`description: ${draft.description}`);
+  lines.push('---');
+  const body = draft.body && draft.body.trim() !== '' ? draft.body.replace(/\n+$/, '') : `# Agent: ${draft.id}`;
+  const content = `${lines.join('\n')}\n\n${body}\n`;
+  return {
+    kind: 'agent',
+    relpath,
+    content,
+    branchClass: classifyRelpath(relpath),
+    endpoint: 'save',
+  };
+}
+
 /**
  * Map a VALIDATED draft to its DeployPlan. Refuses (throws) an invalid draft so deploy is blocked at the
  * registry level — the UI must not be able to route a half-formed draft to a governed endpoint.
@@ -465,6 +579,8 @@ export function toDeploy<K extends ArtifactKind>(kind: K, draft: DraftFor<K>): D
       return workflowPlan(draft as WorkflowDraft);
     case 'project':
       return projectPlan(draft as ProjectDraft);
+    case 'agent':
+      return agentPlan(draft as AgentDraft);
     default:
       throw new Error(`unknown kind: ${String(kind)}`);
   }
