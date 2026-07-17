@@ -41,7 +41,16 @@
 
 param(
     [Parameter(Mandatory = $true)]
-    [string]$Agent
+    [string]$Agent,
+
+    # Remote to push the per-run work branch to (Phase B, step below). Defaults to
+    # 'origin' for backward compatibility with every existing caller/worker that
+    # omits it. Non-Claude workers (e.g. codex-worker) MUST pass the deploy-key-bound
+    # remote name here instead -- pushing over `origin` would use Daniel's HTTPS
+    # credential and BYPASS the protect-ops-main-from-workers ruleset, defeating the
+    # whole point of deploy-key isolation (see the Phase B comment block near the
+    # push call for the full rationale).
+    [string]$PushRemote = 'origin'
 )
 
 $ErrorActionPreference = 'Continue'
@@ -357,10 +366,17 @@ ledger.append(Path(r'$RepoRoot'), 'cost', '$Agent', {
 # it holds no REST/gh capability by the trust-anchor invariant, and NEVER merges).
 # The `protect-ops-main-from-workers` ruleset blocks this key from pushing ops/main
 # directly, so the push below can only ever land on the codex/* work branch.
-git -C $RepoRoot push origin $workBranch
+#
+# The push remote is PARAMETERIZED via -PushRemote (default 'origin', backward
+# compatible). Non-Claude workers (e.g. codex-worker) must be invoked with
+# -PushRemote pointed at the deploy-key-bound remote so this push goes out over
+# that key -- pushing over `origin` would use Daniel's HTTPS credential and bypass
+# the protect-ops-main-from-workers ruleset entirely, defeating the point of the
+# deploy-key isolation.
+git -C $RepoRoot push $PushRemote $workBranch
 if ($LASTEXITCODE -ne 0) {
-    Write-RunnerLog ("push-failed agent=$Agent branch=$workBranch exit=$LASTEXITCODE -- work remains local; human must reconcile")
-    New-WakeMeCard $py "agent_runner:$Agent:push-failed" "Pushing work branch '$workBranch' failed (exit $LASTEXITCODE). Card results from this run exist only locally on that branch; a human must push/reconcile it and check the deploy-key/remote wiring (HUMAN GATE 5.10)."
+    Write-RunnerLog ("push-failed agent=$Agent branch=$workBranch remote=$PushRemote exit=$LASTEXITCODE -- work remains local; human must reconcile")
+    New-WakeMeCard $py "agent_runner:$Agent:push-failed" "Pushing work branch '$workBranch' to remote '$PushRemote' failed (exit $LASTEXITCODE). Card results from this run exist only locally on that branch; a human must push/reconcile it and check the deploy-key/remote wiring (HUMAN GATE 5.10)."
     if ($overallExit -eq 0) { $overallExit = 1 }
 }
 else {
