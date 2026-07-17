@@ -7,6 +7,7 @@ import { registerPlaneA } from './planeA/routes.ts';
 import { registerDag } from './dag/routes.ts';
 import { registerRoutingRead } from './routing/routes.ts';
 import { registerAgents } from './agents/routes.ts';
+import { registerPanels } from './panels/routes.ts';
 import { registerHub } from './hub/index.ts';
 import { registerWriteSurface } from './http/surface.ts';
 
@@ -37,6 +38,7 @@ export function buildApp(): FastifyInstance {
   registerDag(app); // D3.4: read-only pipeline DAG projection over depends-on (GET /api/dag)
   registerRoutingRead(app); // R2.1/R2.4: read-only effective-routing projection (GET /api/routing)
   registerAgents(app); // read-only fleet roster (GET /api/agents): queue owners ∪ ledger writers ∪ roles
+  registerPanels(app); // D3.5: read-only layer panels (GET /api/panels/health | /api/panels/usage)
   registerHub(app, { repoRoot: process.env.DASHBOARD_REPO_ROOT }); // D0.4: SSE/WS hub + Origin/Host guard (/events, /ws)
   registerWriteSurface(app); // U2: governed write surface (origin -> rate-limit -> session -> gate -> audit)
 
