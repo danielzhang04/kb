@@ -3,6 +3,9 @@
  * `PyRunner` (see `launch.ts`'s module docstring for why: `scripts/cards.py` is a MODULE, not a CLI,
  * and no test here ever shells a real `py` binary or touches a real `queue/` tree — fully hermetic).
  */
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { mintSession } from '../auth/session.ts';
 import type { SessionConfig } from '../auth/session.ts';
@@ -10,6 +13,7 @@ import {
   buildRerunBody,
   launchCard,
   rerunAsDependsOn,
+  defaultOwnerRouting,
   CARD_OP_SCRIPT,
 } from './launch.ts';
 import type { LaunchDeps, PyRunResult, PyRunner, SessionInput } from './launch.ts';
@@ -309,5 +313,133 @@ describe('launchCard — C7.7 task-owner assignment (closed-set owner + resolver
       if (!result.ok) expect(result.reason).toBe('owner-not-registered');
       expect(calls, `owner '${bad}' must file no card`).toHaveLength(0);
     }
+  });
+});
+
+// --------------------------------------------------------------------------- //
+// C7.9 — defaultOwnerRouting: an assigned owner is stamped with its DECLARED    //
+// runtime/model when no explicit agent-scope override sets that field.          //
+// Precedence: agent-scope override > declared agent runtime/model >             //
+//             policy role_default > safe default.                               //
+// --------------------------------------------------------------------------- //
+
+/** A full policy: claude (3 known) + codex (1 known: gpt-5.6-sol). Mirrors governance/model-routing.yaml. */
+const POLICY_YAML = `version: 1
+runtimes:
+  claude:
+    default_worker: worker-desktop
+    aliases:
+      opus: claude-opus-4-8
+      sonnet: claude-sonnet-5
+      haiku: claude-haiku-4-5
+    known_models: [claude-opus-4-8, claude-sonnet-5, claude-haiku-4-5]
+  codex:
+    default_worker: codex-worker
+    aliases:
+      codex: gpt-5.6-sol
+    known_models: [gpt-5.6-sol]
+role_default: { runtime: claude, model: sonnet }
+`;
+
+/** Same, but codex has TWO known models so an explicit-declared-model can differ from known_models[0]. */
+const POLICY_YAML_MULTI_CODEX = `version: 1
+runtimes:
+  claude:
+    default_worker: worker-desktop
+    aliases:
+      opus: claude-opus-4-8
+      sonnet: claude-sonnet-5
+      haiku: claude-haiku-4-5
+    known_models: [claude-opus-4-8, claude-sonnet-5, claude-haiku-4-5]
+  codex:
+    default_worker: codex-worker
+    known_models: [gpt-5.6-sol, gpt-5.6-pro]
+role_default: { runtime: claude, model: sonnet }
+`;
+
+/** Compose an `agents/<id>.md` file body from frontmatter fields. */
+function agentFile(fields: Record<string, string>): string {
+  const fm = Object.entries(fields)
+    .map(([k, v]) => `${k}: ${v}`)
+    .join('\n');
+  return `---\n${fm}\n---\nDeclared agent.\n`;
+}
+
+/** Build a hermetic temp repo with a policy file, optional agents/*.md, and an optional override file. */
+function makeRoutingRepo(opts: { policy: string; agents?: Record<string, string>; override?: string }): string {
+  const root = mkdtempSync(join(tmpdir(), 'launch-routing-'));
+  mkdirSync(join(root, 'governance'), { recursive: true });
+  writeFileSync(join(root, 'governance', 'model-routing.yaml'), opts.policy);
+  if (opts.agents) {
+    mkdirSync(join(root, 'agents'), { recursive: true });
+    for (const [name, content] of Object.entries(opts.agents)) {
+      writeFileSync(join(root, 'agents', name), content);
+    }
+  }
+  if (opts.override !== undefined) {
+    mkdirSync(join(root, 'queue'), { recursive: true });
+    writeFileSync(join(root, 'queue', 'routing-override.yaml'), opts.override);
+  }
+  return root;
+}
+
+describe('defaultOwnerRouting — C7.9 declared-agent self-stamp precedence', () => {
+  it('codex agent, no override → stamps the declared codex runtime + its default known model (gpt-5.6-sol)', () => {
+    const root = makeRoutingRepo({
+      policy: POLICY_YAML,
+      agents: { 'codex-worker.md': agentFile({ id: 'codex-worker', role: 'work', runtime: 'codex' }) },
+    });
+    // THE FIX: without this, role_default stamps claude/claude-sonnet-5 and the codex runner refuses the card.
+    expect(defaultOwnerRouting('codex-worker', root)).toEqual({ runtime: 'codex', model: 'gpt-5.6-sol' });
+  });
+
+  it('claude agent, no override → stamps claude + claude-sonnet-5 (role_default, unchanged)', () => {
+    const root = makeRoutingRepo({
+      policy: POLICY_YAML,
+      agents: { 'worker-desktop.md': agentFile({ id: 'worker-desktop', role: 'work', runtime: 'claude' }) },
+    });
+    expect(defaultOwnerRouting('worker-desktop', root)).toEqual({ runtime: 'claude', model: 'claude-sonnet-5' });
+  });
+
+  it('agent with NO declared runtime, no override → falls to policy role_default (claude/claude-sonnet-5)', () => {
+    const root = makeRoutingRepo({
+      policy: POLICY_YAML,
+      agents: { 'mystery.md': agentFile({ id: 'mystery', role: 'work' }) },
+    });
+    expect(defaultOwnerRouting('mystery', root)).toEqual({ runtime: 'claude', model: 'claude-sonnet-5' });
+  });
+
+  it('agent-scope routing-override wins over the declared runtime/model (unchanged precedence)', () => {
+    const override = `version: 1
+overrides:
+  - scope: agent
+    key: codex-worker
+    runtime: claude
+    model: claude-opus-4-8
+`;
+    const root = makeRoutingRepo({
+      policy: POLICY_YAML,
+      agents: { 'codex-worker.md': agentFile({ id: 'codex-worker', role: 'work', runtime: 'codex' }) },
+      override,
+    });
+    expect(defaultOwnerRouting('codex-worker', root)).toEqual({ runtime: 'claude', model: 'claude-opus-4-8' });
+  });
+
+  it('declared agent that declares an explicit KNOWN model → that model is honored (not clamped to [0])', () => {
+    const root = makeRoutingRepo({
+      policy: POLICY_YAML_MULTI_CODEX,
+      agents: { 'codex-pro.md': agentFile({ id: 'codex-pro', role: 'work', runtime: 'codex', model: 'gpt-5.6-pro' }) },
+    });
+    expect(defaultOwnerRouting('codex-pro', root)).toEqual({ runtime: 'codex', model: 'gpt-5.6-pro' });
+  });
+
+  it('declared model NOT in the runtime known set → clamped to the runtime default (known_models[0])', () => {
+    const root = makeRoutingRepo({
+      policy: POLICY_YAML_MULTI_CODEX,
+      agents: {
+        'codex-bad.md': agentFile({ id: 'codex-bad', role: 'work', runtime: 'codex', model: 'gpt-does-not-exist' }),
+      },
+    });
+    expect(defaultOwnerRouting('codex-bad', root)).toEqual({ runtime: 'codex', model: 'gpt-5.6-sol' });
   });
 });
