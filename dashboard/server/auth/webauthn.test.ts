@@ -10,7 +10,7 @@ import {
   assertionOptions,
   registrationOptions,
   resolveWebAuthnConfig,
-} from './webauthn';
+} from './webauthn.ts';
 
 const RP_ORIGIN = 'https://box-1234.tailnet-abcd.ts.net';
 

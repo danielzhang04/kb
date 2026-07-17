@@ -4,16 +4,16 @@
  * and no test here ever shells a real `py` binary or touches a real `queue/` tree — fully hermetic).
  */
 import { describe, expect, it } from 'vitest';
-import { mintSession } from '../auth/session';
-import type { SessionConfig } from '../auth/session';
+import { mintSession } from '../auth/session.ts';
+import type { SessionConfig } from '../auth/session.ts';
 import {
   buildRerunBody,
   launchCard,
   rerunAsDependsOn,
   CARD_OP_SCRIPT,
-} from './launch';
-import type { LaunchDeps, PyRunResult, PyRunner, SessionInput } from './launch';
-import type { PreambleRunner } from './preambleGate';
+} from './launch.ts';
+import type { LaunchDeps, PyRunResult, PyRunner, SessionInput } from './launch.ts';
+import type { PreambleRunner } from './preambleGate.ts';
 
 const SECRET = Buffer.from('launch-test-secret-do-not-reuse');
 const SESSION_CONFIG: SessionConfig = { secret: SECRET, now: () => 1_700_000_000_000 };

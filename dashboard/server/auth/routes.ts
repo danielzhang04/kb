@@ -26,12 +26,12 @@ import {
   verifyRegistration,
   assertionOptions,
   verifyAssertion,
-} from './webauthn';
-import type { WebAuthnUser } from './webauthn';
-import { mintSessionFromVerifiedAssertion } from './session';
-import { findCredential, rememberChallenge, consumeChallenge } from './credentialStore';
-import type { SurfaceContext } from '../http/context';
-import { auditFn } from '../http/context';
+} from './webauthn.ts';
+import type { WebAuthnUser } from './webauthn.ts';
+import { mintSessionFromVerifiedAssertion } from './session.ts';
+import { findCredential, rememberChallenge, consumeChallenge } from './credentialStore.ts';
+import type { SurfaceContext } from '../http/context.ts';
+import { auditFn } from '../http/context.ts';
 
 /** The single-operator identity this daemon mints sessions for (loopback, one human). */
 const OPERATOR: WebAuthnUser = { id: 'operator', name: 'operator', displayName: 'kb operator' };

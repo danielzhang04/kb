@@ -3,8 +3,8 @@
  * recomputes novelty/tier itself.
  */
 import { describe, expect, it } from 'vitest';
-import { buttonsFor } from './assurance';
-import type { ParsedCard } from '../planeA/cards';
+import { buttonsFor } from './assurance.ts';
+import type { ParsedCard } from '../planeA/cards.ts';
 
 function card(assuranceClass: string | null, riskTier = 'T3'): ParsedCard {
   return {

@@ -38,8 +38,8 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { verifySession } from '../auth/session';
-import type { SessionClaims, SessionConfig } from '../auth/session';
+import { verifySession } from '../auth/session.ts';
+import type { SessionClaims, SessionConfig } from '../auth/session.ts';
 
 /** The bearer session token plus the config needed to verify it (mirrors `launch.ts`'s shape). */
 export interface SessionInput {

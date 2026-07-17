@@ -13,14 +13,14 @@
  *   POST /api/write/pause-cadence -> stop/floor.ts#pauseCadence
  */
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import { save } from './governedSave';
-import { isProtectedBranch } from './branch';
-import { launchCard, rerunAsDependsOn } from './launch';
-import type { LaunchOutcome, RiskTier } from './launch';
-import { writeStop, requestStop, pauseCadence } from '../stop/floor';
-import { requireSession, verifiedSession } from '../http/middleware';
-import type { SurfaceContext } from '../http/context';
-import { auditFn } from '../http/context';
+import { save } from './governedSave.ts';
+import { isProtectedBranch } from './branch.ts';
+import { launchCard, rerunAsDependsOn } from './launch.ts';
+import type { LaunchOutcome, RiskTier } from './launch.ts';
+import { writeStop, requestStop, pauseCadence } from '../stop/floor.ts';
+import { requireSession, verifiedSession } from '../http/middleware.ts';
+import type { SurfaceContext } from '../http/context.ts';
+import { auditFn } from '../http/context.ts';
 
 function asRecord(body: unknown): Record<string, unknown> {
   return body && typeof body === 'object' ? (body as Record<string, unknown>) : {};

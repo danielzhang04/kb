@@ -19,11 +19,11 @@
 
 import { writeFileSync, mkdirSync, realpathSync, lstatSync, existsSync } from 'node:fs';
 import { dirname, relative, resolve, sep, isAbsolute } from 'node:path';
-import { verifySession } from '../auth/session';
-import type { SessionConfig } from '../auth/session';
-import { resolveWithin, PathEscapeError } from '../kb/browser';
-import { routeWrite, defaultGitRunner, defaultPrOpener } from './branch';
-import type { GitRunner, PrOpener, RouteOptions, Target } from './branch';
+import { verifySession } from '../auth/session.ts';
+import type { SessionConfig } from '../auth/session.ts';
+import { resolveWithin, PathEscapeError } from '../kb/browser.ts';
+import { routeWrite, defaultGitRunner, defaultPrOpener } from './branch.ts';
+import type { GitRunner, PrOpener, RouteOptions, Target } from './branch.ts';
 
 export type SaveOutcome =
   | { ok: true; target: Target }

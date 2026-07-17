@@ -16,16 +16,16 @@
  */
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
-import { resolveSessionSecret, resolveSessionTtlMs } from '../auth/session';
-import { resolveAllowedOrigins, originPlugin } from '../security/origin';
-import { resolveWebAuthnConfig } from '../auth/webauthn';
-import { resolveCredentials } from '../auth/credentialStore';
-import { makeDefaultWriteRateGuard, writeRateLimitHook } from './middleware';
-import type { SurfaceContext } from './context';
-import { registerAuthRoutes } from '../auth/routes';
-import { registerWriteRoutes } from '../write/routes';
-import { registerVibeRoutes } from '../vibe/routes';
-import { registerApprovalsRoutes } from '../approvals/routes';
+import { resolveSessionSecret, resolveSessionTtlMs } from '../auth/session.ts';
+import { resolveAllowedOrigins, originPlugin } from '../security/origin.ts';
+import { resolveWebAuthnConfig } from '../auth/webauthn.ts';
+import { resolveCredentials } from '../auth/credentialStore.ts';
+import { makeDefaultWriteRateGuard, writeRateLimitHook } from './middleware.ts';
+import type { SurfaceContext } from './context.ts';
+import { registerAuthRoutes } from '../auth/routes.ts';
+import { registerWriteRoutes } from '../write/routes.ts';
+import { registerVibeRoutes } from '../vibe/routes.ts';
+import { registerApprovalsRoutes } from '../approvals/routes.ts';
 
 /** dashboard/server/http/surface.ts -> ../../../ is the repo root. Overridable via env / tests. */
 export function resolveRepoRoot(): string {

@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { fileURLToPath } from 'node:url';
 import Fastify from 'fastify';
-import { registerPlaneA } from './routes';
+import { registerPlaneA } from './routes.ts';
 
 const REPO_A = fileURLToPath(new URL('../__fixtures__/repo-a/', import.meta.url));
 

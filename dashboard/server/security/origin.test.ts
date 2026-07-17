@@ -3,9 +3,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import Fastify from 'fastify';
 import type { FastifyInstance } from 'fastify';
 import WebSocket from 'ws';
-import { assertOrigin, originPlugin, resolveAllowedOrigins } from './origin';
-import { createBus } from '../hub/bus';
-import { registerReadWs } from '../hub/ws';
+import { assertOrigin, originPlugin, resolveAllowedOrigins } from './origin.ts';
+import { createBus } from '../hub/bus.ts';
+import { registerReadWs } from '../hub/ws.ts';
 
 let app: FastifyInstance | undefined;
 afterEach(async () => {

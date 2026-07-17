@@ -9,9 +9,9 @@
  */
 import fastifyWebsocket from '@fastify/websocket';
 import type { FastifyInstance } from 'fastify';
-import type { EventBus, HubEvent } from './bus';
-import { assertOrigin } from '../security/origin';
-import type { AllowedOrigins } from '../security/origin';
+import type { EventBus, HubEvent } from './bus.ts';
+import { assertOrigin } from '../security/origin.ts';
+import type { AllowedOrigins } from '../security/origin.ts';
 
 export async function registerReadWs(
   app: FastifyInstance,

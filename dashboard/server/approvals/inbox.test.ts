@@ -10,11 +10,11 @@ import {
   SIGNED_VERIFY_SCRIPT,
   POSSESSION_VERIFY_SCRIPT,
   WEBAUTHN_VERIFY_SCRIPT,
-} from './inbox';
-import type { DriveVerifyDeps, VerifiedCardView } from './inbox';
-import type { PyRunner, PyRunResult } from '../write/launch';
-import type { PlaneAIndex } from '../planeA/indexer';
-import type { ParsedCard } from '../planeA/cards';
+} from './inbox.ts';
+import type { DriveVerifyDeps, VerifiedCardView } from './inbox.ts';
+import type { PyRunner, PyRunResult } from '../write/launch.ts';
+import type { PlaneAIndex } from '../planeA/indexer.ts';
+import type { ParsedCard } from '../planeA/cards.ts';
 
 /** Records every invocation so tests can assert exactly what would have been shelled (or wasn't). */
 function recordingPyRunner(

@@ -18,13 +18,13 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { indexRepo } from '../planeA/indexer';
-import { listPending, driveVerify } from './inbox';
-import type { ApprovalChannel, VerifiedCardView } from './inbox';
-import { buttonsFor } from './assurance';
-import { requireSession, verifiedSession } from '../http/middleware';
-import type { SurfaceContext } from '../http/context';
-import { auditFn } from '../http/context';
+import { indexRepo } from '../planeA/indexer.ts';
+import { listPending, driveVerify } from './inbox.ts';
+import type { ApprovalChannel, VerifiedCardView } from './inbox.ts';
+import { buttonsFor } from './assurance.ts';
+import { requireSession, verifiedSession } from '../http/middleware.ts';
+import type { SurfaceContext } from '../http/context.ts';
+import { auditFn } from '../http/context.ts';
 
 const QUEUE_DIRS = ['inbox', 'working', 'approvals', 'done'];
 const VALID_CHANNELS: ReadonlySet<string> = new Set(['signed', 'possession', 'webauthn']);

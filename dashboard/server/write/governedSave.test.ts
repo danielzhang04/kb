@@ -3,10 +3,10 @@ import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { writeFileSync, readFileSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { mintSession } from '../auth/session';
-import type { SessionConfig } from '../auth/session';
-import { save } from './governedSave';
-import type { GitRunner, PrOpener } from './branch';
+import { mintSession } from '../auth/session.ts';
+import type { SessionConfig } from '../auth/session.ts';
+import { save } from './governedSave.ts';
+import type { GitRunner, PrOpener } from './branch.ts';
 
 const SECRET = Buffer.from('unit-test-secret-do-not-reuse');
 const CONFIG: SessionConfig = { secret: SECRET, now: () => 1_700_000_000_000 };

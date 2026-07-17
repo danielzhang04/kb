@@ -8,7 +8,7 @@ import {
   type GitRunner,
   type PrOpener,
   type PrRequest,
-} from './branch';
+} from './branch.ts';
 
 /** A recording git runner; each call is captured as its argv (after `git`). Never throws. */
 function recorder(): { runner: GitRunner; calls: string[][] } {

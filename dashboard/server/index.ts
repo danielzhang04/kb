@@ -1,11 +1,11 @@
 import Fastify from 'fastify';
 import type { FastifyInstance } from 'fastify';
 import { fileURLToPath } from 'node:url';
-import { kbBrowserRoutes } from './kb/routes';
-import { registerRegistry } from './registry/routes';
-import { registerPlaneA } from './planeA/routes';
-import { registerHub } from './hub/index';
-import { registerWriteSurface } from './http/surface';
+import { kbBrowserRoutes } from './kb/routes.ts';
+import { registerRegistry } from './registry/routes.ts';
+import { registerPlaneA } from './planeA/routes.ts';
+import { registerHub } from './hub/index.ts';
+import { registerWriteSurface } from './http/surface.ts';
 
 /** Loopback-only bind. Network location is never a trust boundary (ordering law 4). */
 export const HOST = '127.0.0.1';

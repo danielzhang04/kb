@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { FSWatcher } from 'chokidar';
-import { indexRepo, watchPlaneA } from './indexer';
+import { indexRepo, watchPlaneA } from './indexer.ts';
 
 const REPO_A = fileURLToPath(new URL('../__fixtures__/repo-a/', import.meta.url));
 

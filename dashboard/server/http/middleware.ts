@@ -17,10 +17,10 @@
  * expose for their own unit tests.
  */
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { verifySession } from '../auth/session';
-import type { SessionClaims, SessionConfig } from '../auth/session';
-import { rateLimit, lockout, rateLimitHook } from '../security/ratelimit';
-import type { LockoutGuard } from '../security/ratelimit';
+import { verifySession } from '../auth/session.ts';
+import type { SessionClaims, SessionConfig } from '../auth/session.ts';
+import { rateLimit, lockout, rateLimitHook } from '../security/ratelimit.ts';
+import type { LockoutGuard } from '../security/ratelimit.ts';
 
 /** Extract a `Authorization: Bearer <token>` value, or `undefined` if absent/malformed. */
 export function bearerToken(req: { headers: { authorization?: string | string[] | undefined } }): string | undefined {

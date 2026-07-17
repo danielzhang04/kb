@@ -5,9 +5,9 @@
  */
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
-import { indexSkills } from './skills';
-import { indexConnections } from './connections';
-import { indexWorkflows } from './workflows';
+import { indexSkills } from './skills.ts';
+import { indexConnections } from './connections.ts';
+import { indexWorkflows } from './workflows.ts';
 
 /** dashboard/server/registry/routes.ts → ../../../ is the repo root. Overridable for tests/config. */
 export function resolveRepoRoot(): string {

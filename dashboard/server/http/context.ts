@@ -6,17 +6,17 @@
  * back to its real default (shell git/py/claude); route tests inject recording fakes so no real
  * subprocess, git remote, or `queue/` tree is ever touched — the security chain itself is never faked.
  */
-import type { SessionConfig } from '../auth/session';
-import type { AllowedOrigins } from '../security/origin';
-import type { LockoutGuard } from '../security/ratelimit';
-import type { WebAuthnConfig } from '../auth/webauthn';
+import type { SessionConfig } from '../auth/session.ts';
+import type { AllowedOrigins } from '../security/origin.ts';
+import type { LockoutGuard } from '../security/ratelimit.ts';
+import type { WebAuthnConfig } from '../auth/webauthn.ts';
 import type { WebAuthnCredential } from '@simplewebauthn/server';
-import { appendAudit as realAppendAudit } from '../audit/log';
-import type { AppendAuditOptions, AuditEvent, AuditRow, OpsGitRunner } from '../audit/log';
-import type { GitRunner, PrOpener } from '../write/branch';
-import type { PyRunner } from '../write/launch';
-import type { PreambleRunner } from '../write/preambleGate';
-import type { VibeSpawner } from '../vibe/session';
+import { appendAudit as realAppendAudit } from '../audit/log.ts';
+import type { AppendAuditOptions, AuditEvent, AuditRow, OpsGitRunner } from '../audit/log.ts';
+import type { GitRunner, PrOpener } from '../write/branch.ts';
+import type { PyRunner } from '../write/launch.ts';
+import type { PreambleRunner } from '../write/preambleGate.ts';
+import type { VibeSpawner } from '../vibe/session.ts';
 
 /** How a route records exactly one audit row. Injected as a recording fake in tests. */
 export type AppendAuditFn = (repoRoot: string, event: AuditEvent, options?: AppendAuditOptions) => AuditRow;

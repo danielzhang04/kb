@@ -7,8 +7,8 @@ import {
   appendAudit,
   appendAuditRowLocal,
   commitAuditToOps,
-} from './log';
-import type { AuditEvent, OpsGitRunner } from './log';
+} from './log.ts';
+import type { AuditEvent, OpsGitRunner } from './log.ts';
 
 const tmpDirs: string[] = [];
 async function scratch(): Promise<string> {

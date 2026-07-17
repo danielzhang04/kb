@@ -1,4 +1,4 @@
-import type { TranscriptRecord } from './tailer';
+import type { TranscriptRecord } from './tailer.ts';
 
 /** A `tool_result` block from a `user` record. */
 export interface ToolResult {

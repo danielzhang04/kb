@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { lockout, rateLimit } from './ratelimit';
+import { lockout, rateLimit } from './ratelimit.ts';
 
 /** A controllable fake clock: starts at `start` ms and only advances when `advance()` is called. */
 function fakeClock(start = 0) {

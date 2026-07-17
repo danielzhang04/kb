@@ -4,8 +4,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { FSWatcher } from 'chokidar';
-import { createBus, publishTailDelta, wirePlaneA } from './bus';
-import type { HubEvent } from './bus';
+import { createBus, publishTailDelta, wirePlaneA } from './bus.ts';
+import type { HubEvent } from './bus.ts';
 
 const REPO_A = fileURLToPath(new URL('../__fixtures__/repo-a/', import.meta.url));
 

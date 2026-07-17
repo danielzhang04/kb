@@ -11,7 +11,7 @@ import {
   __resetPendingForTest,
   __pendingSizeForTest,
   __MAX_PENDING_FOR_TEST,
-} from './credentialStore';
+} from './credentialStore.ts';
 
 afterEach(() => __resetPendingForTest());
 

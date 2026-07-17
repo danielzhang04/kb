@@ -11,8 +11,8 @@
  * the governed-write era; omit it in D0.
  */
 
-import { renderTrace } from '../server/trace/render';
-import { writeTrace } from '../server/trace/commit';
+import { renderTrace } from '../server/trace/render.ts';
+import { writeTrace } from '../server/trace/commit.ts';
 
 interface Args {
   session?: string;

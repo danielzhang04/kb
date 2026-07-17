@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { TranscriptRecord } from '../planeB/tailer';
-import { DISTILL_THRESHOLD_BYTES, distill, renderTrace, tracePath } from './render';
+import type { TranscriptRecord } from '../planeB/tailer.ts';
+import { DISTILL_THRESHOLD_BYTES, distill, renderTrace, tracePath } from './render.ts';
 
 const tmpDirs: string[] = [];
 async function scratch(): Promise<string> {

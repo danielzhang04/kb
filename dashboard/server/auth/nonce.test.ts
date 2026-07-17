@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { consumeNonce, issueNonce } from './nonce';
+import { consumeNonce, issueNonce } from './nonce.ts';
 
 it('a nonce is single-use; second consume fails', () => {
   const n = issueNonce();

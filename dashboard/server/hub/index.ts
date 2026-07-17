@@ -8,13 +8,13 @@
  * later (write/steering) waves inherit.
  */
 import type { FastifyInstance } from 'fastify';
-import { createBus } from './bus';
-import type { EventBus } from './bus';
-import { wirePlaneA } from './bus';
-import { registerSse } from './sse';
-import { registerReadWs } from './ws';
-import { originPlugin, resolveAllowedOrigins } from '../security/origin';
-import type { AllowedOrigins } from '../security/origin';
+import { createBus } from './bus.ts';
+import type { EventBus } from './bus.ts';
+import { wirePlaneA } from './bus.ts';
+import { registerSse } from './sse.ts';
+import { registerReadWs } from './ws.ts';
+import { originPlugin, resolveAllowedOrigins } from '../security/origin.ts';
+import type { AllowedOrigins } from '../security/origin.ts';
 
 // Make the bus reachable for later tasks/the daemon (e.g. wiring the live Plane-B tail).
 declare module 'fastify' {

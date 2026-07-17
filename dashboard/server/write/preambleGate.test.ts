@@ -3,8 +3,8 @@
  * so the suite is hermetic regardless of the host machine's actual fleet state.
  */
 import { describe, expect, it } from 'vitest';
-import { assertFleetRunnable } from './preambleGate';
-import type { PreambleRunResult, PreambleRunner } from './preambleGate';
+import { assertFleetRunnable } from './preambleGate.ts';
+import type { PreambleRunResult, PreambleRunner } from './preambleGate.ts';
 
 function fakeRunner(result: PreambleRunResult): PreambleRunner {
   return () => result;

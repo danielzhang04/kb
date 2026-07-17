@@ -12,10 +12,10 @@
  *                      because no `claude` output can have streamed yet.
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { spawnVibe } from './session';
-import type { VibeSpawnOutcome } from './session';
-import { requireSession, verifiedSession } from '../http/middleware';
-import type { SurfaceContext } from '../http/context';
+import { spawnVibe } from './session.ts';
+import type { VibeSpawnOutcome } from './session.ts';
+import { requireSession, verifiedSession } from '../http/middleware.ts';
+import type { SurfaceContext } from '../http/context.ts';
 
 function asRecord(body: unknown): Record<string, unknown> {
   return body && typeof body === 'object' ? (body as Record<string, unknown>) : {};

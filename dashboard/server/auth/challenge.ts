@@ -68,7 +68,7 @@
  *     malformed challenge rather than silently accepting a partial one.
  */
 import { createHash } from 'node:crypto';
-import type { CardMeta } from '../planeA/cards';
+import type { CardMeta } from '../planeA/cards.ts';
 
 /** The exact, fixed field order bound into the hash. See the module doc for why this is frozen. */
 const CANONICAL_FIELDS = ['action', 'target', 'risk-tier', 'owner'] as const;

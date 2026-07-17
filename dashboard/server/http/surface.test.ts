@@ -16,13 +16,13 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import Fastify from 'fastify';
 import type { FastifyInstance } from 'fastify';
-import { makeSurfaceContext, registerWriteSurface } from './surface';
-import type { SurfaceContext } from './context';
-import { mintSession } from '../auth/session';
-import type { AuditEvent, AuditRow } from '../audit/log';
-import type { GitRunner } from '../write/branch';
-import type { PyRunner } from '../write/launch';
-import type { PreambleRunner } from '../write/preambleGate';
+import { makeSurfaceContext, registerWriteSurface } from './surface.ts';
+import type { SurfaceContext } from './context.ts';
+import { mintSession } from '../auth/session.ts';
+import type { AuditEvent, AuditRow } from '../audit/log.ts';
+import type { GitRunner } from '../write/branch.ts';
+import type { PyRunner } from '../write/launch.ts';
+import type { PreambleRunner } from '../write/preambleGate.ts';
 
 const REPO_A = fileURLToPath(new URL('../__fixtures__/repo-a/', import.meta.url));
 const SECRET = Buffer.from('u2-surface-test-secret-0123456789');
@@ -130,7 +130,7 @@ describe('write surface — composition chain', () => {
 
   it('429s once the rate-limit window is breached (before the session check)', async () => {
     // limit 1 / window: the 2nd valid-origin request in the window is throttled.
-    const { lockout, rateLimit } = await import('../security/ratelimit');
+    const { lockout, rateLimit } = await import('../security/ratelimit.ts');
     const guard = lockout(rateLimit({ limit: 1, windowMs: 60_000 }), { threshold: 10, lockoutMs: 60_000 });
     ({ app } = buildApp({ rateGuard: guard }));
 
@@ -251,7 +251,7 @@ describe('write surface — FINDING 1: server owns the durable work branch (no c
 
 describe('write surface — FINDING 2: pre-session rate-limit keyed on PEER IP, not the bearer token', () => {
   it('throttles the same peer across rotating garbage bearer tokens (write route)', async () => {
-    const { lockout, rateLimit } = await import('../security/ratelimit');
+    const { lockout, rateLimit } = await import('../security/ratelimit.ts');
     const guard = lockout(rateLimit({ limit: 1, windowMs: 60_000 }), { threshold: 10, lockoutMs: 60_000 });
     ({ app } = buildApp({ rateGuard: guard }));
     // Same client (127.0.0.1), a DIFFERENT bearer each request. With the old tok:<bearer> key each got a
@@ -266,7 +266,7 @@ describe('write surface — FINDING 2: pre-session rate-limit keyed on PEER IP, 
   });
 
   it('covers the unauthenticated auth ceremony routes too (rotating bearers do not evade it)', async () => {
-    const { lockout, rateLimit } = await import('../security/ratelimit');
+    const { lockout, rateLimit } = await import('../security/ratelimit.ts');
     const guard = lockout(rateLimit({ limit: 1, windowMs: 60_000 }), { threshold: 10, lockoutMs: 60_000 });
     ({ app } = buildApp({ rateGuard: guard, webAuthnConfig: () => ({ rpID: 'localhost', rpName: 't', origin: GOOD_ORIGIN }), credentials: () => [] }));
     const first = await app.inject({ method: 'POST', url: '/api/auth/assert/options', headers: { ...headers(false), authorization: 'Bearer x1' }, payload: {} });
