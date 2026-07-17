@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtemp, rm, readFile } from 'node:fs/promises';
-import { writeFileSync, readFileSync, symlinkSync, mkdirSync } from 'node:fs';
+import { writeFileSync, readFileSync, symlinkSync, mkdirSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { mintSession } from '../auth/session.ts';
@@ -346,7 +346,83 @@ describe('save — C7.6 agent id-collision / anti-impersonation guard', () => {
     expect(readFileSync(join(repo, 'agents', 'research-worker.md'), 'utf-8')).toContain('research-worker');
   });
 
-  it('allows EDITING an already-existing agents/<id>.md even if the id collides (edit exception)', async () => {
+  // HIGH (Finding 1): the edit-exemption bypass. The guard must refuse a reserved-id collision that is
+  // NEWLY INTRODUCED by an edit, not just on file creation. Two-step forge: create a benign agents/foo.md
+  // (id:foo passes — foo is not reserved), then EDIT it to a reserved runtime/human identity. The second
+  // write must be refused 400 with no git activity — this is the impersonation forge C7.6 exists to stop.
+  it('refuses a two-step edit that newly introduces a reserved-id collision (Finding 1, 400, no write, no git)', async () => {
+    const repo = await scratch();
+    seedGovernance(repo);
+    // Step 1: benign create — foo is not reserved, lands on disk.
+    const create = await save({
+      repoRoot: repo,
+      relpath: 'agents/foo.md',
+      content: '---\nid: foo\nrole: work\nrunner-bound: false\n---\nbenign\n',
+      sessionToken: validToken(),
+      sessionConfig: CONFIG,
+      runGit: recorder().runner,
+      openPr: noopPrOpener,
+    });
+    expect(create.ok).toBe(true);
+    expect(readFileSync(join(repo, 'agents', 'foo.md'), 'utf-8')).toContain('id: foo');
+
+    // Step 2: forge — edit the same file to a reserved runtime worker identity. Must be REFUSED.
+    const { runner, calls } = recorder();
+    const forgeRuntime = await save({
+      repoRoot: repo,
+      relpath: 'agents/foo.md',
+      content: '---\nid: worker-desktop\nrole: work\n---\nforged\n',
+      sessionToken: validToken(),
+      sessionConfig: CONFIG,
+      runGit: runner,
+      openPr: noopPrOpener,
+    });
+    expect(forgeRuntime.ok).toBe(false);
+    if (!forgeRuntime.ok) {
+      expect(forgeRuntime.status).toBe(400);
+      expect(forgeRuntime.reason).toMatch(/agent-id-collision/);
+    }
+    expect(calls).toHaveLength(0);
+    // The forged reserved id never reached disk; the on-disk file still declares the benign id.
+    expect(readFileSync(join(repo, 'agents', 'foo.md'), 'utf-8')).toContain('id: foo');
+
+    // Same forge, this time onto a humans.yaml handle — also refused.
+    const forgeHuman = await save({
+      repoRoot: repo,
+      relpath: 'agents/foo.md',
+      content: '---\nid: danielzhang04\n---\nforged\n',
+      sessionToken: validToken(),
+      sessionConfig: CONFIG,
+      runGit: recorder().runner,
+      openPr: noopPrOpener,
+    });
+    expect(forgeHuman.ok).toBe(false);
+    if (!forgeHuman.ok) expect(forgeHuman.status).toBe(400);
+  });
+
+  // The corrected invariant's legitimate half: a real self-update that does NOT change the id still
+  // succeeds (replacing the old test that canonized the vulnerable "any existing file is exempt" rule).
+  it('allows a legitimate edit that does not change the (non-colliding) id', async () => {
+    const repo = await scratch();
+    seedGovernance(repo);
+    mkdirSync(join(repo, 'agents'), { recursive: true });
+    writeFileSync(join(repo, 'agents', 'foo.md'), '---\nid: foo\ndescription: old\n---\noriginal\n', 'utf-8');
+    const { runner: runGit } = recorder();
+    const result = await save({
+      repoRoot: repo,
+      relpath: 'agents/foo.md',
+      content: '---\nid: foo\ndescription: new and improved\n---\nedited\n',
+      sessionToken: validToken(),
+      sessionConfig: CONFIG,
+      runGit,
+      openPr: noopPrOpener,
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  // Grandfathering: a pre-existing agent file whose id ALREADY collides may still be edited (the reserved
+  // id was not newly introduced by this write). Editing worker-desktop.md (id already worker-desktop) passes.
+  it('still allows editing a pre-existing agent whose colliding id is unchanged (grandfathered)', async () => {
     const repo = await scratch();
     seedGovernance(repo);
     mkdirSync(join(repo, 'agents'), { recursive: true });
@@ -355,7 +431,7 @@ describe('save — C7.6 agent id-collision / anti-impersonation guard', () => {
     const result = await save({
       repoRoot: repo,
       relpath: 'agents/worker-desktop.md',
-      content: '---\nid: worker-desktop\n---\nedited\n',
+      content: '---\nid: worker-desktop\ndescription: still me\n---\nedited\n',
       sessionToken: validToken(),
       sessionConfig: CONFIG,
       runGit,
@@ -379,6 +455,90 @@ describe('save — C7.6 agent id-collision / anti-impersonation guard', () => {
     });
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.target).toBe('durable');
+  });
+});
+
+describe('save — LOW (Finding 2): runner-bound is not client-settable on agents/*.md', () => {
+  // The registry NEVER marks an agent runner-bound; only a human flips it true via a reviewed governance
+  // action. A direct POST setting `runner-bound: true` on an agents/*.md file must be refused server-side
+  // (no write, no git), while `false` / absent passes.
+  it('refuses an agents/*.md save that sets runner-bound: true (400, no write, no git)', async () => {
+    const repo = await scratch();
+    const { runner, calls } = recorder();
+    const result = await save({
+      repoRoot: repo,
+      relpath: 'agents/research-worker.md',
+      content: '---\nid: research-worker\nrole: work\nrunner-bound: true\n---\nforged binding\n',
+      sessionToken: validToken(),
+      sessionConfig: CONFIG,
+      runGit: runner,
+      openPr: noopPrOpener,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(400);
+      expect(result.reason).toMatch(/runner-bound-not-permitted/);
+    }
+    expect(calls).toHaveLength(0);
+    expect(existsSync(join(repo, 'agents', 'research-worker.md'))).toBe(false);
+  });
+
+  it('refuses runner-bound: true tolerant of quoting/whitespace/case on the value', async () => {
+    const repo = await scratch();
+    for (const line of ['runner-bound:   TRUE', 'runner-bound: "true"', "runner-bound: 'True'"]) {
+      const { runner, calls } = recorder();
+      const result = await save({
+        repoRoot: repo,
+        relpath: 'agents/x.md',
+        content: `---\nid: x\n${line}\n---\nbody\n`,
+        sessionToken: validToken(),
+        sessionConfig: CONFIG,
+        runGit: runner,
+        openPr: noopPrOpener,
+      });
+      expect(result.ok, line).toBe(false);
+      if (!result.ok) expect(result.status, line).toBe(400);
+      expect(calls, line).toHaveLength(0);
+    }
+  });
+
+  it('allows an agents/*.md save with runner-bound: false or absent', async () => {
+    const repo = await scratch();
+    const falseSave = await save({
+      repoRoot: repo,
+      relpath: 'agents/a-false.md',
+      content: '---\nid: a-false\nrunner-bound: false\n---\nok\n',
+      sessionToken: validToken(),
+      sessionConfig: CONFIG,
+      runGit: recorder().runner,
+      openPr: noopPrOpener,
+    });
+    expect(falseSave.ok).toBe(true);
+
+    const absentSave = await save({
+      repoRoot: repo,
+      relpath: 'agents/a-absent.md',
+      content: '---\nid: a-absent\nrole: work\n---\nok\n',
+      sessionToken: validToken(),
+      sessionConfig: CONFIG,
+      runGit: recorder().runner,
+      openPr: noopPrOpener,
+    });
+    expect(absentSave.ok).toBe(true);
+  });
+
+  it('does NOT restrict runner-bound: true outside agents/*.md (e.g. a KB doc)', async () => {
+    const repo = await scratch();
+    const result = await save({
+      repoRoot: repo,
+      relpath: 'docs/notes.md',
+      content: '---\nrunner-bound: true\n---\nplain doc, not an agent declaration\n',
+      sessionToken: validToken(),
+      sessionConfig: CONFIG,
+      runGit: recorder().runner,
+      openPr: noopPrOpener,
+    });
+    expect(result.ok).toBe(true);
   });
 });
 

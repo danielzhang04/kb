@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
@@ -248,5 +248,35 @@ describe('readDeclaredAgents / buildRoster declared source (C7.3)', () => {
     expect(entry!.declared).toBe(false);
     expect(entry!.runnerBound).toBe(false);
     expect(entry!.declaredRuntime).toBeNull();
+  });
+
+  // INFO (Finding 3): the READ path must not follow symlinks nor read unbounded files.
+  it('caps the read: an oversized agents/*.md (>64 KiB) is skipped, not read', () => {
+    const huge = `---\nid: huge\n---\n${'x'.repeat(70 * 1024)}\n`;
+    const root = repoWithAgents({ 'research-worker.md': AGENT_FILE, 'huge.md': huge });
+    const declared = readDeclaredAgents(root);
+    expect(declared.has('research-worker')).toBe(true);
+    expect(declared.has('huge')).toBe(false); // over the 64 KiB cap → skipped
+  });
+
+  it('does not follow a symlinked agents/*.md entry (skips it)', () => {
+    const root = repoWithAgents({ 'research-worker.md': AGENT_FILE });
+    // Plant a target OUTSIDE agents/ and link agents/link.md at it. If the platform forbids file
+    // symlinks (Windows without privilege), skip the assertion — the cap test still covers the read guard.
+    const outsideDir = mkdtempSync(join(tmpdir(), 'roster-symtarget-'));
+    const target = join(outsideDir, 'evil.md');
+    writeFileSync(target, '---\nid: sneaky\n---\nlinked\n');
+    let linked = false;
+    try {
+      symlinkSync(target, join(root, 'agents', 'link.md'), 'file');
+      linked = true;
+    } catch {
+      /* no symlink privilege on this platform → skip */
+    }
+    if (!linked) return;
+    const declared = readDeclaredAgents(root);
+    expect(declared.has('research-worker')).toBe(true);
+    expect(declared.has('sneaky')).toBe(false); // symlink content not followed
+    expect(declared.has('link')).toBe(false); // link stem not registered either
   });
 });
