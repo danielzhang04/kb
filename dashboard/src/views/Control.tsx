@@ -11,6 +11,7 @@
  * (D0.9 server route). Every pane degrades to an empty-safe state; nothing here writes.
  */
 import { useEffect, useState } from 'react';
+import type { FormEvent } from 'react';
 import type { PlaneAIndex } from '../../server/planeA/indexer';
 import { Browser } from './Browser';
 import { Registry } from './Registry';
@@ -112,8 +113,106 @@ function OrgStates({ index }: { index: PlaneAIndex }): React.JSX.Element {
   );
 }
 
+/**
+ * D2.6 — launch a new card / rerun an existing one as a `depends-on` follow-up. Both actions are
+ * governed (preamble + WebAuthn session gated server-side by `server/write/launch.ts`); this panel is
+ * a thin POSTing form and NEVER writes `queue/` itself. Disabled end-to-end without a `sessionToken`
+ * (WebAuthn session-token minting/storage is out of this task's file scope — see the D2.6 report) so
+ * a signed-out operator sees the controls but cannot trigger a write.
+ */
+function LaunchControls({ sessionToken }: { sessionToken?: string }): React.JSX.Element {
+  const [project, setProject] = useState('');
+  const [action, setAction] = useState('');
+  const [target, setTarget] = useState('');
+  const [riskTier, setRiskTier] = useState<'T1' | 'T2' | 'T3'>('T1');
+  const [body, setBody] = useState('');
+  const [launchStatus, setLaunchStatus] = useState<string | null>(null);
+
+  const [rerunCardId, setRerunCardId] = useState('');
+  const [feedback, setFeedback] = useState('');
+  const [rerunStatus, setRerunStatus] = useState<string | null>(null);
+
+  async function submitLaunch(e: FormEvent): Promise<void> {
+    e.preventDefault();
+    if (!sessionToken) {
+      setLaunchStatus('no session — sign in with your passkey first');
+      return;
+    }
+    try {
+      const res = await fetch('/api/write/launch', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${sessionToken}` },
+        body: JSON.stringify({ project, action, target, riskTier, body }),
+      });
+      const data = (await res.json()) as { cardId?: string; reason?: string };
+      setLaunchStatus(res.ok ? `launched ${data.cardId}` : `refused: ${data.reason ?? res.status}`);
+    } catch {
+      setLaunchStatus('launch request failed');
+    }
+  }
+
+  async function submitRerun(e: FormEvent): Promise<void> {
+    e.preventDefault();
+    if (!sessionToken) {
+      setRerunStatus('no session — sign in with your passkey first');
+      return;
+    }
+    try {
+      const res = await fetch('/api/write/rerun', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${sessionToken}` },
+        body: JSON.stringify({ cardId: rerunCardId, feedback }),
+      });
+      const data = (await res.json()) as { cardId?: string; reason?: string };
+      setRerunStatus(res.ok ? `filed ${data.cardId} depends-on ${rerunCardId}` : `refused: ${data.reason ?? res.status}`);
+    } catch {
+      setRerunStatus('rerun request failed');
+    }
+  }
+
+  return (
+    <section className="control__pane control__launch" aria-label="Launch and rerun">
+      <h2>Launch / rerun</h2>
+      {!sessionToken ? (
+        <p className="control__launch-warning">Sign in with your passkey to launch or rerun cards.</p>
+      ) : null}
+      <form aria-label="Launch card" onSubmit={(e) => void submitLaunch(e)}>
+        <input aria-label="Project" value={project} onChange={(e) => setProject(e.target.value)} />
+        <input aria-label="Action" value={action} onChange={(e) => setAction(e.target.value)} />
+        <input aria-label="Target" value={target} onChange={(e) => setTarget(e.target.value)} />
+        <select
+          aria-label="Risk tier"
+          value={riskTier}
+          onChange={(e) => setRiskTier(e.target.value as 'T1' | 'T2' | 'T3')}
+        >
+          <option value="T1">T1</option>
+          <option value="T2">T2</option>
+          <option value="T3">T3</option>
+        </select>
+        <textarea aria-label="Work order body" value={body} onChange={(e) => setBody(e.target.value)} />
+        <button type="submit" disabled={!sessionToken}>
+          Launch
+        </button>
+      </form>
+      {launchStatus ? <p data-testid="launch-status">{launchStatus}</p> : null}
+
+      <form aria-label="Rerun card" onSubmit={(e) => void submitRerun(e)}>
+        <input aria-label="Card id to rerun" value={rerunCardId} onChange={(e) => setRerunCardId(e.target.value)} />
+        <textarea aria-label="Rerun feedback" value={feedback} onChange={(e) => setFeedback(e.target.value)} />
+        <button type="submit" disabled={!sessionToken}>
+          Rerun
+        </button>
+      </form>
+      {rerunStatus ? <p data-testid="rerun-status">{rerunStatus}</p> : null}
+    </section>
+  );
+}
+
 /** Control landing. Accepts a snapshot directly (tests) or self-fetches `/api/index` and refreshes on SSE. */
-export function Control({ snapshot }: { snapshot?: PlaneAIndex } = {}): React.JSX.Element {
+export function Control({
+  snapshot,
+  sessionToken,
+}: { snapshot?: PlaneAIndex; sessionToken?: string } = {}): React.JSX.Element {
   const [fetched, setFetched] = useState<PlaneAIndex | null>(null);
   // A Plane-A delta on the hub bumps `count`; we refetch the snapshot on each tick (skipped when a
   // snapshot is supplied directly, and a no-op under jsdom where EventSource is absent).
@@ -157,6 +256,7 @@ export function Control({ snapshot }: { snapshot?: PlaneAIndex } = {}): React.JS
             <h2>Registry</h2>
             <Registry />
           </section>
+          <LaunchControls sessionToken={sessionToken} />
         </div>
       </div>
     </div>

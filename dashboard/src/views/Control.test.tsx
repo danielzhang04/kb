@@ -5,7 +5,7 @@
  * and is the default landing view reachable/leavable by one toggle (App-level).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import { Control } from './Control';
 import { App } from '../App';
 import type { PlaneAIndex } from '../../server/planeA/indexer';
@@ -95,5 +95,77 @@ describe('Control view', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Control' }));
     expect(screen.getByLabelText('Control view')).toBeTruthy();
     expect(screen.queryByLabelText('Code view')).toBeNull();
+  });
+});
+
+describe('Control view — D2.6 launch/rerun controls', () => {
+  it('disables Launch and Rerun submit without a sessionToken, and never calls fetch on submit', () => {
+    render(<Control snapshot={SNAPSHOT} />);
+
+    expect((screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Rerun' }) as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.submit(screen.getByLabelText('Launch card'));
+    expect(screen.getByTestId('launch-status').textContent).toMatch(/sign in with your passkey/i);
+
+    fireEvent.submit(screen.getByLabelText('Rerun card'));
+    expect(screen.getByTestId('rerun-status').textContent).toMatch(/sign in with your passkey/i);
+  });
+
+  it('POSTs a launch request to /api/write/launch with a bearer session token when provided', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        calls.push({ url, init });
+        if (url === '/api/write/launch') {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ cardId: 'new-card-1' }),
+          } as Response);
+        }
+        return new Promise(() => {});
+      }),
+    );
+
+    render(<Control snapshot={SNAPSHOT} sessionToken="fake-session-token" />);
+
+    fireEvent.change(screen.getByLabelText('Project'), { target: { value: 'kb' } });
+    fireEvent.change(screen.getByLabelText('Action'), { target: { value: 'demo' } });
+    fireEvent.change(screen.getByLabelText('Target'), { target: { value: 'docs/x.md' } });
+    fireEvent.submit(screen.getByLabelText('Launch card'));
+
+    await waitFor(() => expect(screen.getByTestId('launch-status').textContent).toContain('new-card-1'));
+
+    const launchCall = calls.find((c) => c.url === '/api/write/launch');
+    expect(launchCall).toBeTruthy();
+    expect((launchCall?.init?.headers as Record<string, string>)?.authorization).toBe(
+      'Bearer fake-session-token',
+    );
+    const body = JSON.parse(launchCall?.init?.body as string);
+    expect(body).toMatchObject({ project: 'kb', action: 'demo', target: 'docs/x.md' });
+  });
+
+  it('POSTs a rerun request to /api/write/rerun and surfaces a refusal reason from the server', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url === '/api/write/rerun') {
+          return Promise.resolve({
+            ok: false,
+            json: () => Promise.resolve({ reason: 'fleet-frozen' }),
+          } as Response);
+        }
+        return new Promise(() => {});
+      }),
+    );
+
+    render(<Control snapshot={SNAPSHOT} sessionToken="fake-session-token" />);
+
+    fireEvent.change(screen.getByLabelText('Card id to rerun'), { target: { value: 'orig-1' } });
+    fireEvent.change(screen.getByLabelText('Rerun feedback'), { target: { value: 'try smaller batch' } });
+    fireEvent.submit(screen.getByLabelText('Rerun card'));
+
+    await waitFor(() => expect(screen.getByTestId('rerun-status').textContent).toMatch(/refused: fleet-frozen/));
   });
 });
