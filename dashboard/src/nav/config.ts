@@ -99,24 +99,25 @@ export const NAV_SECTIONS: NavSection[] = [
 /** The default landing destination (Home). */
 export const DEFAULT_DESTINATION: DestinationId = 'home';
 
-/** The [+ New ▾] menu entries (U5.1 — idea-first). The FIRST entry is a freeform "Idea…" — the menu's
- *  shape now says "bring an idea, iterate", not "pick an entity type". `idea` is clickable (opens the
- *  Composer placeholder) but carries a "Composer — soon" hint; `task` is the working entry that routes
- *  to the governed launch surface. The remaining entity types are greyed until the Composer lands. */
+/** The [+ New ▾] menu entries (C5 — idea-first, Composer live). The FIRST entry is a freeform "Idea…" —
+ *  the menu's shape says "bring an idea, iterate", not "pick an entity type". `idea` opens the Composer
+ *  convergence surface in idea mode; `workflow`/`skill`/`project` open the SAME surface pre-seeded to that
+ *  type (secondary entry points into the one flow); `task` keeps its day-one route to the governed launch
+ *  surface (Home). `agent` stays greyed — deferred to the agent-registry chunk (plan Flagged #4). */
 export interface NewMenuEntry {
   id: 'idea' | 'task' | 'workflow' | 'skill' | 'project' | 'agent';
   label: string;
-  /** Whether the item is actionable (fires onCreate). Both `idea` and `task` are actionable day one. */
+  /** Whether the item is actionable (fires onCreate). All but `agent` are actionable now. */
   enabled: boolean;
-  /** Optional trailing hint shown even on an enabled item (e.g. the idea entry's "Composer — soon"). */
+  /** Optional trailing hint shown even on an enabled item (e.g. the idea entry's "Composer"). */
   hint?: string;
 }
 
 export const NEW_MENU_ENTRIES: NewMenuEntry[] = [
-  { id: 'idea', label: 'Idea…', enabled: true, hint: 'Composer — soon' },
+  { id: 'idea', label: 'Idea…', enabled: true, hint: 'Composer' },
   { id: 'task', label: 'Task', enabled: true },
-  { id: 'workflow', label: 'Workflow', enabled: false },
-  { id: 'skill', label: 'Skill', enabled: false },
-  { id: 'project', label: 'Project', enabled: false },
-  { id: 'agent', label: 'Agent', enabled: false },
+  { id: 'workflow', label: 'Workflow', enabled: true },
+  { id: 'skill', label: 'Skill', enabled: true },
+  { id: 'project', label: 'Project', enabled: true },
+  { id: 'agent', label: 'Agent', enabled: false, hint: 'soon' },
 ];

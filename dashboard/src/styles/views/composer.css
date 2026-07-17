@@ -1,0 +1,319 @@
+/*
+ * ============================================================================
+ * COMPOSER surface (C3) — idea-first convergence
+ * ============================================================================
+ * The [+ New ▾] → "Idea…" surface: a type-chip row, C1's chat pane, and a
+ * draft-preview panel (target relpath + branch class + inline validation).
+ *
+ * House tokens ONLY — no new colours beyond the existing custom properties
+ * (docs/design-brief.md §A–F). Claude-dark warm near-black neutrals, hairline
+ * borders, condensed spacing; status/validation uses the shared semantic
+ * status colours (no decorative accent hue). Dark default; the light remap
+ * carries automatically through var().
+ * ============================================================================
+ */
+
+.v-composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+/* ---- Header ------------------------------------------------------------ */
+.v-composer__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.v-composer__title {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.v-composer__lede {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-sm);
+  color: var(--fg-dim);
+}
+
+/* ---- Type chip row ----------------------------------------------------- */
+.v-composer__chips {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.v-composer__chip {
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  padding: 0.3rem 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--fg-dim);
+  cursor: pointer;
+  transition: background 160ms ease-out, color 160ms ease-out, border-color 160ms ease-out;
+}
+
+.v-composer__chip:hover {
+  background: var(--bg-elevated);
+  color: var(--fg-primary);
+}
+
+/* Active chip = the neutral "selected wash" (a raised tint, not a colour). */
+.v-composer__chip--active {
+  background: var(--accent-quiet);
+  border-color: var(--border-strong);
+  color: var(--fg-primary);
+}
+
+.v-composer__type-note {
+  margin-left: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--fg-faint);
+  font-family: var(--font-mono);
+}
+
+/* ---- Two-pane body: chat + draft preview ------------------------------- */
+.v-composer__panes {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 22rem);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+@media (max-width: 60rem) {
+  .v-composer__panes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.v-composer__chat {
+  min-width: 0;
+}
+
+/* ---- Draft preview panel ----------------------------------------------- */
+.v-composer__draft {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.v-composer__draft-title {
+  margin: 0;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+  color: var(--fg-faint);
+}
+
+.v-composer__draft-hint {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--fg-dim);
+}
+
+/* ---- Draft form fields ------------------------------------------------- */
+.v-composer__fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.v-composer__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.v-composer__field-label {
+  font-size: var(--text-xs);
+  color: var(--fg-faint);
+}
+
+.v-composer__field input,
+.v-composer__field select,
+.v-composer__field textarea {
+  font: inherit;
+  font-size: var(--text-md);
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-sunken);
+  color: var(--fg-primary);
+}
+
+.v-composer__field textarea {
+  min-height: 4.5rem;
+  resize: vertical;
+  font-family: var(--font-mono);
+}
+
+.v-composer__field input:focus,
+.v-composer__field select:focus,
+.v-composer__field textarea:focus {
+  outline: none;
+  border-color: var(--border-strong);
+}
+
+/* ---- Target / branch-class readout ------------------------------------- */
+.v-composer__target {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+  padding: var(--space-3);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sunken);
+}
+
+.v-composer__target dt {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-faint);
+}
+
+.v-composer__target dd {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--fg-dim);
+}
+
+.v-composer__target-path {
+  font-family: var(--font-mono);
+  color: var(--fg-primary);
+  word-break: break-all;
+}
+
+/* ---- Inline validation problems (semantic warning hue) ----------------- */
+.v-composer__problems {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.v-composer__problem {
+  font-size: var(--text-sm);
+  color: var(--warning);
+}
+
+.v-composer__problem-field {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--fg-faint);
+}
+
+.v-composer__deploy {
+  align-self: flex-start;
+}
+
+/* ---- Deploy-outcome strip (C5) ---------------------------------------- */
+/* The governed result of a Deploy, rendered inside the draft panel via Composer's renderOutcome slot:
+ * a filed card id (launch), a branch/PR target (save), a legible refusal, or offered follow-up saves.
+ * Semantic status hues only (success / danger / warning) — no decorative accent. */
+.v-composer__outcome {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+  padding: var(--space-3);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sunken);
+}
+
+.v-composer__outcome-line {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--fg-dim);
+}
+
+.v-composer__outcome-line--ok {
+  color: var(--success);
+}
+
+.v-composer__outcome-line--refused {
+  color: var(--danger);
+}
+
+.v-composer__outcome-code {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--fg-primary);
+  word-break: break-all;
+}
+
+/* ---- Offered follow-up saves ------------------------------------------ */
+.v-composer__followups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+
+.v-composer__followups-title {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--fg-faint);
+}
+
+.v-composer__followups-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.v-composer__followup {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.v-composer__followup .v-composer__outcome-code {
+  min-width: 0;
+}
+
+.v-composer__followup-btn {
+  flex: none;
+}
+
+.v-composer__followup-done {
+  flex: none;
+  font-size: var(--text-xs);
+  color: var(--success);
+}
+
+.v-composer__followup-failed {
+  flex: none;
+  font-size: var(--text-xs);
+  color: var(--danger);
+}

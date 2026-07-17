@@ -42,6 +42,8 @@ import { Tasks } from './views/Tasks';
 import { Agents } from './views/Agents';
 import { Projects } from './views/Projects';
 import { Ledgers } from './views/Ledgers';
+import { DeployOutcome } from './composer/DeployOutcome';
+import type { SeedKind } from './composer/artifactTypes';
 import { fetchPending } from './lib/approvalsClient';
 import { useSse } from './lib/sseClient';
 import { signIn, type Session } from './lib/authClient';
@@ -279,22 +281,21 @@ function ComingSoon({ id }: { id: DestinationId }): React.JSX.Element {
   );
 }
 
-/** Composer placeholder — the [+ New ▾] → "Idea…" entry opens this. The freeform composer (bring an
- *  idea, iterate) is not built yet, so this is a dignified, enabled-looking stub, not a greyed dead-end.
- *  A quiet "Back" returns to the underlying view. */
-function ComposerPlaceholder({ onClose }: { onClose: () => void }): React.JSX.Element {
-  return (
-    <section className="code-view" aria-label="Composer">
-      <h2>Composer — soon</h2>
-      <p>
-        Start from an idea and iterate — the freeform composer lands in a later wave. For now, use
-        [+ New] → Task to file a governed card directly.
-      </p>
-      <button type="button" className="mc-btn mc-btn--quiet" onClick={onClose}>
-        Back
-      </button>
-    </section>
-  );
+/** Composer view — the [+ New ▾] menu opens this. C5 wraps C3's {@link Composer} in {@link DeployOutcome},
+ *  which wires C4's governed deploy dispatcher (POST /api/write/launch | /api/write/save) and surfaces the
+ *  outcome (filed card id / branch-PR target / refusal / follow-up saves) inside the Composer surface.
+ *  `initialKind` pre-seeds the type chip: `idea` for the idea-first entry, a concrete kind for the
+ *  workflow/skill/project entity pickers. */
+function ComposerView({
+  onClose,
+  sessionToken,
+  initialKind,
+}: {
+  onClose: () => void;
+  sessionToken?: string;
+  initialKind: SeedKind;
+}): React.JSX.Element {
+  return <DeployOutcome sessionToken={sessionToken} initialKind={initialKind} onBack={onClose} />;
 }
 
 /** Route a destination to its view. A destination with a dedicated view gets one case here; only the
@@ -357,8 +358,10 @@ export function App(): React.JSX.Element {
   const [rail, setRail] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
-  // The [+ New ▾] → "Idea…" entry opens the Composer placeholder over the current view.
+  // The [+ New ▾] menu opens the Composer surface over the current view; `composerKind` pre-seeds its
+  // type chip (`idea` for the idea-first entry, a concrete kind for the entity pickers).
   const [composerOpen, setComposerOpen] = useState(false);
+  const [composerKind, setComposerKind] = useState<SeedKind>('idea');
   const [theme, setTheme] = useState<ThemeChoice>(() => readThemeChoice());
   const approvalsCount = useApprovalsCount();
 
@@ -415,14 +418,16 @@ export function App(): React.JSX.Element {
         return null;
       });
 
-  // [+ New ▾] → "Idea…" opens the Composer placeholder; → "Task" lands on the governed launch surface
-  // (Home). The remaining entity types are disabled in the menu, so only these two reach here.
+  // [+ New ▾] routing (C5): "Idea…" opens the Composer surface in idea mode; the "Workflow"/"Skill"/
+  // "Project" entity pickers open the SAME surface pre-seeded to that type; "Task" keeps its day-one route
+  // to the governed launch surface (Home). "Agent" is disabled in the menu, so it never reaches here.
   const handleCreate = (id: NewMenuEntry['id']): void => {
-    if (id === 'idea') {
-      setComposerOpen(true);
-    } else if (id === 'task') {
+    if (id === 'task') {
       setComposerOpen(false);
       setView('home');
+    } else if (id === 'idea' || id === 'workflow' || id === 'skill' || id === 'project') {
+      setComposerKind(id);
+      setComposerOpen(true);
     }
   };
 
@@ -456,7 +461,11 @@ export function App(): React.JSX.Element {
       </header>
       <main className="mc-main">
         {composerOpen ? (
-          <ComposerPlaceholder onClose={() => setComposerOpen(false)} />
+          <ComposerView
+            onClose={() => setComposerOpen(false)}
+            sessionToken={session?.token}
+            initialKind={composerKind}
+          />
         ) : (
           <ViewBody
             view={view}

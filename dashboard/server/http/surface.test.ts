@@ -92,6 +92,7 @@ describe('write surface — composition chain', () => {
       '/api/write/stop-card',
       '/api/write/pause-cadence',
       '/api/vibe',
+      '/api/composer/turn',
       '/api/approvals/verify',
     ]) {
       const res = await app.inject({ method: 'POST', url, headers: headers(false), payload: {} });
