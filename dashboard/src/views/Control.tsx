@@ -217,7 +217,7 @@ function LaunchControls({ sessionToken }: { sessionToken?: string }): React.JSX.
  * as `LaunchControls` above. The nuclear control additionally requires an explicit confirm checkbox
  * (armed, not a single accidental click) before its submit button is even enabled.
  */
-function StopControls({ sessionToken }: { sessionToken?: string }): React.JSX.Element {
+export function StopControls({ sessionToken }: { sessionToken?: string }): React.JSX.Element {
   const [cardId, setCardId] = useState('');
   const [stopCardStatus, setStopCardStatus] = useState<string | null>(null);
 
@@ -379,7 +379,6 @@ export function Control({
             <Registry />
           </section>
           <LaunchControls sessionToken={sessionToken} />
-          <StopControls sessionToken={sessionToken} />
         </div>
       </div>
     </div>

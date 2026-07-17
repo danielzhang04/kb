@@ -6,7 +6,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
-import { Control } from './Control';
+import { Control, StopControls } from './Control';
 import { App } from '../App';
 import type { PlaneAIndex } from '../../server/planeA/indexer';
 import type { ParsedCard } from '../../server/planeA/cards';
@@ -79,25 +79,24 @@ describe('Control view', () => {
     expect(screen.getByText('Building the Plane-A indexer.')).toBeTruthy();
   });
 
-  it('lands on Control view by default, Code view reachable via the sidebar nav', () => {
-    // D1: the App shell renamed its "Control" nav item to "Board" (sidebar nav — see App.tsx /
-    // App.test.tsx) but the Control component itself is unchanged and still self-labels
-    // aria-label="Control view".
+  it('lands on Control view by default, another view reachable via the sidebar nav', () => {
+    // U1: the App shell's default nav item is "Board"; the Control component itself is unchanged and
+    // still self-labels aria-label="Control view". (The old CodeView stub was retired from the nav.)
     render(<App />);
 
-    // Default landing is the Control view; Code view is not mounted yet.
+    // Default landing is the Control view; the Editor view is not mounted yet.
     expect(screen.getByLabelText('Control view')).toBeTruthy();
-    expect(screen.queryByLabelText('Code view')).toBeNull();
+    expect(screen.queryByLabelText('Editor')).toBeNull();
 
-    // The sidebar's Code nav item switches to Code view.
-    fireEvent.click(screen.getByRole('button', { name: 'Code' }));
-    expect(screen.getByLabelText('Code view')).toBeTruthy();
+    // The sidebar's Editor nav item switches to the Editor view.
+    fireEvent.click(screen.getByRole('button', { name: 'Editor' }));
+    expect(screen.getByLabelText('Editor')).toBeTruthy();
     expect(screen.queryByLabelText('Control view')).toBeNull();
 
     // And the Board nav item switches back to Control.
     fireEvent.click(screen.getByRole('button', { name: 'Board' }));
     expect(screen.getByLabelText('Control view')).toBeTruthy();
-    expect(screen.queryByLabelText('Code view')).toBeNull();
+    expect(screen.queryByLabelText('Editor')).toBeNull();
   });
 });
 
@@ -173,9 +172,11 @@ describe('Control view — D2.6 launch/rerun controls', () => {
   });
 });
 
-describe('Control view — D2.8 stop-floor controls', () => {
+// U1: StopControls was relocated out of the Board's right column into the shell's pinned
+// Session/Stop floor (App.tsx). It is exported from ./Control and exercised directly here.
+describe('Stop-floor controls (D2.8, relocated to the shell in U1)', () => {
   it('disables every stop control without a sessionToken, and never calls fetch on submit', () => {
-    render(<Control snapshot={SNAPSHOT} />);
+    render(<StopControls />);
 
     expect((screen.getByRole('button', { name: 'Request stop' }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole('button', { name: 'Pause cadence' }) as HTMLButtonElement).disabled).toBe(true);
@@ -189,7 +190,7 @@ describe('Control view — D2.8 stop-floor controls', () => {
   });
 
   it('the nuclear STOP button stays disabled until the confirm checkbox is checked, even with a session', () => {
-    render(<Control snapshot={SNAPSHOT} sessionToken="fake-session-token" />);
+    render(<StopControls sessionToken="fake-session-token" />);
 
     const nukeButton = screen.getByRole('button', { name: 'STOP everything' }) as HTMLButtonElement;
     expect(nukeButton.disabled).toBe(true);
@@ -211,7 +212,7 @@ describe('Control view — D2.8 stop-floor controls', () => {
       }),
     );
 
-    render(<Control snapshot={SNAPSHOT} sessionToken="fake-session-token" />);
+    render(<StopControls sessionToken="fake-session-token" />);
     fireEvent.change(screen.getByLabelText('Card id to stop'), { target: { value: 'card-1' } });
     fireEvent.submit(screen.getByLabelText('Request card stop'));
 
@@ -233,7 +234,7 @@ describe('Control view — D2.8 stop-floor controls', () => {
       }),
     );
 
-    render(<Control snapshot={SNAPSHOT} sessionToken="fake-session-token" />);
+    render(<StopControls sessionToken="fake-session-token" />);
     fireEvent.click(screen.getByLabelText('Confirm nuclear STOP'));
     fireEvent.submit(screen.getByLabelText('Nuclear STOP'));
 
