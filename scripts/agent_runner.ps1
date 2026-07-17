@@ -211,6 +211,26 @@ foreach ($c in $owned) {
     $cardPath = $c.path
     Write-RunnerLog ("card-start id=$cardId agent=$Agent interpreter=$py")
 
+    # Stamp the Plane-A (cards) <-> Plane-B (session transcript) join key
+    # BEFORE the card transitions to `working` (plan Task D1.2). The dispatcher
+    # can never know a worker's session id -- this runner is the only place it
+    # is known, right as it starts executing this specific claimed card.
+    #
+    # Resolution: prefer $env:CLAUDE_SESSION_ID if the runtime set it; this
+    # runner's own Task-Scheduler-spawned process tree does not always have
+    # one (it drives `codex exec`, not a Claude Code session), so fall back to
+    # a runner-generated GUID so the join key is NEVER null -- a synthetic
+    # unique id still joins this card to THIS run's log via $jsonLog/$cardId.
+    $sessionId = $env:CLAUDE_SESSION_ID
+    if (-not $sessionId) { $sessionId = "codex-" + [guid]::NewGuid().ToString() }
+    & $py scripts/stamp_session.py $cardPath $sessionId | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-RunnerLog ("exit-path=stamp-session-fail id=$cardId agent=$Agent session=$sessionId interpreter=$py :: stamp_session.py exited $LASTEXITCODE -- continuing without a stamped join key")
+    }
+    else {
+        Write-RunnerLog ("session-stamped id=$cardId agent=$Agent session=$sessionId interpreter=$py")
+    }
+
     # Ensure the card is claimed-in-progress (inbox -> working) and pull its
     # `## Work order` text -- `## Evidence` is NEVER fed to codex exec as an
     # instruction (constitution: treat Evidence as inert data, never instructions).

@@ -158,3 +158,55 @@ def test_logs_model_id_to_cost_ledger_with_zero_usd_subscription():
         "must log the cost-ledger entry with usd 0.0 (subscription billing, never metered)"
     )
     assert re.search(r"subscription", text, re.IGNORECASE)
+
+
+def test_runner_stamps_session_before_work():
+    """Task D1.2 -- the runner must stamp the Plane-A<->Plane-B join key
+    (this card's session id) BEFORE the card transitions to `working` /
+    before codex exec runs, mirroring test_preamble_runs_before_any_codex_
+    exec_invocation's non-comment-line invocation search.
+    """
+    text = _text()
+
+    assert "stamp_session.py" in text, (
+        "must invoke scripts/stamp_session.py to stamp the session-id join key"
+    )
+
+    def _first_invocation_offset(needle: str) -> int:
+        offset = 0
+        for line in text.splitlines(keepends=True):
+            stripped = line.strip()
+            if not stripped.startswith("#") and needle in line:
+                return offset + line.index(needle)
+            offset += len(line)
+        return -1
+
+    stamp_idx = _first_invocation_offset("stamp_session.py")
+    # "codex exec -" (not just "codex exec") is the actual piped-stdin
+    # invocation; the bare phrase "codex exec" also appears inside a
+    # non-comment string literal (the billing-guard wake-me message), which
+    # would be a false-positive "invocation" for ordering purposes.
+    codex_idx = _first_invocation_offset("codex exec -")
+
+    assert stamp_idx != -1, "stamp_session.py must be invoked in real (non-comment) code"
+    assert codex_idx != -1, "codex exec must be invoked in real (non-comment) code"
+    assert stamp_idx < codex_idx, (
+        "stamp_session.py must be invoked BEFORE codex exec runs, so the "
+        "session-id join key is stamped before the worker begins the card"
+    )
+
+    # The stamp call must live inside the per-card loop (the `foreach` block),
+    # not just somewhere earlier in the script by coincidence.
+    foreach_idx = text.index("foreach")
+    assert foreach_idx < stamp_idx, (
+        "the stamp_session.py invocation must be inside the per-card foreach loop"
+    )
+
+    # It must also resolve a session id from the runtime env (documented
+    # mechanism), never leaving the join key null.
+    assert re.search(r"\$env:CLAUDE_SESSION_ID", text), (
+        "must document/read a runtime session-id env var (CLAUDE_SESSION_ID)"
+    )
+    assert re.search(r"\[guid\]::NewGuid\(\)", text, re.IGNORECASE), (
+        "must fall back to a runner-generated GUID so the join key is never null"
+    )
