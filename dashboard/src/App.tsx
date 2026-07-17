@@ -47,6 +47,7 @@ import { Sentinel } from './views/panels/Sentinel';
 import { Quartermaster } from './views/panels/Quartermaster';
 import { FlightRecorder } from './views/panels/FlightRecorder';
 import { Atlas } from './views/panels/Atlas';
+import { Terminal } from './views/Terminal';
 import { DeployOutcome } from './composer/DeployOutcome';
 import type { SeedKind } from './composer/artifactTypes';
 import { fetchPending } from './lib/approvalsClient';
@@ -399,6 +400,10 @@ function ViewBody({
     case 'sentinel':
       // D3.5 — the layer-panel set (Sentinel / Quartermaster / Flight Recorder / Atlas) behind sub-tabs.
       return <LayerPanels />;
+    case 'terminal':
+      // D3.2 — the PTY pane. Session-gated: it renders a passkey prompt and connects nothing without a
+      // session, and it NEVER spawns anything itself (it signals the fleet-identity host over WS).
+      return <Terminal sessionToken={sessionToken} />;
     case 'connectors':
       return <Connectors />;
     case 'files':

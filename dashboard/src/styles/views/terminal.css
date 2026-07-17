@@ -1,0 +1,110 @@
+/**
+ * D3.2 — PTY terminal pane. Deepest sunken surface, mono only, NO accent colour (Daniel's 2026-07-17
+ * neutral-chrome override). The house palette fully replaces xterm's default black/green look — the
+ * JS `theme` object in Terminal.tsx carries the ANSI colours; this file owns the container chrome.
+ */
+
+.terminal {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  gap: var(--space-3);
+}
+
+.terminal__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.terminal__title {
+  font-size: var(--text-xl);
+  font-weight: 600;
+  margin: 0;
+  margin-right: auto;
+}
+
+/* Persistent identity chip — a quiet neutral pill; the fleet account name is mono. No accent. */
+.terminal__identity {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 2px var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  color: var(--fg-dim);
+  font-size: var(--text-xs);
+}
+
+.terminal__identity code {
+  font-family: var(--font-mono);
+  color: var(--fg-primary);
+}
+
+.terminal__identity-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--fg-faint); /* neutral, never a status/accent colour */
+}
+
+/* Connection state — neutral by default; only the semantic error token adds colour (it encodes data). */
+.terminal__state {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--fg-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.terminal__state--connected {
+  color: var(--fg-dim);
+}
+
+.terminal__state--error {
+  color: var(--error);
+}
+
+.terminal__note {
+  margin: 0;
+  color: var(--fg-dim);
+  font-size: var(--text-sm);
+  max-width: 68ch;
+}
+
+.terminal__session-warning {
+  margin: 0;
+  color: var(--warning);
+  font-size: var(--text-sm);
+}
+
+/* The xterm host: deepest sunken well, hairline-bordered, sunken shadow — the "code gutter" surface. */
+.terminal__surface {
+  flex: 1 1 auto;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-sunken);
+  box-shadow: var(--shadow-sunken);
+  padding: var(--space-2);
+  overflow: hidden;
+}
+
+/* Belt-and-suspenders: force the xterm viewport onto the sunken surface so no default black shows
+ * through before the JS theme applies, and keep the scrollbar neutral. */
+.terminal__surface .xterm,
+.terminal__surface .xterm-viewport,
+.terminal__surface .xterm-screen {
+  background: var(--bg-sunken) !important;
+}
+
+.terminal__surface .xterm-viewport::-webkit-scrollbar {
+  width: 10px;
+}
+
+.terminal__surface .xterm-viewport::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: var(--radius-sm);
+}
