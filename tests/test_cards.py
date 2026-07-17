@@ -57,3 +57,83 @@ def test_invalid_role_rejected():
 def test_default_role_is_work():
     c = cards.new_card("p", "a", "t", "T1")
     assert c.meta["role"] == "work"
+
+
+# --------------------------------------------------------------------------- #
+# Task D1.1 -- session-id field (Plane-A<->Plane-B join key)                  #
+# --------------------------------------------------------------------------- #
+
+def test_new_card_has_null_session_id_by_default():
+    c = cards.new_card("p", "a", "t", "T1")
+    assert "session-id" in c.meta
+    assert c.meta["session-id"] is None
+
+
+def test_stamp_session_sets_field(tmp_path):
+    c = cards.new_card("p", "a", "t", "T1")
+    cards.stamp_session(c, "sess-abc")
+    assert c.meta["session-id"] == "sess-abc"
+    p = cards.save(c, tmp_path)
+    reread = cards.parse(p)
+    assert reread.meta["session-id"] == "sess-abc"
+
+
+def test_missing_session_id_still_validates(tmp_path):
+    c = cards.new_card("p", "a", "t", "T1")
+    del c.meta["session-id"]  # simulate a legacy on-disk card predating the field
+    p = cards.save(c, tmp_path)
+    reread = cards.parse(p)  # must not raise ValidationError
+    assert "session-id" not in reread.meta
+
+
+# --------------------------------------------------------------------------- #
+# Task D1.3 -- steering-floor states (STATES/STATE_DIR/LEGAL)                #
+# --------------------------------------------------------------------------- #
+
+def test_steering_states_are_valid(tmp_path):
+    for state in ("stop-requested", "halting", "halted"):
+        c = cards.new_card("p", "a", "t", "T1", state=state)
+        p = cards.save(c, tmp_path)  # must resolve a STATE_DIR without KeyError
+        reread = cards.parse(p)
+        assert reread.meta["state"] == state
+
+
+def test_legal_stop_ladder_transitions(tmp_path):
+    c = cards.new_card("p", "a", "t", "T1")
+    cards.save(c, tmp_path)
+    cards.claim(c, "agent-x")
+    cards.transition(c, "working", tmp_path)
+    cards.transition(c, "stop-requested", tmp_path)
+    cards.transition(c, "halting", tmp_path)
+    cards.transition(c, "halted", tmp_path)
+
+    done_card = cards.new_card("p", "a", "t2", "T1", state="done")
+    cards.save(done_card, tmp_path)
+    with pytest.raises(cards.ValidationError):
+        cards.transition(done_card, "stop-requested", tmp_path)
+
+
+def test_existing_transitions_unchanged(tmp_path):
+    assert cards.LEGAL["inbox"] == {"working", "blocked"}
+    assert cards.LEGAL["blocked"] == {"inbox"}
+    assert cards.LEGAL["approvals"] == {"approved", "rejected"}
+    assert cards.LEGAL["approved"] == {"done"}
+    assert cards.LEGAL["done"] == set()
+    assert cards.LEGAL["rejected"] == set()
+    assert {"done", "approvals", "blocked"} <= cards.LEGAL["working"]
+
+    assert cards.STATE_DIR["inbox"] == "inbox"
+    assert cards.STATE_DIR["blocked"] == "inbox"
+    assert cards.STATE_DIR["working"] == "working"
+    assert cards.STATE_DIR["done"] == "done"
+    assert cards.STATE_DIR["rejected"] == "done"
+    assert cards.STATE_DIR["approvals"] == "approvals"
+    assert cards.STATE_DIR["approved"] == "approvals"
+
+    c = cards.new_card("p", "a", "t", "T1")
+    cards.save(c, tmp_path)
+    cards.claim(c, "agent-x")
+    p2 = cards.transition(c, "working", tmp_path)
+    assert p2.parent.name == "working"
+    with pytest.raises(cards.ValidationError):
+        cards.transition(c, "approved", tmp_path)  # still illegal

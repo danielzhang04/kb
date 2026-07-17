@@ -303,7 +303,20 @@ def parse_heartbeat(path: Path) -> list[dict]:
     return data.get("cadences", [])
 
 
-def due(cadence: dict, today: datetime.date) -> bool:
+def due(cadence: dict, today: datetime.date, repo_root: Path | None = None) -> bool:
+    """True iff `cadence` is scheduled for `today`.
+
+    `repo_root` is optional (default None) so every pre-D1.1 call site (two
+    positional args, no repo awareness) keeps working unchanged. When
+    supplied, a files-only `queue/paused/<cadence-name>` sentinel SUPPRESSES
+    this cadence's beat -- and only this one; it can never trigger or widen a
+    schedule, only skip it. Presence-only check: the marker's contents (if
+    any) are never read/parsed.
+    """
+    if repo_root is not None:
+        name = cadence.get("name")
+        if name and (Path(repo_root) / "queue" / "paused" / name).exists():
+            return False
     schedule = cadence.get("schedule", "")
     if schedule == "daily":
         return True
@@ -327,7 +340,7 @@ def _heartbeats(repo_root: Path):
 
 
 def run(repo_root: Path, tier: str, agent_id: str,
-        today: datetime.date | None = None) -> list[Path]:
+        today: datetime.date | None = None, session_id: str | None = None) -> list[Path]:
     today = today or datetime.date.today()
     # ledger.append shards by wall-clock day (ledger._shard); read the same shard so
     # idempotency holds even when `today` is injected for scheduling (tests, backfill).
@@ -350,7 +363,7 @@ def run(repo_root: Path, tier: str, agent_id: str,
                 _emit_unknown_tier_wake(repo_root, project, cadence)
                 continue
             key = (project, cadence['name'])
-            if cadence.get("tier") != tier or key in ran or not due(cadence, today):
+            if cadence.get("tier") != tier or key in ran or not due(cadence, today, repo_root):
                 continue
             # Task 5.2 -- optional `agent:` cadence key routes card ownership to a
             # named worker (backward-compatible: absent `agent:` keeps the current
@@ -405,6 +418,14 @@ def run(repo_root: Path, tier: str, agent_id: str,
                 print(f"WARN: skipping cadence {project}/{cadence['name']}: {err}")
                 continue
             cards.claim(card, owner)
+            # D1.1: `session_id` is populated ONLY for the cloud self-executing
+            # carve-out case (the dispatcher claiming a card for its OWN
+            # already-running session, per the Task D1.1 scope note above the
+            # module) -- stamp it onto the WORK card the dispatcher itself
+            # claimed. The general worker case (D1.2) is stamped later, by the
+            # worker runner, at transition-to-working, not here.
+            if session_id:
+                cards.stamp_session(card, session_id)
             emitted.append(cards.save(card, Path(repo_root) / "queue"))
             ledger.append(repo_root, "dispatch", agent_id,
                           {"date": today.isoformat(), "cadence": cadence["name"],
@@ -427,6 +448,13 @@ def run(repo_root: Path, tier: str, agent_id: str,
                     print(f"WARN: skipping inspect sibling for {project}/{cadence['name']}: {err}")
                 else:
                     cards.claim(sibling, INSPECTOR_IDENTITY)
+                    # D1.1: the sibling's `session-id` stays null on purpose --
+                    # it is graded in a DIFFERENT, future inspector session that
+                    # does not exist yet at dispatch time (same reasoning as
+                    # every worker card: the id is only known to whichever
+                    # session eventually executes it). Only the work card the
+                    # dispatcher claims for ITS OWN already-running
+                    # self-execution gets stamped here.
                     emitted.append(cards.save(sibling, Path(repo_root) / "queue"))
     return emitted
 

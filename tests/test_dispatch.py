@@ -733,6 +733,69 @@ def test_agent_key_streak_governs_named_worker_not_dispatcher(tmp_path):
     assert c.meta["state"] == "inbox"
 
 
+# --------------------------------------------------------------------------- #
+# Task D1.1 -- session-id thread + due() paused-marker awareness              #
+# --------------------------------------------------------------------------- #
+
+def test_run_stamps_session_id_when_supplied(tmp_path):
+    import cards
+    repo = make_repo(tmp_path)
+    emitted = dispatch.run(repo, tier="cloud", agent_id="dispatcher-cloud",
+                           today=datetime.date(2026, 7, 14), session_id="sess-xyz")
+    assert len(emitted) == 1
+    c = cards.parse(emitted[0])
+    assert c.meta["session-id"] == "sess-xyz"
+
+
+def test_run_without_session_id_leaves_field_null(tmp_path):
+    import cards
+    repo = make_repo(tmp_path)
+    emitted = dispatch.run(repo, tier="cloud", agent_id="dispatcher-cloud",
+                           today=datetime.date(2026, 7, 14))
+    assert len(emitted) == 1
+    c = cards.parse(emitted[0])
+    assert c.meta["session-id"] is None
+
+
+def test_due_skips_paused_cadence(tmp_path):
+    import cards
+    repo = make_repo(tmp_path)
+    day = datetime.date(2026, 7, 14)  # Tuesday: nightly-review (cloud daily) is due
+    paused_dir = repo / "queue" / "paused"
+    paused_dir.mkdir(parents=True)
+    (paused_dir / "nightly-review").write_text("paused 2026-07-14: investigating\n",
+                                                encoding="utf-8")
+
+    emitted = dispatch.run(repo, "cloud", "dispatcher-cloud", today=day)
+    assert emitted == []  # nightly-review suppressed; no other cloud cadence due today
+
+    # A marker for one cadence must not affect an unrelated cadence -- add
+    # weekly-audit's Saturday run and confirm it is unaffected by nightly's pause.
+    sat = datetime.date(2026, 7, 18)
+    emitted_sat = dispatch.run(repo, "cloud", "dispatcher-cloud", today=sat)
+    assert len(emitted_sat) == 1
+    assert cards.parse(emitted_sat[0]).meta["action"] == "cadence:weekly-audit"
+
+    # Removing the marker restores nightly-review's next beat.
+    (paused_dir / "nightly-review").unlink()
+    wed = datetime.date(2026, 7, 15)
+    emitted_wed = dispatch.run(repo, "cloud", "dispatcher-cloud", today=wed)
+    assert len(emitted_wed) == 1
+    assert cards.parse(emitted_wed[0]).meta["action"] == "cadence:nightly-review"
+
+
+def test_due_paused_check_is_repo_root_aware_and_backward_compatible():
+    # Existing two-positional-arg call sites (no repo_root) must keep working
+    # unchanged -- this is the pre-D1.1 regression surface.
+    sat = datetime.date(2026, 7, 18)
+    tue = datetime.date(2026, 7, 14)
+    daily = {"name": "n", "schedule": "daily"}
+    weekly = {"name": "w", "schedule": "weekly:sat"}
+    assert dispatch.due(daily, tue) is True
+    assert dispatch.due(weekly, sat) is True
+    assert dispatch.due(weekly, tue) is False
+
+
 def test_release_does_not_thread_into_a_non_depends_on_card(tmp_path):
     """A card with an empty depends-on (the common case -- every existing
     cadence-emitted card) must be completely untouched by the release pass."""
