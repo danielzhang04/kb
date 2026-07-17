@@ -10,7 +10,7 @@
  * so an agent that only shows up in the ledgers (or is idle) still appears, with its role + ledger
  * activity. Reads the filesystem; degrades gracefully on a sparse checkout (missing dirs → empty).
  */
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, lstatSync } from 'node:fs';
 import { join } from 'node:path';
 import type { PlaneAIndex } from '../planeA/indexer.ts';
 import type { ParsedCard } from '../planeA/cards.ts';
@@ -200,16 +200,30 @@ function strFieldOrNull(v: unknown): string | null {
  * `agents/` dir fails OPEN to an empty map, and a malformed agent file (no/te unterminated frontmatter)
  * is SKIPPED — it must never crash `buildRoster`. Server-only (reads the filesystem); pure.
  */
+const MAX_AGENT_FILE_BYTES = 64 * 1024;
+
 export function readDeclaredAgents(repoRoot: string): Map<string, DeclaredAgent> {
   const out = new Map<string, DeclaredAgent>();
   const dir = join(repoRoot, 'agents');
   if (!existsSync(dir)) return out;
   for (const name of readdirSync(dir)) {
     if (!name.endsWith('.md')) continue;
+    const full = join(dir, name);
+    // Hardening (Finding 3): don't follow symlinks, and cap the read so a single oversized file can't
+    // stall the roster. lstat (never stat) so a symlink is detected, not resolved. Any stat failure →
+    // skip (fail-open, same as the malformed-file path).
+    let st;
+    try {
+      st = lstatSync(full);
+    } catch {
+      continue;
+    }
+    if (st.isSymbolicLink() || !st.isFile()) continue;
+    if (st.size > MAX_AGENT_FILE_BYTES) continue; // skip unbounded reads
     const stem = name.replace(/\.md$/, '');
     let meta: Record<string, unknown>;
     try {
-      meta = parseCardFrontmatter(readFileSync(join(dir, name), 'utf-8')).meta as Record<string, unknown>;
+      meta = parseCardFrontmatter(readFileSync(full, 'utf-8')).meta as Record<string, unknown>;
     } catch {
       continue; // malformed agent file (no/unterminated frontmatter) → skip, never fatal
     }
