@@ -24,6 +24,7 @@ import type { ParsedCard } from '../../server/planeA/cards';
 import type { DestinationId } from '../nav/config';
 import type { Session } from '../lib/authClient';
 import { useSse } from '../lib/sseClient';
+import { useAssignableOwners } from '../lib/assignableOwners';
 import { LaunchControls } from './launchControls';
 import '../styles/views/home.css';
 
@@ -387,6 +388,10 @@ export function Home({
   }, [snapshot, count]);
 
   const index = snapshot ?? fetched ?? EMPTY_INDEX;
+  // C7.8 — populate the owner picker from the live roster ∪ registered default_workers. Gated on the
+  // can-act state so a signed-out board with no mint capability issues no roster fetch.
+  const canAct = Boolean(sessionToken) || Boolean(onRequestSession);
+  const owners = useAssignableOwners(canAct);
 
   return (
     <div className="v-home" aria-label="Home view">
@@ -397,7 +402,12 @@ export function Home({
         </div>
         <div className="v-home__col">
           <UsagePanel index={index} />
-          <LaunchControls sessionToken={sessionToken} variant="home" onRequestSession={onRequestSession} />
+          <LaunchControls
+            sessionToken={sessionToken}
+            variant="home"
+            onRequestSession={onRequestSession}
+            owners={owners}
+          />
         </div>
       </div>
     </div>
