@@ -83,15 +83,22 @@ export function registerApprovalsRoutes(scope: FastifyInstance, ctx: SurfaceCont
       },
     });
 
-    auditFn(ctx)(ctx.repoRoot, {
-      action: 'approve',
-      owner: session?.claims.sub,
-      cardId,
-      target: pinned?.target,
-      riskTier: pinned?.riskTier,
-      result: outcome.ok ? `verified:${channel}` : `rejected:${channel}`,
-      detail: { reason: outcome.reason },
-    }, { runGit: ctx.opsGit, now: ctx.now });
+    // FINDING 3: only a VERIFIED approval is a consequential action — write the ops-committed audit row
+    // on the success path only. A rejected verification writes NO ops audit commit, mirroring
+    // auth/routes.ts's deliberate skip-on-failure, so a session-holder cannot amplify failed approval
+    // attempts into unbounded pull-rebase-push commits. (Judgment call flagged in the report: rejected
+    // approvals are no longer durably audited to ops; use a local log if a failed-attempt trail is wanted.)
+    if (outcome.ok) {
+      auditFn(ctx)(ctx.repoRoot, {
+        action: 'approve',
+        owner: session?.claims.sub,
+        cardId,
+        target: pinned?.target,
+        riskTier: pinned?.riskTier,
+        result: `verified:${channel}`,
+        detail: { reason: outcome.reason },
+      }, { runGit: ctx.opsGit, now: ctx.now });
+    }
 
     return reply.code(outcome.ok ? 200 : 403).send({ ok: outcome.ok, reason: outcome.reason, card: outcome.card });
   });

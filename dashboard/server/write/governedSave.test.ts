@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtemp, rm, readFile } from 'node:fs/promises';
+import { writeFileSync, readFileSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { mintSession } from '../auth/session';
@@ -236,6 +237,68 @@ describe('save — governance/ is never writable through this path', () => {
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.status).toBe(403);
+    expect(calls).toHaveLength(0);
+  });
+
+  // HIGH-2: the carve-out must hold case-INSENSITIVELY. On a case-insensitive FS (NTFS deploy target)
+  // `claude.md` / `Governance/…` alias the real human-edited-only files, so a case variant must still
+  // be refused 403 and must NOT overwrite the real file.
+  it('refuses case-variant constitution/governance targets (case-insensitive carve-out)', async () => {
+    const repo = await scratch();
+    const token = validToken();
+    writeFileSync(join(repo, 'CLAUDE.md'), 'REAL CONSTITUTION', 'utf-8');
+
+    for (const relpath of ['claude.md', 'Claude.MD', 'AGENTS.md'.toLowerCase(), 'GOVERNANCE/risk-tiers.md', 'Governance/budget.yaml']) {
+      const { runner, calls } = recorder();
+      const result = await save({
+        repoRoot: repo,
+        relpath,
+        content: 'pwned',
+        sessionToken: token,
+        sessionConfig: CONFIG,
+        runGit: runner,
+        openPr: noopPrOpener,
+      });
+      expect(result.ok, relpath).toBe(false);
+      if (!result.ok) expect(result.status, relpath).toBe(403);
+      expect(calls, relpath).toHaveLength(0);
+    }
+    // The real constitution file was never touched by any of the case-variant attempts.
+    expect(readFileSync(join(repo, 'CLAUDE.md'), 'utf-8')).toBe('REAL CONSTITUTION');
+  });
+});
+
+describe('save — path confinement is realpath, not lexical (symlink escape)', () => {
+  // MED-2: resolveWithin is lexical; a symlinked directory planted under repoRoot could redirect the
+  // real write outside the root. A save through such a link must be refused, and the external target
+  // left untouched.
+  it('rejects a save whose resolved parent dir escapes repoRoot via a symlink/junction', async () => {
+    const repo = await scratch();
+    const outside = await scratch();
+    writeFileSync(join(outside, 'secret.md'), 'ORIGINAL', 'utf-8');
+    // A directory link under repoRoot pointing OUTSIDE it. 'junction' works on Windows without admin;
+    // on POSIX it resolves as a directory symlink.
+    try {
+      symlinkSync(outside, join(repo, 'escape'), 'junction');
+    } catch {
+      symlinkSync(outside, join(repo, 'escape'), 'dir');
+    }
+    const { runner, calls } = recorder();
+
+    const result = await save({
+      repoRoot: repo,
+      relpath: 'escape/secret.md',
+      content: 'pwned-through-symlink',
+      sessionToken: validToken(),
+      sessionConfig: CONFIG,
+      runGit: runner,
+      openPr: noopPrOpener,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.status).toBe(400);
+    // The escaping write never happened; the external file is intact and git was never invoked.
+    expect(readFileSync(join(outside, 'secret.md'), 'utf-8')).toBe('ORIGINAL');
     expect(calls).toHaveLength(0);
   });
 });

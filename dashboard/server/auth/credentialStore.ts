@@ -77,7 +77,21 @@ interface PendingRecord {
 
 const DEFAULT_TTL_MS = 5 * 60 * 1000; // 5 minutes — long enough for a biometric round trip.
 
+/** Hard ceiling on concurrently-pending ceremonies. Without it, hammering the auth options ceremonies
+ *  (each a `rememberChallenge` -> `pending.set`) grows the map without bound — a memory-DoS, especially now the
+ *  pre-session limiter keys on peer IP (an unauthenticated attacker still gets one bucket, but a single
+ *  IP could otherwise still balloon the map between sweeps). Entries otherwise evict only on a matching
+ *  `consumeChallenge`, so we ALSO sweep expired entries and cap the live size on every insert. */
+const MAX_PENDING = 1024;
+
 const pending = new Map<string, PendingRecord>();
+
+/** Drop every expired entry (issuedAt + ttl in the past). O(n) but bounded by {@link MAX_PENDING}. */
+function sweepExpired(now: number): void {
+  for (const [id, rec] of pending) {
+    if (now - rec.issuedAt > rec.ttlMs) pending.delete(id);
+  }
+}
 
 export interface PendingChallenge {
   /** Opaque id the client echoes back at verify time so the server recovers the exact issued challenge. */
@@ -88,6 +102,14 @@ export interface PendingChallenge {
 
 /** Stash a ceremony's server-issued `challenge` under a fresh opaque id; returns both. */
 export function rememberChallenge(challenge: string, ttlMs: number = DEFAULT_TTL_MS, now: number = Date.now()): PendingChallenge {
+  // MED: bound the map so repeated options calls can't balloon it. Sweep expired first; if still at the
+  // cap with all-live entries, evict the oldest (Map preserves insertion order) so size never exceeds it.
+  sweepExpired(now);
+  while (pending.size >= MAX_PENDING) {
+    const oldest = pending.keys().next().value;
+    if (oldest === undefined) break;
+    pending.delete(oldest);
+  }
   const ceremonyId = randomBytes(18).toString('base64url');
   pending.set(ceremonyId, { challenge, issuedAt: now, ttlMs });
   return { ceremonyId, challenge };
@@ -111,3 +133,11 @@ export function consumeChallenge(ceremonyId: string, now: number = Date.now()): 
 export function __resetPendingForTest(): void {
   pending.clear();
 }
+
+/** Test-only view of the live pending-store size (never called in production). */
+export function __pendingSizeForTest(): number {
+  return pending.size;
+}
+
+/** Test-only view of the memory-DoS ceiling (never called in production). */
+export const __MAX_PENDING_FOR_TEST = MAX_PENDING;

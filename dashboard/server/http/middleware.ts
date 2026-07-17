@@ -72,15 +72,19 @@ export function requireSession(sessionConfig: SessionConfig) {
 }
 
 /**
- * The rate-limit key for a request. Keyed by the bearer token when present (so throttling follows the
- * operator's session across IP churn, per the ratelimit module's contract) and by peer IP otherwise —
- * this runs BEFORE session verification, so it can only key on what the raw request carries. The token
- * is not logged anywhere; it is used only as an opaque bucket key.
+ * The rate-limit key for a request. Keyed on PEER IDENTITY (the connection remote address) ONLY — never
+ * on client-supplied input. This hook runs BEFORE session verification, so the bearer token here is
+ * unverified and attacker-chosen: keying on it let a client mint a fresh throttle/lockout bucket per
+ * request simply by rotating a garbage token, evading the limiter entirely — including on the
+ * unauthenticated /api/auth/* ceremony routes (finding: pre-session rate-limit keyed on unverified
+ * bearer). `req.ip` is Fastify's peer address (the raw socket remote address, or the trusted-proxy-
+ * derived client address IFF the app configures `trustProxy` — this app does not, so it is the socket).
+ * The per-verified-owner limiter inside the vibe module (which correctly keys on the verified owner)
+ * is unaffected.
  */
 export function rateLimitKey(req: FastifyRequest): string {
-  const token = bearerToken(req);
-  if (token) return `tok:${token}`;
-  return `ip:${req.ip ?? 'unknown'}`;
+  const peer = req.ip ?? req.socket?.remoteAddress ?? 'unknown';
+  return `ip:${peer}`;
 }
 
 /** Default write-surface limiter: 30 mutating requests/min, locking out for 5 min after 5 consecutive

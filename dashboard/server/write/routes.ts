@@ -14,6 +14,7 @@
  */
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { save } from './governedSave';
+import { isProtectedBranch } from './branch';
 import { launchCard, rerunAsDependsOn } from './launch';
 import type { LaunchOutcome, RiskTier } from './launch';
 import { writeStop, requestStop, pauseCadence } from '../stop/floor';
@@ -28,6 +29,12 @@ function asRecord(body: unknown): Record<string, unknown> {
 function str(v: unknown): string {
   return typeof v === 'string' ? v : '';
 }
+
+// A card id must be filename-safe: no path separators, no traversal, no glob metacharacters. Anything
+// else is rejected 400 BEFORE the id reaches a scripts py `queue_root.glob("(dir-glob)/{cardId}.md")` — a
+// glob metachar (star/question/bracket) would otherwise let a session-holder steer an unintended card.
+// Mirrors approvals/routes.ts.
+const CARD_ID_RE = /^[A-Za-z0-9._-]+$/;
 
 /** Map a launch/floor refusal reason to an HTTP status. A frozen fleet is a 503 (service-unavailable
  *  by policy), an auth failure a 401, a card-op failure a 500. */
@@ -55,6 +62,14 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
     const session = verifiedSession(req);
     const body = asRecord(req.body);
     const relpath = str(body.relpath);
+    // FINDING 1: the SERVER owns durable work-branch selection; the client never chooses it. A caller
+    // that tries to smuggle a protected branch (main/ops) is hard-rejected before any filesystem or git
+    // activity — belt-and-suspenders over branch.ts's own denylist. `workBranch` is intentionally NOT
+    // forwarded to save(): governedSave/branch.ts derive it server-side (DEFAULT_WORK_BRANCH). No audit
+    // row on this pre-gate rejection (nothing consequential happened).
+    if (typeof body.workBranch === 'string' && isProtectedBranch(body.workBranch)) {
+      return reply.code(403).send({ error: 'forbidden-branch', reason: 'workBranch may not target main or ops; the server selects the durable work branch' });
+    }
     const outcome = await save({
       repoRoot: ctx.repoRoot,
       relpath,
@@ -63,16 +78,19 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
       sessionConfig: ctx.sessionConfig,
       runGit: ctx.saveGit,
       openPr: ctx.openPr,
-      workBranch: typeof body.workBranch === 'string' ? body.workBranch : undefined,
       message: typeof body.message === 'string' ? body.message : undefined,
     });
-    audit(ctx.repoRoot, {
-      action: 'save',
-      owner: session?.claims.sub,
-      target: relpath,
-      result: outcome.ok ? `saved:${outcome.target}` : `refused:${outcome.reason}`,
-    }, auditOpts);
-    if (outcome.ok) return reply.code(200).send({ ok: true, target: outcome.target });
+    // FINDING 3: audit ONLY on the success path (a consequential write actually occurred). A refusal
+    // writes no ops-committed audit row — refused writes must not amplify into a pull-rebase-push each.
+    if (outcome.ok) {
+      audit(ctx.repoRoot, {
+        action: 'save',
+        owner: session?.claims.sub,
+        target: relpath,
+        result: `saved:${outcome.target}`,
+      }, auditOpts);
+      return reply.code(200).send({ ok: true, target: outcome.target });
+    }
     return reply.code(outcome.status).send({ error: 'save-refused', reason: outcome.reason });
   });
 
@@ -91,14 +109,17 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
       { token: session?.token, config: ctx.sessionConfig },
       { repoRoot: ctx.repoRoot, runPreamble: ctx.runPreamble, runPy: ctx.runPy },
     );
-    audit(ctx.repoRoot, {
-      action: 'launch',
-      owner: session?.claims.sub,
-      target: str(body.target),
-      riskTier: str(body.riskTier),
-      result: outcome.ok ? `launched:${outcome.cardId}` : `refused:${outcome.reason}`,
-    }, auditOpts);
-    if (outcome.ok) return reply.code(200).send({ ok: true, cardId: outcome.cardId, cardPath: outcome.cardPath });
+    // FINDING 3: audit only when a card was actually filed.
+    if (outcome.ok) {
+      audit(ctx.repoRoot, {
+        action: 'launch',
+        owner: session?.claims.sub,
+        target: str(body.target),
+        riskTier: str(body.riskTier),
+        result: `launched:${outcome.cardId}`,
+      }, auditOpts);
+      return reply.code(200).send({ ok: true, cardId: outcome.cardId, cardPath: outcome.cardPath });
+    }
     return reply.code(launchStatus(outcome)).send({ error: outcome.reason, detail: 'detail' in outcome ? outcome.detail : outcome.problems });
   });
 
@@ -106,19 +127,26 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
     const session = verifiedSession(req);
     const body = asRecord(req.body);
     const cardId = str(body.cardId);
+    // LOW: reject glob-metachar / traversal card ids before the id reaches launch.ts's queue_root.glob.
+    if (!CARD_ID_RE.test(cardId)) {
+      return reply.code(400).send({ error: 'bad-card-id', reason: 'cardId must be filename-safe' });
+    }
     const outcome = rerunAsDependsOn(
       cardId,
       str(body.feedback),
       { token: session?.token, config: ctx.sessionConfig },
       { repoRoot: ctx.repoRoot, runPreamble: ctx.runPreamble, runPy: ctx.runPy },
     );
-    audit(ctx.repoRoot, {
-      action: 'rerun',
-      owner: session?.claims.sub,
-      cardId,
-      result: outcome.ok ? `requeued:${outcome.cardId}` : `refused:${outcome.reason}`,
-    }, auditOpts);
-    if (outcome.ok) return reply.code(200).send({ ok: true, cardId: outcome.cardId, cardPath: outcome.cardPath });
+    // FINDING 3: audit only on a successful requeue.
+    if (outcome.ok) {
+      audit(ctx.repoRoot, {
+        action: 'rerun',
+        owner: session?.claims.sub,
+        cardId,
+        result: `requeued:${outcome.cardId}`,
+      }, auditOpts);
+      return reply.code(200).send({ ok: true, cardId: outcome.cardId, cardPath: outcome.cardPath });
+    }
     return reply.code(launchStatus(outcome)).send({ error: outcome.reason, detail: 'detail' in outcome ? outcome.detail : outcome.problems });
   });
 
@@ -128,12 +156,15 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
       { token: session?.token, config: ctx.sessionConfig },
       { repoRoot: ctx.repoRoot, runPy: ctx.runPy, runGit: ctx.opsGit },
     );
-    audit(ctx.repoRoot, {
-      action: 'stop',
-      owner: session?.claims.sub,
-      result: outcome.ok ? 'stop-written' : `refused:${outcome.reason}`,
-    }, auditOpts);
-    if (outcome.ok) return reply.code(200).send({ ok: true, path: outcome.path });
+    // FINDING 3: audit only when the STOP sentinel was actually written.
+    if (outcome.ok) {
+      audit(ctx.repoRoot, {
+        action: 'stop',
+        owner: session?.claims.sub,
+        result: 'stop-written',
+      }, auditOpts);
+      return reply.code(200).send({ ok: true, path: outcome.path });
+    }
     return reply.code(401).send({ error: outcome.reason, detail: outcome.detail });
   });
 
@@ -141,18 +172,26 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
     const session = verifiedSession(req);
     const body = asRecord(req.body);
     const cardId = str(body.cardId);
+    // LOW (same class as rerun): reject glob-metachar / traversal card ids before the id reaches
+    // floor.ts's queue_root.glob(f"**/{cardId}.md").
+    if (!CARD_ID_RE.test(cardId)) {
+      return reply.code(400).send({ error: 'bad-card-id', reason: 'cardId must be filename-safe' });
+    }
     const outcome = requestStop(
       cardId,
       { token: session?.token, config: ctx.sessionConfig },
       { repoRoot: ctx.repoRoot, runPy: ctx.runPy, runGit: ctx.opsGit },
     );
-    audit(ctx.repoRoot, {
-      action: 'stop-card',
-      owner: session?.claims.sub,
-      cardId,
-      result: outcome.ok ? `halting:${outcome.state}` : `refused:${outcome.reason}`,
-    }, auditOpts);
-    if (outcome.ok) return reply.code(200).send({ ok: true, cardId: outcome.cardId, state: outcome.state });
+    // FINDING 3: audit only on a successful state transition.
+    if (outcome.ok) {
+      audit(ctx.repoRoot, {
+        action: 'stop-card',
+        owner: session?.claims.sub,
+        cardId,
+        result: `halting:${outcome.state}`,
+      }, auditOpts);
+      return reply.code(200).send({ ok: true, cardId: outcome.cardId, state: outcome.state });
+    }
     if (outcome.reason === 'unauthenticated') return reply.code(401).send({ error: outcome.reason, detail: outcome.detail });
     return reply.code(500).send({ error: outcome.reason, detail: outcome.detail });
   });
@@ -166,13 +205,16 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
       { token: session?.token, config: ctx.sessionConfig },
       { repoRoot: ctx.repoRoot, runPy: ctx.runPy, runGit: ctx.opsGit },
     );
-    audit(ctx.repoRoot, {
-      action: 'pause-cadence',
-      owner: session?.claims.sub,
-      target: name,
-      result: outcome.ok ? 'paused' : `refused:${outcome.reason}`,
-    }, auditOpts);
-    if (outcome.ok) return reply.code(200).send({ ok: true, path: outcome.path });
+    // FINDING 3: audit only when the cadence was actually paused.
+    if (outcome.ok) {
+      audit(ctx.repoRoot, {
+        action: 'pause-cadence',
+        owner: session?.claims.sub,
+        target: name,
+        result: 'paused',
+      }, auditOpts);
+      return reply.code(200).send({ ok: true, path: outcome.path });
+    }
     return reply.code(401).send({ error: outcome.reason, detail: outcome.detail });
   });
 }

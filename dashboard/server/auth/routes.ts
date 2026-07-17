@@ -133,7 +133,9 @@ export function registerAuthRoutes(scope: FastifyInstance, ctx: SurfaceContext):
       return reply.code(401).send({ error: 'unauthenticated', reason: 'assertion not verified' });
     }
     // Mint ONLY from a positively-verified assertion (throws otherwise — never a speculative mint).
-    const { token, claims } = mintSessionFromVerifiedAssertion({ verified: true }, OPERATOR.id, ctx.sessionConfig);
+    // INFO: pass the ACTUAL verification result, not a `{ verified: true }` literal, so the mint guard
+    // actually guards (defence-in-depth behind the `if (!result.verified)` return above).
+    const { token, claims } = mintSessionFromVerifiedAssertion(result, OPERATOR.id, ctx.sessionConfig);
     auditFn(ctx)(ctx.repoRoot, { action: 'auth', owner: OPERATOR.id, result: 'login' }, { runGit: ctx.opsGit, now: ctx.now });
     return reply.code(200).send({ token, expiresAt: claims.exp });
   });

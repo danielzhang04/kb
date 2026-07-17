@@ -78,6 +78,35 @@ export const defaultPrOpener: PrOpener = (repoRoot, req) => {
 /** The work branch durable-content saves land on absent an explicit override — this worker's branch. */
 export const DEFAULT_WORK_BRANCH = 'claude/m1-dashboard';
 
+/** Branches durable content may NEVER be pushed to directly. `main` receives durable content only via a
+ *  reviewed PR; `ops` receives ONLY coordination artifacts through the pull-rebase-push path — never a
+ *  governedSave durable push. This is the design invariant (design §"write path", CLAUDE.md branch rules). */
+const PROTECTED_BRANCHES: ReadonlySet<string> = new Set(['main', 'ops']);
+
+/** Thrown when a durable push would target a protected branch — the defense-in-depth denylist so even a
+ *  future caller that reintroduces a client-controlled branch can't push durable content to main/ops. */
+export class ProtectedBranchError extends Error {
+  constructor(branch: string) {
+    super(`refusing to push durable content directly to protected branch '${branch}'`);
+    this.name = 'ProtectedBranchError';
+  }
+}
+
+/**
+ * True when `branch` resolves to a protected branch (`main`/`ops`) — case-insensitively and regardless
+ * of a `refs/heads/` prefix, backslashes, leading slashes, or surrounding whitespace. The denylist the
+ * durable route asserts against, and the route layer's hard-reject predicate for a client-smuggled ref.
+ */
+export function isProtectedBranch(branch: string): boolean {
+  const norm = branch
+    .replace(/\\/g, '/')
+    .replace(/^\/+/, '')
+    .replace(/^refs\/heads\//i, '')
+    .trim()
+    .toLowerCase();
+  return PROTECTED_BRANCHES.has(norm);
+}
+
 export interface RouteOptions {
   runGit?: GitRunner;
   openPr?: PrOpener;
@@ -102,6 +131,13 @@ export function routeDurable(repoRoot: string, relpath: string, options: RouteOp
   const openPr = options.openPr ?? defaultPrOpener;
   const branch = options.workBranch ?? DEFAULT_WORK_BRANCH;
   const message = options.message ?? defaultMessage(relpath);
+
+  // Defense-in-depth denylist: refuse to push durable content to main/ops regardless of caller, BEFORE
+  // any local staging/commit — so even a future caller that reintroduces a client-controlled branch
+  // cannot direct-push durable content past the PR-review gate.
+  if (isProtectedBranch(branch)) {
+    throw new ProtectedBranchError(branch);
+  }
 
   runGit(repoRoot, ['add', '--', relpath]);
   runGit(repoRoot, ['commit', '-m', message]);

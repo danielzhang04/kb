@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   classifyTarget,
   routeWrite,
+  isProtectedBranch,
+  ProtectedBranchError,
   DEFAULT_WORK_BRANCH,
   type GitRunner,
   type PrOpener,
@@ -89,6 +91,31 @@ describe('routeWrite — durable content (skills/**, docs/**, KB markdown)', () 
     expect(calls.some((c) => c.join(' ').includes('claude/fresh-branch'))).toBe(true);
     expect(requests[0].head).toBe('claude/fresh-branch');
     expect(requests[0].base).toBe('main');
+  });
+});
+
+describe('branch denylist — durable content NEVER pushes to main/ops (defense in depth)', () => {
+  it('isProtectedBranch matches main/ops case-insensitively, incl. refs/heads/ forms', () => {
+    for (const b of ['main', 'ops', 'MAIN', 'Ops', 'refs/heads/main', 'refs/heads/OPS', ' main ', '/main']) {
+      expect(isProtectedBranch(b), b).toBe(true);
+    }
+    for (const b of ['claude/m1-dashboard', 'claude/feature', 'maintenance', 'operations']) {
+      expect(isProtectedBranch(b), b).toBe(false);
+    }
+  });
+
+  it('routeWrite unit-rejects a durable push to main/ops directly — no git command runs at all', () => {
+    for (const bad of ['main', 'ops', 'refs/heads/main']) {
+      const { runner, calls } = recorder();
+      const { opener, requests } = prRecorder();
+      expect(() =>
+        routeWrite('/fake/repo', 'docs/notes.md', { runGit: runner, openPr: opener, workBranch: bad }),
+      ).toThrow(ProtectedBranchError);
+      // Fails closed BEFORE any add/commit/push and before any PR is opened.
+      expect(calls.filter((c) => c[0] === 'push')).toHaveLength(0);
+      expect(calls).toHaveLength(0);
+      expect(requests).toHaveLength(0);
+    }
   });
 });
 

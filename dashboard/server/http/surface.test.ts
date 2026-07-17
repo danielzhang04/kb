@@ -180,7 +180,9 @@ describe('write surface — composition chain', () => {
     expect(audit.rows[0]).toMatchObject({ action: 'launch', result: 'launched:card-new-0001' });
   });
 
-  it('launch is refused 503 when the preamble reports a frozen fleet (still audited)', async () => {
+  it('launch is refused 503 when the preamble reports a frozen fleet — and writes NO ops audit row', async () => {
+    // FINDING 3: a refused write is not a consequential action; it must not commit an ops audit row
+    // (an amplification vector — one pull-rebase-push per refusal). Only the SUCCESS path audits.
     const audit = recordingAudit();
     ({ app } = buildApp({ appendAudit: audit.fn, runPreamble: frozenPreamble, runPy: okPy }));
     const res = await app.inject({
@@ -191,7 +193,136 @@ describe('write surface — composition chain', () => {
     });
     expect(res.statusCode).toBe(503);
     expect(res.json()).toMatchObject({ error: 'fleet-frozen' });
-    expect(audit.rows[0]).toMatchObject({ action: 'launch', result: 'refused:fleet-frozen' });
+    expect(audit.rows).toHaveLength(0);
+  });
+});
+
+describe('write surface — FINDING 1: server owns the durable work branch (no client-controlled push)', () => {
+  it('rejects a save whose client body smuggles workBranch main/ops/refs-heads-main — never pushes', async () => {
+    for (const bad of ['main', 'ops', 'refs/heads/main', 'MAIN']) {
+      const pushCalls: string[][] = [];
+      const recordingGit: GitRunner = (_r, args) => {
+        pushCalls.push(args);
+        return '';
+      };
+      const audit = recordingAudit();
+      ({ app } = buildApp({ appendAudit: audit.fn, saveGit: recordingGit, openPr: () => {} }));
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/write/save',
+        headers: headers(true),
+        payload: { relpath: 'docs/note.md', content: 'x', workBranch: bad },
+      });
+      expect(res.statusCode, bad).toBe(403);
+      expect(res.json()).toMatchObject({ error: 'forbidden-branch' });
+      // The git runner was never invoked with a push to that ref (nor at all) — refused before any git.
+      expect(pushCalls.filter((c) => c[0] === 'push'), bad).toHaveLength(0);
+      // A pre-gate rejection writes no audit row.
+      expect(audit.rows, bad).toHaveLength(0);
+      await app.close();
+      app = undefined;
+    }
+  });
+
+  it('a normal durable save (no workBranch) still routes to the server work branch', async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'u2-wb-'));
+    const pushCalls: string[][] = [];
+    const recordingGit: GitRunner = (_r, args) => {
+      pushCalls.push(args);
+      return '';
+    };
+    const prCalls: { head?: string }[] = [];
+    ({ app } = buildApp({ repoRoot, appendAudit: recordingAudit().fn, saveGit: recordingGit, openPr: (_r, req) => prCalls.push(req) }));
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/write/save',
+      headers: headers(true),
+      payload: { relpath: 'docs/note.md', content: '# hi\n' },
+    });
+    expect(res.statusCode).toBe(200);
+    const push = pushCalls.find((c) => c[0] === 'push');
+    expect(push).toBeDefined();
+    expect(push!.join(' ')).toContain('claude/m1-dashboard');
+    expect(push!.join(' ')).not.toMatch(/\bops\b/);
+    expect(push!).not.toEqual(['push', 'origin', 'main']);
+    expect(prCalls[0]?.head).toBe('claude/m1-dashboard');
+  });
+});
+
+describe('write surface — FINDING 2: pre-session rate-limit keyed on PEER IP, not the bearer token', () => {
+  it('throttles the same peer across rotating garbage bearer tokens (write route)', async () => {
+    const { lockout, rateLimit } = await import('../security/ratelimit');
+    const guard = lockout(rateLimit({ limit: 1, windowMs: 60_000 }), { threshold: 10, lockoutMs: 60_000 });
+    ({ app } = buildApp({ rateGuard: guard }));
+    // Same client (127.0.0.1), a DIFFERENT bearer each request. With the old tok:<bearer> key each got a
+    // fresh bucket and never throttled; keyed on peer IP the 2nd request is throttled regardless.
+    const h1 = { ...headers(false), authorization: 'Bearer garbage-token-A' };
+    const h2 = { ...headers(false), authorization: 'Bearer garbage-token-B' };
+    const first = await app.inject({ method: 'POST', url: '/api/write/stop', headers: h1, payload: {} });
+    expect(first.statusCode).toBe(401); // passed origin + rate-limit, failed session
+    const second = await app.inject({ method: 'POST', url: '/api/write/stop', headers: h2, payload: {} });
+    expect(second.statusCode).toBe(429);
+    expect(second.json()).toMatchObject({ error: 'throttled' });
+  });
+
+  it('covers the unauthenticated auth ceremony routes too (rotating bearers do not evade it)', async () => {
+    const { lockout, rateLimit } = await import('../security/ratelimit');
+    const guard = lockout(rateLimit({ limit: 1, windowMs: 60_000 }), { threshold: 10, lockoutMs: 60_000 });
+    ({ app } = buildApp({ rateGuard: guard, webAuthnConfig: () => ({ rpID: 'localhost', rpName: 't', origin: GOOD_ORIGIN }), credentials: () => [] }));
+    const first = await app.inject({ method: 'POST', url: '/api/auth/assert/options', headers: { ...headers(false), authorization: 'Bearer x1' }, payload: {} });
+    expect(first.statusCode).toBe(200);
+    const second = await app.inject({ method: 'POST', url: '/api/auth/assert/options', headers: { ...headers(false), authorization: 'Bearer x2' }, payload: {} });
+    expect(second.statusCode).toBe(429);
+  });
+});
+
+describe('write surface — FINDING 3: audit only on the consequential success path', () => {
+  it('a session-authenticated but GATE-REFUSED save writes NO ops audit row', async () => {
+    // governance/** is refused 403 by the gate even with a valid session — a refusal, no audit.
+    const audit = recordingAudit();
+    ({ app } = buildApp({ appendAudit: audit.fn, saveGit: okGit, openPr: () => {} }));
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/write/save',
+      headers: headers(true),
+      payload: { relpath: 'governance/risk-tiers.md', content: 'tampered' },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(audit.rows).toHaveLength(0);
+  });
+
+  it('a successful save writes exactly one audit row and still 500s if that audit throws (fail-loud preserved)', async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'u2-audit-'));
+    const throwingAudit: SurfaceContext['appendAudit'] = () => {
+      throw new Error('ops audit commit failed');
+    };
+    ({ app } = buildApp({ repoRoot, appendAudit: throwingAudit, saveGit: okGit, openPr: () => {} }));
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/write/save',
+      headers: headers(true),
+      payload: { relpath: 'docs/note.md', content: '# hi\n' },
+    });
+    // An unauditable SUCCESSFUL write must not report success.
+    expect(res.statusCode).toBe(500);
+  });
+});
+
+describe('write surface — LOW: rerun cardId must be filename-safe (no glob metachars)', () => {
+  it('rejects a rerun cardId containing glob/traversal chars (400, never reaches the py runner)', async () => {
+    const py = vi.fn();
+    ({ app } = buildApp({ runPreamble: okPreamble, runPy: py as unknown as PyRunner }));
+    for (const bad of ['*', 'card-*', '../etc/passwd', 'a b']) {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/write/rerun',
+        headers: headers(true),
+        payload: { cardId: bad, feedback: 'redo' },
+      });
+      expect(res.statusCode, bad).toBe(400);
+      expect(res.json()).toMatchObject({ error: 'bad-card-id' });
+    }
+    expect(py).not.toHaveBeenCalled();
   });
 });
 
