@@ -18,6 +18,7 @@ import { Registry } from './Registry';
 import { Timeline } from './Timeline';
 import { LaunchControls } from './launchControls';
 import { useSse } from '../lib/sseClient';
+import { useAssignableOwners } from '../lib/assignableOwners';
 import type { Session } from '../lib/authClient';
 
 const EMPTY_INDEX: PlaneAIndex = {
@@ -295,6 +296,9 @@ export function Control({
   }, [snapshot, count]);
 
   const index = snapshot ?? fetched ?? EMPTY_INDEX;
+  // C7.8 — populate the owner picker from the live roster ∪ registered default_workers, gated on a
+  // usable session so a dormant/signed-out board issues no roster fetch.
+  const owners = useAssignableOwners(Boolean(sessionToken));
 
   return (
     <div className="control" aria-label="Control view">
@@ -316,7 +320,7 @@ export function Control({
             <h2>Registry</h2>
             <Registry />
           </section>
-          <LaunchControls sessionToken={sessionToken} />
+          <LaunchControls sessionToken={sessionToken} owners={owners} />
         </div>
       </div>
     </div>
