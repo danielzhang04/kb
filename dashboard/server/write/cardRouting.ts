@@ -15,8 +15,9 @@
  * the FROZEN WebAuthn challenge/verifier code (`auth/challenge.ts` / `webauthn_verify.py`), a separate
  * flagged decision out of R2's scope — this module deliberately does not alter it.
  */
-import { existsSync, lstatSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { join, resolve, relative, sep, isAbsolute } from 'node:path';
+import { parseCardFrontmatter } from '../planeA/cards.ts';
 import { verifySession } from '../auth/session.ts';
 import type { SessionConfig } from '../auth/session.ts';
 import { defaultPyRunner } from './launch.ts';
@@ -53,7 +54,19 @@ export interface CardRoutingDeps {
 
 export type CardRoutingOutcome =
   | { ok: true; cardId: string; cardPath: string; runtime: string | null; model: string | null }
-  | { ok: false; status: 401 | 400 | 500; reason: string };
+  | { ok: false; status: 401 | 400 | 409 | 500; reason: string; error?: string };
+
+/**
+ * The two card states that mean "a human approval is attached or pending" — read straight from
+ * scripts/cards.py's STATES/STATE_DIR, where BOTH resolve to the `queue/approvals/` directory:
+ *   - `approvals` — a human decision is PENDING (the card is sitting in the approvals inbox), and
+ *   - `approved`  — a human approval has been GRANTED and the card is awaiting execution.
+ * A per-card routing (runtime/model) change on a card in either state is refused: swapping the model
+ * out from under an approval a human is reviewing / has already signed is exactly the "model swap under
+ * an approved T3 card" seam. This guard closes it WITHOUT touching the frozen content-hash preimage —
+ * that tamper-evidence binding is a separate, explicitly deferred decision (see the module docstring).
+ */
+const APPROVAL_PIPELINE_STATES = new Set(['approvals', 'approved']);
 
 /**
  * The fixed Python payload. Reads one JSON op from `sys.argv[1]` (`{kind:"set"|"clear", cardId, runtime,
@@ -156,6 +169,28 @@ function symlinkGuard(repoRoot: string, cardId: string): string | null {
   return null;
 }
 
+/**
+ * APPROVAL-LOCK guard (security). Before any routing mutation, resolve the target card's AUTHORITATIVE
+ * frontmatter `state` (not merely its directory) and, if it is in the approval pipeline
+ * ({@link APPROVAL_PIPELINE_STATES}), report the offending state so the caller can refuse. Uses the same
+ * `findCardFile` locator as {@link symlinkGuard} (run FIRST, so a symlinked/escaping target is already
+ * refused before we read here) and the read-side `parseCardFrontmatter`. Returns null when the card is
+ * absent (the py path then reports not-found itself) or its frontmatter is unparseable (let py handle it).
+ */
+function approvalGuard(repoRoot: string, cardId: string): string | null {
+  const queueRoot = join(repoRoot, 'queue');
+  if (!existsSync(queueRoot)) return null;
+  const found = findCardFile(queueRoot, cardId);
+  if (!found) return null;
+  let state: string;
+  try {
+    state = String(parseCardFrontmatter(readFileSync(found, 'utf-8')).meta.state);
+  } catch {
+    return null;
+  }
+  return APPROVAL_PIPELINE_STATES.has(state) ? state : null;
+}
+
 function gate(input: CardRoutingInput): { ok: true; sub: string } | { ok: false; status: 401; reason: string } {
   if (!input.sessionToken) return { ok: false, status: 401, reason: 'missing session token' };
   const check = verifySession(input.sessionToken, input.sessionConfig);
@@ -196,6 +231,21 @@ async function apply(
   // LOW-1: refuse a symlinked / repo-escaping card target BEFORE shelling py (which would follow it).
   const guard = symlinkGuard(input.repoRoot, input.cardId);
   if (guard) return { ok: false, status: 400, reason: guard };
+
+  // SECURITY: refuse ANY routing mutation (set OR clear) on a card under an active approval
+  // (approvals/approved) — closing the "model swap under an approved T3 card" seam. Like every other
+  // pre-py refusal above, this does NO write, NO ops commit, and NO audit append: the house convention
+  // (governedSave/launch FINDING 3) is that refused writes never amplify into an ops pull-rebase-push,
+  // so there is nothing consequential to record. The frozen hash preimage is intentionally NOT touched.
+  const lockedState = approvalGuard(input.repoRoot, input.cardId);
+  if (lockedState) {
+    return {
+      ok: false,
+      status: 409,
+      error: 'approval-locked',
+      reason: 'card is under an active approval; routing is frozen until it executes or the approval is rescinded',
+    };
+  }
 
   const runPy = deps.runPy ?? defaultPyRunner;
   const result = runPy(input.repoRoot, CARD_ROUTING_SCRIPT, JSON.stringify({ kind: op, cardId: input.cardId, runtime, model }));
