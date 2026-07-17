@@ -13,18 +13,37 @@
  *      argument — so we scan there for the id and hand it back via `onSessionId`. No second stdout tap,
  *      no re-parse.
  *   2. **--resume injection.** On a continuing turn we wrap the injected `VibeSpawner` so the base vibe
- *      arg vector (`--print --output-format stream-json`) gains `--resume <session_id>` appended. This is
- *      a spawner decorator, NOT a change to spawnVibe: the gate chain, the arg base, and the audit sink
- *      are spawnVibe's, untouched. `ANTHROPIC_API_KEY` stays unset — the default spawner passes no env.
+ *      arg vector (`--print --output-format stream-json`) gains a SINGLE `--resume=<session_id>` token
+ *      appended (the fused equals form, review F1 — see below). This is a spawner decorator, NOT a
+ *      change to spawnVibe's gates: the gate chain, the arg base, and the audit sink are spawnVibe's,
+ *      untouched. `ANTHROPIC_API_KEY` stays unset — the default spawner passes no env.
+ *
+ * review F1 — the resume target is validated AND bound before it ever reaches the child:
+ *   - The route rejects any `resumeId` that is not a well-formed CLI session id (a canonical UUID)
+ *     BEFORE calling this function, so a traversal- or flag-shaped value never gets here.
+ *   - `--resume` is appended as the SINGLE-TOKEN `--resume=<id>` (never the two tokens `['--resume', id]`).
+ *     `claude`'s `--resume` takes an OPTIONAL value, so under commander/yargs a value starting with `-`
+ *     would be parsed as a SEPARATE flag rather than the resume value — the fused equals form removes
+ *     that ambiguity entirely, so even a future validation regression cannot smuggle a second flag into
+ *     the argv (belt-and-suspenders behind the UUID validation, which already rejects any `-`-lead token).
+ *   - The id must have been ISSUED by this process for the verified session subject: `spawnComposerTurn`
+ *     installs a `preSpawnGuard` (run inside spawnVibe, after session + rate-limit, before spawn) that
+ *     refuses a resume whose (subject, id) pair the {@link ResumeRegistry} never recorded.
  */
 import { spawnVibe, defaultVibeSpawner } from '../vibe/session.ts';
 import type { SessionInput, VibeDeps, VibeHandlers, VibeSpawner, VibeSpawnOutcome } from '../vibe/session.ts';
 import type { TranscriptRecord } from '../planeB/tailer.ts';
+import type { ResumeRegistry } from './resumeRegistry.ts';
 
 /** Vibe handlers plus the one Composer addition: the captured CLI session id for the next turn. */
 export interface ComposerHandlers extends VibeHandlers {
   /** Called at most once per turn, with the `session_id` read off the CLI's `system` init record. */
   onSessionId?: (sessionId: string) => void;
+}
+
+/** Vibe deps plus the process-lifetime issued-session allowlist that binds `--resume` (review F1). */
+export interface ComposerDeps extends VibeDeps {
+  resumeRegistry: ResumeRegistry;
 }
 
 /** The CLI session id carried by a `system` init record, or `undefined` for any other record. */
@@ -44,15 +63,32 @@ export function spawnComposerTurn(
   resumeId: string | null | undefined,
   session: SessionInput,
   handlers: ComposerHandlers,
-  deps: VibeDeps,
+  deps: ComposerDeps,
 ): VibeSpawnOutcome {
   // Decorate the spawner so a continuing turn resumes the CLI session. spawnVibe hands us the base arg
-  // vector; we append `--resume <id>` and nothing else. On the first turn (no id) the vector is untouched.
+  // vector; we append a SINGLE `--resume=<id>` token (review F1: the fused equals form removes all
+  // optional-value parser ambiguity, so a resume value can never be reinterpreted as a separate flag).
+  // On the first turn (no id) the vector is untouched.
   const baseSpawn = deps.spawn ?? defaultVibeSpawner;
-  const spawn: VibeSpawner = (args, cwd) => baseSpawn(resumeId ? [...args, '--resume', resumeId] : args, cwd);
+  const spawn: VibeSpawner = (args, cwd) => baseSpawn(resumeId ? [...args, `--resume=${resumeId}`] : args, cwd);
 
-  // Capture the session id from the first `system` record and forward it, then delegate the delta on to
-  // the caller's handler unchanged.
+  // review F1 — the pre-spawn binding guard. spawnVibe runs it with the VERIFIED subject after its
+  // session + rate-limit gates and before any spawn, so it can both (a) refuse a resume whose
+  // (subject, id) pair was never issued and (b) capture the verified subject for us to record the
+  // freshly-issued id under. It is installed on EVERY turn (not just resumes) precisely so a first turn
+  // hands us the subject to attribute the id it is about to issue.
+  let verifiedOwner: string | null = null;
+  const preSpawnGuard = (owner: string): { ok: true } | { ok: false; detail: string } => {
+    verifiedOwner = owner;
+    if (resumeId && !deps.resumeRegistry.isIssued(owner, resumeId)) {
+      return { ok: false, detail: 'resumeId was not issued to this session subject' };
+    }
+    return { ok: true };
+  };
+
+  // Capture the session id from the first `system` record, RECORD it in the issued-id allowlist under the
+  // subject that just passed the gate (verifiedOwner is set by preSpawnGuard, which runs before any
+  // stdout), forward it to the caller, then delegate the delta on unchanged.
   let captured = false;
   const onDelta: VibeHandlers['onDelta'] = (model, newRecords) => {
     if (!captured) {
@@ -60,6 +96,7 @@ export function spawnComposerTurn(
         const id = sessionIdOf(rec);
         if (id) {
           captured = true;
+          if (verifiedOwner) deps.resumeRegistry.record(verifiedOwner, id);
           handlers.onSessionId?.(id);
           break;
         }
@@ -68,5 +105,16 @@ export function spawnComposerTurn(
     handlers.onDelta(model, newRecords);
   };
 
-  return spawnVibe(prompt, session, { ...handlers, onDelta }, { ...deps, spawn });
+  // review F2 — a Composer turn audits under a DISTINCT action with the resume target recorded. The full
+  // CLI session id is a capability-bearing handle (it resumes a live agent session), so we log only its
+  // last 4 chars for correlation — never the reusable id — in the git-committed ledger.
+  const auditDetail = { resume: Boolean(resumeId), resumeTarget: resumeId ? resumeId.slice(-4) : null };
+
+  return spawnVibe(prompt, session, { ...handlers, onDelta }, {
+    ...deps,
+    spawn,
+    preSpawnGuard,
+    auditAction: 'composer-turn',
+    auditDetail,
+  });
 }

@@ -189,3 +189,34 @@ describe('composer/artifactTypes — deploy mapping', () => {
     expect(plan.endpoint).toBe('save');
   });
 });
+
+describe('composer/artifactTypes — F4 client-side path-traversal rejection', () => {
+  // review F4: the old `^wf_.+\.md$` let `.+` swallow a `../../` traversal, so a workflow filename could
+  // emit an ESCAPING durable relpath (`workflows/wf_../../x.md`); slug-derived skill/project names could
+  // collapse to an empty on-disk segment (`skills/learned//SKILL.md`). validateDraft must now REPORT
+  // these and toDeploy must refuse them (defense-in-depth + honest preview; the server still owns real
+  // confinement).
+  it('rejects a workflow filename carrying path traversal', () => {
+    for (const filename of ['wf_../../x.md', 'wf_../secrets.md', 'wf_a/b.md']) {
+      const problems = validateDraft('workflow', { filename, body: 'steps' });
+      expect(problems.map((p) => p.field)).toContain('filename');
+      expect(() => toDeploy('workflow', { filename, body: 'steps' })).toThrow();
+    }
+  });
+
+  it('rejects a skill name that would escape/empty its learned/<slug> segment', () => {
+    for (const name of ['..', '../../etc', 'a/b']) {
+      const problems = validateDraft('skill', { name, description: 'd', body: 'b' });
+      expect(problems.map((p) => p.field)).toContain('name');
+      expect(() => toDeploy('skill', { name, description: 'd', body: 'b' })).toThrow();
+    }
+  });
+
+  it('rejects a project name that would escape/empty its orgs/<slug> segment', () => {
+    for (const name of ['..', '../evil', 'x/y']) {
+      const problems = validateDraft('project', { name, date: '2026-07-17' });
+      expect(problems.map((p) => p.field)).toContain('name');
+      expect(() => toDeploy('project', { name, date: '2026-07-17' })).toThrow();
+    }
+  });
+});

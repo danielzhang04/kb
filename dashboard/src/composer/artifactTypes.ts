@@ -149,6 +149,26 @@ function slugify(name: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
+/**
+ * review F4 — defense-in-depth + honest previews. A skill/project name becomes an on-disk path SEGMENT
+ * (skills/learned/<slug>/…, orgs/<slug>/…). Reject a name that carries path syntax — a separator, a `..`
+ * parent ref, a leading `.`, or an absolute root — or that slugifies to nothing (which would emit an
+ * empty/escaping relpath segment like `skills/learned//SKILL.md`). This makes `validateDraft` REPORT the
+ * problem instead of silently transforming it, and stops `toDeploy` from ever emitting an escaping
+ * relpath. NOTE: the server's /api/write/save still owns the REAL path confinement — this is an honest
+ * client-side preview, not the security boundary.
+ */
+function nameSegmentProblem(field: string, name: unknown): Problem | null {
+  const raw = typeof name === 'string' ? name.trim() : '';
+  if (/[/\\]/.test(raw) || raw.includes('..') || raw.startsWith('.') || slugify(raw) === '') {
+    return {
+      field,
+      message: `${field} must be a simple name (no path separators, no "..", no leading dot)`,
+    };
+  }
+  return null;
+}
+
 // ── Inlined project templates ────────────────────────────────────────────────────────────────────────
 //
 // Copied VERBATIM from templates/{_index,STATE,contract,HEARTBEAT}.md. They are inlined (not read from
@@ -301,6 +321,9 @@ function validateTask(draft: TaskDraft): Problem[] {
 function validateSkill(draft: SkillDraft): Problem[] {
   const problems: Problem[] = [];
   requireNonEmpty(problems, 'name', draft.name, 'name frontmatter is required');
+  // review F4 — the name becomes the skills/learned/<slug>/ path segment; reject traversal / empty slug.
+  const nameProblem = nameSegmentProblem('name', draft.name);
+  if (nameProblem) problems.push(nameProblem);
   requireNonEmpty(problems, 'description', draft.description, 'description frontmatter is required');
   requireNonEmpty(problems, 'body', draft.body, 'a SKILL.md body is required');
   return problems;
@@ -308,9 +331,12 @@ function validateSkill(draft: SkillDraft): Problem[] {
 
 function validateWorkflow(draft: WorkflowDraft): Problem[] {
   const problems: Problem[] = [];
-  // The registry derives the id from the filename; it MUST be wf_<name>.md.
-  if (!/^wf_.+\.md$/.test(draft.filename ?? '')) {
-    problems.push({ field: 'filename', message: 'filename must match wf_<name>.md' });
+  // The registry derives the id from the filename; it MUST be wf_<name>.md. review F4 — the old
+  // `^wf_.+\.md$` accepted `wf_../../x.md` (the `.+` swallowed the traversal), so the durable relpath
+  // `workflows/<filename>` could escape workflows/. Constrain the name to a single safe segment of
+  // lowercase alphanumerics + hyphens — no `/`, no `.`, so no traversal survives.
+  if (!/^wf_[a-z0-9-]+\.md$/.test(draft.filename ?? '')) {
+    problems.push({ field: 'filename', message: 'filename must match wf_<name>.md (lowercase name, no path separators or "..")' });
   }
   requireNonEmpty(problems, 'body', draft.body, 'a workflow body is required');
   return problems;
@@ -319,6 +345,9 @@ function validateWorkflow(draft: WorkflowDraft): Problem[] {
 function validateProject(draft: ProjectDraft): Problem[] {
   const problems: Problem[] = [];
   requireNonEmpty(problems, 'name', draft.name, 'project name is required');
+  // review F4 — the name becomes the orgs/<slug>/ path segment; reject traversal / empty slug.
+  const nameProblem = nameSegmentProblem('name', draft.name);
+  if (nameProblem) problems.push(nameProblem);
   requireNonEmpty(problems, 'date', draft.date, 'a render date is required');
   return problems;
 }

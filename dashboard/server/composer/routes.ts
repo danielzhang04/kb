@@ -16,6 +16,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { spawnComposerTurn } from './session.ts';
 import type { VibeSpawnOutcome } from '../vibe/session.ts';
+import { isValidResumeId } from './resumeRegistry.ts';
 import { requireSession, verifiedSession } from '../http/middleware.ts';
 import type { SurfaceContext } from '../http/context.ts';
 
@@ -34,6 +35,9 @@ function refusalStatus(outcome: Extract<VibeSpawnOutcome, { ok: false }>): numbe
     case 'rate-limited':
     case 'locked-out':
       return 429;
+    case 'resume-denied':
+      // review F1 — a well-formed but never-issued (or wrong-subject) resume id: a bad request.
+      return 400;
     default:
       return 500;
   }
@@ -47,7 +51,14 @@ export function registerComposerRoutes(scope: FastifyInstance, ctx: SurfaceConte
     const body = asRecord(req.body);
     const prompt = typeof body.prompt === 'string' ? body.prompt : '';
     // A continuing turn carries the CLI session id captured from the previous turn's `session` frame.
-    const resumeId = typeof body.resumeId === 'string' ? body.resumeId : null;
+    // review F1 — validate its SHAPE at the boundary BEFORE any spawn: it must be a canonical CLI
+    // session UUID. Anything else present (traversal-shaped `../…`, flag-shaped `--foo`, empty) is a
+    // 400 and never reaches the spawn path, so a malformed value can never become a `claude` argv token.
+    const rawResume = body.resumeId;
+    if (rawResume !== undefined && rawResume !== null && !isValidResumeId(rawResume)) {
+      return reply.code(400).send({ error: 'invalid-resume-id', detail: 'resumeId must be a canonical CLI session id (UUID)' });
+    }
+    const resumeId = isValidResumeId(rawResume) ? rawResume : null;
 
     // Buffer any frame that fires before we start streaming. `claude` stdout is asynchronous, so in
     // practice nothing fires before spawnComposerTurn returns synchronously — but buffering makes the
@@ -81,6 +92,8 @@ export function registerComposerRoutes(scope: FastifyInstance, ctx: SurfaceConte
         appendAudit: ctx.appendAudit,
         runGit: ctx.opsGit,
         now: ctx.now,
+        // review F1 — the process-lifetime issued-session allowlist that binds `--resume`.
+        resumeRegistry: ctx.resumeRegistry,
       },
     );
 

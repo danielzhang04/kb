@@ -26,6 +26,7 @@ import { registerAuthRoutes } from '../auth/routes.ts';
 import { registerWriteRoutes } from '../write/routes.ts';
 import { registerVibeRoutes } from '../vibe/routes.ts';
 import { registerComposerRoutes } from '../composer/routes.ts';
+import { createResumeRegistry } from '../composer/resumeRegistry.ts';
 import { registerApprovalsRoutes } from '../approvals/routes.ts';
 
 /** dashboard/server/http/surface.ts -> ../../../ is the repo root. Overridable via env / tests. */
@@ -54,6 +55,9 @@ export function makeSurfaceContext(overrides: Partial<SurfaceContext> = {}): Sur
     spawn: overrides.spawn,
     vibeRateGuard: overrides.vibeRateGuard,
     now: overrides.now,
+    // One issued-session allowlist for the whole process (review F1) — resumes only ids captured this
+    // lifetime. Tests override with a fresh instance so ids never leak between them.
+    resumeRegistry: overrides.resumeRegistry ?? createResumeRegistry(),
   };
 }
 

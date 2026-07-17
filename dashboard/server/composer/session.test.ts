@@ -13,8 +13,13 @@ import type { PreambleRunner } from '../write/preambleGate.ts';
 import type { AuditEvent, AuditRow } from '../audit/log.ts';
 import { rateLimit, lockout } from '../security/ratelimit.ts';
 import type { LockoutGuard } from '../security/ratelimit.ts';
-import type { SessionInput, VibeDeps, VibeProcess, VibeSpawner } from '../vibe/session.ts';
+import type { SessionInput, VibeProcess, VibeSpawner } from '../vibe/session.ts';
 import { spawnComposerTurn } from './session.ts';
+import type { ComposerDeps } from './session.ts';
+import { createResumeRegistry } from './resumeRegistry.ts';
+
+/** A canonical CLI session id (UUID) — the only shape the resume path accepts (review F1). */
+const ISSUED_ID = 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d';
 
 const SECRET = Buffer.from('composer-test-secret-do-not-reuse');
 const SESSION_CONFIG: SessionConfig = { secret: SECRET, now: () => 1_700_000_000_000 };
@@ -77,12 +82,14 @@ function freshGuard(): LockoutGuard {
   return lockout(rateLimit({ limit: 1000, windowMs: 60_000 }), { threshold: 1000, lockoutMs: 1000 });
 }
 
-function baseDeps(overrides: Partial<VibeDeps> = {}): VibeDeps {
+function baseDeps(overrides: Partial<ComposerDeps> = {}): ComposerDeps {
   return {
     repoRoot: '/repo',
     runPreamble: okPreamble(),
     appendAudit: recordingAppendAudit().fn,
     rateLimitGuard: freshGuard(),
+    // One registry per baseDeps() call; reusing the same deps across turns shares it (as production does).
+    resumeRegistry: createResumeRegistry(),
     ...overrides,
   };
 }
@@ -112,19 +119,67 @@ describe('spawnComposerTurn — CLI session_id capture', () => {
   });
 });
 
-describe('spawnComposerTurn — resume-flag injection', () => {
-  it('second_turn_spawns_with_resume_flag: a continuing turn appends --resume <id> to the vibe args', () => {
+describe('spawnComposerTurn — resume-flag injection (review F1: equals-form + issued-id binding)', () => {
+  it('second_turn_spawns_with_resume_equals_form: a continuing turn appends a SINGLE --resume=<id> token', () => {
     const { spawner, calls } = recordingSpawner([fakeProcess().proc, fakeProcess().proc]);
     const deps = baseDeps({ spawn: spawner });
+    // Pre-issue the id for this subject so the binding guard admits the resume (as a captured turn would).
+    deps.resumeRegistry.record('operator-1', ISSUED_ID);
 
     // First turn: no prior session — the untouched vibe arg vector.
     spawnComposerTurn('turn one', null, validSession(), { onDelta: vi.fn() }, deps);
     expect(calls[0].args).toEqual(['--print', '--output-format', 'stream-json']);
 
-    // Second turn: carries the captured id — spawns with --resume appended, nothing else changed.
-    spawnComposerTurn('turn two', 'sess-abc', validSession(), { onDelta: vi.fn() }, deps);
-    expect(calls[1].args).toEqual(['--print', '--output-format', 'stream-json', '--resume', 'sess-abc']);
+    // Second turn: carries the issued id — spawns with the FUSED equals token appended, nothing else.
+    spawnComposerTurn('turn two', ISSUED_ID, validSession(), { onDelta: vi.fn() }, deps);
+    expect(calls[1].args).toEqual(['--print', '--output-format', 'stream-json', `--resume=${ISSUED_ID}`]);
     expect(calls[1].cwd).toBe('/repo');
+
+    // Belt-and-suspenders (review F1): the resume value is fused to the flag in ONE argv token — there
+    // is NO bare `--resume` token that an optional-value parser could pair with a following flag.
+    expect(calls[1].args).not.toContain('--resume');
+    expect(calls[1].args.filter((a) => a.startsWith('--resume'))).toEqual([`--resume=${ISSUED_ID}`]);
+  });
+
+  it('captured_id_is_recorded_then_admitted: a first turn records its captured id, a later turn may resume it', () => {
+    const fp = fakeProcess();
+    const { spawner, calls } = recordingSpawner([fp.proc, fakeProcess().proc]);
+    const deps = baseDeps({ spawn: spawner });
+    const captured: string[] = [];
+
+    // First turn (no resume): drive the `system` init record so the id is captured AND recorded.
+    spawnComposerTurn('one', null, validSession(), { onDelta: vi.fn(), onSessionId: (id) => captured.push(id) }, deps);
+    fp.emitStdout(`${JSON.stringify({ type: 'system', subtype: 'init', session_id: ISSUED_ID })}\n`);
+    expect(captured).toEqual([ISSUED_ID]);
+    expect(deps.resumeRegistry.isIssued('operator-1', ISSUED_ID)).toBe(true);
+
+    // Second turn resumes the SAME captured id — admitted, spawns with the equals token.
+    const t2 = spawnComposerTurn('two', ISSUED_ID, validSession(), { onDelta: vi.fn() }, deps);
+    expect(t2.ok).toBe(true);
+    expect(calls[1].args).toEqual(['--print', '--output-format', 'stream-json', `--resume=${ISSUED_ID}`]);
+  });
+
+  it('unissued_id_is_refused_before_spawn: a well-formed but never-issued resume id is denied, spawning nothing', () => {
+    const audit = recordingAppendAudit();
+    const { spawner, calls } = recordingSpawner();
+    const outcome = spawnComposerTurn('resume nothing', ISSUED_ID, validSession(), { onDelta: vi.fn() }, baseDeps({ spawn: spawner, appendAudit: audit.fn }));
+    expect(outcome).toEqual({ ok: false, reason: 'resume-denied', detail: 'resumeId was not issued to this session subject' });
+    expect(calls).toHaveLength(0); // refused BEFORE any spawn
+    // Still exactly one audit row for the refused attempt, under the composer-turn action.
+    expect(audit.rows).toHaveLength(1);
+    expect(audit.rows[0].event.action).toBe('composer-turn');
+    expect(audit.rows[0].event.result).toBe('resume-denied');
+  });
+
+  it('resume_binding_is_per_subject: an id issued to operator A cannot be resumed by operator B', () => {
+    const { spawner, calls } = recordingSpawner();
+    const deps = baseDeps({ spawn: spawner });
+    deps.resumeRegistry.record('operator-A', ISSUED_ID); // issued to A only
+
+    const outcome = spawnComposerTurn('steal session', ISSUED_ID, validSession('operator-B'), { onDelta: vi.fn() }, deps);
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.reason).toBe('resume-denied');
+    expect(calls).toHaveLength(0);
   });
 });
 
@@ -134,16 +189,21 @@ describe('spawnComposerTurn — reuses spawnVibe`s gate chain verbatim', () => {
     const { spawner, calls } = recordingSpawner([fakeProcess().proc, fakeProcess().proc]);
     const deps = baseDeps({ appendAudit: audit.fn, spawn: spawner });
 
+    deps.resumeRegistry.record('operator-1', ISSUED_ID); // issue the id the second turn resumes
     const t1 = spawnComposerTurn('one', null, validSession(), { onDelta: vi.fn() }, deps);
-    const t2 = spawnComposerTurn('two', 'sess-1', validSession(), { onDelta: vi.fn() }, deps);
+    const t2 = spawnComposerTurn('two', ISSUED_ID, validSession(), { onDelta: vi.fn() }, deps);
 
     expect(t1.ok && t2.ok).toBe(true);
     expect(calls).toHaveLength(2); // two discrete spawns — a turn == a spawn
-    // Exactly one audit row per turn, and the action is spawnVibe's own `vibe-spawn` — proof we reuse
-    // its audit sink rather than minting a new one.
+    // Exactly one audit row per turn (reusing spawnVibe's single sink), now under the DISTINCT
+    // `composer-turn` action (review F2) — proof we relabel the action without forking the audit sink.
     expect(audit.rows).toHaveLength(2);
-    expect(audit.rows.map((r) => r.event.action)).toEqual(['vibe-spawn', 'vibe-spawn']);
+    expect(audit.rows.map((r) => r.event.action)).toEqual(['composer-turn', 'composer-turn']);
     expect(audit.rows.map((r) => r.event.result)).toEqual(['spawned', 'spawned']);
+    // review F2 — the resume target is recorded on the row (redacted to its last 4 chars), and the
+    // resume flag distinguishes a continuing turn from a first turn.
+    expect(audit.rows[0].event.detail).toMatchObject({ resume: false, resumeTarget: null });
+    expect(audit.rows[1].event.detail).toMatchObject({ resume: true, resumeTarget: ISSUED_ID.slice(-4) });
   });
 
   it('frozen_fleet_refuses_before_any_spawn: a STOP-frozen fleet refuses, spawns nothing, captures no id, audits once', () => {

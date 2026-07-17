@@ -15,6 +15,10 @@ import { mintSession } from '../auth/session.ts';
 import type { AuditEvent, AuditRow } from '../audit/log.ts';
 import type { PreambleRunner } from '../write/preambleGate.ts';
 import type { VibeProcess, VibeSpawner } from '../vibe/session.ts';
+import { createResumeRegistry } from './resumeRegistry.ts';
+
+/** A canonical CLI session id (UUID) — the only shape the resume path accepts (review F1). */
+const ISSUED_ID = 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d';
 
 const SECRET = Buffer.from('composer-routes-test-secret-0123456789');
 const sessionConfig = { secret: SECRET, ttlMs: 60_000 };
@@ -83,7 +87,82 @@ describe('composer route — refusal-status mapping', () => {
     expect(res.statusCode).toBe(503);
     expect(res.json()).toMatchObject({ error: 'fleet-frozen' });
     expect(spawn).not.toHaveBeenCalled();
-    expect(audit.rows[0]).toMatchObject({ action: 'vibe-spawn', result: 'fleet-frozen' });
+    expect(audit.rows[0]).toMatchObject({ action: 'composer-turn', result: 'fleet-frozen' });
+  });
+});
+
+describe('composer route — resumeId validation + issued-id binding (review F1)', () => {
+  it('400s a malformed resumeId at the boundary, before any spawn or audit', async () => {
+    const audit = recordingAudit();
+    const spawn = vi.fn();
+    app = buildApp({ appendAudit: audit.fn, runPreamble: okPreamble, spawn: spawn as unknown as VibeSpawner });
+    for (const resumeId of ['../../etc/passwd', '--dangerously-skip-permissions', 'not-a-uuid', '']) {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/composer/turn',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token()}` },
+        payload: { prompt: 'hi', resumeId },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toMatchObject({ error: 'invalid-resume-id' });
+    }
+    // A malformed resume id never reaches the spawn path (so no flag-injection surface) and — being bad
+    // input rejected before the gate chain, like the no-session 401 — writes no audit row.
+    expect(spawn).not.toHaveBeenCalled();
+    expect(audit.rows).toHaveLength(0);
+  });
+
+  it('400s (resume-denied) a well-formed but never-issued resumeId, auditing once, never spawning', async () => {
+    const audit = recordingAudit();
+    const spawn = vi.fn();
+    // A FRESH registry (nothing issued) — the well-formed UUID was never captured by this process.
+    app = buildApp({ appendAudit: audit.fn, runPreamble: okPreamble, spawn: spawn as unknown as VibeSpawner, resumeRegistry: createResumeRegistry() });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/composer/turn',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token()}` },
+      payload: { prompt: 'resume nothing', resumeId: ISSUED_ID },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ error: 'resume-denied' });
+    expect(spawn).not.toHaveBeenCalled();
+    expect(audit.rows).toHaveLength(1);
+    expect(audit.rows[0]).toMatchObject({ action: 'composer-turn', result: 'resume-denied' });
+  });
+
+  it('threads a valid, issued resumeId into the spawn as the fused --resume=<id> token', async () => {
+    const calls: string[][] = [];
+    const spawn: VibeSpawner = (args, _cwd): VibeProcess => {
+      calls.push(args);
+      let onExit: ((c: number | null) => void) | undefined;
+      return {
+        onStdout() {},
+        onStderr() {},
+        onExit(cb) {
+          onExit = cb;
+        },
+        writeStdin() {},
+        endStdin() {
+          setImmediate(() => onExit?.(0));
+        },
+        kill() {},
+      };
+    };
+    // Pre-issue the id for subject 'operator' (mintSession('operator')) so the binding guard admits it.
+    const registry = createResumeRegistry();
+    registry.record('operator', ISSUED_ID);
+    app = buildApp({ appendAudit: recordingAudit().fn, runPreamble: okPreamble, spawn, resumeRegistry: registry });
+    await app.listen({ port: 0, host: '127.0.0.1' });
+    const port = (app.server.address() as { port: number }).port;
+
+    const res = await fetch(`http://127.0.0.1:${port}/api/composer/turn`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token()}` },
+      body: JSON.stringify({ prompt: 'again', resumeId: ISSUED_ID }),
+    });
+    await res.text();
+    expect(calls[0]).toEqual(['--print', '--output-format', 'stream-json', `--resume=${ISSUED_ID}`]);
+    expect(calls[0]).not.toContain('--resume');
   });
 });
 
@@ -134,37 +213,6 @@ describe('composer route — NDJSON framing + session_id round-trip', () => {
     expect(frames.find((f) => f.type === 'session')?.sessionId).toBe('sess-http');
     expect(frames.some((f) => f.type === 'delta')).toBe(true);
     expect(frames.some((f) => f.type === 'exit')).toBe(true);
-    expect(audit.rows.some((r) => r.action === 'vibe-spawn' && r.result === 'spawned')).toBe(true);
-  });
-
-  it('threads body.resumeId into the spawn as --resume on a continuing turn', async () => {
-    const calls: string[][] = [];
-    const spawn: VibeSpawner = (args, _cwd): VibeProcess => {
-      calls.push(args);
-      let onExit: ((c: number | null) => void) | undefined;
-      return {
-        onStdout() {},
-        onStderr() {},
-        onExit(cb) {
-          onExit = cb;
-        },
-        writeStdin() {},
-        endStdin() {
-          setImmediate(() => onExit?.(0));
-        },
-        kill() {},
-      };
-    };
-    app = buildApp({ appendAudit: recordingAudit().fn, runPreamble: okPreamble, spawn });
-    await app.listen({ port: 0, host: '127.0.0.1' });
-    const port = (app.server.address() as { port: number }).port;
-
-    const res = await fetch(`http://127.0.0.1:${port}/api/composer/turn`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${token()}` },
-      body: JSON.stringify({ prompt: 'again', resumeId: 'sess-prev' }),
-    });
-    await res.text();
-    expect(calls[0]).toEqual(['--print', '--output-format', 'stream-json', '--resume', 'sess-prev']);
+    expect(audit.rows.some((r) => r.action === 'composer-turn' && r.result === 'spawned')).toBe(true);
   });
 });

@@ -17,6 +17,7 @@ import type { GitRunner, PrOpener } from '../write/branch.ts';
 import type { PyRunner } from '../write/launch.ts';
 import type { PreambleRunner } from '../write/preambleGate.ts';
 import type { VibeSpawner } from '../vibe/session.ts';
+import type { ResumeRegistry } from '../composer/resumeRegistry.ts';
 
 /** How a route records exactly one audit row. Injected as a recording fake in tests. */
 export type AppendAuditFn = (repoRoot: string, event: AuditEvent, options?: AppendAuditOptions) => AuditRow;
@@ -48,6 +49,10 @@ export interface SurfaceContext {
   /** Optional dedicated guard for the vibe module's own internal limiter (else its module singleton). */
   vibeRateGuard?: LockoutGuard;
   now?: () => Date;
+  /** review F1 — the process-lifetime issued-CLI-session allowlist that binds Composer's `--resume`.
+   *  Created ONCE per process in `makeSurfaceContext` (so ids captured on one turn are visible to the
+   *  next); tests inject a fresh instance so nothing leaks across them. */
+  resumeRegistry: ResumeRegistry;
 }
 
 /** The audit fn a route should call — the injected fake in tests, the real git-committing one otherwise. */
