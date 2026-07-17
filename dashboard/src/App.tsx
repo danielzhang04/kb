@@ -25,12 +25,13 @@ import {
   type NavSection,
 } from './nav/config';
 import { Control, StopControls } from './views/Control';
-import { Approvals } from './views/Approvals';
+import { ApprovalsLive } from './views/ApprovalsLive';
 import { Registry } from './views/Registry';
 import { Browser } from './views/Browser';
 import { Timeline } from './views/Timeline';
 import { Editor } from './views/Editor';
 import { Vibe } from './views/Vibe';
+import { signIn, type Session } from './lib/authClient';
 
 function NavSectionGroup({
   section,
@@ -99,17 +100,32 @@ function NavSectionGroup({
 
 /**
  * The Session/Stop floor — pinned to the bottom of the sidebar, hairline-separated, always visible.
- * It surfaces the WebAuthn session state (placeholder until U2 wires real session minting) and the
- * relocated {@link StopControls} (scoped stop + nuclear STOP). Mounted WITHOUT a session token for
- * now, so every control degrades to its disabled/signed-out state — the write path is server-gated
- * regardless. In rail mode the detail collapses to a single stop glyph.
+ * It surfaces the real WebAuthn session state (U2: a passkey login mints a short-TTL bearer via
+ * `authClient.signIn`) and the relocated {@link StopControls} (scoped stop + nuclear STOP). Signed out,
+ * a "Sign in" button runs the ceremony; fail-closed pre-passkey, the server refuses and the floor stays
+ * signed out. In rail mode the detail collapses to a single stop glyph.
  */
-function SessionStopFloor(): React.JSX.Element {
+function SessionStopFloor({
+  session,
+  onSignIn,
+}: {
+  session: Session | null;
+  onSignIn: () => void;
+}): React.JSX.Element {
+  const signedIn = session !== null;
   return (
     <div className="mc-sidebar__floor" data-testid="stop-floor">
       <div className="mc-session" data-testid="session-state" title="WebAuthn session">
-        <span className="mc-status-dot mc-status-dot--idle" aria-hidden="true" />
-        <span className="mc-session__label">Signed out</span>
+        <span
+          className={`mc-status-dot ${signedIn ? 'mc-status-dot--running' : 'mc-status-dot--idle'}`}
+          aria-hidden="true"
+        />
+        <span className="mc-session__label">{signedIn ? 'Signed in' : 'Signed out'}</span>
+        {signedIn ? null : (
+          <button type="button" className="mc-session__signin" onClick={onSignIn}>
+            Sign in
+          </button>
+        )}
       </div>
       <span className="mc-sidebar__floor-rail" aria-hidden="true" title="Stop floor">
         ⏻
@@ -124,11 +140,15 @@ function Sidebar({
   onSelect,
   rail,
   onToggleRail,
+  session,
+  onSignIn,
 }: {
   active: DestinationId;
   onSelect: (id: DestinationId) => void;
   rail: boolean;
   onToggleRail: () => void;
+  session: Session | null;
+  onSignIn: () => void;
 }): React.JSX.Element {
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
 
@@ -161,7 +181,7 @@ function Sidebar({
           />
         ))}
       </div>
-      <SessionStopFloor />
+      <SessionStopFloor session={session} onSignIn={onSignIn} />
     </nav>
   );
 }
@@ -194,14 +214,13 @@ function ComingSoon({ id }: { id: DestinationId }): React.JSX.Element {
 /** Route a live destination to its view. New live destination = one more case here (data only for
  *  everything else). Editor/Vibe mount read-only-safe: no session token is wired yet (U2), so their
  *  governed actions stay disabled and they degrade gracefully. */
-function ViewBody({ view }: { view: DestinationId }): React.JSX.Element {
+function ViewBody({ view, sessionToken }: { view: DestinationId; sessionToken?: string }): React.JSX.Element {
   switch (view) {
     case 'board':
       return <Control />;
     case 'approvals':
-      // U1 foundation: mounts Approvals with no pending cards yet — real `/api/index`-sourced
-      // wiring is the Approvals view pass.
-      return <Approvals pending={[]} />;
+      // U2: live GET /api/approvals feed (refreshed on SSE), onVerify -> POST /api/approvals/verify.
+      return <ApprovalsLive sessionToken={sessionToken} />;
     case 'timeline':
       // Standalone full-view Timeline (same live feed the Board embeds). Self-fetches its replay.
       return (
@@ -230,10 +249,26 @@ function ViewBody({ view }: { view: DestinationId }): React.JSX.Element {
 export function App(): React.JSX.Element {
   const [view, setView] = useState<DestinationId>(DEFAULT_DESTINATION);
   const [rail, setRail] = useState(false);
+  const [session, setSession] = useState<Session | null>(null);
+
+  const handleSignIn = (): void => {
+    // WebAuthn login -> short-TTL bearer. Fail-closed: a refused ceremony (no passkey) leaves the floor
+    // signed out; the error is intentionally not surfaced as a blocking modal in v0.
+    void signIn()
+      .then((s) => setSession(s))
+      .catch(() => setSession(null));
+  };
 
   return (
     <div className={`app-shell${rail ? ' app-shell--rail' : ''}`}>
-      <Sidebar active={view} onSelect={setView} rail={rail} onToggleRail={() => setRail((r) => !r)} />
+      <Sidebar
+        active={view}
+        onSelect={setView}
+        rail={rail}
+        onToggleRail={() => setRail((r) => !r)}
+        session={session}
+        onSignIn={handleSignIn}
+      />
       <header className="mc-topbar">
         <h1 className="mc-topbar__title">kb mission control</h1>
         <span className="mc-topbar__glance">
@@ -242,7 +277,7 @@ export function App(): React.JSX.Element {
         </span>
       </header>
       <main className="mc-main">
-        <ViewBody view={view} />
+        <ViewBody view={view} sessionToken={session?.token} />
       </main>
     </div>
   );

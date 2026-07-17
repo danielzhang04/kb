@@ -5,14 +5,19 @@ import { kbBrowserRoutes } from './kb/routes';
 import { registerRegistry } from './registry/routes';
 import { registerPlaneA } from './planeA/routes';
 import { registerHub } from './hub/index';
+import { registerWriteSurface } from './http/surface';
 
 /** Loopback-only bind. Network location is never a trust boundary (ordering law 4). */
 export const HOST = '127.0.0.1';
 export const PORT = Number(process.env.DASHBOARD_PORT ?? 4317);
 
 /**
- * Build the Fastify backend. v0 exposes only `/healthz`. The write/steering surfaces
- * (approvals, launch, PTY, Broker) are added behind their wave gates — not here.
+ * Build the Fastify backend. `/healthz` and the read-only hub/registry/planeA routes stay pre-auth;
+ * the governed WRITE surface (auth ceremonies, save/launch/stop, vibe, approvals) is registered by
+ * `registerWriteSurface` as its own encapsulated, Origin/Host- + rate-limit-guarded child scope, with
+ * each mutating route additionally session-gated (U2). It is fail-closed by default: with no
+ * `DASHBOARD_RP_ORIGIN` the origin allowlist is empty and every write route 403s; with an RP origin but
+ * no provisioned passkey, no session can be minted and every write route 401s.
  */
 export function buildApp(): FastifyInstance {
   const app = Fastify({ logger: false });
@@ -27,6 +32,7 @@ export function buildApp(): FastifyInstance {
   registerRegistry(app); // D0.6: read-only registries (GET-only /api/registry/*)
   registerPlaneA(app); // D0.9: read-only Plane-A snapshot for the Control landing (GET /api/index)
   registerHub(app, { repoRoot: process.env.DASHBOARD_REPO_ROOT }); // D0.4: SSE/WS hub + Origin/Host guard (/events, /ws)
+  registerWriteSurface(app); // U2: governed write surface (origin -> rate-limit -> session -> gate -> audit)
 
   return app;
 }
