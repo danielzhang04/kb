@@ -44,6 +44,17 @@ const SKILL_PLAN: DeployPlan = toDeploy('skill', {
 
 const PROJECT_PLAN: DeployPlan = toDeploy('project', { name: 'demo', date: '2026-07-17' });
 
+// C7.5 — an agent plan is a single durable relpath (agents/<slug>.md), endpoint 'save'. It rides the SAME
+// governed save path as skill/workflow/project — deploy.ts is UNCHANGED; this pins that wiring.
+const AGENT_PLAN: DeployPlan = toDeploy('agent', {
+  id: 'research-worker',
+  role: 'work',
+  runtime: 'claude',
+  model: 'claude-sonnet-5',
+  description: 'Volume worker for kb-ops housekeeping cards.',
+  body: '# Agent: research-worker\n',
+});
+
 describe('deploy dispatcher', () => {
   it('task_deploys_via_launch_endpoint', async () => {
     const fetchMock = vi.fn((_url: string, _init: RequestInit) =>
@@ -86,6 +97,30 @@ describe('deploy dispatcher', () => {
     expect(body.message as string).toContain('skills/learned/my-skill/SKILL.md');
     // Success surfaces the durable target (branch/PR info) the save endpoint returns.
     expect(result).toEqual({ ok: true, kind: 'skill', target: 'PR #42 → main' });
+  });
+
+  it('agent_deploys_via_save_endpoint_durable', async () => {
+    const fetchMock = vi.fn((_url: string, _init: RequestInit) =>
+      Promise.resolve(jsonResponse({ ok: true, target: 'claude/agent-research-worker → PR to main' })),
+    );
+
+    const result = await deploy(AGENT_PLAN, 'tok-a', fetchMock);
+
+    // An agent plan rides the EXISTING /api/write/save durable path unchanged — {relpath, content, message},
+    // bearer header, and NO workBranch (asserted globally below).
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('/api/write/save');
+    expect((init.headers as Record<string, string>).authorization).toBe('Bearer tok-a');
+    const body = callBody(fetchMock);
+    expect(body.relpath).toBe('agents/research-worker.md');
+    expect(body.content).toBe(AGENT_PLAN.content);
+    // The declared file the registry commits carries runner-bound: false (never true).
+    expect(body.content as string).toContain('runner-bound: false');
+    expect(typeof body.message).toBe('string');
+    expect(body.message as string).toContain('agent');
+    expect(body.message as string).toContain('agents/research-worker.md');
+    // Success surfaces the durable target (branch/PR info) the save endpoint returns.
+    expect(result).toEqual({ ok: true, kind: 'agent', target: 'claude/agent-research-worker → PR to main' });
   });
 
   it('no_session_is_a_synchronous_nudge_no_fetch', async () => {
@@ -144,7 +179,7 @@ describe('deploy dispatcher', () => {
 
     // Assert the SERIALIZED body of every write — the server owns the branch; a client-supplied workBranch
     // targeting main/ops is hard-403'd, so we must never send the key at all.
-    for (const plan of [TASK_PLAN, SKILL_PLAN, PROJECT_PLAN]) {
+    for (const plan of [TASK_PLAN, SKILL_PLAN, PROJECT_PLAN, AGENT_PLAN]) {
       fetchMock.mockClear();
       await deploy(plan, 'tok', fetchMock);
       expect(fetchMock).toHaveBeenCalledTimes(1);

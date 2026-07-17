@@ -106,7 +106,7 @@ describe('nav/config', () => {
     expect(status('terminal')).toBe('soon');
   });
 
-  it('the [+ New] menu is idea-first with the Composer live: idea/task/workflow/skill/project enabled; agent greyed', () => {
+  it('the [+ New] menu is idea-first with the Composer live: idea + every entity type enabled (C7.2 un-defers agent)', () => {
     // C5 — the freeform "Idea…" leads; the menu's shape says "bring an idea, iterate".
     expect(NEW_MENU_ENTRIES.map((e) => e.id)).toEqual([
       'idea',
@@ -120,12 +120,11 @@ describe('nav/config', () => {
     expect(idea?.enabled).toBe(true);
     // Idea leads into the (now live) Composer convergence surface.
     expect(idea?.hint).toMatch(/composer/i);
-    // Task + the three secondary entity pickers are all actionable now.
-    for (const id of ['task', 'workflow', 'skill', 'project'] as const) {
+    // C7.2 — every creatable entity, INCLUDING agent, is actionable now.
+    for (const id of ['task', 'workflow', 'skill', 'project', 'agent'] as const) {
       expect(NEW_MENU_ENTRIES.find((e) => e.id === id)?.enabled).toBe(true);
     }
-    // Agent stays deferred (plan Flagged #4).
-    const agent = NEW_MENU_ENTRIES.find((e) => e.id === 'agent');
-    expect(agent?.enabled).toBe(false);
+    // Agent no longer carries the deferred "soon" hint.
+    expect(NEW_MENU_ENTRIES.find((e) => e.id === 'agent')?.hint).toBeUndefined();
   });
 });
