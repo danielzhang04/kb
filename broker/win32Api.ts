@@ -21,9 +21,11 @@
  *      ImpersonateNamedPipeClient → OpenThreadToken → GetTokenInformation(TokenUser) → SID, compared to
  *      the daemon's own process SID. This reads the pipe's ACTUAL client token at check time, so it is
  *      TOCTOU-free (no GetNamedPipeClientProcessId→OpenProcess PID-recycle race).
- *   2. DEFENSE-IN-DEPTH: an owner-only SDDL security descriptor on the pipe (only the daemon SID + SYSTEM
- *      may connect). It is MANDATORY too — `createPipe` fails closed if the SA cannot be built (M-1) — so
- *      a null/default DACL is never used; the SID check is what the security argument rests on.
+ *   2. DEFENSE-IN-DEPTH: an owner-only SDDL security descriptor on the pipe (DACL: only the daemon SID +
+ *      SYSTEM may connect) PLUS a mandatory-integrity label `S:(ML;;NW;;;ME)` that also excludes a
+ *      same-user LOW-integrity/AppContainer process (whose User SID would otherwise match). It is MANDATORY
+ *      — `createPipe` fails closed if the SA cannot be built (M-1) — so a null/default DACL is never used;
+ *      the impersonation SID check is what the security argument rests on.
  *
  * VERIFIED EMPIRICALLY on Node 24.18.0 win32-x64 (koffi 3.1.1, prebuilt binary):
  *   • CreateNamedPipeW(FILE_FLAG_FIRST_PIPE_INSTANCE | FILE_FLAG_OVERLAPPED | PIPE_REJECT_REMOTE_CLIENTS)
@@ -242,7 +244,11 @@ export function loadWin32Api(): Win32Api {
   const securityAttributes: Buffer | null = ((): Buffer | null => {
     if (!daemonSid) return null;
     try {
-      const sddl = `D:P(A;;GA;;;${daemonSid})(A;;GA;;;SY)`;
+      // DACL: only the daemon SID + SYSTEM. SACL mandatory label `S:(ML;;NW;;;ME)` (F4): no-write-up below
+      // Medium — a same-user LOW-integrity / AppContainer process (e.g. a compromised browser tab) cannot
+      // open the pipe (connecting requires write access = a write-up), so it is excluded even though its
+      // token User SID matches. Our real clients (dashboard/dispatcher) run at Medium IL and are unaffected.
+      const sddl = `D:P(A;;GA;;;${daemonSid})(A;;GA;;;SY)S:(ML;;NW;;;ME)`;
       const sdOut = koffi.alloc(HANDLE, 1);
       if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl, SDDL_REVISION_1, sdOut, null)) return null;
       const pSD = koffi.decode(sdOut, HANDLE);
