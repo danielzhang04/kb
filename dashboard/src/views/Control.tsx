@@ -208,6 +208,128 @@ function LaunchControls({ sessionToken }: { sessionToken?: string }): React.JSX.
   );
 }
 
+/**
+ * D2.8 — files-only stop floor controls, distinctly surfaced per the plan: a SCOPED control (walk one
+ * card `working` -> `stop-requested` -> `halting`, or suppress one cadence's next beat) vs the NUCLEAR
+ * `STOP` control (freeze the WHOLE fleet). Both are governed + WebAuthn-session-gated server-side by
+ * `server/stop/floor.ts` (`requestStop`/`pauseCadence`/`writeStop`); this panel is a thin POSTing form
+ * and NEVER writes `queue/`/`STOP` itself — disabled end-to-end without a `sessionToken`, same pattern
+ * as `LaunchControls` above. The nuclear control additionally requires an explicit confirm checkbox
+ * (armed, not a single accidental click) before its submit button is even enabled.
+ */
+function StopControls({ sessionToken }: { sessionToken?: string }): React.JSX.Element {
+  const [cardId, setCardId] = useState('');
+  const [stopCardStatus, setStopCardStatus] = useState<string | null>(null);
+
+  const [cadenceName, setCadenceName] = useState('');
+  const [pauseStatus, setPauseStatus] = useState<string | null>(null);
+
+  const [confirmNuke, setConfirmNuke] = useState(false);
+  const [nukeStatus, setNukeStatus] = useState<string | null>(null);
+
+  async function submitStopCard(e: FormEvent): Promise<void> {
+    e.preventDefault();
+    if (!sessionToken) {
+      setStopCardStatus('no session — sign in with your passkey first');
+      return;
+    }
+    try {
+      const res = await fetch('/api/write/stop-card', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${sessionToken}` },
+        body: JSON.stringify({ cardId }),
+      });
+      const data = (await res.json()) as { state?: string; reason?: string };
+      setStopCardStatus(res.ok ? `${cardId} -> ${data.state}` : `refused: ${data.reason ?? res.status}`);
+    } catch {
+      setStopCardStatus('stop request failed');
+    }
+  }
+
+  async function submitPauseCadence(e: FormEvent): Promise<void> {
+    e.preventDefault();
+    if (!sessionToken) {
+      setPauseStatus('no session — sign in with your passkey first');
+      return;
+    }
+    try {
+      const res = await fetch('/api/write/pause-cadence', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${sessionToken}` },
+        body: JSON.stringify({ name: cadenceName }),
+      });
+      const data = (await res.json()) as { path?: string; reason?: string };
+      setPauseStatus(res.ok ? `paused ${cadenceName}` : `refused: ${data.reason ?? res.status}`);
+    } catch {
+      setPauseStatus('pause request failed');
+    }
+  }
+
+  async function submitNuke(e: FormEvent): Promise<void> {
+    e.preventDefault();
+    if (!sessionToken) {
+      setNukeStatus('no session — sign in with your passkey first');
+      return;
+    }
+    if (!confirmNuke) {
+      setNukeStatus('confirm the nuclear STOP checkbox first');
+      return;
+    }
+    try {
+      const res = await fetch('/api/write/stop', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${sessionToken}` },
+        body: JSON.stringify({}),
+      });
+      const data = (await res.json()) as { reason?: string };
+      setNukeStatus(res.ok ? 'STOP written — fleet frozen' : `refused: ${data.reason ?? res.status}`);
+    } catch {
+      setNukeStatus('STOP request failed');
+    }
+  }
+
+  return (
+    <section className="control__pane control__stop" aria-label="Stop floor">
+      <h2>Stop floor</h2>
+      {!sessionToken ? (
+        <p className="control__stop-warning">Sign in with your passkey to use stop controls.</p>
+      ) : null}
+
+      <form aria-label="Request card stop" onSubmit={(e) => void submitStopCard(e)}>
+        <input aria-label="Card id to stop" value={cardId} onChange={(e) => setCardId(e.target.value)} />
+        <button type="submit" disabled={!sessionToken}>
+          Request stop
+        </button>
+      </form>
+      {stopCardStatus ? <p data-testid="stop-card-status">{stopCardStatus}</p> : null}
+
+      <form aria-label="Pause cadence" onSubmit={(e) => void submitPauseCadence(e)}>
+        <input aria-label="Cadence name" value={cadenceName} onChange={(e) => setCadenceName(e.target.value)} />
+        <button type="submit" disabled={!sessionToken}>
+          Pause cadence
+        </button>
+      </form>
+      {pauseStatus ? <p data-testid="pause-cadence-status">{pauseStatus}</p> : null}
+
+      <form aria-label="Nuclear STOP" className="control__stop-nuke" onSubmit={(e) => void submitNuke(e)}>
+        <label>
+          <input
+            type="checkbox"
+            aria-label="Confirm nuclear STOP"
+            checked={confirmNuke}
+            onChange={(e) => setConfirmNuke(e.target.checked)}
+          />
+          Confirm — freeze the WHOLE fleet
+        </label>
+        <button type="submit" disabled={!sessionToken || !confirmNuke}>
+          STOP everything
+        </button>
+      </form>
+      {nukeStatus ? <p data-testid="nuke-status">{nukeStatus}</p> : null}
+    </section>
+  );
+}
+
 /** Control landing. Accepts a snapshot directly (tests) or self-fetches `/api/index` and refreshes on SSE. */
 export function Control({
   snapshot,
@@ -257,6 +379,7 @@ export function Control({
             <Registry />
           </section>
           <LaunchControls sessionToken={sessionToken} />
+          <StopControls sessionToken={sessionToken} />
         </div>
       </div>
     </div>
