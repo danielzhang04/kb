@@ -168,3 +168,50 @@ describe('serializeOverride — round-trips through parseYaml', () => {
     expect(round.overrides[0].key).toBe('*');
   });
 });
+
+describe('serializeOverride — allowlist quoting (LOW-2/LOW-3)', () => {
+  // A field whose string value would be mis-read (or corrupt the file) if emitted bare must survive
+  // serialize->parse with EXACT string identity under THIS parser. The two gaps LOW-2/LOW-3 flagged in
+  // the old denylist emitScalar: raw control chars (\n/\r/\t) emitted bare, and YAML-coercible tokens
+  // ("null"/"true"/"123") emitted bare then re-read as null/bool/number (string identity lost).
+  //
+  // Cross-parser note (manual, since the py suite has no shared TS fixture): the same serialized bytes
+  // load identically under Python `yaml.safe_load` — a double-quoted scalar unescapes \n/\t the same way
+  // and a quoted "null"/"123" stays a str. Verified manually during this fix with:
+  //   py -3 -c "import yaml; print(yaml.safe_load(open('<file>').read()))"
+  function roundTripKey(v: string): unknown {
+    const text = serializeOverride({ version: 1, overrides: [{ scope: 'agent', key: v }] });
+    return (parseYaml(text) as any).overrides[0].key;
+  }
+
+  it('preserves a newline-bearing string exactly (a control char is never emitted bare)', () => {
+    expect(roundTripKey('ab\ncd')).toBe('ab\ncd');
+  });
+  it('preserves a tab-bearing string exactly', () => {
+    expect(roundTripKey('a\tb')).toBe('a\tb');
+  });
+  it('preserves a carriage-return string exactly', () => {
+    expect(roundTripKey('a\rb')).toBe('a\rb');
+  });
+  it('keeps YAML-coercible tokens as STRINGS (not coerced to null/bool/number)', () => {
+    for (const tok of ['null', '~', 'true', 'false', 'yes', 'no', 'on', 'off', '123', '-5', '3.14']) {
+      expect(roundTripKey(tok), tok).toBe(tok);
+    }
+  });
+  it('never leaves a raw control char in the serialized bytes; value stays one physical line', () => {
+    const text = serializeOverride({ version: 1, overrides: [{ scope: 'agent', key: 'x\ny', model: 'a\tb' }] });
+    for (const line of text.split('\n')) expect(line).not.toMatch(/[\t\r]/);
+    expect(text).toContain('key: "x\\ny"');
+    expect(text).toContain('model: "a\\tb"');
+  });
+  it('still emits safe ids bare and quotes YAML-special "*"', () => {
+    const text = serializeOverride({
+      version: 1,
+      overrides: [{ scope: 'agent', key: 'worker-desktop', model: 'claude-opus-4-8', 'set-by': 'daniel@webauthn' }],
+    });
+    expect(text).toContain('key: worker-desktop');
+    expect(text).toContain('model: claude-opus-4-8');
+    expect(text).toContain('set-by: daniel@webauthn');
+    expect(serializeOverride({ version: 1, overrides: [{ scope: 'agent', key: '*' }] })).toContain('key: "*"');
+  });
+});

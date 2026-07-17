@@ -114,7 +114,21 @@ function keyColon(s: string): number {
 
 function stripQuotes(v: string): string {
   const t = v.trim();
-  if (t.length >= 2 && ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'")))) {
+  // A DOUBLE-quoted scalar is JSON-unescaped (\n/\t/\r/\uXXXX -> the real char) so it round-trips the
+  // allowlist serializer's JSON.stringify emission exactly. Malformed escapes fall back to a literal
+  // strip (defensive: the parser never throws on a value it does not fully understand).
+  if (t.length >= 2 && t.startsWith('"') && t.endsWith('"')) {
+    try {
+      const parsed = JSON.parse(t);
+      if (typeof parsed === 'string') return parsed;
+    } catch {
+      /* fall through to a literal strip */
+    }
+    return t.slice(1, -1);
+  }
+  // A SINGLE-quoted scalar is taken literally (no escape processing), matching YAML single-quote semantics
+  // and the subset we emit (we never emit single quotes).
+  if (t.length >= 2 && t.startsWith("'") && t.endsWith("'")) {
     return t.slice(1, -1);
   }
   return t;
@@ -246,14 +260,27 @@ const ENTRY_FIELD_ORDER: Array<keyof SerializableOverrideEntry> = [
   'set-at',
 ];
 
-/** Quote a scalar value only when needed (`*`, empty, leading special chars) so ids stay bare/readable. */
+/** Characters allowed in a BARE (unquoted) scalar — an ALLOWLIST (LOW-2/LOW-3). Anything outside it
+ *  (control chars, spaces, YAML flow/indicator chars, `:` `*` `#` `~` ...) forces a JSON-quoted emission. */
+const BARE_SCALAR_RE = /^[A-Za-z0-9._/@-]+$/;
+
+/** Tokens that are legal bare per {@link BARE_SCALAR_RE} but which YAML (and this parser's `coerceScalar`)
+ *  would COERCE away from a string: null/bool/number forms. Emitting these bare would silently change a
+ *  string key/value's type on round-trip, so they are always quoted. Case-insensitive (YAML `TRUE`/`Null`). */
+const YAML_COERCIBLE_RE =
+  /^(?:null|~|true|false|yes|no|on|off|[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|[+-]?\.(?:inf|nan))$/i;
+
+/**
+ * Emit a scalar value with ALLOWLIST quoting: bare ONLY when it matches {@link BARE_SCALAR_RE} and is not
+ * a YAML-coercible token; otherwise `JSON.stringify`-quoted. JSON quoting is round-trip-exact with this
+ * module's `stripQuotes` (which JSON-unescapes double-quoted scalars), and loads identically under Python
+ * `yaml.safe_load`. Closes LOW-2 (raw \n/\r/\t emitted bare) and LOW-3 ("null"/"true"/"123" re-coerced).
+ */
 function emitScalar(v: string | number | boolean | null | undefined): string {
   if (v === null || v === undefined) return 'null';
   if (typeof v !== 'string') return String(v);
-  if (v === '' || /^[*&!?#|>@`"'%,{}[\]:]/.test(v) || /:\s/.test(v) || /\s#/.test(v) || v.trim() !== v) {
-    return JSON.stringify(v);
-  }
-  return v;
+  if (BARE_SCALAR_RE.test(v) && !YAML_COERCIBLE_RE.test(v)) return v;
+  return JSON.stringify(v);
 }
 
 /**

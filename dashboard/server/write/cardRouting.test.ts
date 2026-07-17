@@ -1,17 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { mintSession } from '../auth/session.ts';
 import type { SessionConfig } from '../auth/session.ts';
 import type { GitRunner } from './branch.ts';
 import type { PyRunner } from './launch.ts';
-import type { AppendAuditFn } from '../http/context.ts';
 import type { AuditEvent, AuditRow } from '../audit/log.ts';
 import { parseCardFrontmatter } from '../planeA/cards.ts';
 import { loadPolicy, loadOverride } from '../routing/policy.ts';
 import { effectiveForCard } from '../routing/effective.ts';
 import { setCardRouting, clearCardRouting } from './cardRouting.ts';
+import type { LocalAuditAppend } from './cardRouting.ts';
 
 const SECRET = Buffer.from('unit-test-secret-do-not-reuse');
 const CONFIG: SessionConfig = { secret: SECRET, now: () => 1_700_000_000_000 };
@@ -52,7 +52,7 @@ function recorder(): { runner: GitRunner; calls: string[][] } {
   return { runner, calls };
 }
 
-const noAudit: AppendAuditFn = (_r, event) => ({ ts: 'x', ...event }) as AuditRow;
+const noAudit: LocalAuditAppend = (_r, event) => ({ ts: 'x', ...event }) as AuditRow;
 
 /** A hermetic stand-in for `scripts/cards.py stamp_routing` + `cards.save`: writes the card file with the
  *  stamped runtime/model (a legacy card starts with null routing) and prints the {id,path,state} contract. */
@@ -159,7 +159,7 @@ describe('setCardRouting — governed write via scripts/cards.py + ops commit', 
 
   it('emits exactly one D2.9 audit row', async () => {
     const rows: AuditEvent[] = [];
-    const audit: AppendAuditFn = (_r, e) => {
+    const audit: LocalAuditAppend = (_r, e) => {
       rows.push(e);
       return { ts: 'x', ...e } as AuditRow;
     };
@@ -191,5 +191,87 @@ describe('setCardRouting — governed write via scripts/cards.py + ops commit', 
     );
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.status).toBe(400);
+  });
+});
+
+describe('setCardRouting — symlink guard on the card path (LOW-1)', () => {
+  it('refuses a card whose queue path escapes via a symlinked parent; py never runs, target intact', async () => {
+    const outside = mkdtempSync(join(tmpdir(), 'card-outside-'));
+    writeFileSync(join(outside, 'card-1.md'), 'ORIGINAL', 'utf-8');
+    mkdirSync(join(repo, 'queue'), { recursive: true });
+    // Plant a directory link at queue/working pointing OUTSIDE the repo (so queue/working/card-1.md
+    // resolves outside queue/). cards.py's Path.write_text would FOLLOW it — the guard must refuse
+    // before py is invoked. 'junction' works on Windows without admin; POSIX falls back to a dir symlink.
+    try {
+      symlinkSync(outside, join(repo, 'queue', 'working'), 'junction');
+    } catch {
+      symlinkSync(outside, join(repo, 'queue', 'working'), 'dir');
+    }
+    const seen: { code: string; op: any }[] = [];
+    const { runner, calls } = recorder();
+    const r = await setCardRouting(
+      { repoRoot: repo, cardId: 'card-1', sessionToken: token(), sessionConfig: CONFIG },
+      { runtime: 'codex', model: 'gpt-5-codex' },
+      { runPy: fakePy(seen), runGit: runner, appendAudit: noAudit },
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.status).toBe(400);
+    expect(seen).toHaveLength(0); // py never invoked
+    expect(calls).toHaveLength(0); // no git
+    expect(readFileSync(join(outside, 'card-1.md'), 'utf-8')).toBe('ORIGINAL'); // link never followed
+    rmSync(outside, { recursive: true, force: true });
+  });
+
+  it('allows a normal (non-symlink) card write', async () => {
+    const seen: { code: string; op: any }[] = [];
+    const r = await setCardRouting(
+      { repoRoot: repo, cardId: 'card-1', sessionToken: token(), sessionConfig: CONFIG },
+      { runtime: 'codex', model: 'gpt-5-codex' },
+      { runPy: fakePy(seen), runGit: recorder().runner, appendAudit: noAudit },
+    );
+    expect(r.ok).toBe(true);
+    expect(seen).toHaveLength(1);
+  });
+});
+
+describe('setCardRouting — atomic card+audit commit (MED-3)', () => {
+  it('stages the card AND the audit ledger into ONE commit with a single push', async () => {
+    const seen: { code: string; op: any }[] = [];
+    const { runner, calls } = recorder();
+    const rows: AuditEvent[] = [];
+    const audit: LocalAuditAppend = (_r, e) => {
+      rows.push(e);
+      return { ts: 'x', ...e } as AuditRow;
+    };
+    const r = await setCardRouting(
+      { repoRoot: repo, cardId: 'card-1', sessionToken: token(), sessionConfig: CONFIG },
+      { runtime: 'codex', model: 'gpt-5-codex' },
+      { runPy: fakePy(seen), runGit: runner, appendAudit: audit },
+    );
+    expect(r.ok).toBe(true);
+    const commitCalls = calls.filter((c) => c[0] === 'commit');
+    expect(commitCalls).toHaveLength(1); // ONE commit = atomic
+    const commitIdx = calls.findIndex((c) => c[0] === 'commit');
+    const stagedBeforeCommit = calls.filter((c, i) => c[0] === 'add' && i < commitIdx).flat();
+    expect(stagedBeforeCommit.join(' ')).toContain('queue/working/card-1.md');
+    expect(stagedBeforeCommit.join(' ')).toContain('ledgers/audit/dashboard-audit.ndjson');
+    expect(calls.filter((c) => c[0] === 'push')).toHaveLength(1); // one push
+    expect(rows).toHaveLength(1);
+  });
+
+  it('an audit-append failure leaves NOTHING on ops (no push) — never card-without-audit', async () => {
+    const seen: { code: string; op: any }[] = [];
+    const { runner, calls } = recorder();
+    const throwingAudit: LocalAuditAppend = () => {
+      throw new Error('audit sink down');
+    };
+    const r = await setCardRouting(
+      { repoRoot: repo, cardId: 'card-1', sessionToken: token(), sessionConfig: CONFIG },
+      { runtime: 'codex', model: 'gpt-5-codex' },
+      { runPy: fakePy(seen), runGit: runner, appendAudit: throwingAudit },
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.status).toBe(500);
+    expect(calls.some((c) => c[0] === 'push')).toBe(false); // nothing reached ops
   });
 });

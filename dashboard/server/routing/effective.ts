@@ -46,8 +46,10 @@ export interface CardMetaLike {
   [k: string]: unknown;
 }
 
-/** Parse an ISO-8601 timestamp; normalise trailing `Z` and treat a naive stamp as UTC. NaN on failure. */
-function parseIsoMs(value: string): number {
+/** Parse an ISO-8601 timestamp; normalise trailing `Z` and treat a naive stamp as UTC. NaN on failure.
+ *  Exported so the WRITE side (`write/routingOverride.ts`) canonicalizes `expires` with the SAME
+ *  normalization the read side uses — the two never disagree on an entry's instant (MED-1). */
+export function parseIsoMs(value: string): number {
   let text = value.trim();
   if (text.endsWith('Z')) text = `${text.slice(0, -1)}+00:00`;
   // A naive `YYYY-MM-DDTHH:MM:SS` (no offset) is treated as UTC to match Python's tz-aware comparison.

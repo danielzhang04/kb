@@ -1,6 +1,9 @@
 /**
  * R2.1/R2.4 — the read-only routing projection route: `GET /api/routing`. Read surfaces need no session
- * (matches the other Plane-A reads). Returns, in one snapshot:
+ * (matches the other Plane-A reads). NOTE: this read is DELIBERATELY pre-auth per the existing
+ * planeA/registry convention — it exposes override provenance incl. `set-by` identities; that exposure
+ * (INFO-1) is accepted as-is under the same read-without-session posture as the other Plane-A reads.
+ * Returns, in one snapshot:
  *   - `policy`: the parsed registry (runtimes incl. aliases/known_models/default_worker) + role x tier
  *     matrix + role_default — the authority the toggles pick from.
  *   - `overrides`: parsed entries with provenance + an `expired`/`expiringSoon` flag.

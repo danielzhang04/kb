@@ -228,11 +228,10 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
     const session = verifiedSession(req);
     const body = asRecord(req.body);
     const op = str(body.op);
+    // The override module owns a RACE-SAFE, ATOMIC coordination rewrite (audit row committed in the SAME
+    // ops commit via ctx.saveGit) — so it takes no separate audit sink / PR opener.
     const routingDeps = {
       runGit: ctx.saveGit,
-      openPr: ctx.openPr,
-      appendAudit: ctx.appendAudit,
-      auditGit: ctx.opsGit,
       now: ctx.now,
     };
     const input = { repoRoot: ctx.repoRoot, sessionToken: session?.token, sessionConfig: ctx.sessionConfig };
@@ -263,11 +262,10 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
     if (!CARD_ID_RE.test(cardId)) {
       return reply.code(400).send({ error: 'bad-card-id', reason: 'cardId must be filename-safe' });
     }
+    // The card-routing module commits its audit row in the SAME ops commit as the card change.
     const routingDeps = {
       runPy: ctx.runPy,
       runGit: ctx.saveGit,
-      appendAudit: ctx.appendAudit,
-      auditGit: ctx.opsGit,
       now: ctx.now,
     };
     const input = { repoRoot: ctx.repoRoot, cardId, sessionToken: session?.token, sessionConfig: ctx.sessionConfig };
