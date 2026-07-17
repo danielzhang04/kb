@@ -10,10 +10,11 @@
  * so an agent that only shows up in the ledgers (or is idle) still appears, with its role + ledger
  * activity. Reads the filesystem; degrades gracefully on a sparse checkout (missing dirs → empty).
  */
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, lstatSync } from 'node:fs';
 import { join } from 'node:path';
 import type { PlaneAIndex } from '../planeA/indexer.ts';
 import type { ParsedCard } from '../planeA/cards.ts';
+import { parseCardFrontmatter } from '../planeA/cards.ts';
 import { parseLedgerName } from '../planeA/ledgers.ts';
 import type { PolicyDoc, OverrideDoc } from '../routing/policy.ts';
 import { effectiveForAgent } from '../routing/effective.ts';
@@ -101,6 +102,29 @@ export interface AgentRosterEntry {
   /** Where this id was observed: any of `queue` (owns cards) and `ledger` (wrote ledgers). */
   sources: Array<'queue' | 'ledger'>;
   effective: Effective;
+  /** True when an authoritative `agents/<id>.md` declaration file exists for this id (C7.3). A
+   *  declared agent surfaces even when it owns no cards and wrote no ledgers. */
+  declared: boolean;
+  /** The agent file's HONEST `runner-bound` status flag: false = declared only, no runner claims its
+   *  cards yet. Non-declared agents are `false`. Only ever flipped true by a human (never by the registry). */
+  runnerBound: boolean;
+  /** The declared DEFAULT runtime from the agent file (advisory metadata), or null. Distinct from
+   *  `effective.runtime`, which is the resolver-computed live routing. */
+  declaredRuntime: string | null;
+  /** The declared DEFAULT model from the agent file (advisory metadata), or null. */
+  declaredModel: string | null;
+  /** One-line human description from the agent file, or null. */
+  description: string | null;
+}
+
+/** A declared agent parsed from `agents/<id>.md` frontmatter (C7.3). */
+export interface DeclaredAgent {
+  id: string;
+  role: string | null;
+  runtime: string | null;
+  model: string | null;
+  runnerBound: boolean;
+  description: string | null;
 }
 
 const EMPTY_ACTIVITY: AgentLedgerActivity = { dispatches: 0, steps: 0, days: 0, lastActive: null };
@@ -164,6 +188,58 @@ export function readRoles(repoRoot: string): string[] {
     .sort();
 }
 
+/** Coerce a parsed frontmatter field to a non-empty string, or null (numbers/bools/lists/absent → null). */
+function strFieldOrNull(v: unknown): string | null {
+  return typeof v === 'string' && v !== '' ? v : null;
+}
+
+/**
+ * The declared-agent catalog (C7.3): the fifth, AUTHORITATIVE roster source. Reads `agents/<id>.md`
+ * files (YAML frontmatter, same shape as `routines/roles/*.md` and card files) and returns a map keyed by
+ * the declared `id` (falling back to the filename stem). Mirrors `readRoles`' conventions: a missing
+ * `agents/` dir fails OPEN to an empty map, and a malformed agent file (no/te unterminated frontmatter)
+ * is SKIPPED — it must never crash `buildRoster`. Server-only (reads the filesystem); pure.
+ */
+const MAX_AGENT_FILE_BYTES = 64 * 1024;
+
+export function readDeclaredAgents(repoRoot: string): Map<string, DeclaredAgent> {
+  const out = new Map<string, DeclaredAgent>();
+  const dir = join(repoRoot, 'agents');
+  if (!existsSync(dir)) return out;
+  for (const name of readdirSync(dir)) {
+    if (!name.endsWith('.md')) continue;
+    const full = join(dir, name);
+    // Hardening (Finding 3): don't follow symlinks, and cap the read so a single oversized file can't
+    // stall the roster. lstat (never stat) so a symlink is detected, not resolved. Any stat failure →
+    // skip (fail-open, same as the malformed-file path).
+    let st;
+    try {
+      st = lstatSync(full);
+    } catch {
+      continue;
+    }
+    if (st.isSymbolicLink() || !st.isFile()) continue;
+    if (st.size > MAX_AGENT_FILE_BYTES) continue; // skip unbounded reads
+    const stem = name.replace(/\.md$/, '');
+    let meta: Record<string, unknown>;
+    try {
+      meta = parseCardFrontmatter(readFileSync(full, 'utf-8')).meta as Record<string, unknown>;
+    } catch {
+      continue; // malformed agent file (no/unterminated frontmatter) → skip, never fatal
+    }
+    const id = strFieldOrNull(meta.id) ?? stem;
+    out.set(id, {
+      id,
+      role: strFieldOrNull(meta.role),
+      runtime: strFieldOrNull(meta.runtime),
+      model: strFieldOrNull(meta.model),
+      runnerBound: meta['runner-bound'] === true,
+      description: strFieldOrNull(meta.description),
+    });
+  }
+  return out;
+}
+
 /** Match an agent id to a role: a role name that is a hyphen-token of the id (e.g. `worker-desktop` → `worker`). */
 export function roleFor(agentId: string, roles: string[]): string | null {
   const tokens = new Set(agentId.split(/[-_]/));
@@ -193,18 +269,21 @@ export function buildRoster(
   const byId = new Map(cardRows.map((r) => [r.id, r]));
   const writers = readLedgerWriters(repoRoot);
   const roles = readRoles(repoRoot);
+  const declared = readDeclaredAgents(repoRoot);
 
-  const ids = new Set<string>([...byId.keys(), ...writers.keys()]);
+  const ids = new Set<string>([...byId.keys(), ...writers.keys(), ...declared.keys()]);
   const entries: AgentRosterEntry[] = [];
   for (const id of ids) {
     const cr = byId.get(id);
+    const dec = declared.get(id);
     const ledger = writers.get(id) ?? EMPTY_ACTIVITY;
     const sources: Array<'queue' | 'ledger'> = [];
     if (cr) sources.push('queue');
     if (writers.has(id)) sources.push('ledger');
     entries.push({
       id,
-      role: roleFor(id, roles),
+      // A declared agent's own frontmatter role annotates the entry; otherwise fall back to a derived match.
+      role: dec?.role ?? roleFor(id, roles),
       working: cr?.working ?? false,
       current: cr?.current ?? null,
       projects: cr?.projects ?? [],
@@ -212,6 +291,11 @@ export function buildRoster(
       ledger,
       sources,
       effective: cr?.effective ?? effectiveForAgent(id, policy, override),
+      declared: dec !== undefined,
+      runnerBound: dec?.runnerBound ?? false,
+      declaredRuntime: dec?.runtime ?? null,
+      declaredModel: dec?.model ?? null,
+      description: dec?.description ?? null,
     });
   }
 

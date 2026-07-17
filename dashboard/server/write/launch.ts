@@ -35,8 +35,18 @@ import { verifySession } from '../auth/session.ts';
 import type { SessionConfig } from '../auth/session.ts';
 import { assertFleetRunnable, defaultPreambleRunner } from './preambleGate.ts';
 import type { PreambleRunner } from './preambleGate.ts';
+import { readAssignableOwners } from '../agents/assignable.ts';
+import { loadPolicy, loadOverride } from '../routing/policy.ts';
+import { effectiveForAgent } from '../routing/effective.ts';
 
 export type RiskTier = 'T1' | 'T2' | 'T3';
+
+/**
+ * C7.7 owner-safety guard: a launch `owner` becomes a card `owner`, a git `user.name`, and a routing key.
+ * It MUST be a single filename-safe segment — no path separators, no traversal, no glob metacharacters —
+ * before it can reach `cards.claim`/any glob/path. Mirrors `routes.ts`' `CARD_ID_RE`.
+ */
+const OWNER_RE = /^[A-Za-z0-9._-]+$/;
 
 /** A new card to file — the fields `scripts/cards.py#new_card` requires plus optional extras. */
 export interface LaunchSpec {
@@ -48,6 +58,18 @@ export interface LaunchSpec {
   body?: string;
   /** Optional `depends-on` ids for a caller-composed DAG edge (rerun builds its own; see below). */
   dependsOn?: string[];
+  /**
+   * C7.7 — OPTIONAL operator-assigned owner. Absent/empty → today's UNOWNED card path, byte-for-byte
+   * (`cards.new_card` owner=null, no claim). When present it MUST be a member of the server-enumerated
+   * closed set (declared `agents/*.md` ∪ registered `default_worker` ids) — never a freeform string.
+   */
+  owner?: string;
+}
+
+/** The resolver-sourced effective routing for an assigned owner (never client input). */
+export interface OwnerRouting {
+  runtime: string;
+  model: string;
 }
 
 /** The bearer session token plus the config needed to verify it (mirrors `verifySession`'s args). */
@@ -112,6 +134,15 @@ if op["kind"] == "new":
     card = cards.new_card(op["project"], op["action"], op["target"], op["riskTier"], body=op.get("body", ""))
     if op.get("dependsOn"):
         card.meta["depends-on"] = op["dependsOn"]
+    # C7.7 — operator-assigned owner. cards.claim is the SAME primitive the dispatcher uses
+    # (owner + a freshly-minted claim-token), so the claim mints identically. The (runtime, model)
+    # are RESOLVER-SOURCED server-side (effectiveForAgent), never client input, and stamped via the
+    # same cards.stamp_routing the dispatcher calls — so owner<->runtime agree by construction and the
+    # bound runner's assert_runtime passes. Absent owner leaves the card unowned, byte-for-byte as before.
+    if op.get("owner"):
+        cards.claim(card, op["owner"])
+        if op.get("runtime") and op.get("model"):
+            cards.stamp_routing(card, op["runtime"], op["model"])
     path = cards.save(card, queue_root)
 elif op["kind"] == "rerun":
     matches = list(queue_root.glob(f"**/{op['cardId']}.md"))
@@ -137,13 +168,30 @@ export interface LaunchDeps {
   repoRoot: string;
   runPreamble?: PreambleRunner;
   runPy?: PyRunner;
+  /**
+   * C7.7 — the closed set of assignable owner ids, enumerated SERVER-SIDE from the filesystem (declared
+   * `agents/*.md` ∪ registered `default_worker` ids). Injected in tests; defaults to `readAssignableOwners`.
+   */
+  assignableOwners?: (repoRoot: string) => Set<string>;
+  /**
+   * C7.7 — resolver-sourced effective routing for an assigned owner. Injected in tests; the default reads
+   * the live policy + override and runs `effectiveForAgent` (precedence: card > override > policy > default).
+   */
+  ownerRouting?: (owner: string, repoRoot: string) => OwnerRouting;
 }
 
 export type LaunchOutcome =
   | { ok: true; cardId: string; cardPath: string }
   | { ok: false; reason: 'fleet-frozen'; problems: string[] }
   | { ok: false; reason: 'unauthenticated'; detail: string }
+  | { ok: false; reason: 'owner-not-registered'; detail: string }
   | { ok: false; reason: 'card-op-failed'; detail: string };
+
+/** Default owner routing: resolve the assigned owner's EFFECTIVE routing from the live policy + override. */
+const defaultOwnerRouting = (owner: string, repoRoot: string): OwnerRouting => {
+  const eff = effectiveForAgent(owner, loadPolicy(repoRoot), loadOverride(repoRoot));
+  return { runtime: eff.runtime, model: eff.model };
+};
 
 /** Blockquote every line (empty lines become a bare `>`) — inert-data framing, mirrors `## Evidence`. */
 function blockquote(text: string): string {
@@ -204,6 +252,31 @@ export function launchCard(spec: LaunchSpec, session: SessionInput, deps: Launch
   const gated = gate(session, deps);
   if (!gated.ok) return gated.outcome;
 
+  // C7.7 — owner validation is THE boundary (the client `<select>` is honest-preview only). An absent /
+  // empty owner leaves the byte-for-byte unowned path untouched; a present owner must clear the safety
+  // guard AND be a member of the filesystem-enumerated closed set before any subprocess is spawned.
+  let owner: string | undefined;
+  let runtime: string | undefined;
+  let model: string | undefined;
+  if (spec.owner !== undefined && spec.owner !== '') {
+    const candidate = spec.owner;
+    if (!OWNER_RE.test(candidate)) {
+      return { ok: false, reason: 'owner-not-registered', detail: `owner '${candidate}' is not a filename-safe agent id` };
+    }
+    const assignable = (deps.assignableOwners ?? readAssignableOwners)(deps.repoRoot);
+    if (!assignable.has(candidate)) {
+      return { ok: false, reason: 'owner-not-registered', detail: `owner '${candidate}' is not a declared agent or a registered default_worker` };
+    }
+    owner = candidate;
+    try {
+      const routing = (deps.ownerRouting ?? defaultOwnerRouting)(candidate, deps.repoRoot);
+      runtime = routing.runtime;
+      model = routing.model;
+    } catch (err) {
+      return { ok: false, reason: 'card-op-failed', detail: `could not resolve routing for owner '${candidate}': ${(err as Error).message}` };
+    }
+  }
+
   const runPy = deps.runPy ?? defaultPyRunner;
   const jsonArg = JSON.stringify({
     kind: 'new',
@@ -213,6 +286,9 @@ export function launchCard(spec: LaunchSpec, session: SessionInput, deps: Launch
     riskTier: spec.riskTier,
     body: spec.body ?? '',
     dependsOn: spec.dependsOn,
+    owner,
+    runtime,
+    model,
   });
   const result = runPy(deps.repoRoot, CARD_OP_SCRIPT, jsonArg);
   if (result.exitCode !== 0) {

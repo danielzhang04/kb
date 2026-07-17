@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 /**
- * U2.5 — [+ New ▾] menu. Only Task fires `onCreate`; the other entries are disabled (Composer). The
- * menu toggles from the trigger, closes on Escape and on an outside click, and is keyboard/AT-legible
- * (menu/menuitem roles).
+ * U2.5 / C7.2 — [+ New ▾] menu. Idea leads; every entity entry (Task · Workflow · Skill · Project ·
+ * Agent) is actionable and fires `onCreate`. The menu toggles from the trigger, closes on Escape and on
+ * an outside click, and is keyboard/AT-legible (menu/menuitem roles).
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
@@ -39,25 +39,17 @@ describe('NewMenu', () => {
     expect(screen.queryByRole('menu')).toBeNull();
   });
 
-  it('fires onCreate for Task and the secondary entity pickers; only Agent is disabled', () => {
+  it('fires onCreate for every creatable entity — including Agent (C7.2)', () => {
     const onCreate = vi.fn();
     render(<NewMenu onCreate={onCreate} />);
-    fireEvent.click(screen.getByRole('button', { name: 'New' }));
 
-    // Agent stays deferred (disabled) — clicking it is a no-op.
-    const agent = screen.getByRole('menuitem', { name: /Agent/ }) as HTMLButtonElement;
-    expect(agent.disabled).toBe(true);
-    fireEvent.click(agent);
-    expect(onCreate).not.toHaveBeenCalled();
-    // Close the still-open menu so the loop below re-opens from a known (closed) state.
-    fireEvent.keyDown(screen.getByRole('button', { name: 'New' }), { key: 'Escape' });
-
-    // Each enabled entry fires onCreate with its own id and closes the menu.
+    // C7.2 un-defers agent: each entity entry is actionable, fires onCreate with its own id, closes the menu.
     for (const [label, id] of [
       [/^Task/, 'task'],
       [/Workflow/, 'workflow'],
       [/Skill/, 'skill'],
       [/Project/, 'project'],
+      [/Agent/, 'agent'],
     ] as const) {
       fireEvent.click(screen.getByRole('button', { name: 'New' }));
       const item = screen.getByRole('menuitem', { name: label }) as HTMLButtonElement;
@@ -66,7 +58,7 @@ describe('NewMenu', () => {
       expect(onCreate).toHaveBeenLastCalledWith(id);
       expect(screen.queryByRole('menu')).toBeNull();
     }
-    expect(onCreate).toHaveBeenCalledTimes(4);
+    expect(onCreate).toHaveBeenCalledTimes(5);
   });
 
   it('closes on Escape', () => {

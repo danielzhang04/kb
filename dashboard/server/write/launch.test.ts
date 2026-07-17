@@ -224,3 +224,90 @@ describe('rerunAsDependsOn — rerun files depends-on card w/ feedback in ## Evi
     expect(body).toContain('>\n> line two');
   });
 });
+
+describe('launchCard — C7.7 task-owner assignment (closed-set owner + resolver-sourced routing stamp)', () => {
+  it('owner in the registered set → card filed, claimed, and runtime/model stamped from effective routing', () => {
+    const { runner: runPy, calls } = recordingPyRunner({
+      exitCode: 0,
+      stdout: '{"id":"owned-1","path":"queue/inbox/owned-1.md"}\n',
+      stderr: '',
+    });
+    const deps = baseDeps({
+      runPy,
+      // The valid-owner set is enumerated server-side from the filesystem; injected hermetically here.
+      assignableOwners: () => new Set(['codex-runner']),
+      // Routing is RESOLVER-SOURCED (effectiveForAgent), never client input — a codex agent stamps codex.
+      ownerRouting: () => ({ runtime: 'codex', model: 'codex-large' }),
+    });
+
+    const result = launchCard(
+      { project: 'kb', action: 'demo', target: '.', riskTier: 'T2', owner: 'codex-runner' },
+      validSession(),
+      deps,
+    );
+
+    expect(result).toEqual({ ok: true, cardId: 'owned-1', cardPath: 'queue/inbox/owned-1.md' });
+    expect(calls).toHaveLength(1);
+    // The claim + routing stamp reuse the SAME cards.py primitives the dispatcher uses.
+    expect(CARD_OP_SCRIPT).toContain('cards.claim(card, op["owner"])');
+    expect(CARD_OP_SCRIPT).toContain('cards.stamp_routing(card, op["runtime"], op["model"])');
+    const payload = JSON.parse(calls[0].jsonArg);
+    expect(payload).toMatchObject({
+      kind: 'new',
+      owner: 'codex-runner',
+      runtime: 'codex',
+      model: 'codex-large',
+    });
+  });
+
+  it('owner NOT in the registered set → owner-not-registered, and NO card is filed', () => {
+    const { runner: runPy, calls } = recordingPyRunner({ exitCode: 0, stdout: '{}', stderr: '' });
+    const deps = baseDeps({ runPy, assignableOwners: () => new Set(['codex-runner']) });
+
+    const result = launchCard(
+      { project: 'kb', action: 'demo', target: '.', riskTier: 'T1', owner: 'ghost-agent' },
+      validSession(),
+      deps,
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('owner-not-registered');
+    // The boundary refuses BEFORE any subprocess is spawned — no card filed on a bad owner.
+    expect(calls).toHaveLength(0);
+  });
+
+  it('absent owner → today unowned-card path, byte-for-byte (no owner/runtime/model in the payload, no claim)', () => {
+    const { runner: runPy, calls } = recordingPyRunner({
+      exitCode: 0,
+      stdout: '{"id":"unowned-1","path":"queue/inbox/unowned-1.md"}\n',
+      stderr: '',
+    });
+    // No assignableOwners/ownerRouting injected — the owner branch must not run at all when owner is absent.
+    const deps = baseDeps({ runPy });
+
+    const result = launchCard({ project: 'kb', action: 'demo', target: '.', riskTier: 'T1' }, validSession(), deps);
+
+    expect(result).toEqual({ ok: true, cardId: 'unowned-1', cardPath: 'queue/inbox/unowned-1.md' });
+    expect(calls).toHaveLength(1);
+    const payload = JSON.parse(calls[0].jsonArg);
+    expect('owner' in payload).toBe(false);
+    expect('runtime' in payload).toBe(false);
+    expect('model' in payload).toBe(false);
+  });
+
+  it('owner-safety guard rejects separators / traversal / glob metachars → owner-not-registered, no card filed', () => {
+    for (const bad of ['a/b', '../evil', 'star*', 'q?', 'br[a]', 'has space']) {
+      const { runner: runPy, calls } = recordingPyRunner({ exitCode: 0, stdout: '{}', stderr: '' });
+      // Even if the injected set somehow contained the raw string, the safety guard fires FIRST.
+      const deps = baseDeps({ runPy, assignableOwners: () => new Set([bad]) });
+      const result = launchCard(
+        { project: 'kb', action: 'demo', target: '.', riskTier: 'T1', owner: bad },
+        validSession(),
+        deps,
+      );
+      expect(result.ok, `owner '${bad}' must be refused`).toBe(false);
+      if (!result.ok) expect(result.reason).toBe('owner-not-registered');
+      expect(calls, `owner '${bad}' must file no card`).toHaveLength(0);
+    }
+  });
+});

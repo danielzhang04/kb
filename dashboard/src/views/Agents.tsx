@@ -50,6 +50,12 @@ interface AgentRow {
   role: string | null;
   /** Most recent ledger-write date (only from the enriched roster), else null. */
   lastActive: string | null;
+  /** True when an authoritative `agents/<id>.md` declaration exists (C7.3). Snapshot-derived rows: false. */
+  declared: boolean;
+  /** The honest runner-bound flag from the agent file — false = declared, no runner claims its cards yet. */
+  runnerBound: boolean;
+  /** The declared default runtime from the agent file (advisory), or null. */
+  declaredRuntime: string | null;
 }
 
 /** Normalise a card's `project` field (string | string[]) into a flat list of project names. */
@@ -88,6 +94,9 @@ export function deriveRoster(index: PlaneAIndex): AgentRow[] {
       cardCount: cards.length,
       role: null,
       lastActive: null,
+      declared: false,
+      runnerBound: false,
+      declaredRuntime: null,
     });
   }
 
@@ -107,7 +116,20 @@ function rowFromEntry(e: AgentRosterEntry): AgentRow {
     cardCount: e.cardCount,
     role: e.role,
     lastActive: e.ledger.lastActive,
+    declared: e.declared,
+    runnerBound: e.runnerBound,
+    declaredRuntime: e.declaredRuntime,
   };
+}
+
+/**
+ * An agent is RUNNABLE when a runner will actually claim its cards: either a human has flipped its
+ * `runner-bound` flag true, or its id is a registered `default_worker` in the runtime registry (the
+ * pre-C7 onboarding path). A declared agent that is neither is "declared — no runner": registered but
+ * inert. `defaultWorkers` is the set of `default_worker` ids across the routing registry.
+ */
+function isRunnable(row: AgentRow, defaultWorkers: Set<string>): boolean {
+  return row.runnerBound || defaultWorkers.has(row.id);
 }
 
 /** True when either field of an agent's effective routing was supplied by an override entry. */
@@ -227,6 +249,13 @@ export function Agents({
 
   const effectiveById = new Map(routingSnap.agents.map((a) => [a.id, a.effective]));
   const registry = routingSnap.policy.runtimes;
+  // Registered runner ids: every runtime's `default_worker`. A roster id in this set is runnable even
+  // without an `agents/<id>.md` declaration (the pre-C7 onboarding path, e.g. `worker-desktop`).
+  const defaultWorkers = new Set(
+    Object.values(registry)
+      .map((r) => r.default_worker)
+      .filter((w): w is string => typeof w === 'string' && w !== ''),
+  );
   const canAct = Boolean(sessionToken) || Boolean(onRequestSession);
 
   async function resolveToken(): Promise<string | undefined> {
@@ -251,6 +280,7 @@ export function Agents({
                 <tr>
                   <th scope="col">Agent</th>
                   <th scope="col">Role</th>
+                  <th scope="col">Binding</th>
                   <th scope="col">Doing</th>
                   <th scope="col">Projects</th>
                   <th scope="col" className="v-agents__col-num">Cards</th>
@@ -277,6 +307,35 @@ export function Agents({
                       ) : (
                         <span className="v-agents__idle">—</span>
                       )}
+                    </td>
+                    <td>
+                      {(() => {
+                        const runnable = isRunnable(a, defaultWorkers);
+                        return (
+                          <span className="v-agents__binding" data-testid={`agent-binding-${a.id}`}>
+                            {/* Declared-vs-observed: an authoritative agents/<id>.md vs merely observed activity. */}
+                            <span
+                              className={`v-agents__provenance v-agents__provenance--${a.declared ? 'declared' : 'observed'}`}
+                            >
+                              {a.declared ? 'declared' : 'observed'}
+                            </span>
+                            {/* Runner-bound status: runnable (a runner claims its cards) vs "no runner" (inert). */}
+                            <span
+                              className={`v-agents__runner v-agents__runner--${runnable ? 'bound' : 'unbound'}`}
+                              title={
+                                runnable
+                                  ? 'A runner claims this agent’s cards'
+                                  : 'Declared but no runner claims its cards yet'
+                              }
+                            >
+                              {runnable ? 'runner-bound' : 'no runner'}
+                            </span>
+                            {a.declaredRuntime ? (
+                              <span className="mc-mono v-agents__declared-runtime">{a.declaredRuntime}</span>
+                            ) : null}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td>
                       {a.current ? (
