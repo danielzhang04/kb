@@ -13,14 +13,15 @@
  * this committed file. `ANTHROPIC_API_KEY` is deliberately absent (subscription billing only; the
  * preamble gate refuses to spawn if it is ever set).
  *
- * Runtime: Node 24 runs TypeScript natively, so `index.ts` is the entry with the plain `node`
- * interpreter — no build step, matching the dashboard's `node server/index.ts` convention.
+ * Runtime: Node 24 runs TypeScript natively, so `daemon.ts` is the entry with the plain `node`
+ * interpreter — no build step, matching the dashboard's `node server/index.ts` convention. (`daemon.ts`
+ * is the D3.6 boot entry; `index.ts` remains the pure SessionOwner module it imports.)
  */
 module.exports = {
   apps: [
     {
       name: 'kb-broker',
-      script: 'broker/index.ts',
+      script: 'broker/daemon.ts',
       interpreter: 'node',
       // Single instance only — the handle table is in-process; never cluster/fork the session owner.
       instances: 1,

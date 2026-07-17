@@ -32,6 +32,7 @@
  */
 import { canonicalCardPayload, contentHash } from '../dashboard/server/auth/challenge.ts';
 import { isBrokerSpawned } from './index.ts';
+import type { ControlRequest } from './socket.ts';
 import type {
   RiskTier,
   SessionCard,
@@ -178,4 +179,34 @@ export function rerun(owner: SessionOwner, id: string, prompt: string): RerunRes
 
   const outcome = owner.spawnSession({ cardId: handle.cardId, card: handle.card, prompt });
   return { ok: true, outcome };
+}
+
+/**
+ * Route an authenticated `ControlRequest` to its verb. Called by the transport layer AFTER
+ * `authenticateConnection` has accepted the connection (peer-cred AND token) — never before. Argument
+ * extraction is defensive: a missing/ill-typed arg yields a structured error, never a throw that could
+ * leak a stack (the transport also wraps this in try/catch as a backstop, LOW-1).
+ */
+export function dispatchControlRequest(owner: SessionOwner, req: ControlRequest): unknown {
+  const args = (req.args ?? {}) as Record<string, unknown>;
+  const id = typeof args.id === 'string' ? args.id : '';
+  switch (req.verb) {
+    case 'list':
+      return list(owner);
+    case 'inspect':
+      return inspect(owner, id);
+    case 'stop':
+      return stop(owner, id);
+    case 'steer': {
+      const patch = args.patch;
+      if (typeof patch !== 'object' || patch === null || typeof (patch as SteerPatch).guidance !== 'string') {
+        return { ok: false, error: 'steer requires an args.patch object with a string `guidance`' };
+      }
+      return steer(owner, id, patch as SteerPatch);
+    }
+    case 'rerun':
+      return rerun(owner, id, typeof args.prompt === 'string' ? args.prompt : '');
+    default:
+      return { ok: false, error: `unknown verb: ${String(req.verb)}` };
+  }
 }
