@@ -36,6 +36,7 @@ import type { SessionConfig } from '../auth/session.ts';
 import { assertFleetRunnable, defaultPreambleRunner } from './preambleGate.ts';
 import type { PreambleRunner } from './preambleGate.ts';
 import { readAssignableOwners } from '../agents/assignable.ts';
+import { readDeclaredAgents } from '../agents/roster.ts';
 import { loadPolicy, loadOverride } from '../routing/policy.ts';
 import { effectiveForAgent } from '../routing/effective.ts';
 
@@ -187,10 +188,57 @@ export type LaunchOutcome =
   | { ok: false; reason: 'owner-not-registered'; detail: string }
   | { ok: false; reason: 'card-op-failed'; detail: string };
 
-/** Default owner routing: resolve the assigned owner's EFFECTIVE routing from the live policy + override. */
-const defaultOwnerRouting = (owner: string, repoRoot: string): OwnerRouting => {
-  const eff = effectiveForAgent(owner, loadPolicy(repoRoot), loadOverride(repoRoot));
-  return { runtime: eff.runtime, model: eff.model };
+/**
+ * Resolve the routing an assigned owner's card is stamped with. Precedence (C7.9):
+ *
+ *   agent-scope routing-override (explicit) > the declared agent's own runtime/model
+ *     (`agents/<id>.md`) > policy `role_default` > safe default.
+ *
+ * `effectiveForAgent` computes the override>policy>default part (its resolution semantics are
+ * parity-tested against `scripts/routing.py` and are NOT touched here). This function then LAYERS the
+ * declared-agent rung on top, ENTIRELY caller-side: if the operator did not set an explicit agent-scope
+ * override for a field (`eff.source*` is not `'override'`), the declared agent's own `runtime` wins over
+ * the policy `role_default`. Consequence: a declared codex agent with no override is stamped codex (not
+ * the `role_default` claude/sonnet), so its codex runner's `assert_runtime` accepts the card.
+ *
+ * Every value is resolver-/file-sourced (declared agent file or policy) — NEVER client input. The
+ * stamped model is always a member of the runtime's `known_models` (fail-closed at claim otherwise):
+ * a declared model outside that set is clamped to `known_models[0]`.
+ */
+export const defaultOwnerRouting = (owner: string, repoRoot: string): OwnerRouting => {
+  const policy = loadPolicy(repoRoot);
+  const eff = effectiveForAgent(owner, policy, loadOverride(repoRoot));
+
+  // Did the agent-scope override explicitly set this field? If so it is authoritative — never displaced.
+  const overrideSetRuntime = eff.sourceRuntime === 'override';
+  const overrideSetModel = eff.sourceModel === 'override';
+
+  const declared = readDeclaredAgents(repoRoot).get(owner);
+
+  // RUNTIME: unless an override pinned it, the declared agent's own runtime beats the policy role_default.
+  if (overrideSetRuntime || !declared?.runtime) {
+    return { runtime: eff.runtime, model: eff.model };
+  }
+  const runtime = declared.runtime;
+
+  // MODEL: when the runtime did NOT change (e.g. a claude agent), keep eff.model verbatim (no behaviour
+  // change). When we swapped to a different declared runtime, the eff.model belongs to the OLD runtime and
+  // must be replaced with a model valid for the NEW one (declared > runtime default), unless an override
+  // pinned the model.
+  if (runtime === eff.runtime || overrideSetModel) {
+    return { runtime, model: eff.model };
+  }
+
+  const known = policy.runtimes?.[runtime]?.known_models ?? [];
+  let model: string;
+  if (declared.model && known.includes(declared.model)) {
+    model = declared.model; // declared AND valid for this runtime → honoured as-is
+  } else if (known.length > 0) {
+    model = known[0]; // declared model absent or not in known_models → clamp to the runtime default
+  } else {
+    model = declared.model ?? eff.model; // runtime has no registered known_models → nothing to validate against
+  }
+  return { runtime, model };
 };
 
 /** Blockquote every line (empty lines become a bare `>`) — inert-data framing, mirrors `## Evidence`. */
