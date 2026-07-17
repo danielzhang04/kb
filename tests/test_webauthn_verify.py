@@ -106,9 +106,40 @@ def _b64u(b: bytes) -> str:
     return base64.urlsafe_b64encode(b).rstrip(b"=").decode("ascii")
 
 
-def _canonical_hash(action, target, risk_tier, owner) -> str:
+def _work_order_of(body: str) -> str:
+    """INDEPENDENT mirror of scripts/approvals.work_order_of (fence-aware, FIRST
+    section). Kept separate from the module under test so a shared extraction bug
+    cannot make a forged/rewritten body verify."""
+    lines: list[str] = []
+    capture = fenced = found = done = False
+    for line in body.splitlines():
+        if line.startswith("```"):
+            fenced = not fenced
+            if capture:
+                lines.append(line)
+            continue
+        is_heading = (not fenced) and line.startswith("## ")
+        if is_heading:
+            if capture:
+                capture = False
+                done = True
+            elif not done and line == "## Work order":
+                capture = True
+                found = True
+            continue
+        if capture:
+            lines.append(line)
+    if not found:
+        raise ValueError("no '## Work order' section")
+    return "\n".join(lines).strip()
+
+
+def _canonical_hash(action, target, risk_tier, owner, work_order) -> str:
+    # FIVE canonical lines (D2.11 added the work-order body as the fifth), each
+    # JSON-encoded with compact separators + ensure_ascii=False to match JS.
     fields = [("action", action), ("target", target),
-              ("risk-tier", risk_tier), ("owner", owner)]
+              ("risk-tier", risk_tier), ("owner", owner),
+              ("work-order", work_order)]
     payload = "\n".join(
         f"{name}:{json.dumps(val, separators=(',', ':'), ensure_ascii=False)}"
         for name, val in fields)
@@ -150,9 +181,13 @@ def _write_cred_file(repo: Path, rp_id, origin, credential_id, pub, alg=-7):
 
 def _assertion_meta(*, credential_id, sign_d, rp_id, origin,
                     up, uv, sign_count, client_type, client_origin,
-                    action, target, risk_tier, owner, card_id, nonce):
-    """Build the recorded ``webauthn:`` frontmatter block for one assertion."""
-    content_hash = _canonical_hash(action, target, risk_tier, owner)
+                    action, target, risk_tier, owner, card_id, nonce,
+                    work_order="do it"):
+    """Build the recorded ``webauthn:`` frontmatter block for one assertion.
+
+    ``work_order`` is the extracted ``## Work order`` body bound as the fifth
+    canonical element (default matches the default committed body's extraction)."""
+    content_hash = _canonical_hash(action, target, risk_tier, owner, work_order)
     challenge = _build_challenge(card_id, action, content_hash, nonce)
     client_data = json.dumps(
         {"type": client_type, "challenge": challenge, "origin": client_origin},
@@ -168,9 +203,9 @@ def _assertion_meta(*, credential_id, sign_d, rp_id, origin,
 
 
 def _commit_card(repo, action, target, risk_tier, owner, card_id, webauthn_meta,
-                 msg, init=False):
+                 msg, init=False, body="## Work order\ndo it\n"):
     card = cards.new_card("dash", action, target, risk_tier,
-                          body="## Work order\ndo it\n",
+                          body=body,
                           state="approvals", owner=owner, id=card_id)
     card.meta["assurance"] = "webauthn"
     card.meta["webauthn"] = webauthn_meta
@@ -202,6 +237,7 @@ def _build_repo(
     action="deploy", target="svc-a", risk_tier="T3", owner="claude/m1",
     card_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
     nonce="nonce-000",
+    body="## Work order\ndo it\n",  # the committed card body; its work order is bound
     sign_d=None,            # private key used to SIGN (default: the pinned key)
     pin_pub=None,           # public key PINNED in governance (default: sign_d's)
 ) -> Case:
@@ -226,9 +262,10 @@ def _build_repo(
         credential_id=credential_id, sign_d=sign_d, rp_id=auth_rp_id, origin=origin,
         up=up, uv=uv, sign_count=sign_count, client_type=client_type,
         client_origin=client_origin, action=action, target=target,
-        risk_tier=risk_tier, owner=owner, card_id=card_id, nonce=nonce)
+        risk_tier=risk_tier, owner=owner, card_id=card_id, nonce=nonce,
+        work_order=_work_order_of(body))
     card_path = _commit_card(repo, action, target, risk_tier, owner, card_id, wm,
-                             "record webauthn approval", init=True)
+                             "record webauthn approval", init=True, body=body)
     return Case(repo, card_path, sign_d, credential_id, rp_id, origin)
 
 
@@ -239,6 +276,17 @@ def _recommit_card_field(case: Case, field: str, value):
     cards.save(card, case.repo / "queue")
     _git(case.repo, "add", "-A")
     _git(case.repo, "commit", "-q", "-m", "swap card on ops")
+
+
+def _recommit_card_body(case: Case, body: str):
+    """Rewrite ONLY the `## Work order` body and commit it (all four consequential
+    fields byte-identical) — the same-fields, body-only ops push that was THE
+    RESIDUAL before D2.11 bound the body into content_hash."""
+    card = cards.parse(case.card_path)
+    card.body = body
+    cards.save(card, case.repo / "queue")
+    _git(case.repo, "add", "-A")
+    _git(case.repo, "commit", "-q", "-m", "body-only rewrite on ops")
 
 
 def _committed_store_sha(case: Case) -> str:
@@ -375,6 +423,62 @@ def test_toctou_ops_swap_rejected(tmp_path):
     assert not ok
     assert ("content" in reason.lower() and "hash" in reason.lower()) \
         or "pinned" in reason.lower() or "challenge" in reason.lower(), reason
+
+
+def test_content_hash_binds_work_order_body(tmp_path):
+    # D2.11: the `## Work order` body is now bound into content_hash. After the
+    # assertion is recorded, a replacement card is pushed to ops that rewrites ONLY
+    # the body — all four consequential fields (action/target/risk-tier/owner) are
+    # byte-identical. Before D2.11 this was THE RESIDUAL: a same-fields, body-only
+    # rewrite pushed as the introducing commit with the working tree matching it
+    # passed the hash + worktree checks and the executor ran the REWRITTEN body.
+    # Now the recomputed content_hash includes the body, so it no longer matches the
+    # signed challenge -> rejected.
+    # Control: the recorded body verifies (proves the setup is otherwise valid).
+    c_ok = _build_repo(tmp_path, name="ok",
+                       body="## Work order\ndeploy svc-a to staging\n")
+    ok, reason = _verify(c_ok)
+    assert ok, reason
+
+    # Body-only rewrite (fields unchanged) as the new introducing commit -> rejected.
+    c = _build_repo(tmp_path, name="tampered",
+                    body="## Work order\ndeploy svc-a to staging\n")
+    _recommit_card_body(c, "## Work order\ndeploy PROD-db and drop every table\n")
+    ok2, reason2 = _verify(c)
+    assert not ok2
+    assert ("content" in reason2.lower() and "hash" in reason2.lower()) \
+        or "pinned" in reason2.lower() or "challenge" in reason2.lower(), reason2
+
+
+def test_content_hash_byte_identical_to_ts_pinned_hex():
+    # CROSS-LANGUAGE PIN: scripts/webauthn_verify.py and
+    # dashboard/server/auth/challenge.ts MUST compute the same content_hash
+    # byte-for-byte, or a legitimately-signed challenge is rejected. This sample
+    # carries a NON-ASCII char (proves ensure_ascii=False parity) and a fenced code
+    # block containing a fake `## heading` (proves fence-aware extraction parity).
+    # The pinned hex was computed from the RUNNING TS module
+    # (node --experimental-strip-types) and is asserted against the SAME sample +
+    # SAME constant in challenge.test.ts.
+    meta = {"action": "deploy", "target": "svc-a",
+            "risk-tier": "T3", "owner": "claude/m1"}
+    body = "\n".join([
+        "## Work order",
+        "Deploy the café service ☕",
+        "```yaml",
+        "## not-a-real-heading",
+        "key: val",
+        "```",
+        "done",
+        "",
+        "## Evidence",
+        "inert",
+    ])
+    expected = "9931a82d1699104b1ed796a33b377f6c150a4a0826d825d78dc7486eea89dc59"
+    # (a) the module under test, and (b) this file's INDEPENDENT reimplementation
+    # both reproduce the TS-derived pin — a shared bug can't fake byte-identity.
+    assert wv.content_hash(meta, body) == expected
+    assert _canonical_hash("deploy", "svc-a", "T3", "claude/m1",
+                           _work_order_of(body)) == expected
 
 
 # --- fail-closed infrastructure gaps ---------------------------------------- #

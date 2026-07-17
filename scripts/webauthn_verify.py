@@ -17,62 +17,51 @@ store, counter store) returns a rejection — never a skip-to-accept.
 WHAT THE ASSERTION BINDS (cannot be changed after the operator taps their key):
 
   * The four consequential card fields ``action`` / ``target`` / ``risk-tier`` /
-    ``owner``, via ``content_hash`` — the SHA-256 of the canonical payload
-    defined in the FROZEN ``dashboard/server/auth/challenge.ts`` and recomputed
-    here byte-identically (see PARITY note below). ``content_hash`` travels
-    inside the signed ``challenge`` (``base64url([cardId, action, content_hash,
-    nonce])``), so flipping any of the four fields after a signature is collected
-    changes the recomputed hash and the assertion no longer matches. This is what
-    closes the tier-laundering / target-swap / owner-swap holes.
+    ``owner`` AND the ``## Work order`` body, via ``content_hash`` — the SHA-256
+    of the canonical FIVE-line payload defined in the FROZEN
+    ``dashboard/server/auth/challenge.ts`` and recomputed here byte-identically
+    (see PARITY note below). ``content_hash`` travels inside the signed
+    ``challenge`` (``base64url([cardId, action, content_hash, nonce])``), so
+    flipping any of the four fields OR rewriting the work-order body after a
+    signature is collected changes the recomputed hash and the assertion no
+    longer matches. This is what closes the tier-laundering / target-swap /
+    owner-swap AND the work-order-body-tamper holes.
   * The card **identity** (``cardId``) and ``action``, which appear in the
     challenge tuple directly and are re-checked against the committed card, so a
     valid assertion for card A cannot be pasted onto a different card B.
   * The origin (phishing-resistance) and RP id (which site the key answered to),
     via ``clientDataJSON.origin`` and ``authenticatorData.rpIdHash``.
 
-WHAT ``content_hash`` DOES **NOT** COVER — and how it is bound instead:
+THE WORK-ORDER BODY IS NOW BOUND (gate D2.11 closed the former residual):
 
-  * The **work-order body** (and every other byte of the card outside the four
-    fields) is deliberately NOT in ``content_hash``. The card-schema hash-binding
-    note (governance/card-schema.md) makes this a cross-plan invariant: the
-    dashboard channel binds the four consequential fields; the fleet signed
-    channel (``scripts/approvals.py``) binds ``action`` + ``target`` + work-order
-    prose instead — the two channels canonicalize DIFFERENTLY ON PURPOSE and must
-    not be "harmonized". I did NOT add the body to ``content_hash``: doing so
-    would break byte-identity with the frozen D2.2 preimage and silently reject
-    every real assertion.
-  * Instead, the body (and the whole file) is bound by **committed-object
-    pinning**, mirroring ``approvals.py``'s discipline: the verifier recomputes
+  * Gate D2.11 decided to CLOSE the work-order-body-tamper gap by BINDING the
+    body into ``content_hash`` as a fifth canonical element. The body is the
+    ``## Work order`` section extracted fence-awarely by ``approvals.work_order_of``
+    (the SAME extractor the fleet signed channel uses), JSON-encoded as the fifth
+    ``work-order:<json>`` line of the preimage — see ``canonical_card_payload``
+    and the challenge.ts spec. Because the executor (D2.4) acts on that body, an
+    attacker who rewrites it under a benign-looking approval now invalidates the
+    signature: the recomputed hash no longer matches the signed challenge.
+  * The body is ALSO still bound by **committed-object pinning** (defense in
+    depth), mirroring ``approvals.py``'s discipline: the verifier recomputes
     ``content_hash`` from, and returns the card parsed from, the EXACT committed
     bytes of the introducing commit on the ref being approved
     (``git show <sha>:<rel>``), and REQUIRES the working tree to be identical to
     that object. The executor (D2.4) acts on that pinned ``.card`` — never a
     re-read of the mutable working tree/ops HEAD.
 
-    Tamper cases this leaves for the reviewer to weigh:
+    Tamper cases, all now rejected:
       - Post-approval body swap in the WORKING TREE only  -> rejected: working
         tree diverges from the committed object.
-      - Post-approval card swap pushed to ops as a NEW commit -> rejected: the
-        new introducing commit's four fields no longer hash to the signed
-        ``content_hash`` (if the four fields changed), OR — if ONLY the body
-        changed while the four fields are byte-identical — the recomputed
-        ``content_hash`` still matches the challenge. THIS IS THE RESIDUAL: a
-        same-fields, body-only rewrite that is *also* pushed as the introducing
-        commit AND leaves the working tree matching it would pass the hash and
-        worktree checks. The nonce single-use gate still blocks *replaying* a
-        prior assertion, but a first-use assertion whose card had its body
-        rewritten (four fields intact) before first verification would execute
-        the rewritten body. Whether that residual is acceptable depends on the
-        threat model for the same-desktop ops-writer between challenge issuance
-        (D2.2) and first verification; the corroboration UI (D2.4) shows the
-        operator ``cardId + action + risk-tier`` — NOT the body — so a body-only
-        swap is not visible to the human either. RECOMMENDATION for D2.11: decide
-        whether the body must also enter ``content_hash`` for the WebAuthn channel
-        (a deliberate divergence from D2.2 would then be required), or whether
-        pinning the challenge to the specific committed object SHA at issuance
-        (recording it server-side, out of ops-writer reach) is preferred. This
-        module implements the plan-as-written (four-field hash + committed-object
-        pin) and flags the residual rather than silently choosing.
+      - Post-approval card swap pushed to ops as a NEW commit, four fields
+        changed -> rejected: the recomputed ``content_hash`` no longer matches
+        the signed challenge.
+      - Post-approval BODY-ONLY rewrite pushed as the introducing commit with the
+        four fields byte-identical AND the working tree matching it -> NOW
+        REJECTED: the work-order body is part of ``content_hash``, so the
+        recomputed hash diverges from the signed challenge. (This was THE RESIDUAL
+        before D2.11; binding the body closes it. Replay of the prior assertion is
+        independently blocked by the single-use nonce.)
 
 ## Security-review note (HUMAN GATE D2.11) — the credential-store anchor (BLOCKER-1)
 ------------------------------------------------------------------------------------
@@ -102,19 +91,37 @@ constant is what actually stops it. The ref/committed-object layer is retained a
 defense-in-depth (it catches a worktree-only swap and keeps the executor reading
 the anchored bytes), mirroring the identical N1 caveat on the signed channel.
 
-(The work-order-body-not-bound question above remains a SEPARATE open decision for
-D2.11 — unchanged here; ``content_hash``'s D2.2-frozen preimage is untouched.)
+## Security-review note (HUMAN GATE D2.11) — body binding CLOSED + governance stale
+------------------------------------------------------------------------------------
+The work-order-body-not-bound residual described above is now CLOSED: gate D2.11
+extended ``content_hash`` to cover the ``## Work order`` body as a fifth canonical
+element (see ``canonical_card_payload`` and the challenge.ts preimage spec). The TS
+issuer (``challenge.ts``) and this Python verifier were changed in lockstep and are
+proven byte-identical by a pinned cross-language hex constant in BOTH test suites
+(``tests/test_webauthn_verify.py`` and ``challenge.test.ts``).
+
+>>> GOVERNANCE STALENESS FLAG (needs a human proposal; governance/ is human-edited) <<<
+``governance/card-schema.md``'s "Hash-binding note" still says the dashboard
+WebAuthn ``content_hash`` preimage "covers the full canonical card payload
+including ``action``, ``risk-tier``, ``owner``, and ``target``" — it does NOT yet
+mention that the ``## Work order`` body is also bound now. That sentence is STALE
+re: the dashboard preimage. A human must update the note to add the work-order
+body as a fifth bound element (and re-derive the two-channel security argument).
+This module does NOT edit governance/; flag raised for a proposal only.
 
 PARITY note (load-bearing): the frozen ``challenge.ts`` computes the payload with
 JS ``JSON.stringify``, which emits raw UTF-8 for non-ASCII characters. Python's
 ``json.dumps`` DEFAULTS to ``ensure_ascii=True`` (``\\uXXXX`` escapes) — the
 docstring hint in ``challenge.ts`` naming ``json.dumps(...)`` is therefore
-INCOMPLETE: for any non-ASCII field it would produce a DIFFERENT hash and reject
-a legitimate assertion. This module uses ``ensure_ascii=False`` to be
-byte-identical to the running TS code (verified against Node for ASCII and
-non-ASCII cards). This is a correctness/availability property, not a hole (a
-mismatch fails closed), but it is exactly the subtle divergence this boundary
-must get right.
+INCOMPLETE unless ``ensure_ascii=False`` is used: for any non-ASCII field OR a
+non-ASCII work-order body it would produce a DIFFERENT hash and reject a
+legitimate assertion. This module uses ``ensure_ascii=False`` on all five lines to
+be byte-identical to the running TS code (verified against Node for ASCII and
+non-ASCII cards, including a non-ASCII work-order body). The body extraction
+(``approvals.work_order_of``) is mirrored in TS by ``workOrderOf`` — same
+fence-aware, first-occurrence algorithm — so both legs agree on what "the body"
+is. This is a correctness/availability property, not a hole (a mismatch fails
+closed), but it is exactly the subtle divergence this boundary must get right.
 
 INDEPENDENCE note: the ECDSA P-256 verify below is a self-contained pure-python
 implementation (no third-party ``cryptography`` dependency is available in this
@@ -238,18 +245,37 @@ def _b64url_encode(b: bytes) -> str:
 _CANONICAL_FIELDS = ("action", "target", "risk-tier", "owner")
 
 
-def canonical_card_payload(meta: dict) -> str:
-    """The frozen D2.2 canonical preimage: four fixed fields, read by name, each
-    JSON-encoded with compact separators, ``"<field>:<json>"`` lines joined by LF
-    with no trailing newline. ``ensure_ascii=False`` to match JS ``JSON.stringify``
-    (see the module PARITY note)."""
-    return "\n".join(
+def canonical_card_payload(meta: dict, body: str) -> str:
+    """The FROZEN canonical preimage (challenge.ts is the byte-for-byte spec):
+    FIVE ``"<name>:<json>"`` lines joined by LF with no trailing newline, in this
+    fixed order —
+
+        action:<json>
+        target:<json>
+        risk-tier:<json>
+        owner:<json>
+        work-order:<json(work_order_of(body))>
+
+    The first four are consequential frontmatter fields, read by name. The fifth
+    (gate D2.11) is the ``## Work order`` section BODY, extracted fence-awarely by
+    the SAME ``approvals.work_order_of`` the fleet channel uses, so both channels
+    agree on what "the body" is. Each value is JSON-encoded with compact
+    separators and ``ensure_ascii=False`` to match JS ``JSON.stringify`` (see the
+    module PARITY note); the body is always a string, so it is JSON-quoted and its
+    embedded newlines are ``\\n``-escaped — a body can never inject an extra line
+    or shift a field boundary."""
+    lines = [
         f"{field}:{json.dumps(meta.get(field), separators=(',', ':'), ensure_ascii=False)}"
-        for field in _CANONICAL_FIELDS)
+        for field in _CANONICAL_FIELDS]
+    work_order = approvals.work_order_of(body)
+    lines.append(
+        f"work-order:{json.dumps(work_order, separators=(',', ':'), ensure_ascii=False)}")
+    return "\n".join(lines)
 
 
-def content_hash(meta: dict) -> str:
-    return hashlib.sha256(canonical_card_payload(meta).encode("utf-8")).hexdigest()
+def content_hash(meta: dict, body: str) -> str:
+    return hashlib.sha256(
+        canonical_card_payload(meta, body).encode("utf-8")).hexdigest()
 
 
 def build_challenge(card_id: str, action: str, chash: str, nonce: str) -> str:
@@ -718,7 +744,7 @@ def verify_webauthn_approval(
             return _reject("signed challenge cardId does not match the card being approved")
         if ch_action != card.meta.get("action"):
             return _reject("signed challenge action does not match the card action")
-        recomputed = content_hash(card.meta)
+        recomputed = content_hash(card.meta, card.body)
         if not hmac.compare_digest(ch_hash, recomputed):
             return _reject("content hash does not match the pinned card "
                            "(fields changed after approval / ops swap?)")
