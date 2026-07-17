@@ -210,3 +210,48 @@ def test_runner_stamps_session_before_work():
     assert re.search(r"\[guid\]::NewGuid\(\)", text, re.IGNORECASE), (
         "must fall back to a runner-generated GUID so the join key is never null"
     )
+
+
+def test_runner_asserts_runtime_before_work():
+    """Phase R1.4 -- the runner must invoke scripts/assert_runtime.py (its
+    runtime pre-exec assertion) BEFORE the card transitions to `working` /
+    before codex exec runs, and refuse (skip) the card on a non-zero exit.
+    Mirrors test_runner_stamps_session_before_work's non-comment ordering search.
+    """
+    text = _text()
+
+    assert "assert_runtime.py" in text, (
+        "must invoke scripts/assert_runtime.py as the runtime pre-exec assertion"
+    )
+
+    def _first_invocation_offset(needle: str) -> int:
+        offset = 0
+        for line in text.splitlines(keepends=True):
+            if not line.strip().startswith("#") and needle in line:
+                return offset + line.index(needle)
+            offset += len(line)
+        return -1
+
+    assert_idx = _first_invocation_offset("assert_runtime.py")
+    codex_idx = _first_invocation_offset("codex exec -")
+    # The transition inbox -> working happens inside the $prep block; codex exec
+    # is strictly after it, so asserting before codex exec proves "before work".
+    assert assert_idx != -1, "assert_runtime.py must be invoked in real (non-comment) code"
+    assert codex_idx != -1, "codex exec must be invoked in real (non-comment) code"
+    assert assert_idx < codex_idx, (
+        "assert_runtime.py must run BEFORE codex exec, so a mis-owned card is "
+        "refused before any work runs under the wrong runtime"
+    )
+
+    # The assertion must live inside the per-card foreach loop, and refuse on a
+    # non-zero exit (a `continue` skipping the card, driven by $LASTEXITCODE).
+    foreach_idx = text.index("foreach")
+    assert foreach_idx < assert_idx, (
+        "the assert_runtime.py invocation must be inside the per-card foreach loop"
+    )
+    assert re.search(r"assert_runtime\.py[\s\S]{0,400}?\$LASTEXITCODE", text), (
+        "must capture assert_runtime.py's exit code to decide whether to refuse"
+    )
+    assert re.search(r"runtime-mismatch", text), (
+        "must file a wake-me and refuse on a runtime mismatch"
+    )

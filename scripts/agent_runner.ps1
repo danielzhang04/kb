@@ -211,6 +211,23 @@ foreach ($c in $owned) {
     $cardPath = $c.path
     Write-RunnerLog ("card-start id=$cardId agent=$Agent interpreter=$py")
 
+    # Phase R1.4 -- runtime pre-execution assertion (ordering-law 3), BEFORE the
+    # card transitions to `working` or codex exec runs. Owner selection already
+    # routes each card to exactly one runner, but a mis-owned card (a routing/
+    # registry bug or a hand-edited owner) must NEVER be silently run under the
+    # wrong runtime. This runner IS the codex runtime, so assert card.runtime ==
+    # 'codex'. scripts/assert_runtime.py exits: 0 = match or legacy (no runtime
+    # field) -> proceed; non-zero = refuse. On a refusal we wake a human and skip
+    # to the next card -- this Codex runner never runs a Claude-routed card.
+    & $py scripts/assert_runtime.py $cardPath 'codex' | Out-Null
+    $runtimeAssert = $LASTEXITCODE
+    if ($runtimeAssert -ne 0) {
+        Write-RunnerLog ("exit-path=runtime-mismatch id=$cardId agent=$Agent assert-exit=$runtimeAssert interpreter=$py :: card runtime != codex -- refusing before work, not running under the wrong runtime")
+        New-WakeMeCard $py "agent_runner:$Agent:runtime-mismatch:$cardId" "Runtime pre-exec assertion failed for card '$cardId' under agent '$Agent' (assert_runtime.py exit $runtimeAssert): the card's routed runtime is not 'codex', so this Codex runner REFUSES it rather than running it under the wrong runtime. A human must reconcile the card's routing/owner (HUMAN GATE)."
+        if ($overallExit -eq 0) { $overallExit = 1 }
+        continue
+    }
+
     # Stamp the Plane-A (cards) <-> Plane-B (session transcript) join key
     # BEFORE the card transitions to `working` (plan Task D1.2). The dispatcher
     # can never know a worker's session id -- this runner is the only place it
