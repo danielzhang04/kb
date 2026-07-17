@@ -7,6 +7,7 @@
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 import { indexRepo } from './indexer.ts';
+import { sliceLedgers } from './ledgers.ts';
 
 /** dashboard/server/planeA/routes.ts → ../../../ is the repo root. Overridable for tests/config. */
 export function resolveRepoRoot(): string {
@@ -16,4 +17,6 @@ export function resolveRepoRoot(): string {
 /** Register the read-only Plane-A snapshot route on the Fastify app. */
 export function registerPlaneA(app: FastifyInstance, repoRoot: string = resolveRepoRoot()): void {
   app.get('/api/index', async () => indexRepo(repoRoot));
+  // Sliced usage rollup (per-day + per-writer) for the Ledgers view. USD stays suppressed.
+  app.get('/api/ledgers/slices', async () => sliceLedgers(repoRoot));
 }

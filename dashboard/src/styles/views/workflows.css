@@ -132,6 +132,17 @@
   word-break: break-all;
 }
 
+/* Workflow name (primary) + its mono id (secondary, only shown when it differs from the name). */
+.v-workflows__wf-name {
+  color: var(--fg-primary);
+}
+
+.v-workflows__wf-id {
+  margin-left: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--fg-faint);
+}
+
 .v-workflows__cell-status {
   white-space: nowrap;
 }

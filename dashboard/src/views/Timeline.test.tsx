@@ -13,7 +13,13 @@ import type { TimelineModel, Turn } from '../lib/timelineModel';
 afterEach(cleanup);
 
 function textTurn(index: number): Turn {
-  return { index, model: 'claude-opus-4', usage: null, steps: [{ kind: 'text', text: `turn ${index} body` }] };
+  return {
+    index,
+    model: 'claude-opus-4',
+    timestamp: null,
+    usage: null,
+    steps: [{ kind: 'text', text: `turn ${index} body` }],
+  };
 }
 
 function model(n: number): TimelineModel {
@@ -40,6 +46,7 @@ describe('Activity / Timeline view', () => {
         {
           index: 0,
           model: 'claude-opus-4',
+          timestamp: null,
           usage: null,
           steps: [
             { kind: 'text', text: 'plain narration' },
@@ -58,6 +65,25 @@ describe('Activity / Timeline view', () => {
     const textRow = container.querySelector('.v-activity__step--text');
     expect(textRow).not.toBeNull();
     expect(textRow?.className).not.toContain('v-activity__step--tool');
+  });
+
+  it('renders the turn timestamp as a mono HH:MM:SS clock (tabular-nums)', () => {
+    const m: TimelineModel = {
+      turns: [
+        {
+          index: 0,
+          model: 'claude-opus-4',
+          timestamp: '2026-07-16T14:32:07.512Z',
+          usage: null,
+          steps: [{ kind: 'text', text: 'clocked turn' }],
+        },
+      ],
+    };
+    const { container } = render(<Timeline model={m} />);
+    const ts = container.querySelector('.v-activity__ts');
+    expect(ts).not.toBeNull();
+    expect(ts?.textContent).toBe('14:32:07');
+    expect((ts as HTMLTimeElement).dateTime).toBe('2026-07-16T14:32:07.512Z');
   });
 
   it('auto-scrolls while tailing (at bottom): new turns arrive with NO pill', () => {

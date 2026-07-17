@@ -76,6 +76,14 @@
   color: var(--fg-faint);
 }
 
+/* Turn timestamp — identifier-shaped clock → mono tabular. */
+.v-activity__ts {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-xs);
+  color: var(--fg-faint);
+}
+
 .v-activity__actor {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;

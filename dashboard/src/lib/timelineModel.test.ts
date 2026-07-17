@@ -125,4 +125,21 @@ describe('foldRecords', () => {
     expect(u!.cacheReadInputTokens).toBe(21060);
     expect(u!.totalTokens).toBe(10 + 844 + 20496 + 21060);
   });
+
+  it('carries the record timestamp onto the turn (null when the record has none)', () => {
+    const records: TranscriptRecord[] = [
+      {
+        type: 'assistant',
+        timestamp: '2026-07-16T14:32:07.512Z',
+        message: { model: 'claude-x', content: [{ type: 'text', text: 'hi' }] },
+      },
+      {
+        type: 'assistant',
+        message: { model: 'claude-x', content: [{ type: 'text', text: 'no clock' }] },
+      },
+    ];
+    const model = foldRecords(records);
+    expect(model.turns[0].timestamp).toBe('2026-07-16T14:32:07.512Z');
+    expect(model.turns[1].timestamp).toBeNull();
+  });
 });

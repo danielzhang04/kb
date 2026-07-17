@@ -1,9 +1,12 @@
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { parseYaml } from '../routing/yaml.ts';
 import type { PolicyDoc, OverrideDoc } from '../routing/policy.ts';
 import type { PlaneAIndex } from '../planeA/indexer.ts';
 import type { ParsedCard } from '../planeA/cards.ts';
-import { listAgents } from './roster.ts';
+import { listAgents, buildRoster, readLedgerWriters, readRoles, roleFor } from './roster.ts';
 
 const POLICY = parseYaml(`version: 1
 runtimes:
@@ -71,5 +74,82 @@ overrides:
 
   it('is empty-safe with no cards', () => {
     expect(listAgents(indexOf([]), POLICY, { overrides: [] })).toEqual([]);
+  });
+});
+
+/** Write a small temp repo with ledgers + routines/roles for the union-roster tests. */
+function tempRepo(): string {
+  const root = mkdtempSync(join(tmpdir(), 'roster-repo-'));
+  mkdirSync(join(root, 'ledgers', 'dispatch'), { recursive: true });
+  mkdirSync(join(root, 'ledgers', 'cost'), { recursive: true });
+  mkdirSync(join(root, 'routines', 'roles'), { recursive: true });
+  // Ledger writer `inspector-desktop` wrote a cost ledger on 2026-07-16 (2 step rows).
+  writeFileSync(
+    join(root, 'ledgers', 'cost', 'inspector-desktop-2026-07-16.tsv'),
+    'model\tstep\tusd\nclaude-opus-4\treview\t0.1\nclaude-opus-4\tgrade\t0.2\n',
+  );
+  // Ledger writer `worker-desktop` wrote a dispatch ledger (1 row) — also a card owner below.
+  writeFileSync(
+    join(root, 'ledgers', 'dispatch', 'worker-desktop-2026-07-15.tsv'),
+    'cadence\tcard\tdate\tproject\nnightly\taaaa\t2026-07-15\tkb\n',
+  );
+  writeFileSync(join(root, 'routines', 'roles', 'worker.md'), '# Role: Worker\n');
+  writeFileSync(join(root, 'routines', 'roles', 'inspector.md'), '# Role: Inspector\n');
+  return root;
+}
+
+describe('readLedgerWriters / readRoles / roleFor', () => {
+  it('aggregates per-writer ledger activity from filenames + row counts', () => {
+    const writers = readLedgerWriters(tempRepo());
+    expect(writers.get('inspector-desktop')).toEqual({ dispatches: 0, steps: 2, days: 1, lastActive: '2026-07-16' });
+    expect(writers.get('worker-desktop')).toEqual({ dispatches: 1, steps: 0, days: 1, lastActive: '2026-07-15' });
+  });
+
+  it('reads the role catalog and matches ids to roles by hyphen-token then substring', () => {
+    const roles = readRoles(tempRepo());
+    expect(roles).toEqual(['inspector', 'worker']);
+    expect(roleFor('worker-desktop', roles)).toBe('worker');
+    expect(roleFor('inspector-desktop', roles)).toBe('inspector');
+    expect(roleFor('codex-a', roles)).toBeNull();
+  });
+
+  it('degrades gracefully when ledgers/ and routines/ are absent', () => {
+    const bare = mkdtempSync(join(tmpdir(), 'roster-bare-'));
+    expect(readLedgerWriters(bare).size).toBe(0);
+    expect(readRoles(bare)).toEqual([]);
+  });
+});
+
+describe('buildRoster (union of queue owners + ledger writers + roles)', () => {
+  it('unions card owners with ledger writers and annotates role + ledger activity', () => {
+    const root = tempRepo();
+    // Card owner `worker-desktop` (also a ledger writer) + `codex-worker` (queue only).
+    const index = indexOf([
+      card({ id: 'c1', owner: 'worker-desktop', state: 'working', action: 'build', project: 'kb' }),
+      card({ id: 'c2', owner: 'codex-worker', state: 'inbox', action: 'y', project: 'atlas' }),
+    ]);
+    const roster = buildRoster(index, root, POLICY, { overrides: [] });
+    const ids = roster.map((r) => r.id).sort();
+    // inspector-desktop appears purely from the ledger; the two card owners appear from the queue.
+    expect(ids).toEqual(['codex-worker', 'inspector-desktop', 'worker-desktop']);
+
+    const worker = roster.find((r) => r.id === 'worker-desktop')!;
+    expect(worker.working).toBe(true);
+    expect(worker.role).toBe('worker');
+    expect(worker.sources.sort()).toEqual(['ledger', 'queue']);
+    expect(worker.ledger.dispatches).toBe(1);
+
+    const inspector = roster.find((r) => r.id === 'inspector-desktop')!;
+    expect(inspector.sources).toEqual(['ledger']);
+    expect(inspector.cardCount).toBe(0);
+    expect(inspector.role).toBe('inspector');
+    expect(inspector.ledger.steps).toBe(2);
+    // A ledger-only agent still resolves effective routing (policy role_default).
+    expect(inspector.effective.model).toBe('claude-sonnet-5');
+  });
+
+  it('is empty-safe: no cards, no ledgers, no roles → empty roster', () => {
+    const bare = mkdtempSync(join(tmpdir(), 'roster-empty-'));
+    expect(buildRoster(indexOf([]), bare, POLICY, { overrides: [] })).toEqual([]);
   });
 });

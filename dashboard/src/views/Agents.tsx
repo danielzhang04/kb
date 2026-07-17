@@ -1,8 +1,10 @@
 /**
  * Agents view — the fleet roster with per-agent model routing (R2.2).
  *
- * The roster is DERIVED from `/api/index` (Plane-A snapshot): every distinct non-null card `owner` is an
- * agent, working iff it owns a `working` card. Per-agent ROUTING (effective runtime/model + provenance,
+ * The roster is the enriched `/api/agents` union (card owners ∪ ledger writers ∪ role catalog), each
+ * row carrying its role + last-active date; until it loads (and in tests that pass only a snapshot) it
+ * falls back to `deriveRoster` over `/api/index` (distinct non-null card `owner`, working iff it owns a
+ * `working` card). Per-agent ROUTING (effective runtime/model + provenance,
  * and the governed toggle) comes from `/api/routing` (R2.1 projection). The model cell is now a live
  * governed control: it shows the effective model (mono) + provenance tag, and — with a WebAuthn session —
  * opens a popover to write an agent-scope override (audited, ops pull-rebase-push) or clear it. Fail-closed
@@ -15,6 +17,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import type { PlaneAIndex } from '../../server/planeA/indexer';
 import type { ParsedCard } from '../../server/planeA/cards';
+import type { AgentRosterEntry } from '../../server/agents/roster';
 import type { Session } from '../lib/authClient';
 import {
   EMPTY_ROUTING,
@@ -43,6 +46,10 @@ interface AgentRow {
   current: { action: string; id: string } | null;
   projects: string[];
   cardCount: number;
+  /** Role from `routines/roles/` (only when the enriched `/api/agents` roster is loaded). */
+  role: string | null;
+  /** Most recent ledger-write date (only from the enriched roster), else null. */
+  lastActive: string | null;
 }
 
 /** Normalise a card's `project` field (string | string[]) into a flat list of project names. */
@@ -52,7 +59,11 @@ function projectsOf(card: ParsedCard): string[] {
   return typeof p === 'string' && p !== '' ? [p] : [];
 }
 
-/** Derive the roster from the snapshot (working-first, then id-alphabetical). */
+/**
+ * Derive the roster from the snapshot's card ownership (working-first, then id-alphabetical). This is
+ * the fallback when the enriched `/api/agents` roster (which also folds in ledger writers + roles) has
+ * not loaded — role/lastActive are null in that case.
+ */
 export function deriveRoster(index: PlaneAIndex): AgentRow[] {
   const byOwner = new Map<string, ParsedCard[]>();
   for (const bucket of Object.values(index.cards)) {
@@ -75,6 +86,8 @@ export function deriveRoster(index: PlaneAIndex): AgentRow[] {
       current: workingCard ? { action: String(workingCard.meta.action), id: String(workingCard.meta.id) } : null,
       projects,
       cardCount: cards.length,
+      role: null,
+      lastActive: null,
     });
   }
 
@@ -82,6 +95,19 @@ export function deriveRoster(index: PlaneAIndex): AgentRow[] {
     if (a.working !== b.working) return a.working ? -1 : 1;
     return a.id.localeCompare(b.id);
   });
+}
+
+/** Project the enriched server roster onto the view row shape. */
+function rowFromEntry(e: AgentRosterEntry): AgentRow {
+  return {
+    id: e.id,
+    working: e.working,
+    current: e.current,
+    projects: e.projects,
+    cardCount: e.cardCount,
+    role: e.role,
+    lastActive: e.ledger.lastActive,
+  };
 }
 
 /** True when either field of an agent's effective routing was supplied by an override entry. */
@@ -132,16 +158,19 @@ function RoutingAuditStrip({ audit }: { audit: RoutingSnapshot['audit'] }): Reac
 
 export function Agents({
   snapshot,
+  roster,
   routing,
   sessionToken,
   onRequestSession,
 }: {
   snapshot?: PlaneAIndex;
+  roster?: AgentRosterEntry[];
   routing?: RoutingSnapshot;
   sessionToken?: string;
   onRequestSession?: () => Promise<Session | null>;
 } = {}): React.JSX.Element {
   const [fetched, setFetched] = useState<PlaneAIndex | null>(null);
+  const [rosterState, setRosterState] = useState<AgentRosterEntry[] | null>(roster ?? null);
   const [routingState, setRoutingState] = useState<RoutingSnapshot | null>(routing ?? null);
 
   useEffect(() => {
@@ -160,6 +189,22 @@ export function Agents({
     };
   }, [snapshot]);
 
+  useEffect(() => {
+    if (roster) return; // caller supplied the roster (tests) — do not self-fetch
+    let cancelled = false;
+    fetch('/api/agents')
+      .then((r) => r.json() as Promise<AgentRosterEntry[]>)
+      .then((d) => {
+        if (!cancelled && Array.isArray(d)) setRosterState(d);
+      })
+      .catch(() => {
+        /* read-only view: fall back to the snapshot-derived roster */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [roster]);
+
   const refreshRouting = useCallback(async () => {
     try {
       setRoutingState(await fetchRouting());
@@ -175,7 +220,10 @@ export function Agents({
 
   const index = snapshot ?? fetched ?? EMPTY_INDEX;
   const routingSnap = routing ?? routingState ?? EMPTY_ROUTING;
-  const roster = deriveRoster(index);
+  const enriched = roster ?? rosterState;
+  // Prefer the enriched server roster (queue owners ∪ ledger writers ∪ roles); fall back to the
+  // snapshot-derived roster until it loads (and in tests that pass only a snapshot).
+  const agentRows = enriched ? enriched.map(rowFromEntry) : deriveRoster(index);
 
   const effectiveById = new Map(routingSnap.agents.map((a) => [a.id, a.effective]));
   const registry = routingSnap.policy.runtimes;
@@ -190,10 +238,10 @@ export function Agents({
   return (
     <section className="v-agents" aria-label="Agents view">
       <h2 className="v-agents__title">
-        Agents <span className="v-agents__count mc-num">({roster.length})</span>
+        Agents <span className="v-agents__count mc-num">({agentRows.length})</span>
       </h2>
 
-      {roster.length === 0 ? (
+      {agentRows.length === 0 ? (
         <p className="v-agents__empty">No agents on the board.</p>
       ) : (
         <>
@@ -202,14 +250,16 @@ export function Agents({
               <thead>
                 <tr>
                   <th scope="col">Agent</th>
+                  <th scope="col">Role</th>
                   <th scope="col">Doing</th>
                   <th scope="col">Projects</th>
                   <th scope="col" className="v-agents__col-num">Cards</th>
+                  <th scope="col">Last active</th>
                   <th scope="col">Model</th>
                 </tr>
               </thead>
               <tbody>
-                {roster.map((a) => (
+                {agentRows.map((a) => (
                   <tr key={a.id} data-testid={`agent-row-${a.id}`}>
                     <td>
                       <span className="v-agents__agent">
@@ -220,6 +270,13 @@ export function Agents({
                         <span className="mc-mono">{a.id}</span>
                         <span className="v-agents__state">{a.working ? 'working' : 'idle'}</span>
                       </span>
+                    </td>
+                    <td>
+                      {a.role ? (
+                        <span className="v-agents__role mc-mono">{a.role}</span>
+                      ) : (
+                        <span className="v-agents__idle">—</span>
+                      )}
                     </td>
                     <td>
                       {a.current ? (
@@ -245,6 +302,9 @@ export function Agents({
                       )}
                     </td>
                     <td className="mc-mono v-agents__col-num">{a.cardCount}</td>
+                    <td className="mc-mono v-agents__last-active">
+                      {a.lastActive ?? <span className="v-agents__idle">—</span>}
+                    </td>
                     <td>
                       <RoutingControl
                         label={a.id}
@@ -279,8 +339,9 @@ export function Agents({
             </table>
           </div>
           <p className="v-agents__note">
-            Roster derived from card ownership. The model cell shows effective routing (source tag);
-            with a passkey session it writes a governed, audited agent-scope override.
+            Roster unions card owners, ledger writers, and the role catalog. The model cell shows
+            effective routing (source tag); with a passkey session it writes a governed, audited
+            agent-scope override.
           </p>
         </>
       )}
