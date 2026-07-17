@@ -189,7 +189,9 @@ _CRED_STORE_REL = "governance/webauthn-credentials.yaml"
 #       git show origin/ops:governance/webauthn-credentials.yaml | sha256sum
 #   and land that change through the human-edited-governance path. Leaving it
 #   None keeps the whole channel fail-closed (safe) but non-functional.
-EXPECTED_CRED_STORE_SHA256 = None
+# PINNED 2026-07-17 (D2.12): sha256 of governance/webauthn-credentials.yaml as
+# committed at main 3cb3226 / synced to ops (localhost desktop enrollment).
+EXPECTED_CRED_STORE_SHA256 = "9d9b552de59ab3ec9c59ae4734f86891953f47331fb3eec06709dba8d3f2db54"
 
 # Sentinel distinguishing "caller did not pass an expected hash → use the pinned
 # module constant" from "caller explicitly passed a hash (tests inject one to
