@@ -25,12 +25,17 @@ import {
   type NavDestination,
 } from './nav/config';
 import { NewMenu } from './nav/NewMenu';
-import { Control, StopControls } from './views/Control';
+import { StopControls } from './views/Control';
+import { Home } from './views/Home';
 import { ApprovalsLive } from './views/ApprovalsLive';
 import { Browser } from './views/Browser';
 import { Timeline } from './views/Timeline';
 import { Workflows } from './views/Workflows';
 import { Connectors } from './views/Connectors';
+import { Tasks } from './views/Tasks';
+import { Agents } from './views/Agents';
+import { Projects } from './views/Projects';
+import { Ledgers } from './views/Ledgers';
 import { fetchPending } from './lib/approvalsClient';
 import { useSse } from './lib/sseClient';
 import { signIn, type Session } from './lib/authClient';
@@ -200,9 +205,8 @@ const DEST_BY_ID: Record<string, NavDestination> = Object.fromEntries(
   NAV_SECTIONS.flatMap((s) => s.items).map((d) => [d.id, d]),
 );
 
-/** Placeholder body for a destination whose real view has not been built yet. Reachable live items
- *  (Agents/Tasks/Projects/Ledgers) land here until U3 fills them in; the greyed soon/future stubs
- *  (Atlas/Terminal) also fall through here to keep the body switch total. */
+/** Placeholder body for a destination whose real view has not been built yet. After U3 only the greyed
+ *  soon/future stubs (Atlas/Terminal) fall through here — the switch keeps this case to stay total. */
 function ComingSoon({ id }: { id: DestinationId }): React.JSX.Element {
   const dest = DEST_BY_ID[id];
   const live = dest ? isLive(dest) : false;
@@ -220,19 +224,22 @@ function ComingSoon({ id }: { id: DestinationId }): React.JSX.Element {
   );
 }
 
-/** Route a destination to its view. A destination with a dedicated view gets one case here; everything
- *  else falls through to the shared U3 placeholder. Home hosts the governed Launch/Rerun surface, so it
- *  receives the session token (the [+ New ▾] → Task action navigates here). */
+/** Route a destination to its view. A destination with a dedicated view gets one case here; only the
+ *  greyed soon/future stubs fall through to the shared placeholder. Home is the default rollup landing
+ *  and hosts the governed Launch/Rerun surface, so it receives the session token (the [+ New ▾] → Task
+ *  action navigates here) and `onNavigate` to jump from a rollup row/tile into its entity view. */
 function ViewBody({
   view,
   sessionToken,
+  onNavigate,
 }: {
   view: DestinationId;
   sessionToken?: string;
+  onNavigate: (id: DestinationId) => void;
 }): React.JSX.Element {
   switch (view) {
     case 'home':
-      return <Control sessionToken={sessionToken} />;
+      return <Home sessionToken={sessionToken} onNavigate={onNavigate} />;
     case 'approvals':
       // Live GET /api/approvals feed (refreshed on SSE), onVerify -> POST /api/approvals/verify.
       return <ApprovalsLive sessionToken={sessionToken} />;
@@ -245,6 +252,18 @@ function ViewBody({
       );
     case 'workflows':
       return <Workflows />;
+    case 'agents':
+      return <Agents />;
+    case 'tasks':
+      return <Tasks />;
+    case 'projects':
+      return (
+        <section aria-label="Projects view">
+          <Projects />
+        </section>
+      );
+    case 'ledgers':
+      return <Ledgers />;
     case 'connectors':
       return <Connectors />;
     case 'files':
@@ -298,7 +317,7 @@ export function App(): React.JSX.Element {
         </span>
       </header>
       <main className="mc-main">
-        <ViewBody view={view} sessionToken={session?.token} />
+        <ViewBody view={view} sessionToken={session?.token} onNavigate={setView} />
       </main>
     </div>
   );

@@ -1,40 +1,59 @@
 // @vitest-environment jsdom
 /**
- * U2.5 — Workflows view (Registry's workflows slice promoted to a top-level destination). Renders the
- * registered workflows when present, and the calm "no workflows registered yet" empty state otherwise.
+ * U3 — Workflows view ("runs of work as connected chains"). Renders a dense list when workflows are
+ * registered; otherwise the DESIGNED empty state (calm, explanatory, no error tone) — the state Daniel
+ * actually sees today, since the live repo has no `workflows/` registry yet.
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, within } from '@testing-library/react';
 import { Workflows } from './Workflows';
 
 afterEach(cleanup);
 
 describe('Workflows view', () => {
-  it('shows the empty state when no workflows are registered', () => {
+  it('renders the designed empty state when no workflows are registered', () => {
     render(<Workflows data={{ present: false, items: [] }} />);
     expect(screen.getByLabelText('Workflows view')).toBeTruthy();
-    expect(screen.getByText('No workflows registered yet.')).toBeTruthy();
+    const empty = screen.getByTestId('workflows-empty');
+    expect(within(empty).getByText('No workflows registered yet')).toBeTruthy();
+    // Explains what will appear — no error tone.
+    expect(within(empty).getByText(/Nothing is wrong/)).toBeTruthy();
   });
 
-  it('shows the empty state when the registry is present but has no workflows', () => {
+  it('renders the empty state when the registry is present but has no workflows', () => {
     render(<Workflows data={{ present: true, items: [] }} />);
-    expect(screen.getByText('No workflows registered yet.')).toBeTruthy();
+    expect(screen.getByTestId('workflows-empty')).toBeTruthy();
   });
 
-  it('lists registered workflows by id', () => {
+  it('does not use any error styling in the empty state', () => {
+    const { container } = render(<Workflows data={{ present: false, items: [] }} />);
+    // No error/blocked semantic classes anywhere in the empty view.
+    expect(container.querySelector('[class*="error"]')).toBeNull();
+    expect(container.querySelector('[class*="blocked"]')).toBeNull();
+  });
+
+  it('lists registered workflows with id, path, and a status marker', () => {
     render(
       <Workflows
         data={{
           present: true,
           items: [
-            { id: 'ship-review', path: 'workflows/ship-review.md' },
-            { id: 'nightly-sweep', path: 'workflows/nightly-sweep.md' },
+            { id: 'wf_ship-review', path: 'workflows/wf_ship-review.md' },
+            { id: 'wf_nightly-sweep', path: 'workflows/wf_nightly-sweep.md' },
           ],
         }}
       />,
     );
-    expect(screen.getByText('ship-review')).toBeTruthy();
-    expect(screen.getByText('nightly-sweep')).toBeTruthy();
-    expect(screen.queryByText('No workflows registered yet.')).toBeNull();
+    expect(screen.getByText('wf_ship-review')).toBeTruthy();
+    expect(screen.getByText('workflows/wf_ship-review.md')).toBeTruthy();
+    expect(screen.getByText('wf_nightly-sweep')).toBeTruthy();
+    // Each row carries the neutral "registered" status marker.
+    expect(screen.getAllByText('registered')).toHaveLength(2);
+    expect(screen.queryByTestId('workflows-empty')).toBeNull();
+  });
+
+  it('always marks where run-chains will render (D3.4 placeholder)', () => {
+    render(<Workflows data={{ present: false, items: [] }} />);
+    expect(screen.getByLabelText('Run chains')).toBeTruthy();
   });
 });

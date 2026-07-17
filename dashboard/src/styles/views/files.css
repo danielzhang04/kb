@@ -1,0 +1,25 @@
+/*
+ * ============================================================================
+ * FILES view (U3) — the KB explorer destination
+ * ============================================================================
+ * Files is a thin frame around the shared FolderView (see folder.css). It only
+ * owns the outer sizing so the two-pane explorer fills the main content area;
+ * all tree/reader chrome lives in folder.css. Tokens only; nothing banned.
+ * ============================================================================
+ */
+
+.v-files {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Let the explorer breathe to the full main-content height. */
+.v-files .v-folder {
+  align-items: stretch;
+}
+
+.v-files .v-folder__tree,
+.v-files .v-folder__content {
+  max-height: calc(100vh - var(--topbar-h) - var(--space-8) * 2);
+}

@@ -58,9 +58,9 @@ describe('App shell — entity-first sidebar navigation', () => {
     }
   });
 
-  it('lands on Home (Control) view by default', () => {
+  it('lands on the Home rollup view by default', () => {
     render(<App />);
-    expect(screen.getByLabelText('Control view')).toBeTruthy();
+    expect(screen.getByLabelText('Home view')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Home' }).getAttribute('aria-current')).toBe('page');
   });
 
@@ -96,18 +96,20 @@ describe('App shell — entity-first sidebar navigation', () => {
     expect(screen.getByLabelText('Files view')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Home' }));
-    expect(screen.getByLabelText('Control view')).toBeTruthy();
+    expect(screen.getByLabelText('Home view')).toBeTruthy();
   });
 
-  it('routes reachable-but-unbuilt destinations (Agents/Tasks/Projects/Ledgers) to the U3 placeholder', () => {
+  it('routes the U3 entity destinations (Agents/Tasks/Projects/Ledgers) to their real views', () => {
     render(<App />);
     for (const label of ['Agents', 'Tasks', 'Projects', 'Ledgers']) {
       const btn = screen.getByRole('button', { name: label }) as HTMLButtonElement;
       expect(btn.disabled).toBe(false);
       fireEvent.click(btn);
       expect(btn.getAttribute('aria-current')).toBe('page');
-      const placeholder = screen.getByLabelText(`${label} view`);
-      expect(placeholder.textContent).toMatch(/built in U3/i);
+      // The real view is mounted (self-fetch stubbed to never resolve → empty-safe scaffold), not the
+      // "built in U3" placeholder.
+      const view = screen.getByLabelText(`${label} view`);
+      expect(view.textContent ?? '').not.toMatch(/built in U3/i);
     }
   });
 
@@ -119,7 +121,7 @@ describe('App shell — entity-first sidebar navigation', () => {
       fireEvent.click(btn);
     }
     // Still on the default Home view — every disabled click was a no-op.
-    expect(screen.getByLabelText('Control view')).toBeTruthy();
+    expect(screen.getByLabelText('Home view')).toBeTruthy();
   });
 
   it('the sidebar-wide collapse toggle switches the shell into rail mode and back', () => {
@@ -168,7 +170,7 @@ describe('App shell — [+ New ▾] menu', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: /Task/ }));
 
     // Home hosts the Launch/rerun surface; the menu is closed after the action.
-    expect(screen.getByLabelText('Control view')).toBeTruthy();
+    expect(screen.getByLabelText('Home view')).toBeTruthy();
     expect(screen.getByLabelText('Launch card')).toBeTruthy();
     expect(screen.queryByRole('menu', { name: 'Create new' })).toBeNull();
   });

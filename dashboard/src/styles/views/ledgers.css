@@ -1,0 +1,154 @@
+/*
+ * Ledgers view (System §D) — per-usage rollup, NEVER a dollar figure.
+ * Warm Claude-dark tokens only (see src/styles/app.css). Signature rules applied:
+ *   - hairline borders, no shadows; dense .mc-table rows
+ *   - mono tabular-nums on every id / count / share
+ *   - the ONE terracotta accent only as the active period's underline; mix bars stay neutral
+ * All classes view-scoped (.v-ledgers__…).
+ */
+
+.v-ledgers {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  font-size: var(--text-base);
+}
+
+.v-ledgers__header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.v-ledgers__title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.v-ledgers__note {
+  font-size: var(--text-xs);
+  color: var(--fg-faint);
+}
+
+/* Period (day) selector — underline-tab language, accent-strong on the active period. */
+.v-ledgers__periods {
+  display: flex;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--border);
+}
+
+.v-ledgers__period {
+  font: inherit;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-sm);
+  color: var(--fg-dim);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: var(--space-1) var(--space-2);
+  margin-bottom: -1px;
+  cursor: pointer;
+}
+
+.v-ledgers__period:hover {
+  color: var(--fg-primary);
+}
+
+.v-ledgers__period--active {
+  color: var(--fg-primary);
+  border-bottom-color: var(--accent-strong);
+}
+
+/* Summary tiles — flat hairline panels, mono tabular xl values. */
+.v-ledgers__tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.v-ledgers__tile {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  min-width: 6rem;
+}
+
+.v-ledgers__tile-value {
+  display: block;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-xl);
+  font-weight: 650;
+  color: var(--fg-primary);
+}
+
+.v-ledgers__tile-label {
+  display: block;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-dim);
+}
+
+/* Section blocks wrapping the dense tables. */
+.v-ledgers__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.v-ledgers__section-title {
+  margin: 0;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--fg-dim);
+  font-weight: 600;
+}
+
+.v-ledgers__num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* Model-mix meter — a neutral bar (accent stays reserved for the active period only). */
+.v-ledgers__mix {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.v-ledgers__mix-track {
+  flex: 1 1 auto;
+  height: 4px;
+  min-width: 3rem;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.v-ledgers__mix-fill {
+  height: 100%;
+  background: var(--fg-faint);
+}
+
+.v-ledgers__mix-pct {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-xs);
+  color: var(--fg-dim);
+  min-width: 2.6rem;
+  text-align: right;
+}
+
+/* Calm empty state — not an error. */
+.v-ledgers__empty {
+  color: var(--fg-dim);
+  padding: var(--space-4) var(--space-1);
+  font-size: var(--text-sm);
+}

@@ -79,23 +79,23 @@ describe('Control view', () => {
     expect(screen.getByText('Building the Plane-A indexer.')).toBeTruthy();
   });
 
-  it('lands on Control view by default, another view reachable via the sidebar nav', () => {
-    // U2.5: the App shell's default nav item is "Home" (entity-first IA); the Control component itself
-    // is unchanged and still self-labels aria-label="Control view".
+  it('lands on the Home rollup by default, another view reachable via the sidebar nav', () => {
+    // U3: the App shell's default nav item is "Home", which now routes to the Home rollup view (the
+    // Control component is dormant/unrouted — still exported and unit-tested directly, above).
     render(<App />);
 
-    // Default landing is the Control (Home) view; the Files view is not mounted yet.
-    expect(screen.getByLabelText('Control view')).toBeTruthy();
+    // Default landing is the Home view; the Files view is not mounted yet.
+    expect(screen.getByLabelText('Home view')).toBeTruthy();
     expect(screen.queryByLabelText('Files view')).toBeNull();
 
     // The sidebar's Files nav item switches to the Files view.
     fireEvent.click(screen.getByRole('button', { name: 'Files' }));
     expect(screen.getByLabelText('Files view')).toBeTruthy();
-    expect(screen.queryByLabelText('Control view')).toBeNull();
+    expect(screen.queryByLabelText('Home view')).toBeNull();
 
-    // And the Home nav item switches back to Control.
+    // And the Home nav item switches back to the Home rollup.
     fireEvent.click(screen.getByRole('button', { name: 'Home' }));
-    expect(screen.getByLabelText('Control view')).toBeTruthy();
+    expect(screen.getByLabelText('Home view')).toBeTruthy();
     expect(screen.queryByLabelText('Files view')).toBeNull();
   });
 });

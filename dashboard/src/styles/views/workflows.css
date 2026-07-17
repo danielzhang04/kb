@@ -1,0 +1,162 @@
+/*
+ * ============================================================================
+ * WORKFLOWS view (U3) — "runs of work as connected chains"
+ * ============================================================================
+ * The designed EMPTY state is the centrepiece (the live repo has no workflows/
+ * registry yet), so it reads calm and explanatory — never an error. A dense
+ * table renders when workflows exist; a hairline run-chain region below both
+ * marks where the D3.4 DAG will land.
+ *
+ * Tokens only (docs/design-brief.md §A–F); dark default, light remap carries
+ * via var(). Signature: hairline borders, mono tabular-nums for ids/paths, one
+ * terracotta accent used sparingly, calm status via the shared status-dot (no
+ * new hue taxonomy). Banned (glass / gradient / glow) never appears.
+ * ============================================================================
+ */
+
+.v-workflows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  min-width: 0;
+}
+
+/* ---- Header ------------------------------------------------------------ */
+.v-workflows__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.v-workflows__title {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.v-workflows__lede {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--fg-dim);
+}
+
+/* ---- Designed empty state (calm, explanatory — never an error) --------- */
+.v-workflows__empty {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-8);
+  max-width: 46rem;
+}
+
+.v-workflows__empty-title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--fg-primary);
+}
+
+.v-workflows__empty-body {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-base);
+  line-height: 1.6;
+  color: var(--fg-dim);
+}
+
+.v-workflows__empty-body code {
+  font-size: var(--text-sm);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.05em 0.35em;
+  color: var(--fg-primary);
+}
+
+.v-workflows__empty-sub {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--fg-faint);
+}
+
+/* ---- Populated: dense table ------------------------------------------- */
+.v-workflows__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-base);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.v-workflows__table thead th {
+  padding: var(--space-1) var(--space-2);
+  text-align: left;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+  color: var(--fg-faint);
+  border-bottom: 1px solid var(--border);
+}
+
+.v-workflows__row {
+  transition: background 160ms ease-out;
+}
+
+.v-workflows__row td {
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.v-workflows__row:last-child td {
+  border-bottom: none;
+}
+
+.v-workflows__row:hover {
+  background: var(--bg-elevated);
+}
+
+.v-workflows__cell-id {
+  font-size: var(--text-sm);
+  color: var(--fg-primary);
+  white-space: nowrap;
+}
+
+.v-workflows__cell-path {
+  font-size: var(--text-sm);
+  color: var(--fg-dim);
+  word-break: break-all;
+}
+
+.v-workflows__cell-status {
+  white-space: nowrap;
+}
+
+.v-workflows__status-label {
+  margin-left: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--fg-dim);
+}
+
+/* ---- Run-chain region (D3.4 placeholder — hint, not a fake graph) ------ */
+.v-workflows__runs {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 6rem;
+  padding: var(--space-6);
+  background: var(--bg-sunken);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sunken);
+}
+
+.v-workflows__runs-hint {
+  font-size: var(--text-sm);
+  color: var(--fg-faint);
+  text-align: center;
+}
