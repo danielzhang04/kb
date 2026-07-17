@@ -55,10 +55,12 @@ export interface TimelineStep {
   subagent?: SubagentView | null;
 }
 
-/** One assistant turn: its steps plus the model/usage of the assistant message that produced it. */
+/** One assistant turn: its steps plus the model/usage/timestamp of the assistant message that produced it. */
 export interface Turn {
   index: number;
   model: string | null;
+  /** The transcript record's ISO-8601 `timestamp`, or null when the record carries none. */
+  timestamp: string | null;
   usage: TurnUsage | null;
   steps: TimelineStep[];
 }
@@ -140,6 +142,8 @@ function buildTurns(records: TranscriptRecord[]): Turn[] {
     turns.push({
       index: turns.length,
       model: typeof record.message?.model === 'string' ? record.message.model : null,
+      // The transcript timestamp is a top-level record field (ISO-8601); absent in synthetic records.
+      timestamp: typeof record.timestamp === 'string' ? record.timestamp : null,
       usage: parseUsage(record.message?.usage),
       steps,
     });

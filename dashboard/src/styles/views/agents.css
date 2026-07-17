@@ -99,6 +99,20 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Role chip — mono, neutral (identity, not action). */
+.v-agents__role {
+  font-size: var(--text-xs);
+  color: var(--fg-dim);
+}
+
+/* Last-active date — identifier-shaped → mono tabular. */
+.v-agents__last-active {
+  font-size: var(--text-sm);
+  color: var(--fg-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 /*
  * Disabled model placeholder — a visual slot for the Phase-R per-agent model toggle. Deliberately
  * muted and inert: no accent, reduced opacity, help cursor to signal "not yet interactive".

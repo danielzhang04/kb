@@ -44,7 +44,10 @@ const POPULATED: PlaneAIndex = {
 };
 
 const REGISTRY: RegistrySnapshot = {
-  workflows: { present: true, items: [{ id: 'wf_build', path: 'workflows/wf_build.md' }] },
+  workflows: {
+    present: true,
+    items: [{ id: 'wf_build', path: 'workflows/wf_build.md', name: 'wf_build', status: 'registered' }],
+  },
   connections: {
     count: 2,
     items: [

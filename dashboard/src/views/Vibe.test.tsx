@@ -14,7 +14,7 @@ import type { TimelineModel } from '../lib/timelineModel';
 afterEach(() => cleanup());
 
 const ASSISTANT_TEXT = (text: string): TimelineModel => ({
-  turns: [{ index: 0, model: 'claude-sonnet-5', usage: null, steps: [{ kind: 'text', text }] }],
+  turns: [{ index: 0, model: 'claude-sonnet-5', timestamp: null, usage: null, steps: [{ kind: 'text', text }] }],
 });
 
 describe('Vibe', () => {
