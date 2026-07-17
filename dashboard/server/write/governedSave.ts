@@ -168,6 +168,58 @@ function agentRunnerBoundForbidden(repoRoot: string, abs: string, content: strin
   return null;
 }
 
+/**
+ * C7.11 — refuse a declared `model:` on agents/<id>.md that is not in its declared runtime's
+ * `known_models`. Closes a silent-downgrade gap: the write path previously validated id and
+ * runner-bound but not model, so a bogus value (e.g. `gpt-9000-fake`) was accepted here and only
+ * clamped later — silently — at owner-assignment time (`write/launch.ts#defaultOwnerRouting`, ~line
+ * 232-239: `known.includes(declared.model) ? declared.model : known[0]`). Fail LOUD instead: reject at
+ * declare/save time, consistent with the fleet philosophy (CLAUDE.md).
+ *
+ * Reuses the SAME canonical registry `routingOverride.ts#validateSet` reads (`loadPolicy` from
+ * `routing/policy.ts`, `policy.runtimes[<rt>].known_models`) rather than inventing a second reader.
+ *
+ * Scope — a deliberate judgment call: the check fires ONLY when BOTH (a) a `runtime:` is declared AND
+ * that runtime is registered in the policy, AND (b) a `model:` is declared. `model:` omitted is legal
+ * (the design lets an agent inherit the role x tier policy model — R2.1/C7.9) and always passes. An
+ * unregistered/unknown `runtime:` is NOT independently rejected by this guard — unlike
+ * `routingOverride.ts#validateSet` (~line 128), which 400s unconditionally on any runtime not in the
+ * registry. Mirroring that fully was judged out of scope here: this guard exists solely to close the
+ * declared-model silent-downgrade gap, which has no equivalent for an unknown runtime today (nothing
+ * downstream silently clamps a bogus runtime the way `defaultOwnerRouting` clamps a bogus model).
+ * Widening this guard to also reject unknown runtimes is a reasonable follow-up, not bundled in here.
+ *
+ * Fails OPEN on an unreadable/malformed policy file — matching `collectReservedIdentities` above, the
+ * existing posture in THIS file for a `loadPolicy` read. `loadPolicy` itself never throws (its own
+ * try/catch degrades to `{}` on any read/parse failure — `routing/policy.ts`), so an absent or
+ * malformed `governance/model-routing.yaml` simply means no runtime is ever "registered" here and the
+ * guard is a no-op: never a crash, never a spurious block of an unrelated save.
+ */
+function agentModelKnownGuard(repoRoot: string, abs: string, content: string): string | null {
+  const rel = relative(resolve(repoRoot), abs).split(sep).join('/').replace(/^\/+/, '');
+  if (!/^agents\/[^/]+\.md$/i.test(rel)) return null;
+
+  const modelMatch = /^\s*model:\s*(.+?)\s*$/im.exec(content);
+  if (!modelMatch) return null; // model omitted: legal, inherits the role x tier policy model
+  const model = modelMatch[1].replace(/^["']|["']$/g, '').trim();
+  if (model === '') return null;
+
+  const runtimeMatch = /^\s*runtime:\s*(.+?)\s*$/im.exec(content);
+  if (!runtimeMatch) return null; // no declared runtime -> nothing to validate the model against
+  const runtime = runtimeMatch[1].replace(/^["']|["']$/g, '').trim();
+  if (runtime === '') return null;
+
+  const policy = loadPolicy(repoRoot);
+  const spec = policy.runtimes?.[runtime];
+  if (!spec) return null; // runtime not registered -> out of scope for this guard (see doc comment)
+
+  const known = spec.known_models ?? [];
+  if (!known.includes(model)) {
+    return `agent-model-unknown: model "${model}" is not in runtime "${runtime}"'s known_models`;
+  }
+  return null;
+}
+
 export interface SaveInput {
   repoRoot: string;
   relpath: string;
@@ -222,6 +274,13 @@ export async function save(input: SaveInput): Promise<SaveOutcome> {
   const runnerBound = agentRunnerBoundForbidden(input.repoRoot, abs, input.content);
   if (runnerBound) {
     return { ok: false, status: 400, reason: runnerBound };
+  }
+
+  // C7.11: refuse a declared model that is not in its declared (and registered) runtime's known_models
+  // — fail loud at declare/save time instead of the silent clamp defaultOwnerRouting applies later.
+  const unknownModel = agentModelKnownGuard(input.repoRoot, abs, input.content);
+  if (unknownModel) {
+    return { ok: false, status: 400, reason: unknownModel };
   }
 
   mkdirSync(dirname(abs), { recursive: true });
