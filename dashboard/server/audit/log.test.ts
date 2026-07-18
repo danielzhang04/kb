@@ -83,7 +83,7 @@ describe('commitAuditToOps (injectable git-runner, hermetic)', () => {
 
     const verbs = calls.map((c) => c.slice(0, 2).join(' '));
     expect(verbs).toEqual(['pull --rebase', 'add --', 'commit -m', 'push origin']);
-    expect(calls[0]).toEqual(['pull', '--rebase', 'origin', 'ops']);
+    expect(calls[0]).toEqual(['pull', '--rebase', '--autostash', 'origin', 'ops']);
     expect(calls[3]).toEqual(['push', 'origin', 'ops']);
     // Only the audit ledger is staged (never `git add .`).
     expect(calls[1]).toEqual(['add', '--', AUDIT_REL_PATH]);
@@ -106,7 +106,7 @@ describe('commitAuditToOps (injectable git-runner, hermetic)', () => {
 
     const pushIdx = calls.map((c, i) => (c[0] === 'push' ? i : -1)).filter((i) => i >= 0);
     expect(pushIdx).toHaveLength(2);
-    expect(calls[pushIdx[0] + 1]).toEqual(['pull', '--rebase', 'origin', 'ops']);
+    expect(calls[pushIdx[0] + 1]).toEqual(['pull', '--rebase', '--autostash', 'origin', 'ops']);
   });
 
   it('gives up after maxRetryPushes exhausted, surfacing the push error', () => {
@@ -135,10 +135,10 @@ describe('appendAudit (append + commit, end-to-end)', () => {
     const row = appendAudit(repo, { action: 'approve', cardId: 'card-a' }, { runGit: runner });
 
     // The commit sequence still opens with pull --rebase and reconciles before the retried push.
-    expect(calls[0]).toEqual(['pull', '--rebase', 'origin', 'ops']);
+    expect(calls[0]).toEqual(['pull', '--rebase', '--autostash', 'origin', 'ops']);
     const pushIdx = calls.map((c, i) => (c[0] === 'push' ? i : -1)).filter((i) => i >= 0);
     expect(pushIdx).toHaveLength(2);
-    expect(calls[pushIdx[0] + 1]).toEqual(['pull', '--rebase', 'origin', 'ops']);
+    expect(calls[pushIdx[0] + 1]).toEqual(['pull', '--rebase', '--autostash', 'origin', 'ops']);
 
     // The retried push never re-appended the row: exactly one row exists for this action.
     const rows = await readLedger(repo);
