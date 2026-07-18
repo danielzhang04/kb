@@ -18,7 +18,78 @@
   flex-direction: column;
   gap: var(--space-4);
   min-width: 0;
+  min-height: calc(100dvh - var(--topbar-h) - 8rem);
 }
+
+.composer-tabs {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: calc(-1 * var(--space-4)) calc(-1 * var(--space-4)) var(--space-4);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+  min-width: 0;
+}
+
+.composer-tabs__list { display: flex; gap: 2px; overflow-x: auto; min-width: 0; }
+.composer-tabs__tab { display: flex; align-items: center; border-left: 2px solid transparent; background: var(--bg-base); }
+.composer-tabs__tab--active { border-left-color: var(--accent-strong); background: var(--bg-elevated); }
+.composer-tabs__label,
+.composer-tabs__close,
+.composer-tabs__new,
+.composer-tabs__actions button,
+.composer-tabs__archive-menu button {
+  border: 0;
+  background: transparent;
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.composer-tabs__label { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2); white-space: nowrap; }
+.composer-tabs__close { padding: var(--space-2); }
+.composer-tabs__new { white-space: nowrap; padding: var(--space-1) var(--space-2); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.composer-tabs__actions { display: flex; gap: var(--space-1); margin-left: auto; }
+.composer-tabs__actions button { padding: var(--space-1) var(--space-2); }
+.composer-tabs__archived { position: relative; color: var(--fg-faint); font-size: var(--text-xs); }
+.composer-tabs__archive-menu { position: absolute; right: 0; z-index: 20; display: flex; flex-direction: column; min-width: 12rem; padding: var(--space-2); background: var(--bg-elevated); border: 1px solid var(--border-strong); }
+.composer-tabs__archive-menu button { padding: var(--space-2); text-align: left; }
+.composer-workspace-error { color: var(--error); font-size: var(--text-sm); }
+
+.composer-chat {
+  display: flex;
+  flex-direction: column;
+  min-height: 30rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
+  overflow: hidden;
+}
+
+.composer-chat__timeline { flex: 1 1 auto; display: flex; flex-direction: column; gap: var(--space-5); padding: var(--space-6); overflow-y: auto; }
+.composer-chat__empty { max-width: 40rem; margin: auto; text-align: center; color: var(--fg-dim); }
+.composer-chat__empty h3 { margin: 0 0 var(--space-2); color: var(--fg-primary); font-size: var(--text-xl); }
+.composer-chat__exchange { display: flex; flex-direction: column; gap: var(--space-3); max-width: 56rem; width: 100%; margin: 0 auto; }
+.composer-chat__user { align-self: flex-end; max-width: 80%; padding: var(--space-3); border-radius: var(--radius-md); background: var(--bg-elevated); }
+.composer-chat__user span,
+.composer-chat__assistant > span { color: var(--fg-faint); font-size: var(--text-xs); }
+.composer-chat__user p,
+.composer-chat__assistant p { margin: var(--space-1) 0 0; white-space: pre-wrap; line-height: 1.55; }
+.composer-chat__assistant { color: var(--fg-primary); }
+.composer-chat__assistant--history { padding-left: var(--space-3); border-left: 2px solid var(--border-strong); }
+.composer-chat__operations { margin-top: var(--space-2); color: var(--fg-dim); font-size: var(--text-xs); }
+.composer-chat__working { color: var(--fg-dim); }
+.composer-chat__input { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-2); padding: var(--space-3); border-top: 1px solid var(--border); background: var(--bg-sunken); }
+.composer-chat__input textarea { min-height: 4rem; max-height: 12rem; resize: vertical; padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-base); color: var(--fg-primary); font: inherit; }
+.composer-chat__primary { align-self: end; min-width: 5rem; justify-content: center; }
+.composer-chat__safety-note { margin: 0.35rem var(--space-3) 0; color: var(--fg-faint); font-size: var(--text-xs); }
+
+.v-composer__draft-run { border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-panel); }
+.v-composer__draft-run > summary { cursor: pointer; padding: var(--space-3) var(--space-4); color: var(--fg-dim); font-weight: 600; }
+.v-composer__draft-run[open] > summary { border-bottom: 1px solid var(--border); }
+.v-composer__draft-run .v-composer__chips { padding: var(--space-3) var(--space-4) 0; }
+.v-composer__draft-run .v-composer__draft { border: 0; }
 
 /* ---- Header ------------------------------------------------------------ */
 .v-composer__head {

@@ -8,9 +8,10 @@
  * (reusing the `mc-status-dot--*` vocabulary), a mono model chip, a one-line summary, and an inline
  * GOVERNED model toggle. That toggle REUSES the existing per-card routing write path
  * ({@link ../lib/routingClient}.postCardRouting → POST /api/write/card-routing → cardRouting.ts) exactly
- * as the Tasks view does — there is no second write path. On a 409 `approval-locked` refusal (or a card
- * already sitting under an active approval) the toggle freezes: disabled, with the reason shown inline,
- * and NO retry. Routing shown for display comes only from the effective-routing projection
+ * as the Tasks view does — there is no second write path. Only dependency-blocked cards and unowned
+ * inbox drafts are safely mutable. Assigned queued, active/stopping, approval-bound, and historical
+ * attempts freeze the toggle with a truthful reason. A 409 lifecycle refusal also latches without retry.
+ * Routing shown for display comes only from the effective-routing projection
  * (`GET /api/routing`).
  *
  * Graph topology is read-only: the canvas self-fetches `/api/dag` + `/api/routing` once on mount and
@@ -49,9 +50,22 @@ import '../styles/views/pipeline.css';
 
 type DotKind = 'idle' | 'running' | 'blocked' | 'done' | 'error';
 
-/** Card states under an active human approval — the server refuses a routing swap here (cardRouting.ts),
- *  so the node freezes its toggle up front rather than let the operator attempt a doomed write. */
-const APPROVAL_LOCKED_STATES = new Set(['approvals', 'approved']);
+/** Mirror the server lifecycle guard. Current attempts are not live-reroutable. */
+export function pipelineRoutingLockReason(state: string, owner: string | null): string | null {
+  if (state === 'blocked') return null;
+  if (state === 'inbox' && !owner) return null;
+  if (state === 'inbox') return 'assigned and queued — the runner may already be active; use a successor attempt';
+  if (['working', 'stop-requested', 'halting'].includes(state)) {
+    return 'active or stopping — routing is fixed for this attempt';
+  }
+  if (state === 'approvals' || state === 'approved') {
+    return 'under approval — routing is frozen with the reviewed scope';
+  }
+  if (['done', 'rejected', 'halted'].includes(state)) {
+    return 'historical attempt — retry with new routing';
+  }
+  return `state ${state} is not safely reroutable`;
+}
 
 /** Map a card's state (+ blocked flag) to a semantic status dot, reusing the mc-status-dot vocabulary. */
 function dotKind(state: string, blocked: boolean): DotKind {
@@ -99,17 +113,17 @@ export function PipelineNodeBody({
   onClearRouting,
   onOpenCard,
 }: PipelineNodeBodyProps): React.JSX.Element {
-  // A dynamic freeze latched from a 409 `approval-locked` refusal; combined with the up-front freeze
-  // for a card that is already under an active approval.
+  // A dynamic freeze latched from any authoritative 409 lifecycle refusal; combined with the
+  // up-front mirror so an obviously immutable card never offers a doomed write.
   const [frozenReason, setFrozenReason] = useState<string | null>(null);
-  const approvalLocked = APPROVAL_LOCKED_STATES.has(data.state) ? 'under approval — routing frozen' : null;
-  const lockedReason = frozenReason ?? approvalLocked;
+  const lifecycleLocked = pipelineRoutingLockReason(data.state, data.owner);
+  const lockedReason = frozenReason ?? lifecycleLocked;
   const routed = Boolean(data.runtime || data.model);
 
   function latchIfLocked(res: WriteResult): WriteResult {
-    // Freeze WITHOUT retrying on a 409 approval-locked refusal — never open a second write path.
-    if (!res.ok && (res.status === 409 || res.error === 'approval-locked')) {
-      setFrozenReason(res.reason ?? 'approval-locked — routing frozen');
+    // Freeze WITHOUT retrying on a 409 lifecycle refusal — never open a second write path.
+    if (!res.ok && res.error === 'routing-state-locked') {
+      setFrozenReason(res.reason ?? 'routing is fixed for this attempt');
     }
     return res;
   }

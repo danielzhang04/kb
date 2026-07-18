@@ -4,18 +4,20 @@
  * `session.ts`'s module docstring for the DI rationale) — no test here ever shells a real `py`/`git`/
  * `claude` binary, touches a real STOP file, or touches a real `ledgers/audit/**` file. Fully hermetic.
  */
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mintSession } from '../auth/session.ts';
 import type { SessionConfig } from '../auth/session.ts';
 import type { PreambleRunner } from '../write/preambleGate.ts';
 import type { AuditEvent, AuditRow } from '../audit/log.ts';
 import { rateLimit, lockout } from '../security/ratelimit.ts';
 import type { LockoutGuard } from '../security/ratelimit.ts';
-import { spawnVibe } from './session.ts';
+import { drainVibeProcesses, spawnVibe } from './session.ts';
 import type { SessionInput, VibeDeps, VibeHandlers, VibeProcess, VibeSpawner } from './session.ts';
 
 const SECRET = Buffer.from('vibe-test-secret-do-not-reuse');
 const SESSION_CONFIG: SessionConfig = { secret: SECRET, now: () => 1_700_000_000_000 };
+
+afterEach(() => { drainVibeProcesses(); });
 
 function okPreamble(): PreambleRunner {
   return () => ({ exitCode: 0, stdout: 'PREAMBLE OK\n', stderr: '' });
@@ -107,6 +109,47 @@ function baseDeps(overrides: Partial<VibeDeps> = {}): VibeDeps {
     ...overrides,
   };
 }
+
+describe('spawnVibe — spawned-child containment', () => {
+  it('drains every tracked child during daemon shutdown', () => {
+    const first = fakeProcess();
+    const second = fakeProcess();
+    const { spawner } = recordingSpawner([first.proc, second.proc]);
+    const guard = lockout(rateLimit({ limit: 10, windowMs: 60_000 }), { threshold: 10, lockoutMs: 1 });
+    const deps = baseDeps({ spawn: spawner, rateLimitGuard: guard });
+    expect(spawnVibe('one', validSession(), noopHandlers(), deps).ok).toBe(true);
+    expect(spawnVibe('two', validSession(), noopHandlers(), deps).ok).toBe(true);
+    expect(drainVibeProcesses()).toBe(2);
+    expect(first.isKilled()).toBe(true);
+    expect(second.isKilled()).toBe(true);
+    expect(drainVibeProcesses()).toBe(0);
+  });
+
+  it('kills an already-spawned child if the audit sink throws', () => {
+    const child = fakeProcess();
+    const { spawner } = recordingSpawner([child.proc]);
+    expect(() => spawnVibe('run safely', validSession(), noopHandlers(), baseDeps({
+      spawn: spawner,
+      rateLimitGuard: lockout(rateLimit({ limit: 10, windowMs: 60_000 }), { threshold: 10, lockoutMs: 1 }),
+      appendAudit: () => { throw new Error('audit unavailable'); },
+    }))).toThrow('audit unavailable');
+    expect(child.isKilled()).toBe(true);
+  });
+
+  it('contains an asynchronous transcript callback failure and stops the child', () => {
+    const child = fakeProcess();
+    const { spawner } = recordingSpawner([child.proc]);
+    const outcome = spawnVibe('run safely', validSession(), noopHandlers({
+      onDelta: () => { throw new Error('state sink unavailable'); },
+    }), baseDeps({
+      spawn: spawner,
+      rateLimitGuard: lockout(rateLimit({ limit: 10, windowMs: 60_000 }), { threshold: 10, lockoutMs: 1 }),
+    }));
+    expect(outcome.ok).toBe(true);
+    expect(() => child.emitStdout(`${JSON.stringify({ type: 'assistant', message: { model: 'x', content: [{ type: 'text', text: 'hello' }] } })}\n`)).not.toThrow();
+    expect(child.isKilled()).toBe(true);
+  });
+});
 
 describe('spawnVibe — preamble gate (runs first, spawns nothing on failure)', () => {
   it('refuses to spawn when STOP is present / ANTHROPIC_API_KEY set / budget exceeded — no claude child spawned', () => {

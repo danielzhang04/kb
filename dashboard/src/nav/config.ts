@@ -112,20 +112,3 @@ export const DEFAULT_DESTINATION: DestinationId = 'home';
  *  type (secondary entry points into the one flow); `task` keeps its day-one route to the governed launch
  *  surface (Home). `agent` opens the first-class declaration form. Outcome hints state what each choice
  *  does without implying that registered artifacts execute automatically. */
-export interface NewMenuEntry {
-  id: 'idea' | 'task' | 'workflow' | 'skill' | 'project' | 'agent';
-  label: string;
-  /** Whether the item is actionable (fires onCreate). Every entry is actionable now. */
-  enabled: boolean;
-  /** Optional trailing hint that names the outcome of choosing this entry. */
-  hint?: string;
-}
-
-export const NEW_MENU_ENTRIES: NewMenuEntry[] = [
-  { id: 'idea', label: 'Idea…', enabled: true, hint: 'Plan' },
-  { id: 'task', label: 'Task', enabled: true, hint: 'Quick launch' },
-  { id: 'workflow', label: 'Workflow', enabled: true, hint: 'Register' },
-  { id: 'skill', label: 'Skill', enabled: true, hint: 'Register' },
-  { id: 'project', label: 'Project', enabled: true, hint: 'Register' },
-  { id: 'agent', label: 'Agent', enabled: true, hint: 'Declare' },
-];

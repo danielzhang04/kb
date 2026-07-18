@@ -110,12 +110,22 @@ describe('spawnComposerTurn — CLI session_id capture', () => {
 
     // The `system` init record carries the CLI session id — the fold drops it from the timeline, but
     // spawnVibe still hands every parsed record to onDelta's second arg, where we scan for it.
-    fp.emitStdout(`${JSON.stringify({ type: 'system', subtype: 'init', session_id: 'sess-abc', cwd: '/repo' })}\n`);
-    expect(captured).toEqual(['sess-abc']);
+    fp.emitStdout(`${JSON.stringify({ type: 'system', subtype: 'init', session_id: ISSUED_ID, cwd: '/repo' })}\n`);
+    expect(captured).toEqual([ISSUED_ID]);
 
     // A second system record does not re-capture — the id is fixed for the life of the turn.
-    fp.emitStdout(`${JSON.stringify({ type: 'system', subtype: 'init', session_id: 'sess-xyz' })}\n`);
-    expect(captured).toEqual(['sess-abc']);
+    fp.emitStdout(`${JSON.stringify({ type: 'system', subtype: 'init', session_id: '11111111-2222-4333-8444-555555555555' })}\n`);
+    expect(captured).toEqual([ISSUED_ID]);
+  });
+
+  it('ignores a malformed provider session id instead of recording or forwarding it', () => {
+    const fp = fakeProcess();
+    const deps = baseDeps({ spawn: recordingSpawner([fp.proc]).spawner });
+    const captured: string[] = [];
+    spawnComposerTurn('x', null, validSession(), { onDelta: vi.fn(), onSessionId: (id) => captured.push(id) }, deps);
+    fp.emitStdout(`${JSON.stringify({ type: 'system', subtype: 'init', session_id: '--bad-provider-id' })}\n`);
+    expect(captured).toEqual([]);
+    expect(deps.resumeRegistry.isIssued('operator-1', '--bad-provider-id')).toBe(false);
   });
 });
 
@@ -213,8 +223,9 @@ describe('spawnComposerTurn — reuses spawnVibe`s gate chain verbatim', () => {
     expect(audit.rows.map((r) => r.event.result)).toEqual(['spawned', 'spawned']);
     // review F2 — the resume target is recorded on the row (redacted to its last 4 chars), and the
     // resume flag distinguishes a continuing turn from a first turn.
-    expect(audit.rows[0].event.detail).toMatchObject({ resume: false, resumeTarget: null });
-    expect(audit.rows[1].event.detail).toMatchObject({ resume: true, resumeTarget: ISSUED_ID.slice(-4) });
+    expect(audit.rows[0].event.detail).toMatchObject({ resume: false });
+    expect(audit.rows[1].event.detail).toMatchObject({ resume: true });
+    expect(JSON.stringify(audit.rows)).not.toContain(ISSUED_ID);
   });
 
   it('frozen_fleet_refuses_before_any_spawn: a STOP-frozen fleet refuses, spawns nothing, captures no id, audits once', () => {

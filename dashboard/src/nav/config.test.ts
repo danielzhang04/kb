@@ -8,7 +8,6 @@ import { describe, expect, it } from 'vitest';
 import {
   NAV_SECTIONS,
   DEFAULT_DESTINATION,
-  NEW_MENU_ENTRIES,
   isLive,
   type NavSection,
   type NavStatus,
@@ -124,29 +123,4 @@ describe('nav/config', () => {
     expect(status('atlas')).toBe('soon');
   });
 
-  it('the [+ New] menu is idea-first with the Composer live: idea + every entity type enabled (C7.2 un-defers agent)', () => {
-    // C5 — the freeform "Idea…" leads; the menu's shape says "bring an idea, iterate".
-    expect(NEW_MENU_ENTRIES.map((e) => e.id)).toEqual([
-      'idea',
-      'task',
-      'workflow',
-      'skill',
-      'project',
-      'agent',
-    ]);
-    const idea = NEW_MENU_ENTRIES.find((e) => e.id === 'idea');
-    expect(idea?.enabled).toBe(true);
-    // C7.2 — every creatable entity, INCLUDING agent, is actionable now.
-    for (const id of ['task', 'workflow', 'skill', 'project', 'agent'] as const) {
-      expect(NEW_MENU_ENTRIES.find((e) => e.id === id)?.enabled).toBe(true);
-    }
-    expect(Object.fromEntries(NEW_MENU_ENTRIES.map((entry) => [entry.id, entry.hint]))).toEqual({
-      idea: 'Plan',
-      task: 'Quick launch',
-      workflow: 'Register',
-      skill: 'Register',
-      project: 'Register',
-      agent: 'Declare',
-    });
-  });
 });

@@ -22,7 +22,7 @@ import { verifySession } from '../auth/session.ts';
 import type { SessionConfig } from '../auth/session.ts';
 import { defaultPyRunner } from './launch.ts';
 import type { PyRunner } from './launch.ts';
-import { routeCoordination, defaultGitRunner } from './branch.ts';
+import { prepareCoordination, defaultGitRunner } from './branch.ts';
 import type { GitRunner } from './branch.ts';
 import { loadPolicy } from '../routing/policy.ts';
 import type { PolicyDoc } from '../routing/policy.ts';
@@ -30,7 +30,7 @@ import { appendAuditRowLocal, AUDIT_REL_PATH } from '../audit/log.ts';
 import type { AuditEvent, AuditRow } from '../audit/log.ts';
 
 /** A LOCAL-only audit append (no git of its own). The row is committed atomically with the card change
- *  by {@link routeCoordination}'s single commit (MED-3). Signature matches `appendAuditRowLocal`. */
+ *  by the prepared coordination commit (MED-3). Signature matches `appendAuditRowLocal`. */
 export type LocalAuditAppend = (repoRoot: string, event: AuditEvent, now?: () => Date) => AuditRow;
 
 /** A card id must be filename-safe (no path separators / glob metacharacters) — mirrors write/routes.ts. */
@@ -54,19 +54,66 @@ export interface CardRoutingDeps {
 
 export type CardRoutingOutcome =
   | { ok: true; cardId: string; cardPath: string; runtime: string | null; model: string | null }
-  | { ok: false; status: 401 | 400 | 409 | 500; reason: string; error?: string };
+  | {
+      ok: false;
+      status: 401 | 400 | 409 | 500;
+      reason: string;
+      error?: string;
+      state?: string;
+      disposition?: 'requires-successor-attempt' | 'requires-reapproval' | 'state-not-reroutable';
+    };
 
 /**
- * The two card states that mean "a human approval is attached or pending" — read straight from
- * scripts/cards.py's STATES/STATE_DIR, where BOTH resolve to the `queue/approvals/` directory:
- *   - `approvals` — a human decision is PENDING (the card is sitting in the approvals inbox), and
- *   - `approved`  — a human approval has been GRANTED and the card is awaiting execution.
- * A per-card routing (runtime/model) change on a card in either state is refused: swapping the model
- * out from under an approval a human is reviewing / has already signed is exactly the "model swap under
- * an approved T3 card" seam. This guard closes it WITHOUT touching the frozen content-hash preimage —
- * that tamper-evidence binding is a separate, explicitly deferred decision (see the module docstring).
+ * Per-card routing is mutable only before a card can possibly have been picked up: a dependency-blocked
+ * card, or an unowned inbox card. An owned inbox card is already dispatchable and the Codex worker's
+ * transition to `working` lives on its isolated result branch, so canonical ops may still say `inbox`
+ * after execution started. Treating that state as safely mutable would make the UI promise a live model
+ * switch that cannot occur. Active/stopping, approval-bound, and historical attempts are likewise
+ * immutable; the operator must use a successor attempt (and, for an approval, collect a new approval).
  */
-const APPROVAL_PIPELINE_STATES = new Set(['approvals', 'approved']);
+interface RoutingLifecycleLock {
+  state: string;
+  reason: string;
+  disposition: 'requires-successor-attempt' | 'requires-reapproval' | 'state-not-reroutable';
+}
+
+function lifecycleLock(state: string, owner: unknown): RoutingLifecycleLock | null {
+  if (state === 'blocked') return null;
+  if (state === 'inbox' && (owner === null || owner === undefined || owner === '')) return null;
+  if (state === 'inbox') {
+    return {
+      state,
+      disposition: 'requires-successor-attempt',
+      reason: 'assigned inbox card may already have been picked up by its runner; routing is fixed for this attempt',
+    };
+  }
+  if (['working', 'stop-requested', 'halting'].includes(state)) {
+    return {
+      state,
+      disposition: 'requires-successor-attempt',
+      reason: 'active or stopping card cannot change runtime/model in place; create a successor attempt with new routing',
+    };
+  }
+  if (state === 'approvals' || state === 'approved') {
+    return {
+      state,
+      disposition: 'requires-reapproval',
+      reason: 'card is under an active approval; routing is frozen with the reviewed scope and changing it requires reapproval',
+    };
+  }
+  if (['done', 'rejected', 'halted'].includes(state)) {
+    return {
+      state,
+      disposition: 'requires-successor-attempt',
+      reason: 'historical card routing is immutable; retry as a successor attempt with new routing',
+    };
+  }
+  return {
+    state,
+    disposition: 'state-not-reroutable',
+    reason: `card state "${state}" is not safely reroutable`,
+  };
+}
 
 /**
  * The fixed Python payload. Reads one JSON op from `sys.argv[1]` (`{kind:"set"|"clear", cardId, runtime,
@@ -170,25 +217,23 @@ function symlinkGuard(repoRoot: string, cardId: string): string | null {
 }
 
 /**
- * APPROVAL-LOCK guard (security). Before any routing mutation, resolve the target card's AUTHORITATIVE
- * frontmatter `state` (not merely its directory) and, if it is in the approval pipeline
- * ({@link APPROVAL_PIPELINE_STATES}), report the offending state so the caller can refuse. Uses the same
+ * LIFECYCLE guard. Before any routing mutation, resolve the target card's authoritative frontmatter
+ * state + owner and determine whether the card is still safely mutable. Uses the same
  * `findCardFile` locator as {@link symlinkGuard} (run FIRST, so a symlinked/escaping target is already
  * refused before we read here) and the read-side `parseCardFrontmatter`. Returns null when the card is
  * absent (the py path then reports not-found itself) or its frontmatter is unparseable (let py handle it).
  */
-function approvalGuard(repoRoot: string, cardId: string): string | null {
+function routingLifecycleGuard(repoRoot: string, cardId: string): RoutingLifecycleLock | null {
   const queueRoot = join(repoRoot, 'queue');
   if (!existsSync(queueRoot)) return null;
   const found = findCardFile(queueRoot, cardId);
   if (!found) return null;
-  let state: string;
   try {
-    state = String(parseCardFrontmatter(readFileSync(found, 'utf-8')).meta.state);
+    const meta = parseCardFrontmatter(readFileSync(found, 'utf-8')).meta;
+    return lifecycleLock(String(meta.state), meta.owner);
   } catch {
     return null;
   }
-  return APPROVAL_PIPELINE_STATES.has(state) ? state : null;
 }
 
 function gate(input: CardRoutingInput): { ok: true; sub: string } | { ok: false; status: 401; reason: string } {
@@ -224,26 +269,42 @@ async function apply(
   if (!g.ok) return g;
   if (!CARD_ID_RE.test(input.cardId)) return { ok: false, status: 400, reason: 'cardId must be filename-safe' };
 
+  // Reconcile canonical ops BEFORE reading lifecycle state or mutating anything. This closes the race
+  // where an assigned/approved remote card was validated from stale local state, and avoids attempting
+  // a pull after Python has already dirtied the card and audit paths.
+  const runGit = deps.runGit ?? defaultGitRunner;
+  try {
+    prepareCoordination(input.repoRoot, runGit);
+  } catch (err) {
+    return { ok: false, status: 500, reason: err instanceof Error ? err.message : String(err) };
+  }
+
   const policy = (deps.loadPolicyFn ?? loadPolicy)(input.repoRoot);
   const reason = validate(runtime, model, policy);
   if (reason) return { ok: false, status: 400, reason };
+  const baseHead = runGit(input.repoRoot, ['rev-parse', 'HEAD']).trim();
+  if (!/^[0-9a-f]{40}$/i.test(baseHead)) {
+    return { ok: false, status: 500, reason: 'could not pin the prepared ops revision' };
+  }
 
-  // LOW-1: refuse a symlinked / repo-escaping card target BEFORE shelling py (which would follow it).
+  // Re-read guards from the reconciled tree. Refusals below perform no local mutation or commit.
   const guard = symlinkGuard(input.repoRoot, input.cardId);
   if (guard) return { ok: false, status: 400, reason: guard };
 
-  // SECURITY: refuse ANY routing mutation (set OR clear) on a card under an active approval
-  // (approvals/approved) — closing the "model swap under an approved T3 card" seam. Like every other
+  // SECURITY + execution truth: refuse ANY routing mutation unless the card is blocked or an unowned
+  // inbox item. Like every other
   // pre-py refusal above, this does NO write, NO ops commit, and NO audit append: the house convention
   // (governedSave/launch FINDING 3) is that refused writes never amplify into an ops pull-rebase-push,
-  // so there is nothing consequential to record. The frozen hash preimage is intentionally NOT touched.
-  const lockedState = approvalGuard(input.repoRoot, input.cardId);
-  if (lockedState) {
+  // so there is nothing consequential to record.
+  const lifecycle = routingLifecycleGuard(input.repoRoot, input.cardId);
+  if (lifecycle) {
     return {
       ok: false,
       status: 409,
-      error: 'approval-locked',
-      reason: 'card is under an active approval; routing is frozen until it executes or the approval is rescinded',
+      error: 'routing-state-locked',
+      reason: lifecycle.reason,
+      state: lifecycle.state,
+      disposition: lifecycle.disposition,
     };
   }
 
@@ -284,14 +345,46 @@ async function apply(
 
   // Governed coordination commit of the changed card file AND the audit row to ops in ONE commit
   // (pull-rebase-push, retry) — atomic change+audit.
+  let routingCommit = '';
   try {
-    routeCoordination(input.repoRoot, parsed.path, {
-      runGit: deps.runGit ?? defaultGitRunner,
-      message: `chore(routing): ${op} card ${input.cardId} routing`,
-      alsoStage: [AUDIT_REL_PATH],
-    });
+    const branch = runGit(input.repoRoot, ['rev-parse', '--abbrev-ref', 'HEAD']).trim();
+    if (branch !== 'ops') throw new Error(`refusing routing commit from branch ${branch || '(unknown)'}`);
+    runGit(input.repoRoot, ['add', '--', parsed.path, AUDIT_REL_PATH]);
+    runGit(input.repoRoot, ['commit', '-m', `chore(routing): ${op} card ${input.cardId} routing`]);
+    routingCommit = runGit(input.repoRoot, ['rev-parse', 'HEAD']).trim();
+    if (!/^[0-9a-f]{40}$/i.test(routingCommit)) throw new Error('could not pin the routing commit');
   } catch (err) {
+    try {
+      runGit(input.repoRoot, ['reset', '--hard', baseHead]);
+    } catch (rollbackError) {
+      return {
+        ok: false,
+        status: 500,
+        reason: `routing commit failed and rollback failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`,
+      };
+    }
     return { ok: false, status: 500, reason: err instanceof Error ? err.message : String(err) };
+  }
+
+  try {
+    runGit(input.repoRoot, ['push', 'origin', 'ops']);
+  } catch {
+    try {
+      runGit(input.repoRoot, ['fetch', 'origin', 'ops']);
+      try {
+        runGit(input.repoRoot, ['merge-base', '--is-ancestor', routingCommit, 'origin/ops']);
+        // The exact commit is reachable remotely: publication succeeded despite the transport error.
+      } catch (checkError) {
+        const status = (checkError as { status?: unknown }).status;
+        if (status !== 1) {
+          return { ok: false, status: 500, error: 'publication-unknown', reason: 'could not verify whether the routing commit reached ops' };
+        }
+        runGit(input.repoRoot, ['reset', '--hard', 'origin/ops']);
+        return { ok: false, status: 409, error: 'routing-conflict', reason: 'ops advanced during routing; retry from the refreshed card state' };
+      }
+    } catch {
+      return { ok: false, status: 500, error: 'publication-unknown', reason: 'routing publication could not be verified; inspect canonical ops before retrying' };
+    }
   }
 
   return { ok: true, cardId: parsed.id, cardPath: parsed.path, runtime, model };

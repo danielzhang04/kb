@@ -13,6 +13,7 @@ import { registerWriteSurface, makeSurfaceContext } from './http/surface.ts';
 import { registerStatic } from './static/routes.ts';
 import { registerPtyRoute, makePtyRouteContext } from './pty/route.ts';
 import { originPlugin } from './security/origin.ts';
+import { installShutdownHandlers } from './shutdown.ts';
 
 /** Loopback-only bind. Network location is never a trust boundary (ordering law 4). */
 export const HOST = '127.0.0.1';
@@ -82,7 +83,8 @@ export async function start(port: number = PORT, host: string = HOST): Promise<F
 const isMain = process.argv[1] === fileURLToPath(import.meta.url);
 if (isMain) {
   start()
-    .then(() => {
+    .then((app) => {
+      installShutdownHandlers(app);
       // eslint-disable-next-line no-console
       console.log(`kb dashboard daemon listening on http://${HOST}:${PORT}`);
     })

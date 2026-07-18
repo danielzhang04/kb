@@ -29,6 +29,7 @@ function card(over: Partial<ParsedCard['meta']> & { id: string }, body = ''): Pa
 
 const fixture: CardsByState = {
   inbox: [card({ id: 'card-100', action: 'draft-plan', 'risk-tier': 'T1', state: 'inbox' })],
+  blocked: [card({ id: 'card-150', action: 'future-stage', 'risk-tier': 'T2', owner: 'codex-worker', state: 'blocked' })],
   working: [
     card({ id: 'card-200', action: 'run-build', 'risk-tier': 'T2', owner: 'claude/m1', state: 'working' }),
   ],
@@ -109,7 +110,7 @@ describe('Tasks view', () => {
     expect(screen.getByTestId('card-card-300-routing-locked')).toBeTruthy();
   });
 
-  it('leaves the per-card routing toggle usable for a working card (not approval-locked)', () => {
+  it('locks a working card because routing is fixed for the active attempt', () => {
     const routing: RoutingSnapshot = {
       policy: {
         version: 1,
@@ -125,8 +126,48 @@ describe('Tasks view', () => {
     render(<Tasks data={fixture} routing={routing} sessionToken="tok" />);
     fireEvent.click(screen.getByTestId('task-row-card-200')); // working
     const chip = screen.getByTestId('card-card-200-routing-chip') as HTMLButtonElement;
+    expect(chip.disabled).toBe(true);
+    expect(screen.getByTestId('card-card-200-routing-locked').textContent).toMatch(/fixed for this attempt/i);
+  });
+
+  it('keeps an owned dependency-blocked stage mutable before release', () => {
+    const routing: RoutingSnapshot = {
+      policy: {
+        version: 1,
+        runtimes: { claude: { default_worker: 'worker-desktop', aliases: {}, known_models: ['claude-opus-4-8'] } },
+        matrix: {},
+        role_default: null,
+      },
+      agents: [],
+      cards: {},
+      audit: { mismatches: [], overrides: [] },
+      overrides: [],
+    };
+    render(<Tasks data={fixture} routing={routing} sessionToken="tok" />);
+    fireEvent.click(screen.getByTestId('task-row-card-150'));
+    const chip = screen.getByTestId('card-card-150-routing-chip') as HTMLButtonElement;
     expect(chip.disabled).toBe(false);
-    expect(screen.queryByTestId('card-card-200-routing-locked')).toBeNull();
+    expect(screen.queryByTestId('card-card-150-routing-locked')).toBeNull();
+  });
+
+  it('locks an assigned inbox card because canonical inbox may race runner pickup', () => {
+    const data: CardsByState = { inbox: [card({ id: 'card-owned', owner: 'codex-worker', state: 'inbox' })] };
+    const routing: RoutingSnapshot = {
+      policy: {
+        version: 1,
+        runtimes: { claude: { default_worker: 'worker-desktop', aliases: {}, known_models: ['claude-opus-4-8'] } },
+        matrix: {},
+        role_default: null,
+      },
+      agents: [],
+      cards: {},
+      audit: { mismatches: [], overrides: [] },
+      overrides: [],
+    };
+    render(<Tasks data={data} routing={routing} sessionToken="tok" />);
+    fireEvent.click(screen.getByTestId('task-row-card-owned'));
+    expect((screen.getByTestId('card-card-owned-routing-chip') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId('card-card-owned-routing-locked').textContent).toMatch(/runner may already be active/i);
   });
 
   it('renders calm empty groups when there are no cards at all', () => {

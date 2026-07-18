@@ -128,18 +128,18 @@ describe('PipelineNodeBody', () => {
     expect(onOpenCard).toHaveBeenCalledWith('card-9');
   });
 
-  it('the inline toggle POSTs to the card-routing endpoint, and freezes (disabled + reason, no retry) on 409 approval-locked', async () => {
+  it('a mutable blocked stage freezes without retry on an authoritative 409 lifecycle refusal', async () => {
     // The toggle reuses the EXISTING governed card-routing client against a mocked fetch that returns
-    // 409 `approval-locked` — asserting the node freezes rather than retrying or opening a 2nd path.
+    // A raced lifecycle refusal freezes the node rather than retrying or opening a second path.
     const fetchMock = vi.fn(async () =>
-      jsonResponse({ error: 'approval-locked', reason: 'card is under an active approval; routing is frozen' }, false, 409),
+      jsonResponse({ error: 'routing-state-locked', reason: 'assigned inbox card may already have been picked up by its runner' }, false, 409),
     );
     const onApplyRouting = (cardId: string, runtime: string, model: string): Promise<WriteResult> =>
       postCardRouting({ op: 'set', cardId, runtime, model }, 'tok', fetchMock as unknown as typeof fetch);
 
     render(
       <PipelineNodeBody
-        data={nodeData({ id: 'card-lock' })}
+        data={nodeData({ id: 'card-lock', state: 'blocked', blocked: true })}
         registry={REGISTRY}
         canAct
         onApplyRouting={onApplyRouting}
@@ -162,9 +162,34 @@ describe('PipelineNodeBody', () => {
       const chip = screen.getByTestId('pipeline-card-lock-routing-chip') as HTMLButtonElement;
       expect(chip.disabled).toBe(true);
     });
-    expect(screen.getByTestId('pipeline-card-lock-routing-locked').textContent).toMatch(/approval/i);
+    expect(screen.getByTestId('pipeline-card-lock-routing-locked').textContent).toMatch(/picked up/i);
     // No second attempt was made.
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps routing mutable after a retryable publication conflict', async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({ error: 'routing-conflict', reason: 'ops changed; retry against the latest state' }, false, 409),
+    );
+    const onApplyRouting = (cardId: string, runtime: string, model: string): Promise<WriteResult> =>
+      postCardRouting({ op: 'set', cardId, runtime, model }, 'tok', fetchMock as unknown as typeof fetch);
+
+    render(
+      <PipelineNodeBody
+        data={nodeData({ id: 'card-conflict', state: 'blocked', blocked: true })}
+        registry={REGISTRY}
+        canAct
+        onApplyRouting={onApplyRouting}
+        onClearRouting={noopWrite}
+        onOpenCard={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('pipeline-card-conflict-routing-chip'));
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect((screen.getByTestId('pipeline-card-conflict-routing-chip') as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByTestId('pipeline-card-conflict-routing-locked')).toBeNull();
   });
 
   it('freezes a card that is already under an active approval up front (no write attempted)', () => {
@@ -183,5 +208,62 @@ describe('PipelineNodeBody', () => {
     expect(chip.disabled).toBe(true);
     expect(screen.getByTestId('pipeline-card-appr-routing-locked')).toBeTruthy();
     expect(onApplyRouting).not.toHaveBeenCalled();
+  });
+
+  it('freezes assigned queued and active cards with distinct truthful reasons', () => {
+    const onApplyRouting = vi.fn(noopWrite);
+    const { rerender } = render(
+      <PipelineNodeBody
+        data={nodeData({ id: 'card-queued', state: 'inbox', owner: 'codex-worker' })}
+        registry={REGISTRY}
+        canAct
+        onApplyRouting={onApplyRouting}
+        onClearRouting={noopWrite}
+        onOpenCard={() => {}}
+      />,
+    );
+    expect((screen.getByTestId('pipeline-card-queued-routing-chip') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId('pipeline-card-queued-routing-locked').textContent).toMatch(/runner may already be active/i);
+
+    rerender(
+      <PipelineNodeBody
+        data={nodeData({ id: 'card-active', state: 'working', owner: 'codex-worker' })}
+        registry={REGISTRY}
+        canAct
+        onApplyRouting={onApplyRouting}
+        onClearRouting={noopWrite}
+        onOpenCard={() => {}}
+      />,
+    );
+    expect((screen.getByTestId('pipeline-card-active-routing-chip') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId('pipeline-card-active-routing-locked').textContent).toMatch(/fixed for this attempt/i);
+    expect(onApplyRouting).not.toHaveBeenCalled();
+  });
+
+  it('keeps a dependency-blocked card mutable and freezes historical attempts', () => {
+    const { rerender } = render(
+      <PipelineNodeBody
+        data={nodeData({ id: 'card-future', state: 'blocked', blocked: true, owner: 'codex-worker' })}
+        registry={REGISTRY}
+        canAct
+        onApplyRouting={noopWrite}
+        onClearRouting={noopWrite}
+        onOpenCard={() => {}}
+      />,
+    );
+    expect((screen.getByTestId('pipeline-card-future-routing-chip') as HTMLButtonElement).disabled).toBe(false);
+
+    rerender(
+      <PipelineNodeBody
+        data={nodeData({ id: 'card-done', state: 'done', owner: 'codex-worker' })}
+        registry={REGISTRY}
+        canAct
+        onApplyRouting={noopWrite}
+        onClearRouting={noopWrite}
+        onOpenCard={() => {}}
+      />,
+    );
+    expect((screen.getByTestId('pipeline-card-done-routing-chip') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId('pipeline-card-done-routing-locked').textContent).toMatch(/historical attempt/i);
   });
 });

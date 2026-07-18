@@ -39,6 +39,7 @@ import type {
   WorkflowStageDraft,
 } from './artifactTypes';
 import type { WorkflowRunRequest } from '../../server/write/workflowRun';
+import type { ComposerSession } from './workspaceClient';
 import '../styles/views/composer.css';
 
 /** The seedable chips: `idea` (unknown, idea-first entry) then every concrete kind with a draft form.
@@ -61,6 +62,9 @@ const BRANCH_LABEL = {
 } as const;
 
 export interface ComposerProps {
+  composerSession?: ComposerSession;
+  onComposerSessionChange?: (session: ComposerSession) => void;
+  onRunningChange?: (running: boolean) => void;
   /** WebAuthn session token — forwarded to ComposerChat, which gates every turn on it (no token, no send). */
   sessionToken?: string;
   /** Point-of-action passkey mint for signed-out Composer chat. DeployOutcome uses the same callback for
@@ -78,7 +82,7 @@ export interface ComposerProps {
   deployPending?: boolean;
   runPending?: boolean;
   /** Return to the underlying view — the Back affordance (parity with the former placeholder). */
-  onBack: () => void;
+  onBack?: () => void;
   /** Injected chat stream (DI seam, mirrors ComposerChat). Composer wraps it to compose the seed. */
   stream?: ComposerStreamFn;
   /** Optional slot rendered inside the draft panel, right after the Deploy button. C5 mounts the governed
@@ -190,6 +194,9 @@ function composeSeed(kind: SeedKind, ideaText: string, operatorText: string): st
 }
 
 export function Composer({
+  composerSession,
+  onComposerSessionChange,
+  onRunningChange,
   sessionToken,
   onRequestSession,
   initialKind = 'idea',
@@ -208,7 +215,7 @@ export function Composer({
   // Refs so the wrapped stream closure always reads the CURRENT kind and re-seed flag regardless of React
   // batching / closure staleness. The seed turn is: the first turn, and every turn right after a chip swap.
   const kindRef = useRef<SeedKind>(initialKind);
-  const reseedPendingRef = useRef(true);
+  const reseedPendingRef = useRef(composerSession ? composerSession.turns.length === 0 : true);
 
   const setField = useCallback(
     <K extends keyof FormState>(key: K, value: FormState[K]): void =>
@@ -226,15 +233,15 @@ export function Composer({
   // The stream Composer hands ComposerChat: identical signature, but on a seed turn it prepends the seed.
   // resumeId / token / onDelta / signal pass straight through so continuity + gating are ComposerChat's.
   const seedingStream: ComposerStreamFn = useCallback(
-    (operatorPrompt, resumeId, token, onDelta, signal) => {
+    (composerRef, operatorPrompt, token, onDelta, signal) => {
       let prompt = operatorPrompt;
       if (reseedPendingRef.current) {
         prompt = composeSeed(kindRef.current, ideaText, operatorPrompt);
         reseedPendingRef.current = false;
       }
-      return stream(prompt, resumeId, token, onDelta, signal);
+      return stream(composerRef, prompt, token, onDelta, signal);
     },
-    [stream, ideaText],
+    [stream, ideaText, composerSession],
   );
 
   const draft = buildDraft(kind, form);
@@ -260,17 +267,28 @@ export function Composer({
     <section className="v-composer" aria-label="Composer">
       <header className="v-composer__head">
         <div>
-          <h2 className="v-composer__title">Composer</h2>
+          <h2 className="v-composer__title">{composerSession?.title ?? 'Composer'}</h2>
           <p className="v-composer__lede">
-            Start from an idea and converge it to a typed, governed artifact.
+            Explore the idea with a read-only planning model, then open Draft &amp; run when the plan is ready.
           </p>
         </div>
-        <button type="button" className="mc-btn mc-btn--quiet" onClick={onBack}>
-          Back
-        </button>
+        {onBack ? <button type="button" className="mc-btn mc-btn--quiet" onClick={onBack}>Back</button> : null}
       </header>
 
       {/* ── Type chip row ─────────────────────────────────────────────────── */}
+      <div className="v-composer__chat">
+        <ComposerChat
+          composerSession={composerSession}
+          sessionToken={sessionToken}
+          onRequestSession={onRequestSession}
+          onSessionChange={onComposerSessionChange}
+          onRunningChange={onRunningChange}
+          stream={seedingStream}
+        />
+      </div>
+
+      <details className="v-composer__draft-run">
+        <summary>Draft &amp; run</summary>
       <div className="v-composer__chips" role="group" aria-label="Artifact type">
         {CHIP_KINDS.map((k) => (
           <button
@@ -288,11 +306,7 @@ export function Composer({
         </span>
       </div>
 
-      <div className="v-composer__panes">
         {/* ── Chat pane (C1) ─────────────────────────────────────────────── */}
-        <div className="v-composer__chat">
-          <ComposerChat sessionToken={sessionToken} onRequestSession={onRequestSession} stream={seedingStream} />
-        </div>
 
         {/* ── Draft preview panel ────────────────────────────────────────── */}
         <aside className="v-composer__draft" aria-label="Draft preview">
@@ -356,7 +370,7 @@ export function Composer({
             </>
           )}
         </aside>
-      </div>
+      </details>
     </section>
   );
 }

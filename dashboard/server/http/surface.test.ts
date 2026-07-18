@@ -106,13 +106,17 @@ describe('write surface — composition chain', () => {
       '/api/write/stop-card',
       '/api/write/pause-cadence',
       '/api/vibe',
-      '/api/composer/turn',
       '/api/approvals/verify',
     ]) {
       const res = await app.inject({ method: 'POST', url, headers: headers(false), payload: {} });
       expect(res.statusCode, `${url} should be gated, not missing`).not.toBe(404);
       expect(res.statusCode).toBe(401);
     }
+    // The capability-bearing legacy Composer route is intentionally retired, not session-gated alive.
+    const legacyComposer = await app.inject({
+      method: 'POST', url: '/api/composer/turn', headers: headers(false), payload: {},
+    });
+    expect(legacyComposer.statusCode).toBe(410);
     // The read-only list exists too (no session required).
     const list = await app.inject({ method: 'GET', url: '/api/approvals', headers: headers(false) });
     expect(list.statusCode).toBe(200);

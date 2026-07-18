@@ -18,6 +18,7 @@ import type { PyRunner } from '../write/launch.ts';
 import type { PreambleRunner } from '../write/preambleGate.ts';
 import type { VibeSpawner } from '../vibe/session.ts';
 import type { ResumeRegistry } from '../composer/resumeRegistry.ts';
+import type { ComposerWorkspaceStore } from '../composer/store.ts';
 import type { RunnerTrigger } from '../runner/trigger.ts';
 
 /** How a route records exactly one audit row. Injected as a recording fake in tests. */
@@ -60,6 +61,8 @@ export interface SurfaceContext {
    *  Created ONCE per process in `makeSurfaceContext` (so ids captured on one turn are visible to the
    *  next); tests inject a fresh instance so nothing leaks across them. */
   resumeRegistry: ResumeRegistry;
+  /** Durable, subject-bound Composer workspace catalog. Provider handles remain private to this store. */
+  composerStore: ComposerWorkspaceStore;
   /** Signals an already-provisioned background runner after a committed launch. */
   triggerRunner?: RunnerTrigger;
 }

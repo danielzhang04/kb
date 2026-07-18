@@ -22,8 +22,12 @@ import { deploy as defaultDeploy } from './deploy';
 import type { DeployRefusal, DeployResult, DeploySuccess } from './deploy';
 import type { ArtifactKind, DeployPlan, FollowUp, SeedKind } from './artifactTypes';
 import type { WorkflowRunRequest } from '../../server/write/workflowRun';
+import type { ComposerSession } from './workspaceClient';
 
 export interface DeployOutcomeProps {
+  composerSession?: ComposerSession;
+  onComposerSessionChange?: (session: ComposerSession) => void;
+  onRunningChange?: (running: boolean) => void;
   /** WebAuthn session token — forwarded to Composer/ComposerChat and to every deploy() call. */
   sessionToken?: string;
   /** Point-of-action passkey mint used by both chat and deploy. The returned token is consumed directly
@@ -34,7 +38,7 @@ export interface DeployOutcomeProps {
   /** Optional out-of-band idea text an entity picker may pre-fill (forwarded to Composer). */
   ideaText?: string;
   /** Return to the underlying view (the Composer Back affordance). */
-  onBack: () => void;
+  onBack?: () => void;
   /** Injectable deploy seam (defaults to C4's governed dispatcher) — the suite drives a fake. */
   deployImpl?: typeof defaultDeploy;
 }
@@ -55,6 +59,9 @@ function requestRefusal(error: unknown): DeployRefusal {
 }
 
 export function DeployOutcome({
+  composerSession,
+  onComposerSessionChange,
+  onRunningChange,
   sessionToken,
   onRequestSession,
   initialKind = 'idea',
@@ -176,6 +183,9 @@ export function DeployOutcome({
 
   return (
     <Composer
+      composerSession={composerSession}
+      onComposerSessionChange={onComposerSessionChange}
+      onRunningChange={onRunningChange}
       sessionToken={sessionToken}
       onRequestSession={onRequestSession}
       initialKind={initialKind}

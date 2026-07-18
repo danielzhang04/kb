@@ -35,6 +35,7 @@ import { spawnVibe, defaultVibeSpawner } from '../vibe/session.ts';
 import type { SessionInput, VibeDeps, VibeHandlers, VibeSpawner, VibeSpawnOutcome } from '../vibe/session.ts';
 import type { TranscriptRecord } from '../planeB/tailer.ts';
 import type { ResumeRegistry } from './resumeRegistry.ts';
+import { isValidResumeId } from './resumeRegistry.ts';
 
 /** Vibe handlers plus the one Composer addition: the captured CLI session id for the next turn. */
 export interface ComposerHandlers extends VibeHandlers {
@@ -54,7 +55,9 @@ const COMPOSER_PLANNING_ARGS = ['--permission-mode', 'plan', '--tools', 'Read,Gl
 function sessionIdOf(rec: TranscriptRecord): string | undefined {
   if (rec.type !== 'system') return undefined;
   const id = (rec as { session_id?: unknown }).session_id;
-  return typeof id === 'string' && id.length > 0 ? id : undefined;
+  // Provider output is untrusted process output at this boundary. Only canonical UUIDs may become
+  // capability-bearing resume handles or reach durable storage.
+  return isValidResumeId(id) ? id : undefined;
 }
 
 /**
@@ -116,7 +119,7 @@ export function spawnComposerTurn(
   // review F2 — a Composer turn audits under a DISTINCT action with the resume target recorded. The full
   // CLI session id is a capability-bearing handle (it resumes a live agent session), so we log only its
   // last 4 chars for correlation — never the reusable id — in the git-committed ledger.
-  const auditDetail = { resume: Boolean(resumeId), resumeTarget: resumeId ? resumeId.slice(-4) : null };
+  const auditDetail = { resume: Boolean(resumeId) };
 
   return spawnVibe(prompt, session, { ...handlers, onDelta }, {
     ...deps,

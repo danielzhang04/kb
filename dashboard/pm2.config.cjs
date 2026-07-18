@@ -61,6 +61,10 @@ module.exports = {
         // Durable Composer artifacts use a separate reviewed work-branch checkout. Keeping this root
         // distinct from DASHBOARD_REPO_ROOT makes it impossible for a save commit to contaminate ops.
         DASHBOARD_DURABLE_REPO_ROOT: 'C:\\Users\\danie\\kb-worktrees\\dashboard-durable',
+        // Local operational state for persistent Composer workspaces. This is deliberately outside
+        // every git worktree: workspace metadata and resumability are private daemon state, not
+        // coordination truth and never something a runner should commit or merge.
+        DASHBOARD_STATE_ROOT: 'C:\\Users\\danie\\AppData\\Local\\kb-dashboard',
         DASHBOARD_CODEX_RUNNER_TASK: 'kb-codex-runner',
         // Enrolled PUBLIC credential (NON-SECRET), mirrored from governance/webauthn-credentials.yaml.
         // The server's login path (simplewebauthn) reads the credential store from THIS env as

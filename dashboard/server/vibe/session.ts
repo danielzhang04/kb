@@ -68,6 +68,22 @@ export interface VibeProcess {
 /** Spawns `claude` with `args` under `cwd`. Injected for hermetic tests — never a real CLI. */
 export type VibeSpawner = (args: string[], cwd: string) => VibeProcess;
 
+// The dashboard daemon is single-process. Track every accepted child (including injected runtime
+// adapters) so Fastify/PM2 shutdown can terminate live work before the process exits.
+const activeVibeProcesses = new Set<VibeProcess>();
+
+function stopTrackedProcess(proc: VibeProcess): void {
+  activeVibeProcesses.delete(proc);
+  try { proc.kill(); } catch { /* best-effort drain; shutdown must continue through every child */ }
+}
+
+/** Stop all live Composer/vibe children during daemon shutdown. Returns the number signaled. */
+export function drainVibeProcesses(): number {
+  const active = [...activeVibeProcesses];
+  for (const proc of active) stopTrackedProcess(proc);
+  return active.length;
+}
+
 /**
  * Default spawner: the real `claude --print --output-format stream-json` CLI-subprocess path
  * (independent of the SDK/OAuth route — D3's Broker is a separate, gated codepath). The prompt is
@@ -251,20 +267,47 @@ export function spawnVibe(
   // 4. Spawn — the ONLY point in this function a real `claude` child process is created.
   const spawner = deps.spawn ?? defaultVibeSpawner;
   const proc = spawner(['--print', '--output-format', 'stream-json'], deps.repoRoot);
+  activeVibeProcesses.add(proc);
 
-  const buffer = createStreamJsonBuffer();
-  const allRecords: TranscriptRecord[] = [];
-  proc.onStdout((chunk) => {
-    const newRecords = buffer.push(chunk);
-    if (newRecords.length === 0) return;
-    allRecords.push(...newRecords);
-    handlers.onDelta(foldRecords(allRecords), newRecords);
-  });
-  if (handlers.onStderr) proc.onStderr(handlers.onStderr);
-  proc.onExit((code) => handlers.onExit?.(code));
+  try {
+    const buffer = createStreamJsonBuffer();
+    const allRecords: TranscriptRecord[] = [];
+    proc.onStdout((chunk) => {
+      try {
+        const newRecords = buffer.push(chunk);
+        if (newRecords.length === 0) return;
+        allRecords.push(...newRecords);
+        handlers.onDelta(foldRecords(allRecords), newRecords);
+      } catch {
+        // EventEmitter callback exceptions otherwise escape the request and can crash the daemon.
+        // The caller owns durable failure reporting; this layer's invariant is to contain and stop.
+        stopTrackedProcess(proc);
+      }
+    });
+    if (handlers.onStderr) proc.onStderr((chunk) => {
+      try {
+        handlers.onStderr?.(chunk);
+      } catch {
+        stopTrackedProcess(proc);
+      }
+    });
+    proc.onExit((code) => {
+      activeVibeProcesses.delete(proc);
+      try {
+        handlers.onExit?.(code);
+      } catch {
+        // The child is already exiting; contain observer failures rather than crashing the daemon.
+      }
+    });
 
-  proc.writeStdin(prompt);
-  proc.endStdin();
+    proc.writeStdin(prompt);
+    proc.endStdin();
 
-  return audited({ ok: true, kill: () => proc.kill() }, owner);
+    return audited({ ok: true, kill: () => stopTrackedProcess(proc) }, owner);
+  } catch (error) {
+    // Once spawned, any synchronous wiring/stdin/audit failure must terminate the child. Otherwise an
+    // audit sink exception can orphan a real Claude process before the caller receives its kill handle.
+    stopTrackedProcess(proc);
+    throw error;
+  }
 }

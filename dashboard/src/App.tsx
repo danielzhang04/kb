@@ -23,7 +23,6 @@ import {
   isLive,
   type DestinationId,
   type NavDestination,
-  type NewMenuEntry,
 } from './nav/config';
 import { NewMenu } from './nav/NewMenu';
 import { CommandPalette } from './palette/CommandPalette';
@@ -49,7 +48,15 @@ import { FlightRecorder } from './views/panels/FlightRecorder';
 import { Atlas } from './views/panels/Atlas';
 import { Terminal } from './views/Terminal';
 import { DeployOutcome } from './composer/DeployOutcome';
-import type { SeedKind } from './composer/artifactTypes';
+import { WorkspaceTabs } from './composer/WorkspaceTabs';
+import {
+  archiveComposerSession,
+  createComposerSession,
+  forkComposerSession,
+  listComposerSessions,
+  restoreComposerSession,
+  type ComposerSession,
+} from './composer/workspaceClient';
 import { fetchHumanInbox } from './lib/approvalsClient';
 import { useSse } from './lib/sseClient';
 import {
@@ -230,10 +237,11 @@ function Sidebar({
   onRequestSession,
   unlockError,
   unlocking,
+  creatingWorkspace,
 }: {
   active: DestinationId;
   onSelect: (id: DestinationId) => void;
-  onCreate: (id: NewMenuEntry['id']) => void;
+  onCreate: () => void;
   rail: boolean;
   onToggleRail: () => void;
   approvalsCount: number;
@@ -241,6 +249,7 @@ function Sidebar({
   onRequestSession: () => Promise<Session | null>;
   unlockError: string | null;
   unlocking: boolean;
+  creatingWorkspace: boolean;
 }): React.JSX.Element {
   // One shared snapshot feeds every flyout (module-cached + SSE-refreshed) — no per-hover fetch.
   const { index, registry } = useFleetData();
@@ -268,7 +277,7 @@ function Sidebar({
           {rail ? '»' : '«'}
         </button>
       </div>
-      <NewMenu onCreate={onCreate} />
+      <NewMenu onCreate={onCreate} disabled={creatingWorkspace} />
       <div className="mc-nav">
         {/* Unlabelled groups: a hairline divider before each section, NO group header (Linear pattern).
          *  The divider above the first section also separates it from the [+ New] menu. */}
@@ -331,22 +340,25 @@ function ComingSoon({ id }: { id: DestinationId }): React.JSX.Element {
  *  `initialKind` pre-seeds the type chip: `idea` for the idea-first entry, a concrete kind for the
  *  workflow/skill/project entity pickers. */
 function ComposerView({
-  onClose,
+  composerSession,
+  onComposerSessionChange,
   sessionToken,
   onRequestSession,
-  initialKind,
+  onRunningChange,
 }: {
-  onClose: () => void;
+  composerSession: ComposerSession;
+  onComposerSessionChange: (session: ComposerSession) => void;
   sessionToken?: string;
   onRequestSession: () => Promise<Session | null>;
-  initialKind: SeedKind;
+  onRunningChange: (running: boolean) => void;
 }): React.JSX.Element {
   return (
     <DeployOutcome
+      composerSession={composerSession}
+      onComposerSessionChange={onComposerSessionChange}
       sessionToken={sessionToken}
       onRequestSession={onRequestSession}
-      initialKind={initialKind}
-      onBack={onClose}
+      onRunningChange={onRunningChange}
     />
   );
 }
@@ -464,6 +476,25 @@ function ViewBody({
   }
 }
 
+const OPEN_COMPOSER_REFS_KEY = 'kb-composer-open-refs-v1';
+
+function readOpenComposerRefs(): string[] {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(OPEN_COMPOSER_REFS_KEY) ?? '[]') as unknown;
+    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistOpenComposerRefs(refs: string[]): void {
+  try {
+    window.localStorage.setItem(OPEN_COMPOSER_REFS_KEY, JSON.stringify(refs));
+  } catch {
+    // Browser storage is a convenience for tab restoration; server sessions remain authoritative.
+  }
+}
+
 export function App(): React.JSX.Element {
   const [view, setView] = useState<DestinationId>(DEFAULT_DESTINATION);
   const [rail, setRail] = useState(false);
@@ -474,15 +505,19 @@ export function App(): React.JSX.Element {
   const [paletteOpen, setPaletteOpen] = useState(false);
   // The [+ New ▾] menu opens the Composer surface over the current view; `composerKind` pre-seeds its
   // type chip (`idea` for the idea-first entry, a concrete kind for the entity pickers).
-  const [composerOpen, setComposerOpen] = useState(false);
-  const [composerKind, setComposerKind] = useState<SeedKind>('idea');
+  const [composerSessions, setComposerSessions] = useState<Record<string, ComposerSession>>({});
+  const [openComposerRefs, setOpenComposerRefs] = useState<string[]>(readOpenComposerRefs);
+  const [activeComposerRef, setActiveComposerRef] = useState<string | null>(null);
+  const [workspaceBusy, setWorkspaceBusy] = useState(false);
+  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+  const [runningComposerRefs, setRunningComposerRefs] = useState<Set<string>>(() => new Set());
   const [theme, setTheme] = useState<ThemeChoice>(() => readThemeChoice());
   // Card id a Pipeline node click-through wants opened in the Tasks detail pane.
   const [openCardId, setOpenCardId] = useState<string | undefined>(undefined);
   const approvalsCount = useApprovalsCount();
   // Unlike ordinary destination bodies, Terminal is a long-lived workspace: navigating away hides it but
   // must not unmount its xterm instances or close their WebSockets. Composer behaves like another overlay.
-  const terminalVisible = view === 'terminal' && !composerOpen;
+  const terminalVisible = view === 'terminal' && activeComposerRef === null;
 
   // Refreshes reuse a still-valid tab session. At the exact expiry boundary, clear both copies so no
   // governed surface can continue sending a stale bearer.
@@ -500,6 +535,23 @@ export function App(): React.JSX.Element {
     }, Math.min(remaining, 2_147_483_647));
     return () => window.clearTimeout(timer);
   }, [session]);
+
+  useEffect(() => persistOpenComposerRefs(openComposerRefs), [openComposerRefs]);
+
+  useEffect(() => {
+    if (!session?.token) return;
+    let alive = true;
+    listComposerSessions(session.token)
+      .then((sessions) => {
+        if (!alive) return;
+        setComposerSessions(Object.fromEntries(sessions.map((item) => [item.composerRef, item])));
+        setOpenComposerRefs((current) => current.filter((ref) => sessions.some((item) => item.composerRef === ref && item.state === 'open')));
+      })
+      .catch((error: unknown) => {
+        if (alive) setWorkspaceError(error instanceof Error ? error.message : 'Could not load Composer workspaces.');
+      });
+    return () => { alive = false; };
+  }, [session?.token]);
 
   // Ctrl/Cmd+K toggles the command palette anywhere in the shell.
   useEffect(() => {
@@ -524,7 +576,7 @@ export function App(): React.JSX.Element {
 
   // Navigate to a destination, closing the transient Composer placeholder if it was open.
   const goTo = (id: DestinationId): void => {
-    setComposerOpen(false);
+    setActiveComposerRef(null);
     setView(id);
   };
 
@@ -578,21 +630,89 @@ export function App(): React.JSX.Element {
   // [+ New ▾] routing (C5): "Idea…" opens the Composer surface in idea mode; the "Workflow"/"Skill"/
   // "Project"/"Agent" entity pickers open the SAME surface pre-seeded to that type; "Task" keeps its
   // quick-launch route to the governed launch surface (Home). "Agent" opens Composer's declaration form.
-  const handleCreate = (id: NewMenuEntry['id']): void => {
-    if (id === 'task') {
-      setComposerOpen(false);
-      setView('home');
-    } else if (
-      id === 'idea' ||
-      id === 'workflow' ||
-      id === 'skill' ||
-      id === 'project' ||
-      id === 'agent'
-    ) {
-      setComposerKind(id);
-      setComposerOpen(true);
+  const upsertComposerSession = (next: ComposerSession): void => {
+    setComposerSessions((current) => ({ ...current, [next.composerRef]: next }));
+  };
+
+  const withWorkspaceToken = async (action: (token: string) => Promise<void>): Promise<void> => {
+    if (workspaceBusy) return;
+    setWorkspaceBusy(true);
+    setWorkspaceError(null);
+    try {
+      const unlocked = await requestSession();
+      if (!unlocked) throw new Error('Unlock dashboard to use Composer.');
+      await action(unlocked.token);
+    } catch (error) {
+      setWorkspaceError(error instanceof Error ? error.message : 'Composer request failed.');
+    } finally {
+      setWorkspaceBusy(false);
     }
   };
+
+  const handleCreate = (): void => {
+    void withWorkspaceToken(async (token) => {
+      const created = await createComposerSession(token);
+      upsertComposerSession(created);
+      setOpenComposerRefs((current) => [...current.filter((ref) => ref !== created.composerRef), created.composerRef]);
+      setActiveComposerRef(created.composerRef);
+    });
+  };
+
+  const closeComposerTab = (composerRef: string): void => {
+    if (runningComposerRefs.has(composerRef)) return;
+    setOpenComposerRefs((current) => {
+      const next = current.filter((ref) => ref !== composerRef);
+      setActiveComposerRef((active) => active === composerRef ? next.at(-1) ?? null : active);
+      return next;
+    });
+  };
+
+  const setComposerRunning = (composerRef: string, running: boolean): void => {
+    setRunningComposerRefs((current) => {
+      const next = new Set(current);
+      if (running) next.add(composerRef);
+      else next.delete(composerRef);
+      return next;
+    });
+  };
+
+  const archiveComposer = (composerRef: string): void => {
+    void withWorkspaceToken(async (token) => {
+      upsertComposerSession(await archiveComposerSession(composerRef, token));
+      closeComposerTab(composerRef);
+    });
+  };
+
+  const forkComposer = (composerRef: string): void => {
+    void withWorkspaceToken(async (token) => {
+      const forked = await forkComposerSession(composerRef, token);
+      upsertComposerSession(forked);
+      setOpenComposerRefs((current) => [...current.filter((ref) => ref !== forked.composerRef), forked.composerRef]);
+      setActiveComposerRef(forked.composerRef);
+    });
+  };
+
+  const restoreComposer = (composerRef: string): void => {
+    void withWorkspaceToken(async (token) => {
+      const restored = await restoreComposerSession(composerRef, token);
+      upsertComposerSession(restored);
+      setOpenComposerRefs((current) => [...current.filter((ref) => ref !== composerRef), composerRef]);
+      setActiveComposerRef(composerRef);
+    });
+  };
+
+  const reopenComposer = (composerRef: string): void => {
+    setOpenComposerRefs((current) => [...current.filter((ref) => ref !== composerRef), composerRef]);
+    setActiveComposerRef(composerRef);
+  };
+
+  const openWorkspaces = openComposerRefs
+    .map((ref) => composerSessions[ref])
+    .filter((item): item is ComposerSession => Boolean(item && item.state === 'open'));
+  const archivedWorkspaces = Object.values(composerSessions).filter((item) => item.state === 'archived');
+  const recentWorkspaces = Object.values(composerSessions).filter(
+    (item) => item.state === 'open' && !openComposerRefs.includes(item.composerRef),
+  );
 
   return (
     <div className={`app-shell${rail ? ' app-shell--rail' : ''}`}>
@@ -607,6 +727,7 @@ export function App(): React.JSX.Element {
         onRequestSession={requestSession}
         unlockError={unlockError}
         unlocking={unlocking}
+        creatingWorkspace={workspaceBusy}
       />
       <header className="mc-topbar">
         <h1 className="mc-topbar__title">kb mission control</h1>
@@ -625,6 +746,22 @@ export function App(): React.JSX.Element {
         </button>
       </header>
       <main className="mc-main">
+        <WorkspaceTabs
+          open={openWorkspaces}
+          recent={recentWorkspaces}
+          archived={archivedWorkspaces}
+          activeRef={activeComposerRef}
+          runningRefs={runningComposerRefs}
+          busy={workspaceBusy}
+          onNew={handleCreate}
+          onSelect={setActiveComposerRef}
+          onClose={closeComposerTab}
+          onReopen={reopenComposer}
+          onArchive={archiveComposer}
+          onFork={forkComposer}
+          onRestore={restoreComposer}
+        />
+        {workspaceError ? <p className="composer-workspace-error" role="alert">{workspaceError}</p> : null}
         <div
           hidden={!terminalVisible}
           aria-hidden={!terminalVisible}
@@ -636,14 +773,23 @@ export function App(): React.JSX.Element {
             onRequestSession={requestSession}
           />
         </div>
-        {composerOpen ? (
-          <ComposerView
-            onClose={() => setComposerOpen(false)}
-            sessionToken={session?.token}
-            onRequestSession={requestSession}
-            initialKind={composerKind}
-          />
-        ) : view !== 'terminal' ? (
+        {openWorkspaces.map((workspace) => (
+          <div
+            key={workspace.composerRef}
+            hidden={activeComposerRef !== workspace.composerRef}
+            aria-hidden={activeComposerRef !== workspace.composerRef}
+            data-testid={`composer-workspace-${workspace.composerRef}`}
+          >
+            <ComposerView
+              composerSession={workspace}
+              onComposerSessionChange={upsertComposerSession}
+              sessionToken={session?.token}
+              onRequestSession={requestSession}
+              onRunningChange={(running) => setComposerRunning(workspace.composerRef, running)}
+            />
+          </div>
+        ))}
+        {activeComposerRef === null && view !== 'terminal' ? (
           <ViewBody
             view={view}
             sessionToken={session?.token}
