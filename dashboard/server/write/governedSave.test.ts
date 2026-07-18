@@ -5,8 +5,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { mintSession } from '../auth/session.ts';
 import type { SessionConfig } from '../auth/session.ts';
-import { save } from './governedSave.ts';
+import { save as governedSave } from './governedSave.ts';
+import type { SaveInput } from './governedSave.ts';
 import type { GitRunner, PrOpener } from './branch.ts';
+import type { PreambleRunner } from './preambleGate.ts';
 
 const SECRET = Buffer.from('unit-test-secret-do-not-reuse');
 const CONFIG: SessionConfig = { secret: SECRET, now: () => 1_700_000_000_000 };
@@ -19,12 +21,18 @@ function recorder(): { runner: GitRunner; calls: string[][] } {
   const calls: string[][] = [];
   const runner: GitRunner = (_repoRoot, args) => {
     calls.push(args);
+    if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
     return '';
   };
   return { runner, calls };
 }
 
 const noopPrOpener: PrOpener = () => {};
+const okPreamble: PreambleRunner = () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' });
+
+function save(input: Omit<SaveInput, 'runPreamble'>): ReturnType<typeof governedSave> {
+  return governedSave({ ...input, runPreamble: okPreamble });
+}
 
 const tmpDirs: string[] = [];
 async function scratch(): Promise<string> {
@@ -37,6 +45,38 @@ afterEach(async () => {
     const dir = tmpDirs.pop()!;
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+describe('save - preamble gate is first', () => {
+  it('refuses a frozen fleet before session, write, or git', async () => {
+    const repo = await scratch();
+    const { runner, calls } = recorder();
+    const order: string[] = [];
+    const frozen: PreambleRunner = () => {
+      order.push('preamble');
+      return { exitCode: 2, stdout: 'PREAMBLE FAIL: STOP file present - fleet frozen', stderr: '' };
+    };
+
+    const result = await governedSave({
+      repoRoot: repo,
+      relpath: 'docs/notes.md',
+      content: 'must-not-land',
+      sessionToken: undefined,
+      sessionConfig: CONFIG,
+      runPreamble: frozen,
+      runGit: runner,
+      openPr: noopPrOpener,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      status: 503,
+      reason: 'fleet-frozen: STOP file present - fleet frozen',
+    });
+    expect(order).toEqual(['preamble']);
+    expect(calls).toHaveLength(0);
+    expect(existsSync(join(repo, 'docs', 'notes.md'))).toBe(false);
+  });
 });
 
 describe('save — session gate', () => {

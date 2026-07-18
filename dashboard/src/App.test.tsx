@@ -2,7 +2,7 @@
 /**
  * U2.5 — App shell: desktop-first left-sidebar navigation driven by the entity-first IA in
  * `src/nav/config.ts`. The groups are UNLABELLED (hairline dividers only — no uppercase group headers,
- * no per-section collapse); a [+ New ▾] menu sits above the first divider (only Task enabled). Clicking
+ * no per-section collapse); a [+ New ▾] menu sits above the first divider with truthful outcome hints.
  * a live item swaps the main content; greyed ("soon") items never become active; a sidebar-wide toggle
  * collapses to an icon rail; the Session/Stop floor is present regardless of the active view.
  */
@@ -40,7 +40,7 @@ describe('App shell — entity-first sidebar navigation', () => {
       'Atlas',
       'Terminal',
       'Workflows',
-      'Pipeline',
+      'Runs',
       'Agents',
       'Tasks',
       'Projects',
@@ -55,7 +55,8 @@ describe('App shell — entity-first sidebar navigation', () => {
 
   it('does not render any dropped verb-IA destination', () => {
     render(<App />);
-    // D3.4 makes `Pipeline` and D3.5 makes `Sentinel` real destinations again, so neither is in the
+    // D3.4 makes `Runs` (stable route id: `pipeline`) and D3.5 makes `Sentinel` real destinations again,
+    // so neither is in the
     // dropped set any more.
     for (const dropped of ['Board', 'Editor', 'Vibe', 'Registry']) {
       expect(screen.queryByRole('button', { name: new RegExp(`^${dropped}$`) })).toBeNull();
@@ -193,6 +194,35 @@ describe('App shell — entity-first sidebar navigation', () => {
     expect(view.textContent ?? '').toMatch(/passkey/i);
   });
 
+  it('keeps the Terminal workspace mounted across navigation and Composer overlays', () => {
+    render(<App />);
+    const terminalButton = screen.getByRole('button', { name: /^Terminal/ });
+    fireEvent.click(terminalButton);
+
+    const surface = screen.getByTestId('persistent-terminal-surface') as HTMLDivElement;
+    const terminal = screen.getByLabelText('Terminal view');
+    expect(surface.hidden).toBe(false);
+
+    // Destination navigation hides the same mounted node; returning reveals it rather than remounting it.
+    fireEvent.click(screen.getByRole('button', { name: 'Runs' }));
+    expect(surface.hidden).toBe(true);
+    expect(screen.getByLabelText('Terminal view')).toBe(terminal);
+    fireEvent.click(terminalButton);
+    expect(surface.hidden).toBe(false);
+    expect(screen.getByLabelText('Terminal view')).toBe(terminal);
+
+    // Composer is also an overlay over the persistent terminal workspace.
+    fireEvent.click(screen.getByRole('button', { name: 'New' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Idea/ }));
+    expect(screen.getByLabelText('Composer')).toBeTruthy();
+    expect(surface.hidden).toBe(true);
+    expect(screen.getByLabelText('Terminal view')).toBe(terminal);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(surface.hidden).toBe(false);
+    expect(screen.getByLabelText('Terminal view')).toBe(terminal);
+  });
+
   it('the sidebar-wide collapse toggle switches the shell into rail mode and back', () => {
     render(<App />);
 
@@ -225,6 +255,10 @@ describe('App shell — [+ New ▾] menu', () => {
     for (const label of [/Idea/, /^Task/, /Workflow/, /Skill/, /Project/, /Agent/]) {
       expect((within(menu).getByRole('menuitem', { name: label }) as HTMLButtonElement).disabled).toBe(false);
     }
+    expect(within(menu).getByRole('menuitem', { name: /Idea/ }).textContent).toMatch(/Plan/);
+    expect(within(menu).getByRole('menuitem', { name: /^Task/ }).textContent).toMatch(/Quick launch/);
+    expect(within(menu).getByRole('menuitem', { name: /Workflow/ }).textContent).toMatch(/Register/);
+    expect(within(menu).getByRole('menuitem', { name: /Agent/ }).textContent).toMatch(/Declare/);
   });
 
   it('idea_opens_composer_in_idea_mode over the current view; Back returns', () => {
@@ -267,7 +301,7 @@ describe('App shell — [+ New ▾] menu', () => {
     const agent = screen.getByRole('menuitem', { name: /Agent/ }) as HTMLButtonElement;
     expect(agent.disabled).toBe(false);
     fireEvent.click(agent);
-    // C7.2 — Agent opens the Composer surface pre-seeded to `agent` (its dedicated draft form lands later).
+    // Agent opens the Composer surface pre-seeded to its declaration form.
     expect(screen.getByLabelText('Composer')).toBeTruthy();
     expect(screen.getByTestId('composer-type').textContent).toMatch(/agent/);
     expect(screen.queryByLabelText('Home view')).toBeNull();

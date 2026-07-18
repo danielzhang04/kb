@@ -2,16 +2,17 @@
  * D2.5 — governed save: edit KB/skill markdown and persist it through the governed branch path.
  *
  * Never a raw `fs.write` into `queue/`/`ledgers/`/`governance/` — every save goes through, in order:
- *   1. **Session gate.** A valid, unexpired WebAuthn-minted session token (`auth/session.ts`) is
+ *   1. **Preamble gate.** STOP/API-key/budget checks run before session verification or any mutation.
+ *   2. **Session gate.** A valid, unexpired WebAuthn-minted session token (`auth/session.ts`) is
  *      required; anything else (missing, malformed, expired, bad signature) is rejected with 401
  *      before any filesystem or git activity.
- *   2. **Path confinement.** `relpath` is resolved and confined to `repoRoot` (traversal/absolute-path
+ *   3. **Path confinement.** `relpath` is resolved and confined to `repoRoot` (traversal/absolute-path
  *      guard from `kb/browser.ts#resolveWithin`, the same primitive the read-only browser uses) before
  *      any write.
- *   3. **Governance carve-out.** `governance/**` and the root constitution files (`CLAUDE.md`,
+ *   4. **Governance carve-out.** `governance/**` and the root constitution files (`CLAUDE.md`,
  *      `AGENTS.md`, `GEMINI.md`) are human-edited only per CLAUDE.md — refused with 403, unconditionally.
- *   4. **Local write.** The content lands on disk at the confined path.
- *   5. **Branch routing.** `branch.ts#routeWrite` classifies the target and routes it: durable content
+ *   5. **Local write.** The content lands on disk at the confined path.
+ *   6. **Branch routing.** `branch.ts#routeWrite` classifies the target and routes it: durable content
  *      to a work branch -> PR to `main`; coordination artifacts to `ops` via pull-rebase-push. A
  *      routing failure (including a blocked `sync_skills` pre-commit hook on drift) fails the save —
  *      it is never caught and silently retried with `--no-verify`.
@@ -27,10 +28,12 @@ import type { GitRunner, PrOpener, RouteOptions, Target } from './branch.ts';
 import { parseYaml } from '../routing/yaml.ts';
 import { loadPolicy } from '../routing/policy.ts';
 import { parseCardFrontmatter } from '../planeA/cards.ts';
+import { assertFleetRunnable, defaultPreambleRunner } from './preambleGate.ts';
+import type { PreambleRunner } from './preambleGate.ts';
 
 export type SaveOutcome =
   | { ok: true; target: Target }
-  | { ok: false; status: 401 | 400 | 403 | 500; reason: string };
+  | { ok: false; status: 401 | 400 | 403 | 500 | 503; reason: string };
 
 /** Path prefixes/files that are human-edited only, never writable through the dashboard. Compared
  *  case-INSENSITIVELY (the deploy FS is case-insensitive NTFS: `claude.md` and `Governance/` alias the
@@ -243,6 +246,7 @@ export interface SaveInput {
   openPr?: PrOpener;
   workBranch?: string;
   message?: string;
+  runPreamble?: PreambleRunner;
 }
 
 /**
@@ -250,6 +254,13 @@ export interface SaveInput {
  * confinement, governance carve-out, local write, then target-classified branch routing.
  */
 export async function save(input: SaveInput): Promise<SaveOutcome> {
+  // The fleet gate is first: STOP/API-key/budget failures refuse before session verification, any local
+  // filesystem mutation, or git activity. This matches launch/vibe's ordering and keeps one authority.
+  const preamble = assertFleetRunnable(input.repoRoot, input.runPreamble ?? defaultPreambleRunner);
+  if (!preamble.ok) {
+    return { ok: false, status: 503, reason: `fleet-frozen: ${preamble.problems.join('; ')}` };
+  }
+
   if (!input.sessionToken) {
     return { ok: false, status: 401, reason: 'missing session token' };
   }

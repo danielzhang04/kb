@@ -161,7 +161,11 @@ describe('composer route — resumeId validation + issued-id binding (review F1)
       body: JSON.stringify({ prompt: 'again', resumeId: ISSUED_ID }),
     });
     await res.text();
-    expect(calls[0]).toEqual(['--print', '--output-format', 'stream-json', `--resume=${ISSUED_ID}`]);
+    expect(calls[0]).toEqual([
+      '--print', '--output-format', 'stream-json',
+      '--permission-mode', 'plan', '--tools', 'Read,Glob,Grep',
+      `--resume=${ISSUED_ID}`,
+    ]);
     expect(calls[0]).not.toContain('--resume');
   });
 });

@@ -1,5 +1,5 @@
 /**
- * D3.4 — the pipeline canvas. A React Flow projection of the queue's `depends-on` DAG: every card is a
+ * D3.4 — the Runs graph (stable route id: `pipeline`). A React Flow projection of the queue's `depends-on` DAG: every card is a
  * node, every `depends-on` relation an edge, `variant-group` siblings clustered together. The graph
  * itself is a PURE server projection (`GET /api/dag` → server/dag/graph.ts#buildDag); this view only
  * lays it out and renders each card.
@@ -13,9 +13,10 @@
  * and NO retry. Routing shown for display comes only from the effective-routing projection
  * (`GET /api/routing`).
  *
- * Read-only otherwise: the canvas self-fetches `/api/dag` + `/api/routing` once on mount and degrades to
- * a calm empty state on failure. The node BODY ({@link PipelineNodeBody}) is factored out of the React
- * Flow node so it is unit-testable without React Flow's DOM measurement.
+ * Graph topology is read-only: the canvas self-fetches `/api/dag` + `/api/routing` once on mount and
+ * degrades to a calm empty state on failure. Inline routing controls only update a card's governed
+ * routing; this view never creates cards or dependency links. The node BODY ({@link PipelineNodeBody})
+ * is factored out of the React Flow node so it is unit-testable without React Flow's DOM measurement.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -227,7 +228,7 @@ function layout(dag: Dag): Map<string, { x: number; y: number }> {
 }
 
 /**
- * Pipeline view. Accepts a DAG + routing directly (tests) or self-fetches `/api/dag` and `/api/routing`.
+ * Runs view. Accepts a DAG + routing directly (tests) or self-fetches `/api/dag` and `/api/routing`.
  * The inline node toggle writes card frontmatter through the governed, audited card-routing endpoint —
  * the SAME path the Tasks view uses.
  */
@@ -339,9 +340,22 @@ export function Pipeline({
   );
 
   return (
-    <section className="v-pipeline" aria-label="Pipeline view">
+    <section className="v-pipeline" aria-label="Runs view">
+      <header className="v-pipeline__head">
+        <h2 className="v-pipeline__title">Runs</h2>
+        <p className="v-pipeline__lede">
+          A read-only dependency graph of launched queue cards and their <code className="mc-mono">depends-on</code>{' '}
+          links. This is not a workflow editor; graph topology is created outside this view.
+        </p>
+      </header>
       {graph.nodes.length === 0 ? (
-        <p className="v-pipeline__empty">No cards in the queue to graph yet.</p>
+        <div className="v-pipeline__empty" data-testid="runs-empty">
+          <h3 className="v-pipeline__empty-title">No launched queue cards to graph yet</h3>
+          <p className="v-pipeline__empty-body">
+            Runs appears when queue cards are launched. Their <code className="mc-mono">depends-on</code> links form
+            the graph; cards and links are created outside this read-only view.
+          </p>
+        </div>
       ) : (
         <ReactFlowProvider>
           <ReactFlow

@@ -10,7 +10,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent, within, waitFor } from '@testing-library/react';
 import { DeployOutcome } from './DeployOutcome';
-import { toDeploy } from './artifactTypes';
 import type { DeployResult } from './deploy';
 import type { DeployPlan } from './artifactTypes';
 
@@ -48,6 +47,80 @@ describe('DeployOutcome — governed deploy + results strip', () => {
     // The dispatcher was handed the validated task plan through the launch endpoint.
     expect(deployImpl).toHaveBeenCalledTimes(1);
     expect(deployImpl.mock.calls[0][0]).toMatchObject({ kind: 'task', endpoint: 'launch' });
+  });
+
+  it('disables the primary deploy while pending and prevents a double submit', async () => {
+    let resolveDeploy: ((result: DeployResult) => void) | undefined;
+    const deployImpl = vi.fn<DeployFn>(
+      () =>
+        new Promise<DeployResult>((resolve) => {
+          resolveDeploy = resolve;
+        }),
+    );
+    render(<DeployOutcome sessionToken="tok" initialKind="task" onBack={() => {}} deployImpl={deployImpl} />);
+    fillTask();
+
+    const deploy = screen.getByRole('button', { name: 'Deploy' }) as HTMLButtonElement;
+    fireEvent.click(deploy);
+    fireEvent.click(deploy);
+
+    await waitFor(() => expect(deployImpl).toHaveBeenCalledTimes(1));
+    expect(deploy.disabled).toBe(true);
+    expect(deploy.textContent).toMatch(/Deploying/);
+
+    resolveDeploy?.({ ok: true, kind: 'task', cardId: 'ONE', cardPath: 'queue/ONE.md' });
+    await screen.findByText(/ONE/);
+    expect((screen.getByRole('button', { name: 'Deploy' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('surfaces a rejected primary request as a refusal and re-enables Deploy', async () => {
+    const deployImpl = vi.fn<DeployFn>(async () => {
+      throw new Error('network vanished');
+    });
+    render(<DeployOutcome sessionToken="tok" initialKind="task" onBack={() => {}} deployImpl={deployImpl} />);
+    fillTask();
+    fireEvent.click(screen.getByRole('button', { name: 'Deploy' }));
+
+    expect((await screen.findByTestId('composer-refusal')).textContent).toMatch(/network vanished/i);
+    expect((screen.getByRole('button', { name: 'Deploy' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('resolves a passkey session at deploy time and uses the returned token', async () => {
+    const onRequestSession = vi.fn(async () => ({ token: 'fresh-token', expiresAt: Date.now() + 60_000 }));
+    const deployImpl = vi.fn<DeployFn>(
+      async () => ({ ok: true, kind: 'task', cardId: 'AUTH-CARD', cardPath: 'queue/AUTH-CARD.md' }),
+    );
+    render(
+      <DeployOutcome
+        initialKind="task"
+        onBack={() => {}}
+        onRequestSession={onRequestSession}
+        deployImpl={deployImpl}
+      />,
+    );
+
+    fillTask();
+    fireEvent.click(screen.getByRole('button', { name: 'Deploy' }));
+    await screen.findByText(/AUTH-CARD/);
+    expect(onRequestSession).toHaveBeenCalledTimes(1);
+    expect(deployImpl).toHaveBeenCalledWith(expect.objectContaining({ kind: 'task' }), 'fresh-token');
+  });
+
+  it('surfaces a passkey refusal and makes no deploy request', async () => {
+    const deployImpl = vi.fn<DeployFn>();
+    render(
+      <DeployOutcome
+        initialKind="task"
+        onBack={() => {}}
+        onRequestSession={async () => null}
+        deployImpl={deployImpl}
+      />,
+    );
+
+    fillTask();
+    fireEvent.click(screen.getByRole('button', { name: 'Deploy' }));
+    expect((await screen.findByTestId('composer-refusal')).textContent).toMatch(/sign-in failed/i);
+    expect(deployImpl).not.toHaveBeenCalled();
   });
 
   it('deploy_success_save_shows_target', async () => {
@@ -125,50 +198,77 @@ describe('DeployOutcome — governed deploy + results strip', () => {
     expect(await screen.findByTestId('followup-done:orgs/demo/STATE.md')).toBeTruthy();
   });
 
-  it('agent_deploy_surfaces_durable_pr_target_and_agent_save', async () => {
-    // C7.5 — Composer's agent DRAFT FORM is a later chunk (agent is intentionally not a chip yet, per
-    // Composer.test), so we exercise DeployOutcome's governed deploy machinery over a REAL agent DeployPlan
-    // via the follow-up save path: the primary returns an agent outcome whose follow-up IS the
-    // agents/<slug>.md file, and clicking Save fires that agent plan through the same deploy() the save
-    // path uses. This confirms an agent plan flows the durable /api/write/save route and the strip reports
-    // the PR target — while deploy.test.ts pins the exact endpoint/body/no-workBranch wiring.
-    const agentPlan = toDeploy('agent', {
-      id: 'research-worker',
-      role: 'work',
-      runtime: 'claude',
-      description: 'Volume worker.',
-      body: '# Agent: research-worker\n',
-    });
+  it('surfaces a rejected follow-up request instead of leaving the save pending', async () => {
     const deployImpl = vi
       .fn<DeployFn>()
       .mockResolvedValueOnce({
         ok: true,
-        kind: 'agent',
-        target: 'claude/agent-research-worker → PR to main',
-        followUps: [{ relpath: agentPlan.relpath, content: agentPlan.content }],
+        kind: 'project',
+        target: 'claude/project-demo',
+        followUps: [{ relpath: 'orgs/demo/STATE.md', content: '# STATE' }],
       })
-      .mockResolvedValue({ ok: true, kind: 'agent', target: 'claude/agent-research-worker → PR #9' });
-
-    // A concrete draft form is needed to press Deploy; project is used purely as the scaffolding trigger.
+      .mockRejectedValueOnce(new Error('follow-up transport failed'));
     render(<DeployOutcome sessionToken="tok" initialKind="project" onBack={() => {}} deployImpl={deployImpl} />);
+
     fireEvent.change(screen.getByLabelText('Project name'), { target: { value: 'demo' } });
     fireEvent.click(screen.getByRole('button', { name: 'Deploy' }));
+    await screen.findByLabelText('Follow-up saves');
+    fireEvent.click(screen.getByRole('button', { name: 'Save orgs/demo/STATE.md' }));
 
-    // The outcome strip reports the durable / PR target for the agent deploy.
-    const strip = await screen.findByTestId('composer-outcome');
-    expect(strip.textContent).toMatch(/PR to main/);
+    expect(await screen.findByText(/follow-up transport failed/i)).toBeTruthy();
+    expect(screen.queryByText('Saving…')).toBeNull();
+  });
 
-    // The agents/<slug>.md follow-up deploys as a durable agents/ save (kind agent, endpoint save).
-    fireEvent.click(screen.getByRole('button', { name: `Save ${agentPlan.relpath}` }));
+  it('reuses a point-of-action session for follow-up saves', async () => {
+    const onRequestSession = vi.fn(async () => ({ token: 'followup-token', expiresAt: Date.now() + 60_000 }));
+    const deployImpl = vi
+      .fn<DeployFn>()
+      .mockResolvedValueOnce({
+        ok: true,
+        kind: 'project',
+        target: 'claude/project-demo',
+        followUps: [{ relpath: 'orgs/demo/STATE.md', content: '# STATE' }],
+      })
+      .mockResolvedValueOnce({ ok: true, kind: 'project', target: 'claude/project-demo' });
+    render(
+      <DeployOutcome
+        initialKind="project"
+        onBack={() => {}}
+        onRequestSession={onRequestSession}
+        deployImpl={deployImpl}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText('Project name'), { target: { value: 'demo' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Deploy' }));
+    await screen.findByLabelText('Follow-up saves');
+    fireEvent.click(screen.getByRole('button', { name: 'Save orgs/demo/STATE.md' }));
     await waitFor(() => expect(deployImpl).toHaveBeenCalledTimes(2));
-    expect(deployImpl.mock.calls[1][0]).toMatchObject({
+    expect(onRequestSession).toHaveBeenCalledTimes(1);
+    expect(deployImpl.mock.calls[0][1]).toBe('followup-token');
+    expect(deployImpl.mock.calls[1][1]).toBe('followup-token');
+  });
+
+  it('agent_deploy_surfaces_durable_pr_target_and_runner_boundary', async () => {
+    const deployImpl = vi.fn<DeployFn>(
+      async () => ({ ok: true, kind: 'agent', target: 'claude/agent-research-worker → PR #9' }),
+    );
+    render(<DeployOutcome sessionToken="tok" initialKind="agent" onBack={() => {}} deployImpl={deployImpl} />);
+    fireEvent.change(screen.getByLabelText('Agent id'), { target: { value: 'research-worker' } });
+    fireEvent.change(screen.getByLabelText('Agent description'), { target: { value: 'Volume worker.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Deploy' }));
+
+    const strip = await screen.findByTestId('composer-outcome');
+    expect(strip.textContent).toMatch(/PR #9/);
+    expect(screen.getByTestId('composer-deploy-note').textContent).toMatch(/does not provision or bind/i);
+    expect(deployImpl).toHaveBeenCalledTimes(1);
+    expect(deployImpl.mock.calls[0][0]).toMatchObject({
       kind: 'agent',
       relpath: 'agents/research-worker.md',
       endpoint: 'save',
       branchClass: 'durable',
     });
-    expect((deployImpl.mock.calls[1][0] as DeployPlan).content).toContain('runner-bound: false');
-    expect(await screen.findByTestId('followup-done:agents/research-worker.md')).toBeTruthy();
+    expect((deployImpl.mock.calls[0][0] as DeployPlan).content).toContain('runner-bound: false');
   });
 
   it('no outcome strip until a deploy has happened', () => {

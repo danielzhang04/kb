@@ -1,5 +1,5 @@
 /**
- * C1 — the Composer turn route (RCE-equivalent live prompt, same threat model as vibe). Composed exactly
+ * C1 — the Composer turn route (read-only planning prompt; writes stay behind explicit deploy). Composed exactly
  * like `vibe/routes.ts`: a `requireSession` preHandler on the guarded scope, then hand off to
  * `composer/session.ts#spawnComposerTurn`, which is authoritative for every load-bearing gate — it
  * re-runs the preamble gate FIRST, re-verifies the session, applies the per-operator rate-limit/lockout,

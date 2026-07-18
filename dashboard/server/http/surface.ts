@@ -47,6 +47,7 @@ export function makeSurfaceContext(overrides: Partial<SurfaceContext> = {}): Sur
     webAuthnConfig: overrides.webAuthnConfig ?? (() => resolveWebAuthnConfig()),
     credentials: overrides.credentials ?? (() => resolveCredentials()),
     appendAudit: overrides.appendAudit,
+    appendAuditLocal: overrides.appendAuditLocal,
     opsGit: overrides.opsGit,
     saveGit: overrides.saveGit,
     openPr: overrides.openPr,

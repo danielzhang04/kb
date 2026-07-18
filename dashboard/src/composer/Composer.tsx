@@ -3,7 +3,7 @@
  * C1's bare ComposerChat pane); it wraps three parts into one convergence flow:
  *
  *   1. A TYPE CHIP row — starts at `idea` (unknown). The operator sets a concrete type (task | workflow |
- *      skill | project — NEVER `agent`, which is deferred); setting it swaps that type's seedTemplate onto
+ *      skill | project | agent); setting it swaps that type's seedTemplate onto
  *      the NEXT turn. An optional `initialKind` prop lets C5's entity pickers pre-seed the type.
  *   2. The CHAT PANE — C1's ComposerChat, unchanged, driven through its injectable `stream` seam. Composer
  *      WRAPS the stream so the seed is composed on the seed turn: the first turn (and every turn right
@@ -23,9 +23,11 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { ComposerChat } from './ComposerChat';
 import { defaultComposerStream } from './chatClient';
 import type { ComposerStreamFn } from './chatClient';
+import type { Session } from '../lib/authClient';
 import { RISK_TIERS, seedTemplate, toDeploy, validateDraft } from './artifactTypes';
 import type {
   ArtifactKind,
+  AgentDraft,
   DeployPlan,
   Problem,
   ProjectDraft,
@@ -37,12 +39,9 @@ import type {
 } from './artifactTypes';
 import '../styles/views/composer.css';
 
-/** The seedable chips: `idea` (unknown, idea-first entry) then the concrete kinds that have a draft form.
- *  `agent` is a member of ARTIFACT_KINDS (C7.1 — the registry/deploy spine) but its Composer DRAFT FORM
- *  is a later chunk, so it is intentionally NOT listed as a chip here (see Composer.test
- *  `agent_is_not_offered_as_a_type`). This list is explicit rather than derived from ARTIFACT_KINDS so a
- *  new registry kind never silently grows a half-built chip. */
-const CHIP_KINDS: SeedKind[] = ['idea', 'task', 'workflow', 'skill', 'project'];
+/** The seedable chips: `idea` (unknown, idea-first entry) then every concrete kind with a draft form.
+ *  Explicit rather than derived so a future registry kind never silently grows a half-built chip. */
+const CHIP_KINDS: SeedKind[] = ['idea', 'task', 'workflow', 'skill', 'project', 'agent'];
 
 const CHIP_LABEL: Record<SeedKind, string> = {
   idea: 'Idea',
@@ -50,7 +49,6 @@ const CHIP_LABEL: Record<SeedKind, string> = {
   workflow: 'Workflow',
   skill: 'Skill',
   project: 'Project',
-  // `agent` is not a chip yet (its draft form is deferred); the label satisfies the total map type.
   agent: 'Agent',
 };
 
@@ -63,6 +61,9 @@ const BRANCH_LABEL = {
 export interface ComposerProps {
   /** WebAuthn session token — forwarded to ComposerChat, which gates every turn on it (no token, no send). */
   sessionToken?: string;
+  /** Point-of-action passkey mint for signed-out Composer chat. DeployOutcome uses the same callback for
+   *  writes; Composer only forwards it to the chat pane. */
+  onRequestSession?: () => Promise<Session | null>;
   /** Pre-seed the type. `idea` (default) is the idea-first entry; entity pickers (C5) pass a concrete kind. */
   initialKind?: SeedKind;
   /** Out-of-band idea text an entity picker may pre-fill; if set, it is the seed's idea and the operator's
@@ -70,6 +71,8 @@ export interface ComposerProps {
   ideaText?: string;
   /** Governed deploy dispatcher (C4). Invoked with the validated DeployPlan when Deploy is pressed. */
   onDeploy: (plan: DeployPlan) => void | Promise<void>;
+  /** True while the wrapper is resolving auth or deploying. Disables the primary action to prevent duplicates. */
+  deployPending?: boolean;
   /** Return to the underlying view — the Back affordance (parity with the former placeholder). */
   onBack: () => void;
   /** Injected chat stream (DI seam, mirrors ComposerChat). Composer wraps it to compose the seed. */
@@ -104,6 +107,14 @@ interface FormState {
   // project
   projName: string;
   projDate: string;
+  // agent
+  agentId: string;
+  agentRole: string;
+  agentRuntime: string;
+  agentModel: string;
+  agentProjects: string;
+  agentDescription: string;
+  agentBody: string;
 }
 
 function initialForm(): FormState {
@@ -120,11 +131,21 @@ function initialForm(): FormState {
     wfBody: '',
     projName: '',
     projDate: today(),
+    agentId: '',
+    agentRole: 'work',
+    agentRuntime: 'claude',
+    agentModel: '',
+    agentProjects: '',
+    agentDescription: '',
+    agentBody: '',
   };
 }
 
 /** Build the concrete C2 draft for `kind` from the flat form state. `idea` has no draft (type unresolved). */
-function buildDraft(kind: SeedKind, f: FormState): TaskDraft | SkillDraft | WorkflowDraft | ProjectDraft | null {
+function buildDraft(
+  kind: SeedKind,
+  f: FormState,
+): TaskDraft | SkillDraft | WorkflowDraft | ProjectDraft | AgentDraft | null {
   switch (kind) {
     case 'task':
       return { project: f.project, action: f.action, target: f.target, riskTier: f.riskTier, body: f.taskBody };
@@ -134,6 +155,16 @@ function buildDraft(kind: SeedKind, f: FormState): TaskDraft | SkillDraft | Work
       return { filename: f.wfFilename, body: f.wfBody };
     case 'project':
       return { name: f.projName, date: f.projDate };
+    case 'agent':
+      return {
+        id: f.agentId,
+        role: f.agentRole,
+        runtime: f.agentRuntime,
+        model: f.agentModel.trim() === '' ? undefined : f.agentModel,
+        projects: f.agentProjects.split(',').map((p) => p.trim()).filter(Boolean),
+        description: f.agentDescription,
+        body: f.agentBody,
+      };
     default:
       return null;
   }
@@ -150,9 +181,11 @@ function composeSeed(kind: SeedKind, ideaText: string, operatorText: string): st
 
 export function Composer({
   sessionToken,
+  onRequestSession,
   initialKind = 'idea',
   ideaText = '',
   onDeploy,
+  deployPending = false,
   onBack,
   stream = defaultComposerStream,
   renderOutcome,
@@ -202,8 +235,8 @@ export function Composer({
   );
 
   const onDeployClick = useCallback((): void => {
-    if (plan) void onDeploy(plan);
-  }, [plan, onDeploy]);
+    if (plan && !deployPending) void onDeploy(plan);
+  }, [plan, onDeploy, deployPending]);
 
   return (
     <section className="v-composer" aria-label="Composer">
@@ -240,7 +273,7 @@ export function Composer({
       <div className="v-composer__panes">
         {/* ── Chat pane (C1) ─────────────────────────────────────────────── */}
         <div className="v-composer__chat">
-          <ComposerChat sessionToken={sessionToken} stream={seedingStream} />
+          <ComposerChat sessionToken={sessionToken} onRequestSession={onRequestSession} stream={seedingStream} />
         </div>
 
         {/* ── Draft preview panel ────────────────────────────────────────── */}
@@ -253,6 +286,10 @@ export function Composer({
           ) : (
             <>
               <DraftForm kind={kind as ArtifactKind} form={form} setField={setField} />
+
+              <p className="v-composer__deploy-note" data-testid="composer-deploy-note">
+                {deployNote(kind as ArtifactKind)}
+              </p>
 
               <dl className="v-composer__target">
                 <dt>Target</dt>
@@ -279,9 +316,9 @@ export function Composer({
                 type="button"
                 className="mc-btn mc-btn--primary v-composer__deploy"
                 onClick={onDeployClick}
-                disabled={!isValid}
+                disabled={!isValid || deployPending}
               >
-                Deploy
+                {deployPending ? 'Deploying…' : 'Deploy'}
               </button>
 
               {/* C5 mounts the governed deploy-outcome strip here (result / refusal / follow-up saves). */}
@@ -360,9 +397,43 @@ function DraftForm({
         </div>
       );
     case 'agent':
-      // `agent` has no chip / draft form yet (its Composer form is a later chunk); buildDraft returns null
-      // for it, so this branch is never actually rendered. Present only to keep the switch exhaustive.
-      return <></>;
+      return (
+        <div className="v-composer__fields">
+          <Field label="Agent id" value={form.agentId} onChange={(v) => setField('agentId', v)} />
+          <label className="v-composer__field">
+            <span className="v-composer__field-label">Agent role</span>
+            <select aria-label="Agent role" value={form.agentRole} onChange={(e) => setField('agentRole', e.target.value)}>
+              {['scout', 'manage', 'work', 'inspect', 'consolidate'].map((role) => <option key={role} value={role}>{role}</option>)}
+            </select>
+          </label>
+          <label className="v-composer__field">
+            <span className="v-composer__field-label">Agent runtime</span>
+            <select aria-label="Agent runtime" value={form.agentRuntime} onChange={(e) => setField('agentRuntime', e.target.value)}>
+              {['claude', 'codex'].map((runtime) => <option key={runtime} value={runtime}>{runtime}</option>)}
+            </select>
+          </label>
+          <Field label="Agent model" value={form.agentModel} onChange={(v) => setField('agentModel', v)} placeholder="optional" />
+          <Field label="Agent projects" value={form.agentProjects} onChange={(v) => setField('agentProjects', v)} placeholder="comma-separated" />
+          <Field label="Agent description" value={form.agentDescription} onChange={(v) => setField('agentDescription', v)} />
+          <Field label="Agent body" value={form.agentBody} onChange={(v) => setField('agentBody', v)} multiline />
+        </div>
+      );
+  }
+}
+
+/** Honest boundary copy: deploy creates a governed record; it never promises that a runner executes it. */
+function deployNote(kind: ArtifactKind): string {
+  switch (kind) {
+    case 'task':
+      return 'Deploy files a queue card. Execution still depends on assignment to a bound runner.';
+    case 'workflow':
+      return 'Deploy registers a workflow artifact; it does not run the workflow.';
+    case 'skill':
+      return 'Deploy registers a learned skill; it does not promote or activate the skill.';
+    case 'project':
+      return 'Deploy registers project scaffold files through the governed review path; it does not run project work.';
+    case 'agent':
+      return 'Deploy registers an agent with runner-bound: false. It does not provision or bind a runner.';
   }
 }
 

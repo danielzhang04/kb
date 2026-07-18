@@ -128,11 +128,18 @@ describe('spawnComposerTurn — resume-flag injection (review F1: equals-form + 
 
     // First turn: no prior session — the untouched vibe arg vector.
     spawnComposerTurn('turn one', null, validSession(), { onDelta: vi.fn() }, deps);
-    expect(calls[0].args).toEqual(['--print', '--output-format', 'stream-json']);
+    expect(calls[0].args).toEqual([
+      '--print', '--output-format', 'stream-json',
+      '--permission-mode', 'plan', '--tools', 'Read,Glob,Grep',
+    ]);
 
     // Second turn: carries the issued id — spawns with the FUSED equals token appended, nothing else.
     spawnComposerTurn('turn two', ISSUED_ID, validSession(), { onDelta: vi.fn() }, deps);
-    expect(calls[1].args).toEqual(['--print', '--output-format', 'stream-json', `--resume=${ISSUED_ID}`]);
+    expect(calls[1].args).toEqual([
+      '--print', '--output-format', 'stream-json',
+      '--permission-mode', 'plan', '--tools', 'Read,Glob,Grep',
+      `--resume=${ISSUED_ID}`,
+    ]);
     expect(calls[1].cwd).toBe('/repo');
 
     // Belt-and-suspenders (review F1): the resume value is fused to the flag in ONE argv token — there
@@ -156,7 +163,11 @@ describe('spawnComposerTurn — resume-flag injection (review F1: equals-form + 
     // Second turn resumes the SAME captured id — admitted, spawns with the equals token.
     const t2 = spawnComposerTurn('two', ISSUED_ID, validSession(), { onDelta: vi.fn() }, deps);
     expect(t2.ok).toBe(true);
-    expect(calls[1].args).toEqual(['--print', '--output-format', 'stream-json', `--resume=${ISSUED_ID}`]);
+    expect(calls[1].args).toEqual([
+      '--print', '--output-format', 'stream-json',
+      '--permission-mode', 'plan', '--tools', 'Read,Glob,Grep',
+      `--resume=${ISSUED_ID}`,
+    ]);
   });
 
   it('unissued_id_is_refused_before_spawn: a well-formed but never-issued resume id is denied, spawning nothing', () => {

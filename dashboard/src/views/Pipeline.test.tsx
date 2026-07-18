@@ -7,10 +7,10 @@
  * and a click-through to the card's timeline/transcript.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
-import { PipelineNodeBody } from './Pipeline';
+import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react';
+import { Pipeline, PipelineNodeBody } from './Pipeline';
 import type { DagNodeData } from '../../server/dag/graph';
-import { postCardRouting, type RuntimeRegistryEntry, type WriteResult } from '../lib/routingClient';
+import { EMPTY_ROUTING, postCardRouting, type RuntimeRegistryEntry, type WriteResult } from '../lib/routingClient';
 
 afterEach(cleanup);
 
@@ -41,6 +41,26 @@ function jsonResponse(body: unknown, ok = true, status = 200): Response {
 }
 
 const noopWrite = async (): Promise<WriteResult> => ({ ok: true });
+
+describe('Runs view', () => {
+  it('explains that the queue dependency graph is read-only and is not a workflow editor', () => {
+    render(<Pipeline dag={{ nodes: [], edges: [] }} routing={EMPTY_ROUTING} />);
+
+    expect(screen.getByLabelText('Runs view')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Runs' })).toBeTruthy();
+    expect(screen.getByText(/read-only dependency graph of launched queue cards/i)).toBeTruthy();
+    expect(screen.getByText(/not a workflow editor/i)).toBeTruthy();
+  });
+
+  it('uses a truthful empty state without promising a workflow compiler', () => {
+    render(<Pipeline dag={{ nodes: [], edges: [] }} routing={EMPTY_ROUTING} />);
+
+    const empty = screen.getByTestId('runs-empty');
+    expect(within(empty).getByText('No launched queue cards to graph yet')).toBeTruthy();
+    expect(within(empty).getByText(/cards and links are created outside this read-only view/i)).toBeTruthy();
+    expect(empty.textContent).not.toMatch(/compile|compiler/i);
+  });
+});
 
 describe('PipelineNodeBody', () => {
   it('renders the card name, a status dot, a mono model chip and the one-line summary', () => {

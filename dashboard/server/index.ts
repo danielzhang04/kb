@@ -50,11 +50,12 @@ export function buildApp(): FastifyInstance {
   // secret) → every PTY open failed `verifySession` with `bad-signature`. One secret keeps mint == verify.
   const surfaceCtx = makeSurfaceContext();
   registerWriteSurface(app, surfaceCtx); // U2: governed write surface (origin -> rate-limit -> session -> gate -> audit)
-  // D3.1: the browser↔host PTY bridge (/api/pty), in its OWN origin-guarded child scope (mirrors
-  // registerHub). NOT folded into the write surface: its per-request rate-limit hook is HTTP-request
-  // shaped and fits a long-lived WS upgrade poorly. Bounded instead by openPty's session gate +
-  // one-touch-per-open + a max-concurrent cap. The WS plugin is registered before the guard so a refused
-  // upgrade's raw socket is torn down cleanly. openPty owns the preamble/session gates + the single audit row.
+  // D3.1 temporary in-process PTY bridge (/api/pty), in its OWN origin-guarded child scope (mirrors
+  // registerHub). NOT folded into the write surface: its per-request rate-limit hook is HTTP-request shaped
+  // and fits a long-lived WS upgrade poorly. The route runs the fleet preamble BEFORE session validation,
+  // enforces the max-concurrent cap, and writes exactly one audit row per allowed-origin attempt. Its child
+  // env is credential-filtered, but the shell currently runs as the dashboard daemon's OS user; the retired
+  // cross-user host/Factor-C path is a future hardening milestone, not an active control.
   {
     const ptyCtx = makePtyRouteContext({ sessionConfig: surfaceCtx.sessionConfig });
     app.register(async (scope) => {

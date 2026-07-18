@@ -228,6 +228,13 @@
   align-self: flex-start;
 }
 
+.v-composer__deploy-note {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--fg-faint);
+}
+
 /* ---- Deploy-outcome strip (C5) ---------------------------------------- */
 /* The governed result of a Deploy, rendered inside the draft panel via Composer's renderOutcome slot:
  * a filed card id (launch), a branch/PR target (save), a legible refusal, or offered follow-up saves.

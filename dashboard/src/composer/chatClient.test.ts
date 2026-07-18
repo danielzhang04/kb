@@ -93,4 +93,29 @@ describe('defaultComposerStream', () => {
     const outcome = await defaultComposerStream('hi', undefined, 'tok', () => {}, new AbortController().signal);
     expect(outcome).toEqual({ ok: false, status: 503, reason: 'fleet-frozen' });
   });
+
+  it('treats stderr as a failed turn even when the process exits zero', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          fakeFrameResponse([
+            { type: 'session', sessionId: 'sess-stderr' },
+            { type: 'stderr', chunk: 'credential lookup failed' },
+            { type: 'exit', code: 0 },
+          ]),
+        ),
+      ),
+    );
+
+    const outcome = await defaultComposerStream('hi', undefined, 'tok', () => {}, new AbortController().signal);
+    expect(outcome).toEqual({ ok: false, reason: 'credential lookup failed', resumeId: 'sess-stderr' });
+  });
+
+  it('treats a non-zero process exit as a failed turn', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(fakeFrameResponse([{ type: 'exit', code: 7 }]))));
+
+    const outcome = await defaultComposerStream('hi', undefined, 'tok', () => {}, new AbortController().signal);
+    expect(outcome).toEqual({ ok: false, reason: 'composer process exited with code 7', resumeId: undefined });
+  });
 });

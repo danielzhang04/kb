@@ -12,8 +12,9 @@
  *      `system` from the *model*, but spawnVibe still hands every parsed record to `onDelta`'s SECOND
  *      argument — so we scan there for the id and hand it back via `onSessionId`. No second stdout tap,
  *      no re-parse.
- *   2. **--resume injection.** On a continuing turn we wrap the injected `VibeSpawner` so the base vibe
- *      arg vector (`--print --output-format stream-json`) gains a SINGLE `--resume=<session_id>` token
+ *   2. **planning-mode + --resume injection.** Every turn is constrained to Claude plan mode with the
+ *      read-only `Read`, `Glob`, and `Grep` tools. A continuing turn also gains a SINGLE
+ *      `--resume=<session_id>` token
  *      appended (the fused equals form, review F1 — see below). This is a spawner decorator, NOT a
  *      change to spawnVibe's gates: the gate chain, the arg base, and the audit sink are spawnVibe's,
  *      untouched. `ANTHROPIC_API_KEY` stays unset — the default spawner passes no env.
@@ -46,6 +47,9 @@ export interface ComposerDeps extends VibeDeps {
   resumeRegistry: ResumeRegistry;
 }
 
+/** Composer may inspect the repository, but it cannot mutate it or invoke a shell. */
+const COMPOSER_PLANNING_ARGS = ['--permission-mode', 'plan', '--tools', 'Read,Glob,Grep'] as const;
+
 /** The CLI session id carried by a `system` init record, or `undefined` for any other record. */
 function sessionIdOf(rec: TranscriptRecord): string | undefined {
   if (rec.type !== 'system') return undefined;
@@ -65,12 +69,16 @@ export function spawnComposerTurn(
   handlers: ComposerHandlers,
   deps: ComposerDeps,
 ): VibeSpawnOutcome {
-  // Decorate the spawner so a continuing turn resumes the CLI session. spawnVibe hands us the base arg
-  // vector; we append a SINGLE `--resume=<id>` token (review F1: the fused equals form removes all
-  // optional-value parser ambiguity, so a resume value can never be reinterpreted as a separate flag).
-  // On the first turn (no id) the vector is untouched.
+  // Decorate the spawner so every Composer turn is read-only planning. A continuing turn also gets a
+  // SINGLE `--resume=<id>` token (review F1: the fused equals form removes parser ambiguity).
   const baseSpawn = deps.spawn ?? defaultVibeSpawner;
-  const spawn: VibeSpawner = (args, cwd) => baseSpawn(resumeId ? [...args, `--resume=${resumeId}`] : args, cwd);
+  const spawn: VibeSpawner = (args, cwd) =>
+    baseSpawn(
+      resumeId
+        ? [...args, ...COMPOSER_PLANNING_ARGS, `--resume=${resumeId}`]
+        : [...args, ...COMPOSER_PLANNING_ARGS],
+      cwd,
+    );
 
   // review F1 — the pre-spawn binding guard. spawnVibe runs it with the VERIFIED subject after its
   // session + rate-limit gates and before any spawn, so it can both (a) refuse a resume whose

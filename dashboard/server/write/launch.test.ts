@@ -189,6 +189,47 @@ describe('launchCard — governed dispatch (shells scripts/cards.py; no raw queu
     const result = launchCard({ project: 'kb', action: 'x', target: '.', riskTier: 'T1' }, validSession(), deps);
     expect(result).toEqual({ ok: false, reason: 'card-op-failed', detail: 'ValidationError: bad tier' });
   });
+
+  it('starts cards with dependencies blocked while roots remain inbox', () => {
+    const { runner: runPy, calls } = recordingPyRunner({
+      exitCode: 0,
+      stdout: '{"id":"child-1","path":"queue/inbox/child-1.md"}\n',
+      stderr: '',
+    });
+    const deps = baseDeps({ runPy });
+
+    launchCard(
+      { project: 'kb', action: 'child', target: '.', riskTier: 'T1', dependsOn: ['root-1'] },
+      validSession(),
+      deps,
+    );
+    launchCard({ project: 'kb', action: 'root', target: '.', riskTier: 'T1' }, validSession(), deps);
+
+    expect(JSON.parse(calls[0].jsonArg).dependsOn).toEqual(['root-1']);
+    expect('dependsOn' in JSON.parse(calls[1].jsonArg)).toBe(false);
+    expect(CARD_OP_SCRIPT.match(/card\.meta\["state"\] = "blocked"/g)).toHaveLength(2);
+  });
+
+  it('runs the optional coordination prepare seam after gates but before cards.py writes', () => {
+    const order: string[] = [];
+    const result = launchCard(
+      { project: 'kb', action: 'root', target: '.', riskTier: 'T1' },
+      validSession(),
+      baseDeps({
+        runPreamble: () => {
+          order.push('preamble');
+          return { exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' };
+        },
+        prepareWrite: () => order.push('pull'),
+        runPy: () => {
+          order.push('cards.py');
+          return { exitCode: 0, stdout: '{"id":"root-1","path":"queue/inbox/root-1.md"}\n', stderr: '' };
+        },
+      }),
+    );
+    expect(result.ok).toBe(true);
+    expect(order).toEqual(['preamble', 'pull', 'cards.py']);
+  });
 });
 
 describe('rerunAsDependsOn — rerun files depends-on card w/ feedback in ## Evidence', () => {

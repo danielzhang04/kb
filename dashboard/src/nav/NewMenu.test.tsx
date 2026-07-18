@@ -22,7 +22,7 @@ describe('NewMenu', () => {
     expect(screen.getByRole('menu', { name: 'Create new' })).toBeTruthy();
   });
 
-  it('is idea-first: Idea is the first, enabled, Composer-flagged entry', () => {
+  it('is idea-first: Idea is the first, enabled, planning entry', () => {
     const onCreate = vi.fn();
     render(<NewMenu onCreate={onCreate} />);
     fireEvent.click(screen.getByRole('button', { name: 'New' }));
@@ -32,11 +32,30 @@ describe('NewMenu', () => {
     expect(items[0].textContent).toMatch(/Idea/);
     const idea = screen.getByRole('menuitem', { name: /Idea/ }) as HTMLButtonElement;
     expect(idea.disabled).toBe(false);
-    expect(idea.textContent).toMatch(/composer/i);
+    expect(idea.textContent).toMatch(/Plan/);
 
     fireEvent.click(idea);
     expect(onCreate).toHaveBeenCalledWith('idea');
     expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('shows truthful outcome hints for every choice', () => {
+    render(<NewMenu onCreate={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: 'New' }));
+
+    const outcomes = [
+      [/Idea/, 'Plan'],
+      [/^Task/, 'Quick launch'],
+      [/Workflow/, 'Register'],
+      [/Skill/, 'Register'],
+      [/Project/, 'Register'],
+      [/Agent/, 'Declare'],
+    ] as const;
+    for (const [label, hint] of outcomes) {
+      const item = screen.getByRole('menuitem', { name: label });
+      expect(item.textContent).toContain(hint);
+      expect(item.getAttribute('title')).toBe(hint);
+    }
   });
 
   it('fires onCreate for every creatable entity — including Agent (C7.2)', () => {

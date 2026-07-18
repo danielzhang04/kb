@@ -4,6 +4,9 @@ import {
   routeWrite,
   isProtectedBranch,
   ProtectedBranchError,
+  CoordinationCheckoutError,
+  prepareCoordination,
+  commitPreparedCoordination,
   DEFAULT_WORK_BRANCH,
   type GitRunner,
   type PrOpener,
@@ -15,6 +18,7 @@ function recorder(): { runner: GitRunner; calls: string[][] } {
   const calls: string[][] = [];
   const runner: GitRunner = (_repoRoot, args) => {
     calls.push(args);
+    if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
     return '';
   };
   return { runner, calls };
@@ -127,10 +131,19 @@ describe('routeWrite — coordination files (queue/**, ledgers/**, traces/**, au
 
     expect(target).toBe('coordination');
     const verbs = calls.map((c) => c.slice(0, 2).join(' '));
-    expect(verbs).toEqual(['pull --rebase', 'add --', 'commit -m', 'push origin']);
-    expect(calls[0]).toEqual(['pull', '--rebase', 'origin', 'ops']);
-    expect(calls[1]).toEqual(['add', '--', 'queue/inbox/card-new.md']);
-    expect(calls[3]).toEqual(['push', 'origin', 'ops']);
+    expect(verbs).toEqual([
+      'rev-parse --abbrev-ref',
+      'pull --rebase',
+      'rev-parse --abbrev-ref',
+      'add --',
+      'commit -m',
+      'push origin',
+    ]);
+    expect(calls[0]).toEqual(['rev-parse', '--abbrev-ref', 'HEAD']);
+    expect(calls[1]).toEqual(['pull', '--rebase', 'origin', 'ops']);
+    expect(calls[2]).toEqual(['rev-parse', '--abbrev-ref', 'HEAD']);
+    expect(calls[3]).toEqual(['add', '--', 'queue/inbox/card-new.md']);
+    expect(calls[5]).toEqual(['push', 'origin', 'ops']);
   });
 
   it('re-reads (pull --rebase) and retries when the ops push is rejected', () => {
@@ -138,6 +151,7 @@ describe('routeWrite — coordination files (queue/**, ledgers/**, traces/**, au
     let pushes = 0;
     const runner: GitRunner = (_repoRoot, args) => {
       calls.push(args);
+      if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
       if (args[0] === 'push') {
         pushes += 1;
         if (pushes === 1) throw new Error('! [rejected] ops -> ops (fetch first)');
@@ -149,7 +163,8 @@ describe('routeWrite — coordination files (queue/**, ledgers/**, traces/**, au
 
     const pushIdx = calls.map((c, i) => (c[0] === 'push' ? i : -1)).filter((i) => i >= 0);
     expect(pushIdx).toHaveLength(2);
-    expect(calls[pushIdx[0] + 1]).toEqual(['pull', '--rebase', 'origin', 'ops']);
+    expect(calls[pushIdx[0] + 1]).toEqual(['rev-parse', '--abbrev-ref', 'HEAD']);
+    expect(calls[pushIdx[0] + 2]).toEqual(['pull', '--rebase', 'origin', 'ops']);
   });
 
   it('never opens a PR for a coordination write', () => {
@@ -157,5 +172,43 @@ describe('routeWrite — coordination files (queue/**, ledgers/**, traces/**, au
     const { opener, requests } = prRecorder();
     routeWrite('/fake/repo', 'traces/card-x/index.html', { runGit: runner, openPr: opener });
     expect(requests).toHaveLength(0);
+  });
+
+  it('fails closed on a non-ops or detached checkout before pull, add, commit, or push', () => {
+    for (const branch of ['main', 'codex/dashboard-operational-surfaces', 'HEAD', '']) {
+      const calls: string[][] = [];
+      const runner: GitRunner = (_repoRoot, args) => {
+        calls.push(args);
+        return `${branch}\n`;
+      };
+
+      expect(() => routeWrite('/fake/repo', 'queue/inbox/card-new.md', { runGit: runner })).toThrow(
+        CoordinationCheckoutError,
+      );
+      expect(calls).toEqual([['rev-parse', '--abbrev-ref', 'HEAD']]);
+    }
+  });
+
+  it('re-checks ops after prepare and refuses an external branch switch before staging', () => {
+    const calls: string[][] = [];
+    let query = 0;
+    const runner: GitRunner = (_repoRoot, args) => {
+      calls.push(args);
+      if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') {
+        query += 1;
+        return query === 1 ? 'ops\n' : 'main\n';
+      }
+      return '';
+    };
+
+    prepareCoordination('/fake/repo', runner);
+    expect(() =>
+      commitPreparedCoordination('/fake/repo', 'queue/inbox/card-new.md', { runGit: runner }),
+    ).toThrow(CoordinationCheckoutError);
+    expect(calls).toEqual([
+      ['rev-parse', '--abbrev-ref', 'HEAD'],
+      ['pull', '--rebase', 'origin', 'ops'],
+      ['rev-parse', '--abbrev-ref', 'HEAD'],
+    ]);
   });
 });

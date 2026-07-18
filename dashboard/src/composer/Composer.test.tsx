@@ -141,12 +141,46 @@ describe('Composer', () => {
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 
-  it('agent_is_not_offered_as_a_type', () => {
-    render(<Composer onDeploy={vi.fn()} onBack={vi.fn()} />);
-    // The four v1 kinds + the idea entry are offered; `agent` is deferred and never appears.
-    expect(screen.queryByRole('button', { name: /^agent$/i })).toBeNull();
-    for (const label of ['Idea', 'Task', 'Workflow', 'Skill', 'Project']) {
+  it('agent_is_offered_with_a_complete_deployable_form', () => {
+    const onDeploy = vi.fn();
+    render(<Composer initialKind="agent" onDeploy={onDeploy} onBack={vi.fn()} />);
+    for (const label of ['Idea', 'Task', 'Workflow', 'Skill', 'Project', 'Agent']) {
       expect(screen.getByRole('button', { name: label })).toBeTruthy();
     }
+
+    const deploy = screen.getByRole('button', { name: 'Deploy' }) as HTMLButtonElement;
+    expect(deploy.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText('Agent id'), { target: { value: 'atlas-researcher' } });
+    fireEvent.change(screen.getByLabelText('Agent role'), { target: { value: 'scout' } });
+    fireEvent.change(screen.getByLabelText('Agent runtime'), { target: { value: 'codex' } });
+    fireEvent.change(screen.getByLabelText('Agent model'), { target: { value: 'gpt-5.6-sol' } });
+    fireEvent.change(screen.getByLabelText('Agent projects'), { target: { value: 'atlas-prep, kb-ops' } });
+    fireEvent.change(screen.getByLabelText('Agent description'), { target: { value: 'Researches Atlas sources.' } });
+    fireEvent.change(screen.getByLabelText('Agent body'), { target: { value: '# Atlas researcher' } });
+
+    expect(deploy.disabled).toBe(false);
+    expect(screen.getByTestId('composer-target').textContent).toContain('agents/atlas-researcher.md');
+    expect(screen.getByTestId('composer-deploy-note').textContent).toMatch(/runner-bound: false/i);
+    fireEvent.click(deploy);
+    expect(onDeploy).toHaveBeenCalledWith(
+      toDeploy('agent', {
+        id: 'atlas-researcher',
+        role: 'scout',
+        runtime: 'codex',
+        model: 'gpt-5.6-sol',
+        projects: ['atlas-prep', 'kb-ops'],
+        description: 'Researches Atlas sources.',
+        body: '# Atlas researcher',
+      }),
+    );
+  });
+
+  it('states honestly what each deploy creates', () => {
+    render(<Composer initialKind="task" onDeploy={vi.fn()} onBack={vi.fn()} />);
+    expect(screen.getByTestId('composer-deploy-note').textContent).toMatch(/files a queue card/i);
+    fireEvent.click(screen.getByRole('button', { name: 'Workflow' }));
+    expect(screen.getByTestId('composer-deploy-note').textContent).toMatch(/does not run the workflow/i);
+    fireEvent.click(screen.getByRole('button', { name: 'Skill' }));
+    expect(screen.getByTestId('composer-deploy-note').textContent).toMatch(/does not promote or activate/i);
   });
 });

@@ -92,6 +92,21 @@ export class ProtectedBranchError extends Error {
   }
 }
 
+/** Thrown when a coordination write is attempted from any checkout other than the local `ops` branch.
+ *  A later `git push origin ops` pushes the local `ops` ref, not an unrelated checked-out HEAD. */
+export class CoordinationCheckoutError extends Error {
+  constructor(branch: string) {
+    super(`refusing coordination write: checked-out branch is '${branch || '(unknown)'}', expected 'ops'`);
+    this.name = 'CoordinationCheckoutError';
+  }
+}
+
+/** Query the real checkout through the injected runner and fail closed unless it is exactly `ops`. */
+function assertCoordinationCheckout(repoRoot: string, runGit: GitRunner): void {
+  const branch = runGit(repoRoot, ['rev-parse', '--abbrev-ref', 'HEAD']).trim();
+  if (branch !== 'ops') throw new CoordinationCheckoutError(branch);
+}
+
 /**
  * True when `branch` resolves to a protected branch (`main`/`ops`) — case-insensitively and regardless
  * of a `refs/heads/` prefix, backslashes, leading slashes, or surrounding whitespace. The denylist the
@@ -119,6 +134,20 @@ export interface RouteOptions {
   /** Extra coordination relpaths staged into the SAME commit as the primary relpath (MED-3: an audit row
    *  committed atomically with the change it records — one commit, one push). Coordination route only. */
   alsoStage?: string[];
+}
+
+/**
+ * Prepare an `ops` coordination write by proving that the checkout itself is exactly `ops`, then
+ * reconciling it before the first local mutation. Pulling `origin ops` does not switch branches, and
+ * pushing `origin ops` does not push an arbitrary checked-out HEAD. Detached HEAD and every work branch
+ * therefore fail closed; this function never auto-checks out a branch.
+ * Kept separate from {@link commitPreparedCoordination} for writes (such as card launch) whose
+ * authoritative schema operation must happen only after the pull, while still committing an exact
+ * multi-path set atomically afterwards.
+ */
+export function prepareCoordination(repoRoot: string, runGit: GitRunner = defaultGitRunner): void {
+  assertCoordinationCheckout(repoRoot, runGit);
+  runGit(repoRoot, ['pull', '--rebase', 'origin', 'ops']);
 }
 
 function defaultMessage(relpath: string): string {
@@ -151,17 +180,18 @@ export function routeDurable(repoRoot: string, relpath: string, options: RouteOp
 }
 
 /**
- * Coordination route: `git pull --rebase origin ops` -> add exact relpath -> commit -> push, retrying
- * a rejected push after re-reading state (bounded). Mirrors `trace/commit.ts#commitTraceToOps` and
+ * Prepared coordination commit: re-prove that the checkout is still `ops`, then add exact relpaths ->
+ * commit -> push, retrying a rejected push after re-reading state (bounded). The second check closes the
+ * gap between prepare and a caller's local write: an external branch switch fails before staging.
  * `audit/log.ts#commitAuditToOps` — the same rule applied generically to any coordination relpath.
  */
-export function routeCoordination(repoRoot: string, relpath: string, options: RouteOptions = {}): void {
+export function commitPreparedCoordination(repoRoot: string, relpath: string, options: RouteOptions = {}): void {
   const runGit = options.runGit ?? defaultGitRunner;
   const message = options.message ?? defaultMessage(relpath);
   const maxRetryPushes = options.maxRetryPushes ?? 3;
 
   const stagePaths = [relpath, ...(options.alsoStage ?? [])];
-  runGit(repoRoot, ['pull', '--rebase', 'origin', 'ops']);
+  assertCoordinationCheckout(repoRoot, runGit);
   runGit(repoRoot, ['add', '--', ...stagePaths]);
   runGit(repoRoot, ['commit', '-m', message]);
 
@@ -173,10 +203,17 @@ export function routeCoordination(repoRoot: string, relpath: string, options: Ro
     } catch (err) {
       lastErr = err;
       if (attempt === maxRetryPushes) break;
+      assertCoordinationCheckout(repoRoot, runGit);
       runGit(repoRoot, ['pull', '--rebase', 'origin', 'ops']);
     }
   }
   throw lastErr;
+}
+
+export function routeCoordination(repoRoot: string, relpath: string, options: RouteOptions = {}): void {
+  const runGit = options.runGit ?? defaultGitRunner;
+  prepareCoordination(repoRoot, runGit);
+  commitPreparedCoordination(repoRoot, relpath, { ...options, runGit });
 }
 
 /**

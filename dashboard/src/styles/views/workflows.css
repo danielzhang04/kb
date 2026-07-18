@@ -1,11 +1,11 @@
 /*
  * ============================================================================
- * WORKFLOWS view (U3) — "runs of work as connected chains"
+ * WORKFLOWS view (U3) — registered reusable definition artifacts
  * ============================================================================
  * The designed EMPTY state is the centrepiece (the live repo has no workflows/
  * registry yet), so it reads calm and explanatory — never an error. A dense
- * table renders when workflows exist; a hairline run-chain region below both
- * marks where the D3.4 DAG will land.
+ * table renders when workflows exist; a small note points launched queue-card
+ * dependency graphs to the separate Runs view.
  *
  * Tokens only (docs/design-brief.md §A–F); dark default, light remap carries
  * via var(). Signature: hairline borders, mono tabular-nums for ids/paths, one
@@ -153,21 +153,12 @@
   color: var(--fg-dim);
 }
 
-/* ---- Run-chain region (D3.4 placeholder — hint, not a fake graph) ------ */
-.v-workflows__runs {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 6rem;
-  padding: var(--space-6);
-  background: var(--bg-sunken);
-  border: 1px dashed var(--border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-sunken);
-}
-
-.v-workflows__runs-hint {
+/* ---- Relationship to launched runs ------------------------------------ */
+.v-workflows__runs-note {
+  margin: 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
   font-size: var(--text-sm);
+  line-height: 1.5;
   color: var(--fg-faint);
-  text-align: center;
 }

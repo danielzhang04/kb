@@ -47,6 +47,7 @@ function recorder(): { runner: GitRunner; calls: string[][] } {
   const calls: string[][] = [];
   const runner: GitRunner = (_r, args) => {
     calls.push(args);
+    if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
     return '';
   };
   return { runner, calls };

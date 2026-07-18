@@ -14,7 +14,12 @@
  */
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { save } from './governedSave.ts';
-import { isProtectedBranch } from './branch.ts';
+import {
+  commitPreparedCoordination,
+  defaultGitRunner,
+  isProtectedBranch,
+  prepareCoordination,
+} from './branch.ts';
 import { launchCard, rerunAsDependsOn } from './launch.ts';
 import type { LaunchOutcome, RiskTier } from './launch.ts';
 import { writeStop, requestStop, pauseCadence } from '../stop/floor.ts';
@@ -24,6 +29,7 @@ import { setCardRouting, clearCardRouting } from './cardRouting.ts';
 import { requireSession, verifiedSession } from '../http/middleware.ts';
 import type { SurfaceContext } from '../http/context.ts';
 import { auditFn } from '../http/context.ts';
+import { appendAuditRowLocal, AUDIT_REL_PATH } from '../audit/log.ts';
 
 function asRecord(body: unknown): Record<string, unknown> {
   return body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
@@ -83,6 +89,7 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
       sessionConfig: ctx.sessionConfig,
       runGit: ctx.saveGit,
       openPr: ctx.openPr,
+      runPreamble: ctx.runPreamble,
       message: typeof body.message === 'string' ? body.message : undefined,
     });
     // FINDING 3: audit ONLY on the success path (a consequential write actually occurred). A refusal
@@ -121,18 +128,38 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
         owner,
       },
       { token: session?.token, config: ctx.sessionConfig },
-      { repoRoot: ctx.repoRoot, runPreamble: ctx.runPreamble, runPy: ctx.runPy },
+      {
+        repoRoot: ctx.repoRoot,
+        runPreamble: ctx.runPreamble,
+        runPy: ctx.runPy,
+        prepareWrite: (repoRoot) => prepareCoordination(repoRoot, ctx.opsGit ?? defaultGitRunner),
+      },
     );
-    // FINDING 3: audit only when a card was actually filed.
+    // The card and its audit row are one coordination transaction: pull happened inside launchCard's
+    // prepareWrite seam BEFORE cards.py wrote; append locally now, then stage both exact paths into one
+    // commit/push. Do not call the self-committing `audit(...)` sink here (that would split the commit).
     if (outcome.ok) {
-      audit(ctx.repoRoot, {
-        action: 'launch',
-        owner: session?.claims.sub,
-        target: str(body.target),
-        riskTier: str(body.riskTier),
-        result: `launched:${outcome.cardId}`,
-      }, auditOpts);
-      return reply.code(200).send({ ok: true, cardId: outcome.cardId, cardPath: outcome.cardPath });
+      try {
+        const appendLocal = ctx.appendAuditLocal ?? appendAuditRowLocal;
+        appendLocal(ctx.repoRoot, {
+          action: 'launch',
+          owner: session?.claims.sub,
+          target: str(body.target),
+          riskTier: str(body.riskTier),
+          result: `launched:${outcome.cardId}`,
+        }, ctx.now);
+        commitPreparedCoordination(ctx.repoRoot, outcome.cardPath, {
+          runGit: ctx.opsGit ?? defaultGitRunner,
+          alsoStage: [AUDIT_REL_PATH],
+          message: `chore(queue): launch card ${outcome.cardId}`,
+        });
+        return reply.code(200).send({ ok: true, cardId: outcome.cardId, cardPath: outcome.cardPath });
+      } catch (err) {
+        return reply.code(500).send({
+          error: 'launch-commit-failed',
+          detail: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
     return reply.code(launchStatus(outcome)).send({ error: outcome.reason, detail: 'detail' in outcome ? outcome.detail : outcome.problems });
   });
@@ -149,17 +176,36 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
       cardId,
       str(body.feedback),
       { token: session?.token, config: ctx.sessionConfig },
-      { repoRoot: ctx.repoRoot, runPreamble: ctx.runPreamble, runPy: ctx.runPy },
+      {
+        repoRoot: ctx.repoRoot,
+        runPreamble: ctx.runPreamble,
+        runPy: ctx.runPy,
+        prepareWrite: (repoRoot) => prepareCoordination(repoRoot, ctx.opsGit ?? defaultGitRunner),
+      },
     );
-    // FINDING 3: audit only on a successful requeue.
+    // Same transaction as launch: pull before cards.py, then append the audit locally and commit the
+    // new dependent card + audit row together. The self-committing audit sink must not run here.
     if (outcome.ok) {
-      audit(ctx.repoRoot, {
-        action: 'rerun',
-        owner: session?.claims.sub,
-        cardId,
-        result: `requeued:${outcome.cardId}`,
-      }, auditOpts);
-      return reply.code(200).send({ ok: true, cardId: outcome.cardId, cardPath: outcome.cardPath });
+      try {
+        const appendLocal = ctx.appendAuditLocal ?? appendAuditRowLocal;
+        appendLocal(ctx.repoRoot, {
+          action: 'rerun',
+          owner: session?.claims.sub,
+          cardId,
+          result: `requeued:${outcome.cardId}`,
+        }, ctx.now);
+        commitPreparedCoordination(ctx.repoRoot, outcome.cardPath, {
+          runGit: ctx.opsGit ?? defaultGitRunner,
+          alsoStage: [AUDIT_REL_PATH],
+          message: `chore(queue): rerun card ${cardId} as ${outcome.cardId}`,
+        });
+        return reply.code(200).send({ ok: true, cardId: outcome.cardId, cardPath: outcome.cardPath });
+      } catch (err) {
+        return reply.code(500).send({
+          error: 'rerun-commit-failed',
+          detail: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
     return reply.code(launchStatus(outcome)).send({ error: outcome.reason, detail: 'detail' in outcome ? outcome.detail : outcome.problems });
   });

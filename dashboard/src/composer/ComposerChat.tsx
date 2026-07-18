@@ -9,15 +9,19 @@
  * spawns anything itself: it only POSTs to the governed `/api/composer/turn` endpoint, which owns the
  * preamble/session/rate-limit/audit gate chain. Session-gated end to end: no token, no send.
  */
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { TimelineModel } from '../lib/timelineModel';
+import type { Session } from '../lib/authClient';
 import { Timeline } from '../views/Timeline';
 import { defaultComposerStream } from './chatClient';
 import type { ComposerStreamFn } from './chatClient';
 
 export interface ComposerChatProps {
   sessionToken?: string;
+  /** Point-of-action passkey mint. The parent owns the durable session state; Composer keeps the returned
+   *  token locally too so the operator can send immediately without losing the prompt while React rerenders. */
+  onRequestSession?: () => Promise<Session | null>;
   stream?: ComposerStreamFn;
 }
 
@@ -27,22 +31,53 @@ const EMPTY: TimelineModel = { turns: [] };
 
 /** The Composer chat pane: session-gated per-turn prompt in, a stack of live folded timelines out, with
  *  the CLI session id threaded across turns for `--resume` continuity. */
-export function ComposerChat({ sessionToken, stream = defaultComposerStream }: ComposerChatProps): React.JSX.Element {
+export function ComposerChat({
+  sessionToken,
+  onRequestSession,
+  stream = defaultComposerStream,
+}: ComposerChatProps): React.JSX.Element {
   const [prompt, setPrompt] = useState('');
   // One folded model per turn — the conversation renders as a stack of shared Timeline views.
   const [turns, setTurns] = useState<TimelineModel[]>([]);
   const [resumeId, setResumeId] = useState<string | undefined>(undefined);
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [localToken, setLocalToken] = useState<string | undefined>(sessionToken);
+  const [signingIn, setSigningIn] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   // Monotonic turn index, kept in a ref so the async onDelta closure targets the right slot regardless of
   // React batching (the array and this counter start at 0 and advance together).
   const turnCountRef = useRef(0);
 
+  useEffect(() => {
+    if (sessionToken) setLocalToken(sessionToken);
+  }, [sessionToken]);
+
+  // Leaving Composer must abort the HTTP stream. The server binds request abort to child termination, so
+  // an abandoned tab cannot leave a planning process running after this component is gone.
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  const token = sessionToken ?? localToken;
+
+  const requestSession = useCallback(async (): Promise<void> => {
+    if (!onRequestSession || signingIn) return;
+    setSigningIn(true);
+    setError(null);
+    try {
+      const session = await onRequestSession();
+      if (session) setLocalToken(session.token);
+      else setError('passkey sign-in failed — no session was created');
+    } catch {
+      setError('passkey sign-in failed — no session was created');
+    } finally {
+      setSigningIn(false);
+    }
+  }, [onRequestSession, signingIn]);
+
   const onSubmit = useCallback(
     async (e: FormEvent) => {
       e.preventDefault();
-      if (!sessionToken || status === 'running' || prompt.trim() === '') return;
+      if (!token || status === 'running' || prompt.trim() === '') return;
       setStatus('running');
       setError(null);
 
@@ -59,7 +94,7 @@ export function ComposerChat({ sessionToken, stream = defaultComposerStream }: C
           return next;
         });
 
-      const outcome = await stream(prompt.trim(), resumeId, sessionToken, onDelta, controller.signal);
+      const outcome = await stream(prompt.trim(), resumeId, token, onDelta, controller.signal);
 
       const wasStopped = controller.signal.aborted;
       abortRef.current = null;
@@ -73,7 +108,7 @@ export function ComposerChat({ sessionToken, stream = defaultComposerStream }: C
         setError(outcome.reason ?? `refused${outcome.status ? ` (${outcome.status})` : ''}`);
       }
     },
-    [prompt, resumeId, sessionToken, status, stream],
+    [prompt, resumeId, token, status, stream],
   );
 
   const onStop = useCallback(() => {
@@ -84,11 +119,20 @@ export function ComposerChat({ sessionToken, stream = defaultComposerStream }: C
   return (
     <section className="composer-chat" aria-label="Composer chat">
       <p className="composer-chat__warning" role="note">
-        Live prompt with fleet reach — each turn spawns a real <code>claude</code> session against the kb
-        (RCE-equivalent power). Session-gated, preamble/STOP-gated, rate-limited, and independently audited.
+        Governed planning chat — each turn may inspect the kb with read-only tools. It cannot edit files
+        or run shell commands; deployment is a separate explicit action. Turns are session-gated,
+        preamble/STOP-gated, rate-limited, and independently audited.
       </p>
-      {!sessionToken ? (
-        <p className="composer-chat__session-warning">Sign in with your passkey to use Composer.</p>
+      {!token ? (
+        <div className="composer-chat__session-warning">
+          {onRequestSession ? (
+            <button type="button" className="mc-btn mc-btn--primary" onClick={() => void requestSession()} disabled={signingIn}>
+              {signingIn ? 'Signing in…' : 'Sign in with your passkey'}
+            </button>
+          ) : (
+            <>Sign in with your passkey to use Composer.</>
+          )}
+        </div>
       ) : null}
       <div className="composer-chat__timeline">
         {turns.map((model, i) => (
@@ -102,7 +146,7 @@ export function ComposerChat({ sessionToken, stream = defaultComposerStream }: C
           onChange={(e) => setPrompt(e.target.value)}
           disabled={status === 'running'}
         />
-        <button type="submit" disabled={!sessionToken || status === 'running' || prompt.trim() === ''}>
+        <button type="submit" disabled={!token || status === 'running' || prompt.trim() === ''}>
           {status === 'running' ? 'Running…' : 'Send'}
         </button>
         <button type="button" onClick={onStop} disabled={status !== 'running'}>

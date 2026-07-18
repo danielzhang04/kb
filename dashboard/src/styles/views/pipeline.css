@@ -1,5 +1,5 @@
 /**
- * D3.4 — pipeline canvas styles. Claude-dark neutral: near-black surfaces, NO accent colours, condensed
+ * D3.4 — Runs dependency-graph styles. Claude-dark neutral: near-black surfaces, NO accent colours, condensed
  * density, mono for every model/id identifier. Theme-aware via the shared tokens (server-set
  * data-theme + prefers-color-scheme both resolve the same --bg / --fg vars in app.css), so the light
  * toggle keeps working with no per-view override. Semantic status is carried ONLY by the shared
@@ -11,6 +11,27 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+}
+
+.v-pipeline__head {
+  flex: 0 0 auto;
+  padding: var(--space-5) var(--space-6) var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.v-pipeline__title {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.v-pipeline__lede {
+  max-width: 56rem;
+  margin: var(--space-2) 0 0;
+  color: var(--fg-dim);
+  font-size: var(--text-sm);
+  line-height: 1.5;
 }
 
 .v-pipeline .react-flow {
@@ -47,9 +68,27 @@
 }
 
 .v-pipeline__empty {
-  padding: 24px;
+  margin: var(--space-6);
+  padding: var(--space-6);
+  max-width: 46rem;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
   color: var(--fg-faint);
-  font-size: 13px;
+}
+
+.v-pipeline__empty-title {
+  margin: 0 0 var(--space-2);
+  color: var(--fg-primary);
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.v-pipeline__empty-body {
+  margin: 0;
+  color: var(--fg-dim);
+  font-size: var(--text-sm);
+  line-height: 1.6;
 }
 
 /* ── the card node ─────────────────────────────────────────────────────────────────────────────── */

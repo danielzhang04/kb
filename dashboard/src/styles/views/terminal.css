@@ -50,27 +50,6 @@
   background: var(--fg-faint); /* neutral, never a status/accent colour */
 }
 
-/* Connection state — neutral by default; only the semantic error token adds colour (it encodes data). */
-.terminal__state {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--fg-faint);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.terminal__state--connected {
-  color: var(--fg-dim);
-}
-
-.terminal__state--awaiting-touch {
-  color: var(--warning); /* a passkey touch is pending — the one moment the operator must act */
-}
-
-.terminal__state--error {
-  color: var(--error);
-}
-
 .terminal__note {
   margin: 0;
   color: var(--fg-dim);
@@ -89,12 +68,124 @@
   align-self: flex-start;
 }
 
-/* The passkey-touch cue: shown only while the host challenge is outstanding (state `awaiting-touch`). */
-.terminal__touch-prompt {
+/* ── Tab bar ─────────────────────────────────────────────────────────────────────────────────────
+ * A quiet strip of shell tabs above the terminal panels. Same neutral chrome as the rest of the view:
+ * deepest near-black surfaces, warm off-white text, dim inactive labels, NO accent colour. The active
+ * tab reads as "raised onto" the panel below it by sharing the panel's border tone. */
+.terminal__tabbar {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.terminal__tab {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  overflow: hidden;
+}
+
+.terminal__tab--active {
+  background: var(--bg-sunken);
+  border-color: var(--border-strong);
+}
+
+.terminal__tab-label {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--fg-dim); /* inactive tabs read dim */
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.02em;
+  padding: 4px var(--space-2);
+  cursor: pointer;
+}
+
+.terminal__tab--active .terminal__tab-label {
+  color: var(--fg-primary); /* warm off-white for the active shell */
+}
+
+.terminal__tab-label:hover {
+  color: var(--fg-primary);
+}
+
+.terminal__tab-close {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--fg-faint);
+  font-size: var(--text-sm);
+  line-height: 1;
+  padding: 4px 6px;
+  cursor: pointer;
+}
+
+.terminal__tab-close:hover {
+  color: var(--fg-primary);
+}
+
+/* The `+` new-tab affordance — a neutral square that matches the tab chrome, greyed out at the cap. */
+.terminal__tab-add {
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  color: var(--fg-dim);
+  font-size: var(--text-md);
+  line-height: 1;
+  padding: 0 var(--space-2);
+  min-width: 28px;
+  cursor: pointer;
+}
+
+.terminal__tab-add:hover:not(:disabled) {
+  color: var(--fg-primary);
+  border-color: var(--border-strong);
+}
+
+.terminal__tab-add:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Inline notice (e.g. server-side too-many-terminals). Neutral warning tone, no accent chrome. */
+.terminal__notice {
   margin: 0;
   color: var(--warning);
   font-size: var(--text-sm);
-  font-weight: 600;
+}
+
+/* The panel stack: every tab's panel occupies the SAME grid cell so switching is a pure visibility flip
+ * — inactive panels stay mounted (socket + scrollback preserved), just hidden. */
+.terminal__panels {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+}
+
+.terminal__panel {
+  grid-area: 1 / 1; /* stack all panels on top of each other */
+  display: none;
+  flex-direction: column;
+  min-height: 0;
+  gap: var(--space-2);
+}
+
+.terminal__panel--active {
+  display: flex;
+}
+
+/* Per-panel error line (surfaced from a server error frame that isn't the too-many-terminals notice). */
+.terminal__panel-error {
+  margin: 0;
+  color: var(--error);
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
 }
 
 /* The xterm host: deepest sunken well, hairline-bordered, sunken shadow — the "code gutter" surface. */

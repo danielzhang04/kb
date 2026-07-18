@@ -41,8 +41,17 @@ function recordingAudit(): { rows: AuditRow[]; fn: SurfaceContext['appendAudit']
   return { rows, fn };
 }
 
+function recordingLocalAudit(rows: AuditRow[]): NonNullable<SurfaceContext['appendAuditLocal']> {
+  return (_repoRoot, event) => {
+    const row: AuditRow = { ts: '2026-07-16T00:00:00.000Z', ...event };
+    rows.push(row);
+    return row;
+  };
+}
+
 /** Git/py/preamble fakes that succeed without touching the real binaries. */
-const okGit: GitRunner = () => '';
+const okGit: GitRunner = (_repo, args) =>
+  args.join(' ') === 'rev-parse --abbrev-ref HEAD' ? 'ops\n' : '';
 const okPy: PyRunner = (_repo, _code, jsonArg) => {
   // Return a plausible card-op stdout so launch/rerun parse it; harmless for other ops.
   const op = JSON.parse(jsonArg) as { cardId?: string };
@@ -57,6 +66,7 @@ function buildApp(overrides: Partial<SurfaceContext> = {}): { app: FastifyInstan
     repoRoot: REPO_A,
     sessionConfig,
     allowedOrigins: [GOOD_ORIGIN],
+    runPreamble: okPreamble,
     ...overrides,
   });
   registerWriteSurface(app, ctx);
@@ -169,7 +179,13 @@ describe('write surface — composition chain', () => {
 
   it('audits a governed launch that clears the preamble + session gates', async () => {
     const audit = recordingAudit();
-    ({ app } = buildApp({ appendAudit: audit.fn, runPreamble: okPreamble, runPy: okPy }));
+    ({ app } = buildApp({
+      appendAudit: audit.fn,
+      appendAuditLocal: recordingLocalAudit(audit.rows),
+      runPreamble: okPreamble,
+      runPy: okPy,
+      opsGit: okGit,
+    }));
     const res = await app.inject({
       method: 'POST',
       url: '/api/write/launch',
@@ -179,6 +195,85 @@ describe('write surface — composition chain', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ ok: true, cardId: 'card-new-0001' });
     expect(audit.rows[0]).toMatchObject({ action: 'launch', result: 'launched:card-new-0001' });
+  });
+
+  it('launch pulls before cards.py and commits card plus audit as one exact-path ops commit', async () => {
+    const order: string[] = [];
+    const selfCommittingAudit = recordingAudit();
+    const localRows: AuditRow[] = [];
+    const git: GitRunner = (_repo, args) => {
+      order.push(`git:${args.join(' ')}`);
+      if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      return '';
+    };
+    const py: PyRunner = () => {
+      order.push('cards.py');
+      return { exitCode: 0, stdout: '{"id":"atomic-1","path":"queue/inbox/atomic-1.md"}\n', stderr: '' };
+    };
+    ({ app } = buildApp({
+      appendAudit: selfCommittingAudit.fn,
+      appendAuditLocal: (_repo, event) => {
+        order.push('audit:local');
+        return recordingLocalAudit(localRows)(_repo, event);
+      },
+      runPy: py,
+      opsGit: git,
+    }));
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/write/launch',
+      headers: headers(true),
+      payload: { project: 'kb', action: 'demo:x', target: '.', riskTier: 'T1' },
+    });
+    expect(res.statusCode).toBe(200);
+    const pull = order.indexOf('git:pull --rebase origin ops');
+    const write = order.indexOf('cards.py');
+    const add = order.findIndex((x) => x.startsWith('git:add -- '));
+    expect(pull).toBeGreaterThanOrEqual(0);
+    expect(pull).toBeLessThan(write);
+    expect(write).toBeLessThan(add);
+    expect(order[add]).toBe('git:add -- queue/inbox/atomic-1.md ledgers/audit/dashboard-audit.ndjson');
+    expect(order.filter((x) => x.startsWith('git:commit '))).toHaveLength(1);
+    expect(order.filter((x) => x === 'git:push origin ops')).toHaveLength(1);
+    expect(localRows).toHaveLength(1);
+    expect(selfCommittingAudit.rows).toHaveLength(0);
+  });
+
+  it('launch and rerun refuse a non-ops checkout before cards.py or local audit mutation', async () => {
+    const gitCalls: string[][] = [];
+    const py = vi.fn();
+    const appendLocal = vi.fn();
+    ({ app } = buildApp({
+      runPy: py as unknown as PyRunner,
+      appendAuditLocal: appendLocal,
+      opsGit: (_repo, args) => {
+        gitCalls.push(args);
+        return args.join(' ') === 'rev-parse --abbrev-ref HEAD' ? 'main\n' : '';
+      },
+    }));
+
+    const launch = await app.inject({
+      method: 'POST',
+      url: '/api/write/launch',
+      headers: headers(true),
+      payload: { project: 'kb', action: 'demo:x', target: '.', riskTier: 'T1' },
+    });
+    const rerun = await app.inject({
+      method: 'POST',
+      url: '/api/write/rerun',
+      headers: headers(true),
+      payload: { cardId: 'orig-1', feedback: 'try again' },
+    });
+
+    expect(launch.statusCode).toBe(500);
+    expect(rerun.statusCode).toBe(500);
+    expect(py).not.toHaveBeenCalled();
+    expect(appendLocal).not.toHaveBeenCalled();
+    expect(gitCalls).toEqual([
+      ['rev-parse', '--abbrev-ref', 'HEAD'],
+      ['rev-parse', '--abbrev-ref', 'HEAD'],
+    ]);
   });
 
   it('launch is refused 503 when the preamble reports a frozen fleet — and writes NO ops audit row', async () => {
@@ -194,6 +289,32 @@ describe('write surface — composition chain', () => {
     });
     expect(res.statusCode).toBe(503);
     expect(res.json()).toMatchObject({ error: 'fleet-frozen' });
+    expect(audit.rows).toHaveLength(0);
+  });
+
+  it('save is refused 503 on preamble failure before any file or git write', async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'u2-save-frozen-'));
+    const audit = recordingAudit();
+    const gitCalls: string[][] = [];
+    ({ app } = buildApp({
+      repoRoot,
+      appendAudit: audit.fn,
+      runPreamble: frozenPreamble,
+      saveGit: (_repo, args) => {
+        gitCalls.push(args);
+        return '';
+      },
+      openPr: () => {},
+    }));
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/write/save',
+      headers: headers(true),
+      payload: { relpath: 'docs/blocked.md', content: 'must-not-land' },
+    });
+    expect(res.statusCode).toBe(503);
+    expect(res.json()).toMatchObject({ error: 'save-refused' });
+    expect(gitCalls).toHaveLength(0);
     expect(audit.rows).toHaveLength(0);
   });
 
@@ -236,7 +357,14 @@ describe('write surface — composition chain', () => {
       return { exitCode: 0, stdout: JSON.stringify({ id: 'owned-77', path: 'queue/inbox/owned-77.md' }), stderr: '' };
     };
     const audit = recordingAudit();
-    ({ app } = buildApp({ repoRoot, appendAudit: audit.fn, runPreamble: okPreamble, runPy: recPy }));
+    ({ app } = buildApp({
+      repoRoot,
+      appendAudit: audit.fn,
+      appendAuditLocal: recordingLocalAudit(audit.rows),
+      runPreamble: okPreamble,
+      runPy: recPy,
+      opsGit: okGit,
+    }));
 
     const res = await app.inject({
       method: 'POST',
@@ -367,6 +495,49 @@ describe('write surface — FINDING 3: audit only on the consequential success p
 });
 
 describe('write surface — LOW: rerun cardId must be filename-safe (no glob metachars)', () => {
+  it('rerun pulls before cards.py and commits dependent card plus audit in one exact-path ops commit', async () => {
+    const order: string[] = [];
+    const selfCommittingAudit = recordingAudit();
+    const localRows: AuditRow[] = [];
+    const git: GitRunner = (_repo, args) => {
+      order.push(`git:${args.join(' ')}`);
+      if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      return '';
+    };
+    const py: PyRunner = () => {
+      order.push('cards.py');
+      return { exitCode: 0, stdout: '{"id":"rerun-atomic","path":"queue/inbox/rerun-atomic.md"}\n', stderr: '' };
+    };
+    ({ app } = buildApp({
+      appendAudit: selfCommittingAudit.fn,
+      appendAuditLocal: (_repo, event) => {
+        order.push('audit:local');
+        return recordingLocalAudit(localRows)(_repo, event);
+      },
+      runPy: py,
+      opsGit: git,
+    }));
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/write/rerun',
+      headers: headers(true),
+      payload: { cardId: 'orig-1', feedback: 'try again' },
+    });
+    expect(res.statusCode).toBe(200);
+    const pull = order.indexOf('git:pull --rebase origin ops');
+    const write = order.indexOf('cards.py');
+    const add = order.findIndex((x) => x.startsWith('git:add -- '));
+    expect(pull).toBeGreaterThanOrEqual(0);
+    expect(pull).toBeLessThan(write);
+    expect(write).toBeLessThan(add);
+    expect(order[add]).toBe('git:add -- queue/inbox/rerun-atomic.md ledgers/audit/dashboard-audit.ndjson');
+    expect(order.filter((x) => x.startsWith('git:commit '))).toHaveLength(1);
+    expect(order.filter((x) => x === 'git:push origin ops')).toHaveLength(1);
+    expect(localRows[0]).toMatchObject({ action: 'rerun', cardId: 'orig-1', result: 'requeued:rerun-atomic' });
+    expect(selfCommittingAudit.rows).toHaveLength(0);
+  });
+
   it('rejects a rerun cardId containing glob/traversal chars (400, never reaches the py runner)', async () => {
     const py = vi.fn();
     ({ app } = buildApp({ runPreamble: okPreamble, runPy: py as unknown as PyRunner }));

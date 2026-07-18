@@ -135,6 +135,8 @@ if op["kind"] == "new":
     card = cards.new_card(op["project"], op["action"], op["target"], op["riskTier"], body=op.get("body", ""))
     if op.get("dependsOn"):
         card.meta["depends-on"] = op["dependsOn"]
+        # A dependent is never runnable until dispatch.release_dependents verifies every dependency.
+        card.meta["state"] = "blocked"
     # C7.7 — operator-assigned owner. cards.claim is the SAME primitive the dispatcher uses
     # (owner + a freshly-minted claim-token), so the claim mints identically. The (runtime, model)
     # are RESOLVER-SOURCED server-side (effectiveForAgent), never client input, and stamped via the
@@ -156,6 +158,7 @@ elif op["kind"] == "rerun":
         body=op["body"],
     )
     card.meta["depends-on"] = [orig.meta["id"]]
+    card.meta["state"] = "blocked"
     path = cards.save(card, queue_root)
 else:
     print(f"unknown op kind: {op['kind']}", file=sys.stderr)
@@ -179,6 +182,8 @@ export interface LaunchDeps {
    * the live policy + override and runs `effectiveForAgent` (precedence: card > override > policy > default).
    */
   ownerRouting?: (owner: string, repoRoot: string) => OwnerRouting;
+  /** Reconcile `ops` after all gates/validation pass but before cards.py performs the local write. */
+  prepareWrite?: (repoRoot: string) => void;
 }
 
 export type LaunchOutcome =
@@ -325,6 +330,12 @@ export function launchCard(spec: LaunchSpec, session: SessionInput, deps: Launch
     }
   }
 
+  try {
+    deps.prepareWrite?.(deps.repoRoot);
+  } catch (err) {
+    return { ok: false, reason: 'card-op-failed', detail: `could not prepare coordination write: ${(err as Error).message}` };
+  }
+
   const runPy = deps.runPy ?? defaultPyRunner;
   const jsonArg = JSON.stringify({
     kind: 'new',
@@ -359,6 +370,12 @@ export function rerunAsDependsOn(
 ): LaunchOutcome {
   const gated = gate(session, deps);
   if (!gated.ok) return gated.outcome;
+
+  try {
+    deps.prepareWrite?.(deps.repoRoot);
+  } catch (err) {
+    return { ok: false, reason: 'card-op-failed', detail: `could not prepare coordination write: ${(err as Error).message}` };
+  }
 
   const runPy = deps.runPy ?? defaultPyRunner;
   const jsonArg = JSON.stringify({

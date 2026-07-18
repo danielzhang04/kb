@@ -1,9 +1,7 @@
 /**
- * [+ New ▾] menu (U2.5) — pinned at the top of the sidebar, above the first hairline divider. It opens
- * a small popup of creatable entities (Task · Workflow · Skill · Project · Agent). Only `task` is
- * enabled day one and calls `onCreate('task')`, which the shell routes to the governed launch surface
- * (Home's Launch/Rerun panel — the one place a card is filed, still WebAuthn-gated server-side). The
- * other four are disabled with a subtle "Composer" hint (they arrive when the Composer surface lands).
+ * [+ New ▾] menu (U2.5) — pinned at the top of the sidebar, above the first hairline divider. Every
+ * entry is actionable. Short visible hints distinguish the outcome: plan an idea, quick-launch a task,
+ * register a workflow/skill/project artifact, or declare an agent.
  *
  * Keyboard: the trigger toggles the menu; Escape closes it and returns focus to the trigger; an outside
  * click closes it. `role="menu"` / `role="menuitem"` so it reads as a menu to assistive tech.
@@ -61,8 +59,7 @@ export function NewMenu({ onCreate }: { onCreate: (id: NewMenuEntry['id']) => vo
       {open ? (
         <ul className="mc-new__menu" role="menu" aria-label="Create new">
           {NEW_MENU_ENTRIES.map((entry) => {
-            // Enabled items may still carry a hint (the idea entry's "Composer — soon"); disabled
-            // entity types fall back to a plain "Composer" hint.
+            // Outcome hints stay visible for enabled entries; the fallback preserves disabled-entry clarity.
             const hint = entry.hint ?? (entry.enabled ? undefined : 'Composer');
             return (
               <li key={entry.id} role="none">

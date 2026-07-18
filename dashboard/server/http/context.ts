@@ -21,6 +21,8 @@ import type { ResumeRegistry } from '../composer/resumeRegistry.ts';
 
 /** How a route records exactly one audit row. Injected as a recording fake in tests. */
 export type AppendAuditFn = (repoRoot: string, event: AuditEvent, options?: AppendAuditOptions) => AuditRow;
+/** Local-only audit append used when the consequential write and audit must share one ops commit. */
+export type AppendAuditLocalFn = (repoRoot: string, event: AuditEvent, now?: () => Date) => AuditRow;
 
 export interface SurfaceContext {
   repoRoot: string;
@@ -38,6 +40,7 @@ export interface SurfaceContext {
 
   // --- injectable side-effect runners (undefined => each module's real default) ---
   appendAudit?: AppendAuditFn;
+  appendAuditLocal?: AppendAuditLocalFn;
   /** Git runner for the audit-log ops commit + the floor's coordination writes. */
   opsGit?: OpsGitRunner;
   /** Git runner for governedSave's branch routing (structurally identical; kept distinct for clarity). */

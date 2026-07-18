@@ -1,8 +1,7 @@
 // @vitest-environment jsdom
 /**
- * U3 — Workflows view ("runs of work as connected chains"). Renders a dense list when workflows are
- * registered; otherwise the DESIGNED empty state (calm, explanatory, no error tone) — the state Daniel
- * actually sees today, since the live repo has no `workflows/` registry yet.
+ * U3 — Workflows lists registered definition artifacts; it does not present definitions as live runs.
+ * The designed empty state stays calm and explanatory, and points launched queue-card graphs to Runs.
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { render, screen, cleanup, within } from '@testing-library/react';
@@ -16,8 +15,8 @@ describe('Workflows view', () => {
     expect(screen.getByLabelText('Workflows view')).toBeTruthy();
     const empty = screen.getByTestId('workflows-empty');
     expect(within(empty).getByText('No workflows registered yet')).toBeTruthy();
-    // Explains what will appear — no error tone.
-    expect(within(empty).getByText(/Nothing is wrong/)).toBeTruthy();
+    expect(within(empty).getByText(/this view does not execute them/i)).toBeTruthy();
+    expect(within(empty).getByText(/their graph appears in Runs/i)).toBeTruthy();
   });
 
   it('renders the empty state when the registry is present but has no workflows', () => {
@@ -56,8 +55,10 @@ describe('Workflows view', () => {
     expect(screen.queryByTestId('workflows-empty')).toBeNull();
   });
 
-  it('always marks where run-chains will render (D3.4 placeholder)', () => {
+  it('distinguishes registered definitions from launched queue-card graphs without a stale placeholder', () => {
     render(<Workflows data={{ present: false, items: [] }} />);
-    expect(screen.getByLabelText('Run chains')).toBeTruthy();
+    expect(screen.getByText(/registered reusable definitions/i)).toBeTruthy();
+    expect(screen.getByTestId('workflows-runs-note').textContent).toMatch(/Runs visualizes launched queue cards/i);
+    expect(screen.queryByText(/D3\.4|will render here/i)).toBeNull();
   });
 });

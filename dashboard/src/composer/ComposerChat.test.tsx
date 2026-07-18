@@ -26,6 +26,40 @@ describe('ComposerChat', () => {
     expect(stream).not.toHaveBeenCalled();
   });
 
+  it('signs in at point of action and preserves the drafted prompt', async () => {
+    const onRequestSession = vi.fn(async () => ({ token: 'fresh-token', expiresAt: Date.now() + 60_000 }));
+    const stream: ComposerStreamFn = vi.fn(async () => ({ ok: true }));
+    render(<ComposerChat onRequestSession={onRequestSession} stream={stream} />);
+
+    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'keep this draft' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in with your passkey' }));
+    await waitFor(() => expect(onRequestSession).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect((screen.getByRole('button', { name: 'Send' }) as HTMLButtonElement).disabled).toBe(false));
+
+    expect((screen.getByLabelText('Prompt') as HTMLTextAreaElement).value).toBe('keep this draft');
+    fireEvent.submit(screen.getByLabelText('Composer prompt'));
+    await waitFor(() => expect(stream).toHaveBeenCalledTimes(1));
+    expect(stream).toHaveBeenCalledWith(
+      'keep this draft',
+      undefined,
+      'fresh-token',
+      expect.any(Function),
+      expect.any(AbortSignal),
+    );
+  });
+
+  it('surfaces a point-of-action sign-in failure without sending', async () => {
+    const onRequestSession = vi.fn(async () => null);
+    const stream: ComposerStreamFn = vi.fn();
+    render(<ComposerChat onRequestSession={onRequestSession} stream={stream} />);
+
+    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'still here' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in with your passkey' }));
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/sign-in failed/i));
+    expect((screen.getByLabelText('Prompt') as HTMLTextAreaElement).value).toBe('still here');
+    expect(stream).not.toHaveBeenCalled();
+  });
+
   it('threads the captured resumeId from turn 1 into turn 2', async () => {
     const calls: Array<{ prompt: string; resumeId: string | undefined }> = [];
     const stream: ComposerStreamFn = vi.fn(async (prompt, resumeId, _token, onDelta) => {
@@ -56,5 +90,22 @@ describe('ComposerChat', () => {
     fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'x' } });
     fireEvent.submit(screen.getByLabelText('Composer prompt'));
     await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/locked-out/));
+  });
+
+  it('aborts the active request when Composer unmounts', async () => {
+    let activeSignal: AbortSignal | undefined;
+    const stream: ComposerStreamFn = vi.fn((_prompt, _resumeId, _token, _onDelta, signal) => {
+      activeSignal = signal;
+      return new Promise<never>(() => {});
+    });
+    const view = render(<ComposerChat sessionToken="tok" stream={stream} />);
+
+    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'long research' } });
+    fireEvent.submit(screen.getByLabelText('Composer prompt'));
+    await waitFor(() => expect(activeSignal).toBeDefined());
+    expect(activeSignal?.aborted).toBe(false);
+
+    view.unmount();
+    expect(activeSignal?.aborted).toBe(true);
   });
 });

@@ -295,13 +295,22 @@ function ComingSoon({ id }: { id: DestinationId }): React.JSX.Element {
 function ComposerView({
   onClose,
   sessionToken,
+  onRequestSession,
   initialKind,
 }: {
   onClose: () => void;
   sessionToken?: string;
+  onRequestSession: () => Promise<Session | null>;
   initialKind: SeedKind;
 }): React.JSX.Element {
-  return <DeployOutcome sessionToken={sessionToken} initialKind={initialKind} onBack={onClose} />;
+  return (
+    <DeployOutcome
+      sessionToken={sessionToken}
+      onRequestSession={onRequestSession}
+      initialKind={initialKind}
+      onBack={onClose}
+    />
+  );
 }
 
 /** The read-only layer panels, reachable from the single `sentinel` nav destination via an underline-tab
@@ -401,10 +410,9 @@ function ViewBody({
       // D3.5 — the layer-panel set (Sentinel / Quartermaster / Flight Recorder / Atlas) behind sub-tabs.
       return <LayerPanels />;
     case 'terminal':
-      // D3.2 — the PTY pane. Session-gated: without a session it renders a point-of-action passkey
-      // sign-in (onRequestSession) and connects nothing; once signed in it auto-connects and the host
-      // demands its OWN per-open Factor C touch. It NEVER spawns anything itself (signals the host over WS).
-      return <Terminal sessionToken={sessionToken} onRequestSession={onRequestSession} />;
+      // The PTY pane is owned by App's persistent surface below, outside this replace-on-navigation switch.
+      // This case is therefore intentionally empty: rendering it here as well would create duplicate shells.
+      return <></>;
     case 'connectors':
       return <Connectors />;
     case 'files':
@@ -431,6 +439,9 @@ export function App(): React.JSX.Element {
   // Card id a Pipeline node click-through wants opened in the Tasks detail pane.
   const [openCardId, setOpenCardId] = useState<string | undefined>(undefined);
   const approvalsCount = useApprovalsCount();
+  // Unlike ordinary destination bodies, Terminal is a long-lived workspace: navigating away hides it but
+  // must not unmount its xterm instances or close their WebSockets. Composer behaves like another overlay.
+  const terminalVisible = view === 'terminal' && !composerOpen;
 
   // Ctrl/Cmd+K toggles the command palette anywhere in the shell.
   useEffect(() => {
@@ -493,9 +504,7 @@ export function App(): React.JSX.Element {
 
   // [+ New ▾] routing (C5): "Idea…" opens the Composer surface in idea mode; the "Workflow"/"Skill"/
   // "Project"/"Agent" entity pickers open the SAME surface pre-seeded to that type; "Task" keeps its
-  // day-one route to the governed launch surface (Home). C7.2 un-defers "Agent" — it opens the Composer
-  // pre-seeded to `agent` (its dedicated draft form lands in a later chunk; until then the operator
-  // converges via the chat / picks a concrete type).
+  // quick-launch route to the governed launch surface (Home). "Agent" opens Composer's declaration form.
   const handleCreate = (id: NewMenuEntry['id']): void => {
     if (id === 'task') {
       setComposerOpen(false);
@@ -541,13 +550,25 @@ export function App(): React.JSX.Element {
         </button>
       </header>
       <main className="mc-main">
+        <div
+          hidden={!terminalVisible}
+          aria-hidden={!terminalVisible}
+          data-testid="persistent-terminal-surface"
+        >
+          <Terminal
+            visible={terminalVisible}
+            sessionToken={session?.token}
+            onRequestSession={requestSession}
+          />
+        </div>
         {composerOpen ? (
           <ComposerView
             onClose={() => setComposerOpen(false)}
             sessionToken={session?.token}
+            onRequestSession={requestSession}
             initialKind={composerKind}
           />
-        ) : (
+        ) : view !== 'terminal' ? (
           <ViewBody
             view={view}
             sessionToken={session?.token}
@@ -556,7 +577,7 @@ export function App(): React.JSX.Element {
             onOpenCard={openCardInTasks}
             taskSelectedId={openCardId}
           />
-        )}
+        ) : null}
       </main>
       <CommandPalette
         open={paletteOpen}

@@ -34,6 +34,8 @@ interface Frame {
   type?: string;
   model?: TimelineModel;
   sessionId?: string;
+  chunk?: string;
+  code?: number;
 }
 
 export const defaultComposerStream: ComposerStreamFn = async (prompt, resumeId, sessionToken, onDelta, signal) => {
@@ -69,23 +71,40 @@ export const defaultComposerStream: ComposerStreamFn = async (prompt, resumeId, 
   const decoder = new TextDecoder();
   let pending = '';
   let captured: string | undefined;
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    pending += decoder.decode(value, { stream: true });
-    const lines = pending.split('\n');
-    pending = lines.pop() ?? '';
-    for (const line of lines) {
-      if (line.trim() === '') continue;
-      let frame: Frame;
-      try {
-        frame = JSON.parse(line) as Frame;
-      } catch {
-        continue; // a malformed frame never crashes the turn (mirrors the vibe client's line handling)
+  const stderr: string[] = [];
+  let exitCode: number | undefined;
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      pending += decoder.decode(value, { stream: true });
+      const lines = pending.split('\n');
+      pending = lines.pop() ?? '';
+      for (const line of lines) {
+        if (line.trim() === '') continue;
+        let frame: Frame;
+        try {
+          frame = JSON.parse(line) as Frame;
+        } catch {
+          continue; // a malformed frame never crashes the turn (mirrors the vibe client's line handling)
+        }
+        if (frame.type === 'session' && typeof frame.sessionId === 'string') captured = frame.sessionId;
+        else if (frame.type === 'delta' && frame.model) onDelta(frame.model);
+        else if (frame.type === 'stderr' && typeof frame.chunk === 'string') stderr.push(frame.chunk);
+        else if (frame.type === 'exit' && typeof frame.code === 'number') exitCode = frame.code;
       }
-      if (frame.type === 'session' && typeof frame.sessionId === 'string') captured = frame.sessionId;
-      else if (frame.type === 'delta' && frame.model) onDelta(frame.model);
     }
+  } catch {
+    return signal.aborted ? { ok: false, reason: 'stopped' } : { ok: false, reason: 'response stream failed' };
+  }
+
+  const stderrReason = stderr.join('').trim();
+  if (stderrReason !== '') {
+    const exitSuffix = exitCode !== undefined && exitCode !== 0 ? ` (exit ${exitCode})` : '';
+    return { ok: false, reason: `${stderrReason}${exitSuffix}`, resumeId: captured };
+  }
+  if (exitCode !== undefined && exitCode !== 0) {
+    return { ok: false, reason: `composer process exited with code ${exitCode}`, resumeId: captured };
   }
   return { ok: true, resumeId: captured };
 };

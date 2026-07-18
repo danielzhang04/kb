@@ -15,7 +15,8 @@
  * No new gate, no new auth, no new audit sink: deploy() rides the already-governed /api/write/* endpoints.
  * `deployImpl` is injectable so the suite drives a fake — no real network, no real server, no real claude.
  */
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import type { Session } from '../lib/authClient';
 import { Composer } from './Composer';
 import { deploy as defaultDeploy } from './deploy';
 import type { DeployRefusal, DeployResult, DeploySuccess } from './deploy';
@@ -24,6 +25,9 @@ import type { ArtifactKind, DeployPlan, FollowUp, SeedKind } from './artifactTyp
 export interface DeployOutcomeProps {
   /** WebAuthn session token — forwarded to Composer/ComposerChat and to every deploy() call. */
   sessionToken?: string;
+  /** Point-of-action passkey mint used by both chat and deploy. The returned token is consumed directly
+   *  for the pending action and cached locally while the parent updates its session state. */
+  onRequestSession?: () => Promise<Session | null>;
   /** Pre-seed the Composer type chip. `idea` (default) is the idea-first entry; entity pickers pass a kind. */
   initialKind?: SeedKind;
   /** Optional out-of-band idea text an entity picker may pre-fill (forwarded to Composer). */
@@ -40,8 +44,18 @@ interface FollowUpState {
   result?: DeployResult;
 }
 
+function authRefusal(): DeployRefusal {
+  return { ok: false, reason: 'passkey sign-in failed — no session was created' };
+}
+
+function requestRefusal(error: unknown): DeployRefusal {
+  const detail = error instanceof Error && error.message.trim() !== '' ? `: ${error.message}` : '';
+  return { ok: false, reason: `deploy request failed${detail}` };
+}
+
 export function DeployOutcome({
   sessionToken,
+  onRequestSession,
   initialKind = 'idea',
   ideaText = '',
   onBack,
@@ -50,6 +64,25 @@ export function DeployOutcome({
   const [pending, setPending] = useState(false);
   const [outcome, setOutcome] = useState<DeployResult | null>(null);
   const [followUps, setFollowUps] = useState<Record<string, FollowUpState>>({});
+  const [localToken, setLocalToken] = useState<string | undefined>(sessionToken);
+
+  useEffect(() => {
+    if (sessionToken) setLocalToken(sessionToken);
+  }, [sessionToken]);
+
+  const resolveToken = useCallback(async (): Promise<string | undefined> => {
+    const existing = sessionToken ?? localToken;
+    if (existing) return existing;
+    if (!onRequestSession) return undefined;
+    try {
+      const session = await onRequestSession();
+      if (!session) return undefined;
+      setLocalToken(session.token);
+      return session.token;
+    } catch {
+      return undefined;
+    }
+  }, [localToken, onRequestSession, sessionToken]);
 
   // Primary deploy: hand the validated plan to the governed dispatcher and store the outcome. Resetting
   // the follow-up map on each primary keeps a re-deploy's offered saves in sync with the fresh result.
@@ -57,37 +90,58 @@ export function DeployOutcome({
     async (plan: DeployPlan): Promise<void> => {
       setPending(true);
       setFollowUps({});
-      const res = await deployImpl(plan, sessionToken);
-      setOutcome(res);
-      setPending(false);
+      try {
+        const token = await resolveToken();
+        if (!token) {
+          setOutcome(authRefusal());
+          return;
+        }
+        setOutcome(await deployImpl(plan, token));
+      } catch (error) {
+        setOutcome(requestRefusal(error));
+      } finally {
+        setPending(false);
+      }
     },
-    [deployImpl, sessionToken],
+    [deployImpl, resolveToken],
   );
 
   // A follow-up file is its own durable, single-file governed save — one deploy() per click, never batched.
   const saveFollowUp = useCallback(
     async (fu: FollowUp, kind: ArtifactKind): Promise<void> => {
       setFollowUps((prev) => ({ ...prev, [fu.relpath]: { pending: true } }));
-      const plan: DeployPlan = {
-        kind,
-        relpath: fu.relpath,
-        content: fu.content,
-        branchClass: 'durable',
-        endpoint: 'save',
-      };
-      const res = await deployImpl(plan, sessionToken);
-      setFollowUps((prev) => ({ ...prev, [fu.relpath]: { pending: false, result: res } }));
+      let result: DeployResult = requestRefusal(undefined);
+      try {
+        const token = await resolveToken();
+        if (!token) result = authRefusal();
+        else {
+          const plan: DeployPlan = {
+            kind,
+            relpath: fu.relpath,
+            content: fu.content,
+            branchClass: 'durable',
+            endpoint: 'save',
+          };
+          result = await deployImpl(plan, token);
+        }
+      } catch (error) {
+        result = requestRefusal(error);
+      } finally {
+        setFollowUps((prev) => ({ ...prev, [fu.relpath]: { pending: false, result } }));
+      }
     },
-    [deployImpl, sessionToken],
+    [deployImpl, resolveToken],
   );
 
   return (
     <Composer
       sessionToken={sessionToken}
+      onRequestSession={onRequestSession}
       initialKind={initialKind}
       ideaText={ideaText}
       onBack={onBack}
       onDeploy={runPrimary}
+      deployPending={pending}
       renderOutcome={
         <OutcomeStrip
           pending={pending}

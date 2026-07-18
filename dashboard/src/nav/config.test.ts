@@ -59,6 +59,11 @@ describe('nav/config', () => {
     }
   });
 
+  it('presents the pipeline destination as Runs without changing its stable route id', () => {
+    const runs = ALL.find((d) => d.id === 'pipeline');
+    expect(runs?.label).toBe('Runs');
+  });
+
   it('non-live destinations carry a greyed hint; live ones do not', () => {
     for (const dest of ALL) {
       if (isLive(dest)) {
@@ -126,13 +131,17 @@ describe('nav/config', () => {
     ]);
     const idea = NEW_MENU_ENTRIES.find((e) => e.id === 'idea');
     expect(idea?.enabled).toBe(true);
-    // Idea leads into the (now live) Composer convergence surface.
-    expect(idea?.hint).toMatch(/composer/i);
     // C7.2 — every creatable entity, INCLUDING agent, is actionable now.
     for (const id of ['task', 'workflow', 'skill', 'project', 'agent'] as const) {
       expect(NEW_MENU_ENTRIES.find((e) => e.id === id)?.enabled).toBe(true);
     }
-    // Agent no longer carries the deferred "soon" hint.
-    expect(NEW_MENU_ENTRIES.find((e) => e.id === 'agent')?.hint).toBeUndefined();
+    expect(Object.fromEntries(NEW_MENU_ENTRIES.map((entry) => [entry.id, entry.hint]))).toEqual({
+      idea: 'Plan',
+      task: 'Quick launch',
+      workflow: 'Register',
+      skill: 'Register',
+      project: 'Register',
+      agent: 'Declare',
+    });
   });
 });
