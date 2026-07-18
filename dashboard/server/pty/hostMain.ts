@@ -30,7 +30,8 @@ import type { PreambleRunner } from '../write/preambleGate.ts';
 import { createPtyHost, DEFAULT_ENV_ALLOWLIST } from './host.ts';
 import type { PtyHost, PtyHostDeps } from './host.ts';
 import { createHostPipeServer } from './hostPipeServer.ts';
-import type { HostPipeServer } from './hostPipeServer.ts';
+import type { HostPipeServer, PtyAssertionVerifier } from './hostPipeServer.ts';
+import { makePtyAssertionVerifier } from './ptyAssertionVerify.ts';
 import { loadWin32PtyApi } from './win32PtyApi.ts';
 import type { Win32PtyApi } from './win32PtyApi.ts';
 import { resolveRendezvousDir, resolvePeerSid } from './peerConfig.ts';
@@ -65,6 +66,9 @@ export interface PtyHostBootDeps {
   mintToken?: () => string;
   /** Arm the STOP watcher. Default: fs.watch on `repoRoot`. */
   startStopWatch?: (repoRoot: string, onStop: () => void) => StopWatchHandle;
+  /** Factor C (D3.1 MED mitigation) host-side assertion verifier. Default: subprocess-driven
+   *  `makePtyAssertionVerifier({ repoRoot })`. Injected for hermetic tests. */
+  verifyAssertion?: PtyAssertionVerifier;
   onError?: (err: unknown) => void;
 }
 
@@ -150,6 +154,8 @@ export async function bootPtyHost(deps: PtyHostBootDeps): Promise<PtyHostBootRes
     transport,
     peerFfi,
     host,
+    // Factor C — host-side passkey assertion over each connection's fresh nonce (subprocess default).
+    verifyAssertion: deps.verifyAssertion ?? makePtyAssertionVerifier({ repoRoot: deps.repoRoot }),
     // per-open STOP re-check — refuse NEW terminals under a frozen fleet even between watcher ticks.
     isRunnable: () => {
       try {

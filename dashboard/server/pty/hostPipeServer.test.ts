@@ -8,6 +8,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createHostPipeServer } from './hostPipeServer.ts';
 import type { PipeHandle, PtyPeerFfi, PtyPipeTransport } from './hostPipeServer.ts';
+import { isPtyChallenge } from './ptyChallenge.ts';
 import type { ControlFrame, InboundFrame, PtyServerChannel } from './ptyProtocol.ts';
 import type { PtyHost, PtySession, PtyHandle } from './host.ts';
 
@@ -107,9 +108,18 @@ function peerReturning(sid: string | null): PtyPeerFfi {
   };
 }
 
-const openFrame = (token: string | undefined): InboundFrame => ({
+/** A well-formed passkey assertion envelope (opaque here — the injected verifier decides accept/reject). */
+const ASSERTION = {
+  credentialId: 'cred-1',
+  authenticatorData: 'YXV0aA',
+  clientDataJSON: 'Y2RhdGE',
+  signature: 'c2ln',
+};
+
+const openFrame = (token: string | undefined, assertion: unknown = ASSERTION): InboundFrame => ({
   type: 'open',
   ...(token === undefined ? {} : { token }),
+  ...(assertion === undefined ? {} : { assertion }),
   requestId: 'req-1',
   cols: 80,
   rows: 24,
@@ -117,9 +127,22 @@ const openFrame = (token: string | undefined): InboundFrame => ({
   sessionSubject: 'operator-1',
 });
 
-async function run(peerSid: string | null, token: string | undefined) {
-  const ft = fakeTransport(openFrame(token));
+/** Default Factor C verifier: accepts (so the A/B tests exercise those factors in isolation). */
+const acceptC = () => ({ ok: true, reason: 'ok' });
+
+async function run(
+  peerSid: string | null,
+  token: string | undefined,
+  opts: { verifyAssertion?: () => { ok: boolean; reason: string }; assertion?: unknown } = {},
+) {
+  const frame = openFrame(token);
+  if ('assertion' in opts) {
+    if (opts.assertion === undefined) delete (frame as { assertion?: unknown }).assertion;
+    else (frame as { assertion?: unknown }).assertion = opts.assertion;
+  }
+  const ft = fakeTransport(frame);
   const host = fakeHost();
+  const verifyCalls: Array<{ expectedChallenge: string; assertion: unknown }> = [];
   const server = createHostPipeServer({
     pipeName: '\\\\.\\pipe\\kb-pty-host-test',
     expectedPeerSid: DANIEL,
@@ -127,13 +150,17 @@ async function run(peerSid: string | null, token: string | undefined) {
     transport: ft.transport,
     peerFfi: peerReturning(peerSid),
     host: host.host,
+    verifyAssertion: (input) => {
+      verifyCalls.push(input);
+      return (opts.verifyAssertion ?? acceptC)();
+    },
     isRunnable: () => true,
     openDefaults: { cwd: '/repo', cols: 80, rows: 24 },
   });
   await server.listen();
   await new Promise((r) => setTimeout(r, 20)); // let the connection be handled
   await server.close();
-  return { sent: ft.firstSent(), open: host.open };
+  return { sent: ft.firstSent(), open: host.open, verifyCalls };
 }
 
 describe('createHostPipeServer — cross-user dual-factor auth', () => {
@@ -153,25 +180,100 @@ describe('createHostPipeServer — cross-user dual-factor auth', () => {
   it('REJECTS a third account SID', async () => {
     const { sent, open } = await run(OTHER, TOKEN);
     expect(open).not.toHaveBeenCalled();
-    expect(sent[0]).toEqual({ type: 'open-nack', error: 'unauthenticated: peer-credential' });
+    expect(sent).toContainEqual({ type: 'open-nack', error: 'unauthenticated: peer-credential' });
   });
 
   it('REJECTS Daniel with a WRONG token (bad-token) — no spawn', async () => {
     const { sent, open } = await run(DANIEL, 'deadbeef');
     expect(open).not.toHaveBeenCalled();
-    expect(sent[0]).toEqual({ type: 'open-nack', error: 'unauthenticated: bad-token' });
+    expect(sent).toContainEqual({ type: 'open-nack', error: 'unauthenticated: bad-token' });
   });
 
   it('REJECTS a missing token (bad-token) even from Daniel', async () => {
     const { sent, open } = await run(DANIEL, undefined);
     expect(open).not.toHaveBeenCalled();
-    expect(sent[0]).toEqual({ type: 'open-nack', error: 'unauthenticated: bad-token' });
+    expect(sent).toContainEqual({ type: 'open-nack', error: 'unauthenticated: bad-token' });
   });
 
   it('REJECTS when the peer credential cannot be resolved (impersonation failed), even with the token', async () => {
     const { sent, open } = await run(null, TOKEN);
     expect(open).not.toHaveBeenCalled();
-    expect(sent[0]).toEqual({ type: 'open-nack', error: 'unauthenticated: peer-credential' });
+    expect(sent).toContainEqual({ type: 'open-nack', error: 'unauthenticated: peer-credential' });
+  });
+});
+
+describe('createHostPipeServer — Factor C (D3.1 MED mitigation): host-verified passkey assertion', () => {
+  it('issues a fresh nonce challenge BEFORE the open, and feeds THAT issued challenge to the verifier', async () => {
+    const { sent, open, verifyCalls } = await run(DANIEL, TOKEN);
+    // The challenge frame is the FIRST thing the host writes (issued on connect, before auth).
+    expect(sent[0].type).toBe('challenge');
+    const challenge = (sent[0] as { challenge: string }).challenge;
+    // It is a well-formed kb-pty-open 2-tuple (domain-separated from the card 4-tuple).
+    expect(isPtyChallenge(challenge)).toBe(true);
+    // Factor C was verified against exactly the host-issued challenge, and the open spawned.
+    expect(verifyCalls).toHaveLength(1);
+    expect(verifyCalls[0].expectedChallenge).toBe(challenge);
+    expect(verifyCalls[0].assertion).toEqual(ASSERTION);
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  it('two connections get DIFFERENT nonces (single-use, per-connection closure)', async () => {
+    const a = await run(DANIEL, TOKEN);
+    const b = await run(DANIEL, TOKEN);
+    const ca = (a.sent[0] as { challenge: string }).challenge;
+    const cb = (b.sent[0] as { challenge: string }).challenge;
+    expect(ca).not.toBe(cb);
+  });
+
+  it('REJECTS when Factor C fails even though A ∧ B passed — open-nack, NO spawn', async () => {
+    const { sent, open } = await run(DANIEL, TOKEN, {
+      verifyAssertion: () => ({ ok: false, reason: 'signed challenge does not match the host-issued nonce (replay?)' }),
+    });
+    expect(open).not.toHaveBeenCalled();
+    expect(sent.find((f) => f.type === 'open-ack')).toBeUndefined();
+    expect(sent).toContainEqual({
+      type: 'open-nack',
+      error: 'unauthenticated: assertion:signed challenge does not match the host-issued nonce (replay?)',
+    });
+  });
+
+  it('REJECTS a missing assertion (Factor C material absent) — verifier NOT even called, NO spawn', async () => {
+    let called = 0;
+    const { sent, open } = await run(DANIEL, TOKEN, {
+      assertion: undefined,
+      verifyAssertion: () => {
+        called += 1;
+        return { ok: true, reason: 'ok' };
+      },
+    });
+    expect(open).not.toHaveBeenCalled();
+    expect(called).toBe(0);
+    expect(sent).toContainEqual({ type: 'open-nack', error: 'unauthenticated: assertion-missing' });
+  });
+
+  it('REJECTS a malformed assertion (a non-string field) — no partial assertion reaches the verifier', async () => {
+    const { sent, open, verifyCalls } = await run(DANIEL, TOKEN, {
+      assertion: { credentialId: 'c', authenticatorData: 123, clientDataJSON: 'x', signature: 'y' },
+    });
+    expect(open).not.toHaveBeenCalled();
+    expect(verifyCalls).toHaveLength(0);
+    expect(sent).toContainEqual({ type: 'open-nack', error: 'unauthenticated: assertion-missing' });
+  });
+
+  it('a verifier that THROWS is fail-closed (rejected, NO spawn)', async () => {
+    const { sent, open } = await run(DANIEL, TOKEN, {
+      verifyAssertion: () => {
+        throw new Error('subprocess spawn failed');
+      },
+    });
+    expect(open).not.toHaveBeenCalled();
+    expect(sent).toContainEqual({ type: 'open-nack', error: 'unauthenticated: assertion:verifier-error' });
+  });
+
+  it('Factor C is reached ONLY after A ∧ B — a wrong SID never invokes the verifier', async () => {
+    const { open, verifyCalls } = await run(OTHER, TOKEN);
+    expect(open).not.toHaveBeenCalled();
+    expect(verifyCalls).toHaveLength(0); // rejected at Factor A, before C
   });
 });
 
@@ -232,6 +334,7 @@ describe('createHostPipeServer — FIX 4: `live` handle set does not leak on nor
       transport,
       peerFfi: peerReturning(DANIEL),
       host: host.host,
+      verifyAssertion: () => ({ ok: true, reason: 'ok' }),
       isRunnable: () => true,
       openDefaults: { cwd: '/repo', cols: 80, rows: 24 },
     });
@@ -271,6 +374,7 @@ describe('createHostPipeServer — squat defense', () => {
       transport,
       peerFfi: peerReturning(DANIEL),
       host: host.host,
+      verifyAssertion: () => ({ ok: true, reason: 'ok' }),
       isRunnable: () => true,
       openDefaults: { cwd: '/repo', cols: 80, rows: 24 },
     });

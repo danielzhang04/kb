@@ -88,3 +88,43 @@ git push --dry-run origin ops                          :: FAILS
 
 Record all four results in the D3.1 gate note. If any push SUCCEEDS or any credential is present, STOP —
 the identity boundary is not intact and the host must not run.
+
+## E. Factor C — hardware-passkey rehearsal (D3.1 MED mitigation, M8 human gate)
+
+Background: a fleet-PTY open now requires a THIRD factor on top of the peer-SID (A) and per-boot-token
+(B) — a **host-verified hardware-passkey WebAuthn assertion over a host-issued fresh nonce** (Factor C).
+The daemon issues nothing: the kb-fleet host mints a fresh 256-bit nonce per connection, the browser
+signs it with the passkey (physical touch + UV), and the host verifies it via
+`scripts/pty_host_assertion_verify.py` (which reuses the frozen `webauthn_verify` primitives). This closes
+the MED "any Medium-IL process can read `boot.token` and open a fleet PTY directly, bypassing the WebAuthn
+gate" — `boot.token` is now insufficient alone.
+
+Prerequisites (already satisfied for the card channel; reuse the SAME source of truth):
+- A passkey is enrolled and `governance/webauthn-credentials.yaml` is committed on the protected ref.
+- `scripts/webauthn_verify.py`'s `EXPECTED_CRED_STORE_SHA256` is pinned (NOT the `None` sentinel) — the
+  PTY verifier reads the same constant. If it is still `None`, EVERY PTY open fails closed (safe but
+  non-functional) until gate D2.12 pins it.
+- The dashboard is reachable at the pinned origin/rp-id in the store (e.g. `http://localhost:5317`).
+
+Rehearse ALL of these and record each in the D3.1 gate note (any deviation ⇒ STOP):
+
+1. **Happy path (touch opens a terminal).** Open a fleet terminal in the dashboard. On the `challenge`
+   prompt, complete the passkey (touch + biometric/PIN). The terminal opens. Confirm exactly one
+   `pty-open`/`opened` row in `ledgers/audit/**` and one host-side accept.
+2. **Declined / no touch ⇒ refused.** Start an open and CANCEL / let the passkey time out. The open is
+   refused (host-nack); NO shell spawns; the audit shows a refusal, not an open.
+3. **Replay ⇒ refused.** Capture a valid assertion (devtools) from one open, then start a SECOND
+   connection and present the captured assertion. It is refused: the second connection minted a DIFFERENT
+   nonce, so `clientDataJSON.challenge` ≠ the host's expected challenge (check 4). No shell spawns.
+4. **Malware simulation (SID + token, no assertion) ⇒ refused.** As Daniel (Medium IL), connect to
+   `\\.\pipe\kb-pty-host` directly, present Daniel's SID (A) and a freshly-read `boot.token` (B), and send
+   an `open` frame with NO `assertion` (or a garbage one). The host rejects at Factor C
+   (`unauthenticated: assertion-missing` / `assertion:*`) and spawns NOTHING. This is the MED itself,
+   proven closed.
+5. **UV enforced.** If your authenticator can produce a UP-only (no user-verification) assertion, confirm
+   it is refused (`user verification (UV) bit not set`). Otherwise note it as covered by the automated
+   suite (`tests/test_pty_host_assertion_verify.py::test_uv_zero_rejected`).
+
+Irreducible residual to acknowledge in the note: a fully-hijacked daemon at the exact moment of a
+legitimate touch can ride that ONE touch for ONE terminal, once (the single-use per-connection nonce caps
+it). DoS by racing the pipe remains (denies service, grants no shell). Both are documented and accepted.

@@ -17,13 +17,43 @@
  * so this orchestration — including the auth reject paths — is tested hermetically without koffi; the real
  * surface is `win32PtyApi.ts`, integration-tested on a real box.
  */
+import { randomBytes } from 'node:crypto';
 import { parseSidString } from '../../../broker/win32Sid.ts';
 import type { PeerCredential } from '../../../broker/socket.ts';
 import { authenticateCrossUserConnection } from './crossUserAuth.ts';
 import { runHostSession } from './hostPtySession.ts';
 import { openRequestFromFrame } from './hostPtySession.ts';
-import type { PtyServerChannel } from './ptyProtocol.ts';
+import { buildPtyChallenge } from './ptyChallenge.ts';
+import type { PtyAssertion, PtyServerChannel } from './ptyProtocol.ts';
 import type { PtyHost } from './host.ts';
+
+/**
+ * Factor C verifier: HOST-side WebAuthn assertion check over the fresh nonce THIS connection issued.
+ * Injected so the orchestration (incl. every fail-closed path) is tested hermetically without a real
+ * `py` subprocess; production wires the subprocess-driven verifier (`ptyAssertionVerify.ts`). Must be
+ * total — a throw is treated as a rejection by the caller (fail-closed).
+ */
+export type PtyAssertionVerifier = (input: { expectedChallenge: string; assertion: PtyAssertion }) => {
+  ok: boolean;
+  reason: string;
+};
+
+/** Read a candidate `PtyAssertion` off the raw inbound `open` frame, or null if any field is missing /
+ *  not a string (→ Factor C fails closed; no partial assertion ever reaches the verifier). */
+function assertionFromFrame(frame: Record<string, unknown>): PtyAssertion | null {
+  const a = frame.assertion;
+  if (a === null || typeof a !== 'object') return null;
+  const { credentialId, authenticatorData, clientDataJSON, signature } = a as Record<string, unknown>;
+  if (
+    typeof credentialId !== 'string' ||
+    typeof authenticatorData !== 'string' ||
+    typeof clientDataJSON !== 'string' ||
+    typeof signature !== 'string'
+  ) {
+    return null;
+  }
+  return { credentialId, authenticatorData, clientDataJSON, signature };
+}
 
 /** An opaque per-instance pipe handle (a koffi connection object in production; any token in tests). */
 export type PipeHandle = unknown;
@@ -78,6 +108,11 @@ export interface HostPipeServerDeps {
   peerFfi: PtyPeerFfi;
   /** The reused PTY host (`createPtyHost`) that actually spawns node-pty. */
   host: PtyHost;
+  /** Factor C (D3.1 MED mitigation): host-side WebAuthn assertion verifier over this connection's nonce. */
+  verifyAssertion: PtyAssertionVerifier;
+  /** Fresh per-connection 256-bit nonce source. Default: `randomBytes(32)`. Injected for deterministic
+   *  tests (e.g. replay: two connections whose nonces are made to differ). */
+  mintNonce?: () => Uint8Array;
   /** Per-open preamble re-check (assertFleetRunnable) — forwarded to each session. */
   isRunnable: () => boolean;
   /** Defaults for an `open` frame missing/with-invalid geometry or cwd. */
@@ -102,7 +137,8 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
  * host boot fails closed. `close()` tears down every live instance.
  */
 export function createHostPipeServer(deps: HostPipeServerDeps): HostPipeServer {
-  const { pipeName, transport, peerFfi, expectedPeerSid, bootToken, host, isRunnable, openDefaults } = deps;
+  const { pipeName, transport, peerFfi, expectedPeerSid, bootToken, host, verifyAssertion, isRunnable, openDefaults } = deps;
+  const mintNonce = deps.mintNonce ?? ((): Uint8Array => randomBytes(32));
   const requestTimeoutMs = deps.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
   const onFatal = deps.onFatal ?? ((): void => process.exit(71));
   const live = new Set<PipeHandle>();
@@ -140,6 +176,14 @@ export function createHostPipeServer(deps: HostPipeServerDeps): HostPipeServer {
         rawChannel.close();
       },
     };
+    // D3.1 MED mitigation — issue a FRESH 256-bit nonce for THIS connection, held in a per-connection
+    // closure variable (never a shared/global map), so it is single-use by construction and dies with the
+    // connection. Assemble the exact WebAuthn challenge string and send it BEFORE the client's `open`.
+    // Ordering safety: this host WRITE does not satisfy Factor A's "client wrote first" precondition — the
+    // client's `open` frame is still that write, and the peer-SID read still happens after nextFrame returns.
+    const expectedChallenge = buildPtyChallenge(mintNonce());
+    channel.sendFrame({ type: 'challenge', challenge: expectedChallenge });
+
     const first = await channel.nextFrame(requestTimeoutMs);
     if (!first || first.type !== 'open') {
       channel.close();
@@ -157,7 +201,30 @@ export function createHostPipeServer(deps: HostPipeServerDeps): HostPipeServer {
       return;
     }
 
-    // Both factors passed — run the persistent PTY session (per-open STOP re-check happens inside).
+    // Factor C — host-side WebAuthn assertion over THIS connection's nonce. A strict ADDITIONAL conjunct:
+    // A ∧ B already passed; C must also hold or NOTHING spawns. A missing/malformed assertion, a verifier
+    // throw, or a rejection all fail closed (open-nack + close, no PTY). This is the crux of the MED fix —
+    // the assertion is checked HERE (in the kb-fleet host), so bypassing the daemon does not bypass C.
+    const assertion = assertionFromFrame(first);
+    if (!assertion) {
+      channel.sendFrame({ type: 'open-nack', error: 'unauthenticated: assertion-missing' });
+      channel.close();
+      return;
+    }
+    let cResult: { ok: boolean; reason: string };
+    try {
+      cResult = verifyAssertion({ expectedChallenge, assertion });
+    } catch (err) {
+      report(err);
+      cResult = { ok: false, reason: 'verifier-error' };
+    }
+    if (!cResult.ok) {
+      channel.sendFrame({ type: 'open-nack', error: `unauthenticated: assertion:${cResult.reason}` });
+      channel.close();
+      return;
+    }
+
+    // All THREE factors passed — run the persistent PTY session (per-open STOP re-check happens inside).
     const openReq = openRequestFromFrame(first, openDefaults);
     runHostSession(channel, openReq, { host, isRunnable });
   }

@@ -68,3 +68,67 @@ describe('FrameParser', () => {
     expect(() => p.push('x'.repeat(64))).toThrow(/exceeded 16 bytes/);
   });
 });
+
+describe('D3.1 MED mitigation — challenge frame + assertion-carrying open', () => {
+  it('round-trips a host-issued challenge frame', () => {
+    const p = new FrameParser();
+    const challenge = 'WyJrYi1wdHktb3BlbiIsImRHVnpkQzF1YjI1alpRIl0';
+    const frames = p.push(encodeFrame({ type: 'challenge', challenge }));
+    expect(frames).toEqual([{ type: 'challenge', challenge }]);
+  });
+
+  it('round-trips an open frame carrying a passkey assertion (Factor C)', () => {
+    const open: ControlFrame = {
+      type: 'open',
+      token: 'boot-token',
+      requestId: 'req-1',
+      cols: 80,
+      rows: 24,
+      cwd: '/repo',
+      sessionSubject: 'operator-1',
+      assertion: {
+        credentialId: 'cred-abc',
+        authenticatorData: 'YXV0aA',
+        clientDataJSON: 'Y2RhdGE',
+        signature: 'c2ln',
+      },
+    };
+    const frames = new FrameParser().push(encodeFrame(open));
+    expect(frames).toEqual([open]);
+  });
+
+  it('an open frame WITHOUT an assertion still round-trips (assertion is optional on the wire)', () => {
+    const open: ControlFrame = {
+      type: 'open',
+      token: 'boot',
+      requestId: 'r',
+      cols: 80,
+      rows: 24,
+      cwd: '/repo',
+      sessionSubject: 's',
+    };
+    expect(new FrameParser().push(encodeFrame(open))).toEqual([open]);
+  });
+
+  it('an oversize assertion-bearing open (no newline yet) FAILS CLOSED at the line ceiling', () => {
+    const p = new FrameParser(64);
+    // Strip the trailing newline so the parser sees an unterminated over-long line (memory-exhaustion guard).
+    const huge = encodeFrame({
+      type: 'open',
+      token: 't',
+      requestId: 'r',
+      cols: 80,
+      rows: 24,
+      cwd: '/repo',
+      sessionSubject: 's',
+      assertion: { credentialId: 'c', authenticatorData: 'A'.repeat(200), clientDataJSON: 'x', signature: 'y' },
+    }).replace(/\n$/, '');
+    expect(() => p.push(huge)).toThrow(/exceeded 64 bytes/);
+  });
+
+  it('a challenge frame with embedded control chars stays ONE physical line (framing-safe)', () => {
+    const p = new FrameParser();
+    const challenge = 'has\nnewline\tand\rreturn';
+    expect(p.push(encodeFrame({ type: 'challenge', challenge }))).toEqual([{ type: 'challenge', challenge }]);
+  });
+});

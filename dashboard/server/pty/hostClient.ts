@@ -37,7 +37,7 @@ import { assertFleetRunnable, defaultPreambleRunner } from '../write/preambleGat
 import type { PreambleRunner } from '../write/preambleGate.ts';
 import { appendAudit as defaultAppendAudit } from '../audit/log.ts';
 import type { AppendAuditOptions, AuditEvent, AuditRow, OpsGitRunner } from '../audit/log.ts';
-import type { ControlFrame, InboundFrame, PtyClientChannel } from './ptyProtocol.ts';
+import type { ControlFrame, InboundFrame, PtyAssertion, PtyClientChannel } from './ptyProtocol.ts';
 import { bootTokenPath, readBootTokenFresh } from './rendezvousToken.ts';
 import { DEFAULT_RENDEZVOUS_DIR } from './peerConfig.ts';
 import { resolveFleetSid } from './fleetIdentity.ts';
@@ -85,10 +85,20 @@ export interface OpenPtyAck {
   sessionId: string;
 }
 
+/**
+ * Collects a hardware-passkey WebAuthn assertion over the host-issued `challenge` (D3.1 MED mitigation,
+ * Factor C). In production this relays to the browser (`navigator.credentials.get` via the WS); in tests
+ * it is a fake. MUST reject (throw / return a rejected promise) rather than return a bogus assertion if
+ * the passkey ceremony fails — the daemon then fails the open closed.
+ */
+export type PtyAssertionProvider = (challenge: string) => Promise<PtyAssertion>;
+
 /** A live connection to the host for one PTY session. IO is proxied through here to the browser WS. */
 export interface HostConnection {
-  /** Send the authenticated open-request; the host spawns `node-pty` and returns its session id. */
-  requestOpen(req: OpenPtyRequest): OpenPtyAck;
+  /** Two-phase (D3.1): await the host's `challenge`, collect the passkey assertion via the injected
+   *  provider, send the authenticated open-request carrying it; the host verifies Factor C, spawns
+   *  `node-pty`, and returns its session id. Async because the assertion ceremony is interactive. */
+  requestOpen(req: OpenPtyRequest): Promise<OpenPtyAck>;
   onData(cb: (chunk: string) => void): void;
   onExit(cb: (code: number | null) => void): void;
   write(data: string): void;
@@ -102,11 +112,14 @@ export interface HostConnection {
  * real default (a named-pipe client) is wired at the D3.1 go-live gate, not here, because a live host
  * process does not exist until that human gate registers the scheduled task under the fleet account.
  */
-export type HostTransport = (auth: HostChannelAuth) => HostConnection;
+export type HostTransport = (auth: HostChannelAuth, assertionProvider: PtyAssertionProvider) => HostConnection;
 
 /** Bound the synchronous open handshake. In production the host is a SEPARATE process, so this blocking
  *  read does not stall its event loop; the bound guarantees `openPty` cannot hang if the host wedges. */
 const OPEN_HANDSHAKE_TIMEOUT_MS = 15_000;
+
+/** Bound the wait for the host's unsolicited `challenge` frame (phase 1 of the two-phase ceremony). */
+const CHALLENGE_TIMEOUT_MS = 15_000;
 
 /**
  * Adapt a connected, server-identity-verified `PtyClientChannel` into the `HostConnection` the daemon
@@ -116,7 +129,11 @@ const OPEN_HANDSHAKE_TIMEOUT_MS = 15_000;
  * persistent stream: `data` frames → `onData`, `exit` (or channel close) → `onExit`. Exported for hermetic
  * tests (a fake channel), so the multiplexing is proven without koffi.
  */
-export function createHostConnection(channel: PtyClientChannel, bootToken: string): HostConnection {
+export function createHostConnection(
+  channel: PtyClientChannel,
+  bootToken: string,
+  assertionProvider: PtyAssertionProvider,
+): HostConnection {
   const dataCbs: Array<(chunk: string) => void> = [];
   const exitCbs: Array<(code: number | null) => void> = [];
   let streaming = false;
@@ -148,7 +165,35 @@ export function createHostConnection(channel: PtyClientChannel, bootToken: strin
   };
 
   return {
-    requestOpen(req: OpenPtyRequest): OpenPtyAck {
+    async requestOpen(req: OpenPtyRequest): Promise<OpenPtyAck> {
+      // Phase 1 — receive the host's fresh per-connection `challenge` (issued on connect, before `open`).
+      const challengeFrame = channel.receiveFrame(CHALLENGE_TIMEOUT_MS);
+      if (!challengeFrame || challengeFrame.type !== 'challenge' || typeof challengeFrame.challenge !== 'string') {
+        channel.close();
+        throw new Error('PTY host did not issue a challenge (fail-closed)');
+      }
+
+      // Phase 2 — collect a hardware-passkey assertion over that exact challenge (Factor C). A ceremony
+      // failure (declined / no touch / provider error) fails the open CLOSED — never a bogus assertion.
+      let assertion: PtyAssertion;
+      try {
+        assertion = await assertionProvider(challengeFrame.challenge);
+      } catch (err) {
+        channel.close();
+        throw new Error(`PTY passkey assertion ceremony failed: ${(err as Error).message} (fail-closed)`);
+      }
+      if (
+        !assertion ||
+        typeof assertion.credentialId !== 'string' ||
+        typeof assertion.authenticatorData !== 'string' ||
+        typeof assertion.clientDataJSON !== 'string' ||
+        typeof assertion.signature !== 'string'
+      ) {
+        channel.close();
+        throw new Error('PTY passkey assertion provider returned no/invalid assertion (fail-closed)');
+      }
+
+      // Phase 3 — send the authenticated open carrying the token (Factor B) + assertion (Factor C).
       const openFrame: ControlFrame = {
         type: 'open',
         token: bootToken,
@@ -157,6 +202,7 @@ export function createHostConnection(channel: PtyClientChannel, bootToken: strin
         rows: req.rows,
         cwd: req.cwd,
         sessionSubject: req.sessionSubject,
+        assertion,
       };
       const resp = channel.requestSync(openFrame, OPEN_HANDSHAKE_TIMEOUT_MS);
       if (!resp) {
@@ -206,7 +252,7 @@ export function createHostConnection(channel: PtyClientChannel, bootToken: strin
  * Only after the server identity is confirmed is the per-boot token sent (inside `requestOpen`). Tests
  * inject a fake transport, so this native path is exercised only on a real box.
  */
-export const defaultHostTransport: HostTransport = (auth) => {
+export const defaultHostTransport: HostTransport = (auth, assertionProvider) => {
   if (process.platform !== 'win32') {
     throw new Error('PTY host transport is win32-only; there is no host to signal on this platform (fail-closed)');
   }
@@ -220,7 +266,7 @@ export const defaultHostTransport: HostTransport = (auth) => {
       'PTY host pipe unreachable, or the pipe server identity is not kb-fleet (anti-squat); fail-closed',
     );
   }
-  return createHostConnection(channel, auth.bootToken);
+  return createHostConnection(channel, auth.bootToken, assertionProvider);
 };
 
 /** Everything `openPty` needs, all hermetic-test-safe. */
@@ -229,6 +275,12 @@ export interface OpenPtyDeps {
   /** Channel auth for the daemon→host pipe. Defaults to the env-resolved values. */
   channelAuth?: HostChannelAuth;
   transport?: HostTransport;
+  /**
+   * D3.1 Factor C — collects the hardware-passkey assertion over the host-issued challenge. Wired at
+   * go-live to the browser ceremony (relayed over the terminal WS); injected as a fake in tests. Required
+   * for a successful open: without it the daemon cannot answer the host's per-open challenge.
+   */
+  assertionProvider?: PtyAssertionProvider;
   runPreamble?: PreambleRunner;
   /** Terminal geometry for the initial spawn. */
   cols?: number;
@@ -279,7 +331,18 @@ export function resolveChannelAuth(
  * another user. See the module docstring for the gate order (preamble first, then WebAuthn session,
  * then the host signal) and the exactly-one-audit-row invariant.
  */
-export function openPty(session: SessionInput, deps: OpenPtyDeps): OpenPtyOutcome {
+/**
+ * The default assertion provider fails CLOSED: no browser ceremony is wired at this layer (the terminal
+ * WS relays the real one at go-live). A caller that reaches the host without wiring `assertionProvider`
+ * therefore cannot answer the per-open challenge, and the open is refused — never opened without Factor C.
+ */
+export const defaultAssertionProvider: PtyAssertionProvider = () => {
+  return Promise.reject(
+    new Error('no PTY passkey assertion provider wired — a fleet-terminal open requires a hardware passkey (fail-closed)'),
+  );
+};
+
+export async function openPty(session: SessionInput, deps: OpenPtyDeps): Promise<OpenPtyOutcome> {
   const appendAuditFn = deps.appendAudit ?? defaultAppendAudit;
   const requestId = (deps.requestId ?? randomUUID)();
 
@@ -321,16 +384,17 @@ export function openPty(session: SessionInput, deps: OpenPtyDeps): OpenPtyOutcom
   //    it never spawns a process as a user and passes no credential as an argument.
   const auth = deps.channelAuth ?? resolveChannelAuth();
   const transport = deps.transport ?? defaultHostTransport;
+  const assertionProvider = deps.assertionProvider ?? defaultAssertionProvider;
   let connection: HostConnection;
   try {
-    connection = transport(auth);
+    connection = transport(auth, assertionProvider);
   } catch (err) {
     return audited({ ok: false, reason: 'host-unreachable', detail: (err as Error).message }, owner);
   }
 
   let ack: OpenPtyAck;
   try {
-    ack = connection.requestOpen({
+    ack = await connection.requestOpen({
       type: 'open-pty',
       requestId,
       cols: deps.cols ?? DEFAULT_COLS,

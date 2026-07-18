@@ -14,10 +14,28 @@
  * real box). Neither the multiplexer nor the adapter ever touches koffi — they only speak `ControlFrame`.
  */
 
+/**
+ * A hardware-passkey WebAuthn assertion (Factor C, D3.1 MED mitigation). Rides the `open` frame so the
+ * host can verify it — host-side — over the fresh nonce IT issued in the preceding `challenge` frame.
+ * All four fields are base64url strings exactly as the browser produces them. Verified by
+ * `scripts/pty_host_assertion_verify.py`; never logged/persisted; passed to the verifier via stdin only.
+ */
+export interface PtyAssertion {
+  credentialId: string;
+  authenticatorData: string;
+  clientDataJSON: string;
+  signature: string;
+}
+
 /** Every frame that crosses the daemon↔host channel. Direction is by `type`:
- *  daemon→host: open / write / resize / stop;  host→daemon: open-ack / open-nack / data / exit. */
+ *  host→daemon: challenge / open-ack / open-nack / data / exit;  daemon→host: open / write / resize / stop.
+ *
+ *  D3.1 MED mitigation — the open ceremony is now TWO-PHASE: on connect the host issues a `challenge`
+ *  (a fresh per-connection nonce, assembled by `ptyChallenge.buildPtyChallenge`); the daemon relays it
+ *  to the browser, collects a passkey `assertion`, and sends it on the `open` frame (Factor C). */
 export type ControlFrame =
-  | { type: 'open'; token: string; requestId: string; cols: number; rows: number; cwd: string; sessionSubject: string }
+  | { type: 'challenge'; challenge: string }
+  | { type: 'open'; token: string; requestId: string; cols: number; rows: number; cwd: string; sessionSubject: string; assertion?: PtyAssertion }
   | { type: 'open-ack'; sessionId: string }
   | { type: 'open-nack'; error: string }
   | { type: 'data'; data: string }
@@ -107,6 +125,10 @@ export interface PtyServerChannel extends PtyFrameChannel {
  *  is synchronous: send the `open` frame and block (bounded) for the single `open-ack`/`open-nack`. In
  *  production the host is a SEPARATE process, so this blocking read does not stall its event loop. */
 export interface PtyClientChannel extends PtyFrameChannel {
+  /** Await the next inbound frame WITHOUT sending anything, up to `timeoutMs` (null on timeout/EOF/error).
+   *  Used by the D3.1 two-phase ceremony to receive the host's unsolicited `challenge` frame BEFORE the
+   *  `open` frame is composed. Buffered frames are returned in order. */
+  receiveFrame(timeoutMs: number): InboundFrame | null;
   /** Send `frame`, block up to `timeoutMs` for one inbound frame, return it (null on timeout/EOF/error).
    *  Any frames that arrive before `onFrame` is later wired are buffered and replayed (no data lost). */
   requestSync(frame: ControlFrame, timeoutMs: number): InboundFrame | null;

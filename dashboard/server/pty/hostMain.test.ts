@@ -129,6 +129,10 @@ function baseDeps(over: Partial<PtyHostBootDeps> = {}): PtyHostBootDeps {
     peerFs: peerFs(),
     mintToken: () => TOKEN,
     startStopWatch: () => ({ close: () => {} }),
+    // Factor C is verified by an injected fake here (no real `py` subprocess); accepts by default so the
+    // A∧B∧(session STOP) paths under test are reached. Tests that exercise Factor C live in
+    // hostPipeServer.test.ts / ptyAssertionVerify.test.ts.
+    verifyAssertion: () => ({ ok: true, reason: 'ok' }),
     ...over,
   };
 }
@@ -225,7 +229,17 @@ describe('bootPtyHost — per-open assertFleetRunnable re-check is wired', () =>
     const nat = fakeNative({
       ownSid: KB_FLEET,
       clientSid: DANIEL,
-      openFrame: { type: 'open', token: TOKEN, requestId: 'r', cols: 80, rows: 24, cwd: '/repo', sessionSubject: 's' },
+      openFrame: {
+        type: 'open',
+        token: TOKEN,
+        requestId: 'r',
+        cols: 80,
+        rows: 24,
+        cwd: '/repo',
+        sessionSubject: 's',
+        // Factor C material present + accepted (fake verifier) so the per-open STOP re-check is reached.
+        assertion: { credentialId: 'c', authenticatorData: 'a', clientDataJSON: 'd', signature: 's' },
+      },
     });
     const host = fakeHost();
 

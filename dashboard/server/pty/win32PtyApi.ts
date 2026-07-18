@@ -575,24 +575,31 @@ export function loadWin32PtyApi(): Win32PtyApi {
       })();
     };
 
+    /** Blocking read of one queued/next inbound frame within `deadline` (null on timeout/EOF/parse fault).
+     *  Shared by `receiveFrame` (D3.1 two-phase: receive the host `challenge`) and `requestSync`. */
+    const drainOneFrame = (deadline: number): InboundFrame | null => {
+      while (queue.length === 0) {
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) return null;
+        const chunk = readBlocking(conn, remaining);
+        if (chunk === null) return null;
+        let frames: InboundFrame[];
+        try {
+          frames = conn.parser.push(chunk.toString('utf-8'));
+        } catch {
+          return null;
+        }
+        for (const f of frames) queue.push(f);
+      }
+      return queue.shift() as InboundFrame;
+    };
+
     return {
+      receiveFrame: (timeoutMs) => drainOneFrame(Date.now() + timeoutMs),
       requestSync: (frame, timeoutMs) => {
         const deadline = Date.now() + timeoutMs;
         if (!writeBlocking(conn, Buffer.from(encodeFrame(frame), 'utf-8'), timeoutMs)) return null;
-        while (queue.length === 0) {
-          const remaining = deadline - Date.now();
-          if (remaining <= 0) return null;
-          const chunk = readBlocking(conn, remaining);
-          if (chunk === null) return null;
-          let frames: InboundFrame[];
-          try {
-            frames = conn.parser.push(chunk.toString('utf-8'));
-          } catch {
-            return null;
-          }
-          for (const f of frames) queue.push(f);
-        }
-        return queue.shift() as InboundFrame;
+        return drainOneFrame(deadline);
       },
       sendFrame: (frame) => {
         if (conn.closed) return false;
