@@ -15,7 +15,7 @@
  * be runnable JS as-is in the browser's service-worker context).
  */
 
-const CACHE_VERSION = 'kb-shell-v1';
+const CACHE_VERSION = 'kb-shell-v2';
 
 // The static app shell. Live data is NOT listed here — it arrives over the foreground hub.
 const APP_SHELL = [
@@ -50,7 +50,10 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// App-shell-only fetch: serve same-origin GET shell/static assets cache-first, fall back to network.
+// App-shell-only fetch: same-origin GET shell/static assets go network-first, falling back to the
+// cache only when the network is unreachable (offline PWA open). Cache-first served a stale
+// index.html after every rebuild — its hashed asset references no longer existed, blanking the app.
+// Successful responses refresh the cache so the offline copy tracks the live build.
 // The live fleet channels are explicitly excluded so they always hit the network in the foreground.
 self.addEventListener('fetch', (event) => {
   const request = event.request;
@@ -62,5 +65,15 @@ self.addEventListener('fetch', (event) => {
   // Never cache/intercept the live fleet channels — foreground-only tails (SSE + API reads).
   if (url.pathname.startsWith('/events') || url.pathname.startsWith('/api')) return;
 
-  event.respondWith(caches.match(request).then((cached) => cached || fetch(request)));
+  event.respondWith(
+    fetch(request)
+      .then((response) => {
+        if (response.ok) {
+          const copy = response.clone();
+          event.waitUntil(caches.open(CACHE_VERSION).then((cache) => cache.put(request, copy)));
+        }
+        return response;
+      })
+      .catch(() => caches.match(request).then((cached) => cached || Response.error())),
+  );
 });
