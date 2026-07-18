@@ -100,7 +100,11 @@ export function commitAuditToOps(
   const maxRetryPushes = options.maxRetryPushes ?? 3;
 
   // Reconcile with remote ops before writing history, stage ONLY the audit ledger, commit.
-  runGit(repoRoot, ['pull', '--rebase', 'origin', 'ops']);
+  // `--autostash` is REQUIRED: the row was already appended to the tracked ledger by the caller, so the
+  // working tree is dirty and a plain `pull --rebase` aborts ("cannot pull with rebase: You have unstaged
+  // changes"). Autostash shelves the pending row (and any other unstaged change in this shared checkout),
+  // rebases onto origin/ops, then restores it — so only the FIRST write ever succeeded before this.
+  runGit(repoRoot, ['pull', '--rebase', '--autostash', 'origin', 'ops']);
   runGit(repoRoot, ['add', '--', AUDIT_REL_PATH]);
   runGit(repoRoot, ['commit', '-m', message]);
 
@@ -114,7 +118,7 @@ export function commitAuditToOps(
     } catch (err) {
       lastErr = err;
       if (attempt === maxRetryPushes) break;
-      runGit(repoRoot, ['pull', '--rebase', 'origin', 'ops']);
+      runGit(repoRoot, ['pull', '--rebase', '--autostash', 'origin', 'ops']);
     }
   }
   throw lastErr;
