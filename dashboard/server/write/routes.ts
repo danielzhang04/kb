@@ -7,6 +7,7 @@
  *
  *   POST /api/write/save          -> write/governedSave.ts#save
  *   POST /api/write/launch        -> write/launch.ts#launchCard
+ *   POST /api/write/workflow-runs -> write/workflowRun.ts#launchWorkflowRun
  *   POST /api/write/rerun         -> write/launch.ts#rerunAsDependsOn
  *   POST /api/write/stop          -> stop/floor.ts#writeStop        (nuclear, fleet-wide STOP sentinel)
  *   POST /api/write/stop-card     -> stop/floor.ts#requestStop      (scoped: working -> stop-requested -> halting)
@@ -22,6 +23,8 @@ import {
 } from './branch.ts';
 import { launchCard, rerunAsDependsOn } from './launch.ts';
 import type { LaunchOutcome, RiskTier } from './launch.ts';
+import { launchWorkflowRun } from './workflowRun.ts';
+import type { WorkflowRunOutcome } from './workflowRun.ts';
 import { writeStop, requestStop, pauseCadence } from '../stop/floor.ts';
 import { setOverride, clearOverride } from './routingOverride.ts';
 import type { OverrideScope } from './routingOverride.ts';
@@ -55,6 +58,23 @@ function launchStatus(outcome: Extract<LaunchOutcome, { ok: false }>): number {
       return 401;
     case 'owner-not-registered':
       return 400;
+    case 'card-op-failed':
+      return 500;
+    default:
+      return 500;
+  }
+}
+
+function workflowRunStatus(outcome: Extract<WorkflowRunOutcome, { ok: false }>): number {
+  switch (outcome.reason) {
+    case 'fleet-frozen':
+      return 503;
+    case 'unauthenticated':
+      return 401;
+    case 'invalid-workflow':
+    case 'owner-not-registered':
+      return 400;
+    case 'routing-failed':
     case 'card-op-failed':
       return 500;
     default:
@@ -162,6 +182,64 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
       }
     }
     return reply.code(launchStatus(outcome)).send({ error: outcome.reason, detail: 'detail' in outcome ? outcome.detail : outcome.problems });
+  });
+
+  scope.post('/api/write/workflow-runs', { preHandler }, async (req, reply: FastifyReply) => {
+    const session = verifiedSession(req);
+    const outcome = launchWorkflowRun(
+      req.body,
+      { token: session?.token, config: ctx.sessionConfig },
+      {
+        repoRoot: ctx.repoRoot,
+        runPreamble: ctx.runPreamble,
+        runPy: ctx.runPy,
+        prepareWrite: (repoRoot) => prepareCoordination(repoRoot, ctx.opsGit ?? defaultGitRunner),
+      },
+    );
+    if (!outcome.ok) {
+      return reply.code(workflowRunStatus(outcome)).send({
+        error: outcome.reason,
+        detail: 'detail' in outcome ? outcome.detail : outcome.problems,
+      });
+    }
+
+    try {
+      const appendLocal = ctx.appendAuditLocal ?? appendAuditRowLocal;
+      const request = asRecord(req.body);
+      appendLocal(ctx.repoRoot, {
+        action: 'workflow-run',
+        owner: session?.claims.sub,
+        target: str(request.name),
+        result: `launched:${outcome.runId}`,
+        detail: {
+          runId: outcome.runId,
+          project: str(request.project),
+          stageCount: outcome.cards.length,
+          ...(typeof request.workflowDefinitionId === 'string'
+            ? { workflowDefinitionId: request.workflowDefinitionId }
+            : {}),
+        },
+      }, ctx.now);
+
+      const [first, ...rest] = outcome.cards.map((card) => card.cardPath);
+      // Validation guarantees at least one stage, and the subprocess result parser enforces parity.
+      if (!first) throw new Error('workflow run produced no card paths');
+      commitPreparedCoordination(ctx.repoRoot, first, {
+        runGit: ctx.opsGit ?? defaultGitRunner,
+        alsoStage: [...rest, AUDIT_REL_PATH],
+        message: `chore(queue): launch workflow run ${outcome.runId}`,
+      });
+      return reply.code(200).send({
+        ok: true,
+        runId: outcome.runId,
+        cards: outcome.cards.map(({ stageId, cardId, state }) => ({ stageId, cardId, state })),
+      });
+    } catch (error) {
+      return reply.code(500).send({
+        error: 'workflow-run-commit-failed',
+        detail: error instanceof Error ? error.message : String(error),
+      });
+    }
   });
 
   scope.post('/api/write/rerun', { preHandler }, async (req, reply: FastifyReply) => {
