@@ -63,6 +63,10 @@
   color: var(--fg-dim);
 }
 
+.terminal__state--awaiting-touch {
+  color: var(--warning); /* a passkey touch is pending — the one moment the operator must act */
+}
+
 .terminal__state--error {
   color: var(--error);
 }
@@ -78,6 +82,14 @@
   margin: 0;
   color: var(--warning);
   font-size: var(--text-sm);
+}
+
+/* The passkey-touch cue: shown only while the host challenge is outstanding (state `awaiting-touch`). */
+.terminal__touch-prompt {
+  margin: 0;
+  color: var(--warning);
+  font-size: var(--text-sm);
+  font-weight: 600;
 }
 
 /* The xterm host: deepest sunken well, hairline-bordered, sunken shadow — the "code gutter" surface. */
