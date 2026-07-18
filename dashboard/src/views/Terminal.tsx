@@ -22,6 +22,7 @@ import '@xterm/xterm/css/xterm.css';
 import '../styles/views/terminal.css';
 import { handlePtyChallenge, parseControlMessage } from '../lib/ptyAssertionClient';
 import type { PtyAssertion } from '../lib/ptyAssertionClient';
+import type { Session } from '../lib/authClient';
 
 /**
  * xterm theme mapped ENTIRELY onto the house near-black palette (app.css tokens, resolved to literals
@@ -77,6 +78,13 @@ export interface TerminalProps {
   socketFactory?: PtySocketFactory;
   /** Injected in tests to run the passkey ceremony with a fake; production uses `collectPtyAssertion`. */
   collectAssertion?: PtyAssertionCollector;
+  /**
+   * Point-of-action passkey sign-in (App-wired), mirroring the other governed views. Without a
+   * `sessionToken` the empty state becomes an actionable "Sign in with your passkey" button that runs the
+   * WebAuthn ceremony and mints the ~5-min dashboard session; the view then auto-connects and the host
+   * still demands its OWN per-open Factor C touch. Absent (direct component tests) → passive text only.
+   */
+  onRequestSession?: () => Promise<Session | null>;
 }
 
 /**
@@ -92,9 +100,24 @@ export function Terminal({
   fleetIdentity = 'fleet-runner',
   socketFactory = defaultPtySocketFactory,
   collectAssertion,
+  onRequestSession,
 }: TerminalProps): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<ConnState>('idle');
+  // Point-of-action sign-in pending flag — disables the button so a second click can't launch a
+  // concurrent ceremony. Once `onRequestSession` mints the session, App re-renders us WITH a
+  // `sessionToken` and the connect effect fires; this button unmounts.
+  const [signingIn, setSigningIn] = useState(false);
+
+  async function handleSignIn(): Promise<void> {
+    if (!onRequestSession || signingIn) return;
+    setSigningIn(true);
+    try {
+      await onRequestSession();
+    } finally {
+      setSigningIn(false);
+    }
+  }
   // The RP id the passkey ceremony asserts to. The Origin/Host guard pins the served page to the RP
   // origin, so the page hostname IS the RP id — server-configured, NEVER derived from the challenge nonce.
   const rpId = typeof window !== 'undefined' ? window.location.hostname : '';
@@ -191,7 +214,19 @@ export function Terminal({
         account credential.
       </p>
       {!sessionToken ? (
-        <p className="terminal__session-warning">Sign in with your passkey to open a terminal.</p>
+        onRequestSession ? (
+          <button
+            type="button"
+            className="terminal__signin mc-btn mc-btn--primary"
+            onClick={() => void handleSignIn()}
+            disabled={signingIn}
+            data-testid="terminal-signin"
+          >
+            {signingIn ? 'Signing in…' : 'Sign in with your passkey to open a terminal'}
+          </button>
+        ) : (
+          <p className="terminal__session-warning">Sign in with your passkey to open a terminal.</p>
+        )
       ) : null}
       {state === 'awaiting-touch' ? (
         <p className="terminal__touch-prompt" role="status" data-testid="terminal-touch-prompt">
