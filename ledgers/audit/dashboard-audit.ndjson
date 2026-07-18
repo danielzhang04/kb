@@ -17,3 +17,4 @@
 {"ts":"2026-07-18T05:05:16.459Z","action":"pty-open","owner":"operator","result":"host-unreachable","detail":{"requestId":"0cf62d68-ff35-4160-88dc-35511a96ffdd","cols":80,"rows":24,"refusalDetail":"PTY host open handshake timed out or the channel closed (fail-closed)"}}
 {"ts":"2026-07-18T05:22:13.159Z","action":"auth","owner":"operator","result":"login"}
 {"ts":"2026-07-18T05:22:24.693Z","action":"pty-open","owner":"operator","result":"host-unreachable","detail":{"requestId":"df672f29-1dc6-4d37-8591-7710511bf460","cols":80,"rows":24,"refusalDetail":"PTY host open handshake timed out or the channel closed (fail-closed)"}}
+{"ts":"2026-07-18T05:34:44.565Z","action":"auth","owner":"operator","result":"login"}
