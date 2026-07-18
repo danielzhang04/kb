@@ -46,7 +46,7 @@ describe('ApprovalsLive', () => {
     expect(fetchImpl).not.toHaveBeenCalledWith('/api/approvals/verify', expect.anything());
 
     // Now click verify — the endpoint is hit with the chosen channel + bearer.
-    fireEvent.click(screen.getByRole('button', { name: /Verify \(WebAuthn\)/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Verify evidence \(WebAuthn\)/i }));
     await waitFor(() => {
       const call = fetchImpl.mock.calls.find((c) => c[0] === '/api/approvals/verify');
       expect(call).toBeTruthy();
@@ -54,5 +54,42 @@ describe('ApprovalsLive', () => {
       expect((init.headers as Record<string, string>).authorization).toBe('Bearer sess-tok');
       expect(JSON.parse(init.body as string)).toEqual({ cardId: 'card-77', channel: 'webauthn' });
     });
+  });
+
+  it('unlocks at point of action and surfaces a successful outcome', async () => {
+    const fetchImpl = vi.fn(async (url: string, _init?: RequestInit) => {
+      if (url === '/api/approvals') return jsonResponse({ pending: [{ card: card(), buttons: {} }] });
+      return jsonResponse({ ok: true, reason: 'verified' });
+    });
+    const onRequestSession = vi.fn(async () => ({ token: 'new-session' }));
+    render(
+      <ApprovalsLive
+        onRequestSession={onRequestSession}
+        fetchImpl={fetchImpl as unknown as typeof fetch}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /card-77/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Verify evidence \(WebAuthn\)/i }));
+
+    expect((await screen.findByRole('status')).textContent).toMatch(/card-77: verified/i);
+    expect(onRequestSession).toHaveBeenCalledTimes(1);
+    const verifyCall = fetchImpl.mock.calls.find((c) => c[0] === '/api/approvals/verify');
+    expect((verifyCall?.[1]?.headers as Record<string, string>).authorization).toBe('Bearer new-session');
+  });
+
+  it('shows a refusal instead of silently doing nothing when unlock is cancelled', async () => {
+    const fetchImpl = vi.fn(async (_url: string) => jsonResponse({ pending: [{ card: card(), buttons: {} }] }));
+    render(
+      <ApprovalsLive
+        onRequestSession={async () => null}
+        fetchImpl={fetchImpl as unknown as typeof fetch}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /card-77/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Verify evidence \(WebAuthn\)/i }));
+    expect((await screen.findByRole('alert')).textContent).toMatch(/still locked/i);
+    expect(fetchImpl.mock.calls.some((c) => c[0] === '/api/approvals/verify')).toBe(false);
   });
 });

@@ -11,6 +11,7 @@ import { render, screen, cleanup, fireEvent, within } from '@testing-library/rea
 import { App } from './App';
 
 beforeEach(() => {
+  window.sessionStorage.clear();
   // Views self-fetch on mount; a never-resolving stub keeps every view on its empty-safe scaffold
   // (and keeps the sidebar approvals-count at 0, so no badge) without real network or state churn.
   vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
@@ -35,7 +36,7 @@ describe('App shell — entity-first sidebar navigation', () => {
 
     for (const label of [
       'Home',
-      'Approvals',
+      'Inbox',
       'Activity',
       'Atlas',
       'Terminal',
@@ -73,7 +74,9 @@ describe('App shell — entity-first sidebar navigation', () => {
     render(<App />);
     expect(screen.getByTestId('stop-floor')).toBeTruthy();
     // U5.1 — the floor carries a passive session indicator, NOT sign-in/out chrome.
-    expect(screen.getByTestId('session-state').textContent).toMatch(/session/i);
+    expect(screen.getByTestId('session-state').textContent).toMatch(/dashboard locked/i);
+    expect(screen.getByRole('button', { name: 'Unlock dashboard' })).toBeTruthy();
+    expect(screen.getByTestId('session-state').textContent).toMatch(/no private key leaves your device/i);
     expect(screen.queryByRole('button', { name: /sign in/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /sign out/i })).toBeNull();
     expect(screen.getByLabelText('Stop floor')).toBeTruthy();
@@ -81,6 +84,17 @@ describe('App shell — entity-first sidebar navigation', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Workflows' }));
     expect(screen.getByLabelText('Stop floor')).toBeTruthy();
+  });
+
+  it('restores an unexpired tab session after a refresh-sized remount', () => {
+    window.sessionStorage.setItem(
+      'kb-dashboard-session-v1',
+      JSON.stringify({ token: 'restored-token', expiresAt: Date.now() + 60_000 }),
+    );
+    render(<App />);
+
+    expect(screen.getByTestId('session-state').textContent).toMatch(/dashboard unlocked/i);
+    expect(screen.queryByRole('button', { name: 'Unlock dashboard' })).toBeNull();
   });
 
   it('lays the sidebar out as a full-height column: [+ New] header, scrollable nav, pinned floor last', () => {
@@ -120,8 +134,8 @@ describe('App shell — entity-first sidebar navigation', () => {
     expect(screen.getByLabelText('Workflows view')).toBeTruthy();
     expect(screen.queryByLabelText('Control view')).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Approvals' }));
-    expect(screen.getByLabelText('Approvals inbox')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Inbox' }));
+    expect(screen.getByLabelText('Human Inbox')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Activity' }));
     expect(screen.getByLabelText('Activity view')).toBeTruthy();

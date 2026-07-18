@@ -52,7 +52,15 @@ import { DeployOutcome } from './composer/DeployOutcome';
 import type { SeedKind } from './composer/artifactTypes';
 import { fetchPending } from './lib/approvalsClient';
 import { useSse } from './lib/sseClient';
-import { signIn, type Session } from './lib/authClient';
+import {
+  clearStoredSession,
+  isSessionFresh,
+  persistSession,
+  readStoredSession,
+  signIn,
+  unlockErrorMessage,
+  type Session,
+} from './lib/authClient';
 import { readThemeChoice, persistThemeChoice, applyTheme, type ThemeChoice } from './lib/theme';
 
 /** Live count of pending approvals for the sidebar badge. Reuses the same `fetchPending` + SSE-tick
@@ -158,29 +166,50 @@ export function NavItem({
 
 /**
  * The Session/Stop floor (U5.1 redesign) — pinned to the bottom of the sidebar, hairline-separated,
- * always visible. Daniel's review round 1 retired the explicit sign-in/sign-out chrome: there is no
- * "Sign in" button and no "Signed in/out" label. Instead a QUIET, passive indicator reflects whether a
- * session is currently held, and the WebAuthn ceremony (`authClient.signIn`, unchanged) now runs at
- * point-of-action — the governed {@link StopControls} below receive `onRequestSession`, so attempting a
- * stop without a session mints one inline rather than gating behind a sign-in wall. In rail mode the
- * detail collapses to a single stop glyph.
+ * always visible. "Unlock dashboard" explains the WebAuthn boundary without asking for or transmitting
+ * a private key. Governed controls use the same callback at point-of-action, and the resulting tab
+ * session is reused until expiry. In rail mode the detail collapses to a single stop glyph.
  */
 function SessionStopFloor({
   session,
   onRequestSession,
+  unlockError,
+  unlocking,
 }: {
   session: Session | null;
   onRequestSession: () => Promise<Session | null>;
+  unlockError: string | null;
+  unlocking: boolean;
 }): React.JSX.Element {
   const active = session !== null;
   return (
     <div className="mc-sidebar__floor" data-testid="stop-floor">
-      <div className="mc-session" data-testid="session-state" title="Session state">
-        <span
-          className={`mc-status-dot ${active ? 'mc-status-dot--running' : 'mc-status-dot--idle'}`}
-          aria-hidden="true"
-        />
-        <span className="mc-session__label">{active ? 'session active' : 'session'}</span>
+      <div className="mc-session" data-testid="session-state" title="Dashboard authentication state">
+        <div className="mc-session__summary">
+          <span
+            className={`mc-status-dot ${active ? 'mc-status-dot--running' : 'mc-status-dot--idle'}`}
+            aria-hidden="true"
+          />
+          <span className="mc-session__label">{active ? 'dashboard unlocked' : 'dashboard locked'}</span>
+        </div>
+        {!active ? (
+          <>
+            <button
+              type="button"
+              className="mc-session__unlock"
+              disabled={unlocking}
+              onClick={() => void onRequestSession()}
+            >
+              {unlocking ? 'Unlocking…' : 'Unlock dashboard'}
+            </button>
+            <p className="mc-session__help">Uses your device passkey. No private key leaves your device.</p>
+          </>
+        ) : null}
+        {unlockError ? (
+          <p className="mc-session__error" role="alert">
+            {unlockError}
+          </p>
+        ) : null}
       </div>
       <span className="mc-sidebar__floor-rail" aria-hidden="true" title="Stop floor">
         ⏻
@@ -199,6 +228,8 @@ function Sidebar({
   approvalsCount,
   session,
   onRequestSession,
+  unlockError,
+  unlocking,
 }: {
   active: DestinationId;
   onSelect: (id: DestinationId) => void;
@@ -208,6 +239,8 @@ function Sidebar({
   approvalsCount: number;
   session: Session | null;
   onRequestSession: () => Promise<Session | null>;
+  unlockError: string | null;
+  unlocking: boolean;
 }): React.JSX.Element {
   // One shared snapshot feeds every flyout (module-cached + SSE-refreshed) — no per-hover fetch.
   const { index, registry } = useFleetData();
@@ -257,7 +290,12 @@ function Sidebar({
           </Fragment>
         ))}
       </div>
-      <SessionStopFloor session={session} onRequestSession={onRequestSession} />
+      <SessionStopFloor
+        session={session}
+        onRequestSession={onRequestSession}
+        unlockError={unlockError}
+        unlocking={unlocking}
+      />
     </nav>
   );
 }
@@ -373,7 +411,7 @@ function ViewBody({
       return <Home sessionToken={sessionToken} onNavigate={onNavigate} onRequestSession={onRequestSession} />;
     case 'approvals':
       // Live GET /api/approvals feed (refreshed on SSE), onVerify -> POST /api/approvals/verify.
-      return <ApprovalsLive sessionToken={sessionToken} />;
+      return <ApprovalsLive sessionToken={sessionToken} onRequestSession={onRequestSession} />;
     case 'activity':
       // Standalone full-view live feed (same replay the Home board embeds). Self-fetches.
       return (
@@ -429,7 +467,10 @@ function ViewBody({
 export function App(): React.JSX.Element {
   const [view, setView] = useState<DestinationId>(DEFAULT_DESTINATION);
   const [rail, setRail] = useState(false);
-  const [session, setSession] = useState<Session | null>(null);
+  const [session, setSession] = useState<Session | null>(() => readStoredSession());
+  const [unlockError, setUnlockError] = useState<string | null>(null);
+  const [unlocking, setUnlocking] = useState(false);
+  const unlockInFlight = useRef<Promise<Session | null> | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   // The [+ New ▾] menu opens the Composer surface over the current view; `composerKind` pre-seeds its
   // type chip (`idea` for the idea-first entry, a concrete kind for the entity pickers).
@@ -442,6 +483,23 @@ export function App(): React.JSX.Element {
   // Unlike ordinary destination bodies, Terminal is a long-lived workspace: navigating away hides it but
   // must not unmount its xterm instances or close their WebSockets. Composer behaves like another overlay.
   const terminalVisible = view === 'terminal' && !composerOpen;
+
+  // Refreshes reuse a still-valid tab session. At the exact expiry boundary, clear both copies so no
+  // governed surface can continue sending a stale bearer.
+  useEffect(() => {
+    if (!session) return;
+    const remaining = session.expiresAt - Date.now();
+    if (remaining <= 0) {
+      clearStoredSession();
+      setSession(null);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      clearStoredSession();
+      setSession(null);
+    }, Math.min(remaining, 2_147_483_647));
+    return () => window.clearTimeout(timer);
+  }, [session]);
 
   // Ctrl/Cmd+K toggles the command palette anywhere in the shell.
   useEffect(() => {
@@ -487,20 +545,35 @@ export function App(): React.JSX.Element {
     if (cmd.target) goTo(cmd.target);
   };
 
-  // Point-of-action session mint. Runs the WebAuthn ceremony (`authClient.signIn`, unchanged) and holds
-  // the minted bearer in app state so every governed surface can use it. Replaces the retired floor
-  // "Sign in" button: governed controls call this inline when they need a session. Fail-closed — a
-  // refused/absent passkey resolves to null and the action stays a no-op.
-  const requestSession = (): Promise<Session | null> =>
-    signIn()
-      .then((s) => {
-        setSession(s);
-        return s;
+  // Explicit and point-of-action unlock share one ceremony. The minted bearer is tab-scoped, persisted
+  // across refresh, and reused only until expiry. Fail-closed: a refused/absent passkey resolves null.
+  const requestSession = (force = false): Promise<Session | null> => {
+    if (!force && isSessionFresh(session)) return Promise.resolve(session);
+    if (unlockInFlight.current) return unlockInFlight.current;
+
+    clearStoredSession();
+    setSession(null);
+    setUnlockError(null);
+    setUnlocking(true);
+    const attempt = signIn()
+      .then((next) => {
+        persistSession(next);
+        setSession(next);
+        return next;
       })
-      .catch(() => {
+      .catch((error: unknown) => {
+        clearStoredSession();
         setSession(null);
+        setUnlockError(unlockErrorMessage(error));
         return null;
+      })
+      .finally(() => {
+        setUnlocking(false);
+        unlockInFlight.current = null;
       });
+    unlockInFlight.current = attempt;
+    return attempt;
+  };
 
   // [+ New ▾] routing (C5): "Idea…" opens the Composer surface in idea mode; the "Workflow"/"Skill"/
   // "Project"/"Agent" entity pickers open the SAME surface pre-seeded to that type; "Task" keeps its
@@ -532,6 +605,8 @@ export function App(): React.JSX.Element {
         approvalsCount={approvalsCount}
         session={session}
         onRequestSession={requestSession}
+        unlockError={unlockError}
+        unlocking={unlocking}
       />
       <header className="mc-topbar">
         <h1 className="mc-topbar__title">kb mission control</h1>

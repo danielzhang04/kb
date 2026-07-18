@@ -16,14 +16,21 @@ import { useSse } from '../lib/sseClient';
 import { fetchPending, verifyApproval, type FetchLike } from '../lib/approvalsClient';
 
 export interface ApprovalsLiveProps {
-  /** The WebAuthn-minted session bearer (from `authClient.signIn`), if signed in. Absent => verify 401s. */
+  /** The WebAuthn-minted session bearer (from `authClient.signIn`), if the dashboard is unlocked. */
   sessionToken?: string;
+  /** Point-of-action dashboard unlock. `force` replaces a bearer invalidated by a daemon restart. */
+  onRequestSession?: (force?: boolean) => Promise<{ token: string } | null>;
   /** Injected for tests; production uses the real `fetch`/`EventSource`. */
   fetchImpl?: FetchLike;
 }
 
-export function ApprovalsLive({ sessionToken, fetchImpl }: ApprovalsLiveProps): React.JSX.Element {
+export function ApprovalsLive({
+  sessionToken,
+  onRequestSession,
+  fetchImpl,
+}: ApprovalsLiveProps): React.JSX.Element {
   const [pending, setPending] = useState<ParsedCard[]>([]);
+  const [outcome, setOutcome] = useState<{ kind: 'progress' | 'success' | 'error'; message: string } | null>(null);
   // Refetch on every SSE arrival; `count` starts at 0, so the effect also runs once on mount.
   const { count } = useSse('/events');
 
@@ -42,10 +49,64 @@ export function ApprovalsLive({ sessionToken, fetchImpl }: ApprovalsLiveProps): 
   }, [count, fetchImpl]);
 
   const onVerify = (cardId: string, channel: ApprovalChannel): void => {
-    // Fired only on an explicit, post-corroboration verify click (see Approvals). The bearer was minted
-    // by a WebAuthn login; without it the server fail-closes to 401.
-    void verifyApproval(cardId, channel, { token: sessionToken, fetchImpl });
+    // Fired only on an explicit, post-corroboration verify click (see Approvals). If this tab has not
+    // been unlocked yet, that same click runs the passkey ceremony before any verify request.
+    void (async () => {
+      setOutcome({
+        kind: 'progress',
+        message: sessionToken ? `Preparing verification for ${cardId}…` : 'Unlocking dashboard…',
+      });
+      let token = sessionToken;
+      if (!token) token = (await onRequestSession?.())?.token;
+      if (!token) {
+        setOutcome({ kind: 'error', message: 'Approval was not sent because the dashboard is still locked.' });
+        return;
+      }
+
+      setOutcome({ kind: 'progress', message: `Verifying ${cardId}…` });
+      let result = await verifyApproval(cardId, channel, { token, fetchImpl });
+      if (result.status === 401 && onRequestSession) {
+        // A daemon restart invalidates an otherwise unexpired stateless bearer. Replace it once, then
+        // retry the exact operator-selected card/channel; never loop or silently downgrade.
+        const replacement = await onRequestSession(true);
+        if (replacement) {
+          token = replacement.token;
+          result = await verifyApproval(cardId, channel, { token, fetchImpl });
+        }
+      }
+
+      if (result.ok) {
+        setOutcome({
+          kind: 'success',
+          message: result.reason ? `${cardId}: ${result.reason}` : `${cardId} was verified.`,
+        });
+        try {
+          setPending(await fetchPending(fetchImpl));
+        } catch {
+          // The SSE feed will reconcile the list; the successful verification remains visible.
+        }
+      } else {
+        setOutcome({
+          kind: 'error',
+          message: result.reason
+            ? `${cardId} was not verified: ${result.reason}`
+            : `${cardId} was not verified (HTTP ${result.status}).`,
+        });
+      }
+    })();
   };
 
-  return <Approvals pending={pending} onVerify={onVerify} />;
+  return (
+    <section className="v-approvals-live" aria-label="Approval verification">
+      {outcome ? (
+        <p
+          className={`v-approvals__outcome v-approvals__outcome--${outcome.kind}`}
+          role={outcome.kind === 'error' ? 'alert' : 'status'}
+        >
+          {outcome.message}
+        </p>
+      ) : null}
+      <Approvals pending={pending} onVerify={onVerify} />
+    </section>
+  );
 }

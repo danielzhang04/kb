@@ -49,6 +49,11 @@ module.exports = {
         // is empty and every auth request + the /api/pty upgrade 403s (no-allowlist).
         DASHBOARD_PORT: '5317',
         DASHBOARD_RP_ORIGIN: 'http://localhost:5317',
+        // One Windows Hello / device-passkey ceremony unlocks an operator workday. The bearer remains
+        // tab-scoped in the browser and every consequential request still verifies it server-side.
+        // A daemon restart invalidates it because the signing secret remains ephemeral unless Daniel
+        // provisions DASHBOARD_SESSION_SECRET out-of-band.
+        DASHBOARD_SESSION_TTL_MS: '28800000',
         // Enrolled PUBLIC credential (NON-SECRET), mirrored from governance/webauthn-credentials.yaml.
         // The server's login path (simplewebauthn) reads the credential store from THIS env as
         // [{id, publicKey}] where publicKey is base64url COSE bytes; the yaml stores the same P-256 key

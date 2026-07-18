@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import {
   mintSession,
   mintSessionFromVerifiedAssertion,
+  resolveSessionTtlMs,
   verifySession,
 } from './session.ts';
 import type { SessionConfig } from './session.ts';
@@ -65,5 +66,10 @@ describe('session', () => {
     const { token } = mintSession('user-1', configA);
     const result = verifySession(token, configB);
     expect(result.ok).toBe(false);
+  });
+
+  it('accepts an operator-configured workday TTL and rejects invalid values', () => {
+    expect(resolveSessionTtlMs({ DASHBOARD_SESSION_TTL_MS: '28800000' })).toBe(28_800_000);
+    expect(resolveSessionTtlMs({ DASHBOARD_SESSION_TTL_MS: '-1' })).toBe(5 * 60 * 1000);
   });
 });
