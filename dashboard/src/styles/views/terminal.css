@@ -84,6 +84,11 @@
   font-size: var(--text-sm);
 }
 
+/* Point-of-action sign-in button (replaces the passive warning when App wires onRequestSession). */
+.terminal__signin {
+  align-self: flex-start;
+}
+
 /* The passkey-touch cue: shown only while the host challenge is outstanding (state `awaiting-touch`). */
 .terminal__touch-prompt {
   margin: 0;

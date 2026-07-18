@@ -8,7 +8,7 @@
  * error and relays NOTHING bogus; no session connects nothing; and bytes pump both ways once streaming.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, cleanup, waitFor, act } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, act, fireEvent } from '@testing-library/react';
 
 /** A fake xterm captured via `vi.hoisted` so the mock factory (hoisted above imports) can reach it. */
 const xtermReg = vi.hoisted(() => {
@@ -192,5 +192,27 @@ describe('Terminal — session gating (unchanged) + subprotocol token', () => {
     const { factory } = await mountWithSocket({ ws, collect: async () => ASSERTION });
     expect(factory).toHaveBeenCalledWith('tok-abc');
     expect(ws.protocols).toEqual(['kb-pty.v1', 'tok-abc']);
+  });
+
+  it('with onRequestSession wired, the empty state is a sign-in button that mints a session and opens no socket until it does', async () => {
+    const factory = vi.fn();
+    const onRequestSession = vi.fn(async () => ({ token: 'minted' }) as never);
+    render(
+      <Terminal
+        socketFactory={factory as unknown as (t: string) => WebSocket}
+        onRequestSession={onRequestSession}
+      />,
+    );
+    // No standing session → no socket, and the actionable button (not the passive <p>) is shown.
+    expect(factory).not.toHaveBeenCalled();
+    const btn = screen.getByTestId('terminal-signin');
+
+    // Clicking runs the point-of-action ceremony; the parent (App) would then re-render us WITH a token.
+    await act(async () => {
+      fireEvent.click(btn);
+    });
+    expect(onRequestSession).toHaveBeenCalledTimes(1);
+    // Still no socket: this component only connects once it actually receives a `sessionToken` prop.
+    expect(factory).not.toHaveBeenCalled();
   });
 });

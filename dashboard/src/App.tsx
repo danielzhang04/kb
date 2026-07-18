@@ -401,9 +401,10 @@ function ViewBody({
       // D3.5 — the layer-panel set (Sentinel / Quartermaster / Flight Recorder / Atlas) behind sub-tabs.
       return <LayerPanels />;
     case 'terminal':
-      // D3.2 — the PTY pane. Session-gated: it renders a passkey prompt and connects nothing without a
-      // session, and it NEVER spawns anything itself (it signals the fleet-identity host over WS).
-      return <Terminal sessionToken={sessionToken} />;
+      // D3.2 — the PTY pane. Session-gated: without a session it renders a point-of-action passkey
+      // sign-in (onRequestSession) and connects nothing; once signed in it auto-connects and the host
+      // demands its OWN per-open Factor C touch. It NEVER spawns anything itself (signals the host over WS).
+      return <Terminal sessionToken={sessionToken} onRequestSession={onRequestSession} />;
     case 'connectors':
       return <Connectors />;
     case 'files':
