@@ -542,6 +542,178 @@ describe('save — LOW (Finding 2): runner-bound is not client-settable on agent
   });
 });
 
+describe('save — C7.11 declared model must be a known_model of its declared runtime', () => {
+  // The gap: the write path validated id + runner-bound but not `model:` against the runtime's
+  // known_models, so a bogus model (e.g. `gpt-9000-fake`) was accepted here and only silently clamped
+  // later, at owner-assignment time (`write/launch.ts#defaultOwnerRouting`). This guard rejects it
+  // LOUDLY at declare/save time instead.
+  function seedPolicy(repo: string): void {
+    mkdirSync(join(repo, 'governance'), { recursive: true });
+    writeFileSync(
+      join(repo, 'governance', 'model-routing.yaml'),
+      `version: 1
+runtimes:
+  claude:
+    default_worker: worker-desktop
+    known_models: [claude-opus-4-8, claude-sonnet-5, claude-haiku-4-5]
+  codex:
+    default_worker: codex-worker
+    known_models: [gpt-5.6-sol]
+`,
+      'utf-8',
+    );
+  }
+
+  it('refuses agents/<id>.md declaring a model not in its runtime known_models (400, no write, no git)', async () => {
+    const repo = await scratch();
+    seedPolicy(repo);
+    const { runner, calls } = recorder();
+    const result = await save({
+      repoRoot: repo,
+      relpath: 'agents/foo.md',
+      content: '---\nid: foo\nruntime: claude\nmodel: gpt-9000-fake\nrunner-bound: false\n---\nforged model\n',
+      sessionToken: validToken(),
+      sessionConfig: CONFIG,
+      runGit: runner,
+      openPr: noopPrOpener,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(400);
+      expect(result.reason).toMatch(/agent-model-unknown/);
+    }
+    expect(calls).toHaveLength(0);
+    expect(existsSync(join(repo, 'agents', 'foo.md'))).toBe(false);
+  });
+
+  it('allows agents/<id>.md declaring a model that IS in its runtime known_models', async () => {
+    const repo = await scratch();
+    seedPolicy(repo);
+    const result = await save({
+      repoRoot: repo,
+      relpath: 'agents/foo.md',
+      content: '---\nid: foo\nruntime: claude\nmodel: claude-sonnet-5\nrunner-bound: false\n---\nok\n',
+      sessionToken: validToken(),
+      sessionConfig: CONFIG,
+      runGit: recorder().runner,
+      openPr: noopPrOpener,
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it('allows agents/<id>.md with no model field (optional — inherits the role x tier policy model)', async () => {
+    const repo = await scratch();
+    seedPolicy(repo);
+    const result = await save({
+      repoRoot: repo,
+      relpath: 'agents/foo.md',
+      content: '---\nid: foo\nruntime: claude\nrunner-bound: false\n---\nok\n',
+      sessionToken: validToken(),
+      sessionConfig: CONFIG,
+      runGit: recorder().runner,
+      openPr: noopPrOpener,
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  // Minimal-scope judgment call (documented on the guard): the model∈known_models check only fires when
+  // BOTH a runtime is declared AND that runtime is registered in the policy. An unregistered runtime is
+  // not independently rejected by THIS guard, unlike routingOverride.ts#validateSet — see the guard's
+  // doc comment for why. A bogus runtime + bogus model therefore passes this guard (though it would fail
+  // elsewhere, e.g. at claim time).
+  it('does not enforce the model check when the declared runtime is not registered in the policy', async () => {
+    const repo = await scratch();
+    seedPolicy(repo);
+    const result = await save({
+      repoRoot: repo,
+      relpath: 'agents/foo.md',
+      content: '---\nid: foo\nruntime: not-a-real-runtime\nmodel: also-not-real\nrunner-bound: false\n---\nok\n',
+      sessionToken: validToken(),
+      sessionConfig: CONFIG,
+      runGit: recorder().runner,
+      openPr: noopPrOpener,
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  // Adversarial review MED-1 regression: the guard used to extract `model`/`runtime` with an ad-hoc
+  // whole-content regex `/^\s*model:\s*(.+?)\s*$/im`, which requires the literal substring `model:`
+  // (no space before the colon). The authoritative frontmatter reader `readDeclaredAgents` uses
+  // (`parseCardFrontmatter`, via `line.slice(0, colon).trim()`) tolerates a space before the colon —
+  // so `model : gpt-9000-fake` is a real `model` field to the roster but was INVISIBLE to the old
+  // regex (no match -> guard returned null -> save allowed), letting a bogus model sail past this
+  // guard and get silently clamped later at launch, exactly the silent-downgrade this guard exists to
+  // prevent. Verified against the pre-fix regex: `/^\s*model:\s*(.+?)\s*$/im.exec('model : gpt-9000-fake')`
+  // returns null (the regex requires `model:` with no space before the colon), so the old code path
+  // would have returned null here (no runtime/model extracted) and allowed this save — RED. The fix
+  // (parsing via the shared `parseCardFrontmatter`) now sees `model: "gpt-9000-fake"` and refuses it.
+  it('refuses a space-before-colon frontmatter model/runtime that the old ad-hoc regex missed (MED-1)', async () => {
+    const repo = await scratch();
+    seedPolicy(repo);
+    const { runner, calls } = recorder();
+    const result = await save({
+      repoRoot: repo,
+      relpath: 'agents/foo.md',
+      content: '---\nid: foo\nruntime : codex\nmodel : gpt-9000-fake\nrunner-bound: false\n---\nforged model, space before colon\n',
+      sessionToken: validToken(),
+      sessionConfig: CONFIG,
+      runGit: runner,
+      openPr: noopPrOpener,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(400);
+      expect(result.reason).toMatch(/agent-model-unknown/);
+    }
+    expect(calls).toHaveLength(0);
+    expect(existsSync(join(repo, 'agents', 'foo.md'))).toBe(false);
+  });
+
+  // Cross-runtime confusion: gpt-5.6-sol IS a known model overall (codex's), but not claude's. A
+  // declared runtime:claude + model:gpt-5.6-sol must still be refused — membership is scoped to the
+  // DECLARED runtime's known_models, not the union across all runtimes.
+  it('refuses a model known to a DIFFERENT runtime than the one declared', async () => {
+    const repo = await scratch();
+    seedPolicy(repo);
+    const { runner, calls } = recorder();
+    const result = await save({
+      repoRoot: repo,
+      relpath: 'agents/foo.md',
+      content: '---\nid: foo\nruntime: claude\nmodel: gpt-5.6-sol\nrunner-bound: false\n---\nok\n',
+      sessionToken: validToken(),
+      sessionConfig: CONFIG,
+      runGit: runner,
+      openPr: noopPrOpener,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(400);
+      expect(result.reason).toMatch(/agent-model-unknown/);
+    }
+    expect(calls).toHaveLength(0);
+    expect(existsSync(join(repo, 'agents', 'foo.md'))).toBe(false);
+  });
+
+  // LOW-1 regression: the old whole-content regex could match a `model:`-shaped line anywhere in the
+  // BODY prose, false-rejecting a legitimate save. Frontmatter-scoped parsing (parseCardFrontmatter
+  // only reads the `---`-fenced header) fixes this: a body line that merely looks like `model:` is not
+  // frontmatter and must not affect the guard.
+  it('ignores a model:-shaped line in the body (frontmatter-scoped, not whole-content)', async () => {
+    const repo = await scratch();
+    seedPolicy(repo);
+    const result = await save({
+      repoRoot: repo,
+      relpath: 'agents/foo.md',
+      content: '---\nid: foo\nruntime: claude\nrunner-bound: false\n---\nSome notes mentioning model: gpt-9000-fake in prose.\n',
+      sessionToken: validToken(),
+      sessionConfig: CONFIG,
+      runGit: recorder().runner,
+      openPr: noopPrOpener,
+    });
+    expect(result.ok).toBe(true);
+  });
+});
+
 describe('save — path confinement is realpath, not lexical (symlink escape)', () => {
   // MED-2: resolveWithin is lexical; a symlinked directory planted under repoRoot could redirect the
   // real write outside the root. A save through such a link must be refused, and the external target
