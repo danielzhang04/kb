@@ -35,3 +35,35 @@ export function buildTokenFileSddl(sids: { ownerSid: string; readerSid: string }
     `S:(ML;;NRNWNX;;;ME)`
   );
 }
+
+/** SDDL aliases that denote the SYSTEM account. */
+const SYSTEM_SDDL_ALIASES = new Set(['SY', 'S-1-5-18']);
+
+/** A Medium mandatory-integrity label (`S:...(ML;...;ME)`) is present in the SACL. Pure (mirrors the
+ *  Broker's `sddlHasMediumLabel`, re-implemented here so this pure module never imports the koffi surface). */
+export function sddlHasMediumLabel(sddl: string): boolean {
+  return /S:[A-Z]*\(ML;[^)]*;ME\)/.test(sddl);
+}
+
+/**
+ * ALLOWLIST verify for a token-file SD read back after create (D3.1e). The cross-user analogue of the
+ * Broker's `sddlIsOwnerOnly`: the DACL must grant ONLY {ownerSid (kb-fleet), readerSid (Daniel), SYSTEM}
+ * — nothing else — AND include BOTH the owner and the reader, AND carry a Medium mandatory label. Any
+ * extra trustee, a missing owner/reader, or an absent label → false (caller unlinks + fails closed).
+ *
+ * SID trustees are read from the LAST `;`-separated field of each DACL ACE. This is sound for a FILE
+ * read-back: unlike a kernel object's DACL, the trustee SIDs are not normalized on read (only the rights
+ * mask is), so the trustee SET is a stable, verifiable allowlist.
+ */
+export function tokenFileSddlVerified(sddl: string, sids: { ownerSid: string; readerSid: string }): boolean {
+  if (!sids.ownerSid || !sids.readerSid) return false;
+  const dm = sddl.match(/D:[A-Z]*((?:\([^)]*\))*)/);
+  if (!dm) return false;
+  const trustees = [...dm[1].matchAll(/\(([^)]*)\)/g)].map((m) => m[1].split(';').pop() ?? '');
+  if (trustees.length === 0) return false;
+  const allowed = new Set([sids.ownerSid, sids.readerSid, ...SYSTEM_SDDL_ALIASES]);
+  const everyAllowed = trustees.every((t) => allowed.has(t));
+  const hasOwner = trustees.includes(sids.ownerSid);
+  const hasReader = trustees.includes(sids.readerSid);
+  return everyAllowed && hasOwner && hasReader && sddlHasMediumLabel(sddl);
+}

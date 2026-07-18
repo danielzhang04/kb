@@ -9,7 +9,7 @@
  * no broad trustee (World / Authenticated Users / Users) ever appears.
  */
 import { describe, expect, it } from 'vitest';
-import { buildPipeSddl, buildTokenFileSddl } from './pipeSddl.ts';
+import { buildPipeSddl, buildTokenFileSddl, tokenFileSddlVerified } from './pipeSddl.ts';
 import { sddlHasMediumLabel } from '../../../broker/win32Api.ts';
 
 const OWNER = 'S-1-5-21-732142867-588960626-3228783940-1007'; // kb-fleet
@@ -70,5 +70,36 @@ describe('buildTokenFileSddl', () => {
     const trustees = daclTrustees(buildTokenFileSddl({ ownerSid: OWNER, readerSid: PEER }));
     expect(trustees.sort()).toEqual([OWNER, PEER, 'SY'].sort());
     for (const broad of BROAD_TRUSTEES) expect(trustees).not.toContain(broad);
+  });
+});
+
+describe('tokenFileSddlVerified — read-back allowlist (D3.1e)', () => {
+  it('accepts the exact built descriptor', () => {
+    expect(tokenFileSddlVerified(buildTokenFileSddl({ ownerSid: OWNER, readerSid: PEER }), { ownerSid: OWNER, readerSid: PEER })).toBe(true);
+  });
+
+  it('accepts the SYSTEM S-1-5-18 alias in place of SY (as Windows may render it on read-back)', () => {
+    const sddl = `D:P(A;;FA;;;${OWNER})(A;;FR;;;${PEER})(A;;FA;;;S-1-5-18)S:(ML;;NRNWNX;;;ME)`;
+    expect(tokenFileSddlVerified(sddl, { ownerSid: OWNER, readerSid: PEER })).toBe(true);
+  });
+
+  it('REJECTS an extra broad trustee even if owner+reader+SYSTEM are present (fail-closed)', () => {
+    const sddl = `D:P(A;;FA;;;${OWNER})(A;;FR;;;${PEER})(A;;FA;;;SY)(A;;FR;;;S-1-1-0)S:(ML;;NRNWNX;;;ME)`;
+    expect(tokenFileSddlVerified(sddl, { ownerSid: OWNER, readerSid: PEER })).toBe(false);
+  });
+
+  it('REJECTS when the reader (Daniel) is missing', () => {
+    const sddl = `D:P(A;;FA;;;${OWNER})(A;;FA;;;SY)S:(ML;;NRNWNX;;;ME)`;
+    expect(tokenFileSddlVerified(sddl, { ownerSid: OWNER, readerSid: PEER })).toBe(false);
+  });
+
+  it('REJECTS when the Medium label is absent', () => {
+    const sddl = `D:P(A;;FA;;;${OWNER})(A;;FR;;;${PEER})(A;;FA;;;SY)`;
+    expect(tokenFileSddlVerified(sddl, { ownerSid: OWNER, readerSid: PEER })).toBe(false);
+  });
+
+  it('REJECTS a non-Medium (e.g. Low) label', () => {
+    const sddl = `D:P(A;;FA;;;${OWNER})(A;;FR;;;${PEER})(A;;FA;;;SY)S:(ML;;NRNWNX;;;LW)`;
+    expect(tokenFileSddlVerified(sddl, { ownerSid: OWNER, readerSid: PEER })).toBe(false);
   });
 });
