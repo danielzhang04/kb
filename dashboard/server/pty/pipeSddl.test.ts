@@ -9,7 +9,7 @@
  * no broad trustee (World / Authenticated Users / Users) ever appears.
  */
 import { describe, expect, it } from 'vitest';
-import { buildPipeSddl, buildTokenFileSddl, tokenFileSddlVerified } from './pipeSddl.ts';
+import { buildPipeSddl, buildTokenFileSddl, ownerSidFromSddl, tokenFileSddlVerified } from './pipeSddl.ts';
 import { sddlHasMediumLabel } from '../../../broker/win32Api.ts';
 
 const OWNER = 'S-1-5-21-732142867-588960626-3228783940-1007'; // kb-fleet
@@ -26,10 +26,16 @@ function daclTrustees(sddl: string): string[] {
 }
 
 describe('buildPipeSddl', () => {
-  it('emits the EXACT design §2 string', () => {
+  it('emits the EXACT design §2 string (with the explicit O: owner component)', () => {
     expect(buildPipeSddl({ ownerSid: OWNER, peerSid: PEER })).toBe(
-      `D:P(A;;GA;;;${OWNER})(A;;GRGW;;;${PEER})(A;;GA;;;SY)S:(ML;;NW;;;ME)`,
+      `O:${OWNER}D:P(A;;GA;;;${OWNER})(A;;GRGW;;;${PEER})(A;;GA;;;SY)S:(ML;;NW;;;ME)`,
     );
+  });
+
+  it('prepends an explicit O:<ownerSid> owner component (deterministic kb-fleet USER sid, not admin-group)', () => {
+    const sddl = buildPipeSddl({ ownerSid: OWNER, peerSid: PEER });
+    expect(sddl.startsWith(`O:${OWNER}`)).toBe(true);
+    expect(ownerSidFromSddl(sddl)).toBe(OWNER);
   });
 
   it('grants the peer GRGW (client connect) — least privilege, NOT GA', () => {
@@ -101,5 +107,48 @@ describe('tokenFileSddlVerified — read-back allowlist (D3.1e)', () => {
   it('REJECTS a non-Medium (e.g. Low) label', () => {
     const sddl = `D:P(A;;FA;;;${OWNER})(A;;FR;;;${PEER})(A;;FA;;;SY)S:(ML;;NRNWNX;;;LW)`;
     expect(tokenFileSddlVerified(sddl, { ownerSid: OWNER, readerSid: PEER })).toBe(false);
+  });
+});
+
+/**
+ * D3.1 anti-squat OWNER parse+compare (the pure core of connectAndVerifyServer's server-identity check).
+ * The client reads the pipe's OWNER_SECURITY_INFORMATION back as an SDDL string, parses the `O:` SID, and
+ * accepts ONLY when it equals the pinned kb-fleet SID. This mirrors that decision without koffi; the native
+ * GetSecurityInfo call + fail-closed-on-nonzero-return remains gate-only (koffi cannot be faked cleanly).
+ */
+describe('ownerSidFromSddl — anti-squat owner parse+compare', () => {
+  /** The exact compare connectAndVerifyServer performs on the read-back owner SDDL. */
+  const ownerMatches = (ownerSddl: string, expected: string): boolean => {
+    const sid = ownerSidFromSddl(ownerSddl);
+    return sid != null && sid === expected;
+  };
+
+  it('ACCEPTS when O:<sid> == the expected kb-fleet SID', () => {
+    expect(ownerMatches(`O:${OWNER}`, OWNER)).toBe(true);
+  });
+
+  it('ACCEPTS an owner-only read-back with the SID followed by no other section', () => {
+    // OWNER_SECURITY_INFORMATION-only read-back is just the O: component.
+    expect(ownerSidFromSddl(`O:${OWNER}`)).toBe(OWNER);
+  });
+
+  it('REJECTS when the owner SID is a DIFFERENT account (squatter)', () => {
+    const OTHER = 'S-1-5-21-999999999-888888888-777777777-1234';
+    expect(ownerMatches(`O:${OTHER}`, OWNER)).toBe(false);
+  });
+
+  it('REJECTS the admin-group owner edge case (S-1-5-32-544) that the explicit O: component prevents', () => {
+    expect(ownerMatches('O:S-1-5-32-544', OWNER)).toBe(false);
+  });
+
+  it('REJECTS a missing O: component (owner absent → fail closed)', () => {
+    expect(ownerSidFromSddl(`D:P(A;;GA;;;${OWNER})S:(ML;;NW;;;ME)`)).toBeNull();
+    expect(ownerMatches(`D:P(A;;GA;;;${OWNER})`, OWNER)).toBe(false);
+  });
+
+  it('REJECTS a garbage / unparseable owner (fail closed)', () => {
+    expect(ownerSidFromSddl('O:not-a-sid')).toBeNull();
+    expect(ownerSidFromSddl('')).toBeNull();
+    expect(ownerMatches('O:@@@', OWNER)).toBe(false);
   });
 });

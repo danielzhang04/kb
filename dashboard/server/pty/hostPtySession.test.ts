@@ -164,6 +164,46 @@ describe('runHostSession — open + streaming', () => {
     expect(host.stops).toEqual(['pty-orphan']);
   });
 
+  it('FIX 3 — a PTY write that THROWS (teardown race) tears down only that session and never propagates', () => {
+    const fc = fakeChannel();
+    const throwingHandle: PtyHandle = {
+      pid: 7,
+      onData: () => {},
+      onExit: () => {},
+      write: () => {
+        throw new Error('write EPIPE: the PTY already exited');
+      },
+      resize: () => {},
+      kill: vi.fn(),
+    };
+    const host = fakeHost(throwingHandle, 'pty-race');
+    runHostSession(fc.channel, OPEN, { host: host.host, isRunnable: () => true });
+
+    // The write throws inside the frame handler; the guard must contain it (no throw escapes the pump).
+    expect(() => fc.inbound({ type: 'write', data: 'boom' })).not.toThrow();
+    // That one session is reaped and its channel closed — the host keeps running.
+    expect(host.stops).toEqual(['pty-race']);
+    expect(fc.isClosed()).toBe(true);
+  });
+
+  it('FIX 3 — a resize that THROWS on a just-exited PTY is contained (session torn down, no propagation)', () => {
+    const fc = fakeChannel();
+    const throwingHandle: PtyHandle = {
+      pid: 8,
+      onData: () => {},
+      onExit: () => {},
+      write: () => {},
+      resize: () => {
+        throw new Error('resize on a dead PTY');
+      },
+      kill: vi.fn(),
+    };
+    const host = fakeHost(throwingHandle, 'pty-race2');
+    runHostSession(fc.channel, OPEN, { host: host.host, isRunnable: () => true });
+    expect(() => fc.inbound({ type: 'resize', cols: 100, rows: 40 })).not.toThrow();
+    expect(host.stops).toEqual(['pty-race2']);
+  });
+
   it('post-teardown inbound frames are ignored (no write after the session is gone)', () => {
     const fc = fakeChannel();
     const fh = fakeHandle();

@@ -11,10 +11,12 @@
  *      `buildTokenFileSddl` (owner FA + Daniel FR + SYSTEM FA + Medium NRNWNX), reparse-safe create
  *      (FILE_FLAG_OPEN_REPARSE_POINT), then reads the DACL+label back and verifies the allowlist
  *      (`tokenFileSddlVerified`) — the SecureTokenFileWriter seam from Phase 1, now real.
- *   3. NEW CLIENT SURFACE — `connectAndVerifyServer(name, expectedServerSid)`: CreateFileW-connect, then
- *      GetNamedPipeServerProcessId → OpenProcess(QUERY_LIMITED_INFORMATION) → token SID, compared to the
- *      pinned kb-fleet SID BEFORE any byte is written (anti-squat, design Point 4). Returns a duplex
- *      `PtyClientChannel` only if the server identity matches.
+ *   3. NEW CLIENT SURFACE — `connectAndVerifyServer(name, expectedServerSid)`: CreateFileW-connect at
+ *      SECURITY_IDENTIFICATION (never Impersonation — the host may identify Daniel, never act as him), then
+ *      GetSecurityInfo(OWNER) on the pipe handle → owner SID, compared to the pinned kb-fleet SID BEFORE any
+ *      byte is written (anti-squat, design Point 4). The OWNER check (not a server-PROCESS-token check) works
+ *      cross-user: OpenProcess against the kb-fleet daemon is ACCESS_DENIED from a non-admin Medium daemon.
+ *      Returns a duplex `PtyClientChannel` only if the pipe owner matches.
  *
  * The persistent connection (unlike the Broker's one-shot) needs a full-duplex overlapped stream, so each
  * connection carries TWO OVERLAPPED structures + events (one for reads, one for writes) and a serialized
@@ -29,7 +31,7 @@
  */
 import { createRequire } from 'node:module';
 import { parseSidString } from '../../../broker/win32Sid.ts';
-import { buildPipeSddl, buildTokenFileSddl, sddlHasMediumLabel, tokenFileSddlVerified } from './pipeSddl.ts';
+import { buildPipeSddl, buildTokenFileSddl, ownerSidFromSddl, sddlHasMediumLabel, tokenFileSddlVerified } from './pipeSddl.ts';
 import { encodeFrame, FrameParser } from './ptyProtocol.ts';
 import type { ControlFrame, InboundFrame, PtyClientChannel, PtyServerChannel } from './ptyProtocol.ts';
 import type { PipeHandle, PtyPeerFfi, PtyPipeTransport } from './hostPipeServer.ts';
@@ -77,10 +79,16 @@ const FILE_ATTRIBUTE_NORMAL = 0x80;
 const FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000;
 const SE_FILE_OBJECT = 1;
 const SE_KERNEL_OBJECT = 6;
+const OWNER_SECURITY_INFORMATION = 0x00000001;
 const DACL_SECURITY_INFORMATION = 0x00000004;
 const LABEL_SECURITY_INFORMATION = 0x00000010;
-const PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
 const WAIT_OBJECT_0 = 0x0;
+// SECURITY_QUALITY_OF_SERVICE flags OR'd into CreateFileW's dwFlagsAndAttributes for the CLIENT pipe open.
+// SECURITY_SQOS_PRESENT says "an impersonation level is specified"; SECURITY_IDENTIFICATION caps the server
+// (the kb-fleet host) at IDENTIFICATION level — it may query the client's token (SID) but can NOT impersonate
+// Daniel to act as him. Together = 0x00110000. (FIX 1, D3.1 adversarial review — least authority to the host.)
+const SECURITY_SQOS_PRESENT = 0x00100000;
+const SECURITY_IDENTIFICATION = 0x00010000;
 
 const POLL_MS = 5;
 const READ_CHUNK = 65536;
@@ -138,8 +146,6 @@ export function loadWin32PtyApi(): Win32PtyApi {
   const DisconnectNamedPipe = k32.func('__stdcall', 'DisconnectNamedPipe', 'bool', [HANDLE]);
   const WaitForSingleObject = k32.func('__stdcall', 'WaitForSingleObject', 'uint32', [HANDLE, 'uint32']);
   const GetNamedPipeClientProcessId = k32.func('__stdcall', 'GetNamedPipeClientProcessId', 'bool', [HANDLE, 'uint32 *']);
-  const GetNamedPipeServerProcessId = k32.func('__stdcall', 'GetNamedPipeServerProcessId', 'bool', [HANDLE, 'uint32 *']);
-  const OpenProcess = k32.func('__stdcall', 'OpenProcess', HANDLE, ['uint32', 'int', 'uint32']);
   const GetCurrentProcess = k32.func('__stdcall', 'GetCurrentProcess', HANDLE, []);
   const GetCurrentThread = k32.func('__stdcall', 'GetCurrentThread', HANDLE, []);
   const CloseHandle = k32.func('__stdcall', 'CloseHandle', 'bool', [HANDLE]);
@@ -475,7 +481,17 @@ export function loadWin32PtyApi(): Win32PtyApi {
           fireClose();
           return;
         }
-        for (const f of frames) deliver(f);
+        for (const f of frames) {
+          try {
+            deliver(f);
+          } catch {
+            // FIX 3 — a per-frame handler throw closes ONLY this connection; an unguarded throw here escapes
+            // the void IIFE as an unhandledRejection and would take down the whole host process.
+            closeConn(conn);
+            fireClose();
+            return;
+          }
+        }
       }
     })();
 
@@ -545,8 +561,15 @@ export function loadWin32PtyApi(): Win32PtyApi {
             return;
           }
           for (const f of frames) {
-            if (frameCb) frameCb(f);
-            else queue.push(f);
+            try {
+              if (frameCb) frameCb(f);
+              else queue.push(f);
+            } catch {
+              // FIX 3 — a per-frame handler throw tears down ONLY this connection, never the host process.
+              closeConn(conn);
+              fireClose();
+              return;
+            }
           }
         }
       })();
@@ -756,28 +779,35 @@ export function loadWin32PtyApi(): Win32PtyApi {
     connectAndVerifyServer: (pipeName: string, expectedServerSid: string): PtyClientChannel | null => {
       let h: unknown = null;
       try {
-        h = CreateFileW(pipeName, GENERIC_READ | GENERIC_WRITE, 0, null, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, null);
+        // FIX 1 — connect at SECURITY_IDENTIFICATION (SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION =
+        // 0x00110000), so the kb-fleet host can only IDENTIFY this client (its OpenThreadToken(TOKEN_QUERY) +
+        // GetTokenInformation(TokenUser) SID check still works) but can NOT impersonate Daniel to act as him.
+        h = CreateFileW(
+          pipeName, GENERIC_READ | GENERIC_WRITE, 0, null, OPEN_EXISTING,
+          FILE_FLAG_OVERLAPPED | SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION, null,
+        );
         if (badHandle(h)) return null;
-        // ANTI-SQUAT (design Point 4): verify the SERVER's SID == kb-fleet BEFORE writing a single byte.
-        const pidBuf = koffi.alloc('uint32', 1);
-        if (!GetNamedPipeServerProcessId(h, pidBuf)) {
-          CloseHandle(h);
-          return null;
-        }
-        const pid = koffi.decode(pidBuf, 'uint32') as number;
-        const hProc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
-        if (badHandle(hProc)) {
-          CloseHandle(h);
-          return null;
-        }
+        // FIX 2 — ANTI-SQUAT (design Point 4): verify the pipe's OWNER SID == kb-fleet BEFORE writing a single
+        // byte. We read the OWNER from the connected pipe handle itself (READ_CONTROL is implied by
+        // FILE_GENERIC_READ), NOT the server PROCESS token: OpenProcess against the kb-fleet daemon is
+        // ACCESS_DENIED from a non-admin Medium daemon (cross-user), so a process-token check fails legitimately.
+        // The pipe owner is stamped deterministically to the kb-fleet USER sid by buildPipeSddl's `O:` component.
         let serverSid: string | null = null;
+        const sdOut = koffi.alloc(HANDLE, 1);
+        if ((GetSecurityInfo(h, SE_KERNEL_OBJECT, OWNER_SECURITY_INFORMATION, null, null, null, null, sdOut) as number) !== 0) {
+          CloseHandle(h);
+          return null;
+        }
+        const pSD = koffi.decode(sdOut, HANDLE);
         try {
-          const bytes = sidBytesForProcessHandle(hProc);
-          serverSid = bytes ? parseSidString(bytes) : null;
-        } catch {
-          serverSid = null;
+          const ownerSddl = sddlFromSecurityDescriptor(pSD, OWNER_SECURITY_INFORMATION);
+          serverSid = ownerSddl != null ? ownerSidFromSddl(ownerSddl) : null;
         } finally {
-          CloseHandle(hProc);
+          try {
+            LocalFree(pSD);
+          } catch {
+            /* ignore */
+          }
         }
         if (!serverSid || serverSid !== expectedServerSid) {
           CloseHandle(h);

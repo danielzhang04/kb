@@ -107,14 +107,20 @@ export function runHostSession(channel: PtyFrameChannel, open: HostOpenRequest, 
   channel.onFrame((frame: InboundFrame) => {
     if (torn) return;
     const t = frame.type;
-    if (t === 'write' && typeof frame.data === 'string') {
-      session.handle.write(frame.data);
-    } else if (t === 'resize') {
-      session.handle.resize(posInt(frame.cols, open.cols), posInt(frame.rows, open.rows));
-    } else if (t === 'stop') {
-      teardown(true); // daemon asked to stop → kill the process group
+    try {
+      if (t === 'write' && typeof frame.data === 'string') {
+        session.handle.write(frame.data);
+      } else if (t === 'resize') {
+        session.handle.resize(posInt(frame.cols, open.cols), posInt(frame.rows, open.rows));
+      } else if (t === 'stop') {
+        teardown(true); // daemon asked to stop → kill the process group
+      }
+      // Unknown control frames are ignored (forward-compatible); they can never be data (data is host→daemon).
+    } catch {
+      // FIX 3 — write()/resize() can throw on a just-exited PTY (a teardown race the `torn` flag doesn't
+      // fully close). Tear down ONLY this session; never let the throw escape the frame pump and crash the host.
+      teardown(true);
     }
-    // Unknown control frames are ignored (forward-compatible); they can never be data (data is host→daemon).
   });
 
   // Channel EOF (daemon disconnected / pipe broke) → kill the session's process group (no orphan survives).

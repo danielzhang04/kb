@@ -175,6 +175,84 @@ describe('createHostPipeServer — cross-user dual-factor auth', () => {
   });
 });
 
+describe('createHostPipeServer — FIX 4: `live` handle set does not leak on normal completion', () => {
+  it('drops a handle from `live` when its session closes normally (server.close() no longer re-closes it)', async () => {
+    let seq = 0;
+    const closedIds: number[] = [];
+    const rejecters = new Map<PipeHandle, () => void>();
+
+    // A controllable server channel for the (single) real connection: yields one `open` frame, lets the test
+    // drive an inbound `stop`, and fires onClose from close() so teardown propagates like the real channel.
+    let pulled = false;
+    let onFrameCb: ((f: InboundFrame) => void) | null = null;
+    let onCloseCb: (() => void) | null = null;
+    let chClosed = false;
+    const connChannel: PtyServerChannel = {
+      nextFrame: async () => {
+        if (pulled) return null;
+        pulled = true;
+        return openFrame(TOKEN);
+      },
+      sendFrame: () => true,
+      onFrame: (cb) => {
+        onFrameCb = cb;
+      },
+      onClose: (cb) => {
+        onCloseCb = cb;
+        if (chClosed) cb();
+      },
+      close: () => {
+        if (chClosed) return;
+        chClosed = true;
+        onCloseCb?.();
+      },
+    };
+
+    const transport: PtyPipeTransport = {
+      createPipe: () => ({ id: seq++ }) as PipeHandle,
+      accept: (handle) =>
+        (handle as { id: number }).id === 0
+          ? Promise.resolve()
+          : new Promise<void>((_resolve, reject) => rejecters.set(handle, () => reject(new Error('closed')))),
+      channel: () => connChannel, // only handle 0 is ever channel()'d
+      closeConnection: (handle) => {
+        closedIds.push((handle as { id: number }).id);
+        rejecters.get(handle)?.();
+        rejecters.delete(handle);
+      },
+    };
+
+    const fireInbound = (f: InboundFrame): void => onFrameCb?.(f);
+
+    const host = fakeHost();
+    const server = createHostPipeServer({
+      pipeName: '\\\\.\\pipe\\kb-pty-host-test',
+      expectedPeerSid: DANIEL,
+      bootToken: TOKEN,
+      transport,
+      peerFfi: peerReturning(DANIEL),
+      host: host.host,
+      isRunnable: () => true,
+      openDefaults: { cwd: '/repo', cols: 80, rows: 24 },
+    });
+
+    await server.listen();
+    await new Promise((r) => setTimeout(r, 20)); // let handle 0 be authed + session wired
+    expect(host.open).toHaveBeenCalledTimes(1);
+
+    // The session closes normally (daemon `stop`) → teardown → channel.close() → FIX 4 drops handle 0 from live.
+    fireInbound({ type: 'stop' });
+    await new Promise((r) => setTimeout(r, 5));
+
+    await server.close();
+
+    // Handle 0 (the completed session) must NOT be re-closed by server.close() — it already left `live`.
+    // The still-accepting replacement (handle 1) IS torn down by close(), proving close() still works.
+    expect(closedIds).not.toContain(0);
+    expect(closedIds).toContain(1);
+  });
+});
+
 describe('createHostPipeServer — squat defense', () => {
   it('listen() rejects (fail-closed) when the first pipe instance cannot be created', async () => {
     const transport: PtyPipeTransport = {

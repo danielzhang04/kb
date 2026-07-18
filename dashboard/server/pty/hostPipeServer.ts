@@ -125,7 +125,21 @@ export function createHostPipeServer(deps: HostPipeServerDeps): HostPipeServer {
   /** Handle ONE connected client: read + authenticate the first `open` frame (BOTH cross-user factors),
    *  then hand the persistent channel to the streaming multiplexer. Any throw is contained (fail-closed). */
   async function handleConnection(handle: PipeHandle): Promise<void> {
-    const channel = transport.channel(handle);
+    const rawChannel = transport.channel(handle);
+    // FIX 4 — the handle was only removed from `live` on the error paths, so a session that completed normally
+    // leaked its handle (unbounded growth). Wrap `close()` so EVERY teardown path (auth reject, no-open-frame,
+    // PTY exit, `stop`, channel EOF — all of which route through channel.close()) also drops it from `live`.
+    let removed = false;
+    const channel: PtyServerChannel = {
+      ...rawChannel,
+      close: () => {
+        if (!removed) {
+          removed = true;
+          live.delete(handle);
+        }
+        rawChannel.close();
+      },
+    };
     const first = await channel.nextFrame(requestTimeoutMs);
     if (!first || first.type !== 'open') {
       channel.close();
