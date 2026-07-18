@@ -1,74 +1,140 @@
-# Dashboard execution control — HANDOFF
+# Dashboard agent workspaces — HANDOFF
 
-**Date:** 2026-07-18  
-**Branch:** `codex/dashboard-operational-surfaces`  
-**Owner:** `codex-worker`  
-**Plan:** `docs/plans/2026-07-18-dashboard-execution-control-plan.md`
+**Date:** 2026-07-18
+**Branch:** `codex/dashboard-operational-surfaces`
+**Owner:** `codex-worker`
+**Active plan:** `docs/plans/2026-07-18-dashboard-agent-workspaces-plan.md`
+**Prior plan:** `docs/plans/2026-07-18-dashboard-execution-control-plan.md`
 
-## Outcome
+## Read first
 
-The dashboard now has a truthful executable vertical slice instead of treating every New action as a generic Composer save:
+Run `python scripts/preamble.py`, then read `CLAUDE.md`, `governance/agent-rules.md`,
+`orgs/kb-ops/_index.md`, `orgs/kb-ops/STATE.md`, and `orgs/kb-ops/contract.md`. Do not replace
+this handoff with `AGENTS.md` and do not edit the human-owned governance files.
 
-- Terminal tabs remain mounted across dashboard navigation and close only when the operator closes them (or the security session is lost).
-- The old Pipeline destination is presented as **Runs** and groups live queue-card DAGs by workflow run id.
-- Composer Task has an execution owner and **Run task** action.
-- Composer Workflow has a strict stage/dependency editor, separate **Save definition** and **Run now** actions, and embeds a versioned `workflow-v1` payload when saved.
-- `POST /api/write/workflow-runs` validates and atomically files a bounded acyclic DAG with server-resolved routing.
-- Task/workflow launch signals the registered Codex scheduled runner immediately and reports whether pickup was actually signaled.
-- Registered strict `workflow-v1` definitions can be launched from Workflows; prose-only legacy files are visibly non-runnable.
-- Human Inbox combines approval decisions, input requests, wake-me/intervention cards, and halted work. Evidence verification remains honestly distinct from execution/resume.
-- One Windows Hello/passkey unlock persists for the configured eight-hour work session; no private key is sent or stored by the dashboard.
+The product goal is a local operations console that can eventually run a complex project from a
+Claude-managed conversation: plan it, compile a reviewed workflow, start it in governed automatic
+mode, inspect and steer the manager/workers, and respond to human requests inline. Atlas is the
+eventual acceptance workload, **not** the next implementation task.
 
-## Runtime topology
+## Wave A outcome — truthful workspaces
 
-The three repositories roles are intentionally isolated:
+Wave A is complete and deployed:
 
-| Purpose | Path / branch |
-|---|---|
-| Dashboard code | `C:\Users\danie\kb` / `codex/dashboard-operational-surfaces` |
-| Canonical reads + queue/audit writes | `C:\Users\danie\kb-worktrees\dashboard-ops` / `ops` |
-| Durable Composer saves | `C:\Users\danie\kb-worktrees\dashboard-durable` / `claude/m1-dashboard` |
-| Codex execution | `C:\Users\danie\kb-worktrees\codex-runner-runtime` / detached `origin/ops`, then per-run `codex/*` |
+- **New** is one direct action. It creates an app-local Composer workspace instead of opening an
+  entity dropdown where every choice led to the same surface.
+- Composer supports multiple independent tabs. Switching dashboard destinations keeps open panes
+  mounted; Close is browser-only, with a **Recent** list to reopen it. Archive/Restore are explicit
+  durable operations, and Fork creates a distinct conversation without sharing a mutable provider
+  session.
+- Workspace metadata and visible turns persist outside the repo under `DASHBOARD_STATE_ROOT`.
+  Public references are opaque and subject-bound. Claude provider session IDs are encrypted at rest
+  and never returned to the browser.
+- One process-local writer lease is allowed per workspace. Concurrent workspaces can run, while a
+  second turn, archive, or fork on an active workspace returns `409 session-busy`.
+- The first real workspace turn receives the idea/planning seed. The prompt control is one primary
+  Send/Stop affordance; the structured Draft & run controls remain secondary and collapsed.
+- Browser transcript projection removes hidden reasoning and all tool inputs/results, while retaining
+  visible assistant text and inspectable tool-name/success shape. Known session capabilities and
+  common credential forms are redacted before streaming or persistence.
+- Stored provider handles that cannot be decrypted after a daemon secret rotation are discarded
+  without losing visible history. The next turn starts a fresh provider session with an inert,
+  bounded rehydration of at most the last 12 visible turns.
+- Spawn/audit/storage observer failures terminate or contain the child rather than orphaning a Claude
+  process or crashing the dashboard daemon.
+- Live Claude children are process-tracked and drained before Fastify/PM2 waits on streaming requests.
+  A restart normalizes any persisted `running` residue to `interrupted`; a running tab cannot be closed
+  until its turn is explicitly stopped.
+- Recognizable passwords, API/access tokens, private keys, session capabilities, and other supported
+  credential shapes are refused in workspace titles/prompts before persistence or spawn. Public legacy
+  fields are redacted too, and Composer warns the operator not to paste credentials.
+- Card model/runtime routing now reconciles canonical `ops` before lifecycle checks, freezes active,
+  approval-bound, and historical attempts, and uses a pinned single-commit publication check. A
+  retryable publication conflict does not permanently freeze the UI.
 
-PM2 receives the two dashboard data roots through `DASHBOARD_REPO_ROOT` and `DASHBOARD_DURABLE_REPO_ROOT`. The scheduled task `kb-codex-runner` receives the isolated runtime root and deploy-key-bound `codex` push remote.
+## Honest runtime boundaries
 
-## Runner changes
+Wave A does **not** yet make Composer a background workflow engine:
 
-- Fetches a detached `origin/ops` snapshot rather than taking over the local `ops` branch.
-- Uses the model stamped on the card.
-- Supplies dependency results and operator feedback only inside an explicit inert-context boundary; `## Evidence` is excluded.
-- Preserves owner/runtime/model on rerun successor cards.
-- Records the cost row before committing and stages only the original/result card paths plus the exact cost shard.
-- A non-zero Codex exit walks the card to `halted`, never `done`, so failed work cannot release a dependent stage.
+1. Switching dashboard views preserves a live turn because the pane stays mounted. Refreshing,
+   closing the page, losing the browser connection, or restarting PM2 stops/interrupts that turn. Live spectator attach,
+   background ownership, replay, and reconnect require the Wave B/C managed-session event broker.
+2. A stable dashboard session secret permits exact Claude `--resume`. A rotated secret falls back to
+   bounded visible-context rehydration; do not claim exact provider continuity across every restart.
+3. Composer conversation is persisted but not yet compiled into a schema-constrained immutable plan.
+   The existing structured Task/Workflow form remains the only governed launch path.
+4. Runs groups canonical queue cards but is not yet a durable manager cockpit. It cannot yet show a
+   complete normalized command/tool/diff stream or steer child sessions.
+5. Human Inbox is still a read/verify surface, not the durable inline Human Request protocol.
+6. Local Composer storage has atomic replacement and restrictive file modes, but no enforced disk
+   quota or automatic retention cleanup, and the session-list response still scales with retained
+   transcript history. Build metadata-only listing, inventory/dry-run/quarantine before any purge.
+7. Do not activate the Claude Broker, pass arbitrary browser CLI flags, use permission-bypass modes,
+   expose credentials, or bypass worker-to-`ops` governance.
 
-## Verification
+## Verification at handoff
 
-- Dashboard TypeScript: `npm.cmd run typecheck` — passed.
-- Dashboard tests: 131 files, 972 passed, 1 skipped.
-- Production SPA build: passed.
-- Runner PowerShell parser: passed.
-- Runner shape assertions: 15 passed using a direct harness because `pytest` is not installed in the current Python environment.
-- `python scripts/preamble.py`: passed.
+- `python scripts/preamble.py` — passed.
+- `npm.cmd run typecheck` in `dashboard/` — passed.
+- `npm.cmd test -- --run` in `dashboard/` — **134 files passed; 997 passed, 1 skipped**.
+- `npm.cmd run build` in `dashboard/` — passed.
+- Focused restart/workspace hardening — **8 files, 88 tests passed**.
+- Final adversarial review — **clean; no blocker, high, or medium findings remain**.
 
-## Honest remaining boundaries
+## Continue with Wave B — plan compiler and run control plane
 
-This is not yet unattended multi-stage orchestration:
+Do not start by adding more buttons. Preserve chat as the primary construction experience.
 
-1. Codex result cards are pushed to a `codex/*` result branch. Binding worker rules require a human/cloud PR merge into `ops`; the dashboard must not bypass that with its eight-hour bearer session.
-2. After that merge, dependency release and next-runner signaling are not yet exposed as a passkey **Continue workflow** action.
-3. Composer chat is still a read-only planning conversation. It does not safely convert an arbitrary answer into the structured Task/Workflow form, so “research and build Atlas” still needs the operator to review/populate the stages.
-4. There is no arbitrary-card Claude subscription runner. The Broker remains behind its existing ToS/security gates.
-5. Human Inbox is a truthful read/verify surface, not yet a durable Approve/Reject/Respond/resume protocol. A real Atlas human-review stage therefore cannot be claimed end-to-end yet.
-6. Runs observes canonical `ops`; it cannot show the Codex worker's transient `working` state until the reviewed result branch lands.
+1. Define a versioned, schema-constrained **proposal protocol** for plan revisions, tasks, stages,
+   dependencies, manager runtime/model, worker runtime/model, required skills, scope, artifacts,
+   checkpoints, human gates, and executable governance references.
+2. Treat assistant proposal blocks as untrusted data. Parse and validate them server-side; never execute
+   arbitrary prose, CLI flags, environment, paths, tools, or permission settings from the browser.
+3. Show the operator an inspectable proposal revision and diff. A material edit mints a new hash.
+   Approval and launch must bind to that exact immutable revision.
+4. Add app-local durable projections for `Run`, `Stage`, `Attempt`, `ManagedSession`, and append-only
+   operational events, linked to canonical queue cards rather than replacing card truth.
+5. Provision one logical Claude Manager head session per run. The deterministic run graph and durable
+   events remain authoritative if the Manager exits; a successor Manager can rehydrate from approved
+   plan state and checkpoints.
+6. Validate this with a synthetic, low-risk two-stage workflow. Do not use Atlas yet.
 
-## Recommended next slice
+## Then Wave C — cockpit and Human Requests
 
-Build the reviewed-result continuation loop without widening worker credentials:
+1. Normalize supported Claude and Codex operational events into public event DTOs: visible messages,
+   session hierarchy, commands, tool names/status, file paths, diffs, checkpoints, and lifecycle. Never
+   expose chain-of-thought, raw tool payloads, or credentials.
+2. Add durable background session ownership and an event broker so browser refresh/reconnect can attach
+   to a running Manager or worker and replay from a cursor without spawning duplicates.
+3. Make Runs the central cockpit: manager head, stage/attempt graph, workers/children, terminal or log
+   view, code/instructions, artifacts/diffs, Stop/Retry/Reroute, and a conversation channel that applies
+   steering at explicit safe checkpoints.
+4. Introduce a human-reviewed, versioned `HumanRequest` schema for input, approval, review,
+   intervention, and governance refusal. The same durable object appears in Human Inbox and its Run.
+5. Respond/Approve/Reject/Request changes inline in either surface. Commit the idempotent,
+   revision-bound response before signaling a manager or releasing a stage.
 
-1. Index only allow-listed `codex/codex-worker-*` result refs, pin their SHA/diff hash, and show a bounded escaped diff in Human Inbox.
-2. Send Daniel to the GitHub PR/compare flow for the required human merge into `ops`.
-3. Prove the exact result SHA landed in `origin/ops`.
-4. Offer a passkey-confirmed **Continue workflow** action that runs the existing `release_dependents`, commits released paths plus audit atomically on `ops`, and signals newly runnable owners.
-5. Separately propose the durable `waiting-human`/response schema before implementing Atlas review gates or live steering.
+## Then Wave D — governed automatic execution
 
-Do not add `gh pr merge`, direct worker pushes to `ops`, a Claude/Broker bypass, or terminal-spawned fake workflows as shortcuts.
+1. Compile global governance, the project contract, approved plan scope, and server-owned runtime
+   capabilities into executable policy checks. Runs proceed automatically inside that envelope and
+   stop only at explicit human/governance boundaries.
+2. Add server-owned auto profiles for Claude and Codex; no arbitrary browser-supplied permission mode.
+   Model/runtime changes follow successor-attempt rules when live switching is unsupported.
+3. Add isolated per-run worktrees, bounded concurrency, skill/capability resolution, cost accounting,
+   canonical result integration, dependent release, manager recovery, and crash/restart tests.
+4. Add storage inventory and operator cleanup prompts, then dry-run/quarantine/restore. Purge only after
+   human-ratified retention policy.
+5. Only after the synthetic workflow passes end-to-end should a separate planning conversation define
+   the Atlas build acceptance run.
+
+## Deployment record
+
+The next terminal should begin from this branch head rather than reconstructing Wave A from
+conversation history.
+
+- Wave A implementation commit: `fde0ae5` (`feat(dashboard): add persistent composer workspaces`)
+- Handoff/deployment commit: the commit containing this file, immediately after `fde0ae5`
+- PM2 process: `kb-dashboard` online on port `5317` after `--update-env` restart
+- Health check: `GET http://localhost:5317/healthz` returned `{ "ok": true, "node": "24.18.0" }`
+- SPA check: `GET http://localhost:5317/` returned `200` with the built application root
