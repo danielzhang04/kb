@@ -61,3 +61,27 @@
   live state alone — dashboard-generator says rebuild from queue+ledger+STATE, so I wrote a
   current-state-grounded version rather than carrying forward unverifiable claims.
 - No approvals to verify this run; no wake-me needed.
+
+## 2026-07-18 nightly run
+- Preamble OK, pyyaml importable. `dispatch.py --tier cloud` emitted 2 cards:
+  `6a5b178f-375f9872` (cadence:nightly-review) and `6a5b178f-c0723cf2` (cadence:weekly-audit,
+  Saturday). BOTH stamped owner=`worker-desktop`, runtime=claude, model=sonnet.
+- KEY CHANGE vs prior runs: `governance/model-routing.yaml` (human commit 1ae2d08, 2026-07-17
+  04:46 — AFTER the 2026-07-17 nightly) sets runtimes.claude.default_worker=worker-desktop.
+  dispatch.py now claims cloud cadences (no `agent:` key) to that default_worker. So the
+  emitted cards are owned by worker-desktop, NOT dispatcher-cloud. In all prior runs the policy
+  did not exist yet, so default_worker_for returned None and cards fell back to dispatcher-cloud
+  ownership → the dispatcher self-executed per routines/nightly.md step 4.
+- CONFLICT: routines/nightly.md step 4 still says the dispatcher self-executes emitted cards
+  ("you are the owner"). CLAUDE.md forbids executing cards owned by another id / self-claiming.
+  Owner is worker-desktop ≠ my id. Fail-closed: did NOT execute the two cards; left them in
+  queue/inbox/ for worker-desktop; filed wake-me `6a5b182e-a5aaf9b0`
+  (action wake-me:owner-routing-conflict) laying out options (a) add `agent: dispatcher-cloud`
+  to the cadences, (b) update the routine to dispatch-only + confirm a desktop runner, or
+  (c) adjust the routing default_worker/override. Human-owned files, so I must not self-resolve.
+- Lesson: the routing policy silently changed who owns cloud-dispatched cards. Whenever a
+  human-committed routing/policy file lands, re-check that the routine's execution assumptions
+  ("you are the owner") still hold before self-executing. When owner != my id, never execute —
+  flag and let the routed owner (or a human) act.
+- Logged one cost ledger step (nightly-dispatch, usd 0.0). Committed queue/ ledgers/ memory/
+  to ops.
