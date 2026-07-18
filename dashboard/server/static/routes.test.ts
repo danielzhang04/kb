@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Fastify from 'fastify';
@@ -80,6 +80,32 @@ describe('registerStatic', () => {
     const res = await app.inject({ method: 'GET', url: '/api/does-not-exist' });
     expect(res.statusCode).toBe(404);
     expect(res.body).not.toContain('spa-shell');
+
+    await app.close();
+  });
+
+  it('an unknown /assets/* path 404s instead of silently serving the SPA shell', async () => {
+    const dist = await makeDist();
+    const app = appWithApiAnd(dist);
+    await app.ready();
+
+    const res = await app.inject({ method: 'GET', url: '/assets/index-STALEHASH.js' });
+    expect(res.statusCode).toBe(404);
+    expect(res.body).not.toContain('spa-shell');
+
+    await app.close();
+  });
+
+  it('a real /assets/* file is still served', async () => {
+    const dist = await makeDist();
+    await mkdir(join(dist, 'assets'));
+    await writeFile(join(dist, 'assets', 'index-abc.js'), 'export const ok = true;');
+    const app = appWithApiAnd(dist);
+    await app.ready();
+
+    const res = await app.inject({ method: 'GET', url: '/assets/index-abc.js' });
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain('export const ok');
 
     await app.close();
   });

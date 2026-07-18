@@ -44,7 +44,10 @@ export function registerStatic(app: FastifyInstance, opts: StaticOptions = {}): 
   app.register(fastifyStatic, { root: distDir, wildcard: false });
 
   app.setNotFoundHandler((req, reply) => {
-    if (req.method === 'GET' && !req.url.startsWith('/api/')) {
+    // /assets/* are hashed build files: a miss means a stale reference (e.g. an old cached
+    // index.html), and answering it with index.html makes the browser choke on text/html where it
+    // expected a module script. A hard 404 keeps that failure visible.
+    if (req.method === 'GET' && !req.url.startsWith('/api/') && !req.url.startsWith('/assets/')) {
       return reply.sendFile('index.html', distDir);
     }
     return reply.code(404).send({ error: 'not found' });
