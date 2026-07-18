@@ -46,7 +46,7 @@ function fakeConnection(sessionId = 'pty-1') {
   const writes: string[] = [];
   let closed = false;
   const conn: HostConnection = {
-    requestOpen(req) {
+    async requestOpen(req) {
       opens.push(req);
       return { sessionId } satisfies OpenPtyAck;
     },
@@ -63,14 +63,16 @@ function fakeConnection(sessionId = 'pty-1') {
   return { conn, opens, writes, isClosed: () => closed };
 }
 
-/** Records every transport connect (channel auth) and hands back a controllable connection. */
+/** Records every transport connect (channel auth + the assertion provider it was handed). */
 function recordingTransport(conn: HostConnection) {
   const connects: HostChannelAuth[] = [];
-  const transport = (auth: HostChannelAuth): HostConnection => {
+  const providers: unknown[] = [];
+  const transport = (auth: HostChannelAuth, assertionProvider: unknown): HostConnection => {
     connects.push(auth);
+    providers.push(assertionProvider);
     return conn;
   };
-  return { transport, connects };
+  return { transport, connects, providers };
 }
 
 /** Records every `appendAudit` call so tests can assert exactly-one-row-per-call, in order. */
@@ -99,12 +101,12 @@ function baseDeps(overrides: Partial<OpenPtyDeps> = {}): OpenPtyDeps {
 }
 
 describe('openPty — WebAuthn session gate (fail-closed 401)', () => {
-  it('refuses to open without a fresh WebAuthn session — 401, host never signalled', () => {
+  it('refuses to open without a fresh WebAuthn session — 401, host never signalled', async () => {
     const fc = fakeConnection();
     const rt = recordingTransport(fc.conn);
     const noSession: SessionInput = { token: null, config: SESSION_CONFIG };
 
-    const result = openPty(noSession, baseDeps({ transport: rt.transport }));
+    const result = await openPty(noSession, baseDeps({ transport: rt.transport }));
     expect(result).toEqual({
       ok: false,
       reason: 'unauthenticated',
@@ -116,14 +118,14 @@ describe('openPty — WebAuthn session gate (fail-closed 401)', () => {
     expect(fc.opens).toHaveLength(0);
   });
 
-  it('refuses an expired/tampered session the same way — 401, no signal', () => {
+  it('refuses an expired/tampered session the same way — 401, no signal', async () => {
     const fc = fakeConnection();
     const rt = recordingTransport(fc.conn);
     const expiredConfig: SessionConfig = { secret: SECRET, now: () => 0, ttlMs: 1 };
     const { token } = mintSession('operator-1', expiredConfig);
     const later: SessionInput = { token, config: { secret: SECRET, now: () => 1_000_000 } };
 
-    const result = openPty(later, baseDeps({ transport: rt.transport }));
+    const result = await openPty(later, baseDeps({ transport: rt.transport }));
     expect(result).toEqual({ ok: false, reason: 'unauthenticated', status: 401, detail: 'expired' });
     expect(rt.connects).toHaveLength(0);
     expect(fc.opens).toHaveLength(0);
@@ -131,12 +133,12 @@ describe('openPty — WebAuthn session gate (fail-closed 401)', () => {
 });
 
 describe('openPty — preamble gate (runs first, signals nothing on failure; ordering law 8)', () => {
-  it('refuses to signal the host when the preamble fails (STOP present) — even with a valid session', () => {
+  it('refuses to signal the host when the preamble fails (STOP present) — even with a valid session', async () => {
     const fc = fakeConnection();
     const rt = recordingTransport(fc.conn);
     const audit = recordingAppendAudit();
 
-    const result = openPty(
+    const result = await openPty(
       validSession(),
       baseDeps({
         runPreamble: frozenPreamble('STOP file present — fleet is frozen'),
@@ -157,12 +159,12 @@ describe('openPty — preamble gate (runs first, signals nothing on failure; ord
     expect(audit.rows[0].event.result).toBe('fleet-frozen');
   });
 
-  it('the preamble is checked BEFORE the session — a frozen fleet refuses as fleet-frozen even with no session', () => {
+  it('the preamble is checked BEFORE the session — a frozen fleet refuses as fleet-frozen even with no session', async () => {
     const fc = fakeConnection();
     const rt = recordingTransport(fc.conn);
     const noSession: SessionInput = { token: null, config: SESSION_CONFIG };
 
-    const result = openPty(
+    const result = await openPty(
       noSession,
       baseDeps({ runPreamble: frozenPreamble('daily budget breached: $6.00 >= $5.00'), transport: rt.transport }),
     );
@@ -173,11 +175,11 @@ describe('openPty — preamble gate (runs first, signals nothing on failure; ord
 });
 
 describe('openPty — the daemon only SIGNALS the host (no spawn-as-user, no credential argument)', () => {
-  it('sends exactly one authenticated open-request carrying no CreateProcessAsUser/runas/password/token-credential', () => {
+  it('sends exactly one authenticated open-request carrying no CreateProcessAsUser/runas/password/token-credential', async () => {
     const fc = fakeConnection('pty-42');
     const rt = recordingTransport(fc.conn);
 
-    const result = openPty(validSession('operator-7'), baseDeps({ transport: rt.transport, cols: 120, rows: 40 }));
+    const result = await openPty(validSession('operator-7'), baseDeps({ transport: rt.transport, cols: 120, rows: 40 }));
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.sessionId).toBe('pty-42');
 
@@ -210,17 +212,17 @@ describe('openPty — the daemon only SIGNALS the host (no spawn-as-user, no cre
 });
 
 describe('openPty — audit coverage (D2.9 appendAudit, independent trail)', () => {
-  it('every open writes exactly one audit row — refused (preamble), refused (session), and opened alike', () => {
+  it('every open writes exactly one audit row — refused (preamble), refused (session), and opened alike', async () => {
     const audit = recordingAppendAudit();
     const fc = fakeConnection();
     const rt = recordingTransport(fc.conn);
 
     // Refused at the preamble gate.
-    openPty(validSession(), baseDeps({ runPreamble: frozenPreamble('STOP file present'), appendAudit: audit.fn, transport: rt.transport }));
+    await openPty(validSession(), baseDeps({ runPreamble: frozenPreamble('STOP file present'), appendAudit: audit.fn, transport: rt.transport }));
     // Refused at the session gate.
-    openPty({ token: null, config: SESSION_CONFIG }, baseDeps({ appendAudit: audit.fn, transport: rt.transport }));
+    await openPty({ token: null, config: SESSION_CONFIG }, baseDeps({ appendAudit: audit.fn, transport: rt.transport }));
     // Actually opens.
-    openPty(validSession('operator-1'), baseDeps({ appendAudit: audit.fn, transport: rt.transport }));
+    await openPty(validSession('operator-1'), baseDeps({ appendAudit: audit.fn, transport: rt.transport }));
 
     expect(audit.rows).toHaveLength(3);
     expect(audit.rows.map((r) => r.event.action)).toEqual(['pty-open', 'pty-open', 'pty-open']);
@@ -231,14 +233,54 @@ describe('openPty — audit coverage (D2.9 appendAudit, independent trail)', () 
     expect(audit.rows[2].repoRoot).toBe('/repo');
   });
 
-  it('a host that is unreachable is refused (host-unreachable) and audited, not thrown', () => {
+  it('a host that is unreachable is refused (host-unreachable) and audited, not thrown', async () => {
     const audit = recordingAppendAudit();
     const throwingTransport = () => {
       throw new Error('pipe refused: host not registered yet');
     };
-    const result = openPty(
+    const result = await openPty(
       validSession(),
       baseDeps({ appendAudit: audit.fn, transport: throwingTransport }),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('host-unreachable');
+    expect(audit.rows).toHaveLength(1);
+    expect(audit.rows[0].event.result).toBe('host-unreachable');
+  });
+});
+
+describe('openPty — Factor C two-phase (D3.1 MED mitigation): passkey provider threading + fail-closed', () => {
+  it('threads the injected assertionProvider through to the transport', async () => {
+    const fc = fakeConnection();
+    const rt = recordingTransport(fc.conn);
+    const provider = (async () => ({
+      credentialId: 'c',
+      authenticatorData: 'a',
+      clientDataJSON: 'd',
+      signature: 's',
+    })) as unknown as OpenPtyDeps['assertionProvider'];
+
+    await openPty(validSession(), baseDeps({ transport: rt.transport, assertionProvider: provider }));
+    expect(rt.providers).toHaveLength(1);
+    expect(rt.providers[0]).toBe(provider);
+  });
+
+  it('a passkey ceremony failure surfaces as host-unreachable and is audited EXACTLY once (no spawn)', async () => {
+    const audit = recordingAppendAudit();
+    // A connection whose requestOpen rejects the way the real adapter does when the provider throws.
+    const failing: HostConnection = {
+      async requestOpen() {
+        throw new Error('PTY passkey assertion ceremony failed: user declined (fail-closed)');
+      },
+      onData() {},
+      onExit() {},
+      write() {},
+      resize() {},
+      close() {},
+    };
+    const result = await openPty(
+      validSession(),
+      baseDeps({ appendAudit: audit.fn, transport: () => failing }),
     );
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toBe('host-unreachable');
