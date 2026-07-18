@@ -24,7 +24,7 @@ import { ComposerChat } from './ComposerChat';
 import { defaultComposerStream } from './chatClient';
 import type { ComposerStreamFn } from './chatClient';
 import type { Session } from '../lib/authClient';
-import { RISK_TIERS, seedTemplate, toDeploy, validateDraft } from './artifactTypes';
+import { RISK_TIERS, seedTemplate, toDeploy, validateDraft, workflowRunRequest } from './artifactTypes';
 import type {
   ArtifactKind,
   AgentDraft,
@@ -36,7 +36,9 @@ import type {
   SkillDraft,
   TaskDraft,
   WorkflowDraft,
+  WorkflowStageDraft,
 } from './artifactTypes';
+import type { WorkflowRunRequest } from '../../server/write/workflowRun';
 import '../styles/views/composer.css';
 
 /** The seedable chips: `idea` (unknown, idea-first entry) then every concrete kind with a draft form.
@@ -71,8 +73,10 @@ export interface ComposerProps {
   ideaText?: string;
   /** Governed deploy dispatcher (C4). Invoked with the validated DeployPlan when Deploy is pressed. */
   onDeploy: (plan: DeployPlan) => void | Promise<void>;
+  onRunWorkflow?: (request: WorkflowRunRequest) => void | Promise<void>;
   /** True while the wrapper is resolving auth or deploying. Disables the primary action to prevent duplicates. */
   deployPending?: boolean;
+  runPending?: boolean;
   /** Return to the underlying view — the Back affordance (parity with the former placeholder). */
   onBack: () => void;
   /** Injected chat stream (DI seam, mirrors ComposerChat). Composer wraps it to compose the seed. */
@@ -97,6 +101,7 @@ interface FormState {
   target: string;
   riskTier: RiskTier;
   taskBody: string;
+  taskOwner: string;
   // skill
   skillName: string;
   skillDescription: string;
@@ -104,6 +109,8 @@ interface FormState {
   // workflow
   wfFilename: string;
   wfBody: string;
+  wfProject: string;
+  wfStages: WorkflowStageDraft[];
   // project
   projName: string;
   projDate: string;
@@ -124,11 +131,14 @@ function initialForm(): FormState {
     target: '',
     riskTier: 'T2',
     taskBody: '',
+    taskOwner: 'codex-worker',
     skillName: '',
     skillDescription: '',
     skillBody: '',
     wfFilename: '',
     wfBody: '',
+    wfProject: '',
+    wfStages: [{ id: 'stage-1', action: '', target: '.', workOrder: '', riskTier: 'T2', owner: 'codex-worker', dependsOn: [] }],
     projName: '',
     projDate: today(),
     agentId: '',
@@ -148,11 +158,11 @@ function buildDraft(
 ): TaskDraft | SkillDraft | WorkflowDraft | ProjectDraft | AgentDraft | null {
   switch (kind) {
     case 'task':
-      return { project: f.project, action: f.action, target: f.target, riskTier: f.riskTier, body: f.taskBody };
+      return { project: f.project, action: f.action, target: f.target, riskTier: f.riskTier, body: f.taskBody, owner: f.taskOwner };
     case 'skill':
       return { name: f.skillName, description: f.skillDescription, body: f.skillBody };
     case 'workflow':
-      return { filename: f.wfFilename, body: f.wfBody };
+      return { filename: f.wfFilename, project: f.wfProject, body: f.wfBody, stages: f.wfStages };
     case 'project':
       return { name: f.projName, date: f.projDate };
     case 'agent':
@@ -185,7 +195,9 @@ export function Composer({
   initialKind = 'idea',
   ideaText = '',
   onDeploy,
+  onRunWorkflow,
   deployPending = false,
+  runPending = false,
   onBack,
   stream = defaultComposerStream,
   renderOutcome,
@@ -237,6 +249,12 @@ export function Composer({
   const onDeployClick = useCallback((): void => {
     if (plan && !deployPending) void onDeploy(plan);
   }, [plan, onDeploy, deployPending]);
+
+  const onRunClick = useCallback((): void => {
+    if (kind === 'workflow' && draft && isValid && onRunWorkflow && !runPending) {
+      void onRunWorkflow(workflowRunRequest(draft as WorkflowDraft));
+    }
+  }, [draft, isValid, kind, onRunWorkflow, runPending]);
 
   return (
     <section className="v-composer" aria-label="Composer">
@@ -312,14 +330,26 @@ export function Composer({
                 </ul>
               ) : null}
 
-              <button
-                type="button"
-                className="mc-btn mc-btn--primary v-composer__deploy"
-                onClick={onDeployClick}
-                disabled={!isValid || deployPending}
-              >
-                {deployPending ? 'Deploying…' : 'Deploy'}
-              </button>
+              <div className="v-composer__actions">
+                <button
+                  type="button"
+                  className="mc-btn mc-btn--primary v-composer__deploy"
+                  onClick={onDeployClick}
+                  disabled={!isValid || deployPending || runPending}
+                >
+                  {deployPending ? (kind === 'task' ? 'Launching…' : 'Saving…') : kind === 'workflow' ? 'Save definition' : kind === 'task' ? 'Run task' : 'Deploy'}
+                </button>
+                {kind === 'workflow' ? (
+                  <button
+                    type="button"
+                    className="mc-btn v-composer__run"
+                    onClick={onRunClick}
+                    disabled={!isValid || deployPending || runPending || !onRunWorkflow}
+                  >
+                    {runPending ? 'Launching…' : 'Run now'}
+                  </button>
+                ) : null}
+              </div>
 
               {/* C5 mounts the governed deploy-outcome strip here (result / refusal / follow-up saves). */}
               {renderOutcome}
@@ -348,6 +378,13 @@ function DraftForm({
           <Field label="Task project" value={form.project} onChange={(v) => setField('project', v)} />
           <Field label="Task action" value={form.action} onChange={(v) => setField('action', v)} />
           <Field label="Task target" value={form.target} onChange={(v) => setField('target', v)} />
+          <label className="v-composer__field">
+            <span className="v-composer__field-label">Runner</span>
+            <select aria-label="Task runner" value={form.taskOwner} onChange={(e) => setField('taskOwner', e.target.value)}>
+              <option value="codex-worker">Codex worker · background</option>
+              <option value="">Unassigned · will not run</option>
+            </select>
+          </label>
           <label className="v-composer__field">
             <span className="v-composer__field-label">Risk tier</span>
             <select
@@ -386,7 +423,59 @@ function DraftForm({
             onChange={(v) => setField('wfFilename', v)}
             placeholder="wf_<name>.md"
           />
-          <Field label="Workflow body" value={form.wfBody} onChange={(v) => setField('wfBody', v)} multiline />
+          <Field label="Workflow project" value={form.wfProject} onChange={(v) => setField('wfProject', v)} />
+          <Field label="Workflow notes" value={form.wfBody} onChange={(v) => setField('wfBody', v)} multiline />
+          <div className="v-composer__stages" aria-label="Workflow stages">
+            {form.wfStages.map((stage, index) => {
+              const update = <K extends keyof WorkflowStageDraft>(key: K, value: WorkflowStageDraft[K]): void => {
+                const next = form.wfStages.map((item, i) => i === index ? { ...item, [key]: value } : item);
+                setField('wfStages', next);
+              };
+              return (
+                <fieldset key={`${index}:${stage.id}`} className="v-composer__stage">
+                  <legend>Stage {index + 1}</legend>
+                  <Field label={`Stage ${index + 1} id`} value={stage.id} onChange={(v) => update('id', v)} />
+                  <Field label={`Stage ${index + 1} action`} value={stage.action} onChange={(v) => update('action', v)} />
+                  <Field label={`Stage ${index + 1} target`} value={stage.target} onChange={(v) => update('target', v)} />
+                  <Field label={`Stage ${index + 1} work order`} value={stage.workOrder} onChange={(v) => update('workOrder', v)} multiline />
+                  <Field
+                    label={`Stage ${index + 1} dependencies`}
+                    value={stage.dependsOn.join(', ')}
+                    onChange={(v) => update('dependsOn', v.split(',').map((part) => part.trim()).filter(Boolean))}
+                    placeholder="comma-separated stage ids"
+                  />
+                  <label className="v-composer__field">
+                    <span className="v-composer__field-label">Risk tier</span>
+                    <select value={stage.riskTier} onChange={(e) => update('riskTier', e.target.value as 'T1' | 'T2')}>
+                      <option value="T1">T1</option><option value="T2">T2</option>
+                    </select>
+                  </label>
+                  <label className="v-composer__field">
+                    <span className="v-composer__field-label">Runner</span>
+                    <select value={stage.owner} onChange={(e) => update('owner', e.target.value)}>
+                      <option value="codex-worker">Codex worker · background</option>
+                    </select>
+                  </label>
+                  {form.wfStages.length > 1 ? (
+                    <button type="button" className="mc-btn mc-btn--quiet" onClick={() => setField('wfStages', form.wfStages.filter((_, i) => i !== index))}>
+                      Remove stage
+                    </button>
+                  ) : null}
+                </fieldset>
+              );
+            })}
+            <button
+              type="button"
+              className="mc-btn mc-btn--quiet"
+              onClick={() => setField('wfStages', [...form.wfStages, {
+                id: `stage-${form.wfStages.length + 1}`,
+                action: '', target: '.', workOrder: '', riskTier: 'T2', owner: 'codex-worker',
+                dependsOn: form.wfStages.length ? [form.wfStages.at(-1)!.id] : [],
+              }])}
+            >
+              Add stage
+            </button>
+          </div>
         </div>
       );
     case 'project':
@@ -425,9 +514,9 @@ function DraftForm({
 function deployNote(kind: ArtifactKind): string {
   switch (kind) {
     case 'task':
-      return 'Deploy files a queue card. Execution still depends on assignment to a bound runner.';
+      return 'Run task files a queue card assigned to its background runner and signals pickup. No Terminal tab is opened.';
     case 'workflow':
-      return 'Deploy registers a workflow artifact; it does not run the workflow.';
+      return 'Save definition registers a workflow artifact; it does not run the workflow. Run now atomically launches this stage graph.';
     case 'skill':
       return 'Deploy registers a learned skill; it does not promote or activate the skill.';
     case 'project':

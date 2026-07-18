@@ -23,6 +23,16 @@ import {
   type AgentDraft,
 } from './artifactTypes';
 
+function workflow(over: Partial<WorkflowDraft> = {}): WorkflowDraft {
+  return {
+    filename: 'wf_nightly.md',
+    project: 'kb',
+    body: 'steps',
+    stages: [{ id: 'stage-1', action: 'research', target: '.', workOrder: 'Do the work', riskTier: 'T2', owner: 'codex-worker', dependsOn: [] }],
+    ...over,
+  };
+}
+
 describe('composer/artifactTypes — seeds', () => {
   it('idea_seed_asks_for_type_disambiguation', () => {
     const seed = seedTemplate('idea', 'a bot that watches the queue and pings me');
@@ -91,13 +101,13 @@ describe('composer/artifactTypes — draft schemas', () => {
   });
 
   it('workflow_draft_requires_wf_prefixed_filename', () => {
-    const ok: WorkflowDraft = { filename: 'wf_nightly.md', body: 'steps' };
+    const ok: WorkflowDraft = workflow();
     expect(validateDraft('workflow', ok)).toEqual([]);
 
-    const badName = validateDraft('workflow', { filename: 'nightly.md', body: 'steps' });
+    const badName = validateDraft('workflow', workflow({ filename: 'nightly.md' }));
     expect(badName.map((p) => p.field)).toContain('filename');
 
-    const badBody = validateDraft('workflow', { filename: 'wf_nightly.md', body: '' });
+    const badBody = validateDraft('workflow', workflow({ body: '' }));
     expect(badBody.map((p) => p.field)).toContain('body');
   });
 
@@ -156,7 +166,7 @@ describe('composer/artifactTypes — deploy mapping', () => {
 
     const durable: Array<[ArtifactKind, unknown]> = [
       ['skill', { name: 'n', description: 'd', body: 'b' } satisfies SkillDraft],
-      ['workflow', { filename: 'wf_x.md', body: 'b' } satisfies WorkflowDraft],
+      ['workflow', workflow({ filename: 'wf_x.md', body: 'b' })],
       ['project', { name: 'proj', date: '2026-07-17' } satisfies ProjectDraft],
     ];
     for (const [kind, draft] of durable) {
@@ -182,7 +192,7 @@ describe('composer/artifactTypes — deploy mapping', () => {
   });
 
   it('workflow deploy targets workflows/wf_<name>.md durable-save', () => {
-    const plan = toDeploy('workflow', { filename: 'wf_nightly.md', body: 'the steps' });
+    const plan = toDeploy('workflow', workflow({ body: 'the steps' }));
     expect(plan.relpath).toBe('workflows/wf_nightly.md');
     expect(plan.content).toContain('the steps');
     expect(plan.branchClass).toBe('durable');
@@ -198,9 +208,9 @@ describe('composer/artifactTypes — F4 client-side path-traversal rejection', (
   // confinement).
   it('rejects a workflow filename carrying path traversal', () => {
     for (const filename of ['wf_../../x.md', 'wf_../secrets.md', 'wf_a/b.md']) {
-      const problems = validateDraft('workflow', { filename, body: 'steps' });
+      const problems = validateDraft('workflow', workflow({ filename }));
       expect(problems.map((p) => p.field)).toContain('filename');
-      expect(() => toDeploy('workflow', { filename, body: 'steps' })).toThrow();
+      expect(() => toDeploy('workflow', workflow({ filename }))).toThrow();
     }
   });
 

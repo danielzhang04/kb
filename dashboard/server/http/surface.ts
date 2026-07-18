@@ -34,11 +34,16 @@ export function resolveRepoRoot(): string {
   return process.env.DASHBOARD_REPO_ROOT ?? fileURLToPath(new URL('../../../', import.meta.url));
 }
 
+export function resolveDurableRepoRoot(): string {
+  return process.env.DASHBOARD_DURABLE_REPO_ROOT ?? resolveRepoRoot();
+}
+
 /** Build a full {@link SurfaceContext}, filling every field not supplied in `overrides` with its real
  *  default. `sessionConfig`'s secret is resolved exactly once (see module doc). */
 export function makeSurfaceContext(overrides: Partial<SurfaceContext> = {}): SurfaceContext {
   return {
     repoRoot: overrides.repoRoot ?? resolveRepoRoot(),
+    durableRepoRoot: overrides.durableRepoRoot ?? overrides.repoRoot ?? resolveDurableRepoRoot(),
     sessionConfig: overrides.sessionConfig ?? { secret: resolveSessionSecret(), ttlMs: resolveSessionTtlMs() },
     allowedOrigins: overrides.allowedOrigins ?? resolveAllowedOrigins(),
     rateGuard: overrides.rateGuard ?? makeDefaultWriteRateGuard(),
@@ -59,6 +64,7 @@ export function makeSurfaceContext(overrides: Partial<SurfaceContext> = {}): Sur
     // One issued-session allowlist for the whole process (review F1) — resumes only ids captured this
     // lifetime. Tests override with a fresh instance so ids never leak between them.
     resumeRegistry: overrides.resumeRegistry ?? createResumeRegistry(),
+    triggerRunner: overrides.triggerRunner,
   };
 }
 

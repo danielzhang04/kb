@@ -54,6 +54,14 @@ module.exports = {
         // A daemon restart invalidates it because the signing secret remains ephemeral unless Daniel
         // provisions DASHBOARD_SESSION_SECRET out-of-band.
         DASHBOARD_SESSION_TTL_MS: '28800000',
+        // Code stays on its reviewed work branch while all Plane-A reads and governed coordination
+        // writes use a dedicated ops worktree. This prevents normal dashboard development from making
+        // Launch fail (or switching the developer checkout behind the IDE).
+        DASHBOARD_REPO_ROOT: 'C:\\Users\\danie\\kb-worktrees\\dashboard-ops',
+        // Durable Composer artifacts use a separate reviewed work-branch checkout. Keeping this root
+        // distinct from DASHBOARD_REPO_ROOT makes it impossible for a save commit to contaminate ops.
+        DASHBOARD_DURABLE_REPO_ROOT: 'C:\\Users\\danie\\kb-worktrees\\dashboard-durable',
+        DASHBOARD_CODEX_RUNNER_TASK: 'kb-codex-runner',
         // Enrolled PUBLIC credential (NON-SECRET), mirrored from governance/webauthn-credentials.yaml.
         // The server's login path (simplewebauthn) reads the credential store from THIS env as
         // [{id, publicKey}] where publicKey is base64url COSE bytes; the yaml stores the same P-256 key

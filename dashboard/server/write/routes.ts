@@ -33,6 +33,7 @@ import { requireSession, verifiedSession } from '../http/middleware.ts';
 import type { SurfaceContext } from '../http/context.ts';
 import { auditFn } from '../http/context.ts';
 import { appendAuditRowLocal, AUDIT_REL_PATH } from '../audit/log.ts';
+import { triggerRunner as defaultTriggerRunner } from '../runner/trigger.ts';
 
 function asRecord(body: unknown): Record<string, unknown> {
   return body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
@@ -102,7 +103,9 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
       return reply.code(403).send({ error: 'forbidden-branch', reason: 'workBranch may not target main or ops; the server selects the durable work branch' });
     }
     const outcome = await save({
-      repoRoot: ctx.repoRoot,
+      // Durable artifacts must never be written into the canonical ops checkout. Production points
+      // this at an isolated worktree on DEFAULT_WORK_BRANCH; tests fall back to repoRoot.
+      repoRoot: ctx.durableRepoRoot ?? ctx.repoRoot,
       relpath,
       content: str(body.content),
       sessionToken: session?.token,
@@ -173,7 +176,12 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
           alsoStage: [AUDIT_REL_PATH],
           message: `chore(queue): launch card ${outcome.cardId}`,
         });
-        return reply.code(200).send({ ok: true, cardId: outcome.cardId, cardPath: outcome.cardPath });
+        const runner = owner ? (ctx.triggerRunner ?? defaultTriggerRunner)(owner) : {
+          status: 'unbound' as const,
+          owner: '',
+          detail: 'card has no assigned owner',
+        };
+        return reply.code(200).send({ ok: true, cardId: outcome.cardId, cardPath: outcome.cardPath, runner });
       } catch (err) {
         return reply.code(500).send({
           error: 'launch-commit-failed',
@@ -229,10 +237,20 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
         alsoStage: [...rest, AUDIT_REL_PATH],
         message: `chore(queue): launch workflow run ${outcome.runId}`,
       });
+      const requestStages = Array.isArray(request.stages) ? request.stages : [];
+      const rootOwners = [...new Set(requestStages
+        .filter((stage) => {
+          const rec = asRecord(stage);
+          return Array.isArray(rec.dependsOn) && rec.dependsOn.length === 0;
+        })
+        .map((stage) => str(asRecord(stage).owner))
+        .filter(Boolean))];
+      const runners = rootOwners.map((rootOwner) => (ctx.triggerRunner ?? defaultTriggerRunner)(rootOwner));
       return reply.code(200).send({
         ok: true,
         runId: outcome.runId,
         cards: outcome.cards.map(({ stageId, cardId, state }) => ({ stageId, cardId, state })),
+        runners,
       });
     } catch (error) {
       return reply.code(500).send({

@@ -86,12 +86,13 @@ describe('buildDag', () => {
 
   it('carries the display fields each node renders (summary, stamped model/runtime, state)', () => {
     const dag = buildDag(
-      indexOf([card({ id: 'c1', action: 'run-build', target: 'src/', state: 'working', model: 'claude-opus-4-8', runtime: 'claude' })]),
+      indexOf([card({ id: 'c1', action: 'run-build', target: 'src/', state: 'working', model: 'claude-opus-4-8', runtime: 'claude', workflow: 'run-demo-1' })]),
     );
     const data = dag.nodes[0].data;
     expect(data.state).toBe('working');
     expect(data.model).toBe('claude-opus-4-8');
     expect(data.runtime).toBe('claude');
+    expect(data.workflow).toBe('run-demo-1');
     expect(data.summary).toContain('run-build');
   });
 });

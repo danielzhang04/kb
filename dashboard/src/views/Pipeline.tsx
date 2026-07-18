@@ -44,6 +44,7 @@ import {
   type WriteResult,
 } from '../lib/routingClient';
 import { RoutingControl } from './routingControls';
+import { useSse } from '../lib/sseClient';
 import '../styles/views/pipeline.css';
 
 type DotKind = 'idle' | 'running' | 'blocked' | 'done' | 'error';
@@ -203,6 +204,44 @@ function rankNodes(dag: Dag): Map<string, number> {
 
 const COL_W = 300;
 const ROW_H = 150;
+const UNSCOPED_RUN = '__unscoped__';
+
+interface RunGroup {
+  id: string;
+  label: string;
+  nodes: number;
+  done: number;
+  working: number;
+  waiting: number;
+}
+
+function runGroups(dag: Dag): RunGroup[] {
+  const groups = new Map<string, DagNodeData[]>();
+  for (const node of dag.nodes) {
+    const id = node.data.workflow ?? UNSCOPED_RUN;
+    (groups.get(id) ?? groups.set(id, []).get(id)!).push(node.data);
+  }
+  return [...groups.entries()]
+    .map(([id, nodes]) => ({
+      id,
+      label: id === UNSCOPED_RUN ? 'Unscoped cards' : id,
+      nodes: nodes.length,
+      done: nodes.filter((n) => n.state === 'done' || n.state === 'approved').length,
+      working: nodes.filter((n) => ['working', 'stop-requested', 'halting'].includes(n.state)).length,
+      waiting: nodes.filter((n) => ['blocked', 'approvals'].includes(n.state) || n.blocked).length,
+    }))
+    .sort((a, b) => {
+      if (a.id === UNSCOPED_RUN) return 1;
+      if (b.id === UNSCOPED_RUN) return -1;
+      return b.id.localeCompare(a.id);
+    });
+}
+
+function graphForRun(dag: Dag, runId: string): Dag {
+  const nodes = dag.nodes.filter((n) => (n.data.workflow ?? UNSCOPED_RUN) === runId);
+  const ids = new Set(nodes.map((n) => n.id));
+  return { nodes, edges: dag.edges.filter((e) => ids.has(e.source) && ids.has(e.target)) };
+}
 
 /** Lay the DAG out into positioned React Flow nodes. Columns are dependency depth; within a column,
  *  nodes are ordered so `variant-group` siblings sit adjacent (the visual grouping). */
@@ -247,6 +286,8 @@ export function Pipeline({
 } = {}): React.JSX.Element {
   const [fetchedDag, setFetchedDag] = useState<Dag | null>(dag ?? null);
   const [routingState, setRoutingState] = useState<RoutingSnapshot | null>(routing ?? null);
+  const [selectedRun, setSelectedRun] = useState<string | null>(null);
+  const { count: planeATick } = useSse('/events');
 
   useEffect(() => {
     if (dag) return;
@@ -262,7 +303,7 @@ export function Pipeline({
     return () => {
       cancelled = true;
     };
-  }, [dag]);
+  }, [dag, planeATick]);
 
   const refreshRouting = useCallback(async () => {
     try {
@@ -275,9 +316,12 @@ export function Pipeline({
   useEffect(() => {
     if (routing) return;
     void refreshRouting();
-  }, [routing, refreshRouting]);
+  }, [routing, refreshRouting, planeATick]);
 
-  const graph = dag ?? fetchedDag ?? { nodes: [], edges: [] };
+  const allGraph = dag ?? fetchedDag ?? { nodes: [], edges: [] };
+  const groups = useMemo(() => runGroups(allGraph), [allGraph]);
+  const activeRun = selectedRun && groups.some((g) => g.id === selectedRun) ? selectedRun : groups[0]?.id ?? null;
+  const graph = useMemo(() => (activeRun ? graphForRun(allGraph, activeRun) : allGraph), [allGraph, activeRun]);
   const routingSnap = routing ?? routingState ?? EMPTY_ROUTING;
   const canAct = Boolean(sessionToken) || Boolean(onRequestSession);
   const openCard = onOpenCard ?? (() => {});
@@ -344,16 +388,35 @@ export function Pipeline({
       <header className="v-pipeline__head">
         <h2 className="v-pipeline__title">Runs</h2>
         <p className="v-pipeline__lede">
-          A read-only dependency graph of launched queue cards and their <code className="mc-mono">depends-on</code>{' '}
-          links. This is not a workflow editor; graph topology is created outside this view.
+          Live run stages and their <code className="mc-mono">depends-on</code> links. Execution happens in
+          background runners; Terminal tabs are separate manual shells.
         </p>
       </header>
-      {graph.nodes.length === 0 ? (
+      {groups.length > 0 ? (
+        <nav className="v-pipeline__runs" aria-label="Run instances" data-testid="run-groups">
+          {groups.map((run) => (
+            <button
+              key={run.id}
+              type="button"
+              className={`v-pipeline__run${activeRun === run.id ? ' v-pipeline__run--active' : ''}`}
+              aria-pressed={activeRun === run.id}
+              onClick={() => setSelectedRun(run.id)}
+            >
+              <span className="v-pipeline__run-id mc-mono">{run.label}</span>
+              <span className="v-pipeline__run-state">
+                {run.done}/{run.nodes} done{run.working ? ` · ${run.working} running` : ''}
+                {run.waiting ? ` · ${run.waiting} waiting` : ''}
+              </span>
+            </button>
+          ))}
+        </nav>
+      ) : null}
+      {allGraph.nodes.length === 0 ? (
         <div className="v-pipeline__empty" data-testid="runs-empty">
           <h3 className="v-pipeline__empty-title">No launched queue cards to graph yet</h3>
           <p className="v-pipeline__empty-body">
-            Runs appears when queue cards are launched. Their <code className="mc-mono">depends-on</code> links form
-            the graph; cards and links are created outside this read-only view.
+            Use Run now from Composer or a runnable workflow. The complete stage graph will appear here as
+            soon as it is committed.
           </p>
         </div>
       ) : (

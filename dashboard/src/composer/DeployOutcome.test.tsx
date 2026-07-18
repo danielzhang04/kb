@@ -32,6 +32,14 @@ function fillTask(): void {
   fireEvent.change(screen.getByLabelText('Task target'), { target: { value: 'ledgers/' } });
 }
 
+function fillWorkflow(): void {
+  fireEvent.change(screen.getByLabelText('Workflow filename'), { target: { value: 'wf_tidy.md' } });
+  fireEvent.change(screen.getByLabelText('Workflow project'), { target: { value: 'kb' } });
+  fireEvent.change(screen.getByLabelText('Workflow notes'), { target: { value: 'do the thing' } });
+  fireEvent.change(screen.getByLabelText('Stage 1 action'), { target: { value: 'tidy' } });
+  fireEvent.change(screen.getByLabelText('Stage 1 work order'), { target: { value: 'Tidy the thing' } });
+}
+
 describe('DeployOutcome — governed deploy + results strip', () => {
   it('deploy_success_launch_shows_card_id', async () => {
     const deployImpl = vi.fn<DeployFn>(
@@ -40,7 +48,7 @@ describe('DeployOutcome — governed deploy + results strip', () => {
     render(<DeployOutcome sessionToken="tok" initialKind="task" onBack={() => {}} deployImpl={deployImpl} />);
 
     fillTask();
-    fireEvent.click(screen.getByRole('button', { name: 'Deploy' }));
+    fireEvent.click(screen.getByRole('button', { name: /Deploy|Run task|Save definition/ }));
 
     const strip = await screen.findByTestId('composer-outcome');
     expect(strip.textContent).toMatch(/01J9CARD/);
@@ -60,17 +68,17 @@ describe('DeployOutcome — governed deploy + results strip', () => {
     render(<DeployOutcome sessionToken="tok" initialKind="task" onBack={() => {}} deployImpl={deployImpl} />);
     fillTask();
 
-    const deploy = screen.getByRole('button', { name: 'Deploy' }) as HTMLButtonElement;
+    const deploy = screen.getByRole('button', { name: 'Run task' }) as HTMLButtonElement;
     fireEvent.click(deploy);
     fireEvent.click(deploy);
 
     await waitFor(() => expect(deployImpl).toHaveBeenCalledTimes(1));
     expect(deploy.disabled).toBe(true);
-    expect(deploy.textContent).toMatch(/Deploying/);
+    expect(deploy.textContent).toMatch(/Launching/);
 
     resolveDeploy?.({ ok: true, kind: 'task', cardId: 'ONE', cardPath: 'queue/ONE.md' });
     await screen.findByText(/ONE/);
-    expect((screen.getByRole('button', { name: 'Deploy' }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole('button', { name: 'Run task' }) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it('surfaces a rejected primary request as a refusal and re-enables Deploy', async () => {
@@ -79,10 +87,10 @@ describe('DeployOutcome — governed deploy + results strip', () => {
     });
     render(<DeployOutcome sessionToken="tok" initialKind="task" onBack={() => {}} deployImpl={deployImpl} />);
     fillTask();
-    fireEvent.click(screen.getByRole('button', { name: 'Deploy' }));
+    fireEvent.click(screen.getByRole('button', { name: /Deploy|Run task|Save definition/ }));
 
     expect((await screen.findByTestId('composer-refusal')).textContent).toMatch(/network vanished/i);
-    expect((screen.getByRole('button', { name: 'Deploy' }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole('button', { name: 'Run task' }) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it('resolves a passkey session at deploy time and uses the returned token', async () => {
@@ -100,7 +108,7 @@ describe('DeployOutcome — governed deploy + results strip', () => {
     );
 
     fillTask();
-    fireEvent.click(screen.getByRole('button', { name: 'Deploy' }));
+    fireEvent.click(screen.getByRole('button', { name: /Deploy|Run task|Save definition/ }));
     await screen.findByText(/AUTH-CARD/);
     expect(onRequestSession).toHaveBeenCalledTimes(1);
     expect(deployImpl).toHaveBeenCalledWith(expect.objectContaining({ kind: 'task' }), 'fresh-token');
@@ -118,7 +126,7 @@ describe('DeployOutcome — governed deploy + results strip', () => {
     );
 
     fillTask();
-    fireEvent.click(screen.getByRole('button', { name: 'Deploy' }));
+    fireEvent.click(screen.getByRole('button', { name: /Deploy|Run task|Save definition/ }));
     expect((await screen.findByTestId('composer-refusal')).textContent).toMatch(/sign-in failed/i);
     expect(deployImpl).not.toHaveBeenCalled();
   });
@@ -129,13 +137,37 @@ describe('DeployOutcome — governed deploy + results strip', () => {
     );
     render(<DeployOutcome sessionToken="tok" initialKind="workflow" onBack={() => {}} deployImpl={deployImpl} />);
 
-    fireEvent.change(screen.getByLabelText('Workflow filename'), { target: { value: 'wf_tidy.md' } });
-    fireEvent.change(screen.getByLabelText('Workflow body'), { target: { value: 'do the thing' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Deploy' }));
+    fillWorkflow();
+    fireEvent.click(screen.getByRole('button', { name: /Deploy|Run task|Save definition/ }));
 
     const strip = await screen.findByTestId('composer-outcome');
     expect(strip.textContent).toMatch(/PR #42/);
     expect(deployImpl.mock.calls[0][0]).toMatchObject({ kind: 'workflow', endpoint: 'save' });
+  });
+
+  it('Run now launches the structured workflow DAG without saving the definition', async () => {
+    const deployImpl = vi.fn<DeployFn>();
+    const fetchMock = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ runId: 'run-wf-tidy-1', cards: [{ stageId: 'stage-1', cardId: 'c1', state: 'inbox' }] }),
+    } as Response));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<DeployOutcome sessionToken="tok" initialKind="workflow" onBack={() => {}} deployImpl={deployImpl} />);
+
+    fillWorkflow();
+    fireEvent.click(screen.getByRole('button', { name: 'Run now' }));
+
+    expect(await screen.findByText(/run-wf-tidy-1/)).toBeTruthy();
+    expect(deployImpl).not.toHaveBeenCalled();
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('/api/write/workflow-runs');
+    const body = JSON.parse((init as RequestInit).body as string);
+    expect(body).toMatchObject({
+      name: 'wf_tidy',
+      project: 'kb',
+      stages: [{ id: 'stage-1', owner: 'codex-worker', riskTier: 'T2' }],
+    });
   });
 
   it('deploy_refusal_shows_reason', async () => {
@@ -150,7 +182,7 @@ describe('DeployOutcome — governed deploy + results strip', () => {
     render(<DeployOutcome sessionToken="tok" initialKind="task" onBack={() => {}} deployImpl={deployImpl} />);
 
     fillTask();
-    fireEvent.click(screen.getByRole('button', { name: 'Deploy' }));
+    fireEvent.click(screen.getByRole('button', { name: /Deploy|Run task|Save definition/ }));
 
     const refusal = await screen.findByTestId('composer-refusal');
     expect(refusal.textContent).toMatch(/awaiting approval/);
@@ -176,7 +208,7 @@ describe('DeployOutcome — governed deploy + results strip', () => {
     render(<DeployOutcome sessionToken="tok" initialKind="project" onBack={() => {}} deployImpl={deployImpl} />);
 
     fireEvent.change(screen.getByLabelText('Project name'), { target: { value: 'demo' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Deploy' }));
+    fireEvent.click(screen.getByRole('button', { name: /Deploy|Run task|Save definition/ }));
 
     // Both follow-up files are OFFERED (relpath + a Save button) but nothing fired beyond the primary.
     const list = await screen.findByLabelText('Follow-up saves');
@@ -211,7 +243,7 @@ describe('DeployOutcome — governed deploy + results strip', () => {
     render(<DeployOutcome sessionToken="tok" initialKind="project" onBack={() => {}} deployImpl={deployImpl} />);
 
     fireEvent.change(screen.getByLabelText('Project name'), { target: { value: 'demo' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Deploy' }));
+    fireEvent.click(screen.getByRole('button', { name: /Deploy|Run task|Save definition/ }));
     await screen.findByLabelText('Follow-up saves');
     fireEvent.click(screen.getByRole('button', { name: 'Save orgs/demo/STATE.md' }));
 
@@ -240,7 +272,7 @@ describe('DeployOutcome — governed deploy + results strip', () => {
     );
 
     fireEvent.change(screen.getByLabelText('Project name'), { target: { value: 'demo' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Deploy' }));
+    fireEvent.click(screen.getByRole('button', { name: /Deploy|Run task|Save definition/ }));
     await screen.findByLabelText('Follow-up saves');
     fireEvent.click(screen.getByRole('button', { name: 'Save orgs/demo/STATE.md' }));
     await waitFor(() => expect(deployImpl).toHaveBeenCalledTimes(2));
@@ -256,7 +288,7 @@ describe('DeployOutcome — governed deploy + results strip', () => {
     render(<DeployOutcome sessionToken="tok" initialKind="agent" onBack={() => {}} deployImpl={deployImpl} />);
     fireEvent.change(screen.getByLabelText('Agent id'), { target: { value: 'research-worker' } });
     fireEvent.change(screen.getByLabelText('Agent description'), { target: { value: 'Volume worker.' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Deploy' }));
+    fireEvent.click(screen.getByRole('button', { name: /Deploy|Run task|Save definition/ }));
 
     const strip = await screen.findByTestId('composer-outcome');
     expect(strip.textContent).toMatch(/PR #9/);

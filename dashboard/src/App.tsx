@@ -420,7 +420,7 @@ function ViewBody({
         </section>
       );
     case 'workflows':
-      return <Workflows />;
+      return <Workflows sessionToken={sessionToken} onRequestSession={onRequestSession} />;
     case 'agents':
       return <Agents sessionToken={sessionToken} onRequestSession={onRequestSession} />;
     case 'tasks':
@@ -612,7 +612,7 @@ export function App(): React.JSX.Element {
         <h1 className="mc-topbar__title">kb mission control</h1>
         <span className="mc-topbar__glance">
           <span className="mc-status-dot mc-status-dot--running" aria-hidden="true" />
-          v0 · read-only observatory
+          local agent operations
         </span>
         <button
           type="button"

@@ -29,6 +29,7 @@ function nodeData(over: Partial<DagNodeData> & { id: string }): DagNodeData {
     owner: 'claude/m1',
     project: 'kb',
     role: 'work',
+    workflow: null,
     dependsOn: [],
     variantGroup: null,
     blocked: false,
@@ -43,13 +44,13 @@ function jsonResponse(body: unknown, ok = true, status = 200): Response {
 const noopWrite = async (): Promise<WriteResult> => ({ ok: true });
 
 describe('Runs view', () => {
-  it('explains that the queue dependency graph is read-only and is not a workflow editor', () => {
+  it('explains that execution happens in background runners, not Terminal tabs', () => {
     render(<Pipeline dag={{ nodes: [], edges: [] }} routing={EMPTY_ROUTING} />);
 
     expect(screen.getByLabelText('Runs view')).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Runs' })).toBeTruthy();
-    expect(screen.getByText(/read-only dependency graph of launched queue cards/i)).toBeTruthy();
-    expect(screen.getByText(/not a workflow editor/i)).toBeTruthy();
+    expect(screen.getByText(/live run stages/i)).toBeTruthy();
+    expect(screen.getByText(/background runners/i)).toBeTruthy();
   });
 
   it('uses a truthful empty state without promising a workflow compiler', () => {
@@ -57,8 +58,36 @@ describe('Runs view', () => {
 
     const empty = screen.getByTestId('runs-empty');
     expect(within(empty).getByText('No launched queue cards to graph yet')).toBeTruthy();
-    expect(within(empty).getByText(/cards and links are created outside this read-only view/i)).toBeTruthy();
+    expect(within(empty).getByText(/use run now from composer/i)).toBeTruthy();
     expect(empty.textContent).not.toMatch(/compile|compiler/i);
+  });
+
+  it('groups workflow cards by run instance and switches the visible graph', () => {
+    vi.stubGlobal('ResizeObserver', class {
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+    });
+    render(
+      <Pipeline
+        dag={{
+          nodes: [
+            { id: 'a', data: nodeData({ id: 'a', workflow: 'run-alpha', state: 'done' }) },
+            { id: 'b', data: nodeData({ id: 'b', workflow: 'run-beta', state: 'working' }) },
+          ],
+          edges: [],
+        }}
+        routing={EMPTY_ROUTING}
+      />,
+    );
+
+    const groups = screen.getByTestId('run-groups');
+    expect(within(groups).getByText('run-alpha')).toBeTruthy();
+    expect(within(groups).getByText('run-beta')).toBeTruthy();
+    expect(within(groups).getByText(/1\/1 done/)).toBeTruthy();
+    fireEvent.click(within(groups).getByText('run-alpha'));
+    expect(screen.getByTestId('pipeline-node-a')).toBeTruthy();
+    expect(screen.queryByTestId('pipeline-node-b')).toBeNull();
   });
 });
 

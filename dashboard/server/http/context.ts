@@ -18,6 +18,7 @@ import type { PyRunner } from '../write/launch.ts';
 import type { PreambleRunner } from '../write/preambleGate.ts';
 import type { VibeSpawner } from '../vibe/session.ts';
 import type { ResumeRegistry } from '../composer/resumeRegistry.ts';
+import type { RunnerTrigger } from '../runner/trigger.ts';
 
 /** How a route records exactly one audit row. Injected as a recording fake in tests. */
 export type AppendAuditFn = (repoRoot: string, event: AuditEvent, options?: AppendAuditOptions) => AuditRow;
@@ -25,7 +26,10 @@ export type AppendAuditFn = (repoRoot: string, event: AuditEvent, options?: Appe
 export type AppendAuditLocalFn = (repoRoot: string, event: AuditEvent, now?: () => Date) => AuditRow;
 
 export interface SurfaceContext {
+  /** Canonical ops worktree used for live reads and coordination writes. */
   repoRoot: string;
+  /** Isolated work-branch checkout used only for durable Composer saves. */
+  durableRepoRoot?: string;
   /** One shared session config (secret resolved ONCE) so a token minted at assert/verify verifies at
    *  every write route. Re-resolving per request would mint a fresh random secret and break everything. */
   sessionConfig: SessionConfig;
@@ -56,6 +60,8 @@ export interface SurfaceContext {
    *  Created ONCE per process in `makeSurfaceContext` (so ids captured on one turn are visible to the
    *  next); tests inject a fresh instance so nothing leaks across them. */
   resumeRegistry: ResumeRegistry;
+  /** Signals an already-provisioned background runner after a committed launch. */
+  triggerRunner?: RunnerTrigger;
 }
 
 /** The audit fn a route should call — the injected fake in tests, the real git-committing one otherwise. */

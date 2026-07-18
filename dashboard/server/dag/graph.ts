@@ -36,6 +36,8 @@ export interface DagNodeData {
   owner: string | null;
   project: string;
   role: string | null;
+  /** Workflow run instance id. Null for legacy/single cards not launched as a run. */
+  workflow: string | null;
   dependsOn: string[];
   variantGroup: string | null;
   /** True when a depends-on target is not yet released (`done`) — or is absent from the index. */
@@ -112,6 +114,7 @@ export function buildDag(index: Pick<PlaneAIndex, 'cards'>): Dag {
         owner: str(c.meta.owner),
         project: Array.isArray(c.meta.project) ? c.meta.project.join(', ') : String(c.meta.project ?? ''),
         role: str(c.meta.role),
+        workflow: str(c.meta.workflow),
         dependsOn,
         variantGroup: str(c.meta['variant-group']),
         blocked,

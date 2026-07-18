@@ -53,6 +53,8 @@ export interface TaskDraft {
   riskTier: RiskTier;
   /** Optional work-order body (cards.py defaults it to ''). */
   body?: string;
+  /** Assigned background runner. */
+  owner?: string;
 }
 
 /** Skill draft — the two frontmatter fields registry/skills.ts reads, plus the Markdown body. */
@@ -64,9 +66,21 @@ export interface SkillDraft {
 
 /** Workflow draft — the registry derives `id` from the wf_-prefixed filename; there is no frontmatter
  *  schema today, so we validate the filename shape + a non-empty body. */
+export interface WorkflowStageDraft {
+  id: string;
+  action: string;
+  target: string;
+  workOrder: string;
+  riskTier: 'T1' | 'T2';
+  owner: string;
+  dependsOn: string[];
+}
+
 export interface WorkflowDraft {
   filename: string;
+  project: string;
   body: string;
+  stages: WorkflowStageDraft[];
 }
 
 /** Project draft — a name + the render date. The date is passed IN (not read from the clock) so
@@ -148,6 +162,7 @@ export interface TaskLaunchFields {
   target: string;
   riskTier: RiskTier;
   body: string;
+  owner?: string;
 }
 
 /**
@@ -372,6 +387,9 @@ function validateTask(draft: TaskDraft): Problem[] {
   if (!RISK_TIERS.includes(draft.riskTier)) {
     problems.push({ field: 'riskTier', message: `risk tier must be one of ${RISK_TIERS.join(', ')}` });
   }
+  if (draft.owner !== undefined && !/^[A-Za-z0-9._-]+$/.test(draft.owner)) {
+    problems.push({ field: 'owner', message: 'owner must be a safe registered agent id' });
+  }
   // body is optional (cards.py defaults it to '') — not validated.
   return problems;
 }
@@ -397,6 +415,34 @@ function validateWorkflow(draft: WorkflowDraft): Problem[] {
     problems.push({ field: 'filename', message: 'filename must match wf_<name>.md (lowercase name, no path separators or "..")' });
   }
   requireNonEmpty(problems, 'body', draft.body, 'a workflow body is required');
+  requireNonEmpty(problems, 'project', draft.project, 'workflow project is required');
+  if (!Array.isArray(draft.stages) || draft.stages.length === 0) {
+    problems.push({ field: 'stages', message: 'at least one executable stage is required' });
+    return problems;
+  }
+  const ids = new Set<string>();
+  for (const [index, stage] of draft.stages.entries()) {
+    const prefix = `stages[${index}]`;
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(stage.id)) {
+      problems.push({ field: `${prefix}.id`, message: 'stage id must be a safe 1-64 character id' });
+    } else if (ids.has(stage.id)) {
+      problems.push({ field: `${prefix}.id`, message: `duplicate stage id ${stage.id}` });
+    }
+    ids.add(stage.id);
+    requireNonEmpty(problems, `${prefix}.action`, stage.action, 'stage action is required');
+    requireNonEmpty(problems, `${prefix}.target`, stage.target, 'stage target is required');
+    requireNonEmpty(problems, `${prefix}.workOrder`, stage.workOrder, 'stage work order is required');
+    requireNonEmpty(problems, `${prefix}.owner`, stage.owner, 'stage owner is required');
+    if (!['T1', 'T2'].includes(stage.riskTier)) {
+      problems.push({ field: `${prefix}.riskTier`, message: 'Run now v1 accepts T1 or T2 only' });
+    }
+  }
+  for (const [index, stage] of draft.stages.entries()) {
+    for (const dep of stage.dependsOn) {
+      if (!ids.has(dep)) problems.push({ field: `stages[${index}].dependsOn`, message: `unknown dependency ${dep}` });
+      if (dep === stage.id) problems.push({ field: `stages[${index}].dependsOn`, message: 'a stage cannot depend on itself' });
+    }
+  }
   return problems;
 }
 
@@ -469,6 +515,7 @@ function taskPlan(draft: TaskDraft): DeployPlan {
     target: draft.target,
     riskTier: draft.riskTier,
     body: draft.body ?? '',
+    owner: draft.owner,
   };
   // A human-readable preview of the card. The queue ULID is minted server-side by launchCard, so the
   // relpath is the coordination target pattern (starts with queue/ → coordination) rather than a fixed
@@ -508,12 +555,40 @@ function skillPlan(draft: SkillDraft): DeployPlan {
 
 function workflowPlan(draft: WorkflowDraft): DeployPlan {
   const relpath = `workflows/${draft.filename}`;
+  const definition = workflowRunRequest(draft);
+  const content = [
+    '---',
+    `name: ${definition.name}`,
+    'status: active',
+    'format: workflow-v1',
+    '---',
+    '',
+    `# ${definition.name}`,
+    '',
+    draft.body.trim(),
+    '',
+    '```workflow-v1',
+    JSON.stringify(definition, null, 2),
+    '```',
+    '',
+  ].join('\n');
   return {
     kind: 'workflow',
     relpath,
-    content: draft.body,
+    content,
     branchClass: classifyRelpath(relpath),
     endpoint: 'save',
+  };
+}
+
+/** The same strict shape POST /api/write/workflow-runs accepts. */
+export function workflowRunRequest(draft: WorkflowDraft): import('../../server/write/workflowRun').WorkflowRunRequest {
+  const definitionId = draft.filename.replace(/\.md$/, '');
+  return {
+    name: definitionId,
+    project: draft.project,
+    workflowDefinitionId: definitionId,
+    stages: draft.stages.map((stage) => ({ ...stage, dependsOn: [...stage.dependsOn] })),
   };
 }
 

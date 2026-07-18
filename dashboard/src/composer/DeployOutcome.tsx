@@ -21,6 +21,7 @@ import { Composer } from './Composer';
 import { deploy as defaultDeploy } from './deploy';
 import type { DeployRefusal, DeployResult, DeploySuccess } from './deploy';
 import type { ArtifactKind, DeployPlan, FollowUp, SeedKind } from './artifactTypes';
+import type { WorkflowRunRequest } from '../../server/write/workflowRun';
 
 export interface DeployOutcomeProps {
   /** WebAuthn session token — forwarded to Composer/ComposerChat and to every deploy() call. */
@@ -62,6 +63,8 @@ export function DeployOutcome({
   deployImpl = defaultDeploy,
 }: DeployOutcomeProps): React.JSX.Element {
   const [pending, setPending] = useState(false);
+  const [runPending, setRunPending] = useState(false);
+  const [runOutcome, setRunOutcome] = useState<{ ok: boolean; message: string } | null>(null);
   const [outcome, setOutcome] = useState<DeployResult | null>(null);
   const [followUps, setFollowUps] = useState<Record<string, FollowUpState>>({});
   const [localToken, setLocalToken] = useState<string | undefined>(sessionToken);
@@ -133,6 +136,44 @@ export function DeployOutcome({
     [deployImpl, resolveToken],
   );
 
+  const runWorkflow = useCallback(async (request: WorkflowRunRequest): Promise<void> => {
+    setRunPending(true);
+    setRunOutcome(null);
+    try {
+      const token = await resolveToken();
+      if (!token) {
+        setRunOutcome({ ok: false, message: 'Unlock dashboard to launch this run.' });
+        return;
+      }
+      const response = await fetch('/api/write/workflow-runs', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify(request),
+      });
+      const data = (await response.json()) as {
+        runId?: string;
+        cards?: unknown[];
+        runners?: Array<{ status?: string }>;
+        error?: string;
+        detail?: unknown;
+      };
+      if (response.ok && data.runId) {
+        const signaled = data.runners?.filter((runner) => runner.status === 'triggered').length ?? 0;
+        const pickup = signaled > 0
+          ? ` · ${signaled} background runner${signaled === 1 ? '' : 's'} signaled.`
+          : ' · queued; no background runner was signaled.';
+        setRunOutcome({ ok: true, message: `Launched ${data.runId} · ${data.cards?.length ?? 0} stages queued${pickup}` });
+      } else {
+        const detail = typeof data.detail === 'string' ? data.detail : data.error ?? `HTTP ${response.status}`;
+        setRunOutcome({ ok: false, message: `Run refused: ${detail}` });
+      }
+    } catch (error) {
+      setRunOutcome({ ok: false, message: `Run request failed: ${error instanceof Error ? error.message : String(error)}` });
+    } finally {
+      setRunPending(false);
+    }
+  }, [resolveToken]);
+
   return (
     <Composer
       sessionToken={sessionToken}
@@ -142,13 +183,22 @@ export function DeployOutcome({
       onBack={onBack}
       onDeploy={runPrimary}
       deployPending={pending}
+      onRunWorkflow={runWorkflow}
+      runPending={runPending}
       renderOutcome={
-        <OutcomeStrip
-          pending={pending}
-          outcome={outcome}
-          followUps={followUps}
-          onSaveFollowUp={saveFollowUp}
-        />
+        <>
+          <OutcomeStrip
+            pending={pending}
+            outcome={outcome}
+            followUps={followUps}
+            onSaveFollowUp={saveFollowUp}
+          />
+          {runOutcome ? (
+            <p className={`v-composer__run-outcome${runOutcome.ok ? ' v-composer__run-outcome--ok' : ''}`} role="status">
+              {runOutcome.message}
+            </p>
+          ) : null}
+        </>
       }
     />
   );
@@ -197,6 +247,11 @@ function DeployedOk({
         {outcome.cardId ? (
           <>
             Filed queue card <code className="v-composer__outcome-code">{outcome.cardId}</code>
+            {outcome.runner?.status === 'triggered'
+              ? ' · background runner signaled'
+              : outcome.runner
+                ? ` · queued (${outcome.runner.detail ?? outcome.runner.status})`
+                : ''}
           </>
         ) : outcome.target ? (
           <>

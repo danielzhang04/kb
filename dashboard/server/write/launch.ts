@@ -159,6 +159,12 @@ elif op["kind"] == "rerun":
     )
     card.meta["depends-on"] = [orig.meta["id"]]
     card.meta["state"] = "blocked"
+    # Preserve the original execution lane. The dependent remains blocked until the
+    # dispatcher releases it, but once released it is still owned and routable.
+    if orig.meta.get("owner"):
+        cards.claim(card, orig.meta["owner"])
+        if orig.meta.get("runtime") and orig.meta.get("model"):
+            cards.stamp_routing(card, orig.meta["runtime"], orig.meta["model"])
     path = cards.save(card, queue_root)
 else:
     print(f"unknown op kind: {op['kind']}", file=sys.stderr)

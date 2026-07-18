@@ -34,6 +34,53 @@
   line-height: 1.5;
 }
 
+.v-pipeline__runs {
+  flex: 0 0 auto;
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-6);
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+
+.v-pipeline__run {
+  min-width: 220px;
+  padding: 8px 10px;
+  text-align: left;
+  background: var(--bg-sunken);
+  color: var(--fg-dim);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.v-pipeline__run:hover,
+.v-pipeline__run--active {
+  color: var(--fg-primary);
+  border-color: var(--border-strong);
+  background: var(--bg-elevated);
+}
+
+.v-pipeline__run-id,
+.v-pipeline__run-state {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.v-pipeline__run-id {
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.v-pipeline__run-state {
+  margin-top: 3px;
+  color: var(--fg-faint);
+  font-size: 10px;
+}
+
 .v-pipeline .react-flow {
   flex: 1 1 auto;
   min-height: 480px;

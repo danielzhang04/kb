@@ -11,6 +11,8 @@
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { validateWorkflowRunRequest } from '../write/workflowRun.ts';
+import type { WorkflowRunRequest } from '../write/workflowRun.ts';
 
 export interface WorkflowEntry {
   id: string;
@@ -19,6 +21,8 @@ export interface WorkflowEntry {
   name: string;
   /** Lifecycle status from the file's `status:` frontmatter, or `registered` when none is declared. */
   status: string;
+  /** Present only for a strict embedded workflow-v1 definition. Legacy prose remains registered but inert. */
+  definition?: WorkflowRunRequest;
 }
 
 export interface WorkflowsIndex {
@@ -38,7 +42,7 @@ function stripQuotes(v: string): string {
  * no frontmatter (or no such keys) yields `{ name: null, status: null }` — never a throw. The body is
  * never interpreted (registry files are inert data, like cards).
  */
-function readWorkflowMeta(filePath: string): { name: string | null; status: string | null } {
+function readWorkflowMeta(filePath: string): { name: string | null; status: string | null; definition?: WorkflowRunRequest } {
   let text: string;
   try {
     text = readFileSync(filePath, 'utf-8');
@@ -46,14 +50,23 @@ function readWorkflowMeta(filePath: string): { name: string | null; status: stri
     return { name: null, status: null };
   }
   const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text);
-  if (!m) return { name: null, status: null };
-  const fm = m[1];
+  const fm = m?.[1] ?? '';
   const field = (key: string): string | null => {
     const r = new RegExp(`^${key}\\s*:\\s*(.+)$`, 'mi').exec(fm);
     const v = r ? stripQuotes(r[1].trim()) : null;
     return v === null || v === '' ? null : v;
   };
-  return { name: field('name'), status: field('status') };
+  let definition: WorkflowRunRequest | undefined;
+  const fence = /```workflow-v1\s*\r?\n([\s\S]*?)\r?\n```/.exec(text);
+  if (fence) {
+    try {
+      const checked = validateWorkflowRunRequest(JSON.parse(fence[1]));
+      if (checked.ok) definition = checked.value;
+    } catch {
+      /* malformed definitions remain visible but are never marked runnable */
+    }
+  }
+  return { name: field('name'), status: field('status'), definition };
 }
 
 /** List `wf_*.md` entries under `repoRoot/workflows/`, or the empty-state marker if the dir is absent. */
@@ -71,6 +84,7 @@ export function indexWorkflows(repoRoot: string): WorkflowsIndex {
       path: `workflows/${name}`,
       name: meta.name ?? id,
       status: meta.status ?? 'registered',
+      ...(meta.definition ? { definition: meta.definition } : {}),
     });
   }
   items.sort((a, b) => a.id.localeCompare(b.id));

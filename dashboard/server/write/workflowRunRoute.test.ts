@@ -92,6 +92,7 @@ describe('POST /api/write/workflow-runs', () => {
         auditRows.push(row);
         return row;
       },
+      triggerRunner: (owner) => ({ status: 'triggered', owner, task: 'test-runner' }),
     }));
 
     const response = await app.inject({

@@ -162,3 +162,15 @@
   line-height: 1.5;
   color: var(--fg-faint);
 }
+
+.v-workflows__cell-run {
+  min-width: 180px;
+}
+
+.v-workflows__run-status,
+.v-workflows__not-runnable {
+  display: block;
+  margin-top: 4px;
+  color: var(--fg-faint);
+  font-size: var(--text-xs);
+}

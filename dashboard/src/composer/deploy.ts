@@ -22,6 +22,13 @@ import type { ArtifactKind, DeployPlan, FollowUp } from './artifactTypes';
 /** The injectable fetch seam (defaults to the global). Narrowed to what this module uses. */
 export type DeployFetch = (url: string, init: RequestInit) => Promise<Response>;
 
+export interface RunnerDispatch {
+  status: 'triggered' | 'unbound' | 'unavailable' | 'failed';
+  owner: string;
+  task?: string;
+  detail?: string;
+}
+
 /** A governed write that landed. `cardId`/`cardPath` come back from the launch endpoint; `target` (the
  *  branch/PR info) from the save endpoint. `followUps` carries a multi-file artifact's remaining rendered
  *  files back untouched for the UI to offer as subsequent saves. */
@@ -30,6 +37,7 @@ export interface DeploySuccess {
   kind: ArtifactKind;
   cardId?: string;
   cardPath?: string;
+  runner?: RunnerDispatch;
   target?: string;
   followUps?: FollowUp[];
 }
@@ -101,8 +109,8 @@ export async function deploy(
     // exactly what LaunchControls POSTs. (launchFields is always present on a task plan per the registry.)
     const res = await post(fetchImpl, '/api/write/launch', sessionToken, plan.launchFields);
     if (!res.ok) return refusalOf(res);
-    const data = (await res.json()) as { cardId?: string; cardPath?: string };
-    return { ok: true, kind: plan.kind, cardId: data.cardId, cardPath: data.cardPath };
+    const data = (await res.json()) as { cardId?: string; cardPath?: string; runner?: RunnerDispatch };
+    return { ok: true, kind: plan.kind, cardId: data.cardId, cardPath: data.cardPath, runner: data.runner };
   }
 
   // endpoint === 'save' → a single durable relpath. NEVER include workBranch: the server owns the branch.

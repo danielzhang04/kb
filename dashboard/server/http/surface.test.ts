@@ -58,6 +58,9 @@ const okPy: PyRunner = (_repo, _code, jsonArg) => {
   return { exitCode: 0, stdout: JSON.stringify({ id: 'card-new-0001', path: 'queue/inbox/card-new-0001.md', state: 'halting', cardId: op.cardId }), stderr: '' };
 };
 const okPreamble: PreambleRunner = () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' });
+const noRunnerSignal: NonNullable<SurfaceContext['triggerRunner']> = (owner) => ({
+  status: 'triggered', owner, task: 'test-runner',
+});
 const frozenPreamble: PreambleRunner = () => ({ exitCode: 1, stdout: 'PREAMBLE FAIL: STOP file present — fleet frozen', stderr: '' });
 
 function buildApp(overrides: Partial<SurfaceContext> = {}): { app: FastifyInstance; ctx: SurfaceContext } {
@@ -67,6 +70,7 @@ function buildApp(overrides: Partial<SurfaceContext> = {}): { app: FastifyInstan
     sessionConfig,
     allowedOrigins: [GOOD_ORIGIN],
     runPreamble: okPreamble,
+    triggerRunner: noRunnerSignal,
     ...overrides,
   });
   registerWriteSurface(app, ctx);
@@ -434,6 +438,36 @@ describe('write surface — FINDING 1: server owns the durable work branch (no c
     expect(push!.join(' ')).not.toMatch(/\bops\b/);
     expect(push!).not.toEqual(['push', 'origin', 'main']);
     expect(prCalls[0]?.head).toBe('claude/m1-dashboard');
+  });
+
+  it('keeps durable saves isolated from the canonical ops checkout', async () => {
+    const opsRoot = mkdtempSync(join(tmpdir(), 'u2-ops-root-'));
+    const durableRoot = mkdtempSync(join(tmpdir(), 'u2-durable-root-'));
+    const gitRoots: string[] = [];
+    const auditRoots: string[] = [];
+    ({ app } = buildApp({
+      repoRoot: opsRoot,
+      durableRepoRoot: durableRoot,
+      saveGit: (repo, _args) => {
+        gitRoots.push(repo);
+        return '';
+      },
+      openPr: () => {},
+      appendAudit: (repo, event) => {
+        auditRoots.push(repo);
+        return { ts: '2026-07-18T00:00:00.000Z', ...event };
+      },
+    }));
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/write/save',
+      headers: headers(true),
+      payload: { relpath: 'docs/isolated.md', content: '# isolated\n' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(gitRoots).not.toContain(opsRoot);
+    expect(new Set(gitRoots)).toEqual(new Set([durableRoot]));
+    expect(auditRoots).toEqual([opsRoot]);
   });
 });
 

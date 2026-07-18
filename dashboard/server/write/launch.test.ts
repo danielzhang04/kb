@@ -260,6 +260,10 @@ describe('rerunAsDependsOn — rerun files depends-on card w/ feedback in ## Evi
     expect(payload.body).toContain('## Feedback');
     expect(payload.body).not.toContain('## Evidence');
     expect(payload.body).toContain('> try again with the smaller batch size');
+    expect(CARD_OP_SCRIPT).toContain('cards.claim(card, orig.meta["owner"])');
+    expect(CARD_OP_SCRIPT).toContain(
+      'cards.stamp_routing(card, orig.meta["runtime"], orig.meta["model"])',
+    );
   });
 
   it('buildRerunBody blockquotes multi-line feedback and preserves blank lines as bare ">"', () => {
