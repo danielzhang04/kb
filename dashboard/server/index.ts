@@ -11,6 +11,8 @@ import { registerPanels } from './panels/routes.ts';
 import { registerHub } from './hub/index.ts';
 import { registerWriteSurface } from './http/surface.ts';
 import { registerStatic } from './static/routes.ts';
+import { registerPtyRoute, makePtyRouteContext } from './pty/route.ts';
+import { originPlugin } from './security/origin.ts';
 
 /** Loopback-only bind. Network location is never a trust boundary (ordering law 4). */
 export const HOST = '127.0.0.1';
@@ -42,6 +44,18 @@ export function buildApp(): FastifyInstance {
   registerPanels(app); // D3.5: read-only layer panels (GET /api/panels/health | /api/panels/usage)
   registerHub(app, { repoRoot: process.env.DASHBOARD_REPO_ROOT }); // D0.4: SSE/WS hub + Origin/Host guard (/events, /ws)
   registerWriteSurface(app); // U2: governed write surface (origin -> rate-limit -> session -> gate -> audit)
+  // D3.1: the browser↔host PTY bridge (/api/pty), in its OWN origin-guarded child scope (mirrors
+  // registerHub). NOT folded into the write surface: its per-request rate-limit hook is HTTP-request
+  // shaped and fits a long-lived WS upgrade poorly. Bounded instead by openPty's session gate +
+  // one-touch-per-open + a max-concurrent cap. The WS plugin is registered before the guard so a refused
+  // upgrade's raw socket is torn down cleanly. openPty owns the preamble/session gates + the single audit row.
+  {
+    const ptyCtx = makePtyRouteContext();
+    app.register(async (scope) => {
+      await registerPtyRoute(scope, ptyCtx);
+      originPlugin(scope, { allowedOrigins: ptyCtx.allowedOrigins ?? [] });
+    });
+  }
   // Always-on: serve the built SPA (dist/) with an SPA fallback, if it exists; API-only otherwise.
   // Registered last — every /api/* route above and the hub's /events + /ws already claim their exact
   // paths, so this can never shadow them (see static/routes.ts for the precedence argument).

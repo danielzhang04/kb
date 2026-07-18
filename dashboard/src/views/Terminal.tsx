@@ -20,6 +20,8 @@
 import { useEffect, useRef, useState } from 'react';
 import '@xterm/xterm/css/xterm.css';
 import '../styles/views/terminal.css';
+import { handlePtyChallenge, parseControlMessage } from '../lib/ptyAssertionClient';
+import type { PtyAssertion } from '../lib/ptyAssertionClient';
 
 /**
  * xterm theme mapped ENTIRELY onto the house near-black palette (app.css tokens, resolved to literals
@@ -60,6 +62,10 @@ export const defaultPtySocketFactory: PtySocketFactory = (sessionToken) => {
   return new WebSocket(`${proto}//${window.location.host}/api/pty`, ['kb-pty.v1', sessionToken]);
 };
 
+/** Runs the browser passkey ceremony over the host-issued challenge. Injectable so a component test can
+ *  drive the handshake with a fake authenticator (default: the real `collectPtyAssertion`). */
+export type PtyAssertionCollector = (challenge: string, rpId: string) => Promise<PtyAssertion>;
+
 export interface TerminalProps {
   sessionToken?: string;
   /**
@@ -69,18 +75,29 @@ export interface TerminalProps {
    */
   fleetIdentity?: string;
   socketFactory?: PtySocketFactory;
+  /** Injected in tests to run the passkey ceremony with a fake; production uses `collectPtyAssertion`. */
+  collectAssertion?: PtyAssertionCollector;
 }
 
-type ConnState = 'idle' | 'connecting' | 'connected' | 'closed' | 'error';
+/**
+ * `awaiting-touch` is the D3.1 handshake state: the server relayed the host's `challenge` and we are
+ * blocked on a PHYSICAL passkey touch (UV). It sits between `connected` (WS open) and streaming — a
+ * passkey prompt with no in-app cue is confusing, so the UI renders an explicit "touch your passkey" hint.
+ */
+type ConnState = 'idle' | 'connecting' | 'connected' | 'awaiting-touch' | 'closed' | 'error';
 
 /** The embedded terminal pane. */
 export function Terminal({
   sessionToken,
   fleetIdentity = 'fleet-runner',
   socketFactory = defaultPtySocketFactory,
+  collectAssertion,
 }: TerminalProps): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<ConnState>('idle');
+  // The RP id the passkey ceremony asserts to. The Origin/Host guard pins the served page to the RP
+  // origin, so the page hostname IS the RP id — server-configured, NEVER derived from the challenge nonce.
+  const rpId = typeof window !== 'undefined' ? window.location.hostname : '';
 
   useEffect(() => {
     if (!sessionToken || !hostRef.current) return;
@@ -108,10 +125,33 @@ export function Terminal({
       const ws = socketFactory(sessionToken);
       socket = ws;
       ws.onopen = () => !disposed && setState('connected');
-      ws.onmessage = (ev) => {
+      ws.onmessage = async (ev) => {
         if (disposed) return;
-        const data = typeof ev.data === 'string' ? ev.data : '';
-        if (data) xterm.write(data);
+        const raw = typeof ev.data === 'string' ? ev.data : '';
+        if (!raw) return;
+        // Control path FIRST. A `challenge` means the host wants a hardware-passkey assertion (Factor C):
+        // surface the "touch your passkey" cue, run the ceremony, relay the assertion. `handlePtyChallenge`
+        // returns true iff it consumed a challenge (ceremony ran) — then we do NOT write it to the terminal.
+        if (parseControlMessage(raw)?.type === 'challenge') {
+          if (!disposed) setState('awaiting-touch');
+          let errored = false;
+          const consumed = await handlePtyChallenge(raw, {
+            rpId,
+            send: (m) => {
+              if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(m));
+            },
+            collect: collectAssertion,
+            onError: () => {
+              errored = true;
+              if (!disposed) setState('error'); // ceremony declined/failed → surface; host refuses anyway
+            },
+          });
+          // On a successful touch, fall back to the live/streaming state; subsequent frames are raw bytes.
+          if (consumed && !errored && !disposed) setState('connected');
+          return;
+        }
+        // Streaming phase: raw PTY bytes (an `assertion` is never inbound to the browser).
+        xterm.write(raw);
       };
       ws.onclose = () => !disposed && setState('closed');
       ws.onerror = () => !disposed && setState('error');
@@ -130,7 +170,7 @@ export function Terminal({
       }
       term?.dispose();
     };
-  }, [sessionToken, socketFactory]);
+  }, [sessionToken, socketFactory, rpId, collectAssertion]);
 
   return (
     <section className="terminal" aria-label="Terminal view">
@@ -152,6 +192,11 @@ export function Terminal({
       </p>
       {!sessionToken ? (
         <p className="terminal__session-warning">Sign in with your passkey to open a terminal.</p>
+      ) : null}
+      {state === 'awaiting-touch' ? (
+        <p className="terminal__touch-prompt" role="status" data-testid="terminal-touch-prompt">
+          Touch your passkey to authorize this terminal.
+        </p>
       ) : null}
       <div ref={hostRef} className="terminal__surface" data-testid="terminal-surface" />
     </section>
