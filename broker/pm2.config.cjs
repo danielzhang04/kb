@@ -21,8 +21,13 @@ module.exports = {
   apps: [
     {
       name: 'kb-broker',
-      script: 'broker/daemon.ts',
+      // pm2Entry (not daemon.ts): PM2's fork container require()s the script rather than running it
+      // as the main module, so daemon.ts's executed-directly guard never fires there — see pm2Entry.ts.
+      script: 'broker/pm2Entry.ts',
       interpreter: 'node',
+      // daemon.ts derives repoRoot from process.cwd(); pin it so `pm2 start` from any directory
+      // resolves the preamble/STOP/token paths against the repo root, matching the direct run.
+      cwd: require('node:path').resolve(__dirname, '..'),
       // Single instance only — the handle table is in-process; never cluster/fork the session owner.
       instances: 1,
       exec_mode: 'fork',
