@@ -74,7 +74,7 @@ export const NAV_SECTIONS: NavSection[] = [
     id: 'primary',
     items: [
       { id: 'home', label: 'Home', icon: '⌂', status: 'live' },
-      { id: 'approvals', label: 'Approvals', icon: '✓', status: 'live' },
+      { id: 'approvals', label: 'Inbox', icon: '✓', status: 'live' },
       { id: 'activity', label: 'Activity', icon: '≡', status: 'live' },
       { id: 'atlas', label: 'Atlas', icon: '◈', status: 'soon', hint: 'soon' },
       { id: 'terminal', label: 'Terminal', icon: '⌨', status: 'live' },

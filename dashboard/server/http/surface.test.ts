@@ -112,6 +112,8 @@ describe('write surface — composition chain', () => {
     // The read-only list exists too (no session required).
     const list = await app.inject({ method: 'GET', url: '/api/approvals', headers: headers(false) });
     expect(list.statusCode).toBe(200);
+    const inbox = await app.inject({ method: 'GET', url: '/api/human-inbox', headers: headers(false) });
+    expect(inbox.statusCode).toBe(200);
   });
 
   it('403s a request whose Origin is not on the allowlist (DNS-rebinding guard)', async () => {
@@ -638,6 +640,21 @@ describe('approvals surface — verify wiring', () => {
     });
     expect(res.statusCode).toBe(400);
     expect(py).not.toHaveBeenCalled();
+  });
+});
+
+describe('human inbox surface', () => {
+  it('aggregates approval and human-attention card states without requiring a session', async () => {
+    ({ app } = buildApp());
+    const res = await app.inject({ method: 'GET', url: '/api/human-inbox', headers: headers(false) });
+    expect(res.statusCode).toBe(200);
+    const payload = res.json() as {
+      counts: { total: number; decision: number; intervention: number };
+      items: Array<{ category: string; nextAction: string; card: { meta: { id: string } } }>;
+    };
+    expect(payload.counts).toMatchObject({ total: 2, decision: 1, intervention: 1 });
+    expect(payload.items.find((item) => item.category === 'decision')?.nextAction).toMatch(/does not run or resume/i);
+    expect(payload.items.map((item) => item.card.meta.id)).toEqual(expect.arrayContaining(['aaaa0002-2222', 'aaaa0006-6666']));
   });
 });
 

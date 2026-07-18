@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { Approvals } from './Approvals';
 import type { ParsedCard } from '../../server/planeA/cards';
+import type { HumanInboxItem } from '../../server/approvals/humanInbox';
 
 function card(overrides: Partial<ParsedCard['meta']> = {}): ParsedCard {
   return {
@@ -55,11 +56,11 @@ describe('Approvals', () => {
     render(<Approvals pending={[card()]} onVerify={onVerify} />);
     fireEvent.click(screen.getByRole('button', { name: /card-77/ }));
 
-    expect(screen.getByRole('button', { name: /Verify \(signed\)/i })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Verify \(WebAuthn\)/i })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /Verify \(possession\)/i })).toBeNull();
+    expect(screen.getByRole('button', { name: /Verify evidence \(signed\)/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Verify evidence \(WebAuthn\)/i })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Verify evidence \(possession\)/i })).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: /Verify \(WebAuthn\)/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Verify evidence \(WebAuthn\)/i }));
     expect(onVerify).toHaveBeenCalledWith('card-77', 'webauthn');
   });
 
@@ -68,7 +69,7 @@ describe('Approvals', () => {
     render(<Approvals pending={[card({ assurance_class: 'T3-established' })]} onVerify={onVerify} />);
     fireEvent.click(screen.getByRole('button', { name: /card-77/ }));
 
-    fireEvent.click(screen.getByRole('button', { name: /Verify \(possession\)/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Verify evidence \(possession\)/i }));
     expect(onVerify).toHaveBeenCalledWith('card-77', 'possession');
   });
 
@@ -132,18 +133,49 @@ describe('Approvals', () => {
     render(<Approvals pending={[card({ assurance_class: 'T3-novel' })]} />);
     fireEvent.click(screen.getByRole('button', { name: /card-77/ }));
 
-    expect(screen.queryByRole('button', { name: /Verify \(possession\)/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Verify evidence \(possession\)/i })).toBeNull();
     // No disabled verify buttons of any kind are rendered as ghosts.
     const disabledVerify = screen
       .getAllByRole('button')
-      .filter((b) => /^Verify /i.test(b.textContent ?? '') && (b as HTMLButtonElement).disabled);
+      .filter((b) => /^Verify evidence /i.test(b.textContent ?? '') && (b as HTMLButtonElement).disabled);
     expect(disabledVerify).toHaveLength(0);
   });
 
   it('renders a calm empty state when nothing is waiting', () => {
     render(<Approvals pending={[]} />);
     const empty = screen.getByTestId('approvals-empty');
-    expect(empty.textContent).toMatch(/no approvals waiting/i);
+    expect(empty.textContent).toMatch(/no human attention waiting/i);
     expect(screen.queryByTestId('corroboration-panel')).toBeNull();
+  });
+
+  it('shows decisions, input and interventions together with truthful category counts and next actions', () => {
+    const decision = {
+      card: card(), category: 'decision', categoryLabel: 'Decision', urgency: 'high',
+      status: 'Awaiting evidence verification', reason: 'Approval boundary.',
+      nextAction: 'Verification alone does not run or resume this card.', context: 'Roll out the prod config.',
+      buttons: { signed: true, possession: false, webauthn: true },
+    } satisfies HumanInboxItem;
+    const input = {
+      card: card({ id: 'question-1', action: 'needs-input:source', state: 'inbox', 'risk-tier': 'T1' }),
+      category: 'input', categoryLabel: 'Input', urgency: 'normal', status: 'Waiting for your input',
+      reason: 'Explicit question.', nextAction: 'Direct reply/resume is not wired yet.', context: 'Choose a source.',
+    } satisfies HumanInboxItem;
+    const intervention = {
+      card: card({ id: 'wake-1', action: 'wake-me:runner-failed', state: 'inbox', 'risk-tier': 'T2' }),
+      category: 'intervention', categoryLabel: 'Intervention', urgency: 'high', status: 'Operator attention requested',
+      reason: 'Explicit wake-me.', nextAction: 'Inspect the failed task.', context: 'Runner exited.',
+    } satisfies HumanInboxItem;
+
+    render(<Approvals items={[decision, input, intervention]} />);
+    expect(screen.getByLabelText('Inbox category counts').textContent).toMatch(/1 Decisions.*1 Input.*1 Interventions/);
+    fireEvent.click(screen.getByRole('button', { name: /question-1/ }));
+    expect(screen.getByTestId('inbox-detail-panel').textContent).toContain('Direct reply/resume is not wired yet.');
+    expect(screen.queryByRole('button', { name: /Verify evidence/i })).toBeNull();
+  });
+
+  it('states that evidence verification does not run or resume execution', () => {
+    render(<Approvals pending={[card()]} />);
+    fireEvent.click(screen.getByRole('button', { name: /card-77/ }));
+    expect(screen.getByRole('note').textContent).toMatch(/does not itself start, resume, or complete/i);
   });
 });

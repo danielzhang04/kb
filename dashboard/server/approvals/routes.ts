@@ -21,6 +21,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { indexRepo } from '../planeA/indexer.ts';
 import { listPending, driveVerify } from './inbox.ts';
 import type { ApprovalChannel, VerifiedCardView } from './inbox.ts';
+import { projectHumanInbox } from './humanInbox.ts';
 import { buttonsFor } from './assurance.ts';
 import { requireSession, verifiedSession } from '../http/middleware.ts';
 import type { SurfaceContext } from '../http/context.ts';
@@ -49,6 +50,11 @@ function resolveCardPath(repoRoot: string, cardId: string): string | null {
 }
 
 export function registerApprovalsRoutes(scope: FastifyInstance, ctx: SurfaceContext): void {
+  scope.get('/api/human-inbox', async (_req, reply: FastifyReply) => {
+    const index = indexRepo(ctx.repoRoot);
+    return reply.code(200).send(projectHumanInbox(index));
+  });
+
   scope.get('/api/approvals', async (_req, reply: FastifyReply) => {
     const index = indexRepo(ctx.repoRoot);
     const pending = listPending(index).map((card) => ({ card, buttons: buttonsFor(card) }));

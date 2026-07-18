@@ -2,7 +2,7 @@
  * U2 — approvalsClient: reads the live pending feed and drives an explicit verify POST.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { fetchPending, verifyApproval } from './approvalsClient';
+import { fetchHumanInbox, fetchPending, verifyApproval } from './approvalsClient';
 import type { ParsedCard } from '../../server/planeA/cards';
 
 function card(id: string): ParsedCard {
@@ -27,6 +27,20 @@ describe('fetchPending', () => {
   it('throws on a non-2xx response', async () => {
     const fake = vi.fn(async () => jsonResponse({}, false, 500));
     await expect(fetchPending(fake as unknown as typeof fetch)).rejects.toThrow(/500/);
+  });
+});
+
+describe('fetchHumanInbox', () => {
+  it('reads the unified attention feed and counts', async () => {
+    const payload = {
+      items: [{ card: card('c1'), category: 'decision', categoryLabel: 'Decision', urgency: 'high', status: 'waiting', reason: 'gate', nextAction: 'verify', context: 'x' }],
+      counts: { total: 1, decision: 1, input: 0, intervention: 0 },
+    };
+    const fake = vi.fn(async () => jsonResponse(payload));
+    const result = await fetchHumanInbox(fake as unknown as typeof fetch);
+    expect(fake).toHaveBeenCalledWith('/api/human-inbox', { headers: { accept: 'application/json' } });
+    expect(result.counts.total).toBe(1);
+    expect(result.items[0].category).toBe('decision');
   });
 });
 

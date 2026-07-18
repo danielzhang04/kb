@@ -11,6 +11,7 @@
  */
 import type { ParsedCard } from '../../server/planeA/cards';
 import type { ApprovalButtons } from '../../server/approvals/assurance';
+import type { HumanInboxProjection } from '../../server/approvals/humanInbox';
 
 export type ApprovalChannel = 'signed' | 'possession' | 'webauthn';
 export type FetchLike = typeof fetch;
@@ -28,6 +29,17 @@ export async function fetchPending(fetchImpl: FetchLike = fetch): Promise<Parsed
   if (!res.ok) throw new Error(`GET /api/approvals failed: ${res.status}`);
   const body = (await res.json()) as { pending?: PendingApproval[] };
   return (body.pending ?? []).map((p) => p.card);
+}
+
+/** Fetch the unified, read-only Human Inbox projection. */
+export async function fetchHumanInbox(fetchImpl: FetchLike = fetch): Promise<HumanInboxProjection> {
+  const res = await fetchImpl('/api/human-inbox', { headers: { accept: 'application/json' } });
+  if (!res.ok) throw new Error(`GET /api/human-inbox failed: ${res.status}`);
+  const body = (await res.json()) as HumanInboxProjection;
+  return {
+    items: Array.isArray(body.items) ? body.items : [],
+    counts: body.counts ?? { total: 0, decision: 0, input: 0, intervention: 0 },
+  };
 }
 
 export interface VerifyResult {

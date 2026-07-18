@@ -61,11 +61,11 @@ export const ACT_COMMANDS: PaletteCommand[] = [
   {
     id: 'act:approve',
     kind: 'act',
-    label: 'Approve…',
+    label: 'Open Inbox',
     icon: '✓',
-    hint: 'opens Approvals',
+    hint: 'decisions, input, intervention',
     disabled: false,
-    keywords: 'approve verify sign signature pending review corroborate',
+    keywords: 'inbox approve verify sign signature pending review corroborate input intervention wake me',
     target: 'approvals',
   },
   {

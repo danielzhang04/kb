@@ -64,6 +64,11 @@ describe('nav/config', () => {
     expect(runs?.label).toBe('Runs');
   });
 
+  it('presents approvals as the unified Inbox without changing its stable route id', () => {
+    const inbox = ALL.find((d) => d.id === 'approvals');
+    expect(inbox?.label).toBe('Inbox');
+  });
+
   it('non-live destinations carry a greyed hint; live ones do not', () => {
     for (const dest of ALL) {
       if (isLive(dest)) {
