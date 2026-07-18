@@ -2,3 +2,7 @@
 {"ts":"2026-07-18T03:54:59.619Z","action":"auth","owner":"operator","result":"login"}
 {"ts":"2026-07-18T03:55:19.278Z","action":"auth","owner":"operator","result":"login"}
 {"ts":"2026-07-18T04:00:23.242Z","action":"auth","owner":"operator","result":"login"}
+{"ts":"2026-07-18T04:00:28.352Z","action":"pty-open","result":"unauthenticated","detail":{"requestId":"89b756a8-c0bb-4dac-b040-b013df4ad3e5","cols":80,"rows":24,"refusalDetail":"bad-signature"}}
+{"ts":"2026-07-18T04:01:09.116Z","action":"auth","owner":"operator","result":"login"}
+{"ts":"2026-07-18T04:01:21.053Z","action":"auth","owner":"operator","result":"login"}
+{"ts":"2026-07-18T04:02:35.211Z","action":"auth","owner":"operator","result":"login"}
