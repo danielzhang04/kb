@@ -10,3 +10,4 @@
 {"ts":"2026-07-18T04:18:22.350Z","action":"pty-open","result":"unauthenticated","detail":{"requestId":"566f4643-9c39-4fd2-8239-62ab3d856d2d","cols":80,"rows":24,"refusalDetail":"bad-signature"}}
 {"ts":"2026-07-18T04:20:28.168Z","action":"auth","owner":"operator","result":"login"}
 {"ts":"2026-07-18T04:20:33.030Z","action":"pty-open","result":"unauthenticated","detail":{"requestId":"5a82478d-6a74-46a2-b094-5b42adca960e","cols":80,"rows":24,"refusalDetail":"bad-signature"}}
+{"ts":"2026-07-18T04:38:29.010Z","action":"auth","owner":"operator","result":"login"}
