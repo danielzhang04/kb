@@ -21,7 +21,9 @@ module.exports = {
   apps: [
     {
       name: 'kb-dashboard',
-      script: 'server/index.ts',
+      // pm2Entry (not index.ts): PM2's fork container require()s the script rather than running it
+      // as the main module, so index.ts's run-directly guard never fires there — see server/pm2Entry.ts.
+      script: 'server/pm2Entry.ts',
       interpreter: 'node',
       cwd: __dirname,
       // Single instance — Fastify owns one loopback listener (127.0.0.1:4317); no reason to cluster
