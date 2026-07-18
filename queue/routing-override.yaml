@@ -1,0 +1,14 @@
+# queue/routing-override.yaml — ops-side fast routing override (dashboard-written, WebAuthn-gated,
+# audited). NOT governance: a coordination artifact written at runtime through the governed ops
+# path (pull-rebase-push). scripts/routing.py:load_override() reads it override-over-policy. Absent
+# / empty / malformed -> treated as {overrides: []} (fall back to policy). See
+# docs/proposals/model-routing-yaml-proposal.md §2.
+version: 1
+overrides:
+  - scope: agent
+    key: codex-worker
+    runtime: codex
+    model: gpt-5.6-sol
+    expires: null
+    set-by: operator
+    set-at: "2026-07-18T22:25:53.169Z"
