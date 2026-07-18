@@ -9,7 +9,7 @@ import { registerRoutingRead } from './routing/routes.ts';
 import { registerAgents } from './agents/routes.ts';
 import { registerPanels } from './panels/routes.ts';
 import { registerHub } from './hub/index.ts';
-import { registerWriteSurface } from './http/surface.ts';
+import { registerWriteSurface, makeSurfaceContext } from './http/surface.ts';
 import { registerStatic } from './static/routes.ts';
 import { registerPtyRoute, makePtyRouteContext } from './pty/route.ts';
 import { originPlugin } from './security/origin.ts';
@@ -43,14 +43,20 @@ export function buildApp(): FastifyInstance {
   registerAgents(app); // read-only fleet roster (GET /api/agents): queue owners ∪ ledger writers ∪ roles
   registerPanels(app); // D3.5: read-only layer panels (GET /api/panels/health | /api/panels/usage)
   registerHub(app, { repoRoot: process.env.DASHBOARD_REPO_ROOT }); // D0.4: SSE/WS hub + Origin/Host guard (/events, /ws)
-  registerWriteSurface(app); // U2: governed write surface (origin -> rate-limit -> session -> gate -> audit)
+  // ONE surface context per process: its `sessionConfig` (HMAC secret) is resolved exactly once here and
+  // SHARED with the PTY route below. Without this, the write surface and the PTY route each called
+  // `resolveSessionSecret()` independently; with `DASHBOARD_SESSION_SECRET` unset that yields two DIFFERENT
+  // random secrets, so a token minted at login (write-surface secret) can never verify at /api/pty (its own
+  // secret) → every PTY open failed `verifySession` with `bad-signature`. One secret keeps mint == verify.
+  const surfaceCtx = makeSurfaceContext();
+  registerWriteSurface(app, surfaceCtx); // U2: governed write surface (origin -> rate-limit -> session -> gate -> audit)
   // D3.1: the browser↔host PTY bridge (/api/pty), in its OWN origin-guarded child scope (mirrors
   // registerHub). NOT folded into the write surface: its per-request rate-limit hook is HTTP-request
   // shaped and fits a long-lived WS upgrade poorly. Bounded instead by openPty's session gate +
   // one-touch-per-open + a max-concurrent cap. The WS plugin is registered before the guard so a refused
   // upgrade's raw socket is torn down cleanly. openPty owns the preamble/session gates + the single audit row.
   {
-    const ptyCtx = makePtyRouteContext();
+    const ptyCtx = makePtyRouteContext({ sessionConfig: surfaceCtx.sessionConfig });
     app.register(async (scope) => {
       await registerPtyRoute(scope, ptyCtx);
       originPlugin(scope, { allowedOrigins: ptyCtx.allowedOrigins ?? [] });
