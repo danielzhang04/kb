@@ -10,6 +10,7 @@ import { registerAgents } from './agents/routes.ts';
 import { registerPanels } from './panels/routes.ts';
 import { registerHub } from './hub/index.ts';
 import { registerWriteSurface } from './http/surface.ts';
+import { registerStatic } from './static/routes.ts';
 
 /** Loopback-only bind. Network location is never a trust boundary (ordering law 4). */
 export const HOST = '127.0.0.1';
@@ -41,6 +42,10 @@ export function buildApp(): FastifyInstance {
   registerPanels(app); // D3.5: read-only layer panels (GET /api/panels/health | /api/panels/usage)
   registerHub(app, { repoRoot: process.env.DASHBOARD_REPO_ROOT }); // D0.4: SSE/WS hub + Origin/Host guard (/events, /ws)
   registerWriteSurface(app); // U2: governed write surface (origin -> rate-limit -> session -> gate -> audit)
+  // Always-on: serve the built SPA (dist/) with an SPA fallback, if it exists; API-only otherwise.
+  // Registered last — every /api/* route above and the hub's /events + /ws already claim their exact
+  // paths, so this can never shadow them (see static/routes.ts for the precedence argument).
+  registerStatic(app);
 
   return app;
 }
