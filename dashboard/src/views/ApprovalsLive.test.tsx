@@ -22,20 +22,37 @@ function jsonResponse(body: unknown, ok = true, status = 200): Response {
   return { ok, status, json: async () => body } as unknown as Response;
 }
 
+function inboxResponse(): Response {
+  return jsonResponse({
+    items: [{
+      card: card(),
+      category: 'decision',
+      categoryLabel: 'Decision',
+      urgency: 'high',
+      status: 'Awaiting evidence verification',
+      reason: 'Approval boundary.',
+      nextAction: 'Verification alone does not run or resume this card.',
+      context: 'Roll out prod.',
+      buttons: { signed: true, possession: false, webauthn: true },
+    }],
+    counts: { total: 1, decision: 1, input: 0, intervention: 0 },
+  });
+}
+
 afterEach(() => cleanup());
 
 describe('ApprovalsLive', () => {
-  it('renders the live pending feed from GET /api/approvals', async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({ pending: [{ card: card(), buttons: {} }] }));
+  it('renders the unified live feed from GET /api/human-inbox', async () => {
+    const fetchImpl = vi.fn(async () => inboxResponse());
     render(<ApprovalsLive fetchImpl={fetchImpl as unknown as typeof fetch} />);
     // The card button appears once the feed resolves.
     expect(await screen.findByRole('button', { name: /card-77/ })).toBeTruthy();
-    expect(fetchImpl).toHaveBeenCalledWith('/api/approvals', { headers: { accept: 'application/json' } });
+    expect(fetchImpl).toHaveBeenCalledWith('/api/human-inbox', { headers: { accept: 'application/json' } });
   });
 
   it('an explicit verify click POSTs to /api/approvals/verify with the session bearer — after corroboration', async () => {
     const fetchImpl = vi.fn(async (url: string, _init?: RequestInit) => {
-      if (url === '/api/approvals') return jsonResponse({ pending: [{ card: card(), buttons: {} }] });
+      if (url === '/api/human-inbox') return inboxResponse();
       return jsonResponse({ ok: true, reason: 'verified' });
     });
     render(<ApprovalsLive sessionToken="sess-tok" fetchImpl={fetchImpl as unknown as typeof fetch} />);
@@ -58,7 +75,7 @@ describe('ApprovalsLive', () => {
 
   it('unlocks at point of action and surfaces a successful outcome', async () => {
     const fetchImpl = vi.fn(async (url: string, _init?: RequestInit) => {
-      if (url === '/api/approvals') return jsonResponse({ pending: [{ card: card(), buttons: {} }] });
+      if (url === '/api/human-inbox') return inboxResponse();
       return jsonResponse({ ok: true, reason: 'verified' });
     });
     const onRequestSession = vi.fn(async () => ({ token: 'new-session' }));
@@ -79,7 +96,7 @@ describe('ApprovalsLive', () => {
   });
 
   it('shows a refusal instead of silently doing nothing when unlock is cancelled', async () => {
-    const fetchImpl = vi.fn(async (_url: string) => jsonResponse({ pending: [{ card: card(), buttons: {} }] }));
+    const fetchImpl = vi.fn(async (_url: string) => inboxResponse());
     render(
       <ApprovalsLive
         onRequestSession={async () => null}

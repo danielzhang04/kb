@@ -50,7 +50,7 @@ import { Atlas } from './views/panels/Atlas';
 import { Terminal } from './views/Terminal';
 import { DeployOutcome } from './composer/DeployOutcome';
 import type { SeedKind } from './composer/artifactTypes';
-import { fetchPending } from './lib/approvalsClient';
+import { fetchHumanInbox } from './lib/approvalsClient';
 import { useSse } from './lib/sseClient';
 import {
   clearStoredSession,
@@ -63,17 +63,17 @@ import {
 } from './lib/authClient';
 import { readThemeChoice, persistThemeChoice, applyTheme, type ThemeChoice } from './lib/theme';
 
-/** Live count of pending approvals for the sidebar badge. Reuses the same `fetchPending` + SSE-tick
- *  pattern as {@link ApprovalsLive}, so the count refreshes when a card is promoted without a reload.
+/** Live count of all human-attention items for the sidebar Inbox badge. Reuses the same SSE-tick
+ *  pattern as {@link ApprovalsLive}, so decisions/questions/interventions appear without a reload.
  *  Cheap: one GET per SSE tick; on failure it silently keeps the last-known count. */
 function useApprovalsCount(): number {
   const [count, setCount] = useState(0);
   const { count: tick } = useSse('/events');
   useEffect(() => {
     let alive = true;
-    fetchPending()
-      .then((cards) => {
-        if (alive) setCount(cards.length);
+    fetchHumanInbox()
+      .then((inbox) => {
+        if (alive) setCount(inbox.counts.total);
       })
       .catch(() => {
         /* transient failure: keep the last-known count; the next SSE tick retries */
@@ -410,7 +410,7 @@ function ViewBody({
     case 'home':
       return <Home sessionToken={sessionToken} onNavigate={onNavigate} onRequestSession={onRequestSession} />;
     case 'approvals':
-      // Live GET /api/approvals feed (refreshed on SSE), onVerify -> POST /api/approvals/verify.
+      // Live unified Inbox feed (refreshed on SSE); decision verification remains an explicit POST.
       return <ApprovalsLive sessionToken={sessionToken} onRequestSession={onRequestSession} />;
     case 'activity':
       // Standalone full-view live feed (same replay the Home board embeds). Self-fetches.

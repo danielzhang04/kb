@@ -1,19 +1,19 @@
 /**
- * U2 — the connected Approvals container. It sources the pending list from the live `GET /api/approvals`
- * feed (refreshed whenever an SSE delta arrives, so a newly-promoted card appears without a reload) and
+ * The connected Human Inbox container. It sources decisions, input and interventions from the live
+ * `GET /api/human-inbox` feed (refreshed whenever an SSE delta arrives) and
  * wires the presentational {@link Approvals} view's `onVerify` to `POST /api/approvals/verify`.
  *
- * The ordering law is preserved BY CONSTRUCTION: this container only supplies `pending` + `onVerify`;
+ * The ordering law is preserved BY CONSTRUCTION: this container only supplies `items` + `onVerify`;
  * the {@link Approvals} view renders the corroboration panel on selection and fires `onVerify` only on
  * an explicit verify click — this container never prompts a biometric before that, and cannot re-order
  * the view's own calls.
  */
 import { useEffect, useState } from 'react';
-import type { ParsedCard } from '../../server/planeA/cards';
+import type { HumanInboxItem } from '../../server/approvals/humanInbox';
 import { Approvals } from './Approvals';
 import type { ApprovalChannel } from './Approvals';
 import { useSse } from '../lib/sseClient';
-import { fetchPending, verifyApproval, type FetchLike } from '../lib/approvalsClient';
+import { fetchHumanInbox, verifyApproval, type FetchLike } from '../lib/approvalsClient';
 
 export interface ApprovalsLiveProps {
   /** The WebAuthn-minted session bearer (from `authClient.signIn`), if the dashboard is unlocked. */
@@ -29,16 +29,16 @@ export function ApprovalsLive({
   onRequestSession,
   fetchImpl,
 }: ApprovalsLiveProps): React.JSX.Element {
-  const [pending, setPending] = useState<ParsedCard[]>([]);
+  const [items, setItems] = useState<HumanInboxItem[]>([]);
   const [outcome, setOutcome] = useState<{ kind: 'progress' | 'success' | 'error'; message: string } | null>(null);
   // Refetch on every SSE arrival; `count` starts at 0, so the effect also runs once on mount.
   const { count } = useSse('/events');
 
   useEffect(() => {
     let alive = true;
-    fetchPending(fetchImpl)
-      .then((cards) => {
-        if (alive) setPending(cards);
+    fetchHumanInbox(fetchImpl)
+      .then((inbox) => {
+        if (alive) setItems(inbox.items);
       })
       .catch(() => {
         // A transient fetch failure leaves the last-known list in place; the next SSE tick retries.
@@ -81,7 +81,7 @@ export function ApprovalsLive({
           message: result.reason ? `${cardId}: ${result.reason}` : `${cardId} was verified.`,
         });
         try {
-          setPending(await fetchPending(fetchImpl));
+          setItems((await fetchHumanInbox(fetchImpl)).items);
         } catch {
           // The SSE feed will reconcile the list; the successful verification remains visible.
         }
@@ -106,7 +106,7 @@ export function ApprovalsLive({
           {outcome.message}
         </p>
       ) : null}
-      <Approvals pending={pending} onVerify={onVerify} />
+      <Approvals items={items} onVerify={onVerify} />
     </section>
   );
 }
