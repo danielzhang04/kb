@@ -54,11 +54,16 @@
  */
 
 :root {
-  /* ---- Color: surfaces (warm near-black — Claude-desktop-dark family; never pure black / never blue-gray) ---- */
-  --bg-sunken: #1c1b19; /* code gutters / inputs / terminal — deepest */
-  --bg-base: #262624; /* app shell (Claude-dark base) */
-  --bg-panel: #2b2a27; /* cards / sidebar / panes — workhorse (a hair raised) */
-  --bg-elevated: #34322e; /* popovers / palette / hover — raised surface */
+  /* ---- Color: surfaces (warm near-black — Claude-desktop-dark family; never pure black / never blue-gray)
+   * SHARPEN pass (Daniel 2026-07-17 "colors/contrast are bleh"): the base is pulled toward a true warm
+   * near-black and each rung of the ladder gets a crisper, slightly larger delta so panels read as
+   * genuinely raised over the shell instead of muddy mid-grays sitting on top of each other. The white
+   * hairline (below) then defines every surface edge Claude-style — on this deeper base the thin line
+   * finally reads. ---- */
+  --bg-sunken: #131210; /* code gutters / inputs / terminal — deepest well */
+  --bg-base: #1a1815; /* app shell — warm near-black */
+  --bg-panel: #232120; /* cards / sidebar / panes — workhorse (clear step above the shell) */
+  --bg-elevated: #2d2b27; /* popovers / palette / hover — crisply raised surface */
 
   /* ---- Color: foreground (warm off-white / warm gray) ---- */
   --fg-primary: #f5f4ef;
@@ -73,9 +78,16 @@
   --accent: #a3a099; /* active nav icon tint / secondary (muted neutral) */
   --accent-quiet: rgba(245, 244, 239, 0.06); /* selected wash — subtle raised, not a colour */
 
-  /* ---- Color: borders (neutral hairlines) ---- */
-  --border: rgba(255, 255, 255, 0.08);
-  --border-strong: rgba(255, 255, 255, 0.14);
+  /* ---- Color: hairlines (the Claude "super thin white outline" — a low-alpha white line is how a
+   * surface is defined on near-black, NOT a background-lightness difference). --hairline is the resting
+   * surface/separator edge (cards, panels, rail, table rows, dividers); --hairline-strong is the
+   * interactive/hovered/focused edge (inputs, buttons, badges, modals, focus rings). Tuned a touch
+   * higher on the deeper base so the outline is unmistakable without becoming a visible grey rule.
+   * --border / --border-strong are kept as aliases so every existing consumer inherits at once. ---- */
+  --hairline: rgba(255, 255, 255, 0.1);
+  --hairline-strong: rgba(255, 255, 255, 0.16);
+  --border: var(--hairline);
+  --border-strong: var(--hairline-strong);
 
   /* ---- Color: semantic (KEPT — these encode data, not decoration) ---- */
   --error: #e0554a;
@@ -151,8 +163,12 @@
     --accent: #6b6558;
     --accent-quiet: rgba(0, 0, 0, 0.05);
 
-    --border: rgba(0, 0, 0, 0.1);
-    --border-strong: rgba(0, 0, 0, 0.16);
+    /* Light hairline is a dark low-alpha line (structure requires the token; value unchanged from the
+     * prior --border/--border-strong so light is visually identical to before this sharpen pass). */
+    --hairline: rgba(0, 0, 0, 0.1);
+    --hairline-strong: rgba(0, 0, 0, 0.16);
+    --border: var(--hairline);
+    --border-strong: var(--hairline-strong);
 
     --error: #c4322a;
     --warning: #b67a1e;
@@ -188,8 +204,10 @@
   --accent: #6b6558;
   --accent-quiet: rgba(0, 0, 0, 0.05);
 
-  --border: rgba(0, 0, 0, 0.1);
-  --border-strong: rgba(0, 0, 0, 0.16);
+  --hairline: rgba(0, 0, 0, 0.1);
+  --hairline-strong: rgba(0, 0, 0, 0.16);
+  --border: var(--hairline);
+  --border-strong: var(--hairline-strong);
 
   --error: #c4322a;
   --warning: #b67a1e;
@@ -210,10 +228,10 @@
 }
 
 :root[data-theme='dark'] {
-  --bg-sunken: #1c1b19;
-  --bg-base: #262624;
-  --bg-panel: #2b2a27;
-  --bg-elevated: #34322e;
+  --bg-sunken: #131210;
+  --bg-base: #1a1815;
+  --bg-panel: #232120;
+  --bg-elevated: #2d2b27;
 
   --fg-primary: #f5f4ef;
   --fg-dim: #b8b5ad;
@@ -223,8 +241,10 @@
   --accent: #a3a099;
   --accent-quiet: rgba(245, 244, 239, 0.06);
 
-  --border: rgba(255, 255, 255, 0.08);
-  --border-strong: rgba(255, 255, 255, 0.14);
+  --hairline: rgba(255, 255, 255, 0.1);
+  --hairline-strong: rgba(255, 255, 255, 0.16);
+  --border: var(--hairline);
+  --border-strong: var(--hairline-strong);
 
   --error: #e0554a;
   --warning: #e0a040;
