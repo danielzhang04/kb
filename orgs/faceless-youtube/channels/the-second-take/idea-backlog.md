@@ -23,34 +23,39 @@ premise, no famous name · **C** = pure-obscure anchor (hold/repackage while the
 
 | Rank | ID | Score | Anchor | Working title | Format | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | ST-013 | 94 | A | Diamonds Are Worthless. One Ad Made Them Forever. | long + shorts | idea |
-| 2 | ST-017 | 93 | A | Europe's Hottest Company Had $2 Billion That Didn't Exist | long + shorts | idea |
-| 3 | ST-025 | 93 | B | Ireland Lost Its Banks for Six Months. It Was Fine. | long + shorts | idea |
-| 4 | ST-028 | 91 | B | The Gambler Who Invented Paper Money and Broke France | long | **scripted** |
-| 5 | ST-001 | 91 | B | The Man Who Almost Bought the Bank He Was Robbing | long + shorts | idea |
-| 6 | ST-014 | 91 | A | The $4 Billion Cryptocurrency That Never Existed | long + shorts | idea |
-| 7 | ST-023 | 91 | B | Someone Stole $18 Million From the Maple Syrup Reserve | long + shorts | idea |
-| 8 | ST-002 | 90 | A | The Fake Salad Oil That Made Warren Buffett Rich | long + shorts | idea |
-| 9 | ST-003 | 90 | C | He Loaned Whole Countries Money That Didn't Exist | long + shorts | idea |
-| 10 | ST-022 | 90 | A | The Day One Man Broke the Bank of England | long + shorts | idea |
-| 11 | ST-024 | 90 | B | The Day Oil Was Worth Less Than Nothing | long + shorts | idea |
-| 12 | ST-004 | 89 | A | The Backstreet Boys Were Built to Hide a Fraud | long | **scripted** |
-| 13 | ST-005 | 89 | B | The $6 Billion Gold Mine With No Gold in It | long + shorts | idea |
-| 14 | ST-012 | 89 | B | How Two Brothers Bought Up Half the World's Silver | long | **scripted** |
-| 15 | ST-018 | 89 | A | Nobody Won McDonald's Monopoly for a Decade | long + shorts | idea |
-| 16 | ST-026 | 89 | A | Blockbuster Could Have Bought Netflix for $50 Million | long + shorts | idea |
-| 17 | ST-006 | 88 | B | The Company That Shipped Bricks and Called Them Hard Drives | long | **scripted** |
-| 18 | ST-007 | 88 | A | The Man Who Rigged the Lottery He Was Hired to Protect | long + shorts | idea |
-| 19 | ST-020 | 88 | B | The CEO Who Destroyed His Company With One Joke | long + shorts | idea |
-| 20 | ST-008 | 87 | A | The Richest Country on Earth Ran on Bird Droppings | long | **scripted** |
-| 21 | ST-009 | 87 | A | The Prince Who Sold a Country That Didn't Exist | long + shorts | **scripted** |
-| 22 | ST-019 | 87 | B | The Stock Bubble That Ruined Isaac Newton | long + shorts | idea |
-| 23 | ST-021 | 87 | B | People Mortgaged Their Houses to Buy Stuffed Animals | long + shorts | idea |
+| 1 | ST-033 | 95 | A | A Bank Opened 3.5 Million Accounts Nobody Asked For | long + shorts | idea |
+| 2 | ST-013 | 94 | A | Diamonds Are Worthless. One Ad Made Them Forever. | long + shorts | idea |
+| 3 | ST-029 | 94 | A | The $30 Billion Truck That Only Rolled Downhill | long + shorts | idea |
+| 4 | ST-017 | 93 | A | Europe's Hottest Company Had $2 Billion That Didn't Exist | long + shorts | idea |
+| 5 | ST-025 | 93 | B | Ireland Lost Its Banks for Six Months. It Was Fine. | long + shorts | idea |
+| 6 | ST-030 | 92 | A | China's Starbucks Killer Faked a Third of Its Sales | long + shorts | idea |
+| 7 | ST-028 | 91 | B | The Gambler Who Invented Paper Money and Broke France | long | **scripted** |
+| 8 | ST-001 | 91 | B | The Man Who Almost Bought the Bank He Was Robbing | long + shorts | idea |
+| 9 | ST-014 | 91 | A | The $4 Billion Cryptocurrency That Never Existed | long + shorts | idea |
+| 10 | ST-023 | 91 | B | Someone Stole $18 Million From the Maple Syrup Reserve | long + shorts | idea |
+| 11 | ST-003 | 90 | C | He Loaned Whole Countries Money That Didn't Exist | long + shorts | idea |
+| 12 | ST-022 | 90 | B | The Day One Man Broke the Bank of England | long + shorts | idea |
+| 13 | ST-024 | 90 | B | The Day Oil Was Worth Less Than Nothing | long + shorts | idea |
+| 14 | ST-002 | 90 | A | The Fake Salad Oil That Made Warren Buffett Rich | long + shorts | idea |
+| 15 | ST-012 | 89 | B | How Two Brothers Bought Up Half the World's Silver | long | **scripted** |
+| 16 | ST-005 | 89 | B | The $6 Billion Gold Mine With No Gold in It | long + shorts | idea |
+| 17 | ST-026 | 89 | A | Blockbuster Could Have Bought Netflix for $50 Million | long + shorts | idea |
+| 18 | ST-018 | 89 | A | Nobody Won McDonald's Monopoly for a Decade | long + shorts | idea |
+| 19 | ST-004 | 89 | A | The Backstreet Boys Were Built to Hide a Fraud | long | **scripted** |
+| 20 | ST-031 | 88 | B | The Company That Invented 60,000 People to Insure Them | long + shorts | idea |
+| 21 | ST-006 | 88 | B | The Company That Shipped Bricks and Called Them Hard Drives | long | **scripted** |
+| 22 | ST-020 | 88 | B | The CEO Who Destroyed His Company With One Joke | long + shorts | idea |
+| 23 | ST-007 | 88 | A | The Man Who Rigged the Lottery He Was Hired to Protect | long + shorts | idea |
 | 24 | ST-027 | 87 | B | The Year Money Became Cheaper Than Firewood | long + shorts | idea |
-| 25 | ST-010 | 86 | C | 97% of Its Sales Came From a Customer That Didn't Exist | long + shorts | idea |
-| 26 | ST-011 | 86 | B | One 28-Year-Old Broke a 233-Year-Old Bank | long + shorts | idea |
-| 27 | ST-015 | 85 | C | A Garage in Queens Painted $80 Million in Masterpieces | long + shorts | idea |
-| 28 | ST-016 | 82 | B | The Nobel Winners Whose Perfect Math Broke the World | long + shorts | idea |
+| 25 | ST-008 | 87 | A | The Richest Country on Earth Ran on Bird Droppings | long | **scripted** |
+| 26 | ST-009 | 87 | A | The Prince Who Sold a Country That Didn't Exist | long + shorts | **scripted** |
+| 27 | ST-032 | 87 | B | The Man Who Hijacked India's Banks to Run the Stock Market | long + shorts | idea |
+| 28 | ST-019 | 87 | B | The Stock Bubble That Ruined Isaac Newton | long + shorts | idea |
+| 29 | ST-021 | 87 | B | People Mortgaged Their Houses to Buy Stuffed Animals | long + shorts | idea |
+| 30 | ST-010 | 86 | C | 97% of Its Sales Came From a Customer That Didn't Exist | long + shorts | idea |
+| 31 | ST-011 | 86 | B | One 28-Year-Old Broke a 233-Year-Old Bank | long + shorts | idea |
+| 32 | ST-015 | 85 | C | A Garage in Queens Painted $80 Million in Masterpieces | long + shorts | idea |
+| 33 | ST-016 | 82 | B | The Nobel Winners Whose Perfect Math Broke the World | long + shorts | idea |
 
 ## Briefs
 
@@ -569,6 +574,104 @@ premise, no famous name · **C** = pure-obscure anchor (hold/repackage while the
 - **Sources:** (evergreen — verify before scripting) en.wikipedia.org/wiki/John_Law_(economist) · en.wikipedia.org/wiki/Mississippi_Company · Janet Gleeson, "Millionaire: The Philanderer, Gambler, and Duelist Who Invented Modern Finance"
 - **Status:** scripted (2026-07-10 — production batch; slug 2026-07-10-johnlaw. Front-half only; shorts skipped this batch.)
 
+<!-- Batch 5 (2026-07-19): 5 new ideas, ST-029–ST-033, from a live topic-scout (per-video refresh). Mechanisms
+     added with NO overlap to the existing 28 or the six scripted: staged-demo + SPAC hype (Nikola), fabricated
+     retail sales exposed by an activist short (Luckin), computer-generated fake insurance policies (Equity
+     Funding), forged bank-receipt / repo diversion into a stock ramp (Harshad Mehta), and bottom-up
+     incentive-driven institutional fraud (Wells Fargo). Spread across 1973 US / 1992 India / 2016-2020 modern
+     US + China. Ranks recomputed across the full queue on the deterministic tie-break (Payload→Hook→
+     Monetization→Differentiation→ID); existing scores unchanged (no new performance data). -->
+
+### ST-029 — The $30 Billion Truck That Only Rolled Downhill
+- **Format:** long-form (~11–14 min) + shorts bench (provisional; shorts-writer finalizes from the researched long-form)
+- **Provisional angle:** Trevor Milton took the electric-truck startup Nikola public through a 2020 SPAC merger and, on hype alone — with essentially no revenue — briefly drove its market value past Ford's, to about $30B. The centerpiece was a slick 2018 video of the "Nikola One" semi cruising down a road. The truck had no working powertrain; Nikola had towed it to the top of a gentle slope and let it coast down under gravity, filming it so the road looked flat. A short-seller (Hindenburg Research) pulled the thread days after GM announced a partnership. Tell it as "the demo was the product" — a company whose only working technology was the marketing.
+- **Payload promise:** The viewer learns that a company with no product and no revenue can out-value a century-old automaker purely on a staged demo plus SPAC mechanics; exactly how the "truck in motion" was gravity, not engineering; and how the SPAC back-door let unproven claims reach public markets without the scrutiny of a normal IPO.
+- **Lever:** vindication / forbidden-knowledge — "the miracle truck was rolling downhill the whole time." Register runs HOT (tech-hype absurdity), plainer on the retail investors who lost ~$660M.
+- **Key questions the video must answer (→ researcher's seed):**
+  1. The demo: how was the "Nikola One in Motion" video staged (the tow, the slope, the framing), and what did the DOJ / Hindenburg actually establish vs. what Milton's defense argued (he said it never *explicitly* claimed self-propulsion)?
+  2. The SPAC mechanism: how did the VectoIQ merger let Nikola go public on projections, and why is a SPAC's safe-harbor for forward-looking statements the structural loophole here?
+  3. The numbers: the ~$30B peak (vs. Ford), the ~$660M retail-investor loss, the $125M SEC settlement — verify each.
+  4. The specific lies charged (Badger "built from the ground up," in-house hydrogen produced at low cost, "binding orders" that were cancellable) and which stuck at trial.
+  5. The aftermath — state precisely, do NOT overclaim: Milton convicted (Oct 2022), sentenced to 4 years (Dec 2023), **then pardoned by Trump in March 2025**; Nikola the *company* filed Chapter 11 in Feb 2025. Keep person and company distinct; there is no "he's serving his time" beat.
+- **Title options:** 1) The $30 Billion Truck That Only Rolled Downhill 2) The Truck Company Worth More Than Ford — With No Working Truck 3) They Filmed the Truck Rolling Downhill and Called It a Demo
+- **Why original:** No modern EV / SPAC / staged-demo story in the backlog; the mechanism (a going-public *structure* plus a faked demo, rather than cooked books) is a distinct payload from every accounting fraud and Ponzi on the slate, and it's a rare markets-of-the-2020s pick alongside OneCoin.
+- **Score:** 94/100 (payload 18, hook 15, lever 9, demand 14, monetization 15, diff 14, fit 4, feasibility 5)
+- **Candidate shorts (provisional):** • "This 'self-driving' truck was just rolling downhill" → the gravity reveal, closed in 30s • a company worth more than Ford with no product • how a SPAC let it skip the hard questions
+- **Sources:** justice.gov/usao-sdny (Milton sentencing) · cnbc.com Nikola–SEC $125M settlement (2021-12-21) · cnbc.com Trump pardon (2025-03-28) · cnn.com Milton sentencing / $660M loss (2023-12-18)
+- **Status:** idea
+
+### ST-030 — China's Starbucks Killer Faked a Third of Its Sales
+- **Format:** long-form (~11–14 min) + shorts bench (provisional)
+- **Provisional angle:** Luckin Coffee grew from nothing to a Nasdaq listing in under three years as the app-driven "Starbucks killer" of China, then in April 2020 admitted that roughly RMB 2.2bn (~$300M) of its 2019 sales — a huge slice of revenue — had simply been invented, largely by selling mountains of prepaid-coffee vouchers to shell companies tied to its own chairman and booking them as real customers. The fraud wasn't caught by its auditor or a regulator: an anonymous 89-page report — built from ~11,200 hours of in-store camera footage and thousands of receipts — was circulated by short-seller Muddy Waters. The kicker: Luckin didn't die. It went through bankruptcy, cleaned house, and by 2023–24 had *out-stored and out-earned Starbucks in China.*
+- **Payload promise:** The viewer learns how a public company fabricated a third of its sales with fake coupon transactions, that outsiders literally counting cups (not the gatekeepers) exposed it, and the counter-intuitive ending — the fraud company survived and genuinely won its market — which complicates the tidy "fraud = collapse" story.
+- **Lever:** vindication / forbidden-knowledge — "the numbers were fake, and a stranger with a stopwatch proved it." Register wry on the audacity, plainer on the mechanics.
+- **Key questions the video must answer (→ researcher's seed):**
+  1. The mechanism: how the prepaid-voucher / shell-company round-tripping fabricated ~RMB 2.2bn of 2019 revenue (and inflated ad spend to round-trip cash back), and how it was hidden from the auditor.
+  2. The exposure: what the anonymous 89-page report actually measured (store-hours of footage, receipt counts), and Muddy Waters' precise role (amplifier, NOT author — do not say Muddy Waters wrote it).
+  3. The fallout: the ~80% one-day crash, the June 2020 Nasdaq delisting, the $180M SEC penalty, and the ~$187.5M US investor settlement.
+  4. Who did what: the board's finding against COO Jian Liu; the ousting of chairman Lu Zhengyao and CEO Jenny Qian; who admitted what vs. who denied (attribute carefully — YMYL/defamation).
+  5. The comeback: how post-fraud ownership (Centurium) rebuilt it, and the sourced claim that Luckin overtook Starbucks in China by stores/revenue.
+- **Title options:** 1) China's Starbucks Killer Faked a Third of Its Sales 2) The Coffee Company That Invented $300 Million in Customers 3) A Stranger With a Stopwatch Caught China's Biggest Coffee Fraud
+- **Why original:** Distinct from ComROAD (ST-010: a single fake customer, found by a special auditor): this is fabricated *transactions at retail scale* exposed by an *activist short* — a fresh protagonist device for the channel — and it carries the rare "fraud, then real redemption" arc that none of the collapse stories have.
+- **Score:** 92/100 (payload 18, hook 14, lever 9, demand 13, monetization 15, diff 14, fit 4, feasibility 5)
+- **Candidate shorts (provisional):** • "China's Starbucks faked $300 million in coffee sales" • how they counted cups on camera to catch it • the fraud company that beat Starbucks anyway
+- **Sources:** en.wikipedia.org/wiki/Luckin_Coffee · sevenpillarsinstitute.org Luckin case study (coupon mechanism, $180M SEC) · fortune.com (scandal + comeback context)
+- **Status:** idea
+
+### ST-031 — The Company That Invented 60,000 People to Insure Them
+- **Format:** long-form (~11–14 min) + shorts bench (provisional)
+- **Provisional angle:** Equity Funding Corporation of America was a 1970s Wall Street darling selling a clever "buy insurance and mutual funds together" product — while secretly running a computer department whose only job was to manufacture fake life-insurance policies on people who did not exist. Names were pulled from phone books at late-night "phonebook parties," coded into the system, and the phantom policies sold on to reinsurers for real cash — a scheme that *had to keep growing*, because each year's fake policies came due and had to be covered by new ones. It unravelled in 1973 when a fired employee and an analyst blew the whistle. Tell it as the first great *computer* fraud: the machine wasn't the tool, it was the accomplice.
+- **Payload promise:** The viewer learns that a public insurer fabricated tens of thousands of imaginary customers inside a computer and sold their nonexistent lives to reinsurers; that the fraud was self-consuming (it had to expand to survive); and that this scandal is why auditors now physically confirm a policyholder is a real person and why computer (EDP) auditing exists.
+- **Lever:** vindication / forbidden-knowledge — "the customers weren't real, and the computer made them." Register wry on the "phonebook party" absurdity, plainer on the scale.
+- **Key questions the video must answer (→ researcher's seed):**
+  1. The mechanism: how the special department (the fake-policy operation, reportedly "Department 99") coded phantom policyholders, and how reinsurance turned them into cash.
+  2. The number to nail: sources vary between ~56,000 and ~64,000 fabricated policies at ~$2bn face value — establish the defensible figure and phrase it honestly, don't pick the bigger one for effect.
+  3. The exposure: whistleblowers Ronald Secrist (ex-employee) and analyst Ray Dirks — and the twist that the SEC then charged *Dirks* for tipping clients, a case he fought and won at the Supreme Court (Dirks v. SEC, 1983).
+  4. Who ran it and what happened: CEO Stanley Goldblum, the ~22 indicted, the sentences and the losses.
+  5. The legacy: how it reshaped auditing standards (physical existence testing, computer-audit practice).
+- **Title options:** 1) The Company That Invented 60,000 People to Insure Them 2) They Pulled Names From the Phone Book and Sold Their Life Insurance 3) The First Great Computer Fraud Was Thousands of People Who Didn't Exist
+- **Why original:** No insurance fraud and no computer-fraud-origin story in the backlog; distinct from ComROAD/MiniScribe because the fabricated thing is *human beings at scale, generated by software*, and the whistleblower-punished-then-vindicated thread (Dirks) is a genuine vindication kicker.
+- **Score:** 88/100 (payload 18, hook 15, lever 9, demand 10, monetization 14, diff 14, fit 4, feasibility 4)
+- **Candidate shorts (provisional):** • "This company invented tens of thousands of people, then sold their life insurance" • the 'phonebook parties' where they made fake customers • the man who exposed it got charged for it
+- **Sources:** en.wikipedia.org/wiki/Equity_Funding_Corporation_of_America · thinkbrg.com "The Computer Crime of the Century" · law.cornell.edu Dirks v. SEC (463 U.S. 646)
+- **Status:** idea
+
+### ST-032 — The Man Who Hijacked India's Banks to Run the Stock Market
+- **Format:** long-form (~12–16 min) + shorts bench (provisional)
+- **Provisional angle:** In 1991–92 the stockbroker Harshad Mehta — "the Big Bull" — figured out that the sleepy plumbing *between* India's banks could be turned into a money pump. Using forged Bank Receipts for government securities that didn't exist, he diverted an estimated ₹4,000 crore of inter-bank money into a handful of Bombay Stock Exchange stocks, ran the Sensex from around 1,000 toward ~4,500, and briefly became the face of a national bull market — until a journalist traced a ₹500-crore hole at the State Bank of India. Tell it as the mechanism: the "safest" market on the exchange (government bonds traded between banks) was the getaway car.
+- **Payload promise:** The viewer learns what a Bank Receipt was and how forging it let one broker borrow the banking system's own cash with nothing behind it; how that borrowed money manufactured a stock-market boom; and how a single missing ₹500 crore at India's biggest bank unravelled the whole thing — a mechanism, not just "a guy who cheated."
+- **Lever:** vindication / forbidden-knowledge — "the boom everyone celebrated was banks' money in disguise." Register runs HOT on the audacity, plainer on the crash that wiped out ordinary investors.
+- **Key questions the video must answer (→ researcher's seed):**
+  1. The mechanism: how ready-forward (repo) deals + forged/fake Bank Receipts let Mehta move bank funds through his own account with no real securities behind them.
+  2. The scale: the defensible figures — ~₹4,000 crore diverted / ~₹5,000 crore total / ₹500 crore from SBI — plus rough USD-of-1992 equivalents so a US audience feels it.
+  3. The market: the Sensex run and the 1992 crash; how much of the boom was Mehta's borrowed money.
+  4. The exposure: Sucheta Dalal's April 1992 Times of India report and how the SBI hole surfaced.
+  5. The reckoning and the honest nuance: the charges, the "systemic loophole vs. one villain" question, and his death in custody in 2001.
+- **Title options:** 1) The Man Who Hijacked India's Banks to Run the Stock Market 2) He Used Fake Receipts to Borrow a Whole Banking System 3) The Broker Who Built a Stock-Market Boom With Banks' Money
+- **Why original:** No non-Western market story and no bank-receipt/repo mechanism in the backlog; distinct from every con on the slate because the "collateral" was the inter-bank government-securities market itself, and it's a huge, well-documented story almost untold on Western video.
+- **Score:** 87/100 (payload 18, hook 14, lever 9, demand 10, monetization 14, diff 14, fit 4, feasibility 4)
+- **Candidate shorts (provisional):** • "One man used fake receipts to borrow India's entire banking system" • what a 'Bank Receipt' was and why forging it worked • a ₹500-crore hole at one bank ended it
+- **Sources:** en.wikipedia.org/wiki/1992_Indian_stock_market_scam · reporting on Sucheta Dalal's 1992 Times of India exposé · accounts of the Bank Receipt / ready-forward mechanism (verify crore figures + USD-of-era)
+- **Status:** idea
+
+### ST-033 — A Bank Opened 3.5 Million Accounts Nobody Asked For
+- **Format:** long-form (~11–14 min) + shorts bench (provisional)
+- **Provisional angle:** Wells Fargo was Wall Street's most admired bank precisely because it was the best at "cross-selling" — getting each customer into ever more products, chased through an internal target summed up as eight products per household, "because eight rhymes with great." To hit quotas, thousands of ordinary branch employees quietly opened as many as 3.5 million accounts and cards customers never authorized — forging signatures, shuffling customers' own money into secret accounts. The reveal isn't one mastermind: a *compensation and pressure structure* manufactured a nationwide fraud from the bottom up, and the employees who called the ethics line were fired while the executive who owned the targets left with tens of millions.
+- **Payload promise:** The viewer learns that the biggest retail-bank fraud of the decade had no con-man at the top — an incentive (a cross-sell quota built on a rhyme) was the crime; how the fake accounts were physically opened; and that the whistleblowers were punished while the architects kept their pay until public pressure forced clawbacks.
+- **Lever:** vindication / forbidden-knowledge — "the fraud was the incentive, not a villain." Register wry on the "eight is great" absurdity, plainer on the fired whistleblowers and the customers hit with fees.
+- **Key questions the video must answer (→ researcher's seed):**
+  1. The mechanism: how branch staff opened unauthorized accounts/cards to hit cross-sell targets ("pinning," moving customers' funds, forged consent) — concretely.
+  2. The number: the path from the 2016 "~2.1 million" figure to the revised **~3.5 million** (2017), and the origin of the "eight products per household" target.
+  3. The incentive engine: how sales pressure flowed from the top (Carrie Tolstedt's community bank) and why "cross-sell ratio" was the metric investors were sold.
+  4. The asymmetry: employees who reported via the ethics line were fired/retaliated against; the settlements — $185M (CFPB/OCC/LA, 2016) and $3bn (DOJ/SEC, 2020).
+  5. The accountability: John Stumpf's ~$28M+ clawback, industry ban and $17.5M OCC fine; Tolstedt's $17M OCC + $3M SEC and criminal case (avoided prison, 2023) — attribute to the findings, carefully (YMYL/defamation).
+- **Title options:** 1) A Bank Opened 3.5 Million Accounts Nobody Asked For 2) The Fraud That Started With a Rhyme: "Eight Is Great" 3) Nobody Ran This Scam — the Sales Target Did
+- **Why original:** No incentive-driven / bottom-up institutional fraud in the backlog; every other con on the slate is a top-down mastermind, so "the pay plan was the perpetrator" is a genuinely distinct payload, on a universally-known US bank (strong cold-start anchor).
+- **Score:** 95/100 (payload 18, hook 15, lever 9, demand 15, monetization 15, diff 14, fit 4, feasibility 5)
+- **Candidate shorts (provisional):** • "A bank opened 3.5 million accounts no one asked for" • the fraud that came from a rhyme: 'eight is great' • they fired the employees who reported it
+- **Sources:** en.wikipedia.org/wiki/Wells_Fargo_cross-selling_scandal · sec.gov press release 2020-281 (Stumpf/Tolstedt charges) · congress.gov IF11129 (timeline) · cnn.com Tolstedt sentencing (2023-09-15)
+- **Status:** idea
+
 ## Parking lot (raw, unranked — strong bench from the 2026-07-04 scout, promote on demand)
 
 - **Cum-Ex ("with-without")** — banks spun shares around dividend dates to claim tax refunds on tax paid once or never; ~€60B stolen from public treasuries, the largest treasury theft in history. HUGE payload + freshest (nobody's told it well on video). **Held: highest lecture-risk on the slate** — the payload IS a complex mechanism, so it's the hardest to keep story-first; promote once we've proven the story-first format on a cleaner pick.
@@ -582,3 +685,4 @@ premise, no famous name · **C** = pure-obscure anchor (hold/repackage while the
 - **Refco** — a Wall Street broker that died 68 days after its IPO; a quarter-end shell game timed to the only four dates anyone checks.
 - **Frank Bourassa** — printed ~$250M in near-perfect fake US $20s, then bought his freedom by handing the fakes back; the whole game was the paper.
 - **The Onion King / Onion Futures Act** — two traders cornered 99% of US onions, crashed the price below the sacks, got onion futures banned in the US *permanently* (still in force). "This can't be real"; reads well as a short.
+- **The EU carbon-credit VAT carousel ("the scam of the century," France ~2008–09)** — traders exploited the VAT on emissions-allowance trades to pocket an estimated €1.6bn+ from European treasuries in months on a brand-new market, then turned on each other (a string of killings followed). Fresh, huge, cinematic; distinct from Cum-Ex (a dividend/tax-refund arbitrage) as a *VAT carousel* on a synthetic commodity. Surfaced by the 2026-07-19 live scout (cf. Netflix "Lords of Scam").
