@@ -3,7 +3,8 @@ name: loop-design-check
 description: Design a goal-oriented agent loop, and review it for the ways loops go wrong — spinning and burning tokens, Goodhart-gaming the verifier, or running a wrong answer to completion. Two actions: (1) WRITE a loop — gate whether to build it, define a machine-decidable goal, pick the loop type, pick a skeleton; (2) REVIEW a loop — run it past five failure modes plus decidability, boundaries, fallback, judge independence, and keep-judgment-with-the-human red lines. Use when designing a kb recurring loop / HEARTBEAT cadence, or when you already have one and worry it will spin, cheat, or run a wrong answer to the end. Complements kb's mechanism layer (HEARTBEAT.md cadences dispatched by the single dispatcher Routine) by covering the judgment layer it doesn't. 中文触发：写 loop、设计 loop、做一个 loop、检查 loop 对不对、loop 体检、loop 会不会跑飞、可判定目标、五个崩法、plan build judge。English triggers: design an agent loop, write a loop, check a loop, loop review, prevent a runaway loop, goal-oriented loop, decidable goal, plan/build/judge.
 source: ecc@2.0.0/skills/loop-design-check/SKILL.md
 imported: 2026-07-19
-provenance-tier: imported
+provenance-tier: curated
+promoted: 2026-07-19 (Daniel §6 read-through)
 ---
 
 # Loop Design + Review
