@@ -102,6 +102,17 @@ Design:
 - Verification: planningInstruction tests updated; proposal validator tests extended for the
   new required ref; live smoke: open Idea composer, one elicitation turn streams.
 
+## Follow-on: persistent terminal sessions (2026-07-19, Daniel-requested)
+
+The `/api/pty` socket no longer owns its shell. `pty/persistentSessions.ts` is an owner-bound
+registry: socket close = detach (shell lives; output rings into a bounded ~512KB drop-oldest
+buffer); reattach via `?session=<id>` replays the ring then streams (flag-then-flush); kill only
+via `{type:'close'}` frame / `DELETE /api/pty/sessions/:id` / shell exit / daemon drain.
+`GET /api/pty/sessions` lists the caller's live sessions. Attach is audited (`pty-attach`); the
+8-shell cap counts live shells, attached or not. Client tabs persist in localStorage
+(`kb-terminal-tabs-v1`) and reconcile against the live list on load. Session ids are non-secret
+references — ownership is enforced server-side; bearer stays in the WS subprotocol, never the URL.
+
 ## Concurrency invariant (BINDING on all future dashboard work)
 
 The ops checkout is a shared mutable resource with a SINGLE-WRITER discipline. The old sync code
