@@ -1,3 +1,4 @@
 card_id	inspector_id	kind	project	task_type	tier	ts	worker
 6a5c7274-284cf0b2	inspector@agents.local	grade	kb-ops	scope ECC hooks off for kb + bootstrap kb hook layer	T2	2026-07-19T06:53:52.128754+00:00	worker-desktop
 6a5c7274-99cc4601	inspector@agents.local	grade	kb-ops	import loop-design-check skill retargeted to kb	T2	2026-07-19T07:00:48.665801+00:00	worker-desktop
+6a5c7274-1e97713f	inspector@agents.local	grade	kb-ops	import delivery-gate hook (warn) + growth-log standard	T2	2026-07-19T07:09:03.182133+00:00	worker-desktop
