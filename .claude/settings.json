@@ -14,6 +14,15 @@
             "command": "node scripts/hooks/block_no_verify.js"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/hooks/hard_ceiling_guard.js"
+          }
+        ]
       }
     ],
     "Stop": [
