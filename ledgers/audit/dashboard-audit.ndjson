@@ -70,3 +70,4 @@
 {"ts":"2026-07-19T08:16:44.110Z","action":"pty-attach","owner":"operator","result":"attached","detail":{"sessionId":"pty-1784448833234-1"}}
 {"ts":"2026-07-19T08:16:46.623Z","action":"pty-attach","owner":"operator","result":"attached","detail":{"sessionId":"pty-1784448890351-3"}}
 {"ts":"2026-07-19T08:26:11.812Z","action":"auth","owner":"operator","result":"login"}
+{"ts":"2026-07-19T08:26:15.487Z","action":"pty-open","owner":"operator","result":"opened","detail":{"sessionId":"pty-1784449575487-1"}}
