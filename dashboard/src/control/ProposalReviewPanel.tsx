@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SESSION_INVALIDATED_EVENT, type Session } from '../lib/authClient';
+import type { TimelineModel } from '../lib/timelineModel';
 import type { ComposerSession } from '../composer/workspaceClient';
 import {
   decideProposalRevision,
@@ -18,6 +19,16 @@ export interface ProposalReviewPanelProps {
   onRequestSession?: () => Promise<Session | null>;
 }
 
+/** Display-only cue that the assistant emitted a proposal block. The server's import route is the
+ *  authoritative parser; this only decides whether to surface the "proposal ready" banner. */
+function hasProposalFence(model: TimelineModel | null): boolean {
+  if (!model) return false;
+  return model.turns.some((turn) =>
+    turn.steps.some((step) => step.kind === 'text' && typeof step.text === 'string'
+      && step.text.includes('```kb.plan-proposal/v1')),
+  );
+}
+
 /** Secondary, exact-revision review for proposals emitted by completed Composer turns. */
 export function ProposalReviewPanel({
   composerSession,
@@ -32,6 +43,11 @@ export function ProposalReviewPanel({
   const [revision, setRevision] = useState<ProposalRevisionDto | null>(null);
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<string | null>(null);
+  const detailsRef = useRef<HTMLDetailsElement | null>(null);
+  const proposalReady = useMemo(
+    () => hasProposalFence(completedTurns.at(-1)?.model ?? null),
+    [completedTurns],
+  );
 
   useEffect(() => { if (sessionToken) setLocalToken(sessionToken); }, [sessionToken]);
   useEffect(() => {
@@ -119,7 +135,29 @@ export function ProposalReviewPanel({
   };
 
   return (
-    <details className="control-proposal-review" data-testid="composer-proposal-review">
+    <>
+      {proposalReady ? (
+        <div className="control-proposal-banner" data-testid="composer-proposal-banner" role="status">
+          <span>
+            {revision
+              ? 'The conversation emitted a proposal. Recompile to capture the latest revision, then review and launch.'
+              : 'The conversation is ready — a plan proposal was emitted. Review it to route this idea into the governed pipeline.'}
+          </span>
+          <button
+            type="button"
+            className="mc-btn"
+            onClick={() => {
+              if (detailsRef.current) {
+                detailsRef.current.open = true;
+                detailsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }
+            }}
+          >
+            Review &amp; launch
+          </button>
+        </div>
+      ) : null}
+    <details className="control-proposal-review" data-testid="composer-proposal-review" ref={detailsRef}>
       <summary>Review compiled proposal{revision ? ` · revision ${revision.revision}` : ''}</summary>
       <div className="control-proposal-review__body">
         <p className="control-help">
@@ -134,5 +172,6 @@ export function ProposalReviewPanel({
         {outcome ? <p role="status" className="control-proposal-review__outcome">{outcome}</p> : null}
       </div>
     </details>
+    </>
   );
 }

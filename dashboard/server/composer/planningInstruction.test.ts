@@ -13,6 +13,8 @@ describe('server-owned Composer planning protocol', () => {
     expect(governed.startsWith(`${operator}\n\n`)).toBe(true);
     expect(instructionLength).toBeGreaterThan(0);
     expect(instructionLength).toBeLessThanOrEqual(MAX_COMPOSER_PLANNING_INSTRUCTION_CHARS);
+    expect(governed).toContain('help the operator flesh out an idea');
+    expect(governed).toContain('one focused question per response');
     expect(governed).toContain('Do not emit a proposal merely because this instruction is present');
     expect(governed).toContain('exactly one closed fenced block');
     expect(governed).toContain('kb.plan-proposal/v1');

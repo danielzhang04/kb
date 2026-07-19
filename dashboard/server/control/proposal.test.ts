@@ -92,6 +92,13 @@ describe('kb.plan-proposal/v1 validation', () => {
     }, REGISTRY)).toEqual({ ok: false, detail: "stages[0].worker: unknown field 'flags'" });
   });
 
+  it('rejects governanceRefs missing the project contract', () => {
+    expect(validatePlanProposal({
+      ...proposal,
+      governanceRefs: ['CLAUDE.md', 'governance/agent-rules.md', 'governance/risk-tiers.md'],
+    }, REGISTRY)).toEqual({ ok: false, detail: "governanceRefs must include 'orgs/kb-ops/contract.md'" });
+  });
+
   it('rejects missing dependencies, self-dependencies, duplicate ids, and cycles', () => {
     expect(validatePlanProposal({
       ...proposal,

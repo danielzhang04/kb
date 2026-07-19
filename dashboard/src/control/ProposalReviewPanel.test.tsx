@@ -74,4 +74,24 @@ describe('ProposalReviewPanel', () => {
     render(<ProposalReviewPanel composerSession={{ ...session, turns: [{ ...session.turns[0], state: 'running' }] }} sessionToken="token" />);
     expect(screen.queryByTestId('composer-proposal-review')).toBeNull();
   });
+
+  it('surfaces the proposal-ready banner only when the latest completed turn emitted a fence', () => {
+    const fenced = {
+      ...session,
+      turns: [{
+        ...session.turns[0],
+        model: {
+          turns: [{
+            index: 0, model: null, timestamp: null, usage: null,
+            steps: [{ kind: 'text' as const, text: 'Ready.\n```kb.plan-proposal/v1\n{}\n```\n' }],
+          }],
+        },
+      }],
+    };
+    render(<ProposalReviewPanel composerSession={fenced} sessionToken="token" />);
+    expect(screen.getByTestId('composer-proposal-banner')).toBeTruthy();
+    cleanup();
+    render(<ProposalReviewPanel composerSession={session} sessionToken="token" />);
+    expect(screen.queryByTestId('composer-proposal-banner')).toBeNull();
+  });
 });

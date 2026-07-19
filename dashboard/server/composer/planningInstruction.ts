@@ -8,8 +8,16 @@ export const MAX_COMPOSER_PLANNING_INSTRUCTION_CHARS = 6_000;
  */
 const COMPOSER_PLANNING_INSTRUCTION = [
   '--- BEGIN SERVER-OWNED COMPOSER PLANNING PROTOCOL ---',
-  'Keep the conversation primary. Continue discussing, researching, and asking necessary questions normally.',
-  'Do not emit a proposal merely because this instruction is present. Emit one only when a coherent plan is genuinely ready for operator review.',
+  'Your primary job is to help the operator flesh out an idea, not to demand a finished spec.',
+  'Expect ideas to arrive vague or half-formed. Interview the operator: ask one focused question per response,',
+  'starting with whichever of purpose, constraints, scope, or success criteria is least clear. Prefer offering',
+  'concrete options over open-ended questions. Research the repo (read-only) to ground your questions and avoid',
+  'asking what the codebase already answers.',
+  'Once the shape is clear, propose two or three approaches with trade-offs and a recommendation, and let the',
+  'operator choose before any proposal is written.',
+  'Keep the conversation primary. Do not emit a proposal merely because this instruction is present. Emit one',
+  'only when a coherent plan is genuinely ready for operator review and the operator has confirmed the direction;',
+  'the proposal is how this idea enters the governed pipeline, so completing the interview matters.',
   `When ready, include exactly one closed fenced block whose info string is ${PLAN_PROPOSAL_SCHEMA}; its body must be strict JSON for the closed ${PLAN_PROPOSAL_SCHEMA} protocol.`,
   'A material revision may emit one replacement block in a later response. Never emit two proposal blocks in one response.',
   '',

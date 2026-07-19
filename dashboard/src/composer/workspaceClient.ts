@@ -1,7 +1,7 @@
 import type { TimelineModel } from '../lib/timelineModel';
 
 export type ComposerSessionState = 'open' | 'archived';
-export type ComposerTurnState = 'queued' | 'running' | 'complete' | 'stopped' | 'failed' | 'interrupted';
+export type ComposerTurnState = 'running' | 'complete' | 'stopped' | 'failed' | 'interrupted';
 
 export interface ComposerTurn {
   turnId: string;

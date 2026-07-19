@@ -3,6 +3,20 @@
   color: var(--fg-primary);
 }
 
+.control-proposal-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: var(--space-4) 0 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--fg-dim);
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
+  color: var(--fg-primary);
+  font-weight: 600;
+}
+
 .control-proposal-review {
   margin: var(--space-4) 0;
   border: 1px solid var(--border);

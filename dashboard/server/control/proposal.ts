@@ -453,7 +453,10 @@ export function validatePlanProposal(input: unknown, registry: ProposalRegistry)
     validatePath,
   );
   if (!governanceRefs.ok) return governanceRefs;
-  const missingGovernance = REQUIRED_GOVERNANCE_REFS.find((ref) => !governanceRefs.value.includes(ref));
+  const contractRef = `orgs/${project.value}/contract.md`;
+  const missingGovernance = [...REQUIRED_GOVERNANCE_REFS, contractRef].find(
+    (ref) => !governanceRefs.value.includes(ref),
+  );
   if (missingGovernance) return { ok: false, detail: `governanceRefs must include '${missingGovernance}'` };
   if (!Array.isArray(input.stages) || input.stages.length === 0 || input.stages.length > MAX_PROPOSAL_STAGES) {
     return { ok: false, detail: `stages must contain 1-${MAX_PROPOSAL_STAGES} items` };

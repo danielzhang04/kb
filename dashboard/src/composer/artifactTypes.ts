@@ -302,12 +302,18 @@ function renderTemplate(template: string, name: string, date: string): string {
  *  IDEA-FIRST is binding; C7 adds `agent` as a fifth convergence target. */
 function ideaSeed(idea: string): string {
   return [
-    'You are helping an operator turn a raw idea into a typed, deployable kb artifact.',
+    'You are helping an operator turn a raw idea into governed kb work. The idea below may be vague or',
+    'half-formed — that is expected. Your first job is to flesh it out: interview the operator with one',
+    'focused question at a time (purpose, constraints, scope, success criteria), offering concrete options',
+    'where you can, until the idea is clear enough to route.',
     '',
     'The idea:',
     idea,
     '',
-    'First, help decide which TYPE this idea wants to become — do not assume. The kinds are:',
+    'Then help route it through the proper channel — do not assume. A multi-step or multi-agent idea',
+    'becomes a governed plan proposal for review (the planning protocol covers the format). A single',
+    'small artifact instead converges to a typed deploy —',
+    'help decide which TYPE this idea wants to become. The kinds are:',
     '- task — a single governed work order filed as a queue card (project, action, target, risk tier).',
     '- workflow — a reusable multi-step procedure saved as workflows/wf_<name>.md.',
     '- skill — a packaged capability saved as skills/learned/<slug>/SKILL.md (name + description + body).',
@@ -315,8 +321,9 @@ function ideaSeed(idea: string): string {
     '- agent — a first-class fleet identity (id, role, runtime) declared as agents/<id>.md. Declaring it',
     '  registers the identity + its defaults; a human must bind a runner before its cards actually run.',
     '',
-    'Ask the operator any clarifying question needed to disambiguate, then recommend one type and explain',
-    'why. Once the type is chosen the conversation re-seeds with that type’s creation prompt.',
+    'When the fleshed-out idea fits one kind, recommend it and explain why; choosing it re-seeds the',
+    'conversation with that type’s creation prompt. When it needs multiple stages, agents, or approvals,',
+    'recommend the plan-proposal route and keep refining until the plan is ready for review.',
   ].join('\n');
 }
 
