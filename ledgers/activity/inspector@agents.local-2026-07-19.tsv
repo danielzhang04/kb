@@ -8,3 +8,4 @@ card_id	inspector_id	kind	project	task_type	tier	ts	worker
 6a5c7274-b9f0cdd3	inspector@agents.local	grade	kb-ops	adopt save-session handoff template for memory/ resume notes	T2	2026-07-19T07:49:41.224362+00:00	worker-desktop
 6a5c7274-8aab49a8	inspector@agents.local	grade	kb-ops	retarget GateGuard destructive-command classifier to kb	T2	2026-07-19T07:56:32.901974+00:00	worker-desktop
 6a5c7274-01b96f4e	inspector@agents.local	grade	kb-ops	import config-protection hook for governance/+CLAUDE.md	T2	2026-07-19T08:03:46.990560+00:00	worker-desktop
+6a5c8ad2-812b97e7	inspector@agents.local	grade	atlas	build kb-MCP fixture + queue_summary tool	T2	2026-07-19T08:40:54.840375+00:00	worker-desktop
