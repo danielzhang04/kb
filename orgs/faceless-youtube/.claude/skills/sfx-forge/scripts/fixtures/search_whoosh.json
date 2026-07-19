@@ -1,3 +1,0 @@
-{ "count": 2, "results": [
-  { "id": 388037, "name": "Ukulele whoosh.wav", "license": "http://creativecommons.org/publicdomain/zero/1.0/", "duration": 0.83, "previews": { "preview-hq-mp3": "https://cdn.freesound.org/previews/388/388037_x-hq.mp3" }, "tags": ["whoosh","uke"], "username": "alice" },
-  { "id": 12345, "name": "attribution whoosh", "license": "http://creativecommons.org/licenses/by/4.0/", "duration": 0.5, "previews": { "preview-hq-mp3": "https://cdn.freesound.org/previews/12/12345_x-hq.mp3" }, "tags": ["whoosh"], "username": "bob" } ] }
