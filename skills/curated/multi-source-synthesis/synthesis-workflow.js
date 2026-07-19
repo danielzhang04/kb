@@ -290,7 +290,7 @@ function assembleReport(plan, list, drafts, critiques, deliverable, wrap) {
   for (let i = 0; i < list.length; i++) {
     const b = list[i]
     const title = b.title || b.source_ref
-    const flag = b.accessible === false ? ' ⚠️ (limited / inaccessible)' : ''
+    const flag = b.accessible === false ? ' [!] (limited / inaccessible)' : ''
     lines.push('### ' + b.source_id + ' — ' + title + ' (' + b.source_type + ')' + flag)
     lines.push('')
     lines.push(b.writeup || '(no writeup)')
