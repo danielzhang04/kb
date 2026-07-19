@@ -37,7 +37,7 @@ Projects are folders under `~/synthesis-reports/<slug>/`.
 - If the user **names a project or points to a folder**: locate it. **Match folder names loosely** (by name / goal keywords). One clear match → use it and tell the user which (e.g. "continuing project: building-a-tech-stack-for-content-creation"). Multiple plausible matches or none → **ask the user to confirm/pick** (`AskUserQuestion`). Never silently grab the wrong one.
 - **Continuing an existing project**: read its `briefs.json` and pass it as `cachedBriefs` so already-analyzed sources are reused, not re-analyzed. Merge the new sources with the prior `sources.txt`. Pass **all** sources (old + new) to the workflow — it skips any whose `ref` already has a cached brief.
 - **New project**: derive a slug from the goal; create the folder when saving results (Phase 4).
-- ⚠️ Briefs are **goal-specific** — only reuse briefs from the **same project**. Never reuse across different goals.
+- WARNING: Briefs are **goal-specific** — only reuse briefs from the **same project**. Never reuse across different goals.
 
 ## Phase 3 — Run the workflow
 Invoke the **Workflow** tool with (pass `args` as an actual JSON object, NOT a JSON-encoded string — otherwise the script sees no sources and exits immediately):

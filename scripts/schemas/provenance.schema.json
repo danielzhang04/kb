@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$comment": "source: ecc@2.0.0/schemas/provenance.schema.json, imported: 2026-07-19 — retargeted from ECC's {source,created_at,confidence,author} shape to kb provenance tiers.",
+  "title": "kb Skill Provenance",
+  "description": "Provenance metadata required in the YAML frontmatter of every skills/{imported,learned,evolved}/<name>/SKILL.md. Curated skills are exempt from the requirement, but when a promoted skill carries these fields they must remain well-formed.",
+  "type": "object",
+  "properties": {
+    "source": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Origin: ecc@2.0.0/<relative path>, URL, or identifier"
+    },
+    "imported": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}",
+      "description": "ISO 8601 date (YYYY-MM-DD) the artifact was imported"
+    },
+    "provenance-tier": {
+      "type": "string",
+      "enum": ["curated", "learned", "imported", "evolved"],
+      "description": "kb provenance tier"
+    }
+  },
+  "required": ["source", "imported", "provenance-tier"],
+  "additionalProperties": true
+}
