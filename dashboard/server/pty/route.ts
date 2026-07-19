@@ -36,6 +36,7 @@ import type { SessionConfig } from '../auth/session.ts';
 import { bearerToken } from '../http/middleware.ts';
 import { assertFleetRunnable, defaultPreambleRunner } from '../write/preambleGate.ts';
 import type { PreambleRunner } from '../write/preambleGate.ts';
+import { withOpsTransaction } from '../write/asyncGit.ts';
 import { appendAudit as defaultAppendAudit } from '../audit/log.ts';
 import type { AppendAuditOptions, AuditEvent, AuditRow } from '../audit/log.ts';
 import { resolveRepoRoot } from '../http/surface.ts';
@@ -181,8 +182,12 @@ export async function handlePtyConnection(
     }
   }
 
-  // 2. Fleet preamble FIRST — STOP/API-key/budget refusal wins even for an invalid session.
-  const preamble = assertFleetRunnable(ctx.repoRoot, ctx.runPreamble);
+  // 2. Fleet preamble FIRST — STOP/API-key/budget refusal wins even for an invalid session. The check
+  //    READS the shared ops checkout (budget/ledger/STOP), so it runs under the ops-transaction lock:
+  //    a concurrent transaction's pull --rebase shifts those files mid-read and yields a FALSE
+  //    fleet-frozen (observed live on a terminal reattach). Reentrant, so callers already holding
+  //    the lock are unaffected.
+  const preamble = await withOpsTransaction(async () => assertFleetRunnable(ctx.repoRoot, ctx.runPreamble));
   if (!preamble.ok) {
     await audit('fleet-frozen', undefined, { problems: preamble.problems });
     if (isOpen(socket)) socket.send(JSON.stringify({ type: 'error', reason: 'fleet-frozen' }));

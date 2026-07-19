@@ -350,15 +350,18 @@ describe('handlePtyConnection in-process PTY relay (open path)', () => {
     const auditGate = new Promise<void>((resolve) => {
       releaseAudit = resolve;
     });
+    let auditReached = false;
     const slowAudit: PtyRouteContext['appendAudit'] = async (_root, event) => {
+      auditReached = true;
       await auditGate;
       return { ts: 'now', ...event };
     };
     const slow = harness({ host: h.host, appendAudit: slowAudit });
     const ws = fakeSocket();
     const connection = handlePtyConnection(ws.sock, req(GOOD_HEADERS(validToken('operator-early'))), slow.ctx);
-    // Reach the audit await, then emit startup output while the audit is still pending (no sink yet).
-    await Promise.resolve();
+    // Deterministically reach the audit await (the handler now also awaits the locked preamble first),
+    // then emit startup output while the audit is still pending.
+    while (!auditReached) await new Promise((resolve) => setTimeout(resolve, 0));
     h.host.emitData('PS C:\\kb> ');
     expect(ws.sent).not.toContain('PS C:\\kb> ');
     releaseAudit();

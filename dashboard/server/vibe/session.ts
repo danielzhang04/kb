@@ -38,6 +38,7 @@ import { spawn as spawnChildProcess } from 'node:child_process';
 import { verifySession } from '../auth/session.ts';
 import type { SessionConfig } from '../auth/session.ts';
 import { assertFleetRunnable, defaultPreambleRunner } from '../write/preambleGate.ts';
+import { withOpsTransaction } from '../write/asyncGit.ts';
 import type { PreambleRunner } from '../write/preambleGate.ts';
 import { appendAudit as defaultAppendAudit } from '../audit/log.ts';
 import type { AppendAuditOptions, AuditRow, OpsGitRunner } from '../audit/log.ts';
@@ -227,8 +228,12 @@ export async function spawnVibe(
   }
 
   // 1. Preamble gate FIRST — a STOP-frozen / API-keyed / budget-breached fleet refuses regardless of
-  //    who is asking. Nothing downstream is evaluated and no `claude` child is spawned.
-  const preambleResult = assertFleetRunnable(deps.repoRoot, deps.runPreamble ?? defaultPreambleRunner);
+  //    who is asking. Nothing downstream is evaluated and no `claude` child is spawned. Runs under the
+  //    ops-transaction lock: the check reads the shared checkout (budget/ledger/STOP), and a concurrent
+  //    transaction's pull --rebase mid-read yields a FALSE fleet-frozen.
+  const preambleResult = await withOpsTransaction(
+    async () => assertFleetRunnable(deps.repoRoot, deps.runPreamble ?? defaultPreambleRunner),
+  );
   if (!preambleResult.ok) {
     return await audited({ ok: false, reason: 'fleet-frozen', problems: preambleResult.problems });
   }
