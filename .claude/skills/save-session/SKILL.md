@@ -3,7 +3,8 @@ name: save-session
 description: Capture a resumable handoff at the end of a kb run — what worked (with evidence), what did not and why, what is untried, current file state, and the exact next step — as a dated section appended to memory/<agent-id>.md and/or the project's orgs/<project>/STATE.md, so the next session resumes with full context.
 source: ecc@2.0.0/commands/save-session.md
 imported: 2026-07-19
-provenance-tier: imported
+provenance-tier: curated
+promoted: 2026-07-19 (Daniel §6 read-through)
 ---
 
 # Save Session Handoff
