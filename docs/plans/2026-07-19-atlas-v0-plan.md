@@ -581,4 +581,6 @@ def test_tick_while_asleep_stays_asleep():
 
 ## Execution notes
 
-(Card ids, pairing-smoke verdict, API-shape deviations from the plan's code, and scaffold notes get recorded here as tasks complete.)
+- Task 2 (2026-07-19): orgs/atlas registered via new_project.py standard scaffold (kept HEARTBEAT.md + raw/wiki/output — consistency over 3-file minimalism); atlas-prep retired; ops commit 80024d9.
+- Card ids (workflow atlas-v0): Task 3 = 6a5c8ad2-812b97e7, Task 4 = 6a5c8ad2-98115d61, Task 5 = 6a5c8ad2-1d991c23, Task 6 = 6a5c8ad2-df7abf53, Task 7 = 6a5c8ad2-a1613d5a, Task 8 = 6a5c8ad2-984e5ccf.
+- Task 1 done pre-cards (sweep is infrastructure for the wave itself); commits 12c0b10.
