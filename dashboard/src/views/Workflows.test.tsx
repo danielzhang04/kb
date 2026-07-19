@@ -62,6 +62,54 @@ describe('Workflows view', () => {
     expect(screen.queryByText(/D3\.4|will render here/i)).toBeNull();
   });
 
+  it('lists org workflow definitions with a validation badge and a compiled stage preview', () => {
+    render(
+      <Workflows
+        data={{ present: false, items: [] }}
+        definitions={{ items: [
+          {
+            ref: 'research-brief', project: 'kb-ops', path: 'orgs/kb-ops/workflows/research-brief.md',
+            valid: true, title: 'Research brief (cited)', profile: 'research', stageCount: 1, riskTier: 'T2',
+            stages: [{ id: 'brief', action: 'research:web-brief', target: 'orgs/kb-ops/output', riskTier: 'T2' }],
+            detail: null,
+          },
+        ] }}
+      />,
+    );
+    const section = screen.getByTestId('workflow-defs');
+    expect(within(section).getByText('Research brief (cited)')).toBeTruthy();
+    expect(within(section).getByText('research')).toBeTruthy();
+    expect(within(section).getByText(/research:web-brief → orgs\/kb-ops\/output/)).toBeTruthy();
+    expect(within(section).getByText('valid')).toBeTruthy();
+    expect(within(section).getByRole('button', { name: 'Launch' })).toBeTruthy();
+  });
+
+  it('launches an org definition and reports the honest activation-gated status', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 202,
+      json: async () => ({ ok: true, runRef: 'run-ref-9', activationGated: true, waitingHuman: true }),
+    } as Response));
+    vi.stubGlobal('fetch', fetchMock);
+    render(
+      <Workflows
+        sessionToken="tok"
+        data={{ present: false, items: [] }}
+        definitions={{ items: [
+          {
+            ref: 'research-brief', project: 'kb-ops', path: 'orgs/kb-ops/workflows/research-brief.md',
+            valid: true, title: 'Research brief (cited)', profile: 'research', stageCount: 1, riskTier: 'T2',
+            stages: [{ id: 'brief', action: 'research:web-brief', target: 'orgs/kb-ops/output', riskTier: 'T2' }],
+            detail: null,
+          },
+        ] }}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Launch' }));
+    expect(await screen.findByText(/Run created run-ref-9; execution awaits activation/)).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledWith('/api/workflows/research-brief/launch', expect.objectContaining({ method: 'POST' }));
+  });
+
   it('runs a strict registered workflow as a new instance', async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,

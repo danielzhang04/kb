@@ -20,6 +20,30 @@ import '../styles/views/workflows.css';
 
 const EMPTY: WorkflowsIndex = { present: false, items: [] };
 
+/** One org workflow-definition entry from GET /api/workflows (mirrors server/workflows/routes.ts). */
+interface WorkflowStagePreview {
+  id: string;
+  action: string;
+  target: string;
+  riskTier: string;
+}
+interface WorkflowDefEntry {
+  ref: string;
+  project: string;
+  path: string;
+  valid: boolean;
+  title: string | null;
+  profile: string | null;
+  stageCount: number;
+  riskTier: string | null;
+  stages: WorkflowStagePreview[];
+  detail: string | null;
+}
+interface WorkflowDefsIndex {
+  items: WorkflowDefEntry[];
+}
+const EMPTY_DEFS: WorkflowDefsIndex = { items: [] };
+
 /** Map a workflow status to a shared status-dot modifier (no new hue taxonomy). Unknown → idle. */
 function statusDot(status: string): 'running' | 'idle' | 'error' | 'blocked' {
   switch (status.toLowerCase()) {
@@ -40,15 +64,19 @@ function statusDot(status: string): 'running' | 'idle' | 'error' | 'blocked' {
 /** Accepts workflows data directly (tests) or self-fetches the registry index. */
 export function Workflows({
   data,
+  definitions,
   sessionToken,
   onRequestSession,
 }: {
   data?: WorkflowsIndex;
+  definitions?: WorkflowDefsIndex;
   sessionToken?: string;
   onRequestSession?: () => Promise<Session | null>;
 } = {}): React.JSX.Element {
   const [fetched, setFetched] = useState<WorkflowsIndex | null>(null);
+  const [fetchedDefs, setFetchedDefs] = useState<WorkflowDefsIndex | null>(null);
   const [runStatus, setRunStatus] = useState<Record<string, string>>({});
+  const [launchStatus, setLaunchStatus] = useState<Record<string, string>>({});
   const { count: planeATick } = useSse('/events');
 
   useEffect(() => {
@@ -67,8 +95,52 @@ export function Workflows({
     };
   }, [data, planeATick]);
 
+  // D15: org workflow definitions (compiled to governed proposals). Separate endpoint, separate section.
+  useEffect(() => {
+    // When either hermetic prop is injected (tests), the view is prop-driven and self-fetches nothing.
+    if (definitions || data) return;
+    if (typeof fetch !== 'function') return;
+    let cancelled = false;
+    fetch('/api/workflows')
+      .then((r) => r.json() as Promise<WorkflowDefsIndex>)
+      .then((d) => {
+        if (!cancelled && Array.isArray(d?.items)) setFetchedDefs(d);
+      })
+      .catch(() => {
+        /* read-only section: keep the empty-safe scaffold on failure */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [definitions, planeATick]);
+
   const workflows = data ?? fetched ?? EMPTY;
   const empty = !workflows.present || workflows.items.length === 0;
+  const defs = definitions ?? fetchedDefs ?? EMPTY_DEFS;
+
+  async function launchDefinition(ref: string): Promise<void> {
+    setLaunchStatus((current) => ({ ...current, [ref]: 'Launching…' }));
+    try {
+      const token = sessionToken ?? (await onRequestSession?.())?.token;
+      if (!token) {
+        setLaunchStatus((current) => ({ ...current, [ref]: 'Unlock refused.' }));
+        return;
+      }
+      const response = await fetch(`/api/workflows/${encodeURIComponent(ref)}/launch`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: '{}',
+      });
+      await invalidateSessionOnGovernedAuthFailure(response);
+      const body = (await response.json()) as { runRef?: string; activationGated?: boolean; error?: string; detail?: unknown };
+      const message = response.ok && body.runRef
+        ? `Run created ${body.runRef}${body.activationGated ? '; execution awaits activation' : ''}`
+        : `Refused: ${typeof body.detail === 'string' ? body.detail : body.error ?? response.status}`;
+      setLaunchStatus((current) => ({ ...current, [ref]: message }));
+    } catch (error) {
+      setLaunchStatus((current) => ({ ...current, [ref]: `Failed: ${error instanceof Error ? error.message : String(error)}` }));
+    }
+  }
 
   async function runWorkflow(id: string): Promise<void> {
     const item = workflows.items.find((candidate) => candidate.id === id);
@@ -164,6 +236,78 @@ export function Workflows({
           </tbody>
         </table>
       )}
+
+      {defs.items.length > 0 ? (
+        <div className="v-workflows__defs" data-testid="workflow-defs">
+          <h3 className="v-workflows__defs-title">Org workflow definitions</h3>
+          <p className="v-workflows__defs-lede">
+            Definitions under <code className="mc-mono">orgs/&lt;project&gt;/workflows/</code> compile to governed proposals.
+            Launch publishes canonical cards through the control plane; execution awaits runtime activation.
+          </p>
+          <table className="v-workflows__table">
+            <thead>
+              <tr>
+                <th>Definition</th>
+                <th>Profile</th>
+                <th>Stages</th>
+                <th>Valid</th>
+                <th>Launch</th>
+              </tr>
+            </thead>
+            <tbody>
+              {defs.items.map((d) => (
+                <tr key={d.ref} className="v-workflows__row" data-testid={`workflow-def-${d.ref}`}>
+                  <td className="v-workflows__cell-id">
+                    <span className="v-workflows__wf-name">{d.title ?? d.ref}</span>
+                    <span className="v-workflows__wf-id mc-mono">{d.path}</span>
+                  </td>
+                  <td className="v-workflows__cell-profile mc-mono">{d.profile ?? '—'}</td>
+                  <td className="v-workflows__cell-stages">
+                    {d.valid ? (
+                      <ul className="v-workflows__stage-list">
+                        {d.stages.map((s) => (
+                          <li key={s.id} className="mc-mono">
+                            {s.action} → {s.target} <span className="v-workflows__tier">{s.riskTier}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
+                  <td className="v-workflows__cell-valid">
+                    <span
+                      className={`mc-status-dot mc-status-dot--${d.valid ? 'running' : 'error'}`}
+                      aria-hidden="true"
+                    />
+                    <span className="v-workflows__status-label">{d.valid ? 'valid' : 'invalid'}</span>
+                  </td>
+                  <td className="v-workflows__cell-run">
+                    {d.valid ? (
+                      <>
+                        <button
+                          type="button"
+                          className="mc-btn mc-btn--quiet"
+                          onClick={() => void launchDefinition(d.ref)}
+                        >
+                          Launch
+                        </button>
+                        {launchStatus[d.ref] ? (
+                          <span className="v-workflows__run-status" data-testid={`workflow-def-status-${d.ref}`}>
+                            {launchStatus[d.ref]}
+                          </span>
+                        ) : null}
+                      </>
+                    ) : (
+                      <span className="v-workflows__not-runnable" title={d.detail ?? undefined}>Invalid</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
 
       <p className="v-workflows__runs-note" data-testid="workflows-runs-note">
         Saving a definition does not launch it. Run now creates a new instance; Runs shows its live stage graph.

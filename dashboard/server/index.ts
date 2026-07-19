@@ -10,6 +10,7 @@ import { registerAgents } from './agents/routes.ts';
 import { registerPanels } from './panels/routes.ts';
 import { registerHub } from './hub/index.ts';
 import { registerWriteSurface, makeSurfaceContext } from './http/surface.ts';
+import { registerWorkflows } from './workflows/routes.ts';
 import { registerStatic } from './static/routes.ts';
 import { registerPtyRoute, makePtyRouteContext } from './pty/route.ts';
 import { originPlugin } from './security/origin.ts';
@@ -51,6 +52,10 @@ export function buildApp(): FastifyInstance {
   // secret) → every PTY open failed `verifySession` with `bad-signature`. One secret keeps mint == verify.
   const surfaceCtx = makeSurfaceContext();
   registerWriteSurface(app, surfaceCtx); // U2: governed write surface (origin -> rate-limit -> session -> gate -> audit)
+  // D15: workflow-definition registry (GET /api/workflows[/:id] read-only) + the governed one-step launch
+  // (POST /api/workflows/:id/launch) in its OWN origin/rate-limit/session child scope. Shares surfaceCtx
+  // so the launch route mints/verifies against the same session secret as the write surface.
+  registerWorkflows(app, surfaceCtx);
   // D3.1 temporary in-process PTY bridge (/api/pty), in its OWN origin-guarded child scope (mirrors
   // registerHub). NOT folded into the write surface: its per-request rate-limit hook is HTTP-request shaped
   // and fits a long-lived WS upgrade poorly. The route runs the fleet preamble BEFORE session validation,
