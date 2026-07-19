@@ -12,7 +12,7 @@
 
 - Worktree: `C:/Users/danie/kb-worktrees/atlas`, branch `claude/atlas` (from origin/main e948ec4). Never push main; PR at wave end.
 - Ops coordination writes go through worktree `C:/Users/danie/kb-worktrees/dashboard-ops`: `git -C <ops> pull --rebase origin ops` immediately before EVERY write, push immediately after; rejected push = re-read, reconcile, retry.
-- Workers are Opus 4.8 or below; model self-reported in output AND orchestrator-verified. Workers do not commit; the orchestrator reviews diffs, runs tests, commits.
+- Workers are Opus 4.8 or below; model self-reported in output AND orchestrator-verified. Implementers commit locally on `claude/atlas` only and never push; the orchestrator reviews every diff (task reviewer + own pass), owns all pushes, and owns all ops-branch writes (cards, ledgers, STATE).
 - Atlas has its own venv `atlas/.venv` and its own test tree `atlas/tests/` — voice deps must NOT leak into the fleet suite. Fleet suite (`py -3.13 -m pytest tests/`) must stay green and dependency-free of atlas.
 - Atlas pytest invocation (from repo root): `atlas\.venv\Scripts\python -m pytest atlas/tests -v`.
 - Secrets: the scoped Anthropic key + vendor keys live ONLY in the worker's process env (loaded from `%USERPROFILE%\.atlas\env`, a file OUTSIDE the repo, never committed, never printed). Unit tests never need them.
