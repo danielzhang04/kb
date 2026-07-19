@@ -125,6 +125,7 @@ interface Fakes {
   executionOrder: string[];
   integrationOrder: string[];
   worktreePaths: string[];
+  removedPaths: string[];
   reservations: string[];
 }
 
@@ -132,6 +133,7 @@ function fakes(overrides: { worker?: WorkerAdapter; accounting?: AccountingAdapt
   const executionOrder: string[] = [];
   const integrationOrder: string[] = [];
   const worktreePaths: string[] = [];
+  const removedPaths: string[] = [];
   const reservations: string[] = [];
   const settled = new Set<string>();
   const worktrees: WorktreeAdapter = {
@@ -140,6 +142,7 @@ function fakes(overrides: { worker?: WorkerAdapter; accounting?: AccountingAdapt
       const id = executionOrder.at(-1) as string;
       return { changed: [{ path: `dashboard/server/${id}.txt`, digest: 'b'.repeat(64) }] };
     },
+    async remove(input) { removedPaths.push(input.path); },
   };
   const managers: ManagerAdapter = { async ensure() {} };
   const accounting: AccountingAdapter = overrides.accounting ?? {
@@ -173,7 +176,7 @@ function fakes(overrides: { worker?: WorkerAdapter; accounting?: AccountingAdapt
     async cancelManager() {},
     async cancelWorker() {},
   };
-  return { worktrees, managers, accounting, workers, results, cancellation, executionOrder, integrationOrder, worktreePaths, reservations };
+  return { worktrees, managers, accounting, workers, results, cancellation, executionOrder, integrationOrder, worktreePaths, removedPaths, reservations };
 }
 
 function engineOptions(store: ControlPlaneStore, fake: Fakes, root = join(tmpdir(), 'kb-auto-worktrees')): AutomaticExecutionOptions {
@@ -417,6 +420,7 @@ describe('AutomaticExecutionEngine', () => {
     fake.worktrees = {
       async ensure() { throw new Error('worktree provisioning unavailable'); },
       async inspect() { return { changed: [] }; },
+      async remove(input) { fake.removedPaths.push(input.path); },
     };
     const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
 
@@ -429,6 +433,57 @@ describe('AutomaticExecutionEngine', () => {
     expect(contained.value.attempts).toMatchObject([{ state: 'interrupted' }]);
     expect(contained.value.sessions.find((item) => item.role === 'worker')).toMatchObject({ state: 'interrupted' });
     expect(contained.value.humanRequests).toMatchObject([{ kind: 'intervention', state: 'open' }]);
+  });
+
+  it('removes the attempt worktree once the attempt reaches a terminal state', async () => {
+    const store = createStore();
+    const plan = proposal([stage('cleanup')]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes({
+      worker: {
+        async execute() {
+          return { state: 'failed', summary: 'stage failed', usage: { inputTokens: 0, outputTokens: 0, costUsdMicros: 0 }, artifacts: [], checkpoints: [] };
+        },
+      },
+    });
+    const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
+
+    const outcome = await engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
+
+    expect(outcome.state).toBe('failed');
+    expect(fake.worktreePaths).toHaveLength(1);
+    expect(fake.removedPaths).toEqual(fake.worktreePaths);
+  });
+
+  it('does not wedge a terminal attempt when worktree cleanup fails or double-removes', async () => {
+    const store = createStore();
+    const plan = proposal([stage('cleanup-fail')]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes({
+      worker: {
+        async execute() {
+          return { state: 'failed', summary: 'stage failed', usage: { inputTokens: 0, outputTokens: 0, costUsdMicros: 0 }, artifacts: [], checkpoints: [] };
+        },
+      },
+    });
+    let removeCalls = 0;
+    fake.worktrees = {
+      async ensure(input) { fake.worktreePaths.push(input.path); },
+      async inspect() { return { changed: [] }; },
+      async remove() { removeCalls += 1; throw new Error('worktree removal encountered an unexpected fault'); },
+    };
+    const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
+
+    const outcome = await engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
+
+    expect(outcome.state).toBe('failed');
+    expect(removeCalls).toBe(1);
+    const detail = store.getRun('operator', run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    expect(detail.value.humanRequests).toEqual([]);
+    const events = store.listEvents('operator', run.runRef);
+    if (!events.ok) throw new Error(events.detail);
+    expect(events.value.some((event) => (event.summary ?? '').includes('attempt worktree cleanup did not complete'))).toBe(true);
   });
 
   it('uses a stage-stable integration key so an ambiguous integration crash replays on a successor', async () => {
@@ -698,6 +753,7 @@ describe('AutomaticExecutionEngine', () => {
     fake.worktrees = {
       async ensure() {},
       async inspect() { return { changed: [{ path: 'governance/agent-rules.md', digest: 'b'.repeat(64) }] }; },
+      async remove(input) { fake.removedPaths.push(input.path); },
     };
     const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
     expect((await engine.runToBoundary({ subject: 'operator', runRef: unsafeRun.runRef, proposal: unsafePlan })).state).toBe('failed');

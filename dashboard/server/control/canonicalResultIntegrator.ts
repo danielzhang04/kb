@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { redactSensitiveText } from '../composer/publicTimeline.ts';
 import { defaultGitRunner, prepareCoordination, type GitRunner } from '../write/branch.ts';
@@ -146,6 +146,25 @@ function childOf(root: string, candidate: string): boolean {
 function canonicalExistingPath(value: string): string {
   const normalized = realpathSync.native(resolve(value));
   return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+}
+
+/**
+ * Reads a changed path for hashing only after proving it is a regular file contained within the
+ * worktree, mirroring the worktree adapter's inspect discipline. A bare readFileSync follows
+ * symlinks: a worker that still controls its worktree could swap an approved regular file for a
+ * symlink whose dereferenced content hashes to the journaled digest, and the integrator would then
+ * commit a mode-120000 symlink blob against a dereferenced-content digest. This fails closed on a
+ * symlink or an out-of-root realpath so the integration aborts rather than committing a bad blob.
+ */
+function readRegularFileWithin(root: string, repoRelativePath: string): Buffer {
+  const target = join(root, ...repoRelativePath.split('/'));
+  if (!childOf(root, target)) throw new CanonicalResultIntegrationError('changed path escapes its worktree');
+  const info = lstatSync(target);
+  if (!info.isFile() || info.isSymbolicLink()) throw new CanonicalResultIntegrationError('changed path is not a regular file');
+  if (!childOf(canonicalExistingPath(root), canonicalExistingPath(target))) {
+    throw new CanonicalResultIntegrationError('changed path resolves outside its worktree');
+  }
+  return readFileSync(target);
 }
 
 function canonical(value: unknown): string {
@@ -422,7 +441,7 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
             throw new CanonicalResultIntegrationError('attempt changes differ from server inspection');
           }
           for (const item of result.changed) {
-            const content = readFileSync(join(attemptPath, ...item.path.split('/')));
+            const content = readRegularFileWithin(attemptPath, item.path);
             if (createHash('sha256').update(content).digest('hex') !== item.digest) {
               throw new CanonicalResultIntegrationError(`artifact digest changed for '${item.path}'`);
             }
@@ -453,7 +472,7 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
           const commitMessage = `chore(run): integrate ${record.stageId}`;
           const verifyChangedContent = () => {
             for (const item of record.result.changed) {
-              const content = readFileSync(join(attemptPath, ...item.path.split('/')));
+              const content = readRegularFileWithin(attemptPath, item.path);
               if (createHash('sha256').update(content).digest('hex') !== item.digest) {
                 throw new CanonicalResultIntegrationError(`artifact digest changed for '${item.path}'`);
               }
@@ -524,7 +543,7 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
                 throw new CanonicalResultIntegrationError('lineage HEAD differs from the journaled integration intent');
               }
               for (const item of record.result.changed) {
-                const content = readFileSync(join(lineage.path, ...item.path.split('/')));
+                const content = readRegularFileWithin(lineage.path, item.path);
                 if (createHash('sha256').update(content).digest('hex') !== item.digest) {
                   throw new CanonicalResultIntegrationError(`lineage artifact digest changed for '${item.path}'`);
                 }

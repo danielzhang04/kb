@@ -272,6 +272,58 @@ def test_failed_codex_run_halts_instead_of_releasing_dependents():
     assert 'cards.transition(card, "halted", Path("queue"))' in text
 
 
+def test_workbranch_checkout_starts_from_origin_ops_and_halts_on_failure():
+    """Regression: step 3 only fetches+detaches origin/ops (isolated-worktree /
+    -RepoRoot mode never checks out a local `ops` branch), so the work-branch
+    creation must start from the remote-tracking ref `origin/ops`, never the
+    bare local name `ops` (which is not guaranteed to exist/be current). A
+    failed checkout here must halt loudly (wake-me + exit), mirroring the
+    preamble/billing-guard critical-failure pattern, instead of silently
+    continuing on a detached HEAD where card commits would be stranded.
+    """
+    text = _text()
+
+    assert re.search(r"git checkout -B \$workBranch origin/ops", text), (
+        "work-branch creation must use origin/ops as its start-point, not the "
+        "bare local `ops` ref"
+    )
+
+    # No non-comment line may still create the work branch off the bare local
+    # `ops` ref.
+    for line in _non_comment_lines(text):
+        assert not re.search(r"git checkout -B \$workBranch ops\b(?!/)", line), (
+            f"work-branch checkout must not use bare local `ops` as start-point: {line!r}"
+        )
+
+    checkout_idx = text.index("git checkout -B $workBranch origin/ops")
+    workbranch_var_idx = text.index('$workBranch = "codex/$Agent-$runStamp"')
+    foreach_idx = text.index("foreach")
+    assert workbranch_var_idx < checkout_idx < foreach_idx, (
+        "the work-branch checkout must happen after $workBranch is named and "
+        "before the per-card foreach loop"
+    )
+
+    # A failed work-branch checkout must be guarded (checked immediately after
+    # the checkout call, before the foreach loop) and must halt loudly: log +
+    # wake-me + non-zero exit, exactly like the preamble/billing-guard gates,
+    # rather than silently proceeding on a detached/wrong HEAD.
+    after_checkout = text[checkout_idx:foreach_idx]
+    assert re.search(r"\$LASTEXITCODE\s*-ne\s*0", after_checkout), (
+        "must check $LASTEXITCODE immediately after the work-branch checkout"
+    )
+    assert re.search(r"workbranch-checkout-fail", after_checkout, re.IGNORECASE), (
+        "must log a distinct exit-path for a failed work-branch checkout"
+    )
+    assert "New-WakeMeCard" in after_checkout, (
+        "a failed work-branch checkout must file a wake-me card, like the "
+        "preamble/billing-guard critical-failure gates"
+    )
+    assert re.search(r"exit\s+1\b", after_checkout), (
+        "a failed work-branch checkout must exit non-zero (loud), not silently "
+        "continue to process cards on the wrong HEAD"
+    )
+
+
 def test_runner_asserts_runtime_before_work():
     """Phase R1.4 -- the runner must invoke scripts/assert_runtime.py (its
     runtime pre-exec assertion) BEFORE the card transitions to `working` /

@@ -221,7 +221,16 @@ if (-not $owned -or $owned.Count -eq 0) {
 # note in the header for why that split is unavoidable during Phase A here).
 $runStamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $workBranch = "codex/$Agent-$runStamp"
-git checkout -B $workBranch ops
+# Start-point MUST be the remote-tracking ref, not the bare local `ops` name: step 3
+# above only fetches+detaches origin/ops (isolated-worktree/-RepoRoot mode never
+# checks out a local `ops` branch), so a local `ops` ref is not guaranteed to exist
+# or be current. Starting from origin/ops matches what step 3 actually guarantees.
+git checkout -B $workBranch origin/ops
+if ($LASTEXITCODE -ne 0) {
+    Write-RunnerLog ("exit-path=workbranch-checkout-fail agent=$Agent branch=$workBranch interpreter=$py :: could not create work branch '$workBranch' from origin/ops -- refusing to proceed on a detached/wrong HEAD where card commits would be stranded")
+    New-WakeMeCard $py "agent_runner:$Agent:workbranch-checkout-fail" "Creating work branch '$workBranch' from origin/ops failed (git exit $LASTEXITCODE) for agent '$Agent' at $RepoRoot. This runner refuses to proceed: without a real work branch, card commits would land on detached HEAD and the end-of-run push would fail, stranding work silently. A human must investigate the git state and re-run (HUMAN GATE)."
+    exit 1
+}
 
 $overallExit = 0
 

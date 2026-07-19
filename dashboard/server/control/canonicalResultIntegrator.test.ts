@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -26,10 +26,25 @@ afterEach(() => {
   for (const value of roots.splice(0)) rmSync(value, { recursive: true, force: true });
 });
 
+// Windows only permits symlink creation with Developer Mode or elevation; probe once so the
+// TOCTOU regression skips (rather than falsely fails) where symlinks cannot be materialized.
+const SYMLINKS_SUPPORTED = (() => {
+  const probe = mkdtempSync(join(tmpdir(), 'canonical-symlink-probe-'));
+  try {
+    writeFileSync(join(probe, 'target'), 'x');
+    symlinkSync(join(probe, 'target'), join(probe, 'link'));
+    return true;
+  } catch {
+    return false;
+  } finally {
+    rmSync(probe, { recursive: true, force: true });
+  }
+})();
+
 function fixture(options: {
   pushFails?: boolean; cardFails?: boolean; lineagePushFails?: boolean; coordinationIndexDirty?: boolean;
   verifyFails?: boolean; failAfterAttemptCommit?: boolean; failAfterCherryPick?: boolean; failAfterCardMutation?: boolean;
-  pushFailsOnce?: boolean;
+  pushFailsOnce?: boolean; changedAsSymlink?: boolean; changedAsIrregular?: boolean;
 } = {}) {
   const workspace = root();
   const repoRoot = join(workspace, 'repo');
@@ -47,7 +62,19 @@ function fixture(options: {
   const content = 'bounded result\n';
   const changedAbs = join(attemptPath, ...changedPath.split('/'));
   mkdirSync(join(attemptPath, 'dashboard/server'), { recursive: true });
-  writeFileSync(changedAbs, content);
+  if (options.changedAsSymlink) {
+    // Emulate a worker swapping the approved regular file for a symlink whose dereferenced content
+    // still hashes to the journaled digest — the TOCTOU the integrator must reject.
+    const symlinkTarget = join(workspace, 'symlink-target.txt');
+    writeFileSync(symlinkTarget, content);
+    symlinkSync(symlinkTarget, changedAbs);
+  } else if (options.changedAsIrregular) {
+    // A non-regular file (here a directory) exercises the same regular-file guard as the symlink
+    // swap without needing symlink privileges, so the guard is covered on every platform.
+    mkdirSync(changedAbs, { recursive: true });
+  } else {
+    writeFileSync(changedAbs, content);
+  }
   const digest = createHash('sha256').update(content).digest('hex');
   const canonical = {
     summary: 'stage complete',
@@ -262,6 +289,20 @@ describe('canonical Git result integrator', () => {
       }),
     })).rejects.toThrow('artifact digest changed');
     expect(item.gitCalls.some((call) => call.args[0] === 'cherry-pick')).toBe(false);
+  });
+
+  it.skipIf(!SYMLINKS_SUPPORTED)('refuses to hash or commit a changed path swapped for a symlink', async () => {
+    const item = fixture({ changedAsSymlink: true });
+    await expect(item.integrator.integrate(item.input)).rejects.toThrow('changed path is not a regular file');
+    expect(item.gitCalls.some((call) => call.args[0] === 'cherry-pick')).toBe(false);
+    expect(item.cardMutations()).toBe(0);
+  });
+
+  it('refuses to hash or commit a changed path that is not a regular file', async () => {
+    const item = fixture({ changedAsIrregular: true });
+    await expect(item.integrator.integrate(item.input)).rejects.toThrow('changed path is not a regular file');
+    expect(item.gitCalls.some((call) => call.args[0] === 'cherry-pick')).toBe(false);
+    expect(item.cardMutations()).toBe(0);
   });
 
   it('resumes a lineage commit after canonical card mismatch without duplicating worker integration', async () => {

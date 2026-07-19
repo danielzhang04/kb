@@ -45,6 +45,9 @@ function fakeGit(repoRoot: string, commonDir: string): {
           mkdirSync(args[index + 2], { recursive: true });
           return { exitCode: 0, stdout: Buffer.alloc(0), stderr: '' };
         }
+        if (args.includes('worktree') && args.includes('remove')) {
+          return { exitCode: 0, stdout: Buffer.alloc(0), stderr: '' };
+        }
         if (args.includes('--show-toplevel')) return { exitCode: 0, stdout: Buffer.from(`${resolve(cwd)}\n`), stderr: '' };
         if (args.includes('--git-common-dir')) return { exitCode: 0, stdout: Buffer.from(`${commonDir}\n`), stderr: '' };
         if (args.includes('rev-parse') && args.at(-1) === 'HEAD') return { exitCode: 0, stdout: Buffer.from(`${'a'.repeat(40)}\n`), stderr: '' };
@@ -127,6 +130,55 @@ describe('Git worktree adapter', () => {
     fake.setStatus(Buffer.from(' D dashboard/server/a.txt\0'));
     await expect(adapter.inspect({ operationKey: 'inspect:attempt-1', runRef: 'run-1', path }))
       .rejects.toThrow("unsupported changed-file status ' D'");
+  });
+
+  it('removes only the planned worktree through the hardened runner and rejects out-of-root paths', async () => {
+    const root = temporaryRoot();
+    const repoRoot = join(root, 'repo');
+    const commonDir = join(repoRoot, '.git');
+    const worktreeRoot = join(root, 'worktrees');
+    mkdirSync(commonDir, { recursive: true });
+    const fake = fakeGit(repoRoot, commonDir);
+    const adapter = createGitWorktreeAdapter({ repoRoot, worktreeRoot, baseCommit: 'a'.repeat(40), runner: fake.runner });
+    const path = join(worktreeRoot, 'run-1', 'attempt-1');
+
+    await adapter.remove({ operationKey: 'worktree-remove:attempt-1', runRef: 'run-1', path });
+    await adapter.remove({ operationKey: 'worktree-remove:attempt-1', runRef: 'run-1', path });
+
+    const removals = fake.calls.filter((call) => call.args.includes('worktree') && call.args.includes('remove'));
+    expect(removals).toHaveLength(2);
+    expect(removals[0].cwd).toBe(repoRoot);
+    expect(removals[0].args).toContain('protocol.allow=never');
+    expect(removals[0].args).toContain('--literal-pathspecs');
+    expect(removals[0].args.slice(-4)).toEqual(['worktree', 'remove', '--force', path]);
+    expect(fake.calls.some((call) => call.args.includes('prune'))).toBe(false);
+
+    await expect(adapter.remove({ operationKey: 'worktree-remove:x', runRef: 'run-1', path: join(root, 'escape') }))
+      .rejects.toThrow('escapes the server-owned root');
+  });
+
+  it('treats a missing worktree as already removed but rethrows unexpected removal failures', async () => {
+    const root = temporaryRoot();
+    const repoRoot = join(root, 'repo');
+    const worktreeRoot = join(root, 'worktrees');
+    mkdirSync(join(repoRoot, '.git'), { recursive: true });
+    let removeStderr = "fatal: '<path>' is not a working tree";
+    const runner: GitCommandRunner = {
+      async run(args) {
+        if (args.includes('worktree') && args.includes('remove')) {
+          return { exitCode: 1, stdout: Buffer.alloc(0), stderr: removeStderr };
+        }
+        return { exitCode: 1, stdout: Buffer.alloc(0), stderr: 'unexpected git invocation' };
+      },
+    };
+    const adapter = createGitWorktreeAdapter({ repoRoot, worktreeRoot, baseCommit: 'a'.repeat(40), runner });
+    const path = join(worktreeRoot, 'run-1', 'attempt-1');
+
+    await expect(adapter.remove({ operationKey: 'worktree-remove:attempt-1', runRef: 'run-1', path })).resolves.toBeUndefined();
+
+    removeStderr = 'fatal: unable to access repository';
+    await expect(adapter.remove({ operationKey: 'worktree-remove:attempt-1', runRef: 'run-1', path }))
+      .rejects.toThrow('worktree removal failed');
   });
 });
 

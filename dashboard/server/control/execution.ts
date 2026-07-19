@@ -56,6 +56,12 @@ export interface WorktreeAdapter {
   inspect(input: { operationKey: string; runRef: string; path: string }): Promise<{
     changed: readonly WorkerArtifactResult[];
   }>;
+  /**
+   * Best-effort, idempotent teardown of a terminal attempt worktree. Callers invoke this only once
+   * the worktree is provably no longer read by inspect/integrate. It must not throw on a missing or
+   * already-removed worktree.
+   */
+  remove(input: { operationKey: string; runRef: string; path: string }): Promise<void>;
 }
 
 export interface ManagerAdapter {
@@ -1025,18 +1031,42 @@ export class AutomaticExecutionEngine {
       this.transitionSession(input, session.sessionRef, 'completed');
       this.transitionAttempt(input, attempt.attemptRef, 'succeeded');
       this.transitionStageByRef(input, stage.stageRef, 'succeeded');
+      await this.cleanupAttemptWorktree(input, stage, attempt, worktreePath);
       return { state: 'succeeded', stageId: stage.stageId };
     }
     if (result.state === 'waiting-human') {
       this.createBoundary(input, stage, 'intervention', stableHumanTitle('execution', stage.stageId, attempt.attemptRef), result.summary);
       this.transitionAttempt(input, attempt.attemptRef, 'interrupted');
       this.transitionSession(input, session.sessionRef, 'interrupted');
+      await this.cleanupAttemptWorktree(input, stage, attempt, worktreePath);
       return { state: 'waiting-human', stageId: stage.stageId };
     }
     this.transitionAttempt(input, attempt.attemptRef, 'failed');
     this.transitionSession(input, session.sessionRef, 'failed');
     this.transitionStageByRef(input, stage.stageRef, 'failed');
+    await this.cleanupAttemptWorktree(input, stage, attempt, worktreePath);
     return { state: 'waiting-human', stageId: stage.stageId };
+  }
+
+  /**
+   * Reclaim a terminal attempt's worktree. Cleanup is only invoked once integration has committed
+   * (or was never started for this attempt), so it can never remove a worktree that inspect/integrate
+   * might still read. Removal is best-effort: a missing tree must not throw, and an unexpected adapter
+   * failure is recorded as a non-fatal event rather than wedging the run into an intervention.
+   */
+  private async cleanupAttemptWorktree(input: ExecuteRunInput, stage: Stage, attempt: Attempt, worktreePath: string): Promise<void> {
+    try {
+      await this.options.worktrees.remove({
+        operationKey: `worktree-remove:${attempt.attemptRef}`,
+        runRef: input.runRef,
+        path: worktreePath,
+      });
+    } catch (error) {
+      this.options.store.appendEvent(input.subject, input.runRef, {
+        kind: 'lifecycle', source: 'system', stageRef: stage.stageRef, attemptRef: attempt.attemptRef,
+        status: 'pending', summary: `attempt worktree cleanup did not complete: ${error instanceof Error ? error.message : 'unknown error'}`,
+      });
+    }
   }
 
   private cancellationObserved(input: Pick<ExecuteRunInput, 'subject' | 'runRef'>): boolean {

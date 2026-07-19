@@ -269,6 +269,25 @@ export function createGitWorktreeAdapter(options: GitWorktreeAdapterOptions): Wo
       }
       return { changed };
     },
+
+    async remove(input) {
+      requireOperationKey(input.operationKey);
+      // Validate the layout with the same containment check as ensure/inspect before touching Git,
+      // so removal can never target anything outside the server-owned worktree root.
+      const path = expectedAttemptPath(worktreeRoot, input.runRef, input.path);
+      const result = await runner.run([...prefix, 'worktree', 'remove', '--force', path], repoRoot);
+      if (result.exitCode === 0) return;
+      // Best-effort and idempotent: a missing or already-removed worktree is success. Unexpected
+      // failures (a broken repository, a locked tree) still surface so they are not silently lost.
+      const stderr = result.stderr.toLowerCase();
+      const benign = stderr.includes('is not a working tree')
+        || stderr.includes('not a working tree')
+        || stderr.includes('no such file')
+        || stderr.includes('does not exist')
+        || stderr.includes('cannot find')
+        || stderr.includes('enoent');
+      if (!benign) commandFailure('worktree removal', result);
+    },
   };
 }
 
