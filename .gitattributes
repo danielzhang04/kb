@@ -5,6 +5,13 @@
 /skills/curated/** text=auto eol=lf
 /.claude/skills/** text=auto eol=lf
 
+# The golden canary suite is hashed byte-for-byte by scripts/canary.py
+# (evals/MANIFEST.sha256 — the immutability/tamper guard). Pin the canary cards
+# and the manifest to LF so the sha256 manifest is identical on Windows and the
+# Linux cloud VM; otherwise autocrlf smudging breaks verify_manifest on checkout.
+/evals/canaries/** text=auto eol=lf
+/evals/MANIFEST.sha256 text=auto eol=lf
+
 # Signed-approval verification fixture — the gpg keyrings, the git bundle, and
 # meta.json must be byte-identical on Windows and the Linux cloud VM (autocrlf
 # smudging would corrupt the ASCII-armored keys / the committed signed blobs).
