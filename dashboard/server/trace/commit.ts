@@ -15,7 +15,7 @@
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { createAsyncGitRunner } from '../write/asyncGit.ts';
+import { createAsyncGitRunner, withOpsTransaction } from '../write/asyncGit.ts';
 import type { OpsGitRunner } from '../write/asyncGit.ts';
 
 /**
@@ -67,6 +67,7 @@ export async function commitTraceToOps(
   const message = options.message ?? `chore(trace): distilled flight-recorder for ${cardId}`;
   const maxRetryPushes = options.maxRetryPushes ?? 3;
 
+  return withOpsTransaction(async () => {
   // Reconcile with remote ops before writing history, stage ONLY the trace dir, commit.
   await runGit(repoRoot, ['pull', '--rebase', 'origin', 'ops']);
   await runGit(repoRoot, ['add', '--', relDir]);
@@ -85,6 +86,7 @@ export async function commitTraceToOps(
     }
   }
   throw lastErr;
+  });
 }
 
 export interface WriteTraceInput {

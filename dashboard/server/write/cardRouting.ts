@@ -23,6 +23,7 @@ import type { SessionConfig } from '../auth/session.ts';
 import { defaultPyRunner } from './launch.ts';
 import type { PyRunner } from './launch.ts';
 import { prepareCoordination, defaultGitRunner } from './branch.ts';
+import { withOpsTransaction } from './asyncGit.ts';
 import type { GitRunner } from './branch.ts';
 import { loadPolicy } from '../routing/policy.ts';
 import type { PolicyDoc } from '../routing/policy.ts';
@@ -286,10 +287,12 @@ async function apply(
   if (!g.ok) return g;
   if (!CARD_ID_RE.test(input.cardId)) return { ok: false, status: 400, reason: 'cardId must be filename-safe' };
 
+  const runGit = deps.runGit ?? defaultGitRunner;
+  // The whole prepare → validate → mutate → commit/verify sequence is ONE ops transaction.
+  return withOpsTransaction(async () => {
   // Reconcile canonical ops BEFORE reading lifecycle state or mutating anything. This closes the race
   // where an assigned/approved remote card was validated from stale local state, and avoids attempting
   // a pull after Python has already dirtied the card and audit paths.
-  const runGit = deps.runGit ?? defaultGitRunner;
   try {
     await prepareCoordination(input.repoRoot, runGit);
   } catch (err) {
@@ -407,6 +410,7 @@ async function apply(
   }
 
   return { ok: true, cardId: parsed.id, cardPath: parsed.path, runtime, model };
+  });
 }
 
 /** Set a card's frontmatter `runtime`/`model` (top-precedence per-card override). */

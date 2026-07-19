@@ -22,6 +22,7 @@ import {
   isProtectedBranch,
   prepareCoordination,
 } from './branch.ts';
+import { withOpsTransaction } from './asyncGit.ts';
 import { launchCard, rerunAsDependsOn } from './launch.ts';
 import type { LaunchOutcome, RiskTier } from './launch.ts';
 import { respondToCard, resolveCardPath } from './cardRespond.ts';
@@ -145,6 +146,9 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
     if (owner !== undefined && !CARD_ID_RE.test(owner)) {
       return reply.code(400).send({ error: 'bad-owner', reason: 'owner must be filename-safe' });
     }
+    // One ops transaction: prepare (inside launchCard's seam), cards.py write, audit append, commit/push.
+    // Without the span lock a concurrent writer's pull/stage interleaves and fails one side (live regression).
+    return withOpsTransaction(async () => {
     const outcome = await launchCard(
       {
         project: (body.project as string | string[]) ?? '',
@@ -195,10 +199,12 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
       }
     }
     return reply.code(launchStatus(outcome)).send({ error: outcome.reason, detail: 'detail' in outcome ? outcome.detail : outcome.problems });
+    });
   });
 
   scope.post('/api/write/workflow-runs', { preHandler }, async (req, reply: FastifyReply) => {
     const session = verifiedSession(req);
+    return withOpsTransaction(async () => {
     const outcome = await launchWorkflowRun(
       req.body,
       { token: session?.token, config: ctx.sessionConfig },
@@ -263,6 +269,7 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
         detail: error instanceof Error ? error.message : String(error),
       });
     }
+    });
   });
 
   scope.post('/api/write/rerun', { preHandler }, async (req, reply: FastifyReply) => {
@@ -273,6 +280,7 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
     if (!CARD_ID_RE.test(cardId)) {
       return reply.code(400).send({ error: 'bad-card-id', reason: 'cardId must be filename-safe' });
     }
+    return withOpsTransaction(async () => {
     const outcome = await rerunAsDependsOn(
       cardId,
       str(body.feedback),
@@ -309,6 +317,7 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
       }
     }
     return reply.code(launchStatus(outcome)).send({ error: outcome.reason, detail: 'detail' in outcome ? outcome.detail : outcome.problems });
+    });
   });
 
   scope.post('/api/write/stop', { preHandler }, async (req, reply: FastifyReply) => {
@@ -482,6 +491,7 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
       return reply.code(500).send({ error: 'card-parse-failed', detail: err instanceof Error ? err.message : String(err) });
     }
 
+    return withOpsTransaction(async () => {
     const outcome = await respondToCard(
       {
         cardId,
@@ -530,5 +540,6 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
         detail: err instanceof Error ? err.message : String(err),
       });
     }
+    });
   });
 }

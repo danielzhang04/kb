@@ -24,6 +24,38 @@
  */
 import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
+import { AsyncLocalStorage } from 'node:async_hooks';
+
+/**
+ * The single-writer discipline the synchronous runners provided BY ACCIDENT: `execFileSync` blocked the
+ * event loop for a whole pull-rebase → mutate → commit → push transaction, so two governed writes could
+ * never interleave on the ops checkout. The async conversion removed that accidental serialization —
+ * request A's half-open span (dirty working tree / staged paths) made request B's `pull --rebase` or
+ * clean-index guard fail (observed live as a PTY `audit-failed`). Every ops-checkout git TRANSACTION must
+ * therefore run under this in-process FIFO lock.
+ *
+ * REENTRANT by AsyncLocalStorage: control-plane routes legitimately run a nested audit transaction inside
+ * an open prepare→commit span; a nested `withOpsTransaction` joins the held lock instead of deadlocking.
+ * Cross-PROCESS writers (fleet runners in their own checkouts) are unaffected — their races surface as
+ * push rejections, which the existing pull-reconcile-retry loops already handle.
+ */
+const opsTransactionContext = new AsyncLocalStorage<true>();
+let opsTransactionQueue: Promise<void> = Promise.resolve();
+
+export function withOpsTransaction<T>(fn: () => Promise<T>): Promise<T> {
+  if (opsTransactionContext.getStore()) return fn();
+  let release!: () => void;
+  const previous = opsTransactionQueue;
+  opsTransactionQueue = new Promise<void>((resolve) => { release = resolve; });
+  return (async () => {
+    await previous;
+    try {
+      return await opsTransactionContext.run(true, fn);
+    } finally {
+      release();
+    }
+  })();
+}
 
 /**
  * A git invocation runner. `args` is the full argv AFTER `git`. Widened to allow a `Promise` so the

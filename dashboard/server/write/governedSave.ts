@@ -24,6 +24,7 @@ import { verifySession } from '../auth/session.ts';
 import type { SessionConfig } from '../auth/session.ts';
 import { resolveWithin, PathEscapeError } from '../kb/browser.ts';
 import { routeWrite, defaultGitRunner, defaultPrOpener } from './branch.ts';
+import { withOpsTransaction } from './asyncGit.ts';
 import type { GitRunner, PrOpener, RouteOptions, Target } from './branch.ts';
 import { parseYaml } from '../routing/yaml.ts';
 import { loadPolicy } from '../routing/policy.ts';
@@ -328,19 +329,23 @@ export async function save(input: SaveInput): Promise<SaveOutcome> {
     return { ok: false, status: 400, reason: 'refusing to overwrite through a symlink' };
   }
 
-  writeFileSync(abs, input.content, 'utf-8');
+  // The file write and its branch routing are ONE ops transaction: another writer's pull between the
+  // two would trip over (or sweep up) this dirty tracked path on the shared checkout.
+  return withOpsTransaction(async () => {
+    writeFileSync(abs, input.content, 'utf-8');
 
-  const routeOptions: RouteOptions = {
-    runGit: input.runGit ?? defaultGitRunner,
-    openPr: input.openPr ?? defaultPrOpener,
-    workBranch: input.workBranch,
-    message: input.message,
-  };
+    const routeOptions: RouteOptions = {
+      runGit: input.runGit ?? defaultGitRunner,
+      openPr: input.openPr ?? defaultPrOpener,
+      workBranch: input.workBranch,
+      message: input.message,
+    };
 
-  try {
-    const target = await routeWrite(input.repoRoot, input.relpath, routeOptions);
-    return { ok: true, target };
-  } catch (err) {
-    return { ok: false, status: 500, reason: err instanceof Error ? err.message : String(err) };
-  }
+    try {
+      const target = await routeWrite(input.repoRoot, input.relpath, routeOptions);
+      return { ok: true, target };
+    } catch (err) {
+      return { ok: false, status: 500, reason: err instanceof Error ? err.message : String(err) };
+    }
+  });
 }

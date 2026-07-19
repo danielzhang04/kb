@@ -6,7 +6,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { tmpdir } from 'node:os';
-import { AsyncGitError, drainAsyncGit, runTrackedProcess } from './asyncGit.ts';
+import { AsyncGitError, drainAsyncGit, runTrackedProcess, withOpsTransaction } from './asyncGit.ts';
 
 const NODE = process.execPath;
 /** A child that ignores signals is not needed — we only need one that outlives the test's timeout. */
@@ -40,6 +40,41 @@ describe('runTrackedProcess — hard timeout', () => {
   it('resolves stdout on a clean exit', async () => {
     const out = await runTrackedProcess(NODE, ['-e', 'process.stdout.write("ok-line")'], tmpdir(), 'rev-parse');
     expect(out).toBe('ok-line');
+  });
+});
+
+describe('withOpsTransaction — single-writer ops discipline', () => {
+  it('serializes concurrent transactions FIFO (no interleaving)', async () => {
+    const events: string[] = [];
+    const gate = { release: () => {} };
+    const first = withOpsTransaction(async () => {
+      events.push('first:start');
+      await new Promise<void>((resolve) => { gate.release = resolve; });
+      events.push('first:end');
+      return 'first';
+    });
+    const second = withOpsTransaction(async () => {
+      events.push('second:start');
+      return 'second';
+    });
+    // Give the second transaction every chance to start early if the lock were broken.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(events).toEqual(['first:start']);
+    gate.release();
+    expect(await first).toBe('first');
+    expect(await second).toBe('second');
+    expect(events).toEqual(['first:start', 'first:end', 'second:start']);
+  });
+
+  it('is reentrant: a nested transaction joins the held lock instead of deadlocking', async () => {
+    const result = await withOpsTransaction(async () =>
+      withOpsTransaction(async () => withOpsTransaction(async () => 'nested')));
+    expect(result).toBe('nested');
+  });
+
+  it('releases the lock when a transaction throws', async () => {
+    await expect(withOpsTransaction(async () => { throw new Error('boom'); })).rejects.toThrow('boom');
+    expect(await withOpsTransaction(async () => 'after')).toBe('after');
   });
 });
 

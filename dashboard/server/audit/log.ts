@@ -14,7 +14,7 @@
 
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { createAsyncGitRunner } from '../write/asyncGit.ts';
+import { createAsyncGitRunner, withOpsTransaction } from '../write/asyncGit.ts';
 import type { OpsGitRunner } from '../write/asyncGit.ts';
 
 /** A git invocation runner. `args` is the full argv AFTER `git`. Injected for hermetic tests. Widened
@@ -94,6 +94,7 @@ export async function commitAuditToOps(
   runGit: OpsGitRunner = defaultOpsGitRunner,
   options: CommitAuditOptions = {},
 ): Promise<void> {
+  return withOpsTransaction(async () => {
   const message = options.message ?? 'chore(audit): dashboard audit row';
   const maxRetryPushes = options.maxRetryPushes ?? 3;
 
@@ -123,6 +124,7 @@ export async function commitAuditToOps(
     }
   }
   throw lastErr;
+  });
 }
 
 export interface AppendAuditOptions {
@@ -142,10 +144,15 @@ export async function appendAudit(
   event: AuditEvent,
   options: AppendAuditOptions = {},
 ): Promise<AuditRow> {
-  const row = appendAuditRowLocal(repoRoot, event, options.now);
-  await commitAuditToOps(repoRoot, options.runGit ?? defaultOpsGitRunner, {
-    message: options.message ?? `chore(audit): ${event.action}${event.cardId ? ` ${event.cardId}` : ''}`,
-    maxRetryPushes: options.maxRetryPushes,
+  // The LOCAL append must sit inside the same lock as the commit: two interleaved appendAudits would
+  // otherwise both append rows, the first commit would take both, and the second would find nothing to
+  // commit and fail its caller (observed live as a PTY `audit-failed`).
+  return withOpsTransaction(async () => {
+    const row = appendAuditRowLocal(repoRoot, event, options.now);
+    await commitAuditToOps(repoRoot, options.runGit ?? defaultOpsGitRunner, {
+      message: options.message ?? `chore(audit): ${event.action}${event.cardId ? ` ${event.cardId}` : ''}`,
+      maxRetryPushes: options.maxRetryPushes,
+    });
+    return row;
   });
-  return row;
 }

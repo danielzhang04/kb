@@ -21,7 +21,7 @@
  * drifted `.claude/skills` mirror fails the commit (and therefore the save) rather than being bypassed.
  */
 
-import { createAsyncGitRunner, createAsyncPrOpener } from './asyncGit.ts';
+import { createAsyncGitRunner, createAsyncPrOpener, withOpsTransaction } from './asyncGit.ts';
 import type { OpsGitRunner } from './asyncGit.ts';
 
 export type Target = 'durable' | 'coordination';
@@ -158,8 +158,12 @@ export interface RouteOptions {
  * multi-path set atomically afterwards.
  */
 export async function prepareCoordination(repoRoot: string, runGit: GitRunner = defaultGitRunner): Promise<void> {
-  await assertCoordinationCheckout(repoRoot, runGit);
-  await runGit(repoRoot, ['pull', '--rebase', 'origin', 'ops']);
+  // Reentrant: a caller that already holds the ops-transaction span joins it; a careless future caller
+  // that forgot the span lock at least serializes this individual step.
+  return withOpsTransaction(async () => {
+    await assertCoordinationCheckout(repoRoot, runGit);
+    await runGit(repoRoot, ['pull', '--rebase', 'origin', 'ops']);
+  });
 }
 
 function defaultMessage(relpath: string): string {
@@ -183,13 +187,16 @@ export async function routeDurable(repoRoot: string, relpath: string, options: R
     throw new ProtectedBranchError(branch);
   }
 
-  await assertCleanIndex(repoRoot, runGit);
-  await runGit(repoRoot, ['add', '--', relpath]);
-  await runGit(repoRoot, ['commit', '-m', message, '--only', '--', relpath]);
-  // Push local HEAD onto the work-branch ref, regardless of the locally checked-out branch name —
-  // never a bare `push origin main`/`push origin ops`.
-  await runGit(repoRoot, ['push', 'origin', `HEAD:refs/heads/${branch}`]);
-  await openPr(repoRoot, { base: 'main', head: branch, title: message });
+  // Same checkout as the coordination writers — its stage/commit must not interleave with theirs.
+  return withOpsTransaction(async () => {
+    await assertCleanIndex(repoRoot, runGit);
+    await runGit(repoRoot, ['add', '--', relpath]);
+    await runGit(repoRoot, ['commit', '-m', message, '--only', '--', relpath]);
+    // Push local HEAD onto the work-branch ref, regardless of the locally checked-out branch name —
+    // never a bare `push origin main`/`push origin ops`.
+    await runGit(repoRoot, ['push', 'origin', `HEAD:refs/heads/${branch}`]);
+    await openPr(repoRoot, { base: 'main', head: branch, title: message });
+  });
 }
 
 /**
@@ -203,6 +210,7 @@ export async function commitPreparedCoordination(repoRoot: string, relpath: stri
   const message = options.message ?? defaultMessage(relpath);
   const maxRetryPushes = options.maxRetryPushes ?? 3;
 
+  return withOpsTransaction(async () => {
   const stagePaths = [relpath, ...(options.alsoStage ?? [])];
   await assertCoordinationCheckout(repoRoot, runGit);
   await assertCleanIndex(repoRoot, runGit);
@@ -223,12 +231,16 @@ export async function commitPreparedCoordination(repoRoot: string, relpath: stri
     }
   }
   throw lastErr;
+  });
 }
 
 export async function routeCoordination(repoRoot: string, relpath: string, options: RouteOptions = {}): Promise<void> {
   const runGit = options.runGit ?? defaultGitRunner;
-  await prepareCoordination(repoRoot, runGit);
-  await commitPreparedCoordination(repoRoot, relpath, { ...options, runGit });
+  // One span: prepare and commit must not interleave with any other ops transaction.
+  return withOpsTransaction(async () => {
+    await prepareCoordination(repoRoot, runGit);
+    await commitPreparedCoordination(repoRoot, relpath, { ...options, runGit });
+  });
 }
 
 /**

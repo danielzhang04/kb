@@ -4,6 +4,7 @@ import { auditFn, type SurfaceContext } from '../http/context.ts';
 import { visibleAssistantText } from '../composer/publicTimeline.ts';
 import { appendAuditRowLocal, AUDIT_REL_PATH } from '../audit/log.ts';
 import { commitPreparedCoordination, defaultGitRunner, prepareCoordination } from '../write/branch.ts';
+import { withOpsTransaction } from '../write/asyncGit.ts';
 import { setCardRouting } from '../write/cardRouting.ts';
 import { activateManagedRootCards, launchWorkflowRun } from '../write/workflowRun.ts';
 import { defaultPreambleRunner } from '../write/preambleGate.ts';
@@ -197,6 +198,9 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (!stored.ok) return sendResult(reply, stored);
     if (stored.value.hash !== string(body.expectedHash)) return reply.code(409).send({ error: 'revision-mismatch' });
     if (stored.value.approval?.decision !== 'approved') return reply.code(409).send({ error: 'not-approved' });
+    // One ops transaction: reconcile, compile, publish cards + audit, activate. Nested transaction
+    // helpers (prepare/commit/audit/activate) reenter the held lock instead of deadlocking.
+    return withOpsTransaction(async () => {
     try {
       // Reconcile canonical ops before loading executable policy, routing, or running the post-pull
       // preamble. The launcher below receives no second pull hook, so approval checks and publication
@@ -444,6 +448,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       });
       return reply.code(500).send({ error: 'launch-reconciliation-required', detail: error instanceof Error ? error.message : String(error) });
     }
+    });
   });
 
   scope.get('/api/control/runs', { preHandler }, async (req, reply) => {
@@ -653,6 +658,8 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (!stored.ok || stored.value.hash !== initial.value.run.proposalHash) {
       return reply.code(409).send({ error: 'proposal-binding-lost' });
     }
+    // One ops transaction (nested audit/reconcile helpers reenter the held lock).
+    return withOpsTransaction(async () => {
     try { await prepareCoordination(ctx.repoRoot, ctx.opsGit ?? defaultGitRunner); }
     catch { return reply.code(409).send({ error: 'canonical-reconciliation-failed' }); }
     const parsed = validatePlanProposal(stored.value.snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
@@ -757,6 +764,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     } catch (error) {
       return reply.code(409).send({ error: 'projection-reconciliation-required', detail: error instanceof Error ? error.message : String(error) });
     }
+    });
   });
 
   scope.post('/api/control/runs/:runRef/manager/messages', { preHandler }, async (req, reply) => {
@@ -920,6 +928,12 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (!stored.ok || stored.value.hash !== detail.value.run.proposalHash || stored.value.approval?.decision !== 'approved') {
       return reply.code(409).send({ error: 'approved-proposal-binding-lost' });
     }
+    // Captured before the span closure: the handler's early activation gate proved it non-null, but
+    // control-flow narrowing does not cross the closure boundary.
+    const runAutomatic = ctx.runAutomatic;
+    if (!runAutomatic) return reply.code(409).send({ error: 'automatic-runtime-not-activated' });
+    // One ops transaction (nested audit/activation helpers reenter the held lock).
+    return withOpsTransaction(async () => {
     try {
       await prepareCoordination(ctx.repoRoot, ctx.opsGit ?? defaultGitRunner);
     } catch {
@@ -988,13 +1002,14 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
         error: 'canonical-activation-failed', detail: error instanceof Error ? error.message : String(error),
       });
     }
-    void ctx.runAutomatic({ subject: sub, runRef, proposal: proposal.value }).catch((error: unknown) => {
+    void runAutomatic({ subject: sub, runRef, proposal: proposal.value }).catch((error: unknown) => {
       ctx.controlStore.createHumanRequest(sub, runRef, {
         kind: 'intervention', title: 'Automatic execution needs intervention',
         prompt: error instanceof Error ? error.message : 'automatic execution adapter failed',
       });
     });
     return reply.code(202).send({ ok: true, value: detail.value.run, starting: true });
+    });
   });
 
   scope.post('/api/control/human-requests/:requestRef/respond', { preHandler }, async (req, reply) => {

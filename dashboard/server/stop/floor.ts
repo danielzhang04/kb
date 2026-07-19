@@ -40,7 +40,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { verifySession } from '../auth/session.ts';
 import type { SessionClaims, SessionConfig } from '../auth/session.ts';
-import { createAsyncGitRunner } from '../write/asyncGit.ts';
+import { createAsyncGitRunner, withOpsTransaction } from '../write/asyncGit.ts';
 import type { OpsGitRunner } from '../write/asyncGit.ts';
 
 /** The bearer session token plus the config needed to verify it (mirrors `launch.ts`'s shape). */
@@ -213,21 +213,25 @@ export async function requestStop(cardId: string, session: SessionInput, deps: F
   const gated = checkSession(session);
   if (!gated.ok) return gated;
 
-  const runPy = deps.runPy ?? defaultPyRunner;
-  const result = runPy(deps.repoRoot, STOP_CARD_SCRIPT, JSON.stringify({ cardId }));
-  if (result.exitCode !== 0) {
-    return { ok: false, reason: 'card-op-failed', detail: result.stderr.trim() || result.stdout.trim() };
-  }
-  const { id, path, state } = parseStopOpStdout(result.stdout);
+  // The card mutation and its ops commit are ONE transaction — another writer's pull/stage in between
+  // would sweep or refuse this card's change.
+  return withOpsTransaction(async () => {
+    const runPy = deps.runPy ?? defaultPyRunner;
+    const result = runPy(deps.repoRoot, STOP_CARD_SCRIPT, JSON.stringify({ cardId }));
+    if (result.exitCode !== 0) {
+      return { ok: false, reason: 'card-op-failed', detail: result.stderr.trim() || result.stdout.trim() };
+    }
+    const { id, path, state } = parseStopOpStdout(result.stdout);
 
-  await commitToOps(
-    deps.repoRoot,
-    [path],
-    `chore(stop): ${id} working -> stop-requested -> halting`,
-    deps.runGit ?? defaultOpsGitRunner,
-  );
+    await commitToOps(
+      deps.repoRoot,
+      [path],
+      `chore(stop): ${id} working -> stop-requested -> halting`,
+      deps.runGit ?? defaultOpsGitRunner,
+    );
 
-  return { ok: true, cardId: id, cardPath: path, state };
+    return { ok: true, cardId: id, cardPath: path, state };
+  });
 }
 
 export type PauseCadenceOutcome = { ok: true; path: string } | Unauthenticated;
@@ -242,14 +246,16 @@ export async function pauseCadence(name: string, session: SessionInput, deps: Fl
   const gated = checkSession(session);
   if (!gated.ok) return gated;
 
-  const relPath = `queue/paused/${name}`;
-  const abs = join(deps.repoRoot, 'queue', 'paused', name);
-  mkdirSync(dirname(abs), { recursive: true });
-  if (!existsSync(abs)) writeFileSync(abs, '', 'utf8');
+  return withOpsTransaction(async () => {
+    const relPath = `queue/paused/${name}`;
+    const abs = join(deps.repoRoot, 'queue', 'paused', name);
+    mkdirSync(dirname(abs), { recursive: true });
+    if (!existsSync(abs)) writeFileSync(abs, '', 'utf8');
 
-  await commitToOps(deps.repoRoot, [relPath], `chore(pause): ${name}`, deps.runGit ?? defaultOpsGitRunner);
+    await commitToOps(deps.repoRoot, [relPath], `chore(pause): ${name}`, deps.runGit ?? defaultOpsGitRunner);
 
-  return { ok: true, path: relPath };
+    return { ok: true, path: relPath };
+  });
 }
 
 /** One stop-ladder's timing + origin: when the `stop-requested` clock started, and (optionally) a

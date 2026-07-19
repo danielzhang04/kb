@@ -17,6 +17,7 @@ import type { OwnerRouting, PyRunner } from './launch.ts';
 import { assertFleetRunnable, defaultPreambleRunner } from './preambleGate.ts';
 import type { PreambleRunner } from './preambleGate.ts';
 import { commitPreparedCoordination, defaultGitRunner, prepareCoordination, type GitRunner } from './branch.ts';
+import { withOpsTransaction } from './asyncGit.ts';
 
 export const MAX_WORKFLOW_STAGES = 32;
 
@@ -158,6 +159,7 @@ export async function activateManagedRootCards(options: ManagedRootActivationOpt
   }
   const runGit = options.runGit ?? defaultGitRunner;
   const runPy = options.runPy ?? defaultPyRunner;
+  return withOpsTransaction(async () => {
   await prepareCoordination(options.repoRoot, runGit);
   options.authorizeAfterPrepare?.();
   const staged = (await runGit(options.repoRoot, ['diff', '--cached', '--name-only', '-z']))
@@ -199,6 +201,7 @@ export async function activateManagedRootCards(options: ManagedRootActivationOpt
     if (committed !== current) throw new Error(`committed managed card differs from canonical path '${path}'`);
   }
   return { replayed: !changed, cardPaths };
+  });
 }
 
 /** Stable per-run/stage card identity permits exact crash reconciliation without trusting filenames. */
