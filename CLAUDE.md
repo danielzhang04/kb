@@ -5,7 +5,11 @@ Binding on every agent (Claude, Codex, Gemini, scripted) in this repo. Mirrored 
 ## Shared preamble — run before ANY loop or task
 Run `python scripts/preamble.py` from repo root. If it fails, STOP and emit a wake-me card. It checks:
 1. `STOP` file absent (present = fleet frozen; halt immediately)
-2. `ANTHROPIC_API_KEY` unset (subscription billing only)
+2. `ANTHROPIC_API_KEY` unset in fleet agent environments (subscription billing only).
+   Exception (2026-07-19): the Atlas voice worker process may hold a spend-capped key in
+   its OWN process environment only — loaded from outside the repo, never printed,
+   persisted, copied, or exported to any fleet agent; spend ledgered to
+   `ledgers/cost/atlas-*.tsv` under the daily budget guard.
 3. Daily budget not exceeded (`governance/budget.yaml` vs today's cost ledger)
 
 ## Branch rules
