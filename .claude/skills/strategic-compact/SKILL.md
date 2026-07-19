@@ -3,7 +3,8 @@ name: strategic-compact
 description: Compact context manually at logical task boundaries in a kb session rather than letting arbitrary auto-compaction fire mid-task. Covers when to compact, how to read true context size from the transcript, and what survives a compaction in kb terms (cards, ## Result, memory files, and ops ledgers persist; the conversation does not).
 source: ecc@2.0.0/skills/strategic-compact/SKILL.md
 imported: 2026-07-19
-provenance-tier: imported
+provenance-tier: curated
+promoted: 2026-07-19 (Daniel §6 read-through)
 ---
 
 # Strategic Compact

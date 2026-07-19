@@ -7,3 +7,4 @@ Generated from skills/curated/ by scripts/sync_skills.py — do not hand-edit.
 - inspector
 - loop-design-check
 - multi-source-synthesis
+- strategic-compact
