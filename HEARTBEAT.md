@@ -5,6 +5,7 @@ cadences:
   - name: nightly-review
     schedule: daily
     tier: cloud
+    agent: dispatcher-cloud
     risk-tier: T1
     prompt: |
       1. Run: python scripts/preamble.py  — if it fails, stop and write a wake-me card
@@ -17,6 +18,7 @@ cadences:
   - name: weekly-audit
     schedule: weekly:sat
     tier: cloud
+    agent: dispatcher-cloud
     risk-tier: T1
     prompt: |
       Inspect the whole system: every declared cadence ran this week (dispatch ledgers) or
