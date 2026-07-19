@@ -1,4 +1,4 @@
-# atlas-prep — index
+# atlas — index
 
 - [STATE](STATE.md) — current state (agents keep this current)
 - [contract](contract.md) — autonomy policy for this project
