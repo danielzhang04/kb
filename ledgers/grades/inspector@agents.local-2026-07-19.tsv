@@ -7,3 +7,4 @@ card_id	inspector_id	pass	project	rubric_version	score	task_type	tier	ts	worker
 6a5c7274-66ef6fc3	inspector@agents.local	True	kb-ops	inspector-v1	97	import strategic-compact skill	T2	2026-07-19T07:49:00.508438+00:00	worker-desktop
 6a5c7274-b9f0cdd3	inspector@agents.local	True	kb-ops	inspector-v1	96	adopt save-session handoff template for memory/ resume notes	T2	2026-07-19T07:49:41.224362+00:00	worker-desktop
 6a5c7274-8aab49a8	inspector@agents.local	True	kb-ops	inspector-v1	95	retarget GateGuard destructive-command classifier to kb	T2	2026-07-19T07:56:32.901974+00:00	worker-desktop
+6a5c7274-01b96f4e	inspector@agents.local	True	kb-ops	inspector-v1	96	import config-protection hook for governance/+CLAUDE.md	T2	2026-07-19T08:03:46.990560+00:00	worker-desktop
