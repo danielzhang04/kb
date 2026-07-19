@@ -25,3 +25,9 @@
 
 ### Related
 - Wave state 2026-07-19 FINAL: wave-1 (5 cards) + wave-2 builds (W2.1 hard-ceiling guard 95, W2.2 config-protection 96, W2.3 strategic-compact 97, W2.4 save-session 96) all done + graded PASS T2 on claude/ecc-import-w1 (17 commits, head e78adec); 341 tests green; reconcile clean twice (authorship fixed via Daniel-approved inspector-authored re-emission d75241f; all later grade commits inspector-authored). Promoted to curated: loop-design-check, growth-log, strategic-compact. W2.5 flip deferred pending post-merge soak (card in inbox). PENDING: save-session read-through, Daniel merge of claude/ecc-import-w1.
+
+## 2026-07-19 — atlas V0 wave (paused mid-wave)
+- What worked: SDD pattern (fresh implementer + fresh reviewer per task, model self-report + orchestrator verification) over the carded plan; kbmcp package rename decided at plan time avoided the mcp SDK shadow entirely; pausing BEFORE Task 6 rather than writing speculative LiveKit code — its app.py wiring depends on the live pairing-smoke verdict (livekit/agents#2519).
+- What failed: auto-mode classifier rightly blocked orchestrator ratifying Daniel's own spend-authorization marker — human-authorization edits stay human even when chat-approved. Signal to recognize: any edit that removes a PENDING-RATIFICATION/approval marker → hand back to Daniel with exact steps, don't retry variants.
+- Next time I see a pull-rebase fail with "unstaged changes" in dashboard-ops, I will stash/pop around it — a pre-existing HEARTBEAT.md modification lives there (not atlas's; never revert).
+- Remains: gates 3+4 (key, vendor accounts), Task 5 live smoke + card close/grade, Tasks 6-8, wave close + PR. Resume map: docs/plans/2026-07-19-atlas-v0-HANDOFF.md on claude/atlas.
