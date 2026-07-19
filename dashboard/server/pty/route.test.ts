@@ -327,6 +327,34 @@ describe('handlePtyConnection in-process PTY relay', () => {
     expect(h.host.resizes).toContainEqual({ cols: 121, rows: 42 });
   });
 
+  it('buffers shell output emitted during the async opened-audit and flushes it after the audit commits', async () => {
+    // The audit is a full ops-git transaction now: the await yields the event loop AFTER the shell
+    // spawned. node-pty never replays output for a late subscriber, so the banner/first prompt emitted
+    // during that window must be buffered and delivered — not dropped (live regression: blank terminal).
+    const h = harness();
+    let releaseAudit!: () => void;
+    const auditGate = new Promise<void>((resolve) => { releaseAudit = resolve; });
+    const rows: unknown[] = [];
+    const slowAudit: PtyRouteContext['appendAudit'] = async (_root, event) => {
+      rows.push(event);
+      await auditGate;
+      return { ts: 'now', ...event };
+    };
+    const slow = harness({ host: h.host, appendAudit: slowAudit });
+    const ws = fakeSocket();
+    const connection = handlePtyConnection(ws.sock, req(GOOD_HEADERS(validToken('operator-early'))), slow.ctx);
+    // Let the handler reach the audit await, then emit startup output while the audit is still pending.
+    await Promise.resolve();
+    h.host.emitData('PS C:\\kb> ');
+    expect(ws.sent).not.toContain('PS C:\\kb> ');
+    releaseAudit();
+    await connection;
+    expect(ws.sent).toContain('PS C:\\kb> ');
+    // Post-audit output flows directly, after the flushed backlog.
+    h.host.emitData('live');
+    expect(ws.sent.indexOf('PS C:\\kb> ')).toBeLessThan(ws.sent.indexOf('live'));
+  });
+
   it('explicit socket close kills exactly that PTY, releases its slot, and never adds a second audit row', async () => {
     const concurrency = { active: 0 };
     const h = harness({ concurrency });

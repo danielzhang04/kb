@@ -238,6 +238,23 @@ export async function handlePtyConnection(
     teardown();
   });
 
+  // Attach the output listener BEFORE the audit await: node-pty never replays output for a late
+  // subscriber, and the async audit below yields the event loop for a full ops-git transaction — the
+  // shell's banner and first prompt arrive during that window and would be dropped forever (observed
+  // live as a permanently blank terminal). Output is buffered (bounded) until the audit row commits,
+  // preserving fail-closed: nothing reaches the browser unless the open was audited.
+  let auditedOpen = false;
+  const preAuditChunks: string[] = [];
+  let preAuditBytes = 0;
+  ptySession.handle.onData((chunk: string) => {
+    if (auditedOpen) {
+      if (socket.readyState === socket.OPEN) socket.send(chunk);
+      return;
+    }
+    preAuditBytes += chunk.length;
+    if (preAuditBytes <= 1_000_000) preAuditChunks.push(chunk);
+  });
+
   // Opening the shell completes the consequential action. If its audit cannot be recorded, fail closed:
   // reap the already-live PTY, release its reserved slot, close the WS, and contain the exception here.
   try {
@@ -250,10 +267,13 @@ export async function handlePtyConnection(
     }
     return;
   }
-
-  ptySession.handle.onData((chunk: string) => {
+  // Synchronous flag-then-flush: no await between these lines, so ordering is exact — buffered startup
+  // output first, then live chunks.
+  auditedOpen = true;
+  for (const chunk of preAuditChunks) {
     if (socket.readyState === socket.OPEN) socket.send(chunk);
-  });
+  }
+  preAuditChunks.length = 0;
 
   // Browser → shell: a `{type:'resize'}` control frame resizes the PTY; every other message is raw stdin.
   socket.on('message', (data: unknown) => {
