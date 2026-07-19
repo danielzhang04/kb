@@ -9,6 +9,7 @@ import { makeSurfaceContext, registerWriteSurface } from '../http/surface.ts';
 import type { AuditEvent, AuditRow } from '../audit/log.ts';
 import type { GitRunner } from './branch.ts';
 import type { PyRunner } from './launch.ts';
+import { workflowCardId } from './workflowRun.ts';
 
 const CONFIG = {
   secret: Buffer.from('workflow-route-test-secret-01234567'),
@@ -66,13 +67,15 @@ describe('POST /api/write/workflow-runs', () => {
     const py: PyRunner = (_repo, _code, jsonArg) => {
       order.push('cards.py');
       const payload = JSON.parse(jsonArg) as { runId: string };
+      const researchCard = workflowCardId(payload.runId, 'research');
+      const draftCard = workflowCardId(payload.runId, 'draft');
       return {
         exitCode: 0,
         stdout: JSON.stringify({
           runId: payload.runId,
           cards: [
-            { stageId: 'research', cardId: 'research-card', state: 'inbox', cardPath: 'queue/inbox/research-card.md' },
-            { stageId: 'draft', cardId: 'draft-card', state: 'blocked', cardPath: 'queue/inbox/draft-card.md' },
+            { stageId: 'research', cardId: researchCard, state: 'inbox', cardPath: `queue/inbox/${researchCard}.md` },
+            { stageId: 'draft', cardId: draftCard, state: 'blocked', cardPath: `queue/inbox/${draftCard}.md` },
           ],
         }),
         stderr: '',
@@ -103,11 +106,12 @@ describe('POST /api/write/workflow-runs', () => {
     });
 
     expect(response.statusCode).toBe(200);
+    const cards = response.json().cards as Array<{ stageId: string; cardId: string; state: string }>;
     expect(response.json()).toMatchObject({
       ok: true,
       cards: [
-        { stageId: 'research', cardId: 'research-card', state: 'inbox' },
-        { stageId: 'draft', cardId: 'draft-card', state: 'blocked' },
+        { stageId: 'research', cardId: expect.stringMatching(/^wf-[a-f0-9]{24}$/), state: 'inbox' },
+        { stageId: 'draft', cardId: expect.stringMatching(/^wf-[a-f0-9]{24}$/), state: 'blocked' },
       ],
     });
     const pull = order.indexOf('git:pull --rebase origin ops');
@@ -117,7 +121,7 @@ describe('POST /api/write/workflow-runs', () => {
     expect(pull).toBeLessThan(cardWrite);
     expect(cardWrite).toBeLessThan(audit);
     expect(audit).toBeLessThan(add);
-    expect(order[add]).toBe('git:add -- queue/inbox/research-card.md queue/inbox/draft-card.md ledgers/audit/dashboard-audit.ndjson');
+    expect(order[add]).toBe(`git:add -- queue/inbox/${cards[0].cardId}.md queue/inbox/${cards[1].cardId}.md ledgers/audit/dashboard-audit.ndjson`);
     expect(order.filter((entry) => entry.startsWith('git:commit '))).toHaveLength(1);
     expect(order.filter((entry) => entry === 'git:push origin ops')).toHaveLength(1);
     expect(auditRows).toHaveLength(1);

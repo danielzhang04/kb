@@ -50,6 +50,10 @@ export interface CardRoutingDeps {
   appendAudit?: LocalAuditAppend;
   now?: () => Date;
   loadPolicyFn?: (repoRoot: string) => PolicyDoc;
+  /** Server-internal authority for a managed stage whose assigned inbox card is proven not started. */
+  managedAssignedInbox?: { workflowRef: string };
+  /** Re-run caller-specific CAS and executable policy after canonical ops reconciliation. */
+  authorizeAfterReconcile?: () => Extract<CardRoutingOutcome, { ok: false }> | null;
 }
 
 export type CardRoutingOutcome =
@@ -60,7 +64,8 @@ export type CardRoutingOutcome =
       reason: string;
       error?: string;
       state?: string;
-      disposition?: 'requires-successor-attempt' | 'requires-reapproval' | 'state-not-reroutable';
+      disposition?: 'requires-successor-attempt' | 'requires-reapproval' | 'state-not-reroutable'
+        | 'plan-amendment-required' | 'successor-attempt-required' | 'immutable';
     };
 
 /**
@@ -223,13 +228,25 @@ function symlinkGuard(repoRoot: string, cardId: string): string | null {
  * refused before we read here) and the read-side `parseCardFrontmatter`. Returns null when the card is
  * absent (the py path then reports not-found itself) or its frontmatter is unparseable (let py handle it).
  */
-function routingLifecycleGuard(repoRoot: string, cardId: string): RoutingLifecycleLock | null {
+function routingLifecycleGuard(
+  repoRoot: string,
+  cardId: string,
+  managedAssignedInbox?: { workflowRef: string },
+): RoutingLifecycleLock | null {
   const queueRoot = join(repoRoot, 'queue');
   if (!existsSync(queueRoot)) return null;
   const found = findCardFile(queueRoot, cardId);
   if (!found) return null;
   try {
     const meta = parseCardFrontmatter(readFileSync(found, 'utf-8')).meta;
+    if (managedAssignedInbox && String(meta.state) === 'inbox') {
+      if (meta.owner && meta.id === cardId && meta.workflow === managedAssignedInbox.workflowRef) return null;
+      return {
+        state: 'inbox',
+        disposition: 'requires-successor-attempt',
+        reason: 'managed reroute authority did not match the exact assigned canonical card and workflow',
+      };
+    }
     return lifecycleLock(String(meta.state), meta.owner);
   } catch {
     return null;
@@ -296,7 +313,7 @@ async function apply(
   // pre-py refusal above, this does NO write, NO ops commit, and NO audit append: the house convention
   // (governedSave/launch FINDING 3) is that refused writes never amplify into an ops pull-rebase-push,
   // so there is nothing consequential to record.
-  const lifecycle = routingLifecycleGuard(input.repoRoot, input.cardId);
+  const lifecycle = routingLifecycleGuard(input.repoRoot, input.cardId, deps.managedAssignedInbox);
   if (lifecycle) {
     return {
       ok: false,
@@ -307,6 +324,8 @@ async function apply(
       disposition: lifecycle.disposition,
     };
   }
+  const authorization = deps.authorizeAfterReconcile?.();
+  if (authorization) return authorization;
 
   const runPy = deps.runPy ?? defaultPyRunner;
   const result = runPy(input.repoRoot, CARD_ROUTING_SCRIPT, JSON.stringify({ kind: op, cardId: input.cardId, runtime, model }));

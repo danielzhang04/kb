@@ -14,6 +14,7 @@ import { Approvals } from './Approvals';
 import type { ApprovalChannel } from './Approvals';
 import { useSse } from '../lib/sseClient';
 import { fetchHumanInbox, verifyApproval, type FetchLike } from '../lib/approvalsClient';
+import { HumanRequestsPanel } from '../control/HumanRequestsPanel';
 
 export interface ApprovalsLiveProps {
   /** The WebAuthn-minted session bearer (from `authClient.signIn`), if the dashboard is unlocked. */
@@ -107,6 +108,7 @@ export function ApprovalsLive({
         </p>
       ) : null}
       <Approvals items={items} onVerify={onVerify} />
+      <HumanRequestsPanel sessionToken={sessionToken} onRequestSession={onRequestSession} fetchImpl={fetchImpl} />
     </section>
   );
 }

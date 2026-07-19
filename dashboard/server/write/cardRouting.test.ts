@@ -205,7 +205,7 @@ describe('setCardRouting — governed write via scripts/cards.py + ops commit', 
 
 describe('setCardRouting — lifecycle guard', () => {
   /** Pre-plant an existing card so the lifecycle guard reads authoritative state + ownership. */
-  function plant(cardId: string, state: string, dir: string, owner: string | null = 'claude/ops'): void {
+  function plant(cardId: string, state: string, dir: string, owner: string | null = 'claude/ops', workflow?: string): void {
     const d = join(repo, 'queue', dir);
     mkdirSync(d, { recursive: true });
     const fm = [
@@ -218,6 +218,7 @@ describe('setCardRouting — lifecycle guard', () => {
       'role: work',
       'runtime: null',
       'model: null',
+      ...(workflow ? [`workflow: ${workflow}`] : []),
     ].join('\n');
     writeFileSync(join(d, `${cardId}.md`), `---\n${fm}\n---\n\n## Work order\n\nx\n`, 'utf-8');
   }
@@ -328,6 +329,45 @@ describe('setCardRouting — lifecycle guard', () => {
       expect(r.reason).toMatch(/may already have been picked up/i);
     }
     expect(seen).toHaveLength(0);
+  });
+
+  it('allows only the exact managed workflow authority to reroute its assigned inbox card', async () => {
+    plant('card-managed', 'inbox', 'inbox', 'codex-worker', 'run-managed');
+    const seen: { code: string; op: any }[] = [];
+    const allowed = await setCardRouting(
+      { repoRoot: repo, cardId: 'card-managed', sessionToken: token(), sessionConfig: CONFIG },
+      { runtime: 'codex', model: 'gpt-5-codex' },
+      {
+        runPy: fakePy(seen), runGit: recorder().runner, appendAudit: noAudit,
+        managedAssignedInbox: { workflowRef: 'run-managed' },
+      },
+    );
+    expect(allowed.ok).toBe(true);
+    expect(seen).toHaveLength(1);
+
+    plant('card-other-run', 'inbox', 'inbox', 'codex-worker', 'run-other');
+    const refusedSeen: { code: string; op: any }[] = [];
+    const refused = await setCardRouting(
+      { repoRoot: repo, cardId: 'card-other-run', sessionToken: token(), sessionConfig: CONFIG },
+      { runtime: 'codex', model: 'gpt-5-codex' },
+      {
+        runPy: fakePy(refusedSeen), runGit: recorder().runner, appendAudit: noAudit,
+        managedAssignedInbox: { workflowRef: 'run-managed' },
+      },
+    );
+    expect(refused).toMatchObject({ ok: false, status: 409, disposition: 'requires-successor-attempt' });
+    expect(refusedSeen).toHaveLength(0);
+
+    plant('card-unassigned', 'inbox', 'inbox', null, 'run-managed');
+    const unassigned = await setCardRouting(
+      { repoRoot: repo, cardId: 'card-unassigned', sessionToken: token(), sessionConfig: CONFIG },
+      { runtime: 'codex', model: 'gpt-5-codex' },
+      {
+        runPy: fakePy([]), runGit: recorder().runner, appendAudit: noAudit,
+        managedAssignedInbox: { workflowRef: 'run-managed' },
+      },
+    );
+    expect(unassigned).toMatchObject({ ok: false, status: 409, disposition: 'requires-successor-attempt' });
   });
 
   it.each(['working', 'stop-requested', 'halting'])(

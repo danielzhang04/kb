@@ -365,7 +365,7 @@ describe('launchCard — C7.7 task-owner assignment (closed-set owner + resolver
 // C7.9 — defaultOwnerRouting: an assigned owner is stamped with its DECLARED    //
 // runtime/model when no explicit agent-scope override sets that field.          //
 // Precedence: agent-scope override > declared agent runtime/model >             //
-//             policy role_default > safe default.                               //
+//             registered default_worker runtime > policy role_default > default.//
 // --------------------------------------------------------------------------- //
 
 /** A full policy: claude (3 known) + codex (1 known: gpt-5.6-sol). Mirrors governance/model-routing.yaml. */
@@ -429,6 +429,11 @@ function makeRoutingRepo(opts: { policy: string; agents?: Record<string, string>
 }
 
 describe('defaultOwnerRouting — C7.9 declared-agent self-stamp precedence', () => {
+  it('registered codex default_worker without an agent file stamps codex and its default known model', () => {
+    const root = makeRoutingRepo({ policy: POLICY_YAML });
+    expect(defaultOwnerRouting('codex-worker', root)).toEqual({ runtime: 'codex', model: 'gpt-5.6-sol' });
+  });
+
   it('codex agent, no override → stamps the declared codex runtime + its default known model (gpt-5.6-sol)', () => {
     const root = makeRoutingRepo({
       policy: POLICY_YAML,
@@ -468,6 +473,14 @@ overrides:
       override,
     });
     expect(defaultOwnerRouting('codex-worker', root)).toEqual({ runtime: 'claude', model: 'claude-opus-4-8' });
+  });
+
+  it('declared runtime wins when an agent id is also registered as another runtime default_worker', () => {
+    const root = makeRoutingRepo({
+      policy: POLICY_YAML,
+      agents: { 'codex-worker.md': agentFile({ id: 'codex-worker', role: 'work', runtime: 'claude' }) },
+    });
+    expect(defaultOwnerRouting('codex-worker', root)).toEqual({ runtime: 'claude', model: 'claude-sonnet-5' });
   });
 
   it('declared agent that declares an explicit KNOWN model → that model is honored (not clamped to [0])', () => {

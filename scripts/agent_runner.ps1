@@ -199,7 +199,11 @@ if queue_root.exists():
                 card = cards.parse(path)
             except Exception:
                 continue
-            if card.meta.get("owner") == agent and card.meta.get("state") in ("inbox", "working"):
+            # Dashboard-managed cards are owned exclusively by the governed execution engine.
+            # Legacy runners must never pick them up, even after canonical activation releases them.
+            if (card.meta.get("execution-controller") != "dashboard"
+                    and card.meta.get("owner") == agent
+                    and card.meta.get("state") in ("inbox", "working")):
                 owned.append({"id": card.meta["id"], "path": str(path)})
 print(json.dumps(owned))
 '@ $Agent | Out-String).Trim()

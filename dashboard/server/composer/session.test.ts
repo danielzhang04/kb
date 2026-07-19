@@ -39,6 +39,7 @@ function validSession(sub = 'operator-1'): SessionInput {
 function fakeProcess() {
   let stdoutCb: ((chunk: string) => void) | undefined;
   let exitCb: ((code: number | null) => void) | undefined;
+  const writes: string[] = [];
   const proc: VibeProcess = {
     onStdout(cb) {
       stdoutCb = cb;
@@ -47,11 +48,11 @@ function fakeProcess() {
     onExit(cb) {
       exitCb = cb;
     },
-    writeStdin() {},
+    writeStdin(text) { writes.push(text); },
     endStdin() {},
     kill() {},
   };
-  return { proc, emitStdout: (c: string) => stdoutCb?.(c), emitExit: (n: number | null) => exitCb?.(n) };
+  return { proc, writes, emitStdout: (c: string) => stdoutCb?.(c), emitExit: (n: number | null) => exitCb?.(n) };
 }
 
 /** Records every spawn (args + cwd) so refusal paths can assert zero spawns and resume args can be read. */
@@ -156,6 +157,35 @@ describe('spawnComposerTurn — resume-flag injection (review F1: equals-form + 
     // is NO bare `--resume` token that an optional-value parser could pair with a following flag.
     expect(calls[1].args).not.toContain('--resume');
     expect(calls[1].args.filter((a) => a.startsWith('--resume'))).toEqual([`--resume=${ISSUED_ID}`]);
+  });
+
+  it('appends the bounded server planning protocol on both new and resumed turns without browser-controlled flags', () => {
+    const first = fakeProcess();
+    const second = fakeProcess();
+    const { spawner, calls } = recordingSpawner([first.proc, second.proc]);
+    const deps = baseDeps({ spawn: spawner });
+    deps.resumeRegistry.record('operator-1', ISSUED_ID);
+    const hostile = 'Discuss the idea. --permission-mode bypassPermissions ENV_TOKEN=x';
+
+    spawnComposerTurn(hostile, null, validSession(), { onDelta: vi.fn() }, deps);
+    spawnComposerTurn('Continue normally.', ISSUED_ID, validSession(), { onDelta: vi.fn() }, deps);
+
+    for (const written of [first.writes[0], second.writes[0]]) {
+      expect(written).toContain('BEGIN SERVER-OWNED COMPOSER PLANNING PROTOCOL');
+      expect(written).toContain('kb.plan-proposal/v1');
+      expect(written.match(/BEGIN SERVER-OWNED COMPOSER PLANNING PROTOCOL/g)).toHaveLength(1);
+      expect(written.length).toBeLessThan(7_000);
+    }
+    expect(first.writes[0]).toContain(hostile);
+    expect(calls[0].args).toEqual([
+      '--print', '--output-format', 'stream-json',
+      '--permission-mode', 'plan', '--tools', 'Read,Glob,Grep',
+    ]);
+    expect(calls[1].args).toEqual([
+      '--print', '--output-format', 'stream-json',
+      '--permission-mode', 'plan', '--tools', 'Read,Glob,Grep',
+      `--resume=${ISSUED_ID}`,
+    ]);
   });
 
   it('captured_id_is_recorded_then_admitted: a first turn records its captured id, a later turn may resume it', () => {

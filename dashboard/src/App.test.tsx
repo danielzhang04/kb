@@ -9,6 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react';
 import { App } from './App';
+import { invalidateSessionOnGovernedAuthFailure } from './lib/authClient';
 
 beforeEach(() => {
   window.sessionStorage.clear();
@@ -96,6 +97,24 @@ describe('App shell — entity-first sidebar navigation', () => {
 
     expect(screen.getByTestId('session-state').textContent).toMatch(/dashboard unlocked/i);
     expect(screen.queryByRole('button', { name: 'Unlock dashboard' })).toBeNull();
+  });
+
+  it('drops an in-memory saved session after a governed bad-signature response', async () => {
+    window.sessionStorage.setItem(
+      'kb-dashboard-session-v1',
+      JSON.stringify({ token: 'rotated-secret-token', expiresAt: Date.now() + 60_000 }),
+    );
+    render(<App />);
+    expect(screen.getByTestId('session-state').textContent).toMatch(/dashboard unlocked/i);
+
+    await invalidateSessionOnGovernedAuthFailure(new Response(JSON.stringify({
+      error: 'unauthenticated',
+      reason: 'bad-signature',
+    }), { status: 401, headers: { 'content-type': 'application/json' } }));
+
+    await waitFor(() => expect(screen.getByTestId('session-state').textContent).toMatch(/dashboard locked/i));
+    expect(window.sessionStorage.getItem('kb-dashboard-session-v1')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Unlock dashboard' })).toBeTruthy();
   });
 
   it('lays the sidebar out as a full-height column: [+ New] header, scrollable nav, pinned floor last', () => {

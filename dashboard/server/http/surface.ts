@@ -31,6 +31,8 @@ import { createProviderIdProtector } from '../composer/protector.ts';
 import { createFileComposerStore, resolveDashboardStateRoot } from '../composer/store.ts';
 import { registerApprovalsRoutes } from '../approvals/routes.ts';
 import { drainVibeProcesses } from '../vibe/session.ts';
+import { createFileControlPlaneStore } from '../control/store.ts';
+import { registerControlRoutes } from '../control/routes.ts';
 
 /** dashboard/server/http/surface.ts -> ../../../ is the repo root. Overridable via env / tests. */
 export function resolveRepoRoot(): string {
@@ -73,6 +75,10 @@ export function makeSurfaceContext(overrides: Partial<SurfaceContext> = {}): Sur
       createFileComposerStore(resolveDashboardStateRoot(), {
         protector: createProviderIdProtector(sessionConfig.secret),
       }),
+    controlStore: overrides.controlStore ?? createFileControlPlaneStore(resolveDashboardStateRoot()),
+    controlBroker: overrides.controlBroker,
+    runAutomatic: overrides.runAutomatic,
+    cancelAutomatic: overrides.cancelAutomatic,
     triggerRunner: overrides.triggerRunner,
   };
 }
@@ -82,6 +88,7 @@ export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext =
   // preClose runs before Fastify waits for long-lived streaming requests to finish. Draining in
   // onClose would deadlock shutdown behind the very Composer children it was meant to stop.
   app.addHook('preClose', async () => {
+    ctx.controlBroker?.drain();
     drainVibeProcesses();
   });
   app.register(async (scope) => {
@@ -93,6 +100,7 @@ export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext =
     registerWriteRoutes(scope, ctx);
     registerVibeRoutes(scope, ctx);
     registerComposerRoutes(scope, ctx);
+    registerControlRoutes(scope, ctx);
     registerApprovalsRoutes(scope, ctx);
   });
 }

@@ -11,7 +11,7 @@
  */
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import type { Session } from '../lib/authClient';
+import { invalidateSessionOnGovernedAuthFailure, type Session } from '../lib/authClient';
 
 type Variant = 'control' | 'home';
 
@@ -129,6 +129,7 @@ export function LaunchControls({
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
         body: JSON.stringify(payload),
       });
+      await invalidateSessionOnGovernedAuthFailure(res);
       const data = (await res.json()) as {
         cardId?: string;
         reason?: string;
@@ -162,6 +163,7 @@ export function LaunchControls({
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
         body: JSON.stringify({ cardId: rerunCardId, feedback }),
       });
+      await invalidateSessionOnGovernedAuthFailure(res);
       const data = (await res.json()) as { cardId?: string; reason?: string };
       setRerunStatus(
         res.ok ? `filed ${data.cardId} depends-on ${rerunCardId}` : `refused: ${data.reason ?? res.status}`,

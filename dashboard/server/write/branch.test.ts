@@ -1,10 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   classifyTarget,
   routeWrite,
   isProtectedBranch,
   ProtectedBranchError,
   CoordinationCheckoutError,
+  DirtyIndexError,
   prepareCoordination,
   commitPreparedCoordination,
   DEFAULT_WORK_BRANCH,
@@ -61,9 +62,11 @@ describe('routeWrite — durable content (skills/**, docs/**, KB markdown)', () 
     expect(target).toBe('durable');
 
     // Staged the exact relpath, committed, pushed the work branch — never `git add .`.
-    expect(calls[0]).toEqual(['add', '--', 'skills/curated/alpha-skill/SKILL.md']);
-    expect(calls[1][0]).toBe('commit');
-    expect(calls[1]).not.toContain('--no-verify');
+    expect(calls[0]).toEqual(['diff', '--cached', '--name-only', '-z']);
+    expect(calls[1]).toEqual(['add', '--', 'skills/curated/alpha-skill/SKILL.md']);
+    expect(calls[2][0]).toBe('commit');
+    expect(calls[2]).toContain('--only');
+    expect(calls[2]).not.toContain('--no-verify');
 
     const pushCalls = calls.filter((c) => c[0] === 'push');
     expect(pushCalls).toHaveLength(1);
@@ -135,6 +138,7 @@ describe('routeWrite — coordination files (queue/**, ledgers/**, traces/**, au
       'rev-parse --abbrev-ref',
       'pull --rebase',
       'rev-parse --abbrev-ref',
+      'diff --cached',
       'add --',
       'commit -m',
       'push origin',
@@ -142,8 +146,21 @@ describe('routeWrite — coordination files (queue/**, ledgers/**, traces/**, au
     expect(calls[0]).toEqual(['rev-parse', '--abbrev-ref', 'HEAD']);
     expect(calls[1]).toEqual(['pull', '--rebase', 'origin', 'ops']);
     expect(calls[2]).toEqual(['rev-parse', '--abbrev-ref', 'HEAD']);
-    expect(calls[3]).toEqual(['add', '--', 'queue/inbox/card-new.md']);
-    expect(calls[5]).toEqual(['push', 'origin', 'ops']);
+    expect(calls[3]).toEqual(['diff', '--cached', '--name-only', '-z']);
+    expect(calls[4]).toEqual(['add', '--', 'queue/inbox/card-new.md']);
+    expect(calls[6]).toEqual(['push', 'origin', 'ops']);
+  });
+
+  it('refuses pre-existing staged residue before adding or committing governed paths', () => {
+    const calls: string[][] = [];
+    const runner: GitRunner = (_repoRoot, args) => {
+      calls.push(args);
+      if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      if (args.join(' ') === 'diff --cached --name-only -z') return 'queue/inbox/stale.md\0';
+      return '';
+    };
+    expect(() => routeWrite('/fake/repo', 'queue/inbox/new.md', { runGit: runner })).toThrow(DirtyIndexError);
+    expect(calls.some((call) => call[0] === 'add' || call[0] === 'commit')).toBe(false);
   });
 
   it('re-reads (pull --rebase) and retries when the ops push is rejected', () => {
@@ -172,6 +189,34 @@ describe('routeWrite — coordination files (queue/**, ledgers/**, traces/**, au
     const { opener, requests } = prRecorder();
     routeWrite('/fake/repo', 'traces/card-x/index.html', { runGit: runner, openPr: opener });
     expect(requests).toHaveLength(0);
+  });
+
+  it('re-runs caller authorization after a rejected push reconciles a newer ops head', () => {
+    let pushes = 0;
+    const onReconciled = vi.fn();
+    const runner: GitRunner = (_repoRoot, args) => {
+      if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      if (args[0] === 'push' && pushes++ === 0) throw new Error('rejected');
+      return '';
+    };
+    commitPreparedCoordination('/fake/repo', 'queue/inbox/card.md', { runGit: runner, onReconciled });
+    expect(onReconciled).toHaveBeenCalledTimes(1);
+  });
+
+  it('can refuse a rejected push without rebasing a stale prepared coordination commit', () => {
+    const calls: string[][] = [];
+    const runner: GitRunner = (_repoRoot, args) => {
+      calls.push(args);
+      if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      if (args[0] === 'push') throw new Error('non-fast-forward');
+      return '';
+    };
+    expect(() => commitPreparedCoordination('/fake/repo', 'queue/inbox/card.md', {
+      runGit: runner,
+      maxRetryPushes: 0,
+    })).toThrow('non-fast-forward');
+    expect(calls.filter((call) => call[0] === 'push')).toHaveLength(1);
+    expect(calls.some((call) => call[0] === 'pull')).toBe(false);
   });
 
   it('fails closed on a non-ops or detached checkout before pull, add, commit, or push', () => {

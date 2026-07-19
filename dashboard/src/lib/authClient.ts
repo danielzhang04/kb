@@ -29,6 +29,8 @@ export interface Session {
  * not a closed tab, keeping the convenience window narrower than a durable `localStorage` login.
  */
 export const SESSION_STORAGE_KEY = 'kb-dashboard-session-v1';
+/** Token-free browser signal used to keep App memory in sync with tab storage after a governed 401. */
+export const SESSION_INVALIDATED_EVENT = 'kb-dashboard-session-invalidated';
 
 type SessionStore = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
@@ -94,6 +96,37 @@ export function clearStoredSession(store: SessionStore | null = browserSessionSt
   } catch {
     // Treat storage cleanup as best-effort; App state is still cleared synchronously.
   }
+}
+
+function signalSessionInvalidated(): void {
+  try {
+    if (typeof window !== 'undefined') window.dispatchEvent(new Event(SESSION_INVALIDATED_EVENT));
+  } catch {
+    // Storage is already cleared. A restricted browser event surface must not preserve the stale bearer.
+  }
+}
+
+/**
+ * Drop a saved bearer when a governed endpoint reports that it is no longer authentic. The response is
+ * cloned before inspection so callers can still consume its refusal body. The signal intentionally has
+ * no detail payload: session tokens and server response bodies never ride browser events.
+ */
+export async function invalidateSessionOnGovernedAuthFailure(response: Response): Promise<boolean> {
+  if (response.status !== 401 || typeof response.clone !== 'function') return false;
+  let body: { error?: unknown; reason?: unknown; detail?: unknown };
+  try {
+    body = (await response.clone().json()) as { error?: unknown; reason?: unknown; detail?: unknown };
+  } catch {
+    return false;
+  }
+  const refusal = [body.error, body.reason, body.detail]
+    .filter((value): value is string => typeof value === 'string')
+    .join(' ')
+    .toLowerCase();
+  if (!/(?:bad-signature|expired|unauthenticated)/.test(refusal)) return false;
+  clearStoredSession();
+  signalSessionInvalidated();
+  return true;
 }
 
 /** Calm, actionable operator copy without exposing server internals or implying a private key upload. */

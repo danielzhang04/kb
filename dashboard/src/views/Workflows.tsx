@@ -15,7 +15,7 @@
 import { useEffect, useState } from 'react';
 import type { WorkflowsIndex } from '../../server/registry/workflows';
 import { useSse } from '../lib/sseClient';
-import type { Session } from '../lib/authClient';
+import { invalidateSessionOnGovernedAuthFailure, type Session } from '../lib/authClient';
 import '../styles/views/workflows.css';
 
 const EMPTY: WorkflowsIndex = { present: false, items: [] };
@@ -85,6 +85,7 @@ export function Workflows({
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
         body: JSON.stringify(item.definition),
       });
+      await invalidateSessionOnGovernedAuthFailure(response);
       const body = (await response.json()) as {
         runId?: string;
         runners?: Array<{ status?: string }>;

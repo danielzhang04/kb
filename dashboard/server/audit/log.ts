@@ -99,6 +99,9 @@ export function commitAuditToOps(
   const message = options.message ?? 'chore(audit): dashboard audit row';
   const maxRetryPushes = options.maxRetryPushes ?? 3;
 
+  const staged = runGit(repoRoot, ['diff', '--cached', '--name-only', '-z'])
+    .split('\0').map((path) => path.trim()).filter(Boolean);
+  if (staged.length > 0) throw new Error(`refusing audit commit with pre-existing staged paths: ${staged.join(', ')}`);
   // Reconcile with remote ops before writing history, stage ONLY the audit ledger, commit.
   // `--autostash` is REQUIRED: the row was already appended to the tracked ledger by the caller, so the
   // working tree is dirty and a plain `pull --rebase` aborts ("cannot pull with rebase: You have unstaged
@@ -106,7 +109,7 @@ export function commitAuditToOps(
   // rebases onto origin/ops, then restores it — so only the FIRST write ever succeeded before this.
   runGit(repoRoot, ['pull', '--rebase', '--autostash', 'origin', 'ops']);
   runGit(repoRoot, ['add', '--', AUDIT_REL_PATH]);
-  runGit(repoRoot, ['commit', '-m', message]);
+  runGit(repoRoot, ['commit', '-m', message, '--only', '--', AUDIT_REL_PATH]);
 
   // Push; a rejected push means re-read state (pull --rebase) and retry, bounded. The append above
   // already happened exactly once — only the push step is retried, so a retry never duplicates a row.

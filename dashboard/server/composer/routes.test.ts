@@ -215,6 +215,9 @@ describe('Composer workspace turn route', () => {
       body: JSON.stringify({ prompt: 'first prompt' }),
     });
     expect(response.status).toBe(200);
+    expect(first.writes[0]).toContain('first prompt');
+    expect(first.writes[0]).toContain('BEGIN SERVER-OWNED COMPOSER PLANNING PROTOCOL');
+    expect(first.writes[0]).toContain('kb.plan-proposal/v1');
     first.emitStdout(`${JSON.stringify({ type: 'system', subtype: 'init', session_id: PROVIDER_ID })}\n`);
     first.emitStdout(`${JSON.stringify({
       type: 'assistant', timestamp: '2026-07-18T00:00:00Z',
@@ -246,6 +249,8 @@ describe('Composer workspace turn route', () => {
     expect(detail.body).not.toContain(SECRET_TEXT);
     expect(detail.body).not.toContain(bearer);
     expect(detail.body).not.toContain('private reasoning');
+    expect(detail.body).not.toContain('SERVER-OWNED COMPOSER PLANNING PROTOCOL');
+    expect(detail.body).not.toContain('kb.plan-proposal/v1');
     expect(detail.json().session.turns[0]).toMatchObject({
       prompt: 'first prompt', state: 'failed', model: { turns: [{ model: 'claude-sonnet-5' }] },
     });
@@ -255,6 +260,8 @@ describe('Composer workspace turn route', () => {
       body: JSON.stringify({ prompt: 'second prompt' }),
     });
     expect(calls[1]).toContain(`--resume=${PROVIDER_ID}`);
+    expect(second.writes[0]).toContain('second prompt');
+    expect(second.writes[0]).toContain('BEGIN SERVER-OWNED COMPOSER PLANNING PROTOCOL');
     second.emitExit(0);
     await response2.text();
     expect(calls[1]).not.toContain('--resume');
@@ -293,6 +300,10 @@ describe('Composer workspace turn route', () => {
     expect(process.writes[0]).toContain('prior operator goal');
     expect(process.writes[0]).toContain('visible prior answer');
     expect(process.writes[0]).toContain('current request');
+    expect(process.writes[0]).toContain('BEGIN SERVER-OWNED COMPOSER PLANNING PROTOCOL');
+    expect(process.writes[0]).toContain('kb.plan-proposal/v1');
+    expect(process.writes[0].indexOf('current request'))
+      .toBeLessThan(process.writes[0].indexOf('BEGIN SERVER-OWNED COMPOSER PLANNING PROTOCOL'));
     expect(process.writes[0]).not.toContain('private chain of thought');
     process.emitExit(0);
     await response.text();

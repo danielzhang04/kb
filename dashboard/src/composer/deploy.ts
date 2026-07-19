@@ -18,6 +18,7 @@
  * `fetch` is injectable so the suite drives a fake — no real network, no real server, no real `claude`.
  */
 import type { ArtifactKind, DeployPlan, FollowUp } from './artifactTypes';
+import { invalidateSessionOnGovernedAuthFailure } from '../lib/authClient';
 
 /** The injectable fetch seam (defaults to the global). Narrowed to what this module uses. */
 export type DeployFetch = (url: string, init: RequestInit) => Promise<Response>;
@@ -81,12 +82,14 @@ async function refusalOf(res: Response): Promise<DeployRefusal> {
 }
 
 /** POST a governed write with the shared bearer/JSON convention. */
-function post(fetchImpl: DeployFetch, url: string, sessionToken: string, payload: unknown): Promise<Response> {
-  return fetchImpl(url, {
+async function post(fetchImpl: DeployFetch, url: string, sessionToken: string, payload: unknown): Promise<Response> {
+  const response = await fetchImpl(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${sessionToken}` },
     body: JSON.stringify(payload),
   });
+  await invalidateSessionOnGovernedAuthFailure(response);
+  return response;
 }
 
 /**

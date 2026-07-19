@@ -20,6 +20,9 @@ import type { VibeSpawner } from '../vibe/session.ts';
 import type { ResumeRegistry } from '../composer/resumeRegistry.ts';
 import type { ComposerWorkspaceStore } from '../composer/store.ts';
 import type { RunnerTrigger } from '../runner/trigger.ts';
+import type { ControlPlaneStore } from '../control/store.ts';
+import type { ManagedSessionBroker } from '../control/broker.ts';
+import type { CancelRunInput, CancellationOutcome, ExecuteRunInput, ExecutionOutcome } from '../control/execution.ts';
 
 /** How a route records exactly one audit row. Injected as a recording fake in tests. */
 export type AppendAuditFn = (repoRoot: string, event: AuditEvent, options?: AppendAuditOptions) => AuditRow;
@@ -63,6 +66,14 @@ export interface SurfaceContext {
   resumeRegistry: ResumeRegistry;
   /** Durable, subject-bound Composer workspace catalog. Provider handles remain private to this store. */
   composerStore: ComposerWorkspaceStore;
+  /** App-local durable proposal/run/session/event projection. Canonical queue cards remain fleet truth. */
+  controlStore: ControlPlaneStore;
+  /** Optional gated daemon-owned broker. Production remains inactive until its separate approval gate. */
+  controlBroker?: ManagedSessionBroker;
+  /** Optional server-owned automatic executor; never supplied by the browser. */
+  runAutomatic?: (input: ExecuteRunInput) => Promise<ExecutionOutcome>;
+  /** Optional executor-owned cancellation boundary for Manager and Worker processes. */
+  cancelAutomatic?: (input: CancelRunInput) => Promise<CancellationOutcome>;
   /** Signals an already-provisioned background runner after a committed launch. */
   triggerRunner?: RunnerTrigger;
 }

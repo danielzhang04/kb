@@ -1,0 +1,260 @@
+import { describe, expect, it } from 'vitest';
+import {
+  canonicalProposal,
+  createProposalRevision,
+  parseProposalFromAssistant,
+  proposalContentHash,
+  validatePlanProposal,
+} from './proposal.ts';
+import type { PlanProposal, ProposalRegistry } from './proposal.ts';
+
+const REGISTRY: ProposalRegistry = {
+  runtimes: {
+    claude: ['claude-opus-4-8', 'claude-sonnet-5'],
+    codex: ['gpt-5.6-sol'],
+  },
+  skills: ['repo-analysis', 'typescript'],
+};
+
+const proposal: PlanProposal = {
+  schema: 'kb.plan-proposal/v1',
+  proposalId: 'dashboard-control',
+  project: 'kb-ops',
+  title: 'Dashboard control plane',
+  summary: 'Compile one reviewed workflow into a governed run.',
+  manager: {
+    runtime: 'claude',
+    model: 'claude-opus-4-8',
+    requiredSkills: ['repo-analysis'],
+  },
+  scope: {
+    read: ['CLAUDE.md', 'governance/agent-rules.md', 'orgs/kb-ops/contract.md'],
+    write: ['dashboard/server/control'],
+  },
+  governanceRefs: ['CLAUDE.md', 'governance/agent-rules.md', 'governance/risk-tiers.md', 'orgs/kb-ops/contract.md'],
+  stages: [
+    {
+      id: 'compile',
+      title: 'Compile proposal',
+      action: 'implement:proposal-compiler',
+      target: 'dashboard/server/control',
+      workOrder: 'Implement the closed proposal compiler.',
+      riskTier: 'T2',
+      dependsOn: [],
+      worker: { runtime: 'codex', model: 'gpt-5.6-sol' },
+      requiredSkills: ['typescript'],
+      scope: { read: ['dashboard/server'], write: ['dashboard/server/control'] },
+      artifacts: [
+        { id: 'compiler', path: 'dashboard/server/control/proposal.ts', description: 'Validated compiler module.' },
+      ],
+      checkpoints: [{ id: 'tests-pass', label: 'Focused tests and typecheck pass.' }],
+      humanGates: [],
+    },
+    {
+      id: 'review',
+      title: 'Review compiler',
+      action: 'review:proposal-compiler',
+      target: 'dashboard/server/control',
+      workOrder: 'Adversarially review the completed compiler.',
+      riskTier: 'T2',
+      dependsOn: ['compile'],
+      worker: { runtime: 'claude', model: 'claude-sonnet-5' },
+      requiredSkills: [],
+      scope: { read: ['dashboard/server/control'], write: [] },
+      artifacts: [],
+      checkpoints: [],
+      humanGates: [
+        { id: 'accept-review', kind: 'review', prompt: 'Accept the adversarial review findings?' },
+      ],
+    },
+  ],
+};
+
+function source(value: unknown = proposal) {
+  return {
+    role: 'assistant',
+    state: 'complete',
+    visibility: 'visible',
+    text: `Planning notes are inert.\n\n\`\`\`kb.plan-proposal/v1\n${JSON.stringify(value, null, 2)}\n\`\`\`\n`,
+  };
+}
+
+describe('kb.plan-proposal/v1 validation', () => {
+  it('accepts the closed schema and rejects unknown fields at every level', () => {
+    expect(validatePlanProposal(proposal, REGISTRY)).toEqual({ ok: true, value: proposal });
+    expect(validatePlanProposal({ ...proposal, permissionMode: 'bypass' }, REGISTRY)).toEqual({
+      ok: false,
+      detail: "unknown field 'permissionMode'",
+    });
+    expect(validatePlanProposal({
+      ...proposal,
+      stages: [{ ...proposal.stages[0], worker: { ...proposal.stages[0].worker, flags: ['--dangerously-skip-permissions'] } }],
+    }, REGISTRY)).toEqual({ ok: false, detail: "stages[0].worker: unknown field 'flags'" });
+  });
+
+  it('rejects missing dependencies, self-dependencies, duplicate ids, and cycles', () => {
+    expect(validatePlanProposal({
+      ...proposal,
+      stages: [{ ...proposal.stages[0], dependsOn: ['missing'] }],
+    }, REGISTRY)).toEqual({ ok: false, detail: "stage 'compile' depends on missing stage 'missing'" });
+    expect(validatePlanProposal({
+      ...proposal,
+      stages: [{ ...proposal.stages[0], dependsOn: ['compile'] }],
+    }, REGISTRY)).toEqual({ ok: false, detail: "stage 'compile' cannot depend on itself" });
+    expect(validatePlanProposal({
+      ...proposal,
+      stages: [proposal.stages[0], { ...proposal.stages[1], id: 'compile' }],
+    }, REGISTRY)).toEqual({ ok: false, detail: "duplicate stage id 'compile'" });
+    expect(validatePlanProposal({
+      ...proposal,
+      stages: [
+        { ...proposal.stages[0], dependsOn: ['review'] },
+        { ...proposal.stages[1], dependsOn: ['compile'] },
+      ],
+    }, REGISTRY)).toEqual({ ok: false, detail: 'proposal stage graph contains a cycle' });
+  });
+
+  it.each([
+    '/absolute/path',
+    'C:/windows/path',
+    '../outside',
+    'dashboard/../governance',
+    'dashboard\\server',
+    '.',
+    'dashboard//server',
+    '.git/config',
+    'dashboard/AUX/file',
+  ])('rejects unsafe repo-relative references: %s', (path) => {
+    const candidate = { ...proposal, governanceRefs: [path] };
+    expect(validatePlanProposal(candidate, REGISTRY)).toMatchObject({ ok: false });
+  });
+
+  it('validates runtime/model pairs and every required skill against injected registries', () => {
+    expect(validatePlanProposal({
+      ...proposal,
+      manager: { ...proposal.manager, model: 'claude-unknown' },
+    }, REGISTRY)).toEqual({ ok: false, detail: "manager.model 'claude-unknown' is not registered for runtime 'claude'" });
+    expect(validatePlanProposal({
+      ...proposal,
+      stages: [{ ...proposal.stages[0], worker: { runtime: 'shell', model: 'arbitrary' } }],
+    }, REGISTRY)).toEqual({ ok: false, detail: "stages[0].worker.runtime 'shell' is not registered" });
+    expect(validatePlanProposal({
+      ...proposal,
+      stages: [{ ...proposal.stages[0], requiredSkills: ['unknown-skill'] }],
+    }, REGISTRY)).toEqual({ ok: false, detail: "stages[0].requiredSkills[0] 'unknown-skill' is not registered" });
+  });
+
+  it('keeps execution-facing action and target fields declarative', () => {
+    expect(validatePlanProposal({
+      ...proposal,
+      stages: [{ ...proposal.stages[0], action: '--dangerously-skip-permissions' }],
+    }, REGISTRY)).toEqual({ ok: false, detail: 'stages[0].action must be a safe action identifier' });
+    expect(validatePlanProposal({
+      ...proposal,
+      stages: [{ ...proposal.stages[0], action: 'implement:x; rm -rf .' }],
+    }, REGISTRY)).toEqual({ ok: false, detail: 'stages[0].action must be a safe action identifier' });
+  });
+
+  it('enforces non-empty and bounded collections/text without coercion', () => {
+    expect(validatePlanProposal({ ...proposal, stages: [] }, REGISTRY)).toMatchObject({ ok: false });
+    expect(validatePlanProposal({ ...proposal, title: 'x'.repeat(201) }, REGISTRY)).toEqual({
+      ok: false,
+      detail: 'title must be at most 200 characters',
+    });
+    expect(validatePlanProposal({ ...proposal, governanceRefs: [] }, REGISTRY)).toEqual({
+      ok: false,
+      detail: 'governanceRefs must contain 1-32 items',
+    });
+    expect(validatePlanProposal({
+      ...proposal,
+      stages: [0, 1, 2].map((index) => ({
+        ...proposal.stages[0],
+        id: `stage-${index}`,
+        workOrder: 'x'.repeat(64 * 1024),
+      })),
+    }, REGISTRY)).toEqual({ ok: false, detail: 'proposal must be at most 131072 bytes' });
+  });
+});
+
+describe('untrusted assistant proposal extraction', () => {
+  it('extracts exactly one fenced proposal only from completed visible assistant text', () => {
+    expect(parseProposalFromAssistant(source(), REGISTRY)).toEqual({ ok: true, value: proposal });
+    for (const patch of [
+      { role: 'user' },
+      { state: 'running' },
+      { visibility: 'hidden' },
+    ]) {
+      expect(parseProposalFromAssistant({ ...source(), ...patch }, REGISTRY)).toMatchObject({ ok: false });
+    }
+  });
+
+  it('rejects absent, unclosed, multiple, duplicate-key, and oversized proposal blocks', () => {
+    expect(parseProposalFromAssistant({ ...source(), text: 'prose only' }, REGISTRY)).toEqual({
+      ok: false,
+      detail: 'assistant text must contain exactly one kb.plan-proposal/v1 fenced block',
+    });
+    const fenced = source().text;
+    expect(parseProposalFromAssistant({ ...source(), text: fenced + fenced }, REGISTRY)).toEqual({
+      ok: false,
+      detail: 'assistant text must contain exactly one kb.plan-proposal/v1 fenced block',
+    });
+    expect(parseProposalFromAssistant({ ...source(), text: '```kb.plan-proposal/v1\n{}' }, REGISTRY)).toEqual({
+      ok: false,
+      detail: 'kb.plan-proposal/v1 fenced block is not closed',
+    });
+    expect(parseProposalFromAssistant({
+      ...source(),
+      text: '```kb.plan-proposal/v1\n{"schema":"kb.plan-proposal/v1","schema":"kb.plan-proposal/v1"}\n```',
+    }, REGISTRY)).toEqual({ ok: false, detail: "proposal JSON contains duplicate key 'schema'" });
+    expect(parseProposalFromAssistant({ ...source(), text: 'x'.repeat(262_145) }, REGISTRY)).toEqual({
+      ok: false,
+      detail: 'assistant text must be at most 262144 characters',
+    });
+  });
+
+  it('does not treat a proposal-looking line inside another fence as executable data', () => {
+    const text = `\`\`\`markdown\n\`\`\`kb.plan-proposal/v1\n${JSON.stringify(proposal)}\n\`\`\`\n`;
+    expect(parseProposalFromAssistant({ ...source(), text }, REGISTRY)).toEqual({
+      ok: false,
+      detail: 'assistant text must contain exactly one kb.plan-proposal/v1 fenced block',
+    });
+  });
+});
+
+describe('canonical immutable revisions', () => {
+  it('sorts object keys for one stable SHA-256 hash while preserving array order', () => {
+    const reordered = Object.fromEntries(Object.entries(proposal).reverse()) as unknown as PlanProposal;
+    expect(canonicalProposal(reordered)).toBe(canonicalProposal(proposal));
+    expect(proposalContentHash(reordered)).toBe(proposalContentHash(proposal));
+    expect(proposalContentHash({ ...proposal, title: 'Changed title' })).not.toBe(proposalContentHash(proposal));
+    expect(proposalContentHash(proposal)).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it('builds a deeply immutable, hash-bound revision and JSON-pointer diff DTO', () => {
+    const first = createProposalRevision(proposal, 1);
+    const changed = { ...proposal, title: 'Dashboard run control' };
+    const second = createProposalRevision(changed, 2, first);
+
+    expect(first.previousContentHash).toBeNull();
+    expect(second.previousContentHash).toBe(first.contentHash);
+    expect(second.diff).toEqual({
+      schema: 'kb.plan-proposal-diff/v1',
+      fromContentHash: first.contentHash,
+      toContentHash: second.contentHash,
+      changed: true,
+      changes: [{ path: '/title', before: proposal.title, after: 'Dashboard run control' }],
+    });
+    expect(Object.isFrozen(second)).toBe(true);
+    expect(Object.isFrozen(second.proposal)).toBe(true);
+    expect(Object.isFrozen(second.diff.changes)).toBe(true);
+    expect(() => {
+      (second.proposal as { title: string }).title = 'mutated';
+    }).toThrow();
+  });
+
+  it('refuses a forged previous snapshot instead of carrying a false hash chain forward', () => {
+    const first = createProposalRevision(proposal, 1);
+    const forged = { ...first, contentHash: '0'.repeat(64) };
+    expect(() => createProposalRevision(proposal, 2, forged)).toThrow('previous revision content hash is invalid');
+  });
+});

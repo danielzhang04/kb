@@ -1,0 +1,780 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { afterEach, describe, expect, it } from 'vitest';
+import { createFileControlPlaneStore, createInMemoryControlPlaneStore, type ControlPlaneStore } from './store.ts';
+import type { JsonObject } from './types.ts';
+import type { PlanProposal, ProposalStage } from './proposal.ts';
+import { proposalContentHash } from './proposal.ts';
+import type { PolicyEnvironment } from './policy.ts';
+import {
+  AutomaticExecutionEngine,
+  AutomaticExecutionError,
+  planRunWorktreePath,
+  type AccountingAdapter,
+  type AutomaticExecutionOptions,
+  type ExecutionCancellationController,
+  type ManagerAdapter,
+  type ResultIntegrator,
+  type WorkerAdapter,
+  type WorktreeAdapter,
+} from './execution.ts';
+
+const policy: PolicyEnvironment = {
+  profiles: [
+    { id: 'manager-claude', role: 'manager', runtime: 'claude', model: 'claude-opus', capabilities: ['read', 'emit-events'] },
+    {
+      id: 'worker-codex', role: 'worker', runtime: 'codex', model: 'codex-safe',
+      capabilities: ['read', 'write-approved-scope', 'run-approved-commands', 'emit-events'],
+    },
+    {
+      id: 'worker-claude', role: 'worker', runtime: 'claude', model: 'claude-sonnet',
+      capabilities: ['read', 'write-approved-scope', 'run-approved-commands', 'emit-events'],
+    },
+  ],
+  curatedSkills: new Set(['tests']),
+  contractText: 'queues-for-me',
+  governanceContents: {
+    'CLAUDE.md': 'constitution',
+    'governance/agent-rules.md': 'rules',
+    'governance/risk-tiers.md': 'risk tiers',
+    'orgs/kb-ops/contract.md': 'contract',
+  },
+};
+
+function stage(id: string, dependsOn: string[] = []): ProposalStage {
+  return {
+    id,
+    title: `Stage ${id}`,
+    action: `test:${id}`,
+    target: 'dashboard/server',
+    workOrder: `Execute ${id}.`,
+    riskTier: 'T2',
+    dependsOn,
+    worker: { runtime: 'codex', model: 'codex-safe' },
+    requiredSkills: ['tests'],
+    scope: { read: ['dashboard'], write: ['dashboard/server'] },
+    artifacts: [{ id: `${id}-result`, path: `dashboard/server/${id}.txt`, description: `${id} output` }],
+    checkpoints: [{ id: `${id}-checked`, label: `${id} verified` }],
+    humanGates: [],
+  };
+}
+
+function proposal(stages: ProposalStage[]): PlanProposal {
+  return {
+    schema: 'kb.plan-proposal/v1',
+    proposalId: 'synthetic',
+    project: 'kb-ops',
+    title: 'Synthetic automatic run',
+    summary: 'Low risk execution-engine acceptance.',
+    manager: { runtime: 'claude', model: 'claude-opus', requiredSkills: [] },
+    scope: { read: ['dashboard'], write: ['dashboard'] },
+    governanceRefs: ['CLAUDE.md', 'governance/agent-rules.md', 'governance/risk-tiers.md', 'orgs/kb-ops/contract.md'],
+    stages,
+  };
+}
+
+let sequence = 0;
+function createStore(): ControlPlaneStore {
+  return createInMemoryControlPlaneStore({ newId: () => `id-${++sequence}` });
+}
+
+function createApprovedRun(store: ControlPlaneStore, plan: PlanProposal): { runRef: string; proposalRef: string } {
+  const createdProposal = store.createProposalRevision('operator', {
+    sourceComposerRef: 'composer-1',
+    sourceTurnId: 'turn-1',
+    title: plan.title,
+    snapshot: plan as unknown as JsonObject,
+  });
+  expect(createdProposal.ok).toBe(true);
+  if (!createdProposal.ok) throw new Error(createdProposal.detail);
+  const approved = store.decideProposal('operator', createdProposal.value.proposalRef, 1, {
+    expectedHash: createdProposal.value.hash,
+    expectedApprovalRevision: 0,
+    decision: 'approved',
+    idempotencyKey: 'approve-1',
+  });
+  expect(approved.ok).toBe(true);
+  const run = store.createRun('operator', {
+    title: plan.title,
+    proposalRef: createdProposal.value.proposalRef,
+    proposalRevision: 1,
+    expectedProposalHash: createdProposal.value.hash,
+    managerRuntime: plan.manager.runtime,
+    managerModel: plan.manager.model,
+    idempotencyKey: `launch-${createdProposal.value.proposalRef}`,
+    stages: plan.stages.map((item) => ({ stageId: item.id, title: item.title, dependsOn: item.dependsOn })),
+  });
+  expect(run.ok).toBe(true);
+  if (!run.ok) throw new Error(run.detail);
+  for (const item of run.value.stages) {
+    const linked = store.linkStageCard('operator', item.stageRef, item.version, `card-${item.stageId}`);
+    expect(linked.ok).toBe(true);
+  }
+  expect(run.value.run.proposalHash).toBe(proposalContentHash(plan));
+  return { runRef: run.value.run.runRef, proposalRef: createdProposal.value.proposalRef };
+}
+
+interface Fakes {
+  worktrees: WorktreeAdapter;
+  managers: ManagerAdapter;
+  accounting: AccountingAdapter;
+  workers: WorkerAdapter;
+  results: ResultIntegrator;
+  cancellation: ExecutionCancellationController;
+  executionOrder: string[];
+  integrationOrder: string[];
+  worktreePaths: string[];
+  reservations: string[];
+}
+
+function fakes(overrides: { worker?: WorkerAdapter; accounting?: AccountingAdapter } = {}): Fakes {
+  const executionOrder: string[] = [];
+  const integrationOrder: string[] = [];
+  const worktreePaths: string[] = [];
+  const reservations: string[] = [];
+  const settled = new Set<string>();
+  const worktrees: WorktreeAdapter = {
+    async ensure(input) { worktreePaths.push(input.path); },
+    async inspect() {
+      const id = executionOrder.at(-1) as string;
+      return { changed: [{ path: `dashboard/server/${id}.txt`, digest: 'b'.repeat(64) }] };
+    },
+  };
+  const managers: ManagerAdapter = { async ensure() {} };
+  const accounting: AccountingAdapter = overrides.accounting ?? {
+    async reserve(input) {
+      reservations.push(input.operationKey);
+      return { ok: true, value: { reservationRef: `reservation:${input.attemptRef}`, replayed: false } };
+    },
+    async settle(input) { settled.add(input.operationKey); },
+  };
+  const workers: WorkerAdapter = overrides.worker ?? {
+    async execute(input) {
+      executionOrder.push(input.action.split(':')[1]);
+      return {
+        state: 'succeeded',
+        summary: `${input.action} passed`,
+        usage: { inputTokens: 10, outputTokens: 5, costUsdMicros: 100 },
+        artifacts: [{ path: `${input.target}/${input.action.split(':')[1]}.txt`, digest: 'b'.repeat(64) }],
+        checkpoints: [`${input.action.split(':')[1]}-checked`],
+      };
+    },
+  };
+  const results: ResultIntegrator = {
+    async lookup() { return null; },
+    async resolveBase() { return 'd'.repeat(40); },
+    async integrate(input) {
+      integrationOrder.push(input.stageId);
+      return { status: 'integrated', resultHash: input.resultHash };
+    },
+  };
+  const cancellation: ExecutionCancellationController = {
+    async cancelManager() {},
+    async cancelWorker() {},
+  };
+  return { worktrees, managers, accounting, workers, results, cancellation, executionOrder, integrationOrder, worktreePaths, reservations };
+}
+
+function engineOptions(store: ControlPlaneStore, fake: Fakes, root = join(tmpdir(), 'kb-auto-worktrees')): AutomaticExecutionOptions {
+  return {
+    store,
+    policy,
+    worktreeRoot: root,
+    maxConcurrency: 1,
+    budget: { maxAttempts: 3, maxInputTokens: 1_000, maxOutputTokens: 1_000, maxCostUsdMicros: 10_000 },
+    worktrees: fake.worktrees,
+    managers: fake.managers,
+    workers: fake.workers,
+    skills: {
+      async resolve(input) { return { ok: true, skills: [...input.requested] }; },
+    },
+    accounting: fake.accounting,
+    results: fake.results,
+    cancellation: fake.cancellation,
+  };
+}
+
+const tempDirs: string[] = [];
+afterEach(() => {
+  while (tempDirs.length > 0) rmSync(tempDirs.pop() as string, { recursive: true, force: true });
+});
+
+describe('AutomaticExecutionEngine', () => {
+  it('executes a durable validated reroute without rewriting the approved stage policy or predecessor routing', async () => {
+    const store = createStore();
+    const plan = proposal([stage('rerouted')]);
+    const run = createApprovedRun(store, plan);
+    let detail = store.getRun('operator', run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const publishing = store.transitionPublication('operator', run.runRef, detail.value.run.version, 'publishing');
+    if (!publishing.ok) throw new Error(publishing.detail);
+    const published = store.transitionPublication('operator', run.runRef, publishing.value.version, 'published');
+    if (!published.ok) throw new Error(published.detail);
+    detail = store.getRun('operator', run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const sourceStage = detail.value.stages[0];
+    const original = store.createAttempt('operator', sourceStage.stageRef, {
+      expectedStageVersion: sourceStage.version, runtime: 'codex', model: 'codex-safe',
+    });
+    if (!original.ok) throw new Error(original.detail);
+    const originalSession = store.createWorkerSession('operator', original.value.attemptRef, {
+      expectedAttemptVersion: original.value.version,
+    });
+    if (!originalSession.ok) throw new Error(originalSession.detail);
+    detail = store.getRun('operator', run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const currentStage = detail.value.stages[0];
+    const currentAttempt = detail.value.attempts.find((item) => item.attemptRef === original.value.attemptRef);
+    if (!currentAttempt) throw new Error('attempt missing');
+    const rerouted = store.rerouteStage('operator', currentStage.stageRef, {
+      expectedStageVersion: currentStage.version,
+      expectedAttemptRef: currentAttempt.attemptRef,
+      expectedAttemptVersion: currentAttempt.version,
+      runtime: 'claude', model: 'claude-sonnet', idempotencyKey: 'reroute-engine-1',
+    });
+    if (!rerouted.ok) throw new Error(rerouted.detail);
+    const fake = fakes();
+    fake.workers = {
+      async execute(input) {
+        expect(input.profile).toMatchObject({ id: 'worker-claude', runtime: 'claude', model: 'claude-sonnet' });
+        expect(input.action).toBe('test:rerouted');
+        expect(input.skills).toEqual(['tests']);
+        fake.executionOrder.push('rerouted');
+        return {
+          state: 'succeeded', summary: 'rerouted passed', usage: { inputTokens: 2, outputTokens: 1, costUsdMicros: 3 },
+          artifacts: [{ path: 'dashboard/server/rerouted.txt', digest: 'b'.repeat(64) }], checkpoints: ['rerouted-checked'],
+        };
+      },
+    };
+    const outcome = await new AutomaticExecutionEngine(engineOptions(store, fake)).runToBoundary({
+      subject: 'operator', runRef: run.runRef, proposal: plan,
+    });
+    expect(outcome).toMatchObject({ state: 'succeeded', completedStageIds: ['rerouted'] });
+    const after = store.getRun('operator', run.runRef);
+    expect(after).toMatchObject({
+      ok: true,
+      value: {
+        attempts: expect.arrayContaining([
+          expect.objectContaining({ attemptRef: original.value.attemptRef, runtime: 'codex', model: 'codex-safe', state: 'stopped' }),
+          expect.objectContaining({ attemptRef: rerouted.value.attempt.attemptRef, runtime: 'claude', model: 'claude-sonnet', state: 'succeeded' }),
+        ]),
+        sessions: expect.arrayContaining([
+          expect.objectContaining({ sessionRef: originalSession.value.sessionRef, state: 'stopped' }),
+        ]),
+      },
+    });
+  });
+
+  it('runs a synthetic two-stage DAG and integrates canonical results before dependent release', async () => {
+    const store = createStore();
+    const plan = proposal([stage('compile'), stage('verify', ['compile'])]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    fake.workers = {
+      async execute(input) {
+        const id = input.action.split(':')[1];
+        if (id === 'verify') expect(fake.integrationOrder).toEqual(['compile']);
+        fake.executionOrder.push(id);
+        return {
+          state: 'succeeded', summary: `${id} passed`, usage: { inputTokens: 2, outputTokens: 1, costUsdMicros: 3 },
+          artifacts: [{ path: `dashboard/server/${id}.txt`, digest: 'b'.repeat(64) }], checkpoints: [`${id}-checked`],
+        };
+      },
+    };
+    const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
+
+    const outcome = await engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
+
+    expect(outcome).toMatchObject({ state: 'succeeded', startedStageIds: ['compile', 'verify'], completedStageIds: ['compile', 'verify'] });
+    expect(fake.executionOrder).toEqual(['compile', 'verify']);
+    expect(fake.integrationOrder).toEqual(['compile', 'verify']);
+    expect(new Set(fake.worktreePaths).size).toBe(2);
+    expect(fake.worktreePaths.every((path) => path.includes(run.runRef))).toBe(true);
+    const detail = store.getRun('operator', run.runRef);
+    expect(detail.ok && detail.value.stages.every((item) => item.state === 'succeeded')).toBe(true);
+    expect(detail.ok && detail.value.sessions.every((item) => ['completed', 'failed', 'stopped', 'interrupted'].includes(item.state))).toBe(true);
+  });
+
+  it('releases equal-priority roots deterministically while honoring bounded concurrency', async () => {
+    const store = createStore();
+    const plan = proposal([stage('b'), stage('a'), stage('c', ['a'])]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
+
+    await engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
+
+    expect(fake.executionOrder).toEqual(['a', 'b', 'c']);
+  });
+
+  it('persists explicit human gates and releases only after a revision-bound response', async () => {
+    const store = createStore();
+    const gated = stage('review');
+    gated.humanGates = [{ id: 'approval', kind: 'approval', prompt: 'Approve the synthetic stage.' }];
+    const plan = proposal([gated]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
+
+    const waiting = await engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
+    expect(waiting.state).toBe('waiting-human');
+    expect(fake.executionOrder).toEqual([]);
+    const detail = store.getRun('operator', run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    expect(detail.value.humanRequests).toHaveLength(1);
+    const request = detail.value.humanRequests[0];
+    const response = store.respondHumanRequest('operator', request.requestRef, {
+      expectedRevision: request.revision,
+      decision: 'approved',
+      idempotencyKey: 'gate-response',
+      response: 'Approved.',
+    });
+    expect(response.ok).toBe(true);
+
+    const completed = await engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
+    expect(completed.state).toBe('succeeded');
+    expect(fake.executionOrder).toEqual(['review']);
+    expect(store.getRun('operator', run.runRef)).toMatchObject({ ok: true, value: { humanRequests: [{ state: 'resolved' }] } });
+  });
+
+  it('does not claim run success when the Manager shutdown is unacknowledged', async () => {
+    const store = createStore();
+    const plan = proposal([stage('compile')]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    fake.cancellation = {
+      async cancelManager(input) {
+        if (input.intent === 'run-complete') throw new Error('manager shutdown acknowledgement lost');
+      },
+      async cancelWorker() {},
+    };
+    const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
+
+    const outcome = await engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
+
+    expect(outcome.state).toBe('waiting-human');
+    expect(store.getRun('operator', run.runRef)).toMatchObject({
+      ok: true,
+      value: {
+        run: { state: 'waiting-human' },
+        stages: [{ state: 'succeeded' }],
+        sessions: expect.arrayContaining([expect.objectContaining({ role: 'manager', state: 'interrupted' })]),
+        humanRequests: [{ kind: 'intervention', title: 'Manager shutdown needs intervention', state: 'open' }],
+      },
+    });
+  });
+
+  it('fails closed on accounting refusal without invoking a worker', async () => {
+    const store = createStore();
+    const plan = proposal([stage('expensive')]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes({
+      accounting: {
+        async reserve() { return { ok: false, reason: 'cost budget exhausted' }; },
+        async settle() { throw new Error('must not settle'); },
+      },
+    });
+    const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
+
+    const outcome = await engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
+
+    expect(outcome.state).toBe('waiting-human');
+    expect(fake.executionOrder).toEqual([]);
+    expect(store.getRun('operator', run.runRef)).toMatchObject({
+      ok: true,
+      value: { attempts: [{ state: 'interrupted' }], humanRequests: [{ kind: 'intervention', state: 'open' }] },
+    });
+  });
+
+  it('requires an approved decision for approval gates rather than treating a text response as approval', async () => {
+    const store = createStore();
+    const gated = stage('approve-only');
+    gated.humanGates = [{ id: 'approval', kind: 'approval', prompt: 'Explicit approval required.' }];
+    const plan = proposal([gated]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
+    await engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
+    const detail = store.getRun('operator', run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const request = detail.value.humanRequests[0];
+    expect(store.respondHumanRequest('operator', request.requestRef, {
+      expectedRevision: request.revision, decision: 'responded', idempotencyKey: 'text-only', response: 'Looks fine.',
+    }).ok).toBe(true);
+
+    const outcome = await engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
+
+    expect(outcome.state).toBe('waiting-human');
+    expect(fake.executionOrder).toEqual([]);
+  });
+
+  it('contains adapter exceptions durably instead of leaving a running attempt wedged', async () => {
+    const store = createStore();
+    const plan = proposal([stage('adapter-failure')]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    fake.worktrees = {
+      async ensure() { throw new Error('worktree provisioning unavailable'); },
+      async inspect() { return { changed: [] }; },
+    };
+    const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
+
+    const outcome = await engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
+
+    expect(outcome.state).toBe('waiting-human');
+    const contained = store.getRun('operator', run.runRef);
+    if (!contained.ok) throw new Error(contained.detail);
+    expect(contained.value.stages).toMatchObject([{ state: 'waiting-human' }]);
+    expect(contained.value.attempts).toMatchObject([{ state: 'interrupted' }]);
+    expect(contained.value.sessions.find((item) => item.role === 'worker')).toMatchObject({ state: 'interrupted' });
+    expect(contained.value.humanRequests).toMatchObject([{ kind: 'intervention', state: 'open' }]);
+  });
+
+  it('uses a stage-stable integration key so an ambiguous integration crash replays on a successor', async () => {
+    const store = createStore();
+    const plan = proposal([stage('integrate')]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const keys: string[] = [];
+    let committed: Parameters<ResultIntegrator['integrate']>[0] | null = null;
+    fake.results = {
+      async lookup() {
+        return committed && keys.length > 0
+          ? {
+              resultHash: committed.resultHash, summary: committed.summary, artifacts: committed.artifacts,
+              changed: committed.changed, checkpoints: committed.checkpoints,
+            }
+          : null;
+      },
+      async integrate(input) {
+        keys.push(input.operationKey);
+        committed = input;
+        if (keys.length === 1) throw new Error('lost acknowledgement after canonical commit');
+        return { status: 'replayed', resultHash: input.resultHash };
+      },
+    };
+    const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
+    const waiting = await engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
+    expect(waiting.state).toBe('waiting-human');
+    const detail = store.getRun('operator', run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const request = detail.value.humanRequests[0];
+    expect(store.respondHumanRequest('operator', request.requestRef, {
+      expectedRevision: request.revision, decision: 'approved', idempotencyKey: 'retry-integration', response: 'Reconcile.',
+    }).ok).toBe(true);
+
+    const completed = await engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
+
+    expect(completed.state).toBe('succeeded');
+    expect(keys).toHaveLength(1);
+    const final = store.getRun('operator', run.runRef);
+    expect(final.ok && final.value.attempts.map((item) => item.generation)).toEqual([1, 2]);
+    expect(fake.executionOrder).toEqual(['integrate']);
+  });
+
+  it('enforces one global worker slot across concurrent runs', async () => {
+    const store = createStore();
+    const firstPlan = proposal([stage('first')]);
+    const secondPlan = { ...proposal([stage('second')]), proposalId: 'synthetic-two', title: 'Second run' };
+    const first = createApprovedRun(store, firstPlan);
+    const second = createApprovedRun(store, secondPlan);
+    let release = (): void => {};
+    let entered = (): void => {};
+    const enteredPromise = new Promise<void>((resolveEntered) => { entered = resolveEntered; });
+    const releasePromise = new Promise<void>((resolveRelease) => { release = resolveRelease; });
+    const fake = fakes();
+    fake.workers = {
+      async execute(input) {
+        fake.executionOrder.push(input.action.split(':')[1]);
+        entered();
+        await releasePromise;
+        const id = input.action.split(':')[1];
+        return {
+          state: 'succeeded', summary: 'done', usage: { inputTokens: 1, outputTokens: 1, costUsdMicros: 1 },
+          artifacts: [{ path: `dashboard/server/${id}.txt`, digest: 'b'.repeat(64) }], checkpoints: [`${id}-checked`],
+        };
+      },
+    };
+    const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
+    const firstRun = engine.runToBoundary({ subject: 'operator', runRef: first.runRef, proposal: firstPlan });
+    await enteredPromise;
+
+    const secondRun = engine.runToBoundary({ subject: 'operator', runRef: second.runRef, proposal: secondPlan });
+    await Promise.resolve();
+    expect(fake.executionOrder).toEqual(['first']);
+    release();
+    expect((await firstRun).state).toBe('succeeded');
+    expect((await secondRun).state).toBe('succeeded');
+    expect(fake.executionOrder).toEqual(['first', 'second']);
+  });
+
+  it('persists cancellation intent before stopping Manager and Worker adapters, then converges idempotently', async () => {
+    const store = createStore();
+    const plan = proposal([stage('first')]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    let entered = (): void => {};
+    let release = (): void => {};
+    const enteredPromise = new Promise<void>((resolveEntered) => { entered = resolveEntered; });
+    const releasePromise = new Promise<void>((resolveRelease) => { release = resolveRelease; });
+    fake.workers = {
+      async execute(input) {
+        fake.executionOrder.push(input.action.split(':')[1]);
+        entered();
+        await releasePromise;
+        return {
+          state: 'succeeded', summary: 'cancelled before integration',
+          usage: { inputTokens: 1, outputTokens: 1, costUsdMicros: 1 },
+          artifacts: [], checkpoints: [],
+        };
+      },
+    };
+    const signaled: string[] = [];
+    const assertIntentPersisted = (): void => {
+      const detail = store.getRun('operator', run.runRef);
+      if (!detail.ok) throw new Error(detail.detail);
+      expect(detail.value.run.state).toBe('stopping');
+      expect(store.listEvents('operator', run.runRef)).toMatchObject({
+        ok: true, value: expect.arrayContaining([expect.objectContaining({ summary: expect.stringContaining('cancellation requested') })]),
+      });
+    };
+    fake.cancellation = {
+      async cancelManager(input) { assertIntentPersisted(); signaled.push(`manager:${input.sessionRef}`); },
+      async cancelWorker(input) { assertIntentPersisted(); signaled.push(`worker:${input.sessionRef}`); release(); },
+    };
+    const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
+    const running = engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
+    await enteredPromise;
+
+    const cancelled = await engine.cancelRun({
+      subject: 'operator', runRef: run.runRef, idempotencyKey: 'cancel-live-run', reason: 'Operator requested stop.',
+    });
+    await running;
+
+    expect(cancelled).toMatchObject({ state: 'stopped', interruptedSessionRefs: [], replayed: false });
+    expect(signaled.map((value) => value.split(':')[0]).sort()).toEqual(['manager', 'worker']);
+    expect(fake.integrationOrder).toEqual([]);
+    expect(store.getRun('operator', run.runRef)).toMatchObject({
+      ok: true,
+      value: {
+        run: { state: 'stopped' },
+        stages: [{ state: 'stopped' }],
+        attempts: [{ state: 'stopped' }],
+        sessions: expect.arrayContaining([expect.objectContaining({ state: 'stopped' })]),
+      },
+    });
+    const replay = await engine.cancelRun({
+      subject: 'operator', runRef: run.runRef, idempotencyKey: 'cancel-live-run', reason: 'Operator requested stop.',
+    });
+    expect(replay).toMatchObject({ state: 'stopped', replayed: true, stoppedSessionRefs: [] });
+    expect(signaled).toHaveLength(2);
+  });
+
+  it('does not launch a Worker when cancellation arrives during asynchronous preparation', async () => {
+    const store = createStore();
+    const plan = proposal([stage('prepare-stop')]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    let entered = (): void => {};
+    let release = (): void => {};
+    const enteredPromise = new Promise<void>((resolveEntered) => { entered = resolveEntered; });
+    const releasePromise = new Promise<void>((resolveRelease) => { release = resolveRelease; });
+    fake.cancellation = {
+      async cancelManager() {},
+      async cancelWorker() { release(); },
+    };
+    const options = engineOptions(store, fake);
+    options.skills = {
+      async resolve(input) {
+        entered();
+        await releasePromise;
+        return { ok: true, skills: [...input.requested] };
+      },
+    };
+    const engine = new AutomaticExecutionEngine(options);
+    const running = engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
+    await enteredPromise;
+
+    const cancelled = await engine.cancelRun({
+      subject: 'operator', runRef: run.runRef, idempotencyKey: 'cancel-during-preparation', reason: 'Stop before Worker launch.',
+    });
+    await running;
+
+    expect(cancelled.state).toBe('stopped');
+    expect(fake.executionOrder).toEqual([]);
+    expect(fake.reservations).toEqual([]);
+    expect(fake.integrationOrder).toEqual([]);
+    expect(store.getRun('operator', run.runRef)).toMatchObject({
+      ok: true,
+      value: { run: { state: 'stopped' }, stages: [{ state: 'stopped' }], attempts: [{ state: 'stopped' }] },
+    });
+  });
+
+  it('converges cleanly when cancellation arrives while the Manager is starting', async () => {
+    const store = createStore();
+    const plan = proposal([stage('manager-stop')]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    let entered = (): void => {};
+    let release = (): void => {};
+    const enteredPromise = new Promise<void>((resolveEntered) => { entered = resolveEntered; });
+    const releasePromise = new Promise<void>((resolveRelease) => { release = resolveRelease; });
+    fake.managers = {
+      async ensure() {
+        entered();
+        await releasePromise;
+      },
+    };
+    fake.cancellation = {
+      async cancelManager() { release(); },
+      async cancelWorker() {},
+    };
+    const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
+    const running = engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
+    await enteredPromise;
+
+    const cancelled = await engine.cancelRun({
+      subject: 'operator', runRef: run.runRef, idempotencyKey: 'cancel-manager-start', reason: 'Stop while Manager starts.',
+    });
+    const outcome = await running;
+
+    expect(cancelled.state).toBe('stopped');
+    expect(outcome.state).toBe('stopping');
+    expect(fake.executionOrder).toEqual([]);
+    expect(store.getRun('operator', run.runRef)).toMatchObject({
+      ok: true,
+      value: { run: { state: 'stopped' }, stages: [{ state: 'stopped' }], sessions: [{ role: 'manager', state: 'stopped' }] },
+    });
+  });
+
+  it('marks unacknowledged cancellation as interrupted and creates an intervention boundary', async () => {
+    const store = createStore();
+    const plan = proposal([stage('second')]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    let entered = (): void => {};
+    let release = (): void => {};
+    const enteredPromise = new Promise<void>((resolveEntered) => { entered = resolveEntered; });
+    const releasePromise = new Promise<void>((resolveRelease) => { release = resolveRelease; });
+    fake.workers = {
+      async execute() {
+        entered();
+        await releasePromise;
+        return { state: 'failed', summary: 'stopped', usage: { inputTokens: 0, outputTokens: 0, costUsdMicros: 0 }, artifacts: [], checkpoints: [] };
+      },
+    };
+    fake.cancellation = {
+      async cancelManager() {},
+      async cancelWorker() { release(); throw new Error('worker stop acknowledgement lost'); },
+    };
+    const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
+    const running = engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
+    await enteredPromise;
+
+    const cancelled = await engine.cancelRun({
+      subject: 'operator', runRef: run.runRef, idempotencyKey: 'cancel-uncertain', reason: 'Operator requested stop.',
+    });
+    await running;
+
+    expect(cancelled.state).toBe('interrupted');
+    expect(cancelled.interruptedSessionRefs).toHaveLength(1);
+    expect(store.getRun('operator', run.runRef)).toMatchObject({
+      ok: true,
+      value: {
+        run: { state: 'interrupted' },
+        stages: [{ state: 'interrupted' }],
+        attempts: [{ state: 'interrupted' }],
+        humanRequests: [{ kind: 'intervention', state: 'open' }],
+      },
+    });
+  });
+
+  it('rejects out-of-scope server-inspected changes and restricted credential intent', async () => {
+    const store = createStore();
+    const unsafePlan = proposal([stage('unsafe-diff')]);
+    const unsafeRun = createApprovedRun(store, unsafePlan);
+    const fake = fakes();
+    fake.worktrees = {
+      async ensure() {},
+      async inspect() { return { changed: [{ path: 'governance/agent-rules.md', digest: 'b'.repeat(64) }] }; },
+    };
+    const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
+    expect((await engine.runToBoundary({ subject: 'operator', runRef: unsafeRun.runRef, proposal: unsafePlan })).state).toBe('failed');
+    expect(fake.integrationOrder).toEqual([]);
+
+    const restricted = stage('restricted');
+    restricted.workOrder = 'Read an API key and publish the release.';
+    const restrictedPlan = proposal([restricted]);
+    const restrictedRun = createApprovedRun(store, restrictedPlan);
+    expect((await engine.runToBoundary({ subject: 'operator', runRef: restrictedRun.runRef, proposal: restrictedPlan })).state).toBe('waiting-human');
+    const detail = store.getRun('operator', restrictedRun.runRef);
+    expect(detail).toMatchObject({ ok: true, value: { humanRequests: [{ kind: 'governance-refusal' }] } });
+  });
+
+  it('recovers a crashed file-backed run with manager and worker successor generations', async () => {
+    const stateRoot = mkdtempSync(join(tmpdir(), 'kb-auto-recovery-'));
+    tempDirs.push(stateRoot);
+    let ids = 0;
+    const store = createFileControlPlaneStore(stateRoot, { newId: () => `persistent-${++ids}` });
+    const plan = proposal([stage('recover')]);
+    const run = createApprovedRun(store, plan);
+    let detail = store.getRun('operator', run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    expect(store.transitionRun('operator', run.runRef, detail.value.run.version, 'running').ok).toBe(true);
+    detail = store.getRun('operator', run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const manager = detail.value.sessions.find((session) => session.role === 'manager') as NonNullable<typeof detail.value.sessions[number]>;
+    const managerStarting = store.transitionSession('operator', manager.sessionRef, manager.version, 'starting');
+    if (!managerStarting.ok) throw new Error(managerStarting.detail);
+    expect(store.transitionSession('operator', manager.sessionRef, managerStarting.value.version, 'running').ok).toBe(true);
+    detail = store.getRun('operator', run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const root = detail.value.stages[0];
+    const attempt = store.createAttempt('operator', root.stageRef, { expectedStageVersion: root.version, runtime: 'codex', model: 'codex-safe' });
+    if (!attempt.ok) throw new Error(attempt.detail);
+    const worker = store.createWorkerSession('operator', attempt.value.attemptRef, { expectedAttemptVersion: attempt.value.version });
+    if (!worker.ok) throw new Error(worker.detail);
+    detail = store.getRun('operator', run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const runningStage = detail.value.stages[0];
+    expect(store.transitionStage('operator', runningStage.stageRef, runningStage.version, 'running').ok).toBe(true);
+    const startingAttempt = store.transitionAttempt('operator', attempt.value.attemptRef, worker.value.version + 1, 'starting');
+    if (!startingAttempt.ok) throw new Error(startingAttempt.detail);
+    expect(store.transitionAttempt('operator', attempt.value.attemptRef, startingAttempt.value.version, 'running').ok).toBe(true);
+    const startingWorker = store.transitionSession('operator', worker.value.sessionRef, worker.value.version, 'starting');
+    if (!startingWorker.ok) throw new Error(startingWorker.detail);
+    expect(store.transitionSession('operator', worker.value.sessionRef, startingWorker.value.version, 'running').ok).toBe(true);
+
+    const recoveredStore = createFileControlPlaneStore(stateRoot, { newId: () => `persistent-${++ids}` });
+    const interrupted = recoveredStore.getRun('operator', run.runRef);
+    expect(interrupted).toMatchObject({ ok: true, value: { run: { state: 'interrupted' }, attempts: [{ state: 'interrupted' }] } });
+    const fake = fakes();
+    const engine = new AutomaticExecutionEngine(engineOptions(recoveredStore, fake, join(stateRoot, 'worktrees')));
+
+    const outcome = await engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
+
+    expect(outcome.state).toBe('succeeded');
+    const final = recoveredStore.getRun('operator', run.runRef);
+    if (!final.ok) throw new Error(final.detail);
+    expect(final.value.run.managerGeneration).toBe(2);
+    expect(final.value.attempts.map((item) => [item.generation, item.state, item.predecessorAttemptRef])).toEqual([
+      [1, 'interrupted', null],
+      [2, 'succeeded', final.value.attempts[0].attemptRef],
+    ]);
+    expect(fake.executionOrder).toEqual(['recover']);
+  });
+
+  it('rejects unsafe worktree planning and immutable-run hash mismatches', async () => {
+    expect(() => planRunWorktreePath('relative', 'run-1')).toThrow(AutomaticExecutionError);
+    expect(() => planRunWorktreePath(join(tmpdir(), 'worktrees'), '../escape')).toThrow(AutomaticExecutionError);
+    const store = createStore();
+    const plan = proposal([stage('bound')]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
+    const changed = { ...plan, summary: 'Changed after approval.' };
+    await expect(engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: changed })).rejects.toThrow('immutable run hash');
+    expect(fake.executionOrder).toEqual([]);
+  });
+});

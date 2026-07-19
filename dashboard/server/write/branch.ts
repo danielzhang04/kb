@@ -101,6 +101,20 @@ export class CoordinationCheckoutError extends Error {
   }
 }
 
+/** Refuse to absorb a previous failed operation's staged residue into a governed commit. */
+export class DirtyIndexError extends Error {
+  constructor(paths: string[]) {
+    super(`refusing governed commit with pre-existing staged paths: ${paths.join(', ')}`);
+    this.name = 'DirtyIndexError';
+  }
+}
+
+function assertCleanIndex(repoRoot: string, runGit: GitRunner): void {
+  const paths = runGit(repoRoot, ['diff', '--cached', '--name-only', '-z'])
+    .split('\0').map((path) => path.trim()).filter(Boolean);
+  if (paths.length > 0) throw new DirtyIndexError(paths);
+}
+
 /** Query the real checkout through the injected runner and fail closed unless it is exactly `ops`. */
 function assertCoordinationCheckout(repoRoot: string, runGit: GitRunner): void {
   const branch = runGit(repoRoot, ['rev-parse', '--abbrev-ref', 'HEAD']).trim();
@@ -134,6 +148,8 @@ export interface RouteOptions {
   /** Extra coordination relpaths staged into the SAME commit as the primary relpath (MED-3: an audit row
    *  committed atomically with the change it records — one commit, one push). Coordination route only. */
   alsoStage?: string[];
+  /** Re-run caller-specific authorization after a rejected push pulls a newer canonical ops head. */
+  onReconciled?: () => void;
 }
 
 /**
@@ -171,8 +187,9 @@ export function routeDurable(repoRoot: string, relpath: string, options: RouteOp
     throw new ProtectedBranchError(branch);
   }
 
+  assertCleanIndex(repoRoot, runGit);
   runGit(repoRoot, ['add', '--', relpath]);
-  runGit(repoRoot, ['commit', '-m', message]);
+  runGit(repoRoot, ['commit', '-m', message, '--only', '--', relpath]);
   // Push local HEAD onto the work-branch ref, regardless of the locally checked-out branch name —
   // never a bare `push origin main`/`push origin ops`.
   runGit(repoRoot, ['push', 'origin', `HEAD:refs/heads/${branch}`]);
@@ -192,8 +209,9 @@ export function commitPreparedCoordination(repoRoot: string, relpath: string, op
 
   const stagePaths = [relpath, ...(options.alsoStage ?? [])];
   assertCoordinationCheckout(repoRoot, runGit);
+  assertCleanIndex(repoRoot, runGit);
   runGit(repoRoot, ['add', '--', ...stagePaths]);
-  runGit(repoRoot, ['commit', '-m', message]);
+  runGit(repoRoot, ['commit', '-m', message, '--only', '--', ...stagePaths]);
 
   let lastErr: unknown;
   for (let attempt = 0; attempt <= maxRetryPushes; attempt += 1) {
@@ -205,6 +223,7 @@ export function commitPreparedCoordination(repoRoot: string, relpath: string, op
       if (attempt === maxRetryPushes) break;
       assertCoordinationCheckout(repoRoot, runGit);
       runGit(repoRoot, ['pull', '--rebase', 'origin', 'ops']);
+      options.onReconciled?.();
     }
   }
   throw lastErr;

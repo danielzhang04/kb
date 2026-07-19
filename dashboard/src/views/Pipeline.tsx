@@ -47,6 +47,7 @@ import {
 import { RoutingControl } from './routingControls';
 import { useSse } from '../lib/sseClient';
 import '../styles/views/pipeline.css';
+import { ManagedRuns } from '../control/ManagedRuns';
 
 type DotKind = 'idle' | 'running' | 'blocked' | 'done' | 'error';
 
@@ -406,6 +407,9 @@ export function Pipeline({
           background runners; Terminal tabs are separate manual shells.
         </p>
       </header>
+      <ManagedRuns sessionToken={sessionToken} onRequestSession={onRequestSession} />
+      <details className="v-pipeline__legacy" open={groups.length > 0}>
+        <summary>Canonical queue-card graph</summary>
       {groups.length > 0 ? (
         <nav className="v-pipeline__runs" aria-label="Run instances" data-testid="run-groups">
           {groups.map((run) => (
@@ -449,6 +453,7 @@ export function Pipeline({
           </ReactFlow>
         </ReactFlowProvider>
       )}
+      </details>
     </section>
   );
 }

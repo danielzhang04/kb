@@ -82,11 +82,13 @@ describe('commitAuditToOps (injectable git-runner, hermetic)', () => {
     commitAuditToOps(repo, runner);
 
     const verbs = calls.map((c) => c.slice(0, 2).join(' '));
-    expect(verbs).toEqual(['pull --rebase', 'add --', 'commit -m', 'push origin']);
-    expect(calls[0]).toEqual(['pull', '--rebase', '--autostash', 'origin', 'ops']);
-    expect(calls[3]).toEqual(['push', 'origin', 'ops']);
+    expect(verbs).toEqual(['diff --cached', 'pull --rebase', 'add --', 'commit -m', 'push origin']);
+    expect(calls[0]).toEqual(['diff', '--cached', '--name-only', '-z']);
+    expect(calls[1]).toEqual(['pull', '--rebase', '--autostash', 'origin', 'ops']);
+    expect(calls[4]).toEqual(['push', 'origin', 'ops']);
     // Only the audit ledger is staged (never `git add .`).
-    expect(calls[1]).toEqual(['add', '--', AUDIT_REL_PATH]);
+    expect(calls[2]).toEqual(['add', '--', AUDIT_REL_PATH]);
+    expect(calls[3]).toContain('--only');
   });
 
   it('re-reads (pull --rebase) and retries when the push is rejected', () => {
@@ -135,7 +137,8 @@ describe('appendAudit (append + commit, end-to-end)', () => {
     const row = appendAudit(repo, { action: 'approve', cardId: 'card-a' }, { runGit: runner });
 
     // The commit sequence still opens with pull --rebase and reconciles before the retried push.
-    expect(calls[0]).toEqual(['pull', '--rebase', '--autostash', 'origin', 'ops']);
+    expect(calls[0]).toEqual(['diff', '--cached', '--name-only', '-z']);
+    expect(calls[1]).toEqual(['pull', '--rebase', '--autostash', 'origin', 'ops']);
     const pushIdx = calls.map((c, i) => (c[0] === 'push' ? i : -1)).filter((i) => i >= 0);
     expect(pushIdx).toHaveLength(2);
     expect(calls[pushIdx[0] + 1]).toEqual(['pull', '--rebase', '--autostash', 'origin', 'ops']);
@@ -157,7 +160,7 @@ describe('appendAudit (append + commit, end-to-end)', () => {
 
     const rows = await readLedger(repo);
     expect(rows).toHaveLength(1);
-    expect(order[0]).toBe('pull');
+    expect(order[0]).toBe('diff');
   });
 });
 

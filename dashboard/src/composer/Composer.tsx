@@ -89,6 +89,8 @@ export interface ComposerProps {
    *  deploy-outcome strip here so the result appears where the operator pressed Deploy. Purely additive:
    *  when omitted (C3's original contract) the panel renders exactly as before. */
   renderOutcome?: React.ReactNode;
+  /** Secondary immutable proposal review, shown after the primary conversation. */
+  renderProposalReview?: React.ReactNode;
 }
 
 /** Today's date (YYYY-MM-DD) for the project template's `{{date}}`. This is the ONE impurity the UI owns
@@ -208,6 +210,7 @@ export function Composer({
   onBack,
   stream = defaultComposerStream,
   renderOutcome,
+  renderProposalReview,
 }: ComposerProps): React.JSX.Element {
   const [kind, setKind] = useState<SeedKind>(initialKind);
   const [form, setForm] = useState<FormState>(initialForm);
@@ -286,6 +289,8 @@ export function Composer({
           stream={seedingStream}
         />
       </div>
+
+      {renderProposalReview}
 
       <details className="v-composer__draft-run">
         <summary>Draft &amp; run</summary>

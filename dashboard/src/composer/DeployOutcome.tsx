@@ -16,13 +16,14 @@
  * `deployImpl` is injectable so the suite drives a fake — no real network, no real server, no real claude.
  */
 import { useCallback, useEffect, useState } from 'react';
-import type { Session } from '../lib/authClient';
+import { invalidateSessionOnGovernedAuthFailure, SESSION_INVALIDATED_EVENT, type Session } from '../lib/authClient';
 import { Composer } from './Composer';
 import { deploy as defaultDeploy } from './deploy';
 import type { DeployRefusal, DeployResult, DeploySuccess } from './deploy';
 import type { ArtifactKind, DeployPlan, FollowUp, SeedKind } from './artifactTypes';
 import type { WorkflowRunRequest } from '../../server/write/workflowRun';
 import type { ComposerSession } from './workspaceClient';
+import { ProposalReviewPanel } from '../control/ProposalReviewPanel';
 
 export interface DeployOutcomeProps {
   composerSession?: ComposerSession;
@@ -79,6 +80,12 @@ export function DeployOutcome({
   useEffect(() => {
     if (sessionToken) setLocalToken(sessionToken);
   }, [sessionToken]);
+
+  useEffect(() => {
+    const invalidate = (): void => setLocalToken(undefined);
+    window.addEventListener(SESSION_INVALIDATED_EVENT, invalidate);
+    return () => window.removeEventListener(SESSION_INVALIDATED_EVENT, invalidate);
+  }, []);
 
   const resolveToken = useCallback(async (): Promise<string | undefined> => {
     const existing = sessionToken ?? localToken;
@@ -157,6 +164,7 @@ export function DeployOutcome({
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
         body: JSON.stringify(request),
       });
+      await invalidateSessionOnGovernedAuthFailure(response);
       const data = (await response.json()) as {
         runId?: string;
         cards?: unknown[];
@@ -210,6 +218,13 @@ export function DeployOutcome({
           ) : null}
         </>
       }
+      renderProposalReview={composerSession ? (
+        <ProposalReviewPanel
+          composerSession={composerSession}
+          sessionToken={sessionToken ?? localToken}
+          onRequestSession={onRequestSession}
+        />
+      ) : null}
     />
   );
 }

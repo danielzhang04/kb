@@ -1,0 +1,162 @@
+import { createHash } from 'node:crypto';
+
+export type PolicyDisposition = 'allow' | 'waiting-human' | 'refuse';
+
+export interface ExecutionProfile {
+  id: string;
+  role: 'manager' | 'worker';
+  runtime: 'claude' | 'codex';
+  model: string;
+  capabilities: readonly ('read' | 'write-approved-scope' | 'run-approved-commands' | 'emit-events')[];
+}
+
+export interface ApprovedScope {
+  read: string[];
+  write: string[];
+}
+
+export interface PolicyRequest {
+  project: string;
+  riskTier: 'T1' | 'T2' | 'T3';
+  role: 'manager' | 'worker';
+  runtime: 'claude' | 'codex';
+  model: string;
+  target: string;
+  requiredSkills: string[];
+  scope: ApprovedScope;
+  governanceRefs: string[];
+  proposalHash: string;
+  approvedHash: string | null;
+  requestsPublication?: boolean;
+  requestsSpending?: boolean;
+  requestsCredentials?: boolean;
+}
+
+export interface PolicyEnvironment {
+  profiles: ExecutionProfile[];
+  curatedSkills: Set<string>;
+  contractText: string;
+  governanceContents: Record<string, string>;
+}
+
+export interface PolicyDecision {
+  disposition: PolicyDisposition;
+  reason: string;
+  profile: ExecutionProfile | null;
+  policyHash: string;
+}
+
+const SAFE_PROJECT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+const REQUIRED_GLOBAL_REFS = ['CLAUDE.md', 'governance/agent-rules.md', 'governance/risk-tiers.md'];
+const HUMAN_OWNED_PREFIXES = ['governance/', 'CLAUDE.md'];
+
+function normalizedPath(value: string): string | null {
+  if (!value || value.includes('\0') || value.includes('\\')) return null;
+  if (/^[A-Za-z]:\//.test(value) || value.startsWith('/') || value.startsWith('~')) return null;
+  const parts = value.split('/');
+  if (parts.some((part) => part === '' || part === '.' || part === '..')) return null;
+  return parts.join('/');
+}
+
+function within(path: string, prefixes: string[]): boolean {
+  return prefixes.some((candidate) => {
+    const prefix = normalizedPath(candidate.replace(/\/$/, ''));
+    return prefix !== null && (path === prefix || path.startsWith(`${prefix}/`));
+  });
+}
+
+function policyDigest(request: PolicyRequest, environment: PolicyEnvironment): string {
+  const referenced = [...new Set(request.governanceRefs)].sort().map((ref) => [ref, environment.governanceContents[ref] ?? null]);
+  return createHash('sha256').update(JSON.stringify({
+    contractText: environment.contractText,
+    profiles: environment.profiles,
+    referenced,
+    scope: request.scope,
+  })).digest('hex');
+}
+
+export type ActionRiskClassification =
+  | { disposition: 'allowed'; minimumTier: 'T1' | 'T2' | 'T3' }
+  | { disposition: 'forbidden'; reason: string };
+
+/**
+ * Closed server-owned action namespace registry shared by proposal compilation and execution.
+ * Adding a namespace is a code-reviewed capability change; proposal prose and browser input cannot
+ * widen this table.
+ */
+const ALLOWED_ACTION_TIERS = new Map<string, 'T1' | 'T2' | 'T3'>([
+  ['wiki', 'T1'],
+  ['report', 'T1'],
+  ['draft', 'T2'],
+  ['build', 'T2'],
+  ['code', 'T2'],
+  ['implement', 'T2'],
+  ['refactor', 'T2'],
+  ['fix', 'T2'],
+  ['research', 'T2'],
+  ['test', 'T2'],
+  ['verify', 'T2'],
+  ['review', 'T2'],
+  ['deploy', 'T3'],
+  ['publish', 'T3'],
+  ['publication', 'T3'],
+  ['merge', 'T3'],
+  ['release', 'T3'],
+  ['purge', 'T3'],
+]);
+
+const FORBIDDEN_ACTION_NAMESPACES = new Set([
+  'credential', 'credentials', 'secret', 'secrets', 'spend', 'purchase', 'payment', 'money',
+]);
+
+/** Closed action-namespace classification. Prose can never lower these server-owned floors. */
+export function classifyActionRisk(action: string): ActionRiskClassification {
+  const namespace = action.trim().toLowerCase().split(':', 1)[0];
+  if (FORBIDDEN_ACTION_NAMESPACES.has(namespace)) {
+    return { disposition: 'forbidden', reason: 't4-capability-forbidden' };
+  }
+  const minimumTier = ALLOWED_ACTION_TIERS.get(namespace);
+  return minimumTier
+    ? { disposition: 'allowed', minimumTier }
+    : { disposition: 'forbidden', reason: 'action-not-in-server-owned-registry' };
+}
+
+/**
+ * Fail-closed executable boundary for an approved proposal stage. Human-authored prose is retained in
+ * the policy hash, but only rules represented below can authorize execution; ambiguous or missing
+ * references become a durable human wait instead of being guessed from prose.
+ */
+export function evaluateExecutionPolicy(request: PolicyRequest, environment: PolicyEnvironment): PolicyDecision {
+  const policyHash = policyDigest(request, environment);
+  const decide = (disposition: PolicyDisposition, reason: string, profile: ExecutionProfile | null = null): PolicyDecision =>
+    ({ disposition, reason, profile, policyHash });
+
+  if (!SAFE_PROJECT.test(request.project)) return decide('refuse', 'invalid-project');
+  const target = normalizedPath(request.target);
+  if (!target) return decide('refuse', 'unsafe-target');
+  if (HUMAN_OWNED_PREFIXES.some((prefix) => target === prefix.replace(/\/$/, '') || target.startsWith(prefix))) {
+    return decide('refuse', 'human-owned-governance-target');
+  }
+  if (request.requestsCredentials) return decide('refuse', 'credentials-as-objects-forbidden');
+  if (request.requestsSpending) return decide('refuse', 'real-spending-forbidden');
+  if (request.requestsPublication) return decide('waiting-human', 'external-publication-requires-t3-approval');
+
+  const requiredRefs = [...REQUIRED_GLOBAL_REFS, `orgs/${request.project}/contract.md`];
+  if (requiredRefs.some((ref) => !request.governanceRefs.includes(ref) || typeof environment.governanceContents[ref] !== 'string')) {
+    return decide('waiting-human', 'missing-executable-governance-reference');
+  }
+  if (!environment.contractText.trim()) return decide('waiting-human', 'project-contract-unavailable');
+  if (request.riskTier === 'T3') return decide('waiting-human', 't3-content-bound-approval-required');
+  if (!request.approvedHash || request.approvedHash !== request.proposalHash) {
+    return decide('waiting-human', 'proposal-revision-not-approved');
+  }
+  if (!within(target, request.scope.write)) return decide('waiting-human', 'target-outside-approved-write-scope');
+  const unknownSkill = request.requiredSkills.find((skill) => !environment.curatedSkills.has(skill));
+  if (unknownSkill) return decide('refuse', `skill-not-curated:${unknownSkill}`);
+
+  const profile = environment.profiles.find((candidate) =>
+    candidate.role === request.role && candidate.runtime === request.runtime && candidate.model === request.model,
+  ) ?? null;
+  if (!profile) return decide('refuse', 'runtime-model-profile-not-allowed');
+  return decide('allow', 'inside-approved-envelope', profile);
+}

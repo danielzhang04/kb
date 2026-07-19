@@ -62,6 +62,7 @@ import { useSse } from './lib/sseClient';
 import {
   clearStoredSession,
   isSessionFresh,
+  SESSION_INVALIDATED_EVENT,
   persistSession,
   readStoredSession,
   signIn,
@@ -535,6 +536,15 @@ export function App(): React.JSX.Element {
     }, Math.min(remaining, 2_147_483_647));
     return () => window.clearTimeout(timer);
   }, [session]);
+
+  // A governed 401 can invalidate a bearer before its signed expiry (for example after daemon secret
+  // rotation). Keep the in-memory copy aligned with the auth boundary's storage clear; the next action
+  // can then run the existing point-of-action passkey ceremony.
+  useEffect(() => {
+    const invalidate = (): void => setSession(null);
+    window.addEventListener(SESSION_INVALIDATED_EVENT, invalidate);
+    return () => window.removeEventListener(SESSION_INVALIDATED_EVENT, invalidate);
+  }, []);
 
   useEffect(() => persistOpenComposerRefs(openComposerRefs), [openComposerRefs]);
 

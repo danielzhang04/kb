@@ -1,11 +1,14 @@
+// @vitest-environment jsdom
 /**
  * U2 — authClient.signIn: WebAuthn login assertion (via webauthnClient) exchanged for a session bearer.
  */
 import { describe, expect, it, vi } from 'vitest';
 import {
   clearStoredSession,
+  invalidateSessionOnGovernedAuthFailure,
   persistSession,
   readStoredSession,
+  SESSION_INVALIDATED_EVENT,
   SESSION_STORAGE_KEY,
   signIn,
   unlockErrorMessage,
@@ -77,6 +80,44 @@ describe('tab-scoped session persistence', () => {
     persistSession({ token: 't', expiresAt: Date.now() + 1_000 }, store);
     clearStoredSession(store);
     expect(store.getItem(SESSION_STORAGE_KEY)).toBeNull();
+  });
+});
+
+describe('governed auth failure invalidation', () => {
+  it.each(['bad-signature', 'expired', 'unauthenticated'])(
+    'clears the saved session and emits a token-free signal for %s',
+    async (reason) => {
+      const session = { token: 'must-not-leak', expiresAt: Date.now() + 60_000 };
+      persistSession(session);
+      const events: Event[] = [];
+      const listener = (event: Event): void => { events.push(event); };
+      window.addEventListener(SESSION_INVALIDATED_EVENT, listener);
+      const response = new Response(JSON.stringify({ error: 'unauthenticated', reason }), {
+        status: 401,
+        headers: { 'content-type': 'application/json' },
+      });
+
+      expect(await invalidateSessionOnGovernedAuthFailure(response)).toBe(true);
+
+      window.removeEventListener(SESSION_INVALIDATED_EVENT, listener);
+      expect(window.sessionStorage.getItem(SESSION_STORAGE_KEY)).toBeNull();
+      expect(events).toHaveLength(1);
+      expect(events[0]).not.toBeInstanceOf(CustomEvent);
+      expect(JSON.stringify(events[0])).not.toContain(session.token);
+      await expect(response.json()).resolves.toEqual({ error: 'unauthenticated', reason });
+    },
+  );
+
+  it('preserves a saved session for an unrelated 401 refusal', async () => {
+    const session = { token: 'still-valid', expiresAt: Date.now() + 60_000 };
+    persistSession(session);
+    const response = new Response(JSON.stringify({ error: 'credential-not-enrolled' }), {
+      status: 401,
+      headers: { 'content-type': 'application/json' },
+    });
+
+    expect(await invalidateSessionOnGovernedAuthFailure(response)).toBe(false);
+    expect(readStoredSession()).toEqual(session);
   });
 });
 

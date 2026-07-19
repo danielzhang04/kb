@@ -12,6 +12,7 @@
 import type { ParsedCard } from '../../server/planeA/cards';
 import type { ApprovalButtons } from '../../server/approvals/assurance';
 import type { HumanInboxProjection } from '../../server/approvals/humanInbox';
+import { invalidateSessionOnGovernedAuthFailure } from './authClient';
 
 export type ApprovalChannel = 'signed' | 'possession' | 'webauthn';
 export type FetchLike = typeof fetch;
@@ -66,6 +67,7 @@ export async function verifyApproval(
     headers,
     body: JSON.stringify({ cardId, channel }),
   });
+  await invalidateSessionOnGovernedAuthFailure(res);
   let reason = '';
   try {
     const body = (await res.json()) as { reason?: string; error?: string };

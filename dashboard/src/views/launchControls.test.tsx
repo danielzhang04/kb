@@ -30,6 +30,7 @@ function stubOkFetch(): { bodies: Array<Record<string, unknown>> } {
 
 afterEach(() => {
   cleanup();
+  window.sessionStorage.clear();
   vi.unstubAllGlobals();
 });
 
@@ -82,5 +83,22 @@ describe('LaunchControls — C7.7 owner picker', () => {
     fireEvent.submit(screen.getByLabelText('Launch card'));
     await vi.waitFor(() => expect(bodies).toHaveLength(2));
     expect(bodies[1].owner).toBe('worker-desktop');
+  });
+
+  it('clears a saved bearer when launch returns bad-signature without consuming the refusal body', async () => {
+    window.sessionStorage.setItem(
+      'kb-dashboard-session-v1',
+      JSON.stringify({ token: 'stale-token', expiresAt: Date.now() + 60_000 }),
+    );
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      error: 'unauthenticated',
+      reason: 'bad-signature',
+    }), { status: 401, headers: { 'content-type': 'application/json' } })));
+    render(<LaunchControls sessionToken="stale-token" />);
+
+    fireEvent.submit(screen.getByLabelText('Launch card'));
+
+    expect((await screen.findByTestId('launch-status')).textContent).toMatch(/refused: bad-signature/i);
+    expect(window.sessionStorage.getItem('kb-dashboard-session-v1')).toBeNull();
   });
 });

@@ -138,6 +138,23 @@
   line-height: 1.6;
 }
 
+.v-pipeline__legacy {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.v-pipeline__legacy > summary {
+  flex: 0 0 auto;
+  padding: var(--space-3) var(--space-6);
+  border-bottom: 1px solid var(--border);
+  color: var(--fg-dim);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
 /* ── the card node ─────────────────────────────────────────────────────────────────────────────── */
 .v-pipe-node {
   width: 236px;

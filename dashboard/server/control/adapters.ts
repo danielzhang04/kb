@@ -1,0 +1,796 @@
+import { createHash, randomUUID } from 'node:crypto';
+import {
+  closeSync,
+  existsSync,
+  fsyncSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
+import { spawn } from 'node:child_process';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { redactSensitiveText } from '../composer/publicTimeline.ts';
+import type { ExecutionProfile } from './policy.ts';
+import { isSafeRepoRelativePath } from './proposal.ts';
+import {
+  canonicalStageResultHash,
+  type AccountingAdapter,
+  type CanonicalStageResult,
+  type ExecutionBudget,
+  type ExecutionUsage,
+  type ResultIntegrator,
+  type SkillResolver,
+  type WorkerArtifactResult,
+  type WorktreeAdapter,
+} from './execution.ts';
+
+const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const SAFE_FILE_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+const SHA256 = /^[a-f0-9]{64}$/;
+const PINNED_COMMIT = /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/;
+const MAX_OPERATION_KEY = 512;
+const MAX_RESULT_SUMMARY_BYTES = 64 * 1024;
+const MAX_STATE_BYTES = 32 * 1024 * 1024;
+
+export class ExecutionAdapterError extends Error {}
+
+export interface GitCommandResult {
+  exitCode: number;
+  stdout: Buffer;
+  stderr: string;
+}
+
+/** The only injectable process boundary. Production always invokes local Git with a closed environment. */
+export interface GitCommandRunner {
+  run(args: readonly string[], cwd: string): Promise<GitCommandResult>;
+}
+
+export interface LocalGitRunnerOptions {
+  maxOutputBytes?: number;
+}
+
+/**
+ * Local-only Git runner. It exposes no executable, shell, environment, or permission-mode option.
+ * The adapter adds protocol and hook restrictions to every invocation.
+ */
+export function createLocalGitCommandRunner(options: LocalGitRunnerOptions = {}): GitCommandRunner {
+  const maxOutputBytes = options.maxOutputBytes ?? 8 * 1024 * 1024;
+  requireSafeInteger(maxOutputBytes, 'maxOutputBytes', 1);
+  return {
+    run(args, cwd) {
+      return new Promise((resolvePromise, reject) => {
+        const environment: NodeJS.ProcessEnv = {};
+        for (const name of ['PATH', 'PATHEXT', 'SystemRoot', 'WINDIR', 'TEMP', 'TMP', 'LANG', 'LC_ALL']) {
+          if (process.env[name] !== undefined) environment[name] = process.env[name];
+        }
+        const child = spawn('git', [...args], {
+          cwd,
+          env: environment,
+          shell: false,
+          windowsHide: true,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        const stdout: Buffer[] = [];
+        const stderr: Buffer[] = [];
+        let total = 0;
+        let exceeded = false;
+        const collect = (target: Buffer[]) => (chunk: Buffer): void => {
+          total += chunk.length;
+          if (total > maxOutputBytes) {
+            exceeded = true;
+            child.kill();
+            return;
+          }
+          target.push(chunk);
+        };
+        child.stdout.on('data', collect(stdout));
+        child.stderr.on('data', collect(stderr));
+        child.once('error', reject);
+        child.once('close', (code) => {
+          if (exceeded) return reject(new ExecutionAdapterError('git output exceeded the server-owned limit'));
+          resolvePromise({
+            exitCode: code ?? -1,
+            stdout: Buffer.concat(stdout),
+            stderr: Buffer.concat(stderr).toString('utf8').slice(0, maxOutputBytes),
+          });
+        });
+      });
+    },
+  };
+}
+
+export interface GitWorktreeAdapterOptions {
+  repoRoot: string;
+  worktreeRoot: string;
+  /** Immutable server-selected commit, never a browser-selected ref. */
+  baseCommit: string;
+  runner?: GitCommandRunner;
+  maxChangedFiles?: number;
+  maxChangedFileBytes?: number;
+}
+
+function requireAbsolute(path: string, name: string): string {
+  if (!isAbsolute(path) || path.includes('\0')) throw new ExecutionAdapterError(`${name} must be an absolute server-owned path`);
+  return resolve(path);
+}
+
+function requireSafeInteger(value: number, name: string, minimum: number): void {
+  if (!Number.isSafeInteger(value) || value < minimum) throw new ExecutionAdapterError(`${name} is invalid`);
+}
+
+function requireOperationKey(value: string): void {
+  if (!value || value.length > MAX_OPERATION_KEY || value.includes('\0')) throw new ExecutionAdapterError('operationKey is invalid');
+}
+
+function childOf(root: string, candidate: string): boolean {
+  const child = relative(root, candidate);
+  return child !== '' && child !== '..' && !child.startsWith(`..${sep}`) && !isAbsolute(child);
+}
+
+function expectedAttemptPath(worktreeRoot: string, runRef: string, candidate: string): string {
+  if (!SAFE_FILE_SEGMENT.test(runRef) || runRef.includes('..') || !isSafeRepoRelativePath(runRef)) {
+    throw new ExecutionAdapterError('runRef is unsafe');
+  }
+  const absolute = requireAbsolute(candidate, 'attempt worktree path');
+  if (!childOf(worktreeRoot, absolute)) throw new ExecutionAdapterError('attempt worktree escapes the server-owned root');
+  const parts = relative(worktreeRoot, absolute).split(sep);
+  if (parts.length !== 2 || parts[0] !== runRef || !SAFE_FILE_SEGMENT.test(parts[1])
+    || parts[1].includes('..') || !isSafeRepoRelativePath(parts[1])) {
+    throw new ExecutionAdapterError('attempt worktree path does not match the server-owned run layout');
+  }
+  return absolute;
+}
+
+function commandFailure(label: string, result: GitCommandResult): never {
+  throw new ExecutionAdapterError(`${label} failed (${result.exitCode}): ${result.stderr.slice(0, 512)}`);
+}
+
+function normalizedExistingPath(path: string): string {
+  return resolve(realpathSync(path));
+}
+
+function parseStatus(output: Buffer, maxChangedFiles: number): string[] {
+  const records = output.toString('utf8').split('\0');
+  if (records.at(-1) === '') records.pop();
+  if (records.length > maxChangedFiles) throw new ExecutionAdapterError('changed-file count exceeds the server-owned limit');
+  const paths: string[] = [];
+  for (const record of records) {
+    if (record.length < 4 || record[2] !== ' ') throw new ExecutionAdapterError('git returned an invalid porcelain status record');
+    const status = record.slice(0, 2);
+    const path = record.slice(3);
+    // The canonical result DTO cannot safely represent removals, renames, conflicts, type changes, or submodules.
+    if (!(status === '??' || [...status].every((value) => value === ' ' || value === 'M' || value === 'A'))) {
+      throw new ExecutionAdapterError(`unsupported changed-file status '${status}'`);
+    }
+    if (!isSafeRepoRelativePath(path)) throw new ExecutionAdapterError('git returned an unsafe changed-file path');
+    if (paths.includes(path)) throw new ExecutionAdapterError('git returned a duplicate changed-file path');
+    paths.push(path);
+  }
+  return paths.sort();
+}
+
+async function runGit(
+  runner: GitCommandRunner,
+  prefix: readonly string[],
+  args: readonly string[],
+  cwd: string,
+  label: string,
+): Promise<GitCommandResult> {
+  const result = await runner.run([...prefix, ...args], cwd);
+  if (result.exitCode !== 0) commandFailure(label, result);
+  return result;
+}
+
+/** Git-backed, non-destructive worktree provisioning and server-side content inspection. */
+export function createGitWorktreeAdapter(options: GitWorktreeAdapterOptions): WorktreeAdapter {
+  const repoRoot = requireAbsolute(options.repoRoot, 'repoRoot');
+  const worktreeRoot = requireAbsolute(options.worktreeRoot, 'worktreeRoot');
+  if (!existsSync(repoRoot) || !lstatSync(repoRoot).isDirectory()) throw new ExecutionAdapterError('repoRoot is unavailable');
+  if (repoRoot === worktreeRoot || childOf(repoRoot, worktreeRoot) || childOf(worktreeRoot, repoRoot)) {
+    throw new ExecutionAdapterError('worktreeRoot and repoRoot must be disjoint');
+  }
+  if (!PINNED_COMMIT.test(options.baseCommit)) throw new ExecutionAdapterError('baseCommit must be a full immutable object id');
+  const runner = options.runner ?? createLocalGitCommandRunner();
+  const maxChangedFiles = options.maxChangedFiles ?? 1_024;
+  const maxChangedFileBytes = options.maxChangedFileBytes ?? 16 * 1024 * 1024;
+  requireSafeInteger(maxChangedFiles, 'maxChangedFiles', 1);
+  requireSafeInteger(maxChangedFileBytes, 'maxChangedFileBytes', 1);
+  mkdirSync(worktreeRoot, { recursive: true, mode: 0o700 });
+  const hooksPath = join(worktreeRoot, '.disabled-hooks');
+  mkdirSync(hooksPath, { recursive: true, mode: 0o700 });
+  const prefix = ['-c', 'protocol.allow=never', '-c', `core.hooksPath=${hooksPath}`, '--literal-pathspecs'] as const;
+
+  const verify = async (path: string): Promise<void> => {
+    const top = await runGit(runner, prefix, ['rev-parse', '--show-toplevel'], path, 'worktree verification');
+    if (normalizedExistingPath(top.stdout.toString('utf8').trim()) !== normalizedExistingPath(path)) {
+      throw new ExecutionAdapterError('existing path is not the planned worktree root');
+    }
+    const repoCommon = await runGit(runner, prefix, ['rev-parse', '--path-format=absolute', '--git-common-dir'], repoRoot, 'repository identity');
+    const treeCommon = await runGit(runner, prefix, ['rev-parse', '--path-format=absolute', '--git-common-dir'], path, 'worktree identity');
+    if (normalizedExistingPath(repoCommon.stdout.toString('utf8').trim()) !== normalizedExistingPath(treeCommon.stdout.toString('utf8').trim())) {
+      throw new ExecutionAdapterError('existing worktree belongs to a different repository');
+    }
+  };
+
+  return {
+    async ensure(input) {
+      requireOperationKey(input.operationKey);
+      const path = expectedAttemptPath(worktreeRoot, input.runRef, input.path);
+      const baseCommit = input.baseCommit ?? options.baseCommit;
+      if (!PINNED_COMMIT.test(baseCommit)) throw new ExecutionAdapterError('attempt baseCommit must be a full immutable object id');
+      if (existsSync(path)) {
+        if (!lstatSync(path).isDirectory()) throw new ExecutionAdapterError('planned worktree path is not a directory');
+        await verify(path);
+        const existing = await runGit(runner, prefix, ['rev-parse', 'HEAD'], path, 'attempt base verification');
+        if (existing.stdout.toString('utf8').trim() !== baseCommit) {
+          throw new ExecutionAdapterError('existing attempt worktree has a different committed lineage base');
+        }
+        return;
+      }
+      mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+      await runGit(runner, prefix, ['worktree', 'add', '--detach', path, baseCommit], repoRoot, 'worktree creation');
+      if (!existsSync(path)) throw new ExecutionAdapterError('git did not create the planned worktree');
+      await verify(path);
+    },
+
+    async inspect(input) {
+      requireOperationKey(input.operationKey);
+      const path = expectedAttemptPath(worktreeRoot, input.runRef, input.path);
+      if (!existsSync(path) || !lstatSync(path).isDirectory()) throw new ExecutionAdapterError('planned worktree is unavailable');
+      await verify(path);
+      const status = await runGit(
+        runner,
+        prefix,
+        ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--ignore-submodules=all'],
+        path,
+        'changed-file inspection',
+      );
+      const paths = parseStatus(status.stdout, maxChangedFiles);
+      const changed: WorkerArtifactResult[] = [];
+      for (const repoPath of paths) {
+        const absolute = resolve(path, ...repoPath.split('/'));
+        if (!childOf(path, absolute)) throw new ExecutionAdapterError('changed file escapes its worktree');
+        const before = lstatSync(absolute, { bigint: true });
+        if (!before.isFile() || before.isSymbolicLink()) throw new ExecutionAdapterError('changed path is not a regular file');
+        if (!childOf(normalizedExistingPath(path), normalizedExistingPath(absolute))) {
+          throw new ExecutionAdapterError('changed file resolves outside its worktree');
+        }
+        if (before.size > BigInt(maxChangedFileBytes)) throw new ExecutionAdapterError('changed file exceeds the server-owned size limit');
+        const content = readFileSync(absolute);
+        const after = statSync(absolute, { bigint: true });
+        if (before.size !== after.size || before.mtimeNs !== after.mtimeNs) throw new ExecutionAdapterError('changed file mutated during inspection');
+        changed.push({ path: repoPath, digest: createHash('sha256').update(content).digest('hex') });
+      }
+      return { changed };
+    },
+  };
+}
+
+interface AccountingReservationRecord {
+  operationKey: string;
+  fingerprint: string;
+  reservationRef: string;
+  subject: string;
+  runRef: string;
+  attemptRef: string;
+  limits: ExecutionBudget;
+  state: 'active' | 'settled';
+  usage: ExecutionUsage | null;
+  settlementOperationKey: string | null;
+  settlementFingerprint: string | null;
+  reservedAt: string;
+  settledAt: string | null;
+}
+
+interface AccountingDocument {
+  schema: 'kb.execution-accounting/v1';
+  revision: number;
+  policyHash: string;
+  windowId: string;
+  reservations: AccountingReservationRecord[];
+}
+
+interface ResultRecord {
+  operationKey: string;
+  fingerprint: string;
+  subject: string;
+  runRef: string;
+  stageRef: string;
+  stageId: string;
+  attemptRef: string;
+  canonicalCardRef: string;
+  result: CanonicalStageResult;
+  integratedAt: string;
+}
+
+interface ResultDocument {
+  schema: 'kb.execution-results/v1';
+  revision: number;
+  results: ResultRecord[];
+}
+
+interface AtomicDocumentOptions<T> {
+  path: string;
+  empty: () => T;
+  validate: (value: unknown) => asserts value is T;
+  lockTimeoutMs?: number;
+}
+
+function canonical(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${canonical(record[key])}`).join(',')}}`;
+}
+
+function digest(value: unknown): string {
+  return createHash('sha256').update(canonical(value), 'utf8').digest('hex');
+}
+
+function clone<T>(value: T): T {
+  return structuredClone(value);
+}
+
+function assertRecord(value: unknown, schema: string): asserts value is Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || (value as Record<string, unknown>).schema !== schema) {
+    throw new ExecutionAdapterError(`invalid ${schema} state document`);
+  }
+}
+
+function assertAccountingDocument(value: unknown): asserts value is AccountingDocument {
+  assertRecord(value, 'kb.execution-accounting/v1');
+  if (!Number.isSafeInteger(value.revision) || !SHA256.test(String(value.policyHash)) || typeof value.windowId !== 'string' || !Array.isArray(value.reservations)) {
+    throw new ExecutionAdapterError('invalid accounting state document');
+  }
+  const operations = new Set<string>();
+  const references = new Set<string>();
+  for (const item of value.reservations) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) throw new ExecutionAdapterError('invalid accounting reservation record');
+    const record = item as unknown as AccountingReservationRecord;
+    requireOperationKey(record.operationKey);
+    if (operations.has(record.operationKey) || references.has(record.reservationRef) || !SAFE_REF.test(record.reservationRef)
+      || !SHA256.test(record.fingerprint) || !['active', 'settled'].includes(record.state)) {
+      throw new ExecutionAdapterError('invalid accounting reservation identity');
+    }
+    if ([record.subject, record.runRef, record.attemptRef, record.reservedAt].some((field) =>
+      typeof field !== 'string' || field.length === 0 || field.includes('\0'))) {
+      throw new ExecutionAdapterError('invalid accounting reservation metadata');
+    }
+    assertBudget(record.limits, 'stored reservation limits');
+    if (record.fingerprint !== digest({
+      operationKey: record.operationKey,
+      subject: record.subject,
+      runRef: record.runRef,
+      attemptRef: record.attemptRef,
+      limits: record.limits,
+    })) throw new ExecutionAdapterError('stored accounting reservation fingerprint differs');
+    if (record.state === 'active' && (record.usage !== null || record.settlementOperationKey !== null || record.settlementFingerprint !== null)) {
+      throw new ExecutionAdapterError('active accounting reservation contains a settlement');
+    }
+    if (record.state === 'settled') {
+      if (!record.usage || !record.settlementOperationKey || !record.settlementFingerprint || !SHA256.test(record.settlementFingerprint)) {
+        throw new ExecutionAdapterError('settled accounting reservation is incomplete');
+      }
+      assertUsage(record.usage, 'stored settlement usage');
+      if (!withinBudget(record.usage, record.limits)) throw new ExecutionAdapterError('stored settlement exceeds its reservation');
+      if (record.settlementFingerprint !== digest({
+        operationKey: record.settlementOperationKey,
+        reservationRef: record.reservationRef,
+        usage: record.usage,
+      })) throw new ExecutionAdapterError('stored accounting settlement fingerprint differs');
+    }
+    operations.add(record.operationKey);
+    references.add(record.reservationRef);
+  }
+}
+
+function assertResultDocument(value: unknown): asserts value is ResultDocument {
+  assertRecord(value, 'kb.execution-results/v1');
+  if (!Number.isSafeInteger(value.revision) || !Array.isArray(value.results)) throw new ExecutionAdapterError('invalid result state document');
+  const operations = new Set<string>();
+  const stages = new Set<string>();
+  for (const item of value.results) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) throw new ExecutionAdapterError('invalid canonical result record');
+    const record = item as unknown as ResultRecord;
+    requireOperationKey(record.operationKey);
+    const stageKey = `${record.subject}\0${record.runRef}\0${record.stageId}`;
+    if (operations.has(record.operationKey) || stages.has(stageKey) || !SHA256.test(record.fingerprint)
+      || !record.result || !SHA256.test(record.result.resultHash)) {
+      throw new ExecutionAdapterError('invalid canonical result identity');
+    }
+    if ([record.subject, record.runRef, record.stageRef, record.stageId, record.attemptRef, record.canonicalCardRef, record.integratedAt]
+      .some((field) => typeof field !== 'string' || field.length === 0 || field.includes('\0'))
+      || [record.runRef, record.stageRef, record.stageId, record.attemptRef, record.canonicalCardRef]
+        .some((field) => !SAFE_REF.test(field) || field.includes('..'))) {
+      throw new ExecutionAdapterError('invalid canonical result metadata');
+    }
+    if (!record.result.summary || record.result.summary.includes('\0')
+      || Buffer.byteLength(record.result.summary, 'utf8') > MAX_RESULT_SUMMARY_BYTES
+      || redactSensitiveText(record.result.summary) !== record.result.summary) {
+      throw new ExecutionAdapterError('invalid canonical result summary');
+    }
+    const canonicalResult = {
+      summary: record.result.summary,
+      artifacts: normalizedArtifacts(record.result.artifacts),
+      changed: normalizedArtifacts(record.result.changed),
+      checkpoints: normalizedCheckpoints(record.result.checkpoints),
+    };
+    if (canonicalStageResultHash(canonicalResult) !== record.result.resultHash) {
+      throw new ExecutionAdapterError('stored canonical result hash does not match its payload');
+    }
+    if (record.fingerprint !== digest({
+      operationKey: record.operationKey,
+      subject: record.subject,
+      runRef: record.runRef,
+      stageRef: record.stageRef,
+      stageId: record.stageId,
+      attemptRef: record.attemptRef,
+      canonicalCardRef: record.canonicalCardRef,
+      result: { ...canonicalResult, resultHash: record.result.resultHash },
+    })) throw new ExecutionAdapterError('stored canonical result fingerprint differs');
+    operations.add(record.operationKey);
+    stages.add(stageKey);
+  }
+}
+
+function createAtomicDocument<T>(options: AtomicDocumentOptions<T>): {
+  read(): T;
+  mutate<R>(callback: (document: T) => R | Promise<R>): Promise<R>;
+} {
+  const lockPath = `${options.path}.lock`;
+  const timeout = options.lockTimeoutMs ?? 5_000;
+  requireSafeInteger(timeout, 'lockTimeoutMs', 1);
+  mkdirSync(dirname(options.path), { recursive: true, mode: 0o700 });
+
+  const read = (): T => {
+    if (!existsSync(options.path)) return options.empty();
+    if (statSync(options.path).size > MAX_STATE_BYTES) throw new ExecutionAdapterError('execution adapter state exceeds its limit');
+    const parsed: unknown = JSON.parse(readFileSync(options.path, 'utf8'));
+    options.validate(parsed);
+    return clone(parsed);
+  };
+  const save = (document: T): void => {
+    const encoded = `${JSON.stringify(document)}\n`;
+    if (Buffer.byteLength(encoded, 'utf8') > MAX_STATE_BYTES) throw new ExecutionAdapterError('execution adapter state exceeds its limit');
+    const temp = `${options.path}.${process.pid}.${randomUUID()}.tmp`;
+    let fd: number | null = null;
+    try {
+      fd = openSync(temp, 'wx', 0o600);
+      writeFileSync(fd, encoded, 'utf8');
+      fsyncSync(fd);
+      closeSync(fd);
+      fd = null;
+      renameSync(temp, options.path);
+    } finally {
+      if (fd !== null) closeSync(fd);
+      if (existsSync(temp)) rmSync(temp, { force: true });
+    }
+  };
+  const acquire = async (): Promise<number> => {
+    const deadline = Date.now() + timeout;
+    while (true) {
+      try {
+        return openSync(lockPath, 'wx', 0o600);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+        if (Date.now() >= deadline) throw new ExecutionAdapterError('execution adapter state is busy');
+        await new Promise((resolvePromise) => setTimeout(resolvePromise, 5));
+      }
+    }
+  };
+  return {
+    read,
+    async mutate(callback) {
+      const lockFd = await acquire();
+      try {
+        const document = read();
+        const result = await callback(document);
+        save(document);
+        return result;
+      } finally {
+        closeSync(lockFd);
+        rmSync(lockPath, { force: true });
+      }
+    },
+  };
+}
+
+function assertBudget(value: ExecutionBudget, label: string): void {
+  requireSafeInteger(value.maxAttempts, `${label}.maxAttempts`, 1);
+  requireSafeInteger(value.maxInputTokens, `${label}.maxInputTokens`, 0);
+  requireSafeInteger(value.maxOutputTokens, `${label}.maxOutputTokens`, 0);
+  requireSafeInteger(value.maxCostUsdMicros, `${label}.maxCostUsdMicros`, 0);
+}
+
+function assertUsage(value: ExecutionUsage, label: string): void {
+  requireSafeInteger(value.inputTokens, `${label}.inputTokens`, 0);
+  requireSafeInteger(value.outputTokens, `${label}.outputTokens`, 0);
+  requireSafeInteger(value.costUsdMicros, `${label}.costUsdMicros`, 0);
+}
+
+function plusUsage(left: ExecutionUsage, right: ExecutionUsage): ExecutionUsage {
+  const add = (one: number, two: number): number => one > Number.MAX_SAFE_INTEGER - two ? Number.POSITIVE_INFINITY : one + two;
+  return {
+    inputTokens: add(left.inputTokens, right.inputTokens),
+    outputTokens: add(left.outputTokens, right.outputTokens),
+    costUsdMicros: add(left.costUsdMicros, right.costUsdMicros),
+  };
+}
+
+function budgetAsUsage(value: ExecutionBudget): ExecutionUsage {
+  return { inputTokens: value.maxInputTokens, outputTokens: value.maxOutputTokens, costUsdMicros: value.maxCostUsdMicros };
+}
+
+function withinBudget(usage: ExecutionUsage, budget: ExecutionBudget): boolean {
+  return usage.inputTokens <= budget.maxInputTokens
+    && usage.outputTokens <= budget.maxOutputTokens
+    && usage.costUsdMicros <= budget.maxCostUsdMicros;
+}
+
+export interface FileAccountingAdapterOptions {
+  stateRoot: string;
+  /** Server-owned accounting period, for example an ISO date. */
+  windowId: string;
+  maxConcurrency: number;
+  globalBudget: ExecutionBudget;
+  now?: () => Date;
+  newId?: () => string;
+  lockTimeoutMs?: number;
+}
+
+/** Durable global reservation ledger with lock-serialized version CAS and exact idempotency. */
+export function createFileAccountingAdapter(options: FileAccountingAdapterOptions): AccountingAdapter {
+  const stateRoot = requireAbsolute(options.stateRoot, 'stateRoot');
+  if (!SAFE_FILE_SEGMENT.test(options.windowId) || options.windowId.includes('..') || !isSafeRepoRelativePath(options.windowId)) {
+    throw new ExecutionAdapterError('windowId is invalid');
+  }
+  requireSafeInteger(options.maxConcurrency, 'maxConcurrency', 1);
+  assertBudget(options.globalBudget, 'globalBudget');
+  const policyHash = digest({ maxConcurrency: options.maxConcurrency, globalBudget: options.globalBudget });
+  const now = options.now ?? (() => new Date());
+  const newId = options.newId ?? randomUUID;
+  const document = createAtomicDocument<AccountingDocument>({
+    path: join(stateRoot, 'control', 'execution-accounting', `${options.windowId}.json`),
+    empty: () => ({ schema: 'kb.execution-accounting/v1', revision: 0, policyHash, windowId: options.windowId, reservations: [] }),
+    validate: assertAccountingDocument,
+    lockTimeoutMs: options.lockTimeoutMs,
+  });
+  const requirePolicy = (value: AccountingDocument): void => {
+    if (value.policyHash !== policyHash || value.windowId !== options.windowId) {
+      throw new ExecutionAdapterError('accounting policy differs from the durable window policy');
+    }
+  };
+
+  return {
+    async reserve(input) {
+      requireOperationKey(input.operationKey);
+      assertBudget(input.limits, 'reservation limits');
+      const fingerprint = digest(input);
+      return document.mutate((state) => {
+        requirePolicy(state);
+        const prior = state.reservations.find((item) => item.operationKey === input.operationKey);
+        if (prior) {
+          if (prior.fingerprint !== fingerprint) throw new ExecutionAdapterError('reservation operationKey was reused with different content');
+          return { ok: true as const, value: { reservationRef: prior.reservationRef, replayed: true } };
+        }
+        if (state.reservations.length >= options.globalBudget.maxAttempts) return { ok: false as const, reason: 'global attempt budget exhausted' };
+        if (state.reservations.filter((item) => item.state === 'active').length >= options.maxConcurrency) {
+          return { ok: false as const, reason: 'global concurrency limit reached' };
+        }
+        if (input.limits.maxAttempts > options.globalBudget.maxAttempts) {
+          return { ok: false as const, reason: 'reservation exceeds the global attempt budget' };
+        }
+        const committedOrHeld = state.reservations.reduce<ExecutionUsage>((sum, item) =>
+          plusUsage(sum, item.state === 'settled' ? item.usage as ExecutionUsage : budgetAsUsage(item.limits)),
+        { inputTokens: 0, outputTokens: 0, costUsdMicros: 0 });
+        const projected = plusUsage(committedOrHeld, budgetAsUsage(input.limits));
+        if (!withinBudget(projected, options.globalBudget)) return { ok: false as const, reason: 'global token or cost budget exhausted' };
+        const reservationRef = `reservation-${newId()}`;
+        if (!SAFE_REF.test(reservationRef)) throw new ExecutionAdapterError('generated reservation reference is invalid');
+        state.reservations.push({
+          operationKey: input.operationKey,
+          fingerprint,
+          reservationRef,
+          subject: input.subject,
+          runRef: input.runRef,
+          attemptRef: input.attemptRef,
+          limits: clone(input.limits),
+          state: 'active',
+          usage: null,
+          settlementOperationKey: null,
+          settlementFingerprint: null,
+          reservedAt: now().toISOString(),
+          settledAt: null,
+        });
+        state.revision += 1;
+        return { ok: true as const, value: { reservationRef, replayed: false } };
+      });
+    },
+
+    async settle(input) {
+      requireOperationKey(input.operationKey);
+      assertUsage(input.usage, 'settlement usage');
+      await document.mutate((state) => {
+        requirePolicy(state);
+        const reservation = state.reservations.find((item) => item.reservationRef === input.reservationRef);
+        if (!reservation) throw new ExecutionAdapterError('accounting reservation was not found');
+        const fingerprint = digest(input);
+        if (reservation.state === 'settled') {
+          if (reservation.settlementOperationKey !== input.operationKey || reservation.settlementFingerprint !== fingerprint) {
+            throw new ExecutionAdapterError('settlement replay differs from the committed usage');
+          }
+          return;
+        }
+        if (!withinBudget(input.usage, reservation.limits)) throw new ExecutionAdapterError('settlement exceeds its reserved limits');
+        reservation.state = 'settled';
+        reservation.usage = clone(input.usage);
+        reservation.settlementOperationKey = input.operationKey;
+        reservation.settlementFingerprint = fingerprint;
+        reservation.settledAt = now().toISOString();
+        state.revision += 1;
+      });
+    },
+  };
+}
+
+function normalizedArtifacts(value: readonly WorkerArtifactResult[]): WorkerArtifactResult[] {
+  const paths = new Set<string>();
+  return value.map((item) => {
+    if (!isSafeRepoRelativePath(item.path) || !SHA256.test(item.digest) || paths.has(item.path)) {
+      throw new ExecutionAdapterError('canonical result contains an invalid or duplicate artifact');
+    }
+    paths.add(item.path);
+    return { path: item.path, digest: item.digest };
+  }).sort((left, right) => left.path.localeCompare(right.path));
+}
+
+function normalizedCheckpoints(value: readonly string[]): string[] {
+  if (value.some((item) => !SAFE_REF.test(item)) || new Set(value).size !== value.length) {
+    throw new ExecutionAdapterError('canonical result contains an invalid or duplicate checkpoint');
+  }
+  return [...value].sort();
+}
+
+export interface FileResultIntegratorOptions {
+  stateRoot: string;
+  now?: () => Date;
+  lockTimeoutMs?: number;
+}
+
+/**
+ * Durable app-local result receipts with exact replay checks. This adapter is useful for inactive
+ * tests/recovery only; it is not canonical queue truth and must not be used to activate execution.
+ * Production activation must select createCanonicalGitResultIntegrator instead.
+ */
+export function createFileResultIntegrator(options: FileResultIntegratorOptions): ResultIntegrator {
+  const stateRoot = requireAbsolute(options.stateRoot, 'stateRoot');
+  const now = options.now ?? (() => new Date());
+  const document = createAtomicDocument<ResultDocument>({
+    path: join(stateRoot, 'control', 'execution-results.json'),
+    empty: () => ({ schema: 'kb.execution-results/v1', revision: 0, results: [] }),
+    validate: assertResultDocument,
+    lockTimeoutMs: options.lockTimeoutMs,
+  });
+  return {
+    async lookup(input) {
+      requireOperationKey(input.operationKey);
+      const state = document.read();
+      const byOperation = state.results.find((item) => item.operationKey === input.operationKey);
+      const byStage = state.results.find((item) => item.subject === input.subject && item.runRef === input.runRef && item.stageId === input.stageId);
+      if (!byOperation && !byStage) return null;
+      if (!byOperation || byOperation !== byStage) throw new ExecutionAdapterError('canonical result lookup identity differs from the committed operation');
+      return clone(byOperation.result);
+    },
+
+    async integrate(input) {
+      requireOperationKey(input.operationKey);
+      if (!input.summary || input.summary.includes('\0') || Buffer.byteLength(input.summary, 'utf8') > MAX_RESULT_SUMMARY_BYTES) {
+        throw new ExecutionAdapterError('canonical result summary is invalid');
+      }
+      if (redactSensitiveText(input.summary) !== input.summary) throw new ExecutionAdapterError('canonical result summary contains recognized sensitive data');
+      for (const ref of [input.runRef, input.stageRef, input.stageId, input.attemptRef, input.canonicalCardRef]) {
+        if (!SAFE_REF.test(ref) || ref.includes('..')) throw new ExecutionAdapterError('canonical result identity is invalid');
+      }
+      const result: CanonicalStageResult = {
+        summary: input.summary,
+        artifacts: normalizedArtifacts(input.artifacts),
+        changed: normalizedArtifacts(input.changed),
+        checkpoints: normalizedCheckpoints(input.checkpoints),
+        resultHash: input.resultHash,
+      };
+      const computed = canonicalStageResultHash({
+        summary: result.summary,
+        artifacts: result.artifacts,
+        changed: result.changed,
+        checkpoints: result.checkpoints,
+      });
+      if (computed !== input.resultHash) throw new ExecutionAdapterError('canonical result hash does not match its payload');
+      const normalizedInput = {
+        operationKey: input.operationKey,
+        subject: input.subject,
+        runRef: input.runRef,
+        stageRef: input.stageRef,
+        stageId: input.stageId,
+        attemptRef: input.attemptRef,
+        canonicalCardRef: input.canonicalCardRef,
+        result,
+      };
+      const fingerprint = digest(normalizedInput);
+      return document.mutate((state) => {
+        const byOperation = state.results.find((item) => item.operationKey === input.operationKey);
+        const byStage = state.results.find((item) => item.subject === input.subject && item.runRef === input.runRef && item.stageId === input.stageId);
+        if (byOperation || byStage) {
+          if (!byOperation || byOperation !== byStage || byOperation.fingerprint !== fingerprint || byOperation.result.resultHash !== input.resultHash) {
+            throw new ExecutionAdapterError('canonical result replay differs from the committed payload');
+          }
+          return { status: 'replayed' as const, resultHash: byOperation.result.resultHash };
+        }
+        state.results.push({ ...normalizedInput, fingerprint, integratedAt: now().toISOString() });
+        state.revision += 1;
+        return { status: 'integrated' as const, resultHash: input.resultHash };
+      });
+    },
+  };
+}
+
+/** Closed deterministic resolver; it can only return exact ids from the server-owned curated set. */
+export function createCuratedSkillResolver(curatedSkills: ReadonlySet<string>): SkillResolver {
+  const admitted = new Set(curatedSkills);
+  return {
+    async resolve(input: { operationKey: string; profile: ExecutionProfile; requested: readonly string[] }) {
+      requireOperationKey(input.operationKey);
+      if (input.profile.role !== 'worker') return { ok: false as const, reason: 'skills may only be resolved for a worker profile' };
+      if (new Set(input.requested).size !== input.requested.length) return { ok: false as const, reason: 'requested skills contain duplicates' };
+      const unknown = input.requested.find((skill) => !SAFE_REF.test(skill) || !admitted.has(skill));
+      if (unknown) return { ok: false as const, reason: `skill is not curated: ${unknown}` };
+      return { ok: true as const, skills: [...input.requested] };
+    },
+  };
+}
+
+export interface InactiveExecutionAdaptersOptions {
+  repoRoot: string;
+  worktreeRoot: string;
+  stateRoot: string;
+  baseCommit: string;
+  accountingWindowId: string;
+  maxConcurrency: number;
+  globalBudget: ExecutionBudget;
+  curatedSkills: ReadonlySet<string>;
+  gitRunner?: GitCommandRunner;
+}
+
+/**
+ * Concrete inactive adapters for AutomaticExecutionEngine. Deliberately returns no Manager or Worker
+ * process adapter and only an app-local result receipt store, so constructing this bundle cannot
+ * activate either runtime or release canonical dependencies before the broker gate.
+ */
+export function createInactiveExecutionAdapters(options: InactiveExecutionAdaptersOptions): {
+  worktrees: WorktreeAdapter;
+  skills: SkillResolver;
+  accounting: AccountingAdapter;
+  results: ResultIntegrator;
+} {
+  return {
+    worktrees: createGitWorktreeAdapter({
+      repoRoot: options.repoRoot,
+      worktreeRoot: options.worktreeRoot,
+      baseCommit: options.baseCommit,
+      runner: options.gitRunner,
+    }),
+    skills: createCuratedSkillResolver(options.curatedSkills),
+    accounting: createFileAccountingAdapter({
+      stateRoot: options.stateRoot,
+      windowId: options.accountingWindowId,
+      maxConcurrency: options.maxConcurrency,
+      globalBudget: options.globalBudget,
+    }),
+    results: createFileResultIntegrator({ stateRoot: options.stateRoot }),
+  };
+}

@@ -6,7 +6,9 @@
  * Every card is prepared and published by one fixed Python subprocess through scripts/cards.py.
  */
 import { execFileSync } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { verifySession } from '../auth/session.ts';
 import type { SessionConfig } from '../auth/session.ts';
 import { readAssignableOwners } from '../agents/assignable.ts';
@@ -14,6 +16,7 @@ import { defaultOwnerRouting } from './launch.ts';
 import type { OwnerRouting, PyRunner } from './launch.ts';
 import { assertFleetRunnable, defaultPreambleRunner } from './preambleGate.ts';
 import type { PreambleRunner } from './preambleGate.ts';
+import { commitPreparedCoordination, defaultGitRunner, prepareCoordination, type GitRunner } from './branch.ts';
 
 export const MAX_WORKFLOW_STAGES = 32;
 
@@ -66,9 +69,13 @@ export interface WorkflowRunDeps {
   runPy?: PyRunner;
   assignableOwners?: (repoRoot: string) => Set<string>;
   ownerRouting?: (owner: string, repoRoot: string) => OwnerRouting;
+  /** Optional immutable, server-validated routing for an approved stage. Browser wire input cannot set it. */
+  stageRouting?: (stage: WorkflowRunStageRequest, repoRoot: string) => OwnerRouting;
   makeRunId?: () => string;
   /** Reconcile ops only after every gate, schema check, owner check, and routing resolution succeeds. */
   prepareWrite?: (repoRoot: string) => void;
+  /** Internal managed-run mode: publish every card blocked and mark it dashboard-owned. Never wire input. */
+  publishBlocked?: boolean;
 }
 
 interface SessionInput {
@@ -87,6 +94,7 @@ interface WorkflowSubprocessPayload {
   project: string;
   workflowDefinitionId?: string;
   stages: PreparedStage[];
+  managed: boolean;
 }
 
 const SAFE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
@@ -95,6 +103,108 @@ const STAGE_FIELDS = new Set(['id', 'action', 'target', 'workOrder', 'riskTier',
 const MAX_ACTION_LENGTH = 256;
 const MAX_TARGET_LENGTH = 2048;
 const MAX_WORK_ORDER_LENGTH = 64 * 1024;
+
+export const MANAGED_ROOT_ACTIVATION_SCRIPT = `
+import sys, json
+from pathlib import Path
+sys.path.insert(0, "scripts")
+import cards
+
+op = json.loads(sys.argv[1])
+results = []
+for card_id in op["cardRefs"]:
+    path = Path("queue/inbox") / (card_id + ".md")
+    if not path.is_file():
+        raise cards.ValidationError("managed root card is absent from queue/inbox")
+    card = cards.parse(path)
+    if (card.meta.get("id") != card_id or card.meta.get("workflow") != op["runRef"]:
+        raise cards.ValidationError("managed root card identity differs")
+    if card.meta.get("execution-controller") != "dashboard":
+        raise cards.ValidationError("managed root card controller differs")
+    if card.meta.get("depends-on"):
+        raise cards.ValidationError("only dependency-free managed roots may be activated")
+    if card.meta.get("state") == "inbox":
+        results.append({"cardRef": card_id, "path": str(path), "changed": False})
+        continue
+    if card.meta.get("state") != "blocked":
+        raise cards.ValidationError("managed root card is not blocked")
+    activated = cards.transition(card, "inbox", Path("queue"))
+    results.append({"cardRef": card_id, "path": str(activated), "changed": True})
+print(json.dumps({"cards": results}))
+`.trim();
+
+export interface ManagedRootActivationOptions {
+  repoRoot: string;
+  runRef: string;
+  cardRefs: string[];
+  runPy?: PyRunner;
+  runGit?: GitRunner;
+  /** Locally prepared audit/coordination paths committed in the same exact-path transaction. */
+  alsoStage?: string[];
+  /** Re-prove policy/approval against the just-reconciled canonical ops head before local mutation. */
+  authorizeAfterPrepare?: () => void;
+}
+
+/**
+ * Exact canonical activation transaction for managed roots. It pulls ops before mutation, uses
+ * cards.transition for blocked->inbox, commits/pushes exact paths, then proves HEAD contains the
+ * bytes just validated. Empty-dependency blocked cards remain invisible to legacy dispatch until here.
+ */
+export function activateManagedRootCards(options: ManagedRootActivationOptions): { replayed: boolean; cardPaths: string[] } {
+  if (!SAFE_ID_RE.test(options.runRef) || options.cardRefs.length === 0
+    || new Set(options.cardRefs).size !== options.cardRefs.length
+    || options.cardRefs.some((ref) => !SAFE_ID_RE.test(ref))) {
+    throw new Error('managed root activation identity is invalid');
+  }
+  const runGit = options.runGit ?? defaultGitRunner;
+  const runPy = options.runPy ?? defaultPyRunner;
+  prepareCoordination(options.repoRoot, runGit);
+  options.authorizeAfterPrepare?.();
+  const staged = runGit(options.repoRoot, ['diff', '--cached', '--name-only', '-z'])
+    .split('\0').map((path) => path.trim()).filter(Boolean);
+  if (staged.length > 0) throw new Error(`managed root activation refuses dirty index: ${staged.join(', ')}`);
+  const mutation = runPy(options.repoRoot, MANAGED_ROOT_ACTIVATION_SCRIPT, JSON.stringify({
+    runRef: options.runRef,
+    cardRefs: [...options.cardRefs].sort(),
+  }));
+  if (mutation.exitCode !== 0) throw new Error(mutation.stderr.trim() || mutation.stdout.trim() || 'managed root activation failed');
+  const decoded = JSON.parse(mutation.stdout.trim()) as { cards?: Array<{ cardRef?: unknown; path?: unknown; changed?: unknown }> };
+  if (!Array.isArray(decoded.cards) || decoded.cards.length !== options.cardRefs.length) {
+    throw new Error('managed root activation returned an invalid result');
+  }
+  const expected = [...options.cardRefs].sort();
+  const cardPaths = decoded.cards.map((card, index) => {
+    const path = String(card.path ?? '').replace(/\\/g, '/');
+    if (card.cardRef !== expected[index] || path !== `queue/inbox/${expected[index]}.md` || typeof card.changed !== 'boolean') {
+      throw new Error('managed root activation returned a mismatched card');
+    }
+    return path;
+  });
+  const changed = decoded.cards.some((card) => card.changed === true);
+  if (changed) {
+    const [first, ...rest] = cardPaths;
+    commitPreparedCoordination(options.repoRoot, first, {
+      runGit,
+      alsoStage: [...rest, ...(options.alsoStage ?? [])],
+      message: `chore(queue): activate managed run ${options.runRef}`,
+      maxRetryPushes: 0,
+    });
+  } else {
+    // An idempotent replay still proves the committed canonical branch reached the remote.
+    runGit(options.repoRoot, ['push', 'origin', 'ops']);
+  }
+  for (const path of cardPaths) {
+    const committed = runGit(options.repoRoot, ['show', `HEAD:${path}`]).replace(/\r\n?/g, '\n');
+    const current = readFileSync(join(options.repoRoot, ...path.split('/')), 'utf8').replace(/\r\n?/g, '\n');
+    if (committed !== current) throw new Error(`committed managed card differs from canonical path '${path}'`);
+  }
+  return { replayed: !changed, cardPaths };
+}
+
+/** Stable per-run/stage card identity permits exact crash reconciliation without trusting filenames. */
+export function workflowCardId(runId: string, stageId: string): string {
+  return `wf-${createHash('sha256').update(`${runId}\0${stageId}`, 'utf8').digest('hex').slice(0, 24)}`;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -228,7 +338,7 @@ export function validateWorkflowRunRequest(input: unknown):
  * path published by this invocation before exiting non-zero, so callers never observe a prefix DAG.
  */
 export const WORKFLOW_CARD_OP_SCRIPT = `
-import sys, json, os, tempfile
+import sys, json, os, tempfile, hashlib
 from pathlib import Path
 sys.path.insert(0, "scripts")
 import cards
@@ -240,15 +350,18 @@ by_stage = {}
 for stage in op["stages"]:
     body = "## Work order\\n\\n" + stage["workOrder"] + "\\n"
     card = cards.new_card(op["project"], stage["action"], stage["target"], stage["riskTier"], body=body)
+    card.meta["id"] = "wf-" + hashlib.sha256((op["runId"] + "\\0" + stage["id"]).encode("utf-8")).hexdigest()[:24]
     card.meta["workflow"] = op["runId"]
     cards.claim(card, stage["owner"])
     cards.stamp_routing(card, stage["runtime"], stage["model"])
+    if op["managed"]:
+        card.meta["execution-controller"] = "dashboard"
     by_stage[stage["id"]] = card
 
 for stage in op["stages"]:
     card = by_stage[stage["id"]]
     card.meta["depends-on"] = [by_stage[dep].meta["id"] for dep in stage["dependsOn"]]
-    card.meta["state"] = "blocked" if card.meta["depends-on"] else "inbox"
+    card.meta["state"] = "blocked" if op["managed"] or card.meta["depends-on"] else "inbox"
     cards._validate(card.meta)
 
 published = []
@@ -299,7 +412,7 @@ function generatedRunId(): string {
   return `wf-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`;
 }
 
-function parseSuccess(stdout: string, expectedRunId: string, expectedStageIds: string[]): WorkflowRunSuccess {
+function parseSuccess(stdout: string, expectedRunId: string, expectedStageIds: string[], publishBlocked: boolean): WorkflowRunSuccess {
   const line = stdout.trim().split(/\r?\n/).filter(Boolean).pop() ?? '';
   const parsed = JSON.parse(line) as { runId?: unknown; cards?: unknown };
   if (parsed.runId !== expectedRunId || !Array.isArray(parsed.cards) || parsed.cards.length !== expectedStageIds.length) {
@@ -308,15 +421,19 @@ function parseSuccess(stdout: string, expectedRunId: string, expectedStageIds: s
   const cards = parsed.cards.map((raw, index): WorkflowRunCardResult => {
     if (!isRecord(raw)) throw new Error('workflow card subprocess returned a malformed card result');
     const expectedStageId = expectedStageIds[index];
-    if (raw.stageId !== expectedStageId || typeof raw.cardId !== 'string' || !SAFE_ID_RE.test(raw.cardId)) {
+    if (raw.stageId !== expectedStageId || raw.cardId !== workflowCardId(expectedRunId, expectedStageId)) {
       throw new Error('workflow card subprocess returned an invalid card identity');
     }
-    if (raw.state !== 'inbox' && raw.state !== 'blocked') throw new Error('workflow card subprocess returned an invalid card state');
+    if ((publishBlocked && raw.state !== 'blocked')
+      || (!publishBlocked && raw.state !== 'inbox' && raw.state !== 'blocked')) {
+      throw new Error('workflow card subprocess returned an invalid card state');
+    }
     if (typeof raw.cardPath !== 'string') throw new Error('workflow card subprocess returned an invalid card path');
     const normalizedPath = raw.cardPath.replace(/\\/g, '/');
-    const expectedPath = `queue/inbox/${raw.cardId}.md`;
+    const expectedDirectory = raw.state === 'blocked' ? 'inbox' : raw.state;
+    const expectedPath = `queue/${expectedDirectory}/${raw.cardId}.md`;
     if (normalizedPath !== expectedPath) throw new Error('workflow card subprocess returned a path outside the expected queue location');
-    return { stageId: expectedStageId, cardId: raw.cardId, state: raw.state, cardPath: normalizedPath };
+    return { stageId: expectedStageId, cardId: raw.cardId, state: raw.state as WorkflowCardState, cardPath: normalizedPath };
   });
   return { ok: true, runId: expectedRunId, cards };
 }
@@ -344,7 +461,7 @@ export function launchWorkflowRun(input: unknown, session: SessionInput, deps: W
       };
     }
     try {
-      preparedStages.push({ ...stage, ...route(stage.owner, deps.repoRoot) });
+      preparedStages.push({ ...stage, ...(deps.stageRouting ? deps.stageRouting(stage, deps.repoRoot) : route(stage.owner, deps.repoRoot)) });
     } catch (error) {
       return {
         ok: false,
@@ -369,13 +486,14 @@ export function launchWorkflowRun(input: unknown, session: SessionInput, deps: W
     project: validated.value.project,
     ...(validated.value.workflowDefinitionId === undefined ? {} : { workflowDefinitionId: validated.value.workflowDefinitionId }),
     stages: preparedStages,
+    managed: deps.publishBlocked === true,
   };
   const result = (deps.runPy ?? defaultPyRunner)(deps.repoRoot, WORKFLOW_CARD_OP_SCRIPT, JSON.stringify(payload));
   if (result.exitCode !== 0) {
     return { ok: false, reason: 'card-op-failed', detail: result.stderr.trim() || result.stdout.trim() || `cards.py exited ${result.exitCode}` };
   }
   try {
-    return parseSuccess(result.stdout, runId, preparedStages.map((stage) => stage.id));
+    return parseSuccess(result.stdout, runId, preparedStages.map((stage) => stage.id), deps.publishBlocked === true);
   } catch (error) {
     return { ok: false, reason: 'card-op-failed', detail: (error as Error).message };
   }
