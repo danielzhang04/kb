@@ -31,3 +31,38 @@
 - What failed: auto-mode classifier rightly blocked orchestrator ratifying Daniel's own spend-authorization marker — human-authorization edits stay human even when chat-approved. Signal to recognize: any edit that removes a PENDING-RATIFICATION/approval marker → hand back to Daniel with exact steps, don't retry variants.
 - Next time I see a pull-rebase fail with "unstaged changes" in dashboard-ops, I will stash/pop around it — a pre-existing HEARTBEAT.md modification lives there (not atlas's; never revert).
 - Remains: gates 3+4 (key, vendor accounts), Task 5 live smoke + card close/grade, Tasks 6-8, wave close + PR. Resume map: docs/plans/2026-07-19-atlas-v0-HANDOFF.md on claude/atlas.
+
+## Session handoff 2026-07-19 (next-arc brainstorm, PAUSED by Daniel)
+
+**Topic:** Post-merge (PR #32) brainstorm for the next arc: fleet live-fire + Chief of Staff, Proving Grounds canaries, Dreaming. Paused mid-brainstorm at Daniel's request; any terminal resumes from here.
+
+### What WORKED (with evidence)
+- **Arc scope locked** — Daniel approved: build all of options 1–4 as sequenced waves (A = live-fire + Chief of Staff, B = Proving Grounds canaries, C = Dreaming with design gate), first unattended run SUPERVISED before any recurring schedule.
+- **Executor direction locked** — Daniel chose "wire dispatch → Broker" over a new standalone headless runner ("B probably, that terminal is mostly done").
+- **Ground-truth sweeps** — two Opus explorer reports (both self-reported `claude-opus-4-8[1m]`): fleet-runtime map of origin/main e948ec4, and broker/control-plane map incl. main-vs-branch diff. Key verified facts below.
+- **Telegram credential exists** — confirmed via `cmdkey /list`: Generic Credential `kb-telegram-bot-token` present (human gate 2.8 was completed).
+
+### What Did NOT Work (and why)
+- **"Broker" as the wiring target is ambiguous** — `broker/` (PM2 daemon) is NOT the control plane: not running (`pm2 jlist` shows only `kb-dashboard`), CLI-fallback only (daemon injects no sdkSpawner), and it discards session stdout entirely. Wiring the queue to it would execute work with no result capture. Target `dashboard/server/control/` instead.
+- **Assuming Telegram is live** — no poller scheduled task exists (schtasks query) and no telegram rows in `ledgers/audit/`; the stored token has never been exercised. First send must be a supervised Wave A task.
+
+### What Has NOT Been Tried Yet (= Wave A build list, in order)
+0. Precondition: Daniel merges `codex/dashboard-operational-surfaces` to main; build in a fresh worktree off merged main.
+1. Production Claude worker adapter implementing `dashboard/server/control/execution.ts` `WorkerAdapter.execute` (+ `ManagedSessionAdapter.start`, cancellation): spawn `claude --print --input-format stream-json --output-format stream-json`, prompt via stdin, capture transcript/result. NOTE: plan docs gate this behind Daniel's explicit ToS/threat-review approval — get the go first.
+2. Queue→engine bridge: poller scanning `queue/{inbox,working}` for `owner==<agent>` cards with `execution-controller: dashboard` (inverse of agent_runner.ps1:204's filter — that flag is the double-execution guard); card body → workOrder adapter (pattern: agent_runner.ps1:290–350 inert-context prompt build); `## Result` writeback via `canonicalResultIntegrator.ts` (the file integrator is a self-documented decoy) inside `write/asyncGit.ts#withOpsTransaction`; `cards.transition`; fleet cost rows via `scripts/ledger.py` (control-plane accounting ledger is separate, NOT a substitute).
+3. Activation: inject engine (`runAutomatic`/`cancelAutomatic`/`controlBroker` into `makeSurfaceContext` — currently undefined, surface.ts:80–82), run the HANDOFF's synthetic low-risk two-stage acceptance, then supervised live-fire on `orgs/kb-ops` cadence `self-lint-report` (T1, currently dormant).
+4. Chief of Staff: cadence invoking `scripts/notify.py` `digest()` (formatter exists; nothing schedules it) + Telegram delivery via the desktop_poll.ps1 launcher pattern (launcher reads `kb-telegram-bot-token` from Credential Manager → ambient env; agents NEVER touch the token); first supervised live send; registering the poller task = human gate.
+- Signed-T3 fast-lane: NOT needed for T1/T2 live-fire (T3 stages correctly stall `waiting-human` — `t3-approval-release-not-implemented`). Whether to defer is an OPEN question (below).
+
+### Current State of Files
+| File | Status | Notes |
+| ---- | ------ | ----- |
+| repo work products | NONE | Brainstorm only — no code or design docs written for this arc yet |
+| auto-memory `next-arc-wave-a-brainstorm.md` | DONE | Claude-session-side mirror of this resume point |
+| this handoff | DONE | Canonical cross-terminal resume point |
+
+### Exact Next Step
+Re-ask Daniel the two questions the pause interrupted (he hit "clarify" — he may have context to add first):
+1. **Activation ownership** — this session builds worker adapter + engine wiring + synthetic acceptance (recommended), or the codex dashboard terminal does (its handoff listed activation as its next step), or start with Chief of Staff (no dashboard dependency) and decide later.
+2. **Signed-T3 fast-lane** in or out of Wave A (recommendation: defer to its own wave).
+Then: brainstorm → design doc → plan → build Wave A per the list above. Also still open with Daniel: scheduled task `kb-codex-runner` is READY, next run 7/20 3:30 AM (runner header says it awaits human gate 5.7 — intentional?); `kb-desktop-dispatcher` is Disabled; no `kb-desktop-poll` task exists. W2.5 delivery-gate flip (card `6a5c7274-635d84bf`) still soaking post-merge.
