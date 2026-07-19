@@ -21,4 +21,7 @@ def kb_fixture(tmp_path):
     c2_parsed = cards.parse(p2)
     cards.claim(c2_parsed, "atlas-test-agent")               # transition to "working" requires an owner
     cards.transition(c2_parsed, "working", tmp_path / "queue")
+    import ledger
+    ledger.append(tmp_path, "cost", "test-agent", {"usd": "0.00", "note": "unit"})
+    ledger.append(tmp_path, "activity", "test-agent", {"note": "unit"})
     return tmp_path
