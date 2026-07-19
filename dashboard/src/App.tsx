@@ -755,7 +755,7 @@ export function App(): React.JSX.Element {
           <span aria-hidden="true">{theme === 'dark' ? '☾' : '☀'}</span>
         </button>
       </header>
-      <main className="mc-main">
+      <main className={terminalVisible ? 'mc-main mc-main--terminal' : 'mc-main'}>
         <WorkspaceTabs
           open={openWorkspaces}
           recent={recentWorkspaces}

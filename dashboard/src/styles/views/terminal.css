@@ -12,7 +12,9 @@
  * terminal stays truly gone (no layout, no leaked flex box). The terminal scrolls INSIDE its own xterm
  * viewport, so it never adds a second scrollbar to `.mc-main`. */
 .persistent-terminal-surface:not([hidden]) {
-  height: 100%;
+  /* Flex share of `.mc-main--terminal`'s column (never height:100% — with the workspace tab strip as a
+   * sibling that overflowed the fold). flex-basis 0 so the terminal takes exactly the remainder. */
+  flex: 1 1 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -236,11 +238,11 @@
   background: var(--bg-sunken) !important;
 }
 
-.terminal__surface .xterm-viewport::-webkit-scrollbar {
-  width: 10px;
+/* Scrollback scrolling stays (wheel/touch/keys drive xterm's viewport); the bar chrome is hidden. */
+.terminal__surface .xterm-viewport {
+  scrollbar-width: none;
 }
 
-.terminal__surface .xterm-viewport::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
-  border-radius: var(--radius-sm);
+.terminal__surface .xterm-viewport::-webkit-scrollbar {
+  display: none;
 }

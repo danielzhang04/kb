@@ -884,6 +884,21 @@ button {
   overflow-y: auto;
   min-width: 0;
   min-height: 0;
+  /* Scrolling stays (wheel/keys/touch); the scrollbar chrome itself is hidden per Daniel's direction. */
+  scrollbar-width: none;
+}
+
+.mc-main::-webkit-scrollbar {
+  display: none;
+}
+
+/* Terminal destination: the main area becomes a flex column so the tab strip, notices, and the
+ * terminal SHARE the viewport-bounded box — the terminal flexes to the remainder and can never push
+ * past the fold (no page scroll at any zoom; browser zoom fires resize → FitAddon refits). */
+.mc-main--terminal {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 /* ============================================================================
