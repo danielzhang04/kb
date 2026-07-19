@@ -163,10 +163,11 @@ describe('Terminal — session gating + subprotocol token', () => {
     await waitFor(() => expect(sockets.length).toBe(1));
     const firstSocket = sockets[0];
     const firstTab = screen.getByTestId('terminal-tab-1');
-    const surface = screen.getByTestId('terminal-surface-1');
-    // jsdom has no layout and normally reports null. Give the surface a measurable parent so the
+    // xterm mounts into the inner `.terminal__screen` host (the fit guard reads *its* offsetParent).
+    // jsdom has no layout and normally reports null; give the host a measurable parent so the
     // return-to-visible effect can prove it invokes fit rather than only preserving the socket.
-    Object.defineProperty(surface, 'offsetParent', { configurable: true, value: document.body });
+    const screenHost = screen.getByTestId('terminal-screen-1');
+    Object.defineProperty(screenHost, 'offsetParent', { configurable: true, value: document.body });
 
     rerender(<Terminal visible={false} sessionToken="tok-abc" socketFactory={factory} />);
     expect(firstSocket.closed).toBe(false);

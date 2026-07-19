@@ -773,6 +773,7 @@ export function App(): React.JSX.Element {
         />
         {workspaceError ? <p className="composer-workspace-error" role="alert">{workspaceError}</p> : null}
         <div
+          className="persistent-terminal-surface"
           hidden={!terminalVisible}
           aria-hidden={!terminalVisible}
           data-testid="persistent-terminal-surface"

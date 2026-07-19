@@ -4,6 +4,20 @@
  * JS `theme` object in Terminal.tsx carries the ANSI colours; this file owns the container chrome.
  */
 
+/* The App keeps the terminal mounted in a persistent wrapper directly under `.mc-main` and toggles it
+ * with the `hidden` attribute. `.mc-main` is a definite-height grid cell (app-shell row `1fr` of 100vh),
+ * so giving the wrapper `height:100%` hands the whole `.terminal` height chain a definite parent — without
+ * it `.terminal`'s own `height:100%` resolves against an auto-height box and collapses. The `:not([hidden])`
+ * guard means an author `display` value never overrides the UA `hidden`→`display:none`, so a hidden
+ * terminal stays truly gone (no layout, no leaked flex box). The terminal scrolls INSIDE its own xterm
+ * viewport, so it never adds a second scrollbar to `.mc-main`. */
+.persistent-terminal-surface:not([hidden]) {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .terminal {
   display: flex;
   flex-direction: column;
@@ -188,16 +202,30 @@
   font-family: var(--font-mono);
 }
 
-/* The xterm host: deepest sunken well, hairline-bordered, sunken shadow — the "code gutter" surface. */
+/* The framed well: deepest sunken surface, hairline-bordered, sunken shadow — the "code gutter" chrome.
+ * It owns the border, rounding, padding and `overflow:hidden`, but it is NOT the xterm host: FitAddon
+ * measures its host's content box, and padding + border there would make it compute a row grid taller than
+ * the visible (clipped) area, cutting off the bottom rows. So this stays a flex column and delegates the
+ * actual xterm mount to the zero-padding `.terminal__screen` inside it. */
 .terminal__surface {
   flex: 1 1 auto;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg-sunken);
   box-shadow: var(--shadow-sunken);
   padding: var(--space-2);
   overflow: hidden;
+}
+
+/* The true xterm host — no padding, no border, so FitAddon's measurement of this box exactly matches the
+ * pixels xterm can draw into. Fills the framed surface's padded content box with a definite height. */
+.terminal__screen {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
 }
 
 /* Belt-and-suspenders: force the xterm viewport onto the sunken surface so no default black shows

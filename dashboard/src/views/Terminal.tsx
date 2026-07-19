@@ -246,6 +246,20 @@ function TerminalTab({ id, sessionToken, active, socketFactory, onError }: Termi
     };
   }, [fitAndResize]);
 
+  // One robustness refit once the web fonts have loaded. The first fit can run against fallback-font
+  // metrics; when the mono face swaps in the cell size changes, which would otherwise leave the bottom row
+  // clipped until the next resize. `document.fonts.ready` fires once; the guarded fit no-ops if hidden.
+  useEffect(() => {
+    if (typeof document === 'undefined' || !document.fonts?.ready) return;
+    let cancelled = false;
+    void document.fonts.ready.then(() => {
+      if (!cancelled) fitAndResize();
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [fitAndResize]);
+
   return (
     <div
       className={`terminal__panel${active ? ' terminal__panel--active' : ''}`}
@@ -259,7 +273,12 @@ function TerminalTab({ id, sessionToken, active, socketFactory, onError }: Termi
           Terminal error: {errorReason}
         </p>
       ) : null}
-      <div ref={hostRef} className="terminal__surface" data-testid={`terminal-surface-${id}`} />
+      {/* The `.terminal__surface` is the visual well (border/rounding/overflow/sunken shadow); the
+          inner zero-padding `.terminal__screen` is what `xterm.open()` targets so FitAddon measures a
+          true content box and the fitted row grid is never clipped by the well's padding + overflow. */}
+      <div className="terminal__surface" data-testid={`terminal-surface-${id}`}>
+        <div ref={hostRef} className="terminal__screen" data-testid={`terminal-screen-${id}`} />
+      </div>
     </div>
   );
 }
