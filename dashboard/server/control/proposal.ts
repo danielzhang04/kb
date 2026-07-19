@@ -511,16 +511,21 @@ export function validatePlanProposal(input: unknown, registry: ProposalRegistry)
 }
 
 class DuplicateJsonKeyError extends Error {
-  constructor(readonly key: string) {
+  readonly key: string;
+  constructor(key: string) {
     super(`duplicate key '${key}'`);
+    this.key = key;
   }
 }
 
 /** Small strict JSON reader used so duplicate object keys cannot be hidden by JSON.parse last-key-wins. */
 class StrictJsonReader {
   private index = 0;
+  private readonly text: string;
 
-  constructor(private readonly text: string) {}
+  constructor(text: string) {
+    this.text = text;
+  }
 
   parse(): unknown {
     const value = this.value(0);

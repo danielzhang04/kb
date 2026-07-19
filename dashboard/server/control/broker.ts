@@ -117,12 +117,16 @@ function detail(error: unknown): string {
 export class ManagedSessionBroker {
   readonly #live = new Map<string, LiveSession>();
   readonly #newId: () => string;
+  private readonly adapter: ManagedSessionAdapter;
+  private readonly persistence: BrokerPersistence;
 
   constructor(
-    private readonly adapter: ManagedSessionAdapter,
-    private readonly persistence: BrokerPersistence,
+    adapter: ManagedSessionAdapter,
+    persistence: BrokerPersistence,
     options: ManagedSessionBrokerOptions = {},
   ) {
+    this.adapter = adapter;
+    this.persistence = persistence;
     this.#newId = options.newId ?? randomUUID;
   }
 

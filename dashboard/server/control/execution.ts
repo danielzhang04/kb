@@ -349,8 +349,10 @@ export class AutomaticExecutionEngine {
   private readonly cancellingRuns = new Set<string>();
   private activeWorkers = 0;
   private capacityWaiters: Array<() => void> = [];
+  private readonly options: AutomaticExecutionOptions;
 
-  constructor(private readonly options: AutomaticExecutionOptions) {
+  constructor(options: AutomaticExecutionOptions) {
+    this.options = options;
     requireSafeInteger(options.maxConcurrency, 'maxConcurrency', 1);
     requireSafeInteger(options.budget.maxAttempts, 'budget.maxAttempts', 1);
     requireSafeInteger(options.budget.maxInputTokens, 'budget.maxInputTokens', 0);
