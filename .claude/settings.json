@@ -23,6 +23,15 @@
             "command": "node scripts/hooks/hard_ceiling_guard.js"
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/hooks/config_protection.js"
+          }
+        ]
       }
     ],
     "Stop": [
