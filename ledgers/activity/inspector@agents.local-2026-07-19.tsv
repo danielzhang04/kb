@@ -1,0 +1,2 @@
+card_id	inspector_id	kind	project	task_type	tier	ts	worker
+6a5c7274-284cf0b2	inspector@agents.local	grade	kb-ops	scope ECC hooks off for kb + bootstrap kb hook layer	T2	2026-07-19T06:53:52.128754+00:00	worker-desktop
