@@ -102,6 +102,25 @@ Design:
 - Verification: planningInstruction tests updated; proposal validator tests extended for the
   new required ref; live smoke: open Idea composer, one elicitation turn streams.
 
+## Concurrency invariant (BINDING on all future dashboard work)
+
+The ops checkout is a shared mutable resource with a SINGLE-WRITER discipline. The old sync code
+enforced this by accident (blocking the event loop); it is now enforced structurally:
+
+1. Every ops-checkout git/gh sequence (prepare → mutate → commit/push, or any self-contained
+   transaction) MUST run inside `asyncGit.ts#withOpsTransaction` — a reentrant in-process FIFO lock.
+2. The write-capable default runners are created with `requireTransaction: true`: an ops git call
+   outside a held transaction REJECTS immediately with a named error. Do not remove this flag; if you
+   add a new git call site, wrap the span, don't widen the runner.
+3. Anything that must observe output/events across an `await` boundary must attach listeners BEFORE
+   the await (see pty/route.ts pre-audit buffering) — event emitters do not replay for late subscribers.
+4. Every change to this area must end with: full vitest, `tsc --noEmit`, a strip-types load of
+   `server/http/surface.ts`, a daemon boot, and one live governed transaction (e.g. an
+   unauthenticated /api/pty probe commits an audit row to ops).
+
+Cross-process writers (fleet runners in other checkouts) are OUT of this lock's scope by design;
+their races surface as push rejections handled by the bounded pull-reconcile-retry loops.
+
 ## Cross-cutting rules
 
 - Workers: Opus 4.8 or below, model self-reported and transcript-verified; no worker commits —
