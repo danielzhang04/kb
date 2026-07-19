@@ -13,23 +13,21 @@
  * and can be deferred to the D2 governed-write era. Default = write-to-local, zero git.
  */
 
-import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { createAsyncGitRunner } from '../write/asyncGit.ts';
+import type { OpsGitRunner } from '../write/asyncGit.ts';
 
 /**
- * A git invocation runner. `args` is the full argv AFTER `git`. Injected so tests need no real git
- * and never hit the network. Must return stdout as a string; a non-zero git exit throws.
+ * A git invocation runner. `args` is the full argv AFTER `git`. Injected so tests need no real git and
+ * never hit the network. Widened to allow a `Promise` (the async default); a non-zero git exit rejects.
+ * The ONE shared, unified type from `write/asyncGit.ts`.
  */
-export type OpsGitRunner = (repoRoot: string, args: string[]) => string;
+export type { OpsGitRunner };
 
-/** Default runner: shells the real `git` binary (gpg signing off; the repo's pre-commit hook runs). */
-export const defaultOpsGitRunner: OpsGitRunner = (repoRoot, args) =>
-  execFileSync('git', ['-c', 'commit.gpgsign=false', ...args], {
-    cwd: repoRoot,
-    encoding: 'utf-8',
-    maxBuffer: 64 * 1024 * 1024,
-  });
+/** Default runner: the shared async git runner (spawn, off the event loop, 60s kill-timeout). gpg
+ *  signing off; the repo's pre-commit hook still runs. */
+export const defaultOpsGitRunner: OpsGitRunner = createAsyncGitRunner();
 
 /** Relative (POSIX) trace directory for a card. */
 function traceDir(cardId: string): string {
@@ -59,31 +57,31 @@ export interface CommitOptions {
  * Commit the already-written `traces/<cardId>/` to the `ops` branch via pull-rebase-push, retrying a
  * rejected push after re-reading state. Staging is confined to the trace directory.
  */
-export function commitTraceToOps(
+export async function commitTraceToOps(
   repoRoot: string,
   cardId: string,
   runGit: OpsGitRunner = defaultOpsGitRunner,
   options: CommitOptions = {},
-): void {
+): Promise<void> {
   const relDir = traceDir(cardId);
   const message = options.message ?? `chore(trace): distilled flight-recorder for ${cardId}`;
   const maxRetryPushes = options.maxRetryPushes ?? 3;
 
   // Reconcile with remote ops before writing history, stage ONLY the trace dir, commit.
-  runGit(repoRoot, ['pull', '--rebase', 'origin', 'ops']);
-  runGit(repoRoot, ['add', '--', relDir]);
-  runGit(repoRoot, ['commit', '-m', message]);
+  await runGit(repoRoot, ['pull', '--rebase', 'origin', 'ops']);
+  await runGit(repoRoot, ['add', '--', relDir]);
+  await runGit(repoRoot, ['commit', '-m', message]);
 
   // Push; a rejected push means re-read state (pull --rebase) and retry, bounded.
   let lastErr: unknown;
   for (let attempt = 0; attempt <= maxRetryPushes; attempt += 1) {
     try {
-      runGit(repoRoot, ['push', 'origin', 'ops']);
+      await runGit(repoRoot, ['push', 'origin', 'ops']);
       return;
     } catch (err) {
       lastErr = err;
       if (attempt === maxRetryPushes) break;
-      runGit(repoRoot, ['pull', '--rebase', 'origin', 'ops']);
+      await runGit(repoRoot, ['pull', '--rebase', 'origin', 'ops']);
     }
   }
   throw lastErr;
@@ -103,10 +101,10 @@ export interface WriteTraceInput {
  * Orchestrate the D0.8 write: always write the distilled HTML to the local trace path; commit to
  * `ops` only when `commit === true`. Returns the absolute path of the written file.
  */
-export function writeTrace(input: WriteTraceInput): string {
+export async function writeTrace(input: WriteTraceInput): Promise<string> {
   const file = writeTraceFile(input.repoRoot, input.cardId, input.html);
   if (input.commit) {
-    commitTraceToOps(input.repoRoot, input.cardId, input.runGit ?? defaultOpsGitRunner, {
+    await commitTraceToOps(input.repoRoot, input.cardId, input.runGit ?? defaultOpsGitRunner, {
       message: input.message,
     });
   }

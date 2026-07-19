@@ -31,6 +31,7 @@ import { createProviderIdProtector } from '../composer/protector.ts';
 import { createFileComposerStore, resolveDashboardStateRoot } from '../composer/store.ts';
 import { registerApprovalsRoutes } from '../approvals/routes.ts';
 import { drainVibeProcesses } from '../vibe/session.ts';
+import { drainAsyncGit } from '../write/asyncGit.ts';
 import { createFileControlPlaneStore } from '../control/store.ts';
 import { registerControlRoutes } from '../control/routes.ts';
 
@@ -90,6 +91,9 @@ export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext =
   app.addHook('preClose', async () => {
     ctx.controlBroker?.drain();
     drainVibeProcesses();
+    // Kill any in-flight (possibly network-stalled) coordination git/gh child so shutdown never blocks
+    // behind a hung push — the very failure mode this async-git conversion exists to remove.
+    drainAsyncGit();
   });
   app.register(async (scope) => {
     // Order matters: origin guard first (fail-closed), then the rate-limiter, both as onRequest hooks.

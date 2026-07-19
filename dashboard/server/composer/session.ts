@@ -72,7 +72,7 @@ export function spawnComposerTurn(
   session: SessionInput,
   handlers: ComposerHandlers,
   deps: ComposerDeps,
-): VibeSpawnOutcome {
+): Promise<VibeSpawnOutcome> {
   // This instruction is composed here, after browser validation and any inert visible-history
   // rehydration. Callers cannot weaken it, and only the raw operator prompt remains in public storage.
   const governedPrompt = withComposerPlanningInstruction(prompt);

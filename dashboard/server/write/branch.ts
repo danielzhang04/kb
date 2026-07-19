@@ -21,7 +21,8 @@
  * drifted `.claude/skills` mirror fails the commit (and therefore the save) rather than being bypassed.
  */
 
-import { execFileSync } from 'node:child_process';
+import { createAsyncGitRunner, createAsyncPrOpener } from './asyncGit.ts';
+import type { OpsGitRunner } from './asyncGit.ts';
 
 export type Target = 'durable' | 'coordination';
 
@@ -44,17 +45,15 @@ export function classifyTarget(relpath: string): Target {
   return COORDINATION_PREFIXES.some((p) => norm.startsWith(p)) ? 'coordination' : 'durable';
 }
 
-/** A git invocation runner. `args` is the full argv AFTER `git`. Injected for hermetic tests. */
-export type GitRunner = (repoRoot: string, args: string[]) => string;
+/** A git invocation runner. `args` is the full argv AFTER `git`. Injected for hermetic tests. Widened
+ *  to allow a `Promise` (the async default) while still accepting synchronous test fakes. Structurally
+ *  identical to `asyncGit.ts#OpsGitRunner`. */
+export type GitRunner = OpsGitRunner;
 
-/** Default runner: shells the real `git` binary. Hooks stay ACTIVE (no `core.hooksPath=` override) and
- *  `--no-verify` is never passed — the `sync_skills` pre-commit hook must be able to run and block. */
-export const defaultGitRunner: GitRunner = (repoRoot, args) =>
-  execFileSync('git', ['-c', 'commit.gpgsign=false', ...args], {
-    cwd: repoRoot,
-    encoding: 'utf-8',
-    maxBuffer: 64 * 1024 * 1024,
-  });
+/** Default runner: the shared async git runner (spawn, off the event loop, 60s kill-timeout). Hooks
+ *  stay ACTIVE (no `core.hooksPath=` override) and `--no-verify` is never passed — the `sync_skills`
+ *  pre-commit hook must be able to run and block. */
+export const defaultGitRunner: GitRunner = createAsyncGitRunner();
 
 /** A PR-open request: reviewed by Daniel, never auto-merged by the governed-save path itself. */
 export interface PrRequest {
@@ -65,15 +64,12 @@ export interface PrRequest {
 }
 
 /** Opens a PR — a distinct capability from `GitRunner` (no git push targets `main` directly; a PR is
- *  how durable content reaches it). Injected for hermetic tests. */
-export type PrOpener = (repoRoot: string, req: PrRequest) => void;
+ *  how durable content reaches it). Injected for hermetic tests. Widened to allow a `Promise`. */
+export type PrOpener = (repoRoot: string, req: PrRequest) => void | Promise<void>;
 
-/** Default opener: shells the `gh` CLI. Never invoked for coordination writes. */
-export const defaultPrOpener: PrOpener = (repoRoot, req) => {
-  const args = ['pr', 'create', '--base', req.base, '--head', req.head, '--title', req.title];
-  if (req.body) args.push('--body', req.body);
-  execFileSync('gh', args, { cwd: repoRoot, encoding: 'utf-8', maxBuffer: 64 * 1024 * 1024 });
-};
+/** Default opener: the shared async `gh pr create` runner (spawn, off the event loop, 60s kill-timeout).
+ *  Never invoked for coordination writes. */
+export const defaultPrOpener: PrOpener = createAsyncPrOpener();
 
 /** The work branch durable-content saves land on absent an explicit override — this worker's branch. */
 export const DEFAULT_WORK_BRANCH = 'claude/m1-dashboard';
@@ -109,15 +105,15 @@ export class DirtyIndexError extends Error {
   }
 }
 
-function assertCleanIndex(repoRoot: string, runGit: GitRunner): void {
-  const paths = runGit(repoRoot, ['diff', '--cached', '--name-only', '-z'])
+async function assertCleanIndex(repoRoot: string, runGit: GitRunner): Promise<void> {
+  const paths = (await runGit(repoRoot, ['diff', '--cached', '--name-only', '-z']))
     .split('\0').map((path) => path.trim()).filter(Boolean);
   if (paths.length > 0) throw new DirtyIndexError(paths);
 }
 
 /** Query the real checkout through the injected runner and fail closed unless it is exactly `ops`. */
-function assertCoordinationCheckout(repoRoot: string, runGit: GitRunner): void {
-  const branch = runGit(repoRoot, ['rev-parse', '--abbrev-ref', 'HEAD']).trim();
+async function assertCoordinationCheckout(repoRoot: string, runGit: GitRunner): Promise<void> {
+  const branch = (await runGit(repoRoot, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim();
   if (branch !== 'ops') throw new CoordinationCheckoutError(branch);
 }
 
@@ -161,9 +157,9 @@ export interface RouteOptions {
  * authoritative schema operation must happen only after the pull, while still committing an exact
  * multi-path set atomically afterwards.
  */
-export function prepareCoordination(repoRoot: string, runGit: GitRunner = defaultGitRunner): void {
-  assertCoordinationCheckout(repoRoot, runGit);
-  runGit(repoRoot, ['pull', '--rebase', 'origin', 'ops']);
+export async function prepareCoordination(repoRoot: string, runGit: GitRunner = defaultGitRunner): Promise<void> {
+  await assertCoordinationCheckout(repoRoot, runGit);
+  await runGit(repoRoot, ['pull', '--rebase', 'origin', 'ops']);
 }
 
 function defaultMessage(relpath: string): string {
@@ -174,7 +170,7 @@ function defaultMessage(relpath: string): string {
  * Durable-content route: stage the exact relpath, commit locally (hooks active), push the current
  * HEAD to the work branch ref on `origin` — NEVER `ops`, NEVER `main` — then open a PR to `main`.
  */
-export function routeDurable(repoRoot: string, relpath: string, options: RouteOptions = {}): void {
+export async function routeDurable(repoRoot: string, relpath: string, options: RouteOptions = {}): Promise<void> {
   const runGit = options.runGit ?? defaultGitRunner;
   const openPr = options.openPr ?? defaultPrOpener;
   const branch = options.workBranch ?? DEFAULT_WORK_BRANCH;
@@ -187,13 +183,13 @@ export function routeDurable(repoRoot: string, relpath: string, options: RouteOp
     throw new ProtectedBranchError(branch);
   }
 
-  assertCleanIndex(repoRoot, runGit);
-  runGit(repoRoot, ['add', '--', relpath]);
-  runGit(repoRoot, ['commit', '-m', message, '--only', '--', relpath]);
+  await assertCleanIndex(repoRoot, runGit);
+  await runGit(repoRoot, ['add', '--', relpath]);
+  await runGit(repoRoot, ['commit', '-m', message, '--only', '--', relpath]);
   // Push local HEAD onto the work-branch ref, regardless of the locally checked-out branch name —
   // never a bare `push origin main`/`push origin ops`.
-  runGit(repoRoot, ['push', 'origin', `HEAD:refs/heads/${branch}`]);
-  openPr(repoRoot, { base: 'main', head: branch, title: message });
+  await runGit(repoRoot, ['push', 'origin', `HEAD:refs/heads/${branch}`]);
+  await openPr(repoRoot, { base: 'main', head: branch, title: message });
 }
 
 /**
@@ -202,37 +198,37 @@ export function routeDurable(repoRoot: string, relpath: string, options: RouteOp
  * gap between prepare and a caller's local write: an external branch switch fails before staging.
  * `audit/log.ts#commitAuditToOps` — the same rule applied generically to any coordination relpath.
  */
-export function commitPreparedCoordination(repoRoot: string, relpath: string, options: RouteOptions = {}): void {
+export async function commitPreparedCoordination(repoRoot: string, relpath: string, options: RouteOptions = {}): Promise<void> {
   const runGit = options.runGit ?? defaultGitRunner;
   const message = options.message ?? defaultMessage(relpath);
   const maxRetryPushes = options.maxRetryPushes ?? 3;
 
   const stagePaths = [relpath, ...(options.alsoStage ?? [])];
-  assertCoordinationCheckout(repoRoot, runGit);
-  assertCleanIndex(repoRoot, runGit);
-  runGit(repoRoot, ['add', '--', ...stagePaths]);
-  runGit(repoRoot, ['commit', '-m', message, '--only', '--', ...stagePaths]);
+  await assertCoordinationCheckout(repoRoot, runGit);
+  await assertCleanIndex(repoRoot, runGit);
+  await runGit(repoRoot, ['add', '--', ...stagePaths]);
+  await runGit(repoRoot, ['commit', '-m', message, '--only', '--', ...stagePaths]);
 
   let lastErr: unknown;
   for (let attempt = 0; attempt <= maxRetryPushes; attempt += 1) {
     try {
-      runGit(repoRoot, ['push', 'origin', 'ops']);
+      await runGit(repoRoot, ['push', 'origin', 'ops']);
       return;
     } catch (err) {
       lastErr = err;
       if (attempt === maxRetryPushes) break;
-      assertCoordinationCheckout(repoRoot, runGit);
-      runGit(repoRoot, ['pull', '--rebase', 'origin', 'ops']);
+      await assertCoordinationCheckout(repoRoot, runGit);
+      await runGit(repoRoot, ['pull', '--rebase', 'origin', 'ops']);
       options.onReconciled?.();
     }
   }
   throw lastErr;
 }
 
-export function routeCoordination(repoRoot: string, relpath: string, options: RouteOptions = {}): void {
+export async function routeCoordination(repoRoot: string, relpath: string, options: RouteOptions = {}): Promise<void> {
   const runGit = options.runGit ?? defaultGitRunner;
-  prepareCoordination(repoRoot, runGit);
-  commitPreparedCoordination(repoRoot, relpath, { ...options, runGit });
+  await prepareCoordination(repoRoot, runGit);
+  await commitPreparedCoordination(repoRoot, relpath, { ...options, runGit });
 }
 
 /**
@@ -241,12 +237,12 @@ export function routeCoordination(repoRoot: string, relpath: string, options: Ro
  * rejected/blocked commit (e.g. the `sync_skills` hook failing on drift) fails the save; it is never
  * caught-and-retried with `--no-verify`.
  */
-export function routeWrite(repoRoot: string, relpath: string, options: RouteOptions = {}): Target {
+export async function routeWrite(repoRoot: string, relpath: string, options: RouteOptions = {}): Promise<Target> {
   const target = classifyTarget(relpath);
   if (target === 'durable') {
-    routeDurable(repoRoot, relpath, options);
+    await routeDurable(repoRoot, relpath, options);
   } else {
-    routeCoordination(repoRoot, relpath, options);
+    await routeCoordination(repoRoot, relpath, options);
   }
   return target;
 }

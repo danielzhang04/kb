@@ -58,12 +58,12 @@ function baseDeps(overrides: Partial<LaunchDeps> = {}): LaunchDeps {
   };
 }
 
-describe('launchCard / rerunAsDependsOn — preamble gate (runs first, spawns nothing on failure)', () => {
-  it('refuses to launch/rerun when STOP is present — no scripts/cards.py-shelling subprocess is spawned', () => {
+describe('launchCard / rerunAsDependsOn — preamble gate (runs first, spawns nothing on failure)', async () => {
+  it('refuses to launch/rerun when STOP is present — no scripts/cards.py-shelling subprocess is spawned', async () => {
     const { runner: runPy, calls } = recordingPyRunner({ exitCode: 0, stdout: '{}', stderr: '' });
     const deps = baseDeps({ runPreamble: frozenPreamble('STOP file present — fleet is frozen'), runPy });
 
-    const launchResult = launchCard(
+    const launchResult = await launchCard(
       { project: 'kb', action: 'demo', target: '.', riskTier: 'T1' },
       validSession(),
       deps,
@@ -74,7 +74,7 @@ describe('launchCard / rerunAsDependsOn — preamble gate (runs first, spawns no
       problems: ['STOP file present — fleet is frozen'],
     });
 
-    const rerunResult = rerunAsDependsOn('orig-card-id', 'please retry with X', validSession(), deps);
+    const rerunResult = await rerunAsDependsOn('orig-card-id', 'please retry with X', validSession(), deps);
     expect(rerunResult).toEqual({
       ok: false,
       reason: 'fleet-frozen',
@@ -85,14 +85,14 @@ describe('launchCard / rerunAsDependsOn — preamble gate (runs first, spawns no
     expect(calls).toHaveLength(0);
   });
 
-  it('refuses to launch when ANTHROPIC_API_KEY is set or the budget is exceeded — no subprocess spawned', () => {
+  it('refuses to launch when ANTHROPIC_API_KEY is set or the budget is exceeded — no subprocess spawned', async () => {
     const { runner: runPy, calls } = recordingPyRunner({ exitCode: 0, stdout: '{}', stderr: '' });
 
     const apiKeyDeps = baseDeps({
       runPreamble: frozenPreamble('ANTHROPIC_API_KEY is set — would silently bill to API; unset it'),
       runPy,
     });
-    const apiKeyResult = launchCard(
+    const apiKeyResult = await launchCard(
       { project: 'kb', action: 'demo', target: '.', riskTier: 'T1' },
       validSession(),
       apiKeyDeps,
@@ -107,7 +107,7 @@ describe('launchCard / rerunAsDependsOn — preamble gate (runs first, spawns no
       runPreamble: frozenPreamble('daily budget breached: $6.00 >= $5.00'),
       runPy,
     });
-    const budgetResult = launchCard(
+    const budgetResult = await launchCard(
       { project: 'kb', action: 'demo', target: '.', riskTier: 'T1' },
       validSession(),
       budgetDeps,
@@ -122,36 +122,36 @@ describe('launchCard / rerunAsDependsOn — preamble gate (runs first, spawns no
   });
 });
 
-describe('launchCard / rerunAsDependsOn — WebAuthn session gate (checked only after the preamble passes)', () => {
-  it('rejects launch/rerun without a WebAuthn session', () => {
+describe('launchCard / rerunAsDependsOn — WebAuthn session gate (checked only after the preamble passes)', async () => {
+  it('rejects launch/rerun without a WebAuthn session', async () => {
     const { runner: runPy, calls } = recordingPyRunner({ exitCode: 0, stdout: '{}', stderr: '' });
     const deps = baseDeps({ runPy });
     const noSession: SessionInput = { token: null, config: SESSION_CONFIG };
 
-    const launchResult = launchCard({ project: 'kb', action: 'demo', target: '.', riskTier: 'T1' }, noSession, deps);
+    const launchResult = await launchCard({ project: 'kb', action: 'demo', target: '.', riskTier: 'T1' }, noSession, deps);
     expect(launchResult.ok).toBe(false);
     if (!launchResult.ok) expect(launchResult.reason).toBe('unauthenticated');
 
-    const rerunResult = rerunAsDependsOn('orig-card-id', 'feedback', noSession, deps);
+    const rerunResult = await rerunAsDependsOn('orig-card-id', 'feedback', noSession, deps);
     expect(rerunResult.ok).toBe(false);
     if (!rerunResult.ok) expect(rerunResult.reason).toBe('unauthenticated');
 
     expect(calls).toHaveLength(0);
   });
 
-  it('rejects an expired/tampered session token the same way as a missing one', () => {
+  it('rejects an expired/tampered session token the same way as a missing one', async () => {
     const deps = baseDeps();
     const expiredConfig: SessionConfig = { secret: SECRET, now: () => 0, ttlMs: 1 };
     const { token } = mintSession('operator-1', expiredConfig);
     const laterSession: SessionInput = { token, config: { secret: SECRET, now: () => 1_000_000 } };
 
-    const result = launchCard({ project: 'kb', action: 'demo', target: '.', riskTier: 'T1' }, laterSession, deps);
+    const result = await launchCard({ project: 'kb', action: 'demo', target: '.', riskTier: 'T1' }, laterSession, deps);
     expect(result).toEqual({ ok: false, reason: 'unauthenticated', detail: 'expired' });
   });
 });
 
-describe('launchCard — governed dispatch (shells scripts/cards.py; no raw queue/ write)', () => {
-  it('shells scripts/cards.py; no raw queue/ write', () => {
+describe('launchCard — governed dispatch (shells scripts/cards.py; no raw queue/ write)', async () => {
+  it('shells scripts/cards.py; no raw queue/ write', async () => {
     const { runner: runPy, calls } = recordingPyRunner({
       exitCode: 0,
       stdout: '{"id":"abc123","path":"queue/inbox/abc123.md"}\n',
@@ -159,7 +159,7 @@ describe('launchCard — governed dispatch (shells scripts/cards.py; no raw queu
     });
     const deps = baseDeps({ runPy });
 
-    const result = launchCard(
+    const result = await launchCard(
       { project: 'kb', action: 'demo-thing', target: 'docs/x.md', riskTier: 'T2', body: '## Work order\n\ndo it\n' },
       validSession(),
       deps,
@@ -183,14 +183,14 @@ describe('launchCard — governed dispatch (shells scripts/cards.py; no raw queu
     });
   });
 
-  it('surfaces a card-op failure (non-zero exit) instead of pretending success', () => {
+  it('surfaces a card-op failure (non-zero exit) instead of pretending success', async () => {
     const { runner: runPy } = recordingPyRunner({ exitCode: 1, stdout: '', stderr: 'ValidationError: bad tier' });
     const deps = baseDeps({ runPy });
-    const result = launchCard({ project: 'kb', action: 'x', target: '.', riskTier: 'T1' }, validSession(), deps);
+    const result = await launchCard({ project: 'kb', action: 'x', target: '.', riskTier: 'T1' }, validSession(), deps);
     expect(result).toEqual({ ok: false, reason: 'card-op-failed', detail: 'ValidationError: bad tier' });
   });
 
-  it('starts cards with dependencies blocked while roots remain inbox', () => {
+  it('starts cards with dependencies blocked while roots remain inbox', async () => {
     const { runner: runPy, calls } = recordingPyRunner({
       exitCode: 0,
       stdout: '{"id":"child-1","path":"queue/inbox/child-1.md"}\n',
@@ -198,21 +198,21 @@ describe('launchCard — governed dispatch (shells scripts/cards.py; no raw queu
     });
     const deps = baseDeps({ runPy });
 
-    launchCard(
+    await launchCard(
       { project: 'kb', action: 'child', target: '.', riskTier: 'T1', dependsOn: ['root-1'] },
       validSession(),
       deps,
     );
-    launchCard({ project: 'kb', action: 'root', target: '.', riskTier: 'T1' }, validSession(), deps);
+    await launchCard({ project: 'kb', action: 'root', target: '.', riskTier: 'T1' }, validSession(), deps);
 
     expect(JSON.parse(calls[0].jsonArg).dependsOn).toEqual(['root-1']);
     expect('dependsOn' in JSON.parse(calls[1].jsonArg)).toBe(false);
     expect(CARD_OP_SCRIPT.match(/card\.meta\["state"\] = "blocked"/g)).toHaveLength(2);
   });
 
-  it('runs the optional coordination prepare seam after gates but before cards.py writes', () => {
+  it('runs the optional coordination prepare seam after gates but before cards.py writes', async () => {
     const order: string[] = [];
-    const result = launchCard(
+    const result = await launchCard(
       { project: 'kb', action: 'root', target: '.', riskTier: 'T1' },
       validSession(),
       baseDeps({
@@ -220,7 +220,7 @@ describe('launchCard — governed dispatch (shells scripts/cards.py; no raw queu
           order.push('preamble');
           return { exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' };
         },
-        prepareWrite: () => order.push('pull'),
+        prepareWrite: () => { order.push("pull"); },
         runPy: () => {
           order.push('cards.py');
           return { exitCode: 0, stdout: '{"id":"root-1","path":"queue/inbox/root-1.md"}\n', stderr: '' };
@@ -232,14 +232,14 @@ describe('launchCard — governed dispatch (shells scripts/cards.py; no raw queu
   });
 });
 
-describe('rerunAsDependsOn — rerun files depends-on card w/ feedback in ## Evidence', () => {
+describe('rerunAsDependsOn — rerun files depends-on card w/ feedback in ## Evidence', async () => {
   // NAMED-TEST NOTE (flagged deviation — see launch.ts module docstring for the full rationale):
   // the plan text titles this test "...feedback in ## Evidence". governance/card-schema.md — the
   // single normative body-sections list — documents a DEDICATED "## Feedback" section for exactly
   // this (steer text on a requeue/rerun), and reserves "## Evidence" for free text from UNTRUSTED
   // SOURCES. This test keeps the plan's literal title for traceability but asserts against the
   // schema-documented "## Feedback" section, which is what the implementation actually does.
-  it('rerun files depends-on card w/ feedback in ## Evidence', () => {
+  it('rerun files depends-on card w/ feedback in ## Evidence', async () => {
     const { runner: runPy, calls } = recordingPyRunner({
       exitCode: 0,
       stdout: '{"id":"rerun-1","path":"queue/inbox/rerun-1.md"}\n',
@@ -247,7 +247,7 @@ describe('rerunAsDependsOn — rerun files depends-on card w/ feedback in ## Evi
     });
     const deps = baseDeps({ runPy });
 
-    const result = rerunAsDependsOn('orig-card-id', 'try again with the smaller batch size', validSession(), deps);
+    const result = await rerunAsDependsOn('orig-card-id', 'try again with the smaller batch size', validSession(), deps);
 
     expect(result).toEqual({ ok: true, cardId: 'rerun-1', cardPath: 'queue/inbox/rerun-1.md' });
     expect(calls).toHaveLength(1);
@@ -266,7 +266,7 @@ describe('rerunAsDependsOn — rerun files depends-on card w/ feedback in ## Evi
     );
   });
 
-  it('buildRerunBody blockquotes multi-line feedback and preserves blank lines as bare ">"', () => {
+  it('buildRerunBody blockquotes multi-line feedback and preserves blank lines as bare ">"', async () => {
     const body = buildRerunBody('orig-1', 'line one\n\nline two');
     expect(body).toContain('## Feedback');
     expect(body).toContain('> line one');
@@ -274,8 +274,8 @@ describe('rerunAsDependsOn — rerun files depends-on card w/ feedback in ## Evi
   });
 });
 
-describe('launchCard — C7.7 task-owner assignment (closed-set owner + resolver-sourced routing stamp)', () => {
-  it('owner in the registered set → card filed, claimed, and runtime/model stamped from effective routing', () => {
+describe('launchCard — C7.7 task-owner assignment (closed-set owner + resolver-sourced routing stamp)', async () => {
+  it('owner in the registered set → card filed, claimed, and runtime/model stamped from effective routing', async () => {
     const { runner: runPy, calls } = recordingPyRunner({
       exitCode: 0,
       stdout: '{"id":"owned-1","path":"queue/inbox/owned-1.md"}\n',
@@ -289,7 +289,7 @@ describe('launchCard — C7.7 task-owner assignment (closed-set owner + resolver
       ownerRouting: () => ({ runtime: 'codex', model: 'codex-large' }),
     });
 
-    const result = launchCard(
+    const result = await launchCard(
       { project: 'kb', action: 'demo', target: '.', riskTier: 'T2', owner: 'codex-runner' },
       validSession(),
       deps,
@@ -309,11 +309,11 @@ describe('launchCard — C7.7 task-owner assignment (closed-set owner + resolver
     });
   });
 
-  it('owner NOT in the registered set → owner-not-registered, and NO card is filed', () => {
+  it('owner NOT in the registered set → owner-not-registered, and NO card is filed', async () => {
     const { runner: runPy, calls } = recordingPyRunner({ exitCode: 0, stdout: '{}', stderr: '' });
     const deps = baseDeps({ runPy, assignableOwners: () => new Set(['codex-runner']) });
 
-    const result = launchCard(
+    const result = await launchCard(
       { project: 'kb', action: 'demo', target: '.', riskTier: 'T1', owner: 'ghost-agent' },
       validSession(),
       deps,
@@ -325,7 +325,7 @@ describe('launchCard — C7.7 task-owner assignment (closed-set owner + resolver
     expect(calls).toHaveLength(0);
   });
 
-  it('absent owner → today unowned-card path, byte-for-byte (no owner/runtime/model in the payload, no claim)', () => {
+  it('absent owner → today unowned-card path, byte-for-byte (no owner/runtime/model in the payload, no claim)', async () => {
     const { runner: runPy, calls } = recordingPyRunner({
       exitCode: 0,
       stdout: '{"id":"unowned-1","path":"queue/inbox/unowned-1.md"}\n',
@@ -334,7 +334,7 @@ describe('launchCard — C7.7 task-owner assignment (closed-set owner + resolver
     // No assignableOwners/ownerRouting injected — the owner branch must not run at all when owner is absent.
     const deps = baseDeps({ runPy });
 
-    const result = launchCard({ project: 'kb', action: 'demo', target: '.', riskTier: 'T1' }, validSession(), deps);
+    const result = await launchCard({ project: 'kb', action: 'demo', target: '.', riskTier: 'T1' }, validSession(), deps);
 
     expect(result).toEqual({ ok: true, cardId: 'unowned-1', cardPath: 'queue/inbox/unowned-1.md' });
     expect(calls).toHaveLength(1);
@@ -344,12 +344,12 @@ describe('launchCard — C7.7 task-owner assignment (closed-set owner + resolver
     expect('model' in payload).toBe(false);
   });
 
-  it('owner-safety guard rejects separators / traversal / glob metachars → owner-not-registered, no card filed', () => {
+  it('owner-safety guard rejects separators / traversal / glob metachars → owner-not-registered, no card filed', async () => {
     for (const bad of ['a/b', '../evil', 'star*', 'q?', 'br[a]', 'has space']) {
       const { runner: runPy, calls } = recordingPyRunner({ exitCode: 0, stdout: '{}', stderr: '' });
       // Even if the injected set somehow contained the raw string, the safety guard fires FIRST.
       const deps = baseDeps({ runPy, assignableOwners: () => new Set([bad]) });
-      const result = launchCard(
+      const result = await launchCard(
         { project: 'kb', action: 'demo', target: '.', riskTier: 'T1', owner: bad },
         validSession(),
         deps,
@@ -428,13 +428,13 @@ function makeRoutingRepo(opts: { policy: string; agents?: Record<string, string>
   return root;
 }
 
-describe('defaultOwnerRouting — C7.9 declared-agent self-stamp precedence', () => {
-  it('registered codex default_worker without an agent file stamps codex and its default known model', () => {
+describe('defaultOwnerRouting — C7.9 declared-agent self-stamp precedence', async () => {
+  it('registered codex default_worker without an agent file stamps codex and its default known model', async () => {
     const root = makeRoutingRepo({ policy: POLICY_YAML });
     expect(defaultOwnerRouting('codex-worker', root)).toEqual({ runtime: 'codex', model: 'gpt-5.6-sol' });
   });
 
-  it('codex agent, no override → stamps the declared codex runtime + its default known model (gpt-5.6-sol)', () => {
+  it('codex agent, no override → stamps the declared codex runtime + its default known model (gpt-5.6-sol)', async () => {
     const root = makeRoutingRepo({
       policy: POLICY_YAML,
       agents: { 'codex-worker.md': agentFile({ id: 'codex-worker', role: 'work', runtime: 'codex' }) },
@@ -443,7 +443,7 @@ describe('defaultOwnerRouting — C7.9 declared-agent self-stamp precedence', ()
     expect(defaultOwnerRouting('codex-worker', root)).toEqual({ runtime: 'codex', model: 'gpt-5.6-sol' });
   });
 
-  it('claude agent, no override → stamps claude + claude-sonnet-5 (role_default, unchanged)', () => {
+  it('claude agent, no override → stamps claude + claude-sonnet-5 (role_default, unchanged)', async () => {
     const root = makeRoutingRepo({
       policy: POLICY_YAML,
       agents: { 'worker-desktop.md': agentFile({ id: 'worker-desktop', role: 'work', runtime: 'claude' }) },
@@ -451,7 +451,7 @@ describe('defaultOwnerRouting — C7.9 declared-agent self-stamp precedence', ()
     expect(defaultOwnerRouting('worker-desktop', root)).toEqual({ runtime: 'claude', model: 'claude-sonnet-5' });
   });
 
-  it('agent with NO declared runtime, no override → falls to policy role_default (claude/claude-sonnet-5)', () => {
+  it('agent with NO declared runtime, no override → falls to policy role_default (claude/claude-sonnet-5)', async () => {
     const root = makeRoutingRepo({
       policy: POLICY_YAML,
       agents: { 'mystery.md': agentFile({ id: 'mystery', role: 'work' }) },
@@ -459,7 +459,7 @@ describe('defaultOwnerRouting — C7.9 declared-agent self-stamp precedence', ()
     expect(defaultOwnerRouting('mystery', root)).toEqual({ runtime: 'claude', model: 'claude-sonnet-5' });
   });
 
-  it('agent-scope routing-override wins over the declared runtime/model (unchanged precedence)', () => {
+  it('agent-scope routing-override wins over the declared runtime/model (unchanged precedence)', async () => {
     const override = `version: 1
 overrides:
   - scope: agent
@@ -475,7 +475,7 @@ overrides:
     expect(defaultOwnerRouting('codex-worker', root)).toEqual({ runtime: 'claude', model: 'claude-opus-4-8' });
   });
 
-  it('declared runtime wins when an agent id is also registered as another runtime default_worker', () => {
+  it('declared runtime wins when an agent id is also registered as another runtime default_worker', async () => {
     const root = makeRoutingRepo({
       policy: POLICY_YAML,
       agents: { 'codex-worker.md': agentFile({ id: 'codex-worker', role: 'work', runtime: 'claude' }) },
@@ -483,7 +483,7 @@ overrides:
     expect(defaultOwnerRouting('codex-worker', root)).toEqual({ runtime: 'claude', model: 'claude-sonnet-5' });
   });
 
-  it('declared agent that declares an explicit KNOWN model → that model is honored (not clamped to [0])', () => {
+  it('declared agent that declares an explicit KNOWN model → that model is honored (not clamped to [0])', async () => {
     const root = makeRoutingRepo({
       policy: POLICY_YAML_MULTI_CODEX,
       agents: { 'codex-pro.md': agentFile({ id: 'codex-pro', role: 'work', runtime: 'codex', model: 'gpt-5.6-pro' }) },
@@ -491,7 +491,7 @@ overrides:
     expect(defaultOwnerRouting('codex-pro', root)).toEqual({ runtime: 'codex', model: 'gpt-5.6-pro' });
   });
 
-  it('declared model NOT in the runtime known set → clamped to the runtime default (known_models[0])', () => {
+  it('declared model NOT in the runtime known set → clamped to the runtime default (known_models[0])', async () => {
     const root = makeRoutingRepo({
       policy: POLICY_YAML_MULTI_CODEX,
       agents: {

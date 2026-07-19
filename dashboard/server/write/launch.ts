@@ -189,7 +189,7 @@ export interface LaunchDeps {
    */
   ownerRouting?: (owner: string, repoRoot: string) => OwnerRouting;
   /** Reconcile `ops` after all gates/validation pass but before cards.py performs the local write. */
-  prepareWrite?: (repoRoot: string) => void;
+  prepareWrite?: (repoRoot: string) => void | Promise<void>;
 }
 
 export type LaunchOutcome =
@@ -310,7 +310,7 @@ function parseCardOpStdout(stdout: string): { id: string; path: string } {
  * File a brand-new card via the governed `scripts/cards.py` module path. `assertFleetRunnable()`
  * gates first; a missing/invalid WebAuthn session gates second. Neither gate spawns any subprocess.
  */
-export function launchCard(spec: LaunchSpec, session: SessionInput, deps: LaunchDeps): LaunchOutcome {
+export async function launchCard(spec: LaunchSpec, session: SessionInput, deps: LaunchDeps): Promise<LaunchOutcome> {
   const gated = gate(session, deps);
   if (!gated.ok) return gated.outcome;
 
@@ -340,7 +340,7 @@ export function launchCard(spec: LaunchSpec, session: SessionInput, deps: Launch
   }
 
   try {
-    deps.prepareWrite?.(deps.repoRoot);
+    await deps.prepareWrite?.(deps.repoRoot);
   } catch (err) {
     return { ok: false, reason: 'card-op-failed', detail: `could not prepare coordination write: ${(err as Error).message}` };
   }
@@ -371,17 +371,17 @@ export function launchCard(spec: LaunchSpec, session: SessionInput, deps: Launch
  * docstring's flagged deviation from the plan's literal "## Evidence" wording). Same preamble-then-
  * session gate as `launchCard`; same governed `scripts/cards.py` module path.
  */
-export function rerunAsDependsOn(
+export async function rerunAsDependsOn(
   cardId: string,
   feedback: string,
   session: SessionInput,
   deps: LaunchDeps,
-): LaunchOutcome {
+): Promise<LaunchOutcome> {
   const gated = gate(session, deps);
   if (!gated.ok) return gated.outcome;
 
   try {
-    deps.prepareWrite?.(deps.repoRoot);
+    await deps.prepareWrite?.(deps.repoRoot);
   } catch (err) {
     return { ok: false, reason: 'card-op-failed', detail: `could not prepare coordination write: ${(err as Error).message}` };
   }

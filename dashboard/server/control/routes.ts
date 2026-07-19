@@ -168,7 +168,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
         const decisionStages = Array.isArray(current.value.snapshot.stages) ? current.value.snapshot.stages : [];
         const decisionRisk = decisionStages.some((stage) => record(stage).riskTier === 'T3') ? 'T3'
           : decisionStages.some((stage) => record(stage).riskTier === 'T2') ? 'T2' : 'T1';
-        auditFn(ctx)(ctx.repoRoot, {
+        await auditFn(ctx)(ctx.repoRoot, {
           action: 'control-proposal-decision-authorize', owner: sub, target: proposalRef,
           riskTier: decisionRisk, result: `authorized:${decision}:${current.value.hash}`,
           detail: { proposalRef, revision: Number(revision), proposalHash: current.value.hash, decision },
@@ -201,11 +201,11 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       // Reconcile canonical ops before loading executable policy, routing, or running the post-pull
       // preamble. The launcher below receives no second pull hook, so approval checks and publication
       // are evaluated against the same local canonical snapshot.
-      prepareCoordination(ctx.repoRoot, ctx.opsGit ?? defaultGitRunner);
+      await prepareCoordination(ctx.repoRoot, ctx.opsGit ?? defaultGitRunner);
     } catch {
       return reply.code(409).send({ error: 'canonical-reconciliation-failed' });
     }
-    const policyBaseCommit = (ctx.opsGit ?? defaultGitRunner)(ctx.repoRoot, ['rev-parse', 'HEAD']).trim();
+    const policyBaseCommit = (await (ctx.opsGit ?? defaultGitRunner)(ctx.repoRoot, ['rev-parse', 'HEAD'])).trim();
     if (!/^[a-f0-9]{40,64}$/i.test(policyBaseCommit)) {
       return reply.code(409).send({ error: 'canonical-policy-base-unavailable' });
     }
@@ -225,7 +225,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
         || predecessor.value.run.proposalHash !== stored.value.hash) {
         return reply.code(409).send({ error: 'retry-predecessor-changed' });
       }
-      const canonical = reconcileCanonicalPublication({
+      const canonical = await reconcileCanonicalPublication({
         repoRoot: ctx.repoRoot, runRef: predecessorRunRef, proposal: parsed.value,
         defaultWorkers: defaultWorkers(ctx.repoRoot), runGit: ctx.opsGit ?? defaultGitRunner,
       });
@@ -326,7 +326,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     const workflow = compiled.value.workflow;
     const publishing = ctx.controlStore.transitionPublication(sub, runRef, launchRun.version, 'publishing');
     if (!publishing.ok) return sendResult(reply, publishing);
-    const outcome = launchWorkflowRun(workflow, { token: verifiedSession(req)?.token, config: ctx.sessionConfig }, {
+    const outcome = await launchWorkflowRun(workflow, { token: verifiedSession(req)?.token, config: ctx.sessionConfig }, {
       repoRoot: ctx.repoRoot,
       runPreamble: ctx.runPreamble,
       runPy: ctx.runPy,
@@ -362,7 +362,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
         },
       }, ctx.now);
       const [first, ...rest] = outcome.cards.map((card) => card.cardPath);
-      commitPreparedCoordination(ctx.repoRoot, first, {
+      await commitPreparedCoordination(ctx.repoRoot, first, {
         runGit: ctx.opsGit ?? defaultGitRunner,
         alsoStage: [...rest, AUDIT_REL_PATH],
         message: `chore(queue): launch approved run ${runRef}`,
@@ -403,7 +403,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       const rootStageIds = new Set(parsed.value.stages.filter((stage) => stage.dependsOn.length === 0).map((stage) => stage.id));
       const rootCards = outcome.cards.filter((card) => rootStageIds.has(card.stageId)).map((card) => card.cardId);
       if (rootCards.length !== rootStageIds.size) throw new Error('managed root card projection differs from the approved proposal');
-      activateManagedRootCards({
+      await activateManagedRootCards({
         repoRoot: ctx.repoRoot, runRef, cardRefs: rootCards, runPy: ctx.runPy,
         runGit: ctx.opsGit ?? defaultGitRunner,
         authorizeAfterPrepare: () => {
@@ -653,11 +653,11 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (!stored.ok || stored.value.hash !== initial.value.run.proposalHash) {
       return reply.code(409).send({ error: 'proposal-binding-lost' });
     }
-    try { prepareCoordination(ctx.repoRoot, ctx.opsGit ?? defaultGitRunner); }
+    try { await prepareCoordination(ctx.repoRoot, ctx.opsGit ?? defaultGitRunner); }
     catch { return reply.code(409).send({ error: 'canonical-reconciliation-failed' }); }
     const parsed = validatePlanProposal(stored.value.snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
     if (!parsed.ok) return reply.code(409).send({ error: 'stored-proposal-invalid', detail: parsed.detail });
-    const reconciled = reconcileCanonicalPublication({
+    const reconciled = await reconcileCanonicalPublication({
       repoRoot: ctx.repoRoot, runRef, proposal: parsed.value, defaultWorkers: defaultWorkers(ctx.repoRoot),
       runGit: ctx.opsGit ?? defaultGitRunner,
     });
@@ -921,7 +921,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       return reply.code(409).send({ error: 'approved-proposal-binding-lost' });
     }
     try {
-      prepareCoordination(ctx.repoRoot, ctx.opsGit ?? defaultGitRunner);
+      await prepareCoordination(ctx.repoRoot, ctx.opsGit ?? defaultGitRunner);
     } catch {
       return reply.code(409).send({ error: 'canonical-reconciliation-failed' });
     }
@@ -966,7 +966,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       return reply.code(409).send({ error: 'managed-root-card-binding-lost' });
     }
     try {
-      activateManagedRootCards({
+      await activateManagedRootCards({
         repoRoot: ctx.repoRoot, runRef, cardRefs: rootCards, runPy: ctx.runPy,
         runGit: ctx.opsGit ?? defaultGitRunner,
         authorizeAfterPrepare: () => {
@@ -1008,7 +1008,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (existing.state === 'open') {
       if (existing.revision !== integer(body.expectedRevision)) return reply.code(409).send({ error: 'request-revision-changed' });
       try {
-        auditFn(ctx)(ctx.repoRoot, {
+        await auditFn(ctx)(ctx.repoRoot, {
           action: 'control-human-response-authorize', owner: sub, target: requestRef,
           riskTier: existing.kind === 'approval' || existing.kind === 'review' || existing.kind === 'governance-refusal' ? 'T3' : 'T2',
           result: `authorized:${string(body.decision)}`,

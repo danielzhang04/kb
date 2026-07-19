@@ -291,7 +291,7 @@ async function apply(
   // a pull after Python has already dirtied the card and audit paths.
   const runGit = deps.runGit ?? defaultGitRunner;
   try {
-    prepareCoordination(input.repoRoot, runGit);
+    await prepareCoordination(input.repoRoot, runGit);
   } catch (err) {
     return { ok: false, status: 500, reason: err instanceof Error ? err.message : String(err) };
   }
@@ -299,7 +299,7 @@ async function apply(
   const policy = (deps.loadPolicyFn ?? loadPolicy)(input.repoRoot);
   const reason = validate(runtime, model, policy);
   if (reason) return { ok: false, status: 400, reason };
-  const baseHead = runGit(input.repoRoot, ['rev-parse', 'HEAD']).trim();
+  const baseHead = (await runGit(input.repoRoot, ['rev-parse', 'HEAD'])).trim();
   if (!/^[0-9a-f]{40}$/i.test(baseHead)) {
     return { ok: false, status: 500, reason: 'could not pin the prepared ops revision' };
   }
@@ -366,15 +366,15 @@ async function apply(
   // (pull-rebase-push, retry) — atomic change+audit.
   let routingCommit = '';
   try {
-    const branch = runGit(input.repoRoot, ['rev-parse', '--abbrev-ref', 'HEAD']).trim();
+    const branch = (await runGit(input.repoRoot, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim();
     if (branch !== 'ops') throw new Error(`refusing routing commit from branch ${branch || '(unknown)'}`);
-    runGit(input.repoRoot, ['add', '--', parsed.path, AUDIT_REL_PATH]);
-    runGit(input.repoRoot, ['commit', '-m', `chore(routing): ${op} card ${input.cardId} routing`]);
-    routingCommit = runGit(input.repoRoot, ['rev-parse', 'HEAD']).trim();
+    await runGit(input.repoRoot, ['add', '--', parsed.path, AUDIT_REL_PATH]);
+    await runGit(input.repoRoot, ['commit', '-m', `chore(routing): ${op} card ${input.cardId} routing`]);
+    routingCommit = (await runGit(input.repoRoot, ['rev-parse', 'HEAD'])).trim();
     if (!/^[0-9a-f]{40}$/i.test(routingCommit)) throw new Error('could not pin the routing commit');
   } catch (err) {
     try {
-      runGit(input.repoRoot, ['reset', '--hard', baseHead]);
+      await runGit(input.repoRoot, ['reset', '--hard', baseHead]);
     } catch (rollbackError) {
       return {
         ok: false,
@@ -386,19 +386,19 @@ async function apply(
   }
 
   try {
-    runGit(input.repoRoot, ['push', 'origin', 'ops']);
+    await runGit(input.repoRoot, ['push', 'origin', 'ops']);
   } catch {
     try {
-      runGit(input.repoRoot, ['fetch', 'origin', 'ops']);
+      await runGit(input.repoRoot, ['fetch', 'origin', 'ops']);
       try {
-        runGit(input.repoRoot, ['merge-base', '--is-ancestor', routingCommit, 'origin/ops']);
+        await runGit(input.repoRoot, ['merge-base', '--is-ancestor', routingCommit, 'origin/ops']);
         // The exact commit is reachable remotely: publication succeeded despite the transport error.
       } catch (checkError) {
         const status = (checkError as { status?: unknown }).status;
         if (status !== 1) {
           return { ok: false, status: 500, error: 'publication-unknown', reason: 'could not verify whether the routing commit reached ops' };
         }
-        runGit(input.repoRoot, ['reset', '--hard', 'origin/ops']);
+        await runGit(input.repoRoot, ['reset', '--hard', 'origin/ops']);
         return { ok: false, status: 409, error: 'routing-conflict', reason: 'ops advanced during routing; retry from the refreshed card state' };
       }
     } catch {

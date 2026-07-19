@@ -40,6 +40,8 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { verifySession } from '../auth/session.ts';
 import type { SessionClaims, SessionConfig } from '../auth/session.ts';
+import { createAsyncGitRunner } from '../write/asyncGit.ts';
+import type { OpsGitRunner } from '../write/asyncGit.ts';
 
 /** The bearer session token plus the config needed to verify it (mirrors `launch.ts`'s shape). */
 export interface SessionInput {
@@ -122,43 +124,39 @@ path = cards.transition(card, "halting", queue_root)
 print(json.dumps({"id": card.meta["id"], "path": str(path), "state": card.meta["state"]}))
 `.trim();
 
-/** A git invocation runner. `args` is the full argv AFTER `git`. Injected for hermetic tests — same
- *  shape as `dashboard/server/audit/log.ts` / `dashboard/server/trace/commit.ts`'s `OpsGitRunner`. */
-export type OpsGitRunner = (repoRoot: string, args: string[]) => string;
+/** A git invocation runner. `args` is the full argv AFTER `git`. Injected for hermetic tests — the ONE
+ *  shared, widened type from `write/asyncGit.ts` (unified with `audit/log.ts` / `trace/commit.ts`). */
+export type { OpsGitRunner };
 
-/** Default runner: shells the real `git` binary (gpg signing off; the repo's pre-commit hook runs). */
-export const defaultOpsGitRunner: OpsGitRunner = (repoRoot, args) =>
-  execFileSync('git', ['-c', 'commit.gpgsign=false', ...args], {
-    cwd: repoRoot,
-    encoding: 'utf-8',
-    maxBuffer: 64 * 1024 * 1024,
-  });
+/** Default runner: the shared async git runner (spawn, off the event loop, 60s kill-timeout). gpg
+ *  signing off; the repo's pre-commit hook still runs. */
+export const defaultOpsGitRunner: OpsGitRunner = createAsyncGitRunner();
 
 /**
  * Stage exactly `relPaths` (never `git add .`) and commit+push to `ops` via pull-rebase-push, retrying
  * a rejected push after re-reading state (CLAUDE.md: "a rejected push means: re-read state, reconcile,
  * retry"). Shared by `requestStop` and `pauseCadence` — the two coordination writes this module makes.
  */
-function commitToOps(
+async function commitToOps(
   repoRoot: string,
   relPaths: string[],
   message: string,
   runGit: OpsGitRunner,
   maxRetryPushes = 3,
-): void {
-  runGit(repoRoot, ['pull', '--rebase', 'origin', 'ops']);
-  runGit(repoRoot, ['add', '--', ...relPaths]);
-  runGit(repoRoot, ['commit', '-m', message]);
+): Promise<void> {
+  await runGit(repoRoot, ['pull', '--rebase', 'origin', 'ops']);
+  await runGit(repoRoot, ['add', '--', ...relPaths]);
+  await runGit(repoRoot, ['commit', '-m', message]);
 
   let lastErr: unknown;
   for (let attempt = 0; attempt <= maxRetryPushes; attempt += 1) {
     try {
-      runGit(repoRoot, ['push', 'origin', 'ops']);
+      await runGit(repoRoot, ['push', 'origin', 'ops']);
       return;
     } catch (err) {
       lastErr = err;
       if (attempt === maxRetryPushes) break;
-      runGit(repoRoot, ['pull', '--rebase', 'origin', 'ops']);
+      await runGit(repoRoot, ['pull', '--rebase', 'origin', 'ops']);
     }
   }
   throw lastErr;
@@ -211,7 +209,7 @@ export type RequestStopOutcome =
  * changed card path is a coordination write and is committed to `ops` via pull-rebase-push (retrying a
  * rejected push) — never a raw `queue/` byte write from this process, and never `git add .`.
  */
-export function requestStop(cardId: string, session: SessionInput, deps: FloorDeps): RequestStopOutcome {
+export async function requestStop(cardId: string, session: SessionInput, deps: FloorDeps): Promise<RequestStopOutcome> {
   const gated = checkSession(session);
   if (!gated.ok) return gated;
 
@@ -222,7 +220,7 @@ export function requestStop(cardId: string, session: SessionInput, deps: FloorDe
   }
   const { id, path, state } = parseStopOpStdout(result.stdout);
 
-  commitToOps(
+  await commitToOps(
     deps.repoRoot,
     [path],
     `chore(stop): ${id} working -> stop-requested -> halting`,
@@ -240,7 +238,7 @@ export type PauseCadenceOutcome = { ok: true; path: string } | Unauthenticated;
  * marker's contents (there are none) are never read/parsed, matching `due()`'s own contract. The write
  * is a coordination write and routes to `ops` via pull-rebase-push, same as `requestStop`.
  */
-export function pauseCadence(name: string, session: SessionInput, deps: FloorDeps): PauseCadenceOutcome {
+export async function pauseCadence(name: string, session: SessionInput, deps: FloorDeps): Promise<PauseCadenceOutcome> {
   const gated = checkSession(session);
   if (!gated.ok) return gated;
 
@@ -249,7 +247,7 @@ export function pauseCadence(name: string, session: SessionInput, deps: FloorDep
   mkdirSync(dirname(abs), { recursive: true });
   if (!existsSync(abs)) writeFileSync(abs, '', 'utf8');
 
-  commitToOps(deps.repoRoot, [relPath], `chore(pause): ${name}`, deps.runGit ?? defaultOpsGitRunner);
+  await commitToOps(deps.repoRoot, [relPath], `chore(pause): ${name}`, deps.runGit ?? defaultOpsGitRunner);
 
   return { ok: true, path: relPath };
 }

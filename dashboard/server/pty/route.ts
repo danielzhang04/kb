@@ -66,8 +66,9 @@ export interface PtyRouteContext {
   ptyHost: PtyHost;
   /** Fleet preamble runner. It is always invoked before session validation or spawn. */
   runPreamble: PreambleRunner;
-  /** Independent audit sink. Tests inject a recorder, so no test writes `ledgers/audit/**`. */
-  appendAudit: (repoRoot: string, event: AuditEvent, options?: AppendAuditOptions) => AuditRow;
+  /** Independent audit sink. Tests inject a recorder, so no test writes `ledgers/audit/**`. Widened to
+   *  allow a `Promise` — the real `appendAudit` now runs its git commit off the event loop. */
+  appendAudit: (repoRoot: string, event: AuditEvent, options?: AppendAuditOptions) => AuditRow | Promise<AuditRow>;
   /** Optional git/time seams forwarded to the real audit implementation. */
   auditOptions?: AppendAuditOptions;
   /** The concurrency cap ceiling. Defaults to {@link MAX_CONCURRENT_PTY}. */
@@ -139,8 +140,8 @@ export async function handlePtyConnection(
 
   // Exactly one row for every connection that clears the Origin/Host boundary. Every outcome below calls
   // this once; socket close/error only reaps resources and never adds a second row for the open attempt.
-  const audit = (result: string, owner?: string, detail: Record<string, unknown> = {}): void => {
-    ctx.appendAudit(ctx.repoRoot, { action: 'pty-open', owner, result, detail }, ctx.auditOptions);
+  const audit = async (result: string, owner?: string, detail: Record<string, unknown> = {}): Promise<void> => {
+    await ctx.appendAudit(ctx.repoRoot, { action: 'pty-open', owner, result, detail }, ctx.auditOptions);
   };
 
   // 1. Defensive Origin/Host re-check (the scope guard already 403s a bad upgrade; this only bites if the
@@ -157,7 +158,7 @@ export async function handlePtyConnection(
   //    downstream (session verification, cap reservation, or spawn) runs on failure.
   const preamble = assertFleetRunnable(ctx.repoRoot, ctx.runPreamble);
   if (!preamble.ok) {
-    audit('fleet-frozen', undefined, { problems: preamble.problems });
+    await audit('fleet-frozen', undefined, { problems: preamble.problems });
     if (socket.readyState === socket.OPEN) {
       socket.send(JSON.stringify({ type: 'error', reason: 'fleet-frozen' }));
     }
@@ -169,7 +170,7 @@ export async function handlePtyConnection(
   const token = tokenFromSubprotocol(req);
   const session = token ? verifySession(token, ctx.sessionConfig) : null;
   if (!session || !session.ok) {
-    audit('unauthenticated');
+    await audit('unauthenticated');
     if (socket.readyState === socket.OPEN) {
       socket.send(JSON.stringify({ type: 'error', reason: 'unauthenticated' }));
     }
@@ -180,7 +181,7 @@ export async function handlePtyConnection(
 
   // 4. Concurrency cap — refuse an upgrade over the ceiling cleanly, BEFORE spawning anything.
   if (concurrency.active >= maxConcurrent) {
-    audit('too-many-terminals', owner, { maxConcurrent });
+    await audit('too-many-terminals', owner, { maxConcurrent });
     if (socket.readyState === socket.OPEN) {
       socket.send(JSON.stringify({ type: 'error', reason: 'too-many-terminals' }));
     }
@@ -206,7 +207,7 @@ export async function handlePtyConnection(
       rows: DEFAULT_ROWS,
     });
   } catch (err) {
-    audit('spawn-failed', owner, { error: (err as Error).message });
+    await audit('spawn-failed', owner, { error: (err as Error).message });
     if (socket.readyState === socket.OPEN) {
       socket.send(JSON.stringify({ type: 'error', reason: 'spawn-failed' }));
       socket.close(1011, (err as Error).message);
@@ -240,7 +241,7 @@ export async function handlePtyConnection(
   // Opening the shell completes the consequential action. If its audit cannot be recorded, fail closed:
   // reap the already-live PTY, release its reserved slot, close the WS, and contain the exception here.
   try {
-    audit('opened', owner, { sessionId: ptySession.sessionId });
+    await audit('opened', owner, { sessionId: ptySession.sessionId });
   } catch {
     teardown();
     if (socket.readyState === socket.OPEN) {

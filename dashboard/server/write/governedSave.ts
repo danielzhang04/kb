@@ -338,7 +338,7 @@ export async function save(input: SaveInput): Promise<SaveOutcome> {
   };
 
   try {
-    const target = routeWrite(input.repoRoot, input.relpath, routeOptions);
+    const target = await routeWrite(input.repoRoot, input.relpath, routeOptions);
     return { ok: true, target };
   } catch (err) {
     return { ok: false, status: 500, reason: err instanceof Error ? err.message : String(err) };

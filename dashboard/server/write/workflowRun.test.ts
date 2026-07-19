@@ -64,8 +64,8 @@ function session() {
   return { token: mintSession('operator', CONFIG).token, config: CONFIG };
 }
 
-describe('workflow-run v1 schema', () => {
-  it('accepts the closed request shape and refuses unknown fields', () => {
+describe('workflow-run v1 schema', async () => {
+  it('accepts the closed request shape and refuses unknown fields', async () => {
     expect(validateWorkflowRunRequest(request)).toMatchObject({ ok: true });
     expect(validateWorkflowRunRequest({ ...request, runtime: 'client-controlled' })).toEqual({
       ok: false,
@@ -77,7 +77,7 @@ describe('workflow-run v1 schema', () => {
     })).toEqual({ ok: false, detail: "stages[0]: unknown field 'model'" });
   });
 
-  it('refuses missing dependencies and cycles', () => {
+  it('refuses missing dependencies and cycles', async () => {
     expect(validateWorkflowRunRequest({
       ...request,
       stages: [{ ...request.stages[0], dependsOn: ['missing'] }],
@@ -93,7 +93,7 @@ describe('workflow-run v1 schema', () => {
     expect(validateWorkflowRunRequest(cycle)).toEqual({ ok: false, detail: 'workflow stage graph contains a cycle' });
   });
 
-  it('refuses T3 because T3 must enter the approvals path', () => {
+  it('refuses T3 because T3 must enter the approvals path', async () => {
     const parsed = validateWorkflowRunRequest({
       ...request,
       stages: [{ ...request.stages[0], riskTier: 'T3' }],
@@ -105,8 +105,8 @@ describe('workflow-run v1 schema', () => {
   });
 });
 
-describe('launchWorkflowRun', () => {
-  it('routes registered default_worker stages from policy without requiring agents/<owner>.md', () => {
+describe('launchWorkflowRun', async () => {
+  it('routes registered default_worker stages from policy without requiring agents/<owner>.md', async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), 'workflow-default-worker-'));
     mkdirSync(join(repoRoot, 'governance'), { recursive: true });
     writeFileSync(join(repoRoot, 'governance', 'model-routing.yaml'), `version: 1
@@ -137,7 +137,7 @@ role_default: { runtime: claude, model: sonnet }
       };
     };
 
-    const outcome = launchWorkflowRun(request, session(), deps(runPy, {
+    const outcome = await launchWorkflowRun(request, session(), deps(runPy, {
       repoRoot,
       ownerRouting: undefined,
     }));
@@ -148,7 +148,7 @@ role_default: { runtime: claude, model: sonnet }
     expect(stages[1]).toMatchObject({ owner: 'worker-desktop', runtime: 'claude', model: 'claude-sonnet-5' });
   });
 
-  it('resolves routing server-side and publishes the whole DAG in one fixed subprocess', () => {
+  it('resolves routing server-side and publishes the whole DAG in one fixed subprocess', async () => {
     const calls: Array<{ code: string; payload: Record<string, unknown> }> = [];
     const runPy: PyRunner = (_repo, code, jsonArg) => {
       calls.push({ code, payload: JSON.parse(jsonArg) as Record<string, unknown> });
@@ -165,7 +165,7 @@ role_default: { runtime: claude, model: sonnet }
       };
     };
 
-    const outcome = launchWorkflowRun(request, session(), deps(runPy));
+    const outcome = await launchWorkflowRun(request, session(), deps(runPy));
     expect(outcome).toEqual({
       ok: true,
       runId: 'wf-test-0001',
@@ -182,7 +182,7 @@ role_default: { runtime: claude, model: sonnet }
     expect(calls[0].payload).toMatchObject({ runId: 'wf-test-0001', workflowDefinitionId: 'atlas-v1' });
   });
 
-  it('publishes dashboard-managed cards blocked with an inert exclusive-controller marker', () => {
+  it('publishes dashboard-managed cards blocked with an inert exclusive-controller marker', async () => {
     let payload: Record<string, unknown> | null = null;
     const runPy: PyRunner = (_repo, code, jsonArg) => {
       payload = JSON.parse(jsonArg) as Record<string, unknown>;
@@ -200,7 +200,7 @@ role_default: { runtime: claude, model: sonnet }
       };
     };
 
-    const outcome = launchWorkflowRun(request, session(), deps(runPy, { publishBlocked: true }));
+    const outcome = await launchWorkflowRun(request, session(), deps(runPy, { publishBlocked: true }));
 
     expect(outcome.ok && outcome.cards.map((card) => card.state)).toEqual(['blocked', 'blocked']);
     expect(payload).toMatchObject({ managed: true });
@@ -211,7 +211,7 @@ role_default: { runtime: claude, model: sonnet }
     expect(dispatchSource).toMatch(/deps = child\.meta\.get\("depends-on"\) or \[\][\s\S]*if not deps:[\s\S]*continue/);
   });
 
-  it('uses immutable approved stage routing instead of a drifted owner default', () => {
+  it('uses immutable approved stage routing instead of a drifted owner default', async () => {
     let payload: Record<string, unknown> | null = null;
     const runPy: PyRunner = (_repo, _code, jsonArg) => {
       payload = JSON.parse(jsonArg) as Record<string, unknown>;
@@ -228,7 +228,7 @@ role_default: { runtime: claude, model: sonnet }
       };
     };
 
-    const outcome = launchWorkflowRun(request, session(), deps(runPy, {
+    const outcome = await launchWorkflowRun(request, session(), deps(runPy, {
       ownerRouting: () => ({ runtime: 'claude', model: 'drifted-default' }),
       stageRouting: (stage) => stage.id === 'research'
         ? { runtime: 'codex', model: 'approved-codex' }
@@ -243,14 +243,14 @@ role_default: { runtime: claude, model: sonnet }
     ]);
   });
 
-  it('rejects an owner outside the server-enumerated closed set before prepare or subprocess', () => {
+  it('rejects an owner outside the server-enumerated closed set before prepare or subprocess', async () => {
     const runPy = vi.fn();
     const prepareWrite = vi.fn();
     const bad = {
       ...request,
       stages: [{ ...request.stages[0], owner: 'ghost-agent' }],
     };
-    expect(launchWorkflowRun(bad, session(), deps(runPy as unknown as PyRunner, { prepareWrite }))).toEqual({
+    expect(await launchWorkflowRun(bad, session(), deps(runPy as unknown as PyRunner, { prepareWrite }))).toEqual({
       ok: false,
       reason: 'owner-not-registered',
       detail: "owner 'ghost-agent' on stage 'research' is not a declared agent or registered default_worker",
@@ -259,16 +259,16 @@ role_default: { runtime: claude, model: sonnet }
     expect(runPy).not.toHaveBeenCalled();
   });
 
-  it('validation and preamble failures create no cards and do not prepare a coordination write', () => {
+  it('validation and preamble failures create no cards and do not prepare a coordination write', async () => {
     const runPy = vi.fn();
     const prepareWrite = vi.fn();
     const t3 = { ...request, stages: [{ ...request.stages[0], riskTier: 'T3' }] };
-    expect(launchWorkflowRun(t3, session(), deps(runPy as unknown as PyRunner, { prepareWrite }))).toMatchObject({
+    expect(await launchWorkflowRun(t3, session(), deps(runPy as unknown as PyRunner, { prepareWrite }))).toMatchObject({
       ok: false,
       reason: 'invalid-workflow',
     });
 
-    expect(launchWorkflowRun(request, session(), deps(runPy as unknown as PyRunner, {
+    expect(await launchWorkflowRun(request, session(), deps(runPy as unknown as PyRunner, {
       prepareWrite,
       runPreamble: () => ({ exitCode: 1, stdout: 'PREAMBLE FAIL: STOP present\n', stderr: '' }),
     }))).toEqual({ ok: false, reason: 'fleet-frozen', problems: ['STOP present'] });
@@ -276,13 +276,13 @@ role_default: { runtime: claude, model: sonnet }
     expect(runPy).not.toHaveBeenCalled();
   });
 
-  it('fails the run as one unit when the sole DAG subprocess fails', () => {
+  it('fails the run as one unit when the sole DAG subprocess fails', async () => {
     const runPy = vi.fn<PyRunner>(() => ({
       exitCode: 1,
       stdout: '',
       stderr: 'simulated second-card save failure',
     }));
-    const outcome = launchWorkflowRun(request, session(), deps(runPy));
+    const outcome = await launchWorkflowRun(request, session(), deps(runPy));
     expect(outcome).toEqual({ ok: false, reason: 'card-op-failed', detail: 'simulated second-card save failure' });
     expect(runPy).toHaveBeenCalledTimes(1);
     // The fixed program stages every card before publication and rolls back every published destination.
@@ -291,8 +291,8 @@ role_default: { runtime: claude, model: sonnet }
   });
 });
 
-describe('managed canonical root activation', () => {
-  it('commits and pushes the exact blocked root before rereading committed bytes, then replays idempotently', () => {
+describe('managed canonical root activation', async () => {
+  it('commits and pushes the exact blocked root before rereading committed bytes, then replays idempotently', async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), 'managed-activation-'));
     const cardRef = 'wf-9b91ad52f99f63f91e0cbd97';
     const cardPath = join(repoRoot, 'queue', 'inbox', `${cardRef}.md`);
@@ -316,7 +316,7 @@ describe('managed canonical root activation', () => {
       return result;
     };
 
-    expect(activateManagedRootCards({
+    expect(await activateManagedRootCards({
       repoRoot, runRef: 'wf-test-0001', cardRefs: [cardRef], runGit, runPy,
       authorizeAfterPrepare: () => { calls.push(['authorize']); },
     }))
@@ -331,22 +331,22 @@ describe('managed canonical root activation', () => {
     expect(reread).toBeGreaterThan(push);
 
     calls.length = 0;
-    expect(activateManagedRootCards({ repoRoot, runRef: 'wf-test-0001', cardRefs: [cardRef], runGit, runPy }))
+    expect(await activateManagedRootCards({ repoRoot, runRef: 'wf-test-0001', cardRefs: [cardRef], runGit, runPy }))
       .toEqual({ replayed: true, cardPaths: [`queue/inbox/${cardRef}.md`] });
     expect(calls.some((args) => args[0] === 'commit')).toBe(false);
     expect(calls.findIndex((args) => args[0] === 'show')).toBeGreaterThan(calls.findIndex((args) => args[0] === 'push'));
   });
 
-  it('refuses a dirty index before card mutation', () => {
+  it('refuses a dirty index before card mutation', async () => {
     const runPy = vi.fn<PyRunner>();
     const runGit = (_root: string, args: string[]): string => {
       if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
       if (args[0] === 'diff') return 'queue/inbox/residue.md\0';
       return '';
     };
-    expect(() => activateManagedRootCards({
+    await expect(activateManagedRootCards({
       repoRoot: '/repo', runRef: 'wf-test-0001', cardRefs: ['wf-9b91ad52f99f63f91e0cbd97'], runGit, runPy,
-    })).toThrow(/dirty index/);
+    })).rejects.toThrow(/dirty index/);
     expect(runPy).not.toHaveBeenCalled();
   });
 });

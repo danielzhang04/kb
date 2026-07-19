@@ -36,13 +36,13 @@ function projection(state: string): Exclude<StageState, 'interrupted'> | null {
 }
 
 /** Rebuild app-local publication truth only from exact, committed canonical cards. */
-export function reconcileCanonicalPublication(input: {
+export async function reconcileCanonicalPublication(input: {
   repoRoot: string;
   runRef: string;
   proposal: PlanProposal;
   defaultWorkers: Record<string, string>;
   runGit: GitRunner;
-}): PublicationReconciliation {
+}): Promise<PublicationReconciliation> {
   const cards: ReconciledPublicationCard[] = [];
   for (const stage of input.proposal.stages) {
     const cardId = workflowCardId(input.runRef, stage.id);
@@ -54,9 +54,9 @@ export function reconcileCanonicalPublication(input: {
     }
     const { relpath } = matches[0];
     try {
-      const tracked = input.runGit(input.repoRoot, ['ls-files', '--error-unmatch', '--', relpath]).trim().replace(/\\/g, '/');
+      const tracked = (await input.runGit(input.repoRoot, ['ls-files', '--error-unmatch', '--', relpath])).trim().replace(/\\/g, '/');
       if (tracked !== relpath) throw new Error('tracked path mismatch');
-      input.runGit(input.repoRoot, ['diff', '--quiet', 'HEAD', '--', relpath]);
+      await input.runGit(input.repoRoot, ['diff', '--quiet', 'HEAD', '--', relpath]);
     } catch {
       return { ok: false, reason: 'uncommitted-card', detail: `canonical card '${relpath}' is not tracked and clean at HEAD` };
     }

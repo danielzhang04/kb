@@ -232,7 +232,7 @@ export function registerComposerRoutes(scope: FastifyInstance, ctx: SurfaceConte
       };
 
       try {
-        outcome = spawnComposerTurn(
+        outcome = await spawnComposerTurn(
           spawnPrompt,
           providerId,
           { token: verified.token, config: ctx.sessionConfig },

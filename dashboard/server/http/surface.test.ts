@@ -170,7 +170,7 @@ describe('write surface — composition chain', () => {
       repoRoot,
       appendAudit: audit.fn,
       saveGit: okGit,
-      openPr: (_r, req) => prCalls.push(req),
+      openPr: (_r, req) => { prCalls.push(req); },
     }));
 
     const res = await app.inject({
@@ -428,7 +428,7 @@ describe('write surface — FINDING 1: server owns the durable work branch (no c
       return '';
     };
     const prCalls: { head?: string }[] = [];
-    ({ app } = buildApp({ repoRoot, appendAudit: recordingAudit().fn, saveGit: recordingGit, openPr: (_r, req) => prCalls.push(req) }));
+    ({ app } = buildApp({ repoRoot, appendAudit: recordingAudit().fn, saveGit: recordingGit, openPr: (_r, req) => { prCalls.push(req); } }));
     const res = await app.inject({
       method: 'POST',
       url: '/api/write/save',

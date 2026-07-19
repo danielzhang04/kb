@@ -118,7 +118,7 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
     // FINDING 3: audit ONLY on the success path (a consequential write actually occurred). A refusal
     // writes no ops-committed audit row — refused writes must not amplify into a pull-rebase-push each.
     if (outcome.ok) {
-      audit(ctx.repoRoot, {
+      await audit(ctx.repoRoot, {
         action: 'save',
         owner: session?.claims.sub,
         target: relpath,
@@ -140,7 +140,7 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
     if (owner !== undefined && !CARD_ID_RE.test(owner)) {
       return reply.code(400).send({ error: 'bad-owner', reason: 'owner must be filename-safe' });
     }
-    const outcome = launchCard(
+    const outcome = await launchCard(
       {
         project: (body.project as string | string[]) ?? '',
         action: str(body.action),
@@ -171,7 +171,7 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
           riskTier: str(body.riskTier),
           result: `launched:${outcome.cardId}`,
         }, ctx.now);
-        commitPreparedCoordination(ctx.repoRoot, outcome.cardPath, {
+        await commitPreparedCoordination(ctx.repoRoot, outcome.cardPath, {
           runGit: ctx.opsGit ?? defaultGitRunner,
           alsoStage: [AUDIT_REL_PATH],
           message: `chore(queue): launch card ${outcome.cardId}`,
@@ -194,7 +194,7 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
 
   scope.post('/api/write/workflow-runs', { preHandler }, async (req, reply: FastifyReply) => {
     const session = verifiedSession(req);
-    const outcome = launchWorkflowRun(
+    const outcome = await launchWorkflowRun(
       req.body,
       { token: session?.token, config: ctx.sessionConfig },
       {
@@ -232,7 +232,7 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
       const [first, ...rest] = outcome.cards.map((card) => card.cardPath);
       // Validation guarantees at least one stage, and the subprocess result parser enforces parity.
       if (!first) throw new Error('workflow run produced no card paths');
-      commitPreparedCoordination(ctx.repoRoot, first, {
+      await commitPreparedCoordination(ctx.repoRoot, first, {
         runGit: ctx.opsGit ?? defaultGitRunner,
         alsoStage: [...rest, AUDIT_REL_PATH],
         message: `chore(queue): launch workflow run ${outcome.runId}`,
@@ -268,7 +268,7 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
     if (!CARD_ID_RE.test(cardId)) {
       return reply.code(400).send({ error: 'bad-card-id', reason: 'cardId must be filename-safe' });
     }
-    const outcome = rerunAsDependsOn(
+    const outcome = await rerunAsDependsOn(
       cardId,
       str(body.feedback),
       { token: session?.token, config: ctx.sessionConfig },
@@ -290,7 +290,7 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
           cardId,
           result: `requeued:${outcome.cardId}`,
         }, ctx.now);
-        commitPreparedCoordination(ctx.repoRoot, outcome.cardPath, {
+        await commitPreparedCoordination(ctx.repoRoot, outcome.cardPath, {
           runGit: ctx.opsGit ?? defaultGitRunner,
           alsoStage: [AUDIT_REL_PATH],
           message: `chore(queue): rerun card ${cardId} as ${outcome.cardId}`,
@@ -314,7 +314,7 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
     );
     // FINDING 3: audit only when the STOP sentinel was actually written.
     if (outcome.ok) {
-      audit(ctx.repoRoot, {
+      await audit(ctx.repoRoot, {
         action: 'stop',
         owner: session?.claims.sub,
         result: 'stop-written',
@@ -333,14 +333,14 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
     if (!CARD_ID_RE.test(cardId)) {
       return reply.code(400).send({ error: 'bad-card-id', reason: 'cardId must be filename-safe' });
     }
-    const outcome = requestStop(
+    const outcome = await requestStop(
       cardId,
       { token: session?.token, config: ctx.sessionConfig },
       { repoRoot: ctx.repoRoot, runPy: ctx.runPy, runGit: ctx.opsGit },
     );
     // FINDING 3: audit only on a successful state transition.
     if (outcome.ok) {
-      audit(ctx.repoRoot, {
+      await audit(ctx.repoRoot, {
         action: 'stop-card',
         owner: session?.claims.sub,
         cardId,
@@ -356,14 +356,14 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
     const session = verifiedSession(req);
     const body = asRecord(req.body);
     const name = str(body.name);
-    const outcome = pauseCadence(
+    const outcome = await pauseCadence(
       name,
       { token: session?.token, config: ctx.sessionConfig },
       { repoRoot: ctx.repoRoot, runPy: ctx.runPy, runGit: ctx.opsGit },
     );
     // FINDING 3: audit only when the cadence was actually paused.
     if (outcome.ok) {
-      audit(ctx.repoRoot, {
+      await audit(ctx.repoRoot, {
         action: 'pause-cadence',
         owner: session?.claims.sub,
         target: name,

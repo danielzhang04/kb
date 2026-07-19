@@ -339,12 +339,12 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
     if (dirty) throw new CanonicalResultIntegrationError('integration lineage worktree is dirty');
     return { path, branch };
   };
-  const verifyCanonical = (record: IntegrationRecord): void => {
+  const verifyCanonical = async (record: IntegrationRecord): Promise<void> => {
     if (!record.integrationCommit) throw new CanonicalResultIntegrationError('canonical integration commit is unavailable');
-    prepareCoordination(coordinationRoot, opsGit);
+    await prepareCoordination(coordinationRoot, opsGit);
     const path = `queue/done/${record.cardRef}.md`;
     const current = readFileSync(join(coordinationRoot, ...path.split('/')), 'utf8').replace(/\r\n?/g, '\n');
-    const committed = opsGit(coordinationRoot, ['show', `HEAD:${path}`]).replace(/\r\n?/g, '\n');
+    const committed = (await opsGit(coordinationRoot, ['show', `HEAD:${path}`])).replace(/\r\n?/g, '\n');
     if (current !== committed) {
       throw new CanonicalResultIntegrationError('committed canonical card no longer matches the integrated result');
     }
@@ -375,7 +375,7 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
         || record.stageId !== input.stageId || record.state !== 'canonical-committed') {
         throw new CanonicalResultIntegrationError('canonical result lookup identity differs');
       }
-      verifyCanonical(record);
+      await verifyCanonical(record);
       return structuredClone(record.result);
     },
 
@@ -386,7 +386,7 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
         const record = state.records.find((item) => item.subject === input.subject && item.runRef === input.runRef
           && item.stageId === dependency && item.state === 'canonical-committed');
         if (!record) throw new CanonicalResultIntegrationError(`dependency '${dependency}' lacks a committed canonical result`);
-        verifyCanonical(record);
+        await verifyCanonical(record);
       }
       const lineage = await ensureLineage(input.runRef);
       const commit = await gitRun(['rev-parse', 'HEAD'], lineage.path, 'lineage base resolution');
@@ -422,7 +422,7 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
           || (item.subject === input.subject && item.runRef === input.runRef && item.stageId === input.stageId));
         if (record && record.fingerprint !== fingerprint) throw new CanonicalResultIntegrationError('result replay payload differs');
         if (record?.state === 'canonical-committed') {
-          verifyCanonical(record);
+          await verifyCanonical(record);
           return { status: 'replayed' as const, resultHash: record.result.resultHash };
         }
         if (!record) {
@@ -577,8 +577,8 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
         }
 
         if (record.state === 'lineage-committed') {
-          prepareCoordination(coordinationRoot, opsGit);
-          const dirty = opsGit(coordinationRoot, ['diff', '--cached', '--name-only', '-z']);
+          await prepareCoordination(coordinationRoot, opsGit);
+          const dirty = await opsGit(coordinationRoot, ['diff', '--cached', '--name-only', '-z']);
           if (dirty) throw new CanonicalResultIntegrationError('coordination index is dirty');
           record.state = 'canonical-intent';
           saveState(statePath, state);
@@ -586,7 +586,7 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
         if (record.state !== 'canonical-intent') {
           throw new CanonicalResultIntegrationError('canonical integration phase is invalid');
         }
-        const branch = opsGit(coordinationRoot, ['rev-parse', '--abbrev-ref', 'HEAD']).trim();
+        const branch = (await opsGit(coordinationRoot, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim();
         if (branch !== 'ops') throw new CanonicalResultIntegrationError('canonical coordination checkout differs');
         if (!record.integrationCommit) throw new CanonicalResultIntegrationError('integration commit is unavailable');
         const wire = { ...record.result, integrationCommit: record.integrationCommit, runRef: input.runRef, stageId: input.stageId, attemptRef: input.attemptRef };
@@ -604,27 +604,27 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
           `queue/inbox/${record.cardRef}.md`, `queue/working/${record.cardRef}.md`,
           `queue/approvals/${record.cardRef}.md`, resultPath,
         ]);
-        const stagedPaths = nulPaths(opsGit(coordinationRoot, ['diff', '--cached', '--name-only', '-z']));
-        const trackedPaths = nulPaths(opsGit(coordinationRoot, ['diff', '--name-only', '-z']));
-        const untrackedPaths = nulPaths(opsGit(coordinationRoot, ['ls-files', '--others', '--exclude-standard', '-z']));
+        const stagedPaths = nulPaths(await opsGit(coordinationRoot, ['diff', '--cached', '--name-only', '-z']));
+        const trackedPaths = nulPaths(await opsGit(coordinationRoot, ['diff', '--name-only', '-z']));
+        const untrackedPaths = nulPaths(await opsGit(coordinationRoot, ['ls-files', '--others', '--exclude-standard', '-z']));
         const changedPaths = [...new Set([...stagedPaths, ...trackedPaths, ...untrackedPaths])].sort();
         if (changedPaths.some((path) => !allowed.has(path)) || (parsed.changed && !changedPaths.includes(resultPath))
           || (!allowed.has(oldPath) && oldPath !== resultPath)) {
           throw new CanonicalResultIntegrationError('canonical recovery contains unrelated coordination changes');
         }
         if (changedPaths.length > 0) {
-          opsGit(coordinationRoot, ['add', '--', ...changedPaths]);
-          opsGit(coordinationRoot, [
+          await opsGit(coordinationRoot, ['add', '--', ...changedPaths]);
+          await opsGit(coordinationRoot, [
             'commit', '-m', `chore(queue): integrate managed result ${input.canonicalCardRef}`, '--only', '--', ...changedPaths,
           ]);
         }
         try {
-          opsGit(coordinationRoot, ['push', 'origin', 'ops']);
+          await opsGit(coordinationRoot, ['push', 'origin', 'ops']);
         } catch (pushError) {
           try {
-            opsGit(coordinationRoot, ['pull', '--rebase', 'origin', 'ops']);
+            await opsGit(coordinationRoot, ['pull', '--rebase', 'origin', 'ops']);
           } catch (reconcileError) {
-            try { opsGit(coordinationRoot, ['rebase', '--abort']); } catch { /* no rebase was active */ }
+            try { await opsGit(coordinationRoot, ['rebase', '--abort']); } catch { /* no rebase was active */ }
             throw new CanonicalResultIntegrationError(
               `canonical publication reconciliation failed: ${reconcileError instanceof Error ? reconcileError.message : String(reconcileError)}`,
             );
@@ -638,12 +638,12 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
             );
           }
           try {
-            opsGit(coordinationRoot, ['push', 'origin', 'ops']);
+            await opsGit(coordinationRoot, ['push', 'origin', 'ops']);
           } catch {
             throw pushError;
           }
         }
-        verifyCanonical(record);
+        await verifyCanonical(record);
         record.state = 'canonical-committed';
         saveState(statePath, state);
         return { status: 'integrated' as const, resultHash: input.resultHash };

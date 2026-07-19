@@ -76,10 +76,10 @@ describe('appendAuditRowLocal (pure local append)', () => {
 });
 
 describe('commitAuditToOps (injectable git-runner, hermetic)', () => {
-  it('commits via pull --rebase -> add -> commit -> push, in that order, on ops', () => {
+  it('commits via pull --rebase -> add -> commit -> push, in that order, on ops', async () => {
     const repo = '/fake/repo';
     const { runner, calls } = recorder();
-    commitAuditToOps(repo, runner);
+    await commitAuditToOps(repo, runner);
 
     const verbs = calls.map((c) => c.slice(0, 2).join(' '));
     expect(verbs).toEqual(['diff --cached', 'pull --rebase', 'add --', 'commit -m', 'push origin']);
@@ -91,7 +91,7 @@ describe('commitAuditToOps (injectable git-runner, hermetic)', () => {
     expect(calls[3]).toContain('--only');
   });
 
-  it('re-reads (pull --rebase) and retries when the push is rejected', () => {
+  it('re-reads (pull --rebase) and retries when the push is rejected', async () => {
     const repo = '/fake/repo';
     const calls: string[][] = [];
     let pushes = 0;
@@ -104,19 +104,19 @@ describe('commitAuditToOps (injectable git-runner, hermetic)', () => {
       return '';
     };
 
-    commitAuditToOps(repo, runner, { maxRetryPushes: 3 });
+    await commitAuditToOps(repo, runner, { maxRetryPushes: 3 });
 
     const pushIdx = calls.map((c, i) => (c[0] === 'push' ? i : -1)).filter((i) => i >= 0);
     expect(pushIdx).toHaveLength(2);
     expect(calls[pushIdx[0] + 1]).toEqual(['pull', '--rebase', '--autostash', 'origin', 'ops']);
   });
 
-  it('gives up after maxRetryPushes exhausted, surfacing the push error', () => {
+  it('gives up after maxRetryPushes exhausted, surfacing the push error', async () => {
     const runner: OpsGitRunner = (_r, args) => {
       if (args[0] === 'push') throw new Error('rejected');
       return '';
     };
-    expect(() => commitAuditToOps('/r', runner, { maxRetryPushes: 2 })).toThrow(/rejected/);
+    await expect(commitAuditToOps('/r', runner, { maxRetryPushes: 2 })).rejects.toThrow(/rejected/);
   });
 });
 
@@ -134,7 +134,7 @@ describe('appendAudit (append + commit, end-to-end)', () => {
       return '';
     };
 
-    const row = appendAudit(repo, { action: 'approve', cardId: 'card-a' }, { runGit: runner });
+    const row = await appendAudit(repo, { action: 'approve', cardId: 'card-a' }, { runGit: runner });
 
     // The commit sequence still opens with pull --rebase and reconciles before the retried push.
     expect(calls[0]).toEqual(['diff', '--cached', '--name-only', '-z']);
@@ -156,7 +156,7 @@ describe('appendAudit (append + commit, end-to-end)', () => {
       order.push(args[0]);
       return '';
     };
-    appendAudit(repo, { action: 'launch' }, { runGit: runner });
+    await appendAudit(repo, { action: 'launch' }, { runGit: runner });
 
     const rows = await readLedger(repo);
     expect(rows).toHaveLength(1);
@@ -177,7 +177,7 @@ describe('audit coverage', () => {
     ];
 
     for (const event of actions) {
-      appendAudit(repo, event, { runGit: runner });
+      await appendAudit(repo, event, { runGit: runner });
     }
 
     const rows = await readLedger(repo);
@@ -199,7 +199,7 @@ describe('audit coverage', () => {
       return '';
     };
 
-    appendAudit(repo, { action: 'approve', cardId: 'card-retry' }, { runGit: runner });
+    await appendAudit(repo, { action: 'approve', cardId: 'card-retry' }, { runGit: runner });
 
     const rows = await readLedger(repo);
     const matches = rows.filter((r) => r.action === 'approve' && r.cardId === 'card-retry');

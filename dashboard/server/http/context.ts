@@ -24,8 +24,10 @@ import type { ControlPlaneStore } from '../control/store.ts';
 import type { ManagedSessionBroker } from '../control/broker.ts';
 import type { CancelRunInput, CancellationOutcome, ExecuteRunInput, ExecutionOutcome } from '../control/execution.ts';
 
-/** How a route records exactly one audit row. Injected as a recording fake in tests. */
-export type AppendAuditFn = (repoRoot: string, event: AuditEvent, options?: AppendAuditOptions) => AuditRow;
+/** How a route records exactly one audit row. Injected as a recording fake in tests. Widened to allow a
+ *  `Promise` so the real (now async, off-the-event-loop) `appendAudit` and synchronous test fakes both fit;
+ *  every route `await`s it. */
+export type AppendAuditFn = (repoRoot: string, event: AuditEvent, options?: AppendAuditOptions) => AuditRow | Promise<AuditRow>;
 /** Local-only audit append used when the consequential write and audit must share one ops commit. */
 export type AppendAuditLocalFn = (repoRoot: string, event: AuditEvent, now?: () => Date) => AuditRow;
 

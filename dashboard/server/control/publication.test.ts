@@ -24,18 +24,18 @@ function card(runRef: string, stage: PlanProposal['stages'][number], state: stri
 }
 
 describe('canonical publication reconciliation', () => {
-  it('accepts exact tracked cards, including logical blocked under physical inbox', () => {
+  it('accepts exact tracked cards, including logical blocked under physical inbox', async () => {
     const root = mkdtempSync(join(tmpdir(), 'publication-'));
     mkdirSync(join(root, 'queue', 'inbox'), { recursive: true });
     const runRef = 'run-1';
     for (const stage of proposal.stages) writeFileSync(join(root, 'queue', 'inbox', `${workflowCardId(runRef, stage.id)}.md`), card(runRef, stage, stage.dependsOn.length ? 'blocked' : 'inbox'));
     const runGit: GitRunner = (_root, args) => args[0] === 'ls-files' ? String(args.at(-1)) : '';
-    expect(reconcileCanonicalPublication({ repoRoot: root, runRef, proposal, defaultWorkers: { codex: 'codex-worker' }, runGit })).toMatchObject({
+    expect(await reconcileCanonicalPublication({ repoRoot: root, runRef, proposal, defaultWorkers: { codex: 'codex-worker' }, runGit })).toMatchObject({
       ok: true, cards: [{ stageId: 'one', stageState: 'ready' }, { stageId: 'two', stageState: 'blocked' }],
     });
   });
 
-  it('refuses dirty and proposal-mismatched canonical cards', () => {
+  it('refuses dirty and proposal-mismatched canonical cards', async () => {
     const root = mkdtempSync(join(tmpdir(), 'publication-dirty-'));
     mkdirSync(join(root, 'queue', 'inbox'), { recursive: true });
     const runRef = 'run-2';
@@ -44,9 +44,9 @@ describe('canonical publication reconciliation', () => {
       if (args[0] === 'ls-files') return String(args.at(-1));
       throw new Error('dirty');
     };
-    expect(reconcileCanonicalPublication({ repoRoot: root, runRef, proposal, defaultWorkers: { codex: 'codex-worker' }, runGit: dirty })).toMatchObject({ ok: false, reason: 'uncommitted-card' });
+    expect(await reconcileCanonicalPublication({ repoRoot: root, runRef, proposal, defaultWorkers: { codex: 'codex-worker' }, runGit: dirty })).toMatchObject({ ok: false, reason: 'uncommitted-card' });
     const clean: GitRunner = (_root, args) => args[0] === 'ls-files' ? String(args.at(-1)) : '';
     writeFileSync(join(root, 'queue', 'inbox', `${workflowCardId(runRef, 'one')}.md`), card(runRef, { ...proposal.stages[0], action: 'test:forged' }, 'inbox'));
-    expect(reconcileCanonicalPublication({ repoRoot: root, runRef, proposal, defaultWorkers: { codex: 'codex-worker' }, runGit: clean })).toMatchObject({ ok: false, reason: 'card-mismatch' });
+    expect(await reconcileCanonicalPublication({ repoRoot: root, runRef, proposal, defaultWorkers: { codex: 'codex-worker' }, runGit: clean })).toMatchObject({ ok: false, reason: 'card-mismatch' });
   });
 });

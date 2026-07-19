@@ -73,7 +73,7 @@ export interface WorkflowRunDeps {
   stageRouting?: (stage: WorkflowRunStageRequest, repoRoot: string) => OwnerRouting;
   makeRunId?: () => string;
   /** Reconcile ops only after every gate, schema check, owner check, and routing resolution succeeds. */
-  prepareWrite?: (repoRoot: string) => void;
+  prepareWrite?: (repoRoot: string) => void | Promise<void>;
   /** Internal managed-run mode: publish every card blocked and mark it dashboard-owned. Never wire input. */
   publishBlocked?: boolean;
 }
@@ -150,7 +150,7 @@ export interface ManagedRootActivationOptions {
  * cards.transition for blocked->inbox, commits/pushes exact paths, then proves HEAD contains the
  * bytes just validated. Empty-dependency blocked cards remain invisible to legacy dispatch until here.
  */
-export function activateManagedRootCards(options: ManagedRootActivationOptions): { replayed: boolean; cardPaths: string[] } {
+export async function activateManagedRootCards(options: ManagedRootActivationOptions): Promise<{ replayed: boolean; cardPaths: string[] }> {
   if (!SAFE_ID_RE.test(options.runRef) || options.cardRefs.length === 0
     || new Set(options.cardRefs).size !== options.cardRefs.length
     || options.cardRefs.some((ref) => !SAFE_ID_RE.test(ref))) {
@@ -158,9 +158,9 @@ export function activateManagedRootCards(options: ManagedRootActivationOptions):
   }
   const runGit = options.runGit ?? defaultGitRunner;
   const runPy = options.runPy ?? defaultPyRunner;
-  prepareCoordination(options.repoRoot, runGit);
+  await prepareCoordination(options.repoRoot, runGit);
   options.authorizeAfterPrepare?.();
-  const staged = runGit(options.repoRoot, ['diff', '--cached', '--name-only', '-z'])
+  const staged = (await runGit(options.repoRoot, ['diff', '--cached', '--name-only', '-z']))
     .split('\0').map((path) => path.trim()).filter(Boolean);
   if (staged.length > 0) throw new Error(`managed root activation refuses dirty index: ${staged.join(', ')}`);
   const mutation = runPy(options.repoRoot, MANAGED_ROOT_ACTIVATION_SCRIPT, JSON.stringify({
@@ -183,7 +183,7 @@ export function activateManagedRootCards(options: ManagedRootActivationOptions):
   const changed = decoded.cards.some((card) => card.changed === true);
   if (changed) {
     const [first, ...rest] = cardPaths;
-    commitPreparedCoordination(options.repoRoot, first, {
+    await commitPreparedCoordination(options.repoRoot, first, {
       runGit,
       alsoStage: [...rest, ...(options.alsoStage ?? [])],
       message: `chore(queue): activate managed run ${options.runRef}`,
@@ -191,10 +191,10 @@ export function activateManagedRootCards(options: ManagedRootActivationOptions):
     });
   } else {
     // An idempotent replay still proves the committed canonical branch reached the remote.
-    runGit(options.repoRoot, ['push', 'origin', 'ops']);
+    await runGit(options.repoRoot, ['push', 'origin', 'ops']);
   }
   for (const path of cardPaths) {
-    const committed = runGit(options.repoRoot, ['show', `HEAD:${path}`]).replace(/\r\n?/g, '\n');
+    const committed = (await runGit(options.repoRoot, ['show', `HEAD:${path}`])).replace(/\r\n?/g, '\n');
     const current = readFileSync(join(options.repoRoot, ...path.split('/')), 'utf8').replace(/\r\n?/g, '\n');
     if (committed !== current) throw new Error(`committed managed card differs from canonical path '${path}'`);
   }
@@ -439,7 +439,7 @@ function parseSuccess(stdout: string, expectedRunId: string, expectedStageIds: s
 }
 
 /** Gate, validate, resolve every owner, reconcile ops, and atomically publish the entire DAG. */
-export function launchWorkflowRun(input: unknown, session: SessionInput, deps: WorkflowRunDeps): WorkflowRunOutcome {
+export async function launchWorkflowRun(input: unknown, session: SessionInput, deps: WorkflowRunDeps): Promise<WorkflowRunOutcome> {
   const preamble = assertFleetRunnable(deps.repoRoot, deps.runPreamble ?? defaultPreambleRunner);
   if (!preamble.ok) return { ok: false, reason: 'fleet-frozen', problems: preamble.problems };
   if (!session.token) return { ok: false, reason: 'unauthenticated', detail: 'no WebAuthn session token supplied' };
@@ -475,7 +475,7 @@ export function launchWorkflowRun(input: unknown, session: SessionInput, deps: W
   if (!SAFE_ID_RE.test(runId)) return { ok: false, reason: 'card-op-failed', detail: 'server generated an invalid run id' };
 
   try {
-    deps.prepareWrite?.(deps.repoRoot);
+    await deps.prepareWrite?.(deps.repoRoot);
   } catch (error) {
     return { ok: false, reason: 'card-op-failed', detail: `could not prepare coordination write: ${(error as Error).message}` };
   }

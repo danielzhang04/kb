@@ -142,7 +142,7 @@ export interface VibeDeps {
   rateLimitGuard?: LockoutGuard;
   /** Same signature as the real `appendAudit` — inject a recording fake in tests so no real git
    *  subprocess or `ledgers/audit/**` file is ever touched by the suite. */
-  appendAudit?: (repoRoot: string, event: Parameters<typeof defaultAppendAudit>[1], options?: AppendAuditOptions) => AuditRow;
+  appendAudit?: (repoRoot: string, event: Parameters<typeof defaultAppendAudit>[1], options?: AppendAuditOptions) => AuditRow | Promise<AuditRow>;
   runGit?: OpsGitRunner;
   now?: () => Date;
   /** Audit action label for this spawn (default `vibe-spawn`). Composer overrides it to `composer-turn`
@@ -196,21 +196,24 @@ function createStreamJsonBuffer(): { push: (chunk: string) => TranscriptRecord[]
  * rate-limit/lockout guard third — ALL THREE must pass before `deps.spawn` is ever invoked. Exactly
  * one `appendAudit()` row is written for this call regardless of which gate (if any) refused it.
  */
-export function spawnVibe(
+export async function spawnVibe(
   prompt: string,
   session: SessionInput,
   handlers: VibeHandlers,
   deps: VibeDeps,
-): VibeSpawnOutcome {
+): Promise<VibeSpawnOutcome> {
   const appendAuditFn = deps.appendAudit ?? defaultAppendAudit;
 
-  function audited(outcome: VibeSpawnOutcome, owner?: string): VibeSpawnOutcome {
+  // Exactly one audit row per call, preserved across the async boundary: every `return` path awaits this
+  // once. The audit sink is now async (its git commit runs off the event loop), so `audited` awaits it
+  // before handing back the outcome — keeping the audit-before-return ordering the refusal shapes rely on.
+  async function audited(outcome: VibeSpawnOutcome, owner?: string): Promise<VibeSpawnOutcome> {
     // Extra caller detail (Composer's resume fields) rides in the SAME single row — never a second sink.
     const detail: Record<string, unknown> = { promptLength: prompt.length, ...deps.auditDetail };
     if (!outcome.ok && 'problems' in outcome) detail.problems = outcome.problems;
     if (!outcome.ok && 'detail' in outcome) detail.refusalDetail = outcome.detail;
     if (!outcome.ok && 'retryAfterMs' in outcome) detail.retryAfterMs = outcome.retryAfterMs;
-    appendAuditFn(
+    await appendAuditFn(
       deps.repoRoot,
       {
         action: deps.auditAction ?? 'vibe-spawn',
@@ -227,16 +230,16 @@ export function spawnVibe(
   //    who is asking. Nothing downstream is evaluated and no `claude` child is spawned.
   const preambleResult = assertFleetRunnable(deps.repoRoot, deps.runPreamble ?? defaultPreambleRunner);
   if (!preambleResult.ok) {
-    return audited({ ok: false, reason: 'fleet-frozen', problems: preambleResult.problems });
+    return await audited({ ok: false, reason: 'fleet-frozen', problems: preambleResult.problems });
   }
 
   // 2. WebAuthn session gate — checked only after the preamble passes.
   if (!session.token) {
-    return audited({ ok: false, reason: 'unauthenticated', detail: 'no WebAuthn session token supplied' });
+    return await audited({ ok: false, reason: 'unauthenticated', detail: 'no WebAuthn session token supplied' });
   }
   const check = verifySession(session.token, session.config);
   if (!check.ok) {
-    return audited({ ok: false, reason: 'unauthenticated', detail: check.reason });
+    return await audited({ ok: false, reason: 'unauthenticated', detail: check.reason });
   }
   const owner = check.claims.sub;
 
@@ -244,7 +247,7 @@ export function spawnVibe(
   const guard = deps.rateLimitGuard ?? defaultVibeRateLimitGuard;
   const decision = guard.check(owner);
   if (!decision.allowed) {
-    return audited(
+    return await audited(
       {
         ok: false,
         reason: decision.reason === 'locked-out' ? 'locked-out' : 'rate-limited',
@@ -260,7 +263,7 @@ export function spawnVibe(
   if (deps.preSpawnGuard) {
     const guard = deps.preSpawnGuard(owner);
     if (!guard.ok) {
-      return audited({ ok: false, reason: 'resume-denied', detail: guard.detail }, owner);
+      return await audited({ ok: false, reason: 'resume-denied', detail: guard.detail }, owner);
     }
   }
 
@@ -303,7 +306,7 @@ export function spawnVibe(
     proc.writeStdin(prompt);
     proc.endStdin();
 
-    return audited({ ok: true, kill: () => stopTrackedProcess(proc) }, owner);
+    return await audited({ ok: true, kill: () => stopTrackedProcess(proc) }, owner);
   } catch (error) {
     // Once spawned, any synchronous wiring/stdin/audit failure must terminate the child. Otherwise an
     // audit sink exception can orphan a real Claude process before the caller receives its kill handle.
