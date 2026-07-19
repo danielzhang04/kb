@@ -28,6 +28,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import '@xterm/xterm/css/xterm.css';
 import '../styles/views/terminal.css';
 import type { Session } from '../lib/authClient';
+import {
+  defaultTerminalSessionsClient,
+  loadStoredTabs,
+  reconcileSessions,
+  saveStoredTabs,
+} from '../lib/terminalClient';
+import type { TerminalSessionsClient } from '../lib/terminalClient';
 
 /**
  * xterm theme mapped ENTIRELY onto the house near-black palette (app.css tokens, resolved to literals
@@ -62,40 +69,41 @@ const HOUSE_XTERM_THEME = {
 const MAX_TERMINALS = 8;
 
 /** Opens the PTY WebSocket to the governed endpoint, bearer token carried as a subprotocol (never the
- *  URL). Injectable so a component test can drive a tab through a fake socket. */
-export type PtySocketFactory = (sessionToken: string) => WebSocket;
+ *  URL). An optional `attachSessionId` reattaches to an existing persistent shell via `?session=<id>`
+ *  (a non-secret reference; ownership is enforced server-side). Injectable so a component test can drive
+ *  a tab through a fake socket. */
+export type PtySocketFactory = (sessionToken: string, attachSessionId?: string) => WebSocket;
 
-export const defaultPtySocketFactory: PtySocketFactory = (sessionToken) => {
+export const defaultPtySocketFactory: PtySocketFactory = (sessionToken, attachSessionId) => {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const query = attachSessionId ? `?session=${encodeURIComponent(attachSessionId)}` : '';
   // The token rides as a subprotocol value, not a query param — keeps it out of access logs / history.
-  return new WebSocket(`${proto}//${window.location.host}/api/pty`, ['kb-pty.v1', sessionToken]);
+  return new WebSocket(`${proto}//${window.location.host}/api/pty${query}`, ['kb-pty.v1', sessionToken]);
 };
 
 /** Per-tab connection state. Streaming-only — there is no passkey handshake in this path any more. */
 type ConnState = 'connecting' | 'connected' | 'closed' | 'error';
 
-/** A parsed server error frame, or `null` for ordinary raw PTY output. */
-interface PtyErrorFrame {
-  type: 'error';
-  reason: string;
-}
+/** A parsed server control frame, or `null` for ordinary raw PTY output. The server sends `{"type":"error",…}`
+ *  and, once per connection, `{"type":"session","sessionId":…}` (the bind frame). */
+type PtyControlFrame = { type: 'error'; reason: string } | { type: 'session'; sessionId: string };
 
 /**
- * Detect a server control frame. The only inbound JSON the server sends is `{"type":"error",…}` — every
- * other frame is raw PTY bytes destined for xterm. We only treat a frame as control when it parses AND
- * carries the exact error shape, so ordinary shell output that merely starts with `{` still streams.
+ * Detect a server control frame. Every non-control frame is raw PTY bytes destined for xterm. We only
+ * treat a frame as control when it parses AND carries an exact known shape, so ordinary shell output that
+ * merely starts with `{` still streams.
  */
-function parseErrorFrame(raw: string): PtyErrorFrame | null {
+function parseControlFrame(raw: string): PtyControlFrame | null {
   if (raw.length === 0 || raw[0] !== '{') return null;
   try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (
-      parsed !== null &&
-      typeof parsed === 'object' &&
-      (parsed as { type?: unknown }).type === 'error' &&
-      typeof (parsed as { reason?: unknown }).reason === 'string'
-    ) {
-      return { type: 'error', reason: (parsed as { reason: string }).reason };
+    const parsed = JSON.parse(raw) as { type?: unknown; reason?: unknown; sessionId?: unknown } | null;
+    if (parsed !== null && typeof parsed === 'object') {
+      if (parsed.type === 'error' && typeof parsed.reason === 'string') {
+        return { type: 'error', reason: parsed.reason };
+      }
+      if (parsed.type === 'session' && typeof parsed.sessionId === 'string') {
+        return { type: 'session', sessionId: parsed.sessionId };
+      }
     }
   } catch {
     /* not JSON → raw PTY bytes */
@@ -109,23 +117,53 @@ function parseErrorFrame(raw: string): PtyErrorFrame | null {
  * so the socket and the scrollback survive tab switches. Closing the tab unmounts this, which tears down
  * the socket and disposes the terminal.
  */
+/** An imperative handle the manager registers per tab, so the shared close button can ask THIS tab to
+ *  tear down its own (persistent) shell — the tab is the only holder of the live socket + confirmed id. */
+interface TabControl {
+  requestClose(): void;
+}
+
 interface TerminalTabProps {
-  /** Stable numeric id (also the React key upstream); passed to `onError` so the manager knows which tab. */
+  /** Stable numeric id (also the React key upstream); passed to callbacks so the manager knows which tab. */
   id: number;
   sessionToken: string;
+  /** When set, reattach to this existing persistent shell instead of opening a new one. */
+  attachSessionId?: string;
   /** Whether this tab is the visible one. Drives visibility + a re-fit when the tab becomes active. */
   active: boolean;
   socketFactory: PtySocketFactory;
+  /** Kill the tab's server shell whose socket is already gone. Best-effort; injected for tests. */
+  removeSession: (sessionId: string, token: string) => Promise<void>;
   /** Reports a server error frame (e.g. `too-many-terminals`) up to the tab manager. Must be stable. */
   onError: (id: number, reason: string) => void;
+  /** Reports the server's `{type:'session'}` bind frame so the manager can persist this tab. Stable. */
+  onSession: (id: number, sessionId: string) => void;
+  /** The tab's server shell has ended (shell exit / operator close) → drop the tab locally. Stable. */
+  onClosed: (id: number) => void;
+  /** Publish/withdraw this tab's imperative close control to the manager. Stable. */
+  registerControl: (id: number, control: TabControl | null) => void;
 }
 
-function TerminalTab({ id, sessionToken, active, socketFactory, onError }: TerminalTabProps): React.JSX.Element {
+function TerminalTab({
+  id,
+  sessionToken,
+  attachSessionId,
+  active,
+  socketFactory,
+  removeSession,
+  onError,
+  onSession,
+  onClosed,
+  registerControl,
+}: TerminalTabProps): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null);
   // Live handles kept in refs so the resize/fit effects can reach them without re-running the mount effect.
   const xtermRef = useRef<{ cols: number; rows: number; write(d: string): void; dispose(): void } | null>(null);
   const fitRef = useRef<{ fit(): void } | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
+  // The server-confirmed sessionId for THIS tab (from the bind frame). Kept in a ref so the imperative
+  // close control can reach it without re-running the mount effect.
+  const sessionIdRef = useRef<string | null>(attachSessionId ?? null);
   const [state, setState] = useState<ConnState>('connecting');
   const [errorReason, setErrorReason] = useState<string | null>(null);
 
@@ -179,7 +217,7 @@ function TerminalTab({ id, sessionToken, active, socketFactory, onError }: Termi
       fitRef.current = fitAddon as unknown as typeof fitRef.current;
       fitAndResize(); // initial size (guarded no-op if this tab mounts hidden)
 
-      const ws = socketFactory(sessionToken);
+      const ws = socketFactory(sessionToken, attachSessionId);
       socketRef.current = ws;
       ws.onopen = () => {
         if (disposed) return;
@@ -190,18 +228,32 @@ function TerminalTab({ id, sessionToken, active, socketFactory, onError }: Termi
         if (disposed) return;
         const raw = typeof ev.data === 'string' ? ev.data : '';
         if (raw.length === 0) return;
-        // Control path FIRST: a server error frame (e.g. too-many-terminals / spawn-failed) is surfaced,
-        // never written to the grid. Everything else is raw PTY output.
-        const err = parseErrorFrame(raw);
-        if (err) {
-          setState('error');
-          setErrorReason(err.reason);
-          onError(id, err.reason);
+        // Control path FIRST: server error/session frames are handled, never written to the grid.
+        // Everything else is raw PTY output.
+        const frame = parseControlFrame(raw);
+        if (frame) {
+          if (frame.type === 'error') {
+            setState('error');
+            setErrorReason(frame.reason);
+            onError(id, frame.reason);
+          } else {
+            // Bind frame: record the confirmed sessionId (drives persistence + REST close).
+            sessionIdRef.current = frame.sessionId;
+            onSession(id, frame.sessionId);
+          }
           return;
         }
         xterm.write(raw);
       };
-      ws.onclose = () => !disposed && setState('closed');
+      ws.onclose = (ev?: { reason?: string }) => {
+        if (disposed) return;
+        setState('closed');
+        // A clean server-driven end (shell exited / operator close) drops the tab; an UNEXPECTED
+        // disconnect (e.g. daemon restart, code 1006 / no reason) keeps the tab and its error display —
+        // the next reload reconciles it against the live-session list.
+        const reason = ev?.reason ?? '';
+        if (reason === 'shell exited' || reason === 'closed by operator') onClosed(id);
+      };
       ws.onerror = () => !disposed && setState('error');
       // Keystrokes → the PTY stdin (raw text frames).
       xterm.onData((d: string) => {
@@ -212,6 +264,8 @@ function TerminalTab({ id, sessionToken, active, socketFactory, onError }: Termi
     return () => {
       disposed = true;
       try {
+        // Closing the socket only DETACHES the persistent shell server-side — it keeps running. A tab that
+        // is truly being closed has already killed its shell via the close frame / REST DELETE.
         socketRef.current?.close();
       } catch {
         /* socket may not have opened */
@@ -221,7 +275,30 @@ function TerminalTab({ id, sessionToken, active, socketFactory, onError }: Termi
       xtermRef.current = null;
       fitRef.current = null;
     };
-  }, [id, sessionToken, socketFactory, onError, fitAndResize]);
+  }, [id, sessionToken, attachSessionId, socketFactory, onError, onSession, onClosed, fitAndResize]);
+
+  // Publish an imperative close control so the manager's shared close button can tear down THIS tab's
+  // persistent shell: a graceful `{type:'close'}` when the socket is live (the server kills + closes,
+  // and `onclose` drops the tab), else a REST DELETE for a session whose socket is already gone.
+  const requestClose = useCallback(() => {
+    const ws = socketRef.current;
+    const sessionId = sessionIdRef.current;
+    if (ws && ws.readyState === ws.OPEN) {
+      try {
+        ws.send(JSON.stringify({ type: 'close' }));
+      } catch {
+        onClosed(id);
+      }
+      return;
+    }
+    if (sessionId) void removeSession(sessionId, sessionToken);
+    onClosed(id);
+  }, [id, sessionToken, removeSession, onClosed]);
+
+  useEffect(() => {
+    registerControl(id, { requestClose });
+    return () => registerControl(id, null);
+  }, [id, registerControl, requestClose]);
 
   // Re-fit whenever this tab becomes the active/visible one — a hidden tab could not be measured, so its
   // grid may be stale after a resize that happened while it was in the background.
@@ -305,11 +382,17 @@ export interface TerminalProps {
    * (direct component tests) → passive text only.
    */
   onRequestSession?: () => Promise<Session | null>;
+  /** Persistence client (live-session list + REST kill). Injected in tests; defaults to the real fetch. */
+  sessionsClient?: TerminalSessionsClient;
 }
 
-/** A tab plus a monotonically-increasing id so React keys stay stable across insert/remove. */
+/** A tab plus a monotonically-increasing id so React keys stay stable across insert/remove. `sessionId`
+ *  is the server-confirmed id (present once the bind frame lands — it is what gets persisted);
+ *  `attachSessionId` is set only on a RESTORED tab, telling its socket to reattach via `?session=`. */
 interface TabEntry {
   id: number;
+  sessionId?: string;
+  attachSessionId?: string;
 }
 
 /**
@@ -323,12 +406,17 @@ export function Terminal({
   fleetIdentity = 'dashboard daemon user',
   socketFactory = defaultPtySocketFactory,
   onRequestSession,
+  sessionsClient = defaultTerminalSessionsClient,
 }: TerminalProps): React.JSX.Element {
   const [tabs, setTabs] = useState<TabEntry[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const nextIdRef = useRef(1);
   const [signingIn, setSigningIn] = useState(false);
+  // Per-tab imperative close controls, published by each TerminalTab (see `registerControl`).
+  const closersRef = useRef(new Map<number, TabControl>());
+  // Reconcile the persistent-session list against storage exactly ONCE per signed-in visible session.
+  const reconciledRef = useRef(false);
 
   const openTab = useCallback(() => {
     setTabs((prev) => {
@@ -340,7 +428,10 @@ export function Terminal({
     });
   }, []);
 
-  const closeTab = useCallback((id: number) => {
+  // Remove a tab from the LOCAL UI. It does NOT kill the server shell — callers that mean to end a shell
+  // have already done so (close frame / REST DELETE / a server-driven close). The persistence effect
+  // re-saves the remaining tabs, so a dropped id also leaves storage.
+  const removeTab = useCallback((id: number) => {
     setTabs((prev) => {
       const next = prev.filter((t) => t.id !== id);
       setActiveId((current) => {
@@ -354,36 +445,89 @@ export function Terminal({
     });
   }, []);
 
+  // Record the server-confirmed sessionId for a tab (from the bind frame) — this is what gets persisted.
+  const handleTabSession = useCallback((id: number, sessionId: string) => {
+    setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, sessionId } : t)));
+  }, []);
+
+  const registerControl = useCallback((id: number, control: TabControl | null) => {
+    if (control) closersRef.current.set(id, control);
+    else closersRef.current.delete(id);
+  }, []);
+
+  // The shared close button asks the tab to tear down its own (persistent) shell; if the tab published no
+  // control yet, just drop it locally.
+  const requestCloseTab = useCallback(
+    (id: number) => {
+      const control = closersRef.current.get(id);
+      if (control) control.requestClose();
+      else removeTab(id);
+    },
+    [removeTab],
+  );
+
   // Stable per-manager error sink. `too-many-terminals` becomes an inline notice and drops the offending
-  // tab (it never got a shell); any other error stays visible inside its own panel.
+  // tab (it never got a shell). A `session-not-found` means a remembered id is dead → drop it (storage is
+  // rewritten by the persistence effect). Any other error stays visible inside its own panel.
   const handleTabError = useCallback(
     (id: number, reason: string) => {
       if (reason === 'too-many-terminals') {
         setNotice('The fleet already has the maximum number of terminals open. Close one and try again.');
-        closeTab(id);
+        removeTab(id);
+      } else if (reason === 'session-not-found') {
+        removeTab(id);
       }
     },
-    [closeTab],
+    [removeTab],
   );
 
-  // Open the first tab only while the operator is actually looking at Terminal. App keeps this component
-  // mounted from startup, so `sessionToken` can be minted by an unrelated governed action while the view is
-  // hidden; that must NOT spend a PTY slot or spawn a surprise shell. Once tabs exist, hiding preserves them.
-  // Losing the session remains a security teardown and clears every tab regardless of visibility.
+  // On becoming signed-in + visible, reconcile remembered tabs against the server's live sessions and
+  // restore them (reattaching each via `?session=`); if nothing is restorable, open one fresh tab (today's
+  // behaviour). App keeps this component mounted from startup, so a session minted by an unrelated governed
+  // action while hidden must NOT spend a slot — hence the `visible` gate. Losing the session is a security
+  // teardown that clears the LOCAL UI only; it must NOT kill the still-running shells NOR wipe storage
+  // (a reload after re-auth restores them).
   useEffect(() => {
-    if (sessionToken && visible) {
-      setTabs((prev) => {
-        if (prev.length > 0) return prev;
-        const id = nextIdRef.current++;
-        setActiveId(id);
-        return [{ id }];
-      });
-    } else if (!sessionToken) {
+    if (!sessionToken) {
       setTabs([]);
       setActiveId(null);
       setNotice(null);
+      reconciledRef.current = false;
+      return;
     }
-  }, [sessionToken, visible]);
+    if (!visible || reconciledRef.current) return;
+    reconciledRef.current = true;
+    let cancelled = false;
+    void (async () => {
+      const live = await sessionsClient.list(sessionToken);
+      if (cancelled) return;
+      const ordered = reconcileSessions(loadStoredTabs(), live).slice(0, MAX_TERMINALS);
+      if (ordered.length > 0) {
+        const restored: TabEntry[] = ordered.map((sessionId) => ({
+          id: nextIdRef.current++,
+          sessionId,
+          attachSessionId: sessionId,
+        }));
+        setTabs(restored);
+        setActiveId(restored[0].id);
+        saveStoredTabs(ordered.map((sessionId) => ({ sessionId })));
+      } else {
+        const id = nextIdRef.current++;
+        setTabs([{ id }]);
+        setActiveId(id);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionToken, visible, sessionsClient]);
+
+  // Persist the remembered tab order whenever it changes — only tabs with a confirmed sessionId, and only
+  // while signed in (a session-loss teardown sets `tabs` to [] but must NOT wipe storage: the shells live).
+  useEffect(() => {
+    if (!sessionToken) return;
+    saveStoredTabs(tabs.filter((t) => t.sessionId).map((t) => ({ sessionId: t.sessionId as string })));
+  }, [tabs, sessionToken]);
 
   async function handleSignIn(): Promise<void> {
     if (!onRequestSession || signingIn) return;
@@ -455,7 +599,7 @@ export function Terminal({
                   <button
                     type="button"
                     className="terminal__tab-close"
-                    onClick={() => closeTab(tab.id)}
+                    onClick={() => requestCloseTab(tab.id)}
                     aria-label={`Close powershell ${index + 1}`}
                     data-testid={`terminal-tab-close-${tab.id}`}
                   >
@@ -489,9 +633,14 @@ export function Terminal({
                 key={tab.id}
                 id={tab.id}
                 sessionToken={sessionToken}
+                attachSessionId={tab.attachSessionId}
                 active={visible && tab.id === activeId}
                 socketFactory={socketFactory}
+                removeSession={sessionsClient.remove}
                 onError={handleTabError}
+                onSession={handleTabSession}
+                onClosed={removeTab}
+                registerControl={registerControl}
               />
             ))}
           </div>
