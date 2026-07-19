@@ -6,7 +6,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { tmpdir } from 'node:os';
-import { AsyncGitError, drainAsyncGit, runTrackedProcess, withOpsTransaction } from './asyncGit.ts';
+import { AsyncGitError, createAsyncGitRunner, drainAsyncGit, runTrackedProcess, withOpsTransaction } from './asyncGit.ts';
 
 const NODE = process.execPath;
 /** A child that ignores signals is not needed — we only need one that outlives the test's timeout. */
@@ -75,6 +75,14 @@ describe('withOpsTransaction — single-writer ops discipline', () => {
   it('releases the lock when a transaction throws', async () => {
     await expect(withOpsTransaction(async () => { throw new Error('boom'); })).rejects.toThrow('boom');
     expect(await withOpsTransaction(async () => 'after')).toBe('after');
+  });
+
+  it('a requireTransaction runner refuses to run outside a transaction and works inside one', async () => {
+    // Structural enforcement: future code cannot call ops git unserialized — it fails in ITS tests.
+    const runner = createAsyncGitRunner({ requireTransaction: true });
+    await expect(runner(process.cwd(), ['--version'])).rejects.toThrow(/outside withOpsTransaction/);
+    const out = await withOpsTransaction(async () => runner(process.cwd(), ['--version']));
+    expect(out).toContain('git version');
   });
 });
 

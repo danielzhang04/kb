@@ -57,6 +57,11 @@ export function withOpsTransaction<T>(fn: () => Promise<T>): Promise<T> {
   })();
 }
 
+/** True while the caller is inside a {@link withOpsTransaction} span. */
+export function insideOpsTransaction(): boolean {
+  return opsTransactionContext.getStore() === true;
+}
+
 /**
  * A git invocation runner. `args` is the full argv AFTER `git`. Widened to allow a `Promise` so the
  * async default coexists with the synchronous recording fakes every gate test injects. Unified here so
@@ -95,6 +100,13 @@ export interface AsyncGitOptions {
   timeoutMs?: number;
   /** Output byte cap (stdout+stderr); on overflow the child is killed and the call rejects. Default 64 MiB. */
   maxOutputBytes?: number;
+  /**
+   * STRUCTURAL ENFORCEMENT of the single-writer discipline: when true, the runner throws unless the
+   * caller is inside a {@link withOpsTransaction} span. Every write-capable default runner sets this,
+   * so future code cannot reintroduce unserialized ops-checkout git — it fails loudly in its OWN tests
+   * and on first boot instead of intermittently in production. Read-only runners stay unrestricted.
+   */
+  requireTransaction?: boolean;
 }
 
 const DEFAULT_TIMEOUT_MS = 60_000;
@@ -239,8 +251,14 @@ export function runTrackedProcess(
  * the single default behind every coordination-write module's `defaultOpsGitRunner`/`defaultGitRunner`.
  */
 export function createAsyncGitRunner(options: AsyncGitOptions = {}): OpsGitRunner {
-  return (repoRoot, args) =>
-    runTrackedProcess('git', ['-c', 'commit.gpgsign=false', ...args], repoRoot, subcommandLabel(args), options);
+  return (repoRoot, args) => {
+    if (options.requireTransaction && !insideOpsTransaction()) {
+      return Promise.reject(new Error(
+        `ops git '${subcommandLabel(args)}' invoked outside withOpsTransaction — wrap the whole prepare/mutate/commit span`,
+      ));
+    }
+    return runTrackedProcess('git', ['-c', 'commit.gpgsign=false', ...args], repoRoot, subcommandLabel(args), options);
+  };
 }
 
 /**
@@ -249,6 +267,9 @@ export function createAsyncGitRunner(options: AsyncGitOptions = {}): OpsGitRunne
  */
 export function createAsyncPrOpener(options: AsyncGitOptions = {}): AsyncPrOpener {
   return async (repoRoot, req) => {
+    if (options.requireTransaction && !insideOpsTransaction()) {
+      throw new Error('gh pr create invoked outside withOpsTransaction — wrap the whole durable-save span');
+    }
     const args = ['pr', 'create', '--base', req.base, '--head', req.head, '--title', req.title];
     if (req.body) args.push('--body', req.body);
     await runTrackedProcess('gh', args, repoRoot, 'pr create', options);

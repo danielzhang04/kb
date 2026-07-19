@@ -27,7 +27,7 @@ export type { OpsGitRunner };
 
 /** Default runner: the shared async git runner (spawn, off the event loop, 60s kill-timeout). gpg
  *  signing off; the repo's pre-commit hook still runs. */
-export const defaultOpsGitRunner: OpsGitRunner = createAsyncGitRunner();
+export const defaultOpsGitRunner: OpsGitRunner = createAsyncGitRunner({ requireTransaction: true });
 
 /** Relative (POSIX) trace directory for a card. */
 function traceDir(cardId: string): string {

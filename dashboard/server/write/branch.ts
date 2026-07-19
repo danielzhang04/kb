@@ -53,7 +53,7 @@ export type GitRunner = OpsGitRunner;
 /** Default runner: the shared async git runner (spawn, off the event loop, 60s kill-timeout). Hooks
  *  stay ACTIVE (no `core.hooksPath=` override) and `--no-verify` is never passed — the `sync_skills`
  *  pre-commit hook must be able to run and block. */
-export const defaultGitRunner: GitRunner = createAsyncGitRunner();
+export const defaultGitRunner: GitRunner = createAsyncGitRunner({ requireTransaction: true });
 
 /** A PR-open request: reviewed by Daniel, never auto-merged by the governed-save path itself. */
 export interface PrRequest {
@@ -69,7 +69,7 @@ export type PrOpener = (repoRoot: string, req: PrRequest) => void | Promise<void
 
 /** Default opener: the shared async `gh pr create` runner (spawn, off the event loop, 60s kill-timeout).
  *  Never invoked for coordination writes. */
-export const defaultPrOpener: PrOpener = createAsyncPrOpener();
+export const defaultPrOpener: PrOpener = createAsyncPrOpener({ requireTransaction: true });
 
 /** The work branch durable-content saves land on absent an explicit override — this worker's branch. */
 export const DEFAULT_WORK_BRANCH = 'claude/m1-dashboard';

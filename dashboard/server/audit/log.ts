@@ -23,7 +23,7 @@ export type { OpsGitRunner };
 
 /** Default runner: the shared async git runner (spawn, off the event loop, 60s kill-timeout). gpg
  *  signing off; the repo's pre-commit hook still runs. */
-export const defaultOpsGitRunner: OpsGitRunner = createAsyncGitRunner();
+export const defaultOpsGitRunner: OpsGitRunner = createAsyncGitRunner({ requireTransaction: true });
 
 /** Relative (POSIX) path of the dedicated, append-only audit ledger under the repo root. */
 export const AUDIT_REL_PATH = 'ledgers/audit/dashboard-audit.ndjson';
