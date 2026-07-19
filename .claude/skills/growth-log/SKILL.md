@@ -3,7 +3,8 @@ name: growth-log
 description: "Use after a complex task, a failure, or when reviewing what was learned. Teaches how to write growth-log entries that extract reusable patterns — not diary entries. In kb these entries land in your per-agent memory/<agent-id>.md, the same file the delivery-gate Stop hook checks."
 source: ecc@2.0.0/skills/growth-log/SKILL.md
 imported: 2026-07-19
-provenance-tier: imported
+provenance-tier: curated
+promoted: 2026-07-19 (Daniel §6 read-through)
 ---
 
 # Growth Log Skill
