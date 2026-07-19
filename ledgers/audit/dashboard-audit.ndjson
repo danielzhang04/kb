@@ -72,3 +72,4 @@
 {"ts":"2026-07-19T08:26:11.812Z","action":"auth","owner":"operator","result":"login"}
 {"ts":"2026-07-19T08:26:15.487Z","action":"pty-open","owner":"operator","result":"opened","detail":{"sessionId":"pty-1784449575487-1"}}
 {"ts":"2026-07-19T08:31:23.598Z","action":"composer-turn","owner":"operator","result":"spawned","detail":{"promptLength":4645,"resume":false}}
+{"ts":"2026-07-19T08:32:45.497Z","action":"pty-attach","owner":"operator","result":"attached","detail":{"sessionId":"pty-1784449575487-1"}}
