@@ -350,4 +350,34 @@ def test_validate_skills_rejects_missing_provenance(tmp_path):
 - [ ] **Step 2: Reconcile with real data** — `python C:/Users/danie/kb/scripts/reconcile.py` (desktop tier) against ops: expect ZERO quarantines and no `FROZEN` sentinel; every wave grade row matches an inspector activity row. If anything quarantines, STOP and diagnose — never clear FROZEN (human-only).
 - [ ] **Step 3: Consistency sweep** — grep the branch for: duplicated growth-log wording vs `governance/agent-rules.md` (link, don't restate); validator overlap with `scan_skill.py` (README documents the layering: scan_skill = quick heuristic, CI validators = deep gate); dead ECC references (paths under `plugins/cache` must appear ONLY in provenance headers and skipif-marked tests); files > ~300 lines that could shrink. Fix inline, commit `chore: wave-1 consistency sweep`.
 - [ ] **Step 4: Memory append** (constitution) — lessons to `memory/claude-boss.md` on ops (rebase/push).
-- [ ] **Step 5: HUMAN GATE — wave-1 review + wave-2 go/no-go** — present Daniel the branch summary (commits, card ids, grade rows), open promotion decisions, and ask go/no-go on wave 2. Branch stays local — merging is his.
+- [x] **Step 5: HUMAN GATE — wave-1 review + wave-2 go/no-go** — Daniel approved 2026-07-19: emoji strip, author fix (done, reconcile clean), GO wave 2.
+
+---
+
+## Wave 2 (approved 2026-07-19; same Global Constraints, same card lifecycle/grading; grade-ledger commits now authored `inspector <inspector@agents.local>`)
+
+Card map: W2.1=`6a5c7274-8aab49a8`, W2.2=`6a5c7274-01b96f4e`, W2.3=`6a5c7274-66ef6fc3`, W2.4=`6a5c7274-b9f0cdd3`, W2.5=`6a5c7274-635d84bf`.
+
+### Task 8: W2.1 — GateGuard destructive-command classifier retarget
+
+**Files:** Create `scripts/hooks/lib/destructive_classifier.js` (classifier extracted verbatim from ECC `scripts/hooks/gateguard-fact-force.js`, 1,278 L — take the command-classification machinery ONLY: quote-aware tokenizing, subshell detection, `find -exec`, force-push refspec detection, the destructive/credential pattern tables; drop the fact-forcing UX, state files, session tracking), `scripts/hooks/hard_ceiling_guard.js` (PreToolUse:Bash consumer), `tests/test_hard_ceiling_guard.py`. Modify `.claude/settings.json` (append second PreToolUse:Bash hook entry).
+**Contract:** stdin hook JSON → classify command. Category A (hard-ceiling: reading/writing credential stores — `.env` files, `~/.ssh`, `~/.aws`, keyring/DPAPI access, `claude setup-token`-style credential minting) → exit 2 + stderr reason (BLOCK day one; this enforces the constitution's absolute ceiling). Category B (generally destructive: recursive force delete, `git push --force` to protected refs, history rewrites, disk-level ops) → stderr `[hard-ceiling WARN]`, exit 0 (warn-first, flip later like delivery-gate). Neither category may false-positive plain `git commit`/`rm single-file`/test commands — pytest cases for both categories plus benign controls.
+
+### Task 9: W2.2 — config-protection hook (AFTER Task 8 — shares settings.json)
+
+**Files:** Create `scripts/hooks/config_protection.js` (from ECC `scripts/hooks/config-protection.js`, 169 L), `tests/test_config_protection_hook.py`. Modify `.claude/settings.json` (PreToolUse matcher `Edit|Write` entry).
+**Contract:** stdin hook JSON with `tool_input.file_path`; resolves against repo root; BLOCK (exit 2) writes to `governance/**`, `CLAUDE.md`, `AGENTS.md`, `GEMINI.md` (constitution mirrors are human-edited only); exit 0 otherwise incl. paths merely containing those substrings. Block-mode day one — it enforces an existing absolute rule.
+
+### Task 10: W2.3 — strategic-compact skill import
+
+**Files:** Create `skills/imported/strategic-compact/SKILL.md` from ECC `skills/strategic-compact/SKILL.md`. Retarget: context accounting (input+cache_read+cache_creation from transcript usage), `[1m]` 1M-window detection, what-survives-compaction table — phrased for kb sessions (cards/`## Result`/memory files survive; conversation doesn't; durable facts go to files per constitution). Provenance frontmatter; `scan_skill.py` clean. (Companion `suggest-compact.js` hook NOT imported — kb already gets compact hints from the harness; skill is the keeper.)
+
+### Task 11: W2.4 — save-session handoff template
+
+**Files:** Create `skills/imported/save-session/SKILL.md` from ECC `commands/save-session` template. Retarget storage: NOT `~/.claude/session-data` — the handoff lands as a dated section in `memory/<agent-id>.md` and/or the project's `STATE.md` per constitution. Keep the section skeleton verbatim: What-Worked-with-evidence / What-Did-NOT-Work-and-why / Not-Tried-Yet / File-State / Exact-Next-Step. Provenance frontmatter; `scan_skill.py` clean.
+
+### Task 12: W2.5 — delivery-gate flip warn→block: DEFERRED (orchestrator recommendation)
+
+The card's own Work order says "after clean soak"; delivery-gate has not yet merged, so zero soak has occurred. Card stays in inbox; present to Daniel again after `claude/ecc-import-w1` merges and warn-mode runs clean for a few days.
+
+### Task 13: Wave-2 close — full suite green, validators + scan clean on new skills, reconcile clean, consistency sweep, memory append, HUMAN GATE (merge + W2.5 timing).
