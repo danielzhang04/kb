@@ -13,6 +13,7 @@ _private/
 __pycache__/
 *.pyc
 .pytest_cache/
+atlas/.venv/
 
 # dashboard (Node) — build + deps never committed
 dashboard/node_modules/
