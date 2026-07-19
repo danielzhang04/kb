@@ -3,3 +3,4 @@ card_id	inspector_id	pass	project	rubric_version	score	task_type	tier	ts	worker
 6a5c7274-99cc4601	inspector@agents.local	True	kb-ops	inspector-v1	96	import loop-design-check skill retargeted to kb	T2	2026-07-19T07:00:48.665801+00:00	worker-desktop
 6a5c7274-1e97713f	inspector@agents.local	True	kb-ops	inspector-v1	96	import delivery-gate hook (warn) + growth-log standard	T2	2026-07-19T07:09:03.182133+00:00	worker-desktop
 6a5c7274-9274a933	inspector@agents.local	True	kb-ops	inspector-v1	96	import block-no-verify hook (block)	T2	2026-07-19T07:17:22.539256+00:00	worker-desktop
+6a5c7274-484a6b30	inspector@agents.local	True	kb-ops	inspector-v1	95	import CI validators + provenance schema	T2	2026-07-19T07:31:30.143853+00:00	worker-desktop
