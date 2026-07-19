@@ -266,7 +266,7 @@ export function spawnVibe(
 
   // 4. Spawn — the ONLY point in this function a real `claude` child process is created.
   const spawner = deps.spawn ?? defaultVibeSpawner;
-  const proc = spawner(['--print', '--output-format', 'stream-json'], deps.repoRoot);
+  const proc = spawner(['--print', '--verbose', '--output-format', 'stream-json'], deps.repoRoot);
   activeVibeProcesses.add(proc);
 
   try {

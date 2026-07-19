@@ -140,14 +140,14 @@ describe('spawnComposerTurn — resume-flag injection (review F1: equals-form + 
     // First turn: no prior session — the untouched vibe arg vector.
     spawnComposerTurn('turn one', null, validSession(), { onDelta: vi.fn() }, deps);
     expect(calls[0].args).toEqual([
-      '--print', '--output-format', 'stream-json',
+      '--print', '--verbose', '--output-format', 'stream-json',
       '--permission-mode', 'plan', '--tools', 'Read,Glob,Grep',
     ]);
 
     // Second turn: carries the issued id — spawns with the FUSED equals token appended, nothing else.
     spawnComposerTurn('turn two', ISSUED_ID, validSession(), { onDelta: vi.fn() }, deps);
     expect(calls[1].args).toEqual([
-      '--print', '--output-format', 'stream-json',
+      '--print', '--verbose', '--output-format', 'stream-json',
       '--permission-mode', 'plan', '--tools', 'Read,Glob,Grep',
       `--resume=${ISSUED_ID}`,
     ]);
@@ -178,11 +178,11 @@ describe('spawnComposerTurn — resume-flag injection (review F1: equals-form + 
     }
     expect(first.writes[0]).toContain(hostile);
     expect(calls[0].args).toEqual([
-      '--print', '--output-format', 'stream-json',
+      '--print', '--verbose', '--output-format', 'stream-json',
       '--permission-mode', 'plan', '--tools', 'Read,Glob,Grep',
     ]);
     expect(calls[1].args).toEqual([
-      '--print', '--output-format', 'stream-json',
+      '--print', '--verbose', '--output-format', 'stream-json',
       '--permission-mode', 'plan', '--tools', 'Read,Glob,Grep',
       `--resume=${ISSUED_ID}`,
     ]);
@@ -204,7 +204,7 @@ describe('spawnComposerTurn — resume-flag injection (review F1: equals-form + 
     const t2 = spawnComposerTurn('two', ISSUED_ID, validSession(), { onDelta: vi.fn() }, deps);
     expect(t2.ok).toBe(true);
     expect(calls[1].args).toEqual([
-      '--print', '--output-format', 'stream-json',
+      '--print', '--verbose', '--output-format', 'stream-json',
       '--permission-mode', 'plan', '--tools', 'Read,Glob,Grep',
       `--resume=${ISSUED_ID}`,
     ]);

@@ -378,7 +378,7 @@ describe('spawnVibe — CLI-subprocess invocation shape', () => {
     spawnVibe('a secret-shaped prompt', validSession(), noopHandlers(), deps);
 
     expect(calls).toHaveLength(1);
-    expect(calls[0].args).toEqual(['--print', '--output-format', 'stream-json']);
+    expect(calls[0].args).toEqual(['--print', '--verbose', '--output-format', 'stream-json']);
     expect(calls[0].cwd).toBe('/repo/root');
     expect(calls[0].args.join(' ')).not.toContain('secret-shaped prompt');
   });
