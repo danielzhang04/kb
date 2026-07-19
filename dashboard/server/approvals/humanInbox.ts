@@ -12,7 +12,7 @@ import type { ParsedCard } from '../planeA/cards.ts';
 import type { PlaneAIndex } from '../planeA/indexer.ts';
 
 export type HumanInboxCategory = 'decision' | 'input' | 'intervention';
-export type HumanInboxUrgency = 'high' | 'normal';
+export type HumanInboxUrgency = 'high' | 'normal' | 'low';
 
 export interface HumanInboxItem {
   card: ParsedCard;
@@ -26,6 +26,12 @@ export interface HumanInboxItem {
   context: string | null;
   /** Present only at a real approval boundary. These verify an approval record; they do not resume it. */
   buttons?: ApprovalButtons;
+  /**
+   * Inline resolution capability distinct from `buttons` (which are decision verify channels). `'reply'`
+   * appends operator steer to an input card; `'resolve'` records/releases a wake-me/blocked/halted card
+   * via the governed `POST /api/write/card-respond` route. Absent once a reply is already recorded.
+   */
+  respond?: 'reply' | 'resolve';
 }
 
 export interface HumanInboxCounts {
@@ -40,11 +46,35 @@ export interface HumanInboxProjection {
   counts: HumanInboxCounts;
 }
 
-const HUMAN_INPUT_ACTION = /(?:^|[:/_-])(?:needs?-?input|human-?input|input-?required|question|human-?review|review-?required)(?:$|[:/_-])/i;
-const WAKE_ACTION = /^wake-me(?::|$)/i;
+/** Exported so the governed `write/cardRespond.ts` route re-checks the identical input/wake predicates
+ *  server-side, rather than trusting the client's projected category. */
+export const HUMAN_INPUT_ACTION = /(?:^|[:/_-])(?:needs?-?input|human-?input|input-?required|question|human-?review|review-?required)(?:$|[:/_-])/i;
+export const WAKE_ACTION = /^wake-me(?::|$)/i;
+
+/** The exact marker prefixes `write/cardRespond.ts` writes — used to demote a replied input item and to
+ *  hide an operator-resolved halted card. Scoped to the named body section so untrusted `## Evidence`
+ *  text can never spoof them. */
+const REPLY_RECORDED = 'Reply from operator (';
+const RESOLVE_RECORDED = 'Resolved by operator (';
 
 function text(value: unknown): string {
   return typeof value === 'string' ? value : String(value ?? '');
+}
+
+/** Return the text of one `## <section>` block (up to the next `## ` header / EOF), or '' if absent. */
+function sectionText(body: string, section: string): string {
+  const lines = body.split('\n');
+  const header = `## ${section}`;
+  const start = lines.findIndex((line) => line.trim() === header);
+  if (start === -1) return '';
+  let end = lines.length;
+  for (let j = start + 1; j < lines.length; j += 1) {
+    if (lines[j].startsWith('## ')) {
+      end = j;
+      break;
+    }
+  }
+  return lines.slice(start + 1, end).join('\n');
 }
 
 function dependencies(card: ParsedCard): string[] {
@@ -85,15 +115,19 @@ function classify(card: ParsedCard): HumanInboxItem | null {
   }
 
   if (state === 'inbox' && HUMAN_INPUT_ACTION.test(action)) {
+    const replied = sectionText(card.body, 'Feedback').includes(REPLY_RECORDED);
     return {
       card,
       category: 'input',
       categoryLabel: 'Input',
-      urgency: 'normal',
-      status: 'Waiting for your input',
+      urgency: replied ? 'low' : 'normal',
+      status: replied ? 'Reply recorded' : 'Waiting for your input',
       reason: 'The card action explicitly asks for human input or review.',
-      nextAction: 'Inspect the card in Tasks or Files. A direct reply/resume action is not wired in this Inbox yet.',
+      nextAction: replied
+        ? 'Reply recorded — awaiting agent pickup.'
+        : 'Reply below to steer the owning agent. Your note is appended to the card and it stays queued for pickup.',
       context,
+      ...(replied ? {} : { respond: 'reply' as const }),
     };
   }
 
@@ -105,12 +139,14 @@ function classify(card: ParsedCard): HumanInboxItem | null {
       urgency: 'high',
       status: 'Operator attention requested',
       reason: 'An agent filed an explicit wake-me card.',
-      nextAction: 'Inspect the work order and related task state. Resolution and resume remain governed card actions outside this Inbox.',
+      nextAction: 'Resolve below to record your note and close the wake-me card (it moves to done).',
       context,
+      respond: 'resolve',
     };
   }
 
   if (state === 'halted') {
+    if (sectionText(card.body, 'Result').includes(RESOLVE_RECORDED)) return null;
     return {
       card,
       category: 'intervention',
@@ -118,8 +154,9 @@ function classify(card: ParsedCard): HumanInboxItem | null {
       urgency: 'high',
       status: 'Run halted',
       reason: 'Execution reached the terminal halted state.',
-      nextAction: 'Inspect the task before deciding whether to launch a revised rerun. This Inbox does not silently resume halted work.',
+      nextAction: 'Resolve below to record an operator note on this terminal card. Relaunch a revised run separately.',
       context,
+      respond: 'resolve',
     };
   }
 
@@ -135,8 +172,9 @@ function classify(card: ParsedCard): HumanInboxItem | null {
       reason: explicitlyHuman
         ? 'The blocked card explicitly requests human attention.'
         : 'This blocked card has no owner and no dependency that can release it automatically.',
-      nextAction: 'Inspect the blocker in Tasks or Files. Reassignment and resume are not wired in this Inbox yet.',
+      nextAction: 'Resolve below to record guidance and release the block back into the queue.',
       context,
+      respond: 'resolve',
     };
   }
 
@@ -146,11 +184,12 @@ function classify(card: ParsedCard): HumanInboxItem | null {
 /** Build the Human Inbox from an existing Plane-A snapshot; never scans or mutates the repository. */
 export function projectHumanInbox(index: PlaneAIndex): HumanInboxProjection {
   const cards = Object.values(index.cards).flat();
+  const urgencyRank = (item: HumanInboxItem): number => (item.urgency === 'high' ? 0 : item.urgency === 'normal' ? 1 : 2);
   const items = cards
     .map(classify)
     .filter((item): item is HumanInboxItem => item !== null)
     .sort((a, b) => {
-      if (a.urgency !== b.urgency) return a.urgency === 'high' ? -1 : 1;
+      if (a.urgency !== b.urgency) return urgencyRank(a) - urgencyRank(b);
       const tier = tierRank(b.card) - tierRank(a.card);
       if (tier !== 0) return tier;
       return text(a.card.meta.id).localeCompare(text(b.card.meta.id));

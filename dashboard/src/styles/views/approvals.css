@@ -340,6 +340,41 @@
   background: var(--bg-sunken);
 }
 
+/* ---- Inline respond (input reply / wake-me / blocked / halted resolve) ---- */
+.v-approvals__respond {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+.v-approvals__respond-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--fg-primary);
+  font: inherit;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.v-approvals__respond-input:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: -1px;
+}
+
+.v-approvals__respond .v-approvals__buttons {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
 @media (max-width: 840px) {
   .v-approvals {
     grid-template-columns: 1fr;

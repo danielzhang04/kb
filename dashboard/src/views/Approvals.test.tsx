@@ -178,4 +178,47 @@ describe('Approvals', () => {
     fireEvent.click(screen.getByRole('button', { name: /card-77/ }));
     expect(screen.getByRole('note').textContent).toMatch(/does not itself start, resume, or complete/i);
   });
+
+  // ---- #2 Inbox inline respond ----
+
+  function inputItem(): HumanInboxItem {
+    return {
+      card: card({ id: 'question-1', action: 'needs-input:source', state: 'inbox', 'risk-tier': 'T1' }),
+      category: 'input', categoryLabel: 'Input', urgency: 'normal', status: 'Waiting for your input',
+      reason: 'Explicit question.', nextAction: 'Reply below.', context: 'Choose a source.', respond: 'reply',
+    } satisfies HumanInboxItem;
+  }
+
+  it('renders a reply box + send button for an input item and fires onRespond with the trimmed message', () => {
+    const onRespond = vi.fn();
+    render(<Approvals items={[inputItem()]} onRespond={onRespond} />);
+    fireEvent.click(screen.getByRole('button', { name: /question-1/ }));
+
+    const send = screen.getByTestId('respond-submit');
+    expect((send as HTMLButtonElement).disabled).toBe(true); // empty -> disabled
+    fireEvent.change(screen.getByTestId('respond-message'), { target: { value: '  Use source A.  ' } });
+    expect((send as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(send);
+    expect(onRespond).toHaveBeenCalledWith('question-1', 'reply', 'Use source A.');
+  });
+
+  it('labels a resolve item "Resolve" and disables the button while a response is pending', () => {
+    const wake = {
+      card: card({ id: 'wake-1', action: 'wake-me:x', state: 'inbox', 'risk-tier': 'T2' }),
+      category: 'intervention', categoryLabel: 'Intervention', urgency: 'high', status: 'Operator attention requested',
+      reason: 'wake-me.', nextAction: 'Resolve below.', context: 'x', respond: 'resolve',
+    } satisfies HumanInboxItem;
+    render(<Approvals items={[wake]} pendingRespond onRespond={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /wake-1/ }));
+    fireEvent.change(screen.getByTestId('respond-message'), { target: { value: 'done' } });
+    const button = screen.getByTestId('respond-submit');
+    expect(button.textContent).toMatch(/Resolve/);
+    expect((button as HTMLButtonElement).disabled).toBe(true); // pendingRespond overrides a non-empty draft
+  });
+
+  it('shows no respond form for a decision item', () => {
+    render(<Approvals pending={[card()]} onRespond={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /card-77/ }));
+    expect(screen.queryByTestId('respond-form')).toBeNull();
+  });
 });

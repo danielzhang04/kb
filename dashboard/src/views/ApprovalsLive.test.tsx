@@ -109,4 +109,62 @@ describe('ApprovalsLive', () => {
     expect((await screen.findByRole('alert')).textContent).toMatch(/still locked/i);
     expect(fetchImpl.mock.calls.some((c) => c[0] === '/api/approvals/verify')).toBe(false);
   });
+
+  // ---- #2 Inbox inline respond wiring ----
+
+  function inputInboxResponse(): Response {
+    return jsonResponse({
+      items: [{
+        card: { meta: { id: 'question-1', project: 'kb', action: 'needs-input:source', target: 't', 'risk-tier': 'T1', owner: null, state: 'inbox' }, body: '## Work order\n\nPick.\n' },
+        category: 'input', categoryLabel: 'Input', urgency: 'normal', status: 'Waiting for your input',
+        reason: 'Explicit question.', nextAction: 'Reply below.', context: 'Pick.', respond: 'reply',
+      }],
+      counts: { total: 1, decision: 0, input: 1, intervention: 0 },
+    });
+  }
+
+  it('a send-reply click POSTs to /api/write/card-respond with the bearer and refetches the inbox', async () => {
+    const fetchImpl = vi.fn(async (url: string, _init?: RequestInit) => {
+      if (url === '/api/human-inbox') return inputInboxResponse();
+      return jsonResponse({ ok: true, state: 'inbox' });
+    });
+    render(<ApprovalsLive sessionToken="sess-tok" fetchImpl={fetchImpl as unknown as typeof fetch} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /question-1/ }));
+    fireEvent.change(screen.getByTestId('respond-message'), { target: { value: 'Use source A.' } });
+    fireEvent.click(screen.getByTestId('respond-submit'));
+
+    await waitFor(() => {
+      const call = fetchImpl.mock.calls.find((c) => c[0] === '/api/write/card-respond');
+      expect(call).toBeTruthy();
+      const init = call![1]!;
+      expect((init.headers as Record<string, string>).authorization).toBe('Bearer sess-tok');
+      expect(JSON.parse(init.body as string)).toEqual({ cardId: 'question-1', action: 'reply', message: 'Use source A.' });
+    });
+    expect((await screen.findByRole('status')).textContent).toMatch(/reply recorded/i);
+    // refetch happens: /api/human-inbox called on mount and again after success.
+    expect(fetchImpl.mock.calls.filter((c) => c[0] === '/api/human-inbox').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('replaces an invalidated session once on a 401 and retries the respond', async () => {
+    let respondCalls = 0;
+    const fetchImpl = vi.fn(async (url: string, _init?: RequestInit) => {
+      if (url === '/api/human-inbox') return inputInboxResponse();
+      if (url !== '/api/write/card-respond') return jsonResponse({ requests: [] });
+      respondCalls += 1;
+      return respondCalls === 1 ? jsonResponse({ error: 'unauthenticated' }, false, 401) : jsonResponse({ ok: true, state: 'inbox' });
+    });
+    const onRequestSession = vi.fn(async () => ({ token: 'fresh' }));
+    render(<ApprovalsLive sessionToken="stale" onRequestSession={onRequestSession} fetchImpl={fetchImpl as unknown as typeof fetch} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /question-1/ }));
+    fireEvent.change(screen.getByTestId('respond-message'), { target: { value: 'retry me' } });
+    fireEvent.click(screen.getByTestId('respond-submit'));
+
+    expect((await screen.findByRole('status')).textContent).toMatch(/reply recorded/i);
+    expect(onRequestSession).toHaveBeenCalledWith(true);
+    const respondReqs = fetchImpl.mock.calls.filter((c) => c[0] === '/api/write/card-respond');
+    expect(respondReqs).toHaveLength(2);
+    expect((respondReqs[1]![1]!.headers as Record<string, string>).authorization).toBe('Bearer fresh');
+  });
 });

@@ -11,9 +11,9 @@
 import { useEffect, useState } from 'react';
 import type { HumanInboxItem } from '../../server/approvals/humanInbox';
 import { Approvals } from './Approvals';
-import type { ApprovalChannel } from './Approvals';
+import type { ApprovalChannel, RespondAction } from './Approvals';
 import { useSse } from '../lib/sseClient';
-import { fetchHumanInbox, verifyApproval, type FetchLike } from '../lib/approvalsClient';
+import { fetchHumanInbox, respondToCard, verifyApproval, type FetchLike } from '../lib/approvalsClient';
 import { HumanRequestsPanel } from '../control/HumanRequestsPanel';
 
 export interface ApprovalsLiveProps {
@@ -97,6 +97,53 @@ export function ApprovalsLive({
     })();
   };
 
+  const onRespond = (cardId: string, action: RespondAction, message: string): void => {
+    // Fired only on an explicit send-reply / resolve click (see Approvals). Same point-of-action unlock
+    // and single 401-session-replacement retry as onVerify — never a loop or a silent downgrade.
+    void (async () => {
+      const verb = action === 'reply' ? 'reply' : 'resolution';
+      setOutcome({
+        kind: 'progress',
+        message: sessionToken ? `Sending ${verb} for ${cardId}…` : 'Unlocking dashboard…',
+      });
+      let token = sessionToken;
+      if (!token) token = (await onRequestSession?.())?.token;
+      if (!token) {
+        setOutcome({ kind: 'error', message: `The ${verb} was not sent because the dashboard is still locked.` });
+        return;
+      }
+
+      setOutcome({ kind: 'progress', message: `Sending ${verb} for ${cardId}…` });
+      let result = await respondToCard(cardId, action, message, { token, fetchImpl });
+      if (result.status === 401 && onRequestSession) {
+        const replacement = await onRequestSession(true);
+        if (replacement) {
+          token = replacement.token;
+          result = await respondToCard(cardId, action, message, { token, fetchImpl });
+        }
+      }
+
+      if (result.ok) {
+        setOutcome({
+          kind: 'success',
+          message: action === 'reply' ? `${cardId}: reply recorded.` : `${cardId}: resolved.`,
+        });
+        try {
+          setItems((await fetchHumanInbox(fetchImpl)).items);
+        } catch {
+          // The SSE feed will reconcile the list; the successful response remains visible.
+        }
+      } else {
+        setOutcome({
+          kind: 'error',
+          message: result.reason
+            ? `${cardId} was not updated: ${result.reason}`
+            : `${cardId} was not updated (HTTP ${result.status}).`,
+        });
+      }
+    })();
+  };
+
   return (
     <section className="v-approvals-live" aria-label="Approval verification">
       {outcome ? (
@@ -107,7 +154,7 @@ export function ApprovalsLive({
           {outcome.message}
         </p>
       ) : null}
-      <Approvals items={items} onVerify={onVerify} />
+      <Approvals items={items} onVerify={onVerify} onRespond={onRespond} pendingRespond={outcome?.kind === 'progress'} />
       <HumanRequestsPanel sessionToken={sessionToken} onRequestSession={onRequestSession} fetchImpl={fetchImpl} />
     </section>
   );

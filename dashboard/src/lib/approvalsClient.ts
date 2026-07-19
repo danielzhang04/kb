@@ -77,3 +77,36 @@ export async function verifyApproval(
   }
   return { ok: res.ok, reason, status: res.status };
 }
+
+export type RespondAction = 'reply' | 'resolve';
+
+/**
+ * POST an inline operator response (a reply on an input card, or a resolve on a wake-me/blocked/halted
+ * card) to the governed `POST /api/write/card-respond` route. Session-gated: without a bearer the server
+ * 401s, surfaced here as `{ ok: false, status: 401 }` (mirroring {@link verifyApproval}) rather than
+ * throwing, so the container can replace the session and retry exactly once.
+ */
+export async function respondToCard(
+  cardId: string,
+  action: RespondAction,
+  message: string,
+  opts: { token?: string; fetchImpl?: FetchLike } = {},
+): Promise<VerifyResult> {
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const headers: Record<string, string> = { 'content-type': 'application/json' };
+  if (opts.token) headers.authorization = `Bearer ${opts.token}`;
+  const res = await fetchImpl('/api/write/card-respond', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ cardId, action, message }),
+  });
+  await invalidateSessionOnGovernedAuthFailure(res);
+  let reason = '';
+  try {
+    const body = (await res.json()) as { reason?: string; error?: string };
+    reason = body.reason ?? body.error ?? '';
+  } catch {
+    reason = 'no response body';
+  }
+  return { ok: res.ok, reason, status: res.status };
+}

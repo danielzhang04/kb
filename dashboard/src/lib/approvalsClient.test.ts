@@ -2,7 +2,7 @@
  * U2 — approvalsClient: reads the live pending feed and drives an explicit verify POST.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { fetchHumanInbox, fetchPending, verifyApproval } from './approvalsClient';
+import { fetchHumanInbox, fetchPending, respondToCard, verifyApproval } from './approvalsClient';
 import type { ParsedCard } from '../../server/planeA/cards';
 
 function card(id: string): ParsedCard {
@@ -63,5 +63,24 @@ describe('verifyApproval', () => {
     // No bearer header when there is no session.
     const [, init] = fake.mock.calls[0];
     expect((init!.headers as Record<string, string>).authorization).toBeUndefined();
+  });
+});
+
+describe('respondToCard', () => {
+  it('POSTs cardId+action+message to the governed route with the session bearer', async () => {
+    const fake = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse({ ok: true, state: 'done' }));
+    const res = await respondToCard('wake-1', 'resolve', 'restarted', { token: 'sess-tok', fetchImpl: fake as unknown as typeof fetch });
+    expect(res).toMatchObject({ ok: true, status: 200 });
+    const [url, init] = fake.mock.calls[0];
+    expect(url).toBe('/api/write/card-respond');
+    expect(init!.method).toBe('POST');
+    expect((init!.headers as Record<string, string>).authorization).toBe('Bearer sess-tok');
+    expect(JSON.parse(init!.body as string)).toEqual({ cardId: 'wake-1', action: 'resolve', message: 'restarted' });
+  });
+
+  it('surfaces a 409 refusal reason as ok:false rather than throwing', async () => {
+    const fake = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse({ error: 'card-respond-refused', reason: 'cannot reply to a wake-me card' }, false, 409));
+    const res = await respondToCard('wake-1', 'reply', 'hi', { token: 't', fetchImpl: fake as unknown as typeof fetch });
+    expect(res).toMatchObject({ ok: false, status: 409, reason: 'cannot reply to a wake-me card' });
   });
 });

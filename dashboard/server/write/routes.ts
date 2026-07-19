@@ -13,6 +13,7 @@
  *   POST /api/write/stop-card     -> stop/floor.ts#requestStop      (scoped: working -> stop-requested -> halting)
  *   POST /api/write/pause-cadence -> stop/floor.ts#pauseCadence
  */
+import { readFileSync } from 'node:fs';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { save } from './governedSave.ts';
 import {
@@ -23,6 +24,10 @@ import {
 } from './branch.ts';
 import { launchCard, rerunAsDependsOn } from './launch.ts';
 import type { LaunchOutcome, RiskTier } from './launch.ts';
+import { respondToCard, resolveCardPath } from './cardRespond.ts';
+import type { RespondVerb } from './cardRespond.ts';
+import { parseCardFrontmatter } from '../planeA/cards.ts';
+import { redactSensitiveText } from '../composer/publicTimeline.ts';
 import { launchWorkflowRun } from './workflowRun.ts';
 import type { WorkflowRunOutcome } from './workflowRun.ts';
 import { writeStop, requestStop, pauseCadence } from '../stop/floor.ts';
@@ -436,5 +441,94 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
       ...(outcome.state ? { state: outcome.state } : {}),
       ...(outcome.disposition ? { disposition: outcome.disposition } : {}),
     });
+  });
+
+  // #2 Inbox — governed inline resolution of a card-projection item. `action` is the OPERATOR verb
+  // ('reply' | 'resolve'), NOT the card's own `action` field. Authorization (which (state, action, verb)
+  // combos are legal, and the resulting cards.py section-append + transitions) lives in cardRespond.ts;
+  // this route is composition + audit only, and re-derives the card's live (state, action) from its
+  // committed frontmatter rather than trusting the client's projected category.
+  scope.post('/api/write/card-respond', { preHandler }, async (req, reply: FastifyReply) => {
+    const session = verifiedSession(req);
+    const body = asRecord(req.body);
+    const cardId = str(body.cardId);
+    const verb = str(body.action);
+    if (!CARD_ID_RE.test(cardId)) {
+      return reply.code(400).send({ error: 'bad-card-id', reason: 'cardId must be filename-safe' });
+    }
+    if (verb !== 'reply' && verb !== 'resolve') {
+      return reply.code(400).send({ error: 'bad-action', reason: "action must be 'reply' or 'resolve'" });
+    }
+    const message = typeof body.message === 'string' ? body.message.trim() : '';
+    if (message.length === 0 || message.length > 16_000) {
+      return reply.code(400).send({ error: 'invalid-message', reason: 'message must be a non-empty string of at most 16000 characters' });
+    }
+    // Same secret-redaction refusal the composer prompt path uses — the operator note is committed to the
+    // shared ops branch, so a leaked bearer/key/private-key must never be persisted into a card body.
+    const secrets = [ctx.sessionConfig.secret.toString('utf8'), session?.token]
+      .filter((value): value is string => typeof value === 'string' && value.length >= 8);
+    if (redactSensitiveText(message, secrets) !== message) {
+      return reply.code(400).send({ error: 'sensitive-content-refused', field: 'message' });
+    }
+    // Resolve strictly within queue/ (CARD_ID_RE already blocked separators/traversal/glob metachars).
+    const cardPath = resolveCardPath(ctx.repoRoot, cardId);
+    if (!cardPath) {
+      return reply.code(404).send({ error: 'card-not-found', reason: `no card ${cardId} under queue/` });
+    }
+    let parsed: ReturnType<typeof parseCardFrontmatter>;
+    try {
+      parsed = parseCardFrontmatter(readFileSync(cardPath, 'utf8'));
+    } catch (err) {
+      return reply.code(500).send({ error: 'card-parse-failed', detail: err instanceof Error ? err.message : String(err) });
+    }
+
+    const outcome = await respondToCard(
+      {
+        cardId,
+        state: str(parsed.meta.state),
+        action: str(parsed.meta.action),
+        verb: verb as RespondVerb,
+        message,
+        iso: (ctx.now ?? (() => new Date()))().toISOString(),
+      },
+      {
+        repoRoot: ctx.repoRoot,
+        runPy: ctx.runPy,
+        prepareWrite: (repoRoot) => prepareCoordination(repoRoot, ctx.opsGit ?? defaultGitRunner),
+      },
+    );
+    if (!outcome.ok) {
+      if (outcome.reason === 'not-allowed') {
+        return reply.code(409).send({ error: 'card-respond-refused', reason: outcome.detail });
+      }
+      return reply.code(500).send({ error: outcome.reason, detail: outcome.detail });
+    }
+    // One coordination transaction: the pull already happened inside respondToCard's prepareWrite seam
+    // BEFORE cards.py wrote; append the audit row locally now and commit the card path(s) + audit row in
+    // ONE ops commit. A done-transition MOVES the file, so `paths` carries BOTH the deleted origin and the
+    // new location — both are staged.
+    try {
+      const appendLocal = ctx.appendAuditLocal ?? appendAuditRowLocal;
+      appendLocal(ctx.repoRoot, {
+        action: 'card-respond',
+        owner: session?.claims.sub,
+        cardId,
+        riskTier: 'T2',
+        result: `${verb}:${outcome.state}`,
+      }, ctx.now);
+      const [first, ...rest] = outcome.paths;
+      if (!first) throw new Error('card response produced no card paths');
+      await commitPreparedCoordination(ctx.repoRoot, first, {
+        runGit: ctx.opsGit ?? defaultGitRunner,
+        alsoStage: [...rest, AUDIT_REL_PATH],
+        message: `chore(queue): ${verb} card ${cardId}`,
+      });
+      return reply.code(200).send({ ok: true, cardId, state: outcome.state });
+    } catch (err) {
+      return reply.code(500).send({
+        error: 'card-respond-commit-failed',
+        detail: err instanceof Error ? err.message : String(err),
+      });
+    }
   });
 }

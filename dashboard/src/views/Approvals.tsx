@@ -5,7 +5,7 @@
  * always read-only. Approval buttons verify an approval record only; the UI explicitly avoids claiming
  * that verification starts or resumes execution.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ParsedCard } from '../../server/planeA/cards';
 import { buttonsFor } from '../../server/approvals/assurance';
 import type { HumanInboxItem } from '../../server/approvals/humanInbox';
@@ -13,6 +13,7 @@ import { workOrderOf } from '../../server/auth/workOrder';
 import '../styles/views/approvals.css';
 
 export type ApprovalChannel = 'signed' | 'possession' | 'webauthn';
+export type RespondAction = 'reply' | 'resolve';
 
 export interface ApprovalsProps {
   /** Unified feed. When supplied, this is the authoritative list. */
@@ -21,6 +22,10 @@ export interface ApprovalsProps {
   pending?: ParsedCard[];
   /** Fires ONLY on an explicit verify-evidence click, never on selection/render. */
   onVerify?: (cardId: string, channel: ApprovalChannel) => void;
+  /** Fires ONLY on an explicit send-reply / resolve click for an item carrying the `respond` capability. */
+  onRespond?: (cardId: string, action: RespondAction, message: string) => void;
+  /** True while a respond request is in flight — disables the send button (never on selection/render). */
+  pendingRespond?: boolean;
 }
 
 function valueOf(value: unknown): string {
@@ -62,13 +67,18 @@ function categoryRank(item: HumanInboxItem): number {
   return item.category === 'decision' ? 0 : item.category === 'input' ? 1 : 2;
 }
 
-export function Approvals({ items, pending = [], onVerify }: ApprovalsProps): React.JSX.Element {
+export function Approvals({ items, pending = [], onVerify, onRespond, pendingRespond = false }: ApprovalsProps): React.JSX.Element {
   const inbox = items ?? pending.map(legacyDecision);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [draft, setDraft] = useState('');
   const selected = inbox.find((item) => item.card.meta.id === selectedId) ?? null;
 
+  // A fresh selection clears any half-typed response — the box is always scoped to the visible item.
+  useEffect(() => setDraft(''), [selectedId]);
+
+  const urgencyRank = (item: HumanInboxItem): number => (item.urgency === 'high' ? 0 : item.urgency === 'normal' ? 1 : 2);
   const ranked = [...inbox].sort((a, b) => {
-    if (a.urgency !== b.urgency) return a.urgency === 'high' ? -1 : 1;
+    if (a.urgency !== b.urgency) return urgencyRank(a) - urgencyRank(b);
     const tier = tierRank(b.card) - tierRank(a.card);
     if (tier !== 0) return tier;
     return categoryRank(a) - categoryRank(b);
@@ -188,6 +198,37 @@ export function Approvals({ items, pending = [], onVerify }: ApprovalsProps): Re
             <strong>Next action</strong>
             <span>{selected.nextAction}</span>
           </div>
+
+          {selected.respond ? (
+            <div className="v-approvals__respond" data-testid="respond-form">
+              <label className="v-approvals__field-label" htmlFor="respond-message">
+                {selected.respond === 'reply' ? 'Reply to the owning agent' : 'Resolution note'}
+              </label>
+              <textarea
+                id="respond-message"
+                className="v-approvals__respond-input"
+                data-testid="respond-message"
+                rows={4}
+                maxLength={16000}
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                placeholder={selected.respond === 'reply'
+                  ? 'Your note is appended to the card and it stays queued for pickup.'
+                  : 'Recorded on the card as an operator resolution.'}
+              />
+              <div className="v-approvals__buttons">
+                <button
+                  type="button"
+                  className="mc-btn mc-btn--primary"
+                  data-testid="respond-submit"
+                  disabled={draft.trim().length === 0 || pendingRespond}
+                  onClick={() => onRespond?.(selected.card.meta.id, selected.respond as RespondAction, draft.trim())}
+                >
+                  {selected.respond === 'reply' ? 'Send reply' : 'Resolve'}
+                </button>
+              </div>
+            </div>
+          ) : null}
 
           {selected.category === 'decision' && selected.buttons ? (
             <>
