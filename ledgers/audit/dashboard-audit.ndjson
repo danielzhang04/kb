@@ -67,3 +67,4 @@
 {"ts":"2026-07-19T08:14:12.443Z","action":"pty-open","owner":"operator","result":"opened","detail":{"sessionId":"pty-1784448852443-2"}}
 {"ts":"2026-07-19T08:14:50.351Z","action":"pty-open","owner":"operator","result":"opened","detail":{"sessionId":"pty-1784448890351-3"}}
 {"ts":"2026-07-19T08:16:37.694Z","action":"pty-attach","owner":"operator","result":"attached","detail":{"sessionId":"pty-1784448852443-2"}}
+{"ts":"2026-07-19T08:16:44.110Z","action":"pty-attach","owner":"operator","result":"attached","detail":{"sessionId":"pty-1784448833234-1"}}
