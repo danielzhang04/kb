@@ -1,0 +1,16 @@
+[
+  {
+    "id": "stylized-compositing",
+    "status": "built",
+    "description": "Stylized 2.5D flat-cel AI stills + the local Remotion motion engine (diagrams, maps, labeled cutouts, device cards, hard-cut stages).",
+    "renders": ["explainer", "diagrams", "maps", "animated-cutouts", "device-cards"],
+    "no_slop_note": "native flat-cel cartoon — no photoreal bar to clear"
+  },
+  {
+    "id": "cinematic-ai-video",
+    "status": "planned",
+    "description": "Cinematic AI-video (Veo 3.1 + Kling 3.0) for environment / cosmic / weather / geology spectacle. NOT yet built — a production-pipeline BUILD project.",
+    "renders": ["environments", "cosmic", "weather", "geology", "destruction"],
+    "no_slop_note": "environments ONLY — never living animals or human faces (uncanny valley / policy)"
+  }
+]

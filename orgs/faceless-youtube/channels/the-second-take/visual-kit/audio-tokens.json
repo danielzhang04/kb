@@ -1,0 +1,180 @@
+{
+  "_doc": "Channel audio dials for build_audio.py. Sourced from universal.md §13a-iii.8 (measured audio grammar). Data only — no logic; SFX/pause/music/dry placement is authored by the audio-director. Breath + master_target REFINED 2026-07-10 from the audio-only reference teardown (8 videos; visual-kit/research/audio-logs/synthesis.md).",
+  "thin_extra_db": 8,
+  "dip_db": -40,
+  "dip_in_pause": false,
+  "sentence_gap_enabled": true,
+  "sentence_gap_chained_max_words": 2,
+  "_sentence_gap_note": "R10 2026-07-18: PAD-TO-TARGET (supersedes the R8-B additive +0.5s law). After every sentence-final word, pad the TOTAL gap (natural start-to-start spacing + inserted) UP TO a target and insert only the shortfall; insert nothing when the natural spacing already meets it (target 0.65s body, 0.45s chained <=2-word; nothing below 0.02s). Splice also does a valley cut + room-tone fill (breath.py). Realized by breath.py sentence_gaps()/splice_silence().",
+  "_dip_in_pause_note": "R7 2026-07-17 (M15, Daniel-directed): the bed CONTINUES at present level through authored pauses - no per-pause dip. Full music cuts remain only on dry spans + track-switch gaps. Set true to restore the old dip-every-pause behavior.",
+  "_dip_db_note": "The DEEP full-stop dip: whatever music plays drops to near-silence across a breath gap (number-reveal / chapter-boundary), so the beat lands in real silence. This is the ONLY music-drop the lane generates besides dry spans + track-switch gaps — we deliberately do NOT emit the references' frequent shallow on-beat dips (spec 2026-07-12-phase3b §2b).",
+  "master_target": {
+    "_note": "The LIVE final-master target — build_motion.loudnorm_pass reads these on every render (ffmpeg loudnorm, single-pass). Ear-gated 2026-07-12 on _chain-test (A/B: -14 read too loud, -15.5 slightly too quiet → -14.5). LRA 4 = the measured comedic-channel compression (refs ~-18 LUFS but CLIP; we hold TP headroom). YouTube re-normalizes playback to ~-14 anyway, so this mostly sets peak headroom + compression character. Phase 4 checker will VERIFY the render hit this.",
+    "lufs": -14.5,
+    "true_peak_max_dbfs": -1.0,
+    "lra": 4.0
+  },
+  "_pause_note": "Deliberate PAUSE gaps are AUTHORED `pause` cues in audio-plan.json (build_motion -> breath.py splices them into a derived vo.breath.mp3, SEPARATE from the writer's [PAUSE]/[BEAT] prosody baked in the VO). The dip lands in the gap. Measured breath: a sustained hit earns ~0.55s (range 0.3-0.8), only ~20% of events.",
+  "min_gap_s": 0.6,
+  "sfx_per_min_story_max": 20,
+  "_consistent_sfx_note": "Structural motif SFX that use ONE fixed variant (no pool rotation) so they read as a recognizable recurring sound within a video — a scene whoosh + an element pop must sound the same every time (ear-gate 2026-07-12). Content/comedic SFX still rotate for variety.",
+  "consistent_sfx": [
+    "whoosh",
+    "pop",
+    "boom"
+  ],
+  "sfx_gain_db": {
+    "pop": -8,
+    "tick": -12,
+    "boom": -6,
+    "whoosh": -7,
+    "riser": -9,
+    "pluck": -9,
+    "sting": -6,
+    "boing": -8,
+    "record_scratch": -7,
+    "cash": -8,
+    "womp": -8,
+    "ding": -9,
+    "buzzer": -8,
+    "sparkle": -10,
+    "thud": -10,
+    "powerdown": -8,
+    "stamp": -7,
+    "crack": -8,
+    "halo": -10,
+    "collapse": -7,
+    "vanish": -10,
+    "applause": -8,
+    "boo": -10,
+    "halo_vocal": -12,
+    "sparkle_long": -10
+  },
+  "sfx_pools": {
+    "_note": "Sourced via sfx-forge (Freesound CC0, CLAP-ranked, human-gated, peak-normalized to -1 dBFS). Provenance in audio/manifest.json. pop/tick/pluck/stamp deferred (fires_now=false, no card content yet).",
+    "whoosh": [
+      "whoosh-1",
+      "whoosh-2"
+    ],
+    "boing": [
+      "boing-1"
+    ],
+    "record_scratch": [
+      "record_scratch-1"
+    ],
+    "riser": [
+      "riser-1"
+    ],
+    "boom": [
+      "boom-1",
+      "boom-2"
+    ],
+    "cash": [
+      "cash-1"
+    ],
+    "sting": [
+      "sting-1"
+    ],
+    "womp": [
+      "womp-1"
+    ],
+    "pop": [
+      "pop-1",
+      "pop-2",
+      "pop-3"
+    ],
+    "stamp": [
+      "stamp-1"
+    ],
+    "buzzer": [
+      "buzzer-1",
+      "buzzer-2"
+    ],
+    "sparkle": [
+      "sparkle-1",
+      "sparkle-2"
+    ],
+    "thud": [
+      "thud-1",
+      "thud-2",
+      "thud-3"
+    ],
+    "tick": [
+      "tick-1",
+      "tick-2"
+    ],
+    "ding": [
+      "ding-1"
+    ],
+    "powerdown": [
+      "powerdown-1"
+    ],
+    "crack": [
+      "crack-2"
+    ],
+    "_crack_note": "R8 2026-07-17 (P22): crack-2 (icy-lake impact, CC0, centroid 2092 Hz) replaces crack-1 (6691 Hz 'twig' read). crack-1/crack-3 stay on disk as alternates.",
+    "halo": [
+      "halo-1"
+    ],
+    "collapse": [
+      "collapse-1"
+    ],
+    "vanish": [
+      "vanish-1"
+    ],
+    "_r7_pools_note": "R7 2026-07-17: applause/boo/halo_vocal/sparkle_long sourced (r7-sourcing run; provenance in audio/manifest.json; -2 alternates stay on disk, re-add to rotate). Single-entry pools so repeated cues (halo_vocal fires 3x) stay identical. halo_vocal REPLACES the harp-gliss halo in this video's cues; halo-1 remains for instrumental use.",
+    "applause": [
+      "applause-1"
+    ],
+    "boo": [
+      "boo-1"
+    ],
+    "halo_vocal": [
+      "halo_vocal-1"
+    ],
+    "_halo_vocal_note": "R10 2026-07-18: reverted to halo_vocal-1 (pre-R8, 261 Hz) - Daniel prefers the previous, lower ahh over the R8 halo_vocal-2. halo_vocal-2/-3 stay as alternates. The floating-book sustained bed halo_vocal_book-1 is a composite of halo_vocal-1 x6 (acrossfade d=1.269s), pinned per-cue in audio-plan.json.",
+    "sparkle_long": [
+      "sparkle_long-1"
+    ]
+  },
+  "music_norm_lufs": -20.0,
+  "music_present_db": 10,
+  "_music_present_note": "Constant present level under a playing music segment (dB attenuation vs full; 1 unit = 1 dB). R10 2026-07-18 -> 10 (-3 dB vs the original 7 baseline): the R9 full-video ear-gate found 9 still a touch loud; -1 more per Daniel 'not by too much'. Constant by design (no per-phrase duck). [[audio-taste-is-human-judged]]",
+  "music_default_mood": "casual-bed",
+  "track_switch_gap_s": 1.2,
+  "music_fade_s": {
+    "in": 1.2,
+    "out": 2.5
+  },
+  "music_pools": {
+    "_note": "Mood-bucket -> [bed file names] (audio/beds/<name>.mp3), sourced via music-forge (Incompetech CC-BY, loudness-normalized to music_norm_lufs). Buckets (music-forge/music-buckets.json): casual-comedic idiom = casual-bed/upbeat/sneaky; restrained exposE-underscore register (2026-07-17 retrack) = underscore (DEFAULT con-spine bed) + somber (elegiac tail). `underscore` REPLACES the meme-coded `sneaky` cues as the default con-spine; `sneaky` and upbeat-1 (Monkeys Spinning Monkeys) remain for OCCASIONAL deliberate comedic use. EMPTY/absent pool = 'no music for that mood'. Provenance in audio/manifest.json['music'].",
+    "casual-bed": [
+      "casual-bed-1"
+    ],
+    "sneaky": [
+      "sneaky-1",
+      "sneaky-2",
+      "sneaky-3",
+      "sneaky-4",
+      "sneaky-5",
+      "sneaky-6"
+    ],
+    "upbeat": [
+      "upbeat-2",
+      "upbeat-1",
+      "upbeat-4"
+    ],
+    "_upbeat4_note": "R8 2026-07-17 (P07): upbeat-4 = Cheery Monday (CC-BY) replaces upbeat-3 Ascending the Vale in the middle span - demucs measured vocals in upbeat-3 (Daniel's ear confirmed); upbeat-4 = top CLAP among the vocal-free non-meme candidates. upbeat-3 file stays on disk, OUT of the pool + credits. All upbeat spans pin per-cue.",
+    "underscore": [
+      "underscore-1"
+    ],
+    "_underscore_curation_note": "R6 2026-07-17: underscore curated to ONE track (underscore-1 Crypto, top CLAP) so the con-spine bed never re-picks mid-video (audit: mid-video track swaps read inconsistent). underscore-2/3/4 stay in audio/beds/ as ear-gate alternates - re-add here to rotate. upbeat reordered so index 0 = upbeat-2 (Fig Leaf, non-meme lift); upbeat-1 (Monkeys) = deliberate use only.",
+    "somber": [
+      "somber-1"
+    ]
+  },
+  "_music_fade_note": "R10 2026-07-18 (W12, Daniel-ruled): music fades are LONG by default - every bed enters on a ~1.2s swell and leaves on a ~2.5s fade that starts earlier; track_switch_gap_s 1.2 between different beds. Per-cue fade_out_s in audio-plan.json may author LONGER still; these defaults are the floor. Doctrine: audio-director grammar-guidance.md.",
+  "sentence_gap_target_s": 0.65,
+  "sentence_gap_chained_target_s": 0.45,
+  "sentence_gap_min_insert_s": 0.02
+}

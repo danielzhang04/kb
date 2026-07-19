@@ -1,0 +1,2 @@
+# Keeps the videos/ folder in git. One subfolder per video: YYYY-MM-DD-slug/ containing
+# brief.md, script.md, shorts/short-NN.md, metadata.json, assets/ (git-ignored), record.md

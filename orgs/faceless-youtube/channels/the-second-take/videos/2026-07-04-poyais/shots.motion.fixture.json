@@ -1,0 +1,24 @@
+{
+  "video_slug": "2026-07-04-poyais",
+  "_note": "Hand-authored Phase-2 fixture. Two layered shots to drive image-gen + engine dev before the motion-planner (Phase 4) automates this. The L03 route line is drawn by the ship's path animation (draw_line:true) — no separate engine layer.",
+  "shots": [
+    {
+      "id": "L13",
+      "background": {"mode": "plate", "plate_prompt": "An empty stage: a plain warm field with a single soft warm spotlight pooling center on the floor; nothing else — no characters, no props, no text."},
+      "layers": [
+        {"id": "macgregor", "source": "cutout",
+         "cutout_prompt": "macgregor (crimson hussar coat), full standing figure, front, on a plain plate",
+         "animation": {"type": "slide", "from_edge": "left", "to": [0.5, 0.82], "dur_s": 1.8, "easing": "ease-out"}}
+      ]
+    },
+    {
+      "id": "L03",
+      "background": {"mode": "plate", "plate_prompt": "A flat stylized Atlantic map, Britain small at the RIGHT edge, green Central-American coast at the LEFT edge, wide blue ocean between; NO ship, NO route line, NO text."},
+      "layers": [
+        {"id": "ship", "source": "cutout",
+         "cutout_prompt": "a single tall-masted sailing ship, side profile, bow LEFT, on a plain pale plate",
+         "animation": {"type": "path", "points": [[0.83, 0.24], [0.52, 0.14], [0.12, 0.72]], "dur_s": 4.0, "draw_line": true}}
+      ]
+    }
+  ]
+}

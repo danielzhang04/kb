@@ -1,0 +1,20 @@
+{
+  "name": "render-engine",
+  "private": true,
+  "description": "render-builder's Remotion engine — fixed component library rendering per-video motion.json specs",
+  "type": "module",
+  "scripts": {
+    "render": "node render.mjs"
+  },
+  "dependencies": {
+    "@remotion/bundler": "^4.0.0",
+    "@remotion/renderer": "^4.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "remotion": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.1",
+    "typescript": "^5.5.0"
+  }
+}

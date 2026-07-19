@@ -1,0 +1,150 @@
+{
+  "schema": "faceless-youtube/metadata@1",
+  "channel": "_test-pipeline",
+  "video_slug": "2026-07-02-car-sinks",
+  "source_idea_id": "WHTY-001",
+  "generated": "2026-07-02",
+  "status": "metadata-drafted",
+
+  "defaults": {
+    "privacy_status": "private",
+    "made_for_kids": false,
+    "contains_synthetic_media": true,
+    "default_language": "en",
+    "default_audio_language": "en",
+    "license": "youtube",
+    "embeddable": true
+  },
+
+  "long_form": {
+    "title_primary": "You Have 60 Seconds Before the Doors Won't Open",
+    "title_challengers": [
+      "What Happens To You When Your Car Sinks",
+      "Your Car Just Went Into the Water. Here's Every Second."
+    ],
+    "description": "Your car goes into the water and the clock starts — you have about sixty seconds before the doors physically will not open. Here's every second of it.\n\nThis is a real-time, second-by-second walkthrough of what the water does to the car and to your body: the float phase that feels like safety, the invisible force that seals the doors, the one exit that's still open, and the quiet at the end that fools people. Not a compilation, not a tips list — a simulation you're inside.\n\nChapters:\n00:00 You're already in the water\n00:22 The half-minute that feels like safety\n01:58 The float phase\n03:26 The force holding the door shut\n05:14 The only way out\n07:22 When the lights die\n09:24 The last ten seconds\n11:30 The part that stays\n\n#WhatIf #Survival #ColdWater #SinkingCar #WaterSafety\n\nAnimation in this video is AI-generated. Scenario researched from vehicle-submersion survival studies.\n\nSources (verify before publish): vehicle-submersion egress research on float-window duration, door pressure-differential forces, the ~60s electrical window, and tempered vs. laminated glass. Framing is simulation and suggestion only — no operational detail beyond public water-safety guidance.",
+    "tags": [
+      "sinking car",
+      "car underwater",
+      "car in water",
+      "escape a sinking car",
+      "how to escape a sinking car",
+      "vehicle submersion",
+      "cold water survival",
+      "what if",
+      "what happens to you",
+      "survival scenario",
+      "cold shock response",
+      "car door pressure underwater",
+      "break car window underwater",
+      "second person survival",
+      "morbid curiosity",
+      "survival science",
+      "the countdown"
+    ],
+    "hashtags": ["#WhatIf", "#Survival", "#ColdWater", "#SinkingCar", "#WaterSafety"],
+    "category_id": "28",
+    "category_name": "Science & Technology",
+    "chapters": [
+      {"time": "00:00", "label": "You're already in the water"},
+      {"time": "00:22", "label": "The half-minute that feels like safety"},
+      {"time": "01:58", "label": "The float phase"},
+      {"time": "03:26", "label": "The force holding the door shut"},
+      {"time": "05:14", "label": "The only way out"},
+      {"time": "07:22", "label": "When the lights die"},
+      {"time": "09:24", "label": "The last ten seconds"},
+      {"time": "11:30", "label": "The part that stays"}
+    ],
+    "chapters_status": "estimated-from-script (timestamps derived from cumulative words ÷ 150 wpm; last chapter 11:30 inside script Estimated runtime 12:08) — re-time after render before publish",
+    "thumbnail": {
+      "primary": {
+        "text": "60 seconds",
+        "concept": "Submerged-cabin POV: water rising to chest height, the car interior dark except one hazard-orange dashboard clock glowing as the single anomaly. Deep indigo field, >=50% negative space (black water). No face, no gore. Delivers the countdown promise without restating the title."
+      },
+      "challengers": [
+        {
+          "text": "it floats first",
+          "concept": "Exterior stylized shot: a lone car silhouette tipping into black water, headlights still glowing beneath the surface as the anomaly, hazard-orange accent on the water line. Tests the counterintuitive float-phase angle (pairs with the 'When Your Car Sinks' title)."
+        },
+        {
+          "text": "the only exit",
+          "concept": "POV of a single hand on a half-open side window underwater, water pouring over the glass edge lit hazard-orange, deep indigo surround, heavy negative space. Tests the escape-route angle (pairs with the 'Here's Every Second' title)."
+        }
+      ]
+    },
+    "pinned_comment": "Everyone assumes they'd stay calm. Be honest — in that first 30 seconds while the car is still floating and the dash is still lit, what do you think you'd actually do?",
+    "ab_experiment": {
+      "eligible": true,
+      "dimension": "title_and_thumbnail",
+      "note": "YouTube Studio-only (Test & Compare, desktop, long-form). Data API v3 cannot submit this. Set up manually: pick title_primary+challengers and thumbnail primary+challengers."
+    }
+  },
+
+  "shorts": [
+    {
+      "file": "shorts/short-01.md",
+      "archetype": "Personal-stakes second-person / pattern-interrupt",
+      "status": "publish",
+      "title": "Your Car Just Hit the Water",
+      "description": "Sixty seconds. That's what the floating buys you. #Shorts #WhatIf #Survival",
+      "tags": ["sinking car", "car underwater", "what if", "survival", "cold water", "what happens to you"],
+      "hashtags": ["#Shorts", "#WhatIf", "#Survival"],
+      "category_id": "28",
+      "category_name": "Science & Technology",
+      "pinned_comment": "Full minute-by-minute breakdown: <long-form-url>",
+      "thumbnail_note": "first frame IS the thumbnail (universal.md §8/§11)"
+    },
+    {
+      "file": "shorts/short-02.md",
+      "archetype": "Counterintuitive claim / myth-bust",
+      "status": "publish",
+      "title": "The Door Won't Open — And It's Not the Lock",
+      "description": "It's the water pushing back with hundreds of pounds. #Shorts #WhatIf #Survival",
+      "tags": ["sinking car", "car door underwater", "water pressure", "what if", "survival", "escape sinking car"],
+      "hashtags": ["#Shorts", "#WhatIf", "#Survival"],
+      "category_id": "28",
+      "category_name": "Science & Technology",
+      "pinned_comment": "Full minute-by-minute breakdown: <long-form-url>",
+      "thumbnail_note": "first frame IS the thumbnail (universal.md §8/§11)"
+    },
+    {
+      "file": "shorts/short-03.md",
+      "archetype": "Single-mechanism reveal",
+      "status": "publish",
+      "title": "You Were Told This Backwards",
+      "description": "Don't wait for the car to fill. Here's why. #Shorts #WhatIf #Survival",
+      "tags": ["sinking car", "escape a sinking car", "survival myth", "what if", "cold water", "water safety"],
+      "hashtags": ["#Shorts", "#WhatIf", "#Survival"],
+      "category_id": "28",
+      "category_name": "Science & Technology",
+      "pinned_comment": "Full minute-by-minute breakdown: <long-form-url>",
+      "thumbnail_note": "first frame IS the thumbnail (universal.md §8/§11)"
+    },
+    {
+      "file": "shorts/short-04.md",
+      "archetype": "The Kill Zone countdown (order of operations)",
+      "status": "publish",
+      "title": "Belt. Window. Out. In That Order.",
+      "description": "The exact escape order — and why it matters. #Shorts #WhatIf #Survival",
+      "tags": ["sinking car", "escape a sinking car", "break car window underwater", "seatbelt", "what if", "survival"],
+      "hashtags": ["#Shorts", "#WhatIf", "#Survival"],
+      "category_id": "28",
+      "category_name": "Science & Technology",
+      "pinned_comment": "Full minute-by-minute breakdown: <long-form-url>",
+      "thumbnail_note": "first frame IS the thumbnail (universal.md §8/§11)"
+    },
+    {
+      "file": "shorts/short-05.md",
+      "archetype": "Curiosity-gap (teases the withheld peak)",
+      "status": "bench",
+      "title": "Nobody Talks About the Last 10 Seconds",
+      "description": "When the noise stops, the danger starts. #Shorts #WhatIf #Survival",
+      "tags": ["sinking car", "cold water survival", "what if", "survival", "morbid curiosity", "what happens to you"],
+      "hashtags": ["#Shorts", "#WhatIf", "#Survival"],
+      "category_id": "28",
+      "category_name": "Science & Technology",
+      "pinned_comment": "Full minute-by-minute breakdown: <long-form-url>",
+      "thumbnail_note": "first frame IS the thumbnail (universal.md §8/§11)"
+    }
+  ]
+}

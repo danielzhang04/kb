@@ -1,0 +1,78 @@
+{
+  "id": "GSkySDNmjV8",
+  "slug": "crayon-palantir",
+  "channel": "crayon",
+  "dur_s": 918,
+  "measured_dur_s": 918.2,
+  "transcript_source": "C:\\Users\\danie\\faceless-youtube\\channels\\the-second-take\\visual-kit\\research\\audio-logs\\_stems\\GSkySDNmjV8\\captions.en.vtt",
+  "transcript_segments": 375,
+  "confidence_contract": "reliable = load-bearing (sets dials); directional = low-confidence, never a dial (SFX+music tangled in the residual; beats are inferred).",
+  "reliable": {
+    "loudness": {
+      "lufs": -18.5,
+      "lra": 3.5,
+      "true_peak": 1.5
+    },
+    "speech": {
+      "n_regions": 374,
+      "speaking_s": 693.4,
+      "wpm": 193.0,
+      "words": 2231,
+      "gaps": {
+        "n": 373,
+        "median": 0.5,
+        "p25": 0.4,
+        "p75": 0.7
+      }
+    },
+    "music": {
+      "presence_pct": 71.7,
+      "dips": {
+        "n": 117,
+        "median_depth_db": 16.22,
+        "median_dur_s": 0.3
+      },
+      "ducking_depth_db": 3.1
+    },
+    "breath_by_acoustic_bucket": {
+      "short_percussive": {
+        "n": 255,
+        "n_with_pause": 84,
+        "pause_rate": 0.329,
+        "median_pause_when_paused": 0.6
+      },
+      "mid": {
+        "n": 105,
+        "n_with_pause": 40,
+        "pause_rate": 0.381,
+        "median_pause_when_paused": 0.5
+      },
+      "sustained_loud": {
+        "n": 19,
+        "n_with_pause": 8,
+        "pause_rate": 0.421,
+        "median_pause_when_paused": 0.8
+      }
+    }
+  },
+  "directional": {
+    "_note": "SFX and music hits are not separable in the demucs residual; onset-derived numbers are a proxy BAND. Beats are transcript-inferred + caption-quality-dependent: the 'act' count (>=2s caption gap) is noisy on auto-caption tracks and is NOT used; dip-alignment uses PUNCHLINES only. Never a dial.",
+    "onset_density_per_min": 24.77,
+    "onsets_n": 379,
+    "beats": {
+      "n": 375,
+      "kinds": {
+        "act": 275,
+        "punchline": 22,
+        "plain": 78
+      }
+    },
+    "dip_on_punchline": {
+      "dips_total": 117,
+      "punchlines": 22,
+      "dips_on_a_punchline": 10,
+      "punchlines_with_a_dip": 8
+    },
+    "clap_sfx_dist": null
+  }
+}

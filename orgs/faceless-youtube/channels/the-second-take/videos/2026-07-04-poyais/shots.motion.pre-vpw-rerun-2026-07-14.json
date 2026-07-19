@@ -1,0 +1,25 @@
+{
+  "video_slug": "2026-07-04-poyais",
+  "generated": "2026-07-12",
+  "_note": "motion-planner dogfood (L13 + L03 only — the layered shots). A full run passes the other 123 shots through as baked plate/passthrough (layers: []). Timid by default; these two fired the entrance-reveal and map-route rules.",
+  "shots": [
+    {
+      "id": "L13",
+      "background": {"mode": "plate", "plate_prompt": "A plain warm field with a single soft warm spotlight pooling center on the floor, calm and minimal — the empty stage of a character reveal. NO character, NO figure, NO props, NO text. (derived from L13 still_prompt minus the MacGregor figure.)"},
+      "layers": [
+        {"id": "macgregor", "source": "cutout",
+         "cutout_prompt": "MacGregor, full standing figure, front, in his pinned crimson hussar coat with gold frogging and his self-awarded gold order-star medal, on a plain plate for a clean matte.",
+         "animation": {"type": "slide", "from_edge": "left", "to": [0.5, 0.9], "dur_s": 1.8, "easing": "ease-out", "height_frac": 0.6}}
+      ]
+    },
+    {
+      "id": "L03",
+      "background": {"mode": "plate", "plate_prompt": "A flat stylized ocean map: a small Britain at the RIGHT edge, a glowing green Central-American coastline at the LEFT edge, a wide blue Atlantic between. Cool blue sea, warm glow at the destination. NO ship, NO dotted travel line, NO text. (derived from L03 still_prompt minus the ship and the route line.)"},
+      "layers": [
+        {"id": "ship", "source": "cutout",
+         "cutout_prompt": "a single tall-masted emigrant sailing ship, clean side profile, bow pointed LEFT/WEST, on a plain pale plate for a clean matte.",
+         "animation": {"type": "path", "points": [[0.83, 0.24], [0.52, 0.14], [0.12, 0.72]], "dur_s": 4.0, "draw_line": true, "height_frac": 0.18}}
+      ]
+    }
+  ]
+}

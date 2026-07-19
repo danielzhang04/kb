@@ -1,0 +1,51 @@
+# SFX attribution — paste CC-BY credits into the video description (CC0 needs none).
+
+boing-1: 'Boing 1' by magnuswaker — https://freesound.org/s/540788/
+boom-1: 'Sound Design Elements Impact SFX PS 020' by AudioPapkin — https://freesound.org/s/755057/
+boom-2: 'impact2.wav' by CJspellsfish — https://freesound.org/s/609571/
+buzzer-1: 'Wrong Answer' by -Andreas — https://freesound.org/s/648462/
+buzzer-2: 'acess denied buzz' by Jacco18 — https://freesound.org/s/419023/
+cash-1: 'Till With Bell.wav' by Benboncan — https://freesound.org/s/91924/
+collapse-1: 'building_collapse02_close.wav' by onteca — https://freesound.org/s/197772/ — CC-BY 3.0 (MUST credit in video description)
+crack-1: 'Wood Crack 4' by utsuru — https://freesound.org/s/183451/
+crack-2: 'rock hitting icy lake' by ultraaxvii — https://freesound.org/s/591152/ — CC0 (no credit required)
+crack-3: 'Crack 1.wav' by JustinBW — https://freesound.org/s/70108/ — CC-BY 4.0 (MUST credit in video description)
+ding-1: 'Correct.wav' by bwg2020 — https://freesound.org/s/456161/
+halo-1: 'Harp harpo orchestral key glissando pitch up positive ui interface.wav' by ryusa — https://freesound.org/s/531125/ — CC-BY 4.0 (MUST credit in video description)
+pop-1: 'Pop 5.ogg' by FourthWoods — https://freesound.org/s/439186/
+pop-2: 'Pop Sound' by ConarB13 — https://freesound.org/s/401542/
+pop-3: 'Bubble_Pop' by arttim — https://freesound.org/s/733264/
+powerdown-1: 'TV Shutdown' by LilMati — https://freesound.org/s/523553/
+record_scratch-1: 'record_scratch.wav' by ludvique — https://freesound.org/s/71853/
+riser-1: 'reverse fx 9.wav' by reathance — https://freesound.org/s/503799/
+sparkle-1: 'Small Bell #2' by steffcaffrey — https://freesound.org/s/452379/
+sparkle-2: 'Cliche Magic Spell Sound' by qubodup — https://freesound.org/s/817466/
+stamp-1: 'Stamp' by kermite607 — https://freesound.org/s/362624/
+sting-1: 'music game, dun 5.wav' by xtrgamr — https://freesound.org/s/244534/
+thud-1: 'PlopEnhanced.wav' by edschaefer — https://freesound.org/s/343097/
+thud-2: 'Plop_2(hi).wav' by MiSchy — https://freesound.org/s/369959/
+thud-3: 'Plop_1.wav' by MiSchy — https://freesound.org/s/369952/
+tick-1: 'Typewriter snippet 02' by cabled_mess — https://freesound.org/s/360602/
+tick-2: 'typewriter.wav' by BMacZero — https://freesound.org/s/160678/
+vanish-1: 'Poof in cloud' by Mateusz_Chenc — https://freesound.org/s/512217/
+whoosh-1: 'swoosh-2.mp3' by lesaucisson — https://freesound.org/s/585256/
+whoosh-2: 'Whoosh - Big stick - OS ST 1' by Sadiquecat — https://freesound.org/s/855704/
+womp-1: 'Sad Trombone.wav' by Benboncan — https://freesound.org/s/73581/
+
+# Music (CC-BY) — paste into the video description
+casual-bed-1: 'Mining by Moonlight' by Kevin MacLeod (incompetech.com) — https://incompetech.com/music/royalty-free/index.html — Licensed under Creative Commons: By Attribution 4.0
+sneaky-1: 'Sneaky Snitch' by Kevin MacLeod (incompetech.com) — https://incompetech.com/music/royalty-free/index.html — Licensed under Creative Commons: By Attribution 4.0
+sneaky-2: 'Scheming Weasel faster' by Kevin MacLeod (incompetech.com) — https://incompetech.com/music/royalty-free/index.html — Licensed under Creative Commons: By Attribution 4.0
+sneaky-3: 'Sneaky Adventure' by Kevin MacLeod (incompetech.com) — https://incompetech.com/music/royalty-free/index.html — Licensed under Creative Commons: By Attribution 4.0
+sneaky-4: 'Marty Gots a Plan' by Kevin MacLeod (incompetech.com) — https://incompetech.com/music/royalty-free/index.html — Licensed under Creative Commons: By Attribution 4.0
+sneaky-5: 'Investigations' by Kevin MacLeod (incompetech.com) — https://incompetech.com/music/royalty-free/index.html — Licensed under Creative Commons: By Attribution 4.0
+sneaky-6: 'Covert Affair' by Kevin MacLeod (incompetech.com) — https://incompetech.com/music/royalty-free/index.html — Licensed under Creative Commons: By Attribution 4.0
+upbeat-1: 'Monkeys Spinning Monkeys' by Kevin MacLeod (incompetech.com) — https://incompetech.com/music/royalty-free/index.html — Licensed under Creative Commons: By Attribution 4.0
+underscore-1: 'Crypto' by Kevin MacLeod (incompetech.com) — https://incompetech.com/music/royalty-free/index.html — Licensed under Creative Commons: By Attribution 4.0
+underscore-2: 'Deliberate Thought' by Kevin MacLeod (incompetech.com) — https://incompetech.com/music/royalty-free/index.html — Licensed under Creative Commons: By Attribution 4.0
+underscore-3: 'Comfortable Mystery 2' by Kevin MacLeod (incompetech.com) — https://incompetech.com/music/royalty-free/index.html — Licensed under Creative Commons: By Attribution 4.0
+underscore-4: 'Private Eye' by Kevin MacLeod (incompetech.com) — https://incompetech.com/music/royalty-free/index.html — Licensed under Creative Commons: By Attribution 4.0
+upbeat-2: 'Fig Leaf Times Two' by Kevin MacLeod (incompetech.com) — https://incompetech.com/music/royalty-free/index.html — Licensed under Creative Commons: By Attribution 4.0
+upbeat-3: 'Ascending the Vale' by Kevin MacLeod (incompetech.com) — https://incompetech.com/music/royalty-free/index.html — Licensed under Creative Commons: By Attribution 4.0
+upbeat-4: 'Cheery Monday' by Kevin MacLeod (incompetech.com) — https://incompetech.com/music/royalty-free/index.html — Licensed under Creative Commons: By Attribution 4.0
+somber-1: 'Meditation Impromptu 01' by Kevin MacLeod (incompetech.com) — https://incompetech.com/music/royalty-free/index.html — Licensed under Creative Commons: By Attribution 4.0

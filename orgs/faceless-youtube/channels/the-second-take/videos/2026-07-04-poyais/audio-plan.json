@@ -1,0 +1,292 @@
+{
+  "_doc": "R10 AUDIO proposal (staging; agent R10-audio, 2026-07-17) on top of R9. W02: upbeat-1 outgoing fade_out_s 3.0 (much longer, ends earlier) + incoming upbeat-4 uses the new 1.2 global fade-in. W03: 3-link halo chain -> ONE composite sustained ahh (halo_vocal_book-1, built from pre-R8 halo_vocal-1) scoped to L36 only, re-anchored to L36 opening. W04: five-star boom removed. W05: music_present_db 9->10 in tokens (not here). W12: card fade 1.2->2.5 + global music_fade_s.out 0.9->2.5, .in 0.5->1.2, track_switch_gap 0.8->1.2 in tokens (engine defaults). Also revert sfx_pools.halo_vocal to halo_vocal-1 in tokens. PLACEMENT only; human ear-gates FEEL. Prior R9 _doc preserved below:\n\nUnified audio plan (SFX / pause / music / dry) for 2026-07-04-poyais. R9 WS-D staged edit (exec agent D, 2026-07-17) on top of the R8 plan, applying Daniel's watch-through-4 rulings. PLACEMENT only; human ear-gates FEEL on the render. Anchors are verbatim VO n-grams (>=4 words for music from_anchor); the script was re-edited this round (Q08/Q14/Q25/Q27/Q29) but NONE of these cue anchors fall inside a replaced span. R9 CHANGES vs R8: Q05 jewellery cha-ching now rings INSIDE a 0.4s pause (in_pause) so a beat follows before 'There was just one problem' (cash-1 is 2.157s -> tail rings under the line; ear-gate the beat). Q06 new 0.8s pause after 'the prince of Poyais' (anchor 'And making things up was nothing new') for the arrow-spawn hold (E3 visual). Q11 halo_vocal now CHAINED x3 (fade_out_s 1.0) across the floating-book presentation L36+L37 ('a traveller's guide to Poyais' -> 'The book described' -> 'capital city called St Joseph'); the competing sparkle roll-up + its 1.5s hold at 'The book described' were REMOVED; the river-of-gold sparkle at 'the rivers ran with' (L41) is KEPT. Q13a five-star SFX changed ding -> boom + sync:element (matches the FICTION/SOLD slam family; boom is a consistent_sfx so it equals the stamp slam), lands on the E2 stars-slam element. Q15 removed the riser at 'the higher MacGregor pushed the price' (the 'roll-up' Daniel heard on 'nothing sells faster'). Q17 post-flag pause bumped 1.5 -> 1.9 (anchor 'A second ship, the Kennersley Castle'; stacks with the applause ring-out). Q20a removed the thud at 'that was one guy in a rented office' (the 'random whoosh'). Q12 music -2 dB handled in audio-tokens.json music_present_db 7->9 (NOT here). Q18 SPLIT the ~181s Cheery Monday block: upbeat-4 now ends at the new pt.2 card (fades out) and a FRESH sneaky bed 'Marty Gots a Plan' (sneaky-4) plays from the post-card shot 'He borrowed money in the name' (L64) to the existing Fig Leaf switch at 'In 1822...' (L73) -- ~31s, hands back cleanly, Fig Leaf onward unchanged. Q19+Q21 CARD MUSIC LAW: every interior card gets a music fade-out into it via fade_out_s on the OUTGOING music cue (card2<-upbeat-4#1, pt.2<-upbeat-4#2, card3<-Fig Leaf, card4<-underscore-1), silence during the card, the next bed enters on the first post-card shot. CONTRACT (agent B): fade_out_s on a MUSIC cue is NEW -- realizer must (a) fade that segment to silence over its last fade_out_s ending right before the co-located card pause, (b) keep silence through the card, (c) NOT coalesce a same-track resume across the card. Until B lands, build_audio ignores the key (graceful: no fade, no crash). card1 has no outgoing bed (cold open) so no fade. END CARD is EXEMPT (Monkeys carries the finale per R8-C; no next shot) -- FLAGGED for Daniel. Q30 card hold +0.6: all 5 card pauses 2.0 -> 2.6 (card screen-time == the co-located audio-plan pause per render-builder M3; hold_s in cards[] is fallback-only). Orchestrator/WS-C: do NOT also bump hold_s. Q26 human-cost dry pull-back RETIRED: both `dry` spans DELETED, music (underscore-1) runs through the entire back half; the comedic `buzzer` the dry span was suppressing at 'Then the rainy season came' was REMOVED too (comedy off on the deaths) -- the 0.8s somber beat there is KEPT. NEW pt.2 card pause + sneaky-4 must be mirrored in shots.motion cards[] (orchestrator). See visual-kit/audio-tokens.json for pools + dials.",
+  "cues": [
+    {
+      "kind": "sfx",
+      "anchor": "with a capital city",
+      "role": "pop",
+      "sync": "element"
+    },
+    {
+      "kind": "sfx",
+      "anchor": "a national bank",
+      "role": "pop",
+      "sync": "element"
+    },
+    {
+      "kind": "sfx",
+      "anchor": "its own money",
+      "role": "pop",
+      "sync": "element"
+    },
+    {
+      "kind": "sfx",
+      "anchor": "a cathedral, and a prince",
+      "role": "pop",
+      "sync": "element"
+    },
+    {
+      "kind": "sfx",
+      "anchor": "and a prince",
+      "role": "pop",
+      "sync": "element"
+    },
+    {
+      "kind": "sfx",
+      "anchor": "The whole thing was made up",
+      "role": "boom",
+      "sync": "element"
+    },
+    {
+      "kind": "pause",
+      "anchor": "So what happened",
+      "pause_s": 2.6
+    },
+    {
+      "kind": "music",
+      "from_anchor": "It all started with a soldier",
+      "mood": "upbeat",
+      "track": "upbeat-1",
+      "fade_out_s": 3.0
+    },
+    {
+      "kind": "pause",
+      "anchor": "There was just one problem",
+      "pause_s": 0.4
+    },
+    {
+      "kind": "sfx",
+      "anchor": "There was just one problem",
+      "role": "cash",
+      "in_pause": true
+    },
+    {
+      "kind": "sfx",
+      "anchor": "made himself the Cazique",
+      "role": "sparkle"
+    },
+    {
+      "kind": "pause",
+      "anchor": "And making things up was nothing new",
+      "pause_s": 0.8
+    },
+    {
+      "kind": "music",
+      "from_anchor": "And making things up was nothing new",
+      "mood": "upbeat",
+      "track": "upbeat-4",
+      "fade_out_s": 2.5
+    },
+    {
+      "kind": "sfx",
+      "anchor": "a knight",
+      "role": "boom"
+    },
+    {
+      "kind": "sfx",
+      "anchor": "a clan chief",
+      "role": "boom"
+    },
+    {
+      "kind": "pause",
+      "anchor": "So, to sell his country",
+      "pause_s": 2.6
+    },
+    {
+      "kind": "music",
+      "from_anchor": "So, to sell his country",
+      "mood": "upbeat",
+      "track": "upbeat-4",
+      "fade_out_s": 2.5
+    },
+    {
+      "kind": "sfx",
+      "anchor": "to write a three-hundred-and-fifty-page book",
+      "role": "halo_vocal",
+      "variant": "halo_vocal_book-1",
+      "fade_out_s": 0.6
+    },
+    {
+      "kind": "sfx",
+      "anchor": "the rivers ran with",
+      "role": "sparkle",
+      "variant": "sparkle-2"
+    },
+    {
+      "kind": "sfx",
+      "anchor": "like Poyais itself, didn't exist",
+      "role": "boom"
+    },
+    {
+      "kind": "sfx",
+      "anchor": "around five hundred people",
+      "role": "tick"
+    },
+    {
+      "kind": "sfx",
+      "anchor": "Did I mention he'd made a flag",
+      "role": "ding"
+    },
+    {
+      "kind": "pause",
+      "anchor": "A second ship, the Kennersley Castle",
+      "pause_s": 1.9
+    },
+    {
+      "kind": "sfx",
+      "anchor": "A second ship, the Kennersley Castle",
+      "role": "applause",
+      "in_pause": true,
+      "fade_out_s": 0.9
+    },
+    {
+      "kind": "sfx",
+      "anchor": "so they'd have local money",
+      "role": "cash",
+      "sync": "element"
+    },
+    {
+      "kind": "pause",
+      "anchor": "He borrowed money in the name",
+      "pause_s": 2.6
+    },
+    {
+      "kind": "music",
+      "from_anchor": "He borrowed money in the name",
+      "mood": "sneaky",
+      "track": "sneaky-4"
+    },
+    {
+      "kind": "sfx",
+      "anchor": "He issued official government bonds",
+      "role": "cash",
+      "sync": "element"
+    },
+    {
+      "kind": "sfx",
+      "anchor": "And it sold",
+      "role": "boom",
+      "sync": "element"
+    },
+    {
+      "kind": "music",
+      "from_anchor": "In 1822, London had completely lost its mind",
+      "mood": "upbeat",
+      "track": "upbeat-2",
+      "fade_out_s": 2.5
+    },
+    {
+      "kind": "sfx",
+      "anchor": "Colombia, Peru, Chile",
+      "role": "pop",
+      "sync": "element"
+    },
+    {
+      "kind": "sfx",
+      "anchor": "Peru, Chile, showed up",
+      "role": "pop",
+      "sync": "element"
+    },
+    {
+      "kind": "sfx",
+      "anchor": "Chile, showed up in",
+      "role": "pop",
+      "sync": "element"
+    },
+    {
+      "kind": "sfx",
+      "anchor": "Everybody wanted in",
+      "role": "halo_vocal",
+      "fade_out_s": 0.8
+    },
+    {
+      "kind": "music",
+      "from_anchor": "The new Latin American bonds collapsed altogether",
+      "mood": "underscore",
+      "track": "underscore-1",
+      "fade_out_s": 2.5
+    },
+    {
+      "kind": "sfx",
+      "anchor": "cracked the new",
+      "role": "crack"
+    },
+    {
+      "kind": "pause",
+      "anchor": "The new Latin American bonds",
+      "pause_s": 2.6
+    },
+    {
+      "kind": "sfx",
+      "anchor": "Poyais went down with",
+      "role": "collapse"
+    },
+    {
+      "kind": "sfx",
+      "anchor": "But by that time, two ships",
+      "role": "whoosh",
+      "sync": "element"
+    },
+    {
+      "kind": "sfx",
+      "anchor": "No city, no port",
+      "role": "pop",
+      "sync": "element"
+    },
+    {
+      "kind": "sfx",
+      "anchor": "no port, no cathedral",
+      "role": "pop",
+      "sync": "element"
+    },
+    {
+      "kind": "sfx",
+      "anchor": "no cathedral. Just an empty",
+      "role": "pop",
+      "sync": "element"
+    },
+    {
+      "kind": "pause",
+      "anchor": "Then the rainy season came",
+      "pause_s": 0.8
+    },
+    {
+      "kind": "sfx",
+      "anchor": "and insisting MacGregor himself",
+      "role": "halo_vocal",
+      "fade_out_s": 0.8
+    },
+    {
+      "kind": "sfx",
+      "anchor": "was already long gone",
+      "role": "vanish"
+    },
+    {
+      "kind": "pause",
+      "anchor": "After the news broke in London",
+      "pause_s": 2.6
+    },
+    {
+      "kind": "music",
+      "from_anchor": "After the news broke",
+      "mood": "upbeat",
+      "track": "upbeat-1"
+    },
+    {
+      "kind": "pause",
+      "anchor": "And in Paris",
+      "pause_s": 0.5
+    },
+    {
+      "kind": "sfx",
+      "anchor": "Then he moved to Venezuela",
+      "role": "whoosh",
+      "sync": "element"
+    },
+    {
+      "kind": "pause",
+      "anchor": "But the guidebook is still here",
+      "pause_s": 1.0
+    }
+  ]
+}

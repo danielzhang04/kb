@@ -1,0 +1,95 @@
+# Pipeline skills (project-scoped)
+
+These are the faceless-YouTube pipeline skills. They live here (not in the global `~/.claude/skills/`)
+so they are versioned with this repo and inherited by subagents and scheduled tasks running in this
+project. Names are unique to this project to avoid shadowing global skills.
+
+## Design rules (every skill)
+
+*The craft of building skills here. `knowledge/operating-law.md` §B routes to this section; the law
+holds the principle, this holds the method.*
+
+**Reads a file, writes a file.** No skill holds state in the conversation. This keeps the pipeline
+debuggable, resumable from any step, and provider-swappable.
+
+**Prove, then register, then emit.** A NEW capability lands in the shared cross-skill contract (the
+menu/schema both sides read) **before** any producer emits it — proven on one real artifact first. An
+unregistered capability is how planner, producer, and engine drift apart.
+
+**Derived fields are never generation targets.** QA/coverage metadata **must be** derived by a
+lint/post-step, never hand-authored, and the skill doc must **say so explicitly** — the declaration is
+what stops the generator reading it as a brief. It must never change how the generator conceives its
+**unit of work**: a coverage fact read as a creative brief makes it cram. An over-large unit signals
+**densify** (add a unit), never widen one unit's scope. Any authoring change shipping alongside stays
+**minimal and pure-accuracy** — about *correctness*, never scope.
+
+### Fixing a taste/quality defect — not with more rules
+
+Detection and generation share one taste, so prohibitions self-checked by the same model share its
+blind spot — this cost a full scriptwriter rebuild. **Trigger: 3+ failed fixes → question the
+architecture** (`superpowers:systematic-debugging`). Design with `superpowers:brainstorming`, build
+with `skill-creator`. Five moves, each its own gate:
+
+1. **Gold exemplar** — one artifact the skill imitates, **hand-perfected WITH the human**, never
+   self-minted, **density calibrated to the true ideal**: an exemplar teaches its own dimensions, so
+   an uncalibrated one teaches the wrong target.
+2. **Positive/mechanical checks** replace prohibitions ("end every paragraph on a fact or action"
+   beats "don't write flat summary endings") — prohibitions reliably kill only *mechanically
+   detectable* violations (em-dashes, banned phrases), never subjective ones.
+3. **Invert the generation ORDER** when a later constraint flattens an earlier quality — visible when
+   output goes flat right after the constraint pass. Generate the fragile quality first, constrain
+   second.
+4. **Fresh-eyes critic layer** in a separate context — fan out **single-mandate, flag-only** critics,
+   then **one editor applies fixes in voice**, then re-lint. Subtractive, and **calibrated against
+   over-cutting**: it must preserve what makes the artifact good, not merely delete violations.
+5. **Validate blind** — regen from inputs alone (dogfooding proves it runs; blind regen proves the
+   skill carries the quality without you), expecting a small human-caught residual. **Then collapse
+   the prohibitions the exemplar now carries** — a superseded mechanism left in place means the skill
+   accretes instead of improving.
+
+**Division of labor: the exemplar teaches the target; the critic layer ENFORCES it.** Not co-equal —
+shipping the exemplar without the critic layer fails by construction.
+
+## Built
+
+| Skill | Role | Reads | Writes |
+| --- | --- | --- | --- |
+| `idea-generator` | Differentiated, ranked idea briefs (strategy + per-video modes); long-form primary → derived shorts bench; originality guardrail; predicted-performance scoring. **Reads the `dna.md` Pipeline block:** `topic_scouting: live` → live topic-scouting every run; `research: deep` → long-form briefs emit *provisional angle + payload promise + key-questions* (the researcher's seed) and route picked ideas to `researcher`. | `dna.md`, `performance.md`, `idea-backlog.md`, `videos/`, `research/niches.md`, `niche-playbooks/universal.md` + `<niche>.md` | `idea-backlog.md` |
+| `researcher` *(deep path only — `research: deep`)* | Turns a **picked** idea into a sourced, verified research dossier. Directs the native `deep-research` skill with a focused plan (chase/ignore lists, source-quality bar), then reduces findings to a **fact ledger** (every claim → source + date + confidence + ID) + narrative spine + indict-analogies + myths + withheld fine-print + gaps. The scriptwriter is **leashed to this ledger** (may state only what's in it) — YMYL accuracy + defamation discipline baked in. Runs after the human idea gate, before `long-form-writer`. | picked brief in `idea-backlog.md`, `dna.md`, `niche-playbooks/universal.md` + `<niche>.md`, `references/research-contract.md`; invokes `deep-research` | `videos/<slug>/research.md` (idea stays `picked`; completion = file present) |
+| `long-form-writer` | From a picked idea (+ `research.md` on deep channels) → the **long-form** VO `script.md` with `[B-ROLL]`/pause cues. **Staged writers-room** (outline → section-by-section drafts → accuracy/quality **editor pass** → humanize) on `long_form: staged`; single strong pass on `single`. **Leashed to the fact-ledger** on research channels (states only sourced facts). Bakes anti-AI-tell + cadence craft; runs `humanizer`; enforces niche accuracy/defamation gates. | picked brief in `idea-backlog.md`, `videos/<slug>/research.md` (if present), `dna.md` (Pipeline + register/persona/humor), `niche-playbooks/universal.md` + `<niche>.md`, `playbook.md` | `videos/<slug>/script.md` + `brief.md`; sets idea `scripted` |
+| `shorts-writer` | From the **finished** `script.md` (+ `research.md`) → the self-contained **short** bench `shorts/short-NN.md` (closed-loop `hook→context→payoff→loop`, not teasers), sized to the niche cadence band, `publish`/`bench` tagged; same leash + cadence craft; runs `humanizer`. | `videos/<slug>/script.md`, `research.md` (if present), `brief.md`, `dna.md`, `niche-playbooks/universal.md` + `<niche>.md`, `shorts-clipping.md` | `videos/<slug>/shorts/short-NN.md` (idea stays `scripted`) |
+<!-- `scriptwriter` was the original combined long-form+shorts writer; split by format into
+`long-form-writer` + `shorts-writer` (above) and DELETED on 2026-07-03 after faithful migration.
+Recover from git history (commit before bc5a983's successor) if ever needed. -->
+
+| `metadata-writer` | Scripted video → upload-ready metadata for long-form + every short: title (primary + 2 Studio-only A/B challengers) + description + tags + hashtags + chapters (estimated) + thumbnail concepts + pinned comment. Doctrine-grounded (`universal.md §3/§8`), policy-safe (private + AI disclosure). One primary title/thumbnail = the API contract (native A/B is Studio-only, not in the Data API). | `videos/<slug>/script.md` + `shorts/`, `brief.md`, `dna.md`, `niche-playbooks/universal.md` + `<niche>.md`, `playbook.md`, `references/metadata-schema.md` | `videos/<slug>/metadata.json` (idea-backlog stays `scripted`; completion = file present) |
+| `visual-prompt-writer` | Scripted video → complete render-ready visual plan: long-form B-roll shot list (densified to the §10 cadence; Σ durations ≈ VO runtime), thumbnail gen-prompts (from metadata concepts, §8), and every short's first-frame + shot list. Each shot carries a `still_prompt` (the image-generation input); the camera is always locked and audio is authored separately by `audio-director`. Fixed `beat` vocab; niche imagery gates enforced (analysis-not-gore etc.). | `videos/<slug>/script.md` (`[B-ROLL]` cues), `metadata.json` (thumbnail concepts), `shorts/`, `dna.md`, `niche-playbooks/universal.md` + `<niche>.md`, `playbook.md`, `references/shots-schema.md` | `videos/<slug>/shots.json` (idea-backlog stays `scripted`; completion = file present) |
+| `motion-planner` | Storyboarded video → the derived **`shots.motion.json`** element-layer motion plan: per shot a background (baked `plate` / passthrough `delta-chain`) + animated cutout/engine **layers** (character `slide`, ship `path`, stamp `appear`, diegetic text engine-drawn). **Timid by default** (most shots passthrough); a layer only where an iterable rule fires. Decomposes layered shots BY SUBTRACTION (plate = still_prompt minus the moved elements). Flow: rule-classify → subtract-decompose → fresh-eyes critic (leaked-element/over-animation) → one revise → `lint_motion_plan.py` hard gate → **human gate before gen tokens**. Authors PLACEMENT; human gates FEEL. Runs after `visual-prompt-writer`, before `image-generation`. | `videos/<slug>/shots.json`, `references/animation-rules.md`, `render-builder/references/{shots-motion-schema,animation-menu}.md` | `videos/<slug>/shots.motion.json` (optional; absent = all shots baked/passthrough) |
+| `voiceover` | Scripted video → narration audio. Strips `[B-ROLL]`/`[PAUSE]`/beat-headers/Sources tail, reads the channel's **Voiceover-config block** in `dna.md`, calls **ElevenLabs** (`/with-timestamps`) via raw HTTP (stdlib `urllib`, no pip dep), chunks long scripts + stitches with prosody continuity, voices long-form + every `publish` short (bench skipped). Writes a QA transcript + a **manifest** (exact audio durations + per-word `word_timings`) that render-builder syncs shots to. Deterministic engine = `scripts/voiceover.py`; always `--dry-run` first (zero quota). | `videos/<slug>/script.md` + `shorts/*.md`, `dna.md` (voice block), `.env` (`ELEVENLABS_API_KEY`) | `videos/<slug>/assets/vo.mp3` + `shorts/short-NN.mp3` + `*.txt` transcripts + `voiceover.manifest.json` (idea-backlog stays `scripted`) |
+| `audio-director` | Storyboarded video → the ONE unified **`audio-plan.json`** (SFX · pause · music · dry) — merges the retired `audio-cue-writer` + `music-cue-writer` into one authoring skill. Places SFX hits (money→cash, pivot→record-scratch+in_pause, the reveal punch), deliberate pauses, music-bed moods (few switches, let one run), and `dry` pull-backs on human cost; structural sounds (whoosh/boom) placed BY JUDGMENT, not on every instance. Grounded in `shots.json` + `script.md` + the measured grammar (`references/grammar-guidance.md` ← `universal.md §13a-iii.8`). Flow: timid draft → fresh-eyes critic → one revise → `lint_audio_plan.py` hard gate. Authors PLACEMENT; the human ear-gates FEEL. Runs after `visual-prompt-writer`/`motion-planner`, ∥ `voiceover`, before `render-builder`. | `videos/<slug>/shots.json` + `script.md`, `dna.md`, `visual-kit/audio-tokens.json` (`sfx_pools`/`music_pools`), `render-builder/references/audio-plan-schema.md` | `videos/<slug>/audio-plan.json` (optional; absent = default bed, no SFX) |
+| `render-builder` | Scripted+voiced+storyboarded+**imaged** video → finished **MP4** via the **local Remotion motion engine** (the only render engine), for long-form + every `publish` short. `scripts/build_motion.py` re-times shots to the real VO (per-line sync from `word_timings`), derives a per-piece **`motion.json`** (stages share one camera arc — held-set grammar; chart/stock shots → visible placeholder cards; missing ai-gen scene = hard error), then `engine/` renders it: spring camera + idle baseline (no dead frames), word-anchored T2 device overlays (stat card/counter/reveal — real type as code), word-highlight captions from our own timings, hard cuts only, channel look from `visual-kit/motion-tokens.json`. ~1.5× faster than realtime, zero API cost, no watermark. `--dry-run` derives specs without rendering (SOP). | `videos/<slug>/shots.json`, `assets/scenes/` (+ manifest), `assets/voiceover.manifest.json` + the VO mp3s, `visual-kit/motion-tokens.json` | `videos/<slug>/assets/motion/<piece>.motion.json` + `assets/final.mp4` + `shorts/short-NN.mp4` + `render.manifest.json` (`render_engine: remotion`, `watermark: false`; status → `produced`) |
+| `image-generation` | Storyboarded video → ALL its verified on-style PNGs, in **two passes**: **pass 1** derives the video's recurring-asset library from `shots.json` (characters/props/plates materialized once, reuse-before-regenerate against the channel registry); **pass 2** assembles every scene generation-based from that library (technique menu: reuse / multi-seed composition / plate-then-place / one-shot). Two gates on every frame: the style-bible rig gate + a fresh-eyes scene-taste gate. Also the one-off mode (new expression/pose/prop/cast, "iterate on this frame"). Deterministic engine = `scripts/forge.py` (seed-from-reference, per-call flash/pro model tier). Scene outputs feed `render-builder`'s **scenes mode** directly (auto-detected via the manifest). | `videos/<slug>/shots.json` + `script.md`, `visual-kit/style-bible.md`, `visual-kit/registry/registry.json` + `refs/`, `.env` (`GEMINI_API_KEY`) | `videos/<slug>/assets/library/` + `assets/scenes/` (+ manifests); channel-recurring assets promoted into `visual-kit/registry/` + `refs/` |
+
+| `proxy-judge` *(gate — after `humanize`)* | Fresh-context **acceptance gate** = "proxy-me." Stands where the human stands and renders their **accept/revise/reject** verdict on the finished `script.md` + a `/36` score + ranked **substantive** redirects. Reuses the channel `storytelling-grammar` (§0 gold) + `watchability-rubric` + a per-facet **calibration answer key** (the human's labeled judgments: gold + §5 bank + git-history + a transcript dig); **consumes** the leash critic's accuracy findings (never re-fact-checks); imitates content preferences, **not voice**. `advisory` (pre-screen) or `blocking` (gate). v1 = `story` facet; harness is facet-agnostic (idea/art reuse it). **Zero taste-pack writes.** Added gate — leaves `long-form-writer` Step 3d untouched. | `videos/<slug>/script.md`, `storytelling-grammar.md` §0, `watchability-rubric.md`, `knowledge/proxy-me/<facet>/calibration-set.md` (TRAINING only), `leash-findings.md` | `videos/<slug>/judge-verdict.md` |
+
+## Utility skills (not pipeline stages)
+
+| Skill | Role | Reads | Writes |
+| --- | --- | --- | --- |
+| `curate-doc` | Restructures a drifted doc/skill/file (append-drift, contradictions, orphaned examples, duplication) into a concise, structured, comprehensive form **without losing information** — the enforcement arm of `knowledge/operating-law.md` §F-docs (integrate-don't-append). Niche-agnostic; invoke on any rotted file. | the target file(s) | the same file(s), restructured |
+| `music-forge` | Sources casual-comedic CC-BY music beds (Incompetech / manual YouTube-Audio-Library drops) by mood bucket (`casual-bed`/`upbeat`/`sneaky`), objectively vets (loop-ability/loudness/duration), CLAP-ranks, publishes an audition board, and wires the human-picked finalists into `music_pools`. Same shape as `sfx-forge` (reuses its vet/rank); the human ear-gates the pick, twice (isolated audition + in-context Phase-3B render). Niche-agnostic; a library-build step, not a per-video one. | `music-buckets.json`, `visual-kit/audio/incoming/<bucket>/`, `universal.md §13a-iii.8` | `visual-kit/audio/beds/`, `audio-tokens.json` (`music_pools`), `audio/manifest.json` (credits) |
+
+## Skills to build
+
+| Skill | Role | Reads | Writes |
+| --- | --- | --- | --- |
+| `content-manager` | Orchestrator; loops channels, calls sub-skills in order, retries, writes run report | channel configs | `logs/` run report |
+| `compliance-check` | Pre-publish originality + policy guardrail (+ human gate; reads `render.manifest.json` for the quality gate) | video, `render.manifest.json`, `playbook.md` | gate verdict |
+| `publish-queue` | Upload payload + schedule via YouTube Data API (after gate) | metadata, MP4 | publish record |
+| `analytics-reporter` | Pull metrics, write digest, append to performance log | YouTube Analytics | `performance.md`, Sheet |
+| `visual-generator` *(optional — motion clips only)* | `shots.json` prompts → best-in-class motion clips (Kling 3.0 / Veo) + optional stock, for niches that need real motion B-roll beyond the still-based Remotion engine; only build if the still pipeline misses the quality bar | `shots.json`, `dna.md` | `videos/<id>/assets/clips/` |
+| `packaging-optimizer` *(optional — future)* | Adversarial review panel that scores + refines the title/thumbnail package (CTR critic / title↔retention-match critic / lever-fit critic / originality critic). **Drop-in: reads and writes the same `metadata.json`, no rewrite.** Two natural insertion points: right after `metadata-writer`, or as a pre-publish "review everything" gate before `compliance-check`. Build only when the single-pass metadata quality bar is proven and worth exceeding. | `videos/<id>/metadata.json`, `script.md`, `dna.md`, playbooks | `videos/<id>/metadata.json` (re-ranked/refined) |
+
+Build order and reasoning: `index.html` §6 and `knowledge/` files. Build these only after a niche is
+chosen/validated. **Visuals: `image-generation` produces the verified stills and the Remotion engine
+(`render-builder`) assembles them — see `knowledge/research/tools.md`.**

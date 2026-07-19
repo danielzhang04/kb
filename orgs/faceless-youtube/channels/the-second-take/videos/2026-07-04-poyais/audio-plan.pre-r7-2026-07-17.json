@@ -1,0 +1,69 @@
+{
+  "_doc": "Unified audio plan (SFX / pause / music / dry) for 2026-07-04-poyais. R6 re-author (audio-director, 2026-07-17) per Daniel's watch-through notes + locked music Option A. PLACEMENT only; human ear-gates FEEL on the render. Music: NO bed in the cold open (0-~27s dry per N07); `underscore` con-spine from 'It all started with a soldier named'; ONE `upbeat` mania lift at 1822 London; back to `underscore` on the collapse; dry pull-backs on the human-cost + elegiac beats; button ends on `somber` (never back to the con bed). SFX densified to ~4.6/min (N18) with pops on the paradise/absence chains, stamp-slam booms on FICTION/FAKE/SOLD, and the named one-offs. Human-cost act stays dry + SFX-withheld. See visual-kit/audio-tokens.json for pools + dials. NOTE for orchestrator: two variant-selection dependencies that audio-plan.json cannot express (mood-only) are flagged in exec-audio-replan.md §Blockers (upbeat pool must resolve to Fig Leaf, not Monkeys; boom should be added to consistent_sfx so all four stamp-slams are the same variant).",
+  "cues": [
+    { "kind": "sfx", "anchor": "sailed across the Atlantic", "role": "whoosh", "sync": "element" },
+
+    { "kind": "sfx", "anchor": "with a capital city", "role": "pop", "sync": "element" },
+    { "kind": "sfx", "anchor": "a national bank", "role": "pop", "sync": "element" },
+    { "kind": "sfx", "anchor": "its own money", "role": "pop", "sync": "element" },
+    { "kind": "sfx", "anchor": "a cathedral, and a prince", "role": "pop", "sync": "element" },
+    { "kind": "sfx", "anchor": "and a prince", "role": "pop", "sync": "element" },
+
+    { "kind": "sfx", "anchor": "The whole thing was made up", "role": "boom", "sync": "element" },
+    { "kind": "sfx", "anchor": "And more than half of the people", "role": "record_scratch", "pause_s": 0.9, "in_pause": true },
+
+    { "kind": "music", "from_anchor": "It all started with a soldier", "mood": "underscore" },
+    { "kind": "sfx", "anchor": "It all started with a soldier", "role": "sting", "pause_s": 0.8 },
+
+    { "kind": "sfx", "anchor": "some rum and some jewellery", "role": "cash", "sync": "element" },
+    { "kind": "pause", "anchor": "There was just one problem with the eight", "pause_s": 0.9 },
+
+    { "kind": "sfx", "anchor": "made himself the Cazique", "role": "sparkle" },
+
+    { "kind": "sfx", "anchor": "a knight", "role": "boom" },
+    { "kind": "sfx", "anchor": "a clan chief", "role": "boom" },
+
+    { "kind": "sfx", "anchor": "a traveller's guide to Poyais", "role": "thud", "sync": "element" },
+    { "kind": "sfx", "anchor": "the rivers ran with", "role": "sparkle" },
+    { "kind": "sfx", "anchor": "The ultimate five-star experience", "role": "ding" },
+
+    { "kind": "sfx", "anchor": "He was invented by MacGregor", "role": "womp", "pause_s": 0.9, "in_pause": true },
+
+    { "kind": "sfx", "anchor": "the higher MacGregor pushed the price", "role": "riser" },
+    { "kind": "sfx", "anchor": "around five hundred people", "role": "tick" },
+
+    { "kind": "sfx", "anchor": "the first ship, the Honduras Packet", "role": "whoosh", "sync": "element" },
+    { "kind": "sfx", "anchor": "Did I mention he'd made a flag", "role": "ding" },
+    { "kind": "pause", "anchor": "A second ship, the Kennersley Castle", "pause_s": 0.8 },
+    { "kind": "sfx", "anchor": "so they'd have local money", "role": "cash", "sync": "element" },
+
+    { "kind": "sfx", "anchor": "He issued official government bonds", "role": "cash", "sync": "element" },
+    { "kind": "sfx", "anchor": "that was one guy in a rented office", "role": "thud" },
+    { "kind": "sfx", "anchor": "And it sold", "role": "boom", "sync": "element" },
+    { "kind": "pause", "anchor": "It traded on the floor", "pause_s": 0.6 },
+
+    { "kind": "music", "from_anchor": "In 1822, London had completely lost its mind", "mood": "upbeat" },
+    { "kind": "sfx", "anchor": "Colombia, Peru, Chile", "role": "pop", "sync": "element" },
+    { "kind": "sfx", "anchor": "Money poured in faster", "role": "riser" },
+
+    { "kind": "music", "from_anchor": "The bond kept selling for months", "mood": "underscore" },
+    { "kind": "sfx", "anchor": "cracked the new", "role": "crack" },
+    { "kind": "sfx", "anchor": "Poyais went down with", "role": "collapse" },
+
+    { "kind": "sfx", "anchor": "But by that time, two ships", "role": "whoosh", "sync": "element" },
+    { "kind": "sfx", "anchor": "No city, no port", "role": "pop", "sync": "element" },
+    { "kind": "sfx", "anchor": "no port, no cathedral", "role": "pop", "sync": "element" },
+    { "kind": "sfx", "anchor": "no cathedral. Just an empty", "role": "pop", "sync": "element" },
+
+    { "kind": "dry", "from_anchor": "Then the rainy season came", "to_anchor": "So how did any of them" },
+    { "kind": "dry", "from_anchor": "But most of them were half-dead", "to_anchor": "And when the survivors finally got" },
+
+    { "kind": "sfx", "anchor": "treated worse than any", "role": "halo" },
+    { "kind": "sfx", "anchor": "was already long gone", "role": "vanish" },
+    { "kind": "pause", "anchor": "And they let him walk", "pause_s": 0.8 },
+    { "kind": "sfx", "anchor": "Then he moved to Venezuela", "role": "whoosh", "sync": "element" },
+
+    { "kind": "dry", "from_anchor": "The people who believed in Poyais", "to_anchor": "But the guidebook is still here" },
+    { "kind": "music", "from_anchor": "But the guidebook is still here", "mood": "somber" }
+  ]
+}

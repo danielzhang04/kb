@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>The Second Take — Production Pipeline</title>
+<style>
+  :root{
+    --bg:#07070a; --ink:#f5f3ee; --mute:#8c8c95; --faint:#3d3d47;
+    --line:rgba(245,243,238,.42); --line-dim:rgba(245,243,238,.13);
+    --plan:#7c7c86; --lib:#6f93a6; --ext:#5fbb9c; --tech:#b49ce2; --file:#d4c49f;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:radial-gradient(130% 100% at 50% -10%, #12121a 0%, #0a0a10 46%, #060609 100%) fixed;}
+  body{display:flex;flex-direction:column;height:100vh;overflow:hidden;}
+
+  header{padding:22px 34px 12px;flex-shrink:0;z-index:5;}
+  .eyebrow{font-size:10px;letter-spacing:3px;text-transform:uppercase;color:var(--file);font-weight:700;opacity:.85;margin-bottom:6px;}
+  h1{font-size:20px;font-weight:650;letter-spacing:.2px;margin:0;}
+  .sub{color:var(--mute);font-size:12.5px;margin-top:6px;max-width:840px;line-height:1.55;}
+  .toprow{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap;margin-top:16px;}
+  .legend{display:flex;gap:18px;flex-wrap:wrap;font-size:10.5px;color:var(--mute);letter-spacing:.4px;text-transform:uppercase;}
+  .legend span{display:inline-flex;align-items:center;gap:7px;transition:opacity .4s ease;}
+  .lg{width:11px;height:11px;border-radius:50%;flex-shrink:0;}
+  .lg.skill{background:var(--ink);box-shadow:0 0 8px 1px rgba(245,243,238,.55);}
+  .lg.plan{background:transparent;border:1.5px dashed var(--plan);}
+  .lg.lib{width:9px;height:9px;background:var(--lib);}
+  .lg.file{width:13px;height:9px;border-radius:2px;background:transparent;border:1px solid rgba(212,196,159,.75);}
+  .lg.tool{width:14px;height:9px;border-radius:20px;border:1px solid var(--line-dim);background:rgba(255,255,255,.05);}
+
+  .modes{display:inline-flex;border:1px solid var(--line-dim);border-radius:9px;overflow:hidden;flex-shrink:0;background:rgba(255,255,255,.02);}
+  .mode-btn{background:transparent;color:var(--mute);border:0;padding:8px 18px;font:inherit;font-size:11.5px;font-weight:600;letter-spacing:.3px;cursor:pointer;transition:background .18s,color .18s;}
+  .mode-btn small{display:block;font-size:8.5px;font-weight:500;letter-spacing:.6px;text-transform:uppercase;opacity:.65;margin-top:2px;}
+  .mode-btn+.mode-btn{border-left:1px solid var(--line-dim);}
+  .mode-btn.active{background:var(--ink);color:#0a0a10;}
+  .mode-btn:focus-visible{outline:2px solid var(--tech);outline-offset:2px;}
+
+  .scroll{flex:1;overflow:auto;cursor:grab;user-select:none;-webkit-user-select:none;scrollbar-width:none;-ms-overflow-style:none;}
+  .scroll::-webkit-scrollbar{width:0;height:0;display:none;}
+  .scroll.grabbing,.scroll.grabbing *{cursor:grabbing !important;}
+
+  .stage{position:relative;overflow:hidden;}
+  .canvas{position:relative;transform-origin:0 0;
+    background-image:radial-gradient(circle, rgba(245,243,238,.045) 1px, transparent 1.5px);
+    background-size:27px 27px;background-position:12px 12px;}
+  svg.edges{position:absolute;inset:0;pointer-events:none;overflow:visible;}
+  .lane-label{position:absolute;left:14px;font-size:9.5px;letter-spacing:1.6px;text-transform:uppercase;
+    color:var(--faint);transform:translateY(-50%);white-space:nowrap;font-weight:700;transition:opacity .4s ease, top .6s cubic-bezier(.2,.7,.2,1);}
+  .divider{position:absolute;height:1px;pointer-events:none;opacity:0;transition:opacity .5s ease, top .6s cubic-bezier(.2,.7,.2,1);
+    background:linear-gradient(90deg, transparent, rgba(245,243,238,.11) 12%, rgba(245,243,238,.11) 88%, transparent);}
+  body.adv .divider{opacity:1;}
+
+  @keyframes march{to{stroke-dashoffset:-16;}}
+  .e-read{animation:march 1.15s linear infinite;}
+  @media (prefers-reduced-motion: reduce){ .e-read{animation:none;} }
+
+  .node{position:absolute;text-align:center;}
+  .dot{width:14px;height:14px;border-radius:50%;margin:0 auto;background:var(--ink);
+    box-shadow:0 0 0 3px var(--bg), 0 0 0 4px rgba(245,243,238,.14), 0 0 13px 2px rgba(245,243,238,.4);
+    transition:transform .14s ease, box-shadow .14s ease;}
+  .node:hover .dot{transform:scale(1.32);box-shadow:0 0 0 3px var(--bg),0 0 0 4px rgba(245,243,238,.3),0 0 18px 5px rgba(245,243,238,.7);}
+  .node.planned .dot{background:transparent;border:2px dashed var(--plan);box-shadow:0 0 0 3px var(--bg);opacity:.8;}
+  .node.planned:hover .dot{transform:scale(1.22);}
+  .node.lib .dot{width:12px;height:12px;background:var(--lib);box-shadow:0 0 0 3px var(--bg),0 0 10px 1px rgba(111,147,166,.5);}
+
+  .cap{margin-top:12px;}
+  .name{font-size:12.5px;font-weight:600;letter-spacing:.15px;white-space:nowrap;}
+  .node.lib .name{font-size:11px;color:#accbd6;}
+  .node.planned .name{color:#b9b9c0;}
+  .one{font-size:10.5px;color:var(--mute);margin-top:3px;max-width:138px;line-height:1.36;margin-left:auto;margin-right:auto;}
+  .node.lib .one{font-size:9.5px;max-width:124px;}
+
+  .tags{margin-top:7px;display:flex;justify-content:center;opacity:0;transform:translateY(-3px);
+    transition:opacity .45s ease, transform .45s ease;pointer-events:none;}
+  body.adv .tags{opacity:1;transform:none;}
+  .tag-chip{font-size:8.5px;letter-spacing:.2px;color:#d0d0d7;background:rgba(255,255,255,.045);
+    border:1px solid var(--line-dim);border-radius:20px;padding:2px 9px 2px 7px;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;}
+  .tag-chip::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--ext);}
+  .tag-chip.tech::before{background:var(--tech);}
+
+  .node.file{cursor:default;}
+  .filechip{position:relative;display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size:9.5px;color:#efe6cf;background:linear-gradient(180deg, rgba(20,20,28,.96), rgba(15,15,22,.96));
+    border:1px solid rgba(212,196,159,.46);border-radius:5px;padding:4px 9px 4px 12px;white-space:nowrap;
+    box-shadow:0 2px 12px rgba(0,0,0,.5);transition:border-color .14s ease, box-shadow .14s ease;}
+  .filechip::before{content:"";position:absolute;left:5px;top:50%;transform:translateY(-50%);width:3px;height:calc(100% - 9px);border-radius:2px;background:var(--file);opacity:.8;}
+  .node.file:hover .filechip{border-color:rgba(212,196,159,.95);box-shadow:0 3px 16px rgba(0,0,0,.6),0 0 10px rgba(212,196,159,.28);}
+
+  #tip{position:absolute;z-index:20;width:300px;background:rgba(15,15,19,.985);border:1px solid rgba(245,243,238,.16);
+    border-radius:11px;padding:14px 15px;box-shadow:0 18px 46px rgba(0,0,0,.65);opacity:0;pointer-events:none;transition:opacity .12s ease;font-size:12px;line-height:1.5;}
+  #tip.show{opacity:1;}
+  #tip h3{margin:0 0 4px;font-size:13px;letter-spacing:.2px;}
+  #tip h3.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;}
+  #tip .tag{font-size:9.5px;letter-spacing:1px;text-transform:uppercase;font-weight:700;padding:2px 8px;border-radius:20px;display:inline-block;margin-bottom:9px;}
+  #tip .what{color:#d9d7d2;margin-bottom:11px;}
+  #tip dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:5px 10px;}
+  #tip dt{color:var(--mute);font-size:10px;letter-spacing:.6px;text-transform:uppercase;font-weight:700;padding-top:1px;position:relative;padding-left:12px;}
+  #tip dt::before{content:"";position:absolute;left:0;top:5px;width:5px;height:5px;border-radius:50%;background:currentColor;opacity:.9;}
+  #tip dt.k-in{color:#7fb0cf;} #tip dt.k-out{color:#d9c9a2;} #tip dt.k-dep{color:#b6a888;}
+  #tip dt.k-doc{color:#8fc7b0;} #tip dt.k-tech{color:#c0a6e6;} #tip dt.k-prod{color:#f0eee9;} #tip dt.k-read{color:#d9c9a2;}
+  #tip dd{margin:0;color:#e5e3de;font-size:11.5px;}
+  #tip dd.g{color:#c8d7d0;} #tip dd.t{color:#d2c0f2;} #tip dd.f{color:#efe6cf;}
+  .hint{color:var(--faint);font-size:11px;padding:10px 34px 16px;line-height:1.6;flex-shrink:0;z-index:5;}
+  .hint b{color:var(--mute);font-weight:600;}
+  @keyframes rise{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+  .stage{opacity:0;animation:rise .55s cubic-bezier(.2,.7,.2,1) .05s forwards;}
+  @media (prefers-reduced-motion: reduce){ .stage{animation:none;opacity:1;} }
+</style>
+</head>
+<body>
+<header>
+  <div class="eyebrow">The Second Take</div>
+  <h1>Production Pipeline</h1>
+  <div class="sub">The full per-video flow, idea → published, as built in Claude. The visual, voice, and audio branches fan out from the storyboard and reconverge at the render.</div>
+  <div class="toprow">
+    <div class="legend" id="legend">
+      <span><i class="lg skill"></i>Built skill</span>
+      <span><i class="lg plan"></i>Planned</span>
+      <span class="adv-only"><i class="lg file"></i>Data file</span>
+      <span class="adv-only"><i class="lg tool"></i>Tool / service</span>
+      <span class="adv-only"><i class="lg lib"></i>Library builder</span>
+    </div>
+    <div class="modes" role="tablist" aria-label="Detail level">
+      <button class="mode-btn active" data-mode="basic" aria-pressed="true">Basic<small>the steps</small></button>
+      <button class="mode-btn" data-mode="advanced" aria-pressed="false">Advanced<small>files · tools</small></button>
+    </div>
+  </div>
+</header>
+
+<div class="scroll" id="scroll">
+  <div class="stage" id="stage">
+    <div class="canvas" id="canvas">
+      <svg class="edges" id="edges">
+        <defs>
+          <marker id="arrow" markerWidth="7" markerHeight="7" refX="5.4" refY="3.5" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+            <path d="M0.5,0.7 L6,3.5 L0.5,6.3 Z" fill="context-stroke"></path>
+          </marker>
+        </defs>
+        <g id="edgeLayer"></g>
+      </svg>
+      <div id="tip"></div>
+    </div>
+  </div>
+</div>
+<div class="hint" id="hint"></div>
+
+<script>
+const MARGIN_X = 210, COLW = 190;
+// basic is compact; advanced spreads the lanes apart vertically so the fan-out reads clearly
+const CFG = {
+  basic:    {laneh:166, marginY:150},
+  advanced: {laneh:250, marginY:186},
+};
+
+// ---- skill / library nodes (external SERVICES are tags on their skill) ---------
+const NODES = [
+  {id:'idea', name:'idea-generator', col:0, lane:1, kind:'skill',
+   one:'Ranked, differentiated ideas',
+   what:'Generates and ranks fresh, non-duplicative video concepts + briefs.',
+   in:'dna.md · performance.md · idea-backlog.md', out:'ranked briefs → idea-backlog.md', dep:'— (start)', docs:'universal.md · niche playbook · idea rubric'},
+  {id:'research', name:'researcher', col:1, lane:1, kind:'skill', service:{name:'deep-research', kind:'tech'},
+   one:'Sourced, verified fact-ledger',
+   what:'Directs deep-research to turn the picked brief into a cited dossier the writer is leashed to.',
+   in:'picked brief · dna.md Pipeline block', out:'research.md (fact-ledger + outline)', dep:'idea-generator', docs:'research-contract.md · niche playbook', tech:'native deep-research harness'},
+  {id:'longform', name:'long-form-writer', col:2, lane:1, kind:'skill',
+   one:'The long-form VO script',
+   what:'Staged writers-room (spine → casual → leash → editor → humanize), leashed to the fact-ledger.',
+   in:'brief · research.md · dna.md', out:'script.md ([B-ROLL]/[PAUSE] cues)', dep:'researcher', docs:'storytelling-grammar.md (§0 gold) · universal.md · watchability-rubric · critics.md · lint_script.py'},
+  {id:'meta', name:'metadata-writer', col:4, lane:1, kind:'skill',
+   one:'Titles, tags, chapters, thumbs',
+   what:'Writes all YouTube publishing metadata: A/B titles, description, tags, chapters, thumbnail concepts, pinned comment.',
+   in:'script.md · shorts/*.md · brief', out:'metadata.json', dep:'long-form + shorts', docs:'universal.md · niche playbook · dna.md'},
+  {id:'vpw', name:'visual-prompt-writer', col:5, lane:1, kind:'skill',
+   one:'The shot list / storyboard',
+   what:'Authors the choreographed shot list (still plan + motion intent) + thumbnail gen prompts. The fan-out point.',
+   in:'script.md [B-ROLL] · metadata.json · shorts', out:'shots.json', dep:'long-form + shorts + metadata', docs:'visual-grammar.md (staging law) · universal.md §13a · style-bible.md · critics.md · lint_shots.py'},
+  {id:'motion', name:'motion-planner', col:6, lane:1, kind:'skill',
+   one:'Element-layer motion plan',
+   what:'Decides which shots get moving layers (plate + cutout/engine). Timid by default.',
+   in:'shots.json', out:'shots.motion.json', dep:'visual-prompt-writer', docs:'animation-menu.json · iterable ruleset · critics.md · lint_motion_plan.py'},
+  {id:'imagegen', name:'image-generation', col:7, lane:1, kind:'skill', service:{name:'gemini-3-pro-image', kind:'ext'},
+   one:'All verified on-style images',
+   what:'Two-pass: lock recurring characters, then generate every scene — plates, cutouts, scenes — verified vs the style bible.',
+   in:'shots.motion.json · shots.json · refs/', out:'assets/scenes · plates · cutouts', dep:'motion-planner + vpw', docs:'style-bible.md · registry.json · animation-menu.json', tech:'gemini-3-pro-image · forge.py + rembg cutout'},
+  {id:'render', name:'render-builder', col:8, lane:1, kind:'skill', service:{name:'Remotion', kind:'tech'},
+   one:'The confluence → final MP4',
+   what:'build_motion merges shots.motion.json + images into motion.json; build_audio realizes audio-plan.json + splices pauses (breath); invokes Remotion. Visual + voice + audio meet here.',
+   in:'shots.json · shots.motion.json · assets · audio-plan.json · voiceover.manifest.json · vo.mp3', out:'assets/final.mp4 · shorts mp4s · render.manifest.json', dep:'image-gen + voiceover + audio-director', docs:'motion-tokens.json · audio-tokens.json · motion-schema.md · shots-motion-schema.md', tech:'Remotion motion engine (build_motion / build_audio / breath + component lib)'},
+  {id:'compliance', name:'compliance-check', col:9, lane:1, kind:'planned',
+   one:'Policy + QA screen (planned)',
+   what:'Screens the render + metadata against YouTube-policy / legal realities before publish. Not yet built.',
+   in:'final.mp4 · metadata.json', out:'pass / flag report', dep:'render-builder', docs:'playbook.md policy'},
+  {id:'publish', name:'publish-queue', col:10, lane:1, kind:'planned', service:{name:'YouTube Data API', kind:'ext'},
+   one:'Upload to YouTube (planned)',
+   what:'Uploads via YouTube Data API v3 (locked private until the OAuth audit clears). Not yet built.',
+   in:'final.mp4 · metadata.json', out:'published (or private) video', dep:'compliance-check', tech:'YouTube Data API v3'},
+  {id:'analytics', name:'analytics', col:11, lane:1, kind:'planned',
+   one:'Performance loop (planned)',
+   what:'Feeds published performance back into performance.md to inform the next idea cycle. Not yet built.',
+   in:'published-video metrics', out:'performance.md', dep:'publish-queue', docs:'performance.md'},
+
+  {id:'shorts', name:'shorts-writer', col:3, lane:0, kind:'skill',
+   one:'Self-contained vertical shorts',
+   what:'Derives closed-loop Shorts from the long-form. Runs in parallel with the long-form/metadata track (needs the finished script, then goes on its own).',
+   in:'script.md · research.md · brief', out:'shorts/short-NN.md', dep:'long-form (can run parallel)', docs:'universal.md · niche playbook · shorts-clipping reference'},
+  {id:'voiceover', name:'voiceover', col:6, lane:0, kind:'skill', service:{name:'ElevenLabs', kind:'ext'},
+   one:'Narration + per-word timings',
+   what:'ElevenLabs TTS → narration mp3 + the per-word timing manifest that is the render’s master clock. Needs only the script, so it runs in parallel with the visual + audio branches.',
+   in:'script.md · shorts/*.md · dna.md voice config', out:'vo.mp3 · voiceover.manifest.json (word_timings)', dep:'long-form (script.md) — parallel', docs:'dna.md voice config · voice-lab.md', tech:'ElevenLabs v3 TTS'},
+
+  {id:'audiodir', name:'audio-director', col:6, lane:2, kind:'skill',
+   one:'The unified audio plan',
+   what:'Authors SFX hits, deliberate pauses, music-bed placement, and dry/pull-back spans — PLACEMENT only. Timid by default; the human ear-gates feel on the render.',
+   in:'shots.json · script.md · sfx/music pools · measured grammar', out:'audio-plan.json', dep:'visual-prompt-writer', docs:'grammar-guidance.md (measured §13a-iii) · audio-tokens.json · critics.md · lint_audio_plan.py'},
+
+  // library subsystem (one-time / periodic setup) — feeds audio-director
+  {id:'analyzer', name:'audio-analyzer', col:4, lane:3, kind:'lib', anchor:'audiodir', service:{name:'CLAP + Demucs', kind:'tech'},
+   one:'Measured audio grammar',
+   what:'Measures reference-channel audio with tools (never "listens") → the channel’s audio dials.',
+   in:'reference-video stems', out:'measured grammar → §13a-iii', dep:'— (setup)', tech:'Demucs stems · CLAP · librosa/ffmpeg'},
+  {id:'sfxforge', name:'sfx-forge', col:5, lane:3, kind:'lib', anchor:'audiodir', service:{name:'Freesound', kind:'ext'},
+   one:'SFX library (CC0)',
+   what:'Sources, vets, and CLAP-ranks CC0 sound effects; human-gated audition → wires the sfx_pools.',
+   in:'CC0/CC-BY sources', out:'sfx_pools', dep:'— (setup)', tech:'Freesound · CLAP ranker'},
+  {id:'musicforge', name:'music-forge', col:6, lane:3, kind:'lib', anchor:'audiodir', service:{name:'Incompetech', kind:'ext'},
+   one:'Music beds (CC-BY)',
+   what:'Sources casual-comedic CC-BY beds by mood bucket; human-gated audition → wires the music_pools.',
+   in:'Incompetech / YT Audio Library', out:'music_pools', dep:'— (setup)', tech:'Incompetech · CLAP ranker'},
+];
+
+// ---- DATA FILES (advanced): the ONE main artifact each skill emits ------------
+const FILES = [
+  {id:'f_brief',  name:'idea-backlog.md', col:0.5, lane:1,   kind:'file', anchor:'idea',
+   prod:'idea-generator', cons:'researcher (+ the writers)', what:'The picked, ranked idea brief — the seed the whole pipeline runs from.'},
+  {id:'f_research',name:'research.md',     col:1.5, lane:1,   kind:'file', anchor:'research',
+   prod:'researcher', cons:'long-form-writer (+ shorts)', what:'The sourced fact-ledger + outline the writer is leashed to.'},
+  {id:'f_script', name:'script.md',        col:3,   lane:1,   kind:'file', anchor:'longform',
+   prod:'long-form-writer', cons:'metadata · visual-prompt-writer · shorts · voiceover', what:'The long-form narration script — the spine every downstream skill reads.'},
+  {id:'f_shorts', name:'shorts/*.md',      col:3.5, lane:0,   kind:'file', anchor:'shorts',
+   prod:'shorts-writer', cons:'metadata · visual-prompt-writer · voiceover', what:'The self-contained vertical short scripts derived from the long-form.'},
+  {id:'f_meta',   name:'metadata.json',    col:4.5, lane:1,   kind:'file', anchor:'meta',
+   prod:'metadata-writer', cons:'visual-prompt-writer (+ publish)', what:'Titles, tags, chapters, thumbnail concepts, pinned comment.'},
+  {id:'f_shots',  name:'shots.json',       col:5.5, lane:1,   kind:'file', anchor:'vpw',
+   prod:'visual-prompt-writer', cons:'motion-planner · audio-director · image-generation · render-builder', what:'The storyboard / shot list — the hub the visual, audio, and render branches all read.'},
+  {id:'f_motion', name:'shots.motion.json',col:6.5, lane:1,   kind:'file', anchor:'motion',
+   prod:'motion-planner', cons:'image-generation · render-builder', what:'The element-layer motion plan (plate + cutout/engine layers).'},
+  {id:'f_vo',     name:'vo.mp3 · manifest',col:7,   lane:0.42,kind:'file', anchor:'voiceover',
+   prod:'voiceover', cons:'render-builder', what:'Narration audio + the per-word timing manifest — the render’s master clock.'},
+  {id:'f_audio',  name:'audio-plan.json',  col:7,   lane:1.58,kind:'file', anchor:'audiodir',
+   prod:'audio-director', cons:'render-builder', what:'The unified audio plan — SFX, pauses, music placement, dry spans.'},
+  {id:'f_scenes', name:'scenes/plates',    col:7.5, lane:1,   kind:'file', anchor:'imagegen',
+   prod:'image-generation', cons:'render-builder', what:'The verified on-style stills / plates / cutouts.'},
+  {id:'f_final',  name:'final.mp4',        col:8.5, lane:1,   kind:'file', anchor:'render',
+   prod:'render-builder', cons:'compliance-check → publish', what:'The rendered video (+ shorts mp4s + render manifest).'},
+];
+
+const EDGES = [
+  ['idea','research'],['research','longform'],['longform','meta'],['meta','vpw'],
+  ['vpw','motion'],['motion','imagegen'],['imagegen','render'],
+  ['render','compliance'],['compliance','publish'],['publish','analytics'],
+  ['longform','shorts'],['shorts','meta'],
+  ['vpw','voiceover'],['voiceover','render'],
+  ['vpw','audiodir'],['audiodir','render'],
+];
+const LIB_FEEDS = [ ['analyzer','audiodir'], ['sfxforge','audiodir'], ['musicforge','audiodir'] ];
+
+const FILE_EDGES = [
+  ['idea','f_brief','emit'],       ['f_brief','research','read'],
+  ['research','f_research','emit'],['f_research','longform','read'],
+  ['longform','f_script','emit'],  ['f_script','meta','read'],['f_script','vpw','read'],['f_script','shorts','read'],['f_script','voiceover','read'],
+  ['shorts','f_shorts','emit'],    ['f_shorts','meta','read'],['f_shorts','vpw','read'],
+  ['meta','f_meta','emit'],        ['f_meta','vpw','read'],
+  ['vpw','f_shots','emit'],        ['f_shots','motion','read'],['f_shots','audiodir','read'],['f_shots','imagegen','read'],['f_shots','render','read'],
+  ['motion','f_motion','emit'],    ['f_motion','imagegen','read'],['f_motion','render','read'],
+  ['voiceover','f_vo','emit'],     ['f_vo','render','read'],
+  ['audiodir','f_audio','emit'],   ['f_audio','render','read'],
+  ['imagegen','f_scenes','emit'],  ['f_scenes','render','read'],
+  ['render','f_final','emit'],     ['f_final','compliance','read'],
+  ['compliance','publish','tail'], ['publish','analytics','tail'],
+];
+
+const LANES = [
+  {lane:0, label:'PARALLEL'}, {lane:1, label:'SCRIPT → RENDER'},
+  {lane:2, label:'AUDIO'},    {lane:3, label:'LIBRARY · SETUP', adv:true},
+];
+const HINTS = {
+  basic:'Left→right = time. Middle lane = script → storyboard → visuals → render; top lane = shorts &amp; voiceover, bottom lane = the audio plan (both parallel). <b>Switch to Advanced</b> to spread the lanes apart and reveal each step’s data file &amp; tool. &nbsp;·&nbsp; Drag anywhere to pan.',
+  advanced:'Each skill emits its main data file (the beige chip) which downstream skills read along the <b>dotted lines</b> — that fan-out is the real dependency graph. A skill’s external tool sits as a chip beneath it; the three library builders (bottom) feed the audio-director. &nbsp;·&nbsp; Drag to pan; hover for detail.',
+};
+
+// ---- setup --------------------------------------------------------------------
+const ALL = [...NODES, ...FILES];
+const byId = Object.fromEntries(ALL.map(n=>[n.id,n]));
+const HIDDEN = new Set(['file','lib']);
+const posOf = (n,mode)=>({x: MARGIN_X + n.col*COLW, y: CFG[mode].marginY + n.lane*CFG[mode].laneh});
+const ease = t => t<0.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2;
+const lerp = (a,b,t)=>a+(b-a)*t;
+
+const stage=document.getElementById('stage'), canvas=document.getElementById('canvas'), svg=document.getElementById('edges');
+const edgeLayer=document.getElementById('edgeLayer'), tip=document.getElementById('tip');
+const hint=document.getElementById('hint'), legend=document.getElementById('legend');
+
+// canvas size = the larger (advanced) layout + pan margin
+const maxCol=Math.max(...ALL.map(n=>n.col)), maxLaneA=Math.max(...ALL.map(n=>n.lane));
+const W = MARGIN_X + maxCol*COLW + 250;
+const H = CFG.advanced.marginY + maxLaneA*CFG.advanced.laneh + 200;
+canvas.style.width=W+'px'; canvas.style.height=H+'px';
+stage.style.width=W+'px'; stage.style.height=H+'px';
+svg.setAttribute('width',W); svg.setAttribute('height',H); svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+
+const divider=document.createElement('div'); divider.className='divider';
+divider.style.left='40px'; divider.style.width=(W-260)+'px'; canvas.appendChild(divider);
+
+const elById={};
+for(const n of ALL){
+  const el=document.createElement('div'); el.className='node '+n.kind;
+  if(n.kind==='file'){ el.innerHTML=`<div class="filechip">${n.name}</div>`; }
+  else {
+    const tag = n.service ? `<div class="tags"><span class="tag-chip ${n.service.kind}">${n.service.name}</span></div>` : '';
+    el.innerHTML=`<div class="dot"></div><div class="cap"><div class="name">${n.name}</div><div class="one">${n.one}</div>${tag}</div>`;
+  }
+  el.addEventListener('mouseenter',()=>showTip(n)); el.addEventListener('mouseleave',hideTip);
+  canvas.appendChild(el); elById[n.id]=el;
+}
+const laneEls=[];
+for(const l of LANES){
+  const el=document.createElement('div'); el.className='lane-label'; el.textContent=l.label;
+  el.dataset.lane=l.lane; if(l.adv) el.dataset.adv='1';
+  canvas.appendChild(el); laneEls.push(el);
+}
+
+// ---- edges --------------------------------------------------------------------
+function edgeSet(mode){
+  const out=[];
+  if(mode==='basic'){ for(const [a,b] of EDGES) out.push([a,b,'flow']); }
+  else { for(const [a,b] of LIB_FEEDS) out.push([a,b,'feed']); for(const e of FILE_EDGES) out.push(e); }
+  return out;
+}
+const ES={
+  flow:{c:'rgba(245,243,238,.5)', w:1.5, dash:null,    arrow:true},
+  feed:{c:'rgba(111,147,166,.42)',w:1.1, dash:'1 6',   arrow:false},
+  emit:{c:'rgba(212,196,159,.6)', w:1.5, dash:null,    arrow:true},
+  read:{c:'rgba(212,196,159,.34)',w:1.15,dash:'1.5 6', arrow:true},
+  tail:{c:'rgba(245,243,238,.28)',w:1.3, dash:'1.5 7', arrow:true},
+};
+function pathD(p1,p2){
+  const dx=p2.x-p1.x, dy=p2.y-p1.y;
+  if(Math.abs(dy)<1){                                   // same lane — bow long spans OVER intermediate nodes
+    if(Math.abs(dx) > 1.35*COLW){ const bow=Math.min(78, Math.abs(dx)*0.15);
+      return `M ${p1.x} ${p1.y} Q ${(p1.x+p2.x)/2} ${p1.y-bow}, ${p2.x} ${p2.y}`; }
+    return `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`;
+  }
+  if(Math.abs(dx)<6) return `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`;
+  return `M ${p1.x} ${p1.y} C ${p1.x+dx*0.5} ${p1.y}, ${p2.x-dx*0.5} ${p2.y}, ${p2.x} ${p2.y}`;
+}
+function drawEdges(fromSet,toSet,t,pos){
+  edgeLayer.textContent='';
+  const map=new Map();
+  for(const [a,b,st] of fromSet) map.set(a+'|'+b,{a,b,st,f:true,t:false});
+  for(const [a,b,st] of toSet){ const k=a+'|'+b; const e=map.get(k); if(e){e.t=true;e.stTo=st;} else map.set(k,{a,b,st,f:false,t:true}); }
+  const settled=(t<=0||t>=1);
+  for(const e of map.values()){
+    const alpha=(e.f&&e.t)?1:e.f?(1-t):t; if(alpha<=0.012) continue;
+    const styleKey=(e.t&&!e.f)?e.stTo:e.st; const s=ES[styleKey]||ES.flow;
+    const p=document.createElementNS('http://www.w3.org/2000/svg','path');
+    p.setAttribute('d',pathD(pos[e.a],pos[e.b])); p.setAttribute('fill','none');
+    p.setAttribute('stroke',s.c); p.setAttribute('stroke-width',s.w); p.setAttribute('opacity',alpha.toFixed(3));
+    if(s.dash){ p.setAttribute('stroke-dasharray',s.dash); p.setAttribute('stroke-linecap','round'); }
+    if(s.arrow && byId[e.b] && byId[e.b].kind!=='planned') p.setAttribute('marker-end','url(#arrow)');
+    if(settled && styleKey==='read') p.setAttribute('class','e-read');
+    edgeLayer.appendChild(p);
+  }
+}
+function applyNode(n,st){
+  const el=elById[n.id];
+  el.style.left=st.x+'px'; el.style.top=(n.kind==='file'?st.y:st.y-7)+'px';
+  el.style.opacity=st.a.toFixed(3); el.style.pointerEvents=st.a>0.55?'auto':'none';
+  const base=n.kind==='file'?'translate(-50%,-50%)':'translateX(-50%)';
+  el.style.transform=(st.a>=1&&st.s>=1)?base:`${base} scale(${st.s.toFixed(3)})`;
+}
+
+// ---- mode + morph -------------------------------------------------------------
+let curMode=null, raf=0;
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+function stateFor(n,mode){
+  const p=posOf(n,mode);
+  if(HIDDEN.has(n.kind)){
+    if(mode==='advanced') return {x:p.x,y:p.y,a:1,s:1};
+    const an=posOf(byId[n.anchor],mode); return {x:an.x,y:an.y,a:0,s:0.55};
+  }
+  return {x:p.x,y:p.y,a:1,s:1};
+}
+function placeLaneLabels(mode){
+  laneEls.forEach(el=>{
+    const lane=parseFloat(el.dataset.lane);
+    el.style.top=(CFG[mode].marginY + lane*CFG[mode].laneh)+'px';
+    if(el.dataset.adv) el.style.opacity = mode==='advanced'?'1':'0';
+  });
+  divider.style.top=(CFG[mode].marginY + 2.5*CFG[mode].laneh)+'px';
+}
+function setMode(newMode){
+  const prev=curMode||newMode;
+  document.body.classList.toggle('adv', newMode==='advanced');
+  document.querySelectorAll('.mode-btn').forEach(b=>{const on=b.dataset.mode===newMode;b.classList.toggle('active',on);b.setAttribute('aria-pressed',on?'true':'false');});
+  legend.querySelectorAll('.adv-only').forEach(e=>{ e.style.opacity=newMode==='advanced'?'1':'.3'; });
+  hint.innerHTML=HINTS[newMode]; placeLaneLabels(newMode);
+
+  const A={},B={},pos={};
+  for(const n of ALL){ A[n.id]=stateFor(n,prev); B[n.id]=stateFor(n,newMode); }
+  const fromE=edgeSet(prev), toE=edgeSet(newMode);
+  curMode=newMode;
+  cancelAnimationFrame(raf);
+  const dur=(prev===newMode||reduce)?0:640;
+  const t0=performance.now?performance.now():Date.now();
+  function frame(now){
+    const raw=dur===0?1:Math.min(1,(now-t0)/dur), e=ease(raw);
+    for(const n of ALL){ const a=A[n.id],b=B[n.id];
+      const st={x:lerp(a.x,b.x,e),y:lerp(a.y,b.y,e),a:lerp(a.a,b.a,e),s:lerp(a.s,b.s,e)};
+      applyNode(n,st); pos[n.id]={x:st.x,y:st.y}; }
+    drawEdges(fromE,toE,raw,pos);
+    if(raw<1) raf=requestAnimationFrame(frame);
+  }
+  raf=requestAnimationFrame(frame);
+}
+document.querySelectorAll('.mode-btn').forEach(b=> b.addEventListener('click',()=>{ if(b.dataset.mode!==curMode) setMode(b.dataset.mode); }));
+
+// ---- tooltip ------------------------------------------------------------------
+const tagStyle={
+  skill:['Built skill','#f5f3ee','#0a0a10'], planned:['Planned','#2a2a30','#c9c9d0'],
+  file:['Data file','#d4c49f','#0a0a10'], lib:['Library builder','#6f93a6','#0a0a10'],
+};
+function showTip(n){
+  if(curMode==='basic' && HIDDEN.has(n.kind)) return;
+  const [label,bg,fg]=tagStyle[n.kind];
+  let rows='';
+  if(n.kind==='file') rows=`<dt class="k-prod">Produced by</dt><dd class="f">${n.prod}</dd><dt class="k-read">Read by</dt><dd class="f">${n.cons}</dd>`;
+  else{
+    rows=`<dt class="k-in">Inputs</dt><dd>${n.in}</dd><dt class="k-out">Outputs</dt><dd class="f">${n.out}</dd><dt class="k-dep">Depends</dt><dd>${n.dep}</dd>`;
+    if(n.docs) rows+=`<dt class="k-doc">Grounding</dt><dd class="g">${n.docs}</dd>`;
+    if(n.tech) rows+=`<dt class="k-tech">Powered by</dt><dd class="t">${n.tech}</dd>`;
+  }
+  tip.innerHTML=`<span class="tag" style="background:${bg};color:${fg}">${label}</span>
+    <h3 class="${n.kind==='file'?'mono':''}">${n.name}</h3><div class="what">${n.what}</div><dl>${rows}</dl>`;
+  tip.classList.add('show');
+  const p=posOf(n,curMode), TW=300, TH=tip.offsetHeight||200;
+  let x=p.x+26, y=p.y-20;
+  if(x+TW>W-8) x=p.x-26-TW;
+  if(y+TH>H-8) y=H-8-TH;
+  if(y<8) y=8;
+  tip.style.left=x+'px'; tip.style.top=y+'px';
+}
+function hideTip(){ tip.classList.remove('show'); }
+
+// ---- click-drag panning (360°) ------------------------------------------------
+const scroller=document.getElementById('scroll'); let drag=null;
+scroller.addEventListener('mousedown', e=>{ if(e.button!==0)return; drag={x:e.clientX,y:e.clientY,sl:scroller.scrollLeft,st:scroller.scrollTop}; scroller.classList.add('grabbing'); e.preventDefault(); });
+window.addEventListener('mousemove', e=>{ if(!drag)return; scroller.scrollLeft=drag.sl-(e.clientX-drag.x); scroller.scrollTop=drag.st-(e.clientY-drag.y); });
+window.addEventListener('mouseup', ()=>{ if(drag){drag=null; scroller.classList.remove('grabbing');} });
+
+// ---- mouse-wheel zoom (toward the cursor), crisp re-raster on idle ------------
+let scale=1; const MINS=0.4, MAXS=2.6; let zoomIdle=0;
+scroller.addEventListener('wheel', e=>{
+  e.preventDefault();
+  const rect=scroller.getBoundingClientRect();
+  const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+  const ux=(scroller.scrollLeft+mx)/scale, uy=(scroller.scrollTop+my)/scale; // point under cursor (canvas coords)
+  const f=e.deltaY<0?1.12:1/1.12;
+  const ns=Math.min(MAXS,Math.max(MINS, scale*f));
+  if(ns===scale) return;
+  scale=ns;
+  canvas.style.willChange='transform';           // fast (cached) while actively zooming
+  canvas.style.transform=`scale(${scale})`;
+  stage.style.width=(W*scale)+'px'; stage.style.height=(H*scale)+'px';
+  scroller.scrollLeft=ux*scale-mx; scroller.scrollTop=uy*scale-my; // keep cursor point fixed
+  clearTimeout(zoomIdle);
+  zoomIdle=setTimeout(()=>{ canvas.style.willChange='auto'; }, 150); // drop cache → re-rasterize sharp at this zoom
+}, {passive:false});
+
+setMode('basic');
+</script>
+</body>
+</html>
