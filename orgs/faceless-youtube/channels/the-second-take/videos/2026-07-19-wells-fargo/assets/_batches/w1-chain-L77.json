@@ -1,0 +1,41 @@
+[
+ {
+  "name": "wf-L78",
+  "shot_id": "L78",
+  "mode": "environment",
+  "delta": "The SAME fine pile held, now a second slab marker-lettered 'OCC' with '$35M' stacked on top of the CFPB slab. Everything else held. Cool slate-and-cream palette, one red accent on the '$35M'. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'OCC' and '$35M', no logos; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L77.png"
+  ],
+  "_cast": [],
+  "_text": true,
+  "_crowd": false
+ },
+ {
+  "name": "wf-L79",
+  "shot_id": "L79",
+  "mode": "environment",
+  "delta": "The SAME fine pile held, now a third slab marker-lettered 'LA' with '$50M' stacked on top. Everything else held. Cool slate-and-cream palette, one red accent on the '$50M'. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'LA' and '$50M', no logos; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L78.png"
+  ],
+  "_cast": [],
+  "_text": true,
+  "_crowd": false
+ },
+ {
+  "name": "wf-L80",
+  "shot_id": "L80",
+  "mode": "environment",
+  "delta": "The SAME three-slab fine pile held, now a marker total banner across it reading '$185M' with a small 'IN ONE DAY' tag \u2014 the day's damage summed. Everything else held. Cool slate-and-cream palette, the one red accent on the '$185M' banner. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering; the single red accent #d7402b on the banner; no photorealism, no on-screen narrator, no unrequested text beyond '$185M' and 'IN ONE DAY', no logos; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L79.png"
+  ],
+  "_cast": [],
+  "_text": true,
+  "_crowd": false
+ }
+]

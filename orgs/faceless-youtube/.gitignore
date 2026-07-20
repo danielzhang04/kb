@@ -3,8 +3,18 @@
 .env.local
 *.secret
 
-# Generated media assets (large binaries, regenerable)
-channels/*/videos/*/assets/
+# Generated media assets (large binaries, regenerable).
+# Ignore the CONTENTS, not the directory: a plain `assets/` exclusion stops git descending
+# into the tree at all, so the reasoning that lives alongside the frames — image-gen-lab.md,
+# the asset manifests, the batch planners — was silently untracked too. Those are small,
+# hand-authored and NOT regenerable; losing them loses every lesson a run paid to learn.
+# Binaries stay ignored here AND by the extension rules below.
+channels/*/videos/*/assets/**
+!channels/*/videos/*/assets/**/
+!channels/*/videos/*/assets/**/*.md
+!channels/*/videos/*/assets/**/*.json
+!channels/*/videos/*/assets/**/*.py
+!channels/*/videos/*/assets/**/*.txt
 *.mp3
 *.wav
 *.mp4

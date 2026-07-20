@@ -1,0 +1,170 @@
+{
+ "L05": [
+  {
+   "name": "wf-L06",
+   "shot_id": "L06",
+   "mode": "environment",
+   "delta": "The SAME boardroom held from the prior frame, but now a single glowing red circular SALES-TARGET DIAL (a gauge with a needle) sits in the empty head chair where a person should be \u2014 the culprit is a number, not a man. Everything else held. Cool slate palette, the one red accent IS the glowing dial. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel colours with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b is the dial; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+   "aspect": "16:9",
+   "seed": [
+    "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
+   ],
+   "_cast": [],
+   "_text": false,
+   "_crowd": false
+  }
+ ],
+ "L07": [
+  {
+   "name": "wf-L08",
+   "shot_id": "L08",
+   "mode": "environment",
+   "delta": "The SAME near-black field with the glowing '8', now the hand-lettered marker word 'GREAT' has snapped in just beside it so the two read as a slogan \u2014 '8' and 'GREAT', the rhyme that chose the target. Everything else held. Near-black ground, warm cream lettering, the one red accent underlining 'GREAT'. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering; near-black palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond '8' and 'GREAT', no logos; 16:9.",
+   "aspect": "16:9",
+   "seed": [
+    "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L07.png"
+   ],
+   "_cast": [],
+   "_text": true,
+   "_crowd": false
+  }
+ ],
+ "L11": [
+  {
+   "name": "wf-L12",
+   "shot_id": "L12",
+   "mode": "environment",
+   "delta": "The SAME cutaway house held from the prior frame, now with a credit-card icon added on a small marker card labelled 'CARD' beside the checking passbook. Everything else held. Warm cream-and-teal palette. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'CARD', no logos; 16:9.",
+   "aspect": "16:9",
+   "seed": [
+    "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L11.png"
+   ],
+   "_cast": [],
+   "_text": true,
+   "_crowd": false
+  },
+  {
+   "name": "wf-L13",
+   "shot_id": "L13",
+   "mode": "environment",
+   "delta": "The SAME cutaway house held, now with a coin savings-jar added on a small marker card labelled 'SAVINGS' beside the others. Everything else held. Warm cream-and-teal palette. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'SAVINGS', no logos; 16:9.",
+   "aspect": "16:9",
+   "seed": [
+    "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L12.png"
+   ],
+   "_cast": [],
+   "_text": true,
+   "_crowd": false
+  },
+  {
+   "name": "wf-L14",
+   "shot_id": "L14",
+   "mode": "environment",
+   "delta": "The SAME cutaway house held, now with a small login-screen icon added on a marker card labelled 'ONLINE' \u2014 the house is getting crowded with products around the one customer. Everything else held. Warm cream-and-teal palette. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'ONLINE', no logos; 16:9.",
+   "aspect": "16:9",
+   "seed": [
+    "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L13.png"
+   ],
+   "_cast": [],
+   "_text": true,
+   "_crowd": false
+  }
+ ],
+ "L33": [
+  {
+   "name": "wf-L34",
+   "shot_id": "L34",
+   "mode": "environment",
+   "delta": "The SAME counter held, now a fresh account-opening form lies on it, a customer's name marker-written across the top and a small 'NEW ACCOUNT' tab \u2014 opened without the customer. Everything else held. Warm counter palette, one red accent on the 'NEW ACCOUNT' tab. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering only; the single red accent #d7402b on the tab; no photorealism, no on-screen narrator, no unrequested text beyond 'NEW ACCOUNT', no logos; 16:9.",
+   "aspect": "16:9",
+   "seed": [
+    "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L33.png"
+   ],
+   "_cast": [],
+   "_text": true,
+   "_crowd": false
+  },
+  {
+   "name": "wf-L35",
+   "shot_id": "L35",
+   "mode": "environment",
+   "delta": "The SAME counter held, now a thin marker-drawn trickle of coins arcs from a passbook marked with the customer's account into the new form, to make the phantom account look active. Everything else held. Warm counter palette, one red accent on the moving-coin arc. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering only; the single red accent #d7402b on the arc; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+   "aspect": "16:9",
+   "seed": [
+    "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L34.png"
+   ],
+   "_cast": [],
+   "_text": false,
+   "_crowd": false
+  },
+  {
+   "name": "wf-L36",
+   "shot_id": "L36",
+   "mode": "environment",
+   "delta": "The SAME counter held, now a debit-card PIN pad sits on it with a marker '0000' shown in its little display \u2014 the PIN set to four zeros so the teller keeps control. Everything else held. Warm counter palette, one red accent on the '0000' display frame. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering; the single red accent #d7402b on the display; no photorealism, no on-screen narrator, no unrequested text beyond '0000', no logos; 16:9.",
+   "aspect": "16:9",
+   "seed": [
+    "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L35.png"
+   ],
+   "_cast": [],
+   "_text": true,
+   "_crowd": false
+  }
+ ],
+ "L37": [
+  {
+   "name": "wf-L38",
+   "shot_id": "L38",
+   "mode": "environment",
+   "delta": "The SAME signup screen held, now an alert-bell notification icon is sliding off the edge of the screen and dropping into a dark waste-bin below \u2014 the warning routed to an inbox nobody watches. Everything else held. Cool palette darkening at the bin, one red accent on the alert bell. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering only; the single red accent #d7402b on the bell; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+   "aspect": "16:9",
+   "seed": [
+    "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L37.png"
+   ],
+   "_cast": [],
+   "_text": false,
+   "_crowd": false
+  }
+ ],
+ "L77": [
+  {
+   "name": "wf-L78",
+   "shot_id": "L78",
+   "mode": "environment",
+   "delta": "The SAME fine pile held, now a second slab marker-lettered 'OCC' with '$35M' stacked on top of the CFPB slab. Everything else held. Cool slate-and-cream palette, one red accent on the '$35M'. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'OCC' and '$35M', no logos; 16:9.",
+   "aspect": "16:9",
+   "seed": [
+    "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L77.png"
+   ],
+   "_cast": [],
+   "_text": true,
+   "_crowd": false
+  },
+  {
+   "name": "wf-L79",
+   "shot_id": "L79",
+   "mode": "environment",
+   "delta": "The SAME fine pile held, now a third slab marker-lettered 'LA' with '$50M' stacked on top. Everything else held. Cool slate-and-cream palette, one red accent on the '$50M'. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'LA' and '$50M', no logos; 16:9.",
+   "aspect": "16:9",
+   "seed": [
+    "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L78.png"
+   ],
+   "_cast": [],
+   "_text": true,
+   "_crowd": false
+  },
+  {
+   "name": "wf-L80",
+   "shot_id": "L80",
+   "mode": "environment",
+   "delta": "The SAME three-slab fine pile held, now a marker total banner across it reading '$185M' with a small 'IN ONE DAY' tag \u2014 the day's damage summed. Everything else held. Cool slate-and-cream palette, the one red accent on the '$185M' banner. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering; the single red accent #d7402b on the banner; no photorealism, no on-screen narrator, no unrequested text beyond '$185M' and 'IN ONE DAY', no logos; 16:9.",
+   "aspect": "16:9",
+   "seed": [
+    "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L79.png"
+   ],
+   "_cast": [],
+   "_text": true,
+   "_crowd": false
+  }
+ ]
+}

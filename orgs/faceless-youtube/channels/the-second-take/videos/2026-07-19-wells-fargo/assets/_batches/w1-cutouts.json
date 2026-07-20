@@ -1,0 +1,52 @@
+[
+ {
+  "name": "wf-L31-boulder-src",
+  "shot_id": "L31",
+  "layer": "boulder",
+  "mode": "environment",
+  "delta": "A single heavy round dark boulder with a large marker scorecard number painted on its face, clean side profile. Isolated on one solid uniform FLAT magenta background, NO glow, NO gradient, framed for a clean cut-out; flat-cel 2.5D vector, even medium-thick #241a12 outline.",
+  "aspect": "2:3",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+  ]
+ },
+ {
+  "name": "wf-L90-stamp-src",
+  "shot_id": "L90",
+  "layer": "stamp",
+  "mode": "environment",
+  "delta": "A heavy red block-capital rubber stamp reading 'ADMITTED', dense saturated red #d7402b ink with a thin #241a12 letter contour and hand-stamped edge distress. Isolated on one solid uniform FLAT magenta background, NO glow, NO gradient, framed for a clean cut-out; flat-cel 2.5D vector, even medium-thick #241a12 outline.",
+  "aspect": "2:3",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/env/stamp-block-outlined.png",
+   "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+   "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+  ]
+ },
+ {
+  "name": "wf-L99-stamp-src",
+  "shot_id": "L99",
+  "layer": "stamp",
+  "mode": "environment",
+  "delta": "A heavy red block-capital rubber stamp reading 'FIRED FOR CAUSE', dense saturated red #d7402b ink with a thin #241a12 letter contour and hand-stamped edge distress. Isolated on one solid uniform FLAT magenta background, NO glow, NO gradient, framed for a clean cut-out; flat-cel 2.5D vector, even medium-thick #241a12 outline.",
+  "aspect": "2:3",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/env/stamp-block-outlined.png",
+   "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+   "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+  ]
+ },
+ {
+  "name": "wf-L101-stamp-src",
+  "shot_id": "L101",
+  "layer": "stamp",
+  "mode": "environment",
+  "delta": "A heavy red block-capital rubber stamp reading 'BANNED FOR LIFE', dense saturated red #d7402b ink with a thin #241a12 letter contour and hand-stamped edge distress. Isolated on one solid uniform FLAT magenta background, NO glow, NO gradient, framed for a clean cut-out; flat-cel 2.5D vector, even medium-thick #241a12 outline.",
+  "aspect": "2:3",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/env/stamp-block-outlined.png",
+   "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+   "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+  ]
+ }
+]

@@ -1,0 +1,28 @@
+[
+ {
+  "name": "wf-L01-v2",
+  "shot_id": "L01",
+  "mode": "environment",
+  "delta": "A single ordinary customer, small, stands at a clean teal-and-cream American bank teller counter in the lower-left foreground, dwarfed. Behind and above the counter an impossibly tall leaning TOWER of account-opening forms and unactivated debit cards rises out of frame, filling the upper two-thirds \u2014 paperwork nobody signed for, teetering over one small person (scale as argument). The customer is an anonymous foreground figure: This prominent foreground figure is an anonymous, non-recurring person drawn on the FULL base family rig \u2014 round near-circle head, NO nose, NO ears, classic cartoon hands (three fingers plus one thumb), even medium-thick #241a12 outline, clean flat cel render \u2014 a plain modern customer in ordinary clothes, hold ONLY the rig form. Warm teal bank palette, cream forms, one red accent on a single overdue-slip clipped to the pile. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft cel shading and genuine fore/mid/background depth (never flat or empty), rounded friendly shapes, no realistic detail; built-but-flat environment filled edge-to-edge; any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+  ],
+  "_cast": [],
+  "_text": false,
+  "_crowd": false
+ },
+ {
+  "name": "wf-L44-stamp-src-v2",
+  "shot_id": "L44",
+  "layer": "stamp",
+  "mode": "environment",
+  "delta": "A heavy red block-capital rubber stamp reading 'ADMITTED', dense saturated red #d7402b ink with a thin #241a12 letter contour and hand-stamped edge distress. Isolated on one solid uniform FLAT magenta background, NO glow, NO gradient, framed for a clean cut-out; flat-cel 2.5D vector, even medium-thick #241a12 outline.",
+  "aspect": "2:3",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/env/stamp-block-outlined.png",
+   "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+   "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+  ]
+ }
+]

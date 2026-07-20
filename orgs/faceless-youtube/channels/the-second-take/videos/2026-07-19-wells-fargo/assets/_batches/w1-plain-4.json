@@ -1,0 +1,288 @@
+[
+ {
+  "name": "wf-L07",
+  "shot_id": "L07",
+  "mode": "environment",
+  "delta": "Hard cut to a near-black field: a single large hand-lettered marker numeral '8' glows warm at frame center, alone, monumental, heavy calm negative space around it \u2014 the number that ran everything. Near-black ground, warm cream '8', one faint red accent on the base line beneath it. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering; locked near-black palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond the numeral, no logos; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+   "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+  ],
+  "_cast": [],
+  "_text": true,
+  "_crowd": false
+ },
+ {
+  "name": "wf-L16",
+  "shot_id": "L16",
+  "mode": "environment",
+  "delta": "Register shift to a clean marker-drawn dashboard: all those product icons feed into a single big boxed scorecard figure \u2014 a hand-lettered 'PRODUCTS PER HOUSEHOLD' label over one prominent number. The whole messy pile reduced to one clean metric. Cool cream-and-slate infographic palette, one red accent circling the metric box. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond the label, no logos; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+  ],
+  "_cast": [],
+  "_text": true,
+  "_crowd": false
+ },
+ {
+  "name": "wf-L21",
+  "shot_id": "L21",
+  "mode": "environment",
+  "delta": "A late-1990s corporate rally scene: a small stage, banners, a few anonymous cheering staff, a hand-lettered marker banner overhead reading '1999'. Warm nostalgic teal-and-cream palette, one red accent on a banner tassel. Crowd on the CROWD RIG: round cream-family heads, DOT EYES, one simple mouth, NO noses, NO ears, NO teeth, same squat proportion, 1990s business-casual dress. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond '1999', no logos; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+   "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+   "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+  ],
+  "_cast": [],
+  "_text": true,
+  "_crowd": true
+ },
+ {
+  "name": "wf-L26",
+  "shot_id": "L26",
+  "mode": "environment",
+  "delta": "The number '8' rendered as an old weathered stone monument on a plinth, faintly cobwebbed and dusty, older than the people who'd get blamed \u2014 a goal set long before the scandal. Muted stone-grey-and-cream palette, one faint red accent on a small dated plaque. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+  ],
+  "_cast": [],
+  "_text": true,
+  "_crowd": false
+ },
+ {
+  "name": "wf-L33",
+  "shot_id": "L33",
+  "mode": "environment",
+  "delta": "A teller alone behind the counter at the end of the day, glancing at a day's-tally card one short of the quota \u2014 the setup for what they do next (pinning stage base). Base-rig anonymous teller: round head, NO nose, NO ears, four-digit hands, #241a12 outline, flat cel, teal uniform; hold ONLY the rig form. Warm-but-dimming counter palette, one red accent on the tally card's shortfall mark. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+  ],
+  "_cast": [],
+  "_text": false,
+  "_crowd": false
+ },
+ {
+  "name": "wf-L42",
+  "shot_id": "L42",
+  "mode": "environment",
+  "delta": "A clean marker-drawn credit-score gauge with its needle dropping into the red, and a small statement beside it with fees and interest ticking up in a red column \u2014 the quiet damage of a card nobody wanted. Cool cream-and-slate infographic palette, the one red accent on the falling needle and the fee column. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering only; the single red accent #d7402b on the drop; no photorealism, no on-screen narrator, no unrequested text (short labels only), no logos; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+  ],
+  "_cast": [],
+  "_text": false,
+  "_crowd": false
+ },
+ {
+  "name": "wf-L48",
+  "shot_id": "L48",
+  "mode": "environment",
+  "delta": "The review window drawn wider on a timeline \u2014 brackets stretching back and forward over more years, a header '165 MILLION' and a small window '2009-2016'. A bigger net over more accounts. Cool cream-and-slate palette, one red accent on the widening brackets. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering; the single red accent #d7402b on the brackets; no photorealism, no on-screen narrator, no unrequested text beyond '165 MILLION' and '2009-2016', no logos; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+  ],
+  "_cast": [],
+  "_text": true,
+  "_crowd": false
+ },
+ {
+  "name": "wf-L53",
+  "shot_id": "L53",
+  "mode": "environment",
+  "delta": "Deadpan: the SAME single pile of account cards, measured once with a short ruler and once with a long ruler laid beside it, a marker tag reading 'SAME PILE' \u2014 the fraud didn't double, the measuring did. Cool slate-and-cream palette, one faint red accent on the long ruler's tip. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'SAME PILE', no logos; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+  ],
+  "_cast": [],
+  "_text": true,
+  "_crowd": false
+ },
+ {
+  "name": "wf-L58",
+  "shot_id": "L58",
+  "mode": "environment",
+  "delta": "An even larger crowd of anonymous employees behind the fired line, marked for investigation, a marker tag '23,000+' over them \u2014 the number multiplies. Desaturated grey-and-cream palette, one faint red accent on the tag. Crowd on the CROWD RIG: round cream heads, DOT EYES, one simple mouth, NO noses, NO ears, NO teeth, squat proportion, varied work clothes. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond '23,000+', no logos; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+   "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+  ],
+  "_cast": [],
+  "_text": true,
+  "_crowd": true
+ },
+ {
+  "name": "wf-L63",
+  "shot_id": "L63",
+  "mode": "environment",
+  "delta": "An executive at headquarters glancing at a firing report and giving a bored, unsurprised shrug \u2014 no shock upstairs. Base-rig anonymous executive: round head, NO nose, NO ears, four-digit hands, #241a12 outline, flat cel, a dark suit; hold ONLY the rig form. Cool office palette, one faint red accent on the report's tab. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering only; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+  ],
+  "_cast": [],
+  "_text": false,
+  "_crowd": false
+ },
+ {
+  "name": "wf-L68",
+  "shot_id": "L68",
+  "mode": "environment",
+  "delta": "A hand lifting a desk phone beneath a wall poster hand-lettered 'ETHICS LINE' \u2014 the number you're supposed to call. Body/desk scale, no hand macro. Cool cream-and-teal office palette, one red accent on the poster border. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'ETHICS LINE', no logos; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+  ],
+  "_cast": [],
+  "_text": true,
+  "_crowd": false
+ },
+ {
+  "name": "wf-L73",
+  "shot_id": "L73",
+  "mode": "environment",
+  "delta": "A ribboned award medallion for a single whistleblower with a big marker 'LARGEST' banner across it \u2014 a record award at the time. Cool cream-and-slate palette, the one red accent on the 'LARGEST' banner. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'LARGEST', no logos; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+  ],
+  "_cast": [],
+  "_text": true,
+  "_crowd": false
+ },
+ {
+  "name": "wf-L81",
+  "shot_id": "L81",
+  "mode": "environment",
+  "delta": "Stumpf revealed for the first time \u2014 a NEW cartoon person in the base family form, a silver-haired older bank CEO with a flat pale head tone, in a dark navy pinstripe suit and a burgundy tie \u2014 seated small at a witness table before a tall raised panel of anonymous senators, a marker sign 'SENATE' on the panel front. He is on the spot. Cool formal wood-and-slate hearing palette, one red accent on the panel's nameplate strip. The senators behind are on the crowd rig (round heads, dot eyes, no noses/ears/teeth). Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'SENATE', no logos; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/library/stumpf.png",
+   "channels/the-second-take/visual-kit/refs/base/expr-worried.png",
+   "channels/the-second-take/visual-kit/refs/base/sit.png",
+   "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+  ],
+  "_cast": [
+   "stumpf"
+  ],
+  "_text": true,
+  "_crowd": true
+ },
+ {
+  "name": "wf-L86",
+  "shot_id": "L86",
+  "mode": "environment",
+  "delta": "A big asset meter/dial frozen in ice, its needle locked at a marker reading '$1.95T' \u2014 the bank's total assets frozen where they stood. Cool icy-blue-and-cream palette, the one red accent on the frozen needle. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering; the single red accent #d7402b on the needle; no photorealism, no on-screen narrator, no unrequested text beyond '$1.95T', no logos; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+  ],
+  "_cast": [],
+  "_text": true,
+  "_crowd": false
+ },
+ {
+  "name": "wf-L92",
+  "shot_id": "L92",
+  "mode": "environment",
+  "delta": "Two empty executive chairs at the head of a table, a single large hand-lettered marker question mark hanging over them \u2014 what happened to the people who owned the number? Cool slate-and-cream palette, one red accent on the dot of the question mark. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond '?', no logos; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+  ],
+  "_cast": [],
+  "_text": false,
+  "_crowd": false
+ },
+ {
+  "name": "wf-L97",
+  "shot_id": "L97",
+  "mode": "environment",
+  "delta": "A crowd of ordinary people and a raised gavel together pressing on a big lever, and a hand reluctantly clawing money back out of the money bags \u2014 public and political pressure forcing the clawback. Crowd on the crowd rig (round heads, dot eyes, no noses/ears/teeth). Cool slate-and-cream palette, one red accent on the lever. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+  ],
+  "_cast": [],
+  "_text": false,
+  "_crowd": true
+ },
+ {
+  "name": "wf-L104",
+  "shot_id": "L104",
+  "mode": "environment",
+  "delta": "A second SEC settlement document with a marker figure '$3M' and a small tag 'PLUS DISGORGEMENT', a 'TOLSTEDT' label \u2014 settled in 2023, plus giving money back. Cool cream-and-slate palette, one red accent on the seal. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'SEC', '$3M', 'PLUS DISGORGEMENT' and 'TOLSTEDT', no logos; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+  ],
+  "_cast": [],
+  "_text": true,
+  "_crowd": false
+ },
+ {
+  "name": "wf-L109",
+  "shot_id": "L109",
+  "mode": "environment",
+  "delta": "Tolstedt standing at a courtroom lectern, a single charge document before her marker-lettered 'OBSTRUCTION' \u2014 the one guilty plea, to obstructing a bank examination. She is on her pinned look (burgundy blazer). Cool formal courtroom palette, one red accent on the 'OBSTRUCTION' underline. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'OBSTRUCTION', no logos; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/library/tolstedt.png",
+   "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+   "channels/the-second-take/visual-kit/refs/base/hold-one-hand.png",
+   "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+  ],
+  "_cast": [
+   "tolstedt"
+  ],
+  "_text": true,
+  "_crowd": false
+ },
+ {
+  "name": "wf-L114",
+  "shot_id": "L114",
+  "mode": "environment",
+  "delta": "A single fake account card sitting untouched and un-charged on one side, while on the other side a small 'OBSTRUCTION' tag carries the only conviction \u2014 the fraud itself went unanswered. Cool slate-and-cream palette, one red accent on the un-charged fake card's edge. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'OBSTRUCTION', no logos; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+  ],
+  "_cast": [],
+  "_text": true,
+  "_crowd": false
+ },
+ {
+  "name": "wf-L119",
+  "shot_id": "L119",
+  "mode": "environment",
+  "delta": "The final image: the lone glowing '8' seated on an empty witness stand in a dark, vacated hearing room, no one there to question it \u2014 the number that started all of it, never having to answer for anything. Near-black-and-cream palette, the one red accent on the witness-stand rail. Big quiet negative space. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering; near-black palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond '8', no logos; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+   "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+  ],
+  "_cast": [],
+  "_text": true,
+  "_crowd": false
+ }
+]

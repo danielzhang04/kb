@@ -1,0 +1,41 @@
+[
+ {
+  "name": "wf-L34",
+  "shot_id": "L34",
+  "mode": "environment",
+  "delta": "The SAME counter held, now a fresh account-opening form lies on it, a customer's name marker-written across the top and a small 'NEW ACCOUNT' tab \u2014 opened without the customer. Everything else held. Warm counter palette, one red accent on the 'NEW ACCOUNT' tab. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering only; the single red accent #d7402b on the tab; no photorealism, no on-screen narrator, no unrequested text beyond 'NEW ACCOUNT', no logos; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L33.png"
+  ],
+  "_cast": [],
+  "_text": true,
+  "_crowd": false
+ },
+ {
+  "name": "wf-L35",
+  "shot_id": "L35",
+  "mode": "environment",
+  "delta": "The SAME counter held, now a thin marker-drawn trickle of coins arcs from a passbook marked with the customer's account into the new form, to make the phantom account look active. Everything else held. Warm counter palette, one red accent on the moving-coin arc. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering only; the single red accent #d7402b on the arc; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L34.png"
+  ],
+  "_cast": [],
+  "_text": false,
+  "_crowd": false
+ },
+ {
+  "name": "wf-L36",
+  "shot_id": "L36",
+  "mode": "environment",
+  "delta": "The SAME counter held, now a debit-card PIN pad sits on it with a marker '0000' shown in its little display \u2014 the PIN set to four zeros so the teller keeps control. Everything else held. Warm counter palette, one red accent on the '0000' display frame. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering; the single red accent #d7402b on the display; no photorealism, no on-screen narrator, no unrequested text beyond '0000', no logos; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L35.png"
+  ],
+  "_cast": [],
+  "_text": true,
+  "_crowd": false
+ }
+]

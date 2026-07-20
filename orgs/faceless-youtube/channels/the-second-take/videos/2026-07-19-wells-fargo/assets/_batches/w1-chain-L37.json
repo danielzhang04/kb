@@ -1,0 +1,15 @@
+[
+ {
+  "name": "wf-L38",
+  "shot_id": "L38",
+  "mode": "environment",
+  "delta": "The SAME signup screen held, now an alert-bell notification icon is sliding off the edge of the screen and dropping into a dark waste-bin below \u2014 the warning routed to an inbox nobody watches. Everything else held. Cool palette darkening at the bin, one red accent on the alert bell. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering only; the single red accent #d7402b on the bell; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L37.png"
+  ],
+  "_cast": [],
+  "_text": false,
+  "_crowd": false
+ }
+]

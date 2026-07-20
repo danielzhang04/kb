@@ -1,0 +1,15 @@
+[
+ {
+  "name": "wf-L08",
+  "shot_id": "L08",
+  "mode": "environment",
+  "delta": "The SAME near-black field with the glowing '8', now the hand-lettered marker word 'GREAT' has snapped in just beside it so the two read as a slogan \u2014 '8' and 'GREAT', the rhyme that chose the target. Everything else held. Near-black ground, warm cream lettering, the one red accent underlining 'GREAT'. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering; near-black palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond '8' and 'GREAT', no logos; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L07.png"
+  ],
+  "_cast": [],
+  "_text": true,
+  "_crowd": false
+ }
+]
