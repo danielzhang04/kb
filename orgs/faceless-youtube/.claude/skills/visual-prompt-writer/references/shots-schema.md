@@ -230,6 +230,39 @@ data/receipts. Pick the tag that makes the shot look *authored and credible*, no
 
 ## 4. Prompt-writing patterns
 
+### The supplied-text law (lint-enforced, HARD)
+
+**A prompt may never ask the engine to render text, a number, a name or a date without
+supplying that value VERBATIM, inline, right next to the element it belongs to.** There is
+no "the engine will work it out" — a diffusion model asked for *a number* renders **a**
+number, and an invented one on a documentary about a real person is a fabricated fact.
+
+```
+BAD   "a large marker scorecard number painted on its face"     -> engine rendered  1
+BAD   "a hand-lettered 'PRODUCTS PER HOUSEHOLD' label over one prominent number"
+                                                                 -> engine rendered  3.5
+BAD   "a customer's name marker-written across the top"          -> engine invented a name
+GOOD  "the single marker numeral '8' painted large on its face"
+GOOD  "a 'PRODUCTS PER HOUSEHOLD' label over the figure '8'"
+GOOD  "a customer's name 'J. RAMIREZ' marker-written across the top"
+```
+
+Three ways out, in order of preference:
+1. **Supply it** — quote the literal from `research.md`'s fact ledger, citing the `[F-NN]`
+   id in `notes`. The value must sit *next to its own element*: a literal supplied for the
+   header does not license an unsupplied number elsewhere in the sentence.
+2. **Omit the element** — if the ledger has no such fact, cut it. A boulder is still a
+   boulder without a number on it; the beat survives, the fabrication doesn't.
+3. **Author it as deliberately blank** — "a single BLANK name line", "the metric field left
+   COMPLETELY EMPTY". An empty surface is a legitimate composition and reads as intentional.
+
+Never resolve it by inventing a plausible-looking value yourself: that is the same
+fabrication with an extra step.
+
+`scripts/lint_shots.py` HARD-fails this across every `still_prompt`, `first_frame`, and
+thumbnail `gen_prompt` in the file. `motion-planner` carries the identical law for
+`cutout_prompt` / `plate_prompt` — the same defect, one skill downstream.
+
 **Still prompt** — name subject, composition, lens/framing, lighting, palette, mood; end with the
 `global_prompt_suffix`. Concrete beats vague ("a rusted 1970s pressure valve, extreme close-up,
 shallow depth of field, cold blue key light, single dominant subject on black" > "an industrial
@@ -288,9 +321,9 @@ real rival channel or instruct "recreate X's thumbnail" — original composition
       "vo_ref": "the engineers trusted a number", "from_cue": false,
       "narration_type": "abstract-force", "shot_class": "symbolic-stand-in-object",
       "source": "ai-gen",
-      "still_prompt": "a single load-bearing calculation carved into a monolithic stone tablet balanced on a knife-edge, tablet dead-center and tilted a few degrees off vertical, cold blue key light, heavy negative space, {SUFFIX}",
+      "still_prompt": "a monolithic stone tablet with the single figure '2,800 TONS' carved into its face, balanced on a knife-edge, tablet dead-center and tilted a few degrees off vertical, cold blue key light, heavy negative space, {SUFFIX}",
       "synthetic": false,
-      "notes": "NON-literal: 'trusted a number' is an abstraction → made a precarious physical object, not a shot of an engineer at a desk. The off-vertical tilt is a HELD precarious pose (a tableau), not a freeze of falling."
+      "notes": "NON-literal: 'trusted a number' is an abstraction → made a precarious physical object, not a shot of an engineer at a desk. The off-vertical tilt is a HELD precarious pose (a tableau), not a freeze of falling. The carved figure is QUOTED VERBATIM from the fact ledger — an earlier version of this example read 'a single load-bearing calculation carved into a stone tablet', which supplies no value and is exactly the §4 supplied-text violation."
     }
   ]},
   "thumbnail": { "thumbnail_source": "from-metadata.json", "primary": {

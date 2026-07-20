@@ -140,6 +140,24 @@ render if skipped. They are restated in context further down; collected here so 
    IS the payload, this is how a reveal is made visible (rule 3b). The lettering STYLE is pinned
    channel-wide (a locked exemplar image-gen seeds automatically — style-bible §6): never describe fonts,
    lettering, or handwriting style in a `still_prompt`.
+10. **Supplied-text law — NEVER name a text element without supplying its value (lint-enforced, HARD).**
+   Rule 9 governs text you *chose* to author. This rule governs the far more dangerous case: **referring
+   to on-screen text by DESCRIPTION instead of by VALUE.** A prompt that says *"a large marker scorecard
+   number painted on its face"*, *"one prominent number"*, or *"a customer's name marker-written across
+   the top"* has instructed the engine to render glyphs and told it nothing about which — so **the engine
+   invents them, every time.** It rendered `1` for the first and `3.5` for the second. On this channel's
+   Wells Fargo documentary — a real, named, living person and a documented SEC case — that mechanism put
+   an **invented criminal charge on screen against a real person**, alongside ~20 other fabricated
+   on-screen facts. The prompt looked completely reasonable; nothing downstream could catch it, because
+   by the time the value exists it is pixels and the frame looks intentional.
+   **The rule:** a prompt may never instruct the engine to render text, a figure, a name or a date
+   without supplying that value **verbatim, inline, adjacent to its own element**. If the value cannot be
+   sourced from `research.md`'s fact ledger, **OMIT the element entirely rather than gesture at it** — or
+   author it as deliberately blank ("the metric field left COMPLETELY EMPTY", "a single BLANK name line"),
+   which is a legitimate composition. **Do NOT invent a plausible value to satisfy the rule** — that is
+   the same fabrication with an extra step. Worked examples + the three resolutions:
+   `references/shots-schema.md §4`. `scripts/lint_shots.py` HARD-fails it; `motion-planner` carries the
+   identical law for `cutout_prompt`/`plate_prompt`, which is where the boulder's invented `1` was authored.
 
 **Intent, never mechanism.** You author *what a shot depicts*; the engine owns the treatment (camera,
 entrance, timing) and the `audio-director` owns the sound. Never author mechanism anywhere in the file —
@@ -279,7 +297,12 @@ the *procedure* that applies them, per line, in order:
      `still_prompt` may still adjust the figure's *placement/angle*; the asset supplies the *hand/face*). If
      nothing is close, add a NEW entry to top-level `needed_assets` (`kind` + `slug` + `wants` + `why`) — then
      the gate (below) handles it.
-6. **State the facts (scene + placement only).** Write the `still_prompt` so every load-bearing SCENE fact is
+6. **State the facts (scene + placement only) — and supply every value you name.** Before writing any
+   element that carries text, a number, a name or a date, get its literal from `research.md`'s fact ledger
+   and quote it inline next to that element (cite the `[F-NN]` id in `notes`). **If the ledger has no such
+   fact, cut the element** — never write "a scorecard number", "one prominent number", "a customer's name"
+   and leave the engine to fill it (Load-bearing rule 10; this is a HARD lint failure, and it is how a
+   fabricated criminal charge reached a real person's frame). Otherwise: write the `still_prompt` so every load-bearing SCENE fact is
    explicit and checkable — layout, geography, who stands where, what a highlight/prop targets, the figure's
    narrative ACTION and PLACEMENT. **Do NOT describe the body pose, hand/finger mechanics, or facial
    expression** — those are seeded via `pose_ref`/`expression_ref` (step 5); authoring them here too is
