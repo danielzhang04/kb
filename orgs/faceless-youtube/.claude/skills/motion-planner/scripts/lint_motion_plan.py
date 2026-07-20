@@ -28,7 +28,11 @@ from motion_plan import validate_plan  # noqa: E402
 # authoring surface for the same defect — and in fact the one that shipped it: the Wells
 # Fargo boulder's invented "1" came from a cutout_prompt reading "a large marker scorecard
 # number painted on its face". One implementation, two callers; a copy here would rot.
-from lint_shots import unsupplied_text_requests  # noqa: E402
+from lint_shots import (  # noqa: E402
+    control_leak_check,
+    unsupplied_text_requests,
+    word_cap_check,
+)
 
 
 def _hybrid_ids(plan):
@@ -114,6 +118,14 @@ def lint(plan, shots_ids, shots_meta=None, suffix=""):
                     f"{sid}/{field}: asks the engine to render text without supplying its value "
                     f"-> {excerpt!r}. The engine WILL invent one. Quote the literal inline next to "
                     f"the element (from research.md's fact ledger), or cut the element.")
+            # LETTERING-FIDELITY laws (HARD), same import-don't-copy rule as above.
+            # A cutout_prompt is written BY SUBTRACTION from a still_prompt, so it
+            # inherits the still's control vocabulary verbatim — "hold ONLY the rig
+            # form" travels into the cutout unless something stops it, and a cutout
+            # is a lone element on a plain plate, which is the easiest possible
+            # surface for a stray instruction to get lettered onto.
+            word_cap_check(sid, [(sid, field, prompt or "")], suffix, errors)
+            control_leak_check(sid, [(sid, field, prompt or "")], suffix, errors)
         if sid not in shots_ids:
             errors.append(f"{sid}: not a shot id in shots.json")
         bg = shot.get("background") or {}

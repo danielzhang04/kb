@@ -263,6 +263,85 @@ fabrication with an extra step.
 thumbnail `gen_prompt` in the file. `motion-planner` carries the identical law for
 `cutout_prompt` / `plate_prompt` — the same defect, one skill downstream.
 
+### The lettering-fidelity laws (lint-enforced)
+
+The supplied-text law above governs a value that was **never supplied**. These four govern a
+value that *was* supplied and still rendered wrong. They were derived by measuring the Wells
+Fargo shot list against the **Poyais reference implementation**
+(`videos/2026-07-04-poyais/`) — 236 shots, 250 authored literals — and each is stated with the
+evidence that produced it, so a later author can overturn it with better evidence rather than
+guess at the intent.
+
+**L-1. Re-quote a carried literal on EVERY frame that redraws it (HARD).**
+A delta frame regenerates the whole image, so every glyph in it is drawn again. Referring to an
+established string by lowercase description hands those glyphs back to the engine.
+
+```
+L11  "a checking-account passbook on a small marker card labelled 'CHECKING'"  -> CHECKING  OK
+L13  "a coin savings-jar added on a small marker card labelled 'SAVINGS'"      -> SAVINGS   OK
+L14  "a login-screen icon added on a marker card labelled 'ONLINE'"            -> ONLINE    OK
+L12  "a marker card labelled 'CARD' beside THE CHECKING PASSBOOK"              -> CHECKIG   FAIL
+```
+L12 is the only frame in that chain that did not re-quote, and the only one that garbled.
+Repeating the literal **character-for-character** is fine even unquoted ("stacked on top of the
+CFPB slab" — L78, clean); what breaks is downgrading it to lowercase prose. Case is the
+discriminator.
+
+**L-2. Keep production-control vocabulary out of the scene body (HARD).**
+The engine cannot always tell an instruction from a label, and has lettered instructions into
+the artwork:
+
+```
+L100  "...hold ONLY the rig form."          -> a document lettered  `rig form`
+L69   "...gravity register, comedy off..."  -> a register labelled  `COMEDY OFF`
+L42   the prompt's own editorial gloss      -> a caption reading
+                                               `THE QUIET DAMAGE OF A CARD NOBODY WANTED`
+```
+What leaks is the **bare noun phrase naming a production rule**. The same constraint stated as a
+property of a depicted body never leaked — "figures on the CROWD RIG: round heads, dot eyes, NO
+noses, NO ears" is legal and common. State constraints as facts about the thing in frame.
+
+*Corollary (advisory, not lint-checked):* the one-sentence editorial gloss this channel likes
+("The machine that got absorbed into the bigger bank.", "The person who actually carries the
+pressure.") adds nothing the engine can draw and is pure leak surface. **Put it in `notes`.**
+
+**L-3. Authored lettering is capped at 4 words (HARD).**
+SKILL rule 9's "1–4 words proven" is now enforced. Across 250 authored literals in the two
+videos the single string that exceeds it — Poyais L97's 7-word
+`'Official Shoemaker to the Princess of Poyais'` — is also a documented lettering defect. Past
+roughly four words the per-glyph error rate compounds into an unreadable render. The cap is
+**uniform**, including a short's `first_frame` caption.
+
+**L-4. Prefer the word form for big numbers (advisory only — and the restraint is the point).**
+All four Wells Fargo numeral garbles carry punctuation (`1,44.27`, `77,000`, `100,000`, a red
+accent splitting `565,000`), which invites a ban. The measurement does not support one: Poyais
+authored `'8,000,000 ACRES'` on a flat deed face and it rendered clean, and Wells Fargo's own
+`'$5.4 MILLION'`, `'$1.95T'`, `'2.1M'`/`'2.55M'` and `'5,300 FIRED'` all rendered correctly and
+check out against the ledger. Controlling for supply, the garble rate among digit-bearing
+literals is **~6% (Wells Fargo) vs ~7% (Poyais)** — indistinguishable. Punctuation is not the
+cause; **volume** is: Wells Fargo authors 19 punctuated numerals to Poyais's 3, so it ships
+proportionally more numeral defects in absolute terms. Only a numeral carrying **two or more
+separators in one digit run** draws a heads-up. Hard-failing this would flag 19 correct frames
+to catch none of the four defects.
+
+**What the measurement also killed.** Two plausible hypotheses were tested and **rejected**:
+*string length* — Wells Fargo has **zero** literals over the 4-word cap and Poyais has one, so
+long strings are not what distinguishes them; and *substrate naming* — both files attach
+lettering to a named physical surface at similar rates. The real distinguishing variable is
+**lettering saturation**: Poyais letters **37%** of its shots (73 literals over 117), Wells
+Fargo **77%** (177 over 119). Wells Fargo asks the engine for 2.4× as many strings and gets
+proportionally more failures. *Authoring fewer, shorter strings is the highest-leverage lever
+available* — every string you do not author cannot garble.
+
+**Read the Poyais claim carefully before treating it as a target.** Its lower absolute defect
+count is substantially a **review-coverage artifact**: Wells Fargo ran an axis-explicit
+lettering sweep over 119/119 frames, while Poyais declared its review axes as
+identity-rig / fidelity / style with **lettering absent**, carried explicit letter-by-letter
+transcription on only **29 of 117 shots (24.8%)**, and skipped fresh-eyes review entirely on 6.
+Per text-bearing shot the two videos' documented defect rates are ~35% and ~37% — statistically
+the same. Poyais is the reference implementation for *how to author* a literal, not evidence
+that its process catches more.
+
 **Still prompt** — name subject, composition, lens/framing, lighting, palette, mood; end with the
 `global_prompt_suffix`. Concrete beats vague ("a rusted 1970s pressure valve, extreme close-up,
 shallow depth of field, cold blue key light, single dominant subject on black" > "an industrial

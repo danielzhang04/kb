@@ -861,3 +861,183 @@ Deliberately not run, and it should not be. A re-render now would bake in seven 
 facts — including an **invented criminal charge against a real, named, living person** (L108) — plus
 seven swamp frames. The two fixes this round landed are real but they are 2 frames out of a
 36-frame defect list. **Re-render after the fact and period classes are cleared**, not before.
+
+---
+
+## Round 7 — 2026-07-20 — what makes in-image lettering render cleanly, measured and encoded (Claude Opus 4.8, `claude-opus-4-8[1m]`)
+
+**Calls used: 0. Spend: $0.00.** Read-only analysis + skill/lint changes only. Nothing was
+generated, no frame was placed, no render was run. Part 3 of the original brief (re-authoring and
+regenerating L28/L29/L30/L32/L34/L116) was **cancelled mid-run by the coordinator** — a
+`faceless-producer` conductor now owns all regeneration via the `image-generation` skill's
+mandatory batched review over all 119 frames, and its output supersedes the six-prompt list.
+
+### Part 1 — the Poyais comparison, measured
+
+The premise handed to this round was that `videos/2026-07-04-poyais/` "does not have this problem
+at the same rate". **It was verified before being built on, and it does not survive measurement.**
+
+| | Poyais | Wells Fargo |
+| --- | --- | --- |
+| long-form shots | 117 | 119 |
+| shots carrying >=1 quoted literal | **43 (37%)** | **92 (77%)** |
+| total authored literals | 73 | 177 |
+| literals containing digits | 14 (19%) | 85 (48%) |
+| literals with a punctuated numeral | 3 | 19 |
+| literals over the 4-word cap | 1 | **0** |
+| documented lettering defects | 17 | 34 |
+| defects per text-bearing shot | **~35%** | **~37%** |
+
+Per text-bearing shot the two are **statistically indistinguishable**. And Poyais's lower absolute
+count is substantially a **review-coverage artifact**: Rounds 4+6 gave Wells Fargo an
+axis-explicit lettering sweep over 119/119, whereas Poyais declares its review axes as
+identity-rig / fidelity / style with **lettering absent**, carries explicit letter-by-letter
+transcription on only **29 of 117 shots (24.8%)**, and skipped fresh-eyes review outright on 6
+(`assets/scenes/manifest.json:594` — *"Fresh-eyes review SKIPPED per human directive"*). Poyais's
+17 is a floor, not a total. On equal coverage it would very likely read worse.
+
+**Two of the candidate hypotheses were tested and REJECTED:**
+
+- **String length is not the variable.** Wells Fargo has **zero** literals over rule 9's 1–4 word
+  cap; Poyais has one. Wells Fargo is the *cleaner* file on this axis.
+- **Punctuated numerals are not the cause.** Controlling for supply, the garble rate among
+  digit-bearing literals is **~6% (Wells Fargo) vs ~7% (Poyais)**. Poyais's `'8,000,000 ACRES'`
+  rendered clean on a flat deed face; Wells Fargo's `'$5.4 MILLION'`, `'$1.95T'`, `'2.1M'` and
+  `'5,300 FIRED'` all rendered correctly and check out against the ledger.
+
+**What DOES differ, and what it explains:**
+
+**(a) Lettering saturation — the dominant term.** Poyais letters 37% of shots, Wells Fargo 77%.
+Wells Fargo asks the engine for **2.4x as many strings** and gets proportionally more failures.
+The highest-leverage lever available is *authoring fewer strings*.
+
+**(b) `CHECKIG` is an AUTHORING fault, not a rendering fault.** This overturns fc03482's own
+classification (*"Class B — garbled glyphs — is a rendering fault, not an authoring one, and is
+deliberately untouched here"*). The household delta chain settles it without inference:
+
+```
+L11  "...on a small marker card labelled 'CHECKING'"       -> CHECKING  clean
+L13  "...on a small marker card labelled 'SAVINGS'"        -> SAVINGS   clean
+L14  "...on a marker card labelled 'ONLINE'"               -> ONLINE    clean
+L12  "...labelled 'CARD' beside THE CHECKING PASSBOOK"     -> CHECKIG   FAIL
+```
+
+L12 is the **only** frame in the chain that referred to a carried-forward literal by lowercase
+description instead of re-quoting it, and the only one that garbled. A delta frame redraws every
+glyph; a literal it must redraw from a paraphrase is one it is guessing at. Same family as Class
+A, one step removed. **`YOU NAME` (L45) is the same defect** — the prompt asked for "a scribbled
+forged signature" and supplied no name, so the engine reached for the form placeholder `YOUR NAME`
+and dropped a letter. Of the four named garbles, **two are authorial and now mechanically caught**;
+`1,44.27` was downstream of an unsupplied number (already Class A); only the prompt-text leaks
+were genuinely a separate mechanism.
+
+**(c) Control vocabulary leaks because of its GRAMMAR.** `rig form` (L100) and `COMEDY OFF` (L69)
+are bare noun phrases naming a production rule — they parse as something that could be written on
+an object. The same constraints stated as properties of a depicted body ("figures on the CROWD
+RIG: round heads, dot eyes, NO noses, NO ears") never leaked, in either video. That is the
+discriminator, and it is what makes the check tractable.
+
+### Part 2 — encoded
+
+Four laws written into `visual-prompt-writer/SKILL.md` (rule 11), `references/shots-schema.md` §4,
+and `motion-planner/SKILL.md` (the subtraction step), built **on top of** fc03482 rather than
+beside it — `lint_motion_plan.py` imports the new checks from `lint_shots.py` exactly as it
+already imported `unsupplied_text_requests`. One implementation, two callers.
+
+| law | enforcement | hits on the real 119-shot file |
+| --- | --- | --- |
+| **L-1** re-quote a carried literal on every frame that redraws it | **HARD** | 1 — and it is L12/`CHECKIG` |
+| **L-2** no production-control vocabulary in the scene body | **HARD** | 26 across 22 shots |
+| **L-3** authored lettering <=4 words | **HARD** | 2 (both shorts `first_frame` captions) |
+| **L-4** prefer the word form for big numbers | **advisory** | 0 |
+
+**L-1 has perfect precision on real data**: 1 hit across all 236 shots of both videos, and it is
+the documented defect. Getting there required a discriminator — an initial cut also flagged L78's
+*"stacked on top of the CFPB slab"*, a frame Round 4 rated part of the strongest sequence in the
+video. **Case is the difference**: a literal repeated character-for-character leaves the engine
+nothing to reconstruct; one downgraded to lowercase prose does not.
+
+**L-2's precision is deliberately low and that is the trade.** 22 flagged shots, 2 confirmed
+leaks. But the flagged string is *identical* in all 22 — the check is an exact denylist of phrases
+with a confirmed render, not a heuristic — and clearing it costs a prompt edit and zero API calls.
+
+**L-3 caught a contradiction inside the skill itself.** Rule 9 caps authored lettering at "1–4
+words proven"; Step 5 told shorts to bake a "3–7 word" caption, and the file's own
+`'IT STARTED WITH A RHYME'` / `'THEY CALLED THE ETHICS LINE'` sat in the gap. Resolved to the
+proven number, uniformly. No shorts frames exist yet, so nothing needed re-rendering.
+
+**L-4 was deliberately NOT hardened**, against the brief's suggestion, because the measurement
+does not support it: hard-failing punctuated numerals would flag 19 correct frames to catch none
+of the four defects. Only a numeral with two or more separators in one digit run draws a heads-up.
+Recorded here because *declining to add a guard* is the kind of decision that otherwise silently
+gets re-litigated.
+
+### Mutation results — 9 of 9 killed, each by a named test
+
+`test_lettering_fidelity.py` (28 new tests, real prompt strings only, sitting alongside
+fc03482's 24). Every load-bearing element was reverted in place, the suite re-run, the failure
+recorded by name, and the source restored. **Baseline and restored: 52 passed.**
+
+| mutation | killed by |
+| --- | --- |
+| M1 control-leak vocabulary emptied | `test_rig_form_is_flagged` + 2 |
+| M2 case discriminator removed | `test_verbatim_caps_reference_is_not_a_downgrade` |
+| M3 own-value excuse removed | `test_lowercased_carried_literal_is_flagged` + 3 |
+| M5 stage run-scoping removed | `test_check_does_not_span_separate_stages` + 1 |
+| M6 word cap raised to 99 | `test_seven_word_literal_is_flagged` |
+| M7 as-simile exclusion removed | `test_as_simile_is_not_measured_as_lettering` |
+| M8 suffix strip removed | `test_quoted_literals_skips_the_house_style_suffix` |
+| M9 short-literal filter removed | `test_short_literals_are_not_tracked` |
+| M10 numeral threshold loosened to 1 | `test_single_separator_numerals_are_not_even_advised_against` x5 |
+
+**Two mutations initially SURVIVED, and both were resolved by deleting code rather than by
+writing a test to cover it.** A `not stage_id` guard and a separate "is it quoted right here"
+branch both turned out to be unreachable — the run-builder already starts a fresh run per
+stage-less shot, and `_supplies_literal` already returns True for a value span overlapping the
+construct. Code that no mutation can kill is code that changes no outcome. Both were removed with
+a comment recording why, so neither gets helpfully re-added. Two further survivors (M8, M9) were
+genuine test gaps and were closed with real tests.
+
+### The six Class-A prompts — what would have been caught at authoring time
+
+Requested by the coordinator for the handoff. **All six are already flagged by fc03482's
+supplied-text guard**, i.e. this class is structurally prevented at authoring time *today*, before
+any of Round 7's additions:
+
+| shot | flagged excerpt (fc03482 Class A) | also caught by Round 7 |
+| --- | --- | --- |
+| L28 | `'marked with the stagecoach tag'` | — |
+| L29 | `'big scorecard number'` | L-2 (`rig form`) |
+| L30 | `'giant scorecard number'` | L-2 (`rig form`) |
+| L32 | `'reading'` | L-2 (`rig form`) |
+| L34 | `'name marker-written'` | — |
+| L116 | `'one enormous glowing scorecard number'`, `'giant number'` | — |
+
+Two caveats a reader should not have to discover themselves. **L32's hit is the weakest of the
+six** — the excerpt is a wall clock "reading near end-of-day", which is a real glyph request but
+not a fabricated-fact risk of the same order; it is a true positive on the letter of the law and a
+near-miss on its spirit. And **L116's prompt is STALE**: Round 5 regenerated that frame to carry a
+sourced `8` but never corrected `shots.json`, so the prompt still asks for an unsupplied number —
+the same shot-list-drifts-from-frame condition carried for L105 since Round 3.
+
+So: **the fabricated-value class is now structurally prevented; the lettering-fidelity class is
+prevented for L-1/L-3 and partially for L-2.** What remains review-dependent is everything the
+engine adds on its own initiative — unrequested text (7 defects here, 7 in Poyais, the largest
+single class in both videos) and occlusion/clipping. No prompt-side check can catch those; they
+need eyes on the frame, which is what the incoming batched review provides.
+
+### Re-render: still NOT warranted
+
+Unchanged from Round 6, and this round did not touch a single frame. The 36-frame defect list
+stands, and a `faceless-producer` review over all 119 frames is now in flight; its verdict should
+gate the re-render, not this round's skill work.
+
+### Residual
+
+- **Nothing in `shots.json` was edited.** The 66 HARD lint violations now reported against it (7
+  Class A, 26 control-leak, 2 word-cap, 1 carried-literal, plus 30 pre-existing advisories) are
+  **left standing deliberately** — the incoming conductor owns prompt repair, and two sessions are
+  already committing in this worktree. `lint_shots.py` will now block a `--write` on that file
+  until they are cleared; that is the intended behaviour, but it is a live change to a file
+  someone else is holding.
+- Everything Round 6 listed as residual remains open.
