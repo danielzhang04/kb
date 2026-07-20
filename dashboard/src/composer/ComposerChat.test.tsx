@@ -1,60 +1,86 @@
 // @vitest-environment jsdom
-/**
- * C1 — the Composer multi-turn chat pane. `stream` is injected (mirrors `Vibe.test.tsx`'s DI) so these
- * tests never touch a real network, session, or `claude` process. The load-bearing behaviour is the
- * multi-turn thread: the CLI session id captured on turn N is fed back in as turn N+1's `resumeId`.
- */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { ComposerChat } from './ComposerChat';
-import type { ComposerStreamFn } from './chatClient';
+import type { ComposerSession, ComposerStreamFn } from './workspaceClient';
 import type { TimelineModel } from '../lib/timelineModel';
 
-afterEach(() => cleanup());
+afterEach(cleanup);
 
-const REPLY = (text: string): TimelineModel => ({
-  turns: [{ index: 0, model: 'claude-sonnet-5', timestamp: null, usage: null, steps: [{ kind: 'text', text }] }],
-});
+const MODEL: TimelineModel = {
+  turns: [{ index: 0, model: 'claude', timestamp: null, usage: null, steps: [{ kind: 'text', text: 'A useful answer' }] }],
+};
 
-describe('ComposerChat', () => {
-  it('disables Send without a sessionToken and never calls stream', () => {
-    const stream: ComposerStreamFn = vi.fn();
-    render(<ComposerChat stream={stream} />);
-    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'an idea' } });
-    expect((screen.getByRole('button', { name: 'Send' }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.submit(screen.getByLabelText('Composer prompt'));
-    expect(stream).not.toHaveBeenCalled();
+const SESSION: ComposerSession = {
+  composerRef: 'cw_alpha', title: 'Atlas idea', state: 'open', createdAt: 'now', updatedAt: 'now', sourceComposerRef: null,
+  turns: [{ turnId: 't1', prompt: 'Earlier question', state: 'complete', model: MODEL, error: null, startedAt: 'now', endedAt: 'now' }],
+};
+
+describe('ComposerChat workspace', () => {
+  it('shows server history including user prompts and no provider identifiers', () => {
+    render(<ComposerChat composerSession={SESSION} sessionToken="tok" />);
+    expect(screen.getByText('Earlier question')).toBeTruthy();
+    expect(screen.getByText('A useful answer')).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/resumeId|sessionId/);
   });
 
-  it('threads the captured resumeId from turn 1 into turn 2', async () => {
-    const calls: Array<{ prompt: string; resumeId: string | undefined }> = [];
-    const stream: ComposerStreamFn = vi.fn(async (prompt, resumeId, _token, onDelta) => {
-      calls.push({ prompt, resumeId });
-      onDelta(REPLY(`reply to ${prompt}`));
-      return { ok: true, resumeId: `sess-${calls.length}` };
+  it('uses one primary control that changes from Send to Stop while running', async () => {
+    let finish: (() => void) | undefined;
+    const stream: ComposerStreamFn = (_ref, _prompt, _token, onDelta) => new Promise((resolve) => {
+      onDelta(MODEL);
+      finish = () => resolve({ ok: true });
     });
-    render(<ComposerChat sessionToken="tok" stream={stream} />);
-
-    // Turn 1: no prior session id.
-    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'first' } });
-    fireEvent.submit(screen.getByLabelText('Composer prompt'));
-    await waitFor(() => expect(calls).toHaveLength(1));
-    expect(calls[0]).toEqual({ prompt: 'first', resumeId: undefined });
-    await screen.findByText('reply to first');
-
-    // Turn 2: carries turn 1's captured id.
-    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'second' } });
-    fireEvent.submit(screen.getByLabelText('Composer prompt'));
-    await waitFor(() => expect(calls).toHaveLength(2));
-    expect(calls[1]).toEqual({ prompt: 'second', resumeId: 'sess-1' });
-    await screen.findByText('reply to second');
+    render(<ComposerChat composerSession={{ ...SESSION, turns: [] }} sessionToken="tok" stream={stream} />);
+    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Plan Atlas' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await screen.findByRole('button', { name: 'Stop' });
+    expect(screen.queryByRole('button', { name: 'Send' })).toBeNull();
+    expect(screen.getByText('Plan Atlas')).toBeTruthy();
+    expect(screen.getByText('A useful answer')).toBeTruthy();
+    finish?.();
+    await screen.findByRole('button', { name: 'Send' });
   });
 
-  it('surfaces a refused turn instead of silently proceeding', async () => {
-    const stream: ComposerStreamFn = vi.fn(async () => ({ ok: false, status: 429, reason: 'locked-out' }));
-    render(<ComposerChat sessionToken="tok" stream={stream} />);
-    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'x' } });
-    fireEvent.submit(screen.getByLabelText('Composer prompt'));
-    await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/locked-out/));
+  it('reports live running state to the workspace tab host', async () => {
+    const onRunningChange = vi.fn();
+    let finish: (() => void) | undefined;
+    const stream: ComposerStreamFn = () => new Promise((resolve) => {
+      finish = () => resolve({ ok: true });
+    });
+    render(<ComposerChat
+      composerSession={{ ...SESSION, turns: [] }}
+      sessionToken="tok"
+      stream={stream}
+      onRunningChange={onRunningChange}
+    />);
+    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Long plan' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(onRunningChange).toHaveBeenCalledWith(true));
+    finish?.();
+    await waitFor(() => expect(onRunningChange).toHaveBeenLastCalledWith(false));
+    expect(screen.getByText(/do not paste passwords/i)).toBeTruthy();
+  });
+
+  it('aborts from the same Stop control', async () => {
+    let signal: AbortSignal | undefined;
+    const stream: ComposerStreamFn = (_ref, _prompt, _token, _delta, activeSignal) => {
+      signal = activeSignal;
+      return new Promise(() => {});
+    };
+    render(<ComposerChat composerSession={{ ...SESSION, turns: [] }} sessionToken="tok" stream={stream} />);
+    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Long task' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Stop' }));
+    await waitFor(() => expect(signal?.aborted).toBe(true));
+    expect(screen.getByRole('status').textContent).toMatch(/Stopped/);
+  });
+
+  it('unlocks at send time and preserves the drafted prompt', async () => {
+    const onRequestSession = vi.fn(async () => ({ token: 'fresh', expiresAt: Date.now() + 60_000 }));
+    const stream: ComposerStreamFn = vi.fn(async () => ({ ok: true }));
+    render(<ComposerChat composerSession={{ ...SESSION, turns: [] }} onRequestSession={onRequestSession} stream={stream} />);
+    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Keep me' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(stream).toHaveBeenCalledWith('cw_alpha', 'Keep me', 'fresh', expect.any(Function), expect.any(AbortSignal)));
   });
 });

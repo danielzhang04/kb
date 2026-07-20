@@ -10,9 +10,11 @@ import { registerAgents } from './agents/routes.ts';
 import { registerPanels } from './panels/routes.ts';
 import { registerHub } from './hub/index.ts';
 import { registerWriteSurface, makeSurfaceContext } from './http/surface.ts';
+import { registerWorkflows } from './workflows/routes.ts';
 import { registerStatic } from './static/routes.ts';
 import { registerPtyRoute, makePtyRouteContext } from './pty/route.ts';
 import { originPlugin } from './security/origin.ts';
+import { installShutdownHandlers } from './shutdown.ts';
 
 /** Loopback-only bind. Network location is never a trust boundary (ordering law 4). */
 export const HOST = '127.0.0.1';
@@ -50,11 +52,16 @@ export function buildApp(): FastifyInstance {
   // secret) → every PTY open failed `verifySession` with `bad-signature`. One secret keeps mint == verify.
   const surfaceCtx = makeSurfaceContext();
   registerWriteSurface(app, surfaceCtx); // U2: governed write surface (origin -> rate-limit -> session -> gate -> audit)
-  // D3.1: the browser↔host PTY bridge (/api/pty), in its OWN origin-guarded child scope (mirrors
-  // registerHub). NOT folded into the write surface: its per-request rate-limit hook is HTTP-request
-  // shaped and fits a long-lived WS upgrade poorly. Bounded instead by openPty's session gate +
-  // one-touch-per-open + a max-concurrent cap. The WS plugin is registered before the guard so a refused
-  // upgrade's raw socket is torn down cleanly. openPty owns the preamble/session gates + the single audit row.
+  // D15: workflow-definition registry (GET /api/workflows[/:id] read-only) + the governed one-step launch
+  // (POST /api/workflows/:id/launch) in its OWN origin/rate-limit/session child scope. Shares surfaceCtx
+  // so the launch route mints/verifies against the same session secret as the write surface.
+  registerWorkflows(app, surfaceCtx);
+  // D3.1 temporary in-process PTY bridge (/api/pty), in its OWN origin-guarded child scope (mirrors
+  // registerHub). NOT folded into the write surface: its per-request rate-limit hook is HTTP-request shaped
+  // and fits a long-lived WS upgrade poorly. The route runs the fleet preamble BEFORE session validation,
+  // enforces the max-concurrent cap, and writes exactly one audit row per allowed-origin attempt. Its child
+  // env is credential-filtered, but the shell currently runs as the dashboard daemon's OS user; the retired
+  // cross-user host/Factor-C path is a future hardening milestone, not an active control.
   {
     const ptyCtx = makePtyRouteContext({ sessionConfig: surfaceCtx.sessionConfig });
     app.register(async (scope) => {
@@ -81,7 +88,8 @@ export async function start(port: number = PORT, host: string = HOST): Promise<F
 const isMain = process.argv[1] === fileURLToPath(import.meta.url);
 if (isMain) {
   start()
-    .then(() => {
+    .then((app) => {
+      installShutdownHandlers(app);
       // eslint-disable-next-line no-console
       console.log(`kb dashboard daemon listening on http://${HOST}:${PORT}`);
     })

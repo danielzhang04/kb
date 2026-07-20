@@ -45,10 +45,13 @@ const STATE_META: Record<string, { label: string; dot: DotKind }> = {
   approved: { label: 'Approved', dot: 'done' },
   rejected: { label: 'Rejected', dot: 'error' },
   done: { label: 'Done', dot: 'done' },
+  'stop-requested': { label: 'Stop requested', dot: 'running' },
+  halting: { label: 'Halting', dot: 'running' },
+  halted: { label: 'Halted', dot: 'error' },
 };
 
 /** The order groups appear in. */
-const STATE_ORDER = ['inbox', 'working', 'blocked', 'approvals', 'approved', 'rejected', 'done'];
+const STATE_ORDER = ['inbox', 'working', 'stop-requested', 'halting', 'halted', 'blocked', 'approvals', 'approved', 'rejected', 'done'];
 
 /** Operational buckets that ALWAYS render a header (with a calm empty line when they hold nothing) —
  *  the operator should always see the shape of the queue. Others appear only when populated. */
@@ -57,10 +60,22 @@ const PRIMARY_STATES = new Set(['inbox', 'working', 'approvals', 'done']);
 /** Frontmatter keys shown first, in this order; any remaining keys follow in insertion order. */
 const FIELD_ORDER = ['id', 'action', 'target', 'risk-tier', 'owner', 'state', 'project', 'depends-on'];
 
-/** Card states under an active human approval — a per-card routing swap is refused here, mirroring the
- *  server-side approval-lock guard (cardRouting.ts). Both `approvals` and `approved` live in
- *  queue/approvals/. We disable the toggle upfront rather than let the user attempt a doomed write. */
-const APPROVAL_LOCKED_STATES = new Set(['approvals', 'approved']);
+/** Mirror the server lifecycle guard. Only blocked cards and unowned inbox drafts are safely mutable. */
+export function cardRoutingLockReason(state: string, owner: unknown): string | null {
+  if (state === 'blocked') return null;
+  if (state === 'inbox' && (owner === null || owner === undefined || owner === '')) return null;
+  if (state === 'inbox') return 'assigned and queued — the runner may already be active; use a successor attempt';
+  if (['working', 'stop-requested', 'halting'].includes(state)) {
+    return 'active or stopping — routing is fixed for this attempt';
+  }
+  if (state === 'approvals' || state === 'approved') {
+    return 'under approval — routing is frozen with the reviewed scope';
+  }
+  if (['done', 'rejected', 'halted'].includes(state)) {
+    return 'historical attempt — retry with new routing';
+  }
+  return `state ${state} is not safely reroutable`;
+}
 
 const EMPTY: CardsByState = {};
 
@@ -187,6 +202,7 @@ function StateGroup({
 function CardRoutingBar({
   cardId,
   cardState,
+  cardOwner,
   view,
   registry,
   canAct,
@@ -195,6 +211,7 @@ function CardRoutingBar({
 }: {
   cardId: string;
   cardState: string;
+  cardOwner: unknown;
   view: CardRoutingView | undefined;
   registry: RoutingSnapshot['policy']['runtimes'];
   canAct: boolean;
@@ -203,8 +220,7 @@ function CardRoutingBar({
 }): React.JSX.Element {
   const stamped = view?.stamped ?? { runtime: null, model: null };
   const routed = stamped.runtime || stamped.model;
-  // Under an active approval, freeze the toggle upfront (the server refuses the write regardless).
-  const lockedReason = APPROVAL_LOCKED_STATES.has(cardState) ? 'under approval — routing frozen' : null;
+  const lockedReason = cardRoutingLockReason(cardState, cardOwner);
   return (
     <div className="v-routing-bar" data-testid={`card-routing-bar-${cardId}`}>
       <span className="v-routing-bar__label">routing</span>
@@ -215,7 +231,7 @@ function CardRoutingBar({
       ) : (
         <span className="v-routing-bar__unrouted mc-mono">unrouted (legacy)</span>
       )}
-      <span className="v-routing-bar__label">if redispatched</span>
+      <span className="v-routing-bar__label">effective routing</span>
       <RoutingControl
         label={cardId}
         testIdPrefix={`card-${cardId}`}
@@ -257,6 +273,7 @@ function DetailPane({
       <CardRoutingBar
         cardId={cardId}
         cardState={String(card.meta.state)}
+        cardOwner={card.meta.owner}
         view={routingView}
         registry={registry}
         canAct={canAct}

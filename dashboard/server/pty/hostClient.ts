@@ -285,8 +285,9 @@ export interface OpenPtyDeps {
   /** Terminal geometry for the initial spawn. */
   cols?: number;
   rows?: number;
-  /** Same signature as the real `appendAudit` — inject a recording fake in tests. */
-  appendAudit?: (repoRoot: string, event: AuditEvent, options?: AppendAuditOptions) => AuditRow;
+  /** Same signature as the real `appendAudit` — inject a recording fake in tests. Widened to allow a
+   *  `Promise` (the real sink's git commit now runs off the event loop). */
+  appendAudit?: (repoRoot: string, event: AuditEvent, options?: AppendAuditOptions) => AuditRow | Promise<AuditRow>;
   runGit?: OpsGitRunner;
   now?: () => Date;
   /** Injectable id source (correlation id) — tests pin it for deterministic assertions. */
@@ -346,11 +347,11 @@ export async function openPty(session: SessionInput, deps: OpenPtyDeps): Promise
   const appendAuditFn = deps.appendAudit ?? defaultAppendAudit;
   const requestId = (deps.requestId ?? randomUUID)();
 
-  function audited(outcome: OpenPtyOutcome, owner?: string): OpenPtyOutcome {
+  async function audited(outcome: OpenPtyOutcome, owner?: string): Promise<OpenPtyOutcome> {
     const detail: Record<string, unknown> = { requestId, cols: deps.cols ?? DEFAULT_COLS, rows: deps.rows ?? DEFAULT_ROWS };
     if (!outcome.ok && 'problems' in outcome) detail.problems = outcome.problems;
     if (!outcome.ok && 'detail' in outcome) detail.refusalDetail = outcome.detail;
-    appendAuditFn(
+    await appendAuditFn(
       deps.repoRoot,
       {
         action: 'pty-open',
@@ -367,16 +368,16 @@ export async function openPty(session: SessionInput, deps: OpenPtyDeps): Promise
   //    who is asking. The host is NEVER contacted on a preamble failure (ordering law 8).
   const preamble = assertFleetRunnable(deps.repoRoot, deps.runPreamble ?? defaultPreambleRunner);
   if (!preamble.ok) {
-    return audited({ ok: false, reason: 'fleet-frozen', problems: preamble.problems });
+    return await audited({ ok: false, reason: 'fleet-frozen', problems: preamble.problems });
   }
 
   // 2. WebAuthn session gate — fail-closed 401. Checked only after the preamble passes.
   if (!session.token) {
-    return audited({ ok: false, reason: 'unauthenticated', status: 401, detail: 'no WebAuthn session token supplied' });
+    return await audited({ ok: false, reason: 'unauthenticated', status: 401, detail: 'no WebAuthn session token supplied' });
   }
   const check = verifySession(session.token, session.config);
   if (!check.ok) {
-    return audited({ ok: false, reason: 'unauthenticated', status: 401, detail: check.reason });
+    return await audited({ ok: false, reason: 'unauthenticated', status: 401, detail: check.reason });
   }
   const owner = check.claims.sub;
 
@@ -389,7 +390,7 @@ export async function openPty(session: SessionInput, deps: OpenPtyDeps): Promise
   try {
     connection = transport(auth, assertionProvider);
   } catch (err) {
-    return audited({ ok: false, reason: 'host-unreachable', detail: (err as Error).message }, owner);
+    return await audited({ ok: false, reason: 'host-unreachable', detail: (err as Error).message }, owner);
   }
 
   let ack: OpenPtyAck;
@@ -408,8 +409,8 @@ export async function openPty(session: SessionInput, deps: OpenPtyDeps): Promise
     } catch {
       /* best-effort teardown of a half-open channel */
     }
-    return audited({ ok: false, reason: 'host-unreachable', detail: (err as Error).message }, owner);
+    return await audited({ ok: false, reason: 'host-unreachable', detail: (err as Error).message }, owner);
   }
 
-  return audited({ ok: true, sessionId: ack.sessionId, connection }, owner);
+  return await audited({ ok: true, sessionId: ack.sessionId, connection }, owner);
 }

@@ -10,9 +10,11 @@
  * No top-level await: require() cannot load an ESM graph that uses TLA, and PM2 loads us via require().
  */
 import { start } from './index.ts';
+import { installShutdownHandlers } from './shutdown.ts';
 
 start()
   .then((app) => {
+    installShutdownHandlers(app);
     const addr = app.server.address();
     const shown = typeof addr === 'string' || addr === null ? String(addr) : `http://${addr.address}:${addr.port}`;
     // eslint-disable-next-line no-console

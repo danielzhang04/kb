@@ -15,21 +15,31 @@
  * No new gate, no new auth, no new audit sink: deploy() rides the already-governed /api/write/* endpoints.
  * `deployImpl` is injectable so the suite drives a fake — no real network, no real server, no real claude.
  */
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { invalidateSessionOnGovernedAuthFailure, SESSION_INVALIDATED_EVENT, type Session } from '../lib/authClient';
 import { Composer } from './Composer';
 import { deploy as defaultDeploy } from './deploy';
 import type { DeployRefusal, DeployResult, DeploySuccess } from './deploy';
 import type { ArtifactKind, DeployPlan, FollowUp, SeedKind } from './artifactTypes';
+import type { WorkflowRunRequest } from '../../server/write/workflowRun';
+import type { ComposerSession } from './workspaceClient';
+import { ProposalReviewPanel } from '../control/ProposalReviewPanel';
 
 export interface DeployOutcomeProps {
+  composerSession?: ComposerSession;
+  onComposerSessionChange?: (session: ComposerSession) => void;
+  onRunningChange?: (running: boolean) => void;
   /** WebAuthn session token — forwarded to Composer/ComposerChat and to every deploy() call. */
   sessionToken?: string;
+  /** Point-of-action passkey mint used by both chat and deploy. The returned token is consumed directly
+   *  for the pending action and cached locally while the parent updates its session state. */
+  onRequestSession?: () => Promise<Session | null>;
   /** Pre-seed the Composer type chip. `idea` (default) is the idea-first entry; entity pickers pass a kind. */
   initialKind?: SeedKind;
   /** Optional out-of-band idea text an entity picker may pre-fill (forwarded to Composer). */
   ideaText?: string;
   /** Return to the underlying view (the Composer Back affordance). */
-  onBack: () => void;
+  onBack?: () => void;
   /** Injectable deploy seam (defaults to C4's governed dispatcher) — the suite drives a fake. */
   deployImpl?: typeof defaultDeploy;
 }
@@ -40,16 +50,56 @@ interface FollowUpState {
   result?: DeployResult;
 }
 
+function authRefusal(): DeployRefusal {
+  return { ok: false, reason: 'passkey sign-in failed — no session was created' };
+}
+
+function requestRefusal(error: unknown): DeployRefusal {
+  const detail = error instanceof Error && error.message.trim() !== '' ? `: ${error.message}` : '';
+  return { ok: false, reason: `deploy request failed${detail}` };
+}
+
 export function DeployOutcome({
+  composerSession,
+  onComposerSessionChange,
+  onRunningChange,
   sessionToken,
+  onRequestSession,
   initialKind = 'idea',
   ideaText = '',
   onBack,
   deployImpl = defaultDeploy,
 }: DeployOutcomeProps): React.JSX.Element {
   const [pending, setPending] = useState(false);
+  const [runPending, setRunPending] = useState(false);
+  const [runOutcome, setRunOutcome] = useState<{ ok: boolean; message: string } | null>(null);
   const [outcome, setOutcome] = useState<DeployResult | null>(null);
   const [followUps, setFollowUps] = useState<Record<string, FollowUpState>>({});
+  const [localToken, setLocalToken] = useState<string | undefined>(sessionToken);
+
+  useEffect(() => {
+    if (sessionToken) setLocalToken(sessionToken);
+  }, [sessionToken]);
+
+  useEffect(() => {
+    const invalidate = (): void => setLocalToken(undefined);
+    window.addEventListener(SESSION_INVALIDATED_EVENT, invalidate);
+    return () => window.removeEventListener(SESSION_INVALIDATED_EVENT, invalidate);
+  }, []);
+
+  const resolveToken = useCallback(async (): Promise<string | undefined> => {
+    const existing = sessionToken ?? localToken;
+    if (existing) return existing;
+    if (!onRequestSession) return undefined;
+    try {
+      const session = await onRequestSession();
+      if (!session) return undefined;
+      setLocalToken(session.token);
+      return session.token;
+    } catch {
+      return undefined;
+    }
+  }, [localToken, onRequestSession, sessionToken]);
 
   // Primary deploy: hand the validated plan to the governed dispatcher and store the outcome. Resetting
   // the follow-up map on each primary keeps a re-deploy's offered saves in sync with the fresh result.
@@ -57,45 +107,124 @@ export function DeployOutcome({
     async (plan: DeployPlan): Promise<void> => {
       setPending(true);
       setFollowUps({});
-      const res = await deployImpl(plan, sessionToken);
-      setOutcome(res);
-      setPending(false);
+      try {
+        const token = await resolveToken();
+        if (!token) {
+          setOutcome(authRefusal());
+          return;
+        }
+        setOutcome(await deployImpl(plan, token));
+      } catch (error) {
+        setOutcome(requestRefusal(error));
+      } finally {
+        setPending(false);
+      }
     },
-    [deployImpl, sessionToken],
+    [deployImpl, resolveToken],
   );
 
   // A follow-up file is its own durable, single-file governed save — one deploy() per click, never batched.
   const saveFollowUp = useCallback(
     async (fu: FollowUp, kind: ArtifactKind): Promise<void> => {
       setFollowUps((prev) => ({ ...prev, [fu.relpath]: { pending: true } }));
-      const plan: DeployPlan = {
-        kind,
-        relpath: fu.relpath,
-        content: fu.content,
-        branchClass: 'durable',
-        endpoint: 'save',
-      };
-      const res = await deployImpl(plan, sessionToken);
-      setFollowUps((prev) => ({ ...prev, [fu.relpath]: { pending: false, result: res } }));
+      let result: DeployResult = requestRefusal(undefined);
+      try {
+        const token = await resolveToken();
+        if (!token) result = authRefusal();
+        else {
+          const plan: DeployPlan = {
+            kind,
+            relpath: fu.relpath,
+            content: fu.content,
+            branchClass: 'durable',
+            endpoint: 'save',
+          };
+          result = await deployImpl(plan, token);
+        }
+      } catch (error) {
+        result = requestRefusal(error);
+      } finally {
+        setFollowUps((prev) => ({ ...prev, [fu.relpath]: { pending: false, result } }));
+      }
     },
-    [deployImpl, sessionToken],
+    [deployImpl, resolveToken],
   );
+
+  const runWorkflow = useCallback(async (request: WorkflowRunRequest): Promise<void> => {
+    setRunPending(true);
+    setRunOutcome(null);
+    try {
+      const token = await resolveToken();
+      if (!token) {
+        setRunOutcome({ ok: false, message: 'Unlock dashboard to launch this run.' });
+        return;
+      }
+      const response = await fetch('/api/write/workflow-runs', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify(request),
+      });
+      await invalidateSessionOnGovernedAuthFailure(response);
+      const data = (await response.json()) as {
+        runId?: string;
+        cards?: unknown[];
+        runners?: Array<{ status?: string }>;
+        error?: string;
+        detail?: unknown;
+      };
+      if (response.ok && data.runId) {
+        const signaled = data.runners?.filter((runner) => runner.status === 'triggered').length ?? 0;
+        const pickup = signaled > 0
+          ? ` · ${signaled} background runner${signaled === 1 ? '' : 's'} signaled.`
+          : ' · queued; no background runner was signaled.';
+        setRunOutcome({ ok: true, message: `Launched ${data.runId} · ${data.cards?.length ?? 0} stages queued${pickup}` });
+      } else {
+        const detail = typeof data.detail === 'string' ? data.detail : data.error ?? `HTTP ${response.status}`;
+        setRunOutcome({ ok: false, message: `Run refused: ${detail}` });
+      }
+    } catch (error) {
+      setRunOutcome({ ok: false, message: `Run request failed: ${error instanceof Error ? error.message : String(error)}` });
+    } finally {
+      setRunPending(false);
+    }
+  }, [resolveToken]);
 
   return (
     <Composer
+      composerSession={composerSession}
+      onComposerSessionChange={onComposerSessionChange}
+      onRunningChange={onRunningChange}
       sessionToken={sessionToken}
+      onRequestSession={onRequestSession}
       initialKind={initialKind}
       ideaText={ideaText}
       onBack={onBack}
       onDeploy={runPrimary}
+      deployPending={pending}
+      onRunWorkflow={runWorkflow}
+      runPending={runPending}
       renderOutcome={
-        <OutcomeStrip
-          pending={pending}
-          outcome={outcome}
-          followUps={followUps}
-          onSaveFollowUp={saveFollowUp}
-        />
+        <>
+          <OutcomeStrip
+            pending={pending}
+            outcome={outcome}
+            followUps={followUps}
+            onSaveFollowUp={saveFollowUp}
+          />
+          {runOutcome ? (
+            <p className={`v-composer__run-outcome${runOutcome.ok ? ' v-composer__run-outcome--ok' : ''}`} role="status">
+              {runOutcome.message}
+            </p>
+          ) : null}
+        </>
       }
+      renderProposalReview={composerSession ? (
+        <ProposalReviewPanel
+          composerSession={composerSession}
+          sessionToken={sessionToken ?? localToken}
+          onRequestSession={onRequestSession}
+        />
+      ) : null}
     />
   );
 }
@@ -143,6 +272,11 @@ function DeployedOk({
         {outcome.cardId ? (
           <>
             Filed queue card <code className="v-composer__outcome-code">{outcome.cardId}</code>
+            {outcome.runner?.status === 'triggered'
+              ? ' · background runner signaled'
+              : outcome.runner
+                ? ` · queued (${outcome.runner.detail ?? outcome.runner.status})`
+                : ''}
           </>
         ) : outcome.target ? (
           <>

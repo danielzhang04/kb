@@ -13,7 +13,7 @@
  *   ── (divider, below the [+ New] menu) ──
  *   Home · Approvals(n) · Activity · Atlas(soon) · Terminal(live — D3.2)
  *   ── (divider) ──
- *   Workflows · Pipeline · Agents · Tasks · Projects · Files
+ *   Workflows · Runs · Agents · Tasks · Projects · Files
  *   ── (divider) ──
  *   Connectors · Ledgers
  *   ── pinned floor ──  Session · STOP  (a shell region in App.tsx, not a nav destination)
@@ -74,7 +74,7 @@ export const NAV_SECTIONS: NavSection[] = [
     id: 'primary',
     items: [
       { id: 'home', label: 'Home', icon: '⌂', status: 'live' },
-      { id: 'approvals', label: 'Approvals', icon: '✓', status: 'live' },
+      { id: 'approvals', label: 'Inbox', icon: '✓', status: 'live' },
       { id: 'activity', label: 'Activity', icon: '≡', status: 'live' },
       { id: 'atlas', label: 'Atlas', icon: '◈', status: 'soon', hint: 'soon' },
       { id: 'terminal', label: 'Terminal', icon: '⌨', status: 'live' },
@@ -84,7 +84,7 @@ export const NAV_SECTIONS: NavSection[] = [
     id: 'entities',
     items: [
       { id: 'workflows', label: 'Workflows', icon: '⧉', status: 'live' },
-      { id: 'pipeline', label: 'Pipeline', icon: '⋔', status: 'live' },
+      { id: 'pipeline', label: 'Runs', icon: '⋔', status: 'live' },
       { id: 'agents', label: 'Agents', icon: '◉', status: 'live' },
       { id: 'tasks', label: 'Tasks', icon: '☰', status: 'live' },
       { id: 'projects', label: 'Projects', icon: '▤', status: 'live' },
@@ -110,21 +110,5 @@ export const DEFAULT_DESTINATION: DestinationId = 'home';
  *  the menu's shape says "bring an idea, iterate", not "pick an entity type". `idea` opens the Composer
  *  convergence surface in idea mode; `workflow`/`skill`/`project` open the SAME surface pre-seeded to that
  *  type (secondary entry points into the one flow); `task` keeps its day-one route to the governed launch
- *  surface (Home). C7.2 un-defers `agent` — the first-class agent-registry entry point. */
-export interface NewMenuEntry {
-  id: 'idea' | 'task' | 'workflow' | 'skill' | 'project' | 'agent';
-  label: string;
-  /** Whether the item is actionable (fires onCreate). Every entry is actionable now. */
-  enabled: boolean;
-  /** Optional trailing hint shown even on an enabled item (e.g. the idea entry's "Composer"). */
-  hint?: string;
-}
-
-export const NEW_MENU_ENTRIES: NewMenuEntry[] = [
-  { id: 'idea', label: 'Idea…', enabled: true, hint: 'Composer' },
-  { id: 'task', label: 'Task', enabled: true },
-  { id: 'workflow', label: 'Workflow', enabled: true },
-  { id: 'skill', label: 'Skill', enabled: true },
-  { id: 'project', label: 'Project', enabled: true },
-  { id: 'agent', label: 'Agent', enabled: true },
-];
+ *  surface (Home). `agent` opens the first-class declaration form. Outcome hints state what each choice
+ *  does without implying that registered artifacts execute automatically. */

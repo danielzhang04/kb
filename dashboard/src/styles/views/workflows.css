@@ -1,11 +1,11 @@
 /*
  * ============================================================================
- * WORKFLOWS view (U3) — "runs of work as connected chains"
+ * WORKFLOWS view (U3) — registered reusable definition artifacts
  * ============================================================================
  * The designed EMPTY state is the centrepiece (the live repo has no workflows/
  * registry yet), so it reads calm and explanatory — never an error. A dense
- * table renders when workflows exist; a hairline run-chain region below both
- * marks where the D3.4 DAG will land.
+ * table renders when workflows exist; a small note points launched queue-card
+ * dependency graphs to the separate Runs view.
  *
  * Tokens only (docs/design-brief.md §A–F); dark default, light remap carries
  * via var(). Signature: hairline borders, mono tabular-nums for ids/paths, one
@@ -137,6 +137,34 @@
   color: var(--fg-primary);
 }
 
+/* The definition name opens its detail. Same 2px left-rail-on-hover language as the agent roster, so
+ * there is ONE activation vocabulary across every entity list in the app. */
+.v-workflows__open {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  margin-left: calc(-1 * var(--space-2));
+  border: 1px solid transparent;
+  border-left: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: color 150ms ease-out, border-color 150ms ease-out;
+}
+
+.v-workflows__open:hover {
+  border-left-color: var(--accent-strong);
+}
+
+.v-workflows__open:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: -1px;
+}
+
 .v-workflows__wf-id {
   margin-left: var(--space-2);
   font-size: var(--text-xs);
@@ -153,21 +181,24 @@
   color: var(--fg-dim);
 }
 
-/* ---- Run-chain region (D3.4 placeholder — hint, not a fake graph) ------ */
-.v-workflows__runs {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 6rem;
-  padding: var(--space-6);
-  background: var(--bg-sunken);
-  border: 1px dashed var(--border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-sunken);
+/* ---- Relationship to launched runs ------------------------------------ */
+.v-workflows__runs-note {
+  margin: 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--fg-faint);
 }
 
-.v-workflows__runs-hint {
-  font-size: var(--text-sm);
+.v-workflows__cell-run {
+  min-width: 180px;
+}
+
+.v-workflows__run-status,
+.v-workflows__not-runnable {
+  display: block;
+  margin-top: 4px;
   color: var(--fg-faint);
-  text-align: center;
+  font-size: var(--text-xs);
 }

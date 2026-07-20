@@ -1,9 +1,10 @@
 # Running the dashboard always-on
 
-Today the dashboard daemon (`server/index.ts`, Fastify on `127.0.0.1:4317`) also serves the built
-SPA directly (see `server/static/routes.ts`) — once `dist/` exists, this one process IS the whole
-dashboard. No separate `vite` dev server is needed to use it day-to-day; `npm run dev` still works
-for UI iteration (it proxies `/api/*` to `:4317` as before).
+Today the dashboard daemon also serves the built SPA directly (see `server/static/routes.ts`). The
+raw development server defaults to `127.0.0.1:4317`; the PM2 always-on configuration sets it to
+`127.0.0.1:5317`, matching the enrolled passkey origin. Once `dist/` exists, this one process IS the
+whole dashboard. No separate `vite` dev server is needed day-to-day; `npm run dev` still works for UI
+iteration (it proxies `/api/*` to the raw development server on `:4317`).
 
 Localhost-only binding (`127.0.0.1`) is deliberate and unchanged — WebAuthn is armed for the
 `localhost` RP origin, so the write surface only works from the same machine.
@@ -66,7 +67,7 @@ pm2 restart kb-dashboard
 
 ## Access
 
-Once running: **http://localhost:4317**
+Once running under PM2: **http://localhost:5317**
 
 (`127.0.0.1` and `localhost` are equivalent here; the RP origin WebAuthn is armed for is
 `localhost`, so use that host if you're using a passkey.)

@@ -2,15 +2,18 @@
 /**
  * U2.5 — App shell: desktop-first left-sidebar navigation driven by the entity-first IA in
  * `src/nav/config.ts`. The groups are UNLABELLED (hairline dividers only — no uppercase group headers,
- * no per-section collapse); a [+ New ▾] menu sits above the first divider (only Task enabled). Clicking
+ * no per-section collapse); a [+ New ▾] menu sits above the first divider with truthful outcome hints.
  * a live item swaps the main content; greyed ("soon") items never become active; a sidebar-wide toggle
  * collapses to an icon rail; the Session/Stop floor is present regardless of the active view.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent, within } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react';
 import { App } from './App';
+import { invalidateSessionOnGovernedAuthFailure } from './lib/authClient';
 
 beforeEach(() => {
+  window.sessionStorage.clear();
+  window.localStorage.removeItem('kb-composer-open-refs-v1');
   // Views self-fetch on mount; a never-resolving stub keeps every view on its empty-safe scaffold
   // (and keeps the sidebar approvals-count at 0, so no badge) without real network or state churn.
   vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
@@ -35,12 +38,12 @@ describe('App shell — entity-first sidebar navigation', () => {
 
     for (const label of [
       'Home',
-      'Approvals',
+      'Inbox',
       'Activity',
       'Atlas',
       'Terminal',
       'Workflows',
-      'Pipeline',
+      'Runs',
       'Agents',
       'Tasks',
       'Projects',
@@ -55,7 +58,8 @@ describe('App shell — entity-first sidebar navigation', () => {
 
   it('does not render any dropped verb-IA destination', () => {
     render(<App />);
-    // D3.4 makes `Pipeline` and D3.5 makes `Sentinel` real destinations again, so neither is in the
+    // D3.4 makes `Runs` (stable route id: `pipeline`) and D3.5 makes `Sentinel` real destinations again,
+    // so neither is in the
     // dropped set any more.
     for (const dropped of ['Board', 'Editor', 'Vibe', 'Registry']) {
       expect(screen.queryByRole('button', { name: new RegExp(`^${dropped}$`) })).toBeNull();
@@ -72,7 +76,9 @@ describe('App shell — entity-first sidebar navigation', () => {
     render(<App />);
     expect(screen.getByTestId('stop-floor')).toBeTruthy();
     // U5.1 — the floor carries a passive session indicator, NOT sign-in/out chrome.
-    expect(screen.getByTestId('session-state').textContent).toMatch(/session/i);
+    expect(screen.getByTestId('session-state').textContent).toMatch(/dashboard locked/i);
+    expect(screen.getByRole('button', { name: 'Unlock dashboard' })).toBeTruthy();
+    expect(screen.getByTestId('session-state').textContent).toMatch(/no private key leaves your device/i);
     expect(screen.queryByRole('button', { name: /sign in/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /sign out/i })).toBeNull();
     expect(screen.getByLabelText('Stop floor')).toBeTruthy();
@@ -80,6 +86,35 @@ describe('App shell — entity-first sidebar navigation', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Workflows' }));
     expect(screen.getByLabelText('Stop floor')).toBeTruthy();
+  });
+
+  it('restores an unexpired tab session after a refresh-sized remount', () => {
+    window.sessionStorage.setItem(
+      'kb-dashboard-session-v1',
+      JSON.stringify({ token: 'restored-token', expiresAt: Date.now() + 60_000 }),
+    );
+    render(<App />);
+
+    expect(screen.getByTestId('session-state').textContent).toMatch(/dashboard unlocked/i);
+    expect(screen.queryByRole('button', { name: 'Unlock dashboard' })).toBeNull();
+  });
+
+  it('drops an in-memory saved session after a governed bad-signature response', async () => {
+    window.sessionStorage.setItem(
+      'kb-dashboard-session-v1',
+      JSON.stringify({ token: 'rotated-secret-token', expiresAt: Date.now() + 60_000 }),
+    );
+    render(<App />);
+    expect(screen.getByTestId('session-state').textContent).toMatch(/dashboard unlocked/i);
+
+    await invalidateSessionOnGovernedAuthFailure(new Response(JSON.stringify({
+      error: 'unauthenticated',
+      reason: 'bad-signature',
+    }), { status: 401, headers: { 'content-type': 'application/json' } }));
+
+    await waitFor(() => expect(screen.getByTestId('session-state').textContent).toMatch(/dashboard locked/i));
+    expect(window.sessionStorage.getItem('kb-dashboard-session-v1')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Unlock dashboard' })).toBeTruthy();
   });
 
   it('lays the sidebar out as a full-height column: [+ New] header, scrollable nav, pinned floor last', () => {
@@ -119,8 +154,8 @@ describe('App shell — entity-first sidebar navigation', () => {
     expect(screen.getByLabelText('Workflows view')).toBeTruthy();
     expect(screen.queryByLabelText('Control view')).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Approvals' }));
-    expect(screen.getByLabelText('Approvals inbox')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Inbox' }));
+    expect(screen.getByLabelText('Human Inbox')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Activity' }));
     expect(screen.getByLabelText('Activity view')).toBeTruthy();
@@ -193,6 +228,25 @@ describe('App shell — entity-first sidebar navigation', () => {
     expect(view.textContent ?? '').toMatch(/passkey/i);
   });
 
+  it('keeps the Terminal workspace mounted across navigation', () => {
+    render(<App />);
+    const terminalButton = screen.getByRole('button', { name: /^Terminal/ });
+    fireEvent.click(terminalButton);
+
+    const surface = screen.getByTestId('persistent-terminal-surface') as HTMLDivElement;
+    const terminal = screen.getByLabelText('Terminal view');
+    expect(surface.hidden).toBe(false);
+
+    // Destination navigation hides the same mounted node; returning reveals it rather than remounting it.
+    fireEvent.click(screen.getByRole('button', { name: 'Runs' }));
+    expect(surface.hidden).toBe(true);
+    expect(screen.getByLabelText('Terminal view')).toBe(terminal);
+    fireEvent.click(terminalButton);
+    expect(surface.hidden).toBe(false);
+    expect(screen.getByLabelText('Terminal view')).toBe(terminal);
+
+  });
+
   it('the sidebar-wide collapse toggle switches the shell into rail mode and back', () => {
     render(<App />);
 
@@ -210,93 +264,128 @@ describe('App shell — entity-first sidebar navigation', () => {
   });
 });
 
-describe('App shell — [+ New ▾] menu', () => {
-  it('opens an idea-first menu with every entity type actionable (C7.2 un-defers Agent)', () => {
-    render(<App />);
+function composerSession(composerRef: string, title: string, state: 'open' | 'archived' = 'open') {
+  const now = '2026-07-18T12:00:00.000Z';
+  return { composerRef, title, state, createdAt: now, updatedAt: now, sourceComposerRef: null, turns: [] };
+}
 
-    const trigger = screen.getByRole('button', { name: 'New' });
-    expect(trigger.getAttribute('aria-expanded')).toBe('false');
-    fireEvent.click(trigger);
-    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+function unlockForWorkspaceTests(): void {
+  window.sessionStorage.setItem(
+    'kb-dashboard-session-v1',
+    JSON.stringify({ token: 'workspace-token', expiresAt: Date.now() + 60_000 }),
+  );
+}
 
-    const menu = screen.getByRole('menu', { name: 'Create new' });
-    // The freeform "Idea…" leads; every entity picker — including Agent (C7.2) — is actionable now.
-    expect(within(menu).getAllByRole('menuitem')[0].textContent).toMatch(/Idea/);
-    for (const label of [/Idea/, /^Task/, /Workflow/, /Skill/, /Project/, /Agent/]) {
-      expect((within(menu).getByRole('menuitem', { name: label }) as HTMLButtonElement).disabled).toBe(false);
-    }
-  });
-
-  it('idea_opens_composer_in_idea_mode over the current view; Back returns', () => {
+describe('App shell — Composer workspaces', () => {
+  it('New directly creates a persistent Composer workspace without an entity dropdown', async () => {
+    unlockForWorkspaceTests();
+    const created = composerSession('cw-1', 'Research Atlas');
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/composer/sessions' && init?.method === 'POST') {
+        return new Response(JSON.stringify({ session: created }), { status: 200 });
+      }
+      if (url === '/api/composer/sessions') {
+        return new Response(JSON.stringify({ sessions: [] }), { status: 200 });
+      }
+      return new Promise<Response>(() => {});
+    });
+    vi.stubGlobal('fetch', fetchMock);
     render(<App />);
 
     fireEvent.click(screen.getByRole('button', { name: 'New' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: /Idea/ }));
 
-    // The Composer surface replaces the view body, pre-seeded to `idea`; Home is not mounted while open.
-    expect(screen.getByLabelText('Composer')).toBeTruthy();
-    expect(screen.getByTestId('composer-type').textContent).toMatch(/idea/);
-    expect(screen.queryByLabelText('Home view')).toBeNull();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
-    expect(screen.queryByLabelText('Composer')).toBeNull();
-    expect(screen.getByLabelText('Home view')).toBeTruthy();
-  });
-
-  it('skill_entry_opens_composer_preseeded (and workflow/project likewise)', () => {
-    for (const [label, kind] of [
-      [/Skill/, 'skill'],
-      [/Workflow/, 'workflow'],
-      [/Project/, 'project'],
-    ] as const) {
-      render(<App />);
-      fireEvent.click(screen.getByRole('button', { name: 'New' }));
-      fireEvent.click(screen.getByRole('menuitem', { name: label }));
-
-      // The same Composer surface opens, pre-seeded to the picked type.
-      expect(screen.getByLabelText('Composer')).toBeTruthy();
-      expect(screen.getByTestId('composer-type').textContent).toMatch(new RegExp(kind));
-      cleanup();
-    }
-  });
-
-  it('agent_entry_opens_composer_preseeded (C7.2)', () => {
-    render(<App />);
-    fireEvent.click(screen.getByRole('button', { name: 'New' }));
-
-    const agent = screen.getByRole('menuitem', { name: /Agent/ }) as HTMLButtonElement;
-    expect(agent.disabled).toBe(false);
-    fireEvent.click(agent);
-    // C7.2 — Agent opens the Composer surface pre-seeded to `agent` (its dedicated draft form lands later).
-    expect(screen.getByLabelText('Composer')).toBeTruthy();
-    expect(screen.getByTestId('composer-type').textContent).toMatch(/agent/);
-    expect(screen.queryByLabelText('Home view')).toBeNull();
-  });
-
-  it('task_entry_still_routes_to_launch_surface (Home) and closes the menu', () => {
-    render(<App />);
-
-    // Move off Home first so the navigation is observable.
-    fireEvent.click(screen.getByRole('button', { name: 'Workflows' }));
-    expect(screen.getByLabelText('Workflows view')).toBeTruthy();
-
-    fireEvent.click(screen.getByRole('button', { name: 'New' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: /Task/ }));
-
-    // Home hosts the Launch/rerun surface; the menu is closed after the action.
-    expect(screen.getByLabelText('Home view')).toBeTruthy();
-    expect(screen.getByLabelText('Launch card')).toBeTruthy();
+    expect(await screen.findByRole('tab', { name: 'Research Atlas' })).toBeTruthy();
+    expect(screen.getByTestId('composer-workspace-cw-1').hidden).toBe(false);
     expect(screen.queryByRole('menu', { name: 'Create new' })).toBeNull();
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/composer/sessions',
+      expect.objectContaining({ method: 'POST', body: '{}' }),
+    );
   });
 
-  it('Escape closes the menu', () => {
+  it('keeps multiple Composer panes mounted while tabs and destinations switch; Close is browser-only', async () => {
+    unlockForWorkspaceTests();
+    const sessions = [composerSession('cw-1', 'Atlas research'), composerSession('cw-2', 'Build plan')];
+    let createIndex = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === '/api/composer/sessions' && init?.method === 'POST') {
+        return new Response(JSON.stringify({ session: sessions[createIndex++] }), { status: 200 });
+      }
+      if (String(input) === '/api/composer/sessions') {
+        return new Response(JSON.stringify({ sessions: [] }), { status: 200 });
+      }
+      return new Promise<Response>(() => {});
+    });
+    vi.stubGlobal('fetch', fetchMock);
     render(<App />);
-    const trigger = screen.getByRole('button', { name: 'New' });
-    fireEvent.click(trigger);
-    expect(screen.getByRole('menu', { name: 'Create new' })).toBeTruthy();
 
-    fireEvent.keyDown(trigger, { key: 'Escape' });
-    expect(screen.queryByRole('menu', { name: 'Create new' })).toBeNull();
-    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(screen.getByRole('button', { name: 'New' }));
+    await screen.findByRole('tab', { name: 'Atlas research' });
+    fireEvent.click(screen.getByRole('button', { name: '+ New' }));
+    await screen.findByRole('tab', { name: 'Build plan' });
+
+    const firstPane = screen.getByTestId('composer-workspace-cw-1');
+    const secondPane = screen.getByTestId('composer-workspace-cw-2');
+    expect(firstPane.hidden).toBe(true);
+    expect(secondPane.hidden).toBe(false);
+    fireEvent.click(screen.getByRole('tab', { name: 'Atlas research' }));
+    expect(firstPane.hidden).toBe(false);
+    expect(secondPane.hidden).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Runs' }));
+    expect(screen.getByTestId('composer-workspace-cw-1')).toBe(firstPane);
+    expect(screen.getByTestId('composer-workspace-cw-2')).toBe(secondPane);
+    expect(firstPane.hidden).toBe(true);
+    expect(secondPane.hidden).toBe(true);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Build plan' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close Build plan' }));
+    expect(screen.queryByTestId('composer-workspace-cw-2')).toBeNull();
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/archive'))).toBe(false);
+
+    fireEvent.click(screen.getByText('Recent (1)'));
+    fireEvent.click(screen.getByRole('button', { name: 'Reopen Build plan' }));
+    expect(screen.getByRole('tab', { name: 'Build plan' })).toBeTruthy();
+    expect(screen.getByTestId('composer-workspace-cw-2')).toBeTruthy();
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/restore'))).toBe(false);
+  });
+
+  it('forks, archives, and restores workspaces through explicit actions', async () => {
+    unlockForWorkspaceTests();
+    const original = composerSession('cw-1', 'Original');
+    const forked = { ...composerSession('cw-2', 'Original fork'), sourceComposerRef: 'cw-1' };
+    const archived = composerSession('cw-2', 'Original fork', 'archived');
+    const restored = composerSession('cw-2', 'Original fork');
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/composer/sessions') {
+        return new Response(JSON.stringify({ sessions: [original] }), { status: 200 });
+      }
+      if (url.endsWith('/fork')) return new Response(JSON.stringify({ session: forked }), { status: 200 });
+      if (url.endsWith('/archive')) return new Response(JSON.stringify({ session: archived }), { status: 200 });
+      if (url.endsWith('/restore')) return new Response(JSON.stringify({ session: restored }), { status: 200 });
+      return new Promise<Response>(() => {});
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    window.localStorage.setItem('kb-composer-open-refs-v1', JSON.stringify(['cw-1']));
+    render(<App />);
+
+    await screen.findByRole('tab', { name: 'Original' });
+    fireEvent.click(screen.getByRole('tab', { name: 'Original' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fork' }));
+    await screen.findByRole('tab', { name: 'Original fork' });
+    fireEvent.click(screen.getByRole('button', { name: 'Archive' }));
+    await waitFor(() => expect(screen.queryByRole('tab', { name: 'Original fork' })).toBeNull());
+    fireEvent.click(screen.getByText('Archived (1)'));
+    fireEvent.click(screen.getByRole('button', { name: 'Reopen Original fork' }));
+    expect(await screen.findByRole('tab', { name: 'Original fork' })).toBeTruthy();
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual(
+      expect.arrayContaining([
+        '/api/composer/sessions/cw-1/fork',
+        '/api/composer/sessions/cw-2/archive',
+        '/api/composer/sessions/cw-2/restore',
+      ]),
+    );
   });
 });

@@ -13,6 +13,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { EditorState } from '@codemirror/state';
 import { markdown } from '@codemirror/lang-markdown';
 import { basicSetup, EditorView } from 'codemirror';
+import { invalidateSessionOnGovernedAuthFailure } from '../lib/authClient';
 
 export interface SaveOutcome {
   ok: boolean;
@@ -39,6 +40,7 @@ export const defaultSave: SaveFn = async (relpath, content, sessionToken) => {
     },
     body: JSON.stringify({ relpath, content }),
   });
+  await invalidateSessionOnGovernedAuthFailure(res);
   let body: SaveOutcome | undefined;
   try {
     body = (await res.json()) as SaveOutcome;

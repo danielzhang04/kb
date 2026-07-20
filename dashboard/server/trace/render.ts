@@ -11,10 +11,17 @@
  *   - `joinToolResults`  (tool_result → tool_use join by tool_use_id)
  *   - `buildSubagentTree`(flat subagents/ spawn tree by toolUseId)
  *
- * INERT CONTENT. Every byte of transcript text — assistant prose, thinking, tool inputs/outputs, and
- * any `## Evidence` block — is HTML-ESCAPED before it reaches the page and the renderer emits no live
- * `<script>` markup, so raw HTML in a transcript can never become executable. This mirrors the D0.5
- * KB-browser sanitizer posture (escape-first, transform-never on untrusted text).
+ * INERT CONTENT. Every byte of transcript text that survives distillation is HTML-ESCAPED before it
+ * reaches the page and the renderer emits no live `<script>` markup, so raw HTML in a transcript can
+ * never become executable. This mirrors the D0.5 KB-browser sanitizer posture (escape-first,
+ * transform-never on untrusted text).
+ *
+ * WHAT DOES NOT SURVIVE. The rendered page can be committed and PUSHED to `origin ops`
+ * (`commit.ts:commitTraceToOps`), so it crosses a trust boundary the local raw JSONL does not. Tool
+ * INPUTS, tool RESULTS, and hidden REASONING are therefore elided unconditionally — not by size.
+ * What survives is the auditable skeleton: turn order, roles, tool names, and whether each call
+ * produced a result. Assistant/user prose survives (it is the human-readable narrative) and gets a
+ * credential scrub on the way out, which is defence-in-depth and NOT a guarantee about its contents.
  */
 
 import { dirname } from 'node:path';
@@ -23,17 +30,41 @@ import type { TranscriptRecord } from '../planeB/tailer.ts';
 import { joinToolResults } from '../planeB/join.ts';
 import { buildSubagentTree } from '../planeB/subagents.ts';
 import type { SubagentNode } from '../planeB/subagents.ts';
+import { redactSensitiveText } from '../composer/publicTimeline.ts';
 
 /**
- * Tool payloads whose JSON serialization exceeds this many bytes are elided to a summary in the
- * distilled render. Turn structure (records, types, tool ids) is always preserved; only the bulky
- * `tool_use.input` / `tool_result.content` blobs are dropped.
+ * Tool payloads are elided from the distilled render UNCONDITIONALLY. Size is deliberately NOT the
+ * test: a size threshold defends against BULK, and the risk here is SENSITIVITY. The dangerous
+ * payloads are the small ones — a verification code, an account balance, one mail body, a contact
+ * address all serialize to a few hundred bytes and would sail under any threshold.
+ *
+ * Turn structure (records, types, tool ids, tool NAMES, and whether a result arrived) is always
+ * preserved — that is the auditable content and the whole point of a flight recorder. Raw payloads
+ * stay in the local JSONL, which is never committed.
  */
-export const DISTILL_THRESHOLD_BYTES = 2048;
+function elidePayload(payload: unknown): unknown {
+  if (payload === undefined) return undefined;
+  const size = JSON.stringify(payload)?.length ?? 0;
+  const elided: ElidedPayload = {
+    distilled: true,
+    elidedBytes: size,
+    summary: `[distilled: ${size} bytes elided — raw kept local]`,
+  };
+  return elided;
+}
 
 /** Stable permalink shape: a trace lives at `traces/<card-id>/index.html`. */
 export function tracePath(cardId: string): string {
   return `traces/${cardId}/index.html`;
+}
+
+/**
+ * Escape-then-scrub for the prose that survives distillation (assistant/user message text). The
+ * credential scrubber is defence-in-depth ONLY: it catches known secret shapes, not arbitrary
+ * sensitive content. The actual containment for tool payloads is unconditional elision above.
+ */
+function renderText(s: string): string {
+  return escapeHtml(redactSensitiveText(s));
 }
 
 /** Escape the five HTML-significant characters. Applied to ALL transcript-derived text. */
@@ -56,24 +87,14 @@ function isElided(v: unknown): v is ElidedPayload {
   return typeof v === 'object' && v !== null && (v as { distilled?: unknown }).distilled === true;
 }
 
-/** Replace an oversize payload with a compact summary; small payloads pass through unchanged. */
-function distillPayload(payload: unknown): unknown {
-  const json = payload === undefined ? '' : JSON.stringify(payload);
-  const size = json ? json.length : 0;
-  if (size <= DISTILL_THRESHOLD_BYTES) return payload;
-  const elided: ElidedPayload = {
-    distilled: true,
-    elidedBytes: size,
-    summary: `[distilled: ${size} bytes elided — raw kept local]`,
-  };
-  return elided;
-}
-
 function distillBlock(block: unknown): unknown {
   if (typeof block !== 'object' || block === null) return block;
   const b = block as Record<string, unknown>;
-  if (b.type === 'tool_use') return { ...b, input: distillPayload(b.input) };
-  if (b.type === 'tool_result') return { ...b, content: distillPayload(b.content) };
+  // Inputs are elided alongside results: a tool INPUT carries the search query, the recipient
+  // address, the file path, the shell command line. `publicTimeline` already omits both for the
+  // browser transcript; a trace that is pushed to a git remote gets at least the same treatment.
+  if (b.type === 'tool_use') return { ...b, input: elidePayload(b.input) };
+  if (b.type === 'tool_result') return { ...b, content: elidePayload(b.content) };
   return block;
 }
 
@@ -84,8 +105,8 @@ function distillRecord(rec: TranscriptRecord): TranscriptRecord {
 }
 
 /**
- * Distill a transcript: preserve every record and its turn structure, but elide any tool payload
- * whose serialized size exceeds {@link DISTILL_THRESHOLD_BYTES}. Pure; input is not mutated.
+ * Distill a transcript: preserve every record and its turn structure, and elide EVERY tool payload
+ * (input and result) regardless of size. Pure; input is not mutated.
  */
 export function distill(records: TranscriptRecord[]): TranscriptRecord[] {
   return records.map(distillRecord);
@@ -166,13 +187,16 @@ export async function renderTrace(sessionPath: string, cardId: string): Promise<
 
     const raw = rec.message?.content;
     if (typeof raw === 'string') {
-      parts.push(`<div class="text">${escapeHtml(raw)}</div>`);
+      parts.push(`<div class="text">${renderText(raw)}</div>`);
     } else {
       for (const block of contentBlocks(rec)) {
         if (block.type === 'text' && typeof block.text === 'string') {
-          parts.push(`<div class="text">${escapeHtml(block.text)}</div>`);
+          parts.push(`<div class="text">${renderText(block.text)}</div>`);
         } else if (block.type === 'thinking' && typeof block.thinking === 'string') {
-          parts.push(`<div class="text thinking">${escapeHtml(block.thinking)}</div>`);
+          // Hidden reasoning is NEVER rendered — it quotes tool results verbatim and is exactly what
+          // the Composer path strips (`publicTimeline` drops `kind === 'thinking'` steps). Only the
+          // fact that a reasoning block occurred survives, so turn structure stays auditable.
+          parts.push(`<div class="text thinking"><em class="elided">[hidden reasoning omitted]</em></div>`);
         } else if (block.type === 'tool_use') {
           const name = typeof block.name === 'string' ? block.name : 'tool';
           const result = typeof block.id === 'string' && resultById.has(block.id) ? resultById.get(block.id) : undefined;
@@ -217,7 +241,7 @@ export async function renderTrace(sessionPath: string, cardId: string): Promise<
 ${body.join('\n')}
 ${subagentsHtml}
 </main>
-<footer>Self-contained distilled render. Payloads over ${DISTILL_THRESHOLD_BYTES} bytes are elided; see docs/proposals/trace-retention.md for the GC policy.</footer>
+<footer>Self-contained distilled render. ALL tool inputs, tool results, and hidden reasoning are elided regardless of size; raw JSONL is kept local. See docs/proposals/trace-retention.md for the GC policy.</footer>
 </body>
 </html>
 `;

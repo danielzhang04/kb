@@ -18,12 +18,24 @@ import type { PyRunner } from '../write/launch.ts';
 import type { PreambleRunner } from '../write/preambleGate.ts';
 import type { VibeSpawner } from '../vibe/session.ts';
 import type { ResumeRegistry } from '../composer/resumeRegistry.ts';
+import type { ComposerWorkspaceStore } from '../composer/store.ts';
+import type { RunnerTrigger } from '../runner/trigger.ts';
+import type { ControlPlaneStore } from '../control/store.ts';
+import type { ManagedSessionBroker } from '../control/broker.ts';
+import type { CancelRunInput, CancellationOutcome, ExecuteRunInput, ExecutionOutcome } from '../control/execution.ts';
 
-/** How a route records exactly one audit row. Injected as a recording fake in tests. */
-export type AppendAuditFn = (repoRoot: string, event: AuditEvent, options?: AppendAuditOptions) => AuditRow;
+/** How a route records exactly one audit row. Injected as a recording fake in tests. Widened to allow a
+ *  `Promise` so the real (now async, off-the-event-loop) `appendAudit` and synchronous test fakes both fit;
+ *  every route `await`s it. */
+export type AppendAuditFn = (repoRoot: string, event: AuditEvent, options?: AppendAuditOptions) => AuditRow | Promise<AuditRow>;
+/** Local-only audit append used when the consequential write and audit must share one ops commit. */
+export type AppendAuditLocalFn = (repoRoot: string, event: AuditEvent, now?: () => Date) => AuditRow;
 
 export interface SurfaceContext {
+  /** Canonical ops worktree used for live reads and coordination writes. */
   repoRoot: string;
+  /** Isolated work-branch checkout used only for durable Composer saves. */
+  durableRepoRoot?: string;
   /** One shared session config (secret resolved ONCE) so a token minted at assert/verify verifies at
    *  every write route. Re-resolving per request would mint a fresh random secret and break everything. */
   sessionConfig: SessionConfig;
@@ -38,6 +50,7 @@ export interface SurfaceContext {
 
   // --- injectable side-effect runners (undefined => each module's real default) ---
   appendAudit?: AppendAuditFn;
+  appendAuditLocal?: AppendAuditLocalFn;
   /** Git runner for the audit-log ops commit + the floor's coordination writes. */
   opsGit?: OpsGitRunner;
   /** Git runner for governedSave's branch routing (structurally identical; kept distinct for clarity). */
@@ -53,6 +66,18 @@ export interface SurfaceContext {
    *  Created ONCE per process in `makeSurfaceContext` (so ids captured on one turn are visible to the
    *  next); tests inject a fresh instance so nothing leaks across them. */
   resumeRegistry: ResumeRegistry;
+  /** Durable, subject-bound Composer workspace catalog. Provider handles remain private to this store. */
+  composerStore: ComposerWorkspaceStore;
+  /** App-local durable proposal/run/session/event projection. Canonical queue cards remain fleet truth. */
+  controlStore: ControlPlaneStore;
+  /** Optional gated daemon-owned broker. Production remains inactive until its separate approval gate. */
+  controlBroker?: ManagedSessionBroker;
+  /** Optional server-owned automatic executor; never supplied by the browser. */
+  runAutomatic?: (input: ExecuteRunInput) => Promise<ExecutionOutcome>;
+  /** Optional executor-owned cancellation boundary for Manager and Worker processes. */
+  cancelAutomatic?: (input: CancelRunInput) => Promise<CancellationOutcome>;
+  /** Signals an already-provisioned background runner after a committed launch. */
+  triggerRunner?: RunnerTrigger;
 }
 
 /** The audit fn a route should call — the injected fake in tests, the real git-committing one otherwise. */

@@ -1,0 +1,352 @@
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { describe, expect, it, vi } from 'vitest';
+import { mintSession } from '../auth/session.ts';
+import type { SessionConfig } from '../auth/session.ts';
+import {
+  launchWorkflowRun,
+  activateManagedRootCards,
+  MANAGED_ROOT_ACTIVATION_SCRIPT,
+  validateWorkflowRunRequest,
+  WORKFLOW_CARD_OP_SCRIPT,
+} from './workflowRun.ts';
+import type { WorkflowRunDeps, WorkflowRunRequest } from './workflowRun.ts';
+import type { PyRunner } from './launch.ts';
+
+const CONFIG: SessionConfig = {
+  secret: Buffer.from('workflow-run-test-secret-0123456789'),
+  now: () => 1_700_000_000_000,
+};
+
+const request: WorkflowRunRequest = {
+  name: 'atlas-research',
+  project: 'atlas-prep',
+  workflowDefinitionId: 'atlas-v1',
+  stages: [
+    {
+      id: 'research',
+      action: 'research:atlas',
+      target: 'orgs/atlas-prep/raw',
+      workOrder: 'Research the Atlas inputs.',
+      riskTier: 'T1',
+      owner: 'codex-worker',
+      dependsOn: [],
+    },
+    {
+      id: 'draft',
+      action: 'draft:atlas',
+      target: 'orgs/atlas-prep/output',
+      workOrder: 'Build the draft from the dependency result.',
+      riskTier: 'T2',
+      owner: 'worker-desktop',
+      dependsOn: ['research'],
+    },
+  ],
+};
+
+function deps(runPy: PyRunner, overrides: Partial<WorkflowRunDeps> = {}): WorkflowRunDeps {
+  return {
+    repoRoot: '/repo',
+    runPreamble: () => ({ exitCode: 0, stdout: 'PREAMBLE OK\n', stderr: '' }),
+    runPy,
+    assignableOwners: () => new Set(['codex-worker', 'worker-desktop']),
+    ownerRouting: (owner) => owner === 'codex-worker'
+      ? { runtime: 'codex', model: 'gpt-5.3-codex' }
+      : { runtime: 'claude', model: 'claude-sonnet-5' },
+    makeRunId: () => 'wf-test-0001',
+    ...overrides,
+  };
+}
+
+function session() {
+  return { token: mintSession('operator', CONFIG).token, config: CONFIG };
+}
+
+describe('workflow-run v1 schema', async () => {
+  it('accepts the closed request shape and refuses unknown fields', async () => {
+    expect(validateWorkflowRunRequest(request)).toMatchObject({ ok: true });
+    expect(validateWorkflowRunRequest({ ...request, runtime: 'client-controlled' })).toEqual({
+      ok: false,
+      detail: "unknown field 'runtime'",
+    });
+    expect(validateWorkflowRunRequest({
+      ...request,
+      stages: [{ ...request.stages[0], model: 'client-controlled' }],
+    })).toEqual({ ok: false, detail: "stages[0]: unknown field 'model'" });
+  });
+
+  it('refuses missing dependencies and cycles', async () => {
+    expect(validateWorkflowRunRequest({
+      ...request,
+      stages: [{ ...request.stages[0], dependsOn: ['missing'] }],
+    })).toEqual({ ok: false, detail: "stage 'research' depends on missing stage 'missing'" });
+
+    const cycle = {
+      ...request,
+      stages: [
+        { ...request.stages[0], dependsOn: ['draft'] },
+        { ...request.stages[1], dependsOn: ['research'] },
+      ],
+    };
+    expect(validateWorkflowRunRequest(cycle)).toEqual({ ok: false, detail: 'workflow stage graph contains a cycle' });
+  });
+
+  it('refuses T3 because T3 must enter the approvals path', async () => {
+    const parsed = validateWorkflowRunRequest({
+      ...request,
+      stages: [{ ...request.stages[0], riskTier: 'T3' }],
+    });
+    expect(parsed).toEqual({
+      ok: false,
+      detail: 'stages[0].riskTier must be T1 or T2; T3 requires the approvals path',
+    });
+  });
+});
+
+describe('launchWorkflowRun', async () => {
+  it('routes registered default_worker stages from policy without requiring agents/<owner>.md', async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'workflow-default-worker-'));
+    mkdirSync(join(repoRoot, 'governance'), { recursive: true });
+    writeFileSync(join(repoRoot, 'governance', 'model-routing.yaml'), `version: 1
+runtimes:
+  claude:
+    default_worker: worker-desktop
+    aliases: { sonnet: claude-sonnet-5 }
+    known_models: [claude-sonnet-5]
+  codex:
+    default_worker: codex-worker
+    known_models: [gpt-5.6-sol]
+role_default: { runtime: claude, model: sonnet }
+`);
+    const calls: Array<Record<string, unknown>> = [];
+    const runPy: PyRunner = (_repo, _code, jsonArg) => {
+      const payload = JSON.parse(jsonArg) as Record<string, unknown>;
+      calls.push(payload);
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          runId: 'wf-test-0001',
+          cards: [
+            { stageId: 'research', cardId: 'wf-9b91ad52f99f63f91e0cbd97', state: 'inbox', cardPath: 'queue/inbox/wf-9b91ad52f99f63f91e0cbd97.md' },
+            { stageId: 'draft', cardId: 'wf-3b727f072438eb3bf76b26bc', state: 'blocked', cardPath: 'queue/inbox/wf-3b727f072438eb3bf76b26bc.md' },
+          ],
+        }),
+        stderr: '',
+      };
+    };
+
+    const outcome = await launchWorkflowRun(request, session(), deps(runPy, {
+      repoRoot,
+      ownerRouting: undefined,
+    }));
+
+    expect(outcome.ok).toBe(true);
+    const stages = calls[0].stages as Array<Record<string, unknown>>;
+    expect(stages[0]).toMatchObject({ owner: 'codex-worker', runtime: 'codex', model: 'gpt-5.6-sol' });
+    expect(stages[1]).toMatchObject({ owner: 'worker-desktop', runtime: 'claude', model: 'claude-sonnet-5' });
+  });
+
+  it('resolves routing server-side and publishes the whole DAG in one fixed subprocess', async () => {
+    const calls: Array<{ code: string; payload: Record<string, unknown> }> = [];
+    const runPy: PyRunner = (_repo, code, jsonArg) => {
+      calls.push({ code, payload: JSON.parse(jsonArg) as Record<string, unknown> });
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          runId: 'wf-test-0001',
+          cards: [
+            { stageId: 'research', cardId: 'wf-9b91ad52f99f63f91e0cbd97', state: 'inbox', cardPath: 'queue/inbox/wf-9b91ad52f99f63f91e0cbd97.md' },
+            { stageId: 'draft', cardId: 'wf-3b727f072438eb3bf76b26bc', state: 'blocked', cardPath: 'queue/inbox/wf-3b727f072438eb3bf76b26bc.md' },
+          ],
+        }),
+        stderr: '',
+      };
+    };
+
+    const outcome = await launchWorkflowRun(request, session(), deps(runPy));
+    expect(outcome).toEqual({
+      ok: true,
+      runId: 'wf-test-0001',
+      cards: [
+        { stageId: 'research', cardId: 'wf-9b91ad52f99f63f91e0cbd97', state: 'inbox', cardPath: 'queue/inbox/wf-9b91ad52f99f63f91e0cbd97.md' },
+        { stageId: 'draft', cardId: 'wf-3b727f072438eb3bf76b26bc', state: 'blocked', cardPath: 'queue/inbox/wf-3b727f072438eb3bf76b26bc.md' },
+      ],
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].code).toBe(WORKFLOW_CARD_OP_SCRIPT);
+    const stages = calls[0].payload.stages as Array<Record<string, unknown>>;
+    expect(stages[0]).toMatchObject({ owner: 'codex-worker', runtime: 'codex', model: 'gpt-5.3-codex' });
+    expect(stages[1]).toMatchObject({ owner: 'worker-desktop', runtime: 'claude', model: 'claude-sonnet-5' });
+    expect(calls[0].payload).toMatchObject({ runId: 'wf-test-0001', workflowDefinitionId: 'atlas-v1' });
+  });
+
+  it('publishes dashboard-managed cards blocked with an inert exclusive-controller marker', async () => {
+    let payload: Record<string, unknown> | null = null;
+    const runPy: PyRunner = (_repo, code, jsonArg) => {
+      payload = JSON.parse(jsonArg) as Record<string, unknown>;
+      expect(code).toContain('card.meta["execution-controller"] = "dashboard"');
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          runId: 'wf-test-0001',
+          cards: [
+            { stageId: 'research', cardId: 'wf-9b91ad52f99f63f91e0cbd97', state: 'blocked', cardPath: 'queue/inbox/wf-9b91ad52f99f63f91e0cbd97.md' },
+            { stageId: 'draft', cardId: 'wf-3b727f072438eb3bf76b26bc', state: 'blocked', cardPath: 'queue/inbox/wf-3b727f072438eb3bf76b26bc.md' },
+          ],
+        }),
+        stderr: '',
+      };
+    };
+
+    const outcome = await launchWorkflowRun(request, session(), deps(runPy, { publishBlocked: true }));
+
+    expect(outcome.ok && outcome.cards.map((card) => card.state)).toEqual(['blocked', 'blocked']);
+    expect(payload).toMatchObject({ managed: true });
+    expect(WORKFLOW_CARD_OP_SCRIPT).toContain('if op["managed"] or card.meta["depends-on"]');
+    const runnerSource = readFileSync(fileURLToPath(new URL('../../../scripts/agent_runner.ps1', import.meta.url)), 'utf8');
+    expect(runnerSource).toContain('card.meta.get("execution-controller") != "dashboard"');
+    const dispatchSource = readFileSync(fileURLToPath(new URL('../../../scripts/dispatch.py', import.meta.url)), 'utf8');
+    expect(dispatchSource).toMatch(/deps = child\.meta\.get\("depends-on"\) or \[\][\s\S]*if not deps:[\s\S]*continue/);
+  });
+
+  it('uses immutable approved stage routing instead of a drifted owner default', async () => {
+    let payload: Record<string, unknown> | null = null;
+    const runPy: PyRunner = (_repo, _code, jsonArg) => {
+      payload = JSON.parse(jsonArg) as Record<string, unknown>;
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          runId: 'wf-test-0001',
+          cards: [
+            { stageId: 'research', cardId: 'wf-9b91ad52f99f63f91e0cbd97', state: 'inbox', cardPath: 'queue/inbox/wf-9b91ad52f99f63f91e0cbd97.md' },
+            { stageId: 'draft', cardId: 'wf-3b727f072438eb3bf76b26bc', state: 'blocked', cardPath: 'queue/inbox/wf-3b727f072438eb3bf76b26bc.md' },
+          ],
+        }),
+        stderr: '',
+      };
+    };
+
+    const outcome = await launchWorkflowRun(request, session(), deps(runPy, {
+      ownerRouting: () => ({ runtime: 'claude', model: 'drifted-default' }),
+      stageRouting: (stage) => stage.id === 'research'
+        ? { runtime: 'codex', model: 'approved-codex' }
+        : { runtime: 'claude', model: 'approved-claude' },
+    }));
+
+    expect(outcome.ok).toBe(true);
+    const stages = (payload as unknown as { stages: Array<Record<string, unknown>> }).stages;
+    expect(stages.map((stage) => [stage.runtime, stage.model])).toEqual([
+      ['codex', 'approved-codex'],
+      ['claude', 'approved-claude'],
+    ]);
+  });
+
+  it('rejects an owner outside the server-enumerated closed set before prepare or subprocess', async () => {
+    const runPy = vi.fn();
+    const prepareWrite = vi.fn();
+    const bad = {
+      ...request,
+      stages: [{ ...request.stages[0], owner: 'ghost-agent' }],
+    };
+    expect(await launchWorkflowRun(bad, session(), deps(runPy as unknown as PyRunner, { prepareWrite }))).toEqual({
+      ok: false,
+      reason: 'owner-not-registered',
+      detail: "owner 'ghost-agent' on stage 'research' is not a declared agent or registered default_worker",
+    });
+    expect(prepareWrite).not.toHaveBeenCalled();
+    expect(runPy).not.toHaveBeenCalled();
+  });
+
+  it('validation and preamble failures create no cards and do not prepare a coordination write', async () => {
+    const runPy = vi.fn();
+    const prepareWrite = vi.fn();
+    const t3 = { ...request, stages: [{ ...request.stages[0], riskTier: 'T3' }] };
+    expect(await launchWorkflowRun(t3, session(), deps(runPy as unknown as PyRunner, { prepareWrite }))).toMatchObject({
+      ok: false,
+      reason: 'invalid-workflow',
+    });
+
+    expect(await launchWorkflowRun(request, session(), deps(runPy as unknown as PyRunner, {
+      prepareWrite,
+      runPreamble: () => ({ exitCode: 1, stdout: 'PREAMBLE FAIL: STOP present\n', stderr: '' }),
+    }))).toEqual({ ok: false, reason: 'fleet-frozen', problems: ['STOP present'] });
+    expect(prepareWrite).not.toHaveBeenCalled();
+    expect(runPy).not.toHaveBeenCalled();
+  });
+
+  it('fails the run as one unit when the sole DAG subprocess fails', async () => {
+    const runPy = vi.fn<PyRunner>(() => ({
+      exitCode: 1,
+      stdout: '',
+      stderr: 'simulated second-card save failure',
+    }));
+    const outcome = await launchWorkflowRun(request, session(), deps(runPy));
+    expect(outcome).toEqual({ ok: false, reason: 'card-op-failed', detail: 'simulated second-card save failure' });
+    expect(runPy).toHaveBeenCalledTimes(1);
+    // The fixed program stages every card before publication and rolls back every published destination.
+    expect(WORKFLOW_CARD_OP_SCRIPT).toContain('cards.save(card, staged_root)');
+    expect(WORKFLOW_CARD_OP_SCRIPT).toContain('for path in reversed(published)');
+  });
+});
+
+describe('managed canonical root activation', async () => {
+  it('commits and pushes the exact blocked root before rereading committed bytes, then replays idempotently', async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'managed-activation-'));
+    const cardRef = 'wf-9b91ad52f99f63f91e0cbd97';
+    const cardPath = join(repoRoot, 'queue', 'inbox', `${cardRef}.md`);
+    mkdirSync(join(repoRoot, 'queue', 'inbox'), { recursive: true });
+    writeFileSync(cardPath, 'state: blocked\nexecution-controller: dashboard\n');
+    const calls: string[][] = [];
+    const runGit = (_root: string, args: string[]): string => {
+      calls.push(args);
+      if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      if (args[0] === 'show') return readFileSync(cardPath, 'utf8');
+      return '';
+    };
+    let changed = true;
+    const runPy: PyRunner = (_root, code) => {
+      expect(code).toBe(MANAGED_ROOT_ACTIVATION_SCRIPT);
+      if (changed) writeFileSync(cardPath, 'state: inbox\nexecution-controller: dashboard\n');
+      const result = { exitCode: 0, stderr: '', stdout: JSON.stringify({
+        cards: [{ cardRef, path: `queue/inbox/${cardRef}.md`, changed }],
+      }) };
+      changed = false;
+      return result;
+    };
+
+    expect(await activateManagedRootCards({
+      repoRoot, runRef: 'wf-test-0001', cardRefs: [cardRef], runGit, runPy,
+      authorizeAfterPrepare: () => { calls.push(['authorize']); },
+    }))
+      .toEqual({ replayed: false, cardPaths: [`queue/inbox/${cardRef}.md`] });
+    expect(calls.findIndex((args) => args[0] === 'authorize'))
+      .toBeGreaterThan(calls.findIndex((args) => args[0] === 'pull'));
+    const commit = calls.findIndex((args) => args[0] === 'commit');
+    const push = calls.findIndex((args) => args[0] === 'push');
+    const reread = calls.findIndex((args) => args[0] === 'show');
+    expect(commit).toBeGreaterThan(-1);
+    expect(push).toBeGreaterThan(commit);
+    expect(reread).toBeGreaterThan(push);
+
+    calls.length = 0;
+    expect(await activateManagedRootCards({ repoRoot, runRef: 'wf-test-0001', cardRefs: [cardRef], runGit, runPy }))
+      .toEqual({ replayed: true, cardPaths: [`queue/inbox/${cardRef}.md`] });
+    expect(calls.some((args) => args[0] === 'commit')).toBe(false);
+    expect(calls.findIndex((args) => args[0] === 'show')).toBeGreaterThan(calls.findIndex((args) => args[0] === 'push'));
+  });
+
+  it('refuses a dirty index before card mutation', async () => {
+    const runPy = vi.fn<PyRunner>();
+    const runGit = (_root: string, args: string[]): string => {
+      if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      if (args[0] === 'diff') return 'queue/inbox/residue.md\0';
+      return '';
+    };
+    await expect(activateManagedRootCards({
+      repoRoot: '/repo', runRef: 'wf-test-0001', cardRefs: ['wf-9b91ad52f99f63f91e0cbd97'], runGit, runPy,
+    })).rejects.toThrow(/dirty index/);
+    expect(runPy).not.toHaveBeenCalled();
+  });
+});

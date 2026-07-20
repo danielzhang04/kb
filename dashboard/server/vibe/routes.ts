@@ -53,7 +53,7 @@ export function registerVibeRoutes(scope: FastifyInstance, ctx: SurfaceContext):
       else early.push(line);
     };
 
-    const outcome = spawnVibe(
+    const outcome = await spawnVibe(
       prompt,
       { token: session?.token, config: ctx.sessionConfig },
       {

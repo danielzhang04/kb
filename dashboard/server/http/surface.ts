@@ -27,19 +27,31 @@ import { registerWriteRoutes } from '../write/routes.ts';
 import { registerVibeRoutes } from '../vibe/routes.ts';
 import { registerComposerRoutes } from '../composer/routes.ts';
 import { createResumeRegistry } from '../composer/resumeRegistry.ts';
+import { createProviderIdProtector } from '../composer/protector.ts';
+import { createFileComposerStore, resolveDashboardStateRoot } from '../composer/store.ts';
 import { registerApprovalsRoutes } from '../approvals/routes.ts';
+import { drainVibeProcesses } from '../vibe/session.ts';
+import { drainAsyncGit } from '../write/asyncGit.ts';
+import { createFileControlPlaneStore } from '../control/store.ts';
+import { registerControlRoutes } from '../control/routes.ts';
 
 /** dashboard/server/http/surface.ts -> ../../../ is the repo root. Overridable via env / tests. */
 export function resolveRepoRoot(): string {
   return process.env.DASHBOARD_REPO_ROOT ?? fileURLToPath(new URL('../../../', import.meta.url));
 }
 
+export function resolveDurableRepoRoot(): string {
+  return process.env.DASHBOARD_DURABLE_REPO_ROOT ?? resolveRepoRoot();
+}
+
 /** Build a full {@link SurfaceContext}, filling every field not supplied in `overrides` with its real
  *  default. `sessionConfig`'s secret is resolved exactly once (see module doc). */
 export function makeSurfaceContext(overrides: Partial<SurfaceContext> = {}): SurfaceContext {
+  const sessionConfig = overrides.sessionConfig ?? { secret: resolveSessionSecret(), ttlMs: resolveSessionTtlMs() };
   return {
     repoRoot: overrides.repoRoot ?? resolveRepoRoot(),
-    sessionConfig: overrides.sessionConfig ?? { secret: resolveSessionSecret(), ttlMs: resolveSessionTtlMs() },
+    durableRepoRoot: overrides.durableRepoRoot ?? overrides.repoRoot ?? resolveDurableRepoRoot(),
+    sessionConfig,
     allowedOrigins: overrides.allowedOrigins ?? resolveAllowedOrigins(),
     rateGuard: overrides.rateGuard ?? makeDefaultWriteRateGuard(),
     // Lazy: resolveWebAuthnConfig throws when DASHBOARD_RP_ORIGIN is unset — only called inside a handler
@@ -47,6 +59,7 @@ export function makeSurfaceContext(overrides: Partial<SurfaceContext> = {}): Sur
     webAuthnConfig: overrides.webAuthnConfig ?? (() => resolveWebAuthnConfig()),
     credentials: overrides.credentials ?? (() => resolveCredentials()),
     appendAudit: overrides.appendAudit,
+    appendAuditLocal: overrides.appendAuditLocal,
     opsGit: overrides.opsGit,
     saveGit: overrides.saveGit,
     openPr: overrides.openPr,
@@ -58,11 +71,30 @@ export function makeSurfaceContext(overrides: Partial<SurfaceContext> = {}): Sur
     // One issued-session allowlist for the whole process (review F1) — resumes only ids captured this
     // lifetime. Tests override with a fresh instance so ids never leak between them.
     resumeRegistry: overrides.resumeRegistry ?? createResumeRegistry(),
+    composerStore:
+      overrides.composerStore ??
+      createFileComposerStore(resolveDashboardStateRoot(), {
+        protector: createProviderIdProtector(sessionConfig.secret),
+      }),
+    controlStore: overrides.controlStore ?? createFileControlPlaneStore(resolveDashboardStateRoot()),
+    controlBroker: overrides.controlBroker,
+    runAutomatic: overrides.runAutomatic,
+    cancelAutomatic: overrides.cancelAutomatic,
+    triggerRunner: overrides.triggerRunner,
   };
 }
 
 /** Register the governed write surface (auth + write + vibe + approvals) as one guarded child scope. */
 export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext = makeSurfaceContext()): void {
+  // preClose runs before Fastify waits for long-lived streaming requests to finish. Draining in
+  // onClose would deadlock shutdown behind the very Composer children it was meant to stop.
+  app.addHook('preClose', async () => {
+    ctx.controlBroker?.drain();
+    drainVibeProcesses();
+    // Kill any in-flight (possibly network-stalled) coordination git/gh child so shutdown never blocks
+    // behind a hung push — the very failure mode this async-git conversion exists to remove.
+    drainAsyncGit();
+  });
   app.register(async (scope) => {
     // Order matters: origin guard first (fail-closed), then the rate-limiter, both as onRequest hooks.
     originPlugin(scope, { allowedOrigins: ctx.allowedOrigins });
@@ -72,6 +104,7 @@ export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext =
     registerWriteRoutes(scope, ctx);
     registerVibeRoutes(scope, ctx);
     registerComposerRoutes(scope, ctx);
+    registerControlRoutes(scope, ctx);
     registerApprovalsRoutes(scope, ctx);
   });
 }

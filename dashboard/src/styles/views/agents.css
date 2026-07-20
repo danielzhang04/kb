@@ -49,6 +49,33 @@
   gap: var(--space-2);
 }
 
+/* The agent id opens its detail. Styled as a row affordance rather than a button so it does not
+ * compete with the governed routing control sharing the same row. Hover reveals the 2px left rail —
+ * the same active/selected language used everywhere else in the app. */
+.v-agents__agent--link {
+  padding: var(--space-1) var(--space-2);
+  margin-left: calc(-1 * var(--space-2));
+  border: 1px solid transparent;
+  border-left: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: color 150ms ease-out, border-color 150ms ease-out;
+}
+
+.v-agents__agent--link:hover {
+  border-left-color: var(--accent-strong);
+  color: var(--fg-primary);
+}
+
+.v-agents__agent--link:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: -1px;
+}
+
 .v-agents__state {
   font-size: var(--text-xs);
   text-transform: uppercase;

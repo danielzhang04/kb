@@ -16,6 +16,8 @@ import type { LocalAuditAppend } from './cardRouting.ts';
 const SECRET = Buffer.from('unit-test-secret-do-not-reuse');
 const CONFIG: SessionConfig = { secret: SECRET, now: () => 1_700_000_000_000 };
 const token = (): string => mintSession('daniel@webauthn', CONFIG).token;
+const BASE_SHA = 'a'.repeat(40);
+const COMMIT_SHA = 'b'.repeat(40);
 
 let repo: string;
 beforeEach(() => {
@@ -45,11 +47,18 @@ afterEach(() => rmSync(repo, { recursive: true, force: true }));
 
 function recorder(): { runner: GitRunner; calls: string[][] } {
   const calls: string[][] = [];
+  let headReads = 0;
   const runner: GitRunner = (_r, args) => {
     calls.push(args);
+    if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+    if (args.join(' ') === 'rev-parse HEAD') return `${headReads++ === 0 ? BASE_SHA : COMMIT_SHA}\n`;
     return '';
   };
   return { runner, calls };
+}
+
+function expectNoCoordinationMutation(calls: string[][]): void {
+  expect(calls.filter((call) => ['add', 'commit', 'push'].includes(call[0] ?? ''))).toHaveLength(0);
 }
 
 const noAudit: LocalAuditAppend = (_r, event) => ({ ts: 'x', ...event }) as AuditRow;
@@ -60,8 +69,8 @@ function fakePy(seen: { code: string; op: any }[]): PyRunner {
   return (repoRoot, code, jsonArg) => {
     const op = JSON.parse(jsonArg);
     seen.push({ code, op });
-    const state = 'working';
-    const dir = join(repoRoot, 'queue', state);
+    const state = 'blocked';
+    const dir = join(repoRoot, 'queue', 'inbox');
     mkdirSync(dir, { recursive: true });
     const fm = [
       `id: ${op.cardId}`,
@@ -75,7 +84,7 @@ function fakePy(seen: { code: string; op: any }[]): PyRunner {
       `model: ${op.model ?? 'null'}`,
     ].join('\n');
     writeFileSync(join(dir, `${op.cardId}.md`), `---\n${fm}\n---\n\n## Work order\n\nx\n`, 'utf-8');
-    return { exitCode: 0, stdout: `${JSON.stringify({ id: op.cardId, path: `queue/${state}/${op.cardId}.md`, state })}\n`, stderr: '' };
+    return { exitCode: 0, stdout: `${JSON.stringify({ id: op.cardId, path: `queue/inbox/${op.cardId}.md`, state })}\n`, stderr: '' };
   };
 }
 
@@ -137,7 +146,7 @@ describe('setCardRouting — governed write via scripts/cards.py + ops commit', 
 
     // The changed card is committed through the ops coordination route (pull-rebase-push, staging the card).
     const pullIdx = calls.findIndex((c) => c[0] === 'pull' && c.includes('ops'));
-    const addIdx = calls.findIndex((c) => c[0] === 'add' && c.includes('queue/working/card-1.md'));
+    const addIdx = calls.findIndex((c) => c[0] === 'add' && c.includes('queue/inbox/card-1.md'));
     const commitIdx = calls.findIndex((c) => c[0] === 'commit');
     expect(pullIdx).toBeGreaterThanOrEqual(0);
     expect(pullIdx).toBeLessThan(commitIdx);
@@ -152,7 +161,7 @@ describe('setCardRouting — governed write via scripts/cards.py + ops commit', 
       { runtime: 'codex', model: 'gpt-5-codex' },
       { runPy: fakePy([]), runGit: recorder().runner, appendAudit: noAudit },
     );
-    const card = parseCardFrontmatter(readFileSync(join(repo, 'queue', 'working', 'card-1.md'), 'utf-8'));
+    const card = parseCardFrontmatter(readFileSync(join(repo, 'queue', 'inbox', 'card-1.md'), 'utf-8'));
     const eff = effectiveForCard(card.meta as any, loadPolicy(repo), loadOverride(repo));
     expect([eff.runtime, eff.model, eff.sourceRuntime, eff.sourceModel]).toEqual(['codex', 'gpt-5-codex', 'card', 'card']);
   });
@@ -194,15 +203,14 @@ describe('setCardRouting — governed write via scripts/cards.py + ops commit', 
   });
 });
 
-describe('setCardRouting — approval-lock guard (routing frozen under an active approval)', () => {
-  /** Pre-plant an EXISTING card in its state dir so the guard can read its authoritative frontmatter
-   *  state before any write is attempted. approvals + approved both live under queue/approvals/. */
-  function plant(cardId: string, state: string, dir: string): void {
+describe('setCardRouting — lifecycle guard', () => {
+  /** Pre-plant an existing card so the lifecycle guard reads authoritative state + ownership. */
+  function plant(cardId: string, state: string, dir: string, owner: string | null = 'claude/ops', workflow?: string): void {
     const d = join(repo, 'queue', dir);
     mkdirSync(d, { recursive: true });
     const fm = [
       `id: ${cardId}`,
-      'owner: claude/ops',
+      `owner: ${owner ?? 'null'}`,
       `state: ${state}`,
       'action: push-remote',
       'target: t',
@@ -210,11 +218,40 @@ describe('setCardRouting — approval-lock guard (routing frozen under an active
       'role: work',
       'runtime: null',
       'model: null',
+      ...(workflow ? [`workflow: ${workflow}`] : []),
     ].join('\n');
     writeFileSync(join(d, `${cardId}.md`), `---\n${fm}\n---\n\n## Work order\n\nx\n`, 'utf-8');
   }
 
-  it('refuses a set on a card in `approvals` state (409 approval-locked); no py, no git, file untouched', async () => {
+  it('reconciles ops before lifecycle validation so a remotely assigned card cannot be rerouted', async () => {
+    plant('card-race', 'inbox', 'inbox', null);
+    const calls: string[][] = [];
+    const runGit: GitRunner = (_root, args) => {
+      calls.push(args);
+      if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      if (args.join(' ') === 'rev-parse HEAD') return `${BASE_SHA}\n`;
+      if (args.join(' ') === 'pull --rebase origin ops') plant('card-race', 'inbox', 'inbox', 'codex-worker');
+      return '';
+    };
+    const seen: { code: string; op: any }[] = [];
+    const result = await setCardRouting(
+      { repoRoot: repo, cardId: 'card-race', sessionToken: token(), sessionConfig: CONFIG },
+      { runtime: 'codex', model: 'gpt-5-codex' },
+      { runPy: fakePy(seen), runGit, appendAudit: noAudit },
+    );
+    expect(result).toMatchObject({
+      ok: false,
+      status: 409,
+      error: 'routing-state-locked',
+      state: 'inbox',
+      disposition: 'requires-successor-attempt',
+    });
+    expect(calls.some((call) => call.join(' ') === 'pull --rebase origin ops')).toBe(true);
+    expectNoCoordinationMutation(calls);
+    expect(seen).toHaveLength(0);
+  });
+
+  it('refuses approval-bound cards with routing-state-locked + requires-reapproval', async () => {
     plant('card-appr', 'approvals', 'approvals');
     const before = readFileSync(join(repo, 'queue', 'approvals', 'card-appr.md'), 'utf-8');
     const seen: { code: string; op: any }[] = [];
@@ -232,15 +269,18 @@ describe('setCardRouting — approval-lock guard (routing frozen under an active
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.status).toBe(409);
-      expect(r.error).toBe('approval-locked');
+      expect(r.error).toBe('routing-state-locked');
+      expect(r.state).toBe('approvals');
+      expect(r.disposition).toBe('requires-reapproval');
+      expect(r.reason).toMatch(/reviewed scope.*reapproval/i);
     }
     expect(seen).toHaveLength(0); // py never invoked — no write
-    expect(calls).toHaveLength(0); // no ops commit
+    expectNoCoordinationMutation(calls); // reconciliation is read-only; no ops commit
     expect(rows).toHaveLength(0); // refused writes are NOT audited (house convention)
     expect(readFileSync(join(repo, 'queue', 'approvals', 'card-appr.md'), 'utf-8')).toBe(before);
   });
 
-  it('refuses a set on a card in `approved` state (409 approval-locked); no py, no git', async () => {
+  it('also freezes an already-approved card', async () => {
     plant('card-apd', 'approved', 'approvals'); // approved cards live in queue/approvals/ (STATE_DIR)
     const seen: { code: string; op: any }[] = [];
     const { runner, calls } = recorder();
@@ -252,13 +292,14 @@ describe('setCardRouting — approval-lock guard (routing frozen under an active
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.status).toBe(409);
-      expect(r.error).toBe('approval-locked');
+      expect(r.error).toBe('routing-state-locked');
+      expect(r.disposition).toBe('requires-reapproval');
     }
     expect(seen).toHaveLength(0);
-    expect(calls).toHaveLength(0);
+    expectNoCoordinationMutation(calls);
   });
 
-  it('also refuses a CLEAR on an approval-locked card (no routing mutation of any kind under an approval)', async () => {
+  it('also refuses a clear on a locked card', async () => {
     plant('card-appr2', 'approvals', 'approvals');
     const seen: { code: string; op: any }[] = [];
     const { runner, calls } = recorder();
@@ -269,19 +310,121 @@ describe('setCardRouting — approval-lock guard (routing frozen under an active
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.status).toBe(409);
     expect(seen).toHaveLength(0);
-    expect(calls).toHaveLength(0);
+    expectNoCoordinationMutation(calls);
   });
 
-  it('a working/inbox card is NOT approval-locked — the write proceeds as today', async () => {
-    plant('card-inbox', 'inbox', 'inbox');
+  it('refuses an owned inbox card because the runner may already have picked it up', async () => {
+    plant('card-inbox', 'inbox', 'inbox', 'codex-worker');
     const seen: { code: string; op: any }[] = [];
     const r = await setCardRouting(
       { repoRoot: repo, cardId: 'card-inbox', sessionToken: token(), sessionConfig: CONFIG },
       { runtime: 'codex', model: 'gpt-5-codex' },
       { runPy: fakePy(seen), runGit: recorder().runner, appendAudit: noAudit },
     );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.status).toBe(409);
+      expect(r.error).toBe('routing-state-locked');
+      expect(r.disposition).toBe('requires-successor-attempt');
+      expect(r.reason).toMatch(/may already have been picked up/i);
+    }
+    expect(seen).toHaveLength(0);
+  });
+
+  it('allows only the exact managed workflow authority to reroute its assigned inbox card', async () => {
+    plant('card-managed', 'inbox', 'inbox', 'codex-worker', 'run-managed');
+    const seen: { code: string; op: any }[] = [];
+    const allowed = await setCardRouting(
+      { repoRoot: repo, cardId: 'card-managed', sessionToken: token(), sessionConfig: CONFIG },
+      { runtime: 'codex', model: 'gpt-5-codex' },
+      {
+        runPy: fakePy(seen), runGit: recorder().runner, appendAudit: noAudit,
+        managedAssignedInbox: { workflowRef: 'run-managed' },
+      },
+    );
+    expect(allowed.ok).toBe(true);
+    expect(seen).toHaveLength(1);
+
+    plant('card-other-run', 'inbox', 'inbox', 'codex-worker', 'run-other');
+    const refusedSeen: { code: string; op: any }[] = [];
+    const refused = await setCardRouting(
+      { repoRoot: repo, cardId: 'card-other-run', sessionToken: token(), sessionConfig: CONFIG },
+      { runtime: 'codex', model: 'gpt-5-codex' },
+      {
+        runPy: fakePy(refusedSeen), runGit: recorder().runner, appendAudit: noAudit,
+        managedAssignedInbox: { workflowRef: 'run-managed' },
+      },
+    );
+    expect(refused).toMatchObject({ ok: false, status: 409, disposition: 'requires-successor-attempt' });
+    expect(refusedSeen).toHaveLength(0);
+
+    plant('card-unassigned', 'inbox', 'inbox', null, 'run-managed');
+    const unassigned = await setCardRouting(
+      { repoRoot: repo, cardId: 'card-unassigned', sessionToken: token(), sessionConfig: CONFIG },
+      { runtime: 'codex', model: 'gpt-5-codex' },
+      {
+        runPy: fakePy([]), runGit: recorder().runner, appendAudit: noAudit,
+        managedAssignedInbox: { workflowRef: 'run-managed' },
+      },
+    );
+    expect(unassigned).toMatchObject({ ok: false, status: 409, disposition: 'requires-successor-attempt' });
+  });
+
+  it.each(['working', 'stop-requested', 'halting'])(
+    'refuses active/stopping state %s and directs routing to a successor attempt',
+    async (state) => {
+      plant(`card-${state}`, state, 'working', 'codex-worker');
+      const seen: { code: string; op: any }[] = [];
+      const r = await setCardRouting(
+        { repoRoot: repo, cardId: `card-${state}`, sessionToken: token(), sessionConfig: CONFIG },
+        { runtime: 'codex', model: 'gpt-5-codex' },
+        { runPy: fakePy(seen), runGit: recorder().runner, appendAudit: noAudit },
+      );
+      expect(r.ok).toBe(false);
+      if (!r.ok) {
+        expect(r.status).toBe(409);
+        expect(r.error).toBe('routing-state-locked');
+        expect(r.disposition).toBe('requires-successor-attempt');
+        expect(r.reason).toMatch(/active or stopping/i);
+      }
+      expect(seen).toHaveLength(0);
+    },
+  );
+
+  it.each([
+    ['done', 'done'],
+    ['rejected', 'done'],
+    ['halted', 'working'],
+  ])('refuses historical state %s as immutable', async (state, dir) => {
+    plant(`card-${state}`, state, dir, 'codex-worker');
+    const seen: { code: string; op: any }[] = [];
+    const r = await setCardRouting(
+      { repoRoot: repo, cardId: `card-${state}`, sessionToken: token(), sessionConfig: CONFIG },
+      { runtime: 'codex', model: 'gpt-5-codex' },
+      { runPy: fakePy(seen), runGit: recorder().runner, appendAudit: noAudit },
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.status).toBe(409);
+      expect(r.error).toBe('routing-state-locked');
+      expect(r.reason).toMatch(/historical.*immutable/i);
+    }
+    expect(seen).toHaveLength(0);
+  });
+
+  it.each([
+    ['blocked', 'codex-worker'],
+    ['inbox', null],
+  ])('allows safely mutable state %s with owner %s', async (state, owner) => {
+    plant(`card-${state}`, state, 'inbox', owner);
+    const seen: { code: string; op: any }[] = [];
+    const r = await setCardRouting(
+      { repoRoot: repo, cardId: `card-${state}`, sessionToken: token(), sessionConfig: CONFIG },
+      { runtime: 'codex', model: 'gpt-5-codex' },
+      { runPy: fakePy(seen), runGit: recorder().runner, appendAudit: noAudit },
+    );
     expect(r.ok).toBe(true);
-    expect(seen).toHaveLength(1); // py ran — write proceeded
+    expect(seen).toHaveLength(1);
   });
 });
 
@@ -308,7 +451,7 @@ describe('setCardRouting — symlink guard on the card path (LOW-1)', () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.status).toBe(400);
     expect(seen).toHaveLength(0); // py never invoked
-    expect(calls).toHaveLength(0); // no git
+    expectNoCoordinationMutation(calls);
     expect(readFileSync(join(outside, 'card-1.md'), 'utf-8')).toBe('ORIGINAL'); // link never followed
     rmSync(outside, { recursive: true, force: true });
   });
@@ -344,10 +487,54 @@ describe('setCardRouting — atomic card+audit commit (MED-3)', () => {
     expect(commitCalls).toHaveLength(1); // ONE commit = atomic
     const commitIdx = calls.findIndex((c) => c[0] === 'commit');
     const stagedBeforeCommit = calls.filter((c, i) => c[0] === 'add' && i < commitIdx).flat();
-    expect(stagedBeforeCommit.join(' ')).toContain('queue/working/card-1.md');
+    expect(stagedBeforeCommit.join(' ')).toContain('queue/inbox/card-1.md');
     expect(stagedBeforeCommit.join(' ')).toContain('ledgers/audit/dashboard-audit.ndjson');
     expect(calls.filter((c) => c[0] === 'push')).toHaveLength(1); // one push
     expect(rows).toHaveLength(1);
+  });
+
+  it('refreshes and rolls back when a rejected push proves the routing commit is absent', async () => {
+    const calls: string[][] = [];
+    let headReads = 0;
+    const runGit: GitRunner = (_root, args) => {
+      calls.push(args);
+      const joined = args.join(' ');
+      if (joined === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      if (joined === 'rev-parse HEAD') return `${headReads++ === 0 ? BASE_SHA : COMMIT_SHA}\n`;
+      if (joined === 'push origin ops') throw new Error('non-fast-forward');
+      if (joined === `merge-base --is-ancestor ${COMMIT_SHA} origin/ops`) {
+        const absent = new Error('not ancestor') as Error & { status: number };
+        absent.status = 1;
+        throw absent;
+      }
+      return '';
+    };
+    const result = await setCardRouting(
+      { repoRoot: repo, cardId: 'card-1', sessionToken: token(), sessionConfig: CONFIG },
+      { runtime: 'codex', model: 'gpt-5-codex' },
+      { runPy: fakePy([]), runGit, appendAudit: noAudit },
+    );
+    expect(result).toMatchObject({ ok: false, status: 409, error: 'routing-conflict' });
+    expect(calls).toContainEqual(['fetch', 'origin', 'ops']);
+    expect(calls).toContainEqual(['reset', '--hard', 'origin/ops']);
+    expect(calls.filter((call) => call.join(' ') === 'push origin ops')).toHaveLength(1);
+  });
+
+  it('reports success when an ambiguous push is proven to have published the exact commit', async () => {
+    let headReads = 0;
+    const runGit: GitRunner = (_root, args) => {
+      const joined = args.join(' ');
+      if (joined === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      if (joined === 'rev-parse HEAD') return `${headReads++ === 0 ? BASE_SHA : COMMIT_SHA}\n`;
+      if (joined === 'push origin ops') throw new Error('transport response lost');
+      return '';
+    };
+    const result = await setCardRouting(
+      { repoRoot: repo, cardId: 'card-1', sessionToken: token(), sessionConfig: CONFIG },
+      { runtime: 'codex', model: 'gpt-5-codex' },
+      { runPy: fakePy([]), runGit, appendAudit: noAudit },
+    );
+    expect(result.ok).toBe(true);
   });
 
   it('an audit-append failure leaves NOTHING on ops (no push) — never card-without-audit', async () => {

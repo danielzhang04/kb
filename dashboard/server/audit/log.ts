@@ -12,20 +12,18 @@
  * ever staged (never `git add .`).
  */
 
-import { execFileSync } from 'node:child_process';
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { createAsyncGitRunner, withOpsTransaction } from '../write/asyncGit.ts';
+import type { OpsGitRunner } from '../write/asyncGit.ts';
 
-/** A git invocation runner. `args` is the full argv AFTER `git`. Injected for hermetic tests. */
-export type OpsGitRunner = (repoRoot: string, args: string[]) => string;
+/** A git invocation runner. `args` is the full argv AFTER `git`. Injected for hermetic tests. Widened
+ *  to allow a `Promise` so the async default coexists with synchronous test fakes. Shared, unified type. */
+export type { OpsGitRunner };
 
-/** Default runner: shells the real `git` binary (gpg signing off; the repo's pre-commit hook runs). */
-export const defaultOpsGitRunner: OpsGitRunner = (repoRoot, args) =>
-  execFileSync('git', ['-c', 'commit.gpgsign=false', ...args], {
-    cwd: repoRoot,
-    encoding: 'utf-8',
-    maxBuffer: 64 * 1024 * 1024,
-  });
+/** Default runner: the shared async git runner (spawn, off the event loop, 60s kill-timeout). gpg
+ *  signing off; the repo's pre-commit hook still runs. */
+export const defaultOpsGitRunner: OpsGitRunner = createAsyncGitRunner({ requireTransaction: true });
 
 /** Relative (POSIX) path of the dedicated, append-only audit ledger under the repo root. */
 export const AUDIT_REL_PATH = 'ledgers/audit/dashboard-audit.ndjson';
@@ -91,37 +89,42 @@ export interface CommitAuditOptions {
  * Staging is confined to the audit ledger path — the audit log shares `ops` with the fleet dispatcher
  * and other dashboard writers, so it never stages anything else.
  */
-export function commitAuditToOps(
+export async function commitAuditToOps(
   repoRoot: string,
   runGit: OpsGitRunner = defaultOpsGitRunner,
   options: CommitAuditOptions = {},
-): void {
+): Promise<void> {
+  return withOpsTransaction(async () => {
   const message = options.message ?? 'chore(audit): dashboard audit row';
   const maxRetryPushes = options.maxRetryPushes ?? 3;
 
+  const staged = (await runGit(repoRoot, ['diff', '--cached', '--name-only', '-z']))
+    .split('\0').map((path) => path.trim()).filter(Boolean);
+  if (staged.length > 0) throw new Error(`refusing audit commit with pre-existing staged paths: ${staged.join(', ')}`);
   // Reconcile with remote ops before writing history, stage ONLY the audit ledger, commit.
   // `--autostash` is REQUIRED: the row was already appended to the tracked ledger by the caller, so the
   // working tree is dirty and a plain `pull --rebase` aborts ("cannot pull with rebase: You have unstaged
   // changes"). Autostash shelves the pending row (and any other unstaged change in this shared checkout),
   // rebases onto origin/ops, then restores it — so only the FIRST write ever succeeded before this.
-  runGit(repoRoot, ['pull', '--rebase', '--autostash', 'origin', 'ops']);
-  runGit(repoRoot, ['add', '--', AUDIT_REL_PATH]);
-  runGit(repoRoot, ['commit', '-m', message]);
+  await runGit(repoRoot, ['pull', '--rebase', '--autostash', 'origin', 'ops']);
+  await runGit(repoRoot, ['add', '--', AUDIT_REL_PATH]);
+  await runGit(repoRoot, ['commit', '-m', message, '--only', '--', AUDIT_REL_PATH]);
 
   // Push; a rejected push means re-read state (pull --rebase) and retry, bounded. The append above
   // already happened exactly once — only the push step is retried, so a retry never duplicates a row.
   let lastErr: unknown;
   for (let attempt = 0; attempt <= maxRetryPushes; attempt += 1) {
     try {
-      runGit(repoRoot, ['push', 'origin', 'ops']);
+      await runGit(repoRoot, ['push', 'origin', 'ops']);
       return;
     } catch (err) {
       lastErr = err;
       if (attempt === maxRetryPushes) break;
-      runGit(repoRoot, ['pull', '--rebase', '--autostash', 'origin', 'ops']);
+      await runGit(repoRoot, ['pull', '--rebase', '--autostash', 'origin', 'ops']);
     }
   }
   throw lastErr;
+  });
 }
 
 export interface AppendAuditOptions {
@@ -136,15 +139,20 @@ export interface AppendAuditOptions {
  * then commit it to `ops` via pull-rebase-push (retrying a rejected push). This is the entry point
  * every write endpoint's middleware calls — independent of the dashboard's own Fastify request logs.
  */
-export function appendAudit(
+export async function appendAudit(
   repoRoot: string,
   event: AuditEvent,
   options: AppendAuditOptions = {},
-): AuditRow {
-  const row = appendAuditRowLocal(repoRoot, event, options.now);
-  commitAuditToOps(repoRoot, options.runGit ?? defaultOpsGitRunner, {
-    message: options.message ?? `chore(audit): ${event.action}${event.cardId ? ` ${event.cardId}` : ''}`,
-    maxRetryPushes: options.maxRetryPushes,
+): Promise<AuditRow> {
+  // The LOCAL append must sit inside the same lock as the commit: two interleaved appendAudits would
+  // otherwise both append rows, the first commit would take both, and the second would find nothing to
+  // commit and fail its caller (observed live as a PTY `audit-failed`).
+  return withOpsTransaction(async () => {
+    const row = appendAuditRowLocal(repoRoot, event, options.now);
+    await commitAuditToOps(repoRoot, options.runGit ?? defaultOpsGitRunner, {
+      message: options.message ?? `chore(audit): ${event.action}${event.cardId ? ` ${event.cardId}` : ''}`,
+      maxRetryPushes: options.maxRetryPushes,
+    });
+    return row;
   });
-  return row;
 }

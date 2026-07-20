@@ -23,8 +23,16 @@ import {
   isLive,
   type DestinationId,
   type NavDestination,
-  type NewMenuEntry,
 } from './nav/config';
+import {
+  backStack,
+  goToStack,
+  pushStack,
+  rootStack,
+  setSectionOnStack,
+  type NavEntry,
+  type NavTarget,
+} from './nav/stack';
 import { NewMenu } from './nav/NewMenu';
 import { CommandPalette } from './palette/CommandPalette';
 import type { PaletteCommand } from './palette/paletteModel';
@@ -49,23 +57,40 @@ import { FlightRecorder } from './views/panels/FlightRecorder';
 import { Atlas } from './views/panels/Atlas';
 import { Terminal } from './views/Terminal';
 import { DeployOutcome } from './composer/DeployOutcome';
-import type { SeedKind } from './composer/artifactTypes';
-import { fetchPending } from './lib/approvalsClient';
+import { WorkspaceTabs } from './composer/WorkspaceTabs';
+import {
+  archiveComposerSession,
+  createComposerSession,
+  forkComposerSession,
+  listComposerSessions,
+  restoreComposerSession,
+  type ComposerSession,
+} from './composer/workspaceClient';
+import { fetchHumanInbox } from './lib/approvalsClient';
 import { useSse } from './lib/sseClient';
-import { signIn, type Session } from './lib/authClient';
+import {
+  clearStoredSession,
+  isSessionFresh,
+  SESSION_INVALIDATED_EVENT,
+  persistSession,
+  readStoredSession,
+  signIn,
+  unlockErrorMessage,
+  type Session,
+} from './lib/authClient';
 import { readThemeChoice, persistThemeChoice, applyTheme, type ThemeChoice } from './lib/theme';
 
-/** Live count of pending approvals for the sidebar badge. Reuses the same `fetchPending` + SSE-tick
- *  pattern as {@link ApprovalsLive}, so the count refreshes when a card is promoted without a reload.
+/** Live count of all human-attention items for the sidebar Inbox badge. Reuses the same SSE-tick
+ *  pattern as {@link ApprovalsLive}, so decisions/questions/interventions appear without a reload.
  *  Cheap: one GET per SSE tick; on failure it silently keeps the last-known count. */
 function useApprovalsCount(): number {
   const [count, setCount] = useState(0);
   const { count: tick } = useSse('/events');
   useEffect(() => {
     let alive = true;
-    fetchPending()
-      .then((cards) => {
-        if (alive) setCount(cards.length);
+    fetchHumanInbox()
+      .then((inbox) => {
+        if (alive) setCount(inbox.counts.total);
       })
       .catch(() => {
         /* transient failure: keep the last-known count; the next SSE tick retries */
@@ -158,29 +183,50 @@ export function NavItem({
 
 /**
  * The Session/Stop floor (U5.1 redesign) — pinned to the bottom of the sidebar, hairline-separated,
- * always visible. Daniel's review round 1 retired the explicit sign-in/sign-out chrome: there is no
- * "Sign in" button and no "Signed in/out" label. Instead a QUIET, passive indicator reflects whether a
- * session is currently held, and the WebAuthn ceremony (`authClient.signIn`, unchanged) now runs at
- * point-of-action — the governed {@link StopControls} below receive `onRequestSession`, so attempting a
- * stop without a session mints one inline rather than gating behind a sign-in wall. In rail mode the
- * detail collapses to a single stop glyph.
+ * always visible. "Unlock dashboard" explains the WebAuthn boundary without asking for or transmitting
+ * a private key. Governed controls use the same callback at point-of-action, and the resulting tab
+ * session is reused until expiry. In rail mode the detail collapses to a single stop glyph.
  */
 function SessionStopFloor({
   session,
   onRequestSession,
+  unlockError,
+  unlocking,
 }: {
   session: Session | null;
   onRequestSession: () => Promise<Session | null>;
+  unlockError: string | null;
+  unlocking: boolean;
 }): React.JSX.Element {
   const active = session !== null;
   return (
     <div className="mc-sidebar__floor" data-testid="stop-floor">
-      <div className="mc-session" data-testid="session-state" title="Session state">
-        <span
-          className={`mc-status-dot ${active ? 'mc-status-dot--running' : 'mc-status-dot--idle'}`}
-          aria-hidden="true"
-        />
-        <span className="mc-session__label">{active ? 'session active' : 'session'}</span>
+      <div className="mc-session" data-testid="session-state" title="Dashboard authentication state">
+        <div className="mc-session__summary">
+          <span
+            className={`mc-status-dot ${active ? 'mc-status-dot--running' : 'mc-status-dot--idle'}`}
+            aria-hidden="true"
+          />
+          <span className="mc-session__label">{active ? 'dashboard unlocked' : 'dashboard locked'}</span>
+        </div>
+        {!active ? (
+          <>
+            <button
+              type="button"
+              className="mc-session__unlock"
+              disabled={unlocking}
+              onClick={() => void onRequestSession()}
+            >
+              {unlocking ? 'Unlocking…' : 'Unlock dashboard'}
+            </button>
+            <p className="mc-session__help">Uses your device passkey. No private key leaves your device.</p>
+          </>
+        ) : null}
+        {unlockError ? (
+          <p className="mc-session__error" role="alert">
+            {unlockError}
+          </p>
+        ) : null}
       </div>
       <span className="mc-sidebar__floor-rail" aria-hidden="true" title="Stop floor">
         ⏻
@@ -199,15 +245,21 @@ function Sidebar({
   approvalsCount,
   session,
   onRequestSession,
+  unlockError,
+  unlocking,
+  creatingWorkspace,
 }: {
   active: DestinationId;
   onSelect: (id: DestinationId) => void;
-  onCreate: (id: NewMenuEntry['id']) => void;
+  onCreate: () => void;
   rail: boolean;
   onToggleRail: () => void;
   approvalsCount: number;
   session: Session | null;
   onRequestSession: () => Promise<Session | null>;
+  unlockError: string | null;
+  unlocking: boolean;
+  creatingWorkspace: boolean;
 }): React.JSX.Element {
   // One shared snapshot feeds every flyout (module-cached + SSE-refreshed) — no per-hover fetch.
   const { index, registry } = useFleetData();
@@ -235,7 +287,7 @@ function Sidebar({
           {rail ? '»' : '«'}
         </button>
       </div>
-      <NewMenu onCreate={onCreate} />
+      <NewMenu onCreate={onCreate} disabled={creatingWorkspace} />
       <div className="mc-nav">
         {/* Unlabelled groups: a hairline divider before each section, NO group header (Linear pattern).
          *  The divider above the first section also separates it from the [+ New] menu. */}
@@ -257,7 +309,12 @@ function Sidebar({
           </Fragment>
         ))}
       </div>
-      <SessionStopFloor session={session} onRequestSession={onRequestSession} />
+      <SessionStopFloor
+        session={session}
+        onRequestSession={onRequestSession}
+        unlockError={unlockError}
+        unlocking={unlocking}
+      />
     </nav>
   );
 }
@@ -293,15 +350,27 @@ function ComingSoon({ id }: { id: DestinationId }): React.JSX.Element {
  *  `initialKind` pre-seeds the type chip: `idea` for the idea-first entry, a concrete kind for the
  *  workflow/skill/project entity pickers. */
 function ComposerView({
-  onClose,
+  composerSession,
+  onComposerSessionChange,
   sessionToken,
-  initialKind,
+  onRequestSession,
+  onRunningChange,
 }: {
-  onClose: () => void;
+  composerSession: ComposerSession;
+  onComposerSessionChange: (session: ComposerSession) => void;
   sessionToken?: string;
-  initialKind: SeedKind;
+  onRequestSession: () => Promise<Session | null>;
+  onRunningChange: (running: boolean) => void;
 }): React.JSX.Element {
-  return <DeployOutcome sessionToken={sessionToken} initialKind={initialKind} onBack={onClose} />;
+  return (
+    <DeployOutcome
+      composerSession={composerSession}
+      onComposerSessionChange={onComposerSessionChange}
+      sessionToken={sessionToken}
+      onRequestSession={onRequestSession}
+      onRunningChange={onRunningChange}
+    />
+  );
 }
 
 /** The read-only layer panels, reachable from the single `sentinel` nav destination via an underline-tab
@@ -349,6 +418,11 @@ function ViewBody({
   onRequestSession,
   onOpenCard,
   taskSelectedId,
+  entry,
+  onPush,
+  onBack,
+  onSectionChange,
+  onNavigateTarget,
 }: {
   view: DestinationId;
   sessionToken?: string;
@@ -358,13 +432,19 @@ function ViewBody({
   onOpenCard: (cardId: string) => void;
   /** The card the Tasks view should open on mount (set by a pipeline click-through). */
   taskSelectedId?: string;
+  /** The top nav-stack entry — carries the focused entity and the active detail section. */
+  entry: NavEntry;
+  onPush: (target: NavTarget) => void;
+  onBack: () => void;
+  onSectionChange: (id: string) => void;
+  onNavigateTarget: (target: NavTarget) => void;
 }): React.JSX.Element {
   switch (view) {
     case 'home':
       return <Home sessionToken={sessionToken} onNavigate={onNavigate} onRequestSession={onRequestSession} />;
     case 'approvals':
-      // Live GET /api/approvals feed (refreshed on SSE), onVerify -> POST /api/approvals/verify.
-      return <ApprovalsLive sessionToken={sessionToken} />;
+      // Live unified Inbox feed (refreshed on SSE); decision verification remains an explicit POST.
+      return <ApprovalsLive sessionToken={sessionToken} onRequestSession={onRequestSession} />;
     case 'activity':
       // Standalone full-view live feed (same replay the Home board embeds). Self-fetches.
       return (
@@ -373,9 +453,37 @@ function ViewBody({
         </section>
       );
     case 'workflows':
-      return <Workflows />;
+      // arc-3: a definition row pushes its detail onto the nav stack within this destination, and its
+      // Runs section links onward to the runs it launched — the join the un-dropped `sourceTurnId` made
+      // possible. Still no new NAV_SECTIONS entry.
+      return (
+        <Workflows
+          sessionToken={sessionToken}
+          onRequestSession={onRequestSession}
+          focusWorkflowId={entry.focus?.kind === 'workflow' ? entry.focus.id : null}
+          onOpenWorkflow={(ref) => onPush({ view: 'workflows', focus: { kind: 'workflow', id: ref } })}
+          onBack={onBack}
+          activeSectionId={entry.section}
+          onSectionChange={onSectionChange}
+          onNavigate={onNavigateTarget}
+        />
+      );
     case 'agents':
-      return <Agents sessionToken={sessionToken} onRequestSession={onRequestSession} />;
+      // arc-3: an agent row pushes that agent's detail onto the nav stack WITHIN this destination —
+      // "a separate window, still inside the agents sidebar, with a back button". No new NAV_SECTIONS
+      // entry and no new case here; the locked entity-first IA is untouched.
+      return (
+        <Agents
+          sessionToken={sessionToken}
+          onRequestSession={onRequestSession}
+          focusAgentId={entry.focus?.kind === 'agent' ? entry.focus.id : null}
+          onOpenAgent={(agentId) => onPush({ view: 'agents', focus: { kind: 'agent', id: agentId } })}
+          onBack={onBack}
+          activeSectionId={entry.section}
+          onSectionChange={onSectionChange}
+          onNavigate={onNavigateTarget}
+        />
+      );
     case 'tasks':
       return (
         <Tasks
@@ -388,7 +496,21 @@ function ViewBody({
       // D3.4 — React Flow canvas over the queue's depends-on DAG. Its governed node toggle reuses the
       // card-routing write; a node click-through opens that card in the Tasks detail surface. Pipeline
       // renders its own aria-labelled section.
-      return <Pipeline sessionToken={sessionToken} onRequestSession={onRequestSession} onOpenCard={onOpenCard} />;
+      // arc-3: a run card pushes that run's detail onto the nav stack WITHIN this destination — no new
+      // NAV_SECTIONS entry, no new case here. The locked entity-first IA is untouched.
+      return (
+        <Pipeline
+          sessionToken={sessionToken}
+          onRequestSession={onRequestSession}
+          onOpenCard={onOpenCard}
+          focusRunRef={entry.focus?.kind === 'run' ? entry.focus.id : null}
+          onOpenRun={(runRef) => onPush({ view: 'pipeline', focus: { kind: 'run', id: runRef } })}
+          onBackToRuns={onBack}
+          activeSectionId={entry.section}
+          onSectionChange={onSectionChange}
+          onNavigate={onNavigateTarget}
+        />
+      );
     case 'projects':
       return (
         <section aria-label="Projects view">
@@ -401,10 +523,9 @@ function ViewBody({
       // D3.5 — the layer-panel set (Sentinel / Quartermaster / Flight Recorder / Atlas) behind sub-tabs.
       return <LayerPanels />;
     case 'terminal':
-      // D3.2 — the PTY pane. Session-gated: without a session it renders a point-of-action passkey
-      // sign-in (onRequestSession) and connects nothing; once signed in it auto-connects and the host
-      // demands its OWN per-open Factor C touch. It NEVER spawns anything itself (signals the host over WS).
-      return <Terminal sessionToken={sessionToken} onRequestSession={onRequestSession} />;
+      // The PTY pane is owned by App's persistent surface below, outside this replace-on-navigation switch.
+      // This case is therefore intentionally empty: rendering it here as well would create duplicate shells.
+      return <></>;
     case 'connectors':
       return <Connectors />;
     case 'files':
@@ -418,19 +539,97 @@ function ViewBody({
   }
 }
 
+const OPEN_COMPOSER_REFS_KEY = 'kb-composer-open-refs-v1';
+
+function readOpenComposerRefs(): string[] {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(OPEN_COMPOSER_REFS_KEY) ?? '[]') as unknown;
+    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistOpenComposerRefs(refs: string[]): void {
+  try {
+    window.localStorage.setItem(OPEN_COMPOSER_REFS_KEY, JSON.stringify(refs));
+  } catch {
+    // Browser storage is a convenience for tab restoration; server sessions remain authoritative.
+  }
+}
+
 export function App(): React.JSX.Element {
-  const [view, setView] = useState<DestinationId>(DEFAULT_DESTINATION);
+  // arc-3 — navigation is a STACK, not a single destination. `goTo` (a sidebar click) resets it to a
+  // fresh root so the mental model is unchanged; `push` drills into an entity detail and reveals a back
+  // affordance. Every existing read site still just reads `view`. See src/nav/stack.ts for why this is
+  // ~40 lines of stack rather than a router dependency.
+  const [stack, setStack] = useState<NavEntry[]>(() => rootStack(DEFAULT_DESTINATION));
+  const current = stack[stack.length - 1];
+  const view = current.view;
   const [rail, setRail] = useState(false);
-  const [session, setSession] = useState<Session | null>(null);
+  const [session, setSession] = useState<Session | null>(() => readStoredSession());
+  const [unlockError, setUnlockError] = useState<string | null>(null);
+  const [unlocking, setUnlocking] = useState(false);
+  const unlockInFlight = useRef<Promise<Session | null> | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   // The [+ New ▾] menu opens the Composer surface over the current view; `composerKind` pre-seeds its
   // type chip (`idea` for the idea-first entry, a concrete kind for the entity pickers).
-  const [composerOpen, setComposerOpen] = useState(false);
-  const [composerKind, setComposerKind] = useState<SeedKind>('idea');
+  const [composerSessions, setComposerSessions] = useState<Record<string, ComposerSession>>({});
+  const [openComposerRefs, setOpenComposerRefs] = useState<string[]>(readOpenComposerRefs);
+  const [activeComposerRef, setActiveComposerRef] = useState<string | null>(null);
+  const [workspaceBusy, setWorkspaceBusy] = useState(false);
+  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+  const [runningComposerRefs, setRunningComposerRefs] = useState<Set<string>>(() => new Set());
   const [theme, setTheme] = useState<ThemeChoice>(() => readThemeChoice());
   // Card id a Pipeline node click-through wants opened in the Tasks detail pane.
   const [openCardId, setOpenCardId] = useState<string | undefined>(undefined);
   const approvalsCount = useApprovalsCount();
+  // Unlike ordinary destination bodies, Terminal is a long-lived workspace: navigating away hides it but
+  // must not unmount its xterm instances or close their WebSockets. Composer behaves like another overlay.
+  const terminalVisible = view === 'terminal' && activeComposerRef === null;
+
+  // Refreshes reuse a still-valid tab session. At the exact expiry boundary, clear both copies so no
+  // governed surface can continue sending a stale bearer.
+  useEffect(() => {
+    if (!session) return;
+    const remaining = session.expiresAt - Date.now();
+    if (remaining <= 0) {
+      clearStoredSession();
+      setSession(null);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      clearStoredSession();
+      setSession(null);
+    }, Math.min(remaining, 2_147_483_647));
+    return () => window.clearTimeout(timer);
+  }, [session]);
+
+  // A governed 401 can invalidate a bearer before its signed expiry (for example after daemon secret
+  // rotation). Keep the in-memory copy aligned with the auth boundary's storage clear; the next action
+  // can then run the existing point-of-action passkey ceremony.
+  useEffect(() => {
+    const invalidate = (): void => setSession(null);
+    window.addEventListener(SESSION_INVALIDATED_EVENT, invalidate);
+    return () => window.removeEventListener(SESSION_INVALIDATED_EVENT, invalidate);
+  }, []);
+
+  useEffect(() => persistOpenComposerRefs(openComposerRefs), [openComposerRefs]);
+
+  useEffect(() => {
+    if (!session?.token) return;
+    let alive = true;
+    listComposerSessions(session.token)
+      .then((sessions) => {
+        if (!alive) return;
+        setComposerSessions(Object.fromEntries(sessions.map((item) => [item.composerRef, item])));
+        setOpenComposerRefs((current) => current.filter((ref) => sessions.some((item) => item.composerRef === ref && item.state === 'open')));
+      })
+      .catch((error: unknown) => {
+        if (alive) setWorkspaceError(error instanceof Error ? error.message : 'Could not load Composer workspaces.');
+      });
+    return () => { alive = false; };
+  }, [session?.token]);
 
   // Ctrl/Cmd+K toggles the command palette anywhere in the shell.
   useEffect(() => {
@@ -453,10 +652,36 @@ export function App(): React.JSX.Element {
     });
   };
 
-  // Navigate to a destination, closing the transient Composer placeholder if it was open.
+  // Navigate to a destination, closing the transient Composer placeholder if it was open. A sidebar
+  // click RESETS the stack: a fresh root, no back arrow, no accumulated history.
   const goTo = (id: DestinationId): void => {
-    setComposerOpen(false);
-    setView(id);
+    setActiveComposerRef(null);
+    setStack(goToStack(id));
+  };
+
+  /** Drill into an entity detail within its own destination. Back becomes available. */
+  const push = (target: NavTarget): void => {
+    setActiveComposerRef(null);
+    setStack((s) => pushStack(s, target));
+  };
+
+  /** Pop one entry. A no-op at the root, where the affordance is not rendered. */
+  const back = (): void => setStack((s) => backStack(s));
+
+  /** Record the operator's active detail tab into the top entry so back-then-forward restores it. */
+  const setSection = (section: string): void => setStack((s) => setSectionOnStack(s, section));
+
+  /**
+   * Cross-entity navigation. A `card` focus keeps using the pre-existing Tasks detail-pane payload
+   * path rather than opening a second one.
+   */
+  const navigateTo = (target: NavTarget): void => {
+    if (target.focus?.kind === 'card') {
+      setOpenCardId(target.focus.id);
+      push({ view: 'tasks' });
+      return;
+    }
+    push(target);
   };
 
   // Pipeline canvas click-through: open the card in the Tasks detail pane and jump there.
@@ -476,41 +701,122 @@ export function App(): React.JSX.Element {
     if (cmd.target) goTo(cmd.target);
   };
 
-  // Point-of-action session mint. Runs the WebAuthn ceremony (`authClient.signIn`, unchanged) and holds
-  // the minted bearer in app state so every governed surface can use it. Replaces the retired floor
-  // "Sign in" button: governed controls call this inline when they need a session. Fail-closed — a
-  // refused/absent passkey resolves to null and the action stays a no-op.
-  const requestSession = (): Promise<Session | null> =>
-    signIn()
-      .then((s) => {
-        setSession(s);
-        return s;
+  // Explicit and point-of-action unlock share one ceremony. The minted bearer is tab-scoped, persisted
+  // across refresh, and reused only until expiry. Fail-closed: a refused/absent passkey resolves null.
+  const requestSession = (force = false): Promise<Session | null> => {
+    if (!force && isSessionFresh(session)) return Promise.resolve(session);
+    if (unlockInFlight.current) return unlockInFlight.current;
+
+    clearStoredSession();
+    setSession(null);
+    setUnlockError(null);
+    setUnlocking(true);
+    const attempt = signIn()
+      .then((next) => {
+        persistSession(next);
+        setSession(next);
+        return next;
       })
-      .catch(() => {
+      .catch((error: unknown) => {
+        clearStoredSession();
         setSession(null);
+        setUnlockError(unlockErrorMessage(error));
         return null;
+      })
+      .finally(() => {
+        setUnlocking(false);
+        unlockInFlight.current = null;
       });
+    unlockInFlight.current = attempt;
+    return attempt;
+  };
 
   // [+ New ▾] routing (C5): "Idea…" opens the Composer surface in idea mode; the "Workflow"/"Skill"/
   // "Project"/"Agent" entity pickers open the SAME surface pre-seeded to that type; "Task" keeps its
-  // day-one route to the governed launch surface (Home). C7.2 un-defers "Agent" — it opens the Composer
-  // pre-seeded to `agent` (its dedicated draft form lands in a later chunk; until then the operator
-  // converges via the chat / picks a concrete type).
-  const handleCreate = (id: NewMenuEntry['id']): void => {
-    if (id === 'task') {
-      setComposerOpen(false);
-      setView('home');
-    } else if (
-      id === 'idea' ||
-      id === 'workflow' ||
-      id === 'skill' ||
-      id === 'project' ||
-      id === 'agent'
-    ) {
-      setComposerKind(id);
-      setComposerOpen(true);
+  // quick-launch route to the governed launch surface (Home). "Agent" opens Composer's declaration form.
+  const upsertComposerSession = (next: ComposerSession): void => {
+    setComposerSessions((current) => ({ ...current, [next.composerRef]: next }));
+  };
+
+  const withWorkspaceToken = async (action: (token: string) => Promise<void>): Promise<void> => {
+    if (workspaceBusy) return;
+    setWorkspaceBusy(true);
+    setWorkspaceError(null);
+    try {
+      const unlocked = await requestSession();
+      if (!unlocked) throw new Error('Unlock dashboard to use Composer.');
+      await action(unlocked.token);
+    } catch (error) {
+      setWorkspaceError(error instanceof Error ? error.message : 'Composer request failed.');
+    } finally {
+      setWorkspaceBusy(false);
     }
   };
+
+  const handleCreate = (): void => {
+    void withWorkspaceToken(async (token) => {
+      const created = await createComposerSession(token);
+      upsertComposerSession(created);
+      setOpenComposerRefs((current) => [...current.filter((ref) => ref !== created.composerRef), created.composerRef]);
+      setActiveComposerRef(created.composerRef);
+    });
+  };
+
+  const closeComposerTab = (composerRef: string): void => {
+    if (runningComposerRefs.has(composerRef)) return;
+    setOpenComposerRefs((current) => {
+      const next = current.filter((ref) => ref !== composerRef);
+      setActiveComposerRef((active) => active === composerRef ? next.at(-1) ?? null : active);
+      return next;
+    });
+  };
+
+  const setComposerRunning = (composerRef: string, running: boolean): void => {
+    setRunningComposerRefs((current) => {
+      const next = new Set(current);
+      if (running) next.add(composerRef);
+      else next.delete(composerRef);
+      return next;
+    });
+  };
+
+  const archiveComposer = (composerRef: string): void => {
+    void withWorkspaceToken(async (token) => {
+      upsertComposerSession(await archiveComposerSession(composerRef, token));
+      closeComposerTab(composerRef);
+    });
+  };
+
+  const forkComposer = (composerRef: string): void => {
+    void withWorkspaceToken(async (token) => {
+      const forked = await forkComposerSession(composerRef, token);
+      upsertComposerSession(forked);
+      setOpenComposerRefs((current) => [...current.filter((ref) => ref !== forked.composerRef), forked.composerRef]);
+      setActiveComposerRef(forked.composerRef);
+    });
+  };
+
+  const restoreComposer = (composerRef: string): void => {
+    void withWorkspaceToken(async (token) => {
+      const restored = await restoreComposerSession(composerRef, token);
+      upsertComposerSession(restored);
+      setOpenComposerRefs((current) => [...current.filter((ref) => ref !== composerRef), composerRef]);
+      setActiveComposerRef(composerRef);
+    });
+  };
+
+  const reopenComposer = (composerRef: string): void => {
+    setOpenComposerRefs((current) => [...current.filter((ref) => ref !== composerRef), composerRef]);
+    setActiveComposerRef(composerRef);
+  };
+
+  const openWorkspaces = openComposerRefs
+    .map((ref) => composerSessions[ref])
+    .filter((item): item is ComposerSession => Boolean(item && item.state === 'open'));
+  const archivedWorkspaces = Object.values(composerSessions).filter((item) => item.state === 'archived');
+  const recentWorkspaces = Object.values(composerSessions).filter(
+    (item) => item.state === 'open' && !openComposerRefs.includes(item.composerRef),
+  );
 
   return (
     <div className={`app-shell${rail ? ' app-shell--rail' : ''}`}>
@@ -523,12 +829,15 @@ export function App(): React.JSX.Element {
         approvalsCount={approvalsCount}
         session={session}
         onRequestSession={requestSession}
+        unlockError={unlockError}
+        unlocking={unlocking}
+        creatingWorkspace={workspaceBusy}
       />
       <header className="mc-topbar">
         <h1 className="mc-topbar__title">kb mission control</h1>
         <span className="mc-topbar__glance">
           <span className="mc-status-dot mc-status-dot--running" aria-hidden="true" />
-          v0 · read-only observatory
+          local agent operations
         </span>
         <button
           type="button"
@@ -540,14 +849,52 @@ export function App(): React.JSX.Element {
           <span aria-hidden="true">{theme === 'dark' ? '☾' : '☀'}</span>
         </button>
       </header>
-      <main className="mc-main">
-        {composerOpen ? (
-          <ComposerView
-            onClose={() => setComposerOpen(false)}
+      <main className={terminalVisible ? 'mc-main mc-main--terminal' : 'mc-main'}>
+        <WorkspaceTabs
+          open={openWorkspaces}
+          recent={recentWorkspaces}
+          archived={archivedWorkspaces}
+          activeRef={activeComposerRef}
+          runningRefs={runningComposerRefs}
+          busy={workspaceBusy}
+          onNew={handleCreate}
+          onSelect={setActiveComposerRef}
+          onClose={closeComposerTab}
+          onReopen={reopenComposer}
+          onArchive={archiveComposer}
+          onFork={forkComposer}
+          onRestore={restoreComposer}
+        />
+        {workspaceError ? <p className="composer-workspace-error" role="alert">{workspaceError}</p> : null}
+        <div
+          className="persistent-terminal-surface"
+          hidden={!terminalVisible}
+          aria-hidden={!terminalVisible}
+          data-testid="persistent-terminal-surface"
+        >
+          <Terminal
+            visible={terminalVisible}
             sessionToken={session?.token}
-            initialKind={composerKind}
+            onRequestSession={requestSession}
           />
-        ) : (
+        </div>
+        {openWorkspaces.map((workspace) => (
+          <div
+            key={workspace.composerRef}
+            hidden={activeComposerRef !== workspace.composerRef}
+            aria-hidden={activeComposerRef !== workspace.composerRef}
+            data-testid={`composer-workspace-${workspace.composerRef}`}
+          >
+            <ComposerView
+              composerSession={workspace}
+              onComposerSessionChange={upsertComposerSession}
+              sessionToken={session?.token}
+              onRequestSession={requestSession}
+              onRunningChange={(running) => setComposerRunning(workspace.composerRef, running)}
+            />
+          </div>
+        ))}
+        {activeComposerRef === null && view !== 'terminal' ? (
           <ViewBody
             view={view}
             sessionToken={session?.token}
@@ -555,8 +902,13 @@ export function App(): React.JSX.Element {
             onRequestSession={requestSession}
             onOpenCard={openCardInTasks}
             taskSelectedId={openCardId}
+            entry={current}
+            onPush={push}
+            onBack={back}
+            onSectionChange={setSection}
+            onNavigateTarget={navigateTo}
           />
-        )}
+        ) : null}
       </main>
       <CommandPalette
         open={paletteOpen}

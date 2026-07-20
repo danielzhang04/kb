@@ -19,7 +19,7 @@ import { Timeline } from './Timeline';
 import { LaunchControls } from './launchControls';
 import { useSse } from '../lib/sseClient';
 import { useAssignableOwners } from '../lib/assignableOwners';
-import type { Session } from '../lib/authClient';
+import { invalidateSessionOnGovernedAuthFailure, type Session } from '../lib/authClient';
 
 const EMPTY_INDEX: PlaneAIndex = {
   cards: {},
@@ -168,6 +168,7 @@ export function StopControls({
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
         body: JSON.stringify({ cardId }),
       });
+      await invalidateSessionOnGovernedAuthFailure(res);
       const data = (await res.json()) as { state?: string; reason?: string };
       setStopCardStatus(res.ok ? `${cardId} -> ${data.state}` : `refused: ${data.reason ?? res.status}`);
     } catch {
@@ -192,6 +193,7 @@ export function StopControls({
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
         body: JSON.stringify({ name: cadenceName }),
       });
+      await invalidateSessionOnGovernedAuthFailure(res);
       const data = (await res.json()) as { path?: string; reason?: string };
       setPauseStatus(res.ok ? `paused ${cadenceName}` : `refused: ${data.reason ?? res.status}`);
     } catch {
@@ -220,6 +222,7 @@ export function StopControls({
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
         body: JSON.stringify({}),
       });
+      await invalidateSessionOnGovernedAuthFailure(res);
       const data = (await res.json()) as { reason?: string };
       setNukeStatus(res.ok ? 'STOP written — fleet frozen' : `refused: ${data.reason ?? res.status}`);
     } catch {

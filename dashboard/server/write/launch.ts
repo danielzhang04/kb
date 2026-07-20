@@ -38,7 +38,7 @@ import type { PreambleRunner } from './preambleGate.ts';
 import { readAssignableOwners } from '../agents/assignable.ts';
 import { readDeclaredAgents } from '../agents/roster.ts';
 import { loadPolicy, loadOverride } from '../routing/policy.ts';
-import { effectiveForAgent } from '../routing/effective.ts';
+import { effectiveForAgent, runtimeOfWorker } from '../routing/effective.ts';
 
 export type RiskTier = 'T1' | 'T2' | 'T3';
 
@@ -135,6 +135,8 @@ if op["kind"] == "new":
     card = cards.new_card(op["project"], op["action"], op["target"], op["riskTier"], body=op.get("body", ""))
     if op.get("dependsOn"):
         card.meta["depends-on"] = op["dependsOn"]
+        # A dependent is never runnable until dispatch.release_dependents verifies every dependency.
+        card.meta["state"] = "blocked"
     # C7.7 — operator-assigned owner. cards.claim is the SAME primitive the dispatcher uses
     # (owner + a freshly-minted claim-token), so the claim mints identically. The (runtime, model)
     # are RESOLVER-SOURCED server-side (effectiveForAgent), never client input, and stamped via the
@@ -156,6 +158,13 @@ elif op["kind"] == "rerun":
         body=op["body"],
     )
     card.meta["depends-on"] = [orig.meta["id"]]
+    card.meta["state"] = "blocked"
+    # Preserve the original execution lane. The dependent remains blocked until the
+    # dispatcher releases it, but once released it is still owned and routable.
+    if orig.meta.get("owner"):
+        cards.claim(card, orig.meta["owner"])
+        if orig.meta.get("runtime") and orig.meta.get("model"):
+            cards.stamp_routing(card, orig.meta["runtime"], orig.meta["model"])
     path = cards.save(card, queue_root)
 else:
     print(f"unknown op kind: {op['kind']}", file=sys.stderr)
@@ -179,6 +188,8 @@ export interface LaunchDeps {
    * the live policy + override and runs `effectiveForAgent` (precedence: card > override > policy > default).
    */
   ownerRouting?: (owner: string, repoRoot: string) => OwnerRouting;
+  /** Reconcile `ops` after all gates/validation pass but before cards.py performs the local write. */
+  prepareWrite?: (repoRoot: string) => void | Promise<void>;
 }
 
 export type LaunchOutcome =
@@ -192,14 +203,15 @@ export type LaunchOutcome =
  * Resolve the routing an assigned owner's card is stamped with. Precedence (C7.9):
  *
  *   agent-scope routing-override (explicit) > the declared agent's own runtime/model
- *     (`agents/<id>.md`) > policy `role_default` > safe default.
+ *     (`agents/<id>.md`) > registered `default_worker` runtime > policy `role_default` > safe default.
  *
  * `effectiveForAgent` computes the override>policy>default part (its resolution semantics are
  * parity-tested against `scripts/routing.py` and are NOT touched here). This function then LAYERS the
- * declared-agent rung on top, ENTIRELY caller-side: if the operator did not set an explicit agent-scope
- * override for a field (`eff.source*` is not `'override'`), the declared agent's own `runtime` wins over
- * the policy `role_default`. Consequence: a declared codex agent with no override is stamped codex (not
- * the `role_default` claude/sonnet), so its codex runner's `assert_runtime` accepts the card.
+ * declared-agent/default-worker rungs on top, ENTIRELY caller-side: if the operator did not set an
+ * explicit agent-scope override for a field (`eff.source*` is not `'override'`), a declared runtime wins,
+ * followed by the runtime that registers this owner as its `default_worker`. Consequence: codex-worker
+ * is stamped codex even before an optional `agents/codex-worker.md` declaration exists, so its runner's
+ * `assert_runtime` accepts the card.
  *
  * Every value is resolver-/file-sourced (declared agent file or policy) — NEVER client input. The
  * stamped model is always a member of the runtime's `known_models` (fail-closed at claim otherwise):
@@ -214,12 +226,14 @@ export const defaultOwnerRouting = (owner: string, repoRoot: string): OwnerRouti
   const overrideSetModel = eff.sourceModel === 'override';
 
   const declared = readDeclaredAgents(repoRoot).get(owner);
+  const registeredRuntime = runtimeOfWorker(policy, owner);
 
-  // RUNTIME: unless an override pinned it, the declared agent's own runtime beats the policy role_default.
-  if (overrideSetRuntime || !declared?.runtime) {
+  // RUNTIME: an explicit override stays authoritative. Otherwise a declaration wins, then the runtime
+  // registry's default_worker binding, then the effective policy/default result.
+  if (overrideSetRuntime) {
     return { runtime: eff.runtime, model: eff.model };
   }
-  const runtime = declared.runtime;
+  const runtime = declared?.runtime ?? registeredRuntime ?? eff.runtime;
 
   // MODEL: when the runtime did NOT change (e.g. a claude agent), keep eff.model verbatim (no behaviour
   // change). When we swapped to a different declared runtime, the eff.model belongs to the OLD runtime and
@@ -231,12 +245,12 @@ export const defaultOwnerRouting = (owner: string, repoRoot: string): OwnerRouti
 
   const known = policy.runtimes?.[runtime]?.known_models ?? [];
   let model: string;
-  if (declared.model && known.includes(declared.model)) {
+  if (declared?.model && known.includes(declared.model)) {
     model = declared.model; // declared AND valid for this runtime → honoured as-is
   } else if (known.length > 0) {
     model = known[0]; // declared model absent or not in known_models → clamp to the runtime default
   } else {
-    model = declared.model ?? eff.model; // runtime has no registered known_models → nothing to validate against
+    model = declared?.model ?? eff.model; // runtime has no registered known_models → nothing to validate against
   }
   return { runtime, model };
 };
@@ -296,7 +310,7 @@ function parseCardOpStdout(stdout: string): { id: string; path: string } {
  * File a brand-new card via the governed `scripts/cards.py` module path. `assertFleetRunnable()`
  * gates first; a missing/invalid WebAuthn session gates second. Neither gate spawns any subprocess.
  */
-export function launchCard(spec: LaunchSpec, session: SessionInput, deps: LaunchDeps): LaunchOutcome {
+export async function launchCard(spec: LaunchSpec, session: SessionInput, deps: LaunchDeps): Promise<LaunchOutcome> {
   const gated = gate(session, deps);
   if (!gated.ok) return gated.outcome;
 
@@ -325,6 +339,12 @@ export function launchCard(spec: LaunchSpec, session: SessionInput, deps: Launch
     }
   }
 
+  try {
+    await deps.prepareWrite?.(deps.repoRoot);
+  } catch (err) {
+    return { ok: false, reason: 'card-op-failed', detail: `could not prepare coordination write: ${(err as Error).message}` };
+  }
+
   const runPy = deps.runPy ?? defaultPyRunner;
   const jsonArg = JSON.stringify({
     kind: 'new',
@@ -351,14 +371,20 @@ export function launchCard(spec: LaunchSpec, session: SessionInput, deps: Launch
  * docstring's flagged deviation from the plan's literal "## Evidence" wording). Same preamble-then-
  * session gate as `launchCard`; same governed `scripts/cards.py` module path.
  */
-export function rerunAsDependsOn(
+export async function rerunAsDependsOn(
   cardId: string,
   feedback: string,
   session: SessionInput,
   deps: LaunchDeps,
-): LaunchOutcome {
+): Promise<LaunchOutcome> {
   const gated = gate(session, deps);
   if (!gated.ok) return gated.outcome;
+
+  try {
+    await deps.prepareWrite?.(deps.repoRoot);
+  } catch (err) {
+    return { ok: false, reason: 'card-op-failed', detail: `could not prepare coordination write: ${(err as Error).message}` };
+  }
 
   const runPy = deps.runPy ?? defaultPyRunner;
   const jsonArg = JSON.stringify({

@@ -58,7 +58,12 @@ const AGENT_PLAN: DeployPlan = toDeploy('agent', {
 describe('deploy dispatcher', () => {
   it('task_deploys_via_launch_endpoint', async () => {
     const fetchMock = vi.fn((_url: string, _init: RequestInit) =>
-      Promise.resolve(jsonResponse({ ok: true, cardId: '01J', cardPath: 'queue/01J.md' })),
+      Promise.resolve(jsonResponse({
+        ok: true,
+        cardId: '01J',
+        cardPath: 'queue/01J.md',
+        runner: { status: 'triggered', owner: 'codex-worker', task: 'kb-codex-runner' },
+      })),
     );
 
     const result = await deploy(TASK_PLAN, 'tok-1', fetchMock);
@@ -75,7 +80,13 @@ describe('deploy dispatcher', () => {
       riskTier: 'T1',
       body: 'do the thing',
     });
-    expect(result).toEqual({ ok: true, kind: 'task', cardId: '01J', cardPath: 'queue/01J.md' });
+    expect(result).toEqual({
+      ok: true,
+      kind: 'task',
+      cardId: '01J',
+      cardPath: 'queue/01J.md',
+      runner: { status: 'triggered', owner: 'codex-worker', task: 'kb-codex-runner' },
+    });
   });
 
   it('skill_deploys_via_save_endpoint_durable', async () => {

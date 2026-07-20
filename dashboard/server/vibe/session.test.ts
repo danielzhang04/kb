@@ -4,18 +4,20 @@
  * `session.ts`'s module docstring for the DI rationale) — no test here ever shells a real `py`/`git`/
  * `claude` binary, touches a real STOP file, or touches a real `ledgers/audit/**` file. Fully hermetic.
  */
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mintSession } from '../auth/session.ts';
 import type { SessionConfig } from '../auth/session.ts';
 import type { PreambleRunner } from '../write/preambleGate.ts';
 import type { AuditEvent, AuditRow } from '../audit/log.ts';
 import { rateLimit, lockout } from '../security/ratelimit.ts';
 import type { LockoutGuard } from '../security/ratelimit.ts';
-import { spawnVibe } from './session.ts';
+import { drainVibeProcesses, spawnVibe } from './session.ts';
 import type { SessionInput, VibeDeps, VibeHandlers, VibeProcess, VibeSpawner } from './session.ts';
 
 const SECRET = Buffer.from('vibe-test-secret-do-not-reuse');
 const SESSION_CONFIG: SessionConfig = { secret: SECRET, now: () => 1_700_000_000_000 };
+
+afterEach(() => { drainVibeProcesses(); });
 
 function okPreamble(): PreambleRunner {
   return () => ({ exitCode: 0, stdout: 'PREAMBLE OK\n', stderr: '' });
@@ -108,8 +110,49 @@ function baseDeps(overrides: Partial<VibeDeps> = {}): VibeDeps {
   };
 }
 
-describe('spawnVibe — preamble gate (runs first, spawns nothing on failure)', () => {
-  it('refuses to spawn when STOP is present / ANTHROPIC_API_KEY set / budget exceeded — no claude child spawned', () => {
+describe('spawnVibe — spawned-child containment', async () => {
+  it('drains every tracked child during daemon shutdown', async () => {
+    const first = fakeProcess();
+    const second = fakeProcess();
+    const { spawner } = recordingSpawner([first.proc, second.proc]);
+    const guard = lockout(rateLimit({ limit: 10, windowMs: 60_000 }), { threshold: 10, lockoutMs: 1 });
+    const deps = baseDeps({ spawn: spawner, rateLimitGuard: guard });
+    expect((await spawnVibe('one', validSession(), noopHandlers(), deps)).ok).toBe(true);
+    expect((await spawnVibe('two', validSession(), noopHandlers(), deps)).ok).toBe(true);
+    expect(drainVibeProcesses()).toBe(2);
+    expect(first.isKilled()).toBe(true);
+    expect(second.isKilled()).toBe(true);
+    expect(drainVibeProcesses()).toBe(0);
+  });
+
+  it('kills an already-spawned child if the audit sink throws', async () => {
+    const child = fakeProcess();
+    const { spawner } = recordingSpawner([child.proc]);
+    await expect(spawnVibe('run safely', validSession(), noopHandlers(), baseDeps({
+      spawn: spawner,
+      rateLimitGuard: lockout(rateLimit({ limit: 10, windowMs: 60_000 }), { threshold: 10, lockoutMs: 1 }),
+      appendAudit: () => { throw new Error('audit unavailable'); },
+    }))).rejects.toThrow('audit unavailable');
+    expect(child.isKilled()).toBe(true);
+  });
+
+  it('contains an asynchronous transcript callback failure and stops the child', async () => {
+    const child = fakeProcess();
+    const { spawner } = recordingSpawner([child.proc]);
+    const outcome = await spawnVibe('run safely', validSession(), noopHandlers({
+      onDelta: () => { throw new Error('state sink unavailable'); },
+    }), baseDeps({
+      spawn: spawner,
+      rateLimitGuard: lockout(rateLimit({ limit: 10, windowMs: 60_000 }), { threshold: 10, lockoutMs: 1 }),
+    }));
+    expect(outcome.ok).toBe(true);
+    expect(() => child.emitStdout(`${JSON.stringify({ type: 'assistant', message: { model: 'x', content: [{ type: 'text', text: 'hello' }] } })}\n`)).not.toThrow();
+    expect(child.isKilled()).toBe(true);
+  });
+});
+
+describe('spawnVibe — preamble gate (runs first, spawns nothing on failure)', async () => {
+  it('refuses to spawn when STOP is present / ANTHROPIC_API_KEY set / budget exceeded — no claude child spawned', async () => {
     const { spawner, calls } = recordingSpawner();
     const audit = recordingAppendAudit();
 
@@ -118,7 +161,7 @@ describe('spawnVibe — preamble gate (runs first, spawns nothing on failure)', 
       spawn: spawner,
       appendAudit: audit.fn,
     });
-    const stopResult = spawnVibe('do something', validSession(), noopHandlers(), stopDeps);
+    const stopResult = await spawnVibe('do something', validSession(), noopHandlers(), stopDeps);
     expect(stopResult).toEqual({
       ok: false,
       reason: 'fleet-frozen',
@@ -130,7 +173,7 @@ describe('spawnVibe — preamble gate (runs first, spawns nothing on failure)', 
       spawn: spawner,
       appendAudit: audit.fn,
     });
-    const apiKeyResult = spawnVibe('do something', validSession(), noopHandlers(), apiKeyDeps);
+    const apiKeyResult = await spawnVibe('do something', validSession(), noopHandlers(), apiKeyDeps);
     expect(apiKeyResult).toEqual({
       ok: false,
       reason: 'fleet-frozen',
@@ -142,7 +185,7 @@ describe('spawnVibe — preamble gate (runs first, spawns nothing on failure)', 
       spawn: spawner,
       appendAudit: audit.fn,
     });
-    const budgetResult = spawnVibe('do something', validSession(), noopHandlers(), budgetDeps);
+    const budgetResult = await spawnVibe('do something', validSession(), noopHandlers(), budgetDeps);
     expect(budgetResult).toEqual({
       ok: false,
       reason: 'fleet-frozen',
@@ -157,13 +200,13 @@ describe('spawnVibe — preamble gate (runs first, spawns nothing on failure)', 
   });
 });
 
-describe('spawnVibe — WebAuthn session gate (checked only after the preamble passes)', () => {
-  it('refuses to spawn without a WebAuthn session', () => {
+describe('spawnVibe — WebAuthn session gate (checked only after the preamble passes)', async () => {
+  it('refuses to spawn without a WebAuthn session', async () => {
     const { spawner, calls } = recordingSpawner();
     const deps = baseDeps({ spawn: spawner });
     const noSession: SessionInput = { token: null, config: SESSION_CONFIG };
 
-    const result = spawnVibe('do something', noSession, noopHandlers(), deps);
+    const result = await spawnVibe('do something', noSession, noopHandlers(), deps);
     expect(result).toEqual({
       ok: false,
       reason: 'unauthenticated',
@@ -172,26 +215,26 @@ describe('spawnVibe — WebAuthn session gate (checked only after the preamble p
     expect(calls).toHaveLength(0);
   });
 
-  it('refuses an expired/tampered session token the same way as a missing one — no spawn', () => {
+  it('refuses an expired/tampered session token the same way as a missing one — no spawn', async () => {
     const { spawner, calls } = recordingSpawner();
     const deps = baseDeps({ spawn: spawner });
     const expiredConfig: SessionConfig = { secret: SECRET, now: () => 0, ttlMs: 1 };
     const { token } = mintSession('operator-1', expiredConfig);
     const laterSession: SessionInput = { token, config: { secret: SECRET, now: () => 1_000_000 } };
 
-    const result = spawnVibe('do something', laterSession, noopHandlers(), deps);
+    const result = await spawnVibe('do something', laterSession, noopHandlers(), deps);
     expect(result).toEqual({ ok: false, reason: 'unauthenticated', detail: 'expired' });
     expect(calls).toHaveLength(0);
   });
 });
 
-describe('spawnVibe — rate-limit + lockout (D2.9 ratelimit.ts, keyed by verified session subject)', () => {
+describe('spawnVibe — rate-limit + lockout (D2.9 ratelimit.ts, keyed by verified session subject)', async () => {
   function fakeClock(start = 0) {
     let t = start;
     return { now: () => t, advance: (ms: number) => (t += ms) };
   }
 
-  it('rate-limits and locks out after repeated attempts — no spawn once locked out', () => {
+  it('rate-limits and locks out after repeated attempts — no spawn once locked out', async () => {
     const clock = fakeClock();
     const guard: LockoutGuard = lockout(rateLimit({ limit: 1, windowMs: 1000, now: clock.now }), {
       threshold: 2,
@@ -202,27 +245,27 @@ describe('spawnVibe — rate-limit + lockout (D2.9 ratelimit.ts, keyed by verifi
     const deps = baseDeps({ spawn: spawner, rateLimitGuard: guard });
 
     // First attempt: allowed by the underlying window, so it spawns.
-    const first = spawnVibe('one', validSession(), noopHandlers(), deps);
+    const first = await spawnVibe('one', validSession(), noopHandlers(), deps);
     expect(first.ok).toBe(true);
 
     // Second attempt (same session, inside the window): throttled, no spawn.
-    const second = spawnVibe('two', validSession(), noopHandlers(), deps);
+    const second = await spawnVibe('two', validSession(), noopHandlers(), deps);
     expect(second).toEqual({ ok: false, reason: 'rate-limited', retryAfterMs: expect.any(Number) });
 
     // Third attempt: consecutive throttle streak trips the lockout threshold — no spawn.
-    const third = spawnVibe('three', validSession(), noopHandlers(), deps);
+    const third = await spawnVibe('three', validSession(), noopHandlers(), deps);
     expect(third).toEqual({ ok: false, reason: 'locked-out', retryAfterMs: expect.any(Number) });
 
     // Even once the underlying window would allow a fresh hit, the lockout still holds.
     clock.advance(1001);
-    const fourth = spawnVibe('four', validSession(), noopHandlers(), deps);
+    const fourth = await spawnVibe('four', validSession(), noopHandlers(), deps);
     expect(fourth).toEqual({ ok: false, reason: 'locked-out', retryAfterMs: expect.any(Number) });
 
     // Only the first call ever reached the spawner.
     expect(calls).toHaveLength(1);
   });
 
-  it('tracks the rate limit independently per verified session subject', () => {
+  it('tracks the rate limit independently per verified session subject', async () => {
     const clock = fakeClock();
     const guard: LockoutGuard = lockout(rateLimit({ limit: 1, windowMs: 1000, now: clock.now }), {
       threshold: 2,
@@ -232,25 +275,25 @@ describe('spawnVibe — rate-limit + lockout (D2.9 ratelimit.ts, keyed by verifi
     const { spawner, calls } = recordingSpawner([fakeProcess().proc, fakeProcess().proc]);
     const deps = baseDeps({ spawn: spawner, rateLimitGuard: guard });
 
-    const a = spawnVibe('from a', validSession('operator-a'), noopHandlers(), deps);
-    const b = spawnVibe('from b', validSession('operator-b'), noopHandlers(), deps);
+    const a = await spawnVibe('from a', validSession('operator-a'), noopHandlers(), deps);
+    const b = await spawnVibe('from b', validSession('operator-b'), noopHandlers(), deps);
     expect(a.ok).toBe(true);
     expect(b.ok).toBe(true);
     expect(calls).toHaveLength(2);
   });
 });
 
-describe('spawnVibe — audit coverage (D2.9 appendAudit, independent trail)', () => {
-  it('every spawn writes an audit-log row — attempted (refused) and actual (spawned) alike', () => {
+describe('spawnVibe — audit coverage (D2.9 appendAudit, independent trail)', async () => {
+  it('every spawn writes an audit-log row — attempted (refused) and actual (spawned) alike', async () => {
     const audit = recordingAppendAudit();
     const { spawner } = recordingSpawner([fakeProcess().proc]);
 
     // Refused at the preamble gate.
-    spawnVibe('x', validSession(), noopHandlers(), baseDeps({ runPreamble: frozenPreamble('STOP file present'), appendAudit: audit.fn, spawn: spawner }));
+    await spawnVibe('x', validSession(), noopHandlers(), baseDeps({ runPreamble: frozenPreamble('STOP file present'), appendAudit: audit.fn, spawn: spawner }));
     // Refused at the session gate.
-    spawnVibe('x', { token: null, config: SESSION_CONFIG }, noopHandlers(), baseDeps({ appendAudit: audit.fn, spawn: spawner }));
+    await spawnVibe('x', { token: null, config: SESSION_CONFIG }, noopHandlers(), baseDeps({ appendAudit: audit.fn, spawn: spawner }));
     // Actually spawns.
-    spawnVibe('x', validSession(), noopHandlers(), baseDeps({ appendAudit: audit.fn, spawn: spawner }));
+    await spawnVibe('x', validSession(), noopHandlers(), baseDeps({ appendAudit: audit.fn, spawn: spawner }));
 
     expect(audit.rows).toHaveLength(3);
     expect(audit.rows.map((r) => r.event.action)).toEqual(['vibe-spawn', 'vibe-spawn', 'vibe-spawn']);
@@ -259,16 +302,16 @@ describe('spawnVibe — audit coverage (D2.9 appendAudit, independent trail)', (
     expect(audit.rows[2].event.owner).toBe('operator-1');
   });
 
-  it('appendAudit is called with repoRoot passed straight through', () => {
+  it('appendAudit is called with repoRoot passed straight through', async () => {
     const audit = recordingAppendAudit();
     const { spawner } = recordingSpawner([fakeProcess().proc]);
-    spawnVibe('x', validSession(), noopHandlers(), baseDeps({ repoRoot: '/some/repo', appendAudit: audit.fn, spawn: spawner }));
+    await spawnVibe('x', validSession(), noopHandlers(), baseDeps({ repoRoot: '/some/repo', appendAudit: audit.fn, spawn: spawner }));
     expect(audit.rows[0].repoRoot).toBe('/some/repo');
   });
 });
 
-describe('spawnVibe — stream-json parsing into the shared TimelineModel (D0.7 foldRecords, reused)', () => {
-  it('parses stream-json deltas into the timeline model as stdout chunks arrive', () => {
+describe('spawnVibe — stream-json parsing into the shared TimelineModel (D0.7 foldRecords, reused)', async () => {
+  it('parses stream-json deltas into the timeline model as stdout chunks arrive', async () => {
     const fp = fakeProcess();
     const { spawner } = recordingSpawner([fp.proc]);
     const deltas: Array<{ turnsLen: number; lastText: string | undefined }> = [];
@@ -281,7 +324,7 @@ describe('spawnVibe — stream-json parsing into the shared TimelineModel (D0.7 
     };
     const deps = baseDeps({ spawn: spawner });
 
-    const result = spawnVibe('summarize the repo', validSession(), handlers, deps);
+    const result = await spawnVibe('summarize the repo', validSession(), handlers, deps);
     expect(result.ok).toBe(true);
 
     // One complete stream-json line (an assistant text message) arrives in one chunk.
@@ -311,13 +354,13 @@ describe('spawnVibe — stream-json parsing into the shared TimelineModel (D0.7 
     expect(fp.isKilled()).toBe(true);
   });
 
-  it('a malformed stream-json line is dropped without crashing the session (defensive, mirrors tailFrom)', () => {
+  it('a malformed stream-json line is dropped without crashing the session (defensive, mirrors tailFrom)', async () => {
     const fp = fakeProcess();
     const { spawner } = recordingSpawner([fp.proc]);
     const onDelta = vi.fn();
     const deps = baseDeps({ spawn: spawner });
 
-    spawnVibe('x', validSession(), { onDelta }, deps);
+    await spawnVibe('x', validSession(), { onDelta }, deps);
 
     fp.emitStdout('not json at all\n');
     expect(onDelta).not.toHaveBeenCalled();
@@ -327,15 +370,15 @@ describe('spawnVibe — stream-json parsing into the shared TimelineModel (D0.7 
   });
 });
 
-describe('spawnVibe — CLI-subprocess invocation shape', () => {
-  it('spawns claude with --print --output-format stream-json under repoRoot, args only (never prompt in argv)', () => {
+describe('spawnVibe — CLI-subprocess invocation shape', async () => {
+  it('spawns claude with --print --output-format stream-json under repoRoot, args only (never prompt in argv)', async () => {
     const { spawner, calls } = recordingSpawner([fakeProcess().proc]);
     const deps = baseDeps({ repoRoot: '/repo/root', spawn: spawner });
 
-    spawnVibe('a secret-shaped prompt', validSession(), noopHandlers(), deps);
+    await spawnVibe('a secret-shaped prompt', validSession(), noopHandlers(), deps);
 
     expect(calls).toHaveLength(1);
-    expect(calls[0].args).toEqual(['--print', '--output-format', 'stream-json']);
+    expect(calls[0].args).toEqual(['--print', '--verbose', '--output-format', 'stream-json']);
     expect(calls[0].cwd).toBe('/repo/root');
     expect(calls[0].args.join(' ')).not.toContain('secret-shaped prompt');
   });

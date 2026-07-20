@@ -39,10 +39,10 @@ describe('writeTraceFile', () => {
 });
 
 describe('commitTraceToOps (injectable git-runner, hermetic)', () => {
-  it('commits via pull --rebase -> add -> commit -> push, in that order, on ops', () => {
+  it('commits via pull --rebase -> add -> commit -> push, in that order, on ops', async () => {
     const repo = '/fake/repo';
     const { runner, calls } = recorder();
-    commitTraceToOps(repo, 'card-c', runner);
+    await commitTraceToOps(repo, 'card-c', runner);
 
     const verbs = calls.map((c) => c.slice(0, 2).join(' '));
     expect(verbs).toEqual(['pull --rebase', 'add --', 'commit -m', 'push origin']);
@@ -53,7 +53,7 @@ describe('commitTraceToOps (injectable git-runner, hermetic)', () => {
     expect(calls[1]).toEqual(['add', '--', 'traces/card-c']);
   });
 
-  it('re-reads (pull --rebase) and retries when the push is rejected', () => {
+  it('re-reads (pull --rebase) and retries when the push is rejected', async () => {
     const repo = '/fake/repo';
     const calls: string[][] = [];
     let pushes = 0;
@@ -66,7 +66,7 @@ describe('commitTraceToOps (injectable git-runner, hermetic)', () => {
       return '';
     };
 
-    commitTraceToOps(repo, 'card-retry', runner, { maxRetryPushes: 3 });
+    await commitTraceToOps(repo, 'card-retry', runner, { maxRetryPushes: 3 });
 
     // Two push attempts, with a reconciling pull --rebase between them.
     const pushIdx = calls.map((c, i) => (c[0] === 'push' ? i : -1)).filter((i) => i >= 0);
@@ -74,12 +74,12 @@ describe('commitTraceToOps (injectable git-runner, hermetic)', () => {
     expect(calls[pushIdx[0] + 1]).toEqual(['pull', '--rebase', 'origin', 'ops']);
   });
 
-  it('gives up after maxRetryPushes exhausted, surfacing the push error', () => {
+  it('gives up after maxRetryPushes exhausted, surfacing the push error', async () => {
     const runner: OpsGitRunner = (_r, args) => {
       if (args[0] === 'push') throw new Error('rejected');
       return '';
     };
-    expect(() => commitTraceToOps('/r', 'card-x', runner, { maxRetryPushes: 2 })).toThrow(/rejected/);
+    await expect(commitTraceToOps('/r', 'card-x', runner, { maxRetryPushes: 2 })).rejects.toThrow(/rejected/);
   });
 });
 
@@ -87,7 +87,7 @@ describe('writeTrace orchestrator (D0: render-to-local by default, commit only o
   it('writes the file but does NOT invoke git when commit is not requested', async () => {
     const repo = await scratch();
     const { runner, calls } = recorder();
-    writeTrace({ repoRoot: repo, cardId: 'card-local', html: '<!doctype html>', runGit: runner });
+    await writeTrace({ repoRoot: repo, cardId: 'card-local', html: '<!doctype html>', runGit: runner });
     expect(calls).toHaveLength(0);
     const onDisk = await readFile(join(repo, 'traces', 'card-local', 'index.html'), 'utf8');
     expect(onDisk).toContain('<!doctype html>');
@@ -96,7 +96,7 @@ describe('writeTrace orchestrator (D0: render-to-local by default, commit only o
   it('runs the ops pull-rebase-push commit when commit: true', async () => {
     const repo = await scratch();
     const { runner, calls } = recorder();
-    writeTrace({ repoRoot: repo, cardId: 'card-committed', html: '<!doctype html>', commit: true, runGit: runner });
+    await writeTrace({ repoRoot: repo, cardId: 'card-committed', html: '<!doctype html>', commit: true, runGit: runner });
     expect(calls.length).toBeGreaterThan(0);
     expect(calls[0]).toEqual(['pull', '--rebase', 'origin', 'ops']);
     expect(calls.some((c) => c[0] === 'push')).toBe(true);

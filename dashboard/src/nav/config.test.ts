@@ -8,7 +8,6 @@ import { describe, expect, it } from 'vitest';
 import {
   NAV_SECTIONS,
   DEFAULT_DESTINATION,
-  NEW_MENU_ENTRIES,
   isLive,
   type NavSection,
   type NavStatus,
@@ -57,6 +56,16 @@ describe('nav/config', () => {
       expect(dest.icon.length).toBeGreaterThan(0);
       expect(STATUSES).toContain(dest.status);
     }
+  });
+
+  it('presents the pipeline destination as Runs without changing its stable route id', () => {
+    const runs = ALL.find((d) => d.id === 'pipeline');
+    expect(runs?.label).toBe('Runs');
+  });
+
+  it('presents approvals as the unified Inbox without changing its stable route id', () => {
+    const inbox = ALL.find((d) => d.id === 'approvals');
+    expect(inbox?.label).toBe('Inbox');
   });
 
   it('non-live destinations carry a greyed hint; live ones do not', () => {
@@ -114,25 +123,4 @@ describe('nav/config', () => {
     expect(status('atlas')).toBe('soon');
   });
 
-  it('the [+ New] menu is idea-first with the Composer live: idea + every entity type enabled (C7.2 un-defers agent)', () => {
-    // C5 — the freeform "Idea…" leads; the menu's shape says "bring an idea, iterate".
-    expect(NEW_MENU_ENTRIES.map((e) => e.id)).toEqual([
-      'idea',
-      'task',
-      'workflow',
-      'skill',
-      'project',
-      'agent',
-    ]);
-    const idea = NEW_MENU_ENTRIES.find((e) => e.id === 'idea');
-    expect(idea?.enabled).toBe(true);
-    // Idea leads into the (now live) Composer convergence surface.
-    expect(idea?.hint).toMatch(/composer/i);
-    // C7.2 — every creatable entity, INCLUDING agent, is actionable now.
-    for (const id of ['task', 'workflow', 'skill', 'project', 'agent'] as const) {
-      expect(NEW_MENU_ENTRIES.find((e) => e.id === id)?.enabled).toBe(true);
-    }
-    // Agent no longer carries the deferred "soon" hint.
-    expect(NEW_MENU_ENTRIES.find((e) => e.id === 'agent')?.hint).toBeUndefined();
-  });
 });

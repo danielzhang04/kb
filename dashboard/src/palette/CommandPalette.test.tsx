@@ -111,7 +111,7 @@ describe('command palette — act is a shortcut, never a bypass', () => {
     render(<App />);
 
     runByQuery('corroborate'); // unique keyword of the Approve shortcut
-    expect(screen.getByLabelText('Approvals inbox')).toBeTruthy();
+    expect(screen.getByLabelText('Human Inbox')).toBeTruthy();
 
     runByQuery('passkey'); // unique keyword of the Stop / Session shortcut
     // Focus moved into the pinned floor, not a network call.

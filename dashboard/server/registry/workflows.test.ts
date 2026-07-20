@@ -47,4 +47,20 @@ describe('indexWorkflows (render-if-present)', () => {
     expect(bare.name).toBe('wf_bare');
     expect(bare.status).toBe('registered');
   });
+
+  it('exposes only a strict workflow-v1 fence as runnable data', () => {
+    const root = mkdtempSync(join(tmpdir(), 'registry-workflows-v1-'));
+    const wfDir = join(root, 'workflows');
+    mkdirSync(wfDir, { recursive: true });
+    const definition = {
+      name: 'wf_ship', project: 'kb', workflowDefinitionId: 'wf_ship',
+      stages: [{ id: 'build', action: 'build', target: '.', workOrder: 'Build it', riskTier: 'T2', owner: 'codex-worker', dependsOn: [] }],
+    };
+    writeFileSync(join(wfDir, 'wf_ship.md'), `---\nname: Ship\n---\n\n\`\`\`workflow-v1\n${JSON.stringify(definition)}\n\`\`\`\n`);
+    writeFileSync(join(wfDir, 'wf_prose.md'), '# prose only');
+
+    const idx = indexWorkflows(root);
+    expect(idx.items.find((w) => w.id === 'wf_ship')?.definition).toEqual(definition);
+    expect(idx.items.find((w) => w.id === 'wf_prose')?.definition).toBeUndefined();
+  });
 });

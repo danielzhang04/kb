@@ -5,6 +5,8 @@
  * writes routing directly — every mutation carries the WebAuthn bearer to a governed, audited endpoint.
  */
 
+import { invalidateSessionOnGovernedAuthFailure } from './authClient';
+
 export type RoutingSource = 'card' | 'override' | 'policy' | 'default';
 
 export interface EffectiveView {
@@ -101,6 +103,7 @@ export async function postRoutingOverride(
     headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
     body: JSON.stringify(body),
   });
+  await invalidateSessionOnGovernedAuthFailure(res);
   const data = (await res.json().catch(() => ({}))) as { reason?: string };
   return { ok: res.ok, reason: data.reason };
 }
@@ -116,6 +119,7 @@ export async function postCardRouting(
     headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
     body: JSON.stringify(body),
   });
+  await invalidateSessionOnGovernedAuthFailure(res);
   const data = (await res.json().catch(() => ({}))) as { reason?: string; error?: string };
   // Surface status + error code so a caller (e.g. the pipeline node toggle) can freeze on a 409
   // `approval-locked` refusal WITHOUT a retry and WITHOUT a second write path.

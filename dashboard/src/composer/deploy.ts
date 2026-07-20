@@ -18,9 +18,17 @@
  * `fetch` is injectable so the suite drives a fake — no real network, no real server, no real `claude`.
  */
 import type { ArtifactKind, DeployPlan, FollowUp } from './artifactTypes';
+import { invalidateSessionOnGovernedAuthFailure } from '../lib/authClient';
 
 /** The injectable fetch seam (defaults to the global). Narrowed to what this module uses. */
 export type DeployFetch = (url: string, init: RequestInit) => Promise<Response>;
+
+export interface RunnerDispatch {
+  status: 'triggered' | 'unbound' | 'unavailable' | 'failed';
+  owner: string;
+  task?: string;
+  detail?: string;
+}
 
 /** A governed write that landed. `cardId`/`cardPath` come back from the launch endpoint; `target` (the
  *  branch/PR info) from the save endpoint. `followUps` carries a multi-file artifact's remaining rendered
@@ -30,6 +38,7 @@ export interface DeploySuccess {
   kind: ArtifactKind;
   cardId?: string;
   cardPath?: string;
+  runner?: RunnerDispatch;
   target?: string;
   followUps?: FollowUp[];
 }
@@ -73,12 +82,14 @@ async function refusalOf(res: Response): Promise<DeployRefusal> {
 }
 
 /** POST a governed write with the shared bearer/JSON convention. */
-function post(fetchImpl: DeployFetch, url: string, sessionToken: string, payload: unknown): Promise<Response> {
-  return fetchImpl(url, {
+async function post(fetchImpl: DeployFetch, url: string, sessionToken: string, payload: unknown): Promise<Response> {
+  const response = await fetchImpl(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${sessionToken}` },
     body: JSON.stringify(payload),
   });
+  await invalidateSessionOnGovernedAuthFailure(response);
+  return response;
 }
 
 /**
@@ -101,8 +112,8 @@ export async function deploy(
     // exactly what LaunchControls POSTs. (launchFields is always present on a task plan per the registry.)
     const res = await post(fetchImpl, '/api/write/launch', sessionToken, plan.launchFields);
     if (!res.ok) return refusalOf(res);
-    const data = (await res.json()) as { cardId?: string; cardPath?: string };
-    return { ok: true, kind: plan.kind, cardId: data.cardId, cardPath: data.cardPath };
+    const data = (await res.json()) as { cardId?: string; cardPath?: string; runner?: RunnerDispatch };
+    return { ok: true, kind: plan.kind, cardId: data.cardId, cardPath: data.cardPath, runner: data.runner };
   }
 
   // endpoint === 'save' → a single durable relpath. NEVER include workBranch: the server owns the branch.

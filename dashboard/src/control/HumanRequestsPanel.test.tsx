@@ -1,0 +1,46 @@
+// @vitest-environment jsdom
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { HumanRequestsPanel } from './HumanRequestsPanel';
+
+afterEach(cleanup);
+
+function response(body: unknown): Response {
+  return { ok: true, status: 200, json: async () => body } as Response;
+}
+
+describe('HumanRequestsPanel', () => {
+  it('loads one durable request through its run and commits a revision-bound response', async () => {
+    let resolved = false;
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const request = {
+      requestRef: 'request-1', runRef: 'run-1', stageRef: null, kind: 'review', revision: 3, state: 'open',
+      title: 'Review scope', prompt: 'Is this within scope?', response: null,
+      createdAt: '2026-07-18T10:00:00.000Z', updatedAt: '2026-07-18T10:00:00.000Z',
+    };
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      if (url === '/api/control/runs') return response({ runs: resolved ? [] : [{ runRef: 'run-1', openHumanRequestCount: 1 }] });
+      if (url === '/api/control/runs/run-1') return response({ ok: true, value: { run: {}, stages: [], attempts: [], sessions: [], humanRequests: [request] } });
+      if (url === '/api/control/human-requests/request-1/respond') {
+        resolved = true;
+        return response({ ok: true, value: { ...request, state: 'resolved' } });
+      }
+      throw new Error(`unexpected ${url}`);
+    });
+
+    render(<HumanRequestsPanel sessionToken="token" fetchImpl={fetchImpl as unknown as typeof fetch} />);
+    expect(await screen.findByRole('heading', { name: 'Review scope' })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Response'), { target: { value: 'Narrow the write path.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Request changes' }));
+
+    await waitFor(() => expect(calls.some((call) => call.url.endsWith('/respond'))).toBe(true));
+    const body = JSON.parse(calls.find((call) => call.url.endsWith('/respond'))!.init?.body as string);
+    expect(body).toEqual({
+      expectedRevision: 3,
+      decision: 'changes-requested',
+      idempotencyKey: 'human:request-1:3:changes-requested',
+      response: 'Narrow the write path.',
+    });
+  });
+});

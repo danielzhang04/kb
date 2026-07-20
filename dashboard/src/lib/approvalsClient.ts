@@ -11,6 +11,8 @@
  */
 import type { ParsedCard } from '../../server/planeA/cards';
 import type { ApprovalButtons } from '../../server/approvals/assurance';
+import type { HumanInboxProjection } from '../../server/approvals/humanInbox';
+import { invalidateSessionOnGovernedAuthFailure } from './authClient';
 
 export type ApprovalChannel = 'signed' | 'possession' | 'webauthn';
 export type FetchLike = typeof fetch;
@@ -28,6 +30,17 @@ export async function fetchPending(fetchImpl: FetchLike = fetch): Promise<Parsed
   if (!res.ok) throw new Error(`GET /api/approvals failed: ${res.status}`);
   const body = (await res.json()) as { pending?: PendingApproval[] };
   return (body.pending ?? []).map((p) => p.card);
+}
+
+/** Fetch the unified, read-only Human Inbox projection. */
+export async function fetchHumanInbox(fetchImpl: FetchLike = fetch): Promise<HumanInboxProjection> {
+  const res = await fetchImpl('/api/human-inbox', { headers: { accept: 'application/json' } });
+  if (!res.ok) throw new Error(`GET /api/human-inbox failed: ${res.status}`);
+  const body = (await res.json()) as HumanInboxProjection;
+  return {
+    items: Array.isArray(body.items) ? body.items : [],
+    counts: body.counts ?? { total: 0, decision: 0, input: 0, intervention: 0 },
+  };
 }
 
 export interface VerifyResult {
@@ -54,6 +67,40 @@ export async function verifyApproval(
     headers,
     body: JSON.stringify({ cardId, channel }),
   });
+  await invalidateSessionOnGovernedAuthFailure(res);
+  let reason = '';
+  try {
+    const body = (await res.json()) as { reason?: string; error?: string };
+    reason = body.reason ?? body.error ?? '';
+  } catch {
+    reason = 'no response body';
+  }
+  return { ok: res.ok, reason, status: res.status };
+}
+
+export type RespondAction = 'reply' | 'resolve';
+
+/**
+ * POST an inline operator response (a reply on an input card, or a resolve on a wake-me/blocked/halted
+ * card) to the governed `POST /api/write/card-respond` route. Session-gated: without a bearer the server
+ * 401s, surfaced here as `{ ok: false, status: 401 }` (mirroring {@link verifyApproval}) rather than
+ * throwing, so the container can replace the session and retry exactly once.
+ */
+export async function respondToCard(
+  cardId: string,
+  action: RespondAction,
+  message: string,
+  opts: { token?: string; fetchImpl?: FetchLike } = {},
+): Promise<VerifyResult> {
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const headers: Record<string, string> = { 'content-type': 'application/json' };
+  if (opts.token) headers.authorization = `Bearer ${opts.token}`;
+  const res = await fetchImpl('/api/write/card-respond', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ cardId, action, message }),
+  });
+  await invalidateSessionOnGovernedAuthFailure(res);
   let reason = '';
   try {
     const body = (await res.json()) as { reason?: string; error?: string };

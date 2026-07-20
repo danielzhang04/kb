@@ -105,7 +105,7 @@ describe('writeStop — creates the STOP file (session-gated)', () => {
 });
 
 describe('requestStop — transitions the card working→stop-requested→halting via the governed path', () => {
-  it('transitions the card working→stop-requested→halting via the governed path (no ValidationError)', () => {
+  it('transitions the card working→stop-requested→halting via the governed path (no ValidationError)', async () => {
     const { runner: runPy, calls: pyCalls } = recordingPyRunner({
       exitCode: 0,
       stdout: '{"id":"card-1","path":"queue/working/card-1.md","state":"halting"}\n',
@@ -113,7 +113,7 @@ describe('requestStop — transitions the card working→stop-requested→haltin
     });
     const { runner: runGit, calls: gitCalls } = recordingGitRunner();
 
-    const result = requestStop('card-1', validSession(), { repoRoot: '/repo', runPy, runGit });
+    const result = await requestStop('card-1', validSession(), { repoRoot: '/repo', runPy, runGit });
 
     expect(result).toEqual({
       ok: true,
@@ -140,11 +140,11 @@ describe('requestStop — transitions the card working→stop-requested→haltin
     expect(gitCalls[3]).toEqual(['push', 'origin', 'ops']);
   });
 
-  it('refuses without a valid session, spawning neither the card-op subprocess nor git', () => {
+  it('refuses without a valid session, spawning neither the card-op subprocess nor git', async () => {
     const { runner: runPy, calls: pyCalls } = recordingPyRunner({ exitCode: 0, stdout: '{}', stderr: '' });
     const { runner: runGit, calls: gitCalls } = recordingGitRunner();
 
-    const result = requestStop('card-1', noSession(), { repoRoot: '/repo', runPy, runGit });
+    const result = await requestStop('card-1', noSession(), { repoRoot: '/repo', runPy, runGit });
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toBe('unauthenticated');
@@ -152,7 +152,7 @@ describe('requestStop — transitions the card working→stop-requested→haltin
     expect(gitCalls).toHaveLength(0);
   });
 
-  it('surfaces a card-op failure (e.g. illegal transition) instead of pretending success, and never touches git', () => {
+  it('surfaces a card-op failure (e.g. illegal transition) instead of pretending success, and never touches git', async () => {
     const { runner: runPy } = recordingPyRunner({
       exitCode: 1,
       stdout: '',
@@ -160,7 +160,7 @@ describe('requestStop — transitions the card working→stop-requested→haltin
     });
     const { runner: runGit, calls: gitCalls } = recordingGitRunner();
 
-    const result = requestStop('card-1', validSession(), { repoRoot: '/repo', runPy, runGit });
+    const result = await requestStop('card-1', validSession(), { repoRoot: '/repo', runPy, runGit });
 
     expect(result).toEqual({
       ok: false,
@@ -170,7 +170,7 @@ describe('requestStop — transitions the card working→stop-requested→haltin
     expect(gitCalls).toHaveLength(0);
   });
 
-  it('re-reads (pull --rebase) and retries when the push is rejected', () => {
+  it('re-reads (pull --rebase) and retries when the push is rejected', async () => {
     const { runner: runPy } = recordingPyRunner({
       exitCode: 0,
       stdout: '{"id":"card-2","path":"queue/working/card-2.md","state":"halting"}\n',
@@ -187,7 +187,7 @@ describe('requestStop — transitions the card working→stop-requested→haltin
       return '';
     };
 
-    const result = requestStop('card-2', validSession(), { repoRoot: '/repo', runPy, runGit });
+    const result = await requestStop('card-2', validSession(), { repoRoot: '/repo', runPy, runGit });
 
     expect(result.ok).toBe(true);
     const pushIdx = calls.map((c, i) => (c[0] === 'push' ? i : -1)).filter((i) => i >= 0);
@@ -201,7 +201,7 @@ describe('pauseCadence — writes queue/paused/<name> via the governed ops path'
     const repo = await scratch();
     const { runner: runGit, calls: gitCalls } = recordingGitRunner();
 
-    const result = pauseCadence('weekly-report', validSession(), { repoRoot: repo, runGit });
+    const result = await pauseCadence('weekly-report', validSession(), { repoRoot: repo, runGit });
 
     expect(result.ok).toBe(true);
     expect(existsSync(join(repo, 'queue', 'paused', 'weekly-report'))).toBe(true);
@@ -215,7 +215,7 @@ describe('pauseCadence — writes queue/paused/<name> via the governed ops path'
     const repo = await scratch();
     const { runner: runGit, calls: gitCalls } = recordingGitRunner();
 
-    const result = pauseCadence('weekly-report', noSession(), { repoRoot: repo, runGit });
+    const result = await pauseCadence('weekly-report', noSession(), { repoRoot: repo, runGit });
 
     expect(result.ok).toBe(false);
     expect(existsSync(join(repo, 'queue', 'paused', 'weekly-report'))).toBe(false);

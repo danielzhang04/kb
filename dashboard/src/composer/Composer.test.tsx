@@ -22,12 +22,12 @@ const REPLY = (text: string): TimelineModel => ({
 
 /** A recording fake stream: captures every composed prompt + resume id, echoes a reply, returns a fresh
  *  session id so turn N+1 rides the resume flow. */
-function recordingStream(): { calls: Array<{ prompt: string; resumeId?: string }>; stream: ComposerStreamFn } {
-  const calls: Array<{ prompt: string; resumeId?: string }> = [];
-  const stream: ComposerStreamFn = vi.fn(async (prompt, resumeId, _token, onDelta) => {
-    calls.push({ prompt, resumeId });
+function recordingStream(): { calls: Array<{ composerRef: string; prompt: string }>; stream: ComposerStreamFn } {
+  const calls: Array<{ composerRef: string; prompt: string }> = [];
+  const stream: ComposerStreamFn = vi.fn(async (composerRef, prompt, _token, onDelta) => {
+    calls.push({ composerRef, prompt });
     onDelta(REPLY(`reply ${calls.length}`));
-    return { ok: true, resumeId: `sess-${calls.length}` };
+    return { ok: true };
   });
   return { calls, stream };
 }
@@ -49,7 +49,7 @@ describe('Composer', () => {
     // The idea-first disambiguation seed asks the model to help pick the type, and embeds the idea text.
     expect(calls[0].prompt).toMatch(/which TYPE this idea wants to become/);
     expect(calls[0].prompt).toContain('a tiny helper for triage');
-    expect(calls[0].resumeId).toBeUndefined();
+    expect(calls[0].composerRef).toBe('local-preview');
   });
 
   it('setting_type_swaps_the_seed_on_next_turn', async () => {
@@ -68,7 +68,7 @@ describe('Composer', () => {
     sendTurn('make it a skill');
     await waitFor(() => expect(calls).toHaveLength(2));
     expect(calls[1].prompt).toMatch(/Draft a SKILL/);
-    expect(calls[1].resumeId).toBe('sess-1');
+    expect(calls[1].composerRef).toBe('local-preview');
   });
 
   it('initialKind_preseeds_the_type', async () => {
@@ -141,12 +141,65 @@ describe('Composer', () => {
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 
-  it('agent_is_not_offered_as_a_type', () => {
-    render(<Composer onDeploy={vi.fn()} onBack={vi.fn()} />);
-    // The four v1 kinds + the idea entry are offered; `agent` is deferred and never appears.
-    expect(screen.queryByRole('button', { name: /^agent$/i })).toBeNull();
-    for (const label of ['Idea', 'Task', 'Workflow', 'Skill', 'Project']) {
+  it('agent_is_offered_with_a_complete_deployable_form', () => {
+    const onDeploy = vi.fn();
+    render(<Composer initialKind="agent" onDeploy={onDeploy} onBack={vi.fn()} />);
+    for (const label of ['Idea', 'Task', 'Workflow', 'Skill', 'Project', 'Agent']) {
       expect(screen.getByRole('button', { name: label })).toBeTruthy();
     }
+
+    const deploy = screen.getByRole('button', { name: 'Deploy' }) as HTMLButtonElement;
+    expect(deploy.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText('Agent id'), { target: { value: 'atlas-researcher' } });
+    fireEvent.change(screen.getByLabelText('Agent role'), { target: { value: 'scout' } });
+    fireEvent.change(screen.getByLabelText('Agent runtime'), { target: { value: 'codex' } });
+    fireEvent.change(screen.getByLabelText('Agent model'), { target: { value: 'gpt-5.6-sol' } });
+    fireEvent.change(screen.getByLabelText('Agent projects'), { target: { value: 'atlas-prep, kb-ops' } });
+    fireEvent.change(screen.getByLabelText('Agent description'), { target: { value: 'Researches Atlas sources.' } });
+    fireEvent.change(screen.getByLabelText('Agent body'), { target: { value: '# Atlas researcher' } });
+
+    expect(deploy.disabled).toBe(false);
+    expect(screen.getByTestId('composer-target').textContent).toContain('agents/atlas-researcher.md');
+    expect(screen.getByTestId('composer-deploy-note').textContent).toMatch(/runner-bound: false/i);
+    fireEvent.click(deploy);
+    expect(onDeploy).toHaveBeenCalledWith(
+      toDeploy('agent', {
+        id: 'atlas-researcher',
+        role: 'scout',
+        runtime: 'codex',
+        model: 'gpt-5.6-sol',
+        projects: ['atlas-prep', 'kb-ops'],
+        description: 'Researches Atlas sources.',
+        body: '# Atlas researcher',
+      }),
+    );
+  });
+
+  it('seeds the first turn of a persisted empty workspace', async () => {
+    const { calls, stream } = recordingStream();
+    render(<Composer
+      composerSession={{
+        composerRef: 'cw-persisted', title: 'New idea', state: 'open', sourceComposerRef: null,
+        createdAt: '2026-07-18T00:00:00.000Z', updatedAt: '2026-07-18T00:00:00.000Z', turns: [],
+      }}
+      sessionToken="tok"
+      onDeploy={vi.fn()}
+      onBack={vi.fn()}
+      stream={stream}
+    />);
+
+    sendTurn('research a governed workflow');
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0].composerRef).toBe('cw-persisted');
+    expect(calls[0].prompt).toMatch(/which TYPE this idea wants to become/);
+  });
+
+  it('states honestly what each deploy creates', () => {
+    render(<Composer initialKind="task" onDeploy={vi.fn()} onBack={vi.fn()} />);
+    expect(screen.getByTestId('composer-deploy-note').textContent).toMatch(/files a queue card/i);
+    fireEvent.click(screen.getByRole('button', { name: 'Workflow' }));
+    expect(screen.getByTestId('composer-deploy-note').textContent).toMatch(/does not run the workflow/i);
+    fireEvent.click(screen.getByRole('button', { name: 'Skill' }));
+    expect(screen.getByTestId('composer-deploy-note').textContent).toMatch(/does not promote or activate/i);
   });
 });

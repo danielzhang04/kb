@@ -11,7 +11,7 @@
  */
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import type { Session } from '../lib/authClient';
+import { invalidateSessionOnGovernedAuthFailure, type Session } from '../lib/authClient';
 
 type Variant = 'control' | 'home';
 
@@ -129,8 +129,18 @@ export function LaunchControls({
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
         body: JSON.stringify(payload),
       });
-      const data = (await res.json()) as { cardId?: string; reason?: string };
-      setLaunchStatus(res.ok ? `launched ${data.cardId}` : `refused: ${data.reason ?? res.status}`);
+      await invalidateSessionOnGovernedAuthFailure(res);
+      const data = (await res.json()) as {
+        cardId?: string;
+        reason?: string;
+        runner?: { status?: string; detail?: string };
+      };
+      const pickup = data.runner?.status === 'triggered'
+        ? ' · background runner signaled'
+        : data.runner
+          ? ` · queued (${data.runner.detail ?? data.runner.status})`
+          : '';
+      setLaunchStatus(res.ok ? `launched ${data.cardId}${pickup}` : `refused: ${data.reason ?? res.status}`);
     } catch {
       setLaunchStatus('launch request failed');
     }
@@ -153,6 +163,7 @@ export function LaunchControls({
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
         body: JSON.stringify({ cardId: rerunCardId, feedback }),
       });
+      await invalidateSessionOnGovernedAuthFailure(res);
       const data = (await res.json()) as { cardId?: string; reason?: string };
       setRerunStatus(
         res.ok ? `filed ${data.cardId} depends-on ${rerunCardId}` : `refused: ${data.reason ?? res.status}`,

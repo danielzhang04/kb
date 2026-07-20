@@ -49,6 +49,23 @@ module.exports = {
         // is empty and every auth request + the /api/pty upgrade 403s (no-allowlist).
         DASHBOARD_PORT: '5317',
         DASHBOARD_RP_ORIGIN: 'http://localhost:5317',
+        // One Windows Hello / device-passkey ceremony unlocks an operator workday. The bearer remains
+        // tab-scoped in the browser and every consequential request still verifies it server-side.
+        // A daemon restart invalidates it because the signing secret remains ephemeral unless Daniel
+        // provisions DASHBOARD_SESSION_SECRET out-of-band.
+        DASHBOARD_SESSION_TTL_MS: '28800000',
+        // Code stays on its reviewed work branch while all Plane-A reads and governed coordination
+        // writes use a dedicated ops worktree. This prevents normal dashboard development from making
+        // Launch fail (or switching the developer checkout behind the IDE).
+        DASHBOARD_REPO_ROOT: 'C:\\Users\\danie\\kb-worktrees\\dashboard-ops',
+        // Durable Composer artifacts use a separate reviewed work-branch checkout. Keeping this root
+        // distinct from DASHBOARD_REPO_ROOT makes it impossible for a save commit to contaminate ops.
+        DASHBOARD_DURABLE_REPO_ROOT: 'C:\\Users\\danie\\kb-worktrees\\dashboard-durable',
+        // Local operational state for persistent Composer workspaces. This is deliberately outside
+        // every git worktree: workspace metadata and resumability are private daemon state, not
+        // coordination truth and never something a runner should commit or merge.
+        DASHBOARD_STATE_ROOT: 'C:\\Users\\danie\\AppData\\Local\\kb-dashboard',
+        DASHBOARD_CODEX_RUNNER_TASK: 'kb-codex-runner',
         // Enrolled PUBLIC credential (NON-SECRET), mirrored from governance/webauthn-credentials.yaml.
         // The server's login path (simplewebauthn) reads the credential store from THIS env as
         // [{id, publicKey}] where publicKey is base64url COSE bytes; the yaml stores the same P-256 key
