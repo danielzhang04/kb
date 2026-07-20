@@ -105,3 +105,20 @@ Then: brainstorm → design doc → plan → build Wave A per the list above. Al
 - WORKED: cost-research wave before spending (killed LiveKit account — console mode is serverless; Aura-2 rides Deepgram $200 credit; expected steady-state ~$10/mo API only). Deepening the pairing smoke to TWO turns after the 1-turn version green-lit a path that 400'd in production (livekit-agents 1.6.6 serializes list tool_results invalidly — shim in worker/anthropic_compat.py, removal condition documented). Desk-debug with live probes (device RMS/scores) beat guessing: Windows default-mic drift to AirPods HFP was the wake-word killer -> config pin wake_input_device.
 - FAILED/LESSONS: orchestrator hand-edit added a kwarg not in the installed API (interruption_detection) — reviewer cited newer source; ALWAYS verify against installed signature before shipping. One-turn smokes lie. Official openWakeWord Colab is bit-rotted (issue #296); vetted fork alfiedennen/openwakeword-colab-2026 (security-reviewed SAFE) is the working path for custom wake models.
 - REMAINS: PR claude/atlas -> main awaiting Daniel merge; hey_atlas.onnx Colab bake in flight (config swap on delivery); V1 go/no-go pending Daniel; V1 backlog on STATE: TTFT input-diet, spoken voice-switch, hot-follow audio routing, deepgram-credit-remaining tool, persona.md authoring session.
+
+## 2026-07-20 late — Atlas hey_atlas bring-up + desk audio debug (Fable 5 boss)
+- WORKED: hey_atlas.onnx (Daniel's Colab bake) wired via path-loading in wakeword.py (Opus worker,
+  facts verified against installed oww 0.6.0: path entries keyed by file stem, model.py L89-100);
+  fired at 0.5 threshold untouched. Suite 23/23. claude/atlas 8203cdf.
+- FAILED then fixed: first-ever console run on the ElevenLabs voice path exposed two latent bugs —
+  lazy plugin import off the main thread (fix: module-level import, fbc7a99) and lazy http-session
+  creation from the wake-thread callback outside the job context (fix: pass
+  http_context.http_session() into the TTS constructor, 7c6cf50). Lesson: a "working" desk loop
+  only proves the code paths it exercised; the voice toggle shipped untested on its premium branch.
+- ROOT CAUSE, silent-agent desk session: Windows mutes AirPods A2DP output while AirPods HFP mic
+  is the default INPUT. Not a code bug. Fix = default input -> Intel array (done on Daniel's box).
+  Debug method that worked: isolate with direct tone playback per device (console closed), THEN
+  vary one console flag at a time. Windows device indices reshuffle on BT connect — never trust
+  an index across sessions; pin by name substring.
+- REMAINS: Daniel merges PR #37; V1 go/no-go (Hands wave + persona authoring backlog); polish nit
+  (suppress wake-thread DEAF critical on Ctrl+C teardown); retest native MCP on livekit upgrade.
