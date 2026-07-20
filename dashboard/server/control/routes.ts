@@ -2,11 +2,10 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { requireSession, verifiedSession } from '../http/middleware.ts';
 import { auditFn, type SurfaceContext } from '../http/context.ts';
 import { visibleAssistantText } from '../composer/publicTimeline.ts';
-import { appendAuditRowLocal, AUDIT_REL_PATH } from '../audit/log.ts';
-import { commitPreparedCoordination, defaultGitRunner, prepareCoordination } from '../write/branch.ts';
+import { defaultGitRunner, prepareCoordination } from '../write/branch.ts';
 import { withOpsTransaction } from '../write/asyncGit.ts';
 import { setCardRouting } from '../write/cardRouting.ts';
-import { activateManagedRootCards, launchWorkflowRun } from '../write/workflowRun.ts';
+import { activateManagedRootCards } from '../write/workflowRun.ts';
 import { defaultPreambleRunner } from '../write/preambleGate.ts';
 import {
   createProposalRevision as protocolRevision,
@@ -17,11 +16,10 @@ import {
 } from './proposal.ts';
 import { compileApprovedProposal } from './compiler.ts';
 import { loadExecutionProfiles, loadPolicyEnvironment, loadRuntimeSkillRegistry } from './environment.ts';
-import { loadPolicy } from '../routing/policy.ts';
-import type { ControlResult, HumanRequest, JsonObject, ProposalDecision } from './types.ts';
-import type { CreateHumanRequestInput } from './store.ts';
+import type { ControlResult, JsonObject, ProposalDecision } from './types.ts';
 import { reconcileCanonicalPublication } from './publication.ts';
 import { classifyActionRisk, evaluateExecutionPolicy } from './policy.ts';
+import { acceptsBoundary, defaultWorkers, executeApprovedLaunch, statusOf } from './launch.ts';
 
 function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -35,12 +33,6 @@ function integer(value: unknown): number {
   return typeof value === 'number' && Number.isSafeInteger(value) ? value : -1;
 }
 
-function statusOf(result: Extract<ControlResult<unknown>, { ok: false }>): number {
-  if (result.reason === 'not-found') return 404;
-  if (result.reason === 'conflict' || result.reason === 'idempotency-conflict' || result.reason === 'not-approved') return 409;
-  return 400;
-}
-
 function sendResult<T>(reply: FastifyReply, result: ControlResult<T>, success = 200) {
   return result.ok ? reply.code(success).send({ ok: true, value: result.value, replayed: result.replayed ?? false })
     : reply.code(statusOf(result)).send({ error: result.reason, detail: result.detail });
@@ -48,19 +40,6 @@ function sendResult<T>(reply: FastifyReply, result: ControlResult<T>, success = 
 
 function subject(req: FastifyRequest): string | null {
   return verifiedSession(req)?.claims.sub ?? null;
-}
-
-function acceptsBoundary(request: HumanRequest): boolean {
-  if (request.state !== 'resolved' || !request.response) return false;
-  if (request.kind === 'governance-refusal') return false;
-  if (request.kind === 'approval' || request.kind === 'review') return request.response.decision === 'approved';
-  return request.response.decision === 'approved' || request.response.decision === 'responded';
-}
-
-function defaultWorkers(repoRoot: string): Record<string, string> {
-  return Object.fromEntries(Object.entries(loadPolicy(repoRoot).runtimes ?? {})
-    .filter((entry): entry is [string, { default_worker: string }] => typeof entry[1].default_worker === 'string' && entry[1].default_worker.length > 0)
-    .map(([runtime, spec]) => [runtime, spec.default_worker]));
 }
 
 /** Authenticated app-local proposal/run control plane. Queue cards remain canonical execution truth. */
@@ -198,257 +177,19 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (!stored.ok) return sendResult(reply, stored);
     if (stored.value.hash !== string(body.expectedHash)) return reply.code(409).send({ error: 'revision-mismatch' });
     if (stored.value.approval?.decision !== 'approved') return reply.code(409).send({ error: 'not-approved' });
-    // One ops transaction: reconcile, compile, publish cards + audit, activate. Nested transaction
-    // helpers (prepare/commit/audit/activate) reenter the held lock instead of deadlocking.
-    return withOpsTransaction(async () => {
-    try {
-      // Reconcile canonical ops before loading executable policy, routing, or running the post-pull
-      // preamble. The launcher below receives no second pull hook, so approval checks and publication
-      // are evaluated against the same local canonical snapshot.
-      await prepareCoordination(ctx.repoRoot, ctx.opsGit ?? defaultGitRunner);
-    } catch {
-      return reply.code(409).send({ error: 'canonical-reconciliation-failed' });
-    }
-    const policyBaseCommit = (await (ctx.opsGit ?? defaultGitRunner)(ctx.repoRoot, ['rev-parse', 'HEAD'])).trim();
-    if (!/^[a-f0-9]{40,64}$/i.test(policyBaseCommit)) {
-      return reply.code(409).send({ error: 'canonical-policy-base-unavailable' });
-    }
-    const registry = loadRuntimeSkillRegistry(ctx.repoRoot);
-    const parsed = validatePlanProposal(stored.value.snapshot, registry);
-    if (!parsed.ok) return reply.code(409).send({ error: 'stored-proposal-invalid', detail: parsed.detail });
-    const compiled = compileApprovedProposal(parsed.value, stored.value.hash, stored.value.hash, {
-      policy: loadPolicyEnvironment(ctx.repoRoot, parsed.value.project, parsed.value.governanceRefs),
-      defaultWorkers: defaultWorkers(ctx.repoRoot),
-    });
-    if (!compiled.ok) return reply.code(400).send({ error: compiled.reason, detail: compiled.detail });
-    const predecessorRunRef = body.predecessorRunRef == null ? null : string(body.predecessorRunRef);
-    if (predecessorRunRef) {
-      const predecessor = ctx.controlStore.getRun(sub, predecessorRunRef);
-      if (!predecessor.ok) return sendResult(reply, predecessor);
-      if (predecessor.value.run.version !== integer(body.expectedPredecessorVersion)
-        || predecessor.value.run.proposalHash !== stored.value.hash) {
-        return reply.code(409).send({ error: 'retry-predecessor-changed' });
-      }
-      const canonical = await reconcileCanonicalPublication({
-        repoRoot: ctx.repoRoot, runRef: predecessorRunRef, proposal: parsed.value,
-        defaultWorkers: defaultWorkers(ctx.repoRoot), runGit: ctx.opsGit ?? defaultGitRunner,
-      });
-      if (!canonical.ok || canonical.cards.some((card) => !['succeeded', 'failed', 'stopped'].includes(card.stageState))) {
-        return reply.code(409).send({
-          error: 'retry-predecessor-not-quiescent',
-          detail: canonical.ok ? 'canonical predecessor cards are still active or unresolved' : canonical.detail,
-        });
-      }
-    }
-    const created = ctx.controlStore.createRun(sub, {
-      title: parsed.value.title,
+    // The single canonical launch body (one ops transaction: reconcile, compile, publish cards +
+    // audit, activate) lives in control/launch.ts. Every launch surface calls it; nothing forks it.
+    const outcome = await executeApprovedLaunch(ctx, sub, {
       proposalRef,
-      proposalRevision: Number(revision),
-      expectedProposalHash: stored.value.hash,
-      managerRuntime: parsed.value.manager.runtime,
-      managerModel: parsed.value.manager.model,
+      revision: Number(revision),
+      storedHash: stored.value.hash,
+      snapshot: stored.value.snapshot,
+      sessionToken: verifiedSession(req)?.token,
       idempotencyKey: string(body.idempotencyKey),
-      predecessorRunRef,
-      expectedPredecessorVersion: predecessorRunRef === null ? undefined : integer(body.expectedPredecessorVersion),
-      stages: parsed.value.stages.map((stage) => ({ stageId: stage.id, title: stage.title, dependsOn: [...stage.dependsOn] })),
+      predecessorRunRef: body.predecessorRunRef == null ? null : string(body.predecessorRunRef),
+      expectedPredecessorVersion: integer(body.expectedPredecessorVersion),
     });
-    if (!created.ok) return sendResult(reply, created);
-    const runRef = created.value.run.runRef;
-    let launchRun = created.value.run;
-    let gatesAlreadySatisfied = false;
-    if (created.replayed) {
-      if (created.value.run.publicationState === 'published') {
-        return reply.code(200).send({
-          ok: true,
-          runRef,
-          replayed: true,
-          cards: created.value.stages
-            .filter((stage) => stage.canonicalCardRef !== null)
-            .map((stage) => ({ stageId: stage.stageId, cardId: stage.canonicalCardRef })),
-        });
-      }
-      if (created.value.run.publicationState === 'waiting-human') {
-        const requests = created.value.humanRequests;
-        const accepted = requests.length > 0 && requests.every(acceptsBoundary);
-        if (!accepted) return reply.code(200).send({ ok: true, runRef, replayed: true, waitingHuman: true });
-        const released = ctx.controlStore.transitionPublication(
-          sub, runRef, created.value.run.version, 'pending',
-        );
-        if (!released.ok) return sendResult(reply, released);
-        const planned = ctx.controlStore.transitionRun(sub, runRef, released.value.version, 'planned');
-        if (!planned.ok) return sendResult(reply, planned);
-        launchRun = planned.value;
-        gatesAlreadySatisfied = true;
-        ctx.controlStore.appendEvent(sub, runRef, {
-          kind: 'governance', source: 'system', status: 'success', summary: 'all launch gates resolved; canonical publication released',
-        });
-      }
-      if (launchRun.publicationState !== 'pending') {
-        return reply.code(409).send({
-          error: 'launch-reconciliation-required',
-          runRef,
-          publicationState: launchRun.publicationState,
-        });
-      }
-    }
-    const waitingPolicies = compiled.value.stagePolicies.filter((item) => item.decision.disposition === 'waiting-human');
-    if (!gatesAlreadySatisfied && (compiled.value.humanGates.length > 0 || waitingPolicies.length > 0)) {
-      const requests: CreateHumanRequestInput[] = waitingPolicies.map((pending) => {
-        const stage = created.value.stages.find((item) => item.stageId === pending.stageId);
-        return {
-          stageRef: stage?.stageRef ?? null,
-          kind: 'governance-refusal',
-          title: `Governance review: ${pending.stageId}`,
-          prompt: pending.decision.reason,
-        };
-      });
-      requests.push(...compiled.value.humanGates.map((pending) => {
-        const stage = created.value.stages.find((item) => item.stageId === pending.stageId);
-        return {
-          stageRef: stage?.stageRef ?? null,
-          kind: pending.gate.kind,
-          title: pending.gate.id,
-          prompt: pending.gate.prompt,
-        };
-      }));
-      const requested = ctx.controlStore.createHumanRequests(sub, runRef, {
-        idempotencyKey: `${string(body.idempotencyKey)}:gates`, requests,
-      });
-      if (!requested.ok) return sendResult(reply, requested);
-      const publication = ctx.controlStore.transitionPublication(
-        sub, runRef, launchRun.version, 'waiting-human',
-      );
-      if (!publication.ok) return sendResult(reply, publication);
-      const waiting = ctx.controlStore.transitionRun(sub, runRef, publication.value.version, 'waiting-human');
-      if (!waiting.ok) return sendResult(reply, waiting);
-      return reply.code(202).send({ ok: true, runRef, waitingHuman: true });
-    }
-
-    if (!compiled.value.workflow) {
-      return reply.code(409).send({ error: 't3-approval-release-not-implemented', runRef });
-    }
-    const workflow = compiled.value.workflow;
-    const publishing = ctx.controlStore.transitionPublication(sub, runRef, launchRun.version, 'publishing');
-    if (!publishing.ok) return sendResult(reply, publishing);
-    const outcome = await launchWorkflowRun(workflow, { token: verifiedSession(req)?.token, config: ctx.sessionConfig }, {
-      repoRoot: ctx.repoRoot,
-      runPreamble: ctx.runPreamble,
-      runPy: ctx.runPy,
-      makeRunId: () => runRef,
-      publishBlocked: true,
-      stageRouting: (stage) => {
-        const approved = parsed.value.stages.find((candidate) => candidate.id === stage.id);
-        if (!approved) throw new Error(`approved proposal is missing stage '${stage.id}'`);
-        return { runtime: approved.worker.runtime, model: approved.worker.model };
-      },
-    });
-    if (!outcome.ok) {
-      const reconciliation = ctx.controlStore.transitionPublication(sub, runRef, publishing.value.version, 'reconcile-required');
-      if (reconciliation.ok) ctx.controlStore.transitionRun(sub, runRef, reconciliation.value.version, 'failed');
-      ctx.controlStore.createHumanRequest(sub, runRef, {
-        kind: 'intervention', title: 'Launch failed', prompt: 'detail' in outcome ? outcome.detail : outcome.problems.join('\n'),
-      });
-      return reply.code(500).send({ error: outcome.reason, detail: 'detail' in outcome ? outcome.detail : outcome.problems });
-    }
-    try {
-      const appendLocal = ctx.appendAuditLocal ?? appendAuditRowLocal;
-      const riskTier = parsed.value.stages.some((stage) => stage.riskTier === 'T3') ? 'T3'
-        : parsed.value.stages.some((stage) => stage.riskTier === 'T2') ? 'T2' : 'T1';
-      appendLocal(ctx.repoRoot, {
-        action: 'control-run-launch', owner: sub, target: parsed.value.project, riskTier,
-        result: `launched:${runRef}:${stored.value.hash}`,
-        detail: {
-          proposalRef,
-          proposalRevision: Number(revision),
-          proposalHash: stored.value.hash,
-          policyBaseCommit,
-          policyHashes: compiled.value.stagePolicies.map((stage) => ({ stageId: stage.stageId, policyHash: stage.decision.policyHash })),
-        },
-      }, ctx.now);
-      const [first, ...rest] = outcome.cards.map((card) => card.cardPath);
-      await commitPreparedCoordination(ctx.repoRoot, first, {
-        runGit: ctx.opsGit ?? defaultGitRunner,
-        alsoStage: [...rest, AUDIT_REL_PATH],
-        message: `chore(queue): launch approved run ${runRef}`,
-        // The cards and audit were compiled against policyBaseCommit. A rejected push means the
-        // canonical base changed, so do not rebase and publish stale routing under a newer ops head.
-        // The route enters reconcile-required and a fresh launch/reconciliation must recompile.
-        maxRetryPushes: 0,
-      });
-      for (const card of outcome.cards) {
-        const stage = created.value.stages.find((candidate) => candidate.stageId === card.stageId);
-        const proposalStage = parsed.value.stages.find((candidate) => candidate.id === card.stageId);
-        if (!stage || !proposalStage) throw new Error(`run projection missing stage '${card.stageId}'`);
-        const linked = ctx.controlStore.linkStageCard(sub, stage.stageRef, stage.version, card.cardId);
-        if (!linked.ok) throw new Error(linked.detail);
-        const attempt = ctx.controlStore.createAttempt(sub, stage.stageRef, {
-          expectedStageVersion: linked.value.version,
-          runtime: proposalStage.worker.runtime,
-          model: proposalStage.worker.model,
-        });
-        if (!attempt.ok) throw new Error(attempt.detail);
-        const session = ctx.controlStore.createWorkerSession(sub, attempt.value.attemptRef, { expectedAttemptVersion: attempt.value.version });
-        if (!session.ok) throw new Error(session.detail);
-      }
-      const published = ctx.controlStore.transitionPublication(sub, runRef, publishing.value.version, 'published');
-      if (!published.ok) throw new Error(published.detail);
-      if (!ctx.controlBroker || !ctx.runAutomatic) {
-        const waiting = ctx.controlStore.transitionRun(sub, runRef, published.value.version, 'waiting-human');
-        if (!waiting.ok) throw new Error(waiting.detail);
-        ctx.controlStore.createHumanRequest(sub, runRef, {
-          kind: 'governance-refusal', title: 'Automatic execution activation is gated',
-          prompt: 'Canonical cards are published, but the daemon Broker/execution adapters are not activated. Complete the separate runtime approval before release.',
-        });
-        ctx.controlStore.appendEvent(sub, runRef, {
-          kind: 'governance', source: 'system', status: 'waiting', summary: 'canonical run published; runtime activation remains gated',
-        });
-        return reply.code(202).send({ ok: true, runRef, cards: outcome.cards, waitingHuman: true, activationGated: true });
-      }
-      const rootStageIds = new Set(parsed.value.stages.filter((stage) => stage.dependsOn.length === 0).map((stage) => stage.id));
-      const rootCards = outcome.cards.filter((card) => rootStageIds.has(card.stageId)).map((card) => card.cardId);
-      if (rootCards.length !== rootStageIds.size) throw new Error('managed root card projection differs from the approved proposal');
-      await activateManagedRootCards({
-        repoRoot: ctx.repoRoot, runRef, cardRefs: rootCards, runPy: ctx.runPy,
-        runGit: ctx.opsGit ?? defaultGitRunner,
-        authorizeAfterPrepare: () => {
-          const currentProposal = validatePlanProposal(stored.value.snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
-          const currentCompiled = currentProposal.ok
-            ? compileApprovedProposal(currentProposal.value, stored.value.hash, stored.value.hash, {
-                policy: loadPolicyEnvironment(ctx.repoRoot, currentProposal.value.project, currentProposal.value.governanceRefs),
-                defaultWorkers: defaultWorkers(ctx.repoRoot),
-              })
-            : null;
-          if (!currentCompiled?.ok
-            || JSON.stringify(currentCompiled.value.stagePolicies) !== JSON.stringify(compiled.value.stagePolicies)) {
-            throw new Error('managed root activation policy changed');
-          }
-        },
-      });
-      ctx.controlStore.appendEvent(sub, runRef, {
-        kind: 'lifecycle', source: 'system', status: 'running',
-        summary: 'approved run published; automatic executor owns Manager and Worker startup',
-      });
-      void ctx.runAutomatic({ subject: sub, runRef, proposal: parsed.value }).catch((error: unknown) => {
-        ctx.controlStore.createHumanRequest(sub, runRef, {
-          kind: 'intervention', title: 'Automatic execution needs intervention',
-          prompt: error instanceof Error ? error.message : 'automatic execution adapter failed',
-        });
-      });
-      return reply.code(201).send({ ok: true, runRef, cards: outcome.cards });
-    } catch (error) {
-      const latest = ctx.controlStore.getRun(sub, runRef);
-      if (latest.ok && latest.value.run.publicationState === 'publishing') {
-        ctx.controlStore.transitionPublication(sub, runRef, latest.value.run.version, 'reconcile-required');
-      } else if (latest.ok && latest.value.run.publicationState === 'published' && latest.value.run.state === 'planned') {
-        ctx.controlStore.transitionRun(sub, runRef, latest.value.run.version, 'waiting-human');
-      }
-      ctx.controlStore.createHumanRequest(sub, runRef, {
-        kind: 'intervention', title: 'Launch reconciliation required',
-        prompt: 'Canonical publication may have succeeded but the durable projection did not finish. Reconcile by runRef before retrying.',
-      });
-      return reply.code(500).send({ error: 'launch-reconciliation-required', detail: error instanceof Error ? error.message : String(error) });
-    }
-    });
+    return reply.code(outcome.status).send(outcome.body);
   });
 
   scope.get('/api/control/runs', { preHandler }, async (req, reply) => {

@@ -29,6 +29,9 @@ const MAX_ACTION_CHARS = 256;
 const MAX_WORK_ORDER_CHARS = 64 * 1024;
 const MAX_DESCRIPTION_CHARS = 64 * 1024;
 
+/** Every workflow target must live under `orgs/<project>/` — see the containment note in validateStage. */
+const ORGS_DIR = 'orgs';
+
 const SAFE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const SAFE_ACTION_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
 
@@ -96,6 +99,7 @@ function validateStage(
   raw: unknown,
   index: number,
   body: string,
+  project: string,
 ): { ok: true; value: WorkflowStageDef } | { ok: false; detail: string } {
   const label = `stages[${index}]`;
   if (!isRecord(raw)) return { ok: false, detail: `${label} must be a mapping` };
@@ -122,6 +126,16 @@ function validateStage(
   const target = raw.target;
   if (!isSafeRepoRelativePath(target)) {
     return { ok: false, detail: `${label}.target must be a canonical safe repo-relative path` };
+  }
+  // ORG CONTAINMENT. compile.ts derives the proposal's write scope FROM these targets, so without this
+  // the downstream scope checks (compiler.ts's widening refusal, policy.ts's `within(target, scope.write)`)
+  // compare a set against itself and can never fire. Bounding each target to the definition's own project
+  // tree is what makes those checks mean something: a def for project X cannot declare a target anywhere
+  // else in the repo (e.g. dashboard/server/control/policy.ts), whatever its prose claims. Human-owned
+  // `governance/` and `CLAUDE.md` stay refused by policy.ts on top of this.
+  const orgTree = `${ORGS_DIR}/${project}`;
+  if (target !== orgTree && !target.startsWith(`${orgTree}/`)) {
+    return { ok: false, detail: `${label}.target must be inside this definition's own org tree '${orgTree}/'` };
   }
   // A stage may inline a single-line workOrder, or omit it and inherit the Markdown body (single-stage
   // authoring). The resolved value must be a non-empty, bounded, NUL-free string.
@@ -224,7 +238,7 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
   const stages: WorkflowStageDef[] = [];
   const ids = new Set<string>();
   for (let index = 0; index < rawStages.length; index += 1) {
-    const stage = validateStage(rawStages[index], index, description);
+    const stage = validateStage(rawStages[index], index, description, project);
     if (!stage.ok) return stage;
     if (ids.has(stage.value.id)) return { ok: false, detail: `duplicate stage id '${stage.value.id}'` };
     ids.add(stage.value.id);
