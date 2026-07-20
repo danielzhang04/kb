@@ -78,13 +78,18 @@ def listen(on_wake: Callable[[], None], model_name: str = "hey_jarvis",
         dev = resolve_input_device(device)
         logger.info("wake listener on input device: %s",
                     sd.query_devices(dev)["name"] if dev is not None else "system default")
+        import time as _time
         with sd.InputStream(device=dev, samplerate=SAMPLE_RATE, channels=1, dtype="int16",
                             blocksize=FRAME_SAMPLES) as stream:
+            last_trigger = 0.0
             while True:
                 frame, _ = stream.read(FRAME_SAMPLES)
                 scores = model.predict(frame[:, 0])
                 if scores.get(model_name, 0.0) > threshold:
-                    on_wake()
+                    now = _time.monotonic()
+                    if now - last_trigger > 3.0:   # refractory window: one wake per phrase,
+                        last_trigger = now          # not one per 80ms frame while scores stay high
+                        on_wake()
     except Exception:
         logger.critical(
             "wake-word listener died — Atlas is DEAF until the worker restarts "

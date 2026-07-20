@@ -20,7 +20,7 @@ from pathlib import Path
 
 import yaml
 
-from livekit.agents import Agent, AgentSession, JobContext, WorkerOptions, cli, mcp
+from livekit.agents import Agent, AgentSession, JobContext, WorkerOptions, cli
 from livekit.plugins import anthropic, deepgram, silero
 
 from kbmcp import kb_tools
@@ -70,6 +70,39 @@ def seed_keyterms(root: Path) -> list[str]:
     return sorted(terms)
 
 
+def _kb_function_tools():
+    """The 5 kb read tools as LiveKit function_tools delegating to fastlane._dispatch
+    (same pattern as pairing_smoke.py path b — the proven-good tool path)."""
+    from livekit.agents import RunContext, function_tool
+
+    @function_tool()
+    async def queue_summary(context: RunContext, state: str | None = None) -> str:
+        """Task-card queue counts + cards, optionally one state (inbox/working/done/approvals)."""
+        return fastlane._dispatch("queue_summary", {"state": state} if state else {})
+
+    @function_tool()
+    async def read_dashboard(context: RunContext, name: str = "executive") -> str:
+        """Read a dashboard markdown (default: executive)."""
+        return fastlane._dispatch("read_dashboard", {"name": name})
+
+    @function_tool()
+    async def read_state(context: RunContext, project: str) -> str:
+        """Read a project's STATE.md."""
+        return fastlane._dispatch("read_state", {"project": project})
+
+    @function_tool()
+    async def ledger_rollup(context: RunContext) -> str:
+        """Today's cost (USD) and activity counts."""
+        return fastlane._dispatch("ledger_rollup", {})
+
+    @function_tool()
+    async def running_work(context: RunContext) -> str:
+        """Cards currently in 'working'."""
+        return fastlane._dispatch("running_work", {})
+
+    return [queue_summary, read_dashboard, read_state, ledger_rollup, running_work]
+
+
 async def entrypoint(ctx: JobContext) -> None:
     repl.load_env()  # DEEPGRAM_API_KEY / ANTHROPIC_API_KEY -> process env, before plugins build
     cfg = _cfg()
@@ -79,12 +112,13 @@ async def entrypoint(ctx: JobContext) -> None:
     if keyterms:
         stt_kwargs["keyterm"] = keyterms
 
-    kb_mcp = mcp.MCPServerStdio(
-        command=str(ATLAS / ".venv" / "Scripts" / "python.exe"),
-        args=["-m", "kbmcp.server"],
-        cwd=str(ATLAS),  # run from atlas/ so `python -m kbmcp.server` resolves the package
-    )
-
+    # Tool path REVERSED from the pairing-smoke verdict (2026-07-20 live desk session): native MCP
+    # attach 400s on the SECOND llm turn — MCP TextContent carries an `annotations` field the
+    # Anthropic API rejects ('tool_result.content.0.text.annotations: Extra inputs are not
+    # permitted'), poisoning the chat history (the #2519 bug class; smoke was one turn too shallow).
+    # Fallback per plan decision rule: the same 5 kb read tools as LiveKit function_tools
+    # delegating to fastlane._dispatch in-process. kb-MCP server remains the boundary for
+    # everything else; retest native attach on livekit-agents upgrade.
     await ctx.connect()  # console mode: connects the simulated room
     session = AgentSession(
         stt=deepgram.STTv2(**stt_kwargs),
@@ -96,7 +130,7 @@ async def entrypoint(ctx: JobContext) -> None:
         max_tool_steps=cfg["max_tool_turns"],        # 5, not the plugin default 3
     )
     await session.start(
-        agent=Agent(instructions=fastlane.SYSTEM, mcp_servers=[kb_mcp]),
+        agent=Agent(instructions=fastlane.SYSTEM, tools=_kb_function_tools()),
         room=ctx.room,
     )
 
