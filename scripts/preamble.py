@@ -11,10 +11,26 @@ DEFAULT_LIMIT = 5.00
 
 
 def _daily_limit(repo_root: Path) -> float:
+    """The daily ceiling this gate enforces, in USD.
+
+    Accepts `daily_subscription_usd_limit` first, falling back to the older
+    `daily_usd_limit`. The rename is the point, not cosmetic: this gate compares against
+    today's rows in `ledgers/cost/`, and API image/TTS spend is never written there — so
+    it only ever measures subscription steps, which log 0.0. Read as a general spend cap
+    it was a control that measured nothing: a $5.00 limit standing next to a $17-27 video
+    that it passed every time. Scoping the key name to what it actually governs makes that
+    legible. API spend is governed per-run by card authorisation instead.
+
+    Both keys are read so `governance/` (human-edited only) can be renamed independently of
+    this file, in either order, with no window where the gate silently falls back to
+    DEFAULT_LIMIT and quietly stops reflecting the configured value.
+    """
     f = Path(repo_root) / "governance" / "budget.yaml"
     if f.exists():
         data = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
-        return float(data.get("daily_usd_limit", DEFAULT_LIMIT))
+        for key in ("daily_subscription_usd_limit", "daily_usd_limit"):
+            if key in data:
+                return float(data[key])
     return DEFAULT_LIMIT
 
 
