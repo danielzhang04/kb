@@ -10,9 +10,10 @@
  * `render()`-per-section matches the tabbed-panel convention already in `App.tsx` (the Sentinel layer
  * panels are `{ id, label, render }` too), so this introduces no new pattern.
  *
- * Visual rules (binding): the active tab and the selected anything is the 2px LEFT-BORDER marker
- * learned in `.mc-nav-item--active` — never a fill wash, never a decorative hue. The only colours in
- * here are data-encoding: the status dot and the amber attention dot. Ids/hashes/counts/timestamps are
+ * Visual rules (binding): the active tab and the selected anything use the exact pair learned in
+ * `.mc-nav-item--active` — the 2px LEFT-BORDER marker plus `--accent-quiet`, which app.css defines as
+ * the "selected wash — subtle raised, not a colour". Never a decorative hue, never a glow. The only
+ * colours in here are data-encoding: the status dot and the amber attention dot. Ids/hashes/counts/timestamps are
  * mono + tabular-nums via `.mc-mono`.
  */
 import { useState } from 'react';

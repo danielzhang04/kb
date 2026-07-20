@@ -2,8 +2,9 @@
  * arc-3 — the shared entity-detail shell (src/entity/EntityDetail.tsx).
  *
  * Every colour here comes from a token in src/styles/app.css, so BOTH themes work with no hardcoded
- * hexes. The active tab uses the app's single active/selected language: a 2px LEFT-BORDER marker
- * (learned in .mc-nav-item--active). No decorative accent, no fill wash, no glow/gradient.
+ * hexes. The active tab uses the app's single active/selected language learned in .mc-nav-item--active:
+ * a 2px LEFT-BORDER marker plus --accent-quiet, the sanctioned "selected wash — subtle raised, not a
+ * colour". No decorative accent hue, no glow, no gradient.
  * Spacing is 4px-atomic; radii are the 6/8/12 tokens. Motion is 150ms ease-out on opacity/transform.
  */
 
@@ -463,4 +464,32 @@
   color: var(--fg-dim);
   font-size: var(--text-xs);
   line-height: 1.6;
+}
+
+/* ---- The dead-link state ----
+ *
+ * Shared by every entity whose focused id can stop existing: a pruned run, a workflow definition deleted
+ * from `workflows/`, an agent off the roster. All three used to degrade silently — the run case kept the
+ * PREVIOUS entity on screen with live governed buttons, the other two dropped the operator on a roster
+ * with no message. This names the missing id and renders the one affordance that still makes sense.
+ */
+.entity-missing {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  max-width: 56rem;
+}
+
+.entity-missing h3 {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.entity-missing__ref {
+  margin: 0;
+  color: var(--fg-faint);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
 }

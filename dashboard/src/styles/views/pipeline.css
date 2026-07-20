@@ -15,7 +15,7 @@
 
 .v-pipeline__head {
   flex: 0 0 auto;
-  padding: var(--space-5) var(--space-6) var(--space-4);
+  padding: var(--space-4) var(--space-6) var(--space-4);
   border-bottom: 1px solid var(--border);
 }
 
@@ -143,6 +143,15 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+}
+
+/*
+ * Pipeline.tsx sets `hidden` on this while a run detail is open. An author `display: flex` outranks the
+ * UA sheet's `[hidden] { display: none }`, so without this the legacy graph stayed on screen AND kept
+ * its flex share — which is exactly the height the uncapped run detail now needs.
+ */
+.v-pipeline__legacy[hidden] {
+  display: none;
 }
 
 .v-pipeline__legacy > summary {
