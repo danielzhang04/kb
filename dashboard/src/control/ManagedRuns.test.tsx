@@ -164,3 +164,128 @@ describe('ManagedRuns', () => {
     expect(screen.getByRole('button', { name: 'Unlock cockpit' })).toBeTruthy();
   });
 });
+
+/* ============================================================================
+ * THE INVARIANT
+ *
+ *   No governed action button may EVER be rendered against a run other than the one the nav stack is
+ *   focused on.
+ *
+ * The bug this locks down: `detail` was never cleared when the focused run changed, and `loadRun` only
+ * assigned it on success. So following a link to a run that no longer exists (retention prunes runs, and
+ * the "Retried from run" link on a successor reaches a pruned predecessor) set an error banner and left
+ * the PREVIOUS run's detail mounted — its title, its stages, and live `Stop run` / `Retry as successor`
+ * buttons closing over the OLD `runRef`. The nav stack believed it was on run-ghost, the screen showed
+ * run-1, and a Retry click would have launched a successor of the wrong run.
+ * ========================================================================= */
+
+/** Every governed mutation `RunCockpit` puts in its header. None may exist without a focused run. */
+const GOVERNED_ACTIONS = ['Stop run', 'Retry as successor'];
+
+function expectNoGovernedActions(): void {
+  for (const name of GOVERNED_ACTIONS) {
+    expect(screen.queryByRole('button', { name })).toBeNull();
+  }
+}
+
+/** The non-ghost half of the fetch surface, shared by the stubs below. */
+function okJsonFor(url: string): unknown {
+  if (url.includes('/events')) return { ok: true, value: [] };
+  if (url.includes('/revisions/')) {
+    return { ok: true, value: { proposalRef: 'proposal-1', revision: 2, hash: 'a'.repeat(64), previousHash: null, title: 't', createdAt: '2026-07-18T10:00:00.000Z', approval: null, sourceComposerRef: 'c', sourceTurnId: 't', snapshot: { stages: [] } } };
+  }
+  if (url.includes('/api/control/runs/')) return detailFor(url.split('/api/control/runs/')[1].split('?')[0]);
+  return { runs };
+}
+
+/** Starts focused on run-1 and offers a link to a run that no longer exists — the reviewer's scenario. */
+function DeadLinkHarness(): React.JSX.Element {
+  const [stack, setStack] = useState<NavEntry[]>(() =>
+    pushStack(rootStack('pipeline'), { view: 'pipeline', focus: { kind: 'run', id: 'run-1' } }));
+  const entry = stack[stack.length - 1];
+  return (
+    <>
+      <button
+        type="button"
+        data-testid="follow-dead-link"
+        onClick={() => setStack((s) => pushStack(s, { view: 'pipeline', focus: { kind: 'run', id: 'run-ghost' } }))}
+      >
+        follow dead link
+      </button>
+      <ManagedRuns
+        sessionToken="token-1"
+        runs={runs}
+        focusRunRef={entry.focus?.kind === 'run' ? entry.focus.id : null}
+        onOpenRun={(runRef) => setStack((s) => pushStack(s, { view: 'pipeline', focus: { kind: 'run', id: runRef } }))}
+        onBackToRuns={() => setStack((s) => backStack(s))}
+        now={Date.parse('2026-07-18T12:00:00.000Z')}
+      />
+    </>
+  );
+}
+
+describe('ManagedRuns — a focused run that does not exist', () => {
+  /** Like `stubFetch`, but `run-ghost` 404s the way a pruned run really does. */
+  function stubFetchWithGhost(): void {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('run-ghost')) {
+        return { ok: false, status: 404, json: async () => ({ ok: false, reason: 'run was not found' }) } as Response;
+      }
+      return { ok: true, status: 200, json: async () => okJsonFor(url) } as Response;
+    }));
+  }
+
+  it('NEVER renders another run’s detail or governed actions when the focused run 404s', async () => {
+    stubFetchWithGhost();
+    render(<DeadLinkHarness />);
+
+    // Establish the precondition the bug needed: run-1 IS loaded, with a governed action live.
+    await screen.findByTestId('entity-detail-run');
+    expect(screen.getByTestId('entity-detail-title').textContent).toBe(LONG_TITLE);
+    expect(screen.getByRole('button', { name: 'Stop run' })).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId('follow-dead-link'));
+
+    // THE INVARIANT: the stack is on run-ghost, so nothing belonging to run-1 may survive.
+    await waitFor(() => expect(screen.getByTestId('run-not-found')).toBeTruthy());
+    expect(screen.queryByTestId('entity-detail-run')).toBeNull();
+    expect(screen.queryByText(LONG_TITLE)).toBeNull();
+    expectNoGovernedActions();
+  });
+
+  it('names the missing run rather than showing a blank panel or the grid', async () => {
+    stubFetchWithGhost();
+    render(<DeadLinkHarness />);
+    await screen.findByTestId('entity-detail-run');
+    fireEvent.click(screen.getByTestId('follow-dead-link'));
+
+    await waitFor(() => expect(screen.getByTestId('run-not-found')).toBeTruthy());
+    // The operator is told WHICH run is gone...
+    expect(screen.getByTestId('run-not-found-ref').textContent).toBe('run-ghost');
+    // ...is not silently dumped back on the grid, which would hide that the link was dead...
+    expect(screen.queryByTestId('run-grid')).toBeNull();
+    // ...but does get a way out.
+    expect(screen.getByTestId('run-not-found-back')).toBeTruthy();
+  });
+
+  it('drops the previous detail the instant focus moves, before the next load resolves', async () => {
+    // The 404 path is not the only way to strand the operator: ANY in-flight load leaves a window in
+    // which a stale detail could still be mounted under the new run's nav entry. It must not be.
+    const neverResolves = new Promise<never>(() => { /* deliberately pending forever */ });
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('run-ghost')) return neverResolves;
+      return { ok: true, status: 200, json: async () => okJsonFor(url) } as Response;
+    }));
+
+    render(<DeadLinkHarness />);
+    await screen.findByTestId('entity-detail-run');
+    expect(screen.getByRole('button', { name: 'Stop run' })).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId('follow-dead-link'));
+
+    await waitFor(() => expect(screen.queryByTestId('entity-detail-run')).toBeNull());
+    expectNoGovernedActions();
+  });
+});

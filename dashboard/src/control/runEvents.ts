@@ -59,6 +59,25 @@ export function checkpointInfo(event: OperationalEventDto): CheckpointInfo | nul
   };
 }
 
+/**
+ * The server's `MAX_LONG_TEXT` — `store.ts` stores a diff as `cleanText(input.diff, MAX_LONG_TEXT)` =
+ * `redactSensitiveText(...).slice(0, 64 * 1024)`. A diff that lands exactly on this length was cut by
+ * that slice; a diff shorter than it was not. That is the only truncation signal on the wire, and it is
+ * enough to mark the affected diffs specifically instead of letting them render as if complete.
+ */
+export const MAX_DIFF_BYTES = 64 * 1024;
+
+/**
+ * True when this diff was cut short by the server's 64KB cap, so the `<pre>` is NOT the whole change.
+ *
+ * Exact-length equality can in principle fire on a diff that happens to be precisely 64KB and was never
+ * cut. Erring that way is deliberate: over-warning tells the operator to go look at the real diff, while
+ * under-warning renders a partial change as complete — only one of those can mislead a review.
+ */
+export function isDiffTruncated(event: OperationalEventDto): boolean {
+  return typeof event.diff === 'string' && event.diff.length >= MAX_DIFF_BYTES;
+}
+
 /** True when this event carries a rendered diff body — the "Changes" (code history) feed. */
 export function isChangeEvent(event: OperationalEventDto): boolean {
   return typeof event.diff === 'string' && event.diff.trim().length > 0;

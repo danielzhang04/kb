@@ -45,9 +45,15 @@
   font-size: var(--text-sm);
 }
 
+/*
+ * This surface holds the WHOLE run detail (four sections, full diffs, the full activity trace), not the
+ * short run strip it was written for. A `max-height: 70vh` here made the detail a nested scroller inside
+ * the page — the operator scrolled a diff in a box inside a box. So it is the flexible region instead:
+ * it takes the height its parent column has left and owns the page's single scroll, with no cap.
+ */
 .control-managed-runs {
-  flex: 0 0 auto;
-  max-height: 70vh;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
   padding: var(--space-4) var(--space-6);
   border-bottom: 1px solid var(--border);
@@ -115,7 +121,9 @@
   outline-offset: -1px;
 }
 
-/* Selection is the LEFT-BORDER MARKER only — no fill wash, no accent, no glow. */
+/* Selection is the sanctioned pair learned in `.mc-nav-item--active`: the 2px LEFT-BORDER MARKER plus
+ * `--accent-quiet`, which app.css defines as the "selected wash — subtle raised, not a colour". No
+ * decorative accent and no glow. */
 .run-card--selected {
   border-left-color: var(--accent-strong);
   background: var(--accent-quiet);
@@ -161,11 +169,6 @@
   .run-card__rollups {
     display: none;
   }
-}
-
-.control-managed-runs .control-cockpit {
-  height: auto;
-  padding: var(--space-4) 0 0;
 }
 
 .control-retention {
@@ -242,7 +245,7 @@
 }
 
 .control-proposal {
-  padding: var(--space-5);
+  padding: var(--space-4);
 }
 
 .control-proposal__head,
@@ -416,7 +419,7 @@
 .control-cockpit {
   height: 100%;
   overflow: auto;
-  padding: var(--space-5);
+  padding: var(--space-4);
 }
 
 .control-cockpit__grid {
@@ -714,6 +717,13 @@
 .run-change__meta {
   flex: 0 0 auto;
   color: var(--fg-faint);
+  font-size: var(--text-xs);
+}
+
+/* Amber, matching `.run-card__needs-you`: this is data-encoding (the diff is incomplete), not decoration. */
+.run-change__truncated {
+  margin: var(--space-2) 0 0;
+  color: var(--warning);
   font-size: var(--text-xs);
 }
 

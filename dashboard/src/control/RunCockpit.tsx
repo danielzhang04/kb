@@ -33,7 +33,8 @@ import { decisionsForHumanRequest } from './humanBoundaries';
 import { EntityDetail, type DetailSection, type EntityLink } from '../entity/EntityDetail';
 import { agentIdsForRun } from './entityLinks';
 import type { NavTarget } from '../nav/stack';
-import { changeEvents, checkpointInfo, eventClock, eventLabel, timestampLabel } from './runEvents';
+import { changeEvents, checkpointInfo, eventClock, eventLabel, isDiffTruncated, timestampLabel } from './runEvents';
+import type { RunEventWindow } from './runEventWindow';
 import { runTone } from './RunGrid';
 import './control.css';
 
@@ -69,6 +70,14 @@ export interface RunCockpitProps {
    */
   cardOwners?: Map<string, string>;
   workflowId?: string | null;
+  /**
+   * What `events` actually IS relative to the run's full history — see {@link RunEventWindow}.
+   *
+   * Without this the tab printed `events.length` while the grid card printed the true `eventCount`, so a
+   * 5,000-event run read "5000 events" in one place and "500" in the other with nothing explaining the
+   * gap. Omitted (standalone/test use) means "`events` is everything there is".
+   */
+  eventWindow?: RunEventWindow;
 }
 
 type RerouteDisposition =
@@ -320,20 +329,41 @@ export function ChangesSection({ events }: { events: OperationalEventDto[] }): R
     return <p className="control-help">No file changes have been recorded for this run yet.</p>;
   }
   return (
-    <ol className="run-changes" data-testid="run-changes">
-      {changes.map((event) => (
-        <li key={event.cursor} className="run-change" data-testid={`run-change-${event.cursor}`}>
-          <div className="run-change__head">
-            <code className="mc-mono run-change__path">{event.path ?? 'unknown path'}</code>
-            <span className="mc-mono run-change__meta">
-              {eventClock(event.createdAt)}
-              {event.attemptRef ? ` · ${event.attemptRef}` : ''}
-            </span>
-          </div>
-          <pre className="run-change__diff" data-testid={`run-change-${event.cursor}-diff`}>{event.diff}</pre>
-        </li>
-      ))}
-    </ol>
+    <>
+      {/*
+        * The Activity stream already tells the operator its feed is filtered. Changes calls itself "the
+        * code history" and said nothing, while every diff here has been through
+        * `redactSensitiveText(...).slice(0, 64 * 1024)` server-side and redacted again in
+        * `publicEvents.ts`. A redacted, 64KB-clipped diff rendered raw into a `<pre>` LOOKS complete,
+        * which is the failure mode: an operator reviewing a change has to know what they are not seeing.
+        */}
+      <p className="control-help" data-testid="run-changes-note">
+        Diffs are redacted server-side and each is capped at 64KB; treat this as a review aid, not the
+        authoritative patch. Individually truncated diffs are marked.
+      </p>
+      <ol className="run-changes" data-testid="run-changes">
+        {changes.map((event) => {
+          const truncated = isDiffTruncated(event);
+          return (
+            <li key={event.cursor} className="run-change" data-testid={`run-change-${event.cursor}`}>
+              <div className="run-change__head">
+                <code className="mc-mono run-change__path">{event.path ?? 'unknown path'}</code>
+                <span className="mc-mono run-change__meta">
+                  {eventClock(event.createdAt)}
+                  {event.attemptRef ? ` · ${event.attemptRef}` : ''}
+                </span>
+              </div>
+              <pre className="run-change__diff" data-testid={`run-change-${event.cursor}-diff`}>{event.diff}</pre>
+              {truncated ? (
+                <p className="run-change__truncated" data-testid={`run-change-${event.cursor}-truncated`}>
+                  Truncated at the 64KB cap — the rest of this diff is not on the wire.
+                </p>
+              ) : null}
+            </li>
+          );
+        })}
+      </ol>
+    </>
   );
 }
 
@@ -360,6 +390,7 @@ export function RunCockpit({
   onHumanResponse,
   cardOwners,
   workflowId,
+  eventWindow,
 }: RunCockpitProps): React.JSX.Element {
   const [message, setMessage] = useState('');
   const [checkpoint, setCheckpoint] = useState('');
@@ -367,6 +398,23 @@ export function RunCockpit({
   const [responses, setResponses] = useState<Record<string, string>>({});
   const [routingDrafts, setRoutingDrafts] = useState<Record<string, { runtime: string; model: string }>>({});
   const manager = detail.sessions.find((session) => session.sessionRef === detail.run.managerSessionRef);
+
+  /**
+   * What the operator is actually looking at in the Activity stream, said plainly.
+   *
+   * Three distinct cases, and the third is the one that must not be papered over: when paging stopped at
+   * the cockpit's bound, `events` is an interior slice — neither the head nor the tail — and claiming it
+   * is "the most recent" would be a lie. Silence is not an option for any of them.
+   */
+  const windowNote = ((): string | null => {
+    if (!eventWindow) return null;
+    if (eventWindow.complete && eventWindow.seen <= events.length) return null;
+    if (eventWindow.complete) {
+      return `Showing the most recent ${events.length} of ${eventWindow.seen} events; earlier ones are not loaded.`;
+    }
+    return `This run has more than ${eventWindow.seen} events — more than the cockpit will page through, `
+      + `so these ${events.length} are an interior slice and the newest events are NOT shown.`;
+  })();
   const openRequests = detail.humanRequests.filter((request) => request.state === 'open');
   const resolvedRequests = detail.humanRequests.filter((request) => request.state !== 'open');
 
@@ -523,12 +571,17 @@ export function RunCockpit({
     {
       id: 'timeline',
       label: 'Activity stream',
-      count: events.length,
+      // The run's TRUE event count, so this tab agrees with the `eventCount` on the run's grid card.
+      // How much of it is actually on screen is stated in the note below, not hidden in this number.
+      count: eventWindow?.seen ?? events.length,
       render: () => (
         <>
           <p className="control-help">
             Visible operational trace only; private reasoning and raw tool payloads are not part of this feed.
           </p>
+          {windowNote ? (
+            <p className="control-help" data-testid="run-activity-window-note">{windowNote}</p>
+          ) : null}
           <TimelineSection events={events} />
         </>
       ),

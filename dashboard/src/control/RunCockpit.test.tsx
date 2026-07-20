@@ -176,6 +176,96 @@ describe('RunCockpit', () => {
     expect(screen.getByText(/No file changes have been recorded/i)).toBeTruthy();
   });
 
+  /* ---- arc-3 fix: what the operator is NOT being shown, said out loud ---- */
+
+  /**
+   * The Activity stream already carried an honest note about its filtering. Changes — which the code
+   * itself calls "the code history" — carried none, while every diff on it has been through
+   * `redactSensitiveText(...).slice(0, 64 * 1024)` server-side and redacted again in `publicEvents.ts`.
+   * A redacted, clipped diff rendered raw into a `<pre>` LOOKS complete. That is the failure mode.
+   */
+  it('discloses that diffs are redacted and capped, not raw patches', () => {
+    const withDiff: OperationalEventDto[] = [{
+      cursor: 9, runRef: 'run-1', kind: 'diff', source: 'worker', stageRef: null, attemptRef: null,
+      sessionRef: null, status: 'success', summary: null, command: null, toolName: null,
+      path: 'src/a.ts', diff: '+one', createdAt: '2026-07-18T10:02:00.000Z', checkpoint: null,
+    }];
+    render(<RunCockpit detail={detail} events={withDiff} />);
+    openTab('changes');
+
+    const note = screen.getByTestId('run-changes-note').textContent ?? '';
+    expect(note).toMatch(/redacted/i);
+    expect(note).toMatch(/64KB/i);
+  });
+
+  it('marks the specific diffs that were truncated, and only those', () => {
+    const withDiffs: OperationalEventDto[] = [
+      {
+        cursor: 9, runRef: 'run-1', kind: 'diff', source: 'worker', stageRef: null, attemptRef: null,
+        sessionRef: null, status: 'success', summary: null, command: null, toolName: null,
+        path: 'src/small.ts', diff: '+one', createdAt: '2026-07-18T10:02:00.000Z', checkpoint: null,
+      },
+      {
+        // Exactly the server's MAX_LONG_TEXT: this diff hit the slice and is NOT the whole change.
+        cursor: 10, runRef: 'run-1', kind: 'diff', source: 'worker', stageRef: null, attemptRef: null,
+        sessionRef: null, status: 'success', summary: null, command: null, toolName: null,
+        path: 'src/huge.ts', diff: 'x'.repeat(64 * 1024), createdAt: '2026-07-18T10:03:00.000Z', checkpoint: null,
+      },
+    ];
+    render(<RunCockpit detail={detail} events={withDiffs} />);
+    openTab('changes');
+
+    expect(screen.getByTestId('run-change-10-truncated')).toBeTruthy();
+    expect(screen.queryByTestId('run-change-9-truncated')).toBeNull();
+  });
+
+  /**
+   * The count mismatch the reviewer caught: the grid card printed the true `eventCount` while this tab
+   * printed the capped `events.length`, so a 5,000-event run read "5000 events" in one place and "500"
+   * in the other with nothing explaining the gap.
+   */
+  it('shows the run’s TRUE event count on the tab and says how much of it is on screen', () => {
+    render(
+      <RunCockpit
+        detail={detail}
+        events={events}
+        eventWindow={{ events, seen: 5_000, complete: true }}
+      />,
+    );
+
+    // Agrees with the grid card, not with the window length.
+    expect(within(screen.getByTestId('entity-tab-timeline')).getByText('5000')).toBeTruthy();
+
+    openTab('timeline');
+    const note = screen.getByTestId('run-activity-window-note').textContent ?? '';
+    expect(note).toMatch(/most recent/i);
+    expect(note).toContain('5000');
+  });
+
+  it('does NOT claim "most recent" when paging stopped short of the tail', () => {
+    render(
+      <RunCockpit
+        detail={detail}
+        events={events}
+        eventWindow={{ events, seen: 50_000, complete: false }}
+      />,
+    );
+    openTab('timeline');
+
+    const note = screen.getByTestId('run-activity-window-note').textContent ?? '';
+    // The window here is an interior slice. Calling it the tail would be a lie.
+    expect(note).not.toMatch(/most recent/i);
+    expect(note).toMatch(/newest events are NOT shown/i);
+  });
+
+  it('says nothing extra when the whole trace fits in the window', () => {
+    render(
+      <RunCockpit detail={detail} events={events} eventWindow={{ events, seen: events.length, complete: true }} />,
+    );
+    openTab('timeline');
+    expect(screen.queryByTestId('run-activity-window-note')).toBeNull();
+  });
+
   it("renders a checkpoint's STATE as distinct from its NAME", () => {
     // The old chain read `summary` first, which on the broker path holds the STATE — so it printed
     // the bare word "reached" and lost "tests-green" entirely. Both must now be present and separate.

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { SESSION_INVALIDATED_EVENT } from '../lib/authClient';
 import {
+  ControlApiError,
   createManagerSuccessor,
   getProposalRevision,
   getRun,
-  listRunEvents,
   listRuns,
   launchProposalRevision,
   respondToHumanRequest,
@@ -22,6 +22,8 @@ import {
   type StageDto,
 } from './controlClient';
 import { listProposalRevisions, type ProposalRevisionMetadataDto } from './controlClient';
+import '../styles/views/entity.css';
+import { loadRunEventWindow, type RunEventWindow } from './runEventWindow';
 import { RunCockpit } from './RunCockpit';
 import { RunGrid } from './RunGrid';
 import { RetentionPanel } from './RetentionPanel';
@@ -96,9 +98,16 @@ export function ManagedRuns({
   const [localOpenRef, setLocalOpenRef] = useState<string | null>(null);
   const [detail, setDetail] = useState<RunDetailDto | null>(null);
   const [events, setEvents] = useState<OperationalEventDto[]>([]);
+  const [eventWindow, setEventWindow] = useState<RunEventWindow | undefined>(undefined);
   const [checkpoints, setCheckpoints] = useState<Array<{ id: string; label: string }>>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * The runRef the server says does not exist. Distinct from `error` on purpose: a missing run is not a
+   * transient failure to retry, it is a permanent answer the operator needs stated ("this run is gone"),
+   * and it is the ONLY thing that may render in the detail's place.
+   */
+  const [missingRunRef, setMissingRunRef] = useState<string | null>(null);
 
   const openRunRef = onOpenRun ? focusRunRef ?? null : localOpenRef;
 
@@ -120,12 +129,14 @@ export function ManagedRuns({
    * than becoming unavailable.
    */
   const loadRun = useCallback(async (runRef: string, activeToken: string): Promise<void> => {
-    const [nextDetail, nextEvents] = await Promise.all([
+    const [nextDetail, nextWindow] = await Promise.all([
       getRun(runRef, activeToken),
-      listRunEvents(runRef, 0, 500, activeToken),
+      // The TAIL of the trace, paged forward through the existing cursor endpoint — see runEventWindow.ts.
+      loadRunEventWindow(runRef, activeToken),
     ]);
     setDetail(nextDetail);
-    setEvents(nextEvents);
+    setEvents(nextWindow.events);
+    setEventWindow(nextWindow);
     try {
       const revision = await getProposalRevision(nextDetail.run.proposalRef, nextDetail.run.proposalRevision, activeToken);
       const seen = new Map<string, { id: string; label: string }>();
@@ -153,17 +164,29 @@ export function ManagedRuns({
     return () => { alive = false; };
   }, [refresh, token, injectedRuns]);
 
-  // Detail load, driven by whichever run the nav stack (or the local fallback) has open.
+  /**
+   * Detail load, driven by whichever run the nav stack (or the local fallback) has open.
+   *
+   * The clear at the top is LOAD-BEARING, not tidiness. This effect used to leave `detail` alone while
+   * the next run loaded and `loadRun` only ever assigned it on success, so a link to a run that no longer
+   * exists (retention prunes them; the "Retried from run" link reaches one) left the PREVIOUS run's
+   * detail on screen under the new run's nav entry — its title, its stages, and live `Stop run` /
+   * `Retry as successor` buttons closing over the wrong `runRef`. A retry click would then have launched
+   * a successor of a run the operator was not even looking at.
+   */
   useEffect(() => {
-    if (!token || !openRunRef) {
-      setDetail(null);
-      setEvents([]);
-      setCheckpoints([]);
-      return;
-    }
+    setDetail(null);
+    setEvents([]);
+    setEventWindow(undefined);
+    setCheckpoints([]);
+    setMissingRunRef(null);
+    if (!token || !openRunRef) return;
     let alive = true;
     loadRun(openRunRef, token).catch((cause: unknown) => {
-      if (alive) setError(cause instanceof Error ? cause.message : 'Could not load run.');
+      if (!alive) return;
+      // A 404 is an answer, not a failure: the run is gone and the operator gets told so explicitly.
+      if (cause instanceof ControlApiError && cause.status === 404) setMissingRunRef(openRunRef);
+      else setError(cause instanceof Error ? cause.message : 'Could not load run.');
     });
     return () => { alive = false; };
   }, [loadRun, openRunRef, token]);
@@ -342,13 +365,25 @@ export function ManagedRuns({
     (session) => session.sessionRef === detail.run.managerSessionRef && session.state === 'running',
   );
 
+  /**
+   * THE INVARIANT: no governed action may ever be rendered against a run other than the one the nav
+   * stack is focused on.
+   *
+   * The clear-on-change above is what normally upholds it; this ref-identity check makes it STRUCTURAL,
+   * so no future reordering of state updates can reintroduce a detail/nav mismatch. `RunCockpit` is the
+   * only thing that renders `Stop run` and `Retry as successor`, and it is unreachable unless the loaded
+   * detail is the focused run.
+   */
+  const focused = detail && openRunRef && detail.run.runRef === openRunRef ? detail : null;
+
   return (
     <section className="control-managed-runs" aria-label="Managed runs">
-      {detail && openRunRef ? (
+      {focused ? (
         <>
           {error ? <p role="alert" className="control-managed-runs__error">{error}</p> : null}
           <RunCockpit
-            detail={detail}
+            detail={focused}
+            eventWindow={eventWindow}
             events={events}
             busy={busy}
             checkpoints={checkpoints}
@@ -358,17 +393,39 @@ export function ManagedRuns({
             backLabel="All runs"
             onNavigate={onNavigate}
             cardOwners={cardOwners}
-            workflowId={workflowIdForRun(detail.run, revisions)}
+            workflowId={workflowIdForRun(focused.run, revisions)}
             onManagerMessage={managerRunning ? managerMessage : undefined}
             onSteer={managerRunning ? steer : undefined}
-            onStop={detail.sessions.some((session) => session.state === 'running') ? stop : undefined}
-            onRetry={['failed', 'stopped', 'interrupted'].includes(detail.run.state) ? retry : undefined}
-            onManagerSuccessor={detail.sessions.some((session) => session.sessionRef === detail.run.managerSessionRef
+            onStop={focused.sessions.some((session) => session.state === 'running') ? stop : undefined}
+            onRetry={['failed', 'stopped', 'interrupted'].includes(focused.run.state) ? retry : undefined}
+            onManagerSuccessor={focused.sessions.some((session) => session.sessionRef === focused.run.managerSessionRef
               && ['interrupted', 'failed', 'stopped', 'completed'].includes(session.state)) ? recoverManager : undefined}
             onReroute={reroute}
             onHumanResponse={respond}
           />
         </>
+      ) : missingRunRef && missingRunRef === openRunRef ? (
+        /*
+         * The run the link pointed at is gone. Showing the grid here would silently drop the operator
+         * somewhere else after a click, and a blank panel would tell them nothing — so the dead link is
+         * named explicitly, with the way back. Deliberately NO governed actions: there is no run to act on.
+         */
+        <div className="entity-missing" data-testid="run-not-found">
+          <button
+            type="button"
+            className="entity-detail__back"
+            data-testid="run-not-found-back"
+            onClick={back}
+          >
+            <span aria-hidden="true">←</span> All runs
+          </button>
+          <h3>This run no longer exists</h3>
+          <p className="mc-mono entity-missing__ref" data-testid="run-not-found-ref">{missingRunRef}</p>
+          <p className="control-help">
+            The control plane has no record of it — retention pruning removes completed runs, so links and
+            retry lineage can outlive the run they point at. Nothing can be started or stopped for it.
+          </p>
+        </div>
       ) : (
         <>
           <header className="control-managed-runs__head">
