@@ -15,6 +15,7 @@
  * here are data-encoding: the status dot and the amber attention dot. Ids/hashes/counts/timestamps are
  * mono + tabular-nums via `.mc-mono`.
  */
+import { useState } from 'react';
 import type { NavTarget } from '../nav/stack';
 import '../styles/views/entity.css';
 
@@ -95,9 +96,19 @@ export function EntityDetail({
   backLabel,
   actions,
 }: EntityDetailProps): React.JSX.Element {
-  // Uncontrolled callers (and a stale section id after the section set changes) fall back to the first
-  // section rather than rendering an empty body.
-  const active = sections.find((section) => section.id === activeSectionId) ?? sections[0];
+  // Controlled/uncontrolled, the standard way round: when the nav stack drives `activeSectionId` it
+  // wins, so back-navigation can restore a tab. With no controller the component still has to be
+  // INTERACTIVE, so it keeps its own selection — a tab bar that silently does nothing when rendered
+  // standalone would be a defect, not a simplification. Either way a stale id (after the section set
+  // changes) falls back to the first section rather than rendering an empty body.
+  const [internalSectionId, setInternalSectionId] = useState<string | undefined>(undefined);
+  const selectedId = activeSectionId ?? internalSectionId;
+  const active = sections.find((section) => section.id === selectedId) ?? sections[0];
+
+  const selectSection = (id: string): void => {
+    setInternalSectionId(id);
+    onSectionChange?.(id);
+  };
 
   return (
     <section
@@ -174,7 +185,7 @@ export function EntityDetail({
             aria-selected={active?.id === section.id}
             data-testid={`entity-tab-${section.id}`}
             className={`entity-detail__tab${active?.id === section.id ? ' entity-detail__tab--active' : ''}`}
-            onClick={() => onSectionChange?.(section.id)}
+            onClick={() => selectSection(section.id)}
           >
             <span>{section.label}</span>
             {typeof section.count === 'number' ? (
