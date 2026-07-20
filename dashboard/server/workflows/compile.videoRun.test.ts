@@ -1,18 +1,25 @@
 /**
  * D15 — compile-proof for the faceless-youtube `video-run` workflow definition.
  *
- * The definition's live home is another branch (the faceless-youtube org), so it is NOT authored into
- * `orgs/` here. Instead the EXACT text that will land there is embedded below as a fixture and driven
- * through the SAME registry validation + compiler the real registry route uses. This proves the def
- * compiles clean — valid shape, expected DAG, preserved risk floors, resolvable profile — before it is
- * placed in the org.
+ * This test drives the REAL org file at `orgs/faceless-youtube/workflows/video-run.md` through the
+ * SAME registry validation + compiler the real registry route uses. It proves the definition that
+ * actually ships compiles clean: valid shape, expected DAG, preserved risk floors, resolvable profile.
  *
- * If this fixture and the org file ever drift, that is the bug this test exists to catch: keep them
- * byte-identical.
+ * HISTORY — why there is no fixture here anymore.
+ * An earlier revision embedded the definition as a TypeScript string literal and asked humans, in a
+ * comment, to "keep this byte-identical" with the org file, calling drift "the bug this test exists to
+ * catch". The test contained no file read whatsoever, so it could not catch that bug or any other:
+ * the fixture and the org file were free to diverge with the suite fully green. The copy has been
+ * deleted. `loadOrgDef` (see orgDefSource.ts) locates the one real file — across git worktrees, since
+ * the org tree and the dashboard currently sit on different branches — and everything below compiles
+ * THAT text. There is no second artifact left, so drift is not merely detected, it is impossible to
+ * express. If the file cannot be found, `loadOrgDef` throws with a loud, self-explaining error rather
+ * than falling back to anything stale.
  */
 import { describe, expect, it } from 'vitest';
 import { parseWorkflowDef } from './defs.ts';
 import { compileWorkflowDef } from './compile.ts';
+import { loadOrgDef } from './orgDefSource.ts';
 import { validatePlanProposal } from '../control/proposal.ts';
 import type { RuntimeSkillRegistry } from '../control/environment.ts';
 
@@ -29,143 +36,57 @@ const REGISTRY: RuntimeSkillRegistry = {
 // publish/upload tool.
 const KNOWN_PROFILES = new Set(['research', 'gmail-triage', 'drive-author', 'producer']);
 
-// ---------------------------------------------------------------------------
-// The EXACT definition content that will be placed at orgs/faceless-youtube/workflows/video-run.md.
-// Keep this byte-identical with the org file. The text is deliberately free of backticks, backslashes,
-// and ${...} so this template literal needs NO escaping — what you read here is exactly what the org
-// file contains, with no unescaping step that could let the two drift.
-// ---------------------------------------------------------------------------
-const VIDEO_RUN_DEF = `---
-id: video-run
-project: faceless-youtube
-title: Produce one video (faceless pipeline)
-profile: producer
-stages:
-  - id: idea
-    title: Pick and brief one video idea
-    action: research:idea
-    target: orgs/faceless-youtube/videos
-    riskTier: T2
-    workOrder: "Invoke the idea-generator skill for this channel. Read dna.md + performance.md + idea-backlog.md, then write a ranked idea brief for one video into videos/<slug>/brief.md and pick the single idea to produce. No external calls, no spend."
-  - id: research
-    title: Research the picked idea into a sourced dossier
-    action: research:dossier
-    target: orgs/faceless-youtube/videos
-    riskTier: T2
-    dependsOn: [idea]
-    workOrder: "Invoke the researcher skill on the picked idea brief. Produce a sourced, verified dossier at videos/<slug>/research.md that the scriptwriter writes from. WebSearch/WebFetch only; cite every claim; take no external action."
-  - id: script
-    title: Write the long-form voiceover script
-    action: draft:long-form-script
-    target: orgs/faceless-youtube/videos
-    riskTier: T2
-    dependsOn: [research]
-    workOrder: "Invoke the long-form-writer skill. Turn videos/<slug>/brief.md + videos/<slug>/research.md into the long-form voiceover script at videos/<slug>/script.md, following the channel storytelling grammar. Draft only."
-  - id: judge-gate
-    title: Fresh-eyes acceptance gate on the script
-    action: review:script-gate
-    target: orgs/faceless-youtube/videos
-    riskTier: T2
-    dependsOn: [script]
-    workOrder: "Invoke the proxy-judge skill as a fresh-context acceptance gate on videos/<slug>/script.md. Emit an accept/revise/reject verdict to videos/<slug>/judge.md. This gate stands where the human stands; a reject halts the run for a human decision before any heavyweight production."
-  - id: shorts
-    title: Derive the short-form bench
-    action: draft:shorts
-    target: orgs/faceless-youtube/videos
-    riskTier: T2
-    dependsOn: [judge-gate]
-    workOrder: "Invoke the shorts-writer skill. Derive the self-contained vertical shorts bench from the accepted long-form at videos/<slug>/script.md into videos/<slug>/shorts.md. Draft only."
-  - id: metadata
-    title: Author publishing metadata (no upload)
-    action: draft:metadata
-    target: orgs/faceless-youtube/videos
-    riskTier: T2
-    dependsOn: [judge-gate]
-    workOrder: "Invoke the metadata-writer skill. Write the YouTube publishing metadata (titles, description, tags, chapters, thumbnail concepts) for the long-form and each scripted short into videos/<slug>/metadata.json. This authors metadata only; it does NOT publish or upload."
-  - id: shots
-    title: Build the visual shot list and prompts
-    action: build:shot-list
-    target: orgs/faceless-youtube/videos
-    riskTier: T2
-    dependsOn: [judge-gate]
-    workOrder: "Invoke the visual-prompt-writer skill. Build the B-roll shot list + thumbnail generation prompts into videos/<slug>/shots.json from the accepted script. No pixel generation here."
-  - id: motion
-    title: Plan the per-shot motion layers
-    action: build:motion-plan
-    target: orgs/faceless-youtube/videos
-    riskTier: T2
-    dependsOn: [shots]
-    workOrder: "Invoke the motion-planner skill. Read videos/<slug>/shots.json and emit the derived per-shot layer/motion plan at videos/<slug>/shots.motion.json. Planning only; no rendering."
-  - id: images
-    title: Generate the on-style stills
-    action: build:images
-    target: orgs/faceless-youtube/videos
-    riskTier: T2
-    dependsOn: [shots]
-    workOrder: "Invoke the image-generation skill against the locked style bible. Materialize every plate/cutout still for videos/<slug>/shots.json into the video asset library. Heavyweight local generation only; no spend beyond the configured local image stack."
-  - id: voiceover
-    title: Generate the narration audio
-    action: build:voiceover
-    target: orgs/faceless-youtube/videos
-    riskTier: T2
-    dependsOn: [judge-gate]
-    workOrder: "Invoke the voiceover skill. Turn videos/<slug>/script.md (and each publish-tagged short) into narration audio plus a manifest under videos/<slug>/ that render-builder syncs visuals to. Heavyweight TTS; no publish."
-  - id: audio-plan
-    title: Author the unified audio plan
-    action: build:audio-plan
-    target: orgs/faceless-youtube/videos
-    riskTier: T2
-    dependsOn: [voiceover]
-    workOrder: "Invoke the audio-director skill. Author the unified audio plan (SFX, pauses, music beds, dry spans) at videos/<slug>/audio-plan.json from the script + shots.json + voiceover. Planning only."
-  - id: render
-    title: Assemble the finished cut (heavyweight)
-    action: build:render
-    target: orgs/faceless-youtube/videos
-    riskTier: T2
-    dependsOn: [metadata, shorts, motion, images, audio-plan]
-    workOrder: "Invoke the render-builder skill. Assemble the finished MP4(s) for the long-form and each publish-tagged short via the local Remotion engine from shots.json + the verified stills + the voiceover audio + the audio plan into videos/<slug>/. Heavyweight render; first runs stay orchestrator-driven. Produces local files only; it does NOT upload or publish."
-  - id: verify
-    title: Verify the render against the manifests
-    action: verify:render
-    target: orgs/faceless-youtube/videos
-    riskTier: T2
-    dependsOn: [render]
-    workOrder: "Invoke render-builder's verification pass on the rendered output under videos/<slug>/: confirm the MP4(s) exist, match the shot/audio manifests, and clear the no-slop bar. Write a pass/fail note to videos/<slug>/render-verify.md. No publish; a human reviews before any upload, which is out of this workflow."
----
+const DEF_PATH = 'orgs/faceless-youtube/workflows/video-run.md';
 
-# video-run — produce one faceless-YouTube video
-
-Runs this project's pipeline to produce ONE video from a picked idea through a verified render. The video
-slug is supplied at launch time (like the research-brief template's topic); wherever a work order says
-videos/<slug>/, substitute the launch-supplied slug.
-
-The DAG mirrors the pipeline skills: idea -> research -> script -> judge-gate, then the accepted script
-fans out into the short-form bench, the publishing metadata, and the visual shot list; shots feed the
-motion plan and the still generation; the script feeds the voiceover and then the audio plan; and
-everything converges on render + verify.
-
-## Boundaries
-
-- **Publishing / upload is NOT a stage.** This workflow ends at a verified local render. Uploading to
-  YouTube is a separate, human-gated T3 step that does not exist in this definition, and the producer
-  profile carries no upload tool.
-- **Render + image + voiceover stages are heavyweight.** First runs stay orchestrator-driven; the
-  definition exists so the dashboard can launch later runs once the pipeline is warm.
-- **The judge-gate is a real gate.** A reject halts the run for a human decision before any heavyweight
-  production spends time or local resources.
-- Handle no credentials as objects; spend no real money; take no external action beyond the researcher's
-  read-only web access.
-`;
+// Module-scope load: if the definition is unreachable this throws here and the WHOLE file fails with
+// OrgDefNotFoundError naming every location searched. That loud failure is deliberate — a skipped or
+// silently-defaulted test is what let the old fixture rot.
+const SOURCE = loadOrgDef(DEF_PATH);
+const VIDEO_RUN_DEF = SOURCE.text;
 
 describe('video-run workflow definition (compile-proof)', () => {
+  it('is loaded from the real org file on disk, never from an inline copy', () => {
+    // Guards the property the old test lacked. If someone reintroduces a fixture, or the loader
+    // starts returning something that is not the shipped definition, this fails.
+    expect(SOURCE.origin).toBeTruthy();
+    expect(['worktree-local', 'worktree-sibling', 'git-ref']).toContain(SOURCE.via);
+    expect(VIDEO_RUN_DEF.length).toBeGreaterThan(1000);
+    expect(VIDEO_RUN_DEF.startsWith('---\nid: video-run\n')).toBe(true);
+  });
+
   it('parses to a valid definition against the known execution profiles', () => {
     const parsed = parseWorkflowDef(VIDEO_RUN_DEF, { knownProfiles: KNOWN_PROFILES });
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
     expect(parsed.value.id).toBe('video-run');
     expect(parsed.value.project).toBe('faceless-youtube');
+    expect(parsed.value.title).toBe('Produce one video (faceless pipeline)');
     expect(parsed.value.profile).toBe('producer');
     expect(parsed.value.stages).toHaveLength(13);
+  });
+
+  it('pins every stage id and title the dashboard launches from', () => {
+    // The dashboard renders these strings in the launch UI, so they are contract, not cosmetics.
+    // Pinning them means ANY edit to a stage's identity must be made deliberately, here and in the
+    // definition together — it cannot slip through as an incidental change.
+    const parsed = parseWorkflowDef(VIDEO_RUN_DEF, { knownProfiles: KNOWN_PROFILES });
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.value.stages.map((s) => [s.id, s.title])).toEqual([
+      ['idea', 'Pick and brief one video idea'],
+      ['research', 'Research the picked idea into a sourced dossier'],
+      ['script', 'Write the long-form voiceover script'],
+      ['judge-gate', 'Fresh-eyes acceptance gate on the script'],
+      ['shorts', 'Derive the short-form bench'],
+      ['metadata', 'Author publishing metadata (no upload)'],
+      ['shots', 'Build the visual shot list and prompts'],
+      ['motion', 'Plan the per-shot motion layers'],
+      ['images', 'Generate the on-style stills (SPENDS REAL MONEY)'],
+      ['voiceover', 'Generate the narration audio (paid TTS)'],
+      ['audio-plan', 'Author the unified audio plan'],
+      ['render', 'Assemble the finished cut (heavyweight)'],
+      ['verify', 'Verify the render against the manifests'],
+    ]);
   });
 
   it('rejects the definition when `producer` is not a server-owned profile', () => {
@@ -189,10 +110,12 @@ describe('video-run workflow definition (compile-proof)', () => {
     expect(deps.metadata).toEqual(['judge-gate']);
     expect(deps.shots).toEqual(['judge-gate']);
     expect(deps.voiceover).toEqual(['judge-gate']);
-    // shots -> motion + images ; voiceover -> audio-plan
+    // shots -> motion + images
     expect(deps.motion).toEqual(['shots']);
     expect(deps.images).toEqual(['shots']);
-    expect(deps['audio-plan']).toEqual(['voiceover']);
+    // audio-plan converges script + shots + voiceover: the audio-director skill reads script.md and
+    // shots.json as well as the voiceover, so depending on voiceover alone under-declared its inputs.
+    expect(deps['audio-plan']).toEqual(['script', 'shots', 'voiceover']);
     // render converges the production artifacts; verify follows render
     expect(deps.render).toEqual(['audio-plan', 'images', 'metadata', 'motion', 'shorts']);
     expect(deps.verify).toEqual(['render']);
@@ -209,10 +132,12 @@ describe('video-run workflow definition (compile-proof)', () => {
   });
 
   it('lifts an under-declared render stage back to its T2 floor (floor preserved through parse)', () => {
+    // Operates on the real text: find the render stage's declared tier and lower it in-memory only.
     const lowered = VIDEO_RUN_DEF.replace(
-      'title: Assemble the finished cut (heavyweight)\n    action: build:render\n    target: orgs/faceless-youtube/videos\n    riskTier: T2',
-      'title: Assemble the finished cut (heavyweight)\n    action: build:render\n    target: orgs/faceless-youtube/videos\n    riskTier: T1',
+      /(- id: render\n(?:.*\n)*?    riskTier: )T2/,
+      '$1T1',
     );
+    expect(lowered).not.toBe(VIDEO_RUN_DEF); // the substitution must actually have applied
     const parsed = parseWorkflowDef(lowered, { knownProfiles: KNOWN_PROFILES });
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
@@ -237,5 +162,68 @@ describe('video-run workflow definition (compile-proof)', () => {
     expect(compiled.value.stages.every((s) => s.worker.model === 'claude-sonnet-5')).toBe(true);
     const validated = validatePlanProposal(compiled.value as unknown, REGISTRY);
     expect(validated.ok).toBe(true);
+  });
+
+  // -------------------------------------------------------------------------
+  // Truthfulness guards. The dashboard launches runs FROM this definition, so an operator reads it
+  // to decide whether to launch. A previous revision told them the workflow spent nothing while the
+  // images stage was in fact billing a paid Gemini API. These assertions make that specific lie
+  // un-reintroducible: restoring the old wording turns the suite red.
+  // -------------------------------------------------------------------------
+  describe('operator-facing truthfulness', () => {
+    it('never claims the workflow spends no real money', () => {
+      expect(VIDEO_RUN_DEF).not.toContain('spend no real money');
+      expect(VIDEO_RUN_DEF).not.toContain('no spend beyond the configured local image stack');
+      expect(VIDEO_RUN_DEF).not.toContain('Heavyweight local generation only');
+    });
+
+    it('declares the images stage as paid, API-backed, and human-authorized per run', () => {
+      const parsed = parseWorkflowDef(VIDEO_RUN_DEF, { knownProfiles: KNOWN_PROFILES });
+      expect(parsed.ok).toBe(true);
+      if (!parsed.ok) return;
+      const images = parsed.value.stages.find((s) => s.id === 'images');
+      expect(images).toBeDefined();
+      const order = images?.workOrder ?? '';
+      expect(order).toContain('SPENDS REAL MONEY');
+      expect(order).toMatch(/Gemini image API/i);
+      expect(order).toMatch(/per-run human authorization recorded on a queue card/i);
+    });
+
+    it('documents spend and the queue-card authorization in the prose body', () => {
+      expect(VIDEO_RUN_DEF).toMatch(/## Spend/);
+      expect(VIDEO_RUN_DEF).toMatch(/ElevenLabs/);
+      expect(VIDEO_RUN_DEF).toMatch(/authorization recorded on a queue card/i);
+    });
+
+    it('documents the single-writer staging rule the conductor enforces', () => {
+      expect(VIDEO_RUN_DEF).toMatch(/single-writer/i);
+      expect(VIDEO_RUN_DEF).toMatch(/staging\//);
+      expect(VIDEO_RUN_DEF).toMatch(/re-lint/i);
+    });
+  });
+
+  describe('paths match the real on-disk tree', () => {
+    it('targets the real channels tree, never the nonexistent orgs/faceless-youtube/videos', () => {
+      const parsed = parseWorkflowDef(VIDEO_RUN_DEF, { knownProfiles: KNOWN_PROFILES });
+      expect(parsed.ok).toBe(true);
+      if (!parsed.ok) return;
+      for (const stage of parsed.value.stages) {
+        expect(stage.target).toBe('orgs/faceless-youtube/channels');
+      }
+      expect(VIDEO_RUN_DEF).not.toContain('target: orgs/faceless-youtube/videos');
+    });
+
+    it('names the artifact filenames the pipeline actually writes', () => {
+      const parsed = parseWorkflowDef(VIDEO_RUN_DEF, { knownProfiles: KNOWN_PROFILES });
+      expect(parsed.ok).toBe(true);
+      if (!parsed.ok) return;
+      const order = (id: string) => parsed.value.stages.find((s) => s.id === id)?.workOrder ?? '';
+      // The run wrote judge-verdict.md, not judge.md.
+      expect(order('judge-gate')).toContain('judge-verdict.md');
+      expect(order('judge-gate')).not.toMatch(/[^-]judge\.md/);
+      // The run wrote shorts/short-01.md ... short-05.md, not a single shorts.md.
+      expect(order('shorts')).toContain('shorts/short-01.md');
+      expect(order('shorts')).not.toContain('shorts.md');
+    });
   });
 });
