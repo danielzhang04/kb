@@ -48,6 +48,27 @@ describe('compileWorkflowDef', () => {
     expect(validated.ok).toBe(true);
   });
 
+  // `compile.ts:121` copies `profile: def.profile` onto the compiled proposal. That single line is the
+  // entire payload of commit 1dde89a, and deleting it left the whole suite green: without it the
+  // declared profile reaches deriveProposalId's hash preimage and NOTHING else, so the worker spawns
+  // with no --allowedTools — a capability cap that reads as enforced while capping nothing. The
+  // preimage copy is well defended (the byte-pinned id in toolPolicyWire.test.ts catches its removal);
+  // the DATA copy was not defended at all. These assertions are on the compiled proposal, deliberately,
+  // because an assertion on the PARSED definition passes identically with the production line deleted.
+  it('carries the declared profile onto the compiled proposal as data, not only into the id hash', () => {
+    const compiled = compileWorkflowDef(SINGLE, { registry: REGISTRY });
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) return;
+    expect(compiled.value.profile).toBe('research');
+    // The definition and the proposal must agree; asserting only the definition proves nothing here.
+    expect(compiled.value.profile).toBe(SINGLE.profile);
+    // And it must survive the real validator, which is what the worker adapter ultimately reads.
+    const validated = validatePlanProposal(compiled.value as unknown, REGISTRY);
+    expect(validated.ok).toBe(true);
+    if (!validated.ok) return;
+    expect(validated.value.profile).toBe('research');
+  });
+
   it('derives a stable, deterministic proposalId from definition content', () => {
     const a = compileWorkflowDef(SINGLE, { registry: REGISTRY });
     const b = compileWorkflowDef(SINGLE, { registry: REGISTRY });

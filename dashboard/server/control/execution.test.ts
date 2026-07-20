@@ -299,6 +299,72 @@ describe('AutomaticExecutionEngine', () => {
     expect(detail.ok && detail.value.sessions.every((item) => ['completed', 'failed', 'stopped', 'interrupted'].includes(item.state))).toBe(true);
   });
 
+  // ---------------------------------------------------------------------------------------------
+  // The fail-closed workflow-profile token. `execution.ts` forwards `input.proposal.profile ?? null`
+  // to the worker adapter, and that `?? null` is the WHOLE engine-side guarantee: the adapter refuses
+  // to spawn on a null or unknown profile (claudeWorkerAdapter.ts), so a null is what makes a
+  // profile-less legacy proposal refuse instead of running uncapped. Nothing asserted on it before —
+  // changing the fallback to `?? 'producer'` (the profile granting Bash/Read/Write/Edit) left the
+  // entire suite green, so a maintainer "fixing" profile-less refusals by defaulting the profile
+  // would have shipped unrestricted Bash with the suite applauding. These two tests are that alarm.
+  // ---------------------------------------------------------------------------------------------
+  it('forwards NULL as the workflow profile for a profile-less proposal (never a default)', async () => {
+    const store = createStore();
+    const plan = proposal([stage('uncapped')]);
+    expect(plan.profile).toBeUndefined(); // the legacy shape this guard exists for
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const seen: (string | null)[] = [];
+    fake.workers = {
+      async execute(input) {
+        seen.push(input.workflowProfile);
+        fake.executionOrder.push('uncapped');
+        return {
+          state: 'succeeded', summary: 'ok', usage: { inputTokens: 1, outputTokens: 1, costUsdMicros: 1 },
+          artifacts: [{ path: 'dashboard/server/uncapped.txt', digest: 'b'.repeat(64) }],
+          checkpoints: ['uncapped-checked'],
+        };
+      },
+    };
+
+    await new AutomaticExecutionEngine(engineOptions(store, fake)).runToBoundary({
+      subject: 'operator', runRef: run.runRef, proposal: plan,
+    });
+
+    // Strictly null. A string here — ANY string, including a "sensible default" — is the regression
+    // this test exists to catch; `undefined` would fail too, since the adapter contract is
+    // `string | null` and only an explicit null reaches its refusal branch.
+    expect(seen).toEqual([null]);
+    expect(seen[0]).not.toBe(undefined);
+    expect(typeof seen[0]).not.toBe('string');
+  });
+
+  it('forwards the declared workflow profile verbatim when the proposal declares one', async () => {
+    const store = createStore();
+    const plan: PlanProposal = { ...proposal([stage('capped')]), profile: 'research' };
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const seen: (string | null)[] = [];
+    fake.workers = {
+      async execute(input) {
+        seen.push(input.workflowProfile);
+        fake.executionOrder.push('capped');
+        return {
+          state: 'succeeded', summary: 'ok', usage: { inputTokens: 1, outputTokens: 1, costUsdMicros: 1 },
+          artifacts: [{ path: 'dashboard/server/capped.txt', digest: 'b'.repeat(64) }],
+          checkpoints: ['capped-checked'],
+        };
+      },
+    };
+
+    await new AutomaticExecutionEngine(engineOptions(store, fake)).runToBoundary({
+      subject: 'operator', runRef: run.runRef, proposal: plan,
+    });
+
+    // Verbatim: the engine must neither substitute nor widen the declared profile.
+    expect(seen).toEqual(['research']);
+  });
+
   it('releases equal-priority roots deterministically while honoring bounded concurrency', async () => {
     const store = createStore();
     const plan = proposal([stage('b'), stage('a'), stage('c', ['a'])]);
