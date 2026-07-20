@@ -113,6 +113,12 @@ export function compileWorkflowDef(def: WorkflowDef, env: CompileWorkflowEnviron
     scope: proposalScope,
     governanceRefs,
     stages,
+    // Carry the profile as DATA, not merely as hash preimage. Without this line the declared
+    // profile reaches deriveProposalId and nothing else, so the worker spawns with NO
+    // --allowedTools at all — a capability cap that reads as enforced while capping nothing.
+    // `def.profile` is required by the def schema and already validated against the server-owned
+    // closed set (defs.ts:227), so an unresolvable profile refuses the spawn rather than widening it.
+    profile: def.profile,
   };
   return { ok: true, value: proposal };
 }

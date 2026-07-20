@@ -10,9 +10,15 @@ const REGISTRY: RuntimeSkillRegistry = {
     codex: ['gpt-5.6-sol'],
   },
   skills: [],
+  // The proposal validator fails CLOSED on `profile`: an absent or empty list admits nothing, so a
+  // registry without this field refuses every compiled proposal. The fixture must publish the same
+  // closed set the def parser validates against.
+  workflowProfiles: ['research', 'gmail-triage', 'drive-author', 'producer'],
 };
 
-const KNOWN = new Set(['research', 'gmail-triage', 'drive-author', 'producer']);
+// Derived, not restated — the def parser and the proposal validator must agree on the closed set,
+// and a second literal is exactly where the two would silently drift apart.
+const KNOWN = new Set(REGISTRY.workflowProfiles);
 
 function def(frontmatter: string, body = 'Do the thing carefully.'): WorkflowDef {
   const parsed = parseWorkflowDef(`---\n${frontmatter}\n---\n\n${body}\n`, { knownProfiles: KNOWN });

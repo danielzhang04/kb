@@ -29,12 +29,16 @@ const REGISTRY: RuntimeSkillRegistry = {
     codex: ['gpt-5.6-sol'],
   },
   skills: [],
+  // The proposal validator fails CLOSED on `profile`: an absent or empty list admits nothing, so a
+  // registry without this field refuses every compiled proposal.
+  workflowProfiles: ['research', 'gmail-triage', 'drive-author', 'producer'],
 };
 
 // The server-owned execution profiles the registry route knows about (design D13). `producer` is the
 // faceless pipeline profile: Bash + Read/Write/Edit + the local image/TTS/render scripts, and NEVER any
-// publish/upload tool.
-const KNOWN_PROFILES = new Set(['research', 'gmail-triage', 'drive-author', 'producer']);
+// publish/upload tool. Derived from the registry above so the def parser and the proposal validator
+// cannot drift apart on what the closed set contains.
+const KNOWN_PROFILES = new Set(REGISTRY.workflowProfiles);
 
 const DEF_PATH = 'orgs/faceless-youtube/workflows/video-run.md';
 
