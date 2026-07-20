@@ -241,6 +241,40 @@ Describe 'power arm and restore' {
         $script:Attempted | Should -Contain '238c9fa8-0aad-41ed-83f4-97be242c8f20|9d7815a6-7ee4-497e-8888-515a05f02364'
     }
 
+    # Regression test for the -and short-circuit bug in Restore-PowerBaseline
+    # specifically (the sibling test above only covers Set-PowerArmed). A prior
+    # reviewer traced by hand that none of the other restore tests would fail if
+    # Restore-PowerBaseline alone were reverted to the buggy chained
+    # `$ok = $ok -and (...)` form: the "retains armed.json" test below uses a
+    # uniformly-failing provider so write order can't be observed, and the
+    # "returns $false" test only fails the LAST write, so short-circuiting
+    # changes nothing observable. This test arms first (so armed.json holds the
+    # real originals), then fails only the FIRST restore write (lid) while the
+    # fake provider records every GUID pair it was asked to write, so the test
+    # can prove STANDBYIDLE and HIBERNATEIDLE were still attempted -- and still
+    # applied -- despite the earlier failure.
+    It 'Restore-PowerBaseline attempts all three writes even when the first one fails' {
+        Set-PowerArmed | Out-Null
+        $script:Attempted = @()
+        Set-PowerProvider -Provider @{
+            GetAcValue = { param($SubGuid, $SettingGuid) $script:FakeStore["$SubGuid|$SettingGuid"] }
+            SetAcValue = {
+                param($SubGuid, $SettingGuid, $Value)
+                $script:Attempted += "$SubGuid|$SettingGuid"
+                if ($SettingGuid -eq '5ca83367-6e45-459f-a27b-476b1d01c936') { return $false }
+                $script:FakeStore["$SubGuid|$SettingGuid"] = $Value
+                return $true
+            }
+            GetScheme  = { '381b4222-f694-41f0-9685-ff5bb260df2e' }
+        }
+        Restore-PowerBaseline | Out-Null
+        $script:Attempted | Should -Contain '4f971e89-eebd-4455-a8de-9e59040e7347|5ca83367-6e45-459f-a27b-476b1d01c936'
+        $script:Attempted | Should -Contain '238c9fa8-0aad-41ed-83f4-97be242c8f20|29f6c1db-86da-48c5-9fdb-f2b67b1f44da'
+        $script:Attempted | Should -Contain '238c9fa8-0aad-41ed-83f4-97be242c8f20|9d7815a6-7ee4-497e-8888-515a05f02364'
+        $script:FakeStore['238c9fa8-0aad-41ed-83f4-97be242c8f20|29f6c1db-86da-48c5-9fdb-f2b67b1f44da'] | Should -Be 1200
+        $script:FakeStore['238c9fa8-0aad-41ed-83f4-97be242c8f20|9d7815a6-7ee4-497e-8888-515a05f02364'] | Should -Be 900
+    }
+
     It 'retains armed.json and its original baseline values when restore fails' {
         Set-PowerArmed | Out-Null
         Set-PowerProvider -Provider @{
