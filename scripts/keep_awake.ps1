@@ -19,6 +19,18 @@ param(
     [Parameter(ParameterSetName = 'Release')]
     [string]$Label,
 
+    # Task 7: Claude Code hooks don't expose the session id as an env var (only
+    # as `session_id` in the JSON payload piped to every hook command's stdin --
+    # verified 2026-07-20). This switch reads that stdin JSON instead of
+    # requiring -Label, deriving a per-session lease label so concurrent Claude
+    # sessions don't collide on one shared lease. Falls back to a fixed
+    # 'claude-session' label (logged) if stdin is empty/unparseable -- a hook
+    # must never throw just because it couldn't identify its own session.
+    [Parameter(ParameterSetName = 'Acquire')]
+    [Parameter(ParameterSetName = 'Heartbeat')]
+    [Parameter(ParameterSetName = 'Release')]
+    [switch]$FromStdin,
+
     [Parameter(ParameterSetName = 'Acquire')][ValidateSet('idle-expiry', 'pid-only')]
     [string]$Mode = 'idle-expiry',
 
@@ -44,30 +56,27 @@ function Start-DetachedSupervisor {
 }
 
 try {
+    # -FromStdin resolution happens once, up front, for every parameter set
+    # that accepts it -- Acquire/Heartbeat/Release all need the same label.
+    # An explicit -Label always wins if somehow both are given.
+    if ($FromStdin -and -not $Label) {
+        $stdinText = [Console]::In.ReadToEnd()
+        $labelResolution = Resolve-KeepAwakeSessionLabel -StdinJson $stdinText -FallbackLabel 'claude-session'
+        $Label = $labelResolution.Label
+        if ($labelResolution.Source -ne 'stdin-session-id') {
+            Write-KeepAwakeLog ("session-label-fallback source=$($labelResolution.Source) label=$Label -- could not read a session id from hook stdin; concurrent Claude sessions will share this lease")
+        }
+    }
+
     switch ($PSCmdlet.ParameterSetName) {
         'Acquire' {
-            if (-not $Label) { throw '-Label is required with -Acquire' }
-            if ($ProcessId -gt 0) {
-                $target = $ProcessId
-            } else {
-                # Why: this CLI's own $PID is the ephemeral powershell.exe host
-                # running -Acquire (a Claude Code hook, or a bare invocation) --
-                # it writes the lease and exits within a second. A lease pinned
-                # to it is pruned by the supervisor's very first pass, before
-                # the machine is ever armed (reproduced empirically -- see
-                # task-5-report.md). Resolve the real long-lived owner instead.
-                $resolution = Resolve-KeepAwakeOwnerPid -StartProcessId $PID
-                if ($resolution.Resolved) {
-                    $target = $resolution.ProcessId
-                } else {
-                    # Failure case: no long-lived ancestor could be found. Fall
-                    # back to $PID (a hook must never throw), but log loudly --
-                    # this lease will very likely be pruned on the supervisor's
-                    # first pass, silently defeating the whole feature.
-                    $target = $PID
-                    Write-KeepAwakeLog ("pid-resolution-FAILED reason=$($resolution.Reason) label=$Label -- falling back to ephemeral PID=$PID; lease will likely be pruned immediately")
-                }
-            }
+            if (-not $Label) { throw '-Label is required with -Acquire (or pass -FromStdin)' }
+            # Decision logic (explicit-PID shortcut, ancestor-walk fallback
+            # logging, freshly-spawned sanity warning) lives in the module --
+            # see Resolve-KeepAwakeAcquireTarget -- so it is unit-testable
+            # without spawning a real process tree. This CLI stays thin.
+            $resolved = Resolve-KeepAwakeAcquireTarget -SelfProcessId $PID -ProcessId $ProcessId -Label $Label
+            $target = $resolved.ProcessId
             $cpu = Get-ProcessTreeCpu -ProcessId $target
             New-KeepAwakeLease -Label $Label -Mode $Mode -ProcessId $target -CpuSample $cpu | Out-Null
             # Spawning is unconditional and cheap: a duplicate supervisor loses
@@ -77,7 +86,7 @@ try {
             Write-Output "acquired label=$Label mode=$Mode pid=$target"
         }
         'Heartbeat' {
-            if (-not $Label) { throw '-Label is required with -Heartbeat' }
+            if (-not $Label) { throw '-Label is required with -Heartbeat (or pass -FromStdin)' }
             $path = Get-LeasePath -Label $Label
             if (Test-Path $path) {
                 $lease = Get-Content $path -Raw | ConvertFrom-Json
@@ -88,7 +97,7 @@ try {
             # lease is normal and must not resurrect it or emit hook noise.
         }
         'Release' {
-            if (-not $Label) { throw '-Label is required with -Release' }
+            if (-not $Label) { throw '-Label is required with -Release (or pass -FromStdin)' }
             Remove-KeepAwakeLease -Label $Label | Out-Null
         }
         'Status' {

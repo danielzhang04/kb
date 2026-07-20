@@ -479,12 +479,261 @@ Describe 'owner pid resolution' {
     }
 
     It 'defaults to the live provider seam when no lookup is injected' {
-        # Integration smoke test against real OS state: this process's own
-        # chain must resolve to *something* live and non-ephemeral without
-        # throwing. Not asserting a specific PID -- that varies by host.
-        $r = Resolve-KeepAwakeOwnerPid -StartProcessId $PID
-        $r.Resolved | Should -BeTrue
-        Test-ProcessAlive -ProcessId $r.ProcessId | Should -BeTrue
+        # Deterministic version (fix round 2026-07-20): the previous form of
+        # this test asserted $r.Resolved -BeTrue, i.e. that the ancestor walk
+        # against REAL OS process state happens to succeed. That depends on how
+        # many ephemeral-shell hops sit between this test process and its real
+        # long-lived owner, which varies by how the suite is invoked -- a plain
+        # PowerShell window walks 0-1 hops, but nested Git Bash walks 3-4
+        # (measured empirically: powershell.exe -> bash.exe -> bash.exe ->
+        # bash.exe -> claude.exe -- see task-7-report.md fix-round section).
+        # The old MaxHops=3 default made this test fail under nested bash even
+        # though nothing was broken -- a test whose result depends on the
+        # invoking shell is not a useful test. This version only proves the
+        # live GetProcessInfoProvider seam (no injected -GetProcessInfo) is
+        # actually wired up and returns a well-formed result without throwing;
+        # it does not assert resolution succeeds. For a success-path assertion
+        # against a *known* chain, see the 'walks past a bash.exe wrapper hop'
+        # regression test below, which uses an injected fake map instead.
+        { $script:LiveResult = Resolve-KeepAwakeOwnerPid -StartProcessId $PID } | Should -Not -Throw
+        $r = $script:LiveResult
+        $r | Should -Not -BeNullOrEmpty
+        $r.ContainsKey('Resolved')  | Should -BeTrue
+        $r.ContainsKey('ProcessId') | Should -BeTrue
+        $r.ContainsKey('Reason')    | Should -BeTrue
+        $r.ContainsKey('Hops')      | Should -BeTrue
+        $r.Reason | Should -BeIn @('ok', 'start-process-not-found', 'no-parent', 'parent-process-not-found', 'max-hops-exceeded')
+        # If it did resolve, the field really is named ProcessId (verified
+        # correct 2026-07-20 against the function's own `return @{ ProcessId = ...`
+        # literal) and it really does point at a live process -- otherwise the
+        # 0/false failure fields are what's populated and there is nothing live
+        # to check.
+        if ($r.Resolved) {
+            Test-ProcessAlive -ProcessId $r.ProcessId | Should -BeTrue
+        }
+    }
+
+    # Regression test for the exact live defect caught during Task 7: Claude
+    # Code runs Windows hook commands through Git Bash, so the real chain for
+    # a hook-invoked keep_awake.ps1 includes a bash.exe -c wrapper hop. Before
+    # bash.exe/sh.exe were added to $script:EphemeralHostProcessNames, the walk
+    # stopped there and accepted the wrapper as "owner" with Reason='ok' --
+    # reproduced empirically: the supervisor pruned that lease as process-dead
+    # one second after acquiring it (see task-7-report.md). This must never
+    # regress silently back to that state.
+    It 'walks past a bash.exe wrapper hop (the real Windows Claude Code hook shell)' {
+        # cli(100) -> bash.exe -c wrapper(150) -> claude.exe(200)
+        $map = @{
+            100 = @{ Name = 'powershell.exe'; ParentProcessId = 150 }
+            150 = @{ Name = 'bash.exe'; ParentProcessId = 200 }
+            200 = @{ Name = 'claude.exe'; ParentProcessId = 1 }
+        }
+        $r = Resolve-KeepAwakeOwnerPid -StartProcessId 100 -GetProcessInfo (New-FakeProcessInfoLookup -Map $map)
+        $r.Resolved  | Should -BeTrue
+        $r.ProcessId | Should -Be 200
+        $r.Name      | Should -Be 'claude.exe'
+        $r.Hops      | Should -Be 2
+    }
+}
+
+Describe 'owner freshness sanity check' {
+    # Finding A (Task 5 review, closed in Task 7): the name allowlist can only
+    # ever catch KNOWN wrapper names. A process created moments ago is a
+    # name-independent signal that it's probably a wrapper about to exit,
+    # regardless of what it's called -- this is the seam that catches the NEXT
+    # unknown wrapper the allowlist hasn't been taught about yet.
+    It 'flags a process created a moment ago as freshly spawned' {
+        $now = [datetime]'2026-07-20T15:00:00'
+        Test-KeepAwakeOwnerFreshlySpawned -StartTime $now.AddSeconds(-1) -Now $now -ThresholdSeconds 5.0 |
+            Should -BeTrue
+    }
+
+    It 'does not flag a process that has been running well past the threshold' {
+        $now = [datetime]'2026-07-20T15:00:00'
+        Test-KeepAwakeOwnerFreshlySpawned -StartTime $now.AddMinutes(-10) -Now $now -ThresholdSeconds 5.0 |
+            Should -BeFalse
+    }
+
+    It 'treats the threshold boundary as not-yet-suspicious (strict less-than)' {
+        $now = [datetime]'2026-07-20T15:00:00'
+        Test-KeepAwakeOwnerFreshlySpawned -StartTime $now.AddSeconds(-5) -Now $now -ThresholdSeconds 5.0 |
+            Should -BeFalse
+    }
+}
+
+Describe 'acquire target resolution (Task 7 finding B: CLI decision logic, moved into the module)' {
+    # This is the exact logic scripts/keep_awake.ps1's -Acquire branch runs.
+    # Living here as a pure function over an injected GetProcessInfo/Now means
+    # every branch -- explicit PID, resolved walk, failed walk, freshly-spawned
+    # warning -- is unit-testable without spawning a real process tree or a
+    # real detached supervisor (which would risk touching real machine power
+    # state -- see task-7-report.md for why that path is NOT exercised via a
+    # real scripts/keep_awake.ps1 subprocess in this suite).
+    BeforeAll {
+        function New-FakeProcessInfoLookup2 {
+            param([hashtable]$Map)
+            return {
+                param([int]$ProcessId)
+                if ($Map.ContainsKey($ProcessId)) { return $Map[$ProcessId] }
+                return $null
+            }.GetNewClosure()
+        }
+    }
+    BeforeEach {
+        $script:TestRoot = Join-Path ([IO.Path]::GetTempPath()) ("ka-" + [guid]::NewGuid())
+        $env:KB_KEEPAWAKE_ROOT = $script:TestRoot
+    }
+    AfterEach {
+        Remove-Item $env:KB_KEEPAWAKE_ROOT -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item Env:\KB_KEEPAWAKE_ROOT -ErrorAction SilentlyContinue
+    }
+
+    It 'takes the explicit -ProcessId shortcut without consulting the walk at all' {
+        $map = @{ 999 = @{ Name = 'powershell.exe'; ParentProcessId = 0 } }  # would fail if consulted
+        $r = Resolve-KeepAwakeAcquireTarget -SelfProcessId 999 -ProcessId 4242 -Label 'x' `
+                -GetProcessInfo (New-FakeProcessInfoLookup2 -Map $map)
+        $r.Resolved  | Should -BeTrue
+        $r.ProcessId | Should -Be 4242
+        $r.Reason    | Should -Be 'explicit'
+    }
+
+    It 'uses the resolved walk target when the owner is well-established (not freshly spawned)' {
+        $now = [datetime]'2026-07-20T15:00:00'
+        $map = @{
+            100 = @{ Name = 'powershell.exe'; ParentProcessId = 200 }
+            200 = @{ Name = 'claude.exe'; ParentProcessId = 1; StartTime = $now.AddHours(-2) }
+        }
+        $r = Resolve-KeepAwakeAcquireTarget -SelfProcessId 100 -Label 'x' -Now $now `
+                -GetProcessInfo (New-FakeProcessInfoLookup2 -Map $map)
+        $r.Resolved  | Should -BeTrue
+        $r.ProcessId | Should -Be 200
+        (Get-Content (Join-Path $script:TestRoot 'keepawake.log') -Raw -ErrorAction SilentlyContinue) |
+            Should -Not -Match 'pid-resolution-SUSPICIOUS'
+    }
+
+    It 'logs pid-resolution-SUSPICIOUS but still returns the resolved PID when the owner looks freshly spawned' {
+        $now = [datetime]'2026-07-20T15:00:00'
+        $map = @{
+            100 = @{ Name = 'powershell.exe'; ParentProcessId = 200 }
+            200 = @{ Name = 'claude.exe'; ParentProcessId = 1; StartTime = $now.AddSeconds(-1) }
+        }
+        $r = Resolve-KeepAwakeAcquireTarget -SelfProcessId 100 -Label 'sess-1' -Now $now -FreshnessThresholdSeconds 5.0 `
+                -GetProcessInfo (New-FakeProcessInfoLookup2 -Map $map)
+        # Best-effort continue: a false positive must never withhold protection.
+        $r.Resolved  | Should -BeTrue
+        $r.ProcessId | Should -Be 200
+        $logText = Get-Content (Join-Path $script:TestRoot 'keepawake.log') -Raw
+        $logText | Should -Match 'pid-resolution-SUSPICIOUS'
+        $logText | Should -Match 'label=sess-1'
+        $logText | Should -Match 'name=claude.exe'
+    }
+
+    It 'falls back to the self PID and logs pid-resolution-FAILED when the walk cannot resolve an owner' {
+        $map = @{ 100 = @{ Name = 'powershell.exe'; ParentProcessId = 0 } }  # no-parent -> unresolved
+        $r = Resolve-KeepAwakeAcquireTarget -SelfProcessId 100 -Label 'sess-2' `
+                -GetProcessInfo (New-FakeProcessInfoLookup2 -Map $map)
+        $r.Resolved  | Should -BeFalse
+        $r.ProcessId | Should -Be 100
+        $logText = Get-Content (Join-Path $script:TestRoot 'keepawake.log') -Raw
+        $logText | Should -Match 'pid-resolution-FAILED'
+        $logText | Should -Match 'label=sess-2'
+        $logText | Should -Match 'falling back to ephemeral PID=100'
+    }
+}
+
+Describe 'session label from hook stdin (Task 7: CLAUDE_SESSION_ID does not expand)' {
+    # Empirically verified 2026-07-20 (see task-7-report.md): Claude Code does
+    # NOT expose the session id as an environment variable to hook
+    # subprocesses. The brief's `-Label claude-$CLAUDE_SESSION_ID` either
+    # renders literally or bash-expands the unset var to an empty string
+    # (verified: yields the fixed label "claude-", not a real session id) --
+    # both silently collapse every concurrent session onto one shared lease.
+    # The session id IS present as `session_id` in the JSON every hook command
+    # receives on stdin, so that's what this resolves from instead.
+    It 'derives claude-<session_id> from a real hook-shaped JSON payload' {
+        $json = '{"session_id":"8e10cef5-8298-4232-acfa-e674d046960d","hook_event_name":"SessionStart","cwd":"C:\\Users\\danie\\kb"}'
+        $r = Resolve-KeepAwakeSessionLabel -StdinJson $json -FallbackLabel 'claude-session'
+        $r.Label  | Should -Be 'claude-8e10cef5-8298-4232-acfa-e674d046960d'
+        $r.Source | Should -Be 'stdin-session-id'
+    }
+
+    It 'falls back to the fixed label when stdin is empty' {
+        $r = Resolve-KeepAwakeSessionLabel -StdinJson '' -FallbackLabel 'claude-session'
+        $r.Label  | Should -Be 'claude-session'
+        $r.Source | Should -Be 'fallback-empty-stdin'
+    }
+
+    It 'falls back to the fixed label when stdin is not valid JSON' {
+        # This is what the brief's literal-string failure mode would look like
+        # if it were ever piped in as "JSON": not parseable, so fall back
+        # cleanly rather than emitting a garbage label.
+        $r = Resolve-KeepAwakeSessionLabel -StdinJson 'claude-$CLAUDE_SESSION_ID' -FallbackLabel 'claude-session'
+        $r.Label  | Should -Be 'claude-session'
+        $r.Source | Should -Be 'fallback-json-parse-error'
+    }
+
+    It 'falls back to the fixed label when the JSON has no session_id' {
+        $r = Resolve-KeepAwakeSessionLabel -StdinJson '{"hook_event_name":"SessionStart"}' -FallbackLabel 'claude-session'
+        $r.Label  | Should -Be 'claude-session'
+        $r.Source | Should -Be 'fallback-missing-session-id'
+    }
+}
+
+Describe 'CLI entry point (scripts/keep_awake.ps1 invoked as a real subprocess)' {
+    # Finding B (Task 5 review): the Pester suite imported KeepAwake.psm1 only
+    # and never invoked the CLI itself, so its argument-parsing/module-import/
+    # dispatch wiring had zero automated coverage -- only manually smoke-tested.
+    # These tests close that gap for -Heartbeat/-Release specifically: unlike
+    # -Acquire, neither one ever calls Start-DetachedSupervisor or touches real
+    # power settings, so they're safe to run as genuine child-process
+    # invocations without any risk of arming this machine's real power scheme
+    # from inside a test run. -Acquire's decision logic is instead covered
+    # exhaustively above at the module level (Resolve-KeepAwakeAcquireTarget)
+    # precisely to avoid that risk -- see task-7-report.md for the full
+    # reasoning on why a real end-to-end -Acquire subprocess test was judged
+    # too dangerous to add here.
+    BeforeAll {
+        $script:CliPath = (Resolve-Path (Join-Path $PSScriptRoot '..\keep_awake.ps1')).Path
+    }
+    BeforeEach {
+        $script:TestRoot = Join-Path ([IO.Path]::GetTempPath()) ("ka-cli-" + [guid]::NewGuid())
+        $env:KB_KEEPAWAKE_ROOT = $script:TestRoot
+    }
+    AfterEach {
+        Remove-Item $env:KB_KEEPAWAKE_ROOT -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item Env:\KB_KEEPAWAKE_ROOT -ErrorAction SilentlyContinue
+    }
+
+    It 'removes a lease via -Release -Label end to end through a real child process' {
+        New-KeepAwakeLease -Label 'explicit-cli' -Mode 'idle-expiry' -ProcessId $PID -CpuSample 0 | Out-Null
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script:CliPath -Release -Label 'explicit-cli' | Out-Null
+        @(Get-KeepAwakeLeases).Count | Should -Be 0
+    }
+
+    It 'derives the label from real hook-shaped stdin JSON and releases the matching lease (-Release -FromStdin)' {
+        # This is the exact mechanism used by settings.json's SessionEnd hook,
+        # exercised end to end through a real OS-level stdin pipe (piping into
+        # an external powershell.exe process, not an in-process `&` call --
+        # [Console]::In inside the script only sees a real redirected pipe in
+        # the former case, which is what a genuine Claude Code hook looks like).
+        New-KeepAwakeLease -Label 'claude-stdin-test-session' -Mode 'idle-expiry' -ProcessId $PID -CpuSample 0 | Out-Null
+        $json = '{"session_id":"stdin-test-session","hook_event_name":"SessionEnd"}'
+        $json | powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script:CliPath -Release -FromStdin | Out-Null
+        @(Get-KeepAwakeLeases).Count | Should -Be 0
+    }
+
+    It 'falls back to the fixed label and logs it when -FromStdin gets no session id, via a real child process' {
+        New-KeepAwakeLease -Label 'claude-session' -Mode 'idle-expiry' -ProcessId $PID -CpuSample 0 | Out-Null
+        '' | powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script:CliPath -Release -FromStdin | Out-Null
+        @(Get-KeepAwakeLeases).Count | Should -Be 0
+        (Get-Content (Join-Path $script:TestRoot 'keepawake.log') -Raw) | Should -Match 'session-label-fallback'
+    }
+
+    It 'is a silent no-op for -Heartbeat -FromStdin against a lease that does not exist' {
+        $json = '{"session_id":"nobody-here"}'
+        { $json | powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script:CliPath -Heartbeat -FromStdin } |
+            Should -Not -Throw
+        @(Get-KeepAwakeLeases).Count | Should -Be 0
     }
 }
 

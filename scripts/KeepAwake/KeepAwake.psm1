@@ -196,7 +196,18 @@ function Update-LeaseActivity {
 # on one of these it must keep going -- stopping here would just anchor the
 # lease to another process that is itself gone the moment this invocation
 # exits, reproducing the exact defect this seam exists to avoid.
-$script:EphemeralHostProcessNames = @('powershell.exe', 'pwsh.exe', 'cmd.exe')
+#
+# bash.exe/sh.exe added 2026-07-20 (Task 7) after being caught live: Claude
+# Code runs Windows hook commands through Git Bash ("Using bash path: C:\
+# Program Files\Git\bin\bash.exe" -- confirmed in --debug hooks output), so
+# the real chain for a hook-invoked keep_awake.ps1 is
+#   powershell.exe (this script) -> bash.exe (-c wrapper, one per hook firing)
+#   -> claude.exe/node.exe (the real long-lived session)
+# Before this fix, bash.exe was not on the list, so the walk stopped at hop 1
+# and accepted the -c wrapper as the "owner" with Reason='ok' -- reproducing
+# Finding A exactly. Confirmed by the supervisor pruning that lease as
+# process-dead one second after acquiring it (see task-7-report.md).
+$script:EphemeralHostProcessNames = @('powershell.exe', 'pwsh.exe', 'cmd.exe', 'bash.exe', 'sh.exe')
 
 function Get-DefaultProcessInfoProvider {
     return @{
@@ -204,7 +215,12 @@ function Get-DefaultProcessInfoProvider {
             param([int]$ProcessId)
             $p = Get-CimInstance Win32_Process -Filter "ProcessId=$ProcessId" -ErrorAction SilentlyContinue
             if ($null -eq $p) { return $null }
-            return @{ Name = [string]$p.Name; ParentProcessId = [int]$p.ParentProcessId }
+            # StartTime rides along on the same CIM query used for Name/ParentProcessId
+            # (Get-CimInstance auto-converts CreationDate to a real [datetime] -- verified
+            # empirically 2026-07-20, unlike the legacy Get-WmiObject WMI-datetime string).
+            # It feeds the freshly-spawned sanity check below; a second query per hop would
+            # be wasted CIM round-trips for a value already sitting on this same object.
+            return @{ Name = [string]$p.Name; ParentProcessId = [int]$p.ParentProcessId; StartTime = $p.CreationDate }
         }
     }
 }
@@ -233,7 +249,20 @@ function Resolve-KeepAwakeOwnerPid {
     param(
         [Parameter(Mandatory)][int]$StartProcessId,
         [scriptblock]$GetProcessInfo = (Get-ProcessInfoProvider).GetProcessInfo,
-        [int]$MaxHops = 3
+        # 12, not 3: MaxHops is only a runaway/cycle guard, not a policy knob, so
+        # sizing it generously costs nothing. Each hop is accepted as "keep
+        # walking" ONLY when the parent's name is on $script:EphemeralHostProcessNames
+        # (see the -notcontains check below) -- so a larger limit can never make
+        # the walk overshoot past a genuine owner; it only allows deeper nesting
+        # of recognized shells before giving up. The walk still stops at the
+        # first non-ephemeral ancestor regardless of how large this is.
+        # Raised 2026-07-20 (Task 7 fix-round) after the real observed chain for
+        # a hook fired through nested Git Bash was measured empirically at 4 hops
+        # (powershell.exe -> bash.exe -> bash.exe -> bash.exe -> claude.exe) --
+        # see task-7-report.md fix-round section -- which exceeded the old
+        # default of 3 and made resolution fail with max-hops-exceeded even
+        # though the real long-lived owner was right there one hop further up.
+        [int]$MaxHops = 12
     )
     $currentId = $StartProcessId
     $currentInfo = & $GetProcessInfo $currentId
@@ -250,12 +279,116 @@ function Resolve-KeepAwakeOwnerPid {
             return @{ ProcessId = 0; Resolved = $false; Reason = 'parent-process-not-found'; Hops = $hop }
         }
         if ($script:EphemeralHostProcessNames -notcontains $parentInfo.Name) {
-            return @{ ProcessId = $parentId; Resolved = $true; Reason = 'ok'; Hops = $hop }
+            # StartTime rides along so a caller can layer a freshness sanity check on
+            # top (Resolve-KeepAwakeAcquireTarget does this) without a second lookup.
+            # Indexer access (not dot-notation) on purpose: this module runs under
+            # Set-StrictMode -Version Latest, which throws PropertyNotFoundException
+            # on dot-access to an absent hashtable key -- reproduced empirically
+            # against the existing name-only fake maps in this test file, which
+            # legitimately omit 'StartTime'. $h['StartTime'] returns $null for a
+            # missing key under strict mode with no error either way.
+            return @{ ProcessId = $parentId; Resolved = $true; Reason = 'ok'; Hops = $hop; StartTime = $parentInfo['StartTime']; Name = $parentInfo.Name }
         }
         $currentId = $parentId
         $currentInfo = $parentInfo
     }
     return @{ ProcessId = 0; Resolved = $false; Reason = 'max-hops-exceeded'; Hops = $MaxHops }
+}
+
+# Task 7 finding A: the name allowlist above can only ever catch KNOWN shell
+# names. If Claude Code's real hook-spawn chain interposes a wrapper that is
+# not on that list (bash.exe, wt.exe, a node helper, ...) the walk accepts it
+# silently with Reason='ok' and no warning -- reproducing the original defect
+# (lease pinned to a process about to exit) with no log line to diagnose it by.
+# A process created moments ago is almost certainly such a wrapper, not a real
+# long-lived owner, regardless of what it happens to be named -- so this is a
+# second, name-independent signal layered on top of the walk's result. Pure
+# function: just a duration comparison, no I/O, so it is trivially unit-testable.
+function Test-KeepAwakeOwnerFreshlySpawned {
+    param(
+        [Parameter(Mandatory)][datetime]$StartTime,
+        [Parameter(Mandatory)][datetime]$Now,
+        [double]$ThresholdSeconds = 5.0
+    )
+    return (($Now - $StartTime).TotalSeconds -lt $ThresholdSeconds)
+}
+
+# Decision logic for keep_awake.ps1's -Acquire branch, moved into the module per
+# Task 7 finding B: the CLI-invoked script has zero Pester coverage of its own,
+# so the fallback-logging branch (Resolve-KeepAwakeOwnerPid failing) was never
+# exercised by any test -- only the success path got a manual smoke test. Living
+# here, the exact same logic the CLI runs is reachable with an injected
+# GetProcessInfo/Now, so every branch (explicit PID, resolved walk, failed walk,
+# freshly-spawned warning) is unit-testable without spawning a real process tree.
+# Keeps scripts/keep_awake.ps1 itself thin, per the plan's stated architecture.
+function Resolve-KeepAwakeAcquireTarget {
+    param(
+        [Parameter(Mandatory)][int]$SelfProcessId,
+        [int]$ProcessId = 0,
+        [string]$Label = '',
+        [scriptblock]$GetProcessInfo = (Get-ProcessInfoProvider).GetProcessInfo,
+        [datetime]$Now = (Get-Date),
+        [double]$FreshnessThresholdSeconds = 5.0
+    )
+    if ($ProcessId -gt 0) {
+        # Caller (e.g. agent_runner.ps1, Task 6) already knows its own long-lived
+        # PID -- the ancestor walk and freshness heuristic both exist only to
+        # guess this when the caller can't tell us directly, so skip both.
+        return @{ ProcessId = $ProcessId; Resolved = $true; Reason = 'explicit' }
+    }
+
+    $resolution = Resolve-KeepAwakeOwnerPid -StartProcessId $SelfProcessId -GetProcessInfo $GetProcessInfo
+    if (-not $resolution.Resolved) {
+        # Failure case: no long-lived ancestor could be found. Fall back to the
+        # ephemeral self PID (a hook must never throw), but log loudly -- this
+        # lease will very likely be pruned on the supervisor's first pass,
+        # silently defeating the whole feature otherwise.
+        Write-KeepAwakeLog ("pid-resolution-FAILED reason=$($resolution.Reason) label=$Label -- falling back to ephemeral PID=$SelfProcessId; lease will likely be pruned immediately")
+        return @{ ProcessId = $SelfProcessId; Resolved = $false; Reason = $resolution.Reason }
+    }
+
+    if ($resolution.StartTime -and (Test-KeepAwakeOwnerFreshlySpawned -StartTime $resolution.StartTime -Now $Now -ThresholdSeconds $FreshnessThresholdSeconds)) {
+        # Best-effort warning only -- per Task 7 finding A, a false positive here
+        # must never stop a session being protected, so the resolved PID is kept
+        # and used exactly as if this check hadn't run.
+        Write-KeepAwakeLog ("pid-resolution-SUSPICIOUS reason=freshly-spawned label=$Label pid=$($resolution.ProcessId) name=$($resolution.Name) hops=$($resolution.Hops) started=$($resolution.StartTime.ToString('yyyy-MM-ddTHH:mm:ss')) -- resolved owner was created moments ago and may be an ephemeral wrapper rather than the real long-lived owner; continuing best-effort")
+    }
+
+    return @{ ProcessId = $resolution.ProcessId; Resolved = $true; Reason = $resolution.Reason }
+}
+
+# Task 7: Claude Code does not expose the session id as an environment variable
+# to hook subprocesses (verified 2026-07-20 -- see task-7-report.md); it is only
+# available as `session_id` in the JSON payload every hook command receives on
+# stdin. This parses that payload into a lease label. Pure given the JSON text,
+# so it is testable with plain strings -- no real stdin plumbing needed in tests.
+function Resolve-KeepAwakeSessionLabel {
+    param(
+        [string]$StdinJson = '',
+        [string]$FallbackLabel = 'claude-session'
+    )
+    if ([string]::IsNullOrWhiteSpace($StdinJson)) {
+        return @{ Label = $FallbackLabel; Source = 'fallback-empty-stdin' }
+    }
+    try {
+        $obj = $StdinJson | ConvertFrom-Json
+        # Property-collection indexer, not dot-access: under this module's
+        # Set-StrictMode -Version Latest, `$obj.session_id` on a PSCustomObject
+        # that genuinely lacks the property THROWS PropertyNotFoundException --
+        # reproduced empirically -- which would misclassify a well-formed hook
+        # payload missing session_id as a JSON-parse error instead of this
+        # branch. Indexing into .PSObject.Properties is always safe.
+        if ($null -eq $obj.PSObject.Properties['session_id']) {
+            return @{ Label = $FallbackLabel; Source = 'fallback-missing-session-id' }
+        }
+        $sid = [string]$obj.session_id
+        if ([string]::IsNullOrWhiteSpace($sid)) {
+            return @{ Label = $FallbackLabel; Source = 'fallback-missing-session-id' }
+        }
+        return @{ Label = "claude-$sid"; Source = 'stdin-session-id' }
+    } catch {
+        return @{ Label = $FallbackLabel; Source = 'fallback-json-parse-error' }
+    }
 }
 
 $script:SUB_BUTTONS   = '4f971e89-eebd-4455-a8de-9e59040e7347'
@@ -512,6 +645,7 @@ Export-ModuleMember -Function Get-KeepAwakeRoot, Get-LeaseDir, Write-KeepAwakeLo
     Get-SafeLabel, Get-LeasePath, New-KeepAwakeLease, Get-KeepAwakeLeases, Remove-KeepAwakeLease,
     Test-ProcessAlive, Get-ProcessTreeCpu, Update-LeaseActivity,
     Set-ProcessInfoProvider, Get-ProcessInfoProvider, Resolve-KeepAwakeOwnerPid,
+    Test-KeepAwakeOwnerFreshlySpawned, Resolve-KeepAwakeAcquireTarget, Resolve-KeepAwakeSessionLabel,
     Set-PowerProvider, Get-PowerProvider, Get-PowerBaseline, Save-PowerBaseline, Set-PowerArmed,
     Restore-PowerBaseline, Test-PowerArmed,
     Set-ExecutionStateHold, Clear-ExecutionStateHold, Invoke-SupervisorPass, Start-KeepAwakeSupervisor
