@@ -121,3 +121,33 @@ Chain follow-ons seed from `assets/scenes/<id>.png` — the **placed** path, not
 order is strictly: plain waves + plates + cutout sources → **place into `assets/scenes/`** → chains →
 place chains → `forge.py cutout` on the `-src` frames → render. Running chains before placement fails
 on a missing seed.
+
+### Pass-2 outcome and one editorial decision that needs Daniel's review
+
+92 frames generated across 5 detached waves, **1 deterministic failure**: `wf-L105` returned
+"no image in response" twice, on identical input. Not transient — a refusal.
+
+L105 as authored put a **named real executive face-on, personally presenting a claim to a row of
+investors**, in a video about a fraud she was later criminally charged over. Note that the engine
+had already generated all three executive portraits in Pass 1 without complaint, so it is not
+refusing the person; it refused *this depiction* — a real identifiable individual shown making a
+specific assertion.
+
+**Re-authored once, changing what is depicted rather than hunting for wording that slips past.**
+The scorecard number became the subject; the presenter is now a small back-turned silhouette with
+no visible face; the character canonical and expression seeds were dropped. It generated on the
+first attempt. The narrative beat (the number being presented as proof) is intact.
+
+**Standing rule taken from this:** when the engine refuses, treat the refusal as information about
+the *content*, and re-author the content once. Do not iterate wordings until one gets through —
+that is filter evasion, and it produces exactly the frame the refusal was protecting against.
+
+**FOR DANIEL — two things to check, this is a judgement call made while you were away:**
+1. `shots.json`'s `still_prompt` for L105 now describes a frame that does not exist. Either update
+   the shot list to match the delivered frame, or decide the shot should be cut.
+2. More broadly: this channel's format depicts real, named people in documented fraud stories.
+   Pass 1 characters are caricatures of Kovacevich, Stumpf and Tolstedt. That is ordinary
+   editorial practice for commentary on public conduct, and the script is fact-leashed and passed
+   the judge at 34/36 — but the line between "caricature of documented public conduct" and
+   "putting words in a real person's mouth" is one **you** should be setting explicitly, not one
+   an agent should be settling shot-by-shot at 3am. Worth a written rule in the style bible.
