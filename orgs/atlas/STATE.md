@@ -21,6 +21,10 @@ _Updated: 2026-07-20 (build ACTIVE — Fable 5 boss session)_
   speak "what's in the queue?" → spoken grounded answer (headphones — console mode has no AEC).
 - Then T6 card close + inspector grade → T7 (wake word + engagement gating) → T8 (latency harness +
   Aura-2-vs-ElevenLabs persona bake-off + V0 checkpoint).
+- V1 backlog (Daniel, 2026-07-20): hot-follow audio device routing — console streams bind at startup;
+  want output to re-bind live to the connected Bluetooth device (else speakers) without app restart.
+  Context: wake mic is PINNED to the laptop Intel array (wake_input_device) because Windows default-input
+  drift to AirPods HFP delivers unusable wake audio; conversation/output follow the Windows default.
 
 ## Blocked
 - ON DANIEL: desk smoke above. All account gates CLOSED 2026-07-20 (env has ANTHROPIC/DEEPGRAM/ELEVENLABS keys).
