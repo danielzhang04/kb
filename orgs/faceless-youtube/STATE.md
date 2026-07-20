@@ -13,14 +13,17 @@ _Updated: 2026-07-19_
 ## Next
 - First kb-coordinated video run: **fyt-run-001** (`channels/the-second-take/videos/2026-07-19-wells-fargo`,
   prompt→render, stage-two work owned by the run orchestrator).
-  Image-generation **Pass 1 is complete** (3/3 cast locked, 4 calls, ~$0.54);
-  **Pass 2 is halted** — see Blocked. Resume state:
+  Image-generation **Pass 1 complete** (3/3 cast locked, 4 calls, ~$0.54); **Pass 2 in progress**.
+  Authorised by parent card `6a5d53ea-562cad3a` (Daniel's verbatim 2026-07-19 instruction,
+  ~$15–30 one-video API budget). Resume state:
   `docs/handoffs/2026-07-20-wells-fargo-imagegen-pickup.md`.
 
 ## Blocked
-- **fyt-run-001 image-generation Pass 2 needs an attended spend decision from Daniel.**
-  The batch (119 long-form scenes + 5 plate/cutout pairs + 3 thumbnails, ~130 calls) costs **~$17–18**
-  against `governance/budget.yaml`'s **`daily_usd_limit: 5.00`**; `governance/risk-tiers.md` puts real
-  money at **T4 — "never unattended, never carded"**. No authorising card exists for this run.
-  Note the standing contradiction: `knowledge/stack.md` budgets ~$15–30 per full video, so the $5/day
-  ceiling cannot fund *any* complete video — a governance question, not a per-run workaround.
+- (none)
+
+## Open governance question (not blocking)
+- `governance/budget.yaml` sets `daily_usd_limit: 5.00` for API-billed steps, while
+  `knowledge/stack.md` budgets **~$15–30 per full video**. No complete video fits inside one day's
+  ceiling. The preamble gate currently passes only because image spend is never written to
+  `ledgers/cost/` (all rows are `0.0` subscription steps), so the gate measures nothing real.
+  Reconcile: raise the ceiling, formalise a per-run waiver, or start logging image spend.

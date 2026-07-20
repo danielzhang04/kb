@@ -1,80 +1,88 @@
 # Pickup — 2026-07-20 — wells-fargo image-generation (fyt-run-001)
 
-**State: Pass 1 COMPLETE. Pass 2 NOT STARTED — halted at a spend gate, needs Daniel.**
+Card: `queue/working/6a5d53ea-aac22743.md` (`build:scene-images`, T2, workflow `fyt-run-001`).
 
-## What ran
+**State: Pass 1 COMPLETE (3/3 cast locked). Pass 2 in progress.**
 
-`image-generation` on `channels/the-second-take/videos/2026-07-19-wells-fargo`, scoped by the
-conductor to long-form + the 3 thumbnails (shorts S01-*..S05-* deferred to a later run).
+## Authorisation (checked, holds)
 
-- Pass 0 skipped — `needed_assets` is empty.
-- **Pass 1 complete: 3/3 new cast locked** — `kovacevich`, `stumpf`, `tolstedt` in
-  `assets/library/` + `manifest.json`, seeded off `refs/base/base.png`, `--mode new_character`, `2:3`.
-  `stumpf` took the one allowed re-authored retry (drawn ears); the other two shipped on gen 1.
-- **4 API calls, ~$0.54.** Full per-round reasoning, crop evidence and the two portable lessons are in
-  `assets/image-gen-lab.md` (that path is gitignored, so it lives on disk only — read it there).
-- Pass 2 (119 long-form scenes + 5 plate/cutout pairs + 3 thumbnails, ~130 calls, **~$17–18**) was
-  **not started**.
+The parent card `queue/working/6a5d53ea-562cad3a.md` (`build:video-run`) records Daniel's verbatim
+2026-07-19 instruction and explicitly authorises **one video's standard pipeline API usage
+(ElevenLabs TTS + Gemini image gen, ~$15–30 per `knowledge/stack.md`)** on the ambient `.env` keys,
+scoped prompt→render, no publish, no Poyais changes. `scripts/preamble.py` returns **PREAMBLE OK**
+(today's cost ledger is all `0.0` — subscription steps — so the `budget.yaml` API-billed daily gate is
+untouched).
 
-## Why it stopped
+> **Process note for future runs — I got this wrong first.** I initially searched `queue/` from the
+> `C:/Users/danie/kb` worktree, which sits on `codex/dashboard-operational-surfaces`, and concluded no
+> authorising card existed. **Coordination state lives on `ops`** (kb constitution, Branch rules) — the
+> `ops` queue holds the whole `fyt-run-001` DAG. Always read `queue/` from an `ops` checkout
+> (`kb-worktrees/dashboard-ops`) before concluding anything about a card's existence.
 
-The batch breaches the repo's money law three ways, independently:
+## Standing governance observation (for Daniel — not a blocker)
 
-| Law | Says | This batch |
-| --- | --- | --- |
-| `governance/budget.yaml` | `daily_usd_limit: 5.00` | ~$17–18 (~3.5×); the 200-call ceiling is ~$26.80 (>5×) |
-| `governance/risk-tiers.md` | T4 real money = "never unattended, never carded" | cannot be delegated to a card at all |
-| `contract.md` | `acts-alone` = STATE.md/wiki/DRAFT reports only; "daily budget breached" is `wakes-me-up` | squarely `queues-for-me` |
+`governance/budget.yaml` sets `daily_usd_limit: 5.00` for API-billed steps, while `knowledge/stack.md`
+budgets **~$15–30 per full video** (~120–180 gen calls). Those two numbers cannot both hold: no complete
+video fits inside one day's ceiling. The preamble gate passes here only because the cost ledger records
+subscription steps at `0.0` and image spend is not currently written to it at all. Worth reconciling —
+either raise the ceiling, formalise a per-run waiver, or start logging image spend to the ledger so the
+gate measures something real.
 
-The run brief stated the owner had authorised this run's API spend and that it was "recorded on the
-run's parent card". **No such card exists** — `queue/{inbox,working,approvals,done}` holds only cadence
-cards, one verify card and one wake-me card; nothing references `fyt-run-001`, `ST-033`, or this video.
-`STATE.md` does name fyt-run-001 as the next planned run, so the run itself is expected — it is the
-**spend authorisation** that is missing, and per risk-tiers a card could not carry it anyway.
+## Pass 1 outcome — 3/3 locked, 4 calls, ~$0.54
 
-The 4 calls already spent are inside the daily limit and were the operating-law §D
-"confirm the step is correctly configured before a batch run" probe.
+| Character | Gens | Verdict | Shots |
+| --- | --- | --- | --- |
+| `kovacevich` | 1 | PASS, no retry | L27 |
+| `stumpf` | 2 (1 retry) | PASS on retry | L81, L96 |
+| `tolstedt` | 1 | PASS, no retry | L94, L96, L105, L109 |
 
-## Decision Daniel needs to make
+Seeded off `refs/base/base.png`, `--mode new_character`, `2:3`, style-only descriptor + auto-appended
+§2c RIG-HOLD. Per-asset detail in `assets/library/manifest.json`; per-round reasoning and crop evidence
+in `assets/image-gen-lab.md` (both under the gitignored `assets/` tree — on disk only).
 
-Pass 2 needs an attended, explicit go-ahead for **~$17–18 of Gemini image spend against a $5/day
-ceiling**. Either raise/waive the ceiling for this run, or split Pass 2 across days inside the $5 limit
-(~37 images/day, ~4 days), or defer.
+**Not promoted to the channel registry** — Wells-Fargo-specific executives, unlikely to recur, so they
+earn a per-video library slot only (skill Pass-1 step 6 criterion). `registry.json` untouched.
 
-## Corrections to project docs (found while checking, not yet applied)
+### Two portable lessons (candidates for the bible / VPW rules — need human confirmation, §G)
 
-- **`knowledge/stack.md` spend-log row for Gemini is stale.** It records image gen as blocked on the
-  free tier (429, needs billing) as of 2026-07-03. **The key now generates** — 4/4 calls returned images.
-  Worth correcting, and the row still says "log actual spend here as it accrues" while carrying no
-  actual image spend for the Poyais run either.
-- **`governance/budget.yaml` at $5/day cannot fund one video.** `stack.md` itself budgets
-  "**~$15–30 per full 8–15 min video all-pro** (~120–180 gen calls)". So the daily limit and the
-  documented per-video cost are in direct contradiction — *any* full video run trips the ceiling. That
-  is a governance question for Daniel, not something to route around per video.
+1. **Cut a comparison crop against the approved canonical before ruling a nose/ear FAIL.**
+   `kovacevich` gen 1 looked like it had a nose; a deterministic midface crop beside
+   `refs/base/base.png` showed the *canonical carries the identical shape* (the rig's chin/lower-lip
+   detail, below the mouth). Bible §3 already says to judge against the canonical, not an idealised rig,
+   and that over-calling costs as much as missing. The crop is free; the regen is not.
+2. **On a no-ears rig, never author a receding/thinning hairline.** `stumpf` gen 1 used "THINNING
+   silver-white hair, higher at the temples"; that exposed the flat side of the head and the engine
+   filled it with fully-drawn ears (inner helix visible at 3–4×). The re-authored retry carried age on
+   **build, brow and mouth linework** and authored the hair as a **full side-covering sweep from temple
+   to jaw** — ears gone in one gen.
 
-## Resume instructions (no rework needed — Pass 1 output is durable)
+## Pass 2 — scope and mechanics
 
-1. Seed each `cast` figure from `assets/library/<name>.png` + its `pose_ref`/`expression_ref`. All 8
-   refs the cast arrays name resolve by registry **`name`** (not `tag`) — verified present.
-2. **Prefix every staging name** (`wf-L01`, …). `visual-kit/_staging/` still holds Poyais frames named
-   `L01.png`–`L125.png`, and `forge.py gen` skips a name already in staging — unprefixed Wells Fargo
-   gens would silently inherit Poyais art and `place` would copy it into this video. Place, then rename
-   to `scenes/<shot-id>.png`.
-3. 6 shots carry `cast` (L27, L81, L94, L96, L105, L109). The other 113 are character-free technique (c)
-   and each needs a style-anchor seed (`refs/env/` anchor matched by register).
-4. 88 shots carry authored text → also seed `refs/env/lettering-marker-italic.png`.
-   14 are crowd-bearing → also seed `refs/base/crowd-exemplar.png`.
-5. 12 delta-chain shots in 6 chains must generate in order:
-   L05→L06 · L07→L08 · L11→L12→L13→L14 · L33→L34→L35→L36 · L37→L38 · L77→L78→L79→L80.
-6. 5 layered shots (L31, L44, L90, L99, L101) need plate + magenta-field cutout; cutout gens must not be
-   16:9 (`forge.py cutout` hard-errors at ≥1.5 aspect).
-7. Long-form scenes are `16:9` — pass `--aspect 16:9` explicitly on every scene/plate gen (forge
-   defaults to `2:3`).
-8. Then the one batched review (3 concurrent subagents: identity/rig on the crop battery, fidelity,
-   style), one re-authored retry per flagged frame, orchestrator-only `verified` stamping.
+Conductor scope: **long-form + the 3 thumbnails only**; shorts (S01-*…S05-*) deferred. 200-call ceiling.
+
+- 119 long-form shots, all `source: ai-gen`, `aspect_ratio` **16:9** — pass `--aspect 16:9` explicitly on
+  every scene/plate gen (`forge.py` defaults to `2:3`).
+- 6 shots carry `cast` (L27, L81, L94, L96, L105, L109) → seed `assets/library/<name>.png` + the shot's
+  `pose_ref`/`expression_ref`. All 8 refs the cast arrays name resolve by registry **`name`** (not
+  `tag`) — verified present.
+- The other 113 are character-free technique (c) → `--mode environment`/`style`, each carrying a
+  style-anchor seed (`refs/env/` anchor matched by register; forge hard-errors an unseeded env gen).
+- 88 shots carry authored text → also seed `refs/env/lettering-marker-italic.png`.
+- 14 crowd-bearing shots → also seed `refs/base/crowd-exemplar.png`.
+- 12 delta-chain shots in 6 chains, generated in order:
+  L05→L06 · L07→L08 · L11→L12→L13→L14 · L33→L34→L35→L36 · L37→L38 · L77→L78→L79→L80.
+- 5 layered shots (L31, L44, L90, L99, L101) → plate + magenta-field cutout; cutout gens must **not** be
+  16:9 (`forge.py cutout` hard-errors at ≥1.5 aspect).
+- 3 thumbnails (primary + 2 challengers), 16:9, text overlay NOT baked.
+
+**Staging-name collision — load-bearing.** `visual-kit/_staging/` still holds Poyais frames named
+`L01.png`–`L125.png`. `forge.py gen` **skips a name that already exists in staging**, so unprefixed
+Wells Fargo gens would silently no-op and `place` would copy *Poyais art* into this video. Use a `wf-`
+prefix on every staging name, then place and rename to `scenes/<shot-id>.png`.
+
+Then the one batched review (3 concurrent subagents: identity/rig on the crop battery, fidelity, style),
+one re-authored retry per flagged frame, orchestrator-only `verified` stamping.
 
 ## Untouched, as required
 
-`videos/2026-07-04-poyais` (parked at Daniel's watch-through gate 6) and the channel `registry.json`
-were not modified. The three new characters were deliberately **not** promoted to the channel registry —
-Wells-Fargo-specific executives, unlikely to recur.
+`videos/2026-07-04-poyais` (parked at Daniel's watch-through gate 6) and the channel `registry.json`.
