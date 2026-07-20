@@ -20,7 +20,7 @@ Subcommands:
 
 Run with native `py -3` (msys python lacks a CA bundle). No pip deps except optional certifi/Pillow.
 """
-import json, os, ssl, sys, base64, urllib.request, urllib.error, time, argparse, shutil
+import json, os, re, ssl, sys, base64, urllib.request, urllib.error, time, argparse, shutil
 
 def load_env(root):
     env = {}
@@ -130,11 +130,62 @@ def _is_char_seed(path):
     return ("/refs/" in rp) or ("/assets/library/" in rp) or ("/assets/scenes/" in rp)
 
 
-def should_hold(mode, resolved_seeds):
+# --- figure detection from PROMPT CONTENT -------------------------------------------------
+# The rig-hold decision derives from what the frame CONTAINS (does it depict figures?), NOT from
+# which seeds it happens to carry. Deriving it from the seed list alone shipped a real defect:
+# `_is_char_seed()` excludes `/refs/env/`, so a frame whose prompt was full of people but whose
+# seeds were all environment anchors received NO rig invariants at all, and the no-nose /
+# no-ears / four-digit-hand rules survived only as prose the engine ignored (fyt-run-001 L01,
+# L10, L17, L31 — precisely that video's four worst rig frames: a drawn ear on the cold open,
+# noses on the investor row, realistic adults, and noses + an ear + a realistic profile jaw).
+#
+# The asymmetry is deliberate: a FALSE POSITIVE costs one extra paragraph on a figure-free gen
+# (the §2c block is scoped to "every FOREGROUND / named / seeded cartoon figure in this image",
+# so it is inert when there are none), while a FALSE NEGATIVE ships an off-rig frame that must
+# be paid for twice. When in doubt, HOLD.
+_FIGUREWORDS = (
+    "figure", "figures", "person", "people", "someone", "somebody", "crowd", "crowds",
+    "audience", "man", "men", "woman", "women", "customer", "customers", "teller", "tellers",
+    "employee", "employees", "worker", "workers", "staff", "clerk", "clerks", "banker",
+    "bankers", "executive", "executives", "investor", "investors", "senator", "senators",
+    "judge", "official", "officials", "cast", "character", "characters",
+    "hand", "hands", "face", "faces", "head", "heads",
+)
+
+# Idioms that contain a figure word but describe a RENDERING STYLE, not a body in frame. These
+# are stripped before matching so "relaxed hand-lettered MARKER CAPITALS" and "in the §6 marker
+# hand" do not force a hold on a pure lettering/prop gen.
+_FIGURE_FALSE_FRIENDS = (
+    "hand-lettered", "hand lettered", "hand-drawn", "hand drawn", "hand-illustrated",
+    "hand-stamped", "hand stamped", "handwriting", "handwritten", "freehand", "marker hand",
+    "lettering hand", "second hand", "hand-painted", "hand painted", "on the other hand",
+    "letterhead", "masthead", "headline", "heading", "header", "headed",
+    "face of", "face value", "typeface", "coalface",
+)
+
+_FIGURE_RE = re.compile(r"\b(?:%s)\b" % "|".join(sorted(_FIGUREWORDS, key=len, reverse=True)))
+
+
+def depicts_figures(prompt):
+    """True when a prompt puts one or more human FIGURES on screen. Read from the prompt text,
+    because the prompt is the only place that states what the frame contains."""
+    p = (prompt or "").lower()
+    for idiom in _FIGURE_FALSE_FRIENDS:
+        p = p.replace(idiom, " ")
+    return bool(_FIGURE_RE.search(p))
+
+
+def should_hold(mode, resolved_seeds, delta=""):
     """Append the §2c RIG-HOLD block when a figure is in frame AND the mode isn't `identity`
-    (identity gens already carry the full rig via the §2 descriptor, so re-appending is redundant)."""
+    (identity gens already carry the full rig via the §2 descriptor, so re-appending is redundant).
+
+    "A figure is in frame" is decided by CONTENT first — the prompt says what the image depicts —
+    with the character-bearing seed list kept as a second, independent signal so a terse delta on
+    a seeded character (e.g. "him, seated") still holds. Either signal is sufficient."""
     if mode not in ("new_character", "environment", "style"):
         return False
+    if depicts_figures(delta):
+        return True
     return any(_is_char_seed(s) for s in resolved_seeds)
 
 
@@ -226,7 +277,7 @@ def cmd_gen(k, reqs, force):
                     "back to a stock-clipart prior")
         else:
             seeds = [k.resolve_seed(s) for s in seeds]
-        hold = should_hold(mode, seeds)
+        hold = should_hold(mode, seeds, r["delta"])
         parts = [ip(s) for s in seeds] + [{"text": k.prompt_for(mode, r["delta"], hold=hold)}]
         try:
             # S1-A: compute + validate the bytes BEFORE opening the file, so a failed/empty gen can
