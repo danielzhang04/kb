@@ -123,6 +123,25 @@ def test_summary_truncated_at_2kb(tmp_path):
     assert span["truncated"] is True
 
 
+def test_summary_truncated_at_2kb_bytes_not_codepoints_emoji(tmp_path):
+    # 4-byte-per-codepoint emoji: 5000 codepoints would be 20000 bytes if the
+    # cap were codepoint-based. It must be capped at <=2048 BYTES instead.
+    big = "\U0001F600" * 5000  # U+1F600 GRINNING FACE, 4 bytes each in UTF-8
+    ev = {"subject": "card-1", "runRef": "run-a", "cursor": 2, "kind": "message",
+          "source": "worker", "stageRef": None, "attemptRef": None,
+          "sessionRef": None, "status": None, "summary": big, "command": None,
+          "toolName": None, "path": None, "diff": None, "checkpoint": None,
+          "createdAt": "2026-07-20T10:01:30+00:00"}
+    doc = _doc(events=[ev])
+    span = next(s for s in tn.normalize_run(doc, doc["runs"][0]) if s["kind"] == "tool")
+    name = span["name"]
+    assert span["truncated"] is True
+    encoded = name.encode("utf-8")
+    assert len(encoded) <= tn.TRUNCATE_LIMIT
+    # Valid UTF-8 that round-trips (no split/invalid codepoint at the cut).
+    assert encoded.decode("utf-8") == name
+
+
 def test_diff_content_never_emitted_only_bytes(tmp_path):
     diff = "SECRET FILE CONTENTS\n" * 100
     ev = {"subject": "card-1", "runRef": "run-a", "cursor": 3, "kind": "diff",

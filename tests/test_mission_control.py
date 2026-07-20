@@ -128,6 +128,41 @@ def test_planted_failing_grade_does_not_establish_history(tmp_path):
     assert mc.risk_score(card, NOW, trusted)["novel"] is True
 
 
+def _write_raw_card(repo: Path, state: str, filename: str, frontmatter: str,
+                    body: str = "## Work order\n\ndo it.\n") -> Path:
+    """Hand-write a card file bypassing cards.save/_validate — the only way to
+    land a frontmatter that would never pass validation (e.g. an unknown
+    risk-tier), so we can exercise the "fails cards.parse" path for real."""
+    path = repo / "queue" / state / filename
+    path.write_text(f"---\n{frontmatter}---\n\n{body}", encoding="utf-8")
+    return path
+
+
+def test_unrankable_approval_card_surfaced_not_dropped(tmp_path):
+    repo = _repo(tmp_path)
+    # A well-formed approval so the ranked list is non-empty too.
+    _card(repo, "approvals", tier="T1", action="approve:ok")
+    _write_raw_card(
+        repo, "approvals", "bad-tier.md",
+        "id: deadbeef-bad\nproject: kb\naction: approve:bad\ntarget: t\n"
+        "risk-tier: T9\nstate: approvals\n")
+    text = mc.render_mission_control(repo, now=NOW)
+    assert "UNRANKABLE — malformed card" in text
+    assert "bad-tier.md" in text
+    # The parse error's one-line reason is included (risk-tier validation msg).
+    assert "risk-tier must be one of" in text
+    # The unrankable row is pinned above the ranked list.
+    ranked_idx = text.index("Ranked approvals")
+    unrankable_idx = text.index("UNRANKABLE")
+    numbered_idx = text.index("1. **[")
+    assert ranked_idx < unrankable_idx < numbered_idx
+    # It never silently vanishes from _scan_malformed either.
+    malformed = mc._scan_malformed(repo, "approvals")
+    assert len(malformed) == 1
+    assert malformed[0]["path"].name == "bad-tier.md"
+    assert "risk-tier must be one of" in malformed[0]["reason"]
+
+
 def test_unknown_tier_flagged_signed_only(tmp_path):
     repo = _repo(tmp_path)
     card = cards.new_card(project="kb", action="approve:x", target="t",

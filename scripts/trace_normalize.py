@@ -60,7 +60,10 @@ except Exception:  # noqa: BLE001
     ledger = None  # type: ignore[assignment]
     _COST_FN = None
 
-TRUNCATE_LIMIT = 2048  # 2KB text cap for names / operational text fields
+TRUNCATE_LIMIT = 2048  # 2KB cap, measured in UTF-8 BYTES (not codepoints) for
+                       # names / operational text fields — a multi-byte
+                       # (e.g. emoji) string is cut on a whole-codepoint
+                       # boundary, never split mid-character.
 _SAFE_RE = re.compile(r"[^A-Za-z0-9._-]+")
 
 
@@ -131,10 +134,19 @@ def _truncate(text, flag: list[bool]) -> str | None:
     if text is None:
         return None
     s = str(text)
-    if len(s) > TRUNCATE_LIMIT:
-        flag[0] = True
-        return s[:TRUNCATE_LIMIT]
-    return s
+    encoded = s.encode("utf-8")
+    if len(encoded) <= TRUNCATE_LIMIT:
+        return s
+    flag[0] = True
+    # Cut at the byte cap, then back off one byte at a time until the tail
+    # decodes cleanly — never emit a split/invalid codepoint.
+    chunk = encoded[:TRUNCATE_LIMIT]
+    while chunk:
+        try:
+            return chunk.decode("utf-8")
+        except UnicodeDecodeError:
+            chunk = chunk[:-1]
+    return ""
 
 
 def _span(span_id, parent, name, kind, start, end, attrs, truncated) -> dict:

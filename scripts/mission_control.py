@@ -10,7 +10,11 @@ Four sections:
 
 (a) RANKED pending approvals — every `queue/approvals` card, plus the wake-me
     and human-gate cards in `queue/inbox` (owner `human-operator` or an
-    `approve:*` action). Each is scored:
+    `approve:*` action). A file under `queue/approvals/` or `queue/inbox/` that
+    fails `cards.parse` is never silently dropped: it is surfaced as an
+    UNRANKABLE row (filename + the parse error's one-line reason), pinned
+    above the ranked list — fail-toward-attention, the opposite of vanishing.
+    Each parseable card is scored:
 
         risk score = tier weight + age + novelty
 
@@ -117,7 +121,9 @@ def _age_points(card: cards.Card, now: datetime.datetime) -> float:
 
 def _iter_cards(repo_root, state: str):
     """Yield parsed cards from ``queue/<state>/``; silently skip anything that
-    does not parse (a malformed file must never crash the projection)."""
+    does not parse (a malformed file must never crash the projection). Use
+    ``_scan_malformed`` alongside this where a malformed file must be surfaced
+    rather than dropped (the ranked-approvals section)."""
     d = Path(repo_root) / "queue" / state
     if not d.exists():
         return
@@ -126,6 +132,25 @@ def _iter_cards(repo_root, state: str):
             yield cards.parse(path)
         except Exception:  # noqa: BLE001 — a bad card is skipped, never fatal
             continue
+
+
+def _scan_malformed(repo_root, state: str) -> list[dict]:
+    """Files under ``queue/<state>/`` that fail ``cards.parse`` — each as
+    ``{"path": Path, "reason": <one-line parse-error message>}``. Fail-toward-
+    attention counterpart to ``_iter_cards``'s silent skip: nothing here is
+    dropped, it is handed to the caller to surface explicitly."""
+    d = Path(repo_root) / "queue" / state
+    out: list[dict] = []
+    if not d.exists():
+        return out
+    for path in sorted(d.glob("*.md")):
+        try:
+            cards.parse(path)
+        except Exception as exc:  # noqa: BLE001 — captured to report, not to crash
+            text = str(exc).strip()
+            reason = text.splitlines()[0] if text else exc.__class__.__name__
+            out.append({"path": path, "reason": reason})
+    return out
 
 
 def _is_wake_me(card: cards.Card) -> bool:
@@ -392,11 +417,17 @@ def _fmt_card_line(index: int, entry: dict) -> str:
     )
 
 
-def _ranked_section(ranked: list[dict]) -> list[str]:
+def _unrankable_line(item: dict) -> str:
+    return (f"- **UNRANKABLE — malformed card** `{Path(item['path']).name}`: "
+            f"{item['reason']}")
+
+
+def _ranked_section(ranked: list[dict], unrankable: list[dict] | None = None) -> list[str]:
+    out: list[str] = [_unrankable_line(item) for item in (unrankable or [])]
     if not ranked:
-        return ["Nothing pending — `queue/approvals/` and the wake-me/human-gate "
-                "inbox are clear."]
-    out = []
+        out.append("Nothing pending — `queue/approvals/` and the wake-me/human-gate "
+                   "inbox are clear.")
+        return out
     for i, entry in enumerate(ranked, start=1):
         out.append(_fmt_card_line(i, entry))
     return out
@@ -457,6 +488,8 @@ def render_mission_control(repo_root, *, now: datetime.datetime | None = None,
 
     ranked = _ranked_approvals(repo_root, now, trusted)
     ranked_ids = {str(e["card"].meta.get("id") or "") for e in ranked}
+    unrankable = (_scan_malformed(repo_root, "approvals")
+                 + _scan_malformed(repo_root, "inbox"))
     q = quarantine_state(repo_root)
     digest = _digest_items(repo_root, ranked_ids)
     metric = rubber_stamp_metric(repo_root, floor=rubber_stamp_floor)
@@ -468,7 +501,7 @@ def render_mission_control(repo_root, *, now: datetime.datetime | None = None,
                "never a store. Cards are not moved or edited here._")
     out.append("")
     out.append("## Ranked approvals (score = tier + age + novelty)")
-    out.extend(_ranked_section(ranked))
+    out.extend(_ranked_section(ranked, unrankable))
     out.append("")
     out.append("## Quarantine")
     out.extend(_quarantine_section(q))

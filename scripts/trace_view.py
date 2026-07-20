@@ -171,6 +171,8 @@ def write_html(trace_file: Path, out_dir: Path) -> Path:
 # --------------------------------------------------------------------------- #
 
 def render_fork(spans: list[dict], card_id: str, run: str, step: int) -> str:
+    # Clamp so the header can never claim a step outside the recorded range.
+    step = max(1, min(step, len(spans)))
     kept = spans[:step]
     out = [
         f"# Seeded prompt — fork of `{card_id}` / `{run}` at step {step}",
