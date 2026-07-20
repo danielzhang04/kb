@@ -66,3 +66,26 @@ Re-ask Daniel the two questions the pause interrupted (he hit "clarify" — he m
 1. **Activation ownership** — this session builds worker adapter + engine wiring + synthetic acceptance (recommended), or the codex dashboard terminal does (its handoff listed activation as its next step), or start with Chief of Staff (no dashboard dependency) and decide later.
 2. **Signed-T3 fast-lane** in or out of Wave A (recommendation: defer to its own wave).
 Then: brainstorm → design doc → plan → build Wave A per the list above. Also still open with Daniel: scheduled task `kb-codex-runner` is READY, next run 7/20 3:30 AM (runner header says it awaits human gate 5.7 — intentional?); `kb-desktop-dispatcher` is Disabled; no `kb-desktop-poll` task exists. W2.5 delivery-gate flip (card `6a5c7274-635d84bf`) still soaking post-merge.
+
+## 2026-07-19 — autonomous triple arc (designs + builds), handed off per Daniel's instruction
+
+- MANDATE: fleet layers (not Atlas), dashboard integrations, faceless live import + one video run.
+  Daniel away; his instruction authorized one video's API spend + the workflow infrastructure.
+  Mid-session he added: finish the pre-plan, then hand off to another terminal to run/build.
+- WORKED: 3 parallel worktrees (fleet-arc TS, fleet-arc-py python, faceless-import) kept 3-4 Opus
+  agents building concurrently with zero git contention; SDD (fresh implementer + fresh reviewer,
+  model self-reports all claude-opus-4-8[1m]); resume-by-SendMessage recovered 3 agents from API
+  stream timeouts without losing work.
+- BUILT (see docs/plans/2026-07-19-triple-arc-HANDOFF.md on claude/fleet-arc for full map):
+  fleet-arc @2e529b3 = designs + inert claude adapters (reviewed, 6 findings fixed) + workflow
+  registry/compiler w/ gated launch + email-triage & research-brief defs + CoS brief/rollup/notify
+  + 20-canary Proving Grounds + Sentinel (1318 vitest + 407 pytest green).
+  faceless-live-import @aef202a = snapshot deleted, live repo moved in (history archived,
+  471 commits, Poyais untouched), faceless-producer agent preserved, fyt-run-001 idea+research
+  stages DONE (ST-033 Wells Fargo, 35-row fact ledger).
+  ops = fyt-run-001 DAG cards (script stage 6a5d53ea-def9aa59 ready in inbox) + OAuth gates G1-G4.
+- FAILED/BLOCKED: auto-mode classifier twice denied building live executor activation wiring
+  (even flag-gated) — recorded as a substantive human gate; do NOT re-attempt autonomously.
+  Wave A live-fire + first unattended anything blocked behind it.
+- REMAINS (next terminal, per handoff): fyt-run-001 script→render stages; Waves C/E/F;
+  yt_analytics.py + video-run workflow def; supervised Telegram first-send; wave-close review + PRs.
