@@ -5,7 +5,7 @@
   "fps": 30,
   "width": 1920,
   "height": 1080,
-  "audio": "vo.mp3",
+  "audio": "vo.breath.mp3",
   "audio_seconds": 627.364,
   "tokens": {
     "_doc": "The Second Take's motion-engine style tokens \u2014 data the niche-agnostic Remotion engine reads. Character/palette law: style-bible.md; this file only styles ENGINE-drawn elements (captions, device cards, camera feel). Values marked (measured) come from the 2026-07-08 motion teardown \u2014 see research/motion-logs/ + universal.md \u00a713a-iii.",

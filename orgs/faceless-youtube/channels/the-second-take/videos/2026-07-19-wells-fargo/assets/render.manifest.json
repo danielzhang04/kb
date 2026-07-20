@@ -7,7 +7,7 @@
   "render_provider": "remotion-local",
   "render_engine": "remotion",
   "watermark": false,
-  "dry_run": true,
+  "dry_run": false,
   "pieces": [
     {
       "piece": "long-form",
@@ -25,15 +25,32 @@
       "breath_count": 50,
       "sentence_gap_count": 37,
       "audio": {
-        "music_segments": 9,
-        "music_missing": 0,
-        "sfx_count": 17,
-        "cues_unresolved": 0,
-        "sfx_tail_overshoots": 2,
-        "dip_count": 0,
-        "thin_count": 0
+        "ok": true,
+        "warnings": [],
+        "measured": {
+          "lufs": "-14.65",
+          "true_peak": "-1.00",
+          "music_segments": 9,
+          "sfx_count": 17,
+          "sfx_missing": 0,
+          "music_missing": 0,
+          "splice_continuity": {
+            "gaps": 50,
+            "fail": 0,
+            "warn": 0
+          },
+          "splice_continuity_worst": {
+            "pre_cut_dbfs": -35.2,
+            "at_s": 502.135,
+            "source": "sentence"
+          }
+        }
       },
-      "state": "dry-run"
+      "render_wall_seconds": 450.1,
+      "rendered_seconds": 627.37,
+      "audio_lufs": "-14.65",
+      "audio_true_peak": "-1.00",
+      "state": "rendered"
     }
   ]
 }
