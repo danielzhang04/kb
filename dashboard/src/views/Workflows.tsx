@@ -16,29 +16,18 @@ import { useEffect, useState } from 'react';
 import type { WorkflowsIndex } from '../../server/registry/workflows';
 import { useSse } from '../lib/sseClient';
 import { invalidateSessionOnGovernedAuthFailure, type Session } from '../lib/authClient';
+import { WorkflowDetail, type WorkflowDefEntry } from './WorkflowDetail';
+import { listProposalRevisions, listRuns, type ProposalRevisionMetadataDto, type RunMetadataDto } from '../control/controlClient';
+import { runsForWorkflow, WORKFLOW_COMPOSER_REF } from '../control/entityLinks';
+import type { NavTarget } from '../nav/stack';
 import '../styles/views/workflows.css';
 
 const EMPTY: WorkflowsIndex = { present: false, items: [] };
 
-/** One org workflow-definition entry from GET /api/workflows (mirrors server/workflows/routes.ts). */
-interface WorkflowStagePreview {
-  id: string;
-  action: string;
-  target: string;
-  riskTier: string;
-}
-interface WorkflowDefEntry {
-  ref: string;
-  project: string;
-  path: string;
-  valid: boolean;
-  title: string | null;
-  profile: string | null;
-  stageCount: number;
-  riskTier: string | null;
-  stages: WorkflowStagePreview[];
-  detail: string | null;
-}
+/**
+ * One org workflow-definition entry from GET /api/workflows. The shape now lives with the detail view
+ * that renders it in full, so the two cannot drift.
+ */
 interface WorkflowDefsIndex {
   items: WorkflowDefEntry[];
 }
@@ -67,17 +56,44 @@ export function Workflows({
   definitions,
   sessionToken,
   onRequestSession,
+  focusWorkflowId,
+  onOpenWorkflow,
+  onBack,
+  activeSectionId,
+  onSectionChange,
+  onNavigate,
+  runs: injectedRuns,
+  revisions: injectedRevisions,
 }: {
   data?: WorkflowsIndex;
   definitions?: WorkflowDefsIndex;
   sessionToken?: string;
   onRequestSession?: () => Promise<Session | null>;
+  /**
+   * arc-3 step 4 — the open definition, driven by the nav stack. Controlled-or-uncontrolled, mirroring
+   * ManagedRuns and Agents: without a controller the view keeps its own state so it stays usable and
+   * testable standalone rather than rendering an inert detail.
+   */
+  focusWorkflowId?: string | null;
+  onOpenWorkflow?: (ref: string) => void;
+  onBack?: () => void;
+  activeSectionId?: string;
+  onSectionChange?: (id: string) => void;
+  onNavigate?: (target: NavTarget) => void;
+  /** Injected by tests; otherwise loaded from the control plane to power the workflow → runs join. */
+  runs?: RunMetadataDto[];
+  revisions?: ProposalRevisionMetadataDto[];
 } = {}): React.JSX.Element {
   const [fetched, setFetched] = useState<WorkflowsIndex | null>(null);
   const [fetchedDefs, setFetchedDefs] = useState<WorkflowDefsIndex | null>(null);
   const [runStatus, setRunStatus] = useState<Record<string, string>>({});
   const [launchStatus, setLaunchStatus] = useState<Record<string, string>>({});
+  // Uncontrolled fallback for the open definition when no nav stack is wired above this view.
+  const [localOpenRef, setLocalOpenRef] = useState<string | null>(null);
+  const [runs, setRuns] = useState<RunMetadataDto[] | undefined>(injectedRuns);
+  const [revisions, setRevisions] = useState<ProposalRevisionMetadataDto[] | undefined>(injectedRevisions);
   const { count: planeATick } = useSse('/events');
+  const openDefRef = onOpenWorkflow ? focusWorkflowId ?? null : localOpenRef;
 
   useEffect(() => {
     if (data) return;
@@ -113,6 +129,31 @@ export function Workflows({
       cancelled = true;
     };
   }, [definitions, planeATick]);
+
+  /**
+   * The workflow → runs join sources. Loaded ONLY while a definition detail is open — the roster itself
+   * needs neither, and these are governed reads that would otherwise fire on every visit to this view.
+   *
+   * Both stay `undefined` without a session, which the detail reports as "not loaded" rather than
+   * claiming the definition has never been launched. That distinction is the whole point of the join.
+   */
+  useEffect(() => {
+    if (!openDefRef || !sessionToken) return;
+    if (injectedRuns && injectedRevisions) return;
+    let cancelled = false;
+    Promise.all([listRuns(sessionToken), listProposalRevisions(WORKFLOW_COMPOSER_REF, sessionToken)])
+      .then(([nextRuns, nextRevisions]) => {
+        if (cancelled) return;
+        if (!injectedRuns) setRuns(nextRuns);
+        if (!injectedRevisions) setRevisions(nextRevisions);
+      })
+      .catch(() => {
+        /* the Runs section keeps saying "not loaded" — never a false "never launched" */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [openDefRef, sessionToken, injectedRuns, injectedRevisions]);
 
   const workflows = data ?? fetched ?? EMPTY;
   const empty = !workflows.present || workflows.items.length === 0;
@@ -172,6 +213,56 @@ export function Workflows({
     } catch (error) {
       setRunStatus((current) => ({ ...current, [id]: `Failed: ${error instanceof Error ? error.message : String(error)}` }));
     }
+  }
+
+  const openWorkflow = (ref: string): void => {
+    if (onOpenWorkflow) onOpenWorkflow(ref);
+    else setLocalOpenRef(ref);
+  };
+
+  const backToWorkflows = (): void => {
+    if (onBack) onBack();
+    else setLocalOpenRef(null);
+  };
+
+  /**
+   * The definition detail REPLACES the tables in place — same pattern as runs and agents, no new nav
+   * destination. A focused ref that is not in the index (deleted definition, stale back-forward) falls
+   * through to the list rather than rendering an empty shell.
+   */
+  const openDef = openDefRef ? defs.items.find((d) => d.ref === openDefRef) : undefined;
+  if (openDef) {
+    return (
+      <section className="v-workflows" aria-label="Workflows view">
+        <WorkflowDetail
+          entry={openDef}
+          runs={runs && revisions ? runsForWorkflow(openDef.ref, revisions, runs) : undefined}
+          activeSectionId={activeSectionId}
+          onSectionChange={onSectionChange}
+          onNavigate={onNavigate}
+          onBack={backToWorkflows}
+          backLabel="All workflows"
+          actions={
+            openDef.valid ? (
+              <>
+                <button
+                  type="button"
+                  className="mc-btn mc-btn--primary"
+                  onClick={() => void launchDefinition(openDef.ref)}
+                >
+                  Launch
+                </button>
+                {launchStatus[openDef.ref] ? (
+                  <span className="v-workflows__run-status" data-testid={`workflow-def-status-${openDef.ref}`}>
+                    {launchStatus[openDef.ref]}
+                  </span>
+                ) : null}
+              </>
+            ) : null
+          }
+        />
+      </section>
+    );
   }
 
   return (
@@ -258,8 +349,18 @@ export function Workflows({
               {defs.items.map((d) => (
                 <tr key={d.ref} className="v-workflows__row" data-testid={`workflow-def-${d.ref}`}>
                   <td className="v-workflows__cell-id">
-                    <span className="v-workflows__wf-name">{d.title ?? d.ref}</span>
-                    <span className="v-workflows__wf-id mc-mono">{d.path}</span>
+                    {/* The definition name opens its detail. A button, not a row handler: the Launch
+                     *  control in this same row is a governed write and must keep its own click. */}
+                    <button
+                      type="button"
+                      className="v-workflows__open"
+                      data-testid={`workflow-open-${d.ref}`}
+                      aria-label={`Open ${d.title ?? d.ref} detail`}
+                      onClick={() => openWorkflow(d.ref)}
+                    >
+                      <span className="v-workflows__wf-name">{d.title ?? d.ref}</span>
+                      <span className="v-workflows__wf-id mc-mono">{d.path}</span>
+                    </button>
                   </td>
                   <td className="v-workflows__cell-profile mc-mono">{d.profile ?? '—'}</td>
                   <td className="v-workflows__cell-stages">

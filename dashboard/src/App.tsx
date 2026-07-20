@@ -453,7 +453,21 @@ function ViewBody({
         </section>
       );
     case 'workflows':
-      return <Workflows sessionToken={sessionToken} onRequestSession={onRequestSession} />;
+      // arc-3: a definition row pushes its detail onto the nav stack within this destination, and its
+      // Runs section links onward to the runs it launched — the join the un-dropped `sourceTurnId` made
+      // possible. Still no new NAV_SECTIONS entry.
+      return (
+        <Workflows
+          sessionToken={sessionToken}
+          onRequestSession={onRequestSession}
+          focusWorkflowId={entry.focus?.kind === 'workflow' ? entry.focus.id : null}
+          onOpenWorkflow={(ref) => onPush({ view: 'workflows', focus: { kind: 'workflow', id: ref } })}
+          onBack={onBack}
+          activeSectionId={entry.section}
+          onSectionChange={onSectionChange}
+          onNavigate={onNavigateTarget}
+        />
+      );
     case 'agents':
       // arc-3: an agent row pushes that agent's detail onto the nav stack WITHIN this destination —
       // "a separate window, still inside the agents sidebar, with a back button". No new NAV_SECTIONS

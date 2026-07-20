@@ -137,6 +137,34 @@
   color: var(--fg-primary);
 }
 
+/* The definition name opens its detail. Same 2px left-rail-on-hover language as the agent roster, so
+ * there is ONE activation vocabulary across every entity list in the app. */
+.v-workflows__open {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  margin-left: calc(-1 * var(--space-2));
+  border: 1px solid transparent;
+  border-left: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: color 150ms ease-out, border-color 150ms ease-out;
+}
+
+.v-workflows__open:hover {
+  border-left-color: var(--accent-strong);
+}
+
+.v-workflows__open:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: -1px;
+}
+
 .v-workflows__wf-id {
   margin-left: var(--space-2);
   font-size: var(--text-xs);

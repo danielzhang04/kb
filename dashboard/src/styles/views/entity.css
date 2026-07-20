@@ -406,6 +406,26 @@
   font-size: var(--text-xs);
 }
 
+/* ---- Risk tier chip ----
+ * Tier is one of the sanctioned data-encoding taxonomies, so it may use the escalating-warmth tier
+ * tokens (which already carry light-theme variants). The tier is ALSO spelled out in the label, so the
+ * chip stays fully readable without relying on hue at all. */
+.entity-tier {
+  padding: 0 var(--space-2);
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  letter-spacing: 0.04em;
+}
+
+.entity-tier--t1 { color: var(--tier-t1); }
+.entity-tier--t2 { color: var(--tier-t2); }
+.entity-tier--t3 { color: var(--tier-t3); }
+
+.entity-stage__order {
+  padding-left: var(--space-3);
+}
+
 /* ---- The NOT-DECLARED panel ----
  * Neutral chrome on purpose: a missing declaration is a FACT, not an error, and must not borrow the
  * error hue. It reads as a stated absence, which is exactly what it is. */
