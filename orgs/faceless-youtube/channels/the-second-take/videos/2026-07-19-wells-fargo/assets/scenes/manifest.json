@@ -1,2250 +1,2964 @@
 {
-  "video_slug": "2026-07-19-wells-fargo",
-  "generated": "2026-07-20",
-  "notes": "fyt-run-001 pass-2 asset assembly (conductor). 119/119 long-form shots materialized: 114 scenes + 5 plate+cutout layered shots. 12 delta-chain follow-ons generated in strict order off placed predecessors. VERIFY BASIS IS MECHANICAL ONLY (presence/PNG-magic/16:9/size) \u2014 NO fresh-eyes style/rig/fidelity axis review has been run; the orchestrator must gate FEEL and style on the render or a review pass before this is shippable. L105 was re-authored once (engine refused the original named-executive prompt) and shots.json's still_prompt no longer matches the frame.",
-  "shots": [
-    {
-      "shot_id": "L01",
-      "file": "assets/scenes/L01.png",
-      "files": [
-        "assets/scenes/L01.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded (pre-w1 batch)",
-      "seeds": [],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L02",
-      "file": "assets/scenes/L02.png",
-      "files": [
-        "assets/scenes/L02.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L03",
-      "file": "assets/scenes/L03.png",
-      "files": [
-        "assets/scenes/L03.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L04",
-      "file": "assets/scenes/L04.png",
-      "files": [
-        "assets/scenes/L04.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L05",
-      "file": "assets/scenes/L05.png",
-      "files": [
-        "assets/scenes/L05.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L06",
-      "file": "assets/scenes/L06.png",
-      "files": [
-        "assets/scenes/L06.png"
-      ],
-      "technique": "(e) delta-chain follow-on, seeded off the prior PLACED scene",
-      "seeds": [
-        "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L07",
-      "file": "assets/scenes/L07.png",
-      "files": [
-        "assets/scenes/L07.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L08",
-      "file": "assets/scenes/L08.png",
-      "files": [
-        "assets/scenes/L08.png"
-      ],
-      "technique": "(e) delta-chain follow-on, seeded off the prior PLACED scene",
-      "seeds": [
-        "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L07.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L09",
-      "file": "assets/scenes/L09.png",
-      "files": [
-        "assets/scenes/L09.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L10",
-      "file": "assets/scenes/L10.png",
-      "files": [
-        "assets/scenes/L10.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L11",
-      "file": "assets/scenes/L11.png",
-      "files": [
-        "assets/scenes/L11.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L12",
-      "file": "assets/scenes/L12.png",
-      "files": [
-        "assets/scenes/L12.png"
-      ],
-      "technique": "(e) delta-chain follow-on, seeded off the prior PLACED scene",
-      "seeds": [
-        "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L11.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L13",
-      "file": "assets/scenes/L13.png",
-      "files": [
-        "assets/scenes/L13.png"
-      ],
-      "technique": "(e) delta-chain follow-on, seeded off the prior PLACED scene",
-      "seeds": [
-        "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L12.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L14",
-      "file": "assets/scenes/L14.png",
-      "files": [
-        "assets/scenes/L14.png"
-      ],
-      "technique": "(e) delta-chain follow-on, seeded off the prior PLACED scene",
-      "seeds": [
-        "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L13.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "gen 1 died on a transient WinError 10054 connection reset (no image billed as usable); one retry, clean. This is the only retry in the chain run. | VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L15",
-      "file": "assets/scenes/L15.png",
-      "files": [
-        "assets/scenes/L15.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L16",
-      "file": "assets/scenes/L16.png",
-      "files": [
-        "assets/scenes/L16.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L17",
-      "file": "assets/scenes/L17.png",
-      "files": [
-        "assets/scenes/L17.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L18",
-      "file": "assets/scenes/L18.png",
-      "files": [
-        "assets/scenes/L18.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L19",
-      "file": "assets/scenes/L19.png",
-      "files": [
-        "assets/scenes/L19.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L20",
-      "file": "assets/scenes/L20.png",
-      "files": [
-        "assets/scenes/L20.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L21",
-      "file": "assets/scenes/L21.png",
-      "files": [
-        "assets/scenes/L21.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L22",
-      "file": "assets/scenes/L22.png",
-      "files": [
-        "assets/scenes/L22.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L23",
-      "file": "assets/scenes/L23.png",
-      "files": [
-        "assets/scenes/L23.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L24",
-      "file": "assets/scenes/L24.png",
-      "files": [
-        "assets/scenes/L24.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L25",
-      "file": "assets/scenes/L25.png",
-      "files": [
-        "assets/scenes/L25.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L26",
-      "file": "assets/scenes/L26.png",
-      "files": [
-        "assets/scenes/L26.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L27",
-      "file": "assets/scenes/L27.png",
-      "files": [
-        "assets/scenes/L27.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded (pre-w1 batch) + cast library seed (kovacevich)",
-      "seeds": [],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L28",
-      "file": "assets/scenes/L28.png",
-      "files": [
-        "assets/scenes/L28.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L29",
-      "file": "assets/scenes/L29.png",
-      "files": [
-        "assets/scenes/L29.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L30",
-      "file": "assets/scenes/L30.png",
-      "files": [
-        "assets/scenes/L30.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L31",
-      "file": "assets/plates/L31.png",
-      "files": [
-        "assets/plates/L31.png",
-        "assets/cutouts/L31-boulder.png"
-      ],
-      "technique": "(a) plate gen + 2:3 magenta-field cutout source -> forge.py cutout (rembg) -> deterministic magenta chroma-key + despill",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "rembg matte clean on first pass (0.00% magenta residual, corners alpha 0); no chroma-key needed. | VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L32",
-      "file": "assets/scenes/L32.png",
-      "files": [
-        "assets/scenes/L32.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L33",
-      "file": "assets/scenes/L33.png",
-      "files": [
-        "assets/scenes/L33.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L34",
-      "file": "assets/scenes/L34.png",
-      "files": [
-        "assets/scenes/L34.png"
-      ],
-      "technique": "(e) delta-chain follow-on, seeded off the prior PLACED scene",
-      "seeds": [
-        "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L33.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L35",
-      "file": "assets/scenes/L35.png",
-      "files": [
-        "assets/scenes/L35.png"
-      ],
-      "technique": "(e) delta-chain follow-on, seeded off the prior PLACED scene",
-      "seeds": [
-        "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L34.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L36",
-      "file": "assets/scenes/L36.png",
-      "files": [
-        "assets/scenes/L36.png"
-      ],
-      "technique": "(e) delta-chain follow-on, seeded off the prior PLACED scene",
-      "seeds": [
-        "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L35.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L37",
-      "file": "assets/scenes/L37.png",
-      "files": [
-        "assets/scenes/L37.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L38",
-      "file": "assets/scenes/L38.png",
-      "files": [
-        "assets/scenes/L38.png"
-      ],
-      "technique": "(e) delta-chain follow-on, seeded off the prior PLACED scene",
-      "seeds": [
-        "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L37.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L39",
-      "file": "assets/scenes/L39.png",
-      "files": [
-        "assets/scenes/L39.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L40",
-      "file": "assets/scenes/L40.png",
-      "files": [
-        "assets/scenes/L40.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L41",
-      "file": "assets/scenes/L41.png",
-      "files": [
-        "assets/scenes/L41.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L42",
-      "file": "assets/scenes/L42.png",
-      "files": [
-        "assets/scenes/L42.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L43",
-      "file": "assets/scenes/L43.png",
-      "files": [
-        "assets/scenes/L43.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L44",
-      "file": "assets/plates/L44.png",
-      "files": [
-        "assets/plates/L44.png",
-        "assets/cutouts/L44-stamp.png"
-      ],
-      "technique": "(a) plate gen + 2:3 magenta-field cutout source -> forge.py cutout (rembg) -> deterministic magenta chroma-key + despill",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "CONDUCTOR FIX 2026-07-20: rembg kept the magenta field ENCLOSED by the stamp's outer frame as opaque foreground (21-26% of opaque px on all four stamps, measured by hue). Removed with a deterministic magenta chroma-key (hue 255-350 deg, saturation ramp) plus a blue-over-green despill, then re-trimmed to the alpha bbox. Zero API calls. Post-fix magenta = 0.00% on every stamp; corners alpha 0. | VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L45",
-      "file": "assets/scenes/L45.png",
-      "files": [
-        "assets/scenes/L45.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L46",
-      "file": "assets/scenes/L46.png",
-      "files": [
-        "assets/scenes/L46.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L47",
-      "file": "assets/scenes/L47.png",
-      "files": [
-        "assets/scenes/L47.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L48",
-      "file": "assets/scenes/L48.png",
-      "files": [
-        "assets/scenes/L48.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L49",
-      "file": "assets/scenes/L49.png",
-      "files": [
-        "assets/scenes/L49.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L50",
-      "file": "assets/scenes/L50.png",
-      "files": [
-        "assets/scenes/L50.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L51",
-      "file": "assets/scenes/L51.png",
-      "files": [
-        "assets/scenes/L51.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L52",
-      "file": "assets/scenes/L52.png",
-      "files": [
-        "assets/scenes/L52.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L53",
-      "file": "assets/scenes/L53.png",
-      "files": [
-        "assets/scenes/L53.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L54",
-      "file": "assets/scenes/L54.png",
-      "files": [
-        "assets/scenes/L54.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L55",
-      "file": "assets/scenes/L55.png",
-      "files": [
-        "assets/scenes/L55.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L56",
-      "file": "assets/scenes/L56.png",
-      "files": [
-        "assets/scenes/L56.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L57",
-      "file": "assets/scenes/L57.png",
-      "files": [
-        "assets/scenes/L57.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L58",
-      "file": "assets/scenes/L58.png",
-      "files": [
-        "assets/scenes/L58.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L59",
-      "file": "assets/scenes/L59.png",
-      "files": [
-        "assets/scenes/L59.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L60",
-      "file": "assets/scenes/L60.png",
-      "files": [
-        "assets/scenes/L60.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L61",
-      "file": "assets/scenes/L61.png",
-      "files": [
-        "assets/scenes/L61.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L62",
-      "file": "assets/scenes/L62.png",
-      "files": [
-        "assets/scenes/L62.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L63",
-      "file": "assets/scenes/L63.png",
-      "files": [
-        "assets/scenes/L63.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L64",
-      "file": "assets/scenes/L64.png",
-      "files": [
-        "assets/scenes/L64.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L65",
-      "file": "assets/scenes/L65.png",
-      "files": [
-        "assets/scenes/L65.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L66",
-      "file": "assets/scenes/L66.png",
-      "files": [
-        "assets/scenes/L66.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L67",
-      "file": "assets/scenes/L67.png",
-      "files": [
-        "assets/scenes/L67.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L68",
-      "file": "assets/scenes/L68.png",
-      "files": [
-        "assets/scenes/L68.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L69",
-      "file": "assets/scenes/L69.png",
-      "files": [
-        "assets/scenes/L69.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L70",
-      "file": "assets/scenes/L70.png",
-      "files": [
-        "assets/scenes/L70.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L71",
-      "file": "assets/scenes/L71.png",
-      "files": [
-        "assets/scenes/L71.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L72",
-      "file": "assets/scenes/L72.png",
-      "files": [
-        "assets/scenes/L72.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L73",
-      "file": "assets/scenes/L73.png",
-      "files": [
-        "assets/scenes/L73.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L74",
-      "file": "assets/scenes/L74.png",
-      "files": [
-        "assets/scenes/L74.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L75",
-      "file": "assets/scenes/L75.png",
-      "files": [
-        "assets/scenes/L75.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L76",
-      "file": "assets/scenes/L76.png",
-      "files": [
-        "assets/scenes/L76.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L77",
-      "file": "assets/scenes/L77.png",
-      "files": [
-        "assets/scenes/L77.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L78",
-      "file": "assets/scenes/L78.png",
-      "files": [
-        "assets/scenes/L78.png"
-      ],
-      "technique": "(e) delta-chain follow-on, seeded off the prior PLACED scene",
-      "seeds": [
-        "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L77.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L79",
-      "file": "assets/scenes/L79.png",
-      "files": [
-        "assets/scenes/L79.png"
-      ],
-      "technique": "(e) delta-chain follow-on, seeded off the prior PLACED scene",
-      "seeds": [
-        "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L78.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L80",
-      "file": "assets/scenes/L80.png",
-      "files": [
-        "assets/scenes/L80.png"
-      ],
-      "technique": "(e) delta-chain follow-on, seeded off the prior PLACED scene",
-      "seeds": [
-        "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L79.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L81",
-      "file": "assets/scenes/L81.png",
-      "files": [
-        "assets/scenes/L81.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded + cast library seed (stumpf)",
-      "seeds": [
-        "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/library/stumpf.png",
-        "channels/the-second-take/visual-kit/refs/base/expr-worried.png",
-        "channels/the-second-take/visual-kit/refs/base/sit.png",
-        "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L82",
-      "file": "assets/scenes/L82.png",
-      "files": [
-        "assets/scenes/L82.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L83",
-      "file": "assets/scenes/L83.png",
-      "files": [
-        "assets/scenes/L83.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L84",
-      "file": "assets/scenes/L84.png",
-      "files": [
-        "assets/scenes/L84.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L85",
-      "file": "assets/scenes/L85.png",
-      "files": [
-        "assets/scenes/L85.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L86",
-      "file": "assets/scenes/L86.png",
-      "files": [
-        "assets/scenes/L86.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L87",
-      "file": "assets/scenes/L87.png",
-      "files": [
-        "assets/scenes/L87.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L88",
-      "file": "assets/scenes/L88.png",
-      "files": [
-        "assets/scenes/L88.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L89",
-      "file": "assets/scenes/L89.png",
-      "files": [
-        "assets/scenes/L89.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L90",
-      "file": "assets/plates/L90.png",
-      "files": [
-        "assets/plates/L90.png",
-        "assets/cutouts/L90-stamp.png"
-      ],
-      "technique": "(a) plate gen + 2:3 magenta-field cutout source -> forge.py cutout (rembg) -> deterministic magenta chroma-key + despill",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "CONDUCTOR FIX 2026-07-20: rembg kept the magenta field ENCLOSED by the stamp's outer frame as opaque foreground (21-26% of opaque px on all four stamps, measured by hue). Removed with a deterministic magenta chroma-key (hue 255-350 deg, saturation ramp) plus a blue-over-green despill, then re-trimmed to the alpha bbox. Zero API calls. Post-fix magenta = 0.00% on every stamp; corners alpha 0. | VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L91",
-      "file": "assets/scenes/L91.png",
-      "files": [
-        "assets/scenes/L91.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L92",
-      "file": "assets/scenes/L92.png",
-      "files": [
-        "assets/scenes/L92.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L93",
-      "file": "assets/scenes/L93.png",
-      "files": [
-        "assets/scenes/L93.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L94",
-      "file": "assets/scenes/L94.png",
-      "files": [
-        "assets/scenes/L94.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded + cast library seed (tolstedt)",
-      "seeds": [
-        "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/library/tolstedt.png",
-        "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
-        "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png",
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L95",
-      "file": "assets/scenes/L95.png",
-      "files": [
-        "assets/scenes/L95.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L96",
-      "file": "assets/scenes/L96.png",
-      "files": [
-        "assets/scenes/L96.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded + cast library seed (tolstedt, stumpf)",
-      "seeds": [
-        "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/library/tolstedt.png",
-        "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
-        "channels/the-second-take/visual-kit/refs/base/carry-by-handle.png",
-        "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/library/stumpf.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L97",
-      "file": "assets/scenes/L97.png",
-      "files": [
-        "assets/scenes/L97.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L98",
-      "file": "assets/scenes/L98.png",
-      "files": [
-        "assets/scenes/L98.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L99",
-      "file": "assets/plates/L99.png",
-      "files": [
-        "assets/plates/L99.png",
-        "assets/cutouts/L99-stamp.png"
-      ],
-      "technique": "(a) plate gen + 2:3 magenta-field cutout source -> forge.py cutout (rembg) -> deterministic magenta chroma-key + despill",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "CONDUCTOR FIX 2026-07-20: rembg kept the magenta field ENCLOSED by the stamp's outer frame as opaque foreground (21-26% of opaque px on all four stamps, measured by hue). Removed with a deterministic magenta chroma-key (hue 255-350 deg, saturation ramp) plus a blue-over-green despill, then re-trimmed to the alpha bbox. Zero API calls. Post-fix magenta = 0.00% on every stamp; corners alpha 0. | VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L100",
-      "file": "assets/scenes/L100.png",
-      "files": [
-        "assets/scenes/L100.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L101",
-      "file": "assets/plates/L101.png",
-      "files": [
-        "assets/plates/L101.png",
-        "assets/cutouts/L101-stamp.png"
-      ],
-      "technique": "(a) plate gen + 2:3 magenta-field cutout source -> forge.py cutout (rembg) -> deterministic magenta chroma-key + despill",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "CONDUCTOR FIX 2026-07-20: rembg kept the magenta field ENCLOSED by the stamp's outer frame as opaque foreground (21-26% of opaque px on all four stamps, measured by hue). Removed with a deterministic magenta chroma-key (hue 255-350 deg, saturation ramp) plus a blue-over-green despill, then re-trimmed to the alpha bbox. Zero API calls. Post-fix magenta = 0.00% on every stamp; corners alpha 0. | VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L102",
-      "file": "assets/scenes/L102.png",
-      "files": [
-        "assets/scenes/L102.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L103",
-      "file": "assets/scenes/L103.png",
-      "files": [
-        "assets/scenes/L103.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L104",
-      "file": "assets/scenes/L104.png",
-      "files": [
-        "assets/scenes/L104.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L105",
-      "file": "assets/scenes/L105.png",
-      "files": [
-        "assets/scenes/L105.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded + cast library seed (tolstedt)",
-      "seeds": [
-        "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/library/tolstedt.png",
-        "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
-        "channels/the-second-take/visual-kit/refs/base/action-present.png",
-        "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "DELIBERATE DEVIATION (orchestrator, do not 'fix'): the original still_prompt showed a named real executive face-on personally asserting a claim to investors; the engine refused it deterministically ('no image in response'). Re-authored ONCE so the cross-sell scorecard is the subject and the presenter is seen from behind and unidentifiable. shots.json's still_prompt for L105 NO LONGER MATCHES the frame that exists. | VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L106",
-      "file": "assets/scenes/L106.png",
-      "files": [
-        "assets/scenes/L106.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L107",
-      "file": "assets/scenes/L107.png",
-      "files": [
-        "assets/scenes/L107.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L108",
-      "file": "assets/scenes/L108.png",
-      "files": [
-        "assets/scenes/L108.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L109",
-      "file": "assets/scenes/L109.png",
-      "files": [
-        "assets/scenes/L109.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded + cast library seed (tolstedt)",
-      "seeds": [
-        "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/library/tolstedt.png",
-        "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
-        "channels/the-second-take/visual-kit/refs/base/hold-one-hand.png",
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L110",
-      "file": "assets/scenes/L110.png",
-      "files": [
-        "assets/scenes/L110.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L111",
-      "file": "assets/scenes/L111.png",
-      "files": [
-        "assets/scenes/L111.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L112",
-      "file": "assets/scenes/L112.png",
-      "files": [
-        "assets/scenes/L112.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L113",
-      "file": "assets/scenes/L113.png",
-      "files": [
-        "assets/scenes/L113.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L114",
-      "file": "assets/scenes/L114.png",
-      "files": [
-        "assets/scenes/L114.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L115",
-      "file": "assets/scenes/L115.png",
-      "files": [
-        "assets/scenes/L115.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L116",
-      "file": "assets/scenes/L116.png",
-      "files": [
-        "assets/scenes/L116.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L117",
-      "file": "assets/scenes/L117.png",
-      "files": [
-        "assets/scenes/L117.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L118",
-      "file": "assets/scenes/L118.png",
-      "files": [
-        "assets/scenes/L118.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    },
-    {
-      "shot_id": "L119",
-      "file": "assets/scenes/L119.png",
-      "files": [
-        "assets/scenes/L119.png"
-      ],
-      "technique": "(c) environment gen, style-anchor seeded",
-      "seeds": [
-        "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-        "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
-      ],
-      "flagged": false,
-      "blocking": false,
-      "verified": {
-        "scene": true,
-        "rig": true
-      },
-      "notes": "VERIFY BASIS: MECHANICAL ONLY \u2014 file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame."
-    }
-  ]
+ "video_slug": "2026-07-19-wells-fargo",
+ "generated": "2026-07-20",
+ "notes": "Round 8: verified stamped by the conductor from the image-generation skill's batched review (3 mandates, 119 frames + 5 cutouts, full coverage). Supersedes the Round-3 'MECHANICAL ONLY' stamp, which was an assembly-completeness claim falsely written into the verified field. NOT SHIPPABLE: 36 blocking, 42 high. See assets/image-gen-lab.md Round 8.",
+ "shots": [
+  {
+   "shot_id": "L01",
+   "file": "assets/scenes/L01.png",
+   "files": [
+    "assets/scenes/L01.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded (pre-w1 batch)",
+   "seeds": [],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "LOW"
+   }
+  },
+  {
+   "shot_id": "L02",
+   "file": "assets/scenes/L02.png",
+   "files": [
+    "assets/scenes/L02.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "BLOCKING",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L03",
+   "file": "assets/scenes/L03.png",
+   "files": [
+    "assets/scenes/L03.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "BLOCKING",
+    "worst_rig_axis": "HIGH"
+   }
+  },
+  {
+   "shot_id": "L04",
+   "file": "assets/scenes/L04.png",
+   "files": [
+    "assets/scenes/L04.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "LOW"
+   }
+  },
+  {
+   "shot_id": "L05",
+   "file": "assets/scenes/L05.png",
+   "files": [
+    "assets/scenes/L05.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "LOW",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L06",
+   "file": "assets/scenes/L06.png",
+   "files": [
+    "assets/scenes/L06.png"
+   ],
+   "technique": "(e) delta-chain follow-on, seeded off the prior PLACED scene",
+   "seeds": [
+    "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L07",
+   "file": "assets/scenes/L07.png",
+   "files": [
+    "assets/scenes/L07.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L08",
+   "file": "assets/scenes/L08.png",
+   "files": [
+    "assets/scenes/L08.png"
+   ],
+   "technique": "(e) delta-chain follow-on, seeded off the prior PLACED scene",
+   "seeds": [
+    "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L07.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L09",
+   "file": "assets/scenes/L09.png",
+   "files": [
+    "assets/scenes/L09.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L10",
+   "file": "assets/scenes/L10.png",
+   "files": [
+    "assets/scenes/L10.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "MEDIUM"
+   }
+  },
+  {
+   "shot_id": "L11",
+   "file": "assets/scenes/L11.png",
+   "files": [
+    "assets/scenes/L11.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "LOW"
+   }
+  },
+  {
+   "shot_id": "L12",
+   "file": "assets/scenes/L12.png",
+   "files": [
+    "assets/scenes/L12.png"
+   ],
+   "technique": "(e) delta-chain follow-on, seeded off the prior PLACED scene",
+   "seeds": [
+    "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L11.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "LOW"
+   }
+  },
+  {
+   "shot_id": "L13",
+   "file": "assets/scenes/L13.png",
+   "files": [
+    "assets/scenes/L13.png"
+   ],
+   "technique": "(e) delta-chain follow-on, seeded off the prior PLACED scene",
+   "seeds": [
+    "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L12.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "LOW"
+   }
+  },
+  {
+   "shot_id": "L14",
+   "file": "assets/scenes/L14.png",
+   "files": [
+    "assets/scenes/L14.png"
+   ],
+   "technique": "(e) delta-chain follow-on, seeded off the prior PLACED scene",
+   "seeds": [
+    "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L13.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "gen 1 died on a transient WinError 10054 connection reset (no image billed as usable); one retry, clean. This is the only retry in the chain run. | — file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "LOW"
+   }
+  },
+  {
+   "shot_id": "L15",
+   "file": "assets/scenes/L15.png",
+   "files": [
+    "assets/scenes/L15.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "BLOCKING"
+   }
+  },
+  {
+   "shot_id": "L16",
+   "file": "assets/scenes/L16.png",
+   "files": [
+    "assets/scenes/L16.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L17",
+   "file": "assets/scenes/L17.png",
+   "files": [
+    "assets/scenes/L17.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "LOW"
+   }
+  },
+  {
+   "shot_id": "L18",
+   "file": "assets/scenes/L18.png",
+   "files": [
+    "assets/scenes/L18.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "BLOCKING",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L19",
+   "file": "assets/scenes/L19.png",
+   "files": [
+    "assets/scenes/L19.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L20",
+   "file": "assets/scenes/L20.png",
+   "files": [
+    "assets/scenes/L20.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L21",
+   "file": "assets/scenes/L21.png",
+   "files": [
+    "assets/scenes/L21.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "BLOCKING"
+   }
+  },
+  {
+   "shot_id": "L22",
+   "file": "assets/scenes/L22.png",
+   "files": [
+    "assets/scenes/L22.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L23",
+   "file": "assets/scenes/L23.png",
+   "files": [
+    "assets/scenes/L23.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L24",
+   "file": "assets/scenes/L24.png",
+   "files": [
+    "assets/scenes/L24.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L25",
+   "file": "assets/scenes/L25.png",
+   "files": [
+    "assets/scenes/L25.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L26",
+   "file": "assets/scenes/L26.png",
+   "files": [
+    "assets/scenes/L26.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "LOW",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L27",
+   "file": "assets/scenes/L27.png",
+   "files": [
+    "assets/scenes/L27.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded (pre-w1 batch) + cast library seed (kovacevich)",
+   "seeds": [],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "LOW"
+   }
+  },
+  {
+   "shot_id": "L28",
+   "file": "assets/scenes/L28.png",
+   "files": [
+    "assets/scenes/L28.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "BLOCKING"
+   }
+  },
+  {
+   "shot_id": "L29",
+   "file": "assets/scenes/L29.png",
+   "files": [
+    "assets/scenes/L29.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "BLOCKING",
+    "worst_rig_axis": "HIGH"
+   }
+  },
+  {
+   "shot_id": "L30",
+   "file": "assets/scenes/L30.png",
+   "files": [
+    "assets/scenes/L30.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "BLOCKING",
+    "worst_rig_axis": "HIGH"
+   }
+  },
+  {
+   "shot_id": "L31",
+   "file": "assets/plates/L31.png",
+   "files": [
+    "assets/plates/L31.png",
+    "assets/cutouts/L31-boulder.png"
+   ],
+   "technique": "(a) plate gen + 2:3 magenta-field cutout source -> forge.py cutout (rembg) -> deterministic magenta chroma-key + despill",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "rembg matte clean on first pass (0.00% magenta residual, corners alpha 0); no chroma-key needed. | — file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "LOW"
+   }
+  },
+  {
+   "shot_id": "L32",
+   "file": "assets/scenes/L32.png",
+   "files": [
+    "assets/scenes/L32.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "MEDIUM"
+   }
+  },
+  {
+   "shot_id": "L33",
+   "file": "assets/scenes/L33.png",
+   "files": [
+    "assets/scenes/L33.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "LOW"
+   }
+  },
+  {
+   "shot_id": "L34",
+   "file": "assets/scenes/L34.png",
+   "files": [
+    "assets/scenes/L34.png"
+   ],
+   "technique": "(e) delta-chain follow-on, seeded off the prior PLACED scene",
+   "seeds": [
+    "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L33.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "BLOCKING",
+    "worst_rig_axis": "LOW"
+   }
+  },
+  {
+   "shot_id": "L35",
+   "file": "assets/scenes/L35.png",
+   "files": [
+    "assets/scenes/L35.png"
+   ],
+   "technique": "(e) delta-chain follow-on, seeded off the prior PLACED scene",
+   "seeds": [
+    "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L34.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "BLOCKING",
+    "worst_rig_axis": "LOW"
+   }
+  },
+  {
+   "shot_id": "L36",
+   "file": "assets/scenes/L36.png",
+   "files": [
+    "assets/scenes/L36.png"
+   ],
+   "technique": "(e) delta-chain follow-on, seeded off the prior PLACED scene",
+   "seeds": [
+    "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L35.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "BLOCKING",
+    "worst_rig_axis": "LOW"
+   }
+  },
+  {
+   "shot_id": "L37",
+   "file": "assets/scenes/L37.png",
+   "files": [
+    "assets/scenes/L37.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L38",
+   "file": "assets/scenes/L38.png",
+   "files": [
+    "assets/scenes/L38.png"
+   ],
+   "technique": "(e) delta-chain follow-on, seeded off the prior PLACED scene",
+   "seeds": [
+    "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L37.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "BLOCKING",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L39",
+   "file": "assets/scenes/L39.png",
+   "files": [
+    "assets/scenes/L39.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L40",
+   "file": "assets/scenes/L40.png",
+   "files": [
+    "assets/scenes/L40.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "BLOCKING",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L41",
+   "file": "assets/scenes/L41.png",
+   "files": [
+    "assets/scenes/L41.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L42",
+   "file": "assets/scenes/L42.png",
+   "files": [
+    "assets/scenes/L42.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "BLOCKING",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L43",
+   "file": "assets/scenes/L43.png",
+   "files": [
+    "assets/scenes/L43.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "BLOCKING",
+    "worst_rig_axis": "LOW"
+   }
+  },
+  {
+   "shot_id": "L44",
+   "file": "assets/plates/L44.png",
+   "files": [
+    "assets/plates/L44.png",
+    "assets/cutouts/L44-stamp.png"
+   ],
+   "technique": "(a) plate gen + 2:3 magenta-field cutout source -> forge.py cutout (rembg) -> deterministic magenta chroma-key + despill",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "CONDUCTOR FIX 2026-07-20: rembg kept the magenta field ENCLOSED by the stamp's outer frame as opaque foreground (21-26% of opaque px on all four stamps, measured by hue). Removed with a deterministic magenta chroma-key (hue 255-350 deg, saturation ramp) plus a blue-over-green despill, then re-trimmed to the alpha bbox. Zero API calls. Post-fix magenta = 0.00% on every stamp; corners alpha 0. | — file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L45",
+   "file": "assets/scenes/L45.png",
+   "files": [
+    "assets/scenes/L45.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "BLOCKING",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L46",
+   "file": "assets/scenes/L46.png",
+   "files": [
+    "assets/scenes/L46.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "BLOCKING",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L47",
+   "file": "assets/scenes/L47.png",
+   "files": [
+    "assets/scenes/L47.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L48",
+   "file": "assets/scenes/L48.png",
+   "files": [
+    "assets/scenes/L48.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L49",
+   "file": "assets/scenes/L49.png",
+   "files": [
+    "assets/scenes/L49.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "BLOCKING",
+    "worst_rig_axis": "HIGH"
+   }
+  },
+  {
+   "shot_id": "L50",
+   "file": "assets/scenes/L50.png",
+   "files": [
+    "assets/scenes/L50.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L51",
+   "file": "assets/scenes/L51.png",
+   "files": [
+    "assets/scenes/L51.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L52",
+   "file": "assets/scenes/L52.png",
+   "files": [
+    "assets/scenes/L52.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "BLOCKING",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L53",
+   "file": "assets/scenes/L53.png",
+   "files": [
+    "assets/scenes/L53.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L54",
+   "file": "assets/scenes/L54.png",
+   "files": [
+    "assets/scenes/L54.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L55",
+   "file": "assets/scenes/L55.png",
+   "files": [
+    "assets/scenes/L55.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "BLOCKING",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L56",
+   "file": "assets/scenes/L56.png",
+   "files": [
+    "assets/scenes/L56.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "LOW"
+   }
+  },
+  {
+   "shot_id": "L57",
+   "file": "assets/scenes/L57.png",
+   "files": [
+    "assets/scenes/L57.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "HIGH"
+   }
+  },
+  {
+   "shot_id": "L58",
+   "file": "assets/scenes/L58.png",
+   "files": [
+    "assets/scenes/L58.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "LOW"
+   }
+  },
+  {
+   "shot_id": "L59",
+   "file": "assets/scenes/L59.png",
+   "files": [
+    "assets/scenes/L59.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "BLOCKING",
+    "worst_rig_axis": "LOW"
+   }
+  },
+  {
+   "shot_id": "L60",
+   "file": "assets/scenes/L60.png",
+   "files": [
+    "assets/scenes/L60.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L61",
+   "file": "assets/scenes/L61.png",
+   "files": [
+    "assets/scenes/L61.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L62",
+   "file": "assets/scenes/L62.png",
+   "files": [
+    "assets/scenes/L62.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "HIGH"
+   }
+  },
+  {
+   "shot_id": "L63",
+   "file": "assets/scenes/L63.png",
+   "files": [
+    "assets/scenes/L63.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "LOW"
+   }
+  },
+  {
+   "shot_id": "L64",
+   "file": "assets/scenes/L64.png",
+   "files": [
+    "assets/scenes/L64.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "BLOCKING",
+    "worst_rig_axis": "LOW"
+   }
+  },
+  {
+   "shot_id": "L65",
+   "file": "assets/scenes/L65.png",
+   "files": [
+    "assets/scenes/L65.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L66",
+   "file": "assets/scenes/L66.png",
+   "files": [
+    "assets/scenes/L66.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "BLOCKING",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L67",
+   "file": "assets/scenes/L67.png",
+   "files": [
+    "assets/scenes/L67.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "BLOCKING",
+    "worst_rig_axis": "MEDIUM"
+   }
+  },
+  {
+   "shot_id": "L68",
+   "file": "assets/scenes/L68.png",
+   "files": [
+    "assets/scenes/L68.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "LOW"
+   }
+  },
+  {
+   "shot_id": "L69",
+   "file": "assets/scenes/L69.png",
+   "files": [
+    "assets/scenes/L69.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "BLOCKING",
+    "worst_rig_axis": "LOW"
+   }
+  },
+  {
+   "shot_id": "L70",
+   "file": "assets/scenes/L70.png",
+   "files": [
+    "assets/scenes/L70.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "HIGH"
+   }
+  },
+  {
+   "shot_id": "L71",
+   "file": "assets/scenes/L71.png",
+   "files": [
+    "assets/scenes/L71.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L72",
+   "file": "assets/scenes/L72.png",
+   "files": [
+    "assets/scenes/L72.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L73",
+   "file": "assets/scenes/L73.png",
+   "files": [
+    "assets/scenes/L73.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L74",
+   "file": "assets/scenes/L74.png",
+   "files": [
+    "assets/scenes/L74.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L75",
+   "file": "assets/scenes/L75.png",
+   "files": [
+    "assets/scenes/L75.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "BLOCKING",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L76",
+   "file": "assets/scenes/L76.png",
+   "files": [
+    "assets/scenes/L76.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "BLOCKING",
+    "worst_rig_axis": "MEDIUM"
+   }
+  },
+  {
+   "shot_id": "L77",
+   "file": "assets/scenes/L77.png",
+   "files": [
+    "assets/scenes/L77.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L78",
+   "file": "assets/scenes/L78.png",
+   "files": [
+    "assets/scenes/L78.png"
+   ],
+   "technique": "(e) delta-chain follow-on, seeded off the prior PLACED scene",
+   "seeds": [
+    "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L77.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L79",
+   "file": "assets/scenes/L79.png",
+   "files": [
+    "assets/scenes/L79.png"
+   ],
+   "technique": "(e) delta-chain follow-on, seeded off the prior PLACED scene",
+   "seeds": [
+    "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L78.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L80",
+   "file": "assets/scenes/L80.png",
+   "files": [
+    "assets/scenes/L80.png"
+   ],
+   "technique": "(e) delta-chain follow-on, seeded off the prior PLACED scene",
+   "seeds": [
+    "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L79.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L81",
+   "file": "assets/scenes/L81.png",
+   "files": [
+    "assets/scenes/L81.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded + cast library seed (stumpf)",
+   "seeds": [
+    "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/library/stumpf.png",
+    "channels/the-second-take/visual-kit/refs/base/expr-worried.png",
+    "channels/the-second-take/visual-kit/refs/base/sit.png",
+    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "MEDIUM"
+   }
+  },
+  {
+   "shot_id": "L82",
+   "file": "assets/scenes/L82.png",
+   "files": [
+    "assets/scenes/L82.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "LOW"
+   }
+  },
+  {
+   "shot_id": "L83",
+   "file": "assets/scenes/L83.png",
+   "files": [
+    "assets/scenes/L83.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L84",
+   "file": "assets/scenes/L84.png",
+   "files": [
+    "assets/scenes/L84.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L85",
+   "file": "assets/scenes/L85.png",
+   "files": [
+    "assets/scenes/L85.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "BLOCKING"
+   }
+  },
+  {
+   "shot_id": "L86",
+   "file": "assets/scenes/L86.png",
+   "files": [
+    "assets/scenes/L86.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L87",
+   "file": "assets/scenes/L87.png",
+   "files": [
+    "assets/scenes/L87.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L88",
+   "file": "assets/scenes/L88.png",
+   "files": [
+    "assets/scenes/L88.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L89",
+   "file": "assets/scenes/L89.png",
+   "files": [
+    "assets/scenes/L89.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L90",
+   "file": "assets/plates/L90.png",
+   "files": [
+    "assets/plates/L90.png",
+    "assets/cutouts/L90-stamp.png"
+   ],
+   "technique": "(a) plate gen + 2:3 magenta-field cutout source -> forge.py cutout (rembg) -> deterministic magenta chroma-key + despill",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "CONDUCTOR FIX 2026-07-20: rembg kept the magenta field ENCLOSED by the stamp's outer frame as opaque foreground (21-26% of opaque px on all four stamps, measured by hue). Removed with a deterministic magenta chroma-key (hue 255-350 deg, saturation ramp) plus a blue-over-green despill, then re-trimmed to the alpha bbox. Zero API calls. Post-fix magenta = 0.00% on every stamp; corners alpha 0. | — file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L91",
+   "file": "assets/scenes/L91.png",
+   "files": [
+    "assets/scenes/L91.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "LOW"
+   }
+  },
+  {
+   "shot_id": "L92",
+   "file": "assets/scenes/L92.png",
+   "files": [
+    "assets/scenes/L92.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L93",
+   "file": "assets/scenes/L93.png",
+   "files": [
+    "assets/scenes/L93.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "BLOCKING",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L94",
+   "file": "assets/scenes/L94.png",
+   "files": [
+    "assets/scenes/L94.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded + cast library seed (tolstedt)",
+   "seeds": [
+    "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/library/tolstedt.png",
+    "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+    "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png",
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "BLOCKING",
+    "worst_rig_axis": "MEDIUM"
+   }
+  },
+  {
+   "shot_id": "L95",
+   "file": "assets/scenes/L95.png",
+   "files": [
+    "assets/scenes/L95.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "BLOCKING",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L96",
+   "file": "assets/scenes/L96.png",
+   "files": [
+    "assets/scenes/L96.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded + cast library seed (tolstedt, stumpf)",
+   "seeds": [
+    "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/library/tolstedt.png",
+    "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+    "channels/the-second-take/visual-kit/refs/base/carry-by-handle.png",
+    "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/library/stumpf.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "HIGH"
+   }
+  },
+  {
+   "shot_id": "L97",
+   "file": "assets/scenes/L97.png",
+   "files": [
+    "assets/scenes/L97.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "LOW"
+   }
+  },
+  {
+   "shot_id": "L98",
+   "file": "assets/scenes/L98.png",
+   "files": [
+    "assets/scenes/L98.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "LOW"
+   }
+  },
+  {
+   "shot_id": "L99",
+   "file": "assets/plates/L99.png",
+   "files": [
+    "assets/plates/L99.png",
+    "assets/cutouts/L99-stamp.png"
+   ],
+   "technique": "(a) plate gen + 2:3 magenta-field cutout source -> forge.py cutout (rembg) -> deterministic magenta chroma-key + despill",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "CONDUCTOR FIX 2026-07-20: rembg kept the magenta field ENCLOSED by the stamp's outer frame as opaque foreground (21-26% of opaque px on all four stamps, measured by hue). Removed with a deterministic magenta chroma-key (hue 255-350 deg, saturation ramp) plus a blue-over-green despill, then re-trimmed to the alpha bbox. Zero API calls. Post-fix magenta = 0.00% on every stamp; corners alpha 0. | — file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "BLOCKING",
+    "worst_rig_axis": "HIGH"
+   }
+  },
+  {
+   "shot_id": "L100",
+   "file": "assets/scenes/L100.png",
+   "files": [
+    "assets/scenes/L100.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "BLOCKING",
+    "worst_rig_axis": "BLOCKING"
+   }
+  },
+  {
+   "shot_id": "L101",
+   "file": "assets/plates/L101.png",
+   "files": [
+    "assets/plates/L101.png",
+    "assets/cutouts/L101-stamp.png"
+   ],
+   "technique": "(a) plate gen + 2:3 magenta-field cutout source -> forge.py cutout (rembg) -> deterministic magenta chroma-key + despill",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "CONDUCTOR FIX 2026-07-20: rembg kept the magenta field ENCLOSED by the stamp's outer frame as opaque foreground (21-26% of opaque px on all four stamps, measured by hue). Removed with a deterministic magenta chroma-key (hue 255-350 deg, saturation ramp) plus a blue-over-green despill, then re-trimmed to the alpha bbox. Zero API calls. Post-fix magenta = 0.00% on every stamp; corners alpha 0. | — file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L102",
+   "file": "assets/scenes/L102.png",
+   "files": [
+    "assets/scenes/L102.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "HIGH"
+   }
+  },
+  {
+   "shot_id": "L103",
+   "file": "assets/scenes/L103.png",
+   "files": [
+    "assets/scenes/L103.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L104",
+   "file": "assets/scenes/L104.png",
+   "files": [
+    "assets/scenes/L104.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L105",
+   "file": "assets/scenes/L105.png",
+   "files": [
+    "assets/scenes/L105.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded + cast library seed (tolstedt)",
+   "seeds": [
+    "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/library/tolstedt.png",
+    "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
+    "channels/the-second-take/visual-kit/refs/base/action-present.png",
+    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "DELIBERATE DEVIATION (orchestrator, do not 'fix'): the original still_prompt showed a named real executive face-on personally asserting a claim to investors; the engine refused it deterministically ('no image in response'). Re-authored ONCE so the cross-sell scorecard is the subject and the presenter is seen from behind and unidentifiable. shots.json's still_prompt for L105 NO LONGER MATCHES the frame that exists. | — file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "LOW",
+    "worst_rig_axis": "HIGH"
+   }
+  },
+  {
+   "shot_id": "L106",
+   "file": "assets/scenes/L106.png",
+   "files": [
+    "assets/scenes/L106.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "BLOCKING",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L107",
+   "file": "assets/scenes/L107.png",
+   "files": [
+    "assets/scenes/L107.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "MEDIUM"
+   }
+  },
+  {
+   "shot_id": "L108",
+   "file": "assets/scenes/L108.png",
+   "files": [
+    "assets/scenes/L108.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "BLOCKING",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L109",
+   "file": "assets/scenes/L109.png",
+   "files": [
+    "assets/scenes/L109.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded + cast library seed (tolstedt)",
+   "seeds": [
+    "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/library/tolstedt.png",
+    "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+    "channels/the-second-take/visual-kit/refs/base/hold-one-hand.png",
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "LOW",
+    "worst_rig_axis": "LOW"
+   }
+  },
+  {
+   "shot_id": "L110",
+   "file": "assets/scenes/L110.png",
+   "files": [
+    "assets/scenes/L110.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "BLOCKING"
+   }
+  },
+  {
+   "shot_id": "L111",
+   "file": "assets/scenes/L111.png",
+   "files": [
+    "assets/scenes/L111.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L112",
+   "file": "assets/scenes/L112.png",
+   "files": [
+    "assets/scenes/L112.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L113",
+   "file": "assets/scenes/L113.png",
+   "files": [
+    "assets/scenes/L113.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L114",
+   "file": "assets/scenes/L114.png",
+   "files": [
+    "assets/scenes/L114.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L115",
+   "file": "assets/scenes/L115.png",
+   "files": [
+    "assets/scenes/L115.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "LOW",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L116",
+   "file": "assets/scenes/L116.png",
+   "files": [
+    "assets/scenes/L116.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": false
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "HIGH"
+   }
+  },
+  {
+   "shot_id": "L117",
+   "file": "assets/scenes/L117.png",
+   "files": [
+    "assets/scenes/L117.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "HIGH",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L118",
+   "file": "assets/scenes/L118.png",
+   "files": [
+    "assets/scenes/L118.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "MEDIUM",
+    "worst_rig_axis": "none"
+   }
+  },
+  {
+   "shot_id": "L119",
+   "file": "assets/scenes/L119.png",
+   "files": [
+    "assets/scenes/L119.png"
+   ],
+   "technique": "(c) environment gen, style-anchor seeded",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   ],
+   "flagged": true,
+   "blocking": false,
+   "verified": {
+    "scene": false,
+    "rig": true
+   },
+   "notes": "— file present, PNG magic valid, 1376x768 (16:9), >1KB, placed via forge.py place. NO fresh-eyes style/rig/fidelity axis review has been run on this frame.",
+   "review": {
+    "round": 8,
+    "basis": "image-generation batched review (fidelity+style+rig-on-crop-battery), 2026-07-20",
+    "worst_scene_axis": "LOW",
+    "worst_rig_axis": "none"
+   }
+  }
+ ]
 }

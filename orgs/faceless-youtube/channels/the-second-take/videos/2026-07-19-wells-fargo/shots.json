@@ -510,9 +510,9 @@
         "shot_class": "symbolic-stand-in-object",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "A whimsical marker-drawn 'cross-selling machine' — a big cartoon contraption with a hopper of single customers going in one end and streams of products (cards, passbooks, policies) coming out the other, a small 'NORWEST' plate on its side and a merge-arrow joining it to a cream columned bank marked with the stagecoach tag. The machine that got absorbed into the bigger bank. Warm teal-and-cream palette, one red accent on the merge-arrow. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'NORWEST', no logos; 16:9.",
+        "still_prompt": "A whimsical marker-drawn 'cross-selling machine' — a big cartoon contraption with a hopper of single customers going in one end and streams of products (cards, passbooks, policies) coming out the other, a small 'NORWEST' plate on its side and a merge-arrow joining it to a much larger cream columned bank with a wide portico and tall arched windows. The machine that got absorbed into the bigger bank. Warm teal-and-cream palette, one red accent on the merge-arrow. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'NORWEST', no logos; 16:9.",
         "synthetic": false,
-        "notes": "Mechanism made literal: the cross-selling machine + the Norwest->Wells Fargo merge (stagecoach tag). Baked 'NORWEST'."
+        "notes": "Mechanism made literal: the cross-selling machine + the Norwest->Wells Fargo merge. Baked 'NORWEST'. SUPPLIED-TEXT FIX (resolution 2, element omitted): the receiving bank's 'stagecoach tag' named a mark with no supplied value and no entry in research.md; the tail also bans logos. The bank is now identified by architecture alone - the merge beat survives, the invented mark does not."
       },
       {
         "id": "L29",
@@ -526,9 +526,9 @@
         "shot_class": "symbolic-stand-in-object",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "The big scorecard number with a fat money-bag 'BONUS' tied onto it by a ribbon, and an anonymous banker figure staring at the bag, eyes on the money not the metric. The banker is a base-rig anonymous figure: round head, NO nose, NO ears, four-digit hands, #241a12 outline, flat cel, a teal suit; hold ONLY the rig form. Cool slate-and-cream palette, the one red accent on the ribbon. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'BONUS', no logos; 16:9.",
+        "still_prompt": "A tall marker scorecard board carrying the single numeral '8' painted large on its face (the sourced eight-products-per-household target, [F-01]) - that numeral and no other digit anywhere in the frame - with a fat money-bag 'BONUS' tied onto it by a ribbon, and an anonymous banker figure staring at the bag, eyes on the money not the metric. The banker is a base-rig anonymous figure: round head, NO nose, NO ears, four-digit hands, #241a12 outline, flat cel, a teal suit; hold ONLY the rig form. Cool slate-and-cream palette, the one red accent on the ribbon. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'BONUS', no logos; 16:9.",
         "synthetic": false,
-        "notes": "Abstract force: a bonus riding on the number. Baked 'BONUS'."
+        "notes": "Abstract force: a bonus riding on the number. Baked 'BONUS'. SUPPLIED-TEXT FIX (resolution 1, value supplied): 'The big scorecard number' supplied no value; it now carries the literal '8', sourced [F-01] (the 1999 'Going for Gr-eight' eight-products-per-household target) - the same numeral L31 and L116 carry. The VO's 'a number like that' refers back to that target."
       },
       {
         "id": "L30",
@@ -542,9 +542,9 @@
         "shot_class": "ironic-counterpoint",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "At a bank counter, a banker figure has turned his back on a waiting customer to reach up and crank a giant scorecard number higher — serving the metric, not the person. Both anonymous base-rig figures: round heads, NO noses, NO ears, four-digit hands, #241a12 outline, flat cel — banker in a teal suit, customer in plain clothes; hold ONLY the rig form. Warm teal counter palette, one red accent on the scorecard's rising arrow. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+        "still_prompt": "At a bank counter, a banker figure has turned his back on a waiting customer to reach up and crank a tall scorecard board higher by its side handle - serving the metric, not the person. The board's metric face is left COMPLETELY EMPTY: NO digits, no numerals, no decimal point, no percent sign and no placeholder glyph anywhere on it, because research.md carries no sourced value for the reported cross-sell ratio and this frame must carry none. Both anonymous base-rig figures: round heads, NO noses, NO ears, four-digit hands, #241a12 outline, flat cel — banker in a teal suit, customer in plain clothes; hold ONLY the rig form. Warm teal counter palette, one red accent on the scorecard's rising arrow. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
         "synthetic": false,
-        "notes": "Ironic counterpoint: serving the number, not the customer."
+        "notes": "Ironic counterpoint: serving the number, not the customer. SUPPLIED-TEXT FIX (resolution 3, deliberately blank): 'a giant scorecard number' supplied no value, and the number being CRANKED here is the reported cross-sell ratio - for which research.md carries no numeric value at all ([F-03] states the metric existed, never its figure), so resolution 1 is forbidden. The metric face is now explicitly empty with an exclusion clause, mirroring L16's established house pattern; the rising red arrow carries the 'cranking it higher' beat."
       },
       {
         "id": "L31",
@@ -574,9 +574,9 @@
         "shot_class": "physicalized-imbalance",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "A single teller at the counter buckling under a heavy weight labelled 'QUOTA' pressing down on their shoulders, a clock on the wall reading near end-of-day. The person who actually carries the pressure. Base-rig anonymous teller: round head, NO nose, NO ears, four-digit hands, #241a12 outline, flat cel, a teal teller's uniform; hold ONLY the rig form. Warm counter palette, the one red accent on the 'QUOTA' weight. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'QUOTA', no logos; 16:9.",
+        "still_prompt": "A single teller at the counter buckling under a heavy weight labelled 'QUOTA' pressing down on their shoulders, the tall windows behind them gone dusk-dark with the end of the working day. The person who actually carries the pressure. Base-rig anonymous teller: round head, NO nose, NO ears, four-digit hands, #241a12 outline, flat cel, a teal teller's uniform; hold ONLY the rig form. Warm counter palette, the one red accent on the 'QUOTA' weight. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'QUOTA', no logos; 16:9.",
         "synthetic": false,
-        "notes": "Physicalized: the counter worker crushed by the quota. Baked 'QUOTA'."
+        "notes": "Physicalized: the counter worker crushed by the quota. Baked 'QUOTA'. SUPPLIED-TEXT FIX (resolution 2, element omitted): 'a clock on the wall reading near end-of-day' instructed the engine to render a clock face - glyphs with no supplied value. The clock is not load-bearing; the VO's 'by the end of the day' is now carried by the dusk-dark windows, so the beat's content is unchanged."
       },
       {
         "id": "L33",
@@ -613,9 +613,9 @@
         "shot_class": "symbolic-stand-in-object",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "The SAME counter held, now a fresh account-opening form lies on it, a customer's name marker-written across the top and a small 'NEW ACCOUNT' tab — opened without the customer. Everything else held. Warm counter palette, one red accent on the 'NEW ACCOUNT' tab. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering only; the single red accent #d7402b on the tab; no photorealism, no on-screen narrator, no unrequested text beyond 'NEW ACCOUNT', no logos; 16:9.",
+        "still_prompt": "The SAME counter held, now a fresh account-opening form lies on it. Its customer-name line across the top is left COMPLETELY BLANK - not one letter on it, no scrawl, no placeholder glyph. Beside the form sits a small 'NEW ACCOUNT' tab - the account opened without the customer. Everything else held. Warm counter palette, one red accent on the 'NEW ACCOUNT' tab. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering only; the single red accent #d7402b on the tab; no photorealism, no on-screen narrator, no unrequested text beyond 'NEW ACCOUNT', no logos; 16:9.",
         "synthetic": false,
-        "notes": "Delta +the phantom account form. Baked 'NEW ACCOUNT'. No real customer name (generic)."
+        "notes": "Delta +the phantom account form. Baked 'NEW ACCOUNT'. SUPPLIED-TEXT FIX (resolution 3, deliberately blank): the fragment 'a customer's name marker-written across the top' supplied no value, and research.md names no defrauded customer - inventing one would put a fabricated name on a real, documented case, so resolution 1 is forbidden. The name line is now explicitly blank, which reads as the point of the beat: nobody consented."
       },
       {
         "id": "L35",
@@ -1804,17 +1804,11 @@
         "from_cue": false,
         "narration_type": "claim",
         "shot_class": "staged-interaction",
-        "cast": [
-          {
-            "character": "tolstedt",
-            "pose_ref": "action-present",
-            "expression_ref": "expr-smug"
-          }
-        ],
+        "cast": [],
         "source": "ai-gen",
         "still_prompt": "A warm auditorium seen from the back of the room. A huge presentation screen fills the upper two-thirds carrying ONE enormous hand-lettered marker numeral, the single digit '8', with the hand-lettered label 'PRODUCTS PER HOUSEHOLD' beneath it; a marker banner above the screen reads 'BEST IN THE BUSINESS'. On the stage below, a SMALL back-turned presenter in silhouette at a lectern, face not visible, and a row of audience figures seen from behind as dark silhouetted head-and-shoulder shapes. The number is the subject of the frame, not the presenter. Warm cream-and-amber stage palette, one red accent on the banner border. The ONLY numeral in the frame is the single digit '8' (the sourced eight-products-per-household target, [F-01]/[F-03]) - no currency symbol, no comma, no decimal, no other digits. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no logos; 16:9.",
         "synthetic": false,
-        "notes": "Staged-interaction: championing the number to investors (the SEC's documented charge). Baked 'BEST IN THE BUSINESS'."
+        "notes": "Staged-interaction: championing the number to investors (the SEC's documented charge). Baked 'BEST IN THE BUSINESS'. CAST RECONCILED TO THE FRAME: `cast` read [tolstedt / action-present / expr-smug] while this prompt stages a SMALL back-turned presenter in silhouette at a lectern, face not visible. Per the skill's cast rule a `cast` entry names an identifiable figure actually in frame; a figure whose face is not visible is not identifiable, so the presenter is an anonymous silhouette and stays prose in the still_prompt, never cast. Keeping the entry would seed Tolstedt's canonical face plus a smug expression into a frame whose own text forbids a visible face - the exact contradiction that produced the original engine refusal, and a needless YMYL/defamation exposure on a real living person. Attribution to Tolstedt lives in the VO and in these notes, not in the pixels. `cast` is now []."
       },
       {
         "id": "L106",
@@ -1994,9 +1988,9 @@
         "shot_class": "physicalized-imbalance",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "The whole bank — building, tellers, executives, all tiny — still chasing one enormous glowing scorecard number floating above them, everyone running toward it. The target that ran everything. Cool slate-and-cream palette, the one red accent on the giant number's rim. Deep scale-as-argument depth. Crowd on the crowd rig. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+        "still_prompt": "The whole bank — building, tellers, executives, all tiny — still chasing one enormous glowing scorecard numeral '8' floating above them (the sourced eight-products-per-household target, [F-01]), everyone running toward it. That numeral '8' is the only digit anywhere in the frame. The target that ran everything. Cool slate-and-cream palette, the one red accent on the rim of that numeral '8'. Deep scale-as-argument depth. Crowd on the crowd rig. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
         "synthetic": false,
-        "notes": "Physicalized scale: the whole bank chasing the number."
+        "notes": "Physicalized scale: the whole bank chasing the number. SUPPLIED-TEXT FIX (resolution 1, value supplied): both unsupplied slots ('one enormous glowing scorecard number' and 'giant number') now carry the literal '8', sourced [F-01]. The very next VO line names it outright - 'a number somebody picked back in 1999 because it rhymed with the word great' - so the target IS the sourced 8 and no other value is in play."
       },
       {
         "id": "L117",

@@ -1,0 +1,306 @@
+{
+ "id": "L61",
+ "beat": "body",
+ "shot_class": "register-shift-infographic",
+ "cast": [],
+ "source": "ai-gen",
+ "vo_text": "it found that senior management had looked at firing roughly one percent of the sales force every single year for this kind of cheating,",
+ "still_prompt": "A page from the report drawn as a clean chart: a repeating yearly bar each shaving off a red '1%' slice of a sales-force block, year after year — senior management's known, steady firing rate. Cool cream-and-slate palette, the one red accent on the '1%' slices. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering; the single red accent #d7402b on the slices; no photorealism, no on-screen narrator, no unrequested text beyond '1%', no logos; 16:9."
+}
+====
+{
+ "id": "L62",
+ "beat": "body",
+ "shot_class": "ironic-counterpoint",
+ "cast": [],
+ "source": "ai-gen",
+ "vo_text": "and had treated that as an acceptable cost of doing business. [PAUSE]",
+ "still_prompt": "A cold accountant's ledger where a line item reading 'ACCEPTABLE COST' is being calmly check-marked in red — human firings filed as a routine expense. Cool slate-and-cream palette, the one red accent on the check-mark. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering; the single red accent #d7402b on the check; no photorealism, no on-screen narrator, no unrequested text beyond 'ACCEPTABLE COST', no logos; 16:9."
+}
+====
+{
+ "id": "L63",
+ "beat": "body",
+ "shot_class": "reaction-shot",
+ "cast": [],
+ "source": "ai-gen",
+ "vo_text": "So the firings were never a shock at headquarters.",
+ "still_prompt": "An executive at headquarters glancing at a firing report and giving a bored, unsurprised shrug — no shock upstairs. Base-rig anonymous executive: round head, NO nose, NO ears, four-digit hands, #241a12 outline, flat cel, a dark suit; hold ONLY the rig form. Cool office palette, one faint red accent on the report's tab. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering only; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9."
+}
+====
+{
+ "id": "L64",
+ "beat": "body",
+ "shot_class": "physicalized-imbalance",
+ "cast": [],
+ "source": "ai-gen",
+ "vo_text": "Year after year, thousands of people were caught gaming the number, and the people who owned the number had decided that was a price worth paying to keep it climbing.",
+ "still_prompt": "A revolving door spinning people OUT into the street on one side while, above it, the scorecard number keeps ratcheting UP on a red arrow — bodies cycling out, the number climbing regardless. Cool slate-and-cream palette, the one red accent on the rising arrow. Crowd figures on the crowd rig: round heads, DOT EYES, no noses/ears/teeth, squat proportion. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9."
+}
+====
+{
+ "id": "L65",
+ "beat": "body",
+ "shot_class": "symbolic-stand-in-object",
+ "cast": [],
+ "source": "ai-gen",
+ "vo_text": "Nobody had to sit in a room and order a fraud.",
+ "still_prompt": "Callback to the empty boardroom head chair (from the hook), still empty, the red target-dial faintly glowing in it — nobody sat down and ordered a fraud. Cool slate-and-cream palette, the one red accent on the dial. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b on the dial; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9."
+}
+====
+{
+ "id": "L66",
+ "beat": "body",
+ "shot_class": "register-shift-infographic",
+ "cast": [],
+ "source": "ai-gen",
+ "vo_text": "It took a target that couldn't be hit honestly, a bonus for hitting it anyway, and a quiet tolerance for firing whoever got caught.",
+ "still_prompt": "A clean marker recipe-card infographic assembling three labelled ingredients into one bowl: 'IMPOSSIBLE TARGET', 'BONUS', and 'TOLERANCE FOR FIRING' — the three things that made a fraud with no author. Cool cream-and-slate palette, the one red accent on the equals-arrow into the bowl. The three items read as a progressive build. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond the three labels, no logos; 16:9."
+}
+====
+{
+ "id": "L67",
+ "beat": "body",
+ "shot_class": "personified-character",
+ "cast": [],
+ "source": "ai-gen",
+ "vo_text": "Some employees refused to play along.",
+ "still_prompt": "A single anonymous employee at the counter standing firm with arms crossed, refusing to open the phantom account, the quota card pushed away on the desk. Base-rig anonymous figure: round head, NO nose, NO ears, four-digit hands, #241a12 outline, flat cel, a teal work uniform; hold ONLY the rig form. Steady, plain register. Warm-but-serious counter palette, one red accent on the pushed-away quota card. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9."
+}
+====
+{
+ "id": "L68",
+ "beat": "body",
+ "shot_class": "diegetic-device",
+ "cast": [],
+ "source": "ai-gen",
+ "vo_text": "They called the company's ethics line, the number you're supposed to call, to report exactly what was happening.",
+ "still_prompt": "A hand lifting a desk phone beneath a wall poster hand-lettered 'ETHICS LINE' — the number you're supposed to call. Body/desk scale, no hand macro. Cool cream-and-teal office palette, one red accent on the poster border. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'ETHICS LINE', no logos; 16:9."
+}
+====
+{
+ "id": "L69",
+ "beat": "body",
+ "shot_class": "aftermath-palette-turn",
+ "cast": [],
+ "source": "ai-gen",
+ "vo_text": "In cases that later came to light, the people who called got fired.",
+ "still_prompt": "The same employee now holding a termination notice, the ethics-line poster greyed on the wall behind — the caller got fired. Desaturated grey-and-cream gravity register, comedy off, one faint red 'TERMINATED' mark on the notice. Base-rig figure: round head, NO nose, NO ears, four-digit hands, #241a12 outline, flat cel; hold ONLY the rig form. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'TERMINATED', no logos; 16:9."
+}
+====
+{
+ "id": "L70",
+ "beat": "body",
+ "shot_class": "idiom-pun",
+ "cast": [],
+ "source": "ai-gen",
+ "vo_text": "And on their way out, the bank sometimes filed the industry's standard termination form in a way that followed them to the next job and made them hard to hire anywhere else.",
+ "still_prompt": "A red-marked termination form trailing on a string behind a walking anonymous figure, following them from one job door to the next, each new door slamming shut — a record that follows you. Base-rig figure: round head, NO nose, NO ears, four-digit hands, #241a12 outline, flat cel; hold ONLY the rig form (a held mid-purpose stance, not a mid-stride freeze). Desaturated grey-and-cream palette, the one red accent on the trailing form. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9."
+}
+====
+{
+ "id": "L71",
+ "beat": "body",
+ "shot_class": "diegetic-device",
+ "cast": [],
+ "source": "ai-gen",
+ "vo_text": "In 2017 the Labor Department ordered Wells Fargo to reinstate a wealth-management banker it had fired back in 2011 for objecting to accounts being opened without consent,",
+ "still_prompt": "An official government order on heavy paper with a marker header 'LABOR DEPT' and an embossed seal, a gavel resting beside it — the government stepping in. Cool cream-and-slate official palette, one red accent on the seal ribbon. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'LABOR DEPT', no logos; 16:9."
+}
+====
+{
+ "id": "L72",
+ "beat": "body",
+ "shot_class": "number-glued-to-object",
+ "cast": [],
+ "source": "ai-gen",
+ "vo_text": "and to pay that banker about 5.4 million dollars.",
+ "still_prompt": "A large reinstatement check made out with a marker figure '$5.4 MILLION' and a small 'REINSTATED' stamp — the whistleblower restored and paid. Cool cream-and-slate palette, the one red accent on the 'REINSTATED' stamp. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond '$5.4 MILLION' and 'REINSTATED', no logos; 16:9."
+}
+====
+{
+ "id": "L73",
+ "beat": "body",
+ "shot_class": "symbolic-stand-in-object",
+ "cast": [],
+ "source": "ai-gen",
+ "vo_text": "At the time it was the largest award the agency had ever ordered for a single whistleblower.",
+ "still_prompt": "A ribboned award medallion for a single whistleblower with a big marker 'LARGEST' banner across it — a record award at the time. Cool cream-and-slate palette, the one red accent on the 'LARGEST' banner. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'LARGEST', no logos; 16:9."
+}
+====
+{
+ "id": "L74",
+ "beat": "body",
+ "shot_class": "number-glued-to-object",
+ "cast": [],
+ "source": "ai-gen",
+ "vo_text": "It ordered the bank to take back a branch manager in Pomona, California, fired after complaining that salespeople were opening unauthorized accounts to hit targets, and to pay that manager about 577,000 dollars.",
+ "still_prompt": "A branch manager reinstated at a suburban California branch (palm trees, warm light), a marker location tag 'POMONA' and a check figure '$577,000'. A base-rig anonymous manager: round head, NO nose, NO ears, four-digit hands, #241a12 outline, flat cel, a modest blazer; hold ONLY the rig form. Warm California palette, the one red accent on the check figure. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'POMONA' and '$577,000', no logos; 16:9."
+}
+====
+{
+ "id": "L75",
+ "beat": "body",
+ "shot_class": "diegetic-device",
+ "cast": [],
+ "source": "ai-gen",
+ "vo_text": "The outside world found out in 2016.",
+ "still_prompt": "News breaking to the public: a cluster of tossed newspapers and a glowing TV set all lighting up at once, a marker dateline '2016'. Cool cream-and-slate palette, one red accent on a 'BREAKING' ticker. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond '2016' and 'BREAKING', no logos; 16:9."
+}
+====
+{
+ "id": "L76",
+ "beat": "climax",
+ "shot_class": "staged-interaction",
+ "cast": [],
+ "source": "ai-gen",
+ "vo_text": "On September 8th, the regulators came down together.",
+ "still_prompt": "Three stern regulator figures in dark official coats, each carrying an embossed seal, striding up to the cream columned bank together, a marker date tag 'SEPT 8' overhead — the day they came down together. Anonymous base-rig officials: round heads, NO noses, NO ears, four-digit hands, #241a12 outline, flat cel, dark government coats with distinct seal badges; hold ONLY the rig form. Cool authoritative palette, one red accent on the seal ribbons. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'SEPT 8', no logos; 16:9."
+}
+====
+{
+ "id": "L77",
+ "beat": "climax",
+ "shot_class": "number-glued-to-object",
+ "cast": [],
+ "source": "ai-gen",
+ "vo_text": "The Consumer Financial Protection Bureau fined the bank 100 million dollars, the biggest penalty it had ever handed out.",
+ "still_prompt": "A first heavy fine slab dropped in front of the bank, marker-lettered 'CFPB' with '$100M' on its face — the biggest penalty the agency had handed out (fines-stack base). Cool slate-and-cream palette, one red accent on the '$100M'. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'CFPB' and '$100M', no logos; 16:9."
+}
+====
+{
+ "id": "L78",
+ "beat": "climax",
+ "shot_class": "number-glued-to-object",
+ "cast": [],
+ "source": "ai-gen",
+ "vo_text": "The OCC, the federal regulator that oversees national banks, added 35 million.",
+ "still_prompt": "The SAME fine pile held, now a second slab marker-lettered 'OCC' with '$35M' stacked on top of the CFPB slab. Everything else held. Cool slate-and-cream palette, one red accent on the '$35M'. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'OCC' and '$35M', no logos; 16:9."
+}
+====
+{
+ "id": "L79",
+ "beat": "climax",
+ "shot_class": "number-glued-to-object",
+ "cast": [],
+ "source": "ai-gen",
+ "vo_text": "The city and county of Los Angeles took another 50.",
+ "still_prompt": "The SAME fine pile held, now a third slab marker-lettered 'LA' with '$50M' stacked on top. Everything else held. Cool slate-and-cream palette, one red accent on the '$50M'. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'LA' and '$50M', no logos; 16:9."
+}
+====
+{
+ "id": "L80",
+ "beat": "climax",
+ "shot_class": "number-glued-to-object",
+ "cast": [],
+ "source": "ai-gen",
+ "vo_text": "About 185 million dollars in a single day.",
+ "still_prompt": "The SAME three-slab fine pile held, now a marker total banner across it reading '$185M' with a small 'IN ONE DAY' tag — the day's damage summed. Everything else held. Cool slate-and-cream palette, the one red accent on the '$185M' banner. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering; the single red accent #d7402b on the banner; no photorealism, no on-screen narrator, no unrequested text beyond '$185M' and 'IN ONE DAY', no logos; 16:9."
+}
+====
+{
+ "id": "L81",
+ "beat": "climax",
+ "shot_class": "personified-character",
+ "cast": [
+  {
+   "character": "stumpf",
+   "pose_ref": "sit",
+   "expression_ref": "expr-worried"
+  }
+ ],
+ "source": "ai-gen",
+ "vo_text": "Later that same month, the CEO, John Stumpf, sat in front of the Senate Banking Committee and had to answer for all of it,",
+ "still_prompt": "Stumpf revealed for the first time — a NEW cartoon person in the base family form, a silver-haired older bank CEO with a flat pale head tone, in a dark navy pinstripe suit and a burgundy tie — seated small at a witness table before a tall raised panel of anonymous senators, a marker sign 'SENATE' on the panel front. He is on the spot. Cool formal wood-and-slate hearing palette, one red accent on the panel's nameplate strip. The senators behind are on the crowd rig (round heads, dot eyes, no noses/ears/teeth). Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'SENATE', no logos; 16:9."
+}
+====
+{
+ "id": "L82",
+ "beat": "climax",
+ "shot_class": "ironic-counterpoint",
+ "cast": [],
+ "source": "ai-gen",
+ "vo_text": "including the part where the target that started everything had been picked partly because eight rhymed with great.",
+ "still_prompt": "On the hearing table in front of the witness chair, a small deadpan placard hand-lettered '8 = GREAT' sits among the grave legal papers — the entire fraud tracing back to a rhyme, laid on a Senate table. Cool formal palette, the one red accent on the placard border. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering; the single red accent #d7402b on the placard; no photorealism, no on-screen narrator, no unrequested text beyond '8 = GREAT', no logos; 16:9."
+}
+====
+{
+ "id": "L83",
+ "beat": "climax",
+ "shot_class": "symbolic-stand-in-object",
+ "cast": [],
+ "source": "ai-gen",
+ "vo_text": "He resigned that October.",
+ "still_prompt": "A vacated CEO office: an empty executive chair pushed back from a cleared desk, a nameplate turned face-down, a marker date tag 'OCT 2016'. He resigned. Cool slate-and-cream palette, one red accent on the face-down nameplate edge. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'OCT 2016', no logos; 16:9."
+}
+====
+{
+ "id": "L84",
+ "beat": "body",
+ "shot_class": "symbolic-stand-in-object",
+ "cast": [],
+ "source": "ai-gen",
+ "vo_text": "Then in 2018 came something nobody had done to a bank before.",
+ "still_prompt": "A marker date '2018' over a locked strongbox with a brand-new, never-before-used tool hanging beside it — something unprecedented about to be used on a bank. Cool slate-and-cream palette, one red accent on a 'FIRST' tag on the tool. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond '2018' and 'FIRST', no logos; 16:9."
+}
+====
+{
+ "id": "L85",
+ "beat": "body",
+ "shot_class": "personified-character",
+ "cast": [],
+ "source": "ai-gen",
+ "vo_text": "On February 2nd, on Janet Yellen's last day as its chair, the Federal Reserve capped how big Wells Fargo was allowed to get.",
+ "still_prompt": "A grand marble Federal Reserve building personified as the authority, a marker sign 'FEDERAL RESERVE' on its pediment, its great hand lowering a heavy ceiling-slab over the scene. The Fed as institution-actor via its landmark (no personified individual). Cool marble-grey-and-cream palette, one red accent on the descending ceiling's edge. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'FEDERAL RESERVE', no logos; 16:9."
+}
+====
+{
+ "id": "L86",
+ "beat": "body",
+ "shot_class": "register-shift-infographic",
+ "cast": [],
+ "source": "ai-gen",
+ "vo_text": "It froze the bank's total assets right where they stood at the end of 2017, around 1.95 trillion dollars, and said the cap stayed on until the bank fixed how it was run.",
+ "still_prompt": "A big asset meter/dial frozen in ice, its needle locked at a marker reading '$1.95T' — the bank's total assets frozen where they stood. Cool icy-blue-and-cream palette, the one red accent on the frozen needle. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering; the single red accent #d7402b on the needle; no photorealism, no on-screen narrator, no unrequested text beyond '$1.95T', no logos; 16:9."
+}
+====
+{
+ "id": "L87",
+ "beat": "body",
+ "shot_class": "physicalized-imbalance",
+ "cast": [],
+ "source": "ai-gen",
+ "vo_text": "The Fed had never put a ceiling on an entire company like that.",
+ "still_prompt": "A hard low ceiling clamped directly over the whole cream columned bank building, the building visibly pressing up against it unable to grow — a lid on an entire company, never done before. Cool slate-and-cream palette, the one red accent on the ceiling's clamp bolts. Deep depth. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9."
+}
+====
+{
+ "id": "L88",
+ "beat": "body",
+ "shot_class": "number-glued-to-object",
+ "cast": [],
+ "source": "ai-gen",
+ "vo_text": "It stayed on for more than seven years, and only came off in 2025.",
+ "still_prompt": "The clamped ceiling staying put through a marker span '7 YEARS', a small tag 'LIFTED 2025' just being peeled off at the end. Cool slate-and-cream palette, one red accent on the '7 YEARS' span. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond '7 YEARS' and 'LIFTED 2025', no logos; 16:9."
+}
+====
+{
+ "id": "L89",
+ "beat": "body",
+ "shot_class": "number-glued-to-object",
+ "cast": [],
+ "source": "ai-gen",
+ "vo_text": "In 2020 the bank settled the criminal and civil investigations for three billion dollars.",
+ "still_prompt": "A towering stack of money on a settlement table with a big marker tag '$3 BILLION' — the settlement of the criminal and civil cases. Cool slate-and-cream palette, the one red accent on the '$3 BILLION' tag. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering; the single red accent #d7402b on the tag; no photorealism, no on-screen narrator, no unrequested text beyond '$3 BILLION', no logos; 16:9."
+}
+====
+{
+ "id": "L90",
+ "beat": "body",
+ "shot_class": "diegetic-device",
+ "cast": [],
+ "source": "ai-gen",
+ "vo_text": "It admitted, on the record, that the misconduct had run from 2002 all the way to 2016, that it had collected fees and interest it never should have, and that employees had faked records and misused people's personal information.",
+ "still_prompt": "A signed admission document with a marker span '2002-2016' and a heavy red 'ADMITTED' stamp — the bank conceding the misconduct on the record. Cool cream-and-slate legal palette, the one red accent IS the 'ADMITTED' stamp. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering; the STAMP register red block caps for 'ADMITTED'; no photorealism, no on-screen narrator, no unrequested text beyond '2002-2016' and 'ADMITTED', no logos; 16:9."
+}
+====

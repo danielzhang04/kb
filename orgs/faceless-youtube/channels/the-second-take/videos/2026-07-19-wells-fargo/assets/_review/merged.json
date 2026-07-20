@@ -1,0 +1,1192 @@
+[
+ {
+  "id": "L01",
+  "n": 1,
+  "worst": "MEDIUM",
+  "f": "MEDIUM",
+  "s": "MEDIUM",
+  "r": "LOW",
+  "why": "",
+  "fault": "A"
+ },
+ {
+  "id": "L02",
+  "n": 2,
+  "worst": "BLOCKING",
+  "f": "BLOCKING",
+  "s": "HIGH",
+  "r": "clean",
+  "why": "The shot did not deliver: the prompt is \"Tight on the base of that same tower\" — a held co",
+  "fault": "R"
+ },
+ {
+  "id": "L03",
+  "n": 3,
+  "worst": "BLOCKING",
+  "f": "BLOCKING",
+  "s": "HIGH",
+  "r": "HIGH",
+  "why": "Malformed lettering: the leaflet reads as the garbled non-word pair \"conemi opanoo\" where ; Period/geography drift, severe: the row of customers stands in a TROPICAL VALLEY — coconut",
+  "fault": "S+R"
+ },
+ {
+  "id": "L04",
+  "n": 4,
+  "worst": "HIGH",
+  "f": "HIGH",
+  "s": "MEDIUM",
+  "r": "LOW",
+  "why": "",
+  "fault": "A"
+ },
+ {
+  "id": "L05",
+  "n": 5,
+  "worst": "LOW",
+  "f": "clean",
+  "s": "LOW",
+  "r": "clean",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L06",
+  "n": 6,
+  "worst": "HIGH",
+  "f": "HIGH",
+  "s": "HIGH",
+  "r": "clean",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L07",
+  "n": 7,
+  "worst": "HIGH",
+  "f": "clean",
+  "s": "HIGH",
+  "r": "clean",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L08",
+  "n": 8,
+  "worst": "HIGH",
+  "f": "clean",
+  "s": "HIGH",
+  "r": "clean",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L09",
+  "n": 9,
+  "worst": "HIGH",
+  "f": "HIGH",
+  "s": "LOW",
+  "r": "clean",
+  "why": "",
+  "fault": "S"
+ },
+ {
+  "id": "L10",
+  "n": 10,
+  "worst": "MEDIUM",
+  "f": "MEDIUM",
+  "s": "MEDIUM",
+  "r": "MEDIUM",
+  "why": "",
+  "fault": "A"
+ },
+ {
+  "id": "L11",
+  "n": 11,
+  "worst": "MEDIUM",
+  "f": "MEDIUM",
+  "s": "MEDIUM",
+  "r": "LOW",
+  "why": "",
+  "fault": "A"
+ },
+ {
+  "id": "L12",
+  "n": 12,
+  "worst": "MEDIUM",
+  "f": "LOW",
+  "s": "MEDIUM",
+  "r": "LOW",
+  "why": "",
+  "fault": "A"
+ },
+ {
+  "id": "L13",
+  "n": 13,
+  "worst": "MEDIUM",
+  "f": "LOW",
+  "s": "MEDIUM",
+  "r": "LOW",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L14",
+  "n": 14,
+  "worst": "HIGH",
+  "f": "HIGH",
+  "s": "MEDIUM",
+  "r": "LOW",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L15",
+  "n": 15,
+  "worst": "BLOCKING",
+  "f": "HIGH",
+  "s": "HIGH",
+  "r": "BLOCKING",
+  "why": "RIG:Three independent invariants fail at once — a drawn nose, an egg/realistic-structured head",
+  "fault": "R"
+ },
+ {
+  "id": "L16",
+  "n": 16,
+  "worst": "HIGH",
+  "f": "HIGH",
+  "s": "HIGH",
+  "r": "clean",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L17",
+  "n": 17,
+  "worst": "MEDIUM",
+  "f": "LOW",
+  "s": "MEDIUM",
+  "r": "LOW",
+  "why": "",
+  "fault": "A"
+ },
+ {
+  "id": "L18",
+  "n": 18,
+  "worst": "BLOCKING",
+  "f": "BLOCKING",
+  "s": "HIGH",
+  "r": "clean",
+  "why": "The frame invents a metric value. A \"products per household\" scorecard showing 2, 3, 4 wit; Setting drift, severe: the scorecard is photographed against a MANGROVE SWAMP — dead grey ",
+  "fault": "S"
+ },
+ {
+  "id": "L19",
+  "n": 19,
+  "worst": "MEDIUM",
+  "f": "LOW",
+  "s": "MEDIUM",
+  "r": "clean",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L20",
+  "n": 20,
+  "worst": "MEDIUM",
+  "f": "MEDIUM",
+  "s": "MEDIUM",
+  "r": "clean",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L21",
+  "n": 21,
+  "worst": "BLOCKING",
+  "f": "MEDIUM",
+  "s": "HIGH",
+  "r": "BLOCKING",
+  "why": "RIG:Two independent, separately-sufficient failures: (1) the frame's foreground back-turned fi",
+  "fault": "R"
+ },
+ {
+  "id": "L22",
+  "n": 22,
+  "worst": "MEDIUM",
+  "f": "MEDIUM",
+  "s": "MEDIUM",
+  "r": "clean",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L23",
+  "n": 23,
+  "worst": "MEDIUM",
+  "f": "clean",
+  "s": "MEDIUM",
+  "r": "clean",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L24",
+  "n": 24,
+  "worst": "MEDIUM",
+  "f": "LOW",
+  "s": "MEDIUM",
+  "r": "clean",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L25",
+  "n": 25,
+  "worst": "MEDIUM",
+  "f": "clean",
+  "s": "MEDIUM",
+  "r": "clean",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L26",
+  "n": 26,
+  "worst": "LOW",
+  "f": "LOW",
+  "s": "LOW",
+  "r": "clean",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L27",
+  "n": 27,
+  "worst": "MEDIUM",
+  "f": "MEDIUM",
+  "s": "LOW",
+  "r": "LOW",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L28",
+  "n": 28,
+  "worst": "BLOCKING",
+  "f": "MEDIUM",
+  "s": "MEDIUM",
+  "r": "BLOCKING",
+  "why": "RIG:The crowd is drawn on an entirely foreign rig — noses on all four sampled figures, a detai",
+  "fault": "R"
+ },
+ {
+  "id": "L29",
+  "n": 29,
+  "worst": "BLOCKING",
+  "f": "BLOCKING",
+  "s": "HIGH",
+  "r": "HIGH",
+  "why": "The scorecard renders the numeral **\"1\"** — an on-screen figure with no F-NN behind it, an; RIG:The form invariants (round head, no nose, no ears, digits) all hold, but the face is off-m",
+  "fault": "A+R"
+ },
+ {
+  "id": "L30",
+  "n": 30,
+  "worst": "BLOCKING",
+  "f": "BLOCKING",
+  "s": "HIGH",
+  "r": "HIGH",
+  "why": "The counter displays **\"1045\"**, a fabricated on-screen figure in a frame whose prompt sai; RIG:The teller has no face at all on a frontal figure, plus a five-digit raised fist — two sep",
+  "fault": "A+R"
+ },
+ {
+  "id": "L31",
+  "n": 31,
+  "worst": "HIGH",
+  "f": "MEDIUM",
+  "s": "HIGH",
+  "r": "LOW",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L32",
+  "n": 32,
+  "worst": "HIGH",
+  "f": "clean",
+  "s": "HIGH",
+  "r": "MEDIUM",
+  "why": "",
+  "fault": "A"
+ },
+ {
+  "id": "L33",
+  "n": 33,
+  "worst": "MEDIUM",
+  "f": "MEDIUM",
+  "s": "LOW",
+  "r": "LOW",
+  "why": "",
+  "fault": "A"
+ },
+ {
+  "id": "L34",
+  "n": 34,
+  "worst": "BLOCKING",
+  "f": "BLOCKING",
+  "s": "MEDIUM",
+  "r": "LOW",
+  "why": "The tab is misspelled: it renders **\"NERI ACCUINT\"**, not \"NEW ACCOUNT\". Two words, both w; The form's heading is rendered **upside down (180° rotated)** — it only reads correctly wh",
+  "fault": "R"
+ },
+ {
+  "id": "L35",
+  "n": 35,
+  "worst": "BLOCKING",
+  "f": "BLOCKING",
+  "s": "MEDIUM",
+  "r": "LOW",
+  "why": "The red tab renders **\"NCRJ ALLCNINT\"** — worse garbling than L34's already-broken \"NERI A",
+  "fault": "R"
+ },
+ {
+  "id": "L36",
+  "n": 36,
+  "worst": "BLOCKING",
+  "f": "BLOCKING",
+  "s": "MEDIUM",
+  "r": "LOW",
+  "why": "The held red tab still renders **\"NCRJ ALLCNINT\"** in place of \"NEW ACCOUNT\" — the L34/L35",
+  "fault": "R"
+ },
+ {
+  "id": "L37",
+  "n": 37,
+  "worst": "MEDIUM",
+  "f": "MEDIUM",
+  "s": "LOW",
+  "r": "clean",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L38",
+  "n": 38,
+  "worst": "BLOCKING",
+  "f": "BLOCKING",
+  "s": "MEDIUM",
+  "r": "clean",
+  "why": "\"CANCEL\" is rendered **truncated as \"CANCE\"** — the waste-bin is composited over the final",
+  "fault": "R"
+ },
+ {
+  "id": "L39",
+  "n": 39,
+  "worst": "MEDIUM",
+  "f": "MEDIUM",
+  "s": "MEDIUM",
+  "r": "clean",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L40",
+  "n": 40,
+  "worst": "BLOCKING",
+  "f": "BLOCKING",
+  "s": "MEDIUM",
+  "r": "clean",
+  "why": "The frame renders **\"LOAN\"** twice as a product opened without the customer. This is unsou; **\"INVESTMENT BOOKLET\"** asserts an unauthorized investment product with no F-NN behind it",
+  "fault": "R"
+ },
+ {
+  "id": "L41",
+  "n": 41,
+  "worst": "HIGH",
+  "f": "LOW",
+  "s": "HIGH",
+  "r": "clean",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L42",
+  "n": 42,
+  "worst": "BLOCKING",
+  "f": "BLOCKING",
+  "s": "MEDIUM",
+  "r": "clean",
+  "why": "The gauge is lettered \"100\" and \"500\" as its scale endpoints — an impossible credit score ; The red column invents five dollar amounts — \"+$800...\", \"+$480\", \"+$250\", \"+$120\", \"+$50\"",
+  "fault": "R"
+ },
+ {
+  "id": "L43",
+  "n": 43,
+  "worst": "BLOCKING",
+  "f": "BLOCKING",
+  "s": "HIGH",
+  "r": "LOW",
+  "why": "Two strings the prompt forbade are lettered on the folders and both are damaged: \"RENTERS\"",
+  "fault": "A"
+ },
+ {
+  "id": "L44",
+  "n": 44,
+  "worst": "HIGH",
+  "f": "MEDIUM",
+  "s": "HIGH",
+  "r": "clean",
+  "why": "",
+  "fault": "A"
+ },
+ {
+  "id": "L45",
+  "n": 45,
+  "worst": "BLOCKING",
+  "f": "BLOCKING",
+  "s": "MEDIUM",
+  "r": "clean",
+  "why": "The form's first field is lettered **\"YOU NAME\"** — a misspelling of \"YOUR NAME\"; a droppe",
+  "fault": "R"
+ },
+ {
+  "id": "L46",
+  "n": 46,
+  "worst": "BLOCKING",
+  "f": "BLOCKING",
+  "s": "MEDIUM",
+  "r": "clean",
+  "why": "The scanner's LED counter displays an unsourced figure — `77,000` — that appears in no led; That same counter is *malformed as rendered*: the leading digit position is dark, both sev",
+  "fault": "R"
+ },
+ {
+  "id": "L47",
+  "n": 47,
+  "worst": "HIGH",
+  "f": "MEDIUM",
+  "s": "HIGH",
+  "r": "clean",
+  "why": "",
+  "fault": "S"
+ },
+ {
+  "id": "L48",
+  "n": 48,
+  "worst": "HIGH",
+  "f": "HIGH",
+  "s": "HIGH",
+  "r": "clean",
+  "why": "",
+  "fault": "A"
+ },
+ {
+  "id": "L49",
+  "n": 49,
+  "worst": "BLOCKING",
+  "f": "BLOCKING",
+  "s": "HIGH",
+  "r": "HIGH",
+  "why": "Setting drift of exactly the kind the brief names as disqualifying: the entire background ; RIG:— a prominent, sole foreground figure ships as a featureless lanky pictogram mannequin: no",
+  "fault": "S+R"
+ },
+ {
+  "id": "L50",
+  "n": 50,
+  "worst": "HIGH",
+  "f": "MEDIUM",
+  "s": "HIGH",
+  "r": "clean",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L51",
+  "n": 51,
+  "worst": "HIGH",
+  "f": "HIGH",
+  "s": "HIGH",
+  "r": "clean",
+  "why": "",
+  "fault": "A"
+ },
+ {
+  "id": "L52",
+  "n": 52,
+  "worst": "BLOCKING",
+  "f": "BLOCKING",
+  "s": "HIGH",
+  "r": "clean",
+  "why": "The same disqualifying setting drift as L49, worse: the frame is almost entirely a **drown",
+  "fault": "S"
+ },
+ {
+  "id": "L53",
+  "n": 53,
+  "worst": "MEDIUM",
+  "f": "LOW",
+  "s": "MEDIUM",
+  "r": "clean",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L54",
+  "n": 54,
+  "worst": "MEDIUM",
+  "f": "MEDIUM",
+  "s": "MEDIUM",
+  "r": "clean",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L55",
+  "n": 55,
+  "worst": "BLOCKING",
+  "f": "BLOCKING",
+  "s": "MEDIUM",
+  "r": "clean",
+  "why": "The frame's entire subject is an unsourced number: `100,000`. This beat's VO is about the ; The tilde is in the wrong place and mutilates the numeral. The prompt says the \"~\" goes **",
+  "fault": "A"
+ },
+ {
+  "id": "L56",
+  "n": 56,
+  "worst": "MEDIUM",
+  "f": "MEDIUM",
+  "s": "MEDIUM",
+  "r": "LOW",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L57",
+  "n": 57,
+  "worst": "HIGH",
+  "f": "HIGH",
+  "s": "LOW",
+  "r": "HIGH",
+  "why": "RIG:— the entire nine-figure front row, which IS the shot, is drawn on the §2d crowd rig (dot ",
+  "fault": "A+R"
+ },
+ {
+  "id": "L58",
+  "n": 58,
+  "worst": "HIGH",
+  "f": "HIGH",
+  "s": "MEDIUM",
+  "r": "LOW",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L59",
+  "n": 59,
+  "worst": "BLOCKING",
+  "f": "BLOCKING",
+  "s": "HIGH",
+  "r": "LOW",
+  "why": "Flagrant period drift on both floors, hitting three of the brief's named disqualifiers at ",
+  "fault": "S"
+ },
+ {
+  "id": "L60",
+  "n": 60,
+  "worst": "MEDIUM",
+  "f": "MEDIUM",
+  "s": "MEDIUM",
+  "r": "clean",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L61",
+  "n": 61,
+  "worst": "MEDIUM",
+  "f": "MEDIUM",
+  "s": "MEDIUM",
+  "r": "clean",
+  "why": "",
+  "fault": "A"
+ },
+ {
+  "id": "L62",
+  "n": 62,
+  "worst": "HIGH",
+  "f": "LOW",
+  "s": "HIGH",
+  "r": "HIGH",
+  "why": "RIG:— the sole subject of the frame is a five-digit, anatomically-articulated hand at large fo",
+  "fault": "R"
+ },
+ {
+  "id": "L63",
+  "n": 63,
+  "worst": "HIGH",
+  "f": "MEDIUM",
+  "s": "HIGH",
+  "r": "LOW",
+  "why": "",
+  "fault": "A"
+ },
+ {
+  "id": "L64",
+  "n": 64,
+  "worst": "BLOCKING",
+  "f": "BLOCKING",
+  "s": "MEDIUM",
+  "r": "LOW",
+  "why": "The split-flap counter is a malformed numeral run: it reads \"499 500 501\" then breaks to t",
+  "fault": "A"
+ },
+ {
+  "id": "L65",
+  "n": 65,
+  "worst": "HIGH",
+  "f": "clean",
+  "s": "HIGH",
+  "r": "clean",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L66",
+  "n": 66,
+  "worst": "BLOCKING",
+  "f": "BLOCKING",
+  "s": "HIGH",
+  "r": "clean",
+  "why": "The bowl is lettered \"FRAUD WITH NO AUTHOR\" — this is the prompt's own descriptive rationa",
+  "fault": "A"
+ },
+ {
+  "id": "L67",
+  "n": 67,
+  "worst": "BLOCKING",
+  "f": "BLOCKING",
+  "s": "HIGH",
+  "r": "MEDIUM",
+  "why": "Both rendered strings are the prompt's own staging instructions turned into diegetic lette",
+  "fault": "A"
+ },
+ {
+  "id": "L68",
+  "n": 68,
+  "worst": "MEDIUM",
+  "f": "clean",
+  "s": "MEDIUM",
+  "r": "LOW",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L69",
+  "n": 69,
+  "worst": "BLOCKING",
+  "f": "BLOCKING",
+  "s": "HIGH",
+  "r": "LOW",
+  "why": "The cash register is lettered \"COMEDY OFF\" beside a drawn toggle switch — the prompt's own; The poster carries an invented phone number, \"600-600-5006\", on a video whose rule is that",
+  "fault": "A"
+ },
+ {
+  "id": "L70",
+  "n": 70,
+  "worst": "HIGH",
+  "f": "MEDIUM",
+  "s": "HIGH",
+  "r": "HIGH",
+  "why": "RIG:— the shot's only figure is faceless. Everything else on this frame is right (round head, ",
+  "fault": "A+R"
+ },
+ {
+  "id": "L71",
+  "n": 71,
+  "worst": "HIGH",
+  "f": "HIGH",
+  "s": "MEDIUM",
+  "r": "clean",
+  "why": "",
+  "fault": "A"
+ },
+ {
+  "id": "L72",
+  "n": 72,
+  "worst": "HIGH",
+  "f": "clean",
+  "s": "HIGH",
+  "r": "clean",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L73",
+  "n": 73,
+  "worst": "HIGH",
+  "f": "MEDIUM",
+  "s": "HIGH",
+  "r": "clean",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L74",
+  "n": 74,
+  "worst": "HIGH",
+  "f": "HIGH",
+  "s": "HIGH",
+  "r": "clean",
+  "why": "",
+  "fault": "A"
+ },
+ {
+  "id": "L75",
+  "n": 75,
+  "worst": "BLOCKING",
+  "f": "BLOCKING",
+  "s": "HIGH",
+  "r": "clean",
+  "why": "Setting drift to one of the mandate's named failure cases: the frame is a flooded **mangro",
+  "fault": "S"
+ },
+ {
+  "id": "L76",
+  "n": 76,
+  "worst": "BLOCKING",
+  "f": "BLOCKING",
+  "s": "HIGH",
+  "r": "MEDIUM",
+  "why": "Setting drift to the mandate's named failure case: the three regulators are striding throu",
+  "fault": "A+S"
+ },
+ {
+  "id": "L77",
+  "n": 77,
+  "worst": "HIGH",
+  "f": "clean",
+  "s": "HIGH",
+  "r": "clean",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L78",
+  "n": 78,
+  "worst": "HIGH",
+  "f": "clean",
+  "s": "HIGH",
+  "r": "clean",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L79",
+  "n": 79,
+  "worst": "HIGH",
+  "f": "HIGH",
+  "s": "HIGH",
+  "r": "clean",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L80",
+  "n": 80,
+  "worst": "HIGH",
+  "f": "HIGH",
+  "s": "HIGH",
+  "r": "clean",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L81",
+  "n": 81,
+  "worst": "HIGH",
+  "f": "MEDIUM",
+  "s": "HIGH",
+  "r": "MEDIUM",
+  "why": "",
+  "fault": "A"
+ },
+ {
+  "id": "L82",
+  "n": 82,
+  "worst": "MEDIUM",
+  "f": "LOW",
+  "s": "MEDIUM",
+  "r": "LOW",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L83",
+  "n": 83,
+  "worst": "MEDIUM",
+  "f": "clean",
+  "s": "MEDIUM",
+  "r": "clean",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L84",
+  "n": 84,
+  "worst": "MEDIUM",
+  "f": "MEDIUM",
+  "s": "MEDIUM",
+  "r": "clean",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L85",
+  "n": 85,
+  "worst": "BLOCKING",
+  "f": "clean",
+  "s": "MEDIUM",
+  "r": "BLOCKING",
+  "why": "RIG:— a five-digit, fingernailed, anatomically-modelled hand rendered at the largest scale in ",
+  "fault": "A+R"
+ },
+ {
+  "id": "L86",
+  "n": 86,
+  "worst": "HIGH",
+  "f": "LOW",
+  "s": "HIGH",
+  "r": "clean",
+  "why": "",
+  "fault": "A"
+ },
+ {
+  "id": "L87",
+  "n": 87,
+  "worst": "MEDIUM",
+  "f": "LOW",
+  "s": "MEDIUM",
+  "r": "clean",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L88",
+  "n": 88,
+  "worst": "MEDIUM",
+  "f": "clean",
+  "s": "MEDIUM",
+  "r": "clean",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L89",
+  "n": 89,
+  "worst": "MEDIUM",
+  "f": "LOW",
+  "s": "MEDIUM",
+  "r": "clean",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L90",
+  "n": 90,
+  "worst": "HIGH",
+  "f": "HIGH",
+  "s": "HIGH",
+  "r": "clean",
+  "why": "",
+  "fault": "A"
+ },
+ {
+  "id": "L91",
+  "n": 91,
+  "worst": "MEDIUM",
+  "f": "MEDIUM",
+  "s": "MEDIUM",
+  "r": "LOW",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L92",
+  "n": 92,
+  "worst": "MEDIUM",
+  "f": "clean",
+  "s": "MEDIUM",
+  "r": "clean",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L93",
+  "n": 93,
+  "worst": "BLOCKING",
+  "f": "BLOCKING",
+  "s": "HIGH",
+  "r": "clean",
+  "why": "The shot was not delivered: the prompt says \"The SAME two executive chairs, still and undi; The \"NOTHING\" string is rendered rotated ~90° on a hanging luggage tag rather than as a fl",
+  "fault": "S"
+ },
+ {
+  "id": "L94",
+  "n": 94,
+  "worst": "BLOCKING",
+  "f": "BLOCKING",
+  "s": "MEDIUM",
+  "r": "MEDIUM",
+  "why": "The banner's lettering is occluded by the subject: her head and hair sit dead-centre over ",
+  "fault": "A"
+ },
+ {
+  "id": "L95",
+  "n": 95,
+  "worst": "BLOCKING",
+  "f": "BLOCKING",
+  "s": "HIGH",
+  "r": "clean",
+  "why": "The prompt asks for \"just outside the frame's edge storm clouds gather\"; the render instea",
+  "fault": "A+S"
+ },
+ {
+  "id": "L96",
+  "n": 96,
+  "worst": "HIGH",
+  "f": "MEDIUM",
+  "s": "clean",
+  "r": "HIGH",
+  "why": "RIG:— a probable five-digit closed grip on a seeded named lead; the identity-bleed gate itself",
+  "fault": "R"
+ },
+ {
+  "id": "L97",
+  "n": 97,
+  "worst": "MEDIUM",
+  "f": "MEDIUM",
+  "s": "MEDIUM",
+  "r": "LOW",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L98",
+  "n": 98,
+  "worst": "HIGH",
+  "f": "HIGH",
+  "s": "MEDIUM",
+  "r": "LOW",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L99",
+  "n": 99,
+  "worst": "BLOCKING",
+  "f": "BLOCKING",
+  "s": "HIGH",
+  "r": "HIGH",
+  "why": "Both strings on the tag are rotated: \"TOLSTEDT\" runs vertically at 90° and \"$67M\" sits on ; RIG:— a clawed, probably five-digit human hand at the largest scale in the frame; see the DOCT",
+  "fault": "R"
+ },
+ {
+  "id": "L100",
+  "n": 100,
+  "worst": "BLOCKING",
+  "f": "BLOCKING",
+  "s": "LOW",
+  "r": "BLOCKING",
+  "why": "The document is lettered **\"rig form\"** — the prompt's own casting instruction (\"Anonymous; RIG:— baked garbage text (\"rig form\") reading as prompt-block leakage, compounded by a",
+  "fault": "A+R"
+ },
+ {
+  "id": "L101",
+  "n": 101,
+  "worst": "HIGH",
+  "f": "LOW",
+  "s": "HIGH",
+  "r": "clean",
+  "why": "",
+  "fault": "A"
+ },
+ {
+  "id": "L102",
+  "n": 102,
+  "worst": "HIGH",
+  "f": "LOW",
+  "s": "HIGH",
+  "r": "HIGH",
+  "why": "RIG:— this frame is not on the crowd rig in any respect that matters: blank faces, adult",
+  "fault": "A+R"
+ },
+ {
+  "id": "L103",
+  "n": 103,
+  "worst": "MEDIUM",
+  "f": "LOW",
+  "s": "MEDIUM",
+  "r": "clean",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L104",
+  "n": 104,
+  "worst": "HIGH",
+  "f": "LOW",
+  "s": "HIGH",
+  "r": "clean",
+  "why": "",
+  "fault": "A"
+ },
+ {
+  "id": "L105",
+  "n": 105,
+  "worst": "HIGH",
+  "f": "LOW",
+  "s": "clean",
+  "r": "HIGH",
+  "why": "RIG:— drawn ears on four figures plus an off-rig presenter proportion.",
+  "fault": "A+R"
+ },
+ {
+  "id": "L106",
+  "n": 106,
+  "worst": "BLOCKING",
+  "f": "BLOCKING",
+  "s": "HIGH",
+  "r": "clean",
+  "why": "The balloon is lettered **\"100\"** where the shot is an explicit callback to \"that same sco; Multiple \"FAKE ACCOUNT\" tags are **truncated by the frame edge**, rendering as \"FAKE / ACC",
+  "fault": "R"
+ },
+ {
+  "id": "L107",
+  "n": 107,
+  "worst": "HIGH",
+  "f": "MEDIUM",
+  "s": "HIGH",
+  "r": "MEDIUM",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L108",
+  "n": 108,
+  "worst": "BLOCKING",
+  "f": "BLOCKING",
+  "s": "HIGH",
+  "r": "clean",
+  "why": "The charge sheet substitutes an **invented criminal charge, \"GROSS MISREPRESENTATION\"**, f",
+  "fault": "R"
+ },
+ {
+  "id": "L109",
+  "n": 109,
+  "worst": "LOW",
+  "f": "LOW",
+  "s": "LOW",
+  "r": "LOW",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L110",
+  "n": 110,
+  "worst": "BLOCKING",
+  "f": "LOW",
+  "s": "HIGH",
+  "r": "BLOCKING",
+  "why": "RIG:— two prominent foreground figures with no faces at all; the shot has no cast in it.",
+  "fault": "R"
+ },
+ {
+  "id": "L111",
+  "n": 111,
+  "worst": "HIGH",
+  "f": "MEDIUM",
+  "s": "HIGH",
+  "r": "clean",
+  "why": "",
+  "fault": "A"
+ },
+ {
+  "id": "L112",
+  "n": 112,
+  "worst": "MEDIUM",
+  "f": "MEDIUM",
+  "s": "MEDIUM",
+  "r": "clean",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L113",
+  "n": 113,
+  "worst": "MEDIUM",
+  "f": "clean",
+  "s": "MEDIUM",
+  "r": "clean",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L114",
+  "n": 114,
+  "worst": "MEDIUM",
+  "f": "LOW",
+  "s": "MEDIUM",
+  "r": "clean",
+  "why": "",
+  "fault": "A"
+ },
+ {
+  "id": "L115",
+  "n": 115,
+  "worst": "LOW",
+  "f": "LOW",
+  "s": "LOW",
+  "r": "clean",
+  "why": "",
+  "fault": "R"
+ },
+ {
+  "id": "L116",
+  "n": 116,
+  "worst": "HIGH",
+  "f": "MEDIUM",
+  "s": "MEDIUM",
+  "r": "HIGH",
+  "why": "RIG:— five-digit raised hands in the foreground plus drawn ears on three figures.",
+  "fault": "R"
+ },
+ {
+  "id": "L117",
+  "n": 117,
+  "worst": "HIGH",
+  "f": "MEDIUM",
+  "s": "HIGH",
+  "r": "clean",
+  "why": "",
+  "fault": "S"
+ },
+ {
+  "id": "L118",
+  "n": 118,
+  "worst": "MEDIUM",
+  "f": "MEDIUM",
+  "s": "clean",
+  "r": "clean",
+  "why": "",
+  "fault": "A"
+ },
+ {
+  "id": "L119",
+  "n": 119,
+  "worst": "LOW",
+  "f": "LOW",
+  "s": "LOW",
+  "r": "clean",
+  "why": "",
+  "fault": "R"
+ }
+]

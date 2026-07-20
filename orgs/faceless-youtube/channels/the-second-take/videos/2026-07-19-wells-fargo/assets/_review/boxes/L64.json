@@ -1,0 +1,6 @@
+{"figures": [
+{"name": "pedestrian-1-left [crowd]", "face": [0.254, 0.514, 0.314, 0.622]},
+{"name": "pedestrian-3-door [crowd]", "face": [0.416, 0.534, 0.472, 0.638]},
+{"name": "pedestrian-5-right-of-door [crowd]", "face": [0.634, 0.521, 0.690, 0.625]},
+{"name": "pedestrian-7-far-right [crowd]", "face": [0.823, 0.536, 0.879, 0.641]}
+]}
