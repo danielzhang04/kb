@@ -85,3 +85,16 @@
   flag and let the routed owner (or a human) act.
 - Logged one cost ledger step (nightly-dispatch, usd 0.0). Committed queue/ ledgers/ memory/
   to ops.
+
+## 2026-07-20 nightly-review (card 6a5dbb3e-295a9d2b)
+- Ran clean: preamble OK, sync_skills --check exit 0 (no drift), pyyaml importable. Dispatcher
+  emitted exactly one card (the nightly cadence self-card) which I owned and executed.
+- Dashboards regenerated from live state: inbox 23 / working 3 / done 19 / approvals-dir 0.
+  Budget $5.00 fully remaining ($0.00 today, all subscription-billed).
+- WORKED: surfaced the 5 T3 human-operator approval cards (oauth-gate g1-g4 +
+  governance-amendment-canaries) into the executive "Action required" section even though
+  queue/approvals/ is empty — those cards sit in inbox/ with owner=human-operator and are the
+  real thing blocking a human. Lesson: "Action required" isn't only queue/approvals/; scan
+  inbox for owner==human-operator approve:* cards too.
+- No stale working cards (oldest atlas 6a5c8ad2-1d991c23 ~21.6h). atlas V0 PAUSED awaiting live
+  smoke; faceless-youtube pipeline queued under claude-boss.
