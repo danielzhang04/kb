@@ -21,9 +21,10 @@ from pathlib import Path
 import yaml
 
 from livekit.agents import Agent, AgentSession, JobContext, WorkerOptions, cli
-from livekit.plugins import anthropic, deepgram, silero
+from livekit.plugins import deepgram, silero
 
 from kbmcp import kb_tools
+from worker import anthropic_compat
 from worker import engagement as engagement_mod
 from worker import fastlane, repl, wakeword
 
@@ -125,7 +126,10 @@ async def entrypoint(ctx: JobContext) -> None:
         vad=silero.VAD.load(),                       # VAD barge-in; the AdaptiveInterruptionDetector WARNING at
                                                      # startup is expected+harmless (that path needs LiveKit-hosted
                                                      # inference / LIVEKIT_API_KEY, absent by design — falls back to VAD)
-        llm=anthropic.LLM(model=cfg["fast_model"]),
+        # anthropic_compat.build_llm: shim over the 1.6.6 tool_result serialization bug
+        # (see worker/anthropic_compat.py) — plain anthropic.LLM 400s on the 2nd LLM call
+        # once a list-returning tool (e.g. running_work) enters chat history.
+        llm=anthropic_compat.build_llm(cfg["fast_model"]),
         tts=deepgram.TTS(model=TTS_VOICE),
         max_tool_steps=cfg["max_tool_turns"],        # 5, not the plugin default 3
     )

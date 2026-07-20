@@ -1,12 +1,17 @@
 """livekit/agents#2519 pairing smoke: does the Anthropic LLM plugin tolerate kb tools?
 
-Runs one text turn twice against a minimal AgentSession (llm = Anthropic on fast_model):
+Runs TWO sequential text turns against a minimal AgentSession (llm = the
+anthropic_compat shim on fast_model). The two-turn shape is load-bearing: the
+1.6.6 tool_result serialization bug only bites the SECOND LLM call, once a
+tool result is in chat history — a single turn (the earlier smoke) was too
+shallow and let the bug ship. Turn 1 exercises a dict-returning tool
+(queue_summary), turn 2 a list-returning tool (running_work) whose serialized
+history is exactly what the bug mangled.
   (a) native MCP attach   — Agent(mcp_servers=[kb-MCP stdio server])
   (b) function_tool wrap  — Agent(tools=[fastlane._dispatch wrapped as @function_tool])
-PASS per path = a tool call fires AND a text reply returns, no exception.
+PASS per path = both turns reply with no exception (>=1 tool call across the two).
 
 Run (from atlas/):  .venv\\Scripts\\python -m worker.pairing_smoke
-Decision rule: native-mcp PASS -> app.py uses native MCP; FAIL -> function_tool wrapping.
 """
 import asyncio
 import sys
@@ -14,10 +19,15 @@ from pathlib import Path
 
 import yaml
 
-from worker import fastlane, repl
+from worker import anthropic_compat, fastlane, repl
 
 ATLAS = Path(__file__).resolve().parents[1]
-PROMPT = "How many task cards are in the queue right now? Use your tools to check, then tell me."
+# Turn 1 triggers a tool call; turn 2 forces the turn-1 tool_result through
+# serialization AND calls a list-returning tool (running_work) — the exact bug path.
+PROMPTS = [
+    "Call queue_summary and tell me how many task cards are in the queue right now.",
+    "And how many are in working?",
+]
 
 
 def _cfg() -> dict:
@@ -57,30 +67,34 @@ def _kb_function_tools():
 
 
 async def _drive(agent) -> None:
-    """Start a text-only AgentSession with this agent, drive one turn, assert a tool call + reply."""
+    """Start a text-only AgentSession, drive TWO sequential turns on it, assert each replies.
+
+    Turn 2 runs on the same session, so turn 1's tool_result is serialized into the
+    request history — the second-LLM-call path where the 1.6.6 bug 400s."""
     from livekit.agents import AgentSession
-    from livekit.plugins import anthropic
     from livekit.agents.voice.run_result import ChatMessageEvent, FunctionCallEvent
 
     cfg = _cfg()
     session = AgentSession(
-        llm=anthropic.LLM(model=cfg["fast_model"]),
+        llm=anthropic_compat.build_llm(cfg["fast_model"]),
         max_tool_steps=cfg["max_tool_turns"],
     )
     await session.start(agent)
     try:
-        result = await session.run(user_input=PROMPT, input_modality="text")
-        tool_fired = any(isinstance(e, FunctionCallEvent) for e in result.events)
-        # A conversational turn leaves final_output None (that's for typed runs);
-        # the spoken reply is the last assistant ChatMessage.
-        reply = ""
-        for e in result.events:
-            if isinstance(e, ChatMessageEvent) and e.item.role == "assistant":
-                reply = (e.item.text_content or "").strip()
-        if not tool_fired:
-            raise AssertionError("no tool call fired")
-        if not reply:
-            raise AssertionError("empty text reply")
+        any_tool = False
+        for turn, prompt in enumerate(PROMPTS, start=1):
+            result = await session.run(user_input=prompt, input_modality="text")
+            any_tool = any_tool or any(isinstance(e, FunctionCallEvent) for e in result.events)
+            # A conversational turn leaves final_output None (that's for typed runs);
+            # the spoken reply is the last assistant ChatMessage.
+            reply = ""
+            for e in result.events:
+                if isinstance(e, ChatMessageEvent) and e.item.role == "assistant":
+                    reply = (e.item.text_content or "").strip()
+            if not reply:
+                raise AssertionError(f"turn {turn} empty text reply")
+        if not any_tool:
+            raise AssertionError("no tool call fired across turns")
     finally:
         await session.aclose()
 
