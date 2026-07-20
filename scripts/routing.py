@@ -238,6 +238,11 @@ def escalate_model(policy: dict, runtime: str, model: str) -> tuple[str, bool]:
     runtimes = (policy or {}).get("runtimes") or {}
     aliases = (runtimes.get(runtime) or {}).get("aliases") or {}
     # Reverse the alias table: concrete model id -> alias tier name.
+    # If two aliases ever point at ONE concrete id, this reverse map keeps the
+    # LAST one in table order — i.e. the higher tier under the canonical
+    # haiku<sonnet<opus YAML ordering, so escalation degrades to no-bump rather
+    # than a spurious bump. Keep alias->id mappings distinct in
+    # governance/model-routing.yaml regardless.
     alias_of = {concrete: alias for alias, concrete in aliases.items()}
     alias = alias_of.get(model)
     if alias is None or alias not in TIER_LADDER:

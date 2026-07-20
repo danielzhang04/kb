@@ -1011,6 +1011,23 @@ def test_requeue_escalates_one_tier(tmp_path):
     assert "boom on attempt 1" in reread.body  # failure summary threaded as ## Feedback
 
 
+def test_requeue_negative_retry_count_clamped_to_cap(tmp_path):
+    """A negative retry_count (mis-set or crafted) must not widen the cap:
+    it reads as 0, so the card gets exactly the normal 3 attempts."""
+    import cards
+    _write_r1_policy(tmp_path)
+    card = _routed_card(tmp_path / "queue", model="claude-sonnet-5")
+    card.meta["retry_count"] = -5
+    cards.save(card, tmp_path / "queue")
+    rep = dispatch.requeue(tmp_path, card, failure_summary="boom")
+    assert rep["retry_count"] == 1             # -5 clamps to 0, then +1
+    reread = cards.parse(rep["path"])
+    rep2 = dispatch.requeue(tmp_path, reread, failure_summary="boom 2")
+    assert rep2["retry_count"] == 2
+    rep3 = dispatch.requeue(tmp_path, cards.parse(rep2["path"]), failure_summary="boom 3")
+    assert rep3["outcome"] == "dead-lettered"  # cap still bounds at 2
+
+
 def test_requeue_top_tier_no_bump_still_counts(tmp_path):
     import cards
     _write_r1_policy(tmp_path)

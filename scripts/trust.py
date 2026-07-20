@@ -137,8 +137,9 @@ def _iter_cards(repo_root: Path):
 
 
 def _card_retry_count(meta: dict) -> int:
+    # Floor-clamped like dispatch._retry_count: negative values never count.
     try:
-        return int(meta.get("retry_count") or 0)
+        return max(0, int(meta.get("retry_count") or 0))
     except (TypeError, ValueError):
         return 0
 

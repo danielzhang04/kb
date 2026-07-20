@@ -388,9 +388,11 @@ RETRY_COUNT_FIELD = "retry_count"
 
 
 def _retry_count(meta: dict) -> int:
-    """The card's `retry_count` frontmatter counter as an int (absent/garbage -> 0)."""
+    """The card's `retry_count` frontmatter counter as an int (absent/garbage -> 0).
+    Floor-clamped at 0: a negative value (mis-set or crafted) must never widen
+    the RETRY_CAP bound — the cap is a safety guarantee, not a default."""
     try:
-        return int(meta.get(RETRY_COUNT_FIELD) or 0)
+        return max(0, int(meta.get(RETRY_COUNT_FIELD) or 0))
     except (TypeError, ValueError):
         return 0
 
