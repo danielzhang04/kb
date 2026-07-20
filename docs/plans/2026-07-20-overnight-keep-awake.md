@@ -845,7 +845,10 @@ Add-Type -Namespace KbPower -Name Native -MemberDefinition @'
 public static extern uint SetThreadExecutionState(uint esFlags);
 '@ -ErrorAction SilentlyContinue
 
-$script:ES_CONTINUOUS      = [uint32]0x80000000
+# The L suffix is required: PowerShell 5.1 parses 0x80000000 as a negative
+# Int32, and [uint32] on that throws at import time, taking the whole module
+# down. 0x80000000L parses as Int64 and casts cleanly to 2147483648.
+$script:ES_CONTINUOUS      = [uint32]0x80000000L
 $script:ES_SYSTEM_REQUIRED = [uint32]0x00000001
 
 function Set-ExecutionStateHold {
