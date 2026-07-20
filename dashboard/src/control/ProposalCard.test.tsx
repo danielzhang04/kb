@@ -14,6 +14,8 @@ function revision(decision: ProposalRevisionDto['approval'] = null): ProposalRev
     contentHash: hash,
     previousContentHash: 'b'.repeat(64),
     createdAt: '2026-07-18T10:00:00.000Z',
+    sourceComposerRef: 'composer',
+    sourceTurnId: 'turn-1',
     approval: decision,
     proposal: {
       schema: 'kb.plan-proposal/v1',

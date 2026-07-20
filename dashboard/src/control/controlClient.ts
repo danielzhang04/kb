@@ -70,6 +70,18 @@ export interface ProposalRevisionDto {
   contentHash: string;
   previousContentHash: string | null;
   createdAt: string;
+  /**
+   * PROVENANCE — who authored this revision. Both fields have always been on the wire (the proposals
+   * route sends the store records verbatim) and both were silently dropped by the normalizers below.
+   * That drop is exactly why a workflow launch returned an inert `runRef` with nothing to link back to.
+   *
+   * `sourceComposerRef` is `'workflow-registry'` for a workflow-launched revision (stamped by
+   * `server/workflows/routes.ts`), and `sourceTurnId` is then the WORKFLOW DEFINITION ID. That pair is
+   * the authoritative workflow → runs join key — see `entityLinks.ts`. Re-dropping either field
+   * silently unlinks the two entities, so `entityLinks.test.ts` asserts they survive normalization.
+   */
+  sourceComposerRef: string;
+  sourceTurnId: string;
   proposal: PlanProposalDto;
   /** Present on a freshly imported/created revision. A reloaded revision remains reviewable by hash. */
   diff: ProposalDiffDto | null;
@@ -291,6 +303,8 @@ function normalizedRevision(value: RawProposalRevision, diff: ProposalDiffDto | 
     contentHash: value.hash,
     previousContentHash: value.previousHash,
     createdAt: value.createdAt,
+    sourceComposerRef: value.sourceComposerRef,
+    sourceTurnId: value.sourceTurnId,
     proposal: value.snapshot,
     diff,
     approval: value.approval,
@@ -304,6 +318,10 @@ function normalizedMetadata(value: RawProposalMetadata): ProposalRevisionMetadat
     contentHash: value.hash,
     previousContentHash: value.previousHash,
     createdAt: value.createdAt,
+    // The join key. `listProposalRevisions` is the ONLY way the browser learns which workflow
+    // definition produced a run, so dropping these here (as this function did) severed the link.
+    sourceComposerRef: value.sourceComposerRef,
+    sourceTurnId: value.sourceTurnId,
     approval: value.approval,
   };
 }
