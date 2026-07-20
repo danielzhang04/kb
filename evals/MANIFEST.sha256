@@ -1,0 +1,24 @@
+# evals/MANIFEST.sha256 — golden canary hashes (human-gated regeneration).
+# Regenerate ONLY via `py -3 scripts/canary.py --update-manifest` when the suite
+# passes and an evals/ change is deliberate. A mismatch fails the suite loud.
+
+5124604d25f6295e34d7f2026e8c02048793e05f25d4a0beb5c3c610f200bf2d  canaries/card-parse-illegal-transition.md
+c8b0d0aefa7f7acbeb00a389a1a5e5cab0e710135ee1669d808ef799597fbd0c  canaries/card-parse-invalid-frontmatter.md
+5a191b9a245e2d32235268bcf2bed71ae173b65cf3eb2eab18e57d5edda5f634  canaries/card-parse-unowned-working.md
+2a9cdc0b576e291f91b876309a4859eecb5785bac90640a916e8b364db367275  canaries/card-parse-valid.md
+1baa627019f5274e3c74d4a3a328f31bb6854657d7b682d941374d6c79c3da75  canaries/grade-schema-extra-field.md
+ca464f1d3f3f4472d4b962ede6570133a0eeb6120909ad7e77b75df9cf6013aa  canaries/grade-schema-missing-field.md
+8e8c22df2f7fe5e6490bcc9c5a8e1d037b1efbe45115032f6e217121cadd2195  canaries/grade-schema-untrusted-inspector.md
+a3c2d154ba831d6581d98dd438ba10f9c389b04dceb31191c44d2f0c6a5ad59b  canaries/grade-schema-valid.md
+b2e4e140e8d349f0c542c00f33e86ccedceecb6f3bd31e4eca4a89ade15e620d  canaries/ledger-cost-today.md
+d9c7c7b83cbffa9451b9209a4f43a948c5b130f9c3f3cea998fc7876e8c56bed  canaries/ledger-roundtrip.md
+175a8dc0ef98a6b83268c108cd8a66d660e8c7cb827c424b56857717a276e107  canaries/preamble-api-key.md
+57abf90550b1bd027f7890aa9c399ad7ed4154495f566fefbc63bd4e5e05705a  canaries/preamble-stop-file.md
+b834eec91b7a8022cfb807f9382270bf81d4e57e3d88dfd8aaac7e3ac7fa7457  canaries/promotion-below-bar.md
+e639e41a6bb437cb18593c70190a3a858cbf1780f8c9da34b4aa73130c9b1279  canaries/promotion-frozen.md
+c9f0687953c6b1c927a0226c3d788755cb39abdcc435eca35fff4c6ba4d53d57  canaries/reconcile-wrong-author.md
+8ff33d82f6f6361f1263d70ab52090be4e9bfad87123ea86c92d370432775d81  canaries/routing-card-precedence.md
+7689143e424bb101c2aeeac26c5bb43e53d461f9b21c640bbb1dc11354c9cd57  canaries/routing-inspect-opus.md
+87f0dd3880ac33d34dafe3e5e05c001132e1f8f567bd577f03eba4a7ef8cae96  canaries/routing-unknown-model.md
+23f6b1e49b09a3cc7e3f5c484e90ac301d2e8ad3dc8e7a9a1718ec4df56ce18d  canaries/routing-work-t1.md
+4783db8fa2d9b483a76a0e4270d46cf15bb3ca740d75442ad7ba52213f3f3124  canaries/triage-action-required.md
