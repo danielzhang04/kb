@@ -37,8 +37,11 @@ Options:
 import argparse
 import base64
 import json
+import os
 import re
 import ssl
+import subprocess
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -281,6 +284,56 @@ def est_duration_from_words(text: str) -> float:
     return round(words / WPM * 60, 2)
 
 
+def measure_chunk_duration_s(audio_bytes: bytes) -> float | None:
+    """Real decoded contribution (seconds) of one mp3 chunk to the stitched vo file.
+
+    The final mp3 is a naive byte-concat of per-chunk mp3 frame streams, so a chunk's
+    true contribution to the decoded timeline is its frame count x samples-per-frame.
+    Everything else is wrong for this job (proven on the poyais VO, 5 chunks):
+      * alignment ends[-1] misses the encoder's frame padding — summed 464.24s vs the
+        file's real 464.46s of frames, with seam drift stepping up to +0.72s;
+      * ffprobe's container duration is a bitrate ESTIMATE on these headerless (no
+        Xing tag) streams — 464.57s for that same file, ~0.12s over;
+      * a standalone full decode trims the ~26ms decoder lead-in once per FILE, so
+        per-chunk decodes undercount every chunk after the first. Appended mid-stream
+        a chunk always decodes to exactly frames x spf samples (verified: decoding
+        vo.mp3 self-concatenated, the second copy contributed its full frame count).
+    Frame (packet) counting via ffprobe is exact and additive under byte-concat.
+
+    Returns None if ffprobe is missing or fails — the caller falls back to alignment.
+    """
+    if not audio_bytes:
+        return None
+    tmp = None
+    try:
+        fd, tmp = tempfile.mkstemp(suffix=".mp3")
+        try:
+            os.write(fd, audio_bytes)
+        finally:
+            os.close(fd)
+        p = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "a:0", "-count_packets",
+             "-show_entries", "stream=sample_rate,nb_read_packets", "-of", "json", tmp],
+            capture_output=True, timeout=120)
+        if p.returncode != 0:
+            return None
+        st = (json.loads(p.stdout.decode("utf-8", "replace")).get("streams") or [{}])[0]
+        sr = int(st.get("sample_rate") or 0)
+        packets = int(st.get("nb_read_packets") or 0)
+        if sr <= 0 or packets <= 0:
+            return None
+        spf = 1152 if sr >= 32000 else 576  # MPEG-1 vs MPEG-2/2.5 Layer III samples/frame
+        return packets * spf / sr
+    except Exception:
+        return None
+    finally:
+        if tmp:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+
+
 # --------------------------------------------------------------------------- #
 # ElevenLabs call
 # --------------------------------------------------------------------------- #
@@ -365,6 +418,37 @@ def words_from_alignment(chars, starts, ends):
     return words
 
 
+def stitch_chunks(chunk_results, duration_probe=measure_chunk_duration_s):
+    """Concatenate per-chunk audio and place each chunk's words on the stitched timeline.
+
+    chunk_results yields (audio_bytes, alignment_dict_or_None) per chunk. Words land at
+    offset + their in-chunk alignment start; the offset then advances by the chunk's
+    MEASURED decoded duration (see measure_chunk_duration_s) — NOT the alignment's last
+    character end, which misses mp3 frame padding and made timings drift at chunk seams.
+    If the probe fails, warn and fall back to ends[-1] so synthesis never hard-fails on
+    a probe error (it just drifts like the pre-fix behaviour).
+
+    Returns (audio_bytes, word_timings, total_offset_s). Pure of network — unit-testable.
+    """
+    audio, words, offset = b"", [], 0.0
+    for chunk_audio, al in chunk_results:
+        audio += chunk_audio
+        al = al or {}
+        starts = al.get("character_start_times_seconds") or []
+        ends = al.get("character_end_times_seconds") or []
+        for w, st in words_from_alignment(al.get("characters") or [], starts, ends):
+            words.append([w, round(offset + st, 3)])
+        measured = duration_probe(chunk_audio)
+        if measured is not None:
+            offset += measured
+        else:
+            if chunk_audio:
+                print("  ! chunk duration probe failed (ffprobe?) - falling back to "
+                      "alignment end; stitched timings may drift at chunk seams")
+            offset += (ends[-1] if ends else 0.0)
+    return audio, words, offset
+
+
 def synthesize(text, cfg, api_key, out_path, args, budget):
     """Synthesize one piece; return (audio_written, char_count, est_duration_s,
     chunk_count, word_timings). word_timings is [[word, start_s], ...] on the global
@@ -383,21 +467,20 @@ def synthesize(text, cfg, api_key, out_path, args, budget):
         return False, char_count, est_duration_from_words(text), 0, []
 
     chunks = chunk_text(text, args.max_chunk_chars)
-    audio, words, offset = b"", [], 0.0
-    for i, ch in enumerate(chunks):
-        prev = chunks[i - 1] if i > 0 else ""
-        nxt = chunks[i + 1] if i + 1 < len(chunks) else ""
-        resp = json.loads(tts_request(ch, cfg, api_key, prev, nxt).decode("utf-8", "replace"))
-        audio += base64.b64decode(resp["audio_base64"])
-        al = resp.get("alignment") or {}
-        starts = al.get("character_start_times_seconds") or []
-        ends = al.get("character_end_times_seconds") or []
-        for w, st in words_from_alignment(al.get("characters") or [], starts, ends):
-            words.append([w, round(offset + st, 3)])
-        offset += (ends[-1] if ends else 0.0)  # chunk's spoken length -> next chunk's offset
+
+    def chunk_results():
+        for i, ch in enumerate(chunks):
+            prev = chunks[i - 1] if i > 0 else ""
+            nxt = chunks[i + 1] if i + 1 < len(chunks) else ""
+            resp = json.loads(tts_request(ch, cfg, api_key, prev, nxt).decode("utf-8", "replace"))
+            yield base64.b64decode(resp["audio_base64"]), resp.get("alignment")
+
+    # chunk's real decoded length -> next chunk's offset (measured, not alignment-summed)
+    audio, words, offset = stitch_chunks(chunk_results())
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_bytes(audio)
-    # Exact duration from alignment; fall back to the mp3-size estimate if alignment was empty.
+    # Exact duration from the stitched offset (measured decode, alignment on probe
+    # failure); fall back to the mp3-size estimate if both came up empty.
     dur = round(offset, 2) if offset > 0 else est_duration_from_bytes(len(audio), cfg["output_format"])
     return True, char_count, dur, len(chunks), words
 
