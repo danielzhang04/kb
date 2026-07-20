@@ -11,7 +11,10 @@ Run (from atlas/):
     .venv\\Scripts\\python -m worker.app console --list-devices  # enumerate audio devices
 Console mode needs DEEPGRAM_API_KEY + ANTHROPIC_API_KEY in %USERPROFILE%\\.atlas\\env.
 """
+import asyncio
+import re
 import sys
+import threading
 from pathlib import Path
 
 import yaml
@@ -20,13 +23,25 @@ from livekit.agents import Agent, AgentSession, JobContext, WorkerOptions, cli, 
 from livekit.plugins import anthropic, deepgram, silero
 
 from kbmcp import kb_tools
-from worker import fastlane, repl
+from worker import engagement as engagement_mod
+from worker import fastlane, repl, wakeword
 
 ATLAS = Path(__file__).resolve().parents[1]
 
 # Documented Aura-2 default voice — clear, conversational; rides the Deepgram $200 credit.
 # The production voice is chosen by ear in the Task 8 bake-off; this is the startup default.
 TTS_VOICE = "aura-2-andromeda-en"
+
+# Text-mode console (`--text`) bypasses audio entirely, so wake gating doesn't apply — only the
+# audio path is gated. Detected from argv because the CLI flag is parsed by livekit's typer app.
+TEXT_MODE = "--text" in sys.argv
+
+
+def _is_dismiss(transcript: str) -> bool:
+    """True when a final transcript says "that's all" (case-insensitive, trailing punctuation ok).
+    Deepgram may or may not emit the apostrophe, so both "that's all" and "thats all" match."""
+    t = re.sub(r"[.!?,;:\s]+$", "", transcript.strip().lower())
+    return t in ("that's all", "thats all")
 
 
 def _cfg() -> dict:
@@ -80,6 +95,49 @@ async def entrypoint(ctx: JobContext) -> None:
         agent=Agent(instructions=fastlane.SYSTEM, mcp_servers=[kb_mcp]),
         room=ctx.room,
     )
+
+    if TEXT_MODE:
+        return  # audio-free smoke: no wake gate, no mic loop — text turns flow straight through
+
+    # --- Gated listening (spec §2): audio leaves the PC ONLY while ENGAGED ------------------
+    # The wake-word loop is always on locally and never streams audio anywhere; it only flips the
+    # engagement state. The Deepgram STT audio input is detached (set_audio_enabled(False)) while
+    # ASLEEP so no mic audio reaches Deepgram, and re-attached on wake. Silence timeout + an
+    # explicit "that's all" both return to ASLEEP.
+    loop = asyncio.get_running_loop()
+    engagement = engagement_mod.Engagement(timeout_s=cfg["engagement_timeout_s"])
+    session.input.set_audio_enabled(False)  # start ASLEEP: no audio to STT until "hey jarvis"
+
+    def _sleep() -> None:
+        if session.input.audio_enabled:
+            session.input.set_audio_enabled(False)
+
+    def _engage() -> None:
+        engagement.wake()
+        session.input.set_audio_enabled(True)  # open the STT stream — audio now leaves the PC
+
+    def _on_wake() -> None:  # called from the wake-word thread; hop to the event loop
+        loop.call_soon_threadsafe(_engage)
+
+    @session.on("user_input_transcribed")
+    def _on_transcript(ev) -> None:
+        if not ev.is_final:
+            return
+        engagement.heard_speech()          # re-stamp the silence clock
+        if _is_dismiss(ev.transcript):     # "that's all" -> immediate dismissal
+            engagement.dismiss()
+            _sleep()
+
+    async def _silence_watcher() -> None:
+        while True:
+            await asyncio.sleep(1.0)
+            if engagement.tick() == engagement_mod.ASLEEP:
+                _sleep()
+
+    # daemon thread: blocking mic read + onnx wake scoring, off the event loop
+    threading.Thread(target=wakeword.listen, args=(_on_wake, cfg["wake_model"]),
+                     daemon=True).start()
+    asyncio.create_task(_silence_watcher())
 
 
 def main() -> int:

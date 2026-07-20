@@ -2,3 +2,4 @@ fast_model: claude-haiku-4-5
 escalation_model: claude-sonnet-4-6
 max_tool_turns: 5
 engagement_timeout_s: 15
+wake_model: hey_jarvis
