@@ -54,6 +54,11 @@ export interface AgentDetailProps {
    * "not loaded" (no session), which reads differently from `[]` ("loaded, none") and is said so.
    */
   runs?: RunMetadataDto[];
+  /**
+   * How many recent runs the caller scanned to build `runs`. Disclosed in the section, because a
+   * silently truncated join is worse than a stated partial one.
+   */
+  runScanLimit?: number;
   /** The governed per-agent model routing control, passed in so this view stays presentational. */
   routing?: React.ReactNode;
   activeSectionId?: string;
@@ -100,6 +105,7 @@ export function AgentDetail({
   agent,
   index,
   runs,
+  runScanLimit,
   routing,
   activeSectionId,
   onSectionChange,
@@ -302,8 +308,12 @@ export function AgentDetail({
         </ol>
       )}
       <p className="entity-note">
-        Derived via queue cards. No session or attempt DTO carries an agent id, so this is the only
-        honest join available in the browser.
+        Derived via queue cards: a run counts when it has a stage whose canonical card this agent owns.
+        No session or attempt DTO carries an agent id, so this is the only honest join available in the
+        browser.
+        {runs !== undefined && runScanLimit ? (
+          <> Scanned the {runScanLimit} most recent runs.</>
+        ) : null}
       </p>
     </section>
   );

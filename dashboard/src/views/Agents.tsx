@@ -28,9 +28,16 @@ import {
 } from '../lib/routingClient';
 import { RoutingControl } from './routingControls';
 import { AgentDetail } from './AgentDetail';
-import type { RunMetadataDto } from '../control/controlClient';
+import { getRun, listRuns, type RunMetadataDto } from '../control/controlClient';
+import { cardOwnerIndex, runsForAgent, type RunWithStages } from '../control/entityLinks';
 import type { NavTarget } from '../nav/stack';
 import '../styles/views/agents.css';
+
+/**
+ * How many recent runs the agent → runs join will scan. Each one costs a governed detail read (stages
+ * are not on the run list), so this is bounded and the bound is disclosed in the UI.
+ */
+const AGENT_RUN_SCAN_LIMIT = 20;
 
 const EMPTY_INDEX: PlaneAIndex = {
   cards: {},
@@ -234,6 +241,7 @@ export function Agents({
   const [routingState, setRoutingState] = useState<RoutingSnapshot | null>(routing ?? null);
   // Uncontrolled fallback for the open agent when no nav stack is wired above this view.
   const [localOpenId, setLocalOpenId] = useState<string | null>(null);
+  const [scannedRuns, setScannedRuns] = useState<RunWithStages[] | null>(null);
   const openAgentId = onOpenAgent ? focusAgentId ?? null : localOpenId;
 
   useEffect(() => {
@@ -267,6 +275,47 @@ export function Agents({
       cancelled = true;
     };
   }, [roster]);
+
+  /**
+   * Agent → its runs, the inverse card index (arc-3 step 4.3).
+   *
+   * `listRuns` returns no stages, so the join needs run DETAILS, which means one governed read per run.
+   * That fan-out is why this loads ONLY while a detail is open and is capped at the most recent
+   * AGENT_RUN_SCAN_LIMIT runs — an unbounded scan on opening an agent would be a self-inflicted
+   * thundering herd against the operator's own control plane.
+   *
+   * The cap is disclosed in the section rather than hidden, because a silently truncated join is worse
+   * than a stated partial one. Failure leaves `runs` undefined, which the detail reports as "not
+   * loaded" instead of the false claim that this agent works no runs.
+   */
+  useEffect(() => {
+    if (agentRuns || !openAgentId || !sessionToken) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const all = await listRuns(sessionToken);
+        const recent = [...all]
+          .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+          .slice(0, AGENT_RUN_SCAN_LIMIT);
+        const details = await Promise.all(
+          recent.map(async (meta) => {
+            try {
+              const detail = await getRun(meta.runRef, sessionToken);
+              return { run: meta, stages: detail.stages };
+            } catch {
+              return null; // one unreadable run must not void the whole join
+            }
+          }),
+        );
+        if (!cancelled) setScannedRuns(details.filter((d): d is RunWithStages => d !== null));
+      } catch {
+        /* leaves the section at "not loaded" — never a false "works no runs" */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [agentRuns, openAgentId, sessionToken]);
 
   const refreshRouting = useCallback(async () => {
     try {
@@ -360,12 +409,16 @@ export function Agents({
    */
   const openAgentRow = openAgentId ? agentRows.find((a) => a.id === openAgentId) : undefined;
   if (openAgentRow) {
+    // `undefined` (not scanned) and `[]` (scanned, none) stay distinct all the way to the render.
+    const joinedRuns = agentRuns
+      ?? (scannedRuns ? runsForAgent(openAgentRow.id, scannedRuns, cardOwnerIndex(index)) : undefined);
     return (
       <section className="v-agents" aria-label="Agents view">
         <AgentDetail
           agent={openAgentRow}
           index={index}
-          runs={agentRuns}
+          runs={joinedRuns}
+          runScanLimit={AGENT_RUN_SCAN_LIMIT}
           routing={routingControlFor(openAgentRow)}
           activeSectionId={activeSectionId}
           onSectionChange={onSectionChange}

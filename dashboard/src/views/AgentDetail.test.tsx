@@ -253,4 +253,19 @@ describe('agent work and runs', () => {
     const section = screen.getByLabelText('Runs this agent is working');
     expect(within(section).getByText(/Derived via queue cards/i)).toBeTruthy();
   });
+
+  /** A silently truncated join is worse than a stated partial one, so the bound is disclosed. */
+  it('discloses the scan bound when the join was capped', () => {
+    render(<AgentDetail agent={agent({ id: 'claude-worker' })} runs={[]} runScanLimit={20} />);
+    fireEvent.click(screen.getByTestId('entity-tab-runs'));
+    const section = screen.getByLabelText('Runs this agent is working');
+    expect(section.textContent).toContain('20 most recent runs');
+  });
+
+  it('claims no scan bound when nothing was scanned', () => {
+    render(<AgentDetail agent={agent({ id: 'claude-worker' })} runScanLimit={20} />);
+    fireEvent.click(screen.getByTestId('entity-tab-runs'));
+    const section = screen.getByLabelText('Runs this agent is working');
+    expect(section.textContent).not.toContain('20 most recent runs');
+  });
 });
