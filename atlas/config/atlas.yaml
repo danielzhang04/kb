@@ -10,7 +10,7 @@ dismiss_phrases:            # any of these (case/punctuation-insensitive) -> imm
 # --- Voice toggle (Daniel 2026-07-20): named voices, switch by pointing active_voice at one
 # and restarting the console. V1 adds a spoken switch command. Matilda = round-2 winner (F);
 # male slot filled by round-3 audition.
-active_voice: matilda
+active_voice: mars
 voices:
   matilda: {vendor: elevenlabs, voice_id: XrExE9yKIg1WjnnlVkGX, model: eleven_turbo_v2_5}  # F — premium (paid-sub quota)
   mars:    {vendor: deepgram,   model: aura-2-mars-en}                                      # M — $0 workhorse (Daniel's pick, rides credit)
