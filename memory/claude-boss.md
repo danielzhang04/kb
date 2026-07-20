@@ -89,3 +89,10 @@ Then: brainstorm → design doc → plan → build Wave A per the list above. Al
   Wave A live-fire + first unattended anything blocked behind it.
 - REMAINS (next terminal, per handoff): fyt-run-001 script→render stages; Waves C/E/F;
   yt_analytics.py + video-run workflow def; supervised Telegram first-send; wave-close review + PRs.
+
+## 2026-07-20 (evening) — poyais r11 regen (Daniel-directed)
+- Regenerated poyais final.mp4 (503.7s) with 3 fixes, all verified on the deliverable; commit c056d67 on claude/faceless-live-import (pushed).
+- WORKED: measure-don't-trust-the-proxy for sentence gaps. ElevenLabs word timings are ONSETS ONLY — any "gap = next_start − final_start" math includes the final word's spoken duration (~+0.2s mean error) AND accumulates TTS chunk-seam drift (up to +0.72s; `offset += ends[-1]` misses mp3 framing). r10's pad-to-target law silently dropped 50/83 sentence pads (34 in the back half) because of this. R11 measures real RMS silence in the VO and pads the true shortfall; post-render verifier now in audio_checker.py (standalone + check_audio).
+- WORKED: 3 parallel scoped agents (engine tsx / breath+checker / audio-plan) with explicit "don't touch the other agents' files" lists — zero conflicts, single render, single verify pass.
+- LESSON: final.mp4 mux applies 30→29.97 NTSC pulldown (×1.001 linear stretch on BOTH streams) — expected, sync-preserving; don't misread the lag ramp as drift when verifying against vo.breath.mp3.
+- REMAINS: title-card "spawn" kept the 0.15s opacity fade (only positional motion removed) — flag to Daniel if he wants a hard cut-in; voiceover.py chunk-stitch (`ends[-1]`) still writes drifted timings for FUTURE syntheses — fix is to measure each chunk's decoded length (render-time R11 compensates, but upstream fix is cheap and right).
