@@ -407,3 +407,163 @@ not.
    `verified.scene/rig` can never fail on a plate-driven video, so a green manifest here is
    structurally incapable of catching any of the above.
 
+
+## Round 5 — 2026-07-20 — defect repair + anchor-selection root cause (Claude Opus 4.8, `claude-opus-4-8[1m]`)
+
+Fixed the Round-4 blocking defects and the mechanism that produced them. **Calls used: 12**
+(10 first-pass + 2 retries), estimated spend **~$1.61** at the $0.134/img 2K pro tier — inside the
+12-regen authorisation. Batches: `assets/_batches/round5.json`, `round5b.json`.
+
+### The period root cause was CONFIRMED — and it is bigger than the hypothesis
+
+Round 4 guessed the mandatory style anchor was drawn from the Poyais library. That is correct, and
+**looking at the anchor files settles it without inference**:
+
+| ref, as named in the registry | what the file actually DEPICTS |
+| --- | --- |
+| `refs/env/env-exterior-vivid.png` | a tropical palm river valley, blue mountains, sunburst sky |
+| `refs/env/env-exterior-muted.png` | a dead mangrove swamp, bare trees, cattails, fallen leaves |
+| `refs/base/crowd-exemplar.png` | **five figures in TOP HATS, BONNETS, WAISTCOATS and BREECHES** |
+
+The engine copied their **subject**, not just their line weight, and the match is near-verbatim:
+
+- **L17**'s boardroom window framed `env-exterior-vivid.png` almost pixel-for-pixel — same valley,
+  same river bend, same blue mountains, same sunburst sky.
+- **L116** *was* `env-exterior-muted.png`, with `crowd-exemplar.png`'s own five costumed figures
+  standing in it. It contained none of the content its prompt asked for (no bank, no scorecard, no
+  chasing crowd). Both anchors overrode the prompt outright.
+- **L31**'s foreground cattails and dead leaves are lifted straight off the muted anchor.
+- **L97**'s Victorian village crowd is the crowd exemplar's costume set.
+
+The old `anchor_for()` made the tropical valley the **default return** for any prompt matching no
+keyword, and `has_crowd()` appended the 1820s crowd unconditionally. So a 1999-2023 American banking
+video seeded 1820s Central America into essentially every character-free frame. The registry names
+describe a *register* (`vivid` / `muted`) while the files carry a *period and a place* — that gap is
+the whole defect.
+
+### A SECOND root cause, not previously identified: the rig invariants were never attached
+
+`forge.should_hold()` decides whether to append the section-2c RIG-HOLD block from the **seed list**,
+and `_is_char_seed()` returns False for everything under `/refs/env/`. So a frame whose prompt is full
+of people but whose seeds were all env anchors shipped with **no rig invariant block at all** — the
+no-nose / no-ears / four-digit-hand rules survived only as prose inside the authored delta, which the
+engine ignored. Computed over the original batches, exactly four plain/plate frames were unheld:
+
+```
+L01  RIG-HOLD=False    L10  RIG-HOLD=False
+L17  RIG-HOLD=False    L31  RIG-HOLD=False
+```
+
+Those are **precisely** Round 4's four worst rig frames — L01's drawn ear on the cold open, L10's
+noses on the investor row, L17's realistic adults, L31's noses + ear + realistic profile jaw. The
+frames that *were* held (L21, L97, L105, L116) kept correct heads; their defect was costume, from the
+crowd exemplar. Two independent causes, cleanly separated by the data.
+
+### A THIRD cause, in the shot list itself
+
+**L10's `still_prompt` authored the period drift directly**: it asked for "a row of seated
+**top-hatted** Wall Street investor figures ... the investors in dark suits **and top hats**". No
+anchor needed. Likewise **L16's** prompt demanded "one prominent number" *without supplying one*,
+which is what invited the engine to invent `3.5`. A prompt that asks for a number it does not provide
+is a fabrication request. Both were corrected in `shots.json`.
+
+### How the selector was fixed (`assets/plan_pass2.py`)
+
+Not patched per frame — the selector itself:
+
+1. `VIDEO_PERIOD = "us-modern-1999-2023"` and an `ANCHOR_PERIOD` table tagging each channel ref with
+   the period it **depicts**, not the register its filename advertises.
+2. `check_period()` refuses any anchor that is neither period-neutral nor this video's period.
+   A foreign-period anchor is now a **hard error, never a silent fallback** — silent fallback is what
+   caused the drift.
+3. `anchor_for()` resolves to an **approved frame from this video** (L05 cool / L11 warm / L51
+   document), and hard-fails with instructions if that frame is not yet on disk rather than reaching
+   for a channel anchor. `CROWD` now points at this video's own L102, not the 1820s exemplar.
+4. `RIG = refs/base/base.png` (period-neutral, carries the family form) is seeded on every
+   figure-bearing frame, which also forces RIG-HOLD to append.
+5. `assert_rig()` is a **hard gate** on every emitted entry: a prompt containing figures whose seeds
+   would not trigger RIG-HOLD refuses to emit the batch rather than paying for an unenforced frame.
+
+Verified by re-running the planner over all 127 entries: **127/127 now rig-held** (was 4 of the 10
+defective frames unheld), and **0 entries seed any Poyais anchor** (was effectively all of them).
+
+*Surfaced, not self-applied (Round-3 convention):* the real fix for cause 2 belongs in the shared
+skill — `forge.should_hold()` should derive from the **prompt content**, not the seed list. Enforcing
+it in the planner protects this video only. Worth a `forge.py` change and a bible section-5 note.
+
+### The numbers, and what is actually sourced
+
+**The reviewer's proposed replacement for L16 was itself unsourced.** Round 4 said the cross-sell
+ratio "was about 6.1" — `6.1` appears **nowhere in `research.md`**, which carries no numeric value for
+the reported ratio at all ([F-03] states the metric was reported to investors but gives no figure).
+Substituting it would have repeated the exact failure being fixed, so **L16 now carries no number**:
+the label over a deliberately empty metric field, which also sets up the reveal of the target.
+
+| frame | was | now | source |
+| --- | --- | --- | --- |
+| L105 | `£200,000` (fabricated, and in sterling on a US story) | `8` + `PRODUCTS PER HOUSEHOLD` | **[F-01]** eight-products target, 1999 "Going for Gr-eight" [S12]; **[F-03]** the ratio reported to investors [S5]; script line 18 |
+| L16 | `3.5` (invented; also collided with the title's 3.5 **million**) | **no number** — empty metric field | no sourced value exists in `research.md`; authoring none beats guessing |
+| L17 | `1510 / 270 / 1,44.27` (malformed) | **no numerals at all**, label only | same — no sourced ratio value |
+| L116 | (giant unspecified number) | `8` | **[F-01]** |
+
+### Frame-by-frame outcome
+
+| frame | assigned defect | verdict |
+| --- | --- | --- |
+| L105 | fabricated `£200,000` | **PASS** — reads `8` / `PRODUCTS PER HOUSEHOLD`, no currency glyph |
+| L16 | invented `3.5` | **PASS** — field empty, no digit anywhere |
+| L17 | malformed `1,44.27`; jungle through window | **PASS** — no numerals; solid interior wall, no window; rig correct |
+| L12 | `CHECKIG` | **PASS** — `CHECKING` correct, `CARD` added, chain continuity with L11 held |
+| L01 | fully drawn ear (cold open) | **PASS on retry** — see finding 1 |
+| L21 | drawn ears both sides | **PASS** — no ears, no noses, no top hats |
+| L10 | noses + Victorian top hats | **PASS** — modern suits, no noses, no ears |
+| L31 (plate) | noses, ear, realistic jaw, adult proportions, washed out | **PASS** — rig correct, saturated, correct line weight, swamp gone |
+| L97 | 19th-century costume | **PASS on period/rig**, one new defect — see finding 2 |
+| L116 | mangrove swamp + 1820s crowd | **PASS** — modern bank, modern dress, giant `8` |
+
+### Three findings worth keeping
+
+1. **On a no-ears rig, a TURNED HEAD is as dangerous as a receding hairline.** L01's first regen
+   applied Round 1's lesson correctly (full side-covering hair sweep, age on linework) and *still*
+   came back with a drawn ear **and** a nose — because the engine rendered the head in three-quarter
+   profile, where an ear pokes out *in front of* the hair and a nose breaks the face outline. The
+   retry added a **VIEW LOCK** (front-on, symmetrical, both eyes equidistant, never a profile or
+   three-quarter turn) and both vanished in one gen. Round 1's rule needs this second half:
+   *state the side-fill positively **and** lock the head square to camera.*
+
+2. **A fix aimed at one rig axis can regress a different one — compare, do not assume the retry wins.**
+   `wf-r5-L97` had a flawless 20-figure crowd rig but one photoreal five-digit hand. The retry fixed
+   the hand to a clean four-digit cartoon glove and **regressed all twenty faces to noses, realistic
+   features and varied skin rendering**. One defect against twenty. **The first frame was kept** and
+   the retry discarded. A retry is a candidate, not a replacement — diff it against what it replaces
+   before placing.
+
+3. **Verify the reviewer's numbers, not just the render's.** The blocking finding (L105) was right,
+   but the proposed fix for L16 (`6.1`) was unsourced general knowledge presented alongside sourced
+   findings. In a fact-leashed video every replacement figure needs its own ledger id, or it is the
+   same defect wearing a different number.
+
+### Residual — what this round did NOT fix
+
+- **NEWLY FOUND, NOT FIXED — the L31 boulder cutout carries the numeral `1`.** Found by compositing
+  the cutout over the new plate to check the layered shot. `shots.motion.json`'s `cutout_prompt` for
+  the boulder asks for "a large marker **scorecard number** painted on its face" **without supplying
+  one** — the identical unsupplied-number bug that produced L16's fabricated `3.5`. The engine chose
+  `1`. On the beat "the pressure rolled downhill, off the scorecard", the boulder *is* the scorecard
+  number, so it should read `8` ([F-01]) or carry no numeral at all. This sits outside the assigned
+  10-frame list and the 12-regen budget was already spent, so it was **flagged rather than fixed**:
+  it needs one further gen plus a `cutout_prompt` correction. Same class as the blocking defects this
+  round was sent to repair — **treat as open.**
+- **L97 carries a photoreal five-digit hand** clawing the money bag (same class as the L62 hand Round
+  4 rated High). Accepted deliberately as the lesser of two defects; **still open.**
+- **L64** (`499 500 501 5? 54 55 66`), **L62** (five-digit hand), **L74 / L110 / L29** (blank faces),
+  **L94 / L38 / L43 / L55 / L34-36 / L81** (lettering and tier issues) — all Round-4 items outside
+  this round's assigned scope, **untouched.**
+- **The 68 frames Round 4 never opened remain unreviewed.** Round 4's defect rate in a 51-frame sample
+  says the remainder should be assumed to hold more. This round opened only its own 12 frames plus 6
+  reference frames.
+- **The inert manifest gate is unfixed** (`resolve_scene_files` still exempts every `background.plate`
+  shot, which is all 119). A green manifest still proves nothing here.
+- **L16's palette runs broader than the locked 2-3 colour scene palette** (multi-coloured product
+  icons) and carries an extra `INSURANCE LEAFLET` label; **L31's** left half is a large flat grey
+  wedge that brushes section-6 "thin/sparse". Both advisory.

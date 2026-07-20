@@ -6,7 +6,8 @@
   "delta": "A single ordinary customer, small, stands at a clean teal-and-cream American bank teller counter in the lower-left foreground, dwarfed. Behind and above the counter an impossibly tall leaning TOWER of account-opening forms and unactivated debit cards rises out of frame, filling the upper two-thirds \u2014 paperwork nobody signed for, teetering over one small person (scale as argument). The customer is an anonymous foreground figure: This prominent foreground figure is an anonymous, non-recurring person drawn on the FULL base family rig \u2014 round near-circle head, NO nose, NO ears, classic cartoon hands (three fingers plus one thumb), even medium-thick #241a12 outline, clean flat cel render \u2014 a plain modern customer in ordinary clothes, hold ONLY the rig form. Warm teal bank palette, cream forms, one red accent on a single overdue-slip clipped to the pile. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft cel shading and genuine fore/mid/background depth (never flat or empty), rounded friendly shapes, no realistic detail; built-but-flat environment filled edge-to-edge; any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   "channels/the-second-take/visual-kit/refs/base/base.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L11.png"
   ],
   "_cast": [],
   "_text": false,
@@ -20,7 +21,7 @@
   "aspect": "16:9",
   "seed": [
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L11.png"
   ],
   "_cast": [],
   "_text": true,
@@ -33,8 +34,9 @@
   "delta": "A wide row of ordinary anonymous people across the frame, each being handed a stack of statements and cards they clearly did not ask for \u2014 held tableau of puzzled, receiving stances, not mid-motion. The background / crowd figures are on the CROWD RIG: round cream-family heads, DOT EYES, one simple consistent mouth (neutral / smile / downturn only), NO noses, NO ears, NO teeth, the EXACT same squat head-to-body proportion as the base rig, in varied modern everyday clothing. Keep every crowd figure on this same simplified rig \u2014 do not give them individual detailed faces. Warm teal bank palette, cream paperwork, one red accent on a single 'account opened' slip. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel colours with soft shading and fore/mid/background depth, filled edge-to-edge; marker lettering only; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
-   "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   "channels/the-second-take/visual-kit/refs/base/base.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L102.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L11.png"
   ],
   "_cast": [],
   "_text": false,
@@ -47,8 +49,9 @@
   "delta": "Close on one anonymous customer holding a bank statement, a bold red charge line stamped 'FEE' on it, the customer's mouth set in dismay. This prominent foreground figure is an anonymous, non-recurring person on the FULL base family rig \u2014 round near-circle head, NO nose, NO ears, classic cartoon hands (three fingers plus a thumb), even medium-thick #241a12 outline, flat cel render \u2014 ordinary modern clothes; hold ONLY the rig form. Warm cream statement, teal surround, the one red accent on the 'FEE' line. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel colours with soft shading and depth, filled edge-to-edge; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond the FEE line, no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L11.png"
   ],
   "_cast": [],
   "_text": true,
@@ -61,7 +64,8 @@
   "delta": "A hushed executive boardroom: a long dark polished table, tall windows, city skyline beyond \u2014 and the tall leather chair at the HEAD of the table sits conspicuously EMPTY, a lone spotlight pooled on it. The place where the mastermind should be, and isn't. Cool slate-and-cream corporate palette, one faint red accent on a single closed folder on the table. Deep fore/mid/background. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel colours with soft shading and genuine depth, filled edge-to-edge; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/visual-kit/refs/base/base.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": false,
@@ -75,7 +79,7 @@
   "aspect": "16:9",
   "seed": [
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L11.png"
   ],
   "_cast": [],
   "_text": true,
@@ -88,7 +92,7 @@
   "delta": "A trustworthy-looking grand bank building at street level \u2014 cream stone, tall columns, a warm-lit arched entrance, a horse-drawn stagecoach parked out front as the bank's old-fashioned identity tag. Solid, respectable, the bank everyone trusted. Warm cream-and-gold palette, one red accent on the stagecoach wheel trim. Deep street depth. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and genuine depth, filled edge-to-edge; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L11.png"
   ],
   "_cast": [],
   "_text": false,
@@ -101,8 +105,9 @@
   "delta": "On a bright stage, a proud banker figure presents a big marker placard reading 'CROSS-SELLING' to a row of seated top-hatted Wall Street investor figures who lean in, impressed. All anonymous foreground/near-foreground figures on the base rig: round near-circle heads, NO noses, NO ears, four-digit cartoon hands, #241a12 outline, flat cel \u2014 the banker in a smart teal suit, the investors in dark suits and top hats; hold ONLY the rig form. Warm gold-and-cream stage palette, one red accent on the placard's underline. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond the placard, no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L11.png"
   ],
   "_cast": [],
   "_text": true,
@@ -115,8 +120,9 @@
   "delta": "A clean cutaway of a single suburban house, one ordinary anonymous customer standing inside it, and ONE product icon beside them: a checking-account passbook on a small marker card labelled 'CHECKING'. The customer is a base-rig anonymous figure: round near-circle head, NO nose, NO ears, four-digit hands, #241a12 outline, flat cel, plain modern clothes; hold ONLY the rig form. This is the base plate that fills with products in the following frames. Warm cream-and-teal palette, one red accent reserved. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'CHECKING', no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L11.png"
   ],
   "_cast": [],
   "_text": true,
@@ -129,8 +135,9 @@
   "delta": "Hard cut: the same one small customer now buried nearly to the neck under a heaped pile of products \u2014 cards, passbooks, insurance folders, a login tablet \u2014 a hand-lettered 'MORE' marker card jammed on top. The cheerful slogan versus one overwhelmed person (ironic counterpoint). Warm cream-and-teal palette, one red accent on the 'MORE' card. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'MORE', no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L11.png"
   ],
   "_cast": [],
   "_text": true,
@@ -143,8 +150,9 @@
   "delta": "Register shift to a clean marker-drawn dashboard: all those product icons feed into a single big boxed scorecard figure \u2014 a hand-lettered 'PRODUCTS PER HOUSEHOLD' label over one prominent number. The whole messy pile reduced to one clean metric. Cool cream-and-slate infographic palette, one red accent circling the metric box. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond the label, no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -157,7 +165,8 @@
   "delta": "A banker figure proudly holding up the scorecard metric to a row of nodding investor figures, presenting it as proof the bank was well run. Anonymous base-rig figures: round heads, NO noses, NO ears, four-digit hands, #241a12 outline, flat cel \u2014 the banker in a teal suit, investors in dark suits; hold ONLY the rig form. Warm boardroom palette, one red accent on the presented metric card. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   "channels/the-second-take/visual-kit/refs/base/base.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L11.png"
   ],
   "_cast": [],
   "_text": false,
@@ -170,7 +179,7 @@
   "delta": "Close on the scorecard, a bold red bullseye TARGET ring now drawn onto the metric box \u2014 a goal locked onto the number. Cool cream-and-slate palette, the one red accent IS the target ring. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering only; the single red accent #d7402b is the target; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": false,
@@ -184,7 +193,7 @@
   "aspect": "16:9",
   "seed": [
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -198,7 +207,7 @@
   "aspect": "16:9",
   "seed": [
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -211,9 +220,10 @@
   "delta": "A late-1990s corporate rally scene: a small stage, banners, a few anonymous cheering staff, a hand-lettered marker banner overhead reading '1999'. Warm nostalgic teal-and-cream palette, one red accent on a banner tassel. Crowd on the CROWD RIG: round cream-family heads, DOT EYES, one simple mouth, NO noses, NO ears, NO teeth, same squat proportion, 1990s business-casual dress. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond '1999', no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
-   "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+   "channels/the-second-take/visual-kit/refs/base/base.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L102.png",
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L11.png"
   ],
   "_cast": [],
   "_text": true,
@@ -227,7 +237,7 @@
   "aspect": "16:9",
   "seed": [
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L11.png"
   ],
   "_cast": [],
   "_text": true,
@@ -241,7 +251,7 @@
   "aspect": "16:9",
   "seed": [
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -255,7 +265,7 @@
   "aspect": "16:9",
   "seed": [
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -269,7 +279,7 @@
   "aspect": "16:9",
   "seed": [
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -282,8 +292,9 @@
   "delta": "The number '8' rendered as an old weathered stone monument on a plinth, faintly cobwebbed and dusty, older than the people who'd get blamed \u2014 a goal set long before the scandal. Muted stone-grey-and-cream palette, one faint red accent on a small dated plaque. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -314,8 +325,9 @@
   "delta": "A whimsical marker-drawn 'cross-selling machine' \u2014 a big cartoon contraption with a hopper of single customers going in one end and streams of products (cards, passbooks, policies) coming out the other, a small 'NORWEST' plate on its side and a merge-arrow joining it to a cream columned bank marked with the stagecoach tag. The machine that got absorbed into the bigger bank. Warm teal-and-cream palette, one red accent on the merge-arrow. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'NORWEST', no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L11.png"
   ],
   "_cast": [],
   "_text": true,
@@ -328,8 +340,9 @@
   "delta": "The big scorecard number with a fat money-bag 'BONUS' tied onto it by a ribbon, and an anonymous banker figure staring at the bag, eyes on the money not the metric. The banker is a base-rig anonymous figure: round head, NO nose, NO ears, four-digit hands, #241a12 outline, flat cel, a teal suit; hold ONLY the rig form. Cool slate-and-cream palette, the one red accent on the ribbon. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'BONUS', no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -342,7 +355,8 @@
   "delta": "At a bank counter, a banker figure has turned his back on a waiting customer to reach up and crank a giant scorecard number higher \u2014 serving the metric, not the person. Both anonymous base-rig figures: round heads, NO noses, NO ears, four-digit hands, #241a12 outline, flat cel \u2014 banker in a teal suit, customer in plain clothes; hold ONLY the rig form. Warm teal counter palette, one red accent on the scorecard's rising arrow. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   "channels/the-second-take/visual-kit/refs/base/base.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L11.png"
   ],
   "_cast": [],
   "_text": false,
@@ -355,8 +369,9 @@
   "delta": "A single teller at the counter buckling under a heavy weight labelled 'QUOTA' pressing down on their shoulders, a clock on the wall reading near end-of-day. The person who actually carries the pressure. Base-rig anonymous teller: round head, NO nose, NO ears, four-digit hands, #241a12 outline, flat cel, a teal teller's uniform; hold ONLY the rig form. Warm counter palette, the one red accent on the 'QUOTA' weight. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'QUOTA', no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L11.png"
   ],
   "_cast": [],
   "_text": true,
@@ -369,7 +384,8 @@
   "delta": "A teller alone behind the counter at the end of the day, glancing at a day's-tally card one short of the quota \u2014 the setup for what they do next (pinning stage base). Base-rig anonymous teller: round head, NO nose, NO ears, four-digit hands, #241a12 outline, flat cel, teal uniform; hold ONLY the rig form. Warm-but-dimming counter palette, one red accent on the tally card's shortfall mark. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   "channels/the-second-take/visual-kit/refs/base/base.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L11.png"
   ],
   "_cast": [],
   "_text": false,
@@ -382,7 +398,8 @@
   "delta": "Hard cut to a marker-drawn online-banking signup screen where a made-up email address is being typed into the field \u2014 a fake inbox invented to enroll the customer. Cool cream-and-teal screen palette, one red accent on the cursor in the email field. This is the base plate for the vanishing-alert delta. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text (an illegible placeholder email is fine), no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/visual-kit/refs/base/base.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": false,
@@ -396,7 +413,7 @@
   "aspect": "16:9",
   "seed": [
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -409,7 +426,7 @@
   "delta": "A lone checking passbook on a counter, and beyond it the hint of many more product types piling into frame \u2014 it wasn't just this one. Warm teal counter palette, one red accent reserved on an incoming card edge. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L11.png"
   ],
   "_cast": [],
   "_text": false,
@@ -423,7 +440,7 @@
   "aspect": "16:9",
   "seed": [
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -436,7 +453,7 @@
   "delta": "A clean marker-drawn credit-score gauge with its needle dropping into the red, and a small statement beside it with fees and interest ticking up in a red column \u2014 the quiet damage of a card nobody wanted. Cool cream-and-slate infographic palette, the one red accent on the falling needle and the fee column. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering only; the single red accent #d7402b on the drop; no photorealism, no on-screen narrator, no unrequested text (short labels only), no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": false,
@@ -449,8 +466,9 @@
   "delta": "A stack of insurance policy folders (a house/renters icon, a life icon) dumped onto one anonymous customer's arms, a marker tag reading 'INSURANCE' on top \u2014 policies they never wanted. Base-rig customer: round head, NO nose, NO ears, four-digit hands, #241a12 outline, flat cel, plain clothes; hold ONLY the rig form. Warm cream palette, one red accent on the 'INSURANCE' tag. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b on the tag; no photorealism, no on-screen narrator, no unrequested text beyond 'INSURANCE', no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L11.png"
   ],
   "_cast": [],
   "_text": true,
@@ -463,8 +481,9 @@
   "delta": "A consent form on a desk with a scribbled forged signature, a magnifying glass held over the signature line revealing it as fake \u2014 the forged consent, admitted, not a rumor. Cool cream-and-slate palette, the one red accent on a small 'FORGED' mark by the signature. Desk/body scale, no hand macro. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b on 'FORGED'; no photorealism, no on-screen narrator, no unrequested text beyond 'FORGED', no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -478,7 +497,7 @@
   "aspect": "16:9",
   "seed": [
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -492,7 +511,7 @@
   "aspect": "16:9",
   "seed": [
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -506,7 +525,7 @@
   "aspect": "16:9",
   "seed": [
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -519,8 +538,9 @@
   "delta": "A tally figure climbing up a marker bar to a new top reading '3.5 MILLION' \u2014 the wider count. Cool slate-and-cream palette, the one red accent on the '3.5 MILLION' cap. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering; the single red accent #d7402b on the cap; no photorealism, no on-screen narrator, no unrequested text beyond '3.5 MILLION', no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -534,7 +554,7 @@
   "aspect": "16:9",
   "seed": [
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -547,8 +567,9 @@
   "delta": "The same original years re-measured with a longer ruler: a marker figure that read '2.1M' being corrected upward to '2.55M' over the SAME window \u2014 same period, more counted. Cool cream-and-slate palette, one red accent on the corrected figure. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering; the single red accent #d7402b on the correction; no photorealism, no on-screen narrator, no unrequested text beyond '2.1M' and '2.55M', no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -561,7 +582,8 @@
   "delta": "A small extra slice of the timeline (the newly added years) contributing a marker figure '+981,000' onto the pile \u2014 new years, not new fraud. Cool slate-and-cream palette, the one red accent on the '+981,000'. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering; the single red accent #d7402b on the figure; no photorealism, no on-screen narrator, no unrequested text beyond '+981,000', no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/visual-kit/refs/base/base.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": false,
@@ -575,7 +597,7 @@
   "aspect": "16:9",
   "seed": [
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -588,8 +610,9 @@
   "delta": "From the big pile, a smaller marked-off subset of account cards each carrying a red 'FEE' dot, under a marker tag '190,000' \u2014 the ones that actually cost people money. Cool slate ground, cream cards, the one red accent on the fee dots and tag. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering; the single red accent #d7402b on the fee dots; no photorealism, no on-screen narrator, no unrequested text beyond '190,000' and 'FEE', no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -602,8 +625,9 @@
   "delta": "A single big marker figure with a '~' tilde in front of it and an 'ESTIMATE' tag clipped on, the digits deliberately a little soft/hand-wavy \u2014 the honest caveat that these are the bank's own estimate, not a hard count. Cool cream-and-slate palette, one red accent on the '~' and the 'ESTIMATE' tag. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond '~' and 'ESTIMATE', no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -616,8 +640,9 @@
   "delta": "A big scale of blame with an empty pan at the top (the executives) tipping its whole weight down onto a small huddle of counter-workers at the bottom pan \u2014 somebody paid, and at first it was them. Cool slate-and-cream palette, one red accent on the tipping arrow. Figures on the crowd rig: round cream heads, DOT EYES, one simple mouth, NO noses, NO ears, NO teeth, squat proportion. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
-   "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/visual-kit/refs/base/base.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L102.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": false,
@@ -630,9 +655,10 @@
   "delta": "A long line of anonymous counter-employees filing out through a single exit door, coats and boxes in hand, a marker tag overhead reading '5,300 FIRED'. Grim but not gory; comedy off. EVERY figure on the CROWD RIG: round cream-family heads, DOT EYES, one simple mouth (neutral / downturn), NO noses, NO ears, NO teeth, the EXACT same squat head-to-body proportion as the base rig, varied ordinary work clothes. Desaturated grey-and-cream palette (gravity register), one faint red accent on the exit sign. Deep receding line for depth. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond '5,300 FIRED', no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
-   "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+   "channels/the-second-take/visual-kit/refs/base/base.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L102.png",
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -645,9 +671,10 @@
   "delta": "An even larger crowd of anonymous employees behind the fired line, marked for investigation, a marker tag '23,000+' over them \u2014 the number multiplies. Desaturated grey-and-cream palette, one faint red accent on the tag. Crowd on the CROWD RIG: round cream heads, DOT EYES, one simple mouth, NO noses, NO ears, NO teeth, squat proportion, varied work clothes. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond '23,000+', no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
-   "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+   "channels/the-second-take/visual-kit/refs/base/base.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L102.png",
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -660,9 +687,10 @@
   "delta": "A two-floor building cutaway: the ground-floor counter level is emptied out, chairs knocked over, staff gone (the tellers and personal bankers); the executive floor directly above is untouched, calm, fully occupied. The imbalance made physical \u2014 punished below, undisturbed above. Desaturated grey below, warmer intact palette above, one red accent on a fallen 'CLOSED' till sign downstairs. Figures on the crowd rig upstairs. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
-   "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+   "channels/the-second-take/visual-kit/refs/base/base.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L102.png",
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -676,7 +704,7 @@
   "aspect": "16:9",
   "seed": [
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -690,7 +718,7 @@
   "aspect": "16:9",
   "seed": [
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -704,7 +732,7 @@
   "aspect": "16:9",
   "seed": [
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -717,7 +745,8 @@
   "delta": "An executive at headquarters glancing at a firing report and giving a bored, unsurprised shrug \u2014 no shock upstairs. Base-rig anonymous executive: round head, NO nose, NO ears, four-digit hands, #241a12 outline, flat cel, a dark suit; hold ONLY the rig form. Cool office palette, one faint red accent on the report's tab. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering only; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/visual-kit/refs/base/base.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": false,
@@ -730,8 +759,9 @@
   "delta": "A revolving door spinning people OUT into the street on one side while, above it, the scorecard number keeps ratcheting UP on a red arrow \u2014 bodies cycling out, the number climbing regardless. Cool slate-and-cream palette, the one red accent on the rising arrow. Crowd figures on the crowd rig: round heads, DOT EYES, no noses/ears/teeth, squat proportion. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
-   "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/visual-kit/refs/base/base.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L102.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": false,
@@ -744,7 +774,7 @@
   "delta": "Callback to the empty boardroom head chair (from the hook), still empty, the red target-dial faintly glowing in it \u2014 nobody sat down and ordered a fraud. Cool slate-and-cream palette, the one red accent on the dial. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b on the dial; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": false,
@@ -758,7 +788,7 @@
   "aspect": "16:9",
   "seed": [
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -771,7 +801,8 @@
   "delta": "A single anonymous employee at the counter standing firm with arms crossed, refusing to open the phantom account, the quota card pushed away on the desk. Base-rig anonymous figure: round head, NO nose, NO ears, four-digit hands, #241a12 outline, flat cel, a teal work uniform; hold ONLY the rig form. Steady, plain register. Warm-but-serious counter palette, one red accent on the pushed-away quota card. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   "channels/the-second-take/visual-kit/refs/base/base.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L11.png"
   ],
   "_cast": [],
   "_text": false,
@@ -784,8 +815,9 @@
   "delta": "A hand lifting a desk phone beneath a wall poster hand-lettered 'ETHICS LINE' \u2014 the number you're supposed to call. Body/desk scale, no hand macro. Cool cream-and-teal office palette, one red accent on the poster border. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'ETHICS LINE', no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -798,8 +830,9 @@
   "delta": "The same employee now holding a termination notice, the ethics-line poster greyed on the wall behind \u2014 the caller got fired. Desaturated grey-and-cream gravity register, comedy off, one faint red 'TERMINATED' mark on the notice. Base-rig figure: round head, NO nose, NO ears, four-digit hands, #241a12 outline, flat cel; hold ONLY the rig form. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'TERMINATED', no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -812,7 +845,8 @@
   "delta": "A red-marked termination form trailing on a string behind a walking anonymous figure, following them from one job door to the next, each new door slamming shut \u2014 a record that follows you. Base-rig figure: round head, NO nose, NO ears, four-digit hands, #241a12 outline, flat cel; hold ONLY the rig form (a held mid-purpose stance, not a mid-stride freeze). Desaturated grey-and-cream palette, the one red accent on the trailing form. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/visual-kit/refs/base/base.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": false,
@@ -826,7 +860,7 @@
   "aspect": "16:9",
   "seed": [
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -839,8 +873,9 @@
   "delta": "A large reinstatement check made out with a marker figure '$5.4 MILLION' and a small 'REINSTATED' stamp \u2014 the whistleblower restored and paid. Cool cream-and-slate palette, the one red accent on the 'REINSTATED' stamp. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond '$5.4 MILLION' and 'REINSTATED', no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -854,7 +889,7 @@
   "aspect": "16:9",
   "seed": [
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -867,8 +902,9 @@
   "delta": "A branch manager reinstated at a suburban California branch (palm trees, warm light), a marker location tag 'POMONA' and a check figure '$577,000'. A base-rig anonymous manager: round head, NO nose, NO ears, four-digit hands, #241a12 outline, flat cel, a modest blazer; hold ONLY the rig form. Warm California palette, the one red accent on the check figure. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'POMONA' and '$577,000', no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L11.png"
   ],
   "_cast": [],
   "_text": true,
@@ -882,7 +918,7 @@
   "aspect": "16:9",
   "seed": [
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -895,8 +931,9 @@
   "delta": "Three stern regulator figures in dark official coats, each carrying an embossed seal, striding up to the cream columned bank together, a marker date tag 'SEPT 8' overhead \u2014 the day they came down together. Anonymous base-rig officials: round heads, NO noses, NO ears, four-digit hands, #241a12 outline, flat cel, dark government coats with distinct seal badges; hold ONLY the rig form. Cool authoritative palette, one red accent on the seal ribbons. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'SEPT 8', no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -910,7 +947,7 @@
   "aspect": "16:9",
   "seed": [
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -926,7 +963,7 @@
    "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/library/stumpf.png",
    "channels/the-second-take/visual-kit/refs/base/expr-worried.png",
    "channels/the-second-take/visual-kit/refs/base/sit.png",
-   "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L102.png"
   ],
   "_cast": [
    "stumpf"
@@ -942,7 +979,7 @@
   "aspect": "16:9",
   "seed": [
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -955,8 +992,9 @@
   "delta": "A vacated CEO office: an empty executive chair pushed back from a cleared desk, a nameplate turned face-down, a marker date tag 'OCT 2016'. He resigned. Cool slate-and-cream palette, one red accent on the face-down nameplate edge. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'OCT 2016', no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -970,7 +1008,7 @@
   "aspect": "16:9",
   "seed": [
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -983,8 +1021,9 @@
   "delta": "A grand marble Federal Reserve building personified as the authority, a marker sign 'FEDERAL RESERVE' on its pediment, its great hand lowering a heavy ceiling-slab over the scene. The Fed as institution-actor via its landmark (no personified individual). Cool marble-grey-and-cream palette, one red accent on the descending ceiling's edge. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'FEDERAL RESERVE', no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -998,7 +1037,7 @@
   "aspect": "16:9",
   "seed": [
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -1011,7 +1050,7 @@
   "delta": "A hard low ceiling clamped directly over the whole cream columned bank building, the building visibly pressing up against it unable to grow \u2014 a lid on an entire company, never done before. Cool slate-and-cream palette, the one red accent on the ceiling's clamp bolts. Deep depth. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": false,
@@ -1025,7 +1064,7 @@
   "aspect": "16:9",
   "seed": [
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -1039,7 +1078,7 @@
   "aspect": "16:9",
   "seed": [
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -1052,9 +1091,10 @@
   "delta": "A single slice carved out of the big money stack and slid toward a small crowd of investor figures, a marker tag '$500M / FOR INVESTORS'. Cool slate-and-cream palette, one red accent on the carved slice. Investors on the crowd rig (round heads, dot eyes, no noses/ears/teeth). Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond '$500M' and 'FOR INVESTORS', no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
-   "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+   "channels/the-second-take/visual-kit/refs/base/base.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L102.png",
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -1067,7 +1107,8 @@
   "delta": "Two empty executive chairs at the head of a table, a single large hand-lettered marker question mark hanging over them \u2014 what happened to the people who owned the number? Cool slate-and-cream palette, one red accent on the dot of the question mark. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond '?', no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/visual-kit/refs/base/base.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": false,
@@ -1080,8 +1121,9 @@
   "delta": "The same two executive chairs, still and undisturbed, a little dust settling and a small marker tag 'NOTHING' \u2014 for a while, nothing happened to them. Deadpan. Cool slate-and-cream palette, one faint red accent on the tag. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'NOTHING', no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -1113,7 +1155,7 @@
   "aspect": "16:9",
   "seed": [
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -1145,8 +1187,9 @@
   "delta": "A crowd of ordinary people and a raised gavel together pressing on a big lever, and a hand reluctantly clawing money back out of the money bags \u2014 public and political pressure forcing the clawback. Crowd on the crowd rig (round heads, dot eyes, no noses/ears/teeth). Cool slate-and-cream palette, one red accent on the lever. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
-   "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/visual-kit/refs/base/base.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L102.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": false,
@@ -1160,7 +1203,7 @@
   "aspect": "16:9",
   "seed": [
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -1173,7 +1216,8 @@
   "delta": "The regulator figures turning away from the bank building and toward a lineup of individual executive silhouettes \u2014 done with the institution, now after the people. Anonymous base-rig officials (round heads, no noses/ears, four-digit hands, dark coats); hold ONLY the rig form. Cool authoritative palette, one red accent on a pointing seal. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/visual-kit/refs/base/base.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": false,
@@ -1186,8 +1230,9 @@
   "delta": "A lineup of eight anonymous executive figures each tagged with an enforcement-action slip, a big marker '8' overhead \u2014 actions against eight in all, the number eight coming back around. Base-rig executives: round heads, NO noses, NO ears, four-digit hands, #241a12 outline, flat cel, dark suits; hold ONLY the rig form. Cool slate palette, the one red accent on the '8'. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering; the single red accent #d7402b on the '8'; no photorealism, no on-screen narrator, no unrequested text beyond '8', no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -1200,8 +1245,9 @@
   "delta": "An SEC seal pressed onto a charge document with a settlement figure marker-lettered '$2.5M' and a small 'STUMPF' label. Cool cream-and-slate official palette, one red accent on the seal ribbon. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'SEC', '$2.5M' and 'STUMPF', no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -1214,8 +1260,9 @@
   "delta": "A second SEC settlement document with a marker figure '$3M' and a small tag 'PLUS DISGORGEMENT', a 'TOLSTEDT' label \u2014 settled in 2023, plus giving money back. Cool cream-and-slate palette, one red accent on the seal. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'SEC', '$3M', 'PLUS DISGORGEMENT' and 'TOLSTEDT', no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -1231,7 +1278,7 @@
    "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/library/tolstedt.png",
    "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
    "channels/the-second-take/visual-kit/refs/base/action-present.png",
-   "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L102.png"
   ],
   "_cast": [
    "tolstedt"
@@ -1246,7 +1293,7 @@
   "delta": "That same scorecard number drawn as a balloon inflated by a hidden pump, and underneath the pump a pile of fake account cards feeding it \u2014 the metric pumped up by unused, unneeded, unauthorized accounts, about to be exposed. Cool slate-and-cream palette, the one red accent on the leaking seam of the balloon. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": false,
@@ -1259,9 +1306,10 @@
   "delta": "A long lineup of everyone tied to the scandal \u2014 executives, managers, tellers \u2014 nearly all fading to pale ghost-outlines, leaving exactly ONE solid figure standing, a big marker '1' overhead. Out of everyone, one. Cool slate-and-cream palette, the one red accent on the '1'. Figures on the crowd rig (round heads, dot eyes, no noses/ears/teeth) except the one solid silhouette. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering; the single red accent #d7402b on the '1'; no photorealism, no on-screen narrator, no unrequested text beyond '1', no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
-   "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+   "channels/the-second-take/visual-kit/refs/base/base.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L102.png",
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -1275,7 +1323,7 @@
   "aspect": "16:9",
   "seed": [
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -1306,7 +1354,8 @@
   "delta": "A figure's arm sweeping papers to block a regulator's big magnifying glass mid-examination \u2014 getting in the way of the people looking into it. Base-rig figures at body scale, no hand macro; round heads, no noses/ears. Cool slate-and-cream palette, one red accent on the magnifier rim. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/visual-kit/refs/base/base.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": false,
@@ -1320,7 +1369,7 @@
   "aspect": "16:9",
   "seed": [
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -1334,7 +1383,7 @@
   "aspect": "16:9",
   "seed": [
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -1347,8 +1396,9 @@
   "delta": "A single lonely gavel-stamped conviction card on a wide empty table, a marker figure '1 CONVICTION' beneath it \u2014 out of everything, exactly one. Cool slate-and-cream palette, big negative space, the one red accent on the '1'. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering; the single red accent #d7402b on the '1'; no photorealism, no on-screen narrator, no unrequested text beyond '1 CONVICTION', no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -1362,7 +1412,7 @@
   "aspect": "16:9",
   "seed": [
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -1375,7 +1425,7 @@
   "delta": "Final callback to the empty boardroom head chair, the red target-dial still glowing in it, nobody in the room to convict \u2014 no one ordered it, so no one answered for the fraud. Cool slate-and-cream palette, the one red accent on the dial. Big quiet negative space. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b on the dial; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": false,
@@ -1388,8 +1438,9 @@
   "delta": "The whole bank \u2014 building, tellers, executives, all tiny \u2014 still chasing one enormous glowing scorecard number floating above them, everyone running toward it. The target that ran everything. Cool slate-and-cream palette, the one red accent on the giant number's rim. Deep scale-as-argument depth. Crowd on the crowd rig. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
-   "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/visual-kit/refs/base/base.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L102.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": false,
@@ -1403,7 +1454,7 @@
   "aspect": "16:9",
   "seed": [
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L11.png"
   ],
   "_cast": [],
   "_text": true,
@@ -1416,8 +1467,9 @@
   "delta": "A row of empty office chairs under a greyed 'ETHICS LINE' poster \u2014 the people who called to report it are gone, their desks vacated. Desaturated grey-and-cream gravity register, comedy off, one faint red accent on a single left-behind ID badge on a desk. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ],
   "_cast": [],
   "_text": true,
@@ -1431,7 +1483,7 @@
   "aspect": "16:9",
   "seed": [
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L11.png"
   ],
   "_cast": [],
   "_text": true,

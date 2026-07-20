@@ -1,0 +1,24 @@
+[
+ {
+  "name": "wf-r5b-L01",
+  "shot_id": "L01",
+  "mode": "environment",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L11.png"
+  ],
+  "delta": "A single ordinary customer, small, stands at a clean teal-and-cream American bank teller counter in the lower-left foreground, dwarfed. Behind and above the counter an impossibly tall leaning TOWER of blank account-opening forms and unactivated debit cards rises out of frame, filling the upper two-thirds, paperwork nobody signed for, teetering over one small person. Warm teal-and-cream bank palette, one red accent #d7402b on a single slip clipped to the pile. VIEW LOCK, this is the point of the regeneration and it is what failed last time: the customer FACES THE VIEWER FRONT-ON. The head is square-on to camera, perfectly symmetrical, with BOTH eyes visible and equally spaced either side of the centre line, exactly like the seeded rig reference. NEVER a side profile, NEVER a three-quarter turn, NEVER a head turned away or in lost profile, NEVER a back view. A turned head is what let the engine draw an ear and a nose last time. FACE LOCK: the head is a ROUND NEAR-CIRCLE, only slightly taller than wide, never an egg, never an oval, with NO chin point, NO jaw line, NO cheek contour. There is NO nose: no nose shape, no nose bump, no nostril, no line or curve of any kind in the middle of the face, and nothing breaking the smooth outline of the face on either side. There are NO ears: no ear, no ear shape, no ear outline, no helix, no lobe, nothing whatsoever protruding from or drawn on either side of the head, in front of or behind the hair. The face carries ONLY two simple dot-and-lid eyes and one small simple mouth. HAND LOCK: the hand holding the slip is a classic flat-cel cartoon hand with exactly THREE fingers plus ONE thumb (four digits total), clearly separated, even #241a12 outline, never a rounded blob, never a mitten, never five digits, no knuckle detail, no gradient shading. Modern plain clothes, modern American bank interior. TEXT LOCK: the forms in the tower are BLANK, with no writing, no labels, no headings and no lettering of any kind on them. The only text anywhere in the image is the single word 'OVERDUE' on the one red slip. PERIOD LOCK: NO 19th-century costume, NO top hat, NO tropical landscape, NO palm trees."
+ },
+ {
+  "name": "wf-r5b-L97",
+  "shot_id": "L97",
+  "mode": "environment",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L102.png"
+  ],
+  "delta": "A crowd of ordinary modern American people together with a large raised gavel, all pressing down on one big red lever, while at the right a hand reluctantly claws bundles of banknotes back out of a money bag. Public and political pressure forcing a clawback, made physical. Cool slate-and-cream palette, one red accent #d7402b on the lever. HAND LOCK, this is the point of the regeneration and it is what failed last time: the hand pulling money out of the bag is a CLASSIC FLAT-CEL CARTOON HAND with exactly THREE fingers plus ONE thumb, four digits in total, drawn with the same even medium-thick #241a12 outline and the same flat cel fill as every other element. It is NEVER photorealistic, NEVER five digits, NEVER four fingers plus a thumb. No knuckle creases, no fingernails, no skin wrinkles, no soft gradient shading, no airbrushed rendering, no realistic anatomy. It reads as a cartoon glove hand, exactly like the hands on the crowd figures. RIG LOCK: crowd figures on the simplified crowd rig, round near-circle cream-family heads, simple DOT EYES, one small simple mouth, NO noses, NO ears, NO teeth, all SQUAT and large-headed with the same proportion, never realistically proportioned adults. Any crowd hand is likewise a four-digit cartoon hand. PERIOD LOCK: this is the United States in 2016. Every person wears MODERN contemporary American clothing, coats, jumpers, shirts, jeans, trousers, modern business wear. NOT ONE figure wears a hat. There are absolutely NO top hats, NO bonnets, NO shawls, NO waistcoats, NO frock coats, NO breeches, NO white stockings, NO buckled shoes, NO long period dresses, NO Victorian, Regency or 19th-century costume of ANY kind. SETTING LOCK: a plain modern setting, a neutral slate ground and a simple flat cool backdrop. NO cobblestones, NO gabled period townhouses, NO village square, NO 19th-century street, NO swamp, NO mangroves, NO dead trees, NO cattails, NO tropical landscape, NO palm trees. TEXT LOCK: there is NO text anywhere in this image, and no blank banner, sign, placard or board of any kind."
+ }
+]
