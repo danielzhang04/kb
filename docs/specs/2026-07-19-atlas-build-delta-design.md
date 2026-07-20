@@ -119,3 +119,28 @@ time at their plan positions. Wave-end redundancy/consistency sweep.
 - TTS vendor + persona voice — decided by ear from samples during V0 (spec §2/§10).
 - Exact worker state-endpoint shape feeding the dashboard panel.
 - Deepgram Flux keyterm-boosting support verification (research flagged as unconfirmed).
+
+## 11. Cost-research amendments (2026-07-20, approved by Daniel)
+
+Three Opus 4.8 research agents (model-verified) swept for cheaper equal-functionality alternatives
+before any vendor spend. Bar set by Daniel: equal-or-better only — latency/quality bars non-negotiable.
+
+1. **STT — keep Deepgram Flux.** $200 signup credit ≈ 25,600 min ≈ ~7 years at wake-word-gated
+   volume; native <300ms in-model EOT is the thing our 500–800ms bar depends on. Successor of
+   record when the credit runs out: AssemblyAI Universal-Streaming ($0.0025/min, first-party plugin).
+2. **TTS — 3-way bake-off; Deepgram Aura-2 presumed default.** Cartesia/ElevenLabs free tiers
+   (20k/10k chars/mo) cannot sustain daily use; Aura-2 rides the same Deepgram credit (~6.7M chars)
+   and rates above ElevenLabs on conversational naturalness. Ear-test can still overrule (paid tier
+   ~$4–5/mo fits §4.2). Local fallback of record: Kokoro-82M via Kokoro-FastAPI — GPU-gated
+   (CPU TTFA ~1.8s misses the bar).
+3. **Transport — no LiveKit account for V0–V2.** livekit-agents console mode runs with no LiveKit
+   server (docs-verified; credentials only needed for LiveKit Inference, unused here). §4.3's
+   LiveKit signup is deferred to V3 phone/SIP. Caveat: no WebRTC AEC in console mode —
+   headphones or AEC mic at the desk.
+4. **Fast lane — unchanged.** Haiku 4.5 ($1/$5 per MTok) ≈ $10/mo at 30 q/day incl. tool-loop
+   cumulative input; $20 cap right-sized; prompt caching inapplicable (stable prefix below Haiku's
+   4,096-token cache minimum); no sanctioned cheaper realtime path (§4.1 stance unchanged).
+   Task 8 latency harness is API-only (Daniel, 2026-07-20).
+
+Net: expected steady-state spend ≈ **$10/mo** (scoped Anthropic key only); human gate 4 shrinks to
+Deepgram + Cartesia-free + ElevenLabs-trial (LiveKit removed).
