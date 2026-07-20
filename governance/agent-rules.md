@@ -19,3 +19,4 @@
    ruleset; gate-5.9 decision) opened/merged by a human or the cloud leg. All its task
    types start queues-for-me until the grade ledger promotes them. Gemini: deferred
    (see security-rules.md note).
+ 8. Canaries (`evals/`): golden canary cards are HUMAN-PROMOTED-ONLY. Agents never add, edit,delete, or re-bless canaries or `evals/MANIFEST.sha256`; regenerating the manifest (`py -3 scripts/canary.py --update-manifest`) is a human act performed only after a reviewed, deliberate `evals/` change. Any agent diff touching `evals/` is a violation — `scripts/canary.py --diff-guard` flags it and the suite fails loud on manifest mismatch.
