@@ -32,6 +32,38 @@ def test_resolve_input_device_pins_by_substring():
     assert resolve_input_device("nope", devices) is None
 
 
+def test_resolve_model_custom_path_loads_by_file_and_stem_key():
+    # config/hey_atlas.onnx exists in the repo -> load by full path, predict-key = file stem.
+    # openwakeword keys a path-loaded single-output model by os.path.splitext(basename)[0].
+    from worker.wakeword import _resolve_model, ATLAS
+    arg, key = _resolve_model("hey_atlas")
+    assert arg == str(ATLAS / "config" / "hey_atlas.onnx")
+    assert (ATLAS / "config" / "hey_atlas.onnx").exists()   # the arg is a real file, so oww loads it as a path
+    assert key == "hey_atlas"                                # == wake_model, so listen()'s lookup fires
+
+
+def test_resolve_model_pretrained_name_passes_through():
+    # No config/hey_jarvis.onnx -> treated as a pretrained NAME, keyed by that bare name.
+    from worker.wakeword import _resolve_model, ATLAS
+    assert not (ATLAS / "config" / "hey_jarvis.onnx").exists()
+    arg, key = _resolve_model("hey_jarvis")
+    assert arg == "hey_jarvis"
+    assert key == "hey_jarvis"
+
+
+def test_ensure_models_custom_needs_only_feature_models(monkeypatch):
+    # A path-loaded custom model must NOT require a pretrained <name>_v0.1.onnx; only the shared
+    # feature models. Since those are already cached, ensure_models() must early-return (no download).
+    import worker.wakeword as ww
+    called = []
+    monkeypatch.setattr(ww, "download_models",
+                        lambda names: called.append(names), raising=False)
+    import openwakeword.utils as owwu
+    monkeypatch.setattr(owwu, "download_models", lambda names: called.append(names))
+    ww.ensure_models("hey_atlas")
+    assert called == []          # feature models present -> no fetch attempted for the custom model
+
+
 def test_is_dismiss_phrases():
     from worker.app import _is_dismiss
     phrases = ["that's all", "go to sleep", "thanks atlas", "thank you atlas"]
