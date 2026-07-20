@@ -1,0 +1,1045 @@
+{
+  "video_slug": "2026-07-19-wells-fargo",
+  "generated": "2026-07-20",
+  "_note": "Motion plan (STAGING) for fyt-run-001. Mostly baked passthrough plates; 11 integrative stage deltas as delta-chain passthrough (background.plate = the prior in-stage scene = a seed-lineage pointer; the engine displays each shot's own baked scene per build_motion P01); 5 discrete-overlay cutout layers on the strongest motion beats: the pressure boulder (path down the scorecard->counter slope) and four marquee stamp slams (ADMITTED x2, FIRED FOR CAUSE, BANNED FOR LIFE). All other in-video text is baked diegetic per the TEXT law. Camera stays LOCKED. Human gates FEEL on the render.",
+  "shots": [
+    {
+      "id": "L01",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L01.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L02",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L02.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L03",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L03.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L04",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L04.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L05",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L05.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L06",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L05.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L07",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L07.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L08",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L07.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L09",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L09.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L10",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L10.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L11",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L11.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L12",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L11.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L13",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L12.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L14",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L13.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L15",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L15.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L16",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L16.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L17",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L17.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L18",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L18.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L19",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L19.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L20",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L20.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L21",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L21.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L22",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L22.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L23",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L23.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L24",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L24.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L25",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L25.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L26",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L26.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L27",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L27.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L28",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L28.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L29",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L29.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L30",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L30.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L31",
+      "background": {
+        "mode": "plate",
+        "plate_prompt": "A steep downhill slope: a scorecard perched at the top-left, a few small executive figures stepping aside mid-slope, and a lone teller at a counter at the bottom-right; NO boulder present, the slope clear. Cool slate slope, warm counter at the base, one red accent on the counter till. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline, fore/mid/background depth, filled edge-to-edge; no on-screen narrator; 16:9."
+      },
+      "layers": [
+        {
+          "id": "boulder",
+          "source": "cutout",
+          "cutout_prompt": "A single heavy round dark boulder with a large marker scorecard number painted on its face, clean side profile. Isolated on one solid uniform FLAT magenta background, NO glow, NO gradient, framed for a clean cut-out; flat-cel 2.5D vector, even medium-thick #241a12 outline.",
+          "animation": {
+            "type": "path",
+            "points": [
+              [
+                0.2,
+                0.22
+              ],
+              [
+                0.5,
+                0.5
+              ],
+              [
+                0.8,
+                0.82
+              ]
+            ],
+            "dur_s": 2.5,
+            "anchor": "And the pressure rolled downhill",
+            "height_frac": 0.22
+          }
+        }
+      ]
+    },
+    {
+      "id": "L32",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L32.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L33",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L33.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L34",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L33.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L35",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L34.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L36",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L35.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L37",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L37.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L38",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L37.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L39",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L39.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L40",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L40.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L41",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L41.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L42",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L42.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L43",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L43.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L44",
+      "background": {
+        "mode": "plate",
+        "plate_prompt": "A formal settlement document on a desk with an official embossed seal and a marker header 'JUSTICE DEPT', the document face otherwise clear with NO stamp on it. Cool slate-and-cream legal palette, one red accent on the seal ribbon. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline, depth, filled edge-to-edge; no on-screen narrator; 16:9."
+      },
+      "layers": [
+        {
+          "id": "stamp",
+          "source": "cutout",
+          "cutout_prompt": "A heavy red block-capital rubber stamp reading 'ADMITTED', dense saturated red #d7402b ink with a thin #241a12 letter contour and hand-stamped edge distress. Isolated on one solid uniform FLAT magenta background, NO glow, NO gradient, framed for a clean cut-out; flat-cel 2.5D vector, even medium-thick #241a12 outline.",
+          "animation": {
+            "type": "appear",
+            "style": "slam",
+            "at": [
+              0.55,
+              0.55
+            ],
+            "anchor": "And years later, when it"
+          }
+        }
+      ]
+    },
+    {
+      "id": "L45",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L45.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L46",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L46.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L47",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L47.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L48",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L48.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L49",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L49.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L50",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L50.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L51",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L51.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L52",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L52.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L53",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L53.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L54",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L54.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L55",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L55.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L56",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L56.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L57",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L57.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L58",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L58.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L59",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L59.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L60",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L60.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L61",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L61.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L62",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L62.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L63",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L63.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L64",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L64.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L65",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L65.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L66",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L66.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L67",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L67.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L68",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L68.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L69",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L69.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L70",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L70.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L71",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L71.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L72",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L72.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L73",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L73.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L74",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L74.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L75",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L75.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L76",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L76.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L77",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L77.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L78",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L77.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L79",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L78.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L80",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L79.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L81",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L81.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L82",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L82.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L83",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L83.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L84",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L84.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L85",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L85.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L86",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L86.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L87",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L87.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L88",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L88.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L89",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L89.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L90",
+      "background": {
+        "mode": "plate",
+        "plate_prompt": "A signed admission document on a desk with a marker span '2002-2016', the face otherwise clear with NO stamp on it. Cool cream-and-slate legal palette, one red accent on a tab. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline, depth, filled edge-to-edge; no on-screen narrator; 16:9."
+      },
+      "layers": [
+        {
+          "id": "stamp",
+          "source": "cutout",
+          "cutout_prompt": "A heavy red block-capital rubber stamp reading 'ADMITTED', dense saturated red #d7402b ink with a thin #241a12 letter contour and hand-stamped edge distress. Isolated on one solid uniform FLAT magenta background, NO glow, NO gradient, framed for a clean cut-out; flat-cel 2.5D vector, even medium-thick #241a12 outline.",
+          "animation": {
+            "type": "appear",
+            "style": "slam",
+            "at": [
+              0.5,
+              0.55
+            ],
+            "anchor": "It admitted, on the record"
+          }
+        }
+      ]
+    },
+    {
+      "id": "L91",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L91.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L92",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L92.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L93",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L93.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L94",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L94.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L95",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L95.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L96",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L96.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L97",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L97.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L98",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L98.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L99",
+      "background": {
+        "mode": "plate",
+        "plate_prompt": "A money bag being clawed back with a marker tag '$67M' and a small 'TOLSTEDT' label, the scene otherwise clear with NO stamp on it. Cool slate-and-cream palette, one red accent on the tag. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline, depth, filled edge-to-edge; no on-screen narrator; 16:9."
+      },
+      "layers": [
+        {
+          "id": "stamp",
+          "source": "cutout",
+          "cutout_prompt": "A heavy red block-capital rubber stamp reading 'FIRED FOR CAUSE', dense saturated red #d7402b ink with a thin #241a12 letter contour and hand-stamped edge distress. Isolated on one solid uniform FLAT magenta background, NO glow, NO gradient, framed for a clean cut-out; flat-cel 2.5D vector, even medium-thick #241a12 outline.",
+          "animation": {
+            "type": "appear",
+            "style": "slam",
+            "at": [
+              0.55,
+              0.5
+            ],
+            "anchor": "and Tolstedt about 67 million"
+          }
+        }
+      ]
+    },
+    {
+      "id": "L100",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L100.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L101",
+      "background": {
+        "mode": "plate",
+        "plate_prompt": "An OCC order barring a bank CEO: a marker header 'OCC' on a banking license with a fine figure '$17.5M' beside it, the license face otherwise clear with NO stamp on it. Cool cream-and-slate official palette, one red accent on the seal. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline, depth, filled edge-to-edge; no on-screen narrator; 16:9."
+      },
+      "layers": [
+        {
+          "id": "stamp",
+          "source": "cutout",
+          "cutout_prompt": "A heavy red block-capital rubber stamp reading 'BANNED FOR LIFE', dense saturated red #d7402b ink with a thin #241a12 letter contour and hand-stamped edge distress. Isolated on one solid uniform FLAT magenta background, NO glow, NO gradient, framed for a clean cut-out; flat-cel 2.5D vector, even medium-thick #241a12 outline.",
+          "animation": {
+            "type": "appear",
+            "style": "slam",
+            "at": [
+              0.5,
+              0.5
+            ],
+            "anchor": "In 2020 the OCC banned"
+          }
+        }
+      ]
+    },
+    {
+      "id": "L102",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L102.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L103",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L103.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L104",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L104.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L105",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L105.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L106",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L106.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L107",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L107.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L108",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L108.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L109",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L109.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L110",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L110.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L111",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L111.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L112",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L112.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L113",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L113.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L114",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L114.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L115",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L115.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L116",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L116.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L117",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L117.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L118",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L118.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L119",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L119.png"
+      },
+      "layers": []
+    }
+  ]
+}
