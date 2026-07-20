@@ -143,6 +143,33 @@ def test_wake_me_included_ordinary_inbox_excluded(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
+# human-gate inbox cards (human-operator-owned or approve:*) are actionable   #
+# --------------------------------------------------------------------------- #
+
+def test_human_gate_inbox_cards_included(tmp_path):
+    repo = _repo(tmp_path)
+    gate = cards.new_card("kb-ops", "approve:oauth-gate-g1", "console.cloud.google.com",
+                          "T3", body="## Work order\nclick through\n", state="inbox")
+    gate.meta["owner"] = "human-operator"
+    cards.save(gate, repo / "queue")
+    owned = cards.new_card("kb-ops", "setup-something", "svc-b",
+                           "T2", body="## Work order\nhuman does this\n", state="inbox")
+    owned.meta["owner"] = "human-operator"
+    cards.save(owned, repo / "queue")
+    _card(repo, "inbox", tier="T2", action="ordinary-work", cid="0000000c-cccccccc")
+
+    text = brief.render_brief(repo, DATE)
+    pending = text.split("## Pending", 1)[1].split("## Deferrals", 1)[0]
+    assert "human-gate" in pending
+    assert "approve:oauth-gate-g1" in pending      # approve:* action counts
+    assert "setup-something" in pending            # human-operator owner counts
+    assert "ordinary-work" not in pending
+    # T3 gate outranks everything else → it is the #1 win.
+    win = text.split("## #1 win", 1)[1].split("## Overnight", 1)[0]
+    assert "approve:oauth-gate-g1" in win and "one-time human gate" in win
+
+
+# --------------------------------------------------------------------------- #
 # deferral flags                                                               #
 # --------------------------------------------------------------------------- #
 

@@ -116,19 +116,29 @@ def _is_wake_me(card: cards.Card) -> bool:
     return str(card.meta.get("action") or "").startswith("wake-me")
 
 
+def _is_human_gate(card: cards.Card) -> bool:
+    """An inbox card only a human can move: owned by the human operator (the
+    OAuth/governance gate pattern) or an explicit ``approve:*`` action."""
+    return (str(card.meta.get("owner") or "") == "human-operator"
+            or str(card.meta.get("action") or "").startswith("approve:"))
+
+
 # --------------------------------------------------------------------------- #
 # section builders                                                            #
 # --------------------------------------------------------------------------- #
 
 def _actionable_pending(repo_root) -> list[tuple[str, cards.Card]]:
     """Ranked list of ``(kind, card)`` a human must act on: every
-    ``queue/approvals`` card plus every wake-me card in ``queue/inbox``."""
+    ``queue/approvals`` card, plus every wake-me card and every human-gate card
+    (human-operator-owned or ``approve:*``) in ``queue/inbox``."""
     items: list[tuple[str, cards.Card]] = []
     for card in _iter_cards(repo_root, "approvals"):
         items.append(("approval", card))
     for card in _iter_cards(repo_root, "inbox"):
         if _is_wake_me(card):
             items.append(("wake-me", card))
+        elif _is_human_gate(card):
+            items.append(("human-gate", card))
     items.sort(key=lambda kc: _rank_key(kc[1]))
     return items
 
@@ -207,11 +217,12 @@ def _win_line(pending: list[tuple[str, cards.Card]]) -> str:
         return "No actionable item pending — inbox and approvals are clear."
     kind, card = pending[0]
     m = card.meta
-    why = (
-        "awaiting a human approval token"
-        if kind == "approval"
-        else "flagged for human attention"
-    )
+    if kind == "approval":
+        why = "awaiting a human approval token"
+    elif kind == "human-gate":
+        why = "a one-time human gate — the card carries the exact steps"
+    else:
+        why = "flagged for human attention"
     return (
         f"{m.get('action')} -> {m.get('target')} (card `{m.get('id')}`, "
         f"{m.get('risk-tier')} {kind}) — highest-ranked pending item; {why}."
