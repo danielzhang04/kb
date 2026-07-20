@@ -39,4 +39,22 @@ cadences:
       4. If reconcile exits 0 ("reconcile: clean"), append a lessons line to
          memory/<agent-id>.md noting the clean run, then commit ONLY ledgers/ queue/
          memory/ changes to ops and push.
+  - name: branch-hygiene
+    schedule: weekly:sun
+    tier: desktop
+    risk-tier: T1
+    prompt: |
+      1. Run: py -3 scripts/preamble.py  — if it fails, stop and write a wake-me card
+         into queue/inbox/ explaining why.
+      2. Run: py -3 scripts/branch_hygiene.py
+      3. Exit 1 is NOT a failure: the run finished and found something a human must
+         decide, and it already filed the wake-me card. Confirm the card exists, then
+         stop — do not retry and do not delete anything by hand.
+      4. Exit 2 means it could not run at all and filed no card; put the stderr text
+         into a wake-me card yourself.
+      5. On exit 0, append a lessons line to memory/<agent-id>.md, then commit ONLY
+         memory/ queue/ ledgers/ changes to ops and push.
+      Tier is desktop, not cloud, because worktrees exist only on the desktop machine.
+      This cadence deletes a branch ONLY when git proves every one of its commits is
+      already reachable from origin/main; unmerged branches are reported, never touched.
 ```
