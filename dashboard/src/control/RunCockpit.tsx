@@ -30,7 +30,8 @@ import type {
   StageDto,
 } from './controlClient';
 import { decisionsForHumanRequest } from './humanBoundaries';
-import { EntityDetail, type DetailSection } from '../entity/EntityDetail';
+import { EntityDetail, type DetailSection, type EntityLink } from '../entity/EntityDetail';
+import { agentIdsForRun } from './entityLinks';
 import type { NavTarget } from '../nav/stack';
 import { changeEvents, checkpointInfo, eventClock, eventLabel, timestampLabel } from './runEvents';
 import { runTone } from './RunGrid';
@@ -58,6 +59,16 @@ export interface RunCockpitProps {
     decision: HumanRequestDecision,
     response: string,
   ) => void | Promise<void>;
+  /**
+   * arc-3 step 2 — cross-entity links.
+   *
+   * `cardOwners` is `cardId -> agent id` from the Plane-A index; combined with each stage's
+   * `canonicalCardRef` it is the ONLY real run → agent join in the product, because no session or
+   * attempt DTO carries an agent id. `workflowId` is the definition this run was launched from,
+   * resolved by the caller through `sourceTurnId`, or null for an ad-hoc Composer run.
+   */
+  cardOwners?: Map<string, string>;
+  workflowId?: string | null;
 }
 
 type RerouteDisposition =
@@ -347,6 +358,8 @@ export function RunCockpit({
   onSteer,
   onReroute,
   onHumanResponse,
+  cardOwners,
+  workflowId,
 }: RunCockpitProps): React.JSX.Element {
   const [message, setMessage] = useState('');
   const [checkpoint, setCheckpoint] = useState('');
@@ -528,6 +541,29 @@ export function RunCockpit({
     },
   ];
 
+  /**
+   * The run's edges out. Every one is derived from data already loaded — no extra fetch, no new route.
+   *
+   * The agent links are labelled "via queue cards" because that is literally how they are derived: the
+   * stage's canonical card's owner. Claiming a direct run→agent relationship the DTOs do not carry
+   * would be dishonest, and the operator needs to know the join is indirect to read it correctly.
+   */
+  const links: EntityLink[] = [
+    ...(workflowId
+      ? [{ label: 'Launched from workflow', target: { view: 'workflows' as const, focus: { kind: 'workflow' as const, id: workflowId } }, ref: workflowId }]
+      : []),
+    ...(detail.run.predecessorRunRef
+      ? [{ label: 'Retried from run', target: { view: 'pipeline' as const, focus: { kind: 'run' as const, id: detail.run.predecessorRunRef } }, ref: detail.run.predecessorRunRef }]
+      : []),
+    ...(cardOwners
+      ? agentIdsForRun(detail.stages, cardOwners).map((agentId) => ({
+          label: 'Agent · via queue cards',
+          target: { view: 'agents' as const, focus: { kind: 'agent' as const, id: agentId } },
+          ref: agentId,
+        }))
+      : []),
+  ];
+
   const actions = (
     <>
       <button
@@ -563,12 +599,12 @@ export function RunCockpit({
         { label: 'Proposal hash', value: detail.run.proposalHash, mono: true },
         { label: 'Run version', value: detail.run.version, mono: true },
         { label: 'Manager generation', value: detail.run.managerGeneration, mono: true },
-        ...(detail.run.predecessorRunRef
-          ? [{ label: 'Retried from', value: detail.run.predecessorRunRef, mono: true }]
-          : []),
+        // `predecessorRunRef` is no longer a fact: it is a LINK in the row above, because retry lineage
+        // is something the operator wants to walk, not merely read.
         { label: 'Created', value: timestampLabel(detail.run.createdAt), mono: true },
         { label: 'Updated', value: timestampLabel(detail.run.updatedAt), mono: true },
       ]}
+      links={links}
       sections={sections}
       activeSectionId={activeSectionId}
       onSectionChange={onSectionChange}

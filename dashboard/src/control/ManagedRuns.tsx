@@ -21,9 +21,12 @@ import {
   type RunMetadataDto,
   type StageDto,
 } from './controlClient';
+import { listProposalRevisions, type ProposalRevisionMetadataDto } from './controlClient';
 import { RunCockpit } from './RunCockpit';
 import { RunGrid } from './RunGrid';
 import { RetentionPanel } from './RetentionPanel';
+import { cardOwnerIndex, workflowIdForRun, WORKFLOW_COMPOSER_REF } from './entityLinks';
+import type { PlaneAIndex } from '../../server/planeA/indexer';
 import type { NavTarget } from '../nav/stack';
 
 function idempotencyKey(request: HumanRequestDto, decision: HumanRequestDecision): string {
@@ -53,6 +56,15 @@ export interface ManagedRunsProps {
   onNavigate?: (target: NavTarget) => void;
   /** Injectable clock so run-card ages are deterministic under test. */
   now?: number;
+  /**
+   * arc-3 step 2 — link sources, injectable so tests need no fetch mock.
+   *
+   * `cardIndex` is the Plane-A snapshot (`/api/index`, ungoverned) that carries card owners; `revisions`
+   * is the workflow-registry proposal list that carries `sourceTurnId`. Both are link decoration only:
+   * either failing leaves the run detail fully functional with fewer edges, never broken.
+   */
+  cardIndex?: PlaneAIndex;
+  revisions?: ProposalRevisionMetadataDto[];
 }
 
 /**
@@ -73,8 +85,12 @@ export function ManagedRuns({
   onSectionChange,
   onNavigate,
   now,
+  cardIndex,
+  revisions: injectedRevisions,
 }: ManagedRunsProps): React.JSX.Element {
   const [localToken, setLocalToken] = useState(sessionToken);
+  const [index, setIndex] = useState<PlaneAIndex | null>(cardIndex ?? null);
+  const [revisions, setRevisions] = useState<ProposalRevisionMetadataDto[]>(injectedRevisions ?? []);
   const [runs, setRuns] = useState<RunMetadataDto[]>(injectedRuns ?? []);
   // Uncontrolled fallback for the open run when no nav stack is wired above this component.
   const [localOpenRef, setLocalOpenRef] = useState<string | null>(null);
@@ -151,6 +167,33 @@ export function ManagedRuns({
     });
     return () => { alive = false; };
   }, [loadRun, openRunRef, token]);
+
+  /**
+   * Link sources. Both are LOAD-BEARING FOR EDGES ONLY, so both swallow failure: a run detail with no
+   * agent link is degraded, a run detail that refused to render because a decoration fetch 404'd would
+   * be broken. `/api/index` is the ungoverned Plane-A snapshot; the revision list is governed and simply
+   * stays empty without a session.
+   */
+  useEffect(() => {
+    if (cardIndex || typeof fetch !== 'function') return;
+    let alive = true;
+    fetch('/api/index')
+      .then((r) => r.json() as Promise<PlaneAIndex>)
+      .then((d) => { if (alive) setIndex(d); })
+      .catch(() => { /* links degrade; the detail still renders */ });
+    return () => { alive = false; };
+  }, [cardIndex]);
+
+  useEffect(() => {
+    if (injectedRevisions || !token) return;
+    let alive = true;
+    listProposalRevisions(WORKFLOW_COMPOSER_REF, token)
+      .then((d) => { if (alive) setRevisions(d); })
+      .catch(() => { /* run -> workflow link is simply absent */ });
+    return () => { alive = false; };
+  }, [injectedRevisions, token]);
+
+  const cardOwners = index ? cardOwnerIndex(index) : undefined;
 
   const unlock = (): void => {
     void (async () => {
@@ -314,6 +357,8 @@ export function ManagedRuns({
             onBack={back}
             backLabel="All runs"
             onNavigate={onNavigate}
+            cardOwners={cardOwners}
+            workflowId={workflowIdForRun(detail.run, revisions)}
             onManagerMessage={managerRunning ? managerMessage : undefined}
             onSteer={managerRunning ? steer : undefined}
             onStop={detail.sessions.some((session) => session.state === 'running') ? stop : undefined}

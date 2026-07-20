@@ -87,8 +87,12 @@ export function workflowIdForRun(
  */
 export function cardOwnerIndex(index: PlaneAIndex): Map<string, string> {
   const owners = new Map<string, string>();
-  for (const bucket of Object.values(index.cards)) {
+  // These joins parse a NETWORK RESPONSE, so the shape is an assumption, not a guarantee. A partial or
+  // unexpected body must cost the operator some links, never crash the run detail that hosts them.
+  for (const bucket of Object.values(index?.cards ?? {})) {
+    if (!Array.isArray(bucket)) continue;
     for (const card of bucket) {
+      if (!card?.meta) continue;
       const id = card.meta.id;
       const owner = card.meta.owner;
       if (typeof id !== 'string' || id === '') continue;
@@ -164,9 +168,10 @@ export interface AgentCardRef {
  */
 export function cardsForAgent(agentId: string, index: PlaneAIndex): AgentCardRef[] {
   const cards: AgentCardRef[] = [];
-  for (const [bucket, entries] of Object.entries(index.cards)) {
+  for (const [bucket, entries] of Object.entries(index?.cards ?? {})) {
+    if (!Array.isArray(entries)) continue;
     for (const card of entries) {
-      if (card.meta.owner !== agentId) continue;
+      if (card?.meta?.owner !== agentId) continue;
       const id = card.meta.id;
       if (typeof id !== 'string' || id === '') continue;
       cards.push({

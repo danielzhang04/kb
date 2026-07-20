@@ -315,6 +315,54 @@ describe('RunCockpit', () => {
     expect(onNavigate).toHaveBeenCalledWith({ view: 'tasks', focus: { kind: 'card', id: 'card-1' } });
   });
 
+  /**
+   * arc-3 step 2 — the run's edges out. These are the links that were structurally missing: a run could
+   * not name the workflow that produced it, the agent doing its work, or the run it was retried from.
+   */
+  describe('cross-entity links', () => {
+    it('links a run to the agent working it, derived through the stage canonical card owner', () => {
+      const onNavigate = vi.fn();
+      render(
+        <RunCockpit
+          detail={detail}
+          events={[]}
+          onNavigate={onNavigate}
+          cardOwners={new Map([['card-1', 'claude-worker']])}
+        />,
+      );
+
+      fireEvent.click(screen.getByTestId('entity-link-claude-worker'));
+      expect(onNavigate).toHaveBeenCalledWith({ view: 'agents', focus: { kind: 'agent', id: 'claude-worker' } });
+    });
+
+    it('labels the agent link as derived, because the join is indirect', () => {
+      render(<RunCockpit detail={detail} events={[]} onNavigate={vi.fn()} cardOwners={new Map([['card-1', 'claude-worker']])} />);
+      expect(screen.getByTestId('entity-link-claude-worker').textContent).toContain('via queue cards');
+    });
+
+    it('offers no agent link when the stage card has no owner', () => {
+      render(<RunCockpit detail={detail} events={[]} onNavigate={vi.fn()} cardOwners={new Map()} />);
+      expect(screen.queryByTestId('entity-link-claude-worker')).toBeNull();
+    });
+
+    it('links a run back to the workflow definition it was launched from', () => {
+      const onNavigate = vi.fn();
+      render(<RunCockpit detail={detail} events={[]} onNavigate={onNavigate} workflowId="video-pipeline" />);
+
+      fireEvent.click(screen.getByTestId('entity-link-video-pipeline'));
+      expect(onNavigate).toHaveBeenCalledWith({ view: 'workflows', focus: { kind: 'workflow', id: 'video-pipeline' } });
+    });
+
+    it('links a retried run to its predecessor', () => {
+      const onNavigate = vi.fn();
+      const retried = { ...detail, run: { ...detail.run, predecessorRunRef: 'run-0' } };
+      render(<RunCockpit detail={retried} events={[]} onNavigate={onNavigate} />);
+
+      fireEvent.click(screen.getByTestId('entity-link-run-0'));
+      expect(onNavigate).toHaveBeenCalledWith({ view: 'pipeline', focus: { kind: 'run', id: 'run-0' } });
+    });
+  });
+
   it('does not call this surface a terminal', () => {
     render(<RunCockpit detail={detail} events={events} />);
     expect(screen.getByTestId('entity-tab-timeline').textContent).toContain('Activity stream');
