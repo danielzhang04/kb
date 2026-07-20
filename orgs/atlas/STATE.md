@@ -7,10 +7,13 @@ _Updated: 2026-07-20 (build ACTIVE — Fable 5 boss session)_
   PASS; T5 live REPL smoke passed 2026-07-20). T6 built + task-reviewed (Spec PASS, Quality
   Approved): voice worker at claude/atlas d0ca81a, card 6a5c8ad2-df7abf53 in working awaiting
   Daniel's desk smoke (Step 6).
-- **Pairing verdict (livekit/agents#2519, 2026-07-20): native-mcp PASS, function-tool PASS** on
-  installed livekit-agents 1.6.6 → app.py uses native MCP attach (`Agent(mcp_servers=[MCPServerStdio…])`).
-  Retest condition: on upgrade past 1.6.6, re-run atlas/worker/pairing_smoke.py (the 1.6.6 wiring is
-  deprecated in favor of MCPToolset in 1.7).
+- **Pairing verdict (livekit/agents#2519) REVERSED by live desk evidence (2026-07-20 late): app.py
+  uses the function_tool fallback (72c2fed).** The one-turn pairing smoke passed both paths, but in a
+  real multi-turn session the native MCP attach 400s on the second LLM call — MCP TextContent carries
+  an `annotations` field the Anthropic API rejects (`tool_result.content.0.text.annotations: Extra
+  inputs are not permitted`), poisoning chat history. Function tools delegate to fastlane._dispatch
+  in-process; kb-MCP server remains the boundary for external consumers. Retest native attach on
+  livekit-agents upgrade (>1.6.6 / MCPToolset), and deepen pairing_smoke to two turns first.
 - 2026-07-20 amendments (delta design §11): no LiveKit account V0–V2 (console mode, serverless);
   TTS bake-off = Deepgram Aura-2 (presumed default, $200 credit) vs ElevenLabs (Daniel's existing
   paid sub, scoped key); Cartesia scratched by Daniel; fast lane ≈ $10/mo, $20 cap. Barge-in pinned
