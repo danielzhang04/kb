@@ -25,7 +25,7 @@
 import { spawn as spawnChildProcess } from 'node:child_process';
 import { redactSensitiveText } from '../composer/publicTimeline.ts';
 import { buildChildEnv, DEFAULT_ENV_ALLOWLIST } from '../pty/host.ts';
-import type { ExecutionProfile } from './policy.ts';
+import { FORBIDDEN_WORKFLOW_TOOLS, loadWorkflowProfiles } from './environment.ts';
 import type { WorkerAdapter, WorkerExecutionResult, ExecutionUsage } from './execution.ts';
 
 const DEFAULT_TIMEOUT_MS = 30 * 60_000;
@@ -35,15 +35,75 @@ const DEFAULT_SUMMARY_MAX_CHARS = 60_000;
 const WAITING_HUMAN_MARKER = 'WAITING-HUMAN:';
 
 /**
- * The server-owned per-profile tool cap (the design's D13). `ExecutionProfile` carries no tool fields,
- * so the adapter resolves the allowlist + permission mode from injected options rather than from the
- * profile object — activation supplies the real mapping; tests supply a fake.
+ * The server-owned per-profile tool cap (the design's D13). Resolved from the WORKFLOW profile id the
+ * proposal declares (`PlanProposal.profile`), NOT from `ExecutionProfile` — that type carries routing
+ * (`{id, role, runtime, model, capabilities}`) and no tool fields at all, which is why the pre-fix
+ * signature could never do this job.
  */
 export interface ClaudeToolPolicy {
   /** The `--allowedTools` allowlist for this profile (publish tools never appear in a default profile). */
   allowedTools: readonly string[];
   /** The `--permission-mode` value for this profile (e.g. `default`, `plan`, `acceptEdits`). */
   permissionMode: string;
+}
+
+/**
+ * A refusal to launch. Thrown — never returned as a degraded policy — so that no path can turn an
+ * unresolved capability cap into a spawn. The engine maps a thrown adapter error to a failed attempt.
+ */
+export class ToolPolicyRefusal extends Error {}
+
+/** Rejects anything that would corrupt the comma-joined `--allowedTools` value or smuggle a flag. */
+function isWellFormedToolName(name: unknown): name is string {
+  return typeof name === 'string'
+    && name.length > 0
+    && name.length <= 200
+    && !/[\s,\0"']/.test(name)
+    && !name.startsWith('-');
+}
+
+/**
+ * The PRODUCTION tool-policy resolver: the workflow profile id a proposal declares -> that profile's
+ * server-owned `allowedTools`. Fail-closed at every branch — an unnamed, unknown, empty, malformed, or
+ * forbidden-tool-bearing profile REFUSES. There is deliberately no "default" or "fallback" profile:
+ * the absence of a resolvable cap is a reason not to run, never a reason to run uncapped.
+ */
+export function createWorkflowToolPolicyResolver(
+  options: { permissionMode?: string; profiles?: readonly { id: string; allowedTools: readonly string[] }[] } = {},
+): (workflowProfileId: string | null) => ClaudeToolPolicy {
+  const permissionMode = options.permissionMode ?? 'default';
+  return (workflowProfileId) => {
+    if (typeof workflowProfileId !== 'string' || workflowProfileId.trim() === '') {
+      throw new ToolPolicyRefusal(
+        'refusing to spawn a worker: the proposal declares no workflow execution profile, so no tool cap can be resolved',
+      );
+    }
+    const profiles = options.profiles ?? loadWorkflowProfiles();
+    const profile = profiles.find((candidate) => candidate.id === workflowProfileId);
+    if (!profile) {
+      throw new ToolPolicyRefusal(
+        `refusing to spawn a worker: workflow execution profile '${workflowProfileId}' is not server-owned`,
+      );
+    }
+    if (profile.allowedTools.length === 0) {
+      throw new ToolPolicyRefusal(
+        `refusing to spawn a worker: workflow execution profile '${workflowProfileId}' grants no tools`,
+      );
+    }
+    const malformed = profile.allowedTools.find((tool) => !isWellFormedToolName(tool));
+    if (malformed !== undefined) {
+      throw new ToolPolicyRefusal(
+        `refusing to spawn a worker: workflow execution profile '${workflowProfileId}' names a malformed tool`,
+      );
+    }
+    const forbidden = profile.allowedTools.find((tool) => FORBIDDEN_WORKFLOW_TOOLS.includes(tool));
+    if (forbidden !== undefined) {
+      throw new ToolPolicyRefusal(
+        `refusing to spawn a worker: workflow execution profile '${workflowProfileId}' names forbidden tool '${forbidden}'`,
+      );
+    }
+    return { allowedTools: [...profile.allowedTools], permissionMode };
+  };
 }
 
 /** A spawn request for one `claude` child. The env is ALREADY allowlist-filtered — never process.env. */
@@ -102,8 +162,12 @@ export const defaultKillTree: KillTree = (pid) => {
 };
 
 export interface ClaudeWorkerAdapterOptions {
-  /** Resolves the server-owned tool cap for a worker profile. Required — profiles carry no tool fields. */
-  resolveToolPolicy(profile: ExecutionProfile): ClaudeToolPolicy;
+  /**
+   * Resolves the server-owned tool cap from the WORKFLOW profile id the proposal declares. Required.
+   * Must THROW (see `createWorkflowToolPolicyResolver` / `ToolPolicyRefusal`) when the id is absent or
+   * unresolvable — returning an empty allowlist is not a legal way to express "no capability".
+   */
+  resolveToolPolicy(workflowProfileId: string | null): ClaudeToolPolicy;
   /** The process seam. Defaults to the real spawn-based runner, which nothing in this task invokes. */
   spawn?: ClaudeSpawner;
   /** The tree-kill seam used on timeout / output-cap / cancellation paths. Defaults to `defaultKillTree`. */
@@ -193,22 +257,33 @@ export function buildWorkerPrompt(input: WorkerPromptInput): string {
   return parts.join('\n').trim();
 }
 
-/** Build the argv after `claude`. Pinned flags first, then routing and the profile's tool cap. */
+/**
+ * Build the argv after `claude`. Pinned flags first, then routing and the profile's tool cap.
+ *
+ * `--allowedTools` is UNCONDITIONAL. The pre-fix builder omitted the flag when the list was empty,
+ * which silently promoted "this profile grants nothing" into "fall back to the CLI's permission-mode
+ * defaults" — i.e. an uncapped worker. An empty list is now a refusal, so that reading cannot recur.
+ */
 export function buildClaudeArgs(routing: { model: string; toolPolicy: ClaudeToolPolicy }): string[] {
   const model = routing.model.trim();
   if (!model) throw new Error('claude worker routing has no model');
-  const args = [
+  const allowedTools = routing.toolPolicy.allowedTools;
+  if (allowedTools.length === 0) {
+    throw new ToolPolicyRefusal('refusing to build claude args: an empty tool allowlist must never spawn an uncapped worker');
+  }
+  const malformed = allowedTools.find((tool) => !isWellFormedToolName(tool));
+  if (malformed !== undefined) {
+    throw new ToolPolicyRefusal(`refusing to build claude args: malformed tool name '${String(malformed)}'`);
+  }
+  return [
     '-p',
     '--output-format', 'stream-json',
     '--input-format', 'stream-json',
     '--verbose',
     '--model', model,
+    '--allowedTools', allowedTools.join(','),
+    '--permission-mode', routing.toolPolicy.permissionMode,
   ];
-  if (routing.toolPolicy.allowedTools.length > 0) {
-    args.push('--allowedTools', routing.toolPolicy.allowedTools.join(','));
-  }
-  args.push('--permission-mode', routing.toolPolicy.permissionMode);
-  return args;
 }
 
 /** The stream-json stdin payload: one user message (prompt via stdin, never argv, never in a ps listing). */
@@ -362,7 +437,9 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
 
   return {
     execute(input) {
-      const toolPolicy = options.resolveToolPolicy(input.profile);
+      // Resolve the cap BEFORE anything is spawned. A ToolPolicyRefusal propagates out of `execute`
+      // synchronously, so the engine records a failed attempt and no `claude` child ever exists.
+      const toolPolicy = options.resolveToolPolicy(input.workflowProfile);
       const args = buildClaudeArgs({ model: input.profile.model, toolPolicy });
       const env = buildWorkerEnv(options.parentEnv, options.envAllowlist);
       const prompt = buildWorkerPrompt({

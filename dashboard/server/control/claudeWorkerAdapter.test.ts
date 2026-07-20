@@ -6,6 +6,7 @@ import {
   encodeStreamJsonUserMessage,
   parseWorkerStream,
   createClaudeWorkerAdapter,
+  ToolPolicyRefusal,
   type ClaudeProcess,
   type ClaudeSpawnRequest,
   type ClaudeToolPolicy,
@@ -62,6 +63,7 @@ function executeInput(overrides: Partial<Parameters<ReturnType<typeof createClau
     sessionRef: 'session-1',
     worktreePath: '/srv/worktrees/run-1/attempt-1',
     profile: WORKER_PROFILE,
+    workflowProfile: 'research' as string | null,
     skills: [] as readonly string[],
     action: 'research:brief',
     target: 'orgs/kb-ops/output',
@@ -141,10 +143,16 @@ describe('buildClaudeArgs', () => {
     ]);
   });
 
-  it('omits --allowedTools when the profile grants no tools but always sets the permission mode', () => {
-    const args = buildClaudeArgs({ model: 'm', toolPolicy: { allowedTools: [], permissionMode: 'plan' } });
-    expect(args).not.toContain('--allowedTools');
-    expect(args.slice(-2)).toEqual(['--permission-mode', 'plan']);
+  // REGRESSION (2026-07-20): the previous assertion here codified the defect — an empty allowlist
+  // dropped the flag and the worker inherited permission-mode defaults, i.e. spawned uncapped.
+  it('refuses to build args for an empty allowlist rather than dropping the flag', () => {
+    expect(() => buildClaudeArgs({ model: 'm', toolPolicy: { allowedTools: [], permissionMode: 'plan' } }))
+      .toThrow(ToolPolicyRefusal);
+  });
+
+  it('refuses a malformed tool name that would corrupt the comma-joined value', () => {
+    expect(() => buildClaudeArgs({ model: 'm', toolPolicy: { allowedTools: ['Read,Bash'], permissionMode: 'default' } }))
+      .toThrow(ToolPolicyRefusal);
   });
 
   it('refuses to build args without a model', () => {

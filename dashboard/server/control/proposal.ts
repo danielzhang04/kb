@@ -46,6 +46,13 @@ export interface ProposalRegistry {
   runtimes: Readonly<Record<string, readonly string[]>>;
   /** Closed server-owned skill ids. */
   skills: readonly string[];
+  /**
+   * Closed server-owned workflow tool-allowlist profile ids (`environment.ts` WORKFLOW_EXECUTION_PROFILES).
+   * Optional ONLY so registries assembled before this field existed still typecheck; it is never a
+   * widening default. A proposal that declares `profile` is REFUSED when this list is absent or does not
+   * contain the declared id — absent list means "no profile is admissible", never "any profile is".
+   */
+  workflowProfiles?: readonly string[];
 }
 
 export interface ProposalRouting {
@@ -106,6 +113,16 @@ export interface PlanProposal {
   scope: ProposalScope;
   governanceRefs: string[];
   stages: ProposalStage[];
+  /**
+   * The workflow tool-allowlist profile this proposal executes under, as DATA (not merely as a
+   * proposal-id hash input). The worker adapter resolves `--allowedTools` from it; an absent or
+   * unresolvable profile refuses the spawn rather than launching uncapped (`claudeWorkerAdapter.ts`).
+   *
+   * Optional on the wire so proposals stored before this field existed still validate and still hash
+   * to the SAME content hash (the key is emitted only when declared). Optional here is a
+   * back-compatibility affordance, never a capability default: see `createWorkflowToolPolicyResolver`.
+   */
+  profile?: string;
 }
 
 export interface ProposalChange {
@@ -139,9 +156,11 @@ export interface ProposalRevision {
 
 export type ProposalValidation<T> = { ok: true; value: T } | { ok: false; detail: string };
 
-const TOP_FIELDS = new Set([
+/** Required top-level fields. `profile` is deliberately absent: it is admissible but not mandatory here. */
+const TOP_REQUIRED_FIELDS = [
   'schema', 'proposalId', 'project', 'title', 'summary', 'manager', 'scope', 'governanceRefs', 'stages',
-]);
+] as const;
+const TOP_FIELDS = new Set<string>([...TOP_REQUIRED_FIELDS, 'profile']);
 const MANAGER_FIELDS = new Set(['runtime', 'model', 'requiredSkills']);
 const ROUTING_FIELDS = new Set(['runtime', 'model']);
 const SCOPE_FIELDS = new Set(['read', 'write']);
@@ -428,7 +447,7 @@ export function validatePlanProposal(input: unknown, registry: ProposalRegistry)
   } catch {
     return { ok: false, detail: 'proposal must be a JSON-compatible object' };
   }
-  const fields = exactFields(input, TOP_FIELDS, [...TOP_FIELDS]);
+  const fields = exactFields(input, TOP_FIELDS, [...TOP_REQUIRED_FIELDS]);
   if (fields) return { ok: false, detail: fields };
   if (input.schema !== PLAN_PROPOSAL_SCHEMA) {
     return { ok: false, detail: `schema must be '${PLAN_PROPOSAL_SCHEMA}'` };
@@ -443,6 +462,18 @@ export function validatePlanProposal(input: unknown, registry: ProposalRegistry)
   if (!summary.ok) return summary;
   const manager = validateRouting(input.manager, 'manager', registry, true);
   if (!manager.ok) return manager;
+  // Fail closed: `profile`, when declared, must name a member of the server-owned closed set. An absent
+  // or empty registry list admits NOTHING — it can never be read as "profile unconstrained".
+  let profile: string | undefined;
+  if (Object.prototype.hasOwnProperty.call(input, 'profile')) {
+    const parsed = validateId(input.profile, 'profile');
+    if (!parsed.ok) return parsed;
+    const known = registry.workflowProfiles ?? [];
+    if (!known.includes(parsed.value)) {
+      return { ok: false, detail: `profile '${parsed.value}' is not a server-owned workflow execution profile` };
+    }
+    profile = parsed.value;
+  }
   const scope = validateScope(input.scope, 'scope');
   if (!scope.ok) return scope;
   const governanceRefs = validateUniqueStringArray(
@@ -497,20 +528,21 @@ export function validatePlanProposal(input: unknown, registry: ProposalRegistry)
     }
   }
   if (visited !== stages.length) return { ok: false, detail: 'proposal stage graph contains a cycle' };
-  return {
-    ok: true,
-    value: {
-      schema: PLAN_PROPOSAL_SCHEMA,
-      proposalId: proposalId.value,
-      project: project.value,
-      title: title.value,
-      summary: summary.value,
-      manager: manager.value as ProposalManager,
-      scope: scope.value,
-      governanceRefs: governanceRefs.value,
-      stages,
-    },
+  const value: PlanProposal = {
+    schema: PLAN_PROPOSAL_SCHEMA,
+    proposalId: proposalId.value,
+    project: project.value,
+    title: title.value,
+    summary: summary.value,
+    manager: manager.value as ProposalManager,
+    scope: scope.value,
+    governanceRefs: governanceRefs.value,
+    stages,
   };
+  // Emit the key ONLY when declared. `profile: undefined` would both break canonical JSON and change the
+  // content hash of every pre-existing profile-less proposal.
+  if (profile !== undefined) value.profile = profile;
+  return { ok: true, value };
 }
 
 class DuplicateJsonKeyError extends Error {

@@ -7,6 +7,12 @@ import type { ExecutionProfile, PolicyEnvironment } from './policy.ts';
 export interface RuntimeSkillRegistry {
   runtimes: Record<string, string[]>;
   skills: string[];
+  /**
+   * The closed workflow tool-allowlist profile ids a proposal may name. Optional only so registry
+   * literals written before this field existed still typecheck; `loadRuntimeSkillRegistry` always
+   * populates it, and a proposal declaring a profile is refused when it is absent (`proposal.ts`).
+   */
+  workflowProfiles?: string[];
 }
 
 /** Runtime/models and executable skills are read from server-owned registries, never browser input. */
@@ -21,7 +27,7 @@ export function loadRuntimeSkillRegistry(repoRoot: string): RuntimeSkillRegistry
     .flatMap((skill) => [skill.slug, skill.name])
     .filter((value, index, all) => value && all.indexOf(value) === index)
     .sort();
-  return { runtimes, skills };
+  return { runtimes, skills, workflowProfiles: [...workflowProfileIds()].sort() };
 }
 
 /**

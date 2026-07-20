@@ -111,6 +111,12 @@ export interface WorkerAdapter {
     sessionRef: string;
     worktreePath: string;
     profile: ExecutionProfile;
+    /**
+     * The approved proposal's declared workflow tool-allowlist profile id, carried as data from
+     * `PlanProposal.profile`. `null` when the proposal declares none — which an adapter must treat as a
+     * refusal to spawn, never as an unrestricted worker.
+     */
+    workflowProfile: string | null;
     skills: readonly string[];
     action: string;
     target: string;
@@ -977,6 +983,7 @@ export class AutomaticExecutionEngine {
         sessionRef: session.sessionRef,
         worktreePath,
         profile,
+        workflowProfile: input.proposal.profile ?? null,
         skills: skills.skills,
         action: proposalStage.action,
         target: proposalStage.target,
