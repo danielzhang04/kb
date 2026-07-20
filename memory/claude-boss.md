@@ -122,3 +122,32 @@ Then: brainstorm → design doc → plan → build Wave A per the list above. Al
   an index across sessions; pin by name substring.
 - REMAINS: Daniel merges PR #37; V1 go/no-go (Hands wave + persona authoring backlog); polish nit
   (suppress wake-thread DEAF critical on Ctrl+C teardown); retest native MCP on livekit upgrade.
+
+## Session handoff 2026-07-20 — FYT post-render tail: designed, build embargoed
+
+**Topic:** Brainstormed + specced the entire faceless-youtube post-render tail (FYT Runner orchestrator, compliance-check, thumbnail stage, shot-board gate, publish-queue, analytics-reporter + artifact dashboard). Build NOT started — Daniel paused; resume in a fresh terminal.
+
+### What WORKED (with evidence)
+- **Full spec approved-in-brainstorm** — every open decision closed by Daniel via Q&A this session; spec parked at `memory/handoffs/2026-07-20-fyt-post-render-tail-design.md` (ops). Self-reviewed: no placeholders/contradictions.
+- **Pipeline gap map confirmed** — Explore agent verified: everything ≤ render BUILT+PROVEN; compliance/publish/analytics/orchestrator are PLANNED-ONLY (`.claude/skills/README.md:84-91`); thumbnails concept-only; YouTube OAuth env slots declared but EMPTY; no channel exists yet (`performance.md` placeholder).
+- **"Fully in kb" question answered** — old repo is a tombstone README → kb; history archived at `faceless-youtube.git-archive` (471 commits); PR #34 merged the import to main 2026-07-20, but 8 newer commits (incl. poyais R11/R12) still unmerged on `claude/faceless-live-import`.
+
+### What Did NOT Work (and why)
+- No failed approaches — design-only session. Process notes: local main was stale again (only `origin/main` comparisons were trusted); the hard-ceiling Bash hook false-positives on shell commands whose *text* mentions env-secret filenames — append such prose via the file tools, not heredocs.
+
+### What Has NOT Been Tried Yet
+- Everything build-side. Build order agreed: compliance-check → thumbnail stage → shot-board generator → publish-queue → analytics+dashboard → FYT Runner agent + workflow segments LAST → poyais through B2-tail+C.
+- writing-plans skill invocation (next process step after Daniel reviews the spec).
+
+### Current State of Files
+| File | Status | Notes |
+| ---- | ------ | ----- |
+| `memory/handoffs/2026-07-20-fyt-post-render-tail-design.md` (ops) | DONE | The full spec. Destination once embargo lifts: `orgs/faceless-youtube/docs/superpowers/specs/` |
+| personal memory `fyt-post-render-tail-design.md` + MEMORY.md index | DONE | Resume pointer with locked decisions |
+| orgs/faceless-youtube | UNTOUCHED | **EMBARGO: another terminal is working in FYT — zero writes there until Daniel pings go** |
+
+### Locked decisions (do not re-litigate)
+FYT Runner (`fyt-runner`, replaces faceless-producer): one FYT-specific agent running committed workflow segments; on-demand only. THREE human gates: script review / **shot-board review** (per-video artifact board: cast+prop library, every shot image with script lines + intended motion; Daniel iterates images before pipeline continues) / publish approval. Segments: A idea→judge | B1 shorts+metadata→shots→motion→images∥VO→board | B2 audio→render→verify→thumbnail→compliance | C publish (VO in B1 so image iteration never blocks it). Compliance = mechanical+provenance only. Transport = hybrid: youtube-uploader MCP for upload (private-only; thumbnail-set + private→public manual in Studio), read-only Python analytics client using the project's reserved YouTube OAuth env slots. Dashboard = standalone Claude artifact, stable URL, multi-channel tabs/graphs, regenerated per analytics run; NOT in kb fleet dashboard; $0 additional cost is a hard requirement. Prereq human setup: channel creation, MCP OAuth, free Google Cloud OAuth client for analytics.
+
+### Exact Next Step
+Fresh terminal: read the spec at `memory/handoffs/2026-07-20-fyt-post-render-tail-design.md`, confirm Daniel has (a) reviewed it and (b) lifted the FYT embargo. Then: commit spec into `orgs/faceless-youtube/docs/superpowers/specs/` on a work branch, invoke superpowers `writing-plans`, and build in the agreed order starting with compliance-check (immediately testable against poyais's real artifacts, no network).
