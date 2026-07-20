@@ -2,8 +2,9 @@
 
 Pipeline: Deepgram Flux STT (keyterm-biased on kb proper nouns) -> Claude fast lane
 (Anthropic plugin on cfg fast_model, system prompt = fastlane.SYSTEM) -> Deepgram Aura-2 TTS,
-with silero VAD for adaptive barge-in. kb read tools reach the LLM via native MCP attach
-(pairing_smoke.py verdict 2026-07-20: native-mcp PASS -> #2519 does not bite here).
+with silero VAD for adaptive barge-in. kb read tools reach the LLM as in-process
+function_tools (native MCP attach reversed by live desk evidence 2026-07-20 — the
+livekit-agents 1.6.6 serializer mangles tool_results; see worker/anthropic_compat.py).
 
 Run (from atlas/):
     .venv\\Scripts\\python -m worker.app console                 # desk mic/speaker
