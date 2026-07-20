@@ -12,8 +12,8 @@ dismiss_phrases:            # any of these (case/punctuation-insensitive) -> imm
 # male slot filled by round-3 audition.
 active_voice: matilda
 voices:
-  matilda: {vendor: elevenlabs, voice_id: XrExE9yKIg1WjnnlVkGX, model: eleven_turbo_v2_5}
-  # <male-pick>: added after round-3 audition
+  matilda: {vendor: elevenlabs, voice_id: XrExE9yKIg1WjnnlVkGX, model: eleven_turbo_v2_5}  # F — premium (paid-sub quota)
+  mars:    {vendor: deepgram,   model: aura-2-mars-en}                                      # M — $0 workhorse (Daniel's pick, rides credit)
 
 wake_model: hey_jarvis
 wake_input_device: Intel   # mic-name substring pin; Windows default drifts to AirPods HFP (unusable audio)
