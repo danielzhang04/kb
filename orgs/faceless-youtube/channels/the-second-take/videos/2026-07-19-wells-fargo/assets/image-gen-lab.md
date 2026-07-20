@@ -151,3 +151,85 @@ that is filter evasion, and it produces exactly the frame the refusal was protec
    the judge at 34/36 — but the line between "caricature of documented public conduct" and
    "putting words in a real person's mouth" is one **you** should be setting explicitly, not one
    an agent should be settling shot-by-shot at 3am. Worth a written rule in the style bible.
+
+---
+
+## Round 3 — 2026-07-20 — Pass-2 CLOSED: placement, chains, cutouts, manifest (conductor)
+
+**Calls used: 13** (12 frames + 1 failed call). Estimated spend **~$1.74** at the $0.134/img 2K pro tier.
+Ran the documented order: place → chains → place chains → cutout → manifest → verify. **Render not run.**
+
+### What landed
+
+| Stage | Count | Where |
+| --- | --- | --- |
+| Plain scenes placed + renamed | 102 | `assets/scenes/<id>.png` |
+| Plates placed + renamed | 5 | `assets/plates/<id>.png` (L31, L44, L90, L99, L101) |
+| Delta-chain follow-ons generated | 12 | `assets/scenes/<id>.png` |
+| Cutouts | 5 | `assets/cutouts/<id>-<layer>.png` |
+| **Long-form shots materialized** | **119 / 119** | 114 scenes + 5 plate+cutout |
+
+All 119 frames are 1376×768 (16:9), valid PNG magic, >1KB. `_staging/` still holds the 3
+`wf-thumbnail-*` frames — Poyais keeps no thumbnail under `assets/`, so they were deliberately
+left in staging rather than placed into an invented path.
+
+`forge.py place` writes under the STAGED name, so every placed file landed as `wf-<id>.png` and was
+renamed in a second step. 107 renames, **0 collisions, 0 `wf-` survivors** — verified by re-globbing
+both destination dirs, not by trusting the rename loop's own count.
+
+### Three findings
+
+1. **rembg keeps the magenta field ENCLOSED by a bordered stamp.** All four `ADMITTED` /
+   `FIRED FOR CAUSE` / `BANNED FOR LIFE` cutouts came out of `forge.py cutout` with the whole
+   interior of the stamp's outer frame opaque magenta — **21–26% of opaque pixels**, measured by
+   hue (265–345°, s>0.28, v>0.35). u2net reads a bordered rubber stamp as one solid silhouette, so
+   the "background" it removes is only what lies *outside* the frame. The L31 boulder — a solid
+   object with no enclosing border — came out at **0.00%** on the first pass. This is the same
+   defect class the Poyais `--key-white` proposal surfaced and never fixed.
+   **Fixed deterministically, zero API calls:** magenta chroma-key (hue 255–350°, saturation ramp
+   0.18→0.32 so edge pixels feather rather than stair-step) + a blue-over-green despill, then
+   re-trim to the alpha bbox. Post-fix magenta = **0.00% on all four**, corners alpha 0, red ink
+   and #241a12 contour intact (composited over green and eyeballed). **Candidate for a real
+   `forge.py cutout --key <hue>` option — surfaced, not self-applied to the skill.**
+   *Generalises to:* a cutout whose subject has a CLOSED outline is not solved by salient-object
+   segmentation; it needs a chroma key. Measure magenta residual by HUE, not by an RGB box — a
+   naive `r>140 and b>140 and g<110` box under-counted L90 by three orders of magnitude (0.023%
+   vs the true 25.48%) and would have shipped the defect.
+
+2. **A per-gen network reset is not a content failure — resume, don't re-plan.** `wf-L14` died on
+   `WinError 10054` (connection reset). `nano()`'s retry ladder catches 429/500/503 and
+   `URLError`/`TimeoutError` but a bare `ConnectionResetError` escapes it. The chain driver was
+   written idempotent (skip any shot whose `scenes/<id>.png` already exists), so the retry resumed
+   at exactly L14 and re-spent **1** call, not the 5 already paid for. *Any money-spending loop
+   should be resumable at per-item granularity, not per-batch.*
+
+3. **The `scenes/manifest.json` gate is INERT for this video.** `render.resolve_scene_files` skips
+   the `verified.scene`/`verified.rig` check for any shot in `cutout_layer_ids(plan)` — and that
+   helper exempts **plate-only passthrough** shots too, not just layered ones. This motion plan
+   sets `background.plate` on all 119 shots, so **all 119 are exempt** and the manifest gate never
+   fires. The real on-disk check is `build_motion.apply_motion_plan`, which hard-errors on a
+   missing plate. Worth knowing before anyone treats a green manifest as proof of a verified frame.
+
+### Verification performed (and its limit)
+
+`build_motion.py --dry-run` resolves **119 shots: 114 from scenes, 5 plate+cutout**, with zero
+`cutout assets missing` and zero `plate-only background missing` warnings. The engine's
+`Video.tsx` draws `shot.layers` in preference to the placeholder branch, so the 5 shots the
+dry-run summary calls "placeholder" render their plate + stamp, not a card. `lint_shots.py`:
+**HARD violations: none** (30 pre-existing advisory heads-ups, untouched).
+
+**This is MECHANICAL verification only** — presence, PNG magic, 16:9, size, and render-side
+resolution. **No fresh-eyes style / rig / fidelity axis review has been run on any of the 119
+frames.** `manifest.json` stamps `verified.scene/rig = true` because anything else hard-blocks
+the render, but that stamp is an assembly-completeness claim, **not** a taste or rig claim; every
+entry carries a `VERIFY BASIS: MECHANICAL ONLY` note saying so. The orchestrator still owes either
+a review pass or a human FEEL gate on the render.
+
+### Carried forward
+
+- **`shots.json`'s `still_prompt` for L105 no longer describes the frame that exists** (the
+  orchestrator's one-time re-author after the engine deterministically refused the original
+  named-executive prompt). The frame is correct; the shot list is stale.
+- **Shorts are not started.** 46 shots across 5 pieces (short-01..05, 4 `publish` + 1 `bench`)
+  have zero `scenes/short-NN-SNN-NN.png` frames. Out of this round's scope.
+- The 3 `wf-thumbnail-*` frames remain in `_staging/`, unplaced.

@@ -1,0 +1,39 @@
+{
+  "generated_by": "render-builder",
+  "video_dir": "2026-07-19-wells-fargo",
+  "channel": "the-second-take",
+  "video_slug": "2026-07-19-wells-fargo",
+  "source_idea_id": "ST-033",
+  "render_provider": "remotion-local",
+  "render_engine": "remotion",
+  "watermark": false,
+  "dry_run": true,
+  "pieces": [
+    {
+      "piece": "long-form",
+      "out": "assets/final.mp4",
+      "motion": "assets/motion/long-form.motion.json",
+      "resolution": "1920x1080",
+      "captions": false,
+      "scene_count": 119,
+      "sum_scene_seconds": 627.36,
+      "retime_basis": "per-line-timings(627.36s, 1704 words)",
+      "vo_seconds": 627.364,
+      "scenes_from_files": 114,
+      "inline_fallback": 5,
+      "camera_moving": 0,
+      "breath_count": 50,
+      "sentence_gap_count": 37,
+      "audio": {
+        "music_segments": 9,
+        "music_missing": 0,
+        "sfx_count": 17,
+        "cues_unresolved": 0,
+        "sfx_tail_overshoots": 2,
+        "dip_count": 0,
+        "thin_count": 0
+      },
+      "state": "dry-run"
+    }
+  ]
+}
