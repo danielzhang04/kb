@@ -40,7 +40,7 @@ from render import (  # noqa: E402  (shared semantics — see docstring)
 )
 from motion_plan import cutout_layer_ids  # noqa: E402  (scene-gate exemption for layered shots)
 from build_audio import build_audio_spec, load_audio_tokens  # noqa: E402  (deterministic audio realizer)
-from breath import shift_timings, splice_silence, sentence_gaps, merge_gaps  # noqa: E402  (pause splicing + universal sentence law)
+from breath import shift_timings, splice_silence, sentence_gaps, merge_gaps, sentence_boundaries  # noqa: E402  (pause splicing + universal sentence law)
 from audio_cues import load_cues, resolve_cues, cue_pause_gaps, cue_role_events  # noqa: E402  (2b authored cues)
 from music_cues import load_music_cues, resolve_music_cues  # noqa: E402  (3B authored music placement)
 from audio_plan import load_audio_plan, split_plan  # noqa: E402  (unified audio plan, additive)
@@ -469,8 +469,19 @@ def build_piece_spec(piece, shots, res, is_short, video_dir, vo_manifest, args, 
         # gaps into one so the splice filtergraph (set-dedupes cut points) and shift_timings (sums dur)
         # AGREE. Sentence gaps shift the timeline but are excluded from dips + SFX withhold (build_audio).
         cue_gaps = cue_pause_gaps(resolved)
-        sent_gaps = sentence_gaps(word_timings, audio_tokens)
+        # R11: sentence_gaps measures each boundary's REAL acoustic silence from the VO itself when the
+        # audio is present (the onset-proxy `natural` overstated gaps by the final word's duration and
+        # drifted at TTS chunk seams — the r10 "rushed second half" defect). vo_path resolved here (and
+        # again below, unchanged) so the measurement also runs on --dry-run for honest gap stats.
+        _vo_for_gaps = vo_audio_path(video_dir, piece)
+        sent_gaps = sentence_gaps(word_timings, audio_tokens,
+                                  vo_path=_vo_for_gaps if _vo_for_gaps.exists() else None)
         sentence_gap_count = len(sent_gaps)
+        _n_bounds = len(sentence_boundaries(word_timings, audio_tokens))
+        _measured = sum(1 for g in sent_gaps if "natural_s" in g)
+        print(f"  {piece}: sentence gaps — {sentence_gap_count}/{_n_bounds} boundaries padded, "
+              f"{sum(g['dur_s'] for g in sent_gaps):.2f}s inserted "
+              f"({'measured from audio' if _measured else 'onset-proxy (no VO audio)'})")
         gaps = merge_gaps(cue_gaps + sent_gaps)                         # one gap per at_s, co-located dur SUMMED
         cue_events = cue_role_events(resolved, gaps)                    # SFX at the anchor, shifted past ALL gaps
         if gaps:
@@ -559,6 +570,11 @@ def build_piece_spec(piece, shots, res, is_short, video_dir, vo_manifest, args, 
         audio_spec = stage_audio_assets(audio_spec, video_dir, media_len_s=vo_s)
     spec["audioSpec"] = audio_spec
     spec["breathGaps"] = gaps   # carried for the post-render splice-continuity gate (audio_checker)
+    # Every sentence boundary on the SHIFTED (spliced) timeline — carried for the post-render
+    # sentence-gap verifier (audio_checker.check_sentence_gaps): after the splice, EVERY boundary
+    # (padded or not) must show a real acoustic gap >= its target in the rendered VO.
+    spec["sentenceBoundaries"] = sentence_boundaries(word_timings, audio_tokens) \
+        if (not args.no_audio and word_timings) else []
     meta = {
         "scene_count": len(shots),
         "sum_scene_seconds": round(sum(scaled), 2),
@@ -733,7 +749,13 @@ def main():
                 rec.update(ln)
                 audio_report = check_audio(spec.get("audioSpec") or {}, spec.get("shots") or [], ln, mt,
                                            vo_path=video_dir / "assets" / "vo.mp3",
-                                           breath_gaps=spec.get("breathGaps"))
+                                           breath_gaps=spec.get("breathGaps"),
+                                           # R11 sentence-gap verifier: measure the SPLICED VO the
+                                           # render actually played (spec["audio"] = vo.breath.mp3
+                                           # when gaps were spliced, else the raw vo)
+                                           spliced_vo_path=(video_dir / "assets" / spec["audio"])
+                                           if spec.get("audio") else None,
+                                           sentence_bounds=spec.get("sentenceBoundaries"))
                 rec["audio"] = audio_report                       # Phase 4: deterministic, warn-not-fail
                 if not audio_report["ok"]:
                     for w in audio_report["warnings"]:

@@ -194,7 +194,6 @@ export const ChapterCard: React.FC<{tokens: MotionTokens; text: string; dur_s?: 
 }) => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
-  const pop = spring({frame, fps, config: {damping: 200}, durationInFrames: 20});
   const unit = useUnit();
   const t = frame / fps;
   // [Q04 2026-07-17] Fade IN only, then HOLD opaque to the card's last frame — no tail fade-out. A timed
@@ -221,7 +220,6 @@ export const ChapterCard: React.FC<{tokens: MotionTokens; text: string; dur_s?: 
           maxWidth: '86%',
           textAlign: 'center',
           textWrap: 'balance' as never,
-          transform: `translateY(${interpolate(pop, [0, 1], [40, 0])}px)`,
         }}
       >
         {text}

@@ -7,7 +7,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from breath import (shift_timings, _splice_filtergraph, splice_silence, sentence_gaps, merge_gaps,
-                    resolve_cut_points, _valley_cut, _floor_span, _decode_pcm_mono, _load_np)
+                    resolve_cut_points, _valley_cut, _floor_span, _decode_pcm_mono, _load_np,
+                    measure_natural_gap, sentence_boundaries)
 
 WT = [["The", 0.0], ["deal", 0.3], ["was", 0.6], ["Eight", 1.0], ["million", 1.4], ["acres", 1.8]]
 
@@ -157,6 +158,108 @@ def test_sentence_gaps_abbreviation_not_a_boundary():
     assert sentence_gaps(wt) == [{"at_s": 1.2, "dur_s": 0.25, "source": "sentence"}], sentence_gaps(wt)
 
 
+# --- R11: measured natural gap (audio ground truth) ---------------------------
+# ElevenLabs word_timings are ONSETS, so the start-to-start proxy includes the final word's own spoken
+# duration (poyais: overstated the true silence by a mean +0.20s / up to +0.60s) and the mp3 chunk
+# stitch drifts the claimed timeline up to ~0.7s at seams. measure_natural_gap reads the REAL low-RMS
+# silence run from the audio; sentence_gaps pads THAT up to target.
+
+def _speech_silence_speech(sil_from, sil_to, total=2.5, sr=16000):
+    """Synthetic VO: -13 dBFS 220Hz 'speech' everywhere except a near-digital-silence span."""
+    np = _load_np()
+    s = 0.3 * np.sin(2 * np.pi * 220 * np.arange(int(total * sr)) / sr)
+    s[int(sil_from * sr):int(sil_to * sr)] = 0.0002        # ~-74 dBFS floor (below the -38 threshold)
+    return s
+
+
+def test_measure_natural_gap_measures_true_silence():
+    np = _load_np()
+    if np is None:
+        print("  (skipped test_measure_natural_gap_measures_true_silence: numpy absent)"); return
+    s = _speech_silence_speech(1.0, 1.3)
+    m = measure_natural_gap(s, 16000, final_start_s=0.6, next_start_s=1.28)
+    assert m is not None and abs(m["gap_s"] - 0.3) < 0.06, m           # the real 0.3s silence
+    assert 0.95 <= m["start_s"] <= 1.1 and 1.2 <= m["end_s"] <= 1.35, m
+
+
+def test_measure_natural_gap_survives_seam_drift():
+    # the claimed next onset is 0.5s EARLY (chunk-seam drift): the real silence run sits entirely
+    # after it. The search window extends past the claimed onset, so the run is still found.
+    np = _load_np()
+    if np is None:
+        print("  (skipped test_measure_natural_gap_survives_seam_drift: numpy absent)"); return
+    s = _speech_silence_speech(1.5, 1.9)
+    m = measure_natural_gap(s, 16000, final_start_s=0.6, next_start_s=1.0)   # claimed 0.5s early
+    assert m is not None and abs(m["gap_s"] - 0.4) < 0.06, m
+    assert 1.4 <= m["start_s"] <= 1.6, m
+
+
+def test_measure_natural_gap_prefers_real_run_over_plosive_dip():
+    # a 30ms plosive dip AT the claimed onset must lose to the 0.4s real silence 0.35s later
+    # (score = length - distance beats pure nearest-run selection).
+    np = _load_np()
+    if np is None:
+        print("  (skipped test_measure_natural_gap_prefers_real_run_over_plosive_dip: numpy absent)"); return
+    s = _speech_silence_speech(1.35, 1.75)
+    s[int(0.99 * 16000):int(1.02 * 16000)] = 0.0002        # tiny dip right at the claimed onset
+    m = measure_natural_gap(s, 16000, final_start_s=0.6, next_start_s=1.0)
+    assert m is not None and m["gap_s"] > 0.3, m           # picked the real run, not the 0.03s dip
+    assert m["start_s"] >= 1.3, m
+
+
+def test_measure_natural_gap_zero_when_fully_continuous():
+    np = _load_np()
+    if np is None:
+        print("  (skipped test_measure_natural_gap_zero_when_fully_continuous: numpy absent)"); return
+    s = 0.3 * np.sin(2 * np.pi * 220 * np.arange(int(2.0 * 16000)) / 16000)   # no silence anywhere
+    m = measure_natural_gap(s, 16000, final_start_s=0.5, next_start_s=0.9)
+    assert m == {"gap_s": 0.0, "start_s": None, "end_s": None}, m
+
+
+def test_measure_natural_gap_none_without_pcm():
+    assert measure_natural_gap(None, 16000, 0.5, 0.9) is None
+    np = _load_np()
+    if np is not None:
+        assert measure_natural_gap(np.zeros(0), 16000, 0.5, 0.9) is None
+
+
+def test_sentence_gaps_measured_beats_inflated_onset_proxy():
+    # THE r10 defect: proxy natural = 1.2 - 0.5 = 0.7 >= 0.65 -> the old law suppressed the pad.
+    # But the audio only holds 0.2s of real silence — with samples, sentence_gaps must pad the
+    # measured gap up to target (~0.45 insert) and carry a cut_s INSIDE the real silence run.
+    np = _load_np()
+    if np is None:
+        print("  (skipped test_sentence_gaps_measured_beats_inflated_onset_proxy: numpy absent)"); return
+    wt = [["Well", 0.0], ["hello", 0.25], ["world.", 0.5], ["Next", 1.2], ["one", 1.5], ["more.", 1.8]]
+    s = _speech_silence_speech(1.0, 1.2)                   # real silence: only 0.2s
+    assert sentence_gaps(wt) == [], sentence_gaps(wt)      # proxy path: suppressed (the defect)
+    out = sentence_gaps(wt, samples=s)
+    assert len(out) == 1 and out[0]["at_s"] == 1.2 and out[0]["source"] == "sentence", out
+    assert 0.35 <= out[0]["dur_s"] <= 0.55, out            # ~0.65 - ~0.2 measured
+    assert 0.98 <= out[0]["cut_s"] <= 1.22, out            # cut inside the REAL silence run
+    assert out[0]["natural_s"] < 0.3, out                  # measured, not the 0.7 proxy
+
+
+def test_sentence_gaps_measured_suppresses_when_audio_already_pauses():
+    # inverse case: proxy natural 0.4 would insert 0.25, but the audio already holds a 0.9s real
+    # pause (claimed onset drifted early INTO the silence) -> nothing inserted, no double pause.
+    np = _load_np()
+    if np is None:
+        print("  (skipped test_sentence_gaps_measured_suppresses_when_audio_already_pauses: numpy absent)"); return
+    wt = [["A", 0.0], ["big", 0.2], ["claim.", 0.4], ["Next", 0.8], ["words", 1.6], ["end.", 1.9]]
+    s = _speech_silence_speech(0.55, 1.45)                 # real 0.9s pause; claimed 0.8 sits inside it
+    assert sentence_gaps(wt) == [{"at_s": 0.8, "dur_s": 0.25, "source": "sentence"}], sentence_gaps(wt)
+    assert sentence_gaps(wt, samples=s) == [], sentence_gaps(wt, samples=s)
+
+
+def test_sentence_boundaries_shared_law():
+    # the boundary list the padder AND the post-render verifier share: every non-final sentence end,
+    # with the chained (<=2 word) target on chained sentences.
+    b = sentence_boundaries(SENT_WT)
+    assert [(x["final_word"], x["final_s"], x["next_s"], x["target_s"]) for x in b] == [
+        ("done.", 0.9, 1.5, 0.65), ("acres.", 2.1, 2.6, 0.65), ("Gone.", 2.6, 3.0, 0.45)], b
+
+
 # --- R8-B: merge_gaps (co-located stacking) ----------------------------------
 
 def test_merge_gaps_sums_colocated_and_cue_dominates_source():
@@ -173,6 +276,31 @@ def test_merge_gaps_pure_sentence_keeps_source():
     m = merge_gaps([{"at_s": 3.0, "dur_s": 0.5, "source": "sentence"},
                     {"at_s": 3.0, "dur_s": 0.3, "source": "sentence"}])
     assert m == [{"at_s": 3.0, "dur_s": 0.8, "source": "sentence"}], m
+
+
+def test_merge_gaps_preserves_measured_cut_s():
+    # R11: a sentence gap's measured-silence cut_s survives the merge (both orders), so the splice
+    # cuts inside the REAL silence even when a cue pause stacks on the same at_s.
+    m = merge_gaps([{"at_s": 5.0, "dur_s": 1.0, "source": "cue"},
+                    {"at_s": 5.0, "dur_s": 0.4, "source": "sentence", "cut_s": 5.31}])
+    assert m == [{"at_s": 5.0, "dur_s": 1.4, "source": "cue", "cut_s": 5.31}], m
+    m2 = merge_gaps([{"at_s": 5.0, "dur_s": 0.4, "source": "sentence", "cut_s": 5.31},
+                     {"at_s": 5.0, "dur_s": 1.0, "source": "cue"}])
+    assert m2 == [{"at_s": 5.0, "dur_s": 1.4, "source": "cue", "cut_s": 5.31}], m2
+
+
+def test_resolve_cut_points_honours_preset_measured_cut():
+    # R11: a gap that already carries the measured-silence cut_s keeps it (the +/-0.15s valley window
+    # around a drifted at_s could land mid-word); gaps without one still get the local valley.
+    np = _load_np()
+    if np is None:
+        print("  (skipped test_resolve_cut_points_honours_preset_measured_cut: numpy absent)"); return
+    s = 0.001 * np.ones(int(3.0 * 16000))
+    gaps = [{"at_s": 1.0, "dur_s": 0.9, "source": "cue"},
+            {"at_s": 2.0, "dur_s": 0.3, "source": "sentence", "cut_s": 2.45}]
+    out = resolve_cut_points(None, gaps, samples=s)
+    assert out[1]["cut_s"] == 2.45, out                    # measured cut honoured, not re-derived
+    assert "cut_s" in out[0] and out[0]["cut_s"] < out[1]["cut_s"], out
 
 
 def test_merged_gaps_make_shift_and_filtergraph_agree():

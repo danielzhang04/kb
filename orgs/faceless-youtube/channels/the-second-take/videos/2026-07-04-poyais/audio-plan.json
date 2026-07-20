@@ -287,6 +287,11 @@
       "kind": "pause",
       "anchor": "But the guidebook is still here",
       "pause_s": 1.0
+    },
+    {
+      "kind": "pause",
+      "anchor": "Thanks for watching",
+      "pause_s": 1.5
     }
   ]
 }

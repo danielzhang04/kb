@@ -1,7 +1,7 @@
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
-from audio_checker import check_audio
+from audio_checker import check_audio, check_sentence_gaps
 
 MT = {"lufs": -14.5, "true_peak_max_dbfs": -1.0, "lra": 4.0}
 LN = {"audio_lufs": -14.3, "audio_true_peak": -1.1}
@@ -59,8 +59,90 @@ def test_base_db_out_of_band_warns():
     assert r["ok"] is False and any("base_db" in w for w in r["warnings"])
 
 
+# --- R11: sentence-gap verifier -----------------------------------------------
+# Measures the REAL acoustic silence at every sentence boundary in the SPLICED VO and warns on any
+# boundary below target - tol. Uses a synthetic wav (speech / silence / speech) written stdlib-only;
+# decode needs ffmpeg (skip cleanly without it, matching the splice-continuity tests' style).
+
+def _write_speech_wav(path, spans, total=4.0, sr=16000):
+    """16-bit mono wav: 220Hz 'speech' everywhere except near-silence in each (from, to) span."""
+    import math, struct, wave
+    n = int(total * sr)
+    frames = bytearray()
+    for i in range(n):
+        t = i / sr
+        amp = 0.0002 if any(a <= t < b for a, b in spans) else 0.3 * math.sin(2 * math.pi * 220 * t)
+        frames += struct.pack("<h", int(amp * 32767))
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(sr)
+        w.writeframes(bytes(frames))
+
+
+def _ffmpeg_missing():
+    import shutil
+    return not shutil.which("ffmpeg")
+
+
+def test_sentence_gap_verifier_passes_when_gaps_meet_target():
+    if _ffmpeg_missing():
+        print("  (skipped test_sentence_gap_verifier_passes_when_gaps_meet_target: ffmpeg not on PATH)"); return
+    import tempfile, os
+    d = tempfile.mkdtemp()
+    vo = os.path.join(d, "vo.breath.wav")
+    _write_speech_wav(vo, [(1.0, 1.7), (2.8, 3.3)])        # 0.70s and 0.50s real pauses
+    bounds = [{"final_word": "one.", "final_s": 0.6, "next_word": "Two", "next_s": 1.65, "target_s": 0.65},
+              {"final_word": "two.", "final_s": 2.4, "next_word": "End", "next_s": 3.25, "target_s": 0.45}]
+    r = check_sentence_gaps(vo, bounds)
+    assert r["ok"] is True and r["warnings"] == [], r
+    assert r["measured"]["boundaries"] == 2 and r["measured"]["below"] == 0, r
+
+
+def test_sentence_gap_verifier_flags_short_boundary_with_timestamp():
+    if _ffmpeg_missing():
+        print("  (skipped test_sentence_gap_verifier_flags_short_boundary_with_timestamp: ffmpeg not on PATH)"); return
+    import tempfile, os
+    d = tempfile.mkdtemp()
+    vo = os.path.join(d, "vo.breath.wav")
+    _write_speech_wav(vo, [(1.0, 1.2)])                    # only 0.20s of silence — RUSHED boundary
+    bounds = [{"final_word": "one.", "final_s": 0.6, "next_word": "Two", "next_s": 1.15, "target_s": 0.65}]
+    r = check_sentence_gaps(vo, bounds)
+    assert r["ok"] is False and len(r["warnings"]) == 1, r
+    w = r["warnings"][0]
+    assert "SENTENCE-GAP short" in w and "'one.'" in w, w
+    assert "@ 0.60s" in w, w                               # boundary timestamp reported
+    assert r["measured"]["below"] == 1, r
+    assert r["worst"]["shortfall_s"] > 0.3, r
+
+
+def test_sentence_gap_verifier_skips_cleanly_without_inputs():
+    r = check_sentence_gaps(None, [])
+    assert r["ok"] is True and r["warnings"] == [], r
+    r2 = check_sentence_gaps("does-not-exist.mp3", [{"final_s": 0, "next_s": 1, "target_s": 0.65}])
+    assert r2["ok"] is True and r2["measured"].get("vo") == "missing", r2
+
+
+def test_check_audio_wires_sentence_gap_verifier():
+    if _ffmpeg_missing():
+        print("  (skipped test_check_audio_wires_sentence_gap_verifier: ffmpeg not on PATH)"); return
+    import tempfile, os
+    d = tempfile.mkdtemp()
+    vo = os.path.join(d, "vo.breath.wav")
+    _write_speech_wav(vo, [(1.0, 1.15)])                   # under-target pause
+    bounds = [{"final_word": "one.", "final_s": 0.6, "next_word": "Two", "next_s": 1.1, "target_s": 0.65}]
+    r = check_audio(_spec(), SHOTS, LN, MT, spliced_vo_path=vo, sentence_bounds=bounds)
+    assert r["ok"] is False and any("SENTENCE-GAP" in w for w in r["warnings"]), r
+    assert r["measured"]["sentence_gaps"]["below"] == 1, r
+    # absent inputs -> unchanged behaviour (no sentence_gaps key)
+    r2 = check_audio(_spec(), SHOTS, LN, MT)
+    assert r2["ok"] is True and "sentence_gaps" not in r2["measured"], r2
+
+
 print("running")
 test_clean_render_passes(); test_missing_sfx_warns(); test_missing_music_warns()
 test_loudness_off_target_warns(); test_true_peak_over_warns(); test_loudnorm_soft_failed_warns()
 test_base_db_out_of_band_warns()
+test_sentence_gap_verifier_passes_when_gaps_meet_target()
+test_sentence_gap_verifier_flags_short_boundary_with_timestamp()
+test_sentence_gap_verifier_skips_cleanly_without_inputs()
+test_check_audio_wires_sentence_gap_verifier()
 print("PASS")

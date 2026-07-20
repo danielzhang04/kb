@@ -64,34 +64,18 @@ def _is_sentence_final(w) -> bool:
     return s.lower() not in _ABBREV
 
 
-def sentence_gaps(word_timings, tokens=None) -> list:
-    """The universal sentence-gap law — PAD-TO-TARGET semantics (R10, supersedes the R8-B additive law).
-
-    After every sentence-final word we want the TOTAL gap before the next word (the VO's own natural
-    inter-word spacing + whatever we insert) to reach a target; we insert ONLY the shortfall, and NOTHING
-    when the natural spacing already meets the target. This replaces the old "+`sentence_gap_s` (0.5s) on
-    top of prosody" rule, which doubled every sentence pause (the "not continuous" defect, R10 diag).
-
-      natural = next_token.start - final_word.start   (word_timings carries onsets only, so this
-                start-to-start interval is the spacing proxy — long final words legitimately need less pad)
-      target  = `sentence_gap_chained_target_s` (0.45s) for a chained <= `sentence_gap_chained_max_words`
-                (2) sentence, else `sentence_gap_target_s` (0.65s)
-      insert  = max(0, target - natural);  emit a gap only when insert >= `sentence_gap_min_insert_s`
-                (0.02s) — below that the boundary is left fully continuous (no cut, no splice).
-
-    The FINAL sentence of the piece gets no gap (no next token). Bracketed tag pseudo-tokens are skipped.
-    Dials read from `tokens` (audio-tokens.json) with the code defaults above; `sentence_gap_enabled:false`
-    disables it entirely. Emits `source:"sentence"` gaps on the ORIGINAL timeline (at the next token's
-    start) — merge_gaps() then stacks any co-located authored pause, and build_audio EXCLUDES
-    source=="sentence" from dips + SFX withhold. The OLD keys (`sentence_gap_s`/`sentence_gap_chained_s`)
-    are superseded and ignored."""
+def sentence_boundaries(word_timings, tokens=None) -> list:
+    """Every sentence boundary in word_timings as
+    [{"final_word", "final_s", "next_word", "next_s", "target_s"}, ...] — the shared boundary law used
+    by sentence_gaps() (which pads them) AND the post-render sentence-gap verifier (audio_checker), so
+    the padder and the checker can never disagree about WHERE a sentence pause is owed. The FINAL
+    sentence (no next token) yields no boundary; bracketed tag pseudo-tokens are skipped. Targets from
+    `tokens` (audio-tokens.json): `sentence_gap_chained_target_s` (0.45s) for a chained
+    <= `sentence_gap_chained_max_words` (2) sentence, else `sentence_gap_target_s` (0.65s)."""
     t = tokens or {}
-    if not t.get("sentence_gap_enabled", True):
-        return []
     target_s = float(t.get("sentence_gap_target_s", 0.65))
     chained_target_s = float(t.get("sentence_gap_chained_target_s", 0.45))
     chained_max = int(t.get("sentence_gap_chained_max_words", 2))
-    min_insert = float(t.get("sentence_gap_min_insert_s", 0.02))
     toks = [(str(w), float(ts)) for w, ts in (word_timings or [])]
     out, wc = [], 0
     for i, (w, ts) in enumerate(toks):
@@ -100,15 +84,133 @@ def sentence_gaps(word_timings, tokens=None) -> list:
         wc += 1
         if _is_sentence_final(w):
             nxt = next(((nw, nt) for nw, nt in toks[i + 1:] if not _is_tag_token(nw)), None)
-            if nxt is not None:   # no trailing gap on the last sentence (nothing follows)
-                natural = float(nxt[1]) - float(ts)
-                target = chained_target_s if wc <= chained_max else target_s
-                insert = round(target - natural, 3)
-                if insert >= min_insert:
-                    out.append({"at_s": round(float(nxt[1]), 3),
-                                "dur_s": insert,
-                                "source": "sentence"})
+            if nxt is not None:   # no trailing boundary on the last sentence (nothing follows)
+                out.append({"final_word": w, "final_s": round(ts, 3),
+                            "next_word": nxt[0], "next_s": round(float(nxt[1]), 3),
+                            "target_s": chained_target_s if wc <= chained_max else target_s})
             wc = 0
+    return out
+
+
+# Acoustic gap measurement (R11). ElevenLabs word_timings carry word ONSETS only, so the old
+# start-to-start "natural" proxy INCLUDED the sentence-final word's own spoken duration — a long final
+# word made the boundary look padded when the real silence was a fraction of it (measured on poyais:
+# proxy overstated the true gap by a mean +0.20s, up to +0.60s). On top of that, the mp3 chunk stitch
+# (`offset += ends[-1]`) drifts the claimed timeline from the real audio by up to ~0.7s at/after chunk
+# seams. Both defects suppressed sentence pads (worst in the back half — the "rushed" r10 defect), so
+# the pad now derives from the AUDIO ITSELF: measure the real low-RMS silence run at each boundary and
+# pad the MEASURED gap up to target.
+_GAP_MEASURE_THRESHOLD_DB = -38.0   # below this frame RMS = silence (speech here sits ~-25 dBFS,
+                                    # inter-sentence floor ~-85; breaths mostly stay above -38 and
+                                    # correctly do NOT count as pause)
+_GAP_SEARCH_AFTER_S = 1.2           # search this far past the CLAIMED next onset (covers the measured
+                                    # worst-case stitch drift of ~0.7s with margin)
+_GAP_FRAME_MS = 10
+_GAP_HOP_MS = 5
+
+
+def measure_natural_gap(samples, sr, final_start_s, next_start_s,
+                        threshold_db=_GAP_MEASURE_THRESHOLD_DB,
+                        search_after_s=_GAP_SEARCH_AFTER_S,
+                        frame_ms=_GAP_FRAME_MS, hop_ms=_GAP_HOP_MS):
+    """Measure the REAL acoustic silence at a sentence boundary. Scans frame RMS over
+    [final_start_s, next_start_s + search_after_s], collects contiguous below-threshold runs, and picks
+    the run maximizing (length - distance_to_claimed_next_onset) — long real inter-sentence silence
+    beats a nearby plosive dip, while a same-length run nearer the claimed onset beats e.g. the pause
+    after a following "Well," (drift never exceeds the search margin). Returns
+    {"gap_s", "start_s", "end_s"} or None when there is no usable PCM / no frames (caller then falls
+    back to the start-to-start proxy). A boundary with NO below-threshold run returns gap_s 0.0 (fully
+    continuous speech — pad the whole target)."""
+    if samples is None or len(samples) == 0:
+        return None
+    frame = max(1, int(sr * frame_ms / 1000))
+    hop = max(1, int(sr * hop_ms / 1000))
+    thr_lin = 10.0 ** (threshold_db / 20.0)
+    lo = max(0, int(round(final_start_s * sr)))
+    hi = min(len(samples), int(round((next_start_s + search_after_s) * sr)))
+    if hi - lo < frame:
+        return None
+    runs, cur = [], None   # [t_start, t_end] of below-threshold frame centers
+    i = lo
+    while i + frame <= hi:
+        t = (i + frame / 2.0) / sr
+        if _win_rms_lin(samples, i, i + frame) < thr_lin:
+            if cur is None:
+                cur = [t, t]
+            else:
+                cur[1] = t
+        else:
+            if cur is not None:
+                runs.append(cur); cur = None
+        i += hop
+    if cur is not None:
+        runs.append(cur)
+    if not runs:
+        return {"gap_s": 0.0, "start_s": None, "end_s": None}
+
+    def dist(r):
+        s, e = r
+        return 0.0 if s <= next_start_s <= e else min(abs(s - next_start_s), abs(e - next_start_s))
+
+    s, e = max(runs, key=lambda r: (r[1] - r[0]) - dist(r))
+    return {"gap_s": round(e - s + frame_ms / 1000.0, 3),   # + one frame width (center-to-center span)
+            "start_s": round(s, 3), "end_s": round(e, 3)}
+
+
+def sentence_gaps(word_timings, tokens=None, vo_path=None, samples=None) -> list:
+    """The universal sentence-gap law — PAD-TO-TARGET semantics (R10, supersedes the R8-B additive law).
+
+    After every sentence-final word we want the TOTAL gap before the next word (the VO's own natural
+    silence + whatever we insert) to reach a target; we insert ONLY the shortfall, and NOTHING when the
+    natural silence already meets the target. This replaces the old "+`sentence_gap_s` (0.5s) on top of
+    prosody" rule, which doubled every sentence pause (the "not continuous" defect, R10 diag).
+
+      natural = the MEASURED low-RMS silence run at the boundary (R11 — measure_natural_gap(); the audio
+                is ground truth). Only when no PCM is available (no vo/ffmpeg, unit tests) does it fall
+                back to the start-to-start onset proxy `next_token.start - final_word.start` — which
+                overstates the gap by the final word's own spoken duration and drifts at chunk seams
+                (the r10 "rushed second half" defect).
+      target  = `sentence_gap_chained_target_s` (0.45s) for a chained <= `sentence_gap_chained_max_words`
+                (2) sentence, else `sentence_gap_target_s` (0.65s)
+      insert  = max(0, target - natural);  emit a gap only when insert >= `sentence_gap_min_insert_s`
+                (0.02s) — below that the boundary is left fully continuous (no cut, no splice).
+
+    Measured gaps also carry `cut_s` — the valley INSIDE the measured silence run — so the splice cuts in
+    real silence even where the claimed timeline has drifted past the +/-0.15s valley window (r10's
+    mid-word room-tone splices at seams); resolve_cut_points() honours it. `at_s` stays the CLAIMED next
+    onset (the word-timings timeline) so shift_timings / card-alignment / build_audio are unchanged.
+
+    Bracketed tag pseudo-tokens are skipped. Dials read from `tokens` (audio-tokens.json) with the code
+    defaults above; `sentence_gap_enabled:false` disables it entirely. Emits `source:"sentence"` gaps on
+    the ORIGINAL timeline — merge_gaps() then stacks any co-located authored pause, and build_audio
+    EXCLUDES source=="sentence" from dips + SFX withhold. The OLD keys
+    (`sentence_gap_s`/`sentence_gap_chained_s`) are superseded and ignored."""
+    t = tokens or {}
+    if not t.get("sentence_gap_enabled", True):
+        return []
+    min_insert = float(t.get("sentence_gap_min_insert_s", 0.02))
+    thr_db = float(t.get("sentence_gap_measure_threshold_db", _GAP_MEASURE_THRESHOLD_DB))
+    if samples is None and vo_path is not None:
+        samples = _decode_pcm_mono(Path(vo_path))
+    out = []
+    for b in sentence_boundaries(word_timings, t):
+        meas = measure_natural_gap(samples, _ANALYSIS_SR, b["final_s"], b["next_s"],
+                                   threshold_db=thr_db) if samples is not None else None
+        if meas is not None:
+            natural = meas["gap_s"]
+        else:
+            natural = b["next_s"] - b["final_s"]   # onset proxy fallback (no PCM only)
+        insert = round(b["target_s"] - natural, 3)
+        if insert >= min_insert:
+            g = {"at_s": b["next_s"], "dur_s": insert, "source": "sentence"}
+            if meas is not None:
+                g["natural_s"] = natural   # measured true silence (report/verifier context)
+                if meas["start_s"] is not None:
+                    # valley INSIDE the real silence run (earliest at-floor point) — the splice cut
+                    g["cut_s"] = _valley_cut(samples, _ANALYSIS_SR,
+                                             (meas["start_s"] + meas["end_s"]) / 2.0,
+                                             window_s=max((meas["end_s"] - meas["start_s"]) / 2.0, 0.02))
+            out.append(g)
     return out
 
 
@@ -122,7 +224,9 @@ def merge_gaps(gaps) -> list:
     Source precedence: the merged gap is `source:"sentence"` ONLY if EVERY contributor is a sentence gap;
     ANY authored (`cue`) contributor makes it `cue` — so a boundary that stacks a sentence gap onto an
     authored pause keeps the authored pause's dip + event-withhold behaviour (the extra sentence silence
-    just lengthens the window). Returns a NEW list sorted by at_s; input is not mutated."""
+    just lengthens the window). A contributor's measured `cut_s` (the valley inside the real silence run,
+    R11) is PRESERVED on the merged gap — resolve_cut_points honours it over the +/-0.15s at_s window.
+    Returns a NEW list sorted by at_s; input is not mutated."""
     by_at = {}
     for g in gaps or []:
         key = round(float(g["at_s"]), 3)
@@ -130,10 +234,14 @@ def merge_gaps(gaps) -> list:
         cur = by_at.get(key)
         if cur is None:
             by_at[key] = {"at_s": key, "dur_s": round(float(g["dur_s"]), 3), "source": src}
+            if g.get("cut_s") is not None:
+                by_at[key]["cut_s"] = round(float(g["cut_s"]), 3)
         else:
             cur["dur_s"] = round(cur["dur_s"] + float(g["dur_s"]), 3)
             if src != "sentence":
                 cur["source"] = "cue"   # any authored contributor dominates the source label
+            if cur.get("cut_s") is None and g.get("cut_s") is not None:
+                cur["cut_s"] = round(float(g["cut_s"]), 3)
     return sorted(by_at.values(), key=lambda x: x["at_s"])
 
 
@@ -367,17 +475,23 @@ def _splice_filtergraph(gaps, fade_s=_SPLICE_FADE_S, room_tone_input=None,
 
 
 def resolve_cut_points(vo_path, gaps, samples=None):
-    """Return a COPY of `gaps` with each gap's `cut_s` set to its valley (min-RMS) point near at_s, kept
-    strictly increasing (no filtergraph cut collision). `samples` may be pre-decoded; otherwise it is
-    decoded from vo_path. Pure of ffmpeg-render side effects — usable by the continuity gate + tests."""
+    """Return a COPY of `gaps` with each gap's `cut_s` set to its valley (min-RMS) point, kept strictly
+    increasing (no filtergraph cut collision). A gap that ALREADY carries a `cut_s` (the measured-silence
+    valley from sentence_gaps, R11) keeps it — that cut was found inside the boundary's REAL silence run,
+    which the +/-`_VALLEY_WINDOW_S` search around a drifted at_s can miss entirely. Gaps without one
+    (authored cues) get the local valley near at_s as before. `samples` may be pre-decoded; otherwise it
+    is decoded from vo_path. Pure of ffmpeg-render side effects — usable by the continuity gate + tests."""
     work = [dict(g) for g in (gaps or [])]
     if not work:
         return work
-    if samples is None:
+    if samples is None and any(g.get("cut_s") is None for g in work):
         samples = _decode_pcm_mono(Path(vo_path))
     prev_cut = -1.0
     for g in sorted(work, key=lambda x: float(x["at_s"])):
-        c = _valley_cut(samples, _ANALYSIS_SR, float(g["at_s"]))
+        if g.get("cut_s") is not None:
+            c = round(float(g["cut_s"]), 3)
+        else:
+            c = _valley_cut(samples, _ANALYSIS_SR, float(g["at_s"]))
         if c <= prev_cut:   # collision guard — keep cut points strictly increasing
             c = round(float(g["at_s"]), 3)
         g["cut_s"] = c
