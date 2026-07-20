@@ -1,7 +1,8 @@
 {
   "video_slug": "2026-07-04-poyais",
   "generated": "2026-07-14",
-  "_note": "Derived from shots.json (125 long-form shots, fresh VPW re-author). RE-RUN under the ASSERTIVE device-card rule: device cards are the PRIMARY on-brand motion for this numbers-driven finance story. 111 shots pass through baked (layers []); 14 carry Family-A motion — 10 engine DEVICE CARDS (promote-and-subtract on payoff figures / section-turns / an office-pin reveal) + 4 CUTOUT layers (L03 ship path, L13 MacGregor slide-reveal, L68 SOLD slam, L91 king slide). Camera stays LOCKED (no camera moves). A card-only number shot keeps background scenes/<id>.png (NOT a plate_prompt, per the image-gen card-only contract) and carries an explicit background.subtract directive naming the exact baked figure image-gen must OMIT from that scene; the engine card supplies the real type. Only cutout-bearing shots carry a plate_prompt. Human-cost counts (L96 ten crosses, L103 250/<50 survival ratio, L11) stay baked — the device register goes OFF on human-cost. Incidental dates/page-counts (350 pages, Oct 1823, 1845) stay diegetic. Pictorial ghost-strike enumerations on held sets (L23/L88/L94) stay baked as integrated accretions.",
+  "revised": "2026-07-17",
+  "_note": "REVISED 2026-07-15 under the SIMPLIFIED doctrine: engine device cards + engine-drawn text are RETIRED (source:'engine' is an invalid layer; the engine draws only a cutout `path` route line). ALL in-video text (payoff figures, section titles, labels, defined terms, ratios) is now BAKED DIEGETIC into the still by image-gen. The old plan's 12 engine cards (L03 title, L12 pivot, L19 acres, L39/L47/L48/L52/L54/L58/L65/L75/L84) were re-expressed as baked diegetic text (11) or dropped (1: L03's POYAIS title — the map + VO carry the beat); their `background.subtract` directives were removed so the text stays in the plate. CHUNK 1 (L01-L26) is already generated + human-approved: only the lint-blocking edits were made and existing assets kept valid — L03 keeps its ship cutout (title layer removed), L12/L19 drop their (never-rendered) engine cards, L24 reconciled to its own generated scene (scenes/L24.png; the old cross-stage passthrough to scenes/L22.png was the stale empty-swamp/swamp-con split). L12/L19 regen flags + L19/L75/L84 diegetic-text edits are recorded in _motion-replan-shot-edits-2026-07-15.md for the human gate. Camera stays LOCKED (ONE authored exception: L44's human-authorized zoom-out / pull-back, 2026-07-15 — see L44.camera; NB build_motion still hardcodes locked_camera and does not yet consume a plan-level camera key, so the pull is a no-op until the render camera path is wired). Cutout layers retained (all cutout-only, seedable): L03 ship path, L13 MacGregor slide, L15/L16/L17 campaign-map figures, L23 debunk icons, L25 thought bubble, L33 FAKE stamps (x2), L36 book bob, L42 stars, L43 FICTION stamp, L57 second ship, L59 arrow, L60 glow, L62 MacGregor+dollars, L68 SOLD slam, L78 bubble, L79 fine-print, L80 MacGregor shrug, L91 king slide, L107 officer+anger, L112 stagecoach paths. Human-cost counts (L96 crosses, L103 survival grid) stay baked. Incidental dates/page-counts stay diegetic. Integrative accretions (L23/L88/L94 strike enumerations, guidebook/paradise chains) stay baked delta-chains.",
   "shots": [
     {
       "id": "L01",
@@ -34,8 +35,8 @@
                 0.17
               ],
               [
-                0.13,
-                0.64
+                0.35,
+                0.56
               ]
             ],
             "dur_s": 2.4,
@@ -43,15 +44,6 @@
             "anchor": "and sailed across the Atlantic",
             "height_frac": 0.18
           }
-        },
-        {
-          "id": "title",
-          "source": "engine",
-          "kind": "chapter-card",
-          "content": {
-            "text": "POYAIS"
-          },
-          "anchor": "in a country called Poyais"
         }
       ]
     },
@@ -66,8 +58,8 @@
     {
       "id": "L06",
       "background": {
-        "mode": "delta-chain",
-        "plate": "scenes/L05.png"
+        "mode": "plate",
+        "plate": "scenes/L06.png"
       },
       "layers": []
     },
@@ -88,16 +80,32 @@
       "layers": []
     },
     {
-      "id": "L10",
+      "id": "L09",
       "background": {
         "mode": "delta-chain",
         "plate": "scenes/L08.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L09b",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L09b.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L10",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L09b.png"
       },
       "layers": [
         {
           "id": "stamp",
           "source": "cutout",
-          "cutout_prompt": "A bold red diagonal 'FICTION' rubber-stamp — hard-edged capital letters, slightly ink-rough, isolated on a plain flat pale background with no surface under it, framed for a clean cut-out. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline.",
+          "reuse": "cutouts/L10-stamp.png",
           "animation": {
             "type": "appear",
             "style": "slam",
@@ -122,20 +130,9 @@
       "id": "L12",
       "background": {
         "mode": "plate",
-        "plate": "scenes/L12.png",
-        "subtract": "the hand-lettered marker question mark — leave a clean deadpan dark-slate field with calm negative space; the engine chapter-card draws the text."
+        "plate": "scenes/L12.png"
       },
-      "layers": [
-        {
-          "id": "pivot",
-          "source": "engine",
-          "kind": "chapter-card",
-          "content": {
-            "text": "So what happened?"
-          },
-          "anchor": "So what happened"
-        }
-      ]
+      "layers": []
     },
     {
       "id": "L13",
@@ -153,12 +150,13 @@
             "from_edge": "left",
             "to": [
               0.5,
-              0.9
+              0.5
             ],
             "dur_s": 1.5,
             "easing": "ease-out",
             "anchor": "a soldier named Gregor MacGregor",
-            "height_frac": 0.62
+            "height_frac": 0.7,
+            "anchor_origin": "center"
           }
         }
       ]
@@ -181,7 +179,7 @@
         {
           "id": "macgregor",
           "source": "cutout",
-          "cutout_prompt": "MacGregor, full standing figure marching leftward mid-stride, in his pinned crimson gold-frogged hussar coat and gold order-star medal, a smug air, isolated on a plain flat pale background with no surface under it, framed for a clean cut-out. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline. Seed off refs/macgregor/macgregor-base.png.",
+          "reuse": "cutouts/L17-macgregor.png",
           "animation": {
             "type": "path",
             "points": [
@@ -216,15 +214,27 @@
         {
           "id": "macgregor",
           "source": "cutout",
-          "cutout_prompt": "MacGregor at rest, standing, promoted to general: fresh ornate gold general's epaulettes, a general's sash across his crimson coat, and a red-accented general's insignia at his shoulder as the punch element. Full figure, isolated on a vivid flat mid-grey void with no surface under him and no shadow. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline.",
+          "reuse": "cutouts/L17-macgregor.png",
           "animation": {
-            "type": "appear",
-            "at": [
-              0.15,
-              0.6
+            "type": "path",
+            "points": [
+              [
+                0.83,
+                0.3
+              ],
+              [
+                0.5,
+                0.22
+              ],
+              [
+                0.15,
+                0.6
+              ]
             ],
-            "height_frac": 0.42,
-            "anchor": "and earned the rank of general"
+            "dur_s": 2.6,
+            "draw_line": true,
+            "static": true,
+            "height_frac": 0.42
           }
         }
       ]
@@ -239,15 +249,27 @@
         {
           "id": "macgregor",
           "source": "cutout",
-          "reuse": "cutouts/L16-macgregor.png",
+          "reuse": "cutouts/L17-macgregor.png",
           "animation": {
-            "type": "appear",
-            "at": [
-              0.15,
-              0.6
+            "type": "path",
+            "points": [
+              [
+                0.83,
+                0.3
+              ],
+              [
+                0.5,
+                0.22
+              ],
+              [
+                0.15,
+                0.6
+              ]
             ],
-            "height_frac": 0.42,
-            "anchor": "fighting alongside"
+            "dur_s": 2.6,
+            "draw_line": true,
+            "static": true,
+            "height_frac": 0.42
           }
         },
         {
@@ -258,13 +280,13 @@
             "type": "slide",
             "from_edge": "right",
             "to": [
-              0.62,
-              0.85
+              0.3,
+              0.81
             ],
             "dur_s": 1.5,
             "easing": "ease-out",
             "anchor": "fighting alongside Simón Bolívar",
-            "height_frac": 0.55
+            "height_frac": 0.42
           }
         }
       ]
@@ -281,21 +303,9 @@
       "id": "L19",
       "background": {
         "mode": "plate",
-        "plate": "scenes/L19.png",
-        "subtract": "the marker banner reading '8,000,000 ACRES' — leave the empty green jungle sweep reading whole to the horizon behind the two figures; the engine stat-card supplies 8,000,000 ACRES."
+        "plate": "scenes/L19.png"
       },
-      "layers": [
-        {
-          "id": "acres",
-          "source": "engine",
-          "kind": "stat-card",
-          "content": {
-            "text": "8,000,000",
-            "sub": "ACRES"
-          },
-          "anchor": "Eight million acres of"
-        }
-      ]
+      "layers": []
     },
     {
       "id": "L22",
@@ -362,8 +372,8 @@
     {
       "id": "L24",
       "background": {
-        "mode": "delta-chain",
-        "plate": "scenes/L22.png"
+        "mode": "plate",
+        "plate": "scenes/L24.png"
       },
       "layers": []
     },
@@ -379,14 +389,15 @@
           "source": "cutout",
           "cutout_prompt": "A classic cartoon thought bubble (a rounded cloud outline with two small trailing circles leading down toward the thinker) containing a single lazy, complacent London gentleman-official lounging back with his feet up, bored and uninterested, on the CROWD RIG (round cream-family head, dot eyes, one simple neutral/downturn mouth, NO nose, NO ears, NO teeth) in early-1820s London dress; isolated on a plain flat pale background with no surface under it, framed for a clean cut-out. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline.",
           "animation": {
-            "type": "appear",
-            "style": "pop",
+            "type": "bob",
+            "amp": 6,
+            "period": 2.4,
             "at": [
-              0.68,
-              0.28
+              0.327,
+              0.528
             ],
             "anchor": "and figured no one in London",
-            "height_frac": 0.42
+            "height_frac": 0.38
           }
         }
       ]
@@ -404,6 +415,49 @@
       "background": {
         "mode": "plate",
         "plate": "scenes/L27.png"
+      },
+      "layers": [
+        {
+          "id": "title-block",
+          "source": "cutout",
+          "reuse": "cutouts/L27-title-block.png",
+          "cutout_prompt": "(reuse — staged r9-staging/E3/l27-title-block.png, already keyed) A hand-drawn CREAM torn-paper LABEL CARD (#f5ead6, #241a12 hand-drawn border) bearing three stacked lines of bold relaxed MARKER CAPITALS in dark #241a12 ink — 'PRINCE' / 'OF' (~60% size) / 'POYAIS' — house marker lettering register (seeded refs/env/lettering-marker-italic.png), NOT the red stamp register. Isolated cutout on magenta, keyed.",
+          "animation": {
+            "type": "appear",
+            "style": "slam",
+            "at": [
+              0.44,
+              0.27
+            ],
+            "anchor_origin": "center",
+            "anchor": "the prince of Poyais",
+            "height_frac": 0.28
+          }
+        },
+        {
+          "id": "arrow",
+          "source": "cutout",
+          "reuse": "cutouts/L27-arrow-r10.png",
+          "cutout_prompt": "A SLIM house emphasis arrow (thin shaft, small head - roughly 3-4x longer than it is wide), FLAT-CEL solid red accent #d7402b with an even medium-thick #241a12 outline and NO glossy bevel / NO sheen / NO gradient, pointing diagonally DOWN-LEFT at MacGregor. Isolated cutout on flat magenta chroma, keyed. House arrow/emphasis register, flat-cel 2.5D vector.",
+          "animation": {
+            "type": "appear",
+            "style": "pop",
+            "at": [
+              0.302,
+              0.42
+            ],
+            "anchor_origin": "center",
+            "at_s": 3.75,
+            "height_frac": 0.085
+          }
+        }
+      ]
+    },
+    {
+      "id": "L28",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L28.png"
       },
       "layers": []
     },
@@ -443,9 +497,40 @@
       "id": "L33",
       "background": {
         "mode": "plate",
-        "plate": "scenes/L33.png"
+        "plate_prompt": "TWO forged credential documents side by side — a knighthood honour scroll on the LEFT and a clan-chief crest certificate on the RIGHT — rendered in the SAME document template: the same aged parchment tone, the same ornate border treatment, the same layout proportions and seal-and-ribbon furniture, a deliberately matched pair from one template. Both documents CLEAN and complete with NO stamps on either. Deadpan, calm negative space around the pair. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline, warm cel shading with genuine depth; 16:9. (Derived from L33 still_prompt; the two red 'FAKE' stamps are the appear cutouts, one per document, at the same diagonal spot on each.)"
       },
-      "layers": []
+      "layers": [
+        {
+          "id": "fake-stamp-knight",
+          "source": "cutout",
+          "cutout_prompt": "A bold red 'FAKE' rubber-stamp — the word FAKE hand-lettered in marker at a diagonal, hard-edged and slightly ink-rough, in the red accent #d7402b — isolated on a plain flat pale background with no surface under it, framed for a clean cut-out. Legible, correctly spelled FAKE. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline. (Stamp lettering register PENDING the stamp-register audition lock — cutout gen DEFERRED until the exemplar exists.)",
+          "animation": {
+            "type": "appear",
+            "style": "slam",
+            "at": [
+              0.281,
+              0.5
+            ],
+            "anchor": "a knight and a",
+            "height_frac": 0.3
+          }
+        },
+        {
+          "id": "fake-stamp-clan",
+          "source": "cutout",
+          "cutout_prompt": "A bold red 'FAKE' rubber-stamp — the word FAKE hand-lettered in marker at a diagonal, hard-edged and slightly ink-rough, in the red accent #d7402b — isolated on a plain flat pale background with no surface under it, framed for a clean cut-out. Legible, correctly spelled FAKE. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline. (Stamp lettering register PENDING the stamp-register audition lock — cutout gen DEFERRED until the exemplar exists.)",
+          "animation": {
+            "type": "appear",
+            "style": "slam",
+            "at": [
+              0.718,
+              0.5
+            ],
+            "anchor": "clan chief, none of",
+            "height_frac": 0.3
+          }
+        }
+      ]
     },
     {
       "id": "L34",
@@ -467,7 +552,7 @@
       "id": "L36",
       "background": {
         "mode": "plate",
-        "plate_prompt": "A soft, empty, evenly-lit warm-neutral field with a gentle vignette and nothing on it — no desk, no table, no book, no props, no text; a calm floating negative-space background. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline, warm cel shading with genuine depth; 16:9. (Derived from L36 still_prompt minus the floating guidebook, which is the bobbing cutout.)"
+        "plate_prompt": "A quiet warm library interior: tall wooden bookshelves receding on both sides, a soft spotlight pooling in the centre, a reading lamp at right; NOTHING floating in the centre (the guidebook is the bobbing cutout). Flat-cel 2.5D vector house style, even medium-thick #241a12 outline, warm cel shading with genuine depth; 16:9."
       },
       "layers": [
         {
@@ -480,8 +565,9 @@
             "period": 2.4,
             "at": [
               0.5,
-              0.5
-            ]
+              0.76
+            ],
+            "height_frac": 0.52
           }
         }
       ]
@@ -506,21 +592,9 @@
       "id": "L39",
       "background": {
         "mode": "plate",
-        "plate": "scenes/L39.png",
-        "subtract": "the marker banner reading '20,000' — leave the teeming golden guidebook-page city crowd intact and complete; the engine counter climbs to 20,000."
+        "plate": "scenes/L39.png"
       },
-      "layers": [
-        {
-          "id": "pop-count",
-          "source": "engine",
-          "kind": "counter",
-          "content": {
-            "from": 0,
-            "to": 20000
-          },
-          "anchor": "and twenty thousand people"
-        }
-      ]
+      "layers": []
     },
     {
       "id": "L40",
@@ -542,21 +616,87 @@
       "id": "L42",
       "background": {
         "mode": "plate",
-        "plate_prompt": "The SAME closed leather-bound Poyais guidebook floating upright alone in calm warm negative space, its cover marker-lettered 'A GUIDE TO POYAIS' — exactly the closed book from the opening frame — with NO stars on the cover, the cover clean and complete. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline, warm cel shading with genuine depth; 16:9. (Derived from L42 still_prompt minus the five red stars, which are the appear cutout. Match the guidebook prop canonical.)"
+        "plate": "plates/L42.png"
       },
       "layers": [
         {
-          "id": "stars",
+          "id": "star-1",
           "source": "cutout",
-          "cutout_prompt": "A horizontal row of five bold red five-pointed marker stars, hand-drawn, in the red accent #d7402b, isolated on a plain flat pale background with no surface under it, framed for a clean cut-out. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline.",
+          "reuse": "cutouts/L42-star.png",
+          "cutout_prompt": "(reused single red stamp-register star — assets/r9-staging/E2/L42-star.png)",
+          "animation": {
+            "type": "appear",
+            "style": "slam",
+            "at": [
+              0.32,
+              0.4
+            ],
+            "at_s": 0.15,
+            "height_frac": 0.13
+          }
+        },
+        {
+          "id": "star-2",
+          "source": "cutout",
+          "reuse": "cutouts/L42-star.png",
+          "cutout_prompt": "(reused single red stamp-register star)",
+          "animation": {
+            "type": "appear",
+            "style": "slam",
+            "at": [
+              0.41,
+              0.4
+            ],
+            "at_s": 0.28,
+            "height_frac": 0.13
+          }
+        },
+        {
+          "id": "star-3",
+          "source": "cutout",
+          "reuse": "cutouts/L42-star.png",
+          "cutout_prompt": "(reused single red stamp-register star)",
           "animation": {
             "type": "appear",
             "style": "slam",
             "at": [
               0.5,
-              0.42
+              0.4
             ],
-            "anchor": "The ultimate five-star experience"
+            "at_s": 0.41,
+            "height_frac": 0.13
+          }
+        },
+        {
+          "id": "star-4",
+          "source": "cutout",
+          "reuse": "cutouts/L42-star.png",
+          "cutout_prompt": "(reused single red stamp-register star)",
+          "animation": {
+            "type": "appear",
+            "style": "slam",
+            "at": [
+              0.59,
+              0.4
+            ],
+            "at_s": 0.54,
+            "height_frac": 0.13
+          }
+        },
+        {
+          "id": "star-5",
+          "source": "cutout",
+          "reuse": "cutouts/L42-star.png",
+          "cutout_prompt": "(reused single red stamp-register star)",
+          "animation": {
+            "type": "appear",
+            "style": "slam",
+            "at": [
+              0.68,
+              0.4
+            ],
+            "at_s": 0.67,
+            "height_frac": 0.13
           }
         }
       ]
@@ -579,7 +719,8 @@
               0.5,
               0.5
             ],
-            "anchor": "like Poyais itself, didn't exist"
+            "anchor": "like Poyais itself, didn't exist",
+            "height_frac": 0.3
           }
         }
       ]
@@ -588,24 +729,9 @@
       "id": "L44",
       "background": {
         "mode": "plate",
-        "plate_prompt": "MacGregor (LEFT) stands gesturing toward the real Captain Strangeways figure (RIGHT) like a showman presenting his creation, the dreary empty grey-green swamp stretching behind them both — the scene clean and complete with NO stamp anywhere. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline, warm cel shading with genuine depth; 16:9. (Derived from L44 still_prompt minus the red FICTION stamp over Strangeways, which is the appear cutout. Seed MacGregor and Strangeways as their canonical figures.)"
+        "plate": "scenes/L44.png"
       },
-      "layers": [
-        {
-          "id": "fiction-stamp",
-          "source": "cutout",
-          "cutout_prompt": "A bold red diagonal 'FICTION' rubber-stamp, the word FICTION hand-lettered in marker at a diagonal, in the red accent #d7402b, isolated on a plain flat pale background with no surface under it, framed for a clean cut-out. Legible, correctly spelled FICTION.",
-          "animation": {
-            "type": "appear",
-            "style": "slam",
-            "at": [
-              0.7,
-              0.45
-            ],
-            "anchor": "He was invented by MacGregor"
-          }
-        }
-      ]
+      "layers": []
     },
     {
       "id": "L45",
@@ -627,51 +753,17 @@
       "id": "L47",
       "background": {
         "mode": "plate",
-        "plate": "scenes/L47.png",
-        "subtract": "the 'POYAIS OFFICE' shopfront pins/signs — leave a clean complete aged map of Europe with no office markers; the engine reveal pops the offices (London/Edinburgh/Paris) on."
+        "plate": "scenes/L47.png"
       },
-      "layers": [
-        {
-          "id": "offices",
-          "source": "engine",
-          "kind": "reveal",
-          "content": {
-            "items": [
-              {
-                "text": "London"
-              },
-              {
-                "text": "Edinburgh"
-              },
-              {
-                "text": "Paris"
-              }
-            ],
-            "mark": "pop"
-          },
-          "anchor": "He opened offices across"
-        }
-      ]
+      "layers": []
     },
     {
       "id": "L48",
       "background": {
         "mode": "plate",
-        "plate": "scenes/L48.png",
-        "subtract": "the marker price-card reading '2 SHILLINGS / ACRE' on the counter — leave the counter surface reading complete between the clerk and buyer; the engine stat-card supplies 2 shillings an acre."
+        "plate": "scenes/L48.png"
       },
-      "layers": [
-        {
-          "id": "price",
-          "source": "engine",
-          "kind": "stat-card",
-          "content": {
-            "text": "2 shillings",
-            "sub": "AN ACRE"
-          },
-          "anchor": "for about two shillings"
-        }
-      ]
+      "layers": []
     },
     {
       "id": "L49",
@@ -701,21 +793,9 @@
       "id": "L52",
       "background": {
         "mode": "plate",
-        "plate": "scenes/L52.png",
-        "subtract": "the marker tally reading '500' at the foot of the ledger — leave the long signup ledger packed with signatures reading complete; the engine counter climbs to 500."
+        "plate": "scenes/L52.png"
       },
-      "layers": [
-        {
-          "id": "signups",
-          "source": "engine",
-          "kind": "counter",
-          "content": {
-            "from": 0,
-            "to": 500
-          },
-          "anchor": "around five hundred people"
-        }
-      ]
+      "layers": []
     },
     {
       "id": "L53",
@@ -729,21 +809,9 @@
       "id": "L54",
       "background": {
         "mode": "plate",
-        "plate": "scenes/L54.png",
-        "subtract": "the marker tag reading '~70' — leave the crowded ship deck of settlers reading complete; the engine counter climbs to 70."
+        "plate": "scenes/L54.png"
       },
-      "layers": [
-        {
-          "id": "aboard",
-          "source": "engine",
-          "kind": "counter",
-          "content": {
-            "from": 0,
-            "to": 70
-          },
-          "anchor": "with about seventy settlers"
-        }
-      ]
+      "layers": []
     },
     {
       "id": "L55",
@@ -764,45 +832,18 @@
     {
       "id": "L57",
       "background": {
-        "mode": "delta-chain",
-        "plate": "scenes/L53.png"
+        "mode": "plate",
+        "plate": "scenes/L57.png"
       },
-      "layers": [
-        {
-          "id": "ship2",
-          "source": "cutout",
-          "cutout_prompt": "A second tall-masted emigrant sailing ship, hull marker-lettered 'Kennersley Castle', clean side profile with the bow pointed out to sea, a green cross Poyais flag (bold green cross on a pale field) flying at the top of its mainmast, isolated on a plain flat pale background with no surface under it, framed for a clean cut-out. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline.",
-          "animation": {
-            "type": "appear",
-            "style": "pop",
-            "at": [
-              0.7,
-              0.55
-            ],
-            "anchor": "A second ship"
-          }
-        }
-      ]
+      "layers": []
     },
     {
       "id": "L58",
       "background": {
         "mode": "plate",
-        "plate": "scenes/L58.png",
-        "subtract": "the marker tag reading '~200' — leave the packed Kennersley Castle deck reading complete; the engine counter climbs to 200."
+        "plate": "scenes/L58.png"
       },
-      "layers": [
-        {
-          "id": "more",
-          "source": "engine",
-          "kind": "counter",
-          "content": {
-            "from": 0,
-            "to": 200
-          },
-          "anchor": "carrying almost two hundred"
-        }
-      ]
+      "layers": []
     },
     {
       "id": "L59",
@@ -814,38 +855,19 @@
         {
           "id": "arrow",
           "source": "cutout",
-          "cutout_prompt": "A single fat bold arrow pointing to the RIGHT, in the red accent #d7402b, clean and simple, isolated on a plain flat pale background with no surface under it, framed for a clean cut-out. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline.",
+          "cutout_prompt": "A single fat bold arrow pointing to the RIGHT, in the red accent #d7402b, clean and simple, isolated on a plain flat magenta background with no surface under it, framed for a clean cut-out. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline.",
           "animation": {
-            "type": "appear",
-            "style": "pop",
-            "at": [
+            "type": "slide",
+            "from_edge": "left",
+            "to": [
               0.5,
               0.5
             ],
-            "anchor": "savings into Poyais dollars"
-          }
-        }
-      ]
-    },
-    {
-      "id": "L60",
-      "background": {
-        "mode": "plate",
-        "plate_prompt": "A big pile of real gold coins on the LEFT and a big stack and fan of paper Poyais dollars (marker-lettered 'POYAIS') on the RIGHT with a fat red arrow pointing from the coins to the dollars between them, nothing else in frame. The scene reads complete with NO glow or highlight ring around anything. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline, flat cel colours, warm cel shading; 16:9. (Derived from L60 still_prompt minus the glow ring the cutout supplies.)"
-      },
-      "layers": [
-        {
-          "id": "glow",
-          "source": "cutout",
-          "cutout_prompt": "A bright glowing highlight ring — a clean circular emphasis halo, hollow centre — in the red accent #d7402b, isolated on a plain flat pale background with no surface under it, framed for a clean cut-out. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline.",
-          "animation": {
-            "type": "appear",
-            "style": "pop",
-            "at": [
-              0.72,
-              0.5
-            ],
-            "anchor": "so they'd have local money"
+            "dur_s": 1.0,
+            "easing": "ease-out",
+            "anchor": "savings into Poyais dollars",
+            "height_frac": 0.28,
+            "anchor_origin": "center"
           }
         }
       ]
@@ -861,42 +883,10 @@
     {
       "id": "L62",
       "background": {
-        "mode": "delta-chain",
-        "plate": "scenes/L53.png"
+        "mode": "plate",
+        "plate": "scenes/L62.png"
       },
-      "layers": [
-        {
-          "id": "macgregor",
-          "source": "cutout",
-          "cutout_prompt": "MacGregor, full standing figure, arms crossed with a deadpan air, in his pinned crimson gold-frogged hussar coat and gold order-star medal, standing beside a low locked wooden treasure chest overflowing with real gold coins, isolated on a plain flat pale background with no surface under it, framed for a clean cut-out. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline. Seed off refs/macgregor/macgregor-base.png.",
-          "animation": {
-            "type": "slide",
-            "from_edge": "bottom",
-            "to": [
-              0.28,
-              0.78
-            ],
-            "dur_s": 1.4,
-            "easing": "ease-out",
-            "anchor": "before the ships had",
-            "height_frac": 0.6
-          }
-        },
-        {
-          "id": "dollars",
-          "source": "cutout",
-          "cutout_prompt": "A scatter of paper Poyais dollar banknotes (marker-lettered 'POYAIS') caught fluttering and flying through the air on the breeze, isolated on a plain flat pale background with no surface under it, framed for a clean cut-out. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline.",
-          "animation": {
-            "type": "appear",
-            "style": "pop",
-            "at": [
-              0.62,
-              0.4
-            ],
-            "anchor": "even left the dock"
-          }
-        }
-      ]
+      "layers": []
     },
     {
       "id": "L63",
@@ -918,20 +908,9 @@
       "id": "L65",
       "background": {
         "mode": "plate",
-        "plate": "scenes/L65.png",
-        "subtract": "the marker sum '£200,000' on the top bond certificate — leave the fan of engraved 'POYAIS' bond certificates and seal reading complete; the engine stat-card supplies £200,000."
+        "plate": "scenes/L65.png"
       },
-      "layers": [
-        {
-          "id": "bonds",
-          "source": "engine",
-          "kind": "stat-card",
-          "content": {
-            "text": "£200,000"
-          },
-          "anchor": "worth around two hundred thousand"
-        }
-      ]
+      "layers": []
     },
     {
       "id": "L66",
@@ -953,7 +932,7 @@
       "id": "L68",
       "background": {
         "mode": "plate",
-        "plate_prompt": "A single ornate Poyais bond certificate lying flat on a counter, several buyers' hands closing in toward it from the edges, heavy negative space around it. The certificate reads as complete and clean — NO stamp mark on it yet. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline, warm cel shading with genuine depth; 16:9. (Derived from L68 still_prompt minus the red SOLD stamp.)"
+        "plate_prompt": "A bustling bond-exchange interior, warm wood-toned. Dead centre of the frame a broker stands facing the viewer holding a single bond certificate up in both hands at chest height — the certificate is the exact canonical Poyais bond design (aged cream parchment, ornate double-ruled engraved border, top banner marker-lettered 'POYAIS' exactly once, small dark-red wax seal at lower right, blank engraved lines otherwise). Pressing in tightly from every side is a dense eager crowd of buyers, arms thrust up waving fistfuls of pale banknotes, clamouring to buy at once. The certificate stays clean and unobstructed at the centre — NO stamp on it (the red SOLD stamp arrives as an overlay cutout). Every figure on the squat house rig (large round head, short compact body, dot eyes, one small mouth, NO nose, NO ears, four-digit hands), varied 1820s coats and hats. Fore/mid/background depth, filled edge-to-edge. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline; the only text is the single 'POYAIS' on the certificate banner; no photorealism, no narrator, no logos; 16:9. (Derived from L68 still_prompt minus the red SOLD stamp.)"
       },
       "layers": [
         {
@@ -1016,37 +995,80 @@
       "id": "L74",
       "background": {
         "mode": "plate",
-        "plate": "scenes/L74.png"
+        "plate": "plates/L74.png"
       },
-      "layers": []
+      "layers": [
+        {
+          "id": "crown",
+          "source": "cutout",
+          "cutout_prompt": "A large golden Spanish royal crown SPLIT cleanly in two: its two halves tipping apart with a jagged break straight down the middle, a thin red crack line marking the split; ornate gold band set with deep-red jewels and small crosses on top, warm gold with flat cel shading. The broken crown alone, isolated on a solid flat magenta background, no surface under it, framed for a clean cut-out. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline. No text anywhere.",
+          "animation": {
+            "type": "appear",
+            "style": "slam",
+            "at": [
+              0.3,
+              0.24
+            ],
+            "anchor": "breaking away",
+            "height_frac": 0.4
+          }
+        }
+      ]
     },
     {
       "id": "L75",
       "background": {
         "mode": "plate",
-        "plate": "scenes/L75.png",
-        "subtract": "the marker country-name labels 'COLOMBIA', 'PERU' and 'CHILE' on the map — leave a clean complete map of South America with the three new-nation regions outlined but UNLABELLED; the engine reveal pops Colombia, Peru, Chile on."
+        "plate": "plates/L75.png"
       },
       "layers": [
         {
-          "id": "new-nations",
-          "source": "engine",
-          "kind": "reveal",
-          "content": {
-            "items": [
-              {
-                "text": "Colombia"
-              },
-              {
-                "text": "Peru"
-              },
-              {
-                "text": "Chile"
-              }
+          "id": "colombia",
+          "source": "cutout",
+          "reuse": "cutouts/L75-colombia.png",
+          "animation": {
+            "type": "appear",
+            "style": "pop",
+            "at": [
+              0.23,
+              0.92
             ],
-            "mark": "pop"
-          },
-          "anchor": "and all at once a whole run"
+            "anchor_origin": "bottom",
+            "height_frac": 0.6,
+            "anchor": "Colombia, Peru, Chile, showed"
+          }
+        },
+        {
+          "id": "peru",
+          "source": "cutout",
+          "reuse": "cutouts/L75-peru.png",
+          "animation": {
+            "type": "appear",
+            "style": "pop",
+            "at": [
+              0.41,
+              0.92
+            ],
+            "anchor_origin": "bottom",
+            "height_frac": 0.6,
+            "anchor": "Peru, Chile, showed up"
+          }
+        },
+        {
+          "id": "chile",
+          "source": "cutout",
+          "reuse": "cutouts/L75-chile.png",
+          "animation": {
+            "type": "appear",
+            "style": "pop",
+            "at": [
+              0.77,
+              0.92
+            ],
+            "anchor_origin": "bottom",
+            "height_frac": 0.6,
+            "anchor": "Chile, showed up in"
+          }
         }
       ]
     },
@@ -1078,14 +1100,15 @@
           "source": "cutout",
           "cutout_prompt": "A single large iridescent soap bubble with a faint rainbow sheen, the year '1820s' hand-lettered in marker floating inside it, isolated on a plain flat pale background with no surface under it, framed for a clean cut-out. Legible, correctly spelled '1820s'. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline.",
           "animation": {
-            "type": "appear",
-            "style": "pop",
+            "type": "bob",
+            "amp": 8,
+            "period": 2.4,
             "at": [
               0.5,
               0.42
             ],
-            "anchor": "It was the dot-com bubble",
-            "height_frac": 0.6
+            "height_frac": 0.6,
+            "anchor_origin": "center"
           }
         }
       ]
@@ -1093,25 +1116,10 @@
     {
       "id": "L79",
       "background": {
-        "mode": "delta-chain",
+        "mode": "plate",
         "plate": "scenes/L76.png"
       },
-      "layers": [
-        {
-          "id": "fine-print",
-          "source": "cutout",
-          "cutout_prompt": "A small scroll of dense, unreadable 'fine print' paper covered in tiny lines of text, with a bold red hand-drawn circle looping around it (the red accent #d7402b), isolated on a plain flat pale background with no surface under it, framed for a clean cut-out. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline.",
-          "animation": {
-            "type": "appear",
-            "style": "pop",
-            "at": [
-              0.82,
-              0.72
-            ],
-            "anchor": "nobody reading the fine print"
-          }
-        }
-      ]
+      "layers": []
     },
     {
       "id": "L80",
@@ -1143,9 +1151,70 @@
       "id": "L81",
       "background": {
         "mode": "plate",
-        "plate": "scenes/L81.png"
+        "plate": "plates/L75.png"
       },
-      "layers": []
+      "layers": [
+        {
+          "id": "colombia",
+          "source": "cutout",
+          "reuse": "cutouts/L75-colombia.png",
+          "animation": {
+            "type": "appear",
+            "style": "fade",
+            "at": [
+              0.23,
+              0.92
+            ],
+            "anchor_origin": "bottom",
+            "height_frac": 0.6
+          }
+        },
+        {
+          "id": "peru",
+          "source": "cutout",
+          "reuse": "cutouts/L75-peru.png",
+          "animation": {
+            "type": "appear",
+            "style": "fade",
+            "at": [
+              0.41,
+              0.92
+            ],
+            "anchor_origin": "bottom",
+            "height_frac": 0.6
+          }
+        },
+        {
+          "id": "macgregor",
+          "source": "cutout",
+          "reuse": "cutouts/L81-macgregor.png",
+          "animation": {
+            "type": "appear",
+            "style": "fade",
+            "at": [
+              0.59,
+              0.92
+            ],
+            "anchor_origin": "bottom",
+            "height_frac": 0.66
+          }
+        },
+        {
+          "id": "chile",
+          "source": "cutout",
+          "reuse": "cutouts/L75-chile.png",
+          "animation": {
+            "type": "appear",
+            "style": "fade",
+            "at": [
+              0.77,
+              0.92
+            ],
+            "anchor_origin": "bottom",
+            "height_frac": 0.6
+          }
+        }
+      ]
     },
     {
       "id": "L82",
@@ -1167,20 +1236,9 @@
       "id": "L84",
       "background": {
         "mode": "plate",
-        "plate": "scenes/L84.png",
-        "subtract": "the marker tag reading 'worthless' beside the fallen bond — leave the single Poyais bond settled in the gutter among the wreckage reading complete with no tag; the engine stat-card supplies $0."
+        "plate": "scenes/L84.png"
       },
-      "layers": [
-        {
-          "id": "value",
-          "source": "engine",
-          "kind": "stat-card",
-          "content": {
-            "text": "$0"
-          },
-          "anchor": "worth almost nothing by the"
-        }
-      ]
+      "layers": []
     },
     {
       "id": "L85",
@@ -1210,9 +1268,55 @@
       "id": "L88",
       "background": {
         "mode": "plate",
-        "plate": "scenes/L88.png"
+        "plate": "scenes/L87.png"
       },
-      "layers": []
+      "layers": [
+        {
+          "id": "ghost-city",
+          "source": "cutout",
+          "reuse": "cutouts/L88-ghost-city.png",
+          "animation": {
+            "type": "appear",
+            "style": "pop",
+            "at": [
+              0.2,
+              0.27
+            ],
+            "height_frac": 0.36,
+            "anchor": "No city"
+          }
+        },
+        {
+          "id": "ghost-port",
+          "source": "cutout",
+          "reuse": "cutouts/L88-ghost-port.png",
+          "animation": {
+            "type": "appear",
+            "style": "pop",
+            "at": [
+              0.5,
+              0.3
+            ],
+            "height_frac": 0.34,
+            "anchor": "no port"
+          }
+        },
+        {
+          "id": "ghost-cathedral",
+          "source": "cutout",
+          "reuse": "cutouts/L88-ghost-cathedral.png",
+          "animation": {
+            "type": "appear",
+            "style": "pop",
+            "at": [
+              0.78,
+              0.28
+            ],
+            "height_frac": 0.42,
+            "anchor": "no cathedral"
+          }
+        }
+      ]
     },
     {
       "id": "L89",
@@ -1240,19 +1344,19 @@
         {
           "id": "mosquito-king",
           "source": "cutout",
-          "cutout_prompt": "The Mosquito Coast king in a gold crown and an ornate red-and-gold patterned ceremonial robe (his identity tag, same signifiers as his L18 introduction), full standing figure walking leftward, isolated on a plain flat pale background with no surface under it, framed for a clean cut-out. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline.",
           "animation": {
             "type": "slide",
             "from_edge": "right",
             "to": [
-              0.6,
-              0.85
+              0.5,
+              0.8
             ],
             "dur_s": 1.6,
             "easing": "ease-out",
             "anchor": "was the local king",
-            "height_frac": 0.55
-          }
+            "height_frac": 0.47
+          },
+          "reuse": "cutouts/L91-deed-king.png"
         }
       ]
     },
@@ -1276,17 +1380,55 @@
       "id": "L94",
       "background": {
         "mode": "plate",
-        "plate": "scenes/L94.png"
+        "plate": "plates/L94.png"
       },
-      "layers": []
-    },
-    {
-      "id": "L95",
-      "background": {
-        "mode": "plate",
-        "plate": "scenes/L95.png"
-      },
-      "layers": []
+      "layers": [
+        {
+          "id": "shelter",
+          "source": "cutout",
+          "reuse": "cutouts/L94-shelter.png",
+          "animation": {
+            "type": "appear",
+            "style": "pop",
+            "at": [
+              0.2,
+              0.6
+            ],
+            "height_frac": 0.42,
+            "anchor": "No shelter"
+          }
+        },
+        {
+          "id": "supplies",
+          "source": "cutout",
+          "reuse": "cutouts/L94-supplies.png",
+          "animation": {
+            "type": "appear",
+            "style": "pop",
+            "at": [
+              0.5,
+              0.62
+            ],
+            "height_frac": 0.34,
+            "anchor": "no supplies"
+          }
+        },
+        {
+          "id": "help",
+          "source": "cutout",
+          "reuse": "cutouts/L94-help.png",
+          "animation": {
+            "type": "appear",
+            "style": "pop",
+            "at": [
+              0.8,
+              0.58
+            ],
+            "height_frac": 0.4,
+            "anchor": "no help"
+          }
+        }
+      ]
     },
     {
       "id": "L96",
@@ -1353,14 +1495,6 @@
       "layers": []
     },
     {
-      "id": "L104",
-      "background": {
-        "mode": "plate",
-        "plate": "scenes/L104.png"
-      },
-      "layers": []
-    },
-    {
       "id": "L105",
       "background": {
         "mode": "plate",
@@ -1379,8 +1513,8 @@
     {
       "id": "L107",
       "background": {
-        "mode": "delta-chain",
-        "plate": "scenes/L105.png"
+        "mode": "plate",
+        "plate": "scenes/L107.png"
       },
       "layers": [
         {
@@ -1397,21 +1531,6 @@
             "anchor": "blaming the officer MacGregor",
             "height_frac": 0.5
           }
-        },
-        {
-          "id": "anger-mark",
-          "source": "cutout",
-          "cutout_prompt": "A single bright red comic ANGER-MARK symbol — the four-lobed cross-shaped 'vein-pop' anger glyph (four short right-angled red lines meeting at a cross), NOT an emoji face, no face, just the symbol, isolated on a plain flat pale background with no surface under it, framed for a clean cut-out. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline, the mark in the locked red #d7402b.",
-          "animation": {
-            "type": "appear",
-            "style": "pop",
-            "at": [
-              0.6,
-              0.45
-            ],
-            "anchor": "left in charge on",
-            "height_frac": 0.12
-          }
         }
       ]
     },
@@ -1420,14 +1539,6 @@
       "background": {
         "mode": "plate",
         "plate": "scenes/L108.png"
-      },
-      "layers": []
-    },
-    {
-      "id": "L109",
-      "background": {
-        "mode": "plate",
-        "plate": "scenes/L109.png"
       },
       "layers": []
     },
@@ -1451,33 +1562,35 @@
       "id": "L112",
       "background": {
         "mode": "plate",
-        "plate_prompt": "A large framed wall map of Europe in the house style — Britain at the upper left, France and Italy labelled, warm study lighting, MacGregor standing beside it with one arm raised pointing at 'ITALY'. The map reads as a complete, finished chart with NO dotted travel routes drawn anywhere (the engine draws the routes). Map labels 'ITALY' and 'PARIS' legible in marker. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline, warm cel shading with genuine depth; 16:9. (Derived from L112 still_prompt minus the two dotted routes, which the engine draws.)"
+        "plate": "plates/L112.png"
       },
       "layers": [
         {
           "id": "route-italy",
           "source": "cutout",
-          "cutout_prompt": "A small horse-drawn travelling stagecoach, clean side profile, moving rightward, isolated on a plain flat pale background with no surface under it, framed for a clean cut-out. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline.",
+          "reuse": "cutouts/L112-route-paris.png",
           "animation": {
             "type": "path",
             "points": [
               [
-                0.5,
-                0.35
+                0.4,
+                0.32
               ],
               [
-                0.62,
-                0.5
+                0.56,
+                0.55
               ],
               [
-                0.74,
-                0.64
+                0.67,
+                0.73
               ]
             ],
             "dur_s": 2.0,
             "draw_line": true,
             "anchor": "wife to Italy for",
-            "height_frac": 0.1
+            "height_frac": 0.1,
+            "dot_count": 42,
+            "dot_r": 4
           }
         },
         {
@@ -1488,22 +1601,24 @@
             "type": "path",
             "points": [
               [
-                0.5,
-                0.5
+                0.4,
+                0.32
               ],
               [
-                0.49,
-                0.38
+                0.44,
+                0.41
               ],
               [
                 0.47,
-                0.27
+                0.49
               ]
             ],
             "dur_s": 1.6,
             "draw_line": true,
             "anchor": "He went to Paris",
-            "height_frac": 0.1
+            "height_frac": 0.1,
+            "dot_count": 14,
+            "dot_r": 4
           }
         }
       ]
@@ -1560,9 +1675,36 @@
       "id": "L120",
       "background": {
         "mode": "plate",
-        "plate": "scenes/L120.png"
+        "plate": "plates/L15.png"
       },
-      "layers": []
+      "layers": [
+        {
+          "id": "macgregor",
+          "source": "cutout",
+          "reuse": "cutouts/L17-macgregor.png",
+          "animation": {
+            "type": "path",
+            "points": [
+              [
+                0.8,
+                0.44
+              ],
+              [
+                0.48,
+                0.36
+              ],
+              [
+                0.17,
+                0.35
+              ]
+            ],
+            "dur_s": 2.0,
+            "draw_line": true,
+            "anchor": "moved to Venezuela",
+            "height_frac": 0.18
+          }
+        }
+      ]
     },
     {
       "id": "L121",
@@ -1603,6 +1745,45 @@
         "plate": "scenes/L125.png"
       },
       "layers": []
+    }
+  ],
+  "post_vo_hold_s": 4.0,
+  "cards": [
+    {
+      "text": "How to Invent a Country",
+      "anchor": "So what happened",
+      "hold_s": 2.0,
+      "fade_s": 0.15
+    },
+    {
+      "text": "How to Sell a Fake Country",
+      "anchor": "So, to sell his country",
+      "hold_s": 2.0,
+      "fade_s": 0.15
+    },
+    {
+      "text": "How to Sell a Fake Country pt.2",
+      "anchor": "He borrowed money in the name",
+      "hold_s": 2.0,
+      "fade_s": 0.15
+    },
+    {
+      "text": "How it Fell Apart",
+      "anchor": "The new Latin American bonds collapsed altogether",
+      "hold_s": 2.0,
+      "fade_s": 0.15
+    },
+    {
+      "text": "The Getaway",
+      "anchor": "After the news broke in London",
+      "hold_s": 2.0,
+      "fade_s": 0.15
+    },
+    {
+      "text": "Thanks for Watching",
+      "anchor": "Thanks for watching",
+      "end_card": true,
+      "fade_s": 0.2
     }
   ]
 }

@@ -40,7 +40,7 @@ from render import (  # noqa: E402  (shared semantics — see docstring)
 )
 from motion_plan import cutout_layer_ids  # noqa: E402  (scene-gate exemption for layered shots)
 from build_audio import build_audio_spec, load_audio_tokens  # noqa: E402  (deterministic audio realizer)
-from breath import shift_timings, splice_silence  # noqa: E402  (render-time pause splicing for cue pauses)
+from breath import shift_timings, splice_silence, sentence_gaps, merge_gaps  # noqa: E402  (pause splicing + universal sentence law)
 from audio_cues import load_cues, resolve_cues, cue_pause_gaps, cue_role_events  # noqa: E402  (2b authored cues)
 from music_cues import load_music_cues, resolve_music_cues  # noqa: E402  (3B authored music placement)
 from audio_plan import load_audio_plan, split_plan  # noqa: E402  (unified audio plan, additive)
@@ -50,9 +50,10 @@ ENGINE_DIR = Path(__file__).parent.parent / "engine"
 FPS = 30
 RES_LONG = {"width": 1920, "height": 1080}
 RES_SHORT = {"width": 1080, "height": 1920}
-# Camera is LOCKED — build_motion never derives a move (the engine keeps CameraStage for a future
-# manual/authored move; we always emit locked). Entrances are always hard cuts (the old whip entrance
-# was retired 2026-07-12).
+# Camera is LOCKED by default — build_motion derives no move. The motion plan MAY author a per-shot
+# camera EXCEPTION (a specific human authorization; the engine's CameraStage renders it) — see
+# resolve_plan_camera + the camera-lock guard in build_piece_spec. Entrances are always hard cuts (the
+# old whip entrance was retired 2026-07-12).
 
 
 def _dur_or(v, default=4.0):
@@ -66,9 +67,35 @@ def _dur_or(v, default=4.0):
 
 
 def locked_camera(is_card: bool = False) -> dict:
-    """The camera is always locked (no move derived). A future camera-planning path can emit an explicit
-    move; `is_card` is accepted for call-site symmetry (cards are dead-static, same as everything else)."""
+    """The camera is locked by DEFAULT (no move derived). The motion plan may author a per-shot camera
+    exception (resolve_plan_camera); `is_card` is accepted for call-site symmetry (cards are dead-static,
+    same as everything else)."""
     return {"move": "none", "pan": None, "intensity": 0.0}
+
+
+# The per-shot camera is LOCKED by default. The motion plan MAY author a camera EXCEPTION on a shot —
+# each one a specific human authorization (see that shot's camera._note). The plan's move vocabulary
+# maps to the engine's camera.move token; the engine reads pull_from from motion-tokens.json + `intensity`.
+_PLAN_CAMERA_MOVES = {"pull": "pull-back"}
+
+
+def resolve_plan_camera(cam: dict, sid: str) -> dict:
+    """Translate a plan-authored per-shot `camera` into an engine camera token. `move:"pull"` -> the
+    engine's pull-back zoom-out carrying `intensity` (default 1.0) and any `pan`. An unknown move is a
+    HARD ERROR naming the shot — an authored move must never be silently locked over."""
+    move = (cam or {}).get("move")
+    engine_move = _PLAN_CAMERA_MOVES.get(move)
+    if engine_move is None:
+        raise SystemExit(f"{sid}: unknown authored camera move {move!r} in the motion plan "
+                         f"(known: {sorted(_PLAN_CAMERA_MOVES)}). Fix shots.motion.json's "
+                         f"camera.move, or extend _PLAN_CAMERA_MOVES.")
+    return {"move": engine_move, "pan": cam.get("pan"), "intensity": float(cam.get("intensity", 1.0))}
+
+
+def authored_camera_ids(plan) -> set:
+    """Shot ids whose plan entry explicitly authors a per-shot `camera` (the locked-camera exceptions).
+    Empty when there is no plan."""
+    return {s.get("id") for s in (plan or {}).get("shots", []) if s.get("camera")}
 
 
 def derive_shots(shots, scene_files, durations_s, starts_s, assets_dir, tokens=None):
@@ -89,11 +116,6 @@ def derive_shots(shots, scene_files, durations_s, starts_s, assets_dir, tokens=N
             placeholder = {"kind": kind, "label": (shot.get("stock_query") or shot.get("notes")
                                                    or shot.get("vo_ref") or shot.get("id", ""))[:80]}
 
-        overlays = []
-        ost = (shot.get("on_screen_text") or "").strip()
-        if ost:
-            overlays.append({"type": "text", "text": ost, "at_s": round(starts_s[i], 3)})
-
         # Hard cut always — the whip entrance was retired (2026-07-12).
         out.append({
             "id": shot.get("id", f"S{i:03d}"),
@@ -107,39 +129,9 @@ def derive_shots(shots, scene_files, durations_s, starts_s, assets_dir, tokens=N
             "camera": locked_camera(is_card=placeholder is not None),
             "entrance": "cut",
             "idle": "bob" if image else "none",
-            "overlays": overlays,
-            "transform_note": "",
+            "overlays": [],
         })
     return out
-
-
-_DEVICE_KIND_TO_TYPE = {
-    "stat-card": "stat-card", "counter": "counter", "meter": "meter",
-    "chapter-card": "chapter-card", "definition-card": "definition-card",
-    "reveal": "progressive-reveal",
-}
-
-
-def _device_overlay(layer, start_s, duration_s):
-    """Map a shots.motion.json engine device-layer to a motion.json overlay dict (at_s = shot start).
-    Reveal items stagger evenly across the shot (v1); other kinds copy content through verbatim
-    (content fields mirror the engine OverlayView props)."""
-    kind = layer.get("kind")
-    content = layer.get("content") or {}
-    otype = _DEVICE_KIND_TO_TYPE[kind]
-    ov = {"type": otype, "at_s": round(start_s, 3)}
-    if otype == "progressive-reveal":
-        items = content.get("items") or []
-        n = max(1, len(items))
-        span = duration_s if duration_s and duration_s > 0 else float(n)
-        step = span / n
-        ov["items"] = [{"text": (it.get("text") if isinstance(it, dict) else str(it)),
-                        "at_s": round(start_s + i * step, 3)} for i, it in enumerate(items)]
-        ov["mark"] = content.get("mark", "pop")
-    else:
-        for k, v in content.items():
-            ov[k] = v
-    return ov
 
 
 def _resolve_cutout_anim(anim, shot_start_s, word_timings):
@@ -160,13 +152,10 @@ def _resolve_cutout_anim(anim, shot_start_s, word_timings):
 def apply_motion_plan(shots, plan, assets_dir=None, allow_missing=False, word_timings=None):
     """Merge a shots.motion.json layer spec into the derived motion shots, by id.
     Cutout layers -> render paths (plates/<id>.png + cutouts/<id>-<layer>.png) on shot['layers'].
-    Engine device-layers (stat-card/counter/meter/chapter-card/definition-card/reveal) -> shot['overlays']
-    (rendered by OverlayView; at_s = the shot's start). An engine 'text' (diegetic at_scene) layer is
-    DEFERRED and skipped with a warning. Shots absent from the plan are untouched.
+    Shots absent from the plan are untouched.
     Under allow_missing, a cutout shot whose plate/cutout PNGs are not yet materialized (e.g. a
     pre-image-gen mock render) drops its cutout layers and keeps its placeholder background, mirroring
-    the scene fallback (a missing cutout would otherwise 404 the engine). Device-card overlays are
-    engine-drawn and always apply."""
+    the scene fallback (a missing cutout would otherwise 404 the engine)."""
     by_id = {s.get("id"): s for s in (plan or {}).get("shots", [])}
     for shot in shots:
         entry = by_id.get(shot.get("id"))
@@ -174,6 +163,9 @@ def apply_motion_plan(shots, plan, assets_dir=None, allow_missing=False, word_ti
             continue
         sid = shot["id"]
         start_s = shot.get("start_s", 0.0)
+        cam = entry.get("camera")   # absent -> locked default stands; present -> authored exception
+        if cam is not None:
+            shot["camera"] = resolve_plan_camera(cam, sid)
         layers = entry.get("layers", [])
         cutouts = [l for l in layers if l.get("source") == "cutout"]
         if cutouts:
@@ -181,7 +173,11 @@ def apply_motion_plan(shots, plan, assets_dir=None, allow_missing=False, word_ti
             # in-stage scene as their plate — the plan sets background.plate to scenes/<prior-id>.png, so
             # honor it. A plain layered shot has no background.plate and falls back to its generated plate.
             plate_rel = ((entry.get("background") or {}).get("plate")) or f"plates/{sid}.png"
-            cut_rels = [(l, f"cutouts/{sid}-{l['id']}.png") for l in cutouts]
+            # A `reuse` layer points at an ALREADY-materialized cutout (image-gen makes no new PNG for it),
+            # e.g. one shared MacGregor cutout held across the L15/L16/L17 map stage. Absent -> the derived
+            # per-shot path. This is the render-side of the schema's `reuse` field (lint already accepts it).
+            cut_rels = [(l, ((l.get("reuse") or "").strip() or f"cutouts/{sid}-{l['id']}.png"))
+                        for l in cutouts]
             missing = []
             if assets_dir is not None:
                 base = Path(assets_dir)
@@ -197,21 +193,121 @@ def apply_motion_plan(shots, plan, assets_dir=None, allow_missing=False, word_ti
                                    "animation": _resolve_cutout_anim(
                                        l.get("animation"), start_s, word_timings)}
                                   for l, rel in cut_rels]
-        dur = shot.get("duration_s", 0.0)
-        for l in layers:
-            if l.get("source") != "engine":
-                continue
-            kind = l.get("kind")
-            if kind in _DEVICE_KIND_TO_TYPE:
-                # Pin the card to the VO word it depicts (its `anchor`), not the shot cut —
-                # else a card whose number is spoken mid-shot pops seconds early. Fall back to
-                # the shot start when no anchor is authored or it doesn't match.
-                at = anchor_time(l.get("anchor"), word_timings)
-                shot.setdefault("overlays", []).append(
-                    _device_overlay(l, at if at is not None else start_s, dur))
-            elif kind == "text":
-                print(f"  ! {sid}/{l.get('id','?')}: diegetic at_scene text deferred - layer skipped")
+        elif not layers and (((entry.get("background") or {}).get("plate"))
+                             or ((entry.get("background") or {}).get("plate_prompt"))):
+            # Plate-only passthrough (zero cutout layers): the plan's background IS the shot's
+            # visual — an explicit plate path (a held prior scene reused as a static plate), or
+            # plates/<id>.png materialized from a plate_prompt. The engine draws shot.plate only
+            # when layers exist, so ride the normal scene-image path instead.
+            plate_rel = (entry["background"].get("plate")) or f"plates/{sid}.png"
+            if assets_dir is not None and not (Path(assets_dir) / plate_rel).exists():
+                if allow_missing:
+                    print(f"  ! {sid}: plate-only background missing ({plate_rel}) -> placeholder stands")
+                    continue
+                raise SystemExit(f"{sid}: plate-only background missing on disk: {plate_rel}")
+            # P01 (2026-07-17): a layerless delta/plate shot that HAS its own baked scene must DISPLAY
+            # it — `background.plate` is a seed-lineage/held-plate pointer, not a display override. Only
+            # fall back to the held plate when the shot resolved NO own scene (a genuine held-reuse,
+            # e.g. L79). Without this guard every layerless delta (L07/L08/L09 + L26) showed the PRIOR
+            # frame → the whole paradise chain landed one beat late.
+            if shot.get("image") is None:
+                shot["image"] = plate_rel
+                shot.pop("placeholder", None)
     return shots
+
+
+# The chapter cards are FULLY OPAQUE (they read as their own near-black scenes, nothing of the footage
+# visible), so an in-video card MUST sit entirely inside a spliced pause SILENCE or it would hide the
+# footage while narration plays. EB4 authors a `pause` cue on each in-video card anchor; the splice puts
+# a silence block on the render timeline spanning [render_anchor - gap_dur, render_anchor] (silence is
+# inserted BEFORE the anchor word). apply_cards aligns each card window to that co-located gap.
+_CARD_GAP_TOL_S = 0.05   # a card's anchor and its pause cue resolve the SAME word -> gap at_s ~= orig anchor
+
+
+def apply_cards(shots, plan, word_timings, gaps=None, orig_word_timings=None, is_short=False):
+    """P03 (2026-07-17): resolve the motion plan's chapter CARDS to on-timeline overlays + apply the end
+    card's post-VO hold. Cards are full-frame OPAQUE near-black text beats (the re-enabled ChapterCard);
+    they ride as `chapter-card` overlays, so -- unlike an inserted card SHOT -- they shift NO downstream
+    cut. Anchor-based only (no absolute seconds, so the concurrent VO re-synth can't break them).
+
+    An in-video card is OPAQUE, so it must never cover VO-speaking time: its window is ALIGNED to the
+    co-located spliced pause SILENCE (EB4 authors a ~2s `pause` cue on each in-video card anchor). The
+    silence block spans [render_anchor - gap_dur, render_anchor]; the card fills exactly that span so it
+    is up only while nothing is spoken. Matching: resolve the card anchor on the PRE-SHIFT timings
+    (`orig_word_timings`) to the same word the pause cue used, find the co-located `gaps` entry (at_s ~=
+    that word), and set the card window from the SHIFTED anchor time minus that gap's dur. No co-located
+    gap (EB4's pause missing) -> fall back to a fixed `hold_s` ending at the anchor, with a LOUD warning.
+
+    The END card (`end_card:true`) is EXEMPT -- it is opaque over the post_vo_hold tail (and covers the
+    closing VO line, by design): it runs from its anchor to the last shot's end. `post_vo_hold_s`
+    (plan-level) extends the LAST shot past the last VO word (retime does not clamp it downstream;
+    Root.tsx's max() + the music lane's piece_end pick up the longer end). Long-form only."""
+    if not plan or not shots or is_short:
+        return
+    hold = plan.get("post_vo_hold_s")
+    if hold:
+        try:
+            shots[-1]["duration_s"] = round(shots[-1]["duration_s"] + float(hold), 3)
+        except (TypeError, ValueError, KeyError):
+            print(f"  ! post_vo_hold_s ignored (bad value {hold!r})")
+    cards = plan.get("cards") or []
+    if not cards:
+        return
+    gaps = gaps or []
+    orig_word_timings = orig_word_timings if orig_word_timings is not None else word_timings
+
+    def _target(at_s, end_card):
+        if end_card:
+            return shots[-1]
+        for s in shots:
+            if s["start_s"] <= at_s < s["start_s"] + s["duration_s"]:
+                return s
+        return shots[-1]
+
+    def _colocated_gap(anchor):
+        """The spliced-silence dur co-located with this card's anchor, or None. Matched on the PRE-SHIFT
+        timeline (the pause cue's frame of reference) so the card + its pause find the same boundary."""
+        orig_at = anchor_time(anchor, orig_word_timings)
+        if orig_at is None or not gaps:
+            return None
+        g = min(gaps, key=lambda g: abs(g["at_s"] - orig_at))
+        return g["dur_s"] if abs(g["at_s"] - orig_at) <= _CARD_GAP_TOL_S else None
+
+    for c in cards:
+        text = (c.get("text") or "").strip()
+        end_card = bool(c.get("end_card"))
+        fade_s = float(c.get("fade_s", 0.15))
+        if not text:
+            print("  ! chapter card dropped -- empty text")
+            continue
+        render_at = anchor_time(c.get("anchor"), word_timings)
+        if render_at is None:
+            if end_card:                       # opaque over the whole last shot (+ post_vo_hold tail)
+                _target(0.0, True).setdefault("overlays", []).append(
+                    {"type": "chapter-card", "text": text, "at_s": round(shots[-1]["start_s"], 3),
+                     "fade_s": fade_s})
+            else:
+                print(f"  ! chapter card '{text}' dropped -- anchor {c.get('anchor')!r} did not resolve "
+                      f"to a VO word (fix the verbatim anchor in shots.motion.json cards[]).")
+            continue
+        ov = {"type": "chapter-card", "text": text, "fade_s": fade_s}
+        if end_card:
+            ov["at_s"] = round(render_at, 3)    # runs to the (extended) shot end -- opaque outro card
+        else:
+            gap_dur = _colocated_gap(c.get("anchor"))
+            if gap_dur is not None:
+                ov["at_s"] = round(max(0.0, render_at - gap_dur), 3)   # fill the silence, end on the anchor word
+                ov["dur_s"] = round(gap_dur, 3)
+            else:
+                # No spliced pause to hide inside -- an OPAQUE card here WOULD cover VO. Least-bad: end it
+                # at the anchor so the new chapter's first word is clean; warn loudly (EB4 pause missing).
+                hold_s = float(c.get("hold_s", 2.0))
+                ov["at_s"] = round(max(0.0, render_at - hold_s), 3)
+                ov["dur_s"] = round(hold_s, 3)
+                print(f"  ! chapter card '{text}': no co-located pause gap at anchor "
+                      f"{c.get('anchor')!r} -- an OPAQUE card will cover VO. Author a ~2s pause cue on "
+                      f"this anchor (audio-plan), or accept the fixed {hold_s:.1f}s hold before the beat.")
+        _target(ov["at_s"], end_card).setdefault("overlays", []).append(ov)
 
 
 def _parse_ts(t) -> float:
@@ -358,12 +454,27 @@ def build_piece_spec(piece, shots, res, is_short, video_dir, vo_manifest, args, 
     # PAUSE gaps: authored `pause` cues insert a silence gap. ONE offset point — shift the word-timings
     # here; everything downstream (retime, captions, build_audio) reads the shifted list + plays the derived
     # vo.breath.mp3. Separate from the writer's [PAUSE] prosody.
-    gaps, cue_events = [], []
+    gaps, cue_events, cues_unresolved, sentence_gap_count = [], [], 0, 0
+    orig_word_timings = word_timings   # pre-shift snapshot (== shifted when there are no gaps)
     if not args.no_audio and word_timings:
         resolved = resolve_cues(_a_cues, word_timings)     # authored cues, on the ORIGINAL timeline
-        gaps = sorted(cue_pause_gaps(resolved), key=lambda g: g["at_s"])
-        cue_events = cue_role_events(resolved, gaps)                    # SFX at the anchor, shifted past gaps
+        cues_unresolved = len(_a_cues) - len(resolved)     # loudly warned per-cue by resolve_cues (stderr)
+        if cues_unresolved:
+            print(f"  ! {cues_unresolved} audio cue(s) DROPPED — anchor phrase(s) did not resolve to any "
+                  f"VO word (see the WARNING line(s) above; fix the verbatim anchor in audio-plan.json).")
+        # Two gap sources on the ORIGINAL timeline: authored `pause` cues (source:"cue") + the UNIVERSAL
+        # sentence law (source:"sentence", R10: PAD-TO-TARGET — pad each sentence boundary's total gap up
+        # to sentence_gap_target_s, inserting only the shortfall; engine-wide, replaces the retired baked
+        # [PAUSE]/[BEAT] TTS tags and the R8-B additive +0.5s). merge_gaps SUMS co-located
+        # gaps into one so the splice filtergraph (set-dedupes cut points) and shift_timings (sums dur)
+        # AGREE. Sentence gaps shift the timeline but are excluded from dips + SFX withhold (build_audio).
+        cue_gaps = cue_pause_gaps(resolved)
+        sent_gaps = sentence_gaps(word_timings, audio_tokens)
+        sentence_gap_count = len(sent_gaps)
+        gaps = merge_gaps(cue_gaps + sent_gaps)                         # one gap per at_s, co-located dur SUMMED
+        cue_events = cue_role_events(resolved, gaps)                    # SFX at the anchor, shifted past ALL gaps
         if gaps:
+            orig_word_timings = word_timings                           # pre-shift, for card→pause-gap matching
             word_timings = shift_timings(word_timings, gaps)
             vo_s = (vo_s or 0.0) + sum(g["dur_s"] for g in gaps)
     res_mcues, res_mdry = resolve_music_cues(_m_cues_raw, _m_dry_raw, word_timings)   # on the SHIFTED timeline
@@ -410,6 +521,25 @@ def build_piece_spec(piece, shots, res, is_short, video_dir, vo_manifest, args, 
         apply_motion_plan(spec["shots"], motion_plan,
                           assets_dir=assets_dir, allow_missing=args.allow_missing,
                           word_timings=word_timings)
+        # P03: chapter cards + the end card's post-VO hold. Runs BEFORE build_audio_spec/the camera
+        # guard so the extended last-shot duration flows into the music lane's piece_end (Monkeys
+        # auto-covers the hold) and Root.tsx's total-duration max(). The in-video cards are OPAQUE, so
+        # each aligns to the co-located spliced pause silence (gaps + the pre-shift timings) — a card
+        # never covers VO-speaking time.
+        apply_cards(spec["shots"], motion_plan, word_timings, gaps=gaps,
+                    orig_word_timings=orig_word_timings, is_short=is_short)
+    # Regression guard: camera moves appear ONLY on shots whose plan entry explicitly authored one
+    # (locked-camera default + per-shot human-authorized exceptions, e.g. L44's pull). Fails BOTH ways —
+    # an uninvoked move that leaked back in (the old 18/18 drift bug), or an authored move dropped before
+    # it reached the spec. Scoped to this piece's shots (the plan spans long-form; a short lacks them).
+    _authored = authored_camera_ids(motion_plan) & {s["id"] for s in spec["shots"]}
+    _moving = {s["id"] for s in spec["shots"] if s["camera"]["move"] != "none"}
+    if _moving != _authored:
+        _leaked, _dropped = sorted(_moving - _authored), sorted(_authored - _moving)
+        raise SystemExit(
+            f"camera-lock guard ({piece}): camera moves must match plan-authored shots exactly. "
+            + (f"uninvoked move(s) on {_leaked}. " if _leaked else "")
+            + (f"authored move(s) dropped for {_dropped}." if _dropped else ""))
     audio_spec = None
     if not args.no_audio:
         audio_spec = build_audio_spec(spec["shots"], audio_tokens, word_timings or [],
@@ -422,8 +552,13 @@ def build_piece_spec(piece, shots, res, is_short, video_dir, vo_manifest, args, 
         if audio_spec.get("music_missing"):
             print(f"  ! {audio_spec['music_missing']} music segment(s) dropped — mood has no sourced "
                   f"track yet (run music-forge). Render continues.")
+        for w in audio_spec.get("sfx_tail_warnings", []):
+            lbl = w.get("anchor") or w["sfx"]
+            print(f"  ! SFX tail overshoot: {w['sfx']} @ {w['at_s']:.2f}s ('{lbl}') rings "
+                  f"{w['overshoot_s']:.2f}s past the next cut — pair a same-anchor pause (M20 tail law).")
         audio_spec = stage_audio_assets(audio_spec, video_dir, media_len_s=vo_s)
     spec["audioSpec"] = audio_spec
+    spec["breathGaps"] = gaps   # carried for the post-render splice-continuity gate (audio_checker)
     meta = {
         "scene_count": len(shots),
         "sum_scene_seconds": round(sum(scaled), 2),
@@ -431,14 +566,17 @@ def build_piece_spec(piece, shots, res, is_short, video_dir, vo_manifest, args, 
         "vo_seconds": vo_s,
         "scenes_from_files": sum(1 for f in scene_files if f is not None),
         "inline_fallback": sum(1 for f in scene_files if f is None),
-        # Regression guard: the camera is ALWAYS locked now (no move derived). Any non-zero here means
-        # a move leaked back in (the old drift bug had 18/18 shots moving).
+        # Reported tally for the guard asserted above: camera moves land ONLY on plan-authored shots.
+        # 0 on a camera-less plan; else exactly the human-authorized exceptions (e.g. L44's pull).
         "camera_moving": sum(1 for s in spec["shots"] if s["camera"]["move"] != "none"),
-        "breath_count": len(gaps),   # authored pause gaps spliced this piece (§13a-iii)
+        "breath_count": len(gaps),   # total merged silence gaps spliced this piece (authored pauses + sentence law)
+        "sentence_gap_count": sentence_gap_count,   # universal sentence-law gaps (R8-B) before co-located merge
         "audio": (None if audio_spec is None else {
             "music_segments": len(audio_spec.get("music_states", [])),
             "music_missing": audio_spec.get("music_missing", 0),
             "sfx_count": len(audio_spec.get("events", [])),
+            "cues_unresolved": cues_unresolved,   # authored anchors that failed to resolve (loudly warned)
+            "sfx_tail_overshoots": len(audio_spec.get("sfx_tail_warnings", [])),   # M20 tail audit (WARN-only)
             "dip_count": len(audio_spec.get("dips", [])),
             "thin_count": len(audio_spec.get("thin_spans", []))}),
     }
@@ -593,7 +731,9 @@ def main():
                                    tp=float(mt.get("true_peak_max_dbfs", -1.5)),
                                    lra=float(mt.get("lra", 11.0)))
                 rec.update(ln)
-                audio_report = check_audio(spec.get("audioSpec") or {}, spec.get("shots") or [], ln, mt)
+                audio_report = check_audio(spec.get("audioSpec") or {}, spec.get("shots") or [], ln, mt,
+                                           vo_path=video_dir / "assets" / "vo.mp3",
+                                           breath_gaps=spec.get("breathGaps"))
                 rec["audio"] = audio_report                       # Phase 4: deterministic, warn-not-fail
                 if not audio_report["ok"]:
                     for w in audio_report["warnings"]:

@@ -18,7 +18,12 @@ const calculateVideoMetadata: CalculateMetadataFunction<{spec: MotionSpec}> = ({
     fps: s.fps,
     width: s.width,
     height: s.height,
-    durationInFrames: Math.max(1, Math.ceil(totalS * s.fps) + 6),
+    // [Q34 2026-07-17] End EXACTLY on the last shot's Sequence end frame. Round (not ceil) matches the
+    // per-shot Sequence end in Video.tsx (round(end*fps)); the former `ceil(...) + 6` left ~7 uncovered
+    // trailing frames that rendered the root bg_default (#dfdcd5, near-white) = the end-of-video white
+    // flash. totalS already includes the +4s post-VO hold (inside the last shot) and dominates
+    // audio_seconds here, so dropping the pad clips no content or audio.
+    durationInFrames: Math.max(1, Math.round(totalS * s.fps)),
   };
 };
 

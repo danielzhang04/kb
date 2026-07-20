@@ -122,15 +122,34 @@ live once in §3 (the checklist) and §1 (the law) — this is their prompt-side
 ## 2d. CROWD-RIG clause (verbatim — write INTO a crowd scene's prompt)
 
 > The background / crowd figures are on the CROWD RIG: round cream-family heads, DOT EYES, one simple
-> consistent mouth (neutral / smile / downturn only), NO noses, NO ears, NO teeth, the same head
-> proportions, in varied era-appropriate clothing. Keep every crowd figure on this same simplified rig —
+> consistent mouth (neutral / smile / downturn only), NO noses, NO ears, NO teeth, the **EXACT same
+> squat head-to-body proportion as the base rig** — a large round head on a short compact body, NOT
+> taller/lanky — in varied era-appropriate clothing. Keep every crowd figure on this same simplified rig —
 > do not give them individual detailed faces.
+
+**The crowd rig differs from the full rig ONLY in the FACE** (dot eyes + one simple mouth vs the full
+detailed features) — **head-to-body proportion is IDENTICAL to the base rig** (human-confirmed 2026-07-16:
+"the crowd rig should be the exact same proportions as our base rig — the face is different, of course").
+So proportion is a stated FACT in every crowd/base-rig delta (the words above carry it), and anonymous
+figures rendering **taller/lankier than the base rig** are the proven drift (they carry no seed to pin
+proportion) — a first-class review axis, §3.
 
 This clause governs the **anonymous** figures only. Unlike §2c (which `forge.py` auto-appends to every
 character-bearing gen), **§2d is authored by VPW into the `still_prompt`** of any shot with an anonymous
 crowd (the prompt the engine sees must carry these words) — it is not auto-appended, because most shots
 have no crowd. A foreground named character in the same shot still holds its FULL rig via its seed + the
 auto-appended §2c; §2d simplifies only the anonymous background.
+
+**Crowd exemplar — the crowd's rig ANCHOR (human-gated 2026-07-16).** `refs/base/crowd-exemplar.png` —
+a human-approved crowd sample frame (5–6 anonymous figures on the EXACT squat base-rig proportion, dot
+eyes, one simple mouth, no noses/ears/teeth, varied era-appropriate dress) — is **SEEDED into EVERY
+crowd-bearing generation** as the crowd's proportion/face anchor. The §2d words above stay in the
+`still_prompt` (they carry the rig FACTS), but the **exemplar seed is what actually pins** proportion +
+face: a crowd carries no per-figure canonical, and prompt words alone let anonymous figures drift
+taller/lankier (the proven failure). This **supersedes** the earlier "author the §2d words, no seed"
+handling — a crowd is now prompt-authored (§2d) AND exemplar-seeded. It mechanizes Daniel's directive:
+don't generate figures that aren't based on the asset base rig, for the one tier that can't seed
+per-figure.
 
 ## 2e. BASE-RIG clause (verbatim — write INTO the prompt for an anonymous FOREGROUND figure)
 
@@ -172,37 +191,59 @@ regens over assets already at the shipped bar, and a regen that overwrites a goo
   head-to-body proportion as the base.
 - **No nose, no ears** — the first things to drift in scenes. For a **haired** character, the hair/sideburns
   run down the SIDE of the head to fill where an ear would be — a bare, earless, **hairless side gap** (skin
-  showing where the hair should be) is a FAIL (the merge base-bleeds it off; caught here → regenerate).
-- **Hands — four digits** (three fingers + a thumb), never five, six, or a mitten. Enforced in the §2/§2c
-  descriptors (the pinned 3-finger cartoon hand — the generation-side prior that renders it reliably);
-  the review confirms it by looking at the **full frame — no hand crops, no per-hand counting grind.**
-  **Open / spread / raised hands (salute, offering, head-in-hands) are the drift point** — hands at the
-  sides inherit the base's correct count — so push the digit clause hardest on open-hand poses, and
-  require **both hands the SAME size** on a two-hand gesture. **Why the count is guaranteed in GENERATION
-  rather than by inspection:** a model's own eye-count of a cartoon hand is unreliable even at zoom — it
-  has repeatedly certified "3 + thumb" on frames the human then counted five fingers on, across rounds.
-  The review still rules on hands like any other invariant (a 5-digit render is drift from a 4-digit
-  seed), but **that ruling is not a certification** — never report a count as verified; the **human
-  artifact board is the final finger authority** (§10).
+  showing where the hair should be) is a FAIL (a base-derived seed can bleed it off; caught here → regenerate).
+- **Hands — four digits** (three fingers + a thumb), never five, six, or a mitten. **Generation-side
+  digit priors remain the reliability mechanism** — the §2/§2c descriptors pin the classic 3-finger
+  cartoon hand, which renders 3+1 far more reliably than fighting the engine's realistic 5-finger
+  default. **Open / spread / raised hands (salute, offering, head-in-hands) are the drift point** — hands
+  at the sides inherit the base's correct count — so push the digit clause hardest on open-hand poses, and
+  require **both hands the SAME size** on a two-hand gesture. **Rig review runs on deterministic crops,
+  not full-frame eyeballing (2026-07-16):** a **localizer** agent returns per-figure face + hand bounding
+  boxes → **`scripts/crop_battery.py`** (PIL) cuts them at 3–4× → a **SEPARATE fresh judge** agent rules
+  PASS/FAIL per crop with the **crop file path cited as evidence** on every ruling. Prose zoom claims
+  ("zoomed 3–4×, verified") are **inadmissible** — a hand ruling with no crop artifact does not count. A
+  judge-on-crop still misreads a cartoon hand sometimes, so a hand PASS is **not a certification**: the
+  **human artifact board is the final finger authority** (§10), now ruling on the embedded crop sheets at
+  seconds per shot.
 - **Facial layout** — same eye style/size/position; brows and mouth in the same places (only expression
   + *slight* brow/mouth-size shifts).
 - **Outline** — even medium-thick dark warm brown-black (`#241a12`), not pure black, not thin.
 - **Render** — clean flat cel shading, even line weight; cartoon, flat tones, not realistic.
 - **Head tone** — one uniform flat tone (no gradient, no realistic skin, no blush).
+- **Identity match vs canonical** — a seeded character's head tone + hair must MATCH its canonical: a
+  base-cream bald head on a haired/toned character is an **identity FAIL even when every form invariant
+  passes**. "Figure present + on-rig" is not an identity ruling — check the head tone and hair against
+  the canonical explicitly (a scene-heavy delta can starve the character seed and leave the blank base
+  template in its place; that frame passes every §3 form check and is still the wrong character). The
+  standing prevention is the **two-gen identity pass** — the DEFAULT for a scene-heavy single-character
+  shot (image-generation Pass 2: gen the scene, then an identity pass seeded off the character
+  canonical); this check still gates that pass's output.
 - **Costume** — a named character's pinned canonical costume is part of identity; the wrong outfit fails
   unless the shot authored the change.
-- **Requested text only, verbatim** — no unrequested words/labels/logos/watermarks. A composed SCENE may
-  carry text its shot deliberately authored (a stamp, an on-artifact label — the HeyHistorically idiom),
-  which renders in the §6 marker hand (by design distinct from the engine's Ink Free type; not a font to
-  "correct") and must be legible + correctly spelled; a garbled, misspelled, or partial render of the
-  asked-for words is a miss (keep authored text to a few short words, route longer copy to render-time
-  `on_screen_text` overlays). Library character frames stay fully text-free.
+- **In-image text is diegetic, baked, and verbatim** — ALL in-video text is designed into the scene and
+  BAKED into the generated image (a stamp, a sign, a ledger, a banner). Engine-drawn text overlays are
+  retired, so there is no render-time type to fall back on. No unrequested words/labels/logos/watermarks; a
+  composed SCENE carries only the text its shot deliberately authored (the HeyHistorically idiom), rendered
+  in the §6 marker hand. Authored text is quoted verbatim in the `still_prompt` and kept SHORT (1–4 words
+  proven; longer unproven); the review **transcribes it letter-by-letter** and a garbled, misspelled, or
+  partial render of the asked-for words is a **blocking** flag. Library CHARACTER frames stay fully
+  text-free — but a **seeded PROP that carries its own designed lettering** (a deed, a titled banknote, a
+  named guidebook cover) is the exception: that lettering is part of the prop's authored design, so it is
+  whitelisted, NOT an "unrequested text" fail (the deed reading its title is correct, not a defect). A
+  prop's own baked lettering is still transcribed letter-by-letter for spelling like any authored text.
+- **Proportion — judged EXPLICITLY, every figure, every tier.** Head-to-body ratio must match the tier's
+  rig: the **squat base proportion** (a large round head on a short compact body), NOT a
+  realistically-proportioned adult. A figure that renders **too tall / lanky / long-bodied is a
+  drift-from-rig FAIL** — this holds for named/seeded figures AND for anonymous §2d/§2e figures, which
+  have no seed pinning their proportion (an off-proportion anonymous figure has slipped review before —
+  rule on it). Judge proportion alongside head shape, not as an afterthought.
 - **Rig judged by tier (§2c/§2e vs §2d).** A **named/seeded** foreground figure and an **anonymous
   LARGE/foreground** figure (the §2e clause) are both judged against the **FULL** rig above (round head,
-  no nose/ears, four digits). An **anonymous crowd / small / background** figure is judged against the
-  **CROWD** rig (§2d): round heads, dot eyes, one simple mouth, no noses/ears/teeth, consistent across all
-  crowd figures. A crowd figure with individual detailed faces or noses is a FAIL; a prominent foreground
-  figure rendered on the *simplified* crowd rig (when it should be the full §2e/§2c rig) is also a FAIL.
+  no nose/ears, four digits, base proportion). An **anonymous crowd / small / background** figure is judged
+  against the **CROWD** rig (§2d): round heads, dot eyes, one simple mouth, no noses/ears/teeth, consistent
+  proportion across all crowd figures. A crowd figure with individual detailed faces or noses is a FAIL; a
+  prominent foreground figure rendered on the *simplified* crowd rig (when it should be the full §2e/§2c
+  rig) is also a FAIL.
 - **Count** — exactly the number of characters the scene declares.
 
 **Never checked — these vary:** pose, camera framing, hair/facial hair, outfit, head-tone choice, body
@@ -239,29 +280,59 @@ pale). Same outline + render on all.
 
 ## 5. Seed rules (identity vs. style — the reproducibility mechanic)
 
-- **Recurring character (identity + pose + expression) — the two-step build.** A character's IDENTITY is
-  its stored **canonical frame** (its `base` in the registry). Its POSE and EXPRESSION are **not described in
-  words** — they are SEEDED from the channel's library (§7): `image-generation` first **merges** a
-  posed-character (seed the character canonical + the shot's `pose_ref` frame + its `expression_ref` frame into
-  one verified portrait), then **places** that single posed-character into the scene (single-seed). This is
-  what carries the correct 4-digit library hand — re-synthesizing a pose from words reverts to the engine's
-  5-finger prior. `pose_ref`/`expression_ref` are each optional (pose-only / expr-only / both / neither = the
-  plain canonical); VPW selects them from the registry (it authors INTENT; image-gen owns the merge). Outfit
-  and action remain delta variables the gen may name; **pose and expression do not** — they are seeded. Never
-  seed a character variant off a downstream derivative: **trace back to the exact frame the human
-  approved**, every time. A prior session's "improved" version of a locked design can have silently
-  drifted (an added hairline, a shifted tone), and seeding off it propagates that drift as if it were the
-  lock — look at the real approved image before you seed. **Except** within a **seeded delta-chain** (a held
-  stage's ≤3 delta frames seed off the prior frame; that scoped exception lives in the `image-generation`
-  skill's technique menu, and a new chain or stage re-seeds canonical — **except a re-base that stays in the
-  SAME location, which seeds the prior stage's base frame so the place survives the hop, §8**).
+- **A scene generates in ONE run — multi-seeded, no posed-character pre-build.** A character's IDENTITY is
+  its stored **canonical frame** (its `base` in the registry); its POSE and EXPRESSION are **not described in
+  words** — they are SEEDED from the channel's library (§7) straight into the scene gen. Seeds, in order:
+  **each cast figure's character canonical + its `expression_ref` frame + its `pose_ref` frame** (+ the
+  **interaction template** when two figures interact), then any needed **style anchor / plate**, prompt last.
+  Seeding the pose frame is what carries the correct 4-digit library hand — re-synthesizing a pose from words
+  reverts to the engine's 5-finger prior. `pose_ref`/`expression_ref` are each optional (pose-only / expr-only
+  / both / neither = the plain canonical); VPW selects them from the registry (it authors INTENT). Outfit and
+  action remain delta variables the gen may name; **pose and expression do not** — they are seeded. Never seed
+  a character variant off a downstream derivative: **trace back to the exact frame the human approved**, every
+  time. A prior session's "improved" version of a locked design can have silently drifted (an added hairline, a
+  shifted tone), and seeding off it propagates that drift as if it were the lock — look at the real approved
+  image before you seed. **Except** within a **seeded delta-chain** (a held stage's ≤3 delta frames seed off
+  the prior frame; that scoped exception lives in the `image-generation` skill's technique menu, and a new
+  chain or stage re-seeds canonical — **except a re-base that stays in the SAME location, which seeds the prior
+  stage's base frame so the place survives the hop, §8**).
+- **Multi-seed staging is proven — no 1-to-1 seed ceiling.** A 6-probe capability test (2026-07-15) held
+  identity, costume, and pose from `[canonical + pose + expression + scene prompt]` in a single run (P1),
+  survived elaborate regalia (P2, mosquito-king), and held BOTH identities distinctly from
+  `[handshake template + canonical A + canonical B]` in one pot (P3). This **supersedes** the retired merge
+  tier's "at most one base-derived seed per step / never `[template + A + B]` in a single pot / the base wins
+  2-against-1" staging law. **Caveat that survives:** expression is the measured SOFTEST seed (P1's "thinking"
+  landed weak) → the batched review explicitly checks expression-register per beat; and the probe is an
+  existence proof (N=1 per case), so the first real video run under this doctrine is watched accordingly.
+- **Seed cap — ≤4 per gen (the ceiling on the no-1-to-1 rule above).** A single generation carries at
+  most FOUR seeds: the character canonical + ONE pose primitive + ONE expression frame + one
+  anchor/exemplar (a style anchor OR the crowd exemplar, only when the shot needs it). **Beyond 4,
+  dilution weakens every prior** — each extra seed pulls the result toward its own content, and a
+  `base.png` thrown in as an Nth "rig anchor" pins nothing (measured 2026-07-16: rework gens carrying 4–5
+  seeds — env + two scene frames + base — lost identity). A figure that genuinely needs the base rig gets
+  `base.png` as ONE of the ≤4 with the prompt authored around it, never as a diluting extra.
+- **A rig FIX never seeds the defective frame — regen FRESH from canonicals.** A "way off rig" /
+  multi-defect frame is regenerated fresh from its canonicals with a re-authored prompt; an
+  identity/de-nose/de-ear pass seeded off the defective frame is **banned as a rig fix** — the defect
+  lives in the strongest seed and rides it back ~50% of the time (the documented sticky-ear rate). The
+  ONLY defective-seed exceptions are (a) an **authored delta-chain parent** (a held stage seeds its prior
+  frame by design, §8) and (b) a **human-ordered framing hold** (the human explicitly kept a
+  composition); BOTH require a **before/after crop diff on EVERY figure** in the frame — the regression
+  gate, not just the targeted figure.
 - **Library primitives carry the base NEUTRAL face (never a baked expression).** Every pose / angle / grip /
   interaction asset in the library is generated seeded off `base` and holds `base`'s neutral face — expression
-  is a *separate* seed layer applied per scene via `expression_ref` (the two-step above). A pose that bakes its
-  own expression can't compose, so a baked / non-neutral face is a build reject → regenerate seeded from `base`.
-  (One accepted exception: a pose whose own hand occludes the face, e.g. `facepalm`.)
-- **Attribute provenance — the merge law.** Base-derived seeds (`pose_ref`/`expression_ref` frames and
-  interaction templates) are **bald, cream (`base` tone), neutral-faced, hoodie**. So in a merge, **any
+  is a *separate* seed layer applied per scene via `expression_ref`. A pose that bakes its own expression
+  can't compose against a per-scene expression seed, so a baked / non-neutral face is a build reject →
+  regenerate seeded from `base`. (One accepted exception: a pose whose own hand occludes the face, e.g. `facepalm`.)
+- **An EXPOSED articulated hand MUST come from a seeded pose primitive — never free-drawn.** A salute,
+  wave, open palm, or raised/pointing hand is the 5-finger drift point (hands at the sides inherit the
+  base's correct 4-digit count; an open hand does not — human-caught twice in one day). Seed the matching
+  `refs/base/` pose frame (e.g. `action-salute.png`) so the hand GEOMETRY comes from the library, AND
+  state the digit FACT in the delta ("a hand with exactly three fingers and a thumb, four digits"). If no
+  library pose covers the gesture, generate that pose on `base` first (§7 / VPW `needed_assets`, human
+  gate) — never author an open hand ad-hoc inside a scene.
+- **Attribute provenance — the seed-routing law.** Base-derived seeds (`pose_ref`/`expression_ref` frames and
+  interaction templates) are **bald, cream (`base` tone), neutral-faced, hoodie**. So in a scene gen, **any
   character attribute not explicitly sourced from the CHARACTER seed bleeds a base trait** (cream tone, bald
   head, blank face, base costume). Route every attribute by source, never by hope:
   - **From the CHARACTER seed** (all identity/surface attributes): identity, **head/skin tone**, **hair +
@@ -275,25 +346,54 @@ pale). Same outline + render on all.
   one instance of it.
 - **Brand-new character:** seed off the template `base` for line + render + proportions only; give a new
   head tone (§4) and identity; register it (§9).
-- **Environment / prop (style only):** seed off the template `base` for the line weight + flat cel look;
-  drop the character clauses; describe the scene. Palette is free. (This is for a *one-off* asset or a
+- **Environment / prop (style only) — always carries a style-anchor seed.** `forge.py` **hard-errors** an
+  environment/style gen with zero seeds (an unseeded gen falls back to a stock-clipart prior, off the locked
+  style). Seed a **style anchor** in preference order: **the target plate or prior-frame-in-chain > a
+  `refs/env/` anchor matched by REGISTER (vivid exterior / muted exterior / parchment map-document) > an
+  approved on-style scene** — that seed carries the line weight + flat cel look; describe the scene, palette is
+  free. (This is for a *one-off* asset, a per-video scene environment composed in-shot in Pass 2, or a
   deliberately-registered channel-signature element — a single video's scene environments are composed
-  in-shot in Pass 2, never pre-baked as plates.)
-- **Composed scene:** seed each figure's **POSED-CHARACTER asset** (its canonical merged with its
-  `pose_ref`/`expression_ref` per the two-step build above — pose/expression/hands already baked in) (+ the
-  prior frame for a stage delta); the **environment + props are composed in the gen from the shot's facts, NOT
-  seeded from a pre-baked plate** — a plate generated in isolation commits its lighting, perspective, and
-  negative space blind to the figures, so it fights the composite. The delta realizes the `still_prompt`'s
-  authored framing/placement (VPW owns composition — `visual-grammar.md §2`), NOT the pose/expression (those
-  are in the seed); see §8 scene assembly.
+  in-shot, never pre-baked as plates.)
+- **Maps — CROP the existing map canonical, never regen a new map for a new region.** To show a different
+  region of an already-established 2D map (the same map zoomed to South America, Europe, one country), do
+  it **deterministically with PIL — crop/zoom the existing map canonical**, never a fresh gen. A regen
+  invents a new coastline, palette, and lettering hand, so two "same" maps read as two different maps
+  (the reason recurring figures reuse ONE cutout, §8 — a map is the same lock). **Regen is the FALLBACK
+  only when the canonical genuinely doesn't cover the region**, and then it seeds the **map canonical +
+  the parchment-map register anchor** (`refs/env/env-map-parchment`) so the new region inherits the
+  established map's style. Country borders / routes / region reveals drawn ONTO the cropped map are MOTION
+  layers, not baked (motion-planner) — the crop is the plate.
+- **Composed scene — ALWAYS carries a style anchor too (not just character-free gens).** Multi-seed each
+  cast figure's **canonical + `expression_ref` + `pose_ref`** frames, **PLUS a style anchor**, in ONE gen
+  (+ the prior frame for a stage delta); the **environment + props are composed in the gen from the shot's
+  facts, NOT seeded from a pre-baked plate** — a plate generated in isolation commits its lighting,
+  perspective, and negative space blind to the figures, so it fights the composite. The delta realizes the
+  `still_prompt`'s authored framing/placement (VPW owns composition — `visual-grammar.md §2`), NOT the
+  pose/expression (those are in the seeds); see §8 scene assembly. **The style anchor is mandatory on
+  EVERY scene/plate gen, not optional — the character seeds pin identity, NOT art style.** Pick it in the
+  same preference order as the ENV rule above: **the shot's continuity parent frame (a prior frame in this
+  stage/set, or the plate this scene evolves) > a `refs/env/` anchor matched by REGISTER (vivid / muted
+  exterior / parchment map) > an approved on-style scene**. **Cross-chunk ART-STYLE drift is the proven
+  failure mode when scene gens run unanchored** (a run of scenes each seeded on its cast but no style
+  anchor drifted to different renders chunk-to-chunk — a softer/detailed-middle look, mismatched line
+  weight; human-caught across a batch, 2026-07-16); the anchor is what holds one flat-cel look across the
+  whole video.
+- **Match-prop — a prop shown in more than one shot seeds its FIRST APPROVED frame as the prop canonical.**
+  When a specific designed object must look identical across shots (a banknote/bond design, a guidebook, a
+  named deed), the frame where it was first approved IS its canonical — every later shot showing it seeds
+  that exact frame, never re-describes the design in words (a re-worded design drifts). This is the §7
+  recurring-prop lock even when the prop was not pre-locked in Pass 1: the moment a design is approved in
+  one shot, it becomes the seed for every later appearance (e.g. a bond design established in one shot
+  seeds all three bonds in a later shot). Trace to the approved frame, not a downstream derivative (§5
+  never-seed-a-derivative).
 - **Reuse:** exact registry hit → return the file, no generation.
 
 ## 6. The committed visual recipe (LOCKED — this is THE direction)
 
 The Second Take is **locked** to one recipe:
 
-> **Clean 2.5D vector cast + built (flat-but-real) environments + marker-style charts / title-cards +
-> one red accent.**
+> **Clean 2.5D vector cast + built (flat-but-real) environments + marker-style charts / diegetic
+> lettering + one red accent.**
 
 Unpacked:
 - **Cast:** the locked hand-illustrated 2.5D rig (§1) — flat cel characters + money objects, on our own
@@ -304,12 +404,36 @@ Unpacked:
   (colonnades, boulevards, ship rigging, stacked trunks), not one lone prop on empty air — *no dead air*.
   Still flat-cel: no detailed/parallaxed realism, not void-only. The bar is the **"gold" Poyais scenes**
   (the golden St Joseph vista, the harbour-crowd hook): dense, deep, warm-palette, filled frame.
-- **Charts / title-cards:** hand-drawn **marker / sketch family** (deliberately crude, honest-looking —
-  never corporate infographic), animated diagrams + timelines, a recurring "your money" avatar. **Authored
-  diegetic in-image lettering** (a FICTION stamp, a label on an artifact, a hand-lettered chart) is drawn in
-  this hand-rendered marker hand **by design** — intentionally DISTINCT from the engine's clean **Ink Free**
-  type (the T2 device cards, counters, and captions the motion layer draws as real text). Two type looks in
-  one video is the intended split (crude-in-world vs clean-engine), not a divergence to "fix."
+- **Charts / diegetic lettering:** hand-drawn **marker / sketch family** (deliberately crude,
+  honest-looking — never corporate infographic), accreting diagrams + timelines, a recurring "your
+  money" avatar. No title/chapter cards — a chapter turn is a hard cut / palette turn, never a card.
+  **Lettering is LOCKED (2026-07-15, human-picked from a 6-candidate audition): relaxed hand-lettered
+  MARKER CAPITALS with a slight lean and baseline bounce — quick confident handwriting, no letter
+  joins, never calligraphy or a clean digital font — ink `#241a12`.** Canonical exemplar =
+  `refs/env/lettering-marker-italic.png`; **every text-bearing generation seeds it** (it lives under
+  `refs/env/` so it never triggers the §2c rig-hold). The bar is FAMILY match, not glyph identity —
+  letterforms may wobble shot-to-shot like real handwriting; the review flags a different HAND (clean
+  digital type, formal script, wrong weight class), not natural variation. Spelling stays strict
+  (letter-by-letter, blocking). **STAMP register — the ONE exception to the marker family (LOCKED
+  2026-07-15, human-picked):** all big **stamp-down marks** (FAKE / FICTION / SOLD and kin) render in
+  the locked stamp register — **heavy block CAPITALS, dense saturated red `#d7402b` ink** (thick solid
+  strokes, distress only at the edges), a **thin `#241a12` letter contour** hugging each glyph (a clean
+  ink contour, NOT a drop shadow / offset ghost), **flat matte**, hand-stamped edge distress.
+  **Every stamp / seal / mark cutout GEN seeds `refs/env/stamp-block-outlined.png` (the register
+  exemplar) PLUS its destination plate** (for scale + palette); a stamp generated BEFORE the register
+  lock, or with no exemplar seed, is a register FAIL and is re-generated + re-checked against the lock —
+  a pre-lock/unseeded stamp does not silently pass (the L10 stamp shipped off-register because it
+  predated the lock and nothing forced the re-check). Stamps are the ONLY exception; **ALL OTHER
+  in-video text stays in the relaxed marker-italic register above.** **ALL
+  in-image lettering is authored diegetic and BAKED into the generated image** (a FICTION stamp, a label on
+  an artifact, a hand-lettered chart) in this hand-rendered marker hand — there is now ONE type look. The
+  engine's clean **Ink Free** type and the T2 device cards / counters / captions are **retired** (code
+  producers removed, engine components parked dormant); no render-time text layer draws words, so any words
+  on screen live in the still. Keep authored copy short (§3) — the marker hand garbles long strings. **A
+  caption / label that renders TRUNCATED or crammed mid-word got too little canvas** — do not squeeze it
+  into a scene edge; re-author the text as its OWN distinct architectural element (a wall plaque,
+  signboard, or banner) sized with clear margin after the final glyph (a wide brass caption plaque
+  cleared "Capt. Thomas Strangeways" first try after an edge-crammed version truncated to "Strangev").
 - **Diegetic art / artifacts:** an in-world painting, poster, brochure vista, or map-as-artifact renders
   in OUR flat-cel look with the `#241a12` outline — our style *depicting* an artifact, NOT a soft-gradient
   illustration or a different medium. A too-perfect glossy "brochure" is achieved with palette +
@@ -346,29 +470,33 @@ pose/expression.) **This is the build spec (what to build and why); the live ind
 `registry/registry.json` (§9)** — downstream skills read the registry, never this prose. Iconic silhouette
 shapes, not realistic detail; each asset is registered via `image-generation`.
 
-The expression set (item 1) and action-pose set (item 6) are the **seed source** for the two-step
-posed-character merge (§5): a shot's `pose_ref`/`expression_ref` names one of these, and `image-generation`
-seeds it onto the character. That is their function — not just an authoring vocabulary. A pose/expression a
-video needs but the library lacks is generated on the base first (VPW surfaces it via `needed_assets`, human
-gate), never re-drawn ad-hoc inside a scene.
+The expression set (item 1) and action-pose set (item 6) are the **direct scene-seed source** (§5): a
+shot's `pose_ref`/`expression_ref` names one of these, and `image-generation` seeds it — alongside the
+character canonical — straight into the scene gen (no posed-character pre-build). That is their function —
+not just an authoring vocabulary. A pose/expression a video needs but the library lacks is generated on the
+base first (VPW surfaces it via `needed_assets`, human gate), never re-drawn ad-hoc inside a scene.
 
 1. **Moderate-register expression set** (the lead of a beat). Small, mouth-led, **restrained by default —
    legible, not a caricature**: held deadpan/unimpressed (the dry default), a measured shock (open mouth,
    not a wide trapezoid), a warm smile (not crescent-eyed mania), mild irritation, worried knit-brow, smug
    asymmetric brow. The big/extreme end (wide-mouth laughing, full shock) exists for a genuine comedic
-   PEAK, reached for deliberately — NOT the baseline. Since the Pass-1b merge transfers each frame's
-   eye/brow/mouth SHAPE directly, the FRAMES themselves are authored moderate (an extreme frame → an
-   extreme face on every beat that uses it). Secondary characters get **one held expression**; cheap
+   PEAK, reached for deliberately — NOT the baseline. Since the scene gen seeds each frame's eye/brow/mouth
+   SHAPE directly, the FRAMES themselves are authored moderate (an extreme frame → an extreme face on every
+   beat that uses it); expression is also the softest seed, so a frame that reads flat on its own will land
+   flat in the scene. Secondary characters get **one held expression**; cheap
    graphic-symbol overlays (heart, sparkle, exclamation, zigzag, blush, stat glyph) add warmth/intensity at
    near-zero cost.
 2. **Finance concept-prop library** (highest-leverage build — literalizes the payloads): cracked anchor
    (leaving a standard), price-tagged barrel (priced-in), cash mountain (surplus/glut), printing press,
    gold-bar pyramid (reserve), house of cards, sinking boat, inflating balloon, leaking bucket, domino
    line. A prop-only shot can *be* the beat.
-3. **Diegetic device kit:** definition card, meter/gauge, split-screen A/B frame, stat-callout card, black
-   chapter card, fake-UI screen (dashboard/chat/search/CRT-TV/radio/newspaper front page), "this didn't
-   happen" no-symbol overlay, escalating on-screen counter. Explainer devices are **flavor only, used
-   sparingly** — a money-*story* channel, never a lecture (staging law: `visual-grammar.md`).
+3. **Diegetic screen / artifact devices (baked, not engine-drawn):** a split-screen A/B frame, a fake-UI
+   screen (dashboard/chat/search/CRT-TV/radio/newspaper front page), a "this didn't happen" no-symbol
+   overlay — all rendered as BAKED diegetic scene elements. Used **flavor only, sparingly** — a
+   money-*story* channel, never a lecture (staging law: `visual-grammar.md`). **The engine device cards
+   (definition / meter-gauge / stat-callout / chapter / escalating counter) are retired** along with all
+   engine-drawn text; any such payload is now a baked diegetic element or a delta-chain, never a render-time
+   card.
 4. **Reusable environment plates:** a power/institution interior (boardroom/office), a street/exterior, an
    interior room, a data-void — each with day/night palette variants, built from flat gradient + minimal
    geometry + one foreground depth prop. Skip realistic detail/parallax.
@@ -385,13 +513,17 @@ gate), never re-drawn ad-hoc inside a scene.
    - **Grips (object-agnostic — store the GRIP, the object is a per-scene delta rendered as a generic grey
      placeholder):** hold-one-hand, hold-both-hands, hold-paper-by-sides, carry-by-handle, sign-with-pen,
      reach-to-take.
-   - **Interaction templates (two blank base mannequins; a scene inserts two identities by `cast` order via the
-     staged-expression merge — §5 / image-gen Pass 1b):** handshake (right-to-right clasp), handoff, fistbump.
-     **Contact interactions only** — a no-contact two-person shot composes single-figure poses at scene time,
-     no template.
+   - **Interaction templates (two blank base mannequins; a scene seeds the template + two character canonicals
+     and binds identities by `cast` order — first = left, second = right — in ONE scene gen, §5):** handshake
+     (right-to-right clasp), handoff, fistbump. The template carries the clasp geometry + eye-line, so a scene
+     inherits both by seeding it — do not re-specify them in words. **Eye-line is PUPILS-only:** heads stay
+     front-facing and round; NEVER turn a head toward the other figure to force the gaze — a profile head-turn
+     grows a nose/jaw and breaks the no-nose rig (the eyes cut sideways, the head does not; same profile limit
+     as the 3/4-turn note above). **Contact interactions only** — a no-contact two-person shot composes
+     single-figure poses at scene time, no template.
 
-**Build order (front-loads the most-reused):** expressions → concept props → device kit → plates →
-secondary cast → action poses.
+**Build order (front-loads the most-reused):** expressions → concept props → diegetic screen devices →
+plates → secondary cast → action poses.
 
 ## 8. Generation protocols
 
@@ -401,15 +533,15 @@ secondary cast → action poses.
   not free (~$25+ has gone into settling a single style question).
 - **Anchored iteration ("iterate on THIS"):** pin the exact approved frame as the seed, restate §2,
   change ONLY the requested variable, hold everything else. (How the base tone, outline, and face were
-  locked — proven 2026-07-04.) **Prove the change landed with a pixel-diff, never by eye.** Seeded gen is
+  locked — proven 2026-07-04.) **Prove the change landed by MEASUREMENT, never by eye.** Seeded gen is
   sticky: a worded delta asking to change a small detail (a digit count, a head shape) is often
   **silently ignored** — the engine just re-emits the seed (proven 2026-07-08: a "change the hands to
   five fingers" delta returned a near-identical frame at mean-abs-diff **1.46**, and was *claimed* as
-  landed until a diff disproved it). Run `forge.py diff` (its `whole` figure is the mean-abs-diff,
-  0 = identical) and crop/zoom the changed region; a near-zero whole-diff means the delta was **ignored**,
-  not that it was subtle. This is a check on an anchored iteration *you claim changed something* — not
-  the per-delta chain gate deliberately removed in §10 (2026-07-09).
-- **A worded delta is a weak lever on a seeded detail.** When a diff shows the change was ignored,
+  landed until measured). Compute the **mean-abs-diff with Pillow** (0 = identical) and sample/zoom the
+  changed region; a near-zero whole-diff means the delta was **ignored**, not that it was subtle. (The old
+  `forge.py diff`/`crop` helper commands are gone — measure with Pillow directly, per the measure-a-matte
+  rule below.) This is a check on an anchored iteration *you claim changed something*.
+- **A worded delta is a weak lever on a seeded detail.** When the measurement shows the change was ignored,
   escalate the MECHANISM instead of re-wording: open or replace the pose so the feature is unambiguous,
   mask + regenerate just that region, or restate the whole subject — a one-line "change only Z" against
   an `identity`-mode seed will not move it. Relatedly, a relaxed or half-closed feature (a closed hand)
@@ -427,6 +559,16 @@ secondary cast → action poses.
   (56,26,10). Both error directions cost: a false alarm queues a needless regen over a good frame, a miss
   ships the defect. Same family as the pixel-diff rule above and the finger-count rule (§3) — **the model's
   eye is not evidence; a measurement is.**
+- **Cutout transparency is ALWAYS post-hoc keying — the engine emits NO alpha.** So a cutout gen renders
+  the object on a **solid MAGENTA chroma field**, prompted as **"one solid uniform FLAT magenta
+  background, NO glow, NO gradient, NO vignette"** — the fringe/halo failures were **generation-side
+  glows** (the engine haloing the subject in magenta light), not keying failures, so the fix is forcing a
+  flat field at GEN time, not re-keying. Then a deterministic key + despill lifts it: a *pale* field
+  starves rembg on a pale subject (a pale ship left opaque-white interior gaps), AND rembg additionally
+  KEEPS enclosed pale interior holes (a 7%-of-frame cream patch once shipped opaque inside a stamp). **Matte verification samples the ENCLOSED interior
+  regions** — letter counters, rigging gaps, frame holes — not only the outer silhouette + corners, and
+  composites over the real destination (the measure-a-matte bullet above): a stamp/ship whose exterior
+  keyed clean can still carry an opaque interior patch that only an interior sample catches.
 - **Verify loop — ONE re-authored retry, then surface.** Frames are reviewed in the `image-generation`
   skill's batched post-gen pass (§3 checklist + fidelity + taste), not per-frame mid-gen. A flagged frame
   gets **exactly one** retry, and that retry is a **FRESH gen off a RE-AUTHORED prompt — never
@@ -451,36 +593,47 @@ registry `engine` **`gemini-3-pro-image`**. There is no per-call model choice an
 `forge.py` routes every call to the engine. (Rationale + provenance: §10, 2026-07-09.)
 
 **Scene assembly (how a composed scene is built):**
-1. **Compose the whole scene in ONE gen** (pro if a locked character is in frame): seed the
-   **posed-character asset(s)** for the shot's `cast` (each = the character's canonical merged with its
-   `pose_ref`/`expression_ref` per §5's two-step build — pose/expression/hands already baked in, hands on the
-   character's tone); the environment + fixed props + sky/water are DESCRIBED in the delta and composed in the
-   SAME generation (never pre-baked as an isolated plate — §5). The delta REALIZES the `still_prompt`'s
-   authored framing/placement (VPW owns composition — `visual-grammar.md §2`); image-gen executes it. It does
-   NOT describe the pose or expression in words (those are in the seeded posed-character). Seeding the
-   posed-character is what holds identity + the library hand; a free-drawn named character falls off the rig
-   (wrong proportions, one ear, a nose). The **§2c RIG-HOLD block is auto-appended** to every character-seeded
-   scene gen (and chain delta), so the figures' rig is held without the delta restating it.
-2. **Held sets evolve by frame-to-frame seeding, not a shared plate:** consecutive shots on one set are a
-   stage (base + ≤3 deltas); each delta seeds the PRIOR frame's output and changes ONE element (the
-   `image-generation` delta-chain). That carry-over — not a reused plate — is what holds the set.
-   **A re-base inside the SAME location seeds the prior stage's BASE frame, not the canonical.** The `≤3
-   deltas then re-base` cap exists to contain drift, and it assumes a re-base starts a NEW place; where the
-   place persists, re-seeding canonical throws the set away and the location comes back as a different one
-   (measured: two stages of one location returned as two visibly different places). Re-seed canonical only
-   when the location genuinely changes.
+1. **Compose the whole scene in ONE gen — multi-seeded, no posed-character pre-build:** seed each of the
+   shot's `cast` figures' frames — **character canonical + `expression_ref` + `pose_ref`** (+ the
+   **interaction template** when two figures interact) — plus any needed **style anchor** (§5 ENV rule); the
+   environment + fixed props + sky/water are DESCRIBED in the delta and composed in the SAME generation
+   (never pre-baked as an isolated plate — §5). Attribute provenance routes by seed (identity/tone/hair/
+   costume from the canonical; body/hands from the pose; eye/brow/mouth shape from the expression). The delta
+   REALIZES the `still_prompt`'s authored framing/placement (VPW owns composition — `visual-grammar.md §2`);
+   it does NOT describe the pose or expression in words (those are in the seeds). Seeding the canonical is
+   what holds identity + the library hand; a free-drawn named character falls off the rig (wrong proportions,
+   one ear, a nose). The **§2c RIG-HOLD block is auto-appended** to every character-seeded scene gen (and
+   chain delta), so the figures' rig is held without the delta restating it.
+2. **A held scene evolves one of two ways — the BOUNDARY rule.** **DELTA-CHAIN when the change is
+   INTEGRATIVE** — the new element becomes part of the scene's architecture (a city grows a bank; gold
+   threads the streets): regenerate the scene seeded off the prior frame (base + ≤3 deltas; each delta
+   changes ONE element and holds the rest — that frame-to-frame carry-over, not a reused plate, is what holds
+   the set). **A re-base inside the SAME location seeds the prior stage's BASE frame, never a fresh
+   canonical** — the `≤3 deltas then re-base` cap contains drift and assumes a re-base starts a NEW place;
+   where the place persists, re-seeding canonical throws the set away and the location comes back different
+   (measured: two stages of one location returned as two visibly different places). **A delta that REMOVES
+   a transient element seeds the PRE-TRANSIENT ANCESTOR, not the immediate predecessor** — the immediate
+   predecessor still carries the element being removed, so it drags it back in; seed the last frame from
+   BEFORE the transient was added (the crowd departs a dock → seed the empty-dock frame that preceded the
+   crowd, not the crowded frame). **LAYER when the change
+   is DISCRETE** — the added element sits on the scene without fusing into its architecture (a character
+   enters the foreground; a stamp slams onto a page): keep the plate, composite an animated cutout (the
+   layered-shot path, `image-generation` skill). Every cutout is SEEDED (from its character/prop canonical,
+   or the plate it lands on plus a style anchor) — an unseeded cutout invents its own register.
 3. **Every human figure in the frame is the §1 family — named foreground figures on the FULL rig,
    anonymous crowds on the CROWD RIG (§2d).** A named/seeded figure keeps the full rig (via its seed +
    the auto-appended §2c). An anonymous crowd is rendered on the crowd rig — the VPW-authored §2d clause
    ("round cream-family heads, dot eyes, one simple mouth, no noses/ears/teeth, same proportions, varied
-   era clothing") is already in the `still_prompt`; generate the crowd from it, no seed. Crowd figures are
+   era clothing") is already in the `still_prompt`; generate the crowd from it **seeded off the crowd
+   exemplar** (`refs/base/crowd-exemplar.png`, §2d — the seed pins the proportion + face that prompt words
+   alone let drift). Crowd figures are
    not a degraded full rig that gets vaguer with distance — they are a deliberately simpler rig, uniform
    across the crowd. Art style, proportions, and period never switch.
 4. **One-shot whole-scene** is fine for a simple shot with a single prominent character — seeded off that
-   character's canonical ref, full §3 check on it and every incidental figure.
+   character's canonical (+ its `expression_ref`/`pose_ref` frames), full §3 check on it and every incidental figure.
 5. **Verify the assembled scene** (§3 on every figure + the scene-taste gate).
-   *(True layer compositing — placing element PNGs programmatically — is the Phase-2 Remotion motion
-   layer, not this stage.)*
+   *(True layer compositing — placing element PNGs programmatically — is the render engine's layered-shot
+   path (LayerView), not this stage; image-gen only materializes the plate + the seeded cutout.)*
 
 **Channel-signature elements lock like characters:** a NON-character element that recurs across MANY videos
 (a specific ongoing ship, a landmark building, a channel flag/vehicle) can get ONE approved canonical
@@ -495,8 +648,12 @@ descriptor.
 
 `registry/registry.json` is the single live index of what exists — two collections: **`characters`** (each
 with a canonical file + head tone + pinned costume) and **`assets`** (expressions, actions, props, plates —
-each with a canonical file + seed frame). Cross-video channel-signature environments/props/plates are `assets` with `kind: environment` (there is no
-separate top-level environments list). A **per-video recurring prop** is NOT a registry entry — it lives
+each with a canonical file + seed frame). Cross-video channel-signature environments/plates AND the standing
+**style-anchor register frames** are `assets` with `kind: environment` (`character: null`, no seed_frame;
+there is no separate top-level environments list). The register anchors live in `refs/env/` — **three are
+locked** (`env-exterior-vivid`, `env-exterior-muted`, `env-map-parchment`, tags `exterior-vivid` /
+`exterior-muted` / `map-parchment`); every environment/style gen seeds one by REGISTER (§5 ENV rule) since
+`forge.py` hard-errors an unseeded environment gen. A **per-video recurring prop** is NOT a registry entry — it lives
 only in that video's `assets/library/` (`kind: prop`, `prop-<name>.png`); it graduates to a `kind:
 environment` registry entry only if it recurs across MANY videos (a deliberate §8 promotion). Canonical frames live in `refs/` (characters under
 `refs/<character>/`, props/elements/plates under `refs/env/`). Reuse-before-regenerate keys off it, and
@@ -590,9 +747,29 @@ regenerate him from scratch.
   invariant harder was never going to fix it; the fix was a fresh gen off re-authored composition logic.
   Corollary already proven at the character-lock level (2026-07-10): **batch-and-pick beats serial
   rolls** — serial single rolls drift one feature per roll and burn credits. Human-directed.
-- **2026-07-10 — pose/expression are SEEDED, not word-driven (the two-step build).** §5 rewritten: a
-  character's pose + expression come from library frames merged into a posed-character (Pass 1) then placed in
-  the scene (Pass 2), carrying the correct 4-digit library hand + hands in the character's tone (now folded into
-  the §5 attribute-provenance law). The old word-driven pose/expression framing was removed (not appended-beside). §7 names
-  the expression/pose sets as the seed source; §8 seeds the posed-character. VPW selects `pose_ref`/
-  `expression_ref` (intent); image-gen owns the merge. Spec/plan: `docs/superpowers/specs|plans/2026-07-10-pose-expression-seeding-two-step*`.
+- **2026-07-10 — pose/expression are SEEDED, not word-driven.** §5 rewritten: a character's pose + expression
+  come from library frames, carrying the correct 4-digit library hand + hands in the character's tone (folded
+  into the §5 attribute-provenance law). The old word-driven pose/expression framing was removed. §7 names
+  the expression/pose sets as the seed source. VPW selects `pose_ref`/`expression_ref` (intent). Spec/plan:
+  `docs/superpowers/specs|plans/2026-07-10-pose-expression-seeding-two-step*`. *(The intermediate
+  posed-character MERGE this entry introduced was retired 2026-07-15 — see below; the seed source and the
+  provenance law survive, the merge tier does not.)*
+- **2026-07-15 — Pass-1b posed-character merge RETIRED; scenes multi-seed in one run.** A 6-probe capability
+  test proved a scene can hold identity, costume, and pose from `[canonical + pose + expression + prompt]` in
+  ONE gen (P1), survive elaborate regalia (P2), and hold BOTH identities distinctly from
+  `[interaction template + canonical A + canonical B]` in a single pot (P3) — superseding the merge tier's
+  "one base-derived seed per step / never `[template+A+B]` / the base wins 2-against-1" staging law. §5, §7,
+  §8 rewritten around **direct multi-seeded scene gen**: the ~52 base primitives (expressions/poses/
+  interactions) stay, but as **direct scene seeds**, no longer merge inputs; the attribute-provenance law
+  survives unchanged (it now routes seeds within the scene gen). **Cascade collapses** frames → scenes:
+  re-authoring an expr frame invalidates only the scenes seeded from it (the merge tier no longer exists).
+  **Costs honestly acknowledged:** the merge's cheap "isolation gate" (a bad blend caught on a portrait
+  before scene gen) is GONE — seed-routing failures (wrong-tone hands, a weak expression, identity bleed)
+  now surface at the batched review, at full scene-gen cost; expression is the measured SOFTEST seed, so the
+  review checks expression-register per beat, and the probe is N=1 per case so the first real run is watched.
+  **Two more changes landed with it:** (1) **all engine-drawn text + T2 device cards retired** — in-video
+  text is now baked diegetic, quoted verbatim + kept short + transcribed letter-by-letter (§3, §6); (2)
+  **`forge.py` hard-errors any environment/style gen with zero seeds** and `refs/env/` is populated with
+  three register anchors (vivid / muted exterior, parchment map) — every environment carries a style-anchor
+  seed by register (§5 ENV rule, §9). The retired `forge.py diff`/`crop` helper commands are gone (measure
+  with Pillow directly, §8). Human-directed.

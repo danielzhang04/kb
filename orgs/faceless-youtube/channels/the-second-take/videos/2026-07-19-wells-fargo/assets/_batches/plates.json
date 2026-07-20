@@ -1,0 +1,56 @@
+[
+ {
+  "name": "wf-L31",
+  "shot_id": "L31",
+  "mode": "environment",
+  "delta": "A steep downhill slope: a scorecard perched at the top-left, a few small executive figures stepping aside mid-slope, and a lone teller at a counter at the bottom-right; NO boulder present, the slope clear. Cool slate slope, warm counter at the base, one red accent on the counter till. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline, fore/mid/background depth, filled edge-to-edge; no on-screen narrator; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+  ]
+ },
+ {
+  "name": "wf-L44",
+  "shot_id": "L44",
+  "mode": "environment",
+  "delta": "A formal settlement document on a desk with an official embossed seal and a marker header 'JUSTICE DEPT', the document face otherwise clear with NO stamp on it. Cool slate-and-cream legal palette, one red accent on the seal ribbon. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline, depth, filled edge-to-edge; no on-screen narrator; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+  ]
+ },
+ {
+  "name": "wf-L90",
+  "shot_id": "L90",
+  "mode": "environment",
+  "delta": "A signed admission document on a desk with a marker span '2002-2016', the face otherwise clear with NO stamp on it. Cool cream-and-slate legal palette, one red accent on a tab. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline, depth, filled edge-to-edge; no on-screen narrator; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+  ]
+ },
+ {
+  "name": "wf-L99",
+  "shot_id": "L99",
+  "mode": "environment",
+  "delta": "A money bag being clawed back with a marker tag '$67M' and a small 'TOLSTEDT' label, the scene otherwise clear with NO stamp on it. Cool slate-and-cream palette, one red accent on the tag. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline, depth, filled edge-to-edge; no on-screen narrator; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+  ]
+ },
+ {
+  "name": "wf-L101",
+  "shot_id": "L101",
+  "mode": "environment",
+  "delta": "An OCC order barring a bank CEO: a marker header 'OCC' on a banking license with a fine figure '$17.5M' beside it, the license face otherwise clear with NO stamp on it. Cool cream-and-slate official palette, one red accent on the seal. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline, depth, filled edge-to-edge; no on-screen narrator; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+  ]
+ }
+]

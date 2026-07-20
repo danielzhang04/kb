@@ -216,6 +216,179 @@ def test_lane_level_db_override():
     assert ms[0]["base_db"] == 6
 
 
+# --- R7 W5: dip_in_pause dial ------------------------------------------------
+
+def test_dip_in_pause_false_suppresses_pause_dips():
+    # M15: dip_in_pause=False -> the bed does NOT dip in authored pause gaps (it flows through them)
+    gaps = [{"at_s": 5.0, "dur_s": 0.9}]
+    spec = build_audio_spec([], {**TOK2, "dip_in_pause": False}, words=[], has_vo=False, breath_gaps=gaps)
+    assert spec["dips"] == [], spec["dips"]
+
+
+def test_dip_in_pause_default_true_still_dips_backcompat():
+    # the dial absent -> current behavior (a dip per pause gap) is preserved
+    gaps = [{"at_s": 5.0, "dur_s": 0.9}]
+    spec = build_audio_spec([], TOK2, words=[], has_vo=False, breath_gaps=gaps)
+    assert len(spec["dips"]) == 1 and spec["dips"][0]["at_s"] == 5.0, spec["dips"]
+
+
+# --- R7 W5: per-cue SFX variant pin ------------------------------------------
+
+def test_variant_pin_overrides_rotation_and_consistent():
+    from build_audio import cue_sfx_events
+    tok = {"sfx_pools": {"sparkle": ["sparkle-1", "sparkle-2"]}, "consistent_sfx": ["sparkle"]}
+    # sparkle is consistent (would always be sparkle-1); the pin forces the exact named file + marks _pin
+    ev = cue_sfx_events([{"at_s": 1.0, "role": "sparkle", "variant": "sparkle-2"}], tok)
+    assert ev[0]["sfx"] == "audio/sfx/sparkle-2.mp3", ev
+    assert ev[0].get("_pin") is True, ev
+
+
+def test_variant_pin_is_out_of_band_of_rotation():
+    from build_audio import cue_sfx_events
+    tok = {"sfx_pools": {"sparkle": ["sparkle-1", "sparkle-2"]}}   # non-consistent -> rotates
+    ev = cue_sfx_events([{"at_s": 1.0, "role": "sparkle"},                          # rotate -> sparkle-1
+                         {"at_s": 2.0, "role": "sparkle", "variant": "sparkle-9"},  # PIN, no rotation slot
+                         {"at_s": 3.0, "role": "sparkle"}], tok)                     # rotate -> sparkle-2
+    assert [e["sfx"] for e in ev] == ["audio/sfx/sparkle-1.mp3", "audio/sfx/sparkle-9.mp3",
+                                      "audio/sfx/sparkle-2.mp3"], ev
+
+
+def test_variant_pin_missing_file_hard_errors():
+    import tempfile, os
+    d = tempfile.mkdtemp()
+    os.makedirs(os.path.join(d, "audio", "sfx"), exist_ok=True)   # empty — sparkle-2 absent
+    cue_events = [{"at_s": 1.0, "role": "sparkle", "variant": "sparkle-2"}]
+    tok = {"sfx_pools": {"sparkle": ["sparkle-1"]}}
+    raised = False
+    try:
+        build_audio_spec([], tok, words=[], has_vo=False, cue_events=cue_events, audio_dir=d)
+    except SystemExit as e:
+        raised = True; assert "sparkle-2" in str(e), e
+    assert raised, "expected SystemExit for a missing pinned SFX variant"
+
+
+def test_variant_pin_not_leaked_into_render_event():
+    # the internal _pin/anchor flags are stripped from the emitted event
+    import tempfile, os
+    d = tempfile.mkdtemp()
+    os.makedirs(os.path.join(d, "audio", "sfx"), exist_ok=True)
+    open(os.path.join(d, "audio", "sfx", "sparkle-2.mp3"), "wb").close()
+    cue_events = [{"at_s": 1.0, "role": "sparkle", "variant": "sparkle-2", "anchor": "the book described"}]
+    spec = build_audio_spec([], {"sfx_pools": {"sparkle": ["sparkle-1", "sparkle-2"]}},
+                            words=[], has_vo=False, cue_events=cue_events, audio_dir=d)
+    e = spec["events"][0]
+    assert e["sfx"] == "audio/sfx/sparkle-2.mp3" and "_pin" not in e and "anchor" not in e, e
+
+
+# --- R7 W5: per-cue music track pin ------------------------------------------
+
+def test_music_track_pin_resolves_directly():
+    # the pin plays exactly audio/beds/<track>.mp3, overriding the mood-pool index selection
+    cues = [{"mood": "sneaky", "at_s": 0.0, "track": "upbeat-1"}]
+    ms, miss = build_music_lane(cues, [], _shots(30.0), _MTOK)   # audio_dir=None -> no existence check
+    assert miss == 0 and len(ms) == 1
+    assert ms[0]["track"] == "audio/beds/upbeat-1.mp3", ms   # NOT sneaky-1 (the mood pool idx0)
+
+
+def test_music_track_pin_missing_file_hard_errors():
+    import tempfile, os
+    d = tempfile.mkdtemp()
+    os.makedirs(os.path.join(d, "audio", "beds"), exist_ok=True)   # empty — nope-1 absent
+    cues = [{"mood": "sneaky", "at_s": 0.0, "track": "nope-1"}]
+    raised = False
+    try:
+        build_music_lane(cues, [], _shots(20.0), _MTOK, audio_dir=d)
+    except SystemExit as e:
+        raised = True; assert "nope-1" in str(e), e
+    assert raised, "expected SystemExit for a missing pinned music track"
+
+
+def test_same_mood_different_track_pins_do_not_coalesce():
+    cues = [{"mood": "sneaky", "at_s": 0.0, "track": "sneaky-1"},
+            {"mood": "sneaky", "at_s": 12.0, "track": "sneaky-2"}]
+    ms, _ = build_music_lane(cues, [], _shots(30.0), _MTOK)
+    assert len(ms) == 2, ms                       # distinct beds (same mood, different pin) -> not merged
+    assert ms[0]["track"].endswith("sneaky-1.mp3") and ms[1]["track"].endswith("sneaky-2.mp3"), ms
+    # a track-switch gap (0.8s) sits between the two distinct beds
+    assert abs((ms[1]["at_s"] - (ms[0]["at_s"] + ms[0]["dur_s"])) - 0.8) < 1e-6, ms
+
+
+# --- R7 W5: SFX-tail overshoot WARN (M20) ------------------------------------
+
+def test_sfx_tail_warn_flags_overshoot_and_labels_anchor():
+    import build_audio
+    orig = build_audio._sfx_duration
+    build_audio._sfx_duration = lambda path, cache: 1.5   # stub ffprobe: every SFX is 1.5s
+    try:
+        events = [{"at_s": 10.0, "sfx": "audio/sfx/crack-1.mp3", "anchor": "cracked the new"}]
+        shots = [{"start_s": 0.0}, {"start_s": 10.6}]     # next cut 10.6; 10.0+1.5=11.5 -> +0.9 overshoot
+        w = build_audio.sfx_tail_warnings(events, shots, audio_dir="X")
+        assert len(w) == 1 and abs(w[0]["overshoot_s"] - 0.9) < 1e-6, w
+        assert w[0]["anchor"] == "cracked the new" and w[0]["sfx"] == "audio/sfx/crack-1.mp3", w
+        # an SFX that finishes before the next cut -> no warning
+        ok = [{"at_s": 10.0, "sfx": "audio/sfx/pop-1.mp3"}]
+        assert build_audio.sfx_tail_warnings(ok, [{"start_s": 0.0}, {"start_s": 20.0}], "X") == []
+        # no audio_dir -> the audit is skipped (no ffprobe, never fails)
+        assert build_audio.sfx_tail_warnings(events, shots, None) == []
+    finally:
+        build_audio._sfx_duration = orig
+
+
+# --- R8-B: universal sentence gaps (source:"sentence") in build_audio_spec ---
+
+def test_sentence_gap_excluded_from_dips_but_shifts_timeline():
+    # a sentence gap NEVER dips (VO rhythm, not a full-stop) but STILL shifts later cue-gap dips
+    gaps = [{"at_s": 5.0, "dur_s": 0.5, "source": "sentence"},
+            {"at_s": 10.0, "dur_s": 0.9, "source": "cue"}]
+    spec = build_audio_spec([], TOK2, words=[], has_vo=False, breath_gaps=gaps)
+    assert len(spec["dips"]) == 1, spec["dips"]                 # only the cue gap dips
+    assert spec["dips"][0]["at_s"] == 10.5, spec["dips"]        # 10.0 shifted past the 0.5 sentence gap
+
+
+def test_sentence_gap_does_not_withhold_sfx():
+    # a SFX landing inside a sentence-gap window survives (only authored-pause full-stops withhold)
+    gaps = [{"at_s": 5.0, "dur_s": 0.5, "source": "sentence"}]
+    spec = build_audio_spec([], TOK2, words=[], has_vo=False, breath_gaps=gaps,
+                            cue_events=[{"at_s": 5.2, "role": "boom"}], audio_dir=None)
+    assert any(round(e["at_s"], 2) == 5.2 for e in spec["events"]), spec["events"]
+
+
+def test_stacked_gap_source_cue_still_dips_and_withholds():
+    # a merged gap that STACKS sentence+cue is source "cue" -> keeps the dip + withhold over the FULL window
+    gaps = [{"at_s": 5.0, "dur_s": 1.5, "source": "cue"}]     # (0.5 sentence + 1.0 cue, pre-merged)
+    spec = build_audio_spec([], TOK2, words=[], has_vo=False, breath_gaps=gaps,
+                            cue_events=[{"at_s": 6.0, "role": "boom"}], audio_dir=None)
+    assert spec["dips"] == [{"at_s": 5.0, "depth_db": -40, "dur_s": 1.5}], spec["dips"]
+    assert all(round(e["at_s"], 2) != 6.0 for e in spec["events"]), spec["events"]   # withheld in full window
+
+
+# --- P16: SFX fade_out_s + real-duration play window -------------------------
+
+def test_fade_out_s_forwarded_through_cue_sfx_events():
+    from build_audio import cue_sfx_events
+    ev = cue_sfx_events([{"at_s": 1.0, "role": "applause", "fade_out_s": 1.2}],
+                        {"sfx_pools": {"applause": ["applause-1"]}})
+    assert ev[0]["fade_out_s"] == 1.2, ev
+
+
+def test_event_carries_probed_dur_s():
+    # the realizer probes each SFX file's real duration onto the event so the engine plays its FULL
+    # length (not the legacy hard 2s window). _sfx_duration stubbed to avoid an ffprobe dependency.
+    import tempfile, os, build_audio
+    d = tempfile.mkdtemp()
+    os.makedirs(os.path.join(d, "audio", "sfx"), exist_ok=True)
+    open(os.path.join(d, "audio", "sfx", "applause-1.mp3"), "wb").close()
+    orig = build_audio._sfx_duration
+    build_audio._sfx_duration = lambda path, cache: 4.7
+    try:
+        spec = build_audio_spec([], {"sfx_pools": {"applause": ["applause-1"]}}, words=[], has_vo=False,
+                                cue_events=[{"at_s": 1.0, "role": "applause", "fade_out_s": 1.0}], audio_dir=d)
+    finally:
+        build_audio._sfx_duration = orig
+    e = spec["events"][0]
+    assert e["dur_s"] == 4.7 and e["fade_out_s"] == 1.0, e   # real length carried + fade forwarded
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for fn in fns:

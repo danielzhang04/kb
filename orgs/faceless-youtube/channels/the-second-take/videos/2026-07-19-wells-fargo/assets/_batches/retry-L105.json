@@ -1,0 +1,16 @@
+[
+ {
+  "name": "wf-L105",
+  "shot_id": "L105",
+  "mode": "environment",
+  "delta": "A conference stage seen from the back of the hall: the focus is a huge cross-sell scorecard number filling the screen behind the podium, with a hand-lettered marker banner reading 'BEST IN THE BUSINESS' stretched overhead. A small presenter figure stands at the podium seen FROM BEHIND, back-turned and silhouetted, face not visible; a row of seated investor figures on the crowd rig in the foreground, seen from behind as dark rounded shoulders. The scorecard number is the hero of the frame, not any person. Warm stage palette, one red accent on the banner border. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and genuine depth, filled edge-to-edge; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'BEST IN THE BUSINESS', no logos; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+   "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+  ],
+  "_cast": [],
+  "_text": true,
+  "_crowd": true
+ }
+]

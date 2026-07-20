@@ -2,8 +2,8 @@
 so the current resolvers/realizers stay unchanged. See references/audio-plan-schema.md."""
 import json, os
 
-_SFX_KEYS = ("anchor", "role", "pause_s", "in_pause", "gain_db", "sync")
-_MUSIC_KEYS = ("from_anchor", "mood", "level_db")
+_SFX_KEYS = ("anchor", "role", "pause_s", "in_pause", "gain_db", "sync", "variant", "fade_out_s")
+_MUSIC_KEYS = ("from_anchor", "mood", "level_db", "track", "fade_out_s")
 _DRY_KEYS = ("from_anchor", "to_anchor")
 
 

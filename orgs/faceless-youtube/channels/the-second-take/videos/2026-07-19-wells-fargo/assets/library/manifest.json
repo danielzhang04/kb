@@ -1,0 +1,53 @@
+{
+  "video_slug": "2026-07-19-wells-fargo",
+  "generated": "2026-07-20",
+  "notes": "Pass-1 character lock ONLY. Pass 2 (scene generation) NOT run - halted at the spend gate, see image-gen-lab.md. Characters are video-local; deliberately NOT promoted to the channel registry (Wells Fargo execs, unlikely to recur).",
+  "assets": [
+    {
+      "name": "kovacevich",
+      "kind": "character",
+      "file": "assets/library/kovacevich.png",
+      "source": "generated",
+      "seed": [
+        "channels/the-second-take/visual-kit/refs/base/base.png"
+      ],
+      "shots": [
+        "L27"
+      ],
+      "technique": "new_character 2:3, style-only descriptor + auto-appended 2c RIG-HOLD",
+      "notes": "Shipped on gen 1, no retry. Rig verified on crop battery: round head PASS; no-nose PASS (the pale shape below the mouth is the base canonical's own chin detail, confirmed by a side-by-side midface crop against refs/base/base.png - NOT a nose); no-ears PASS (hair fills the side); 4-digit hands PASS (not certified - human board is final finger authority); flat cream head tone; charcoal double-breasted suit + burgundy tie per L27 still_prompt."
+    },
+    {
+      "name": "stumpf",
+      "kind": "character",
+      "file": "assets/library/stumpf.png",
+      "source": "generated",
+      "seed": [
+        "channels/the-second-take/visual-kit/refs/base/base.png"
+      ],
+      "shots": [
+        "L81",
+        "L96"
+      ],
+      "technique": "new_character 2:3, style-only descriptor + auto-appended 2c RIG-HOLD",
+      "notes": "Gen 1 (staged as stumpf.png) FAILED the no-ears invariant - fully drawn ears with inner helix detail on both sides, crop evidence stumpf--stumpf--ear2.png. Root cause was the authored delta ('THINNING hair, higher at the temples') exposing the flat side of the head and inviting the engine's ear prior. ONE re-authored retry (stumpf-v2): age moved onto build/brow/mouth linework and the hair authored as a FULL side-covering sweep. Retry PASSES all invariants - crop evidence stumpf-v2--stumpfv2--ear1/ear2 (no ear), --face (no nose), --hand2 (3 fingers + thumb)."
+    },
+    {
+      "name": "tolstedt",
+      "kind": "character",
+      "file": "assets/library/tolstedt.png",
+      "source": "generated",
+      "seed": [
+        "channels/the-second-take/visual-kit/refs/base/base.png"
+      ],
+      "shots": [
+        "L94",
+        "L96",
+        "L105",
+        "L109"
+      ],
+      "technique": "new_character 2:3, style-only descriptor + auto-appended 2c RIG-HOLD",
+      "notes": "Shipped on gen 1, no retry. Blonde-grey bob fills both side zones (no-ears PASS), no nose, flat cream head tone, burgundy blazer per L94/L105/L109 still_prompts, squat base proportion held."
+    }
+  ]
+}

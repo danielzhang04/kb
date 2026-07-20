@@ -1,0 +1,156 @@
+{
+  "schema": "faceless-youtube/metadata@1",
+  "channel": "the-second-take",
+  "video_slug": "2026-07-19-wells-fargo",
+  "source_idea_id": "ST-033",
+  "generated": "2026-07-20",
+  "status": "metadata-drafted",
+
+  "defaults": {
+    "privacy_status": "private",
+    "made_for_kids": false,
+    "contains_synthetic_media": true,
+    "default_language": "en",
+    "default_audio_language": "en",
+    "license": "youtube",
+    "embeddable": true
+  },
+
+  "long_form": {
+    "title_primary": "Wells Fargo Opened 3.5 Million Accounts Nobody Asked For",
+    "title_challengers": [
+      "Wells Fargo's Fraud Started With a Rhyme",
+      "Nobody Ran the Wells Fargo Scam. A Sales Target Did."
+    ],
+    "description": "Wells Fargo built the most admired sales machine in American banking. Then it turned out the machine was opening millions of accounts nobody asked for.\n\nA single number, picked back in 1999 partly because it rhymed with the word great, manufactured a nationwide fraud from the bottom up, with no mastermind at the top. This is the full story of the Wells Fargo cross-selling scandal: how branch employees opened as many as three and a half million unauthorized accounts and credit cards to hit an eight-products-per-household quota, how they physically did it, why the employees who reported it were the ones who got fired, and what did and did not happen to the executives who owned the target. Told as a story, not a lecture.\n\nChapters:\n00:00 A number nobody agreed to\n01:10 Eight, because it rhymed with great\n02:10 How to open an account nobody wanted\n03:22 When 2.1 million became 3.5 million\n04:18 Five thousand people shown the door\n05:24 The ethics line caught the wrong people\n06:16 The day the regulators came down together\n07:00 A punishment the Fed had never used\n08:06 What almost happened to the people at the top\n09:28 One charge, and not the one you'd expect\n\n#WellsFargo #CorporateFraud #BankingScandal #Business #TrueStory\n\nThis video uses AI-assisted narration and illustrated animation. Every fact is drawn from public regulatory and court records, listed below.\n\nThis is a documentary about past events, for education and entertainment. It is not financial, legal, or investment advice.\n\nSources:\nCFPB press release, September 8, 2016 (the $100M fine, the ~2.1M split, the fund-transfer / debit-PIN / phony-email mechanics, the $185M total, refunds).\nOCC News Release NR-OCC-2016-106, September 8, 2016 (the $35M penalty and the unauthorized-account findings).\nWells Fargo cross-selling scandal, Wikipedia (heavily sourced): the pinning / PIN-0000 detail, the phony-email tactic, the unwanted insurance products, the ethics-hotline retaliation, and Stumpf's October 2016 resignation.\nWells Fargo expanded-review disclosure, August 31, 2017 (via NBC News and Forbes): the 165M-account review, the 2009 to 2016 window, the ~3.53M total (2.55M + 981,000), the 190,000 fee-incurring accounts.\nSEC Press Release 2023-99 (Tolstedt settlement): the cross-sell-metric charge (2014 to 2016), her penalty and disgorgement, Stumpf's $2.5M, the bank's $500M for investors.\nOCC enforcement actions against eight former Wells Fargo executives, January 23, 2020: Stumpf's lifetime prohibition and $17.5M penalty.\nDOJ, February 21, 2020: the $3B total, the deferred-prosecution agreement, the admitted false records and identity theft, the 2002 to 2016 window.\nDOJ (March 2023) plus American Banker and Forbes (September 15, 2023): Tolstedt's guilty plea to obstructing a bank examination and the sentence (three years probation, six months home confinement, $100k fine, 120 hours community service, no prison).\nFederal Reserve Board enforcement releases, February 2, 2018 and June 3, 2025: the asset cap at ~$1.95T end-2017 total assets, the first-of-its-kind whole-firm cap, and the 2025 removal.\nU.S. Department of Labor / OSHA releases, April 3 and July 21, 2017: the ~$5.4M reinstatement of the wealth-management whistleblower and the ~$577,500 reinstatement of the Pomona branch manager.\nWells Fargo Board independent investigation (Shearman & Sterling), April 2017 (via CNBC and Fortune): Stumpf's ~$69M and Tolstedt's ~$67M forfeitures, and the ~1%-per-year firing rate treated as acceptable.\nWashington Post, Star Tribune, American Banker, Public Citizen: the ~5,300 fired / 23,000+ referred figures, the 1999 Going for Gr-eight origin, and the eight-rhymes-with-great rationale.",
+    "tags": [
+      "wells fargo",
+      "wells fargo scandal",
+      "wells fargo fake accounts",
+      "wells fargo cross selling scandal",
+      "wells fargo fraud",
+      "fake accounts scandal",
+      "cross selling",
+      "eight is great",
+      "john stumpf",
+      "carrie tolstedt",
+      "unauthorized accounts",
+      "banking scandal",
+      "corporate fraud",
+      "bank fraud",
+      "whistleblower",
+      "sales quota",
+      "cfpb",
+      "occ",
+      "business documentary",
+      "money story",
+      "the second take"
+    ],
+    "hashtags": ["#WellsFargo", "#CorporateFraud", "#BankingScandal", "#Business", "#TrueStory"],
+    "category_id": "27",
+    "category_name": "Education",
+    "chapters": [
+      {"time": "00:00", "label": "A number nobody agreed to"},
+      {"time": "01:10", "label": "Eight, because it rhymed with great"},
+      {"time": "02:10", "label": "How to open an account nobody wanted"},
+      {"time": "03:22", "label": "When 2.1 million became 3.5 million"},
+      {"time": "04:18", "label": "Five thousand people shown the door"},
+      {"time": "05:24", "label": "The ethics line caught the wrong people"},
+      {"time": "06:16", "label": "The day the regulators came down together"},
+      {"time": "07:00", "label": "A punishment the Fed had never used"},
+      {"time": "08:06", "label": "What almost happened to the people at the top"},
+      {"time": "09:28", "label": "One charge, and not the one you'd expect"}
+    ],
+    "chapters_status": "estimated-from-script — re-time after render before publish",
+    "thumbnail": {
+      "primary": {
+        "text": "OPENED IN SECRET",
+        "concept": "One dominant clean-2.5D-vector object: a single bank account-opening form with a forged-looking signature and a small red 'unauthorized' stamp, on a locked single-color field with the channel's red accent, >=50% negative space, no face. Delivers the secret-account promise without restating the title's number."
+      },
+      "challengers": [
+        {
+          "text": "EIGHT = GREAT",
+          "concept": "Pairs with challenger title 'Wells Fargo's Fraud Started With a Rhyme': a clean-2.5D-vector motivational scorecard showing a giant number 8, cracked, with tiny account icons spilling out of the crack, red accent, single-color field, >=50% negative space, no face."
+        },
+        {
+          "text": "NO MASTERMIND",
+          "concept": "Pairs with challenger title 'Nobody Ran the Wells Fargo Scam. A Sales Target Did.': an empty executive chair at the head of a boardroom table, with a single glowing red sales-target dial where a person should sit, clean 2.5D vector, single-color field, >=50% negative space, no face."
+        }
+      ]
+    },
+    "pinned_comment": "Out of a fraud this big, exactly one person was ever criminally charged, and not even for the fraud itself. If nobody sat in a room and ordered it, who should have answered for it: the people at the counter, or the people who owned the number?",
+    "ab_experiment": {
+      "eligible": true,
+      "dimension": "title_and_thumbnail",
+      "note": "YouTube Studio-only (Test & Compare, desktop, long-form). Data API v3 cannot submit this. Set up manually: title_primary + the 2 title_challengers, and thumbnail primary + the 2 challengers. Challengers test three framings within the vindication lever: the scale/number (primary), the rhyme-origin absurdity (c1), and the no-villain incentive payload (c2)."
+    }
+  },
+
+  "shorts": [
+    {
+      "file": "shorts/short-01.md",
+      "archetype": "Shocking stat (with a myth-bust payoff)",
+      "status": "publish",
+      "title": "3.5 Million Accounts Nobody Asked For",
+      "description": "The number didn't double from 2.1 to 3.5 million. The review just widened, and even that is the bank's own estimate. The Wells Fargo story.\n#Shorts #WellsFargo #CorporateFraud",
+      "tags": ["wells fargo", "wells fargo fake accounts", "3.5 million accounts", "banking scandal", "corporate fraud", "shorts"],
+      "hashtags": ["#Shorts", "#WellsFargo", "#CorporateFraud"],
+      "category_id": "27",
+      "category_name": "Education",
+      "pinned_comment": "Full breakdown: <long-form-url>",
+      "thumbnail_note": "first frame IS the thumbnail (universal.md §8/§11)"
+    },
+    {
+      "file": "shorts/short-02.md",
+      "archetype": "Myth-bust / reveal (the incentive was the villain)",
+      "status": "publish",
+      "title": "The Bank Fraud That Started With a Rhyme",
+      "description": "Wells Fargo wanted eight products per household, partly because eight rhymed with great. Then a bonus rode on it, and no mastermind was needed.\n#Shorts #WellsFargo #EightIsGreat",
+      "tags": ["wells fargo", "eight is great", "going for great", "wells fargo scandal", "cross selling", "shorts"],
+      "hashtags": ["#Shorts", "#WellsFargo", "#EightIsGreat"],
+      "category_id": "27",
+      "category_name": "Education",
+      "pinned_comment": "Full breakdown: <long-form-url>",
+      "thumbnail_note": "first frame IS the thumbnail (universal.md §8/§11)"
+    },
+    {
+      "file": "shorts/short-03.md",
+      "archetype": "Single-mechanism explainer (pinning)",
+      "status": "publish",
+      "title": "How a Bank Faked Accounts Nobody Opened",
+      "description": "Move a little of the customer's own money in, set the debit PIN to four zeros, invent an email so no alert ever arrives. Inside the bank they called it pinning.\n#Shorts #WellsFargo #BankingScandal",
+      "tags": ["wells fargo", "pinning", "wells fargo fake accounts", "banking scandal", "unauthorized accounts", "shorts"],
+      "hashtags": ["#Shorts", "#WellsFargo", "#BankingScandal"],
+      "category_id": "27",
+      "category_name": "Education",
+      "pinned_comment": "Full breakdown: <long-form-url>",
+      "thumbnail_note": "first frame IS the thumbnail (universal.md §8/§11)"
+    },
+    {
+      "file": "shorts/short-04.md",
+      "archetype": "What most people miss (the asymmetry)",
+      "status": "publish",
+      "title": "They Fired the People Who Reported It",
+      "description": "Employees who called the ethics line to report accounts opened without consent got fired. Years later the Labor Department ordered one reinstated with about $5.4 million.\n#Shorts #WellsFargo #Whistleblower",
+      "tags": ["wells fargo", "whistleblower", "ethics line", "wells fargo scandal", "labor department", "shorts"],
+      "hashtags": ["#Shorts", "#WellsFargo", "#Whistleblower"],
+      "category_id": "27",
+      "category_name": "Education",
+      "pinned_comment": "Full breakdown: <long-form-url>",
+      "thumbnail_note": "first frame IS the thumbnail (universal.md §8/§11)"
+    },
+    {
+      "file": "shorts/short-05.md",
+      "archetype": "The reveal / twist (nobody went to prison for the fraud)",
+      "status": "bench",
+      "title": "One Person Was Charged. Not for the Fraud.",
+      "description": "In the entire Wells Fargo scandal, exactly one person was criminally charged, for obstructing the exam, not the fraud, and got no prison. Nobody was convicted of a single fake account.\n#Shorts #WellsFargo #CorporateFraud",
+      "tags": ["wells fargo", "carrie tolstedt", "obstruction", "wells fargo scandal", "corporate fraud", "shorts"],
+      "hashtags": ["#Shorts", "#WellsFargo", "#CorporateFraud"],
+      "category_id": "27",
+      "category_name": "Education",
+      "pinned_comment": "Full breakdown: <long-form-url>",
+      "thumbnail_note": "first frame IS the thumbnail (universal.md §8/§11)"
+    }
+  ]
+}

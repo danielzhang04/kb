@@ -81,7 +81,8 @@ Output: `videos/<slug>/assets/library/` + `manifest.json`.
 
 1. **Derive the character table from `cast`.** Read every shot's **`cast`** array (the authoritative figure
    list) across `long_form.shots`, shorts, and the thumbnail; per character record its registry name, the shot
-   IDs it appears in, and the distinct `pose_ref`/`expression_ref` combos it uses (those drive Pass 1b).
+   IDs it appears in, and the distinct `pose_ref`/`expression_ref` frames it uses (Pass 2 seeds those frames
+   directly into each scene gen — there is no separate posed-character build).
    `script.md` is context only.
    - **Individual named characters AND recurring identifiable groups earn a library slot** — even
      single-shot individuals (a named character free-drawn inside a scene falls off the rig, so it needs a
@@ -89,8 +90,8 @@ Output: `videos/<slug>/assets/library/` + `manifest.json`.
      troupe appearing across shots) is a character whose canonical is a **group frame** — its N members
      together in their matching outfits; it locks IDENTITY (member count, matching costume, look, rig) and
      is seeded into every appearance so the group stays consistent. A group uses **no** `pose_ref`/
-     `expression_ref` (those are single-figure) → no Pass-1b merge; its per-shot staging (performing /
-     lined up / atop the pile) is composed in the Pass-2 scene gen off the seeded group canonical. **If a
+     `expression_ref` (those are single-figure) → it seeds its group canonical directly; its per-shot staging
+     (performing / lined up / atop the pile) is composed in the Pass-2 scene gen off that seed. **If a
      member ever acts alone** in a hero shot, promote *that member* to an individual character (the normal
      path); don't force per-member identity on the ensemble otherwise.
    - **Story-referenced figures inside diegetic media count:** a brochure figure, portrait, or poster
@@ -102,9 +103,9 @@ Output: `videos/<slug>/assets/library/` + `manifest.json`.
      specific object appearing across multiple shots whose look must MATCH (the guidebook, a named
      banknote) — every shot referencing it lists it in that shot's **`props` array** — gets ONE canonical
      generated ONCE (`assets/library/prop-<name>.png`, `prop-` prefix, `--mode environment`/`style`, no
-     character seed), then seeded/reused into each appearance. A prop has no pose/expression → **no Pass-1b
-     merge**; its per-shot placement (held up, on a desk, stamped) is composed in the Pass-2 scene gen off
-     the seeded prop canonical. **`props` names each recurring prop by its library name — no prose
+     character seed), then seeded/reused into each appearance. A prop has no pose/expression → it seeds its
+     prop canonical directly; its per-shot placement (held up, on a desk, stamped) is composed in the Pass-2
+     scene gen off that seed. **`props` names each recurring prop by its library name — no prose
      guesswork** (a prop VPW referenced in the `still_prompt` but omitted from `props` is an authoring gap;
      flag it back).
    - **Environments, plates, one-off props, and *anonymous/nonrecurring* crowds do NOT earn a slot** —
@@ -150,75 +151,62 @@ by technique (e)); had the story featured a recurring *named* troupe, THAT would
 (canonical = its members together, seeded into each appearance). On a later video a returning CHARACTER
 hits the registry → `reused`, zero generation.
 
-### Pass 1b — posed-character merge
-
-For each DISTINCT `(character, pose_ref, expression_ref)` combo appearing in the shots' `cast`, build ONE
-posed-character asset (a combo used by many shots is merged once, reused). A `cast` entry with neither ref →
-the plain identity canonical (Pass 1a above), no merge.
-
-- **Merge gen:** seed `[<character canonical>, <pose_ref frame>, <expression_ref frame>]` (drop a seed a combo
-  omits), `--mode environment`, plain background. Delta = the **binding template**, which executes the
-  **attribute-provenance split (bible §5)** — base-derived seeds are bald/cream/neutral, so route every
-  attribute explicitly: *"Combine the references into ONE `<character>`. From the CHARACTER reference: identity,
-  head/skin TONE, HAIR and facial hair, COSTUME, and face (do NOT restate the costume — it lives in that
-  reference). From the POSE reference: ONLY the body pose and hands. From the EXPRESSION reference: ONLY the
-  eye/brow/mouth SHAPE — never its tone, head, or hairline. Every skin patch, INCLUDING BOTH HANDS, renders in
-  the CHARACTER's head tone."* (`forge.py` auto-appends the §2c rig-hold — the shared FORM prior: round head /
-  no nose / four-digit. It is character-agnostic, so it sets hand FORM while the POSE seed sets hand POSE — the
-  two don't conflict.)
-- **Seed quality + staging (keep the provenance split honest against the blend).** The engine BLENDS seeds by
-  field weight, so two rules stop base traits winning by majority: (1) **Clean-portrait seed** — seed a
-  character from a clean, ISOLATED single-character frame (its canonical, or a prior posed-character portrait on
-  a plain background), NEVER a busy scene frame where the figure is small / one-of-many (a weak identity signal
-  a base seed overrides — the measured blank-face). (2) **Stage 1-to-1** — a merge step carries at most ONE
-  base-derived seed against the character; never stack a pose AND an expression base frame against one canonical
-  (2-against-1, the base wins). Run `[character + expression]` then `[+ pose]` as separate steps, each the
-  character vs a single base frame.
-- **Verify the portrait** against §3 + the combo's intent: 4-digit hands, hands on the CHARACTER's tone, the
-  right expression, identity held. **ONE re-authored retry** (see the retry rule in the batched-review
-  section), then flag + surface. This is the isolation gate — a bad merge is caught HERE, cheaply,
-  before any scene gen.
-- Save as `assets/library/<character>--<pose|none>--<expr|none>.png`; record it in the library manifest with
-  its `character`, `pose_ref`, `expression_ref`, and the `cast`-matching shot ids.
-- **Interactions apply the same provenance split + staging.** An interaction `pose_ref` shared by two `cast`
-  figures → a posed-INTERACTION asset (both figures, each identity in its slot). **Pre-merge each character to a
-  clean portrait FIRST** (identity + its `expression_ref`, per the staging above — a clean single-character
-  portrait, NOT a scene frame), THEN seed `[interaction template + portrait A + portrait B]` into ONE
-  interaction gen — **never** `[template + A + B + exprA + exprB]` in a single pot (it mis-routes: expressions
-  and identities collapse or revert to the bald base). Slot binding = the shot's `cast` order (first = left,
-  second = right — VPW owns that convention). The **template carries the clasp geometry + the eye-line** (baked
-  into the asset), so a scene inherits both by seeding it — do not re-specify them in words. **Eye-line is
-  PUPILS-only:** heads stay front-facing and round — NEVER turn a head toward the other figure to force the
-  gaze; a profile head-turn grows a nose/jaw and breaks the no-nose rig (the same profile limit as §7). The
-  eyes cut sideways; the head does not.
-- **Expression-frame re-author invalidates every posed-character asset built from it (dependency, not
-  optional).** A posed-character asset (`<char>--<pose>--<expr>.png`) BAKES the `expression_ref` frame's
-  eye/brow/mouth shape at merge time; a scene then seeds that posed-character. So if the `expr-*.png`
-  library is re-authored to a new register, every posed-character asset merged from an old frame — and
-  every scene seeded from those — is STALE and must be regenerated in order: **(1) re-author + human-gate
-  the frames → (2) regen the affected posed-character merges → (3) regen the scenes that seeded them.**
-  Never ship a video with a mix of old-register and new-register faces; do the cascade top-down.
-
 ## Pass 2 — scene generation
 
 Walk `long_form.shots` **in order** (then shorts, then the thumbnail). Each scene is generated as a
-**complete image**: the library (characters only) supplies the identities you seed, and the environment
-+ props are composed in the gen from the shot's `still_prompt`. Output:
-`videos/<slug>/assets/scenes/<shot-id>.png` + `manifest.json`.
+**complete image in ONE run** — there is no posed-character pre-build; a scene multi-seeds all of its
+inputs at once. Output: `videos/<slug>/assets/scenes/<shot-id>.png` + `manifest.json`.
 
-**Aspect ratio — pass it explicitly, every scene.** Long-form scenes inherit `long_form.aspect_ratio`
-(16:9 for The Second Take); each short's scenes inherit that short's ratio (9:16). `forge.py`'s default
-gen aspect is portrait **`2:3`**, so 16:9 long-form work MUST pass `--aspect 16:9` on every scene gen —
-forget it and the scene generates portrait, silently mis-framed against the video.
+**Seeding (the load-bearing rule).** A scene generates in ONE run. Seeds, in order: **each cast figure's
+character canonical + its `expression_ref` frame + its `pose_ref` frame** (+ the interaction template when
+two figures interact), then a **style anchor / plate — MANDATORY on every scene/plate gen, not just
+character-free ones** (the character seeds pin identity, NOT art style; pick the shot's continuity parent
+frame — a prior in-stage/set frame or the plate this scene evolves — else a `refs/env/` register anchor,
+else an approved on-style scene). **Cross-chunk ART-STYLE drift is the proven failure when scene gens run
+unanchored** (a batch of cast-seeded-but-style-unanchored scenes drifted to different renders
+chunk-to-chunk — a softer/detailed-middle look, mismatched line weight; human-caught 2026-07-16). Prompt
+last. Attribute provenance still routes by seed: **identity / head-tone / hair / costume from the character canonical; body / hands from the
+pose frame; eye / brow / mouth SHAPE only from the expression frame** (bible §5). The library primitives
+(§7) are the seed source — a `pose_ref`/`expression_ref` names one and it is seeded straight into the scene,
+never merged first. The environment + props are DESCRIBED in the delta and composed in the same gen.
+
+**Seed cap ≤4, and regen-first on a rig defect (bible §5).** A scene gen carries **at most FOUR seeds** —
+character canonical + ONE pose + ONE expression + one anchor/exemplar (a style anchor OR the crowd
+exemplar, only when the shot needs it); beyond 4 every prior dilutes and a `base.png` tossed in as an Nth
+"rig anchor" pins nothing (measured 2026-07-16: 4–5-seed rework gens lost identity). And a **way-off-rig /
+multi-defect frame is REGENERATED FRESH from its canonicals**, never "fixed" by seeding an identity pass
+off the defective frame — the defect lives in the strongest seed and rides it back ~half the time. The
+only defective-seed exceptions are an **authored delta-chain parent** (technique (e)) and a **human-ordered
+framing hold**, and BOTH take a **before/after crop-battery diff on EVERY figure** in the frame, not just
+the targeted one. **Crowd-bearing gens also seed the crowd exemplar** (`refs/base/crowd-exemplar.png`,
+bible §2d) as the crowd's proportion/face anchor — the §2d words stay in the `still_prompt`, but the
+exemplar seed is what pins the crowd rig.
+
+**Aspect ratio — pass it explicitly, every scene; NEVER 16:9 on a cutout.** Long-form scenes inherit
+`long_form.aspect_ratio` (16:9 for The Second Take); each short's scenes inherit that short's ratio
+(9:16). `forge.py`'s default gen aspect is portrait **`2:3`**, so 16:9 long-form work MUST pass
+`--aspect 16:9` on every **scene / plate** gen — forget it and the scene generates portrait, silently
+mis-framed against the video. **A gen whose output becomes a CUTOUT is the opposite — NEVER 16:9.** A
+wide cutout gen squashes the object's proportions (a 16:9 ship cutout shipped at aspect 1.54 vs the
+approved 1.22, human-caught); cutout gens use the default `2:3`, or `4:3`/`3:2` for a naturally-wide
+object. This is now **mechanically enforced:** `forge.py cutout` HARD-ERRORS on an input whose
+width/height ≥ 1.5 (regenerate the source at 2:3/4:3/3:2) unless `--allow-wide` is passed for a
+legitimately wide object (a star row).
 
 **Scope of a shot:** generate **stills** only for shots whose `source` is `ai-gen` or the generated half
 of `hybrid`. `source: chart|screencap|stock|archival` belong to other pipelines — skip them and record
 `skipped: source=<x>` in the manifest. **Ignore every motion/beat field** — `stage`/
 `stage_role`/`changed_elements`, and any retired motion keys an old file still carries — motion is the
 Remotion engine's business; you read only the visual fields. `synthetic` is consumed by metadata, not
-here. **Ignore `on_screen_text`** — it's a motion overlay the engine draws as real
-type; do NOT bake it into the still. Render text into the artifact ONLY where `still_prompt` names it as
-an on-artifact element (a stamp, a banknote's engraving, a signboard).
+here. **ALL in-video text is diegetic — designed into the scene and BAKED into the generated image** (a
+stamp, a sign, a ledger, a banner). Engine-drawn text and device cards are retired, so there is no overlay
+that draws type at render time — if a shot needs words on screen, they are an on-artifact element in this
+still. Authored text is quoted verbatim in the `still_prompt`, kept SHORT (1–4 words proven; longer
+unproven); the batched review transcribes it letter-by-letter and a garbled/partial render is a blocking
+flag (bible §3). **Every text-bearing gen ALSO seeds the channel's lettering exemplar**
+(`refs/env/lettering-marker-italic.png` for The Second Take — the locked type look, bible §6) so all
+in-video lettering stays one family across videos; the review judges lettering FAMILY loosely (same
+hand, not identical glyphs) and spelling strictly.
 
 **Prompt assembly:** `forge.py` auto-prepends the bible descriptor (§2/§2b by mode); your delta is the
 shot's `still_prompt` (which already carries the file's `global_prompt_suffix` AND the authored
@@ -226,49 +214,96 @@ framing/composition — VPW owns it) plus the seeds; do NOT re-compose the shot,
 technical placement. **Precedence:** the delta overrides the descriptor on exactly the variables it
 names (an outfit change, era dress, a deliberately-authored stamp/counter) — everything it doesn't name,
 the descriptor holds; where `global_prompt_suffix` and the bible disagree, **the bible wins**. Mode per
-technique: **(b) composed scenes → `--mode environment`** (the style-only descriptor; **seed the
-POSED-CHARACTER asset** for each of the shot's `cast` figures — `assets/library/<character>--<pose|none>--<expr|none>.png`
-(Pass 1b) — so the pose, expression, hands, and tone are already baked in; the delta describes ONLY the
-environment + placement, NEVER the pose/expression/hands — those are in the seed; `forge.py` still
-auto-appends the §2c RIG-HOLD form prior); **(c) character-free scene → `--mode
-environment`/`style`** (no identity seed); **(d) one-shot single-character → `--mode identity`** off that
-character's canonical. (`--mode style` is the explicit alias — the same §2b style-only descriptor as
-`environment`.)
+technique: **(b) composed scenes → `--mode environment`** (the style-only descriptor; **seed each `cast`
+figure's frames** — canonical + `expression_ref` + `pose_ref` (+ the interaction template when two figures
+interact) — so identity, pose, expression, hands, and tone route by seed; the delta describes ONLY the
+environment + placement, NEVER the pose/expression/hands; `forge.py` auto-appends the §2c RIG-HOLD form
+prior); **(c) character-free scene → `--mode environment`/`style`** (**carries a style-anchor seed** — see
+the ENV rule below; forge hard-errors an unseeded environment/style gen); **(d) one-shot single-character
+→ `--mode identity`** off that character's canonical (+ its expr/pose frames). (`--mode style` is the
+explicit alias — the same §2b style-only descriptor as `environment`.)
 
 **Figure index — the shot's `cast` names its figures.** Before generating shot `S`, read its `cast`: for
-each figure, **seed its POSED-CHARACTER asset** — the Pass-1b merge of its canonical + `pose_ref`/
-`expression_ref` (a `cast` entry with neither ref → the plain canonical). Seed via technique (a) if the shot
-IS that figure full-frame, else as a placed figure via (b)/(d); never fresh-draw a figure that has a
-posed-character/canonical — that is what holds identity + the library hand across shots. (`cast` is
-authoritative; Pass-1b's manifest maps each combo to its file. Environments/props aren't figures — they're
-composed per shot from the `still_prompt`.)
+each figure, **seed its frames** — canonical + `pose_ref`/`expression_ref` (a `cast` entry with neither ref
+→ the plain canonical). Seed via technique (a) only if an on-disk frame already IS that shot full-frame,
+else as a placed figure via (b)/(d); never fresh-draw a figure that has a canonical — the seeded canonical
+is what holds identity + the library hand across shots. (`cast` is authoritative; the library manifest maps
+each character to its canonical, the registry maps each `pose_ref`/`expression_ref` tag to its frame.
+Environments/props aren't figures — they're composed per shot from the `still_prompt`.)
 
 Per shot, pick the **cheapest technique that holds the locked elements**:
 
 | Technique | When | How |
 | --- | --- | --- |
-| **(a) Reuse / reframe** | the shot IS a full-frame of a locked CHARACTER (a reaction close-up) | copy the library file to `scenes/<shot-id>.png` (the scenes folder stays the one complete render source); manifest notes the source + intended framing |
-| **(b) Seeded composition** (default for a scene with characters) | the locked character(s) present, in a composed environment | ONE generation seeded on the **posed-character asset(s)** (`--seed <char--pose--expr>[,<char2--…>]`) for the shot's `cast`. The environment + props are DESCRIBED in the delta and composed in the gen. Delta = the `still_prompt`'s scene/placement facts only — the pose, expression, hands and tone are baked into the seeded posed-character (bible §5); do NOT re-compose or re-describe them |
-| **(c) Character-free scene** | a map, an empty plate, an object — no locked figure in frame | ONE style-only gen (`--mode environment`/`style`), composed from the shot's `still_prompt`; no identity seed needed |
-| **(d) One-shot single-character** | a simple shot with a single prominent character | single gen seeded off the character's canonical ref; full rig check still applies |
-| **(e) Seeded delta-chain** (a held STAGE) | consecutive shots sharing a `stage` id — a `base` frame then `delta` frames | the `base` uses (b)/(c)/(d) off canonical; each `delta` seeds off the PREVIOUS frame's output (`assets/scenes/<prev-shot-in-stage>.png`) and changes ONLY that shot's `changed_elements`, holding the rest; **≤3 deltas** from the base, then re-base or hard-cut to a new stage. A re-base to a NEW place seeds canonical; a re-base that stays in the **same location** seeds the **prior stage's base frame** instead — canonical would throw the set away and return a different place (bible §8). (A future motion engine will move element layers from the same `changed_elements`.) |
+| **(a) Reuse / reframe** | an already-generated on-disk frame (a prior scene, or a canonical that already matches) IS this shot | copy that file to `scenes/<shot-id>.png` (the scenes folder stays the one complete render source); manifest notes the source + intended framing. No gen. |
+| **(b) Seeded composition** (default for a scene with characters) | the locked character(s) present, in a composed environment | ONE generation multi-seeding each `cast` figure's frames (`--seed <char-canonical>,<expr-frame>,<pose-frame>[,<template>][,<char2…>]`) + any style anchor. The environment + props are DESCRIBED in the delta and composed in the gen. Delta = the `still_prompt`'s scene/placement facts only — pose, expression, hands and tone route by seed (bible §5); do NOT re-compose or re-describe them |
+| **(c) Character-free scene** | a map, an empty plate, an object — no locked figure in frame | ONE style-only gen (`--mode environment`/`style`) **carrying a style-anchor seed** (target plate / prior-in-chain > a `refs/env/` register anchor > an approved on-style scene), composed from the shot's `still_prompt` |
+| **(d) One-shot single-character** | a simple shot with a single prominent character | single gen seeding the character's canonical (+ its expr/pose frames); full rig check still applies |
+| **(e) Seeded delta-chain** (a held STAGE, the DELTA-CHAIN arm of the BOUNDARY rule) | consecutive shots sharing a `stage` id where the change is INTEGRATIVE (the new element fuses into the scene's architecture — a city grows a bank, gold threads the streets) | the `base` uses (b)/(c)/(d); each `delta` seeds off the PREVIOUS frame's output (`assets/scenes/<prev-shot-in-stage>.png`) and changes ONLY that shot's `changed_elements`, holding the rest; **≤3 deltas** from the base, then re-base or hard-cut. A re-base to a NEW place seeds canonical; a re-base that stays in the **SAME location** seeds the **prior stage's BASE frame**, never a fresh canonical — canonical would throw the set away and return a different place (bible §8). *(A DISCRETE change — an element that sits on the scene without fusing into its architecture, a character entering, a stamp slamming onto a page — is LAYERED instead: keep the plate, composite an animated cutout. See the layered-shots section + the BOUNDARY rule.)* |
 
+- **Two-gen identity pass — the DEFAULT for a scene-heavy single-character shot (not a fallback).** A
+  *scene-heavy single-character shot* = **exactly ONE seeded cast figure** in a `still_prompt`
+  **dominated by environment/scene content** (the figure is one element inside a built, filled scene,
+  not the whole frame). On these the heavy environment delta reliably **starves the lone character
+  seed** — the figure renders as the blank cream bald base template (it passes every §3 FORM check and
+  is still the wrong character). So generate them in **TWO gens by default:** **gen A** composes the
+  whole scene (technique (b)/(d)); **gen B** is an *identity pass* seeded `[gen-A scene frame +
+  character canonical + expression frame]` that changes ONLY the figure's identity (head tone + hair +
+  face), holding the environment gen A built. **Multi-character shots and character-light/character-free
+  shots are UNCHANGED** — the starve needs a lone figure against a heavy environment. Cost: ~1 extra
+  gen (~$0.13) on such shots — accepted (identity-starve hit 3× across the dogfood slice + chunk 2,
+  two-gen fixed it 3/3; `decisions.md` 2026-07-16). This is the standing prevention for the bible §3
+  identity-match invariant; it is distinct from the one re-authored retry below, which still applies if
+  gen B itself comes back wrong.
+- **De-nose / de-ear fix — a targeted identity-style pass, budgeted for TWO gens.** To strip a nose or ear
+  off an otherwise-good frame (a rig defect the review flagged), run a **targeted identity pass seeded
+  `[current frame + base-rig exemplar]` that changes ONLY the faces** — it lands the nose fix in one gen.
+  But the engine **re-draws a sticky C-shaped ear or a residual nose ~half the time**, so the reliable
+  shape of this fix is a **SECOND targeted pass seeded off the already-fixed frame** (not off the original
+  — the original still has the defect). Budget both from the start; confirm the ear/nose is gone by a
+  zoomed look at the face, not a glance. This two-pass shape is the FIX TECHNIQUE for nose/ear removal, not
+  a loosening of the one-retry batched-review rule below — a targeted rework pass whose second gen cleans a
+  known-sticky residual is the technique working as measured, not a grind.
 - **One engine:** every generation uses `gemini-3-pro-image` (the registry `engine`) — there is no
   tier choice to make; `forge.py` routes every call to it.
-- **Seeds:** always the Pass-1 character canonical frames — never a downstream derivative, never a prior
-  scene output. **The ONE exception is a `delta` frame in a chain (technique (e))**, which seeds the
-  *immediately previous frame in its stage*; that carry-over is what holds the set. Scope it tightly:
-  within-chain only, **≤3 hops** from the stage `base` — a new chain or stage ALWAYS re-seeds canonical
-  (that re-seed is what contains drift).
+- **Seeds — every generation is seeded (chunk-1 evidence: an unseeded gen invents its own register).** A
+  scene seeds its cast frames (canonical + expr + pose + template), plus a **style anchor** for any
+  environment/style gen. Never seed off a downstream character derivative for identity — trace identity to
+  the approved canonical. **The `delta`-frame exception (technique (e))** seeds the *immediately previous
+  frame in its stage*; scope it tightly — within-chain only, **≤3 hops** from the stage `base`, and a
+  re-base in the same location seeds that stage's base frame (above). A new chain/place re-seeds canonical.
+- **ENV rule — every environment/style generation carries a style-anchor seed; `forge.py` hard-errors
+  otherwise** (an unseeded environment/style gen falls back to a stock-clipart prior, off the locked
+  style). Preference order: **the target plate or prior-frame-in-chain > a `refs/env/` anchor matched by
+  REGISTER (vivid exterior / muted exterior / parchment map-document) > an approved on-style scene.**
+- **Maps — CROP the existing map canonical, never regen a new region.** A shot that needs a different
+  region of an already-established 2D map (the same map zoomed to South America, Europe, one country) is a
+  **deterministic PIL crop/zoom of the existing map canonical**, NOT a gen — a regen invents a new
+  coastline/palette/lettering and two "same" maps read as two different maps (bible §5). Regen is the
+  fallback ONLY when the canonical genuinely doesn't cover the region, and then seed the **map canonical +
+  the parchment-map register anchor** (`refs/env/env-map-parchment`). Country borders, routes, and region
+  reveals drawn onto the crop are motion LAYERS (motion-planner), not baked — the crop is the plate.
+- **Expression-frame re-author invalidates only the scenes seeded from it (frames → scenes; there is no
+  merge tier).** A scene seeds an `expression_ref` frame directly, so re-authoring an `expr-*.png` to a new
+  register makes STALE only the scenes that seeded the old frame: **(1) re-author + human-gate the frames →
+  (2) regen the affected scenes.** Never ship a video mixing old- and new-register faces.
 - **Every human figure obeys the family, by TIER** (bible §3/§8 — the three-tier rig model §2e):
   a **named/recurring foreground** figure on the FULL rig (seeded + auto-appended §2c); an **anonymous
   LARGE/foreground** figure ALSO on the FULL rig via the **§2e base-rig clause** (VPW-authored into the
   shot's `still_prompt` — full rig, a generic fitting outfit/hair, **no seed, no canonical**); an
   **anonymous small/many/background** crowd on the **CROWD RIG (§2d)** (its clause is already in the
-  `still_prompt`, so render the crowd from it, no seed, on the simplified rig — round heads, dot eyes, one
-  simple mouth). Review each figure against the rig its tier names: a §2e foreground figure against the
+  `still_prompt`, and the gen **seeds the crowd exemplar** `refs/base/crowd-exemplar.png` — the seed pins
+  the proportion + face that prompt words alone let drift — on the simplified rig: round heads, dot eyes,
+  one simple mouth). Review each figure against the rig its tier names: a §2e foreground figure against the
   FULL rig (a prominent figure rendered on the simplified crowd rig is a FAIL), crowd figures against the
   crowd rig. Style/proportions/period never switch.
+- **Crowd scene with ONE seeded lead — assert the lead's costume + contrast the competing figures.** When
+  a single seeded named figure stands among an anonymous crowd, the crowd competes with the lead's seed
+  and can starve its costume (the lead reverts toward a generic figure). Two proactive levers in the delta:
+  (1) **restate the lead's pinned costume explicitly** even though it is seeded (belt-and-suspenders on a
+  starve-prone shot), and (2) **give the anonymous crowd/rivals a CONTRASTING uniform/palette** so the
+  lead reads as distinct at a glance (prevented a costume-starve proactively on a crowd-with-lead shot,
+  2026-07-16). The lead is still judged against its canonical in the batched review.
 - Generate the scene, move it to `assets/scenes/<shot-id>.png`, and record `{shot_id, file, technique,
   seeds, flagged: false, verified: {scene: false, rig: false}, notes}` in `assets/scenes/manifest.json`
   (skipped shots get a `skipped` entry). `verified` starts false and is stamped true only by the batched
@@ -283,10 +318,11 @@ Per shot, pick the **cheapest technique that holds the locked elements**:
   seed any locked CHARACTER it features (most are character-free artifact thumbnails → compose fully, no
   seed). Do NOT bake the `text_overlay` into the image — it's applied at publish. The batched review applies.
 
-**Worked example (Poyais L22, "MacGregor commissioned a guidebook…").** Technique (b) — seed =
-`library/macgregor-base.png` (the only locked identity); delta = the shot's `still_prompt` + "MacGregor
-seated at the desk, centered; the guidebook held up in his hand, foreground right" — the London office
-and the guidebook are described and composed in this gen. It ships into the batch, then the
+**Worked example (Poyais L22, "MacGregor commissioned a guidebook…").** Technique (b) — seeds =
+`library/macgregor-base.png` (identity) + his `sit` pose frame + a `smug` expression frame, in ONE gen;
+delta = the shot's `still_prompt` + "MacGregor seated at the desk, centered; the guidebook held up in his
+hand, foreground right" — the London office and the guidebook are described and composed in this gen (the
+pose/expression/hands route by seed, not by words). It ships into the batch, then the
 batched review judges it — identity/rig (MacGregor held + on-rig, no nose/ears, outline, four-digit
 hands, by looking at the full frame), fidelity (seated, centered, guidebook in hand — every fact
 realized, nothing extra), and style (reads as the con being manufactured — its `ironic-counterpoint`
@@ -298,24 +334,21 @@ for an ai-gen/hybrid shot is a render-time hard error. The skipped sources (char
 back to the render's inline path, counted in its manifest.
 
 **Layered shots (from `shots.motion.json`).** When the `motion-planner` output exists, each shot it marks
-with `layers[]` is materialized into the fixed layout the engine reads (schema: render-builder
-`references/shots-motion-schema.md`):
-- **plate** `plates/<id>.png` — **only for a shot that carries a `cutout` layer.** Gen
-  `background.plate_prompt` (the scene MINUS the moved element), which must still read as a **complete**
-  object — never a blank slot where the subtracted element was. A card-ONLY shot (engine layers, no
-  cutout) does NOT get a `plates/` file — its number-subtracted background is a `scenes/<id>.png` (see the
-  engine-layers bullet).
-- **cutout layers** `cutouts/<id>-<layer>.png` — gen the layer's `cutout_prompt` on a plain plate, then
-  `py -3 scripts/forge.py cutout` (rembg → alpha-harden → trim); human-QC on the hand crop. **Judge the
-  matte by MEASUREMENT, not by looking** — alpha histogram + corners, and composite it over its real
-  destination plate before calling a halo or a colour defect (bible §8).
-- **engine layers** (`source: engine` — device cards) need no cutout asset; the engine draws the card
-  itself. **But when a card REPLACES a baked number/label** in the scene (a stat/counter card standing in
-  for a figure the still would otherwise render as garbled gen-text), generate the **number-subtracted
-  background as a normal `scenes/<id>.png`** — the ordinary scene with that one number/label omitted, still
-  a COMPLETE frame (never a blank hole where the number was). It is a scene, not a plate: a card-only shot
-  (engine layer(s), NO `cutout` layer) has a `scenes/<id>.png` and NO `plates/<id>.png`. Only a
-  cutout-bearing shot writes `plates/`.
+with a `cutout` `layers[]` is materialized into the fixed layout the engine reads (schema: render-builder
+`references/shots-motion-schema.md`). Every layer is the DISCRETE (LAYER) arm of the BOUNDARY rule — an
+element that sits on the scene without fusing into its architecture — so it is composited, not baked.
+(Engine-drawn text + device cards are retired; there are no `source: engine` layers to materialize.)
+- **plate** `plates/<id>.png` — the scene MINUS the moved element (`background.plate_prompt`), which must
+  still read as a **complete** object — never a blank slot where the subtracted element was.
+- **cutout layers** `cutouts/<id>-<layer>.png` — **every cutout is SEEDED** (from its character/prop
+  canonical, or from the plate it lands on plus a style anchor — an unseeded cutout invents its own
+  register). Gen the layer's `cutout_prompt` on a **solid MAGENTA chroma field** (the engine emits no
+  alpha — transparency is always post-hoc keying; a *pale* field starves rembg on a pale subject), then
+  `py -3 scripts/forge.py cutout` (rembg → alpha-harden → trim; the cutout gen is NOT 16:9 — forge
+  hard-errors a wide input, bible §6/§8). **Judge the matte by MEASUREMENT, not by looking** — alpha
+  histogram + corners **+ every enclosed interior region** (letter counters, rigging gaps — rembg keeps
+  opaque pale interior holes), and composite it over its real destination plate before calling a halo or
+  a colour defect (bible §8).
 - **Hybrid** (a `delta-chain` shot carrying a cutout layer — a discrete overlay like a FICTION stamp): do
   **not** bake a full delta scene and do **not** gen a plate — `background.plate` already points at the
   prior in-stage `scenes/<prior-id>.png` (reuse it); materialize **only** the overlay cutout. Net less gen.
@@ -324,8 +357,15 @@ The batched review below judges every generated plate + cutout the same as a sce
 
 ## Reviewing the batch (ONE pass, after every scene is generated)
 
-Generate all of Pass 2 first — **do not gate mid-run, and run no per-delta diff-gate.** When the
-batch is complete, run ONE review round over the whole thing, then regen only what is genuinely wrong.
+Generate all of Pass 2 first — **do not gate mid-run.** When the batch is complete, run ONE review round
+over the whole thing, then regen only what is genuinely wrong.
+
+**This review is now the ONLY seed-routing gate.** The retired posed-character merge had a cheap
+"isolation gate" that caught a bad blend (wrong-tone hands, a reverted-to-base face, an identity collapse)
+on an isolated portrait BEFORE any scene gen. That gate is gone — a scene multi-seeds in one run — so those
+seed-routing failures now surface HERE, on the full scene, at full gen cost. Watch for them explicitly:
+hands off the character's tone, a weak/wrong expression (expression is the SOFTEST seed — it lands weak),
+identity bleed between two co-present figures.
 
 **Dispatch three concurrent review subagents**, each one tight mandate over the whole batch. Give each
 the generated scene files + per shot its `still_prompt`, `vo_text` (the full narrated span — facts
@@ -347,18 +387,36 @@ only the render timing anchor, not a fidelity source.
    hand is unreliable even at zoom, so never word one as verified; the human board is the final finger
    authority, bible §3.) On any FAIL, name the shot id and quote the offending pixel in one
    clause. Judge against the channel's **approved canonical** (`refs/<char>/<char>-base.png`), NOT an
-   idealized pure-round-head/articulated-finger rig. Look at the **FULL frame; never crop hands, never
-   grind a per-hand count.** Silence on a seeded frame (or a §2e foreground figure) is not allowed; each
-   gets an explicit per-invariant ruling.
+   idealized pure-round-head/articulated-finger rig. **Rig review runs on the CROP BATTERY, not full-frame
+   eyeballing (2026-07-16):** (i) a **localizer** agent returns per-figure face + each-visible-hand bounding
+   boxes as structured JSON (localization is far more reliable than judgment; the localizer never rules);
+   (ii) **`scripts/crop_battery.py`** (PIL, deterministic) cuts those boxes at 3–4× into per-shot contact
+   sheets + individual crop files; (iii) THIS judge rules PASS/FAIL per crop per invariant with the **crop
+   file path cited as evidence** on every ruling — a prose "zoomed 3–4×, verified" claim with **no crop
+   artifact is inadmissible**. A fix pass re-enters the battery on the before AND after frames, all figures
+   (the regression diff). Silence on a seeded frame (or a §2e foreground figure) is not allowed; each gets
+   an explicit per-invariant ruling.
+   - **This FRESH-EYES review is the rig authority — a GENERATING agent's own self-verification does NOT
+     substitute for it.** A unit that generated a frame under-reports its own rig defects: noses it called
+     "within tolerance" / "minor" were ruled BLOCKING by fresh-eyes zoom review, **twice adjudicated real**
+     (2026-07-16). A generator is invested in its output and anchored on the prompt it wrote, so it grades
+     leniently; only a fresh-context reviewer zooming the faces catches the slip. Never let a generator's
+     self-check stand in for this pass, and never downgrade a fresh-eyes nose/ear FAIL to "minor" — a nose
+     on the no-nose rig is blocking regardless of size.
 2. **Fidelity** — does each image assert **exactly the shot's load-bearing facts** (layout, geography,
    orientation / who faces whom, gesture + highlight targets, casting/costume) and **nothing extra that
    changes the read**? VPW authors prompts as checkable facts precisely so this has teeth; check the
-   claims one by one against the pixels.
+   claims one by one against the pixels. **Transcribe any authored in-image text LETTER-BY-LETTER** against
+   the words the `still_prompt` quotes — a garbled, misspelled, or partial render is a **blocking** flag
+   (all in-video text is now baked diegetic — there is no engine overlay to fall back on).
 3. **Style/taste** — does it read as its `beat` and `shot_class` at a glance, on-recipe (flat-cel 2.5D,
    built-but-flat, marker-honest per §6) **AND rich — committed scene palette, fore/mid/background depth,
    light/atmosphere, filled edge-to-edge (the "gold" bar, bible §6)** — or is it slop: generic, cluttered,
    off-register, drifting to the detailed middle, **or thin/sparse/basic (a lone object on dead air, no
-   palette or depth commitment — the "looks like flat pixel-art" failure)**?
+   palette or depth commitment — the "looks like flat pixel-art" failure)**? **Check expression-register
+   per beat** — expression is the softest seed and lands weak (a "thinking" seed reads flat), so verify each
+   lead face is sized to its beat; an over-the-top face on an ordinary/grim beat AND a flat face on a real
+   peak are both defects (bible §3).
 
 Each returns a **flagged list keyed by shot id** — one sentence per defect, quoting the offending
 fact. **Merge the three lists.** A frame no agent flagged ships as-is.
@@ -370,6 +428,11 @@ fact. **Merge the three lists.** A frame no agent flagged ships as-is.
   logic that just failed and stacks a patch on top of it. Instead **change the prompt logic**: rethink
   how the frame is described (a different composition strategy, a different phrasing of the load-bearing
   fact, a different emphasis), then generate clean. Seed from the canonical, not from the failed frame.
+- **Re-author HOW an authored fact is depicted, never WHETHER it appears.** Deleting or softening a
+  load-bearing authored fact to dodge a rendering defect — dropping an authored salute to avoid drawing
+  the open hand — is a fidelity VIOLATION dressed as a fix, not a legal retry. The retry changes how the
+  fact is drawn (seed the pose primitive, restate the digit fact); a fact that still won't render clean
+  after the one retry is **flagged for the human**, never silently removed.
 - **Self-check only the flagged points** on the new frame by looking at it — do NOT re-dispatch the
   review agents, do NOT re-review the whole batch.
 - **Still failing after that one retry → STOP.** Keep the best attempt, mark it `flagged` in
@@ -377,7 +440,11 @@ fact. **Merge the three lists.** A frame no agent flagged ships as-is.
   artifact) — the human decides. No third attempt, no technique-switch escalation ladder. A systematic
   failure (the same invariant missing both times) that looks like a bible value being off → surface a
   proposed fix, never self-apply, and keep forging the rest.
-- **Stamp the gate.** After the batch settles, write each shot's manifest entry: a scene that ends with
+- **Stamp the gate — generating agents NEVER stamp; the ORCHESTRATOR alone merges manifest entries**, and
+  only after the crop battery + fresh-eyes review pass. A unit that generated a frame is invested in it and
+  grades leniently, so it may not write `verified` on its own output; the orchestrator collects every
+  agent's structured verdict and stamps the merged manifest. After the batch settles, write each shot's
+  manifest entry: a scene that ends with
   NO identity/rig flag AND no fidelity/style flag → `verified: {scene: true, rig: true}`, `flagged: false`.
   A scene still flagged after its one retry → keep `flagged: true` and leave `verified.scene`/`verified.rig`
   **false on the axis that failed** (an identity/rig flag → `rig: false`; a fidelity/style flag → `scene:
@@ -389,7 +456,8 @@ fact. **Merge the three lists.** A frame no agent flagged ships as-is.
 1. `lookup` the registry — a hit means hand back the file, done.
 2. Pick the seed by bible §5: existing character → its canonical `base`; **"iterate on THIS"** → that
    exact approved frame as seed, change ONLY the one requested variable; new character → the template
-   base + new head tone (§4); environment/prop → style-only mode.
+   base + new head tone (§4); environment/prop → style-only mode **with a style-anchor seed** (a `refs/env/`
+   register anchor or an approved on-style frame — forge hard-errors an unseeded environment/style gen).
 3. `gen` into staging → **check the §3 rig checklist** by looking at it → **ONE re-authored retry**, then
    flag + surface as above. Record the round (seed, mode, delta, settings, verdict) in a notes file beside
    the frames — a one-off has no manifest, so it needs its own log or the reasoning dies with the terminal.
@@ -404,7 +472,9 @@ What shipped (library counts, scenes by technique), what was reused, what the ba
 category (identity / fidelity / style) and what it regenerated, any frames still **flagged** after the
 one retry (with their reason), anything escalated for approval, and the render-wiring caveat. Publish
 the generated images for human review via an Artifact link — full frames, **flagged ones marked with
-their reason** — the human review is the final authority (the user can't see them inline). No hand crops.
+their reason**, and the **crop-battery sheets embedded (collapsible per card)** so the human finger/ear
+gate rules on evidence at seconds per shot — the human review is the final authority (the user can't see
+them inline).
 
 **Present it neutrally — the human calibrates the bar, not you.** Never declare the output "works" or
 "clears the bar": the bar is the reference grade the human holds (bible §6's gold bar), and a premature

@@ -1,0 +1,43 @@
+{
+  "_doc": "Unified audio plan (SFX / pause / music / dry) for 2026-07-04-poyais. Authored by audio-director (PLACEMENT only; human ear-gates FEEL on the render). Timid-by-default. Cues in narration order. Music: sneaky con-spine bed, one deliberate upbeat lift on the 1822 market mania, back to sneaky on the collapse; dry pull-backs on the human-cost + elegiac beats. See visual-kit/audio-tokens.json for pools + dials.",
+  "cues": [
+    { "kind": "music", "from_anchor": "In 1822, a few hundred people", "mood": "sneaky" },
+
+    { "kind": "sfx", "anchor": "with a capital city", "role": "pop", "sync": "element" },
+    { "kind": "sfx", "anchor": "a national bank, its own money", "role": "pop", "sync": "element" },
+    { "kind": "sfx", "anchor": "its own money", "role": "pop", "sync": "element" },
+    { "kind": "sfx", "anchor": "a cathedral, and a prince", "role": "pop", "sync": "element" },
+
+    { "kind": "sfx", "anchor": "The whole thing was made up", "role": "stamp", "sync": "element" },
+
+    { "kind": "dry", "from_anchor": "And more than half of the people", "to_anchor": "So what happened" },
+
+    { "kind": "pause", "anchor": "It all started with a soldier", "pause_s": 0.5 },
+    { "kind": "sfx", "anchor": "It all started with a soldier", "role": "sting" },
+
+    { "kind": "sfx", "anchor": "Eight million acres of it", "role": "ding", "sync": "element" },
+
+    { "kind": "pause", "anchor": "Captain Strangeways, though, like Poyais itself", "pause_s": 0.4, "in_pause": true },
+    { "kind": "sfx", "anchor": "Captain Strangeways, though, like Poyais itself", "role": "record_scratch" },
+
+    { "kind": "sfx", "anchor": "Did I mention he'd made a flag", "role": "ding" },
+
+    { "kind": "sfx", "anchor": "so they'd have local money", "role": "cash", "sync": "element" },
+
+    { "kind": "sfx", "anchor": "He issued official government bonds", "role": "cash", "sync": "element" },
+    { "kind": "sfx", "anchor": "that was one guy in a rented office", "role": "womp" },
+
+    { "kind": "music", "from_anchor": "In 1822, London had completely lost its mind", "mood": "upbeat" },
+    { "kind": "music", "from_anchor": "The bond kept selling for months", "mood": "sneaky" },
+
+    { "kind": "sfx", "anchor": "But by that time, two ships", "role": "whoosh", "sync": "element" },
+
+    { "kind": "dry", "from_anchor": "Then the rainy season came", "to_anchor": "So how did any of them" },
+
+    { "kind": "dry", "from_anchor": "But most of them were half-dead", "to_anchor": "And when the survivors finally got" },
+
+    { "kind": "pause", "anchor": "And they let him walk", "pause_s": 0.5 },
+
+    { "kind": "dry", "from_anchor": "The people who believed in Poyais", "to_anchor": "But the guidebook is still here" }
+  ]
+}

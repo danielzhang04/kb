@@ -15,8 +15,6 @@ Subcommands:
   montage  build a QC contact sheet of a directory for Claude to open
   register move a VERIFIED staged frame into refs/ and add it to registry.json
   lookup   reuse-before-regenerate: print an existing asset's file for (character, tag) if present
-  diff     held-set drift gate for the delta-chain — HOLD/DRIFT verdict vs --threshold
-  crop     cut native-resolution crops (auto grid or explicit boxes) for a native-scale finger count
   place    move a VERIFIED staged frame into a video dir (library|scenes) with size+PNG validation
   manifest emit the render-builder scenes|library manifest from a small spec (not free-typed)
 
@@ -73,7 +71,7 @@ JPEG_MAGIC = b"\xff\xd8\xff"
 def to_png_bytes(data):
     """Normalize the engine's returned image to PNG at the ONE place bytes enter the pipeline.
     The engine (gemini-3-pro-image) returns image/jpeg; everything downstream (refs, registry,
-    render, the diff/crop tools) assumes .png, so transcode
+    render) assumes .png, so transcode
     JPEG -> PNG here rather than leaking a mislabeled file. Unknown formats pass through untouched so
     validate_png raises the bad-magic error."""
     if not data or len(data) <= 1024:
@@ -196,18 +194,36 @@ class Kit:
         return text
 
 def cmd_gen(k, reqs, force):
+    # Results are reported AS THEY LAND, not buffered to the end of the batch. A 20-scene batch
+    # is otherwise ~15 minutes of total silence, which (a) trips agent stream watchdogs and
+    # (b) hides a systematic per-gen failure until every call has already been paid for — a
+    # missing Pillow install once burned a batch's worth of API calls before the first line printed.
     os.makedirs(k.staging, exist_ok=True)
     results = []
+    total = len(reqs)
+
+    def report(name, status):
+        results.append((name, status))
+        print(f"  [{len(results)}/{total}] {name}: {status}", flush=True)
+
     for r in reqs:
         name = r["name"]; mode = r.get("mode", "identity")
         out = os.path.join(k.staging, name + ".png")
         if os.path.exists(out) and not force:
-            results.append((name, "skip (exists in staging)")); continue
+            report(name, "skip (exists in staging)"); continue
         seeds = r.get("seed")
         if not seeds:
-            # A5: only identity / new-character gens auto-seed the character portrait. environment &
-            # style plates default to NO image seed (else the base FACE bleeds into figure-free plates).
-            seeds = [k.base_frame(r.get("character", "base"))] if mode in ("identity", "new_character") else []
+            # A5: identity / new-character gens auto-seed the character portrait. environment & style
+            # gens MUST carry an explicit style-anchor seed — an unseeded environment/style gen falls
+            # back to a stock-clipart prior (off the locked style, per style-bible §5), so it is a
+            # HARD ERROR now rather than a silent off-recipe frame.
+            if mode in ("identity", "new_character"):
+                seeds = [k.base_frame(r.get("character", "base"))]
+            else:
+                raise SystemExit(
+                    f"{name}: environment/style gens must carry a style-anchor seed (a refs/env/ "
+                    "anchor, the target plate, or an approved on-style scene) — unseeded gens fall "
+                    "back to a stock-clipart prior")
         else:
             seeds = [k.resolve_seed(s) for s in seeds]
         hold = should_hold(mode, seeds)
@@ -220,11 +236,12 @@ def cmd_gen(k, reqs, force):
             validate_png(data)
             with open(out, "wb") as f:
                 f.write(data)
-            results.append((name, "OK -> _staging/" + name + ".png"))
+            report(name, "OK -> _staging/" + name + ".png")
         except Exception as e:
-            results.append((name, "ERR " + str(e)[:160]))
-    for n, s in results:
-        print(f"  {n}: {s}", flush=True)
+            report(name, "ERR " + str(e)[:160])
+    ok = sum(1 for _, s in results if s.startswith("OK"))
+    err = sum(1 for _, s in results if s.startswith("ERR"))
+    print(f"  == {ok} generated, {err} failed, {len(results) - ok - err} skipped ==", flush=True)
 
 def cmd_montage(k, folder, out, cols):
     try:
@@ -278,84 +295,6 @@ def cmd_lookup(k, character, tag):
         if a.get("character") == character and a.get("tag") == tag:
             print("REUSE:", a["file"]); return
     print("MISS: no existing asset for", character, tag, "— generate a new one")
-
-def cmd_diff(k, pa, pb, changed, threshold):
-    """A6: held-set drift gate for the seeded delta-chain. Measures mean-abs pixel diff (0=identical)
-    on the region that should NOT have changed (the "held" region) and prints an explicit HOLD/DRIFT
-    verdict against --threshold. --changed says where the intended delta is:
-      left|right|top|bottom -> score the OPPOSITE (held) half;
-      center|full           -> no clean 'away' half, so score a structural signal: the outer border
-                               band (the frame ring), which a held set keeps stable even on a full redraw."""
-    try:
-        from PIL import Image
-        import numpy as np
-    except Exception:
-        raise SystemExit("diff needs Pillow+numpy: py -3 -m pip install Pillow numpy")
-    def load(p):
-        p = p if os.path.isabs(p) else k.resolve_seed(p)
-        return np.asarray(Image.open(p).convert("L").resize((512, 512)), dtype="float32")
-    A, B = load(pa), load(pb)
-    md = lambda X, Y: round(float(np.abs(X - Y).mean()), 2)
-    changed = (changed or "full").lower()
-    if changed == "left":
-        signal, region = md(A[:, 256:], B[:, 256:]), "right (held) half"
-    elif changed == "right":
-        signal, region = md(A[:, :256], B[:, :256]), "left (held) half"
-    elif changed == "top":
-        signal, region = md(A[256:], B[256:]), "bottom (held) half"
-    elif changed == "bottom":
-        signal, region = md(A[:256], B[:256]), "top (held) half"
-    elif changed in ("center", "full"):
-        band = 64
-        mask = np.ones((512, 512), dtype=bool); mask[band:-band, band:-band] = False
-        signal = round(float(np.abs(A - B)[mask].mean()), 2)
-        region = f"{band}px border band (structural)"
-    else:
-        raise SystemExit("--changed must be one of left|right|top|bottom|center|full")
-    verdict = "HOLD" if signal <= threshold else "DRIFT"
-    print(f"held-set diff (0=identical): whole {md(A, B)}  held-signal {signal} [{region}]  "
-          f"threshold {threshold}  -> {verdict}", flush=True)
-
-def cmd_crop(k, in_path, regions, out_dir, grid):
-    """Q5: cut NATIVE-resolution crops so a per-hand digit count is judged at full scale (montage
-    downscales, which is worse for counting). --regions auto tiles the frame into a grid×grid grid;
-    --regions "x,y,w,h;x,y,w,h;..." cuts explicit boxes. Writes <stem>-<tag>.png into --out."""
-    try:
-        from PIL import Image
-    except Exception:
-        raise SystemExit("crop needs Pillow: py -3 -m pip install Pillow")
-    if not in_path:
-        raise SystemExit("crop needs --in <png>")
-    src = in_path if os.path.isabs(in_path) else k.resolve_seed(in_path)
-    im = Image.open(src).convert("RGB")
-    W, H = im.size
-    out_dir = out_dir or os.path.join(k.staging, "_crops")
-    out_dir = out_dir if os.path.isabs(out_dir) else os.path.join(k.kit, out_dir)
-    os.makedirs(out_dir, exist_ok=True)
-    boxes = []
-    if not regions or regions.lower() == "auto":
-        n = max(1, grid)
-        cw, ch = W // n, H // n
-        for ry in range(n):
-            for rx in range(n):
-                boxes.append((rx * cw, ry * ch, cw, ch, f"r{ry}c{rx}"))
-    else:
-        for i, spec in enumerate(s for s in regions.split(";") if s.strip()):
-            try:
-                x, y, w, h = (int(v) for v in spec.split(","))
-            except ValueError:
-                raise SystemExit(f"bad region '{spec}' — want x,y,w,h")
-            boxes.append((x, y, w, h, f"crop{i}"))
-    stem = os.path.splitext(os.path.basename(src))[0]
-    saved = []
-    for x, y, w, h, tag in boxes:
-        # native resolution — NO downscale, so digits stay countable
-        c = im.crop((x, y, min(x + w, W), min(y + h, H)))
-        p = os.path.join(out_dir, f"{stem}-{tag}.png")
-        c.save(p); saved.append(p)
-    print(f"crop: {len(saved)} native-scale crop(s) of {W}x{H} -> {out_dir}", flush=True)
-    for p in saved:
-        print("  " + p, flush=True)
 
 def cmd_place(k, names, to_dir):
     """Q7: move a VERIFIED staged frame into a video dir (assets/library or assets/scenes) with
@@ -429,10 +368,29 @@ def trim_to_alpha(rgba):
     return rgba.crop(bbox) if bbox else rgba
 
 
-def cmd_cutout(in_path, out_path, lo, hi):
+CUTOUT_WIDE_RATIO = 1.5
+
+def check_cutout_aspect(w, h, allow_wide=False):
+    """Cutout-aspect ban (style-bible §6/§8 + the pass-2 law): a cutout gen must NOT be wide — a 16:9
+    (or other wide) cutout squashes the object's proportions (a ship shipped at aspect 1.54 vs the
+    approved 1.22, human-caught). HARD-ERROR when width/height >= 1.5 so the squashed source is
+    regenerated at 2:3 / 4:3 / 3:2, unless --allow-wide is passed for a legitimately wide object
+    (e.g. the L42 star row)."""
+    if allow_wide or not h:
+        return
+    ratio = w / h
+    if ratio >= CUTOUT_WIDE_RATIO:
+        raise SystemExit(
+            f"cutout input aspect {ratio:.2f} (>= {CUTOUT_WIDE_RATIO}) is too WIDE — a wide/16:9 cutout "
+            f"gen squashes the object's proportions. Regenerate the source at 2:3/4:3/3:2, or pass "
+            f"--allow-wide for a legitimately wide object (e.g. a star row).")
+
+
+def cmd_cutout(in_path, out_path, lo, hi, allow_wide=False):
     from PIL import Image
     from rembg import remove, new_session
     src = Image.open(in_path).convert("RGBA")
+    check_cutout_aspect(src.width, src.height, allow_wide)
     rgba = remove(src, session=new_session("u2net"), alpha_matting=True,
                   alpha_matting_foreground_threshold=240, alpha_matting_background_threshold=10,
                   alpha_matting_erode_size=10).convert("RGBA")
@@ -444,7 +402,7 @@ def cmd_cutout(in_path, out_path, lo, hi):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["gen", "montage", "register", "lookup", "diff", "crop", "place", "manifest", "cutout"])
+    ap.add_argument("cmd", choices=["gen", "montage", "register", "lookup", "place", "manifest", "cutout"])
     ap.add_argument("--kit", required=True, help="path to the channel's visual-kit dir")
     ap.add_argument("--batch", help="gen/register/place/manifest: JSON file with a list of requests/entries/names")
     ap.add_argument("--name"); ap.add_argument("--character", default="base")
@@ -454,20 +412,12 @@ def main():
     ap.add_argument("--dir", help="montage: folder of PNGs (rel to kit or abs)")
     ap.add_argument("--out", help="montage: output png path"); ap.add_argument("--cols", type=int, default=4)
     ap.add_argument("--tag")
-    ap.add_argument("--a", help="diff: first image (repo/kit/abs path)")
-    ap.add_argument("--b", help="diff: second image (repo/kit/abs path)")
-    # A6 diff gate
-    ap.add_argument("--changed", default="full",
-                    help="diff: where the intended delta is (left|right|top|bottom|center|full)")
-    ap.add_argument("--threshold", type=float, default=10.0,
-                    help="diff: mean-abs held-signal above this = DRIFT (default 10.0)")
-    # Q5 crop
-    ap.add_argument("--in", dest="in_path", help="crop: source PNG (repo/kit/abs path)")
-    ap.add_argument("--regions", help="crop: 'auto' (grid tiles) or 'x,y,w,h;x,y,w,h;...'")
-    ap.add_argument("--grid", type=int, default=3, help="crop: N for the auto N×N tiling (default 3)")
     # cutout (rembg -> alpha-harden -> trim)
+    ap.add_argument("--in", dest="in_path", help="cutout: source PNG (repo/kit/abs path)")
     ap.add_argument("--lo", type=int, default=100, help="cutout: alpha-harden low threshold")
     ap.add_argument("--hi", type=int, default=175, help="cutout: alpha-harden high threshold")
+    ap.add_argument("--allow-wide", action="store_true",
+                    help="cutout: allow a wide (w/h >= 1.5) input — a legitimately wide object (e.g. a star row)")
     # Q7 place / manifest
     ap.add_argument("--to", help="place/manifest: destination dir (e.g. videos/<slug>/assets/scenes)")
     ap.add_argument("--kind", choices=["scenes", "library"], help="manifest: which manifest to emit")
@@ -490,10 +440,6 @@ def main():
         cmd_register(k, entries)
     elif a.cmd == "lookup":
         cmd_lookup(k, a.character, a.tag)
-    elif a.cmd == "diff":
-        cmd_diff(k, a.a, a.b, a.changed, a.threshold)
-    elif a.cmd == "crop":
-        cmd_crop(k, a.in_path, a.regions, a.out or a.to, a.grid)
     elif a.cmd == "place":
         names = json.load(open(a.batch, encoding="utf-8")) if a.batch else [a.name]
         cmd_place(k, names, a.to)
@@ -502,7 +448,7 @@ def main():
     elif a.cmd == "cutout":
         if not a.in_path or not a.out:
             raise SystemExit("cutout needs --in <image> and --out <png>")
-        cmd_cutout(a.in_path, a.out, a.lo, a.hi)
+        cmd_cutout(a.in_path, a.out, a.lo, a.hi, a.allow_wide)
 
 if __name__ == "__main__":
     main()

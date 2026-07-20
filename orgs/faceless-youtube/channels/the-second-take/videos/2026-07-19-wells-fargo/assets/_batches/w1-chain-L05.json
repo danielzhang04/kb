@@ -1,0 +1,15 @@
+[
+ {
+  "name": "wf-L06",
+  "shot_id": "L06",
+  "mode": "environment",
+  "delta": "The SAME boardroom held from the prior frame, but now a single glowing red circular SALES-TARGET DIAL (a gauge with a needle) sits in the empty head chair where a person should be \u2014 the culprit is a number, not a man. Everything else held. Cool slate palette, the one red accent IS the glowing dial. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel colours with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b is the dial; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
+  ],
+  "_cast": [],
+  "_text": false,
+  "_crowd": false
+ }
+]

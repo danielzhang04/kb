@@ -2563,6 +2563,64 @@ regime everywhere. What landed:
 Alternative rejected: merging our branch → master at the same time. The visual overhaul + Poyais Pass 2
 are mid-flight on this branch; master takes them when they're done, per the existing branch discipline.
 
+## 2026-07-15 — Pipeline simplification: Pass 1b + engine text/device kit retired; boundary enforced
+
+User-directed redesign ("revert to what 100% works"), branch `feat/pipeline-simplification`, phases 0-3
+done in one arc:
+
+- **Phase 0 probe before any edit (§D):** 6 gens (~$0.80) tested the two load-bearing bets. **6/6 PASS**,
+  including the two cases the old staging law forbade: one-run multi-seed [canonical+pose+expression]
+  held identity/costume, and the [handshake template + two canonicals] pot held BOTH identities. Baked
+  text letter-perfect at 1-4 words incl. digits+comma. Caveats kept in doctrine: expression = softest
+  seed (review now checks register); N=1 existence proof. Board:
+  https://claude.ai/code/artifact/b4e21f70-329f-4aa4-9977-af7985f22720
+- **What was retired:** Pass 1b (pre-merged posed-character library; scenes now multi-seed in ONE run);
+  ALL engine-drawn text + device cards (stat/counter/meter/chapter/definition/reveal + on_screen_text
+  word overlays; components parked dormant in the engine — producers removed, `source:"engine"` invalid
+  in lint, menu cutout-only); sprite-walk; at_scene; vestigial fields (transform_note, render_pattern,
+  transition_in); forge `diff`/`crop`. **Kept, explicitly:** props/prop canonicals, Pass 0 + the
+  primitive library (now direct scene seeds), draw_line route, shorts captions, PlaceholderCard.
+- **New enforced boundary (canon, mirrored across all owning docs):** DELTA-CHAIN = integrative growth
+  of one scene's architecture (regen seeded off prior frame; a re-base inside the SAME location seeds
+  the prior stage's BASE frame); LAYER = discrete addition on a persistent plate, and a layer must be
+  discrete AND seedable (canonical, or plate + style anchor). All in-video text is baked diegetic,
+  quoted verbatim, short, transcribed letter-by-letter in the review (blocking).
+- **Bug #1 fixed structurally:** forge hard-errors any unseeded environment/style gen; `refs/env/`
+  populated with three human-gated Poyais frames (zero gen cost, reuse-before-regenerate).
+- **Alternatives rejected:** killing word-anchored text overlays but keeping cards (user: no engine text
+  at all — text lives in the image); one prep-gen per scene instead of multi-seed (probe made it
+  unnecessary); deleting the engine components (parked instead — revivable, and removal-of-producers is
+  the actual guarantee).
+- **Method note:** five parallel doc agents with one injected canon + a fresh-eyes loss audit over the
+  combined diff; the audit found 4 real defects (worst: universal.md still carrying the superseded
+  canonical-only layer law) — 6th consecutive audit with a real catch. Also fixed live: both hook
+  registrations were cwd-relative and broke from subdirectories → `${CLAUDE_PROJECT_DIR}`-anchored.
+- **Open on this branch:** Phase 4 lint backstop; Phase 5 dogfood slice (chunk-2 shots under the new
+  doctrine) → user gate → chunk 2. User calls owed: chapter-card fate (universal §13a-ii still
+  recommends them; as baked images, diegetic beats, or dropped?) and the probe-board eye-gate.
+
+## 2026-07-15 — Chapter/title cards dropped entirely (user call)
+
+No cards, baked or engine-drawn. A chapter turn is a hard cut to a new stage / a palette turn / a
+VO-gap music dip. The channel recipe's hand-feel now lives in marker charts + baked diegetic
+lettering. Reference-channel card measurements stay in the teardown records (they describe Crayon,
+not us). Alternative rejected: chapter cards as baked diegetic images — full-frame title text is
+gen-text's weakest case and the device adds nothing a stage turn doesn't.
+
+## 2026-07-15 — Channel lettering LOCKED: "relaxed marker italic" (human-picked, 2-round audition)
+
+All baked in-video text now renders in ONE lettering family, held by a seeded exemplar
+(`refs/env/lettering-marker-italic.png` — lives under `refs/env/` so it never triggers the §2c
+rig-hold) + a pinned descriptor (style-bible §6): relaxed hand-lettered marker capitals, slight lean +
+baseline bounce, no joins, never calligraphy, ink `#241a12`. Image-gen adds the exemplar seed to every
+text-bearing gen; VPW never describes fonts in a `still_prompt`. Review bar per the user: FAMILY match
+loose (handwriting wobble is fine), spelling strict. Audition: 6 candidates over 2 rounds (round 1 all
+"too rigid" → round 2 on the slightly-cursive axis); all 6 spelled every specimen clean. Measured
+limit worth keeping: the engine reliably renders lean/bounce/flow tails but RESISTS true letter joins —
+"cursive" in this pipeline means flow character, not connected writing. A font FILE cannot be fed to
+the engine; exemplar-seed + descriptor is the mechanism, and the user accepted general-style (not
+glyph-perfect) as the bar.
+
 ## Open questions (decide later)
 
 - **First niche** — ✅ **CHOSEN 2026-07-02:** "What Happens To Your Money" (cheat-code hybrid). See the
@@ -2570,3 +2628,436 @@ are mid-flight on this branch; master takes them when they're done, per the exis
 - **Validation path** — AITuber MCP (~$29 throwaway) vs. build Path B directly vs. validate by hand.
 - **Format mix per niche** — long-form-first vs. both-from-day-one; finalize when niche is chosen
   (`research/format.md`).
+
+## 2026-07-15 — style-bible §3 gains an explicit identity-match invariant
+
+**Decision:** land in §3 (human-approved wording): a seeded character's head tone + hair must MATCH
+its canonical — a base-cream bald head on a haired/toned character is an identity FAIL even when every
+form invariant passes. "Figure present + on-rig" is not an identity ruling.
+
+**Why:** third identity-review miss of the redesign (L27-fix2: a scene-heavy delta starved the
+character seed, the review passed the blank base template as "clean" because every FORM invariant
+holds on a blank head too; the human caught it). The check is now a named invariant the identity/rig
+agent must rule on explicitly, like proportion before it.
+
+**Rejected:** leaving identity to reviewer judgment (failed 3x: nose slip, off-rig L27, blank-base
+pass); adding a measurement gate (tone-sampling script) — overkill while the named-invariant fix is
+untested at scale.
+
+**Also:** L32's baked signature renders rotated toward the seated signer (upside-down to viewer) —
+human ruled it diegetically correct and ACCEPTED; manifest stamped verified scene:true. No doctrine
+change: text orientation follows the diegesis, not the viewer, when the shot stages it that way.
+
+## 2026-07-15 — stamp lettering register locked (heavy block + dark contour)
+
+**Decision:** big stamp-down marks (FAKE / FICTION / SOLD and kin) render in a dedicated LOCKED stamp
+register — heavy block CAPITALS, dense saturated red `#d7402b` ink (thick solid strokes, distress only
+at the edges), a thin `#241a12` letter contour hugging each glyph (a clean ink contour, NOT a drop
+shadow / offset ghost), flat matte, hand-stamped edge distress. Canonical exemplar =
+`refs/env/stamp-block-outlined.png` (registered `stamp` tag, seeds every stamp-mark gen). Stamps are
+the ONLY exception to the marker family; ALL OTHER in-video text stays in the relaxed marker-italic
+register (style-bible §6 lettering lock).
+
+**Why:** human ruled the marker-hand rendering of stamps "too cartoony" and wanted a real
+"stamped-down" look with weight. 2-round audition: round 1 = 4 registers (bordered rubber-stamp,
+stencil, woodtype-flat, block); round 2 = 3 weight/contour variants of the block winner. Human picked
+the combo — B1's heavy dense ink weight + B2's thin dark letter contour ("use the black outline in
+double struck and it's perfect. Use that combo for all stamps"). Combo exemplar landed on the first
+gen (dense red + clean dark contour, flat, correctly spelled FICTION/FAKE).
+
+**Rejected:** bordered rubber-stamp (the ring/oval frame read as a logo, not a mark); stencil (too
+mechanical); plain block "B" (too light — thin ink, no authority); B2 alone as a ghost/offset-shadow
+double-strike (read as a print-registration error, not a contour); B3 edge-bleed variant
+(over-distressed, illegible edges). Also rejected keeping stamps in the marker-italic hand (the
+"too cartoony" complaint that triggered the audition).
+
+## 2026-07-16 — two-gen identity pass is the DEFAULT for scene-heavy single-character shots
+
+**Decision:** for a *scene-heavy single-character shot* — exactly ONE seeded cast figure in a
+`still_prompt` dominated by environment/scene content — image-generation Pass 2 now generates it in TWO
+gens by DEFAULT (no longer a fallback): **gen A** composes the whole scene (technique (b)/(d)); **gen
+B** is an identity pass seeded [gen-A scene frame + character canonical + expression frame] that changes
+ONLY the figure's identity (head tone + hair + face), holding the environment gen A built.
+Multi-character and character-light/character-free shots are unchanged. Owner:
+`.claude/skills/image-generation/SKILL.md` Pass 2 technique menu; style-bible §3 identity-match
+invariant references it; the Pass-2 run-brief carries it operationally.
+
+**Why:** the identity-starve failure (a scene-heavy delta renders the blank cream bald base template
+instead of the seeded character — passes every §3 FORM check, still the wrong character) hit **3×**
+across the dogfood slice + chunk 2, and the two-gen technique fixed it **3/3**. As the default it
+removes the detect→retry loop that re-incurred on every such shot. Cost accepted: ~1 extra gen
+(~$0.13) per scene-heavy single-character shot.
+
+**Rejected:** keep two-gen as a FALLBACK (cheaper — fires only after a frame is flagged — but re-incurs
+the retry loop on every scene-heavy single-character shot, and the 3/3 record says the starve is
+predictable, not exceptional). Also rejected: a tone-sampling measurement gate (overkill while the
+named-invariant check + the default technique carry it).
+
+## 2026-07-16 — Poyais chunks 3–6 run as four parallel chunks with ONE combined review board
+
+**Decision:** generate Poyais chunks 3–6 (C3=23, C4=24, C5=21, C6=17 gens; ~77 shots, ~85 gens ≈ $12)
+all FOUR chunks in parallel, then a SINGLE combined human review board over the whole set. (C5 blocker
+stands: `hastie-wife` has no canonical — generate seeded off `hastie` + style anchors, human-gate it
+first.) Human-confirmed 2026-07-16.
+
+**Why:** parallel + one board is the fastest wall-clock path and gives the human one review pass over
+the full remaining video instead of four. Matches the chunk-1/chunk-2 parallelized-unit model already
+proven.
+
+**Rejected:** sequential per-chunk (slowest — four serial gen+review cycles); paired boards (C3+C4 then
+C5+C6) — halves each board's review size but adds a mid-way wait for the human, for no gen-throughput
+gain.
+
+## 2026-07-16 — Poyais rework learnings codified into the durable image/motion doctrine
+
+**Decision:** routed the human-confirmed Poyais chunk-2/round-1-3 rework learnings out of the run
+briefs and into the docs a fresh session actually reads. Seven codifications: **(1)** a mechanical
+**cutout-aspect ban** — `forge.py cutout` hard-errors on an input whose width/height ≥ 1.5 (regen at
+2:3/4:3/3:2) unless `--allow-wide` is passed, plus the ban stated in the image-generation SKILL.md
+aspect law + tests beside the cutout tests; **(2)** cutout **transparency craft** into style-bible §8
+(engine emits no alpha → solid MAGENTA chroma field + deterministic key/despill; matte verification
+samples ENCLOSED interior regions, not just the silhouette + corners); **(3)** stamp/seal/mark cutouts
+**seed the register exemplar + destination plate**, a pre-lock/unseeded stamp is a register FAIL
+(style-bible §6); **(4)** a recurring FIGURE across a held sequence is **ONE reused cutout** via the
+`reuse:` field, never per-shot regens (motion-planner animation-rules; schema wired 2026-07-16, commit
+cc3b491); **(5)** an exposed articulated hand (salute/wave/open palm/raised) **seeds the matching
+`refs/base/` pose primitive** + states the 4-digit fact, never free-drawn (style-bible §5); **(6)** a
+retry **re-authors HOW an authored fact is depicted, never WHETHER** — deleting a fact to dodge a defect
+is a fidelity violation, flag it (image-generation SKILL.md retry policy); **(7)** baked text that
+truncates mid-word got too little canvas → **re-author it as its own architectural element** with clear
+margin (style-bible §6).
+
+**Why:** every learning was human-confirmed across the review rounds (evidence:
+`channels/the-second-take/videos/2026-07-04-poyais/_rework-log-2026-07-16.md`). Left only in the run
+briefs they would bind nobody — a fresh terminal reads the style-bible, the skill docs, and the
+animation-rules, not a video's scratch brief (operating-law §G-route reachability).
+
+**Rejected:** leave them as run-brief-only (the pass-2 brief already carried operational versions) —
+rejected because run briefs are session scratch, unreachable by future sessions; a lesson that lands
+where nothing routes to it is a silent no-op. Also rejected fixing the cutout-aspect defect with a
+self-checked prohibition alone — the "16:9 is scenes/plates only" rule already existed and nothing
+enforced it, so the fix is the mechanical `forge.py` guard (a value/HOW-to-fire lesson lands in the
+mechanism, not another prose rule).
+
+## 2026-07-16 — Poyais chunks 3–6 rework round-1 learnings codified into the durable image/motion doctrine
+
+**Decision:** routed the human-confirmed learnings from the chunks 3–6 board rework round ("I want these
+changes made, learnings saved") out of the run briefs into the docs a fresh session reads. Landed each in
+the LEAST general layer that holds it (§G-route):
+
+- **(a) style anchor is MANDATORY on EVERY scene/plate gen, not just character-free ones** (the character
+  seeds pin identity, not art style) — anchor = the shot's continuity parent frame, else a `refs/env/`
+  register anchor, else an on-style scene. **Cross-chunk art-style drift is the proven failure when scenes
+  run unanchored.** → style-bible §5 composed-scene bullet + image-generation Pass-2 seeding law.
+- **(b) anonymous-figure proportion = the EXACT squat base-rig head-to-body proportion** (human-confirmed:
+  "the crowd rig should be the exact same proportions as our base rig — the face is different, of course");
+  a stated FACT in every crowd/base-rig delta AND a first-class review axis. → style-bible §2d (tightened
+  "same proportions" → "EXACT same as base rig, only the face differs") + §3 proportion axis (already
+  present, left intact).
+- **(c) arrows / routes / progressive reveals are MOTION, never baked** — an arrow is a `path`+`draw_line`
+  cutout; a progressive reveal (borders drawing on in spoken order, a crown breaking and staying) is
+  sequenced `appear`/`draw_line` layers each anchored to its VO word, persisting end-states with
+  `static:true`. → motion-planner animation-rules route bullet.
+- **(d) maps: CROP the existing map canonical (PIL, deterministic), never regen a new region** — regen is
+  the fallback only when the canonical doesn't cover the region, and then seeds the map canonical + the
+  parchment-map register anchor. → style-bible §5 (new maps bullet) + image-generation Pass-2 ENV/maps
+  bullet.
+- **(e) match-prop shots seed the FIRST APPROVED prop frame as the canonical** (a bond design established
+  in one shot seeds every later shot showing it) — the recurring-prop lock, even when not pre-locked in
+  Pass 1. → style-bible §5 match-prop bullet.
+- **(f) de-nose/de-ear fixes are a targeted identity-style pass budgeted for TWO gens** — the first pass
+  (seed current frame + base-rig exemplar, change only faces) lands the nose fix but leaves a sticky
+  C-shaped ear / residual nose ~half the time, so a second targeted pass seeded off the already-fixed
+  frame is the reliable shape. → image-generation two-gen identity-pass section.
+- **(g) a GENERATING agent's self-verification under-reports rig defects** (noses it ruled "within
+  tolerance"/"minor" were ruled BLOCKING by fresh-eyes zoom review, twice adjudicated) — reaffirmed the
+  fresh-eyes review as the rig authority: zoom faces 3–4x for noses/ears (the crop ban is hands-only), a
+  generator's self-check never substitutes. → image-generation batched-review identity/rig mandate.
+
+**Also revisited the 6 pending G-route candidates** from the board-gate pickup (the "learnings saved"
+confirm covers them): **codified** — (1) a delta that REMOVES a transient element seeds the pre-transient
+ancestor, not the immediate predecessor (style-bible §8); (2) whitelist a seeded prop's own designed
+lettering from the text-free/unrequested-text fail (style-bible §3; the VPW-authoring half is out of this
+pass's scope); (3) a crowd scene with one seeded lead restates the lead's costume + contrasts the crowd's
+uniform/palette (image-generation Pass 2); (5) cutout gens force "one solid uniform FLAT magenta, no
+glow/gradient" — the fringe failures were gen-side glows, not keying failures (style-bible §8).
+**Already-covered, no edit** — (4) two-figure hand exchanges seed the interaction template (style-bible
+§5/§7/§8 already route hand geometry + eye-line from the template); (6) style-reviewer matte flags are
+usually viewer artifacts, measure opaque-chroma % first (style-bible §8 measure-a-matte bullet already
+carries the exact viewer-artifact evidence).
+
+**Why:** a lesson left only in a video's run brief binds nobody — a fresh terminal reads the style-bible,
+the skill docs, and the animation-rules, not a scratch brief (operating-law §G-route reachability). Every
+learning was human-confirmed this round.
+
+**Rejected:** a lint/measurement gate for anonymous-figure proportion — rejected: proportion is a visual
+judgment with no seed to measure against, so it lands as a stated delta fact + a review axis, not a
+mechanical gate (§G-route: a taste/measure-by-eye pattern lands in the review layer, not a self-checked
+lint). Leaving (a) as an optional "any needed style anchor" — rejected: optional is exactly what let the
+cross-chunk drift through; the anchor is now mandatory on every scene gen. Routing candidate (2)'s
+VPW-authoring half — deferred: VPW was out of this pass's allowed scope; the doctrine (whitelist) landed
+in the bible where the reviewer reads it.
+
+
+## 2026-07-16 — Chunks 3-6 rework round 1: the round's human decisions
+
+- **Crowd/anon-figure proportion standard = EXACT base-rig squat proportions** (face treatment
+  differs: crowd rig keeps dot eyes / simple mouth / no nose-ears-teeth). Daniel, verbatim: "Crowd
+  rig should be the exact same proportions as our base rig. Face is different of course."
+  Alternative rejected: flipping the standard to the taller human-proportioned figures seen in the
+  drift shots (L73/L76 et al.) — the bible already said squat and Daniel confirmed it. A 3-agent
+  audit swept every frame; all tall-drift in the rework window fixed; L30 (released chunk 1)
+  surfaced for his call rather than auto-reworked.
+- **L96 = fix to exactly TEN grave crosses** (7 adult + 3 child = the VO's payload), chosen over
+  accepting the 9-cross render his feedback hadn't mentioned. Took two regens (11 on the first);
+  count now structurally authored (front row of 6 + rear cluster of 4) and zoom-verified.
+- **'Scrap 114' parse confirmed:** keep L114's framing; fix only the off-rig foreground figures +
+  the 5-finger hand. (Identity pass held the composition; verified against the superseded frame.)
+- **Review-vs-generator disagreements adjudicated by zoom, both times for the reviewer** (L76
+  broker nose+ear, L122 guard noses were real). Reaffirms: generator self-checks never gate.
+
+
+## 2026-07-16 — Chunks 3-6 rework ROUND 2: the crop-battery gen/verify redesign
+
+Round 1's verify stack (unit self-check → 3-axis fresh-eyes zoom review → fix unit "verifies" by
+zoom → orchestrator stamps `verified:true`) passed ~20 frames Daniel immediately failed for
+ears/noses/5–6 fingers/proportion. Manifest + code evidence pinned four mechanisms: fix passes
+seeded off the defective frame (defect lives in the strongest seed, ~50% sticky), seed dilution
+(4–5-seed gens, `base.png` as an Nth anchor pinning nothing), a review layer structurally blind by
+its own doc (hand crops banned, prose zoom claims with no evidence artifact), and a board compositor
+bug rendering plate+layers cards bare. Human-approved design gate this date (spec
+`docs/superpowers/specs/2026-07-16-round2-crop-battery-redesign.md`) — this approval IS the §G human
+confirmation; FEEL re-gates on the republished board.
+
+**Decided:**
+- **Crop battery replaces full-frame rig review.** A localizer agent returns per-figure face + hand
+  bounding boxes → `scripts/crop_battery.py` (PIL, deterministic) cuts them at 3–4× → a SEPARATE
+  fresh judge rules PASS/FAIL per crop with the crop file path cited as evidence; prose zoom claims
+  are inadmissible. Fix passes re-enter the battery before/after on every figure. → style-bible §3
+  hands bullet + image-generation batched-review identity/rig mandate.
+- **Seed cap ≤4 per gen** (canonical + ONE pose + ONE expression + one anchor/exemplar) — beyond 4,
+  dilution weakens every prior. → style-bible §5 + image-generation Pass-2 seeding.
+- **Regen-first: a rig FIX never seeds the defective frame** (regen fresh from canonicals; the defect
+  rides the seed ~50%). The only defective-seed exceptions are an authored delta-chain parent and a
+  human-ordered framing hold, both requiring a before/after crop diff on EVERY figure. → style-bible
+  §5 + image-generation Pass-2 seeding.
+- **Crowd exemplar** `refs/base/crowd-exemplar.png` (human-gated this date) is seeded into EVERY
+  crowd-bearing gen as the crowd rig anchor — the §2d words stay in the prompt, but the exemplar seed
+  pins proportion + face (a crowd carries no per-figure canonical). → style-bible §2d/§8 +
+  image-generation Pass 2. Supersedes the earlier "author §2d words, no seed" crowd handling.
+- **Orchestrator-only stamping** — generating agents never stamp `verified`; the orchestrator merges
+  manifest entries only after the battery + fresh-eyes review pass (round-1 `verified:true` stamps
+  voided). → image-generation Stamp-the-gate.
+- **Board compositor fix** — `build_board` reads `layer.reuse` else `cutouts/<sid>-<layer-id>.png`
+  (mirrors `build_motion.py:179`); board-only, no regen. → execution (P0), not a doctrine file.
+
+**Alternatives rejected:**
+- **Ensemble full-frame voting** (N judges vote on the whole frame) — rejected: the round-1 failure
+  was not judge variance, it was full-frame blindness to small features + no evidence artifact; more
+  votes on the same blind view raises cost, not the floor. Deterministic crops + evidence-cited
+  per-crop rulings is the actual lever.
+- **Crops-to-human-only** (skip the judge, hand raw crops straight to Daniel) — rejected: pushes the
+  full per-crop grind onto the human on every batch; the judge raises the machine floor and the human
+  gate stays final on the same embedded crop sheets, at seconds per shot.
+- **Fix-passes-only** (keep seeding identity passes off defective frames, just review harder) —
+  rejected: the manifest showed the defect riding the seed ~50% regardless of review; the fix is
+  gen-side (regen fresh from canonicals), not more review on a doomed seed.
+
+**Why:** the honest limit is that a model judge still misreads cartoon hands sometimes even on crops,
+so the crop battery raises the floor (structured verdicts + evidence + human crop sheets) while the
+real rig win is gen-side (seed cap + regen-first + crowd exemplar). A lesson left only in a video's
+run brief binds nobody — a fresh terminal reads the style-bible and skill docs (operating-law
+§G-route reachability). Every learning was human-confirmed via the design-gate approval this round.
+
+## 2026-07-17 — Poyais round-3 board-feedback decisions
+
+- **Scope ruling (Daniel):** round-2 items he did not re-flag (L62 L95 L96 + taste stack
+  L61/L81/L109/L118/L53/L54/L57/L102/L112) are ACCEPTED AS-IS and ship. Alternative rejected:
+  folding them into round 3 (more gens for items he did not ask about).
+- **L79 fine-print layer CUT, L107 anger-mark layer CUT (Daniel, board feedback):** L107's anger
+  now lives in the crowd itself (wheeled, pointing at the officer's pop-on spot; dedicated
+  scenes/L107.png plate replaces the L105 reuse). Alternative rejected: keeping the comic glyph
+  (Daniel: "scratch the anger mark").
+- **L30 REVERTED to the pre-round-2 frame (Daniel):** the r2 squat rework is parked in
+  _superseded-2026-07-17-r3. Lesson: a rework can lose qualities the human valued — the board
+  must always offer the prior frame for comparison.
+- **L75 layer coords are geography-bound:** country pop-ons must sit on the true drawn region
+  (engine anchors layer CENTER, components.tsx:595/615). Composite-verified before the board.
+- **NOT codified (awaiting Daniel per §G):** (1) §2e-anon ear defects are prompt-unsuppressible —
+  composition (side-wrapping headwear / faceless) is the only proven fix (L48 x4, L115 x2, beach
+  chain x2 incl. from-behind hat-brim ears); (2) "gaunt/aged" facial wording pulls photorealism —
+  author age/grief as posture/silhouette; (3) hybrid shots' composed-shot still_prompt keeps
+  being misread as "stale" by gen units — needs an explicit plate-vs-composed convention.
+
+## 2026-07-17 — Poyais round-4 "simple prompts" rework decisions
+
+- **Round-4 method (Daniel-directed):** VPW re-author to SIMPLE prompts + context-free regen after
+  round 3 proved (a) prompt-block prohibitions cause defects rather than prevent them, and (b) the
+  crop-only battery passes frames the human rejects. Alternative rejected: more targeted regens
+  under the old prompts (4 straight failures on L48).
+- **Battery hardened:** ear-HOLES are a named blocking invariant; a per-shot FULL-FRAME
+  style-gestalt ruling is mandatory. `crop_battery.py` extended with an `ear_zones` part-type.
+- **Result 11/14 clean** incl. three-round failures (beach chain, L93-as-hooded-shape) —
+  simple-prompts + structural composition validated on real production shots.
+- **Candidates for codification (await Daniel §G confirm):** (1) VPW law: ≤80-word scene prompts,
+  no rig prohibitions, anon faces structurally covered/eliminated; (2) image-gen: two-gen identity
+  pass CONDITIONAL on observed starve (unconditional pass balded healthy frames twice);
+  (3) image-gen prompt clause: "the ONLY people in the scene are those stated" (kills invented
+  galleries/mannequins); (4) far-scale figures should be authored featureless/silhouette (distant
+  nose-bumps survived 2 rounds); (5) agent briefs: forge runs foreground-sequential (background
+  batch + end-turn-to-wait stalled all three units under API 503 storms).
+
+## 2026-07-17 — Poyais round-5 + full render decisions
+
+- **L30/L63 "easier image" law applied (Daniel-directed):** L30 rebuilt around the proven shako
+  soldier (MacGregor removed); L63 rebuilt as a top-down no-head desk scene. Daniel approved both
+  ("There are fine"), accepting L63's residual 5-digit map hand after 4 re-rolls proved
+  surface-resting hands structurally splay (grips pass 5/5). Retry-law deviation (extra passes
+  beyond the one retry) was disclosed and is NOT a precedent — route the underlying lesson
+  (hands grip or stay off-frame) through §G instead.
+- **Render preflight honored the hard-stop design:** take 1 stopped on real gaps instead of
+  silently falling back — validating the no-silent-fallback law. Fixes: render-builder plate-only
+  passthrough wiring (commit 2f98bb6); verify stamps reconciled to recorded human rulings only;
+  production VO + audio plan generated by their owning skills (never hand-rolled).
+- **Alternative rejected:** rendering with --allow-missing to "see something" — would have shipped
+  placeholder cards and bypassed the rig gate.
+- **Full render shipped:** final.mp4 8:05, -14.54 LUFS, checker green. Daniel mid-watch-through;
+  8 codification candidates parked in the pickup pending his §G gate.
+
+## 2026-07-17 — Music retrack: restrained exposé-underscore replaces meme cues (Daniel-approved "Option A")
+
+- **Decision:** the music-audit found the default con-spine/lift beds were meme-famous Kevin MacLeod
+  comedy cues (Sneaky Snitch, Scheming Weasel, Monkeys Spinning Monkeys) — instantly recognizable
+  "YouTube meme music" that cheapens the channel's Crayon-Capital exposé/credibility register. Daniel
+  approved retracking to the goal-channel register. music-forge sourced a new **restrained
+  exposé-underscore** bucket set (all Incompetech / Kevin MacLeod, CC BY 4.0, verified on the source
+  FAQ), normalized to −20 LUFS and wired into `music_pools`:
+  - **`underscore`** (NEW, DEFAULT con-spine — replaces `sneaky` as default): Crypto, Deliberate
+    Thought, Comfortable Mystery 2, Private Eye — present, credible pizzicato/strings/keys tension.
+  - **`upbeat`** (EXTENDED, not renamed/deleted): added **Fig Leaf Times Two** as upbeat-2 (non-meme
+    market-mania lift); upbeat-1 (Monkeys Spinning Monkeys) preserved for deliberate comedic use.
+  - **`somber`** (NEW, elegiac button tail): Meditation Impromptu 01 — so the button no longer
+    resolves on the comedic con bed.
+- **Meme cues STAY** — `sneaky` ×6 and upbeat-1 (Monkeys) are retained in the library for OCCASIONAL
+  *deliberate* comedic use; they are no longer the default. Nothing deleted/renamed.
+- **Register boundary widened, not broken:** the retrack adds a restrained-underscore register but the
+  "NOT cinematic stinger/movie-score" guardrail still holds (music-forge SKILL.md reconciled to state
+  both registers).
+- **Alternatives rejected:** (B) drop bed coverage to the OverSimplified ~62% floor and (C) mostly-dry
+  set-piece-only — both deferred; the audit's evidence said the register/track was the bigger defect
+  than raw coverage, so re-tracking (A) is the smallest change that removes the most likely cause and
+  stays inside the proven Crayon 71–85% band. A/B on coverage can follow on Daniel's ear.
+- **Not changed:** `music_default_mood` (still `casual-bed`, the realizer fallback) and audio-plan.json
+  — the audio-director re-authors cues separately and the human ear-gates FEEL on the render.
+
+## 2026-07-17 — Poyais R7 (watch-through №2) decisions
+
+- **Per-cue `track`/`variant` pins in the audio lane** (render-builder + lint). Mood-only cues
+  couldn't express Monkeys-vs-Fig-Leaf or a specific sparkle variant — a blocker in 3 straight
+  rounds, hand-managed via pool reordering. Rejected alternative: more/finer mood buckets
+  (proliferates channel config per video; pool order stays rotation-fragile). A pinned-but-missing
+  file is a HARD error (a directed choice never silently falls back).
+- **`dip_in_pause:false` channel dial** [Daniel-directed, M15]: the bed plays THROUGH authored
+  pauses; full music cuts only on human-cost dry spans + track switches. Old behavior (−40 dB dip
+  in every pause) survives as the default=true dial for other channels.
+- **Deterministic tile-composite for exact-count infographics** (L103): the gen engine hard-caps
+  crowd grids at ~8–9 rows (proven twice: asked 10→9, asked 12→8), so ~250 figures cannot be
+  generated directly at 16:9. Rejected alternative: a 3rd gen attempt (retry law + proven cap).
+  The composite tiles VERIFIED sprites from the engine's own clean output — exact count, exact
+  zero-overlap, rig by construction. Candidate §G lesson: infographic shots with narrated counts
+  get deterministic assembly from generated sprites, not raw gen.
+- **Cumulative-chain re-base seeds the LAST delta** (L09b prince seeded off the cathedral frame):
+  deliberate deviation from §13a re-base-seeds-BASE, which exists for scene-SET drift; a
+  cumulative build loses its accumulation if re-based on the stage base. Awaiting §G gate.
+  Corollary landed via lint: a stage BASE renders as mode:"plate" (its own frame); the
+  generation-time seed lineage is not a render-time chain.
+- **Trio sash lettering kept sans (consistency-first)**: the L75 figures are exact crops of
+  shipped L81; re-lettering only the cutouts would desync them from their baked twins. Flagged
+  to Daniel; if rejected at the gate, re-letter BOTH in one regen round.
+- **Monkeys Spinning Monkeys sanctioned for deliberate use** [Daniel ruling]: opening span
+  ("It all started…"→"made himself the prince") + Paris-caper span. `upbeat-3` (Ascending the
+  Vale, CC-BY) added as the con-spine-adjacent light bed (top non-meme CLAP match to Fig Leaf).
+
+## 2026-07-17 — Poyais R8 (watch-through №3) decisions
+
+- **Universal sentence-gap law** [Daniel-directed, R8-B]: +0.5s of spliced silence after EVERY
+  spoken sentence (0.3s for chained ≤2-word sentences), on top of VO prosody; authored pause cues
+  STACK on top (co-located gaps sum). Engine-wide (`breath.py sentence_gaps()/merge_gaps()`), dialed
+  per channel in `audio-tokens.json`. Baked `[PAUSE]` script tags RETIRED for this channel — they
+  were prosody-fragile and covered only 3 locations. Alternative rejected: max(gap, authored) —
+  Daniel ruled stacking.
+- **Chapter cards are own scenes** [Daniel ruling]: fully opaque full-frame near-black text scenes
+  (channel font), not floating overlays. Engine realization: plan-level `cards[]` →
+  `apply_cards()` aligns each card to its co-located spliced pause window, so the card occupies its
+  own silence and causes ZERO downstream retime; `post_vo_hold_s` holds the end card 4s past the
+  closing VO. Card titles are Daniel's verbatim. Alternative rejected: cards as timeline shots
+  (would retime every downstream anchor on any card-length change).
+- **SFX real-duration windows + `fade_out_s`**: the hard 2s SFX window caused audible chops; cues
+  now play to their real duration with an optional authored fade, plus a tail-overshoot WARN audit.
+- **Delta-shot own-frame guard** (`build_motion.py`): a reveal shot without its own image can never
+  silently inherit the previous plate — the paradise one-beat-late root cause, fixed in logic.
+- **Trio anchor disambiguation**: when an anchor word occurs twice in the VO, pin cues/pops via
+  unique consecutive n-grams ("Colombia, Peru, Chile, showed") — candidate §G lint rule.
+- **Music lane** [Daniel rulings R8-A/C]: Cheery Monday (1:17–4:08 register) replaces the vocal
+  middle bed (demucs-verified vocal-free); Monkeys Spinning Monkeys runs from "After the news
+  broke" to the END — somber tail + final dry span deleted. Heavier crack-2 + higher halo_vocal-2
+  retracked into the pools (measured picks: f0/centroid).
+- **Script cuts accepted at cost of full VO re-synthesis** (3 cuts + new closing line): whole-video
+  prosody re-rolled — flagged as the top ear-gate item on the R8 board.
+- **Status:** R8 rendered + verified (544.6s, −14.58 LUFS, all gates green); §G codification of
+  R6–R8 learning candidates queued for a dedicated session after Daniel's gate.
+
+## 2026-07-17 — Poyais R9: audio doctrine + card typography (Daniel-confirmed)
+
+- **Audio doctrine (channel defaults, codified in audio-director `grammar-guidance.md`):**
+  (a) the human-cost `dry` pull-back is RETIRED — music runs through human-cost sections;
+  register comes from track choice/level, not silence. (b) Universal card law: music fades out
+  (~1.2s) into every title card, silence during the card, next bed on the first post-card shot —
+  never a bed over a card, never a hard cut in; END card exempt (finale bed carries the outro).
+  (c) Variety law: no single bed unbroken for 3+ min — change track at a major narrative pivot.
+  *Rejected:* keeping dry-on-human-cost (the silence read dead); one ~181s Cheery Monday block
+  ("too much of the same audio gets pretty tiring").
+- **Title-card typography LOCKED (board rounds 1-3):** Ink Free, Title Case, **104px @1080p,
+  bold via 2.5px text-stroke**, cream #fffdf7 on #151310. The original 96px was an ungated
+  component default. *Rejected:* stamp-register cards (baked-image route, unpicked), ALL CAPS,
+  156-184px sizes, pure-#000/#fff "sharper" (unpicked), 112px (a touch big at full-screen).
+- **Stamp/slam overlays FREEZE at impact** (engine: position co-terminates with the fade-in,
+  clamped) — "hit and stay" ruling; the R8 durationInFrames freeze missed the settle path.
+- **Q24 "cuts and cuts again" fixed as CADENCE, not engine:** a 1.953s delta (L95) between
+  near-identical rainy-camp frames read as a stutter — cut folded (shot deleted, prior delta
+  holds through the line). Lesson: near-identical delta frames must not carry sub-2s cuts.
+- **§G candidates parked for the post-gate codification session:** viewer-readable diegetic
+  text beats physics (the L32 upside-down signature; also: sticky baked text resists worded
+  regen deltas — deterministic pixel-surgery on the best candidate is the proven fallback);
+  fresh-eyes disagreement rule (R1 caught what R3 passed — orchestrator eyeballs the tiebreak).
+
+## 2026-07-18 — Poyais R10: VO splice root-cause fix + long-fade audio doctrine (Daniel-directed)
+
+- **VO "cuts" root-caused and fixed in the engine, not the artifact.** Measured diagnosis: the
+  R8-B additive sentence-gap law cut the VO at nominal ElevenLabs word ONSETS (truncating voiced
+  tails — "spo—t") and spliced −120 dBFS digital silence into live room tone at all 83 sentence
+  boundaries; raw vo.mp3 was clean (TTS + voiceover skill were fine). Fix (breath.py):
+  (a) valley cut — cut at the measured RMS minimum near the boundary; (b) sentence law is now
+  PAD-TO-TARGET (total gap up to 0.65s / 0.45s chained; insert only the shortfall) — the additive
+  +0.5s doubled natural pauses; (c) gaps fill with sampled room tone, never digital silence
+  (authored card/beat pauses keep their durations); (d) NEW splice-continuity gate in
+  audio_checker (FAIL > −30 dBFS pre-cut), wired into render QA via build_motion. Census after:
+  truncations 4→0, −120 dBFS holes 83→0, sentence insertion 41.5s→5.65s, VO 524.3→488.5s.
+  *Rejected:* longer splice fades alone (measured: a 0.10s fade against room tone carved 17 new
+  silent notches — shipped 0.02s declick on the room-tone path instead); hand-patching cited sites.
+- **Music fades are LONG by default (channel doctrine):** music_fade_s 0.5/0.9 → 1.2/2.5,
+  track_switch_gap_s 0.8 → 1.2, card fades 1.2 → 2.5, post-prince outgoing bed 3.0s per-cue.
+  Codified in audio-director grammar-guidance. *Rejected:* per-cue hand-tweaks (Daniel: "we've
+  built out skills for a reason"); per-cue fade_in_s engine key (global default bump sufficed).
+- **music_present_db 9 → 10** (−1 dB, "not by too much"). **halo_vocal pool reverted to
+  halo_vocal-1** (Daniel prefers the pre-R8 lower ahh). **Floating-book ahh is ONE sustained
+  composite** (halo_vocal_book-1 = halo_vocal-1 ×5, acrossfade-chained back-2/3, 4.44s, scoped to
+  L36 only) replacing the R9 3-link chain that re-triggered and spilled two scenes; rebuilt from
+  ×6 to ×5 when the pad-to-target timeline shrank L36 (ring-tail caught by the M20 dry-run warn).
+  Five-star boom SFX removed (visual slam stays).
+- **Visual regens through the skills** (visual-prompt-writer → seeded forge.py): L11 + L54 on the
+  crowd rig (crowd-exemplar seed dominant; hardened zero-facial-hair/uniform-scale negation);
+  L75 Colombia/Peru/Chile regenerated FRESH off the base rig (R9's "REUSE - on-rig" note was a
+  mis-inspection — struck in the manifest); slim flat-cel L27 arrow at [0.302,0.42] hf 0.085.
+  Reviewer-disagreement tiebreaks (nose claim, glossy-vs-flat direction) resolved by orchestrator
+  pixel-scan + eyeball per the R9 rule; Chile neck chroma removed by deterministic despill.

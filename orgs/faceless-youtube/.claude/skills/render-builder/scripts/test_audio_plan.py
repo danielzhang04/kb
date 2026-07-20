@@ -24,8 +24,16 @@ def test_empty_plan_yields_empty_lists():
     assert split_plan({"cues": []}) == ([], [], [])
 
 
+def test_sfx_fade_out_s_carried_through_split():
+    # P16: fade_out_s is an sfx-cue field -> must survive split_plan into the audio_cues shape
+    plan = {"cues": [{"kind": "sfx", "anchor": "a b c d", "role": "applause", "fade_out_s": 1.2}]}
+    a_cues, _, _ = split_plan(plan)
+    assert a_cues == [{"anchor": "a b c d", "role": "applause", "fade_out_s": 1.2}], a_cues
+
+
 def main():
-    for fn in [test_splits_by_kind_into_existing_shapes, test_empty_plan_yields_empty_lists]:
+    for fn in [test_splits_by_kind_into_existing_shapes, test_empty_plan_yields_empty_lists,
+               test_sfx_fade_out_s_carried_through_split]:
         fn(); print("ok", fn.__name__)
     print("OK")
 

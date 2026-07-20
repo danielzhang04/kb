@@ -7,11 +7,11 @@
   "status": "shots-drafted",
   "shot_counts": {
     "_note": "informational only; not consumed by downstream image-gen -- counts of prompt blocks in this file",
-    "long_form_shots": 118,
+    "long_form_shots": 117,
     "thumbnail_prompts": 3,
     "shorts": 0,
     "shorts_shots": 0,
-    "total_prompts": 121
+    "total_prompts": 120
   },
   "render_pattern": "A",
   "timing_status": "estimated-from-script — re-time after render",
@@ -69,10 +69,30 @@
       {
         "id": "L05",
         "beat": "hook",
-        "start_hint": "0:13",
+        "start_hint": "0:16",
         "duration_s": 4,
         "vo_ref": "They'd been told Poyais was a gorgeous young country",
         "vo_text": "They'd been told Poyais was a gorgeous young country in Central America,",
+        "from_cue": false,
+        "stage": null,
+        "stage_role": null,
+        "narration_type": "claim",
+        "shot_class": "symbolic-stand-in-object",
+        "cast": [],
+        "source": "ai-gen",
+        "still_prompt": "A mostly full-frame flat illustration of a gorgeous unbuilt fantasy country filling the frame: lush rolling green hills, a winding silver river, distant blue mountains, a warm radiant golden sky, palms and rich farmland, an over-perfect promised paradise. Pristine and idyllic, empty of any buildings (the base that fills up as each promised feature is added in the following shots). Palette: saturated warm greens and golds, cream highlights; one red accent on a single distant blossom. Filled edge-to-edge. Flat-cel 2.5D vector house style, warm cel shading, even medium-thick #241a12 outline; no on-screen narrator; 16:9.",
+        "on_screen_text": "",
+        "transition_in": "hard cut",
+        "synthetic": false,
+        "notes": "R7 (M01): standalone establishing plate (stage/stage_role removed). scenes/L05.png unchanged. Motion mode: plate. It is the seed lineage parent for the L06 city base."
+      },
+      {
+        "id": "L06",
+        "beat": "hook",
+        "start_hint": "0:17",
+        "duration_s": 2,
+        "vo_ref": "with a capital city",
+        "vo_text": "with a capital city,",
         "from_cue": false,
         "stage": "paradise-brochure",
         "stage_role": "base",
@@ -80,103 +100,126 @@
         "shot_class": "symbolic-stand-in-object",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "A mostly full-frame flat illustration of a gorgeous unbuilt fantasy country filling the frame — lush rolling green hills, a winding silver river, distant blue mountains, a warm radiant golden sky, palms and rich farmland, an over-perfect promised paradise. Pristine and idyllic, empty of any buildings (the base that will fill up as each promised feature pops in). Palette: saturated warm greens and golds, cream highlights; the one red accent on a single distant blossom. Filled edge-to-edge, genuine depth from foreground meadow to far mountains, no dead air. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline, warm cel shading with genuine depth (not flat or empty); any in-image text hand-lettered marker and legible; no on-screen narrator or host face; 16:9.",
+        "still_prompt": "The held golden fantasy paradise (lush country, winding river, palms, blue mountains, radiant golden sky) now with a gleaming golden capital city integrated into the mid-right of the vista: cream colonnaded buildings, terracotta roofs, a golden domed palace and a slender tower, tree-lined boulevards, one red rooftop flag. Fully integrated into the landscape, not a floating cutout. Filled edge-to-edge, rich palette, depth. Flat-cel 2.5D vector house style, warm cel shading, even medium-thick #241a12 outline; no on-screen narrator; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
-        "notes": "Stage base: the full-frame paradise landscape starts empty of built features; the capital, bank, banknotes, cathedral and prince POP ON as appear cutout layers over this held frame (hybrid). Not a literal brochure object."
-      },
-      {
-        "id": "L06",
-        "beat": "hook",
-        "start_hint": "0:17",
-        "duration_s": 3,
-        "vo_ref": "with a capital city",
-        "vo_text": "with a capital city,",
-        "from_cue": false,
-        "stage": "paradise-brochure",
-        "stage_role": "delta",
-        "changed_elements": [
-          "+ a golden capital city pops onto the held paradise"
-        ],
-        "narration_type": "claim",
-        "shot_class": "symbolic-stand-in-object",
-        "cast": [],
-        "source": "ai-gen",
-        "still_prompt": "The SAME held golden fantasy paradise from the prior frame — lush country under a radiant sky — now a gleaming golden capital city pops into the mid-ground: grand colonnaded cream buildings, red-tiled rooftops, a distant domed palace, tree-lined boulevards. Everything else held from the base. Palette: saturated warm golds and creams, terracotta roofs, green trees; the one red accent on a single rooftop flag. Filled edge-to-edge. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline, warm cel shading with genuine depth (not flat or empty); any in-image text hand-lettered marker and legible; no on-screen narrator or host face; 16:9.",
-        "on_screen_text": "",
-        "transition_in": "hard cut",
-        "synthetic": false,
-        "notes": "Capital pops on as an appear cutout over the held L05 paradise base (hybrid), landing on 'capital city'."
+        "notes": "R7 (M01): stage-1 base of the integrated delta chain. REUSES existing scenes/L06.png (already the integrated city frame). Motion: delta-chain, plate scenes/L05.png. Cutout layer deleted."
       },
       {
         "id": "L07",
         "beat": "hook",
-        "start_hint": "0:20",
-        "duration_s": 3,
-        "vo_ref": "a national bank, its own money",
-        "vo_text": "a national bank, its own money,",
+        "start_hint": "0:18",
+        "duration_s": 1.5,
+        "vo_ref": "a national bank",
+        "vo_text": "a national bank,",
         "from_cue": false,
         "stage": "paradise-brochure",
         "stage_role": "delta",
         "changed_elements": [
-          "+ a columned national bank building pops onto the paradise",
-          "+ a fan of ornate Poyais banknotes pops in"
+          "+ a neoclassical national bank integrated into the foreground-left of the paradise, on 'a national bank'"
         ],
-        "narration_type": "institution",
+        "narration_type": "claim",
         "shot_class": "symbolic-stand-in-object",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "The SAME held golden paradise and capital from the prior frame — now a grand columned national bank building pops into the foreground (heavy pediment, a row of columns, a small red rooftop flag) and a neat fan of ornate 'POYAIS BANK' banknotes pops in at the lower corner. NO hands and no people — the paradise vista fills the frame. Everything else held. Palette: warm golds and creams, engraved green-and-gold notes; the one red accent on the bank's flag. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline, warm cel shading with genuine depth (not flat or empty); any in-image text hand-lettered marker and legible; no on-screen narrator or host face; 16:9.",
+        "still_prompt": "The SAME held golden paradise WITH the capital city, now adding a single grand neoclassical NATIONAL BANK building in the foreground-left: cream stone, a heavy triangular pediment, a full row of tall columns, a short flight of steps, a small red rooftop flag. Grounded on the grass with soft cel shading, fully integrated into the scene (not a floating cutout). Everything else held. Filled edge-to-edge, rich palette, depth. Flat-cel 2.5D vector house style, warm cel shading, even medium-thick #241a12 outline; no on-screen narrator; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
-        "notes": "Bank + banknotes pop on as appear cutouts over the held L05 paradise base (hybrid).",
-        "props": [
-          "poyais-banknote"
-        ]
+        "notes": "R7 (M01): delta, seeded off scenes/L06.png. New frame scenes/L07.png (replaces old bank+money combined frame). Motion: delta-chain, plate scenes/L06.png. No layers."
       },
       {
         "id": "L08",
         "beat": "hook",
-        "start_hint": "0:23",
-        "duration_s": 3,
-        "vo_ref": "a cathedral, and a prince",
-        "vo_text": "a cathedral, and a prince. There was just one problem. [BEAT]",
+        "start_hint": "0:19",
+        "duration_s": 1.5,
+        "vo_ref": "its own money",
+        "vo_text": "its own money,",
         "from_cue": false,
         "stage": "paradise-brochure",
         "stage_role": "delta",
         "changed_elements": [
-          "+ a cathedral spire pops into the city skyline",
-          "+ an anonymous advertised prince appears in the foreground"
+          "+ a fan of engraved POYAIS BANK banknotes integrated into the lower-right, on 'its own money'"
         ],
         "narration_type": "claim",
         "shot_class": "symbolic-stand-in-object",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "The SAME held golden paradise from the prior frame — now a tall cathedral spire pops into the city skyline, and a prince appears in the foreground: a generic advertised storybook prince of Poyais in an ornate princely coat and a small coronet, presented as the brochure's promised ruler. He is an ANONYMOUS advertised figure, NOT any named character and NOT MacGregor — do not give him MacGregor's identity, face, hair or crimson hussar uniform. This prominent foreground figure is an anonymous, non-recurring person drawn on the FULL base family rig -- SAME round near-circle head (only slightly taller than wide, NOT an egg/oval), SAME eye style/size/position, NO nose, NO ears, SAME classic cartoon hands (exactly THREE fingers plus ONE thumb, four digits total, never five), SAME even medium-thick dark warm brown-black (#241a12) outline, SAME clean FLAT cel render -- the identical rig the named cast holds, just NOT a specific person. Give them a distinct, era-appropriate outfit and hair so they read as an individual; hold ONLY the rig form. The promised country now complete, with its prince. Everything else held. Palette: warm golds and creams, the prince's princely blue-and-gold; the one red accent on his sash. Filled edge-to-edge. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline, warm cel shading with genuine depth (not flat or empty); any in-image text hand-lettered marker and legible; no on-screen narrator or host face; 16:9.",
+        "props": [
+          "poyais-banknote"
+        ],
+        "still_prompt": "The SAME held golden paradise WITH the capital city and the foreground-left national bank, now adding a neat overlapping fan of ornate engraved 'POYAIS BANK' banknotes (green-and-gold, a legible '100', a small bank vignette and red wax seal) in the lower-right corner, laid over the vista. Everything else held. Filled edge-to-edge, rich palette, depth. Flat-cel 2.5D vector house style, warm cel shading, even medium-thick #241a12 outline; no on-screen narrator; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
-        "notes": "Cathedral + the prince pop on as appear cutouts over the held L05 paradise base (hybrid). Per the edit manifest the prince IS MacGregor (seeded canonical) — supersedes the earlier empty-throne disclosure-order staging."
+        "notes": "R7 (M01): delta, seeded off scenes/L07.png + prop-poyais-banknote. New frame scenes/L08.png. Motion: delta-chain, plate scenes/L07.png. No layers."
+      },
+      {
+        "id": "L09",
+        "beat": "hook",
+        "start_hint": "0:20",
+        "duration_s": 1.5,
+        "vo_ref": "a cathedral",
+        "vo_text": "a cathedral,",
+        "from_cue": false,
+        "stage": "paradise-brochure",
+        "stage_role": "delta",
+        "changed_elements": [
+          "+ a gothic cathedral spire integrated into the city skyline, on 'a cathedral'"
+        ],
+        "narration_type": "claim",
+        "shot_class": "symbolic-stand-in-object",
+        "cast": [],
+        "source": "ai-gen",
+        "still_prompt": "The SAME held golden paradise WITH the capital city, the foreground-left national bank, and the lower-right banknote fan, now adding a tall gothic CATHEDRAL with a slender pointed spire rising over the city skyline in the mid-right, just to the right of the domed palace among the rooftops. Integrated into the existing skyline at city scale, same cream-and-terracotta palette. Everything else held. Filled edge-to-edge, rich palette, depth. Flat-cel 2.5D vector house style, warm cel shading, even medium-thick #241a12 outline; no on-screen narrator; 16:9.",
+        "on_screen_text": "",
+        "transition_in": "hard cut",
+        "synthetic": false,
+        "notes": "R7 (M01): NEW shot (L09 id was free). delta, seeded off scenes/L08.png. Frame scenes/L09.png. Motion: delta-chain, plate scenes/L08.png. No layers. Third delta -> stage 'paradise-brochure' at the 1-base+3-delta cap."
+      },
+      {
+        "id": "L09b",
+        "beat": "hook",
+        "start_hint": "0:21",
+        "duration_s": 3,
+        "vo_ref": "and a prince",
+        "vo_text": "and a prince. There was just one problem. [BEAT]",
+        "from_cue": false,
+        "stage": "paradise-prince",
+        "stage_role": "base",
+        "narration_type": "claim",
+        "shot_class": "symbolic-stand-in-object",
+        "cast": [],
+        "source": "ai-gen",
+        "still_prompt": "The SAME held golden paradise WITH the capital city, the foreground-left national bank, the lower-right banknote fan, and the gothic cathedral spire, now with the advertised PRINCE OF POYAIS standing in the foreground-center: a storybook chibi prince on the full base rig (perfectly round head, NO nose, NO ears, four-digit white-gloved hands), curly brown hair under a small gold coronet, a blue princely coat with gold filigree, a red sash across the chest, a red waist sash, brown trousers, dark shoes. An ANONYMOUS advertised figure (NOT MacGregor, not any named character), rendered fairly large and prominent (about half the frame height), grounded on the grass and integrated into the scene (feet on the ground, soft shadow), not a pasted floating cutout. Flat-cel 2.5D vector house style, warm cel shading, even medium-thick #241a12 outline; no on-screen narrator; 16:9.",
+        "on_screen_text": "",
+        "transition_in": "hard cut",
+        "synthetic": false,
+        "notes": "R7 (M01): NEW shot (suffix id L09b, between L09 and L10). stage-2 base of 'paradise-prince', seeded off the CATHEDRAL frame scenes/L09.png + the R6-approved prince cutout cutouts/L08-prince.png (identity anchor). DELIBERATE deviation from re-base-seeds-BASE (cumulative build). Prince matches the R6-approved look, larger (N04/N05). Frame scenes/L09b.png. Motion: delta-chain, plate scenes/L09.png. No layers."
       },
       {
         "id": "L10",
         "beat": "hook",
-        "start_hint": "0:29",
+        "start_hint": "0:24",
         "duration_s": 3,
         "vo_ref": "The whole thing was made up",
         "vo_text": "The whole thing was made up.",
         "from_cue": false,
+        "stage": "paradise-prince",
+        "stage_role": "delta",
+        "changed_elements": [
+          "+ a red FICTION rubber-stamp SLAMS over the completed paradise (cutout layer), on 'made up'"
+        ],
         "narration_type": "claim",
         "shot_class": "ironic-counterpoint",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "The completed golden fantasy paradise — the fully-built country complete with every promised feature at once (all the L05 to L08 pops together): the gleaming golden capital city of colonnaded cream buildings and red-tiled roofs, the grand columned national bank with a heavy pediment, a neat fan of ornate 'POYAIS BANK' banknotes, a tall cathedral spire rising over the skyline, and the radiant lush landscape glowing under a warm golden sky, the self-styled prince a small illustrated figure among the buildings (part of the painted backdrop, not a foreground character), the whole beautiful promise entire — with a bold red diagonal FICTION rubber-stamp SLAMMED hard across the centre of the frame, its ink slightly rough at the edges. The stamp is the punchline over the pristine lie. Palette: warm golds and creams under the cold red FICTION stamp; the red stamp the dominant accent. Filled edge-to-edge, deadpan. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline, warm cel shading with genuine depth (not flat or empty); any in-image text hand-lettered marker and legible; no on-screen narrator or host face; 16:9.",
+        "still_prompt": "The completed golden fantasy paradise from scenes/L09b.png (capital city, national bank, banknote fan, cathedral, and the prince, all integrated) as the held plate. A bold red diagonal FICTION rubber-stamp SLAMS across the centre of the frame on 'made up', its ink slightly rough at the edges: the punchline over the pristine lie. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline; no on-screen narrator; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
-        "notes": "FICTION-stamp reveal: the stamp slams (on 'made up') over the FULLY-BUILT paradise -- L08's end-state, all the L05->L08 pops together (golden capital city, columned national bank, banknote fan, cathedral spire, radiant country), reading as 'FICTION onto the completed L08 image'. Self-plate hybrid: L08 has no baked scenes/L08.png to reuse, so L10 carries its own completed-paradise plate_prompt (see shots.motion.json) + a slam-appear FICTION cutout layer. MacGregor is NOT cast/seeded here -- the prince is only a small illustrated figure in the painted backdrop at this beat."
+        "notes": "R7 (M01): delta of 'paradise-prince'. NO scene file (layered): plate = scenes/L09b.png (the completed integrated paradise); stamp = existing cutouts/L10-stamp.png slam, anchor 'The whole thing was made up' (unchanged). All the R6 persisted fade-cutouts DELETED (their elements are now baked into the plate)."
       },
       {
         "id": "L11",
@@ -190,7 +233,7 @@
         "shot_class": "aftermath-palette-turn",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "A row of small silhouetted emigrant figures, on the rig, on a bleak muddy shore under a desaturated grey sky, a dark treeline and still water behind. The LEFT half of the row are solid dark figures; the RIGHT half fade to pale ghost-grey outlines — visibly gone. Cold, muted, no warmth, no comedy. Composed with depth: shore foreground, water and treeline behind. Palette: cold greys and drab browns; one faint red accent on a single dropped bundle. The background / crowd figures are on the CROWD RIG: round cream-family heads, DOT EYES, one simple consistent mouth (neutral / smile / downturn only), NO noses, NO ears, NO teeth, the same head proportions, in varied era-appropriate clothing. Keep every crowd figure on this same simplified rig — do not give them individual detailed faces. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline, warm cel shading with genuine depth (not flat or empty); any in-image text hand-lettered marker and legible; no on-screen narrator or host face; 16:9.",
+        "still_prompt": "A horizontal ROW of anonymous emigrant figures standing on a bleak muddy grey lakeshore, dark bare treeline and still cold water behind, overcast grey sky. The LEFT half of the row are solid dark-clothed figures; the RIGHT half fade to pale ghost-grey outlines - visibly gone, never came home. Cold desaturated palette: drab greys and muddy browns, no warmth, comedy off. One faint red accent on a single dropped bundle lying on the muddy foreground ground. EVERY figure is on the CROWD RIG, EXACTLY like the reference crowd sample: a large round cream-family head on a SHORT, COMPACT, SQUAT body - the head is roughly ONE-THIRD of the whole figure's height - NOT tall, NOT lanky, NOT realistically-proportioned adults. DOT EYES, one simple mouth (neutral or downturn), and a COMPLETELY SMOOTH face: NO nose, NO nostrils, NO nose bridge, NO ears, NO teeth, no individual detailed or realistic features. Varied simple era-appropriate clothing and hats. Keep every figure identical on this simplified squat rig. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline, flat cel shading with depth; no on-screen narrator or host face; no text; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
@@ -322,13 +365,13 @@
         "beat": "premise",
         "start_hint": "0:55",
         "duration_s": 5,
-        "vo_ref": "fighting alongside SimÃƒÂ³n BolÃƒÂ­var",
-        "vo_text": "fighting alongside Simón Bolívar, the man who freed half the continent.",
+        "vo_ref": "fighting alongside Simón Bolívar",
+        "vo_text": "fighting alongside Simón Bolívar, the man who freed half the continent. And in 1820,",
         "from_cue": false,
         "stage": "campaign-map",
         "stage_role": "delta",
         "changed_elements": [
-          "+ BolÃƒÂ­var appears beside MacGregor at the same size on the held map, a liberator figure standing shoulder-to-shoulder on one eye-line"
+          "+ Bolívar appears beside MacGregor at the same size on the held map, a liberator figure standing shoulder-to-shoulder on one eye-line"
         ],
         "narration_type": "deal",
         "shot_class": "staged-interaction",
@@ -340,19 +383,19 @@
           }
         ],
         "source": "ai-gen",
-        "still_prompt": "The SAME campaign map held from the prior frame, general MacGregor (LEFT) now joined by the liberator general BolÃƒÂ­var (RIGHT) who has arrived beside him -- the two standing shoulder-to-shoulder at the same height on one eye-line at the South-America end of the map. BolÃƒÂ­var carries a clear liberator signifier (a bright sash of office, a furled tricolour banner) so he reads at a glance. Everything else held from the prior frame. Palette: warm aged-parchment browns and creams; the one red accent on BolÃƒÂ­var's sash. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline, warm cel shading with genuine depth (not flat or empty); any in-image text hand-lettered marker and legible; no on-screen narrator or host face; 16:9.",
+        "still_prompt": "The SAME campaign map held from the prior frame, general MacGregor (LEFT) now joined by the liberator general Bolívar (RIGHT) who has arrived beside him -- the two standing shoulder-to-shoulder at the same height on one eye-line at the South-America end of the map. Bolívar carries a clear liberator signifier (a bright sash of office, a furled tricolour banner) so he reads at a glance. Everything else held from the prior frame. Palette: warm aged-parchment browns and creams; the one red accent on Bolívar's sash. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline, warm cel shading with genuine depth (not flat or empty); any in-image text hand-lettered marker and legible; no on-screen narrator or host face; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
-        "notes": "HYBRID CUTOUT LAYER (per SEEDED-vs-LAYERED judgment): BolÃƒÂ­var is a whole discrete character added to the held scene, so he slides in as a cutout over the reused L16 frame (background.plate scenes/L16.png; see shots.motion.json) rather than a re-genned delta. MacGregor is carried in the reused plate, so only BolÃƒÂ­var is cast. Co-stars share height/eye-line."
+        "notes": "HYBRID CUTOUT LAYER (per SEEDED-vs-LAYERED judgment): Bolívar is a whole discrete character added to the held scene, so he slides in as a cutout over the reused L16 frame (background.plate scenes/L16.png; see shots.motion.json) rather than a re-genned delta. MacGregor is carried in the reused plate, so only Bolívar is cast. Co-stars share height/eye-line."
       },
       {
         "id": "L18",
         "beat": "premise",
         "start_hint": "1:00",
         "duration_s": 4,
-        "vo_ref": "And in 1820, a local king on the coast",
-        "vo_text": "And in 1820, a local king on the coast of what's now Honduras and Nicaragua",
+        "vo_ref": "a local king really did give him land",
+        "vo_text": "a local king really did give him land.",
         "from_cue": false,
         "stage": "king-grant",
         "stage_role": "base",
@@ -366,7 +409,7 @@
           }
         ],
         "source": "ai-gen",
-        "still_prompt": "The Miskito Coast king introduced on a lush tropical shoreline -- a distinct coastal ruler in a GOLD CROWN and an ornate red-and-gold patterned ceremonial robe (British-influenced regalia, his identity tag), standing before layered palms, a calm teal sea, a sandy cove and distant green headlands. He reads unmistakably as a coastal king. Rich green-and-teal jungle palette with warm sand; the one red accent on his robe. A deep, filled tropical scene -- not a bare beach. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline, warm cel shading with genuine depth (not flat or empty); any in-image text hand-lettered marker and legible; no on-screen narrator or host face; 16:9.",
+        "still_prompt": "The Miskito Coast king introduced on a lush tropical shoreline -- a distinct coastal ruler in a GOLD CROWN and an ornate red-and-gold patterned ceremonial robe (his canonical regalia, his identity tag), standing before layered palms, a calm teal sea, a sandy cove and distant green headlands. He reads unmistakably as a coastal king. Rich green-and-teal jungle palette with warm sand; the one red accent on his robe. A deep, filled tropical scene -- not a bare beach. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline, warm cel shading with genuine depth (not flat or empty); any in-image text hand-lettered marker and legible; no on-screen narrator or host face; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
@@ -377,14 +420,14 @@
         "beat": "premise",
         "start_hint": "1:04",
         "duration_s": 7,
-        "vo_ref": "really did give him land. Eight million acres",
-        "vo_text": "really did give him land. Eight million acres of it, in exchange for some rum and some jewellery. There was just one problem with the eight million acres.",
+        "vo_ref": "Eight million acres of it, in exchange",
+        "vo_text": "Eight million acres of it, in exchange for some rum and some jewellery. There was just one problem with the eight million acres.",
         "from_cue": false,
         "stage": "king-grant",
         "stage_role": "delta",
         "changed_elements": [
           "+ MacGregor arrives beside the king",
-          "+ each holds out their own side of the bargain: the king a rolled land-grant deed, MacGregor a bottle of rum and a handful of jewellery -- the goods do NOT meet, no hands touch"
+          "+ each holds out their own side of the bargain: the king a land-grant deed reading 8,000,000 ACRES, MacGregor a bottle of rum and a handful of jewellery -- the goods do NOT meet, no hands touch"
         ],
         "narration_type": "number",
         "shot_class": "staged-interaction",
@@ -401,11 +444,11 @@
           }
         ],
         "source": "ai-gen",
-        "still_prompt": "The SAME tropical shoreline held from the prior frame -- layered palms, a calm teal sea, a sandy cove and distant green headlands -- now a bargain being struck at arm's length. The Mosquito Coast king (LEFT, same gold crown and ornate red-and-gold ceremonial robe) holds a large rolled land-grant deed out in front of himself; MacGregor (RIGHT) holds out a small bottle of rum and a little handful of glinting jewellery. Each presents their own goods toward the other across a clear gap of open sand -- THE TWO FIGURES DO NOT TOUCH, their hands do not meet, and the objects do not overlap or change hands; the trade is implied by the facing stance and the offered goods, not by contact. They stand a comfortable stride apart, angled toward each other, both fully visible. A whole country for a bottle and some trinkets. Rich green-and-teal jungle palette with warm sand, the one red accent on the king's robe and MacGregor's crimson coat; fore/mid/background depth -- foreground sand, the two figures mid-frame, palms and sea behind. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+        "still_prompt": "The SAME tropical shoreline held from the prior frame -- layered palms, a calm teal sea, a sandy cove and distant green headlands -- now a bargain being struck at arm's length. The Mosquito Coast king (LEFT, same gold crown and ornate red-and-gold ceremonial robe) holds a large land-grant deed out in front of himself, unrolled to show its face marker-lettered '8,000,000 ACRES'; MacGregor (RIGHT) holds out a small bottle of rum and a little handful of glinting jewellery. Each presents their own goods toward the other across a clear gap of open sand -- THE TWO FIGURES DO NOT TOUCH, their hands do not meet, and the objects do not overlap or change hands; the trade is implied by the facing stance and the offered goods, not by contact. They stand a comfortable stride apart, angled toward each other, both fully visible. A whole country for a bottle and some trinkets. Rich green-and-teal jungle palette with warm sand, the one red accent on the king's robe and MacGregor's crimson coat; fore/mid/background depth -- foreground sand, the two figures mid-frame, palms and sea behind. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text beyond the deed label, no logos; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
-        "notes": "Seeded delta off L18 (same shore/king identity + position), restaged as a double-handed trade -- folds in the removed L20 (rum + jewellery). SEEDED DELTA not a hybrid: the king's pose changes from arms-crossed (L18) to handing over the deed, so the prior frame cannot be reused as a plate; both figures are re-genned seeded off L18's backdrop. Number glued to the land (diegetic banner). Cast order: king left, MacGregor right (binds interaction slots).",
+        "notes": "Seeded delta off L18 (same shore/king identity + position), restaged as a double-handed trade -- folds in the removed L20 (rum + jewellery). SEEDED DELTA not a hybrid: the king's pose changes from arms-crossed (L18) to handing over the deed, so the prior frame cannot be reused as a plate; both figures are re-genned seeded off L18's backdrop. Number baked on the unrolled deed face reading '8,000,000 ACRES' (diegetic, approved 2026-07-15); requires a regen of scenes/L19.png. Cast order: king left, MacGregor right (binds interaction slots).",
         "props": [
           "land-grant-deed"
         ]
@@ -479,7 +522,7 @@
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
-        "notes": "Base of the swamp-con held set (shared grey swamp reused by L25/L26). MacGregor surveying — scheming register tracks the con beat."
+        "notes": "Base of the swamp-con held set (shared grey swamp reused by L25/L26). MacGregor surveying — scheming register tracks the con beat. ONE-SWAMP NOTE: swamp-con is the SAME swamp location as empty-swamp (L22) — it is a deliberate re-base, not a different place; the two stages are kept separate because the delta-chain contract caps a stage at one base + <=3 deltas (L22->L26 is 4 deltas) AND a re-base must seed the prior stage's CLEAN base frame (L22, not L23's struck-out-icon frame). Do not merge the stage ids (lint HARD-fails on a non-first base / >3 deltas)."
       },
       {
         "id": "L25",
@@ -545,7 +588,7 @@
         "start_hint": "1:38",
         "duration_s": 5,
         "vo_ref": "and made himself the Cazique, the prince of Poyais",
-        "vo_text": "and made himself the Cazique, the prince of Poyais. And making things up was nothing new for him.",
+        "vo_text": "and made himself the Cazique, the prince of Poyais.",
         "from_cue": false,
         "narration_type": "claim",
         "shot_class": "personified-character",
@@ -562,6 +605,24 @@
         "transition_in": "hard cut",
         "synthetic": false,
         "notes": "Pays off the empty-throne foreshadow (L08). Prince regalia is a deliberate authored costume change over the pinned coat."
+      },
+      {
+        "id": "L28",
+        "beat": "body",
+        "start_hint": "1:41",
+        "duration_s": 3,
+        "vo_ref": "And making things up was nothing new for him",
+        "vo_text": "And making things up was nothing new for him.",
+        "from_cue": false,
+        "narration_type": "claim",
+        "shot_class": "symbolic-stand-in-object",
+        "cast": [],
+        "source": "ai-gen",
+        "still_prompt": "A deadpan still-life, NO people anywhere: a grand freshly-fabricated 'official' honour sits alone in warm spotlit negative space — an ornate gilded ceremonial medal on a ribboned sash beside an impressive wax-sealed, ribboned charter-scroll, their gold paint still wet and gleaming, a small paint pot and brush resting beside them mid-invention. At their base is a heap of many crumpled, discarded draft versions of the same fake honours — the pile shows this is a long-standing habit. Ornate scrollwork and flourishes ONLY, no legible words/letters/numbers anywhere. Warm gold-cream-brown palette, no decorative red (the red accent stays reserved), soft central spotlight, generous warm negative space, clear fore/mid/background depth, filled edge-to-edge. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; no photorealism, no on-screen narrator or host face, no text anywhere, no logos; 16:9.",
+        "on_screen_text": "",
+        "transition_in": "hard cut",
+        "synthetic": false,
+        "notes": "Q07 R9: NEW shot split off L27's tail. L27 now ends at '...the prince of Poyais.'; L28 covers 'And making things up was nothing new for him' (VO ~78.88-81.26); L29 already starts 'As a young officer' (81.73). NON-LITERAL, NO PEOPLE (Daniel's constraint). Metaphor = a fabricated grand honour with a HEAP of discarded prior fakes = encodes both 'making things up' and 'nothing new for him'. No baked text (no spelling risk). STANDALONE hard cut, NO shared stage: L27 (throne) and L29 (medals rack) are different settings/subjects, so L28 joins neither (§13a: hard-cut to a new setting). Scene PNG staged at assets/r9-staging/E2/L28.png (mode environment, 16:9, style-anchor seed scenes/L40.png). COORDINATION: agent A owns the script/VO re-synth; L28.vo_ref must stay verbatim-matched to the re-synthesized script line 'And making things up was nothing new for him.' — flag overlap with A's patch. Music: upbeat-4 switch anchors on this line (WS-D)."
       },
       {
         "id": "L29",
@@ -592,24 +653,18 @@
         "beat": "body",
         "start_hint": "1:51",
         "duration_s": 6,
-        "vo_ref": "He was so into it that the men under him supposedly weren't allowed to leave the barracks",
-        "vo_text": "He was so into it that the men under him supposedly weren't allowed to leave the barracks unless they were in full dress.",
+        "vo_ref": "Supposedly, his soldiers had to be fully dressed to leave the barracks",
+        "vo_text": "Supposedly, his soldiers had to be fully dressed to leave the barracks.",
         "from_cue": false,
-        "narration_type": "event",
-        "shot_class": "staged-interaction",
-        "cast": [
-          {
-            "character": "macgregor",
-            "pose_ref": "action-armscrossed",
-            "expression_ref": "expr-smug"
-          }
-        ],
+        "narration_type": "claim",
+        "shot_class": "ironic-counterpoint",
+        "cast": [],
         "source": "ai-gen",
-        "still_prompt": "A barracks gateway scene: MacGregor stands appraising a rigid line of soldiers all in absurdly immaculate full dress uniform, while one ordinary soldier trying to slip out in plain clothes is turned back at the gate. The comic over-formality is the point — everyone in gleaming parade dress. The background / crowd figures are on the CROWD RIG: round cream-family heads, DOT EYES, one simple consistent mouth (neutral / smile / downturn only), NO noses, NO ears, NO teeth, the same head proportions, in varied era-appropriate clothing. Keep every crowd figure on this same simplified rig — do not give them individual detailed faces. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; marker lettering only; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+        "still_prompt": "A lone soldier stands rigidly at attention in the open barracks doorway, in absurdly immaculate full parade dress - a towering plumed shako, high stiff gold-braided collar, and white cross-belts, all gleaming - one hand gripping a humble wooden water bucket. The over-formality is the whole joke. Bare barracks behind him; no other figures. Anonymous soldier on the house cartoon rig, his tall shako and high collar framing out his head and ear zone. Warm dim barracks palette. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat with fore/mid/background depth, filled edge-to-edge; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator or host face, no text anywhere in the image, no logos; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
-        "notes": "Comedy beat — over-formality staged; incidental soldiers per style-bible scene-assembly."
+        "notes": "R5 easier composition: MacGregor removed entirely (his small-head ear zone was the repeat failure). Built around the proven-safe shako soldier alone - plumed shako + high stiff collar structurally cover the head/ear zone. Held tableau: rigid attention in the doorway, absurd parade dress vs a humble water bucket = the ironic-counterpoint joke. Anonymous soldier, prose rig, no cast. Zero uncovered heads."
       },
       {
         "id": "L31",
@@ -653,11 +708,11 @@
           }
         ],
         "source": "ai-gen",
-        "still_prompt": "Close staging on MacGregor signing a document with a grand flourish; the visible signature on the paper reads, in marker script, 'Sir Gregor MacGregor'. The paper and the flamboyant signature are the focal point. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; the diegetic signature 'Sir Gregor MacGregor' legible and correctly spelled; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond the signature, no logos; 16:9.",
+        "still_prompt": "MacGregor seated waist-up at his desk in his own furnished OFFICE / STUDY — tall dark-wood bookshelves of leather-bound volumes receding behind him, a framed world map on the panelled wall, a globe on a stand, a warm green-shaded desk lamp glowing, stacked papers and books — a wealthy officer's private study, warm wood-brown-and-green palette with soft lamplight, filled edge-to-edge with fore/mid/background depth. He signs a document with a flourish; the document lies flat on the desk and its visible signature reads, in marker script, 'Sir Gregor MacGregor'. Frame the whole desk-scale scene — MacGregor, the desk, and the document together — so the signing hand is incidental, NOT a macro close-up of the hand. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; the diegetic signature 'Sir Gregor MacGregor' legible and correctly spelled in the marker hand; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond the signature, no logos; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
-        "notes": "Diegetic signature carries the 'Sir Gregor MacGregor' text (numbers/names live in-world)."
+        "notes": "Diegetic signature carries the 'Sir Gregor MacGregor' text (numbers/names live in-world). Human review (2026-07-15): rejected the hand close-up (deviates from the schematic 4-digit hand rig) → reframed to waist-up/desk-scale where the signing hand is incidental, not the subject; signature stays baked. | Q09 R9: backdrop regenerated from a plain-grey void to a furnished study (bookshelves, framed map, globe, banker's lamp). MacGregor identity/pose/expression + the baked 'Sir Gregor MacGregor' signature held (seeded off the prior scenes/L32.png frame + macgregor canonical + plates/L42.png study anchor). Scene PNG staged at assets/r9-staging/E2/L32.png."
       },
       {
         "id": "L33",
@@ -671,11 +726,11 @@
         "shot_class": "ironic-counterpoint",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "Two grand fake credentials — a knight's honour scroll and a clan-chief crest — displayed side by side, each stamped diagonally with a bold red marker stamp reading 'FAKE'. The pompous documents undercut by the red truth-stamp. Deadpan, lots of air. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; the red accent #d7402b is ONLY the FAKE stamps; marker lettering 'FAKE' legible; no photorealism, no on-screen narrator, no unrequested text beyond FAKE, no logos; 16:9.",
+        "still_prompt": "TWO forged credential documents displayed side by side — on the LEFT a knighthood honour scroll, on the RIGHT a clan-chief crest certificate — deliberately rendered in the SAME document template style: the same aged parchment tone, the same ornate border treatment, the same layout proportions and the same seal-and-ribbon furniture, so the pair reads at a glance as a matched set churned from one template. Both documents CLEAN and complete — no rubber stamps on either (the red FAKE stamps arrive as overlays). Deadpan, calm negative space around the pair. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; marker lettering only; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
-        "notes": "Vindication/unmasking is the signature move — red stamp exposes the lie."
+        "notes": "Re-authored 2026-07-15 (human feedback): converted to a PLATE (two matched forged credentials, no stamps) + two FAKE-stamp overlay cutouts (motion.json), one per document, IDENTICAL size and treatment, each at the same diagonal spot across its document's centre, staggered (first stamp, beat, second stamp). Vindication/unmasking is the signature move — the red FAKE stamps expose the lie. Stamp lettering register = PENDING the stamp-register audition lock; the FAKE cutout gen is DEFERRED until the stamp-register exemplar exists."
       },
       {
         "id": "L34",
@@ -845,11 +900,11 @@
         "shot_class": "symbolic-stand-in-object",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "The SAME Poyais guidebook, now lying open on its two-page spread, the illustration filling the pages with an absurdly over-fertile farm: a single small plot bursting with giant pumpkins, corn and fruit spilling out of an overflowing wheelbarrow, a tiny simply-drawn farmer figure beside it grinning at the comic one-day harvest — all rendered as a lush golden book-illustration inside the page border. Same book, same warm negative-space framing as the guidebook pages. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; marker lettering only; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+        "still_prompt": "The SAME open Poyais guidebook lying on the SAME plain wooden reading table as the St Joseph spread (L37–L39) — same book, same warm wooden table surface, same soft warm lighting, the open two-page spread facing up — its illustration now filling the pages with an absurdly over-fertile farm: a single small plot bursting with giant pumpkins, corn and fruit spilling out of an overflowing wheelbarrow, a tiny simply-drawn farmer figure beside it grinning at the comic one-day harvest, all rendered as a lush golden book-illustration inside the page border. The camera may push a little closer on the open pages, but the wooden table and the book's edges still read around the spread — NOT a blank or floating background. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; marker lettering only; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
-        "notes": "Restaged as a guidebook PAGE (seeded off the book), not a standalone farm. Absurd-abundance drawn as a book-illustration. Base of a held-book-page chain (the guidebook stage capped at L36-L39, so this re-bases); book identity held by the guidebook prop lock.",
+        "notes": "Re-authored 2026-07-15 (human feedback: 'since L37-39 were on the table, these should be the same too, not change to blank background'): HOLD the L37–L39 open-guidebook-on-the-table set — the farm-riches spread stays on the SAME wooden table, not a blank/floating background. Re-bases the guidebook-riches stage SEEDED off the L37 frame (scenes/L37.png) for set continuity (same book, same table, same lighting) with new page content (the farm). Base of the guidebook-riches held chain; book identity held by the guidebook prop lock. Absurd-abundance drawn as a book-illustration. Motion stays a fresh baked plate (scenes/L40.png) — a cross-stage delta-chain plate would HARD-fail the motion lineage lint, so the L37 seed is a gen directive here, not a plate reference.",
         "props": [
           "guidebook"
         ]
@@ -871,11 +926,11 @@
         "shot_class": "symbolic-stand-in-object",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "The SAME open guidebook spread from the prior frame, the fertile-farm illustration now joined by a river of pure liquid gold winding across the page through golden sand, a tiny simply-drawn figure crouched at the bank cupping shining gold nuggets straight out of the water. The whole illustrated river gleams molten gold. Everything else on the page held from the prior frame. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; marker lettering only; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+        "still_prompt": "The SAME open Poyais guidebook on the SAME wooden reading table from the prior frame — the fertile-farm illustration held on the spread, now joined by a river of pure liquid gold winding across the page through golden sand, a tiny simply-drawn figure crouched at the bank cupping shining gold nuggets straight out of the water. The whole illustrated river gleams molten gold. Everything else on the page and the wooden-table framing held from the prior frame. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; marker lettering only; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
-        "notes": "Idiom (rivers of gold) drawn as a delta added onto the held guidebook page. Delta on the guidebook-riches set.",
+        "notes": "Idiom (rivers of gold) drawn as a delta added onto the held guidebook page. Delta on the guidebook-riches set. Re-authored 2026-07-15 (human feedback): holds the wooden-table set explicitly. Chained off L40 (holds the farm spread + the wooden-table setting) — the gold river is delta #1 on the guidebook-riches base (≤3-delta cap: base L40 + 1 delta, legal).",
         "props": [
           "guidebook"
         ]
@@ -889,17 +944,17 @@
         "vo_text": "The ultimate five-star experience.",
         "from_cue": false,
         "changed_elements": [
-          "+ five red marker stars stamped in a row across the closed guidebook cover"
+          "+ five red rubber-stamp stars slam DOWN in a row across the open guidebook spread (five staggered slam cutouts, freeze after impact)"
         ],
         "narration_type": "aside",
         "shot_class": "ironic-counterpoint",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "The SAME Poyais guidebook from the previous frames — NOT restyled or reprinted — now closed again and floating upright alone in calm warm negative space exactly like the opening shot, its cover still marker-lettered 'A GUIDE TO POYAIS', with five bold red marker stars stamped in a row across the cover. One floating object, deadpan sales-gloss, heavy negative space. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; the five stars in the red accent #d7402b; marker lettering 'A GUIDE TO POYAIS' legible; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+        "still_prompt": "The SAME open Poyais guidebook lying on the SAME wooden reading table as the prior frame (L41) — the fertile-farm-and-gold-river illustrated spread held — now with FIVE bold red rubber-stamp STARS slammed down in a row across the open pages, like a five-star rating stamped onto the guidebook. Deadpan sales-gloss. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours; the five stars in the red accent #d7402b in the locked stamp register; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
-        "notes": "Deadpan five-star framing (aside). SAME closed floating book as L36 (NO bob); the five red stars land as an appear cutout (motion.json). NOT a glossy resort brochure. No stage: the closed book is generated fresh via the guidebook prop lock (the prior book frame L41 was OPEN, so it is not reused as a plate); changed_elements documents the stamped stars realized as the cutout.",
+        "notes": "Deadpan five-star framing (aside). SAME closed floating book as L36 (NO bob); the five red stars land as an appear cutout (motion.json). NOT a glossy resort brochure. No stage: the closed book is generated fresh via the guidebook prop lock (the prior book frame L41 was OPEN, so it is not reused as a plate); changed_elements documents the stamped stars realized as the cutout. | Q13v R9: was a CLOSED floating book with a single stars-row overlay; now KEEPS the L41 OPEN-book spread as the plate and slams 5 individual red stamp-stars down onto it (staggered). Plate = reuse of scenes/L41.png (staged plates/L42.png); star layers in shots.motion.json (see patch-motion.json). Removes the old book-bob + closed-book framing. Composite verified believable (assets/r9-staging/E2/_preview-L42-stars-on-book.png) — across-screen fallback NOT needed.",
         "props": [
           "guidebook"
         ]
@@ -921,11 +976,11 @@
           }
         ],
         "source": "ai-gen",
-        "still_prompt": "A formal oval author's portrait of Captain Thomas Strangeways — a real bookish naval-captain figure in a plain captain's coat and spectacles (his identity tag), shown from the chest up inside an ornate gilded oval frame captioned in marker 'Capt. Thomas Strangeways', hung on a panelled study wall — with a bold red diagonal 'FICTION' rubber-stamp struck across the portrait. The real-looking author unmasked as an invention. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; the red accent #d7402b ONLY on the FICTION stamp; the marker caption 'Capt. Thomas Strangeways' legible; no photorealism, no on-screen narrator, no unrequested text beyond the caption and stamp, no logos; 16:9.",
+        "still_prompt": "A formal oval author's portrait of Captain Thomas Strangeways — a real bookish naval-captain figure in a plain captain's coat and spectacles (his identity tag), shown from the chest up inside an ornate gilded oval frame captioned in marker 'Capt. Thomas Strangeways', hung on a panelled study wall — with a bold red diagonal 'FICTION' rubber-stamp struck across the portrait. The real-looking author unmasked as an invention. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; the red accent #d7402b ONLY on the FICTION stamp; the marker caption 'Capt. Thomas Strangeways' legible; no photorealism, no on-screen narrator, no unrequested text beyond the caption and stamp, no logos; 16:9. STRICT RIG NOTE: the Captain Strangeways figure inside the oval frame is drawn strictly on the channel cartoon character rig matching his seeded canonical — the SAME round near-circle head, simple cartoon eyes, NO nose, NO ears, SAME even medium-thick #241a12 outline, clean FLAT cel render — NOT a realistic engraving, etched author-portrait, or painterly portrait style; a cartoon-rig character shown inside the ornate oval frame, only the framing reads as a 'formal portrait'.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
-        "notes": "The reveal that Strangeways was invented, staged as an ACTUAL seeded portrait of the captain (cast strangeways) — NOT a hollow grey silhouette. The FICTION stamp lands as an appear cutout on the 'didn't exist' beat (motion.json). Vindication unmasking."
+        "notes": "The reveal that Strangeways was invented, staged as an ACTUAL seeded portrait of the captain (cast strangeways) — NOT a hollow grey silhouette. The FICTION stamp lands as an appear cutout on the 'didn't exist' beat (motion.json). Vindication unmasking. Rig reinforcement 2026-07-15 (human: 'strangeways looks off rig') — appended a STRICT RIG clause pinning the portrait figure to the seeded cartoon rig. Regen is the render fix; the rest of the prompt is unchanged."
       },
       {
         "id": "L44",
@@ -940,20 +995,16 @@
         "cast": [
           {
             "character": "macgregor",
-            "pose_ref": "action-present",
+            "pose_ref": "point-at-thing",
             "expression_ref": "expr-smug"
-          },
-          {
-            "character": "strangeways",
-            "expression_ref": "expr-deadpan"
           }
         ],
         "source": "ai-gen",
-        "still_prompt": "MacGregor (LEFT) stands and gestures toward the real Captain Strangeways figure (RIGHT) like a showman presenting his own creation; the dreary empty grey-green swamp stretches behind them both. A bold red diagonal 'FICTION' rubber-stamp is struck specifically OVER the Strangeways figure alone — not across the whole frame. MacGregor is the puppeteer; the captain is his invention. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; the red accent #d7402b only on the FICTION stamp; marker lettering only; no photorealism, no on-screen narrator, no unrequested text beyond the stamp, no logos; 16:9.",
+        "still_prompt": "The SAME panelled study wall as the Captain Strangeways portrait shot (L43), now seen WIDER. On the wall hangs the framed oval author's portrait of Captain Thomas Strangeways — the SAME cartoon-rig captain in a plain captain's coat and spectacles inside the ornate gilded oval frame, its small marker caption reading 'Capt. Thomas Strangeways' — and a bold red diagonal 'FICTION' rubber-stamp is now BAKED across the portrait (post-stamp state: the mark is already struck). MacGregor stands beside the frame to one side, POINTING at the stamped portrait with a smug showman's air — the puppeteer revealing his own invention. The study is built and filled: laden bookshelves behind, the warm edge of a desk in the foreground, a brass lamp throwing warm light, panelled walls — a lived-in study, no dead air. MacGregor is drawn on his seeded canonical rig; the portrait figure on the cartoon rig matching L43, NOT a realistic portrait. Warm lamplit study palette — deep browns, brass, warm wood; the single red accent #d7402b ONLY on the FICTION stamp; genuine fore/mid/background depth. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours with gentle soft shading, rounded shapes; built-but-flat; the marker caption 'Capt. Thomas Strangeways' and the red 'FICTION' stamp legible; no photorealism, no on-screen narrator, no unrequested text beyond the caption and the FICTION stamp, no logos; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
-        "notes": "MacGregor as the author behind the fake captain. Strangeways stays a real seeded figure; the FICTION stamp is a placed cutout positioned OVER Strangeways specifically (not the whole frame). The earlier 'camera pulls out to MacGregor pointing' is restaged as this two-figure framing — NO camera move. Fresh plate (not a hybrid off L43, which is itself a cutout-bearing shot with no baked composite to seed)."
+        "notes": "Re-authored 2026-07-15 (human's primary option): full redesign — the L43 study wall seen WIDER, the framed Strangeways portrait with the FICTION stamp BAKED across it (post-stamp state), MacGregor beside it POINTING, smug. This REMOVES the second FICTION overlay from the video (one fiction is enough — the L43 stamp is the reveal; L44 shows its aftermath wide). Now a PLAIN BAKED scene (scenes/L44.png) — no cutout layer, no plate decomposition. Seeded off L43's plate + L43's fiction cutout (post-stamp state) for the portrait+stamp; MacGregor off his canonical. Camera: slow ZOOM-OUT (pull-back) from portrait-tight toward the wide two-subject frame — a DELIBERATE, human-authorized exception to the locked-camera grammar (2026-07-15). Cast: only MacGregor is live (point-at-thing / expr-smug); Strangeways appears solely as the wall portrait."
       },
       {
         "id": "L45",
@@ -991,11 +1042,11 @@
         "shot_class": "symbolic-stand-in-object",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "A single ornately engraved Poyais banknote held up filling the frame, its fine scrollwork, denomination and an official wax seal all convincingly legit — except the little engraved 'landscape' vignette in its centre is a blank empty cut-out. One dominant object, negative space. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; the red accent #d7402b only on the wax seal; marker lettering only; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+        "still_prompt": "The seeded Poyais banknote prop held up filling the frame — a single ornately engraved banknote reproduced faithfully from its prop canonical: its 'POYAIS BANK' lettering, its ornate '100' denomination cartouche, its central engraved vignette of a bank building, its fine scrollwork borders and its red wax seal all carried over exactly as drawn on the seed. Nothing added or re-lettered — no new text, no invented lettering, no blank cut-out; a faithful static blow-up of the prop. One dominant object, calm negative space around it. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; the single red accent #d7402b ONLY on the wax seal; the note's own 'POYAIS BANK' and '100' lettering carried from the prop seed, legible; no photorealism, no on-screen narrator, no unrequested text beyond the prop's own inherited lettering, no logos; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
-        "notes": "Echoes the primary thumbnail motif (legit note, empty country inside).",
+        "notes": "Re-authored 2026-07-15 (human ruling): L46 is a faithful STATIC blow-up of the seeded banknote prop (assets/library/prop-poyais-banknote.png) — ALL lettering/detail ('POYAIS BANK', the '100' cartouche, the bank-building centre vignette, scrollwork, wax seal) is PROP-INHERITED from the seed, NOT authored or baked anew. The old 'central vignette blank' gag is RETIRED (it contradicted the prop, which carries a bank-building vignette). Quoted strings 'POYAIS BANK' and '100' are prop-inherited, not new baked text. Fully static (no layers, locked camera).",
         "props": [
           "poyais-banknote"
         ]
@@ -1012,11 +1063,11 @@
         "shot_class": "map-plan-view",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "A flat map of Europe with small 'POYAIS OFFICE' shopfront pins popping up in several capitals (London, Edinburgh, Paris) — a spread of little sales offices dotted across the continent. Aged-map palette. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; the small 'POYAIS OFFICE' marker signs legible; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond the office signs, no logos; 16:9.",
+        "still_prompt": "A flat map of Europe with small 'POYAIS OFFICE' shopfront pins popping up in several capitals, each pin beside a legible marker city-label — 'LONDON', 'EDINBURGH', 'PARIS' — a spread of little sales offices dotted across the continent. Aged-map palette. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; the small 'POYAIS OFFICE' marker signs and the 'LONDON' / 'EDINBURGH' / 'PARIS' city-labels legible; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond the office signs and city labels, no logos; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
-        "notes": "Spread of offices via pins multiplying on the map."
+        "notes": "Spread of offices via pins multiplying on the map. Each office pin carries a baked diegetic city-label (London/Edinburgh/Paris), approved 2026-07-15."
       },
       {
         "id": "L48",
@@ -1030,11 +1081,11 @@
         "shot_class": "staged-interaction",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "Inside a Poyais sales office: a slick clerk at a counter (LEFT) offers a land-deed to an eager buyer (RIGHT) reaching for it; a marker price-card on the counter reads '2 SHILLINGS / ACRE'. They face each other across the counter. The clerk is a sleek young salesman with slicked-back dark hair in a smart bottle-green frock coat and cravat; the buyer is a stout middle-aged tradesman with tufty ginger side-whiskers in a plain brown wool coat and waistcoat. Both foreground figures are anonymous, non-recurring people on the FULL base family rig: SAME round near-circle head (only slightly taller than wide, NOT an egg/oval), SAME eye style/size/position, NO nose, NO ears, SAME classic cartoon hands (exactly THREE fingers plus ONE thumb, four digits total, never five), SAME even medium-thick dark warm brown-black (#241a12) outline, SAME clean FLAT cel render -- the identical rig the named cast holds, just NOT a specific person. Give each a distinct, era-appropriate outfit and hair so they read as an individual; hold ONLY the rig form. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; the marker price-card legible; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond the price card, no logos; 16:9.",
+        "still_prompt": "Inside a Poyais sales office, seen from behind the buyer's shoulder: across a wooden counter a clerk and a customer close a deal over a land-deed lying on the counter, a marker price-card beside it reading '2 SHILLINGS / ACRE'. Both are anonymous figures shown from behind at body scale - the backs of their heads and shoulders to the viewer, faces turned away out of frame - so the deed and the price-card are the subject. Warm office palette; the one red accent on the deed's wax seal. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat with fore/mid/background depth, filled edge-to-edge; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically; the only in-image text is '2 SHILLINGS / ACRE', hand-lettered in the marker style and correctly spelled; no photorealism, no on-screen narrator or host face, no other unrequested text, no logos; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
-        "notes": "Deal staged as a transaction with the price glued to a counter card. Cast order clerk left, buyer right."
+        "notes": "R4 recompose: no anon faces - clerk and buyer shown from BEHIND at counter scale (faces out of frame); the deed + '2 SHILLINGS / ACRE' price-card are the subject. Dropped the §2e full-rig block."
       },
       {
         "id": "L49",
@@ -1042,7 +1093,7 @@
         "start_hint": "3:17",
         "duration_s": 5,
         "vo_ref": "roughly a day's wages, for one acre of a country that wasn't there",
-        "vo_text": "roughly a day's wages, for one acre of a country that wasn't there.",
+        "vo_text": "roughly a day's wages at the time.",
         "from_cue": false,
         "narration_type": "comparison",
         "shot_class": "ironic-counterpoint",
@@ -1147,11 +1198,11 @@
         "shot_class": "crowd-multiplication",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "The packed deck of the Honduras Packet crowded with about seventy hopeful settlers, a few given clear occupation signifiers — a doctor with a medical bag, a lawyer clutching a law book, a banker with a ledger — mixed with whole families and children. A marker tag reads '~70'. The background / crowd figures are on the CROWD RIG: round cream-family heads, DOT EYES, one simple consistent mouth (neutral / smile / downturn only), NO noses, NO ears, NO teeth, the same head proportions, in varied era-appropriate clothing. Keep every crowd figure on this same simplified rig — do not give them individual detailed faces. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; '~70' legible; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond ~70, no logos; 16:9.",
+        "still_prompt": "The packed deck of the Honduras Packet, crowded stem to stern with about seventy hopeful settlers - whole families, women, men and children - ALL drawn at the SAME small uniform scale, no one figure larger or more detailed than another. A few settlers are distinguished ONLY by a held prop: one holds a red-cross medical bag (a doctor), one holds a book lettered LAW (a lawyer), one holds a plain ledger (a banker). A small hand-lettered marker signboard reads ~70. Composed with depth: crowded deck foreground, mast and rigging midground, open sky behind. EVERY figure - including the ones holding props - is on the SAME CROWD RIG at the SAME uniform scale, EXACTLY like the reference crowd sample: a large round cream-family head on a short compact SQUAT body, DOT EYES, one simple mouth, a COMPLETELY SMOOTH face with NO nose, NO nostrils, NO ears, NO teeth. Every figure has a FULL head of hair or a hat: NO bald or balding heads, NO comb-over side hair, NO aged, wrinkled or individually-detailed faces, and ZERO facial hair (no moustaches, beards or stubble). Do NOT place any large detailed foreground figure - the whole crowd is ONE uniform squat rig at ONE scale. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline, flat cel colours; the single red accent #d7402b only on the medical cross; no photorealism, no on-screen narrator, no unrequested text beyond ~70, no logos; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
-        "notes": "Occupations read via props; number via crowd + diegetic tag."
+        "notes": "Occupations read via props; number via crowd + diegetic tag. | Q16 R9: regen on the crowd rig (was seeded off the ship)."
       },
       {
         "id": "L55",
@@ -1213,7 +1264,7 @@
         "shot_class": "literal",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "The same ship-departure scene as before, now with a second tall emigrant ship — hull marker-lettered 'Kennersley Castle' — having pulled in alongside the first, both ships flying the green cross Poyais flag at the top of their mainmasts, bows pointed out to open water. Two ships now in the same departure. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; ship name 'Kennersley Castle' legible; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+        "still_prompt": "A tall emigrant sailing ship, its hull marker-lettered 'KENNERSLEY CASTLE', pulling away from an austere Scottish grey-stone harbour quay (stone warehouses, crow-stepped gables, a stone kirk tower), its bow pointed out toward open water, a green cross Poyais flag (a bold green cross on a pale field) flying at the top of the mainmast, settlers waving from the deck. The second ship, out of Scotland months after London — a colder northern port: cooler grey-blue stone and slate roofs, a cool overcast sky, a colder blue-grey sea. ONE ship only, no second ship. The crowd on the quay and settlers on the deck are on the CROWD RIG: round cream-family heads, DOT EYES, one simple consistent mouth, NO noses, NO ears, NO teeth, the same squat base-rig head proportions, in varied era-appropriate clothing — do not give them individual detailed faces. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; ship name 'KENNERSLEY CASTLE' legible; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
@@ -1243,7 +1294,7 @@
         "start_hint": "4:02",
         "duration_s": 5,
         "vo_ref": "And before any of them left, they'd all been told to change their savings into Poyais dollars",
-        "vo_text": "And before any of them left, they'd all been told to change their savings into Poyais dollars,",
+        "vo_text": "And before any of them left, they'd all been told to change their savings into Poyais dollars, so they'd have local money when they arrived.",
         "from_cue": false,
         "narration_type": "deal",
         "shot_class": "symbolic-stand-in-object",
@@ -1256,29 +1307,6 @@
         "notes": "Non-literal — the savings swap as two big objects (gold vs paper); the fat arrow pops on as a cutout. Base of the currency-swap set.",
         "stage": "currency-swap",
         "stage_role": "base"
-      },
-      {
-        "id": "L60",
-        "beat": "body",
-        "start_hint": "4:07",
-        "duration_s": 3,
-        "vo_ref": "so they'd have local money when they arrived",
-        "vo_text": "so they'd have local money when they arrived.",
-        "from_cue": false,
-        "narration_type": "aside",
-        "shot_class": "symbolic-stand-in-object",
-        "cast": [],
-        "source": "ai-gen",
-        "still_prompt": "The SAME two money piles as before — the pile of real gold coins on the left, the stack of paper Poyais dollars on the right with the fat arrow between them — now with a bright glowing highlight ring around the Poyais dollars, emphasising the conversion. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; the paper money 'POYAIS' legible; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond POYAIS, no logos; 16:9.",
-        "on_screen_text": "",
-        "transition_in": "hard cut",
-        "synthetic": false,
-        "notes": "Delta on the currency-swap set (extends L59); the glow highlight ring pops on as a cutout over the held coins-and-dollars scene.",
-        "stage": "currency-swap",
-        "stage_role": "delta",
-        "changed_elements": [
-          "+ glowing highlight ring around the Poyais dollars"
-        ]
       },
       {
         "id": "L61",
@@ -1322,11 +1350,11 @@
           }
         ],
         "source": "ai-gen",
-        "still_prompt": "The same London ship-departure scene as before — the emigrant ship at the quay — now with paper Poyais dollars fluttering and flying off the boat on the breeze, while in the foreground MacGregor stands beside a locked wooden treasure chest overflowing with the settlers' real gold coins — already paid, before anyone has sailed. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; marker lettering only; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+        "still_prompt": "On the London departure quay, MacGregor (seeded canonical) stands in the foreground beside a heavy open treasure chest brimming with gold coins, while paper Poyais banknotes - each marker-lettered 'POYAIS' - flutter away on the breeze from the emigrant ship moored at the quay behind him. Already paid, before anyone has sailed. A small anonymous crowd on the house crowd rig, in period hats, boards the ship far behind. Cool grey-blue quay, warm gold from the chest; the red accent on a single ship pennant. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat with fore/mid/background depth, filled edge-to-edge; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically; the only in-image text is 'POYAIS', hand-lettered in the marker style and correctly spelled; no photorealism, no on-screen narrator or host face, no other unrequested text, no logos; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
-        "notes": "Deadpan — he's already rich, ships still docked. Seed off L53 (reuse the ship departure scene as the plate); the flying Poyais dollars and MacGregor + treasure chest come in as foreground cutouts."
+        "notes": "R4 simplify: MacGregor seeded (no re-description); foreground chest + fluttering 'POYAIS' notes; small crowd kept distant + hatted. Dropped the heavy MacGregor descriptor and the hull-name text."
       },
       {
         "id": "L63",
@@ -1341,16 +1369,15 @@
         "cast": [
           {
             "character": "macgregor",
-            "pose_ref": "sit",
-            "expression_ref": "expr-thinking"
+            "pose_ref": "sit"
           }
         ],
         "source": "ai-gen",
-        "still_prompt": "MacGregor seated at a candlelit London desk strewn with maps and documents, scheming over his next move, a dim study around him. Warm lamplight, quiet plotting mood. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; marker lettering only; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+        "still_prompt": "Top-down high-angle view of MacGregor's candlelit London desk: a large spread map of the Americas covered in hand-drawn red route lines. A single hand enters from the bottom edge — MacGregor's quill hand, mid-note over the map, in a crimson cuff, holding the quill in a classic cartoon grip (rounded three-fingers-plus-thumb, fingers together). Only one hand is visible in the frame. A burning candle, scattered papers, and an ink pot sit on dark wood. Quiet plotting mood; a warm candlelight pool with deep surrounding shadow. No other people, no faces, no head anywhere in frame. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
-        "notes": "Scheming beat (sit + thinking)."
+        "notes": "R5e final recompose: ONE HAND ONLY in frame. Across 4 prior attempts the quill-gripping hand rendered correctly every time; the second (flat) hand failed every time (splayed / wrong digit count). Fix: remove the second hand entirely - only MacGregor's quill hand enters (crimson cuff, classic cartoon grip). Top-down desk view, no head/face/figure; planning reads from the spread Americas map + red route lines + the single quill hand. No head = no ear-zone surface."
       },
       {
         "id": "L64",
@@ -1388,11 +1415,11 @@
         "shot_class": "number-glued-to-object",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "A fan of official-looking engraved government bond certificates stamped 'POYAIS', spread across a desk, the top one marker-lettered with the sum 'Â£200,000' and an ornate seal. The bonds and their value are the dominant subject. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; 'Â£200,000' and 'POYAIS' legible; the red accent #d7402b only on the seal; locked 2-3 colour palette; no photorealism, no on-screen narrator, no unrequested text beyond the certificate labels, no logos; 16:9.",
+        "still_prompt": "A fan of official-looking engraved government bond certificates stamped 'POYAIS', spread across a desk, the top one marker-lettered with the sum '£200,000' and an ornate seal. The bonds and their value are the dominant subject. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; '£200,000' and 'POYAIS' legible; the red accent #d7402b only on the seal; locked 2-3 colour palette; no photorealism, no on-screen narrator, no unrequested text beyond the certificate labels, no logos; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
-        "notes": "Number glued to the bond certificates (Â£200,000).",
+        "notes": "Number glued to the bond certificates (£200,000).",
         "props": [
           "poyais-bond"
         ]
@@ -1433,11 +1460,11 @@
           }
         ],
         "source": "ai-gen",
-        "still_prompt": "A cramped, shabby little rented office with a peeling 'POYAIS GOVERNMENT' sign over the door, and inside just MacGregor alone at one small desk — the entire 'government' is one man in a rented room. The grand sign vs the tiny reality is the joke. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; the door sign legible; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond the sign, no logos; 16:9.",
+        "still_prompt": "A cramped, shabby rented office with a peeling 'POYAIS GOVERNMENT' sign over the door; inside, MacGregor (seeded canonical) alone at one small desk - the entire 'government' is one man in a rented room. The grand sign against the tiny reality is the joke. Drab browns and greys, cold light through one window. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat with fore/mid/background depth, filled edge-to-edge; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically; the only in-image text is 'POYAIS GOVERNMENT', hand-lettered in the marker style and correctly spelled; no photorealism, no on-screen narrator or host face, no other unrequested text, no logos; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
-        "notes": "Signature unmasking — grand sign, one guy, rented room."
+        "notes": "R4 trim: MacGregor seeded, alone in the rented 'POYAIS GOVERNMENT' office; grand sign vs one man."
       },
       {
         "id": "L68",
@@ -1445,13 +1472,13 @@
         "start_hint": "4:46",
         "duration_s": 4,
         "vo_ref": "And it sold",
-        "vo_text": "And it sold. [PAUSE]",
+        "vo_text": "And it sold.",
         "from_cue": false,
         "narration_type": "event",
         "shot_class": "symbolic-stand-in-object",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "A single Poyais bond certificate on a counter with a bold red 'SOLD' stamp landing across it and several buyers' hands closing in around it. The one certificate and the SOLD stamp are the focus, heavy negative space around them. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; the red accent #d7402b ONLY on the 'SOLD' stamp; marker lettering legible; locked 2-3 colour palette; no photorealism, no on-screen narrator, no unrequested text beyond SOLD, no logos; 16:9.",
+        "still_prompt": "A bustling bond-exchange interior, warm wood-toned. Dead centre of the frame a broker stands facing the viewer holding a single bond certificate up in both hands at chest height — the certificate is the exact canonical Poyais bond design (aged cream parchment, ornate double-ruled engraved border, top banner marker-lettered 'POYAIS' exactly once, small dark-red wax seal at lower right, blank engraved lines otherwise) — with a bold red 'SOLD' marker stamp landing across the held certificate (the red accent #d7402b only on the stamp). Pressing in tightly from every side is a dense eager crowd of buyers, arms thrust up waving fistfuls of pale banknotes, clamouring to buy at once. Every figure on the squat house rig (large round head, short compact body, dot eyes, one small mouth, NO nose, NO ears, four-digit hands), varied 1820s coats and hats. Fore/mid/background depth, filled edge-to-edge. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline; the only text is the single 'POYAIS' on the certificate banner and the 'SOLD' stamp; no photorealism, no narrator, no logos; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
@@ -1511,7 +1538,7 @@
         "shot_class": "ironic-counterpoint",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "A tight, static, close framing of the single Poyais bond certificate held among the real ones — a Colombia certificate and a Peru certificate flanking it closely on either side, the 'POYAIS' cert centred and dominant, a large marker question mark drawn over it. The puzzle posed on the one anomaly sitting flush beside the genuine bonds. Deadpan, heavy negative space, a deliberately tight composition reached by a HARD CUT in from the wider row of L70 (NOT a camera push or zoom). Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; the 'POYAIS', 'COLOMBIA' and 'PERU' labels legible; marker lettering only; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond the labels, no logos; 16:9.",
+        "still_prompt": "A tight, static, straight-on close framing of THREE government bond certificates standing side by side, overlapping slightly, heavy negative space. All three are the EXACT same design as the canonical Poyais bond (scenes/L65.png) — the same aged cream parchment, the same ornate double-ruled engraved border, the same top banner label box, the same faint engraved ruled lines, the same small dark-red wax seal — a matched set from one template. The centre certificate is dominant and largest, top banner marker-lettered 'POYAIS'; the left one (edge cut by frame) reads 'COLOMBIA', the right one (edge cut by frame) reads 'PERU'; central value areas are blank engraved lines with no numbers. A single large bold red (#d7402b) hand-drawn marker QUESTION MARK is drawn over the centre POYAIS certificate as the punch element. Deadpan, deliberately tight composition reached by a HARD CUT (not a push/zoom). Flat-cel 2.5D vector house style, even medium-thick #241a12 outline; the only text is 'POYAIS','COLOMBIA','PERU'; no photorealism, no narrator, no logos; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
@@ -1556,7 +1583,7 @@
         "shot_class": "crowd-multiplication",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "A London street gone wild with speculation fever — a mob of investors with arms thrust up, waving fistfuls of money and bond papers overhead and gripping their hats, straining toward the action, a frenzy of greed under the city skyline. The collective mania fills the frame. The background / crowd figures are on the CROWD RIG: round cream-family heads, DOT EYES, one simple consistent mouth (neutral / smile / downturn only), NO noses, NO ears, NO teeth, the same head proportions, in varied era-appropriate clothing. Keep every crowd figure on this same simplified rig — do not give them individual detailed faces. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; marker lettering only; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+        "still_prompt": "A London street gone wild with speculation fever — a mob of investors with arms thrust up, waving fistfuls of money and bond papers overhead and gripping their hats, straining toward the action, a frenzy of greed under the city skyline. The collective mania fills the frame. The background / crowd figures are on the CROWD RIG: round cream-family heads, DOT EYES, one simple consistent mouth (neutral / smile / downturn only), NO noses, NO ears, NO teeth, the same head proportions, in varied era-appropriate clothing. Keep every crowd figure on this same simplified rig — do not give them individual detailed faces. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; marker lettering only; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9. CRITICAL PROPORTION — every human figure in the frame, the prominent foreground figure and every background crowd figure alike, carries the SQUAT base-rig head-to-body proportion: a large round head on a short, compact body, the exact same proportion as the base cartoon rig — NOT tall, NOT lanky, NOT long-bodied, NOT realistic adult human height. Short and squat is correct; a tall or realistically-proportioned figure is WRONG. No text anywhere in the image — no signs, labels, numbers, or lettering.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
@@ -1576,7 +1603,7 @@
         "shot_class": "map-plan-view",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "A flat top-down map of South America, its territories drawn whole and intact — NOT cracked, NOT fracturing — with a large golden Spanish royal crown set over the northern part of the continent, the crown SPLIT cleanly in two: its two halves tipping apart with a jagged break straight down the middle. Spain's grip breaking is shown as the crown splitting, while the land itself stays unbroken. Aged-parchment landmasses, a faint compass rose, hand-drawn coastlines. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; the red accent #d7402b marks the crack splitting the crown; marker lettering only; locked 2-3 colour palette; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+        "still_prompt": "The chunk-1 campaign map zoomed/cropped to South America (from the L15 parchment plate); a golden Spanish royal crown breaks cleanly in two over the northern continent as a slam-on motion cutout that stays; the land itself stays unbroken. Warm aged-parchment 2D-map house style; no baked routes or text beyond the map's own character. 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
@@ -1600,11 +1627,11 @@
         "shot_class": "map-plan-view",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "The SAME top-down map of South America held from the prior frame, the continent whole, the split Spanish crown now fallen away — three of its new nations freshly outlined where they sit (the north-west, the west, and along the south-west coast), each region drawn clean and lightly glowing but WITHOUT any name label (the country names pop on as the engine reveal). A newly-independent continent opening for business. Aged-parchment landmasses, faint compass rose, hand-drawn coastlines. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; NO baked country-name text (the reveal supplies it); marker lettering only; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+        "still_prompt": "LAYERED shot (plate + 3 figure cutouts; motion-planner owns the layer staging). BACKGROUND PLATE: an empty early-1820s London square - colonnaded cream and red-brick townhouses, a white church spire and a stone column monument down the street, cobbled road, iron railings, warm daylight - built-but-flat, filled edge-to-edge (plates/L75.png). FOREGROUND: THREE personified brand-new-nation figures stand across the square, each an anonymous figure on the base family rig (large round head, no nose, no ears, flat-cel #241a12 outline) in that country's national dress with a diagonal white marker sash: COLOMBIA - brown/tan wool ruana + brown aguadeno felt hat; PERU - rainbow-striped Andean poncho + knitted chullo hat with earflaps; CHILE - huaso chamanto (short striped poncho) + straw chupalla hat. Each sash reads its country name in hand-lettered marker capitals; each figure grounded feet-at-base. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline, flat cel colours, one warm palette; the figures are composited motion cutouts on the plate; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
-        "notes": "RESTAGED per manifest: no longer three personified figures at a counter — now the L74 map held (delta on the breakaway-map stage), with Colombia/Peru/Chile popping on via an engine reveal (each item lands on its word, v1 stagger). Country names are carded, not baked (subtracted from the plate) — parallels L47's office reveal."
+        "notes": "RESTAGED per manifest: no longer three personified figures at a counter — now the L74 map held (delta on the breakaway-map stage), the three new nations Colombia/Peru/Chile outlined and highlighted. Country names are baked as diegetic marker labels on each region (approved 2026-07-15 — the retired engine reveal is gone, so the label payload lives in the plate; parallels L47's baked office signs)."
       },
       {
         "id": "L76",
@@ -1618,11 +1645,11 @@
         "shot_class": "crowd-multiplication",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "A wall of investors all lunging and reaching toward a single glowing pile of new-country bonds, hands stretched out grasping, a lead investor in front reaching hardest. Universal grab. The lead investor in front is a portly, well-to-do gentleman with mutton-chop whiskers and a receding hairline, in a mustard-gold double-breasted waistcoat and a burgundy tailcoat. This prominent foreground figure is an anonymous, non-recurring person drawn on the FULL base family rig -- SAME round near-circle head (only slightly taller than wide, NOT an egg/oval), SAME eye style/size/position, NO nose, NO ears, SAME classic cartoon hands (exactly THREE fingers plus ONE thumb, four digits total, never five), SAME even medium-thick dark warm brown-black (#241a12) outline, SAME clean FLAT cel render -- the identical rig the named cast holds, just NOT a specific person. Give them a distinct, era-appropriate outfit and hair so they read as an individual; hold ONLY the rig form. The background / crowd figures are on the CROWD RIG: round cream-family heads, DOT EYES, one simple consistent mouth (neutral / smile / downturn only), NO noses, NO ears, NO teeth, the same head proportions, in varied era-appropriate clothing. Keep every crowd figure on this same simplified rig — do not give them individual detailed faces. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; marker lettering only; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+        "still_prompt": "A dense wall of top-hatted 1820s investors surging and reaching toward a single glowing pile of new-country bonds on a pedestal, arms thrust out grasping - the universal grab. The crowd is seen largely from behind and in profile, all in tall period hats, packed mid-ground to background so no single face dominates. An anonymous crowd on the house crowd rig. Warm gold glow at the centre; the red accent on a ribbon binding the bonds. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat with fore/mid/background depth, filled edge-to-edge; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator or host face, no text anywhere in the image, no logos; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
-        "notes": "FOMO — everyone reaching."
+        "notes": "R4 recompose: removed the single §2e foreground investor + CRITICAL PROPORTION block. Now a top-hatted crowd (crowd rig, exemplar-seeded) grabbing at the bond pile, seen from behind/profile so no anon face renders. This is L79/L80's reuse plate."
       },
       {
         "id": "L77",
@@ -1636,7 +1663,7 @@
         "shot_class": "symbolic-stand-in-object",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "A torrent of gold coins and banknotes pouring like a waterfall down into a huge funnel labelled with new-country flags, spilling faster than a tiny inspector with a magnifying glass at the bottom can keep up. The flood overwhelms the checker. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; marker lettering only; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+        "still_prompt": "A torrent of gold coins and green banknotes pouring like a waterfall down out of a huge tilted funnel whose rim is decorated with little new-country flag panels, the flood spilling faster than a single small overwhelmed inspector at the bottom — holding up a round magnifying glass in one hand — can possibly keep up. The money-torrent and funnel dominate the centre; a lush green farmland valley with palms and distant hills fills the background, warm daylight. The inspector is an anonymous, non-recurring person drawn on the FULL base family rig — SAME round near-circle head (only slightly taller than wide, NOT an egg/oval), SAME simple eye style/size/position, NO nose, NO ears, SAME classic cartoon hands (exactly THREE fingers plus ONE thumb, four digits total, never five), SAME even medium-thick dark warm brown-black (#241a12) outline, SAME clean FLAT cel render — the identical rig the named cast holds, just NOT a specific person, in a plain drab clerk's coat. He holds the SAME squat base head-to-body proportion as the rig (a large round head on a short, compact body), NOT tall, NOT lanky, NOT a realistically-proportioned adult, and NOT a weird featureless blob — a clean, clearly on-model little cartoon figure with a normal small body, arms and legs. The flood overwhelms the checker. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no logos; 16:9. No text anywhere in the image — no signs, labels, numbers, or lettering.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
@@ -1665,18 +1692,18 @@
         "beat": "mid-arm",
         "start_hint": "5:36",
         "duration_s": 5,
-        "vo_ref": "with everyone throwing cash at the shiny new thing with a good story, and nobody reading the fine print",
-        "vo_text": "with everyone throwing cash at the shiny new thing with a good story, and nobody reading the fine print.",
+        "vo_ref": "with everyone throwing cash at the shiny new thing with a good story",
+        "vo_text": "with everyone throwing cash at the shiny new thing with a good story.",
         "from_cue": false,
         "narration_type": "claim",
         "shot_class": "crowd-multiplication",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "The SAME wall-of-investors scene held from L76 — the crowd lunging and reaching toward the glowing pile of shiny new-country bonds, everyone grabbing — now with a scroll of dense 'fine print' paper lying ignored off to one side, a bold red circle drawn around it. The circled fine print that nobody is bothering to look at is the point. The background / crowd figures are on the CROWD RIG: round cream-family heads, DOT EYES, one simple consistent mouth (neutral / smile / downturn only), NO noses, NO ears, NO teeth, the same head proportions, in varied era-appropriate clothing. Keep every crowd figure on this same simplified rig — do not give them individual detailed faces. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; the red accent #d7402b only on the circle; marker lettering only; locked 2-3 colour palette; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+        "still_prompt": "The SAME wall-of-investors scene held from L76 - the top-hatted crowd surging and reaching for the glowing pile of new-country bonds, the mania itself the point. Seen from behind and in profile, all in tall period hats; an anonymous crowd on the house crowd rig. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat with fore/mid/background depth, filled edge-to-edge; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator or host face, no text anywhere in the image, no logos; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
-        "notes": "RESTAGED per manifest: seeded off L76 (its scene REUSED as the plate, no re-gen); the ignored, circled fine print pops on as an appear cutout — 'nobody reads the fine print.' Hybrid overlay (delta-chain plate reuse of L76 + one cutout). Crowd-rig clause carried for the held crowd."
+        "notes": "R4: held L76 plate (reuse, no re-gen); top-hatted crowd on the crowd rig, no fine-print layer."
       },
       {
         "id": "L80",
@@ -1774,11 +1801,11 @@
         "shot_class": "aftermath-palette-turn",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "A single Poyais bond certificate fluttering down and settling in the gutter among the wreckage of the other fallen bonds, the whole scene drained to a muted grey. The bond and the surrounding wreckage read complete and natural with NO price tag or marker text on them (the value card pops on over the scene). Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; marker lettering only; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+        "still_prompt": "A single Poyais bond certificate fluttering down and settling in the gutter among the wreckage of the other fallen bonds, the whole scene drained to a muted grey. The fallen Poyais bond in the foreground carries a small diegetic marker value-tag reading '£0'. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; the marker value-tag '£0' legible; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond the '£0' value tag, no logos; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
-        "notes": "RESTAGED per manifest: the diegetic 'worthless' tag is replaced by an engine stat-card reading '$0' (promote-and-subtract) — the tag is SUBTRACTED from the plate, the card supplies $0. This is a money/value figure (the bond's worth), NOT a human-cost count, so carding is on-grammar despite the grim register.",
+        "notes": "The bond's worthlessness is baked as a diegetic marker value-tag reading '£0' on the fallen Poyais bond (approved 2026-07-15 — the retired engine stat-card is gone, so the figure lives in the plate). This is a money/value figure (the bond's worth), NOT a human-cost count, so a legible figure is on-grammar despite the grim register.",
         "props": [
           "poyais-bond"
         ]
@@ -1795,7 +1822,7 @@
         "shot_class": "literal",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "Wide establishing shot: two tall weathered emigrant sailing ships — the same ship look as the earlier departures (L53/L57), each flying a Poyais flag at the top mast — arriving at a dim, undeveloped tropical shoreline at dawn, sails furling, an empty green coast and grey sea ahead of them with no city on the horizon. A quiet, ominous arrival. Muted dawn palette. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; the Poyais flag reads at the masthead; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+        "still_prompt": "Wide establishing shot: two tall weathered wooden emigrant sailing ships arriving at a dim, undeveloped tropical shoreline at dawn, sails partly furled, an empty dark-green jungle coast on the left and a flat grey sea with an empty horizon ahead — no city, no port, no buildings. Each ship flies the Poyais flag at the top of its mainmast: a BOLD GREEN CROSS on a pale off-white field (the cross is GREEN, never red). A quiet, ominous arrival. Render in the BOLD FLAT-CEL 2.5D vector house style: SIMPLE flat cel shapes with an even medium-thick dark warm brown-black (#241a12) outline on the hulls, masts, sails, a FEW clean simple rigging lines (NOT dense realistic rigging), the jungle and the shoreline; flat cel colours with gentle soft shading only — NOT painterly, NOT airbrushed, NOT semi-realistic, no fine photographic detail, no heavy texture. Muted dawn palette: grey sea, dark-green jungle, a pale warm horizon glow. No text anywhere in the image — no signs, labels, or lettering.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
@@ -1815,11 +1842,11 @@
         "shot_class": "personified-character",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "Settlers stepping down onto the sandy shore with their luggage, one hopeful settler in front pointing off toward where the promised capital city should be, all still expectant. An empty beach and jungle stretch ahead of them. Base of the held arrival-beach set. The hopeful settler in front is a young family man with short brown hair and neat side-whiskers, in a patched grey travelling coat and a flat cap, a bundle under one arm. This prominent foreground figure is an anonymous, non-recurring person drawn on the FULL base family rig -- SAME round near-circle head (only slightly taller than wide, NOT an egg/oval), SAME eye style/size/position, NO nose, NO ears, SAME classic cartoon hands (exactly THREE fingers plus ONE thumb, four digits total, never five), SAME even medium-thick dark warm brown-black (#241a12) outline, SAME clean FLAT cel render -- the identical rig the named cast holds, just NOT a specific person. Give them a distinct, era-appropriate outfit and hair so they read as an individual; hold ONLY the rig form. The background / crowd figures are on the CROWD RIG: round cream-family heads, DOT EYES, one simple consistent mouth (neutral / smile / downturn only), NO noses, NO ears, NO teeth, the same head proportions, in varied era-appropriate clothing. Keep every crowd figure on this same simplified rig — do not give them individual detailed faces. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; marker lettering only; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+        "still_prompt": "A tropical arrival beach at the jungle's edge in warm golden morning light. A group of 1820s emigrant settlers, just off a beached wooden landing boat, stand seen FROM BEHIND facing inland toward the jungle, luggage in hand, the sea and their boat behind them at the lower frame. One settler in front raises an arm, pointing inland toward where the promised capital should be - but only empty green jungle stretches ahead, no city, no buildings. Hopeful and expectant. An anonymous crowd on the house crowd rig, seen from behind in period hats and bonnets. Warm greens and golden light, cool blue sea behind; one small red accent. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat with fore/mid/background depth, filled edge-to-edge; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator or host face, no text anywhere in the image, no logos; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
-        "notes": "Stage base — hopeful arrival; expectation still intact (pointing at the city that isn't there)."
+        "notes": "R4 simplify: settlers shown FROM BEHIND facing inland (backs + hats structurally hide faces/ears) - dropped the §2e foreground-settler block + proportion paragraph. Stage base, hopeful arrival."
       },
       {
         "id": "L87",
@@ -1832,17 +1859,17 @@
         "stage": "arrival-beach",
         "stage_role": "delta",
         "changed_elements": [
-          "the settlers' hopeful expressions turn to dismay as the expected city fails to appear — only bare beach and jungle remain, palette cools decisively"
+          "the raised pointing arm falls, the settlers slump where they stand, and the warm arrival light drains decisively to a cold grey overcast - the promise visibly gone"
         ],
         "narration_type": "claim",
         "shot_class": "aftermath-palette-turn",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "The SAME shore and settlers, but now the group stands still, taking in the emptiness — no city where they pointed, just bare sand and jungle to the horizon. The warm arrival light drains to a cooler grey. Decisive shift from hope to dismay. The background / crowd figures are on the CROWD RIG: round cream-family heads, DOT EYES, one simple consistent mouth (neutral / smile / downturn only), NO noses, NO ears, NO teeth, the same head proportions, in varied era-appropriate clothing. Keep every crowd figure on this same simplified rig — do not give them individual detailed faces. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; marker lettering only; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+        "still_prompt": "The SAME arrival beach and SAME settlers held from the prior frame, same positions, still seen FROM BEHIND facing inland toward the jungle, sea and boat behind them. CHANGE: the raised pointing arm has fallen and the group now stands slumped, taking in the emptiness - only bare sand and an unbroken wall of green jungle to the horizon, no city. The warm light drains decisively to a cold grey overcast, the palette cooling to muted greys and greens. Dismay read entirely from posture and the drained light. An anonymous crowd on the house crowd rig, seen from behind in period hats. One small red accent held from before. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat with fore/mid/background depth, filled edge-to-edge; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator or host face, no text anywhere in the image, no logos; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
-        "notes": "Delta: the reveal, decisive (city fully absent, palette turns). Expression swaps to shock (the one genuine shock peak); no pose_ref — a neutral stunned stance (arms fallen from the L86 point) reads the dismay without the arms-crossed contradiction."
+        "notes": "R4: delta reads from POSTURE + palette (backs to viewer, no visible faces) - pointing arm falls, group slumps, warm light drains to grey. Dropped rig monsters; revised changed_elements to posture/light."
       },
       {
         "id": "L88",
@@ -1855,17 +1882,19 @@
         "stage": "arrival-beach",
         "stage_role": "delta",
         "changed_elements": [
-          "faint ghost-outlines of a city, a port, and a cathedral appear over the empty beach and each is struck out with a red X, one per named noun"
+          "+ a faint ghost CITY struck by a red X POPS on on 'No city'",
+          "+ a faint ghost PORT struck by a red X POPS on on 'no port'",
+          "+ a faint ghost CATHEDRAL struck by a red X POPS on on 'no cathedral'"
         ],
         "narration_type": "claim",
         "shot_class": "symbolic-stand-in-object",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "The SAME empty beach, three faint grey ghost-outlines drawn where the promises should stand — a city, a harbour port, a cathedral — each crossed out with a red X, in the order named. The settlers small at the shoreline. The background / crowd figures are on the CROWD RIG: round cream-family heads, DOT EYES, one simple consistent mouth (neutral / smile / downturn only), NO noses, NO ears, NO teeth, the same head proportions, in varied era-appropriate clothing. Keep every crowd figure on this same simplified rig — do not give them individual detailed faces. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; the red accent #d7402b ONLY on the three X's; marker lettering only; locked 2-3 colour palette; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+        "still_prompt": "Held base plate scenes/L87.png (the ghost-free arrival beach — the settlers seen from behind facing inland, boat foreground, grey overcast jungle). Over the empty land ahead, three faint pale-grey ghost-outlines each POP on in order, one per named noun, each already struck through with one thick diagonal red X (#d7402b): a domed capital CITY on 'No city', a harbour PORT with a jetty and ship on 'no port', a gothic CATHEDRAL with a spire on 'no cathedral'. Grim register — cool greys and muted greens, the only red is the three prohibition X marks. No lettering. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
-        "notes": "Enumeration strikes on the held beach set — mirrors the swamp strikes (L23), a callback."
+        "notes": "R6 word-pop conversion (N27): was a baked strike-enumeration; now background = REUSED scenes/L87.png (ghost-free beach, matches framing) + three per-word appear cutouts — cutouts/L88-ghost-city.png (at [0.20,0.30] hf 0.42, anchor 'No city'), L88-ghost-port.png (at [0.50,0.30] hf 0.34, anchor 'no port'), L88-ghost-cathedral.png (at [0.78,0.28] hf 0.42, anchor 'no cathedral'). Ghosts seeded off baked scenes/L88.png, despilled to neutral grey (red X kept). Grim register preserved."
       },
       {
         "id": "L89",
@@ -1884,7 +1913,7 @@
         "shot_class": "symbolic-stand-in-object",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "The SAME shore, now stripped to just bare empty beach in the foreground and an endless wall of dense green jungle stretching to the horizon, the settlers reduced to tiny figures dwarfed by the emptiness. Scale of the nothing. The background / crowd figures are on the CROWD RIG: round cream-family heads, DOT EYES, one simple consistent mouth (neutral / smile / downturn only), NO noses, NO ears, NO teeth, the same head proportions, in varied era-appropriate clothing. Keep every crowd figure on this same simplified rig — do not give them individual detailed faces. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; marker lettering only; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+        "still_prompt": "The SAME arrival beach location and SAME settlers from the prior frame, camera PULLED WAY BACK to a wide establishing shot. The three ghost-outlines and red X marks are entirely GONE. Only bare empty sandy beach across the foreground and an ENDLESS UNBROKEN WALL of dense green-grey jungle and palms across the horizon behind, under a flat overcast grey sky. The settlers reduced to a small cluster of TINY figures at the shoreline, seen from BEHIND, FACING INLAND toward the overwhelming jungle wall, dwarfed by the emptiness — the scale of the nothing is the whole point. Every tiny settler on the SAME SQUAT base-rig proportion; crowd rig round cream heads, DOT EYES, simple mouths, NO noses/ears/teeth, consistent across all figures. Cool muted grey-green palette, overcast, no warmth. A faint single red accent #d7402b on one tiny dropped bundle. Deep depth, big negative space, filled edge-to-edge. No text anywhere in the image. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; no photorealism, no on-screen narrator, no logos; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
@@ -1985,11 +2014,11 @@
         "shot_class": "aftermath-palette-turn",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "The beach camp now under heavy grey rain, tents sagging and waterlogged, a lone settler slumped beneath a dripping shelter, the whole scene desaturated to cold grey-blue. Bleak, quiet, no comedy. Base of the held rainy-camp set. The lone slumped settler is a gaunt older man with lank grey hair and a stubbled jaw, in a sodden dark-brown greatcoat and a limp neckcloth. This prominent foreground figure is an anonymous, non-recurring person drawn on the FULL base family rig -- SAME round near-circle head (only slightly taller than wide, NOT an egg/oval), SAME eye style/size/position, NO nose, NO ears, SAME classic cartoon hands (exactly THREE fingers plus ONE thumb, four digits total, never five), SAME even medium-thick dark warm brown-black (#241a12) outline, SAME clean FLAT cel render -- the identical rig the named cast holds, just NOT a specific person. Give them a distinct, era-appropriate outfit and hair so they read as an individual; hold ONLY the rig form. The background / crowd figures are on the CROWD RIG: round cream-family heads, DOT EYES, one simple consistent mouth (neutral / smile / downturn only), NO noses, NO ears, NO teeth, the same head proportions, in varied era-appropriate clothing. Keep every crowd figure on this same simplified rig — do not give them individual detailed faces. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; marker lettering only; locked 2-3 colour palette; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+        "still_prompt": "A bleak beach settlers' camp under heavy grey rain, everything desaturated to a cold grey-blue muted palette; built edge-to-edge with depth - a dripping lean-to and crate in front, sodden sagging tents and a few dim figures mid-ground, a misty tree-line behind; rain streaks throughout, puddles on the churned sand. Bleak, quiet, no comedy. In the foreground under the dripping lean-to sits a lone settler wrapped head-and-shoulders in a soaked wool blanket, hunched with head bowed - grief read entirely from the huddled posture, the blanket hood hiding the face. A few distant anonymous figures on the house crowd rig, in hats, further back. Cold grey palette, no red accent this beat. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat with fore/mid/background depth, filled edge-to-edge; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator or host face, no text anywhere in the image, no logos; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
-        "notes": "GRAVITY register begins — desaturated, comedy off, one slow reveal per the human-cost sequence."
+        "notes": "R4 recompose: the grieving figure is now a blanket-hooded huddled shape under the lean-to (face hidden by the blanket hood) - grief read from posture. Dropped the §2e gaunt-man block + proportion lawyering."
       },
       {
         "id": "L94",
@@ -1997,45 +2026,24 @@
         "start_hint": "6:50",
         "duration_s": 5,
         "vo_ref": "No shelter, no supplies, no help coming",
-        "vo_text": "No shelter, no supplies, no help coming,",
+        "vo_text": "No shelter, no supplies, no help coming, and people started to die.",
         "from_cue": false,
         "stage": "rainy-camp",
         "stage_role": "delta",
         "changed_elements": [
-          "grey icons of a shelter, a supply crate, and a rescue-ship signpost appear over the rainy camp and each is quietly struck out — grim, not comedic"
+          "+ a collapsed shelter with a grey strike POPS on on 'No shelter'",
+          "+ an empty supply crate with a grey strike POPS on on 'no supplies'",
+          "+ a 'HELP' signpost with a grey strike POPS on on 'no help'"
         ],
         "narration_type": "grim",
         "shot_class": "symbolic-stand-in-object",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "The SAME rain-soaked camp, three muted grey outlines — a collapsed shelter, an empty supply crate, and a 'help' signpost pointing out to the empty sea — each struck through with a thin grey line, no bright colour, the mood cold and hopeless. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; the strikes muted (NOT the comedic red X); marker lettering only; locked 2-3 colour palette; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+        "still_prompt": "Held base plate plates/L94.png (a clean rain-soaked empty camp mud-flat — heavy grey rain, overcast sky, puddled brown mud, distant misty tree line, two small distant hooded settlers). Three muted grey symbols of loss each POP on, one per named noun, each struck through with a single quiet diagonal dark-grey line (NOT a red X): a collapsed sagging shelter on 'No shelter', an empty open supply crate on 'no supplies', a wooden signpost lettered 'HELP' in dark #241a12 ink on 'no help'. Cold, hopeless, desaturated grey-blue. The only text is 'HELP'. Flat-cel 2.5D vector house style, even medium-thick #241a12 outline.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
-        "notes": "Enumeration held to the grim register (muted strikes, no comedic red X) — human-cost beat."
-      },
-      {
-        "id": "L95",
-        "beat": "climax",
-        "start_hint": "6:55",
-        "duration_s": 5,
-        "vo_ref": "and people started to die",
-        "vo_text": "and people started to die.",
-        "from_cue": false,
-        "stage": "rainy-camp",
-        "stage_role": "delta",
-        "changed_elements": [
-          "+ a few rough grave mounds appear at the muddy edge of the camp"
-        ],
-        "narration_type": "grim",
-        "shot_class": "aftermath-palette-turn",
-        "cast": [],
-        "source": "ai-gen",
-        "still_prompt": "The SAME rainy camp, now with a few rough earthen grave mounds and simple wooden crosses appearing at its muddy edge under the grey rain. Aftermath only — no bodies, no gore, quiet and cold. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; marker lettering only; locked 2-3 colour palette; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
-        "on_screen_text": "",
-        "transition_in": "hard cut",
-        "synthetic": false,
-        "notes": "ANALYSIS-NOT-GORE: death shown as graves/aftermath only, never bodies."
+        "notes": "R6 word-pop conversion (N29): was a baked strike-enumeration; now background = NEW clean plate plates/L94.png (gen'd off scenes/L94, tents/crate/sign removed — scenes/L93 was a different composition) + three per-word appear cutouts — cutouts/L94-shelter.png (at [0.20,0.60] hf 0.42, anchor 'No shelter'), L94-supplies.png (at [0.47,0.62] hf 0.34, anchor 'no supplies'), L94-help.png (at [0.83,0.58] hf 0.40, anchor 'no help'). Each carries its QUIET GREY strike (not red X); HELP in dark ink. Seeded off baked scenes/L94.png. Grim register preserved."
       },
       {
         "id": "L96",
@@ -2054,7 +2062,7 @@
         "shot_class": "number-glued-to-object",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "The SAME camp edge, now a solemn row of ten simple wooden grave crosses in the rain — seven full-size crosses and three visibly smaller ones — the count made quietly tangible, no caption needed. Muted grey palette, somber. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; marker lettering only; locked 2-3 colour palette; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+        "still_prompt": "The SAME rain-soaked camp edge as the seeded frame - hold the identical art style, cold grey-blue muted palette, rain, misty tree-line, churned muddy ground with puddles, and a sagging tent or two faded in the background. The foreground is now a solemn graveyard row: EXACTLY TEN simple plain wooden grave crosses, each standing on its own low earthen grave mound, arranged in a single evenly-spaced row spanning the width of the frame left to right. Count them: TEN crosses total - SEVEN of them full adult-size crosses, and THREE of them visibly smaller child-size crosses interspersed among the row. No more than ten crosses, no fewer than ten. Aftermath only - no bodies, no figures, no gore, quiet and cold and still. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; locked cold grey palette. No text anywhere in the image - no signs, labels, or lettering. No photorealism, no on-screen narrator, no logos.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
@@ -2065,8 +2073,8 @@
         "beat": "climax",
         "start_hint": "7:05",
         "duration_s": 5,
-        "vo_ref": "One settler, an Edinburgh cobbler who'd been handed the grand title of Official Shoemaker to the Princess of Poyais",
-        "vo_text": "One settler, an Edinburgh cobbler who'd been handed the grand title of Official Shoemaker to the Princess of Poyais,",
+        "vo_ref": "One settler, given the title Official Shoemaker to the Princess",
+        "vo_text": "One settler, given the title Official Shoemaker to the Princess,",
         "from_cue": false,
         "narration_type": "grim",
         "shot_class": "ironic-counterpoint",
@@ -2084,7 +2092,7 @@
         "start_hint": "7:10",
         "duration_s": 5,
         "vo_ref": "walked down to the beach and shot himself",
-        "vo_text": "walked down to the beach and shot himself. [PAUSE]",
+        "vo_text": "walked down to the beach and shot himself.",
         "from_cue": false,
         "narration_type": "grim",
         "shot_class": "aftermath-palette-turn",
@@ -2144,7 +2152,7 @@
         "shot_class": "personified-character",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "Frail, gaunt survivors being helped up a gangplank onto a rescue ship at the grey coast, supported by one another, thin and weary. Quiet, cold, dignified. Muted palette. The background / crowd figures are on the CROWD RIG: round cream-family heads, DOT EYES, one simple consistent mouth (neutral / smile / downturn only), NO noses, NO ears, NO teeth, the same head proportions, in varied era-appropriate clothing. Keep every crowd figure on this same simplified rig — do not give them individual detailed faces. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; marker lettering only; locked 2-3 colour palette; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+        "still_prompt": "Frail, gaunt survivors being helped up a wooden gangplank onto a rescue ship at a cold grey rocky coast, supporting one another as they climb, thin and weary and stooped. Quiet, cold, dignified - no gore. Muted cold grey-blue palette, leaden sky, grey sea. Built edge-to-edge with depth: rocky shore in front, the gangplank and hull mid-frame, the ship's rigging behind. The survivor figures are all on the CROWD RIG: round cream-family heads, DOT EYES, one simple downturned/neutral mouth, NO noses, NO ears, NO teeth, in varied ragged era-appropriate clothing. CRITICAL PROPORTION: every figure has the SQUAT base head-to-body proportion - a large round head on a short compact body, roughly two-and-a-half heads tall - NOT tall, NOT lanky, NOT a realistically-proportioned adult; keep them all the same short squat proportion. Do not give them individual detailed faces. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; locked cold grey palette. No text anywhere in the image - no signs, labels, or lettering. No photorealism, no on-screen narrator, no logos.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
@@ -2162,7 +2170,7 @@
         "shot_class": "aftermath-palette-turn",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "The deck of the returning ship at sea under a leaden sky, a few empty blankets and a slumped shape covered beneath one, other frail figures at the rail — the toll of the voyage, shown as aftermath and absence, no gore. Cold grey-blue palette. The background / crowd figures are on the CROWD RIG: round cream-family heads, DOT EYES, one simple consistent mouth (neutral / smile / downturn only), NO noses, NO ears, NO teeth, the same head proportions, in varied era-appropriate clothing. Keep every crowd figure on this same simplified rig — do not give them individual detailed faces. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; marker lettering only; locked 2-3 colour palette; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+        "still_prompt": "The wooden deck of a returning sailing ship at sea under a leaden grey sky, cold grey-blue palette. On the deck, a few empty folded grey blankets and one slumped shape covered beneath a blanket (a body, shown only as a covered form - no gore); a couple of frail survivors stand at the ship's rail looking out at the empty grey sea. The toll of the voyage shown as aftermath and absence. Built edge-to-edge with depth: deck planking in front, rail and covered shape mid-frame, mast and grey ocean behind. The survivor figures are on the CROWD RIG: round cream-family heads, DOT EYES, one simple downturned mouth, NO noses, NO ears, NO teeth, ragged era clothing. CRITICAL PROPORTION: every figure has the SQUAT base head-to-body proportion - a large round head on a short compact body, roughly two-and-a-half heads tall - NOT tall, NOT lanky, NOT a realistically-proportioned adult. Do not give them individual detailed faces. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; locked cold grey palette. No text anywhere in the image - no signs, labels, or lettering. No photorealism, no on-screen narrator, no logos.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
@@ -2173,47 +2181,18 @@
         "beat": "withheld-peak",
         "start_hint": "7:35",
         "duration_s": 6,
-        "vo_ref": "Of the roughly two hundred and fifty people who had sailed for Poyais, fewer than fifty ever came home",
-        "vo_text": "Of the roughly two hundred and fifty people who had sailed for Poyais, fewer than fifty ever came home.",
+        "vo_ref": "Only fifty of the two hundred and fifty people who sailed for Poyais made it home",
+        "vo_text": "Only fifty of the two hundred and fifty people who sailed for Poyais made it home.",
         "from_cue": false,
         "narration_type": "number",
         "shot_class": "crowd-multiplication",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "A large grid of about 250 small identical settler figures, the vast majority faded to pale grey ghost-outlines and only a small cluster of fewer than fifty rendered solid and present — the survival ratio made visible at a glance. Somber, no bright colour. The background / crowd figures are on the CROWD RIG: round cream-family heads, DOT EYES, one simple consistent mouth (neutral / smile / downturn only), NO noses, NO ears, NO teeth, the same head proportions, in varied era-appropriate clothing. Keep every crowd figure on this same simplified rig — do not give them individual detailed faces. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; marker lettering only; locked 2-3 colour palette; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+        "still_prompt": "An infographic-style array: a large regular grid of about 250 small identical simplified settler figures on a plain flat cold-grey background, filling the frame. The vast majority of the figures are faded to pale grey ghost-outlines (barely-there, translucent grey), and only a small cluster of fewer than fifty figures at one corner are rendered solid and present in flat cel colour - the survival ratio made visible at a glance. Somber, no bright colour, muted grey. Every one of the small figures is on the CROWD RIG: a round cream-family head, DOT EYES, one simple neutral mouth, and crucially NO nose and NO ears - absolutely no noses on any figure, no ears, no teeth; the same head-to-body proportion on every figure (a round head on a short compact body). Keep every figure identical and simplified - do not give any figure a nose or individual detailed face. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes. No text anywhere in the image - no numbers, signs, labels, or lettering. No photorealism, no on-screen narrator, no logos.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
         "notes": "Number as a grid of figures (250 total, <50 solid); the ratio is the image, no caption added."
-      },
-      {
-        "id": "L104",
-        "beat": "withheld-peak",
-        "start_hint": "7:41",
-        "duration_s": 6,
-        "vo_ref": "One of them was a Scottish sawyer named James Hastie, who made it back with his wife, but without two of his three children",
-        "vo_text": "One of them was a Scottish sawyer named James Hastie, who made it back with his wife, but without two of his three children.",
-        "from_cue": false,
-        "narration_type": "grim",
-        "shot_class": "aftermath-palette-turn",
-        "cast": [
-          {
-            "character": "hastie",
-            "pose_ref": "hold-one-hand",
-            "expression_ref": "expr-crestfallen"
-          },
-          {
-            "character": "hastie-wife",
-            "pose_ref": "hold-one-hand",
-            "expression_ref": "expr-crestfallen"
-          }
-        ],
-        "source": "ai-gen",
-        "still_prompt": "James Hastie (a weary Scottish sawyer) and his wife stand together holding hands on a grey British quay, one small child beside them — and beside that child, two small empty pale-grey silhouette outlines where two more children should be. The absence is the image. Cold muted palette, quiet grief. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; marker lettering only; locked 2-3 colour palette; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
-        "on_screen_text": "",
-        "transition_in": "hard cut",
-        "synthetic": false,
-        "notes": "Loss shown as two empty child-silhouettes beside the survivors (restrained aftermath). Introduces Hastie for the affidavit beat."
       },
       {
         "id": "L105",
@@ -2245,8 +2224,8 @@
         "beat": "withheld-peak",
         "start_hint": "7:52",
         "duration_s": 5,
-        "vo_ref": "In October 1823, six of them, including Hastie, signed a sworn statement",
-        "vo_text": "In October 1823, six of them, including Hastie, signed a sworn statement",
+        "vo_ref": "They signed a sworn statement",
+        "vo_text": "They signed a sworn statement",
         "from_cue": false,
         "narration_type": "event",
         "shot_class": "diegetic-device",
@@ -2276,11 +2255,11 @@
         "shot_class": "staged-interaction",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "The SAME parlour and gleaming gilt-framed prince portrait of MacGregor held from before, now with a smaller, lower-ranking Poyais officer — a mid-rank uniformed underling — appearing beneath the portrait, cringing and hunched under the crowd's glare, while a bright red comic ANGER-MARK (a four-lobed cross-shaped vein-pop symbol, not a face) pops above him. The small crowd's attention has turned from the portrait down onto the little officer; the grand MacGregor portrait hangs untouched and gleaming above. Blame lands on the wrong, smaller man. The Poyais officer is a nervous junior man with neat dark hair and a thin moustache, in a plain slate-blue undress military tunic with tarnished buttons and no epaulettes. This prominent foreground figure is an anonymous, non-recurring person drawn on the FULL base family rig -- SAME round near-circle head (only slightly taller than wide, NOT an egg/oval), SAME eye style/size/position, NO nose, NO ears, SAME classic cartoon hands (exactly THREE fingers plus ONE thumb, four digits total, never five), SAME even medium-thick dark warm brown-black (#241a12) outline, SAME clean FLAT cel render -- the identical rig the named cast holds, just NOT a specific person. Give them a distinct, era-appropriate outfit and hair so they read as an individual; hold ONLY the rig form. Warm glow still on the portrait, the officer smaller and lit plainer below; the one red accent on the anger-mark. The background / crowd figures are on the CROWD RIG: round cream-family heads, DOT EYES, one simple consistent mouth (neutral / smile / downturn only), NO noses, NO ears, NO teeth, the same head proportions, in varied era-appropriate clothing. Keep every crowd figure on this same simplified rig — do not give them individual detailed faces. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; marker lettering only; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+        "still_prompt": "The SAME parlour and gleaming gilt-framed prince portrait of MacGregor held from before, now with a smaller, lower-ranking Poyais officer — a mid-rank uniformed underling — appearing beneath the portrait, cringing and hunched under the crowd's fury. The small crowd has wheeled ANGRILY from the portrait onto the little officer — every crowd figure turned toward him, downturned angry mouths, arms raised POINTING accusingly straight at him; the grand MacGregor portrait hangs untouched and gleaming above. Blame lands on the wrong, smaller man. The Poyais officer is a nervous junior man with neat dark hair and a thin moustache, in a plain slate-blue undress military tunic with tarnished buttons and no epaulettes. This prominent foreground figure is an anonymous, non-recurring person drawn on the FULL base family rig -- SAME round near-circle head (only slightly taller than wide, NOT an egg/oval), SAME eye style/size/position, NO nose, NO ears, SAME classic cartoon hands (exactly THREE fingers plus ONE thumb, four digits total, never five), SAME even medium-thick dark warm brown-black (#241a12) outline, SAME clean FLAT cel render -- the identical rig the named cast holds, just NOT a specific person. Give them a distinct, era-appropriate outfit and hair so they read as an individual; hold ONLY the rig form. Warm glow still on the portrait, the officer smaller and lit plainer below. The background / crowd figures are on the CROWD RIG: round cream-family heads, DOT EYES, one simple consistent mouth (neutral / smile / downturn only — downturn here, they are angry), NO noses, NO ears, NO teeth, the same head proportions, in varied era-appropriate clothing. Keep every crowd figure on this same simplified rig — do not give them individual detailed faces. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; marker lettering only; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
-        "notes": "HYBRID over L105 (plate reuses scenes/L105.png): the Poyais officer and the comic anger-mark are `appear` CUTOUT pop-ons, each anchored to its VO word (per Open-item default: L107 anger-mark = simple cutout element, NOT engine-drawn). The MacGregor portrait stays untouched behind (the misdirection is the point). Officer cast as a generic figure (poyais-officer is NOT a registry character).",
+        "notes": "RESTAGED per human board feedback 2026-07-17: anger-mark cutout REMOVED; the crowd itself carries the anger (wheeled, pointing at the officer). Background is now a dedicated frame scenes/L107.png (delta seeded off scenes/L105.png, crowd angry/pointing at an EMPTY spot ~x0.5 y0.72) — the Poyais officer stays an `appear` CUTOUT pop-on anchored to his VO word, landing where the crowd points. The MacGregor portrait stays untouched behind (the misdirection is the point). Officer cast as a generic figure (poyais-officer is NOT a registry character).",
         "props": [
           "macgregor-portrait"
         ]
@@ -2303,37 +2282,11 @@
           }
         ],
         "source": "ai-gen",
-        "still_prompt": "MacGregor lounging comfortably and untouched in a fine chair with a glass in hand, while a small halo and a 'poor victim' laurel are earnestly drawn around him by the survivors off-frame — the absurd notion that HE was the one wronged. The gap between his comfort and the 'victim' framing is the irony. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; marker lettering only; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+        "still_prompt": "MacGregor lounging comfortably and untouched in a fine wing-back armchair beside a warm fireplace, a glass of brandy in hand, an ironic thin golden halo floating just above his head and a small golden laurel wreath on his brow -- the absurd notion that HE was the one wronged. On the wood-panelled wall behind him hangs a small framed plaque marker-lettered 'VICTIM' -- the word appears ONLY on that wall plaque, never on his head or body. The gap between his comfort and the 'victim' framing is the irony. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; marker lettering only; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, the only text is 'VICTIM', no logos; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
         "notes": "Ironic counterpoint — the con-man cast as the victim while sitting comfortable."
-      },
-      {
-        "id": "L109",
-        "beat": "withheld-peak",
-        "start_hint": "8:07",
-        "duration_s": 5,
-        "vo_ref": "Even after Poyais had cost them nearly everything, some of them still refused to believe the prince had meant them any harm",
-        "vo_text": "Even after Poyais had cost them nearly everything, some of them still refused to believe the prince had meant them any harm.",
-        "from_cue": false,
-        "narration_type": "claim",
-        "shot_class": "ironic-counterpoint",
-        "cast": [
-          {
-            "character": "macgregor"
-          }
-        ],
-        "source": "ai-gen",
-        "still_prompt": "A ruined survivor in threadbare clothes gazing up loyally at a gleaming framed portrait of MacGregor as the benevolent Prince of Poyais, clutching a worthless Poyais banknote to their chest like a keepsake — still a believer, despite everything. The eerie devotion is the image. Warm glow on the portrait, grey on the survivor. The ruined survivor is a hollow-cheeked woman with grey-streaked hair pulled back under a frayed shawl, in a faded threadbare dress and patched cloak. This prominent foreground figure is an anonymous, non-recurring person drawn on the FULL base family rig -- SAME round near-circle head (only slightly taller than wide, NOT an egg/oval), SAME eye style/size/position, NO nose, NO ears, SAME classic cartoon hands (exactly THREE fingers plus ONE thumb, four digits total, never five), SAME even medium-thick dark warm brown-black (#241a12) outline, SAME clean FLAT cel render -- the identical rig the named cast holds, just NOT a specific person. Give them a distinct, era-appropriate outfit and hair so they read as an individual; hold ONLY the rig form. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; marker lettering only; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
-        "on_screen_text": "",
-        "transition_in": "hard cut",
-        "synthetic": false,
-        "notes": "The withheld-peak — the con's eerie hold on its own victims (loyalty to the prince portrait).",
-        "props": [
-          "poyais-banknote",
-          "macgregor-portrait"
-        ]
       },
       {
         "id": "L110",
@@ -2371,11 +2324,11 @@
           }
         ],
         "source": "ai-gen",
-        "still_prompt": "MacGregor walking briskly away toward a waiting carriage with a travel case in hand, a London newspaper with a 'POYAIS' headline blowing across the cobbles behind him as he slips off. He leaves calmly, unbothered. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; marker lettering only; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+        "still_prompt": "MacGregor (seeded canonical) moves away toward a waiting carriage at frame right, a travel case in hand, as a London newspaper whose headline reads 'POYAIS' blows across the cobbles behind him. He leaves calmly, unbothered. Muted grey London street; the one red accent on a small detail. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat with fore/mid/background depth, filled edge-to-edge; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically; the only in-image text is 'POYAIS', hand-lettered in the marker style and correctly spelled; no photorealism, no on-screen narrator or host face, no other unrequested text, no logos; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
-        "notes": "Slipping away (walk-right, unbothered)."
+        "notes": "R4 trim: MacGregor seeded, moving off toward the carriage; 'POYAIS' newspaper blowing behind."
       },
       {
         "id": "L112",
@@ -2395,7 +2348,7 @@
           }
         ],
         "source": "ai-gen",
-        "still_prompt": "MacGregor stands beside a large framed wall map of Europe, pointing confidently at 'ITALY' for the benefit of onlookers — the cover story — while two dotted travel routes trail across the map: one openly to Italy in the southeast, and a second that curves secretly north to 'PARIS'. Britain sits at the map's upper left, France and Italy labelled. The public lie versus the real destination. Warm study lighting, the map dominating the frame; map labels 'ITALY' and 'PARIS' legible in marker; the one red accent marks the secret Paris route. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; the map labels legible; locked 2-3 colour palette; no photorealism, no on-screen narrator, no unrequested text beyond the map labels, no logos; 16:9.",
+        "still_prompt": "A flat top-down aged-parchment map zoomed on Western Europe in the house 2D-map style (cream sea, tan land, #241a12 coastlines, faint compass rose), hand-drawn country borders; British Isles labelled 'BRITAIN' upper-left, France centre with its capital dotted and labelled 'PARIS', the Italian boot lower-right labelled 'ITALY'; a complete chart with NO routes drawn (the engine draws the two stagecoach routes: the open Italy cover-story route, then the real curving Paris route). 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
@@ -2443,11 +2396,11 @@
           }
         ],
         "source": "ai-gen",
-        "still_prompt": "MacGregor (LEFT) slides a fresh stack of official Poyais loan documents across a table to a well-dressed French investor (RIGHT, in a fine top hat and tailcoat with a small Bourbon fleur-de-lis cockade) who studies the papers; the two face each other on one eye-line. The French investor is a sober, well-groomed gentleman with dark pomaded hair and neat side-whiskers, in a fine charcoal top hat and tailcoat with a small Bourbon fleur-de-lis cockade. This prominent foreground figure is an anonymous, non-recurring person drawn on the FULL base family rig -- SAME round near-circle head (only slightly taller than wide, NOT an egg/oval), SAME eye style/size/position, NO nose, NO ears, SAME classic cartoon hands (exactly THREE fingers plus ONE thumb, four digits total, never five), SAME even medium-thick dark warm brown-black (#241a12) outline, SAME clean FLAT cel render -- the identical rig the named cast holds, just NOT a specific person. Give them a distinct, era-appropriate outfit and hair so they read as an individual; hold ONLY the rig form. On the wall behind them hangs a framed map with 'FRANCE' clearly labelled. And in the BACKGROUND, a couple of French police / gendarmes in bicorne hats stand quietly watching the deal — clocking him (foreshadowing the arrest). A brand-new loan being pitched under the eyes of the law. Warm salon foreground, cooler watchful figures behind; the one red accent on the wax seal of the loan documents. The background / crowd figures are on the CROWD RIG: round cream-family heads, DOT EYES, one simple consistent mouth (neutral / smile / downturn only), NO noses, NO ears, NO teeth, the same head proportions, in varied era-appropriate clothing. Keep every crowd figure on this same simplified rig — do not give them individual detailed faces. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; the map label 'FRANCE' legible; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond the map label, no logos; 16:9.",
+        "still_prompt": "In a warm Parisian salon, MacGregor (seeded canonical, LEFT) presents a fresh stack of official Poyais loan documents across a table to a French investor (RIGHT) - a top-hatted gentleman seen from behind and three-quarter, his back and tall hat to the viewer, studying the papers; the two face each other across the table. On the wall behind hangs a framed map labelled 'FRANCE'. One red accent on the documents' wax seal. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat with fore/mid/background depth, filled edge-to-edge; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically; the only in-image text is 'FRANCE', hand-lettered in the marker style and correctly spelled; no photorealism, no on-screen narrator or host face, no other unrequested text, no logos; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
-        "notes": "New mark (French investor), fresh documents. Added a wall map labelled 'FRANCE' and background French police/gendarmes on the crowd rig watching the deal (foreshadows the L116 arrest). Cast order MacGregor left, investor right; the police are anonymous crowd-rig, not cast."
+        "notes": "R4 recompose: the French investor is now BACK-TO-VIEWER in a tall top hat (ear zone framed out) - dropped the §2e full-rig block and the background gendarmes (fewer figures). MacGregor seeded left; 'FRANCE' wall map kept."
       },
       {
         "id": "L116",
@@ -2467,11 +2420,11 @@
           }
         ],
         "source": "ai-gen",
-        "still_prompt": "MacGregor standing in a French courtroom dock, two gendarmes in bicorne hats flanking him, a judge's bench raised before him — arrested and on trial for fraud. Cooler formal palette. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; marker lettering only; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+        "still_prompt": "MacGregor (seeded canonical) stands in the dock of a French courtroom, an anonymous gendarme in a tall bicorne hat on either side of him and a raised judge's bench before him - arrested and on trial for fraud. Cool formal palette; one red accent. The two gendarmes are on the house rig, their bicorne hats framing their heads. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat with fore/mid/background depth, filled edge-to-edge; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator or host face, no text anywhere in the image, no logos; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
-        "notes": "Arrest/trial (surrender pose in the dock)."
+        "notes": "R4 trim: MacGregor seeded in the dock; two gendarmes flank him, bicorne hats framing their heads."
       },
       {
         "id": "L117",
@@ -2491,11 +2444,11 @@
           }
         ],
         "source": "ai-gen",
-        "still_prompt": "MacGregor strolling out through the open courtroom doors a free man with an easy shrug, the gendarmes simply letting him pass. Deadpan disbelief that he got away with it. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; marker lettering only; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+        "still_prompt": "MacGregor (seeded canonical) strolls out through the open courtroom doors a free man, two anonymous gendarmes in bicorne hats simply letting him pass - he has gotten away with it. Cool courtroom exit, warm daylight through the doors; one red accent. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat with fore/mid/background depth, filled edge-to-edge; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator or host face, no text anywhere in the image, no logos; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
-        "notes": "Deadpan punch — he walks free."
+        "notes": "R4 trim: MacGregor seeded, walking free past two bicorne-hatted gendarmes; deadpan/shrug seeded."
       },
       {
         "id": "L118",
@@ -2515,7 +2468,7 @@
           }
         ],
         "source": "ai-gen",
-        "still_prompt": "MacGregor walking freely between two courthouse buildings — a French one and a British one, each with its flag — passing both untouched, an empty 'GUILTY' verdict stamp lying unused on the ground behind him. Never convicted anywhere. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; marker lettering only; the red accent #d7402b only on the unused stamp; locked 2-3 colour palette; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+        "still_prompt": "MacGregor walking freely between two courthouse buildings -- a French one (left, tricolour flag) and a British one (right, Union Jack) -- passing both untouched, an unused 'NOT GUILTY' verdict stamp lying on the ground behind him. Never convicted anywhere. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; the red accent #d7402b only on the stamp; locked 2-3 colour palette; no photorealism, no on-screen narrator, the only text is 'NOT GUILTY', no logos; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
@@ -2563,7 +2516,7 @@
           }
         ],
         "source": "ai-gen",
-        "still_prompt": "MacGregor arriving in Venezuela before a warm tropical square with a Venezuelan flag, a few uniformed soldiers saluting his old war record. Warm palette, a welcome. The background / crowd figures are on the CROWD RIG: round cream-family heads, DOT EYES, one simple consistent mouth (neutral / smile / downturn only), NO noses, NO ears, NO teeth, the same head proportions, in varied era-appropriate clothing. Keep every crowd figure on this same simplified rig — do not give them individual detailed faces. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; marker lettering only; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+        "still_prompt": "The chunk-1 aged-parchment campaign map (the reused L15 plate) with MacGregor (the reused L17 cutout figure) standing at the right, and a motion-drawn red arrow tracing across the map to Venezuela on the northern South-American coast as the VO says he moved there; cuts directly into L121. No baked routes (the engine draws the arrow). 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
@@ -2635,13 +2588,13 @@
         "start_hint": "9:18",
         "duration_s": 5,
         "vo_ref": "But the guidebook is still here",
-        "vo_text": "But the guidebook is still here. [PAUSE]",
+        "vo_text": "But the guidebook is still here.",
         "from_cue": false,
         "narration_type": "claim",
         "shot_class": "symbolic-stand-in-object",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "The same handsome 'A GUIDE TO POYAIS' guidebook from earlier, sitting intact and alone under a soft light on a neutral surface — the paper that outlasted everyone. One dominant object, heavy negative space, a quiet held beat. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; the cover 'A GUIDE TO POYAIS' legible; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+        "still_prompt": "The same handsome 'A GUIDE TO POYAIS' guidebook from earlier -- deep maroon leather boards, tan cover panel, gilt corner filigree -- sitting intact, closed, and alone on a polished dark-wood library reading table under a soft warm pool of lamplight, the rest of the room receding into gentle warm shadow with faint shelving. One dominant object, heavy negative space, a quiet held beat -- the paper that outlasted everyone. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; a real wooden tabletop and softly-lit room, NOT an empty coloured void; the cover 'A GUIDE TO POYAIS' legible; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,
@@ -2656,13 +2609,13 @@
         "start_hint": "9:23",
         "duration_s": 5,
         "vo_ref": "It sits in libraries to this day, and anyone can go and read about the beautiful country that never existed",
-        "vo_text": "It sits in libraries to this day, and anyone can go and read about the beautiful country that never existed. ---",
+        "vo_text": "It sits in libraries to this day, and anyone can go and read about the beautiful country that never existed. Thanks for watching. And maybe double-check before you buy a country. ---",
         "from_cue": false,
         "narration_type": "claim",
         "shot_class": "symbolic-stand-in-object",
         "cast": [],
         "source": "ai-gen",
-        "still_prompt": "The Poyais guidebook shelved among other old leather-bound volumes on a quiet library shelf, a warm reading light across it, one gap where a hand might pull it down — a relic of the beautiful country that never existed, still there to read. Final held image. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; marker lettering only; locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.",
+        "still_prompt": "The Poyais guidebook -- same maroon-leather, gilt-filigree design as the prior frame -- shelved spine-out, upright and settled, standing in a row among other old leather-bound volumes on a quiet warm library shelf; its spine reads 'A GUIDE TO POYAIS' and is slightly warmer/more saturated than the muted neighbours so the eye finds it. A warm reading light falls across the spines; one small gap in the row beside it where a hand might pull it down. A relic of the beautiful country that never existed, still there to read. Final held image -- calm and settled, restful, not busy. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline, flat cel colours, rounded shapes; built-but-flat; the spine lettering 'A GUIDE TO POYAIS' the only readable text (neighbouring volumes carry abstract marks only); locked 2-3 colour palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no logos; 16:9.",
         "on_screen_text": "",
         "transition_in": "hard cut",
         "synthetic": false,

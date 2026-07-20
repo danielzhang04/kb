@@ -6,7 +6,7 @@ from menu import load_menu, valid_animation
 
 def test_loads_and_has_both_families():
     m = load_menu()
-    assert set(m["families"]) == {"cutout", "engine"}, m["families"].keys()
+    assert set(m["families"]) == {"cutout"}, m["families"].keys()
 
 
 def test_every_cutout_entry_declares_an_asset_contract():
@@ -19,7 +19,8 @@ def test_valid_animation_gate():
     m = load_menu()
     assert valid_animation(m, "cutout", "slide") is True
     assert valid_animation(m, "cutout", "teleport") is False   # not on the menu
-    assert valid_animation(m, "engine", "type-on") is True
+    assert valid_animation(m, "engine", "type-on") is False    # engine family removed
+    assert valid_animation(m, "engine", "count") is False
 
 
 def test_malformed_menu_raises():

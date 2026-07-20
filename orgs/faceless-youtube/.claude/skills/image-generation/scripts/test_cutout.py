@@ -2,7 +2,7 @@
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 from PIL import Image
-from forge import harden_alpha, trim_to_alpha
+from forge import harden_alpha, trim_to_alpha, check_cutout_aspect, CUTOUT_WIDE_RATIO
 
 
 def _rgba(w, h, alpha_fn):
@@ -30,8 +30,28 @@ def test_trim_crops_to_content():
     assert out.size == (20, 20), out.size
 
 
+def test_cutout_aspect_rejects_wide():
+    # 16:9 (1.78) and 3:2 (1.50) inputs are too wide -> SystemExit; the star-row exemption clears it
+    for w, h in [(1920, 1080), (988, 642), (1500, 1000)]:
+        try:
+            check_cutout_aspect(w, h)
+            assert False, f"expected reject for {w}x{h} (ratio {w/h:.2f})"
+        except SystemExit:
+            pass
+    # --allow-wide bypasses the guard for a legitimately wide object
+    check_cutout_aspect(1920, 1080, allow_wide=True)
+
+
+def test_cutout_aspect_allows_tall_and_near_square():
+    # 2:3 portrait (0.67), 4:3 (1.33), and the approved ship 1.22 all pass untouched
+    for w, h in [(1000, 1500), (1200, 900), (944, 772)]:
+        check_cutout_aspect(w, h)  # no raise
+    assert CUTOUT_WIDE_RATIO == 1.5
+
+
 def main():
-    for fn in [test_harden_pushes_soft_alpha_to_extremes, test_trim_crops_to_content]:
+    for fn in [test_harden_pushes_soft_alpha_to_extremes, test_trim_crops_to_content,
+               test_cutout_aspect_rejects_wide, test_cutout_aspect_allows_tall_and_near_square]:
         fn(); print("ok", fn.__name__)
     print("OK")
 

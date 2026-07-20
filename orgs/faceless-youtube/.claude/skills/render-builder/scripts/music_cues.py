@@ -27,7 +27,7 @@ def _anchor_starts(items, key, word_timings):
 
 
 def resolve_music_cues(cues, dry, word_timings) -> tuple:
-    """(resolved_cues [{mood, at_s, level_db?}], resolved_dry [{at_s, to_s?}]). Unresolved anchors are
+    """(resolved_cues [{mood, at_s, level_db?, track?, fade_out_s?}], resolved_dry [{at_s, to_s?}]). Unresolved anchors are
     dropped (lint catches them earlier). Each list is independently monotonic (matcher is cursor-advancing)."""
     rc = []
     for c, m in zip(cues, _anchor_starts(cues, "from_anchor", word_timings)):
@@ -35,6 +35,10 @@ def resolve_music_cues(cues, dry, word_timings) -> tuple:
             e = {"mood": c.get("mood"), "at_s": round(float(m["start"]), 3)}
             if c.get("level_db") is not None:
                 e["level_db"] = c["level_db"]
+            if c.get("track"):
+                e["track"] = c["track"]   # per-cue PIN: exact bed file, overrides mood-pool index selection
+            if c.get("fade_out_s") is not None:
+                e["fade_out_s"] = c["fade_out_s"]   # per-cue fade-out override (into a card/silence)
             rc.append(e)
     rd = []
     from_m = _anchor_starts(dry, "from_anchor", word_timings)

@@ -3,24 +3,24 @@
   "engine": "gemini-3-pro-image",
   "characters": {
     "base": {
-      "role": "BASE TEMPLATE / rig anchor — not an on-screen character; seeds the cast for form.",
+      "role": "BASE TEMPLATE / rig anchor \u2014 not an on-screen character; seeds the cast for form.",
       "head_tone": "#f5ead6",
       "base": "channels/the-second-take/visual-kit/refs/base/base.png"
     },
     "macgregor": {
-      "role": "Gregor MacGregor — the con-man 'Cazique of Poyais'; recurring lead antagonist.",
+      "role": "Gregor MacGregor \u2014 the con-man 'Cazique of Poyais'; recurring lead antagonist.",
       "head_tone": "#d9ac82",
       "costume": "PINNED canonical outfit: deep crimson hussar coat with gold frogging, gold fringed epaulettes, silver-ribboned gold order-star medal (his self-awarded-decorations identity tag), dark trousers, dark boots; swept dark-brown hair + mutton-chop sideburns. Every appearance renders in this unless the shot deliberately authors a change (e.g. prince regalia over it).",
       "base": "channels/the-second-take/visual-kit/refs/macgregor/macgregor-base.png"
     },
     "bolivar": {
-      "role": "Simón Bolívar — the South-American liberator general; MacGregor's celebrated comrade-in-arms (appears L18).",
+      "role": "Sim\u00f3n Bol\u00edvar \u2014 the South-American liberator general; MacGregor's celebrated comrade-in-arms (appears L18).",
       "head_tone": "#b39a63",
       "costume": "PINNED canonical outfit: dark navy-blue liberator general's military coat with gold epaulettes and gold trim, a single bright red ceremonial sash worn diagonally across the chest, a black liberator's bicorne hat worn corner-forward, dark trousers and boots; short dark curly hair with prominent dark sideburns. Every appearance renders in this unless the shot deliberately authors a change.",
       "base": "channels/the-second-take/visual-kit/refs/bolivar/bolivar.png"
     },
     "mosquito-king": {
-      "role": "The Miskito Coast king who granted MacGregor the Poyais land in 1820 (appears L19–L20).",
+      "role": "The Miskito Coast king who granted MacGregor the Poyais land in 1820 (appears L19\u2013L20).",
       "head_tone": "#8a5a3c",
       "costume": "PINNED canonical outfit: a tall gold crown and a full-length ornate red-and-gold patterned ceremonial robe with British-influenced regalia (gold braiding, epaulettes, a red-and-gold patterned mantle over the shoulders); short dark hair. Every appearance renders in this unless the shot deliberately authors a change.",
       "base": "channels/the-second-take/visual-kit/refs/mosquito-king/mosquito-king.png"
@@ -28,14 +28,20 @@
     "strangeways": {
       "base": "channels/the-second-take/visual-kit/refs/strangeways/strangeways.png",
       "head_tone": "#f5ead6",
-      "role": "Captain Thomas Strangeways — the fictitious 'author' of the Poyais guidebook (invented by MacGregor to sell the con); a bookish naval author-captain. Appears L35/L43/L44.",
+      "role": "Captain Thomas Strangeways \u2014 the fictitious 'author' of the Poyais guidebook (invented by MacGregor to sell the con); a bookish naval author-captain. Appears L35/L43/L44.",
       "costume": "PINNED canonical outfit: plain dark navy double-breasted captain coat with a high collar and two rows of small brass buttons, thin round wire spectacles, short neat dark-brown hair combed down over the sides, dark trousers and boots. Renders in this unless a shot authors a change."
     },
     "hastie": {
       "base": "channels/the-second-take/visual-kit/refs/hastie/hastie.png",
       "head_tone": "#f5ead6",
-      "role": "James Hastie — a weary Scottish sawyer and a leader of the Poyais settler survivors; signs the sworn statement exposing the fraud. Appears L104/L106.",
+      "role": "James Hastie \u2014 a weary Scottish sawyer and a leader of the Poyais settler survivors; signs the sworn statement exposing the fraud. Appears L104/L106.",
       "costume": "PINNED canonical outfit: worn brown working-man coat over a tan waistcoat and dark neckcloth, tousled greying-brown hair, sturdy build, plain trousers and boots. Renders in this unless a shot authors a change."
+    },
+    "hastie-wife": {
+      "base": "channels/the-second-take/visual-kit/refs/hastie-wife/hastie-wife.png",
+      "head_tone": "#f5ead6",
+      "role": "The wife of James Hastie \u2014 a Poyais settler survivor at his side; quiet grief on the grey British quay. Appears L104.",
+      "costume": "PINNED canonical outfit (human-picked cand-1, 2026-07-16): long muted-earth wool dress, dark shawl, apron, worn boots, cream linen mob cap, front-facing neutral. Renders in this unless a shot authors a change."
     }
   },
   "assets": [
@@ -54,6 +60,15 @@
       "kind": "base",
       "tag": "neutral",
       "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "crowd-exemplar",
+      "file": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+      "character": "base",
+      "kind": "crowd-anchor",
+      "tag": "crowd",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png",
+      "note": "Human-gated 2026-07-16 (candidate C). The CROWD-RIG anchor: seeded into EVERY crowd-bearing generation so anonymous background figures inherit the exact squat base proportion + dot-eye simple-mouth face (bible §2d)."
     },
     {
       "name": "expr-deadpan",
@@ -470,6 +485,41 @@
       "kind": "identity",
       "tag": "base",
       "seed_frame": "channels/the-second-take/visual-kit/refs/mosquito-king/mosquito-king.png"
+    },
+    {
+      "name": "env-exterior-vivid",
+      "file": "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png",
+      "character": null,
+      "kind": "environment",
+      "tag": "exterior-vivid"
+    },
+    {
+      "name": "env-exterior-muted",
+      "file": "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png",
+      "character": null,
+      "kind": "environment",
+      "tag": "exterior-muted"
+    },
+    {
+      "name": "env-map-parchment",
+      "file": "channels/the-second-take/visual-kit/refs/env/env-map-parchment.png",
+      "character": null,
+      "kind": "environment",
+      "tag": "map-parchment"
+    },
+    {
+      "name": "lettering-marker-italic",
+      "file": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+      "character": null,
+      "kind": "environment",
+      "tag": "lettering"
+    },
+    {
+      "name": "stamp-block-outlined",
+      "file": "channels/the-second-take/visual-kit/refs/env/stamp-block-outlined.png",
+      "character": null,
+      "kind": "environment",
+      "tag": "stamp"
     }
   ]
 }

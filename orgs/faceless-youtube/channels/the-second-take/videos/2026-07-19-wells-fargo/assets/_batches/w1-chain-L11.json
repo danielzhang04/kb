@@ -1,0 +1,41 @@
+[
+ {
+  "name": "wf-L12",
+  "shot_id": "L12",
+  "mode": "environment",
+  "delta": "The SAME cutaway house held from the prior frame, now with a credit-card icon added on a small marker card labelled 'CARD' beside the checking passbook. Everything else held. Warm cream-and-teal palette. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'CARD', no logos; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L11.png"
+  ],
+  "_cast": [],
+  "_text": true,
+  "_crowd": false
+ },
+ {
+  "name": "wf-L13",
+  "shot_id": "L13",
+  "mode": "environment",
+  "delta": "The SAME cutaway house held, now with a coin savings-jar added on a small marker card labelled 'SAVINGS' beside the others. Everything else held. Warm cream-and-teal palette. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'SAVINGS', no logos; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L12.png"
+  ],
+  "_cast": [],
+  "_text": true,
+  "_crowd": false
+ },
+ {
+  "name": "wf-L14",
+  "shot_id": "L14",
+  "mode": "environment",
+  "delta": "The SAME cutaway house held, now with a small login-screen icon added on a marker card labelled 'ONLINE' \u2014 the house is getting crowded with products around the one customer. Everything else held. Warm cream-and-teal palette. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'ONLINE', no logos; 16:9.",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L13.png"
+  ],
+  "_cast": [],
+  "_text": true,
+  "_crowd": false
+ }
+]

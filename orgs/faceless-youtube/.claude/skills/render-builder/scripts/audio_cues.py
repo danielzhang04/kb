@@ -19,17 +19,49 @@ def load_cues(video_dir) -> list:
     return data.get("cues") or []
 
 
+def _needle(anchor: str) -> tuple:
+    """The matcher's key for an anchor: its first 4 normalized words (same as match_shots_to_tokens)."""
+    return tuple([x for x in (_NORM(w) for w in (anchor or "").split()) if x][:4])
+
+
 def resolve_cues(cues, word_timings) -> list:
-    """Each cue + `at_s` (ORIGINAL timeline). Cursor-advancing (repeated anchors hit successive words);
-    an unresolved anchor is dropped. Cues stay in authored (narration) order."""
+    """Each RESOLVED cue + `at_s` (ORIGINAL timeline). Cursor-advancing so repeated DISTINCT anchors hit
+    successive words; BUT a run of CONSECUTIVE cues sharing the IDENTICAL anchor phrase all resolve to the
+    SAME beat — a `pause` and its punctuating `sfx` authored as two cues on one anchor (either order) both
+    land there, instead of the second hunting a next occurrence that doesn't exist and vanishing (the
+    same-anchor drop bug: sting/record_scratch lost on the Poyais render). The cursor does not advance past
+    a just-matched anchor until every sibling on that anchor has matched it. Cues stay in authored order.
+
+    NO SILENT DROPS: a cue whose anchor fails to resolve is NOT quietly removed — it emits a LOUD warning
+    (stderr) naming its anchor + role/pause, and is reported in the returned count via `len(cues)` vs the
+    result. It is excluded from the returned list only so the downstream pause/role realizers stay clean."""
     toks = [(_NORM(w), float(t)) for w, t in (word_timings or [])]
     toks = [(w, t) for w, t in toks if w]
-    pseudo = [{"id": f"cue{i}", "vo_ref": c.get("anchor", "")} for i, c in enumerate(cues)]
-    matched = match_shots_to_tokens(pseudo, toks)
-    out = []
-    for c, m in zip(cues, matched):
-        if m["start"] is not None:
-            out.append({**c, "at_s": round(float(m["start"]), 3)})
+    # Group CONSECUTIVE cues that share a non-empty identical anchor needle → one match, fanned to all.
+    groups = []   # (needle, [cue indices])
+    for i, c in enumerate(cues):
+        key = _needle(c.get("anchor", ""))
+        if groups and key and groups[-1][0] == key:
+            groups[-1][1].append(i)
+        else:
+            groups.append((key, [i]))
+    pseudo = [{"id": f"grp{g}", "vo_ref": cues[idxs[0]].get("anchor", "")}
+              for g, (key, idxs) in enumerate(groups)]
+    matched = match_shots_to_tokens(pseudo, toks)   # ONE shared vo_ref matcher (G1); cursor still monotonic
+    out, unresolved = [], []
+    for (key, idxs), m in zip(groups, matched):
+        for i in idxs:
+            c = cues[i]
+            if m["start"] is not None:
+                out.append({**c, "at_s": round(float(m["start"]), 3)})
+            else:
+                unresolved.append(c)
+    for c in unresolved:
+        kind = "pause" if c.get("pause_s") else "sfx"
+        role = c.get("role") or f"pause_s={c.get('pause_s')}"
+        sys.stderr.write(
+            f"  ! WARNING: audio cue DROPPED — {kind} '{role}' anchor "
+            f"{c.get('anchor')!r} did not resolve to any VO word (check the verbatim phrase).\n")
     return out
 
 
@@ -56,7 +88,13 @@ def cue_role_events(resolved, gaps) -> list:
         e = {"at_s": round(at, 3), "role": c["role"]}
         if c.get("gain_db") is not None:
             e["gain_db"] = c["gain_db"]
+        if c.get("fade_out_s") is not None:
+            e["fade_out_s"] = c["fade_out_s"]   # SFX tail fade-out envelope (P16); forwarded to the event
+        if c.get("variant"):
+            e["variant"] = c["variant"]   # per-cue PIN: exact file, overrides pool rotation + consistent_sfx
         if c.get("sync"):
             e["sync"] = c["sync"]   # element-sync: build_audio.snap_element_sfx snaps it to the cut/overlay
+        if c.get("anchor"):
+            e["anchor"] = c["anchor"]   # carried only for the SFX-tail overshoot WARN label; stripped before render
         out.append(e)
     return out

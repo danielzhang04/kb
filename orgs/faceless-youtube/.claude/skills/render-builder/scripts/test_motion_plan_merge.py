@@ -1,7 +1,7 @@
 """build_motion.apply_motion_plan merges cutout layers by id (plain-assert)."""
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
-from build_motion import apply_motion_plan
+from build_motion import apply_motion_plan, apply_cards
 
 
 def test_merges_cutout_layers_and_leaves_others():
@@ -18,61 +18,6 @@ def test_merges_cutout_layers_and_leaves_others():
     assert "layers" not in l99 and "plate" not in l99, l99
 
 
-def test_routes_engine_counter_to_overlay():
-    shots = [{"id": "L14", "start_s": 88.2, "duration_s": 4.0, "overlays": []}]
-    plan = {"shots": [{"id": "L14", "background": {"mode": "plate", "plate_prompt": "desk"},
-            "layers": [{"id": "raised", "source": "engine", "kind": "counter",
-                        "content": {"from": 0, "to": 8000000, "suffix": " acres", "duration_s": 1.6}}]}]}
-    out = apply_motion_plan(shots, plan)
-    ov = out[0]["overlays"]
-    assert len(ov) == 1 and ov[0]["type"] == "counter", ov
-    assert ov[0]["to"] == 8000000 and ov[0]["suffix"] == " acres"
-    assert ov[0]["at_s"] == 88.2, ov
-    assert "layers" not in out[0] and "plate" not in out[0], out[0]  # no cutouts -> no plate
-
-
-def test_reveal_items_stagger_across_shot():
-    shots = [{"id": "L20", "start_s": 10.0, "duration_s": 6.0, "overlays": []}]
-    plan = {"shots": [{"id": "L20", "background": {"mode": "plate", "plate_prompt": "poster"},
-            "layers": [{"id": "amenities", "source": "engine", "kind": "reveal",
-                        "content": {"items": [{"text": "Opera house"}, {"text": "National bank"},
-                                              {"text": "Boulevards"}], "mark": "x"}}]}]}
-    out = apply_motion_plan(shots, plan)
-    ov = out[0]["overlays"][0]
-    assert ov["type"] == "progressive-reveal" and ov["mark"] == "x", ov
-    ats = [it["at_s"] for it in ov["items"]]
-    assert ats == [10.0, 12.0, 14.0], ats  # 3 items across 6s from t=10
-
-
-def test_diegetic_text_layer_is_skipped():
-    shots = [{"id": "L03", "start_s": 5.0, "duration_s": 3.0, "overlays": []}]
-    plan = {"shots": [{"id": "L03", "background": {"mode": "plate", "plate_prompt": "map"},
-            "layers": [{"id": "acres", "source": "engine", "kind": "text",
-                        "content": {"text": "8M acres"}, "at_scene": {"x": 0.4, "y": 0.5}}]}]}
-    out = apply_motion_plan(shots, plan)
-    assert out[0]["overlays"] == [], out[0]  # deferred: skipped, no crash
-
-
-def test_device_card_pins_to_anchor():
-    wt = [["By", 185.0], ["early", 185.4], ["five", 186.7], ["hundred", 187.0],
-          ["people", 187.3], ["had", 187.6]]
-    plan = {"shots": [{"id": "L52", "background": {"mode": "plate", "plate_prompt": "office"},
-            "layers": [{"id": "signed", "source": "engine", "kind": "counter",
-                        "anchor": "five hundred people had",
-                        "content": {"from": 0, "to": 500, "suffix": " signed up"}}]}]}
-    # anchored: at_s = the spoken word (186.7), NOT the shot cut (184.6)
-    out = apply_motion_plan([{"id": "L52", "start_s": 184.6, "duration_s": 5.0, "overlays": []}],
-                            plan, word_timings=wt)
-    assert out[0]["overlays"][0]["at_s"] == 186.7, out[0]["overlays"][0]
-    # no anchor -> falls back to the shot start (backward compatible)
-    plan2 = {"shots": [{"id": "L52", "background": {"mode": "plate", "plate_prompt": "office"},
-             "layers": [{"id": "s", "source": "engine", "kind": "stat-card",
-                         "content": {"text": "£200,000"}}]}]}
-    out2 = apply_motion_plan([{"id": "L52", "start_s": 184.6, "duration_s": 5.0, "overlays": []}],
-                             plan2, word_timings=wt)
-    assert out2[0]["overlays"][0]["at_s"] == 184.6, out2[0]["overlays"][0]
-
-
 def test_hybrid_overlay_reuses_prior_scene_as_plate():
     # a delta-chain delta carrying a discrete-overlay cutout (a FICTION stamp): the plate REUSES the prior
     # in-stage scene (background.plate = scenes/L06.png), NOT a generated plates/L07.png.
@@ -84,6 +29,19 @@ def test_hybrid_overlay_reuses_prior_scene_as_plate():
     assert out[0]["plate"] == "scenes/L06.png", out[0]            # prior scene reused, not plates/L07.png
     assert out[0]["layers"][0]["src"] == "cutouts/L07-stamp.png", out[0]
     assert out[0]["layers"][0]["animation"]["type"] == "appear"
+
+
+def test_reuse_layer_composites_the_reused_cutout_not_the_derived_path():
+    # A `reuse` layer holds an already-materialized cutout (one shared MacGregor across the map stage):
+    # its src is the reuse path, NOT cutouts/<sid>-<layer>.png.
+    shots = [{"id": "L16"}]
+    plan = {"shots": [{"id": "L16", "background": {"mode": "delta-chain", "plate": "plates/L15.png"},
+             "layers": [{"id": "macgregor", "source": "cutout", "reuse": "cutouts/L17-macgregor.png",
+                         "animation": {"type": "path", "points": [[0.83, 0.3], [0.5, 0.22], [0.15, 0.6]],
+                                       "dur_s": 2.6, "draw_line": True, "static": True}}]}]}
+    out = apply_motion_plan(shots, plan)
+    assert out[0]["layers"][0]["src"] == "cutouts/L17-macgregor.png", out[0]     # reused, not cutouts/L16-macgregor.png
+    assert out[0]["layers"][0]["animation"]["static"] is True, out[0]
 
 
 def test_cutout_anchor_resolves_to_shot_relative_start():
@@ -108,13 +66,88 @@ def test_cutout_without_anchor_has_no_start_s():
     assert "start_s" not in out[0]["layers"][0]["animation"], out[0]["layers"][0]
 
 
+def test_p01_plate_only_keeps_own_scene_image():
+    # P01 regression: a layerless delta shot with an OWN baked scene (image already resolved) must
+    # DISPLAY its own frame — background.plate is a seed pointer, not a display override. (assets_dir
+    # None → skip the disk-existence check.)
+    shots = [{"id": "L07", "image": "scenes/L07.png", "placeholder": None}]
+    plan = {"shots": [{"id": "L07", "background": {"mode": "delta-chain", "plate": "scenes/L06.png"},
+                       "layers": []}]}
+    apply_motion_plan(shots, plan)
+    assert shots[0]["image"] == "scenes/L07.png", shots[0]   # own frame kept, NOT the prior plate
+
+
+def test_p01_plate_only_held_reuse_falls_back_to_plate():
+    # The genuine held-reuse (no own scene → image None) still correctly falls back to the held plate.
+    shots = [{"id": "L79", "image": None, "placeholder": {"kind": "x", "label": "y"}}]
+    plan = {"shots": [{"id": "L79", "background": {"mode": "plate", "plate": "scenes/L76.png"},
+                       "layers": []}]}
+    apply_motion_plan(shots, plan)
+    assert shots[0]["image"] == "scenes/L76.png", shots[0]
+    assert shots[0].get("placeholder") is None, shots[0]
+
+
+def test_cards_align_to_pause_gap_and_post_vo_hold():
+    # P03 (opaque cards): an in-video card fills exactly its co-located spliced pause SILENCE
+    # ([render_anchor - gap_dur, render_anchor]); the end card runs to the post_vo_hold-extended shot.
+    from breath import shift_timings
+    orig = [["home.", 9.0], ["So", 10.0], ["what", 10.3], ["happened", 10.6],
+            ["Thanks", 40.0], ["for", 40.3], ["watching", 40.6]]
+    gaps = [{"at_s": 10.0, "dur_s": 2.5, "source": "cue"}]   # ~2s pause + 0.5s sentence, merged
+    shifted = shift_timings(orig, gaps)                       # "So" 10.0 -> 12.5, etc.
+    shots = [{"id": "L12", "start_s": 8.0, "duration_s": 6.0, "overlays": []},
+             {"id": "L125", "start_s": 38.0, "duration_s": 5.0, "overlays": []}]
+    plan = {"post_vo_hold_s": 4.0,
+            "cards": [{"text": "How to Invent a Country", "anchor": "So what happened", "hold_s": 2.0, "fade_s": 0.15},
+                      {"text": "Thanks for Watching", "anchor": "Thanks for watching", "end_card": True, "fade_s": 0.2}]}
+    apply_cards(shots, plan, shifted, gaps=gaps, orig_word_timings=orig)
+    # in-video card window = the silence [10.0, 12.5]; ends exactly on the anchor word (12.5)
+    c1 = shots[0]["overlays"][0]
+    assert c1 == {"type": "chapter-card", "text": "How to Invent a Country", "fade_s": 0.15,
+                  "at_s": 10.0, "dur_s": 2.5}, c1
+    # end card: no dur_s (runs to extended shot end), on the last shot
+    ec = shots[1]["overlays"][0]
+    assert ec["type"] == "chapter-card" and ec["text"] == "Thanks for Watching" and "dur_s" not in ec, ec
+    # post_vo_hold_s extended the last shot 5.0 -> 9.0
+    assert shots[1]["duration_s"] == 9.0, shots[1]
+
+
+def test_card_without_pause_gap_falls_back_ending_on_anchor():
+    # No co-located pause → fixed hold ending on the anchor word (warns loudly; opaque card covers the
+    # prior sentence tail — the least-bad fallback).
+    orig = [["So", 10.0], ["what", 10.3], ["happened", 10.6]]
+    shots = [{"id": "L12", "start_s": 5.0, "duration_s": 10.0, "overlays": []}]
+    plan = {"cards": [{"text": "X", "anchor": "So what happened", "hold_s": 2.0, "fade_s": 0.15}]}
+    apply_cards(shots, plan, orig, gaps=[], orig_word_timings=orig)
+    c = shots[0]["overlays"][0]
+    assert c["at_s"] == 8.0 and c["dur_s"] == 2.0, c   # 10.0 anchor - 2.0 hold
+
+
+def test_cards_skipped_on_short():
+    shots = [{"id": "L13", "start_s": 0.0, "duration_s": 6.0, "overlays": []}]
+    plan = {"post_vo_hold_s": 4.0, "cards": [{"text": "x", "anchor": "whatever", "hold_s": 2.0}]}
+    apply_cards(shots, plan, [["whatever", 1.0]], gaps=[], orig_word_timings=[["whatever", 1.0]], is_short=True)
+    assert shots[0]["overlays"] == [] and shots[0]["duration_s"] == 6.0, shots[0]
+
+
+def test_end_card_unresolved_anchor_falls_back_to_last_shot():
+    shots = [{"id": "L125", "start_s": 38.0, "duration_s": 5.0, "overlays": []}]
+    plan = {"cards": [{"text": "Thanks for Watching", "anchor": "not in the vo", "end_card": True}]}
+    apply_cards(shots, plan, [["something", 1.0]], gaps=[], orig_word_timings=[["something", 1.0]])
+    ec = shots[0]["overlays"][0]
+    assert ec["text"] == "Thanks for Watching" and ec["at_s"] == 38.0, shots[0]
+
+
 if __name__ == "__main__":
     test_merges_cutout_layers_and_leaves_others()
-    test_routes_engine_counter_to_overlay()
-    test_reveal_items_stagger_across_shot()
-    test_diegetic_text_layer_is_skipped()
-    test_device_card_pins_to_anchor()
     test_hybrid_overlay_reuses_prior_scene_as_plate()
+    test_reuse_layer_composites_the_reused_cutout_not_the_derived_path()
     test_cutout_anchor_resolves_to_shot_relative_start()
     test_cutout_without_anchor_has_no_start_s()
+    test_p01_plate_only_keeps_own_scene_image()
+    test_p01_plate_only_held_reuse_falls_back_to_plate()
+    test_cards_align_to_pause_gap_and_post_vo_hold()
+    test_card_without_pause_gap_falls_back_ending_on_anchor()
+    test_cards_skipped_on_short()
+    test_end_card_unresolved_anchor_falls_back_to_last_shot()
     print("OK")

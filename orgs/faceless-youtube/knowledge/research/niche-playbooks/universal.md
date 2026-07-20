@@ -1392,11 +1392,14 @@ The single biggest pacing fix. A shot is **not** a still image parked on screen 
 - **(b) ONE meaningful transform that IS the beat** — spend the motion budget on the single move that
   carries the payload: a coin shrinks (debasement), a scale tips (over-printing), a chart draws itself, a
   ship sails toward frame, a plug pulls out, a crowd multiplies. Everything else stays near-still.
-- **(c) Pop-in / type-on synced to the narrated word** — captions, list items, badges, icon callouts
-  *appear* on the word. **For enumerations/lists, elements appear one at a time ON the word.** Canonical
-  example: *"no church, no paved roads, no rivers of gold"* → hold **ONE** image and drop an X /
-  strike-through / bomb on each promised thing *as it is named*. This is **one shot with internal
-  choreography** — not three cuts, and not a static hold.
+- **(c) Element reveal synced to the narrated word** — the payload element *appears* on the word it is
+  named. **For enumerations/lists, elements appear one at a time ON the word.** The renderable mechanisms
+  are: a **stage delta-chain** (the next seeded frame adds the element in-scene), a **seeded cutout layer**
+  (appear / slide / path, anchored to the word by the motion engine), and **baked diegetic text** (a
+  number/label already painted into the generated image) — NOT type-on, burned captions, or card overlays
+  (retired with the engine text layer). Canonical example: *"no church, no paved roads, no rivers of gold"*
+  → hold **ONE** set and add a red X / strike on each promised thing *as it is named* (a delta frame, or a
+  cutout per item). This is **one shot with internal choreography** — not three cuts, and not a static hold.
 - **(d) Hold, then hard-cut on the payload word** — hold a neutral/composed pose ~0.6–0.8s, then snap
   (1–2 frames, no easing) to the reaction/reveal on the exact punch word. Never ease into a punchline.
 
@@ -1412,24 +1415,38 @@ landmark as a cheap substitute for animation.
   dialogue/mechanism beats/emotional turns. Place a deliberate **breath-beat** (a longer, quieter,
   atmospheric shot) at emotional turns.
 - **HARD RULE: a shot may exceed ~8s ONLY if it carries a progressive within-shot reveal** (a
-  type-on enumeration, a drawing chart, a multiplying crowd). Otherwise, **cut.**
+  delta-chain enumeration, an accreting chart/build, a multiplying crowd). Otherwise, **cut.**
 - **Failure mode to avoid — stretch-to-fill:** an under-produced shot list gets re-timed to the VO and
   each shot stretched to fill the gap, leaving one visual on screen for a dead 15–25s. The fix is
   authored here: produce enough shots (roughly `runtime ÷ 8s` minimum) and give any long shot a
   progressive reveal so it earns its length.
-- **Black title/chapter cards** every ~30–90s serve as breath + reset + payload-first callouts — the
-  cheapest retention/rhythm tool.
+- **Structural breaths** every ~30–90s serve as breath + reset — a hard cut to a new stage, a palette
+  turn, or a VO gap with a music dip. (The reference channels do this with black title/chapter cards;
+  this pipeline authors **no cards** — dropped 2026-07-15 with all engine text.)
 
 **Held stages + the continuity hierarchy (executor-agnostic).** Continuity between shots comes from
 three tools, cheapest first: **(1) move a layer** (a motion engine composites element cutouts — zero
 drift), **(2) a seeded delta-chain** (a held STAGE: a `base` frame + **≤3 `delta` frames**, each
 adding/moving ONE element on the SAME set — the still-era realization of §13a-i's progressive reveal),
 and **(3) a hard cut** to a new stage. **No fades, ever** — a flat-vector cartoon dissolving reads as
-photo-documentary B-roll; continuity is the held stage, never a blend. A stage's shots carry only the
-*intent* (which set they share, and what changed), never the generation mechanism — the executor
-(the seeded delta-chain, OR — since 2026-07-12 — the LIVE layer-move compositor: a `plate` + animated
-cutout `layers`, planned by `motion-planner`, rendered by the engine `LayerView`) realizes it. Delta frames run fast (1.5–3s); base/hold frames
-4–12s; each frame stays one timing unit with its own `vo_ref`.
+photo-documentary B-roll; continuity is the held stage, never a blend.
+
+**The layer-vs-delta boundary (which tool for which addition).** A **LAYER** is a *discrete,
+non-integrated* addition on a **persistent plate** — a seeded cutout the compositor slides / paths / pops
+over an unchanged background (the character, the ship, the stamp). A **DELTA-CHAIN** is *integrative
+growth of one scene's own architecture* — the element belongs inside the painted world, so the next frame
+is **regenerated seeded off the prior frame** (a city rising in the guidebook, red spreading across a
+map). **Re-base rule:** a re-base inside the SAME location must seed the prior stage's **BASE** frame, not
+restart clean — the ≤3-delta cap otherwise throws the held set away and invents a second, different world.
+Law: **a layer must be discrete AND seedable** — seeded from its character/prop canonical, or (for a
+discrete invented element like a stamp) from the plate it lands on plus a style anchor; an unseeded
+cutout invents its own register. What is *integrative* is never a layer regardless of seedability —
+delta-chain it.
+
+A stage's shots carry only the *intent* (which set they share, and what changed), never the generation
+mechanism — the executor (the seeded delta-chain, OR the LIVE layer-move compositor: a `plate` + animated
+cutout `layers`, planned by `motion-planner`, rendered by the engine `LayerView`) realizes it. Delta
+frames run fast (1.5–3s); base/hold frames 4–12s; each frame stays one timing unit with its own `vo_ref`.
 
 #### 13a-iii. Motion direction — the MEASURED grammar (the motion-layer sibling of §13a-i)
 
@@ -1444,7 +1461,7 @@ the channel's `visual-kit/research/motion-logs/`. Learn the mechanic, never clon
 
 1. **Camera law — locked by default, one motivated crawl when it moves.** Explainer mode: ~10–15%
    of holds carry any camera motion; story mode: ~20% overt + a micro-drift floor (0.3–1.5%/s,
-   pixel-diff-visible only) on pictorial holds. **Text/diagram/chapter cards are DEAD STATIC,
+   pixel-diff-visible only) on pictorial holds. **Text/diagram frames are DEAD STATIC,
    always.** A camera move is ONE slow single-direction crawl spanning the whole hold (push-in
    1–3%/s typical, reveal-by-widening ~3%/s, tracking ≤8%/s) — motivated by intro/vista/gravity.
    The fast register (whip-pan/whip-zoom, one blur frame) exists ONLY inside list montages and
@@ -1462,11 +1479,10 @@ the channel's `visual-kit/research/motion-logs/`. Learn the mechanic, never clon
 4. **Transition law:** hard cut ≈ 99–100% of scene seams (zero scene crossfades across 50+ minutes
    of Crayon). The exceptions are RESERVED-MEANING devices, ≤2 per video: fade-through-black =
    death/era-jump (paired with a music drop + palette shift), white-flash = flashback, iris/wipe =
-   once, at an act seam or montage list (wipes land on list items). Two black-card families:
-   **chapter card** (title pre-set or arrives whole, holds 1.5–3.5s in a VO gap, LF boom/drone or
-   music drop; may fade-up out ~0.5s) and **write-on pivot card** (the VO's exact sentence types on
-   at speech pace, hard cut out ON the next scene's first word — doubles as transition + attention
-   reset). Era-jump cuts land in VO pauses with NO hit; gag/seam cuts take the sting.
+   once, at an act seam or montage list (wipes land on list items). The reference grammar's two
+   black-card families (the chapter card; the write-on pivot card) are **NOT used by this pipeline** —
+   no cards, no engine text (dropped 2026-07-15). Era-jump cuts land in VO pauses with NO hit;
+   gag/seam cuts take the sting.
 5. **Number-selling recipe (emphasis grammar):** the number is NEVER floating overlay text — it is
    made in-world (painted, typed into a ledger, on a tossed newspaper, on a prop). The full
    sequence: mix dips (~0.5–2s, to ≈−40dB) → riser → the carrier prop arrives (~0.75s, ease-out/
@@ -1496,7 +1512,7 @@ the channel's `visual-kit/research/motion-logs/`. Learn the mechanic, never clon
      are wanted; the full-stop is the same device as our number-reveal dip, and should be **extended so SFX
      drop in that gap too**, not just the bed.
    - **Silence is a scalpel (measured).** Ordinary music dips ~**19 dB** (16–26) on gravity/reveal; the
-     deliberate full-silence drop (to −40 dB) is reserved for the number/reveal + chapter card.
+     deliberate full-silence drop (to −40 dB) is reserved for the number/reveal.
    - **Breath is SELECTIVE.** A sustained/dramatic hit earns its own VO silence ~**0.55s** (0.3–0.8) — but
      only ~**20%** of events get one; most ride under continuous VO. → breathe on specific beats only (a
      number reveal, a chapter boundary), never on every event.
@@ -1505,8 +1521,10 @@ the channel's `visual-kit/research/motion-logs/`. Learn the mechanic, never clon
      hits (the number-reveal punch, an aside→sting) land where the content warrants. In OUR stack ALL of
      these are **authored** by the `audio-director` and placed selectively — a whoosh/boom is NOT fired on
      *every* instance (the director's `grammar-guidance.md` sets the restraint: whoosh is rare, pop is
-     additive-only). Per-element pop/pluck/riser stay overlay-driven (dormant until device-cards ship).
-     Camera crawls + idle loops stay silent; a boom under a frozen frame is the one audio-only emphasis.
+     additive-only). Element SFX anchor to **cutout appearances** (`sync:"element"`, LIVE — the pop lands on
+     the frame the cutout enters); the device-card pop/pluck/riser roles are **retired with the device
+     cards** (they never shipped). Camera crawls + idle loops stay silent; a boom under a frozen frame is
+     the one audio-only emphasis.
      Density (directional — SFX+music not separable in the residual) ~**20–40 transients/min** combined →
      SFX-only is lower; the story cap ~20/min holds.
    - **Dips land on ~⅓ of punchlines** (~36%, directional) — dip the music on SOME emphasis beats, never all
@@ -1517,16 +1535,21 @@ the channel's `visual-kit/research/motion-logs/`. Learn the mechanic, never clon
 9. **Typography law:** ONE handwritten/marker family carries everything (cards, bubbles, labels);
    sentence case for spoken lines, ALL-CAPS for labels/warnings; **red is the only emphasis ink**
    (semantic: alarm/prohibition/ownership); numbers/dates live on diegetic surfaces (§13 rule 4).
-   **No burned word-captions exist anywhere in the studied 16:9 grade** — on-screen text is always
-   diegetic or a deliberate card. One contrast face per video max, as a device.
-10. **Executor reconciliation (how OUR stack realizes each rule):** camera law + cadence + cards →
-    the motion engine (tokens + derivation); live held-set evolution → TODAY approximated by the
-    seeded delta-chain (§13a-ii: one element per delta, landing on its noun) and by engine-drawn
-    `progressive-reveal`/device overlays (true live adds, use them whenever the added element can be
-    code-drawn); FULL live layer-adds on painted sets → the LIVE layer-move compositor (built 2026-07-12: `plate` + animated cutout `layers` — slide/path/bob/appear — planned by `motion-planner`, rendered by the engine `LayerView`; this
-    teardown is its evidence base); limb animation / fluid morphs / Kurzgesagt's continuous-travel
-    camera → observed, NOT adoptable. A grammar row with no executor in the current stack is
-    authored as intent and realized at the cut (never faked with an off-grammar mechanism).
+   **No burned word-captions exist anywhere in the studied 16:9 grade.** In OUR stack on-screen text is
+   **diegetic only — baked into the generated image** (a number typed into a ledger, a label painted on a
+   prop); the deliberate-card path is retired along with all engine-drawn text. One contrast face per video
+   max, as a device.
+10. **Executor reconciliation (how OUR stack realizes each rule) — THREE executors, nothing else:**
+    **(1) the layer-move compositor** (a `plate` + animated cutout `layers` — slide/path/bob/appear —
+    planned by `motion-planner`, rendered by the engine `LayerView`; this teardown is its evidence base;
+    the engine's **only** drawn element is the route line — `draw_line` on a cutout path); **(2) the
+    seeded delta-chain** (§13a-ii: one element per delta, landing on its noun, regenerated in-scene);
+    **(3) the hard cut** to a new stage. Camera law + cadence are the engine's locked defaults.
+    **Engine-drawn device cards and `progressive-reveal`/type-on/chapter-card overlays are RETIRED** —
+    their Remotion components are parked dormant; in-video text is baked diegetic (§13a-iii.9). Limb
+    animation / fluid morphs / Kurzgesagt's continuous-travel camera → observed, NOT adoptable. A grammar
+    row with no executor in the current stack is authored as intent and realized at the cut (never faked
+    with an off-grammar mechanism).
     **Music (Phase 3B):** the measured "placed bed, ~2–3 dB present duck" is realized as a **placed
     music lane** (`build_music_lane` → engine `MusicLane`): per-section mood tracks (authored by the
     `audio-director`) at a **CONSTANT present level** (`music_present_db`, ear-gated to 7), silent on

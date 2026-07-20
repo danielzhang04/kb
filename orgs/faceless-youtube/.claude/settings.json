@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "py -3 .claude/hooks/block_git_add_all.py"
+            "command": "py -3 \"${CLAUDE_PROJECT_DIR}/.claude/hooks/block_git_add_all.py\""
           }
         ]
       }
@@ -29,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "py -3 .claude/hooks/inject_law_on_compact.py"
+            "command": "py -3 \"${CLAUDE_PROJECT_DIR}/.claude/hooks/inject_law_on_compact.py\""
           }
         ]
       }

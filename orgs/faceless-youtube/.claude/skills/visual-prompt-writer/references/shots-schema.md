@@ -25,7 +25,6 @@ exactly so `render-builder` maps onto its render call with **no interpretation**
   "generated": "YYYY-MM-DD",
   "status": "shots-drafted",
   "shot_counts": { "_note": "informational only; not consumed downstream", "long_form_shots": 0, "thumbnail_prompts": 0, "shorts": 0, "shorts_shots": 0, "total_prompts": 0 },
-  "render_pattern": "A",
   "timing_status": "estimated-from-script — re-time after render",
 
   "house_style": {
@@ -59,10 +58,8 @@ exactly so `render-builder` maps onto its render call with **no interpretation**
         ],
         "props": ["<recurring-prop name, e.g. guidebook — parallel to cast; OMIT if none recur>"],
         "source": "hybrid",
-        "still_prompt": "full image-gen prompt: subject, composition/framing + scale, lighting, palette + the shot's load-bearing scene FACTS (layout, who faces whom, what a gesture/highlight targets, each character's expression — see SKILL Step 2.5)",
+        "still_prompt": "full image-gen prompt: subject, composition/framing + scale, lighting, palette + the shot's load-bearing scene FACTS (layout, who faces whom, what a gesture/highlight targets, each character's expression — see SKILL Step 2.5). Any in-video text is DIEGETIC + baked here — quote it VERBATIM, keep SHORT (1–4 words)",
         "stock_query": "search terms — only when source is stock|hybrid|archival, else omit",
-        "on_screen_text": "",
-        "transition_in": "hard cut",
         "synthetic": false,
         "notes": "policy/accuracy flags (analysis-not-gore, YMYL, borderline)"
       }
@@ -100,8 +97,7 @@ exactly so `render-builder` maps onto its render call with **no interpretation**
       "aspect_ratio": "9:16",
       "first_frame": {
         "source": "ai-gen",
-        "still_prompt": "a pattern-interrupt tableau already carrying the beat's tension (a held pose, not a freeze of motion)",
-        "on_screen_text": "3–7 word caption hook",
+        "still_prompt": "a pattern-interrupt tableau already carrying the beat's tension (a held pose, not a freeze of motion); any on-frame caption (3–7 words) is DIEGETIC + baked into the image — quote it verbatim",
         "synthetic": false
       },
       "shots": [
@@ -113,7 +109,6 @@ exactly so `render-builder` maps onto its render call with **no interpretation**
           "shot_class": "ironic-counterpoint",
           "source": "ai-gen",
           "still_prompt": "…",
-          "on_screen_text": "",
           "notes": ""
         }
       ]
@@ -126,26 +121,36 @@ Notes:
 - `thumbnail.challengers` is exactly 2 for long-form (mirrors metadata's 2 challengers). Shorts have no
   thumbnail block — their `first_frame` **is** the thumbnail (§8/§11).
 - `stock_query` present only when `source` ∈ {stock, hybrid, archival}; omit otherwise.
-- **Deleted fields — do not author.** `ken_burns`, `within_shot_motion`, `motion_prompt`, `asset_type`,
-  and the beat-type treatment enum are retired. Old files carrying them still parse (consumers ignore unknown keys). The
-  Remotion engine is the only render path; the camera is **always locked**, every shot hard-cuts, and
-  audio is authored separately by the `audio-director` skill (VPW authors no audio/treatment field).
+- **Deleted fields — do not author.** `on_screen_text`, `render_pattern`, `transition_in`, `ken_burns`,
+  `within_shot_motion`, `motion_prompt`, `asset_type`, the beat-type treatment enum, and (on the
+  `motion.json` side) `transform_note` / sprite-walk / `at_scene` are all retired. Old files carrying any
+  of them still parse (consumers ignore unknown keys). The Remotion engine is the only render path; the
+  camera is **always locked**, every shot hard-cuts (no transition field), **all in-video text is diegetic
+  and baked into the generated image** (no engine text overlay, no device kit), and audio is authored
+  separately by the `audio-director` skill (VPW authors no audio/treatment field).
 - **`stage` / `stage_role` / `changed_elements` — held evolving stages (INTENT ONLY).** Consecutive shots
   that share a `stage` id sit on ONE persistent set: the `base` frame establishes it; each `delta` frame
   adds/moves ONE element, named in `changed_elements` as a **world-change** (`"+ cathedral rises"`,
-  `"- ship"`, `"MacGregor slumps"`). This is the still-era realization of §13a-i's progressive reveal, and
-  it is the ONLY continuity device besides the hard cut. **Author intent, never mechanism:** do NOT encode
-  HOW a delta is produced (no "seed off the previous frame", no `chain_from`, no generation params) — the
-  chain is derivable from the shared `stage` + shot order, and the *same* metadata will later drive a
-  Remotion layer-move executor unchanged. `image-generation` owns the mechanism (its "seeded delta-chain"
-  technique). Cap a chain at **≤3 delta frames**, then a new `base` or a hard cut to a new `stage`. Each
-  frame — delta included — is still **one shot with its own verbatim `vo_ref`** (the word its change lands
-  on). **Timing:** delta frames run fast (1.5–3s); `base`/hold frames 4–12s.
-- **Transitions are HARD CUTS only — fades / cross-dissolves / fade-to-black are BANNED.** Always set
-  `transition_in: "hard cut"`. This is a flat-vector cartoon channel; blended transitions read as
-  photo-documentary B-roll (not our idiom). The field is a vestigial authoring annotation only —
-  `render-builder` emits **no** scene transition regardless of its value, so nothing you write here can
-  produce a fade. Visual continuity comes from held/evolving stages, never from blending.
+  `"- ship"`, `"MacGregor slumps"`). This is the still-era realization of §13a-i's progressive reveal.
+  **The delta-vs-layer boundary (enforced law).** A held scene evolves one of two ways. **DELTA-CHAIN**
+  when the change is **INTEGRATIVE** — the new element becomes part of the scene's architecture (a city
+  grows a bank; gold threads the streets). **LAYER** when the change is **DISCRETE** — the added element
+  sits on the scene without fusing into its architecture (a character enters the foreground; a stamp slams
+  onto a page). You author the intent the same way for both (`stage` / `stage_role` / `changed_elements`);
+  this boundary tells you what a delta CAN be versus what `motion-planner` will promote downstream to a
+  moving cutout **layer**. **A re-base inside the SAME location seeds the prior stage's BASE frame** (never
+  the last delta — the ≤3-delta cap must not throw the established set away, or the set drifts). **Author
+  intent, never mechanism:** do NOT encode HOW a delta is produced (no "seed off the previous frame", no
+  `chain_from`, no generation params) — the chain is derivable from the shared `stage` + shot order.
+  `image-generation` owns the delta mechanism (its "seeded delta-chain" technique); `motion-planner` owns
+  layer promotion. Cap a chain at **≤3 delta frames**, then a new `base` (re-seeded from the prior base) or
+  a hard cut to a new `stage`. Each frame — delta included — is still **one shot with its own verbatim
+  `vo_ref`** (the word its change lands on). **Timing:** delta frames run fast (1.5–3s); `base`/hold frames
+  4–12s.
+- **Transitions are HARD CUTS only — fades / cross-dissolves / fade-to-black are BANNED.** This is a
+  flat-vector cartoon channel; blended transitions read as photo-documentary B-roll (not our idiom).
+  There is **no transition field to author** — `render-builder` emits **no** scene transition, ever.
+  Visual continuity comes from held/evolving stages, never from blending.
 - `thumbnail_source` lives **inside the `thumbnail` block only** (`"from-metadata.json"`, or the
   derived-fallback flag). Do **not** duplicate it at the top level.
 - `beat` uses a **fixed vocabulary** (narrative POSITION):
@@ -162,7 +167,7 @@ Notes:
   by hand, and ignored by every downstream tool. `vo_text` lets a human see each shot's VO coverage; it
   is **not** a depiction brief (a long span means *densify*, not *cram*). `shot_counts` is a convenience
   tally.
-- **`cast` + `pose_ref`/`expression_ref` — the figure's pose/expression come from SEEDED library assets, not the `still_prompt`.** VPW records each prominent figure's registry pose/expression (INTENT); `image-generation` seeds them (a two-step posed-character merge → scene placement). **The `still_prompt` therefore describes the scene + the figure's placement/action ONLY — never its hand/finger mechanics, body-pose mechanics, or facial expression** (those are the `pose_ref`/`expression_ref` assets' job; authoring them in prose too is the double-authoring trap). `pose_ref`/`expression_ref` are each optional (pose-only / expr-only / both / neither). `cast` is how image-gen enumerates a shot's figures — it replaces prose figure-parsing. Seed doctrine: `style-bible.md §5`. A `cast` entry may name an individual character OR a **recurring identifiable group** (a band/troupe whose canonical is a group frame — typically no `pose_ref`/`expression_ref`); image-gen locks it once and seeds it into each appearance. An anonymous crowd stays prose in the `still_prompt`, never cast.
+- **`cast` + `pose_ref`/`expression_ref` — the figure's pose/expression come from SEEDED library assets, not the `still_prompt`.** VPW records each prominent figure's registry pose/expression (INTENT); `image-generation` seeds them **directly into the one scene generation** — the character canonical + expression frame + pose frame (+ any interaction template) all seed a single run (no separate pre-merge pass; Pass 1b retired). **The `still_prompt` therefore describes the scene + the figure's placement/action ONLY — never its hand/finger mechanics, body-pose mechanics, or facial expression** (those are the `pose_ref`/`expression_ref` assets' job; authoring them in prose too is the double-authoring trap). `pose_ref`/`expression_ref` are each optional (pose-only / expr-only / both / neither). `cast` is how image-gen enumerates a shot's figures — it replaces prose figure-parsing. Seed doctrine: `style-bible.md §5`. A `cast` entry may name an individual character OR a **recurring identifiable group** (a band/troupe whose canonical is a group frame — typically no `pose_ref`/`expression_ref`); image-gen locks it once and seeds it into each appearance. An anonymous crowd stays prose in the `still_prompt`, never cast.
 - **`props` — recurring-prop lock (parallel to `cast`).** A **recurring identifiable prop** (a specific
   object whose look must MATCH across shots — the guidebook, a named banknote) is declared in a shot's
   optional `props` array by its library name. `image-generation` Pass 1 gives each such prop ONE canonical
@@ -187,23 +192,20 @@ ai-gen/hybrid shot is a render-time hard error. What the engine consumes from ea
 | --- | --- |
 | `still_prompt` | image-generation's input → the verified scene PNG the shot displays |
 | *(scenes/manifest.json `verified:{scene,rig}`)* | image-generation stamps `verified:{scene:true,rig:true}` on a shot only after its batched review passes; render-builder's scenes gate treats an unstamped/false entry as NOT shippable (a present-but-unverified PNG hard-errors like a missing one). Authored by image-gen, not VPW. |
-| `stage` / `stage_role` / `changed_elements` | consecutive same-`stage` shots share ONE held set; changes arrive AT the cut (the delta frame) |
-| `on_screen_text` | a code text overlay, word-anchored |
+| `stage` / `stage_role` / `changed_elements` | consecutive same-`stage` shots share ONE held set; changes arrive AT the cut (the delta frame); a delta may be promoted downstream by `motion-planner` to a moving cutout layer |
 | `beat` | *(authoring/review metadata — narrative position; not consumed by the engine)* |
 | `vo_ref`, `duration_s`, `start_hint` | cut timing: first 4 normalized words matched against the real VO word-stream, durations re-timed to the VO track |
 | `source: chart\|screencap\|stock\|archival` | rendered as a visible placeholder device card (counted in the manifest); image-generation skips these |
 | `narration_type`, `shot_class` | *(authoring metadata — never consumed)* auditability + anti-slop review |
-| `transition_in` | *(not consumed — hard cut always; fades banned)* |
 | `vo_text`, `shot_counts` | *(derived, human-review only; written by `lint_shots.py`)* |
 | `synthetic: true` (any shot/thumb) | feeds the AI-disclosure flag in `metadata.json` |
 | `thumbnail.primary.gen_prompt` | generated by image-generation + set via `thumbnails.set` at publish |
-| `cast` (`pose_ref`/`expression_ref`) | *(upstream authoring — consumed by image-generation for the posed-character merge; render-builder ignores)* |
+| `cast` (`pose_ref`/`expression_ref`) | *(upstream authoring — seeded by image-generation into the one-run multi-seed scene gen; render-builder ignores)* |
 | `props` | *(upstream authoring — consumed by image-generation for the per-video prop lock; render-builder ignores)* |
 | `needed_assets` (top-level) | *(upstream authoring/human-gate — not consumed by render-builder)* |
 
-**`render_pattern` is vestigial** — nothing reads it (the retired JSON2Video engine did). Leave it out
-or leave it be; the Remotion scenes path auto-detects via the scenes manifest. Old files carrying the
-old `motion_prompt`/`asset_type` fields still render (consumers ignore unknown keys).
+The Remotion scenes path auto-detects the render path via the scenes manifest. Old files carrying any
+retired field (see the deleted-fields note in §1) still render — consumers ignore unknown keys.
 
 The VO track comes from `voiceover` (reads `script.md`). Real durations exist only after the VO
 renders — `render-builder` re-times against it; `duration_s`/`start_hint` here are estimates.
@@ -249,8 +251,6 @@ real rival channel or instruct "recreate X's thumbnail" — original composition
 
 ## 5. Limits, defaults, timing
 
-- `render_pattern` is **fully vestigial** — nothing reads it (it steered the retired JSON2Video
-  engine); the Remotion scenes path auto-detects via the scenes manifest. Omit it or leave `"A"`.
 - **Long-form density:** new cut every 3–8s, new stimulus every 30–45s (§10); heaviest in the first
   60s. Expect several inserts per cue in the hook zone.
 - **Duration coverage:** Σ `duration_s` across `long_form.shots[]` must ≈ the runtime declared in the
@@ -280,7 +280,7 @@ real rival channel or instruct "recreate X's thumbnail" — original composition
       "source": "archival",
       "still_prompt": "grainy black-and-white photo of a half-built cantilever bridge over a wide river, 1907, the unfinished gap at frame center, workers as tiny silhouettes on the span, overcast, {SUFFIX}",
       "stock_query": "Quebec Bridge 1907 construction archival",
-      "on_screen_text": "", "transition_in": "hard cut", "synthetic": false,
+      "synthetic": false,
       "notes": "literal is correct here — a real physical structure/event; the tableau is the incomplete span itself, not workers frozen mid-task"
     },
     {
@@ -289,7 +289,7 @@ real rival channel or instruct "recreate X's thumbnail" — original composition
       "narration_type": "abstract-force", "shot_class": "symbolic-stand-in-object",
       "source": "ai-gen",
       "still_prompt": "a single load-bearing calculation carved into a monolithic stone tablet balanced on a knife-edge, tablet dead-center and tilted a few degrees off vertical, cold blue key light, heavy negative space, {SUFFIX}",
-      "on_screen_text": "", "transition_in": "hard cut", "synthetic": false,
+      "synthetic": false,
       "notes": "NON-literal: 'trusted a number' is an abstraction → made a precarious physical object, not a shot of an engineer at a desk. The off-vertical tilt is a HELD precarious pose (a tableau), not a freeze of falling."
     }
   ]},

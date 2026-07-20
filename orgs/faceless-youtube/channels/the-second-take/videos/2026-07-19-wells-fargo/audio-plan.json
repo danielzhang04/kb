@@ -1,0 +1,68 @@
+{
+  "_doc": "ST-033 Wells Fargo - unified audio plan (audio-director). Cues in narration order; anchors are verbatim shots.json long_form vo_ref openers. Timid by default: 17 SFX over ~11.4 min (~1.5/min vs the ~4/min ceiling); 9 music segments (45-119s each, none near the 3-min staleness ceiling), every boundary on a narrative pivot; ONE dry span, reserved for the withheld-peak reveal. Human-cost run (4:59-6:58: the ~5,300 fired, the 'acceptable cost of doing business' finding, the fired ethics-line callers) carries ZERO comedic SFX and keeps the bed PRESENT at a reduced level - the human-cost dry pull-back is retired (grammar-guidance 2026-07-17), so gravity comes from track choice + level_db, not from cutting the bed. Revised once after a fresh-eyes critic pass (critics.md).",
+  "_pins": "Both sneaky segments pin the SAME track: build_audio.py increments the mood index per segment, so two unpinned same-mood cues would resolve to sneaky-1 and sneaky-2 and read as an unintended mid-video track swap. underscore/somber pools hold exactly one file each, so they need no pin.",
+  "cues": [
+    { "kind": "music", "from_anchor": "At a major American bank", "mood": "underscore" },
+
+    { "kind": "pause", "anchor": "employees opened as many as", "pause_s": 0.4 },
+    { "kind": "sfx",   "anchor": "employees opened as many as", "role": "boom" },
+
+    { "kind": "sfx",   "anchor": "The bank was Wells Fargo", "role": "whoosh", "sync": "element" },
+
+    { "kind": "music", "from_anchor": "The target was eight", "mood": "upbeat", "track": "upbeat-2" },
+    { "kind": "pause", "anchor": "The target was eight", "pause_s": 0.3 },
+    { "kind": "sfx",   "anchor": "The target was eight", "role": "ding" },
+
+    { "kind": "pause", "anchor": "That was the real reason", "pause_s": 0.5, "in_pause": true },
+    { "kind": "sfx",   "anchor": "That was the real reason", "role": "record_scratch" },
+
+    { "kind": "music", "from_anchor": "But once a bonus rides", "mood": "sneaky", "track": "sneaky-2" },
+
+    { "kind": "sfx",   "anchor": "To make it look real", "role": "pop", "sync": "element" },
+    { "kind": "sfx",   "anchor": "They'd set the PIN on", "role": "pop", "sync": "element" },
+    { "kind": "sfx",   "anchor": "And they'd invent an email", "role": "pop", "sync": "element" },
+
+    { "kind": "sfx",   "anchor": "The move even had a", "role": "stamp", "sync": "element" },
+    { "kind": "pause", "anchor": "It wasn't just checking accounts", "pause_s": 0.5 },
+
+    { "kind": "music", "from_anchor": "The first tally came out", "mood": "underscore" },
+    { "kind": "pause", "anchor": "and the number climbed to", "pause_s": 0.5 },
+    { "kind": "pause", "anchor": "Same fraud. They'd just counted", "pause_s": 0.4 },
+
+    { "kind": "music", "from_anchor": "Somebody paid for all of", "mood": "somber", "level_db": 13, "fade_out_s": 3.5 },
+    { "kind": "pause", "anchor": "Between 2011 and 2016, Wells", "pause_s": 0.5 },
+    { "kind": "sfx",   "anchor": "Between 2011 and 2016, Wells", "role": "thud" },
+
+    { "kind": "pause", "anchor": "So the firings were never", "pause_s": 0.6 },
+    { "kind": "pause", "anchor": "In cases that later came", "pause_s": 0.5 },
+
+    { "kind": "music", "from_anchor": "The outside world found out", "mood": "upbeat", "track": "upbeat-4" },
+    { "kind": "sfx",   "anchor": "The outside world found out", "role": "whoosh", "sync": "element" },
+
+    { "kind": "sfx",   "anchor": "The Consumer Financial Protection Bureau", "role": "cash", "sync": "element" },
+
+    { "kind": "pause", "anchor": "About 185 million dollars in", "pause_s": 0.5 },
+    { "kind": "sfx",   "anchor": "About 185 million dollars in", "role": "boom" },
+
+    { "kind": "music", "from_anchor": "Then in 2018 came something", "mood": "underscore" },
+    { "kind": "pause", "anchor": "It froze the bank's total", "pause_s": 0.5 },
+    { "kind": "sfx",   "anchor": "It froze the bank's total", "role": "powerdown" },
+
+    { "kind": "sfx",   "anchor": "In 2020 the bank settled", "role": "cash", "sync": "element" },
+
+    { "kind": "music", "from_anchor": "So what happened to the", "mood": "sneaky", "track": "sneaky-2" },
+    { "kind": "pause", "anchor": "For a while, almost nothing", "pause_s": 0.4 },
+    { "kind": "sfx",   "anchor": "For a while, almost nothing", "role": "womp", "fade_out_s": 1.5 },
+
+    { "kind": "sfx",   "anchor": "In 2020 the OCC banned", "role": "buzzer" },
+
+    { "kind": "dry",   "from_anchor": "And out of everyone, in", "to_anchor": "In 2023 she pleaded guilty" },
+    { "kind": "pause", "anchor": "But not for the fraud", "pause_s": 0.6 },
+    { "kind": "sfx",   "anchor": "But not for the fraud", "role": "sting" },
+
+    { "kind": "music", "from_anchor": "In 2023 she pleaded guilty", "mood": "underscore" },
+    { "kind": "pause", "anchor": "The judge turned down the", "pause_s": 0.6 },
+
+    { "kind": "pause", "anchor": "And the number that started", "pause_s": 0.6 }
+  ]
+}

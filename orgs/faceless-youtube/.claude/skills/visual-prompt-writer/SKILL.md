@@ -32,13 +32,16 @@ produces each shot's verified still; the local **Remotion engine** (render-build
 the plan into motion.
 
 **Know what the engine can actually do — and author only that.** What renders per shot today: the
-verified still, a camera that is **always locked** (no derived moves), an idle micro-motion baseline, word-anchored code overlays
-(`on_screen_text` + the T2 device kit), and changes arriving **AT cuts** (a stage delta = the next
-still simply *has* the new element). There is **no element animation inside a frame** — nothing walks,
-peels, pours, or sweeps (that is the deferred T3 layer). You author **intent, never mechanism**: what a
+verified still — **with any in-video text baked into the image** (diegetic stamps, signs, ledgers,
+banners) — a camera that is **always locked** (no derived moves), an idle micro-motion baseline,
+animated cutout **layers** (a matted element that slides / paths / appears / bobs, or a route the engine
+draws on — planned downstream by `motion-planner`, not authored here), and burned word-highlight
+captions on shorts. There are **no engine text overlays and no device kit** — both are retired; all
+on-screen text is diegetic, designed into the generated image. A stage delta = the next still simply
+*has* the new element (the change arrives **AT the cut**). You author **intent, never mechanism**: what a
 beat wants and on which word — never easing names, amplitudes, spring values, or camera treatments. A
-shot whose meaning *depends* on unrenderable animation is broken output; restage it as a tableau, a
-delta chain, or an overlay-carried beat.
+shot whose meaning *depends* on mechanism you can't author is broken output; restage it as a tableau, a
+delta chain, or a baked-text beat.
 
 Your output is a machine contract, so **five fundamentals** make each still a valid unit (distinct from
 — and feeding — the **seven authoring laws** named canonically under *Load-bearing rules*, which the
@@ -102,13 +105,12 @@ render if skipped. They are restated in context further down; collected here so 
    precise; nothing decorative that could mislead (unmotivated scenery is a defect).
 3. **Enumerations/lists → progressive reveal, made VISIBLE the way the engine can render it today**
    (§13a-i-c). A "no church, no paved roads, no rivers of gold" line must **not** be silently dropped
-   and **not** collapse to one static frame. Because the engine animates nothing *inside* a frame, a
-   reveal that has to be seen is carried one of two renderable ways: **(a) a stage delta chain** — a
-   `base` frame holds the set and each named element is struck/added in its own `delta` frame with its
-   own verbatim `vo_ref` (one change per delta, ≤3 deltas per chain); or **(b) short `on_screen_text`
-   beats** keyed to the words. A reveal that must be *seen* is realized only by a delta chain or an
-   `on_screen_text` beat — there is no motion field to carry it (those are deleted; the engine animates
-   nothing inside a frame).
+   and **not** collapse to one static frame. A reveal that has to be seen is carried one of two
+   renderable ways: **(a) a stage delta chain** — a `base` frame holds the set and each named element is
+   struck/added in its own `delta` frame with its own verbatim `vo_ref` (one change per delta, ≤3 deltas
+   per chain); or **(b) baked diegetic text** — where the text IS the payload, quote it verbatim in the
+   `still_prompt`, kept SHORT (1–4 words), designed into the scene (a stamp, a ledger line, a sign). There
+   is **no engine text overlay** and **no motion field** to carry a reveal — those are deleted.
 4. **Cadence enforcement — this kills stretch-to-fill** (§13a-ii, BINDING). Minimum shot count =
    `Estimated runtime ÷ 8s`; a healthy hook zone runs closer to `÷ 4s`. Make **Σ `duration_s` ≈
    `Estimated runtime`** so the whole VO track is covered. **A shot may exceed ~8s ONLY if it carries a
@@ -126,10 +128,18 @@ render if skipped. They are restated in context further down; collected here so 
    against the real VO word-stream (`render.py::retime_by_timings`) — a paraphrased or out-of-order
    anchor never matches, mis-places that shot, and enough misses **silently drop the whole video to
    crude proportional timing**. Run `scripts/lint_shots.py` (Step 7): it mirrors that matcher, HARD-fails
-   on either defect, and then derives the review-only `vo_text` coverage + `shot_counts`.
+   on either defect (and on the delta-chain structural caps — ≤3 deltas, exactly one `base` first per
+   stage), and then derives the review-only `vo_text` coverage + `shot_counts`.
 8. **The shot critic runs before any pixel is bought (Step 8, mandatory).** A fresh-eyes subagent
    reviews the finished `shots.json` per `references/critics.md`; you edit through its findings and
    re-lint. Skipping it ships plan-level logic errors into paid generation.
+9. **All in-video text is diegetic + baked (TEXT law).** There are no engine text overlays — every word
+   on screen is designed into the generated image (a stamp, a sign, a ledger, a banner). Authored text is
+   quoted **VERBATIM** in the `still_prompt`, kept **SHORT** (1–4 words proven, digits/comma OK), and the
+   image-gen review transcribes it letter-by-letter — a garbled render is a blocking flag. Where the text
+   IS the payload, this is how a reveal is made visible (rule 3b). The lettering STYLE is pinned
+   channel-wide (a locked exemplar image-gen seeds automatically — style-bible §6): never describe fonts,
+   lettering, or handwriting style in a `still_prompt`.
 
 **Intent, never mechanism.** You author *what a shot depicts*; the engine owns the treatment (camera,
 entrance, timing) and the `audio-director` owns the sound. Never author mechanism anywhere in the file —
@@ -213,8 +223,7 @@ This is how one channel's videos come out looking authored rather than assembled
   the stylized signature OR to real footage. If `dna.md`'s visual register is `TODO`/unspecified, pick
   the lane the niche implies (abstract → stylized-signature) and flag it. If `dna.md`'s visual style is
   still `TODO` (no committed channel), infer a coherent house style from the niche file, write it into
-  the block, and flag `house_style_source: "inferred — set dna.md Visual style"`. (`render_pattern`
-  stays `"A"` — vestigial; the Remotion scenes path auto-detects and is the real default.)
+  the block, and flag `house_style_source: "inferred — set dna.md Visual style"`.
 
 ## Step 2.5 — Decide WHAT each shot depicts (the narration→shot grammar)
 Governs every shot in Steps 3 and 5; runs *per VO line, before any prompt*. Default failure = drawing
@@ -258,8 +267,8 @@ the *procedure* that applies them, per line, in order:
 5. **Stage the tableau + act it — by SELECTING library assets, not describing them.** Mirror step 4's
    casting: for each prominent figure, choose its **`pose_ref`** (the held body pose/gesture that carries the
    action's meaning) and/or **`expression_ref`** (the face for this beat/register) **from the registry
-   vocabulary**, and record them on the shot's `cast` entry. These are SEEDED by `image-generation` (§5
-   two-step build) — so the pose/hands and the expression are the assets' job, **not** the `still_prompt`'s.
+   vocabulary**, and record them on the shot's `cast` entry. These are SEEDED by `image-generation` (style-bible §5
+   one-run multi-seed) — so the pose/hands and the expression are the assets' job, **not** the `still_prompt`'s.
    Scene-first ordering: the shot's meaning/scene drives which pose/expression fits, never the reverse.
    `pose_ref`/`expression_ref` are each optional (a plain standing figure needs neither). A two-figure
    interaction (a clasp) uses an **interaction** asset — the same kind of `pose_ref`, just one that shows two
@@ -277,8 +286,8 @@ the *procedure* that applies them, per line, in order:
    double-authoring (single-home map, `style-bible §5`). Everything in frame earns its place; nothing
    decorative that could mislead.
 7. **Realize any reveal structurally.** An enumeration or reveal that must be SEEN is realized by stage
-   deltas or `on_screen_text` (rule 3) — never by a motion note (those fields are deleted). Intent only —
-   the engine owns realization; audio is authored separately by the `audio-director`.
+   deltas or baked diegetic text (rule 3) — never by a motion note or a text overlay (both deleted).
+   Intent only — the engine owns realization; audio is authored separately by the `audio-director`.
 8. **Record on the shot.** Set `narration_type` + `shot_class` (auditable; forces the
    classify-then-invent discipline).
 9. **Channel translation** (the channel `visual-grammar.md`'s lever/register section): render the cast
@@ -431,8 +440,8 @@ short shot too** (classify → cast → tableau → facts → intent note) — s
 most-cloned surface, so the non-literal grammar + anti-slop guardrail matter most here:
 - **First frame IS the thumbnail** (§8/§11) — a pattern-interrupt tableau *already carrying the
   beat's tension* (a held pose loaded with the story's wrongness — not a freeze of motion), with the
-  short's on-frame caption text (3–7 words) that wins the swipe decision in ~1.3–1.8s. No
-  static/ambient opening (anti-pattern 8).
+  short's on-frame caption text (3–7 words) **baked into the image** (diegetic, quoted verbatim, kept
+  short — TEXT law) that wins the swipe decision in ~1.3–1.8s. No static/ambient opening (anti-pattern 8).
 - **A cut every 2–4 seconds** (§11c) — shorts are visually denser than long-form. Same per-shot
   fields as long-form.
 - **9:16 aspect.** Match the channel house style and locked lever (cross-lever visuals poison the
@@ -448,11 +457,11 @@ most-cloned surface, so the non-literal grammar + anti-slop guardrail matter mos
 - **Niche imagery gate:** engineering = analysis-not-gore (annotated diagrams, not casualties);
   horror/lore = suggestion over depiction; health = clinical, no body-horror; business = no
   defamatory depiction of real, named people. Flag any borderline shot in its `notes`.
-- **Don't add facts the script withheld.** `on_screen_text` and prompts illustrate the VO — they do
-  not introduce new claims. Never put a **casualty count, date, name, or statistic on screen that the
-  script chose to omit** (in analysis-not-gore niches the script often deliberately withholds the death
-  toll — honor that omission, don't re-introduce the number as a caption). On-screen text is a visual
-  echo of what's said, not an addition to it.
+- **Don't add facts the script withheld.** Prompts — including any **baked diegetic text** — illustrate
+  the VO and do not introduce new claims. Never put a **casualty count, date, name, or statistic on
+  screen that the script chose to omit** (in analysis-not-gore niches the script often deliberately
+  withholds the death toll — honor that omission, don't re-introduce the number as baked text). Baked
+  in-image text is a visual echo of what's said, not an addition to it.
 - **House-style consistency:** every prompt must carry the `global_prompt_suffix`. A frame that would
   look off-brand is a slop tell — cut or restyle it.
 
@@ -494,12 +503,11 @@ truth; keep the chat brief.
 
 ## Output contract (what image-generation + render-builder + publish-queue read)
 `videos/<slug>/shots.json` — a single JSON object:
-- `house_style` + `global_prompt_suffix` + `render_pattern` — the channel signature every prompt
-  inherits (`render_pattern` fully vestigial; nothing reads it).
+- `house_style` + `global_prompt_suffix` — the channel signature every prompt inherits.
 - `long_form.shots[]` — ordered; each with `id`, `beat`, `start_hint`, `duration_s`,
-  `vo_ref`, `from_cue`, `narration_type`, `shot_class`, `source`, `still_prompt`,
-  `stage?`/`stage_role?`/`changed_elements?`, `stock_query?`, `on_screen_text`,
-  `transition_in`, `synthetic`, `notes` (+ the derived `vo_text` after lint). **The full field list and
+  `vo_ref`, `from_cue`, `narration_type`, `shot_class`, `cast?`, `props?`, `source`, `still_prompt`,
+  `stage?`/`stage_role?`/`changed_elements?`, `stock_query?`, `synthetic`, `notes` (+ the derived
+  `vo_text` after lint). **The full field list and
   the exact field→engine mapping are canonical in `references/shots-schema.md` §1–§2 — this is a
   summary, not the contract.**
 - `thumbnail.{primary,challengers[2]}` — each with `text_overlay`, `gen_prompt`, `composition`, `source`.

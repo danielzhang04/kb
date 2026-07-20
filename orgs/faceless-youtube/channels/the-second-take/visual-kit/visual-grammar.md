@@ -94,6 +94,9 @@ repeat. **So decide it, and vary it across the video:**
   dwarfing another (power). Reach for size *relationships*, not a lineup of equals.
 - **Angle / distance** — top-down for a map or plan, low for dominance, an extreme close-up on a face or
   a detail, a wide with air for a single graphic idea. Reach past the eye-level medium.
+- **No hand / extremity close-ups — framing stays at body scale.** The rig's schematic 4-digit hands do
+  not survive macro framing (a hand close-up reads as a rig-break); if a document, signature, or object
+  detail matters, show it at **desk / body scale** with the hand incidental, never as a hand macro.
 - **Literal vs symbolic** — non-literal is the default (`§13a`): draw what the beat *means*, not the
   sentence. A promotion is insignia arriving on the coat, or the man small before an army — not "a man
   standing in a field."
@@ -131,10 +134,11 @@ Our locked constraints (`style-bible.md` + `dna.md`) decide *how* we execute the
   gate.
 - **Money stories, not finance explainers.** Default to the **abstract-force** and **relationship**
   classes ("act it out / embody it" — personify the players, stage the deal), **not** gauges and
-  definition cards. Pure-explainer devices (meters, gauges, definition cards, animated "how-it-works"
-  bar-charts) are **flavor only, used sparingly** — the mechanism class (register-shift to a clean
-  infographic + one animated transform) is where our **payload-before-emotion** rule visibly lands, but
-  it stays the exception, not the house style.
+  definition cards. Pure-explainer devices (meters, gauges, definition cards, "how-it-works" bar-charts)
+  are **flavor only, used sparingly**, and are now **baked diegetic** scene elements (engine device cards
+  are retired) — the mechanism class (register-shift to a clean baked infographic + one delta-chain
+  transform) is where our **payload-before-emotion** rule visibly lands, but it stays the exception, not
+  the house style.
 
 ## 4. Motion direction — our dial on the measured grammar (`universal.md §13a-iii`)
 
@@ -148,7 +152,7 @@ only sets The Second Take's dials on it. Evidence: `research/motion-logs/` (2026
 - **Fixed POV is the house camera [user-directed 2026-07-08]:** no wandering pans/zooms — the camera is
   furniture (`universal.md §13a-iii.1`). The universal ceiling is an overt move on **only ~10–20% of
   shots** (peak or motivated beats: an intro, a vista, a gravity beat), everything else on a sub-visible
-  micro-drift floor with cards dead-static. **Our dial sits at the strict end of that ceiling: the engine
+  micro-drift floor, diegetic cards/artifacts held dead-static. **Our dial sits at the strict end of that ceiling: the engine
   derives NO camera move at all** (`build_motion.py` calls `locked_camera()` unconditionally, with a
   `camera_moving` regression counter), so an overt move can only ever be deliberately authored. **A
   render where most or all shots push in or drift is a BUG, not a look:** a cut that moved the camera on
@@ -161,12 +165,14 @@ only sets The Second Take's dials on it. Evidence: `research/motion-logs/` (2026
 - **Red (`accent`) is the ONLY emphasis ink** — semantic (alarm / prohibition / ownership / the
   punch element that lands last), never decorative. Matches the measured typography law and our
   existing accent token.
-- **Numbers live in-world** (already §13 rule 4): prefer the delta-chain or a T2 device styled as a
-  prop-like marker card over any floating text; sell the payoff number with the measured recipe
-  (dip → riser → carrier arrives ON the number → hold → contrast/reaction cut).
-- **Enumerations:** within a concept = ONE held stage, one element per spoken noun (delta-chain now;
-  engine `progressive-reveal` whenever the added element is code-drawable); across concepts = hard
-  cuts landing on the items.
+- **Numbers live in-world** (already §13 rule 4): a number is a **baked diegetic element** — drawn into the
+  scene as a marker card, a prop label, a ledger figure — or built by a delta-chain; never floating engine
+  text (engine-drawn text + device cards are retired). Keep the baked figure short + spelled correctly (§3
+  bible) and sell the payoff with the measured recipe (dip → riser → carrier arrives ON the number → hold →
+  contrast/reaction cut).
+- **Enumerations:** within a concept = ONE held stage, one element per spoken noun — a **delta-chain** (the
+  new element fuses into the scene) or **baked diegetic text** where the items are on-artifact; across
+  concepts = hard cuts landing on the items. (The engine `progressive-reveal` device is retired.)
 - **Motion + audio treatment:** every shot hard-cuts (the camera dial is above); the sound is authored
   separately by the `audio-director`. `visual-prompt-writer` authors no
   treatment field — the old beat-type enum + the `ken_burns`/`within_shot_motion` fields are all deleted.

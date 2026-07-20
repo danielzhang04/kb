@@ -334,6 +334,190 @@
       ],
       "fires_now": false,
       "pick_n": 1
+    },
+    "crack": {
+      "scene_use": "a DEEP structural crack/split with real low-end weight — the bubble/empire 'finally cracked' (N25/P22). A heavy timber-beam split, an ice-sheet crack, a load-bearing structural crack. Must read as a large, heavy thing failing — NOT a small twig snap, a cartoon crack, or a whip crack.",
+      "queries": [
+        "ice sheet crack",
+        "large ice crack",
+        "heavy timber splitting",
+        "wooden beam break crack",
+        "structural crack",
+        "tree trunk splitting crack",
+        "glacier ice crack",
+        "large wood crack",
+        "big branch snap heavy",
+        "iceberg crack",
+        "wood beam snap",
+        "heavy crack impact"
+      ],
+      "clap_prompts": [
+        "a deep heavy structural crack with low-end weight",
+        "a large timber beam splitting apart"
+      ],
+      "dur_s": [
+        0.5,
+        2.5
+      ],
+      "fires_now": true,
+      "pick_n": 2
+    },
+    "halo": {
+      "scene_use": "a short ironic angelic shimmer / choir-halo accent — the wry 'treated worse than any man alive' halo beat (N31). Brief and wry, NOT a long churchy choir.",
+      "queries": [
+        "harp glissando",
+        "harp gliss up",
+        "angelic choir hit",
+        "heavenly choir swell",
+        "magic chime shimmer",
+        "celesta glissando",
+        "angel harp",
+        "heaven ahh choir"
+      ],
+      "clap_prompts": [
+        "a short angelic choir halo",
+        "a heavenly harp shimmer accent"
+      ],
+      "dur_s": [
+        0.3,
+        3.5
+      ],
+      "fires_now": true,
+      "pick_n": 1
+    },
+    "collapse": {
+      "scene_use": "a heavier structural crashing-down / rubble tumble — the Poyais bond 'crashing down' (N26). A sustained collapse+debris, distinct from a single boom impact.",
+      "queries": [
+        "building collapse rubble",
+        "debris collapse crash",
+        "structure collapse",
+        "wall crumble rubble",
+        "rubble crash",
+        "collapsing building"
+      ],
+      "clap_prompts": [
+        "a heavy building collapse with rubble",
+        "a structural crashing down with debris"
+      ],
+      "dur_s": [
+        0.8,
+        4.0
+      ],
+      "fires_now": true,
+      "pick_n": 1
+    },
+    "vanish": {
+      "scene_use": "a soft airy vanish / poof (or a hollow wind gust) — the con man 'was long gone' / absence beat (N32). Evokes a person having disappeared, not a hard hit.",
+      "queries": [
+        "magic vanish poof",
+        "disappear whoosh",
+        "teleport vanish poof",
+        "airy disappear whoosh",
+        "ghostly wind gust",
+        "magic disappear"
+      ],
+      "clap_prompts": [
+        "a soft airy vanishing poof",
+        "a disappearing whoosh"
+      ],
+      "dur_s": [
+        0.3,
+        2.2
+      ],
+      "fires_now": true,
+      "pick_n": 1
+    },
+    "applause": {
+      "scene_use": "a round of applause lands in a VO pause after a sarcastic beat ('Did I mention he'd made a flag'). Slightly dry/comedic, a small-room clap — NOT a stadium-huge roar.",
+      "queries": [
+        "round of applause",
+        "small applause",
+        "crowd clapping",
+        "applause short",
+        "audience clapping",
+        "polite applause"
+      ],
+      "clap_prompts": [
+        "a round of applause clapping",
+        "a small crowd clapping"
+      ],
+      "dur_s": [
+        1.2,
+        3.2
+      ],
+      "fires_now": true,
+      "pick_n": 2
+    },
+    "boo": {
+      "scene_use": "crowd booing after a reveal (a book's named author didn't exist). Comedic pantomime-villain booing — NOT an aggressive/hostile mob.",
+      "queries": [
+        "crowd boo",
+        "booing crowd",
+        "audience boo",
+        "crowd disapproval boo",
+        "boo hiss",
+        "comedic boo"
+      ],
+      "clap_prompts": [
+        "a crowd booing in disapproval",
+        "a pantomime audience boo"
+      ],
+      "dur_s": [
+        1.2,
+        3.2
+      ],
+      "fires_now": true,
+      "pick_n": 2
+    },
+    "halo_vocal": {
+      "scene_use": "an angelic choir 'ahhh' vocal swell — the classic heavenly-reveal (over a floating magical book, 'everyone wanted in', MacGregor-with-a-halo). REPLACES the instrumental halo-1 in halo cues. Clean start, quick bloom.",
+      "queries": [
+        "angelic choir",
+        "heavenly choir",
+        "choir aah",
+        "choir ahh",
+        "angel voices",
+        "celestial choir",
+        "holy choir",
+        "choir swell",
+        "vocal choir pad",
+        "heaven ahh"
+      ],
+      "clap_prompts": [
+        "an angelic choir ahh vocal swell",
+        "a heavenly choir of voices"
+      ],
+      "dur_s": [
+        0.7,
+        5.0
+      ],
+      "fires_now": true,
+      "pick_n": 2
+    },
+    "sparkle_long": {
+      "scene_use": "a LONGER magical/whimsical shimmer swell to bridge a between-shots pause (the current sparkle-1/2 may be too short). Whimsical rise, not childish.",
+      "queries": [
+        "magic shimmer",
+        "magic sparkle",
+        "twinkle shimmer",
+        "magical sparkle",
+        "fairy shimmer",
+        "magic chime shimmer",
+        "sparkle swell",
+        "magical twinkle rise",
+        "shimmer glitter",
+        "fairy magic"
+      ],
+      "clap_prompts": [
+        "a long magical shimmer swell",
+        "a whimsical sparkle rise"
+      ],
+      "dur_s": [
+        1.6,
+        6.0
+      ],
+      "fires_now": true,
+      "pick_n": 2
     }
   }
 }

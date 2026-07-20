@@ -132,6 +132,8 @@ this document too** (the fix: `.claude/skills/README.md` §Design rules).
   generating yet").
 - **F-clean — clean as a verb:** exploration is ephemeral and pruned on lock. After work, actively
   sweep scratch slugs, resolved handoffs, superseded files. Only named, locked assets persist.
+- **F-encoding:** ad-hoc file edits read/write explicit UTF-8 — this machine's shell default is cp1252
+  and has mojibake'd tracked files; verify any bulk text edit by codepoint, never by eye.
 
 ## G. Learn from every run
 

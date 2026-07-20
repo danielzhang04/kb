@@ -224,6 +224,151 @@
       "url": "https://freesound.org/s/523553/",
       "uploader": "LilMati",
       "orig_name": "TV Shutdown"
+    },
+    "crack-1": {
+      "file": "sfx/crack-1.mp3",
+      "role": "crack",
+      "source": "freesound #183451",
+      "license": "CC0",
+      "url": "https://freesound.org/s/183451/",
+      "uploader": "utsuru",
+      "orig_name": "Wood Crack 4"
+    },
+    "halo-1": {
+      "file": "sfx/halo-1.mp3",
+      "role": "halo",
+      "source": "freesound #531125",
+      "license": "CC-BY",
+      "url": "https://freesound.org/s/531125/",
+      "uploader": "ryusa",
+      "orig_name": "Harp harpo orchestral key glissando pitch up positive ui interface.wav"
+    },
+    "collapse-1": {
+      "file": "sfx/collapse-1.mp3",
+      "role": "collapse",
+      "source": "freesound #197772",
+      "license": "CC-BY",
+      "url": "https://freesound.org/s/197772/",
+      "uploader": "onteca",
+      "orig_name": "building_collapse02_close.wav"
+    },
+    "vanish-1": {
+      "file": "sfx/vanish-1.mp3",
+      "role": "vanish",
+      "source": "freesound #512217",
+      "license": "CC0",
+      "url": "https://freesound.org/s/512217/",
+      "uploader": "Mateusz_Chenc",
+      "orig_name": "Poof in cloud"
+    },
+    "applause-1": {
+      "file": "sfx/applause-1.mp3",
+      "role": "applause",
+      "source": "freesound #752710",
+      "license": "CC0",
+      "url": "https://freesound.org/s/752710/",
+      "uploader": "Nox_Sound",
+      "orig_name": "Voice_Crowd_Small_Expression_Applause_Stereo"
+    },
+    "applause-2": {
+      "file": "sfx/applause-2.mp3",
+      "role": "applause",
+      "source": "freesound #241132",
+      "license": "CC-BY 4.0",
+      "url": "https://freesound.org/s/241132/",
+      "uploader": "xtrgamr",
+      "orig_name": "shortapplause_01.wav",
+      "attribution": "\"shortapplause_01.wav\" by xtrgamr (freesound.org/s/241132) licensed under CC-BY 4.0"
+    },
+    "boo-1": {
+      "file": "sfx/boo-1.mp3",
+      "role": "boo",
+      "source": "freesound #752707",
+      "license": "CC0",
+      "url": "https://freesound.org/s/752707/",
+      "uploader": "Nox_Sound",
+      "orig_name": "Voice_Crowd_Small_Expression_Boo_Stereo"
+    },
+    "boo-2": {
+      "file": "sfx/boo-2.mp3",
+      "role": "boo",
+      "source": "freesound #632295",
+      "license": "CC-BY 4.0",
+      "url": "https://freesound.org/s/632295/",
+      "uploader": "DavBlahBlah",
+      "orig_name": "Boo_2.wav",
+      "attribution": "\"Boo_2.wav\" by DavBlahBlah (freesound.org/s/632295) licensed under CC-BY 4.0"
+    },
+    "halo_vocal-1": {
+      "file": "sfx/halo_vocal-1.mp3",
+      "role": "halo_vocal",
+      "source": "freesound #47183",
+      "license": "CC0",
+      "url": "https://freesound.org/s/47183/",
+      "uploader": "elnaturel",
+      "orig_name": "086 Choir Aahs 1_c33f7f7f.wav"
+    },
+    "halo_vocal-2": {
+      "file": "sfx/halo_vocal-2.mp3",
+      "role": "halo_vocal",
+      "source": "freesound #444491",
+      "license": "CC0",
+      "url": "https://freesound.org/s/444491/",
+      "uploader": "Breviceps",
+      "orig_name": "Short Choir"
+    },
+    "sparkle_long-1": {
+      "file": "sfx/sparkle_long-1.mp3",
+      "role": "sparkle_long",
+      "source": "freesound #462092",
+      "license": "CC0",
+      "url": "https://freesound.org/s/462092/",
+      "uploader": "LilMati",
+      "orig_name": "Sparkling Star 04.wav"
+    },
+    "sparkle_long-2": {
+      "file": "sfx/sparkle_long-2.mp3",
+      "role": "sparkle_long",
+      "source": "freesound #844398",
+      "license": "CC0",
+      "url": "https://freesound.org/s/844398/",
+      "uploader": "SkySpeira",
+      "orig_name": "Mysterious Sparkle Flourish"
+    },
+    "crack-2": {
+      "file": "sfx/crack-2.mp3",
+      "role": "crack",
+      "source": "freesound #591152",
+      "license": "CC0",
+      "url": "https://freesound.org/s/591152/",
+      "uploader": "ultraaxvii",
+      "orig_name": "rock hitting icy lake"
+    },
+    "crack-3": {
+      "file": "sfx/crack-3.mp3",
+      "role": "crack",
+      "source": "freesound #70108",
+      "license": "CC-BY 4.0",
+      "url": "https://freesound.org/s/70108/",
+      "uploader": "JustinBW",
+      "orig_name": "Crack 1.wav",
+      "attribution": "\"Crack 1.wav\" by JustinBW (freesound.org/s/70108) licensed under CC-BY 4.0"
+    },
+    "halo_vocal-3": {
+      "file": "sfx/halo_vocal-3.mp3",
+      "role": "halo_vocal",
+      "source": "freesound #47183 (pitch-shifted +4 semitones from halo_vocal-1)",
+      "license": "CC0",
+      "url": "https://freesound.org/s/47183/",
+      "uploader": "elnaturel",
+      "orig_name": "086 Choir Aahs 1 (+4st brighter/higher variant)"
+    },
+    "halo_vocal_book-1": {
+      "file": "sfx/halo_vocal_book-1.mp3",
+      "role": "halo_vocal",
+      "source": "composite of halo_vocal-1 x5 (acrossfade d=1.269s = back-2/3 overlap, tri/tri; afade in 0.12 / out 0.60 @3.84; re-peaked; 4.441s)",
+      "license": "same as halo_vocal-1 (see its entry)",
+      "note": "R10 2026-07-18 (W03): sustained floating-book ahh bed, length tuned to Poyais L36 on the R10 pad-to-target timeline (5-link rebuild after the 6-link 5.076s rang 0.41s past the shrunken L36); video-specific pinned variant, not a rotating pool entry."
     }
   },
   "beds": {
@@ -318,6 +463,78 @@
       "bucket": "upbeat",
       "source_file": "Monkeys Spinning Monkeys.mp3",
       "title": "Monkeys Spinning Monkeys",
+      "artist": "Kevin MacLeod (incompetech.com)",
+      "license": "CC-BY",
+      "url": "https://incompetech.com/music/royalty-free/index.html"
+    },
+    "underscore-1": {
+      "file": "beds/underscore-1.mp3",
+      "bucket": "underscore",
+      "source_file": "Crypto.mp3",
+      "title": "Crypto",
+      "artist": "Kevin MacLeod (incompetech.com)",
+      "license": "CC-BY",
+      "url": "https://incompetech.com/music/royalty-free/index.html"
+    },
+    "underscore-2": {
+      "file": "beds/underscore-2.mp3",
+      "bucket": "underscore",
+      "source_file": "Deliberate Thought.mp3",
+      "title": "Deliberate Thought",
+      "artist": "Kevin MacLeod (incompetech.com)",
+      "license": "CC-BY",
+      "url": "https://incompetech.com/music/royalty-free/index.html"
+    },
+    "underscore-3": {
+      "file": "beds/underscore-3.mp3",
+      "bucket": "underscore",
+      "source_file": "Comfortable Mystery 2.mp3",
+      "title": "Comfortable Mystery 2",
+      "artist": "Kevin MacLeod (incompetech.com)",
+      "license": "CC-BY",
+      "url": "https://incompetech.com/music/royalty-free/index.html"
+    },
+    "underscore-4": {
+      "file": "beds/underscore-4.mp3",
+      "bucket": "underscore",
+      "source_file": "Private Eye.mp3",
+      "title": "Private Eye",
+      "artist": "Kevin MacLeod (incompetech.com)",
+      "license": "CC-BY",
+      "url": "https://incompetech.com/music/royalty-free/index.html"
+    },
+    "upbeat-2": {
+      "file": "beds/upbeat-2.mp3",
+      "bucket": "upbeat",
+      "source_file": "Fig Leaf Times Two.mp3",
+      "title": "Fig Leaf Times Two",
+      "artist": "Kevin MacLeod (incompetech.com)",
+      "license": "CC-BY",
+      "url": "https://incompetech.com/music/royalty-free/index.html"
+    },
+    "upbeat-3": {
+      "file": "beds/upbeat-3.mp3",
+      "bucket": "upbeat",
+      "source_file": "Ascending the Vale.mp3",
+      "title": "Ascending the Vale",
+      "artist": "Kevin MacLeod (incompetech.com)",
+      "license": "CC-BY",
+      "url": "https://incompetech.com/music/royalty-free/index.html"
+    },
+    "somber-1": {
+      "file": "beds/somber-1.mp3",
+      "bucket": "somber",
+      "source_file": "Meditation Impromptu 01.mp3",
+      "title": "Meditation Impromptu 01",
+      "artist": "Kevin MacLeod (incompetech.com)",
+      "license": "CC-BY",
+      "url": "https://incompetech.com/music/royalty-free/index.html"
+    },
+    "upbeat-4": {
+      "file": "beds/upbeat-4.mp3",
+      "bucket": "upbeat",
+      "source_file": "Cheery Monday.mp3",
+      "title": "Cheery Monday",
       "artist": "Kevin MacLeod (incompetech.com)",
       "license": "CC-BY",
       "url": "https://incompetech.com/music/royalty-free/index.html"

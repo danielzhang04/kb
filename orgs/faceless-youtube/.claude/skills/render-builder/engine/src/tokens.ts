@@ -77,19 +77,26 @@ export type Overlay =
   | {type: 'text'; text: string; at_s: number}
   | {type: 'stat-card'; text: string; sub?: string; at_s: number}
   | {type: 'counter'; from: number; to: number; prefix?: string; suffix?: string; at_s: number; duration_s: number}
-  | {type: 'chapter-card'; text: string; at_s: number}
+  | {type: 'chapter-card'; text: string; at_s: number; dur_s?: number; fade_s?: number}
   | {type: 'meter'; label: string; fraction: number; at_s: number}
   | {type: 'definition-card'; term: string; def: string; at_s: number}
   | {type: 'progressive-reveal'; items: {text: string; at_s: number}[]; mark: 'x' | 'pop'};
 
+// `anchor_origin` (center|bottom) overrides the vertical transform origin per layer (see LayerView
+// vOriginPct); unset = the type default (appear/path=center, bob/slide=bottom). Distinct from
+// `anchor` (verbatim VO words → start_s). `dot_count`/`dot_r` tune the draw_line dot density.
 export type LayerAnimation =
-  | {type: 'slide'; from_edge?: 'left' | 'right' | 'top' | 'bottom'; to: [number, number]; dur_s: number; easing?: string; height_frac?: number; anchor?: string; start_s?: number}
-  | {type: 'path'; points: [number, number][]; dur_s: number; draw_line?: boolean; height_frac?: number; anchor?: string; start_s?: number}
-  | {type: 'bob'; amp?: number; period?: number; at?: [number, number]; height_frac?: number}
-  | {type: 'appear'; at_s?: number; style?: 'pop' | 'fade' | 'slam'; at?: [number, number]; height_frac?: number; anchor?: string; start_s?: number};
+  | {type: 'slide'; from_edge?: 'left' | 'right' | 'top' | 'bottom'; to: [number, number]; dur_s: number; easing?: string; height_frac?: number; anchor?: string; anchor_origin?: 'center' | 'bottom'; start_s?: number}
+  | {type: 'path'; points: [number, number][]; dur_s: number; draw_line?: boolean; static?: boolean; dot_count?: number; dot_r?: number; height_frac?: number; anchor?: string; anchor_origin?: 'center' | 'bottom'; start_s?: number}
+  | {type: 'bob'; amp?: number; period?: number; at?: [number, number]; height_frac?: number; anchor_origin?: 'center' | 'bottom'}
+  | {type: 'appear'; at_s?: number; style?: 'pop' | 'fade' | 'slam'; at?: [number, number]; height_frac?: number; anchor?: string; anchor_origin?: 'center' | 'bottom'; start_s?: number};
 export type LayerSpec = {id: string; src: string; animation: LayerAnimation};
 
-export type AudioEvent = {sfx: string; at_s: number; gain_db?: number};
+// `dur_s` = the SFX file's real duration (probed by the realizer) → SfxTrack plays the FULL length
+// instead of the legacy hard 2s window (a long applause/riser rings its whole tail). `fade_out_s` ramps
+// that tail to silence over its last seconds (P16 — no abrupt cut). Both optional; absent dur_s falls
+// back to the 2s window, absent fade_out_s = constant volume.
+export type AudioEvent = {sfx: string; at_s: number; gain_db?: number; dur_s?: number; fade_out_s?: number};
 export type AudioDip = {at_s: number; depth_db: number; dur_s: number};
 export type AudioThinSpan = {at_s: number; dur_s: number; extra_db: number};
 export type AudioMusicState = {track: string; at_s: number; dur_s: number; base_db: number; fade_in_s: number; fade_out_s: number};
@@ -114,7 +121,6 @@ export type Shot = {
   entrance: 'cut' | 'whip';
   idle: 'bob' | 'none';
   overlays: Overlay[];
-  transform_note?: string;
   plate?: string | null;
   layers?: LayerSpec[];
 };

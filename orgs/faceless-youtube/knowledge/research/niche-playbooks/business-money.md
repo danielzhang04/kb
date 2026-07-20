@@ -208,7 +208,7 @@ Pick ONE as the flagship recurring show. Others become occasional inserts.
 1. **"The Autopsy" (5-Failure Model).** Every video dissects EXACTLY five decisions that killed
    the company. Enforced structure: cold-open collapse → "here are the five bullets that killed it,
    in order" → walk through 1–5. *Lever:* schadenfreude + puzzle-solving. Signature graphic
-   (numbered chapter cards) = ownable brand device.
+   (a numbered five-bullet board that accretes across the video, baked diegetic) = ownable brand device.
 2. **"Follow the Money" (Second-Order Losers).** Every video answers: "when [big company] did [big
    thing], who *actually* paid?" Traces cost downstream through suppliers, employees, retirees,
    taxpayers, competitors. *Lever:* vindication + awe-at-scale. Signature visual: a flowchart that

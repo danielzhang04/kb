@@ -105,8 +105,15 @@ export const Video: React.FC<{spec: MotionSpec}> = ({spec}) => {
         return shot.overlays.map((o, i) => {
           const startS = overlayStartS(o);
           const fromF = Math.round(startS * fps);
+          // A chapter-card with its own dur_s (cards 1-N) shows for that fixed window; every other overlay
+          // (and the end card, which has no dur_s) runs to the shot's end — the end card's shot is
+          // post-VO-extended so it holds past the last word (P03).
+          const durF =
+            o.type === 'chapter-card' && o.dur_s != null
+              ? Math.max(1, Math.round(o.dur_s * fps))
+              : Math.max(1, shotEndF - fromF);
           return (
-            <Sequence key={`${shot.id}-ov${i}`} from={fromF} durationInFrames={Math.max(1, shotEndF - fromF)}>
+            <Sequence key={`${shot.id}-ov${i}`} from={fromF} durationInFrames={durF}>
               {/* [A2] stackIndex = order within this shot's overlays → collision offset. */}
               <OverlayView tokens={tokens} overlay={rebased(o, startS)} fps={fps} isShort={isShort} stackIndex={i} />
             </Sequence>

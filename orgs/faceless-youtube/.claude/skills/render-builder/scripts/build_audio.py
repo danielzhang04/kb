@@ -34,6 +34,57 @@ def _sfx_file(pool, role, idx):
     return f"audio/sfx/{variants[idx % len(variants)]}.mp3"
 
 
+def _sfx_duration(path, cache):
+    """Media duration (seconds) of an SFX file via ffprobe, memoized in `cache` per path. Returns None
+    when the file is absent or ffprobe is unavailable/errs (the tail check then simply skips that cue —
+    it is a WARN-only convenience, never a hard dependency)."""
+    import subprocess
+    key = str(path)
+    if key in cache:
+        return cache[key]
+    dur = None
+    if Path(path).exists():
+        try:
+            proc = subprocess.run(
+                ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                 "-of", "default=noprint_wrappers=1:nokey=1", key],
+                capture_output=True, text=True)
+            if proc.returncode == 0:
+                dur = float(proc.stdout.strip())
+        except (FileNotFoundError, ValueError):
+            dur = None
+    cache[key] = dur
+    return dur
+
+
+def sfx_tail_warnings(events, shots, audio_dir):
+    """WARN (never fail) when an SFX file's tail would ring PAST the next shot cut — the systemic
+    tail-overlap symptom (M20): an element SFX plays its full length over whatever comes next. For each
+    event, probe its file duration (cached per file) and compare `at_s + dur` to the first shot start
+    strictly after `at_s`. Returns a list of {at_s, sfx, anchor?, overshoot_s} — build_motion counts them
+    into the render meta (like cues_unresolved) and prints each. No audio_dir (no filesystem) -> []."""
+    if audio_dir is None:
+        return []
+    base = Path(audio_dir)
+    cuts = sorted(float(s.get("start_s", 0.0)) for s in (shots or []))
+    cache, out = {}, []
+    for e in events:
+        dur = _sfx_duration(base / e["sfx"], cache)
+        if dur is None:
+            continue
+        at = float(e["at_s"])
+        nxt = next((c for c in cuts if c > at + 1e-6), None)   # next cut after this SFX
+        if nxt is None:
+            continue                                           # final shot — nothing to cross
+        end = at + dur
+        if end > nxt + 1e-3:
+            w = {"at_s": round(at, 3), "sfx": e["sfx"], "overshoot_s": round(end - nxt, 3)}
+            if e.get("anchor"):
+                w["anchor"] = e["anchor"]
+            out.append(w)
+    return out
+
+
 # Per-element device-card overlays -> SFX. DORMANT: build_motion produces only `text` overlays today;
 # stat-card/counter/definition-card/meter/progressive-reveal wait for the Phase-2c device-card producers
 # (Remotion T3). Kept because they are the CORRECT per-element trigger — not dead.
@@ -138,9 +189,14 @@ def sfx_events(shots, tokens, withhold=None):
 
 
 def cue_sfx_events(cue_events, tokens):
-    """Authored cue role-events {at_s, role, gain_db?} -> playable {sfx, at_s, gain_db} (2b). Per-role
-    anti-repeat rotation; gain = the cue override else sfx_gain_db. A role with no pool falls back to
-    '<role>-1' (the missing-file defense drops it later if unsourced)."""
+    """Authored cue role-events {at_s, role, gain_db?, variant?} -> playable {sfx, at_s, gain_db} (2b).
+    Per-role anti-repeat rotation; gain = the cue override else sfx_gain_db. A role with no pool falls
+    back to '<role>-1' (the missing-file defense drops it later if unsourced).
+
+    A `variant` PIN (an explicit file stem) overrides BOTH pool rotation AND consistent_sfx: the cue plays
+    exactly `audio/sfx/<variant>.mp3`. A pinned event carries `_pin` so build_audio_spec HARD-ERRORS if
+    the pinned file is absent (a directed choice must never silently fall back). A pin does NOT advance the
+    role's rotation counter — it is out-of-band, so unpinned siblings rotate as if the pin weren't there."""
     t = tokens or {}
     pool = t.get("sfx_pools") or {}
     gain = t.get("sfx_gain_db") or {}
@@ -150,16 +206,24 @@ def cue_sfx_events(cue_events, tokens):
         role = c.get("role")
         if not role:
             continue
-        if role in consistent:
-            i = 0                                     # no rotation — the same sound every time
+        variant = c.get("variant")
+        if variant:
+            e = {"sfx": f"audio/sfx/{variant}.mp3", "at_s": round(float(c["at_s"]), 3), "_pin": True}
         else:
-            i = idx.get(role, 0); idx[role] = i + 1   # anti-repeat rotation for variety
-        e = {"sfx": _sfx_file(pool, role, i), "at_s": round(float(c["at_s"]), 3)}
+            if role in consistent:
+                i = 0                                     # no rotation — the same sound every time
+            else:
+                i = idx.get(role, 0); idx[role] = i + 1   # anti-repeat rotation for variety
+            e = {"sfx": _sfx_file(pool, role, i), "at_s": round(float(c["at_s"]), 3)}
         g = c.get("gain_db", gain.get(role))
         if g is not None:
             e["gain_db"] = g
+        if c.get("fade_out_s") is not None:
+            e["fade_out_s"] = float(c["fade_out_s"])   # SfxTrack ramps the tail to silence (P16)
         if c.get("sync"):
             e["sync"] = c["sync"]   # carried to snap_element_sfx
+        if c.get("anchor"):
+            e["anchor"] = c["anchor"]   # carried only for the SFX-tail WARN label; stripped before render
         out.append(e)
     return out
 
@@ -186,12 +250,24 @@ def _subtract_holes(segs, holes):
     return sorted(out, key=lambda s: s["at_s"])
 
 
+def _seg_track_key(s):
+    """Identity of a segment's bed: its mood AND any per-cue `track` pin. Two same-mood segments pinned to
+    DIFFERENT files are distinct beds (must not coalesce; a boundary between them is a real track switch)."""
+    return (s["mood"], s.get("track"))
+
+
 def _coalesce_lane(segs):
-    """Merge touching same-mood segments into one (seamless — no fade/gap between them)."""
+    """Merge touching segments that share the SAME bed (mood + track pin) into one (seamless — no fade/gap)."""
     out = []
     for s in sorted(segs, key=lambda s: s["at_s"]):
-        if out and out[-1]["mood"] == s["mood"] and abs(out[-1]["to_s"] - s["at_s"]) < 1e-6:
+        if out and _seg_track_key(out[-1]) == _seg_track_key(s) and abs(out[-1]["to_s"] - s["at_s"]) < 1e-6:
             out[-1]["to_s"] = s["to_s"]
+            # The merged run's END is now s's end, so its end-fade override must be s's (drop the earlier
+            # seg's now-internal fade_out_s). Same-bed coalesce only; the card case (different next bed) never
+            # reaches here.
+            out[-1].pop("fade_out_s", None)
+            if "fade_out_s" in s:
+                out[-1]["fade_out_s"] = s["fade_out_s"]
         else:
             out.append(dict(s))
     return out
@@ -199,8 +275,8 @@ def _coalesce_lane(segs):
 
 def build_music_lane(resolved_cues, resolved_dry, shots, tokens, audio_dir=None):
     """Placed music lane (Phase 3B). Deterministic (G9). Turns pre-resolved music cues (each
-    {mood, at_s, level_db?}) + resolved dry spans (each {at_s, to_s?}) into music_states[] the engine
-    plays: non-overlapping segments at a CONSTANT present level; silence in authored dry spans;
+    {mood, at_s, level_db?, track?, fade_out_s?}) + resolved dry spans (each {at_s, to_s?}) into
+    music_states[] the engine plays: non-overlapping segments at a CONSTANT present level; silence in authored dry spans;
     a track_switch_gap between DIFFERENT-mood neighbours (fade->silence->fade); SAME-mood
     neighbours coalesced. No cues -> one full-length default-mood segment (back-compat, G8). Dips +
     full-stops are INHERITED from the existing timeline (the engine applies them; not here).
@@ -229,8 +305,15 @@ def build_music_lane(resolved_cues, resolved_dry, shots, tokens, audio_dir=None)
         start = max(0.0, float(c["at_s"]))
         end = float(cues[i + 1]["at_s"]) if i + 1 < len(cues) else piece_end
         if end > start:
-            segs.append({"mood": c["mood"], "at_s": start, "to_s": end,
-                         "base_db": float(c.get("level_db", present_db))})
+            seg = {"mood": c["mood"], "at_s": start, "to_s": end,
+                   "base_db": float(c.get("level_db", present_db))}
+            if c.get("track"):
+                seg["track"] = c["track"]   # per-cue PIN (overrides mood-pool index selection at materialize)
+            if c.get("fade_out_s") is not None:
+                # per-cue fade-out override (seconds) — e.g. an authored, longer fade INTO a title card /
+                # silence; absent -> the global music_fade_s.out (~0.9s) segment-end fade still applies.
+                seg["fade_out_s"] = float(c["fade_out_s"])
+            segs.append(seg)
 
     # 2. Carve holes: AUTHORED dry spans (human-cost music pull-back is an authored `dry` span, no
     #    longer an automatic drop).
@@ -247,7 +330,7 @@ def build_music_lane(resolved_cues, resolved_dry, shots, tokens, audio_dir=None)
         for i, s in enumerate(segs):
             nxt = segs[i + 1] if i + 1 < len(segs) else None
             is_remnant = round(s["at_s"], 3) in hole_ends
-            switches = (nxt is None) or (nxt["mood"] != s["mood"])
+            switches = (nxt is None) or (_seg_track_key(nxt) != _seg_track_key(s))
             if is_remnant and switches and (s["to_s"] - s["at_s"]) < absorb_s:
                 continue   # absorb into the pull-back silence
             kept.append(s)
@@ -256,9 +339,10 @@ def build_music_lane(resolved_cues, resolved_dry, shots, tokens, audio_dir=None)
     # 3. Coalesce touching same-mood neighbours (seamless across an ordinary boundary).
     segs = _coalesce_lane(segs)
 
-    # 4. Track switch: a gap of silence between two ABUTTING different-mood segments (fade->gap->fade).
+    # 4. Track switch: a gap of silence between two ABUTTING different-BED segments (fade->gap->fade).
+    #    Different bed = different mood OR the same mood pinned to different tracks.
     for i in range(len(segs) - 1):
-        if abs(segs[i]["to_s"] - segs[i + 1]["at_s"]) < 1e-6 and segs[i]["mood"] != segs[i + 1]["mood"]:
+        if abs(segs[i]["to_s"] - segs[i + 1]["at_s"]) < 1e-6 and _seg_track_key(segs[i]) != _seg_track_key(segs[i + 1]):
             segs[i]["to_s"] = round(segs[i]["to_s"] - gap_s, 3)
 
     # 5. Materialize: deterministic pool rotation + fades + missing-file defense (G8/G9).
@@ -268,15 +352,24 @@ def build_music_lane(resolved_cues, resolved_dry, shots, tokens, audio_dir=None)
         dur = round(s["to_s"] - s["at_s"], 3)
         if dur <= 0.05:
             continue
-        variants = pools.get(s["mood"]) or []
-        if not variants:
-            missing += 1; continue
-        i = idx.get(s["mood"], 0); idx[s["mood"]] = i + 1
-        track = f"audio/beds/{variants[i % len(variants)]}.mp3"
-        if base is not None and not (base / track).exists():
-            missing += 1; continue
+        if s.get("track"):
+            # per-cue PIN: exact bed file, no pool rotation. A missing pinned file is a HARD ERROR
+            # (a directed track choice must never silently fall back to a mood-pool pick).
+            track = f"audio/beds/{s['track']}.mp3"
+            if base is not None and not (base / track).exists():
+                raise SystemExit(f"pinned music track missing on disk: {track} "
+                                 f"(cue at {s['at_s']}s, mood {s['mood']!r}). Source it, or drop the `track` pin.")
+        else:
+            variants = pools.get(s["mood"]) or []
+            if not variants:
+                missing += 1; continue
+            i = idx.get(s["mood"], 0); idx[s["mood"]] = i + 1
+            track = f"audio/beds/{variants[i % len(variants)]}.mp3"
+            if base is not None and not (base / track).exists():
+                missing += 1; continue
         music_states.append({"track": track, "at_s": round(s["at_s"], 3), "dur_s": dur,
-                             "base_db": s["base_db"], "fade_in_s": fade_in, "fade_out_s": fade_out})
+                             "base_db": s["base_db"], "fade_in_s": fade_in,
+                             "fade_out_s": float(s.get("fade_out_s", fade_out))})
     return music_states, missing
 
 
@@ -296,10 +389,11 @@ def build_audio_spec(shots, tokens, words, has_vo, breath_gaps=None, audio_dir=N
                     event whose file is absent under it is DROPPED + counted in `sfx_missing` — the
                     render never references a missing file (real card-rich videos emit roles whose
                     pool has no sourced file yet). None -> no filtering (safe-when-absent).
-    `cue_events`  — 2b authored content SFX (from audio_cues.cue_role_events): {at_s, role, gain_db?}.
-                    Merged into `events` BEFORE the full-stop + missing-file filter, so authored cues
-                    inherit both (a cue landing inside a breath gap is withheld; a cue with no sourced
-                    file is dropped + counted). [] / None -> no authored cues (back-compat).
+    `cue_events`  — 2b authored content SFX (from audio_cues.cue_role_events): {at_s, role, gain_db?,
+                    variant?, anchor?}. Merged into `events` BEFORE the full-stop + missing-file filter,
+                    so authored cues inherit both (a cue landing inside a breath gap is withheld; a cue
+                    with no sourced file is dropped + counted, EXCEPT a `variant` PIN whose file is absent
+                    -> HARD ERROR). [] / None -> no authored cues (back-compat).
     `music_cues`/`music_dry` — pre-resolved authored placement (music_cues.resolve_music_cues). None ->
                     the back-compat default lane (one full-length default-mood segment).
     """
@@ -316,16 +410,28 @@ def build_audio_spec(shots, tokens, words, has_vo, breath_gaps=None, audio_dir=N
         return round(g["at_s"] + sum(x["dur_s"] for x in gaps if x["at_s"] < g["at_s"]), 3)
 
     dip_db = float(t.get("dip_db", -40))
-    dips = [{"at_s": _gap_start(g), "depth_db": dip_db, "dur_s": g["dur_s"]} for g in gaps]
+    # `dip_in_pause` (default True = current behavior): the -40 dB full-stop dip fires in every authored
+    # pause gap. Set False (audio-tokens.json) and NO dip is emitted for pause gaps — the bed continues at
+    # its present level THROUGH authored pauses (M15). Dry-span + track-switch silence live in
+    # build_music_lane and are UNAFFECTED (they carve the lane, not via `dips`).
+    # UNIVERSAL sentence gaps (source=="sentence") are VO rhythm, NOT a full-stop: they still SHIFT the
+    # timeline (they are in `gaps`, so _gap_start sums them), but they NEVER emit a dip and NEVER withhold
+    # SFX (R8-B). A merged gap that STACKS a sentence gap onto an authored pause is source=="cue" (merge_gaps
+    # precedence), so it keeps the dip/withhold — only PURE sentence gaps are excluded here.
+    dips = ([{"at_s": _gap_start(g), "depth_db": dip_db, "dur_s": g["dur_s"]}
+             for g in gaps if g.get("source") != "sentence"]
+            if t.get("dip_in_pause", True) else [])
     events = sfx_events(shots, t, withhold=withhold) + cue_sfx_events(cue_events, t)   # 2a structural + 2b authored
     events = snap_element_sfx(events, shots)   # item-appearance SFX snap to the cut/overlay they punctuate
     for e in events:
         e.pop("sync", None)   # internal flag; not part of the render event
     events.sort(key=lambda e: e["at_s"])
-    events.sort(key=lambda e: e["at_s"])
-    # Full-stop: withhold events landing STRICTLY inside a gap; the intended hit lands at the gap END (the
-    # breath-beat shot's first word, shifted past the gap) and survives — a true stop, then the hit lands.
+    # Full-stop: withhold events landing STRICTLY inside an AUTHORED-pause gap; the intended hit lands at
+    # the gap END (the breath-beat shot's first word, shifted past the gap) and survives — a true stop,
+    # then the hit lands. Sentence gaps are skipped (a SFX landing on a sentence boundary must survive).
     for g in gaps:
+        if g.get("source") == "sentence":
+            continue
         gs = _gap_start(g)
         ge = round(gs + g["dur_s"], 3)
         events = [e for e in events if not (gs < e["at_s"] < ge)]
@@ -336,15 +442,36 @@ def build_audio_spec(shots, tokens, words, has_vo, breath_gaps=None, audio_dir=N
         for e in events:
             if (base / e["sfx"]).exists():
                 kept.append(e)
+            elif e.get("_pin"):
+                # a per-cue `variant` PIN naming an absent file is a HARD ERROR — a directed choice must
+                # never silently vanish (the soft-drop below is only for un-sourced pooled roles).
+                raise SystemExit(f"pinned SFX variant missing on disk: {e['sfx']} "
+                                 f"(cue at {e['at_s']}s). Source it, or drop the `variant` pin.")
             else:
                 sfx_missing += 1
         events = kept
+    # SFX-tail overshoot audit (WARN-only, M20): flag any SFX whose file rings past the next cut.
+    tail_warnings = sfx_tail_warnings(events, shots, audio_dir)
+    # Carry each SFX file's REAL duration onto the event so the engine plays its FULL length instead of
+    # the legacy hard 2s window (P16): a long SFX (applause/riser) now rings its whole tail unless a
+    # `fade_out_s` ramps it. Probed via ffprobe (cached); absent/unprobeable -> no dur_s (engine keeps the
+    # 2s fallback). Only meaningful when audio_dir is set (files exist to probe).
+    if audio_dir is not None:
+        base = Path(audio_dir)
+        dcache = {}
+        for e in events:
+            d = _sfx_duration(base / e["sfx"], dcache)
+            if d is not None:
+                e["dur_s"] = round(d, 3)
+    for e in events:
+        e.pop("_pin", None); e.pop("anchor", None)   # internal flags; not part of the render event
     music_states, music_missing = build_music_lane(music_cues, music_dry, shots, t, audio_dir=audio_dir)
     return {
         "music_states": music_states,   # placed lane (Phase 3B); [] only if piece_end<=0
         "events": events,               # 2a structural + 2b authored, register-withheld, missing-dropped
-        "dips": dips,                   # bed-to-silence full-stop in every breath gap
+        "dips": dips,                   # bed-to-silence full-stop in every breath gap (empty if dip_in_pause=false)
         "thin_spans": thin_spans,       # human-cost thinning on gravity
         "sfx_missing": sfx_missing,
         "music_missing": music_missing,
+        "sfx_tail_warnings": tail_warnings,   # WARN-only tail-overlap audit (M20); counted in the render meta
     }

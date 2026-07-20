@@ -53,13 +53,24 @@ lane** (which will decide *when* a bed plays); it does not itself place anything
 5. **In-context gate** — the eventual Phase-3B render re-gates the pick by ear, looping under real VO —
    the isolated audition is a pre-filter, not the final word.
 
-## Casual-comedic, NOT cinematic
+## Two registers, both restrained — NOT cinematic
 
-The channel's music idiom is Crayon-Capital: a light, quirky groove that rides under narration and goes
-dry on human-cost beats — never a movie score, never a tension cue. That's why the bucket taxonomy is
-`casual-bed` / `upbeat` / `sneaky` (all dry, all comedic-register) and why the source is Incompetech's
-comedic catalog specifically, not a cinematic-stinger library. If a candidate reads as scored/dramatic
-rather than wry/quirky, it doesn't belong in the pool regardless of how well it loops.
+The channel carries two music registers, and the mood bucket names which one a scene draws from:
+
+- **Casual-comedic idiom** (Crayon-Capital): a light, quirky groove that rides under narration —
+  buckets `casual-bed` / `upbeat` / `sneaky`, sourced from Incompetech's comedic catalog.
+- **Restrained exposé-underscore** (added 2026-07-17 retrack — decisions.md): a present, credible
+  instrumental underscore that reads serious-but-not-dramatic — buckets `underscore` (the DEFAULT
+  con-spine bed, replacing the meme-coded `sneaky` cues as default) and `somber` (the elegiac button
+  tail). Understated pizzicato/strings/keys tension, soft mystery, noir investigation, dignified solo
+  piano — present at ~2-3 dB under VO, never buried.
+
+The hard boundary in BOTH registers: **NOT a movie score, NOT a big cinematic tension/stinger cue.**
+The retrack widened the register toward credible restraint; it did not open the door to dramatic
+scoring. If a candidate reads as a swelling cinematic stinger or a dramatic set-piece score, it
+doesn't belong in any pool regardless of how well it loops. The `sneaky` and `Monkeys Spinning
+Monkeys` meme cues STAY in the library for occasional *deliberate* comedic use — they are just no
+longer the default.
 
 ## Objective vet, human taste (G6)
 

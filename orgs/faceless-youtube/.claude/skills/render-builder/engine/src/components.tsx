@@ -176,25 +176,52 @@ export const Counter: React.FC<{
   );
 };
 
-export const ChapterCard: React.FC<{tokens: MotionTokens; text: string}> = ({tokens, text}) => {
+// [P03 2026-07-17] Chapter card — a full-frame, FULLY OPAQUE near-black beat that reads as its OWN scene
+// (nothing of the underlying footage visible while it is up); centered cream text (Ink Free). Re-enabled
+// after the 2026-07-15 parking. Ground is a dedicated CARD_INK (#151310), NOT palette.ink — a deliberate
+// chapter-break black, consistent across all cards. The old borderBottom accent chrome is gone. A quick
+// fade IN (~0.15s) reads as a clean scene transition without a hard black flash; there is NO tail fade-out
+// (Q04) — the card holds opaque to its last frame and hard-cuts out, so a timed card never cross-dissolves
+// back to the preceding shot. The in-video cards are timed to sit entirely inside a spliced pause silence
+// (build_motion.apply_cards), so the card is only ever up while nothing is spoken. `dur_s` = the card's
+// window (in-video cards, applied as the Sequence length in Video.tsx); absent = the end card, which holds
+// to its post-VO-extended shot end.
+const CARD_INK = '#151310';
+export const ChapterCard: React.FC<{tokens: MotionTokens; text: string; dur_s?: number; fade_s?: number}> = ({
+  tokens,
+  text,
+  fade_s = 0.15,
+}) => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
   const pop = spring({frame, fps, config: {damping: 200}, durationInFrames: 20});
   const unit = useUnit();
+  const t = frame / fps;
+  // [Q04 2026-07-17] Fade IN only, then HOLD opaque to the card's last frame — no tail fade-out. A timed
+  // in-video card's window ends exactly on the next scene cut, so the footage UNDER the card during any
+  // tail fade is still the PRECEDING shot; fading the card out cross-dissolved back to that shot for ~4-5
+  // frames before the hard cut (the "post-card flash" defect). The engine is hard-cuts-only, so ending the
+  // card opaque at the cut frame gives card -> next-scene with nothing of the old shot revealed. `dur_s` is
+  // still consumed via the Sequence window (Video.tsx); it no longer drives an opacity ramp here.
+  const op = fade_s > 0 ? Math.max(0, Math.min(1, t / fade_s)) : 1;
   return (
-    <AbsoluteFill style={{backgroundColor: tokens.palette.ink, justifyContent: 'center', alignItems: 'center'}}>
+    <AbsoluteFill style={{backgroundColor: CARD_INK, justifyContent: 'center', alignItems: 'center', opacity: op}}>
       <div
         style={{
           fontFamily: tokens.font_family,
           fontWeight: 900,
-          fontSize: 96 * unit,
+          // [C1 2026-07-17] Title-card typography. Extra-bold via a 2.5px text stroke in the SAME colour as
+          // the fill (tokens.palette.card_bg = #fffdf7) — this boldness direction is CONFIRMED. Ink Free +
+          // Title Case unchanged (do NOT uppercase). Sizes scale by `unit` (=width/1920), so the literals are
+          // the 1080p values. The 104 below is PROVISIONAL — Daniel is still picking the final size from a
+          // board round; the orchestrator swaps this ONE literal (104) before the R9 render.
+          WebkitTextStroke: `${2.5 * unit}px ${tokens.palette.card_bg}`,
+          fontSize: 104 * unit, // PROVISIONAL size — swap this literal (104) to the locked pick pre-render
           color: tokens.palette.card_bg,
           maxWidth: '86%',
           textAlign: 'center',
           textWrap: 'balance' as never,
           transform: `translateY(${interpolate(pop, [0, 1], [40, 0])}px)`,
-          borderBottom: `${10 * unit}px solid ${tokens.palette.accent}`,
-          paddingBottom: 14 * unit,
         }}
       >
         {text}
@@ -405,7 +432,7 @@ export const OverlayView: React.FC<{
       case 'counter':
         return <Counter tokens={tokens} from={overlay.from} to={overlay.to} prefix={overlay.prefix} suffix={overlay.suffix} duration_s={overlay.duration_s} />;
       case 'chapter-card':
-        return <ChapterCard tokens={tokens} text={overlay.text} />;
+        return <ChapterCard tokens={tokens} text={overlay.text} dur_s={overlay.dur_s} fade_s={overlay.fade_s} />;
       case 'meter':
         return <Meter tokens={tokens} label={overlay.label} fraction={overlay.fraction} />;
       case 'definition-card':
@@ -493,11 +520,29 @@ export const SfxTrack: React.FC<{audio: AudioSpec}> = ({audio}) => {
   const {fps} = useVideoConfig();
   return (
     <>
-      {(audio.events ?? []).map((e, i) => (
-        <Sequence key={`${e.sfx}-${i}`} from={Math.round(e.at_s * fps)} durationInFrames={Math.round(fps * 2)} layout="none">
-          <Audio src={staticFile(e.sfx)} volume={e.gain_db != null ? dbToGain(e.gain_db) : 1} />
-        </Sequence>
-      ))}
+      {(audio.events ?? []).map((e, i) => {
+        const gain = e.gain_db != null ? dbToGain(e.gain_db) : 1;
+        // Play window = the file's REAL duration (probed by the realizer) so a long SFX rings its full
+        // length; absent dur_s falls back to the legacy 2s window. A `fade_out_s` ramps the tail to
+        // silence over its last seconds (mirrors MusicLane's fadeEnv) — the P16 applause "abrupt cut"
+        // was this hard 2s truncation, not the file. Constant `gain` when no fade is authored.
+        const durS = e.dur_s != null && e.dur_s > 0 ? e.dur_s : 2;
+        const fout = e.fade_out_s != null && e.fade_out_s > 0 ? e.fade_out_s : 0;
+        const durF = Math.max(1, Math.round(durS * fps));
+        const volume =
+          fout > 0
+            ? (localFrame: number): number => {
+                const local = localFrame / fps;
+                const f = local > durS - fout ? Math.max(0, (durS - local) / fout) : 1;
+                return Math.max(0, Math.min(1, gain * f));
+              }
+            : gain;
+        return (
+          <Sequence key={`${e.sfx}-${i}`} from={Math.round(e.at_s * fps)} durationInFrames={durF} layout="none">
+            <Audio src={staticFile(e.sfx)} volume={volume} />
+          </Sequence>
+        );
+      })}
     </>
   );
 };
@@ -516,6 +561,14 @@ const bez = (t: number, pts: [number, number][], w: number, h: number) => {
     y: (u * u * p0[1] + 2 * u * t * p1[1] + t * t * p2[1]) * h,
   };
 };
+
+// [M16-R7] Per-layer vertical anchor origin. Each animation type has a DEFAULT origin
+// (appear/path = element CENTER; bob/slide = element BOTTOM/feet). An explicit `anchor_origin`
+// overrides the vertical translate so a plan can STATE intent: mixed origins made bob/slide
+// layers authored with a "center" y render half-a-height too high (M16 — e.g. the L59 arrow).
+// Horizontal stays -50% always; unset = the type's current default → zero regression.
+const vOriginPct = (origin: 'center' | 'bottom' | undefined, dflt: '-50%' | '-100%'): string =>
+  origin === 'center' ? '-50%' : origin === 'bottom' ? '-100%' : dflt;
 
 export const LayerView: React.FC<{layer: LayerSpec; tokens: MotionTokens}> = ({layer, tokens}) => {
   const frame = useCurrentFrame();
@@ -542,7 +595,8 @@ export const LayerView: React.FC<{layer: LayerSpec; tokens: MotionTokens}> = ({l
     const startX = a.from_edge === 'right' ? width * 1.2 : -width * 0.2;
     const x = interpolate(p, [0, 1], [startX, restX]);
     const y = a.to[1] * height;
-    return <Img src={src} style={{position: 'absolute', left: x, top: y, height: imgH, width: 'auto', transform: 'translate(-50%, -100%)'}} />;
+    const vy = vOriginPct(a.anchor_origin, '-100%');
+    return <Img src={src} style={{position: 'absolute', left: x, top: y, height: imgH, width: 'auto', transform: `translate(-50%, ${vy})`}} />;
   }
 
   if (a.type === 'path') {
@@ -552,15 +606,24 @@ export const LayerView: React.FC<{layer: LayerSpec; tokens: MotionTokens}> = ({l
       extrapolateRight: 'clamp',
       easing: Easing.inOut(Easing.ease),
     });
-    const pt = bez(p, a.points, width, height);
+    // `static` = completed-route persistence: a delta-chain shot re-declares an EARLIER shot's route
+    // (same points) so the drawn line survives the shot cut. Static ignores progress — the whole line
+    // is drawn from frame 0 and the cutout is parked at the route END (bez at 1). Default (unset) keeps
+    // the original draw-on animation: the line trails the cutout up to its live progress `p`.
+    const isStatic = a.static === true;
+    const prog = isStatic ? 1 : p;
+    const pt = bez(prog, a.points, width, height);
     const dots: React.ReactNode[] = [];
     if (a.draw_line) {
-      const N = 44;
+      // [M25-R7] Dot density is per-layer tunable so a route reads DOTTED, not solid. 44 dots at
+      // r=5 along a short path overlap into a near-continuous bead. Defaults preserve the old look.
+      const N = a.dot_count ?? 44;
+      const r = a.dot_r ?? 5;
       for (let i = 0; i <= N; i++) {
         const t = i / N;
-        if (t > p) break;
+        if (!isStatic && t > p) break;
         const d = bez(t, a.points, width, height);
-        dots.push(<circle key={i} cx={d.x} cy={d.y} r={5} fill={tokens.palette.ink} opacity={0.9} />);
+        dots.push(<circle key={i} cx={d.x} cy={d.y} r={r} fill={tokens.palette.ink} opacity={0.9} />);
       }
     }
     return (
@@ -570,7 +633,7 @@ export const LayerView: React.FC<{layer: LayerSpec; tokens: MotionTokens}> = ({l
             {dots}
           </svg>
         ) : null}
-        <Img src={src} style={{position: 'absolute', left: pt.x, top: pt.y, height: imgH, width: 'auto', transform: 'translate(-50%, -50%)'}} />
+        <Img src={src} style={{position: 'absolute', left: pt.x, top: pt.y, height: imgH, width: 'auto', transform: `translate(-50%, ${vOriginPct(a.anchor_origin, '-50%')})`}} />
       </AbsoluteFill>
     );
   }
@@ -580,7 +643,8 @@ export const LayerView: React.FC<{layer: LayerSpec; tokens: MotionTokens}> = ({l
     const period = a.period ?? 2.4;
     const dy = Math.sin((frame / fps) * ((2 * Math.PI) / period)) * amp;
     const [x, y] = a.at ?? [0.5, 0.82];
-    return <Img src={src} style={{position: 'absolute', left: x * width, top: y * height + dy, height: imgH, width: 'auto', transform: 'translate(-50%, -100%)'}} />;
+    const vy = vOriginPct(a.anchor_origin, '-100%');
+    return <Img src={src} style={{position: 'absolute', left: x * width, top: y * height + dy, height: imgH, width: 'auto', transform: `translate(-50%, ${vy})`}} />;
   }
 
   // appear — style: pop (default) | fade | slam. Entry frame = the resolved anchor (start_s),
@@ -588,16 +652,24 @@ export const LayerView: React.FC<{layer: LayerSpec; tokens: MotionTokens}> = ({l
   const atF = Math.round(((a.start_s ?? a.at_s) ?? 0) * fps);
   const [x, y] = a.at ?? [0.5, 0.5];
   const style = a.style ?? 'pop';
+  const vy = vOriginPct(a.anchor_origin, '-50%');
   if (style === 'slam') {
-    // A stamp pressing onto paper: enter slightly large + above, drop DOWN with a small overshoot.
-    const s = spring({frame: frame - atF, fps, config: {damping: 9, mass: 0.5}});
-    const dy = interpolate(s, [0, 1], [-height * 0.06, 0]);
-    const sc = interpolate(s, [0, 0.7, 1], [1.25, 0.94, 1]);
+    // A stamp slapping onto paper: enter slightly large + above, drop DOWN and land DEAD — no ring, no undershoot.
+    // [P02 2026-07-17] An explicit durationInFrames FREEZES the settle. Without it, damping-200 asymptotes
+    // to 1 over ~1.5-2s, so `dy` keeps creeping toward rest for ~1s AFTER the apparent impact — the "stamp
+    // drags downward" defect. Landing in ~0.32s then holding dead-still (dy=0, sc=1) kills the drag.
+    const s = spring({frame: frame - atF, fps, config: {damping: 200, mass: 0.5}, durationInFrames: Math.round(fps * 0.32)});
+    // [P02b 2026-07-17] Co-terminate the drop with the opacity window (op completes at s=0.25) and CLAMP,
+    // so the stamp LANDS at rest essentially as it becomes fully opaque, then holds dead (dy=0) until the
+    // shot ends. Previously dy only rested at s=1 while op finished at s=0.25 — the stamp went fully opaque
+    // ~48px high then visibly slid down to rest (the "appear-then-drop" defect).
+    const dy = interpolate(s, [0, 0.3], [-height * 0.06, 0], {extrapolateRight: 'clamp'});
+    const sc = interpolate(s, [0, 0.7, 1], [1.12, 1, 1]);
     const op = interpolate(s, [0, 0.25], [0, 1], {extrapolateRight: 'clamp'});
     return (
       <Img
         src={src}
-        style={{position: 'absolute', left: x * width, top: y * height + dy, height: imgH, width: 'auto', opacity: op, transform: `translate(-50%, -50%) scale(${sc})`}}
+        style={{position: 'absolute', left: x * width, top: y * height + dy, height: imgH, width: 'auto', opacity: op, transform: `translate(-50%, ${vy}) scale(${sc})`}}
       />
     );
   }
@@ -606,7 +678,7 @@ export const LayerView: React.FC<{layer: LayerSpec; tokens: MotionTokens}> = ({l
   return (
     <Img
       src={src}
-      style={{position: 'absolute', left: x * width, top: y * height, height: imgH, width: 'auto', opacity: pop, transform: `translate(-50%, -50%) scale(${sc})`}}
+      style={{position: 'absolute', left: x * width, top: y * height, height: imgH, width: 'auto', opacity: pop, transform: `translate(-50%, ${vy}) scale(${sc})`}}
     />
   );
 };

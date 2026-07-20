@@ -129,8 +129,9 @@ output_format: mp3_44100_128
   print" in final 20%; payoff is a *realization*, not a lesson; `[B-ROLL]`/`[PAUSE]`/tiered-pause cues;
   cadence self-check + anti-cliché pass + humor pass (§1d-V). YMYL accuracy gate (below).
 - **Visual style (LOCKED recipe):** **clean 2.5D vector cast + built environments + marker-style
-  charts/title-cards + one red accent.** NOT a literal crayon clone and NOT hand-drawn/sketchy — the
-  hand-feel lives only in the marker title-cards + hand-drawn charts; character/object art is clean
+  charts/diegetic lettering + one red accent.** NOT a literal crayon clone and NOT hand-drawn/sketchy — the
+  hand-feel lives only in the hand-drawn marker charts + baked diegetic lettering (no title/chapter
+  cards — dropped 2026-07-15); character/object art is clean
   vector. The screen is a **cast of distinct characters acting the money story** on built, depth-layered
   environments — there is **no on-screen narrator/host** (narration is a VOICE only); animated diagrams +
   timelines carry the numbers. **Cast identity is locked:** a shared facial rig (round near-circle head,

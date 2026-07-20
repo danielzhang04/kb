@@ -34,10 +34,10 @@ Turn a fully-prepared video folder into a finished MP4 — locally, on the Remot
   the contract `compliance-check` / `publish-queue` read (output paths + durations;
   `render_engine: remotion`, `watermark: false` — the local engine never watermarks).
 
-The whole job is done by the scripts; the only hand-authoring is the optional motion step (adding T2
-device overlays to a derived motion.json — see the SOP below). Motion is fixed mechanically — the camera
-is always locked and every shot hard-cuts; you never hand-author it. (Audio is authored separately by
-the `audio-director` skill.)
+The whole job is done by the scripts — there is no hand-authoring step. Motion is fixed mechanically:
+the camera is always locked, every shot hard-cuts, and the layered cutout motion is merged from the
+`motion-planner`'s `shots.motion.json` (via `--motion-plan`). You never hand-edit a derived motion.json.
+(Audio is authored separately by the `audio-director` skill.)
 
 ## How to run it — the Remotion engine
 
@@ -50,7 +50,7 @@ once inside `engine/`). It re-times the shots to the real voiceover, derives a p
 
 ```bash
 # 1. ALWAYS dry-run first — derives + saves the motion.json specs, renders nothing.
-#    Inspect assets/motion/<piece>.motion.json (timings, stages, placeholders, overlays).
+#    Inspect assets/motion/<piece>.motion.json (timings, stages, placeholders, cutout layers).
 py -3 .claude/skills/render-builder/scripts/build_motion.py channels/<name>/videos/<slug> --dry-run
 
 # 2. Real render — long-form + every publish-tagged short.
@@ -70,12 +70,13 @@ py -3 .claude/skills/render-builder/scripts/build_motion.py channels/<name>/vide
 ```
 
 **Standard operating procedure:** dry-run → read one motion.json (cut times on the right words?
-stages grouped? placeholders only where expected?) → real render. **T2 device cards are authored
-upstream, not here:** `motion-planner` emits them as `source:"engine"` device-layers in
-`shots.motion.json`, and `build_motion` routes them into `motion.json` `overlays[]` (via
-`apply_motion_plan`) — render-builder never hand-edits overlays. Never hand-edit the derived timing
-fields; re-derive instead. Channel look = `channels/<name>/visual-kit/motion-tokens.json` (data; engine defaults if
-absent).
+stages grouped? placeholders only where expected? layered shots carry `plate`+`layers`?) → real
+render. **Layered cutout motion is authored upstream, not here:** `motion-planner` emits it in
+`shots.motion.json`, and `build_motion --motion-plan` merges each shot's `plate`+cutout `layers` (via
+`apply_motion_plan`). There are no engine text/device overlays — `overlays[]` is always empty and
+in-video text is baked into the generated images (see `references/motion-schema.md` §3). Never
+hand-edit the derived timing fields; re-derive instead. Channel look =
+`channels/<name>/visual-kit/motion-tokens.json` (data; engine defaults if absent).
 
 ## `scripts/render.py` — shared timing/scene helpers (not an engine)
 
@@ -137,5 +138,5 @@ mapping: `references/motion-schema.md`.
 ## Full field mapping + schema
 
 `references/motion-schema.md` — the `motion.json` contract the engine renders: shots.json → motion
-spec mapping, camera/entrance derivation, stage grouping, overlays + captions, placeholder cards, and
-the `render.manifest.json` schema. Read it when a render looks wrong.
+spec mapping, camera/entrance derivation, stage grouping, cutout layers + captions, placeholder cards,
+and the `render.manifest.json` schema. Read it when a render looks wrong.

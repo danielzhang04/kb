@@ -1,26 +1,14 @@
 {
   "schema": "faceless-youtube/animation-menu@1",
-  "_doc": "The closed animation vocabulary. Family A = generated-image cutout layers; Family B = engine-drawn. Each entry: author params, the asset image-gen must produce, the Remotion impl + build status. VPW/motion-planner may author ONLY these. Extend deliberately: prove in Remotion -> add the triple -> then author.",
+  "_doc": "The closed animation vocabulary. Family A = generated-image cutout layers (the only authorable family). Each entry: author params, the asset image-gen must produce, the Remotion impl + build status. VPW/motion-planner may author ONLY these. Extend deliberately: prove in Remotion -> add the triple -> then author.",
   "families": {
     "cutout": {
       "_note": "Family A. source:'cutout' — a generated image asset composited over the plate. Rigid transforms + reveals only; NO articulation.",
       "animations": {
-        "appear": {"params": ["at_s", "style", "at", "anchor"], "style_enum": ["pop", "fade", "slam"], "shapes": {"at": "[x,y] 0-1 (opt, default [0.5,0.5])", "at_s": "shot-relative seconds (opt)", "style": "pop|fade|slam (opt, default pop)", "anchor": "verbatim VO words (opt) — resolved to a shot-relative start_s at build"}, "asset": "one cutout", "engine": "spring/opacity/slam at t", "status": "proven"},
-        "bob":    {"params": ["amp", "period", "at"], "shapes": {"amp": "px (opt)", "period": "seconds (opt)", "at": "[x,y] 0-1 (opt)"}, "asset": "one cutout", "engine": "sine translate in place", "status": "trivial"},
-        "slide":  {"params": ["from_edge", "to", "dur_s", "easing", "anchor"], "shapes": {"from_edge": "left|right|top|bottom", "to": "[x,y] 0-1 (required)", "dur_s": "seconds > 0 (required)", "easing": "css/remotion easing name (opt)", "anchor": "verbatim VO words (opt)"}, "asset": "one cutout", "engine": "ease-out translate", "status": "proven"},
-        "path":   {"params": ["points", "dur_s", "draw_line", "anchor"], "shapes": {"points": "exactly three [x,y] 0-1 coords (bezier)", "dur_s": "seconds > 0 (required)", "draw_line": "bool (opt) — engine trails route dots", "anchor": "verbatim VO words (opt)"}, "asset": "one cutout (line is engine-drawn)", "engine": "bezier sample + optional draw-on", "status": "proven"},
-        "sprite-walk": {"params": ["direction", "dur_s"], "asset": "N pose-frame cutouts", "engine": "frame-cycle + translate", "status": "designed-not-built"}
-      }
-    },
-    "engine": {
-      "_note": "Family B. source:'engine' — code-drawn from DATA, no gen. Already implemented in the engine (the T2 device kit + text). This project generalizes them into layers[]; it does not rebuild them.",
-      "animations": {
-        "type-on":  {"params": ["at_s", "dur_s"], "asset": "none (text data)", "engine": "char-by-char type-on", "status": "built"},
-        "appear":   {"params": ["at_s", "style"], "asset": "none (card/data)", "engine": "spring-pop", "status": "built"},
-        "count":    {"params": ["from", "to", "at_s", "dur_s"], "asset": "none (number)", "engine": "ramp tabular digits", "status": "built"},
-        "fill":     {"params": ["fraction", "at_s"], "asset": "none (meter data)", "engine": "bar fill", "status": "built"},
-        "reveal":   {"params": ["items", "mark"], "asset": "none (list data)", "engine": "each item lands on its word", "status": "built"},
-        "draw-line":{"params": ["points", "dur_s"], "asset": "none (route data)", "engine": "dotted path draw-on", "status": "built-in-spike"}
+        "appear": {"params": ["at_s", "style", "at", "anchor", "anchor_origin"], "style_enum": ["pop", "fade", "slam"], "shapes": {"at": "[x,y] 0-1 (opt, default [0.5,0.5])", "at_s": "shot-relative seconds (opt)", "style": "pop|fade|slam (opt, default pop)", "anchor": "verbatim VO words (opt) — resolved to a shot-relative start_s at build", "anchor_origin": "center|bottom (opt) — vertical transform origin; default center for appear. Distinct from `anchor`."}, "asset": "one cutout", "engine": "spring/opacity/slam at t", "status": "proven"},
+        "bob":    {"params": ["amp", "period", "at", "anchor_origin"], "shapes": {"amp": "px (opt)", "period": "seconds (opt)", "at": "[x,y] 0-1 (opt)", "anchor_origin": "center|bottom (opt) — vertical transform origin; default bottom for bob (`at` y is the element's bottom edge unless overridden)."}, "asset": "one cutout", "engine": "sine translate in place", "status": "trivial"},
+        "slide":  {"params": ["from_edge", "to", "dur_s", "easing", "anchor", "anchor_origin"], "shapes": {"from_edge": "left|right|top|bottom", "to": "[x,y] 0-1 (required)", "dur_s": "seconds > 0 (required)", "easing": "css/remotion easing name (opt)", "anchor": "verbatim VO words (opt)", "anchor_origin": "center|bottom (opt) — vertical transform origin; default bottom for slide (feet-on-ground). Set 'center' for a non-figure slide like an arrow so `to` y means the element's center."}, "asset": "one cutout", "engine": "ease-out translate", "status": "proven"},
+        "path":   {"params": ["points", "dur_s", "draw_line", "static", "dot_count", "dot_r", "anchor", "anchor_origin"], "shapes": {"points": "exactly three [x,y] 0-1 coords (bezier)", "dur_s": "seconds > 0 (required)", "draw_line": "bool (opt) — engine trails route dots", "dot_count": "int > 0 (opt, default 44) — number of route dots; requires draw_line. LOWER for a clearly dotted read (44 overlap into a solid bead).", "dot_r": "number > 0 (opt, default 5) — dot radius px; requires draw_line. SMALLER widens the gaps.", "static": "bool (opt) — completed-route persistence: draw the WHOLE line from frame 0 (ignore progress) + park the cutout at the route end. A later delta-chain shot re-declares an earlier shot's route (same points) with static:true so the drawn line survives the hard cut. Default off = the draw-on animation.", "anchor": "verbatim VO words (opt)", "anchor_origin": "center|bottom (opt) — vertical transform origin of the cutout; default center for path."}, "asset": "one cutout (line is engine-drawn; static parks it at the route end)", "engine": "bezier sample + optional draw-on / static completed-route", "status": "proven"}
       }
     }
   }

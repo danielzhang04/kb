@@ -14,10 +14,14 @@ Read: `videos/<slug>/shots.json` + `script.md`, the channel `visual-kit/audio-to
 dials), `references/grammar-guidance.md`, and `render-builder/references/audio-plan-schema.md` (the format).
 
 ## The plan (one `cues` array, four kinds)
-- `sfx` — a role from `sfx_pools` ON an anchor word.
+- `sfx` — a role from `sfx_pools` ON an anchor word. Optional `variant:"<stem>"` PIN forces an exact file.
 - `pause` — inserts silence before an anchor (shifts the timeline); `in_pause` = interrupt vs landing.
 - `music` — a `mood` from `music_pools` starting at a `from_anchor`, running to the next music/dry.
+  Optional `track:"<stem>"` PIN forces an exact bed.
 - `dry` — carves existing silence across a span (music pull-back; no timeline shift).
+
+Pins, the no-dip-in-pause law, and the SFX-tail convention: `references/grammar-guidance.md` +
+`render-builder/references/audio-plan-schema.md`. Pin only a directed take; a missing pinned file HARD-errors.
 **Never conflate `pause` (inserts) with `dry` (carves).** Anchors are verbatim VO opening words.
 
 ## Procedure
