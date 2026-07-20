@@ -40,17 +40,28 @@ const events: OperationalEventDto[] = [{
   diff: null, checkpoint: null, createdAt: '2026-07-18T10:01:00.000Z',
 }];
 
+/** The detail is tabbed now, so a section's content is asserted after activating its tab. */
+function openTab(id: string): void {
+  fireEvent.click(screen.getByTestId(`entity-tab-${id}`));
+}
+
 describe('RunCockpit', () => {
   it('projects manager, stage, attempt, canonical card, and public events', () => {
     render(<RunCockpit detail={detail} events={events} />);
     expect(screen.getByRole('heading', { name: 'Synthetic control run' })).toBeTruthy();
     expect(screen.getByText('session-manager')).toBeTruthy();
+
+    openTab('stages');
     expect(screen.getByText('card-1')).toBeTruthy();
-    expect(screen.getByText(/attempt 1 · codex · gpt-5.6-sol/)).toBeTruthy();
-    expect(within(screen.getByLabelText('Run Synthetic control run')).getByText('apply_patch')).toBeTruthy();
-    expect(screen.getByText(/private reasoning and raw tool payloads are not part/i)).toBeTruthy();
+    const attempt = screen.getByTestId('run-attempt-attempt-1');
+    expect(within(attempt).getByText('attempt 1')).toBeTruthy();
+    expect(within(attempt).getByText('codex · gpt-5.6-sol')).toBeTruthy();
     expect(screen.getByText('Plan amendment required')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Reroute Compile proposal/ })).toBeNull();
+
+    openTab('timeline');
+    expect(within(screen.getByLabelText('run run-1')).getByText('apply_patch')).toBeTruthy();
+    expect(screen.getByText(/private reasoning and raw tool payloads are not part/i)).toBeTruthy();
   });
 
   it('offers an exact reroute only for a queued attempt whose stage has not started', () => {
@@ -70,6 +81,7 @@ describe('RunCockpit', () => {
       humanRequests: [],
     };
     render(<RunCockpit detail={queued} events={[]} onReroute={onReroute} />);
+    openTab('stages');
     expect(screen.getByText('Reroutable before start')).toBeTruthy();
     const button = screen.getByRole('button', { name: 'Reroute Compile proposal' });
     expect(button).toHaveProperty('disabled', true);
