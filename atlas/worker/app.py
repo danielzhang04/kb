@@ -36,6 +36,8 @@ TTS_VOICE = "aura-2-andromeda-en"
 # audio path is gated. Detected from argv because the CLI flag is parsed by livekit's typer app.
 TEXT_MODE = "--text" in sys.argv
 
+_BG_TASKS: set = set()   # strong refs to fire-and-forget tasks (silence watcher)
+
 
 def _is_dismiss(transcript: str) -> bool:
     """True when a final transcript says "that's all" (case-insensitive, trailing punctuation ok).
@@ -137,7 +139,9 @@ async def entrypoint(ctx: JobContext) -> None:
     # daemon thread: blocking mic read + onnx wake scoring, off the event loop
     threading.Thread(target=wakeword.listen, args=(_on_wake, cfg["wake_model"]),
                      daemon=True).start()
-    asyncio.create_task(_silence_watcher())
+    watcher = asyncio.create_task(_silence_watcher())
+    _BG_TASKS.add(watcher)                     # retain handle so the watcher can't be GC'd
+    watcher.add_done_callback(_BG_TASKS.discard)
 
 
 def main() -> int:

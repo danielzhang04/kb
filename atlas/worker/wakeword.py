@@ -16,8 +16,11 @@ openwakeword facts (installed 0.6.0, verified against site-packages):
   (site-packages/openwakeword/resources/models) via openwakeword.utils.download_models(["hey_jarvis"]);
   ensure_models() below re-runs it idempotently if the onnx files are missing.
 """
+import logging
 import os
 from typing import Callable
+
+logger = logging.getLogger("atlas.wakeword")
 
 FRAME_SAMPLES = 1280   # 80 ms @ 16 kHz — openwakeword's expected chunk
 SAMPLE_RATE = 16000
@@ -44,14 +47,23 @@ def load_model(model_name: str):
 
 def listen(on_wake: Callable[[], None], model_name: str = "hey_jarvis") -> None:
     """Blocking mic loop: read 1280-sample int16 frames at 16 kHz, score each with the wake
-    model, and call on_wake() whenever the score crosses THRESHOLD. Runs until interrupted."""
-    import sounddevice as sd
+    model, and call on_wake() whenever the score crosses THRESHOLD. Runs until interrupted.
 
-    model = load_model(model_name)
-    with sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="int16",
-                        blocksize=FRAME_SAMPLES) as stream:
-        while True:
-            frame, _ = stream.read(FRAME_SAMPLES)
-            scores = model.predict(frame[:, 0])
-            if scores.get(model_name, 0.0) > THRESHOLD:
-                on_wake()
+    Any failure here (mic busy/exclusive-mode conflict, model load error) would otherwise kill
+    the daemon thread silently and leave Atlas permanently ASLEEP — so log it LOUDLY (review
+    finding, T7)."""
+    try:
+        import sounddevice as sd
+
+        model = load_model(model_name)
+        with sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="int16",
+                            blocksize=FRAME_SAMPLES) as stream:
+            while True:
+                frame, _ = stream.read(FRAME_SAMPLES)
+                scores = model.predict(frame[:, 0])
+                if scores.get(model_name, 0.0) > THRESHOLD:
+                    on_wake()
+    except Exception:
+        logger.critical(
+            "wake-word listener died — Atlas is DEAF until the worker restarts "
+            "(likely mic device conflict or model load failure)", exc_info=True)
