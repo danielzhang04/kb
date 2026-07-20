@@ -89,6 +89,21 @@ describe('mapStreamEventToPrivate', () => {
     expect(toolResult).toEqual([]);
   });
 
+  it('projects NOTHING from user-type events, even a top-level text block', () => {
+    // Defence in depth against a wire-format change: today Claude Code delivers tool output as
+    // `tool_result` blocks (skipped for lack of a tool name), but if it ever hoisted that output
+    // into a top-level `text` block on a user message it would be persisted verbatim as an event
+    // summary. Only `assistant` events narrate; user events are echoes of worker output.
+    expect(mapStreamEventToPrivate({
+      type: 'user',
+      message: { content: [{ type: 'text', text: 'code 123456 for user@example.com' }] },
+    })).toEqual([]);
+    expect(mapStreamLine(JSON.stringify({
+      type: 'user',
+      message: { content: [{ type: 'text', text: 'code 123456 for user@example.com' }] },
+    }))).toEqual([]);
+  });
+
   it('maps a success result to lifecycle succeeded and an error result to lifecycle failed', () => {
     expect(mapStreamEventToPrivate({ type: 'result', subtype: 'success', is_error: false, result: 'ok' }))
       .toEqual([{ kind: 'lifecycle', state: 'succeeded', detail: 'ok' }]);

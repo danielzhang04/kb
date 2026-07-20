@@ -67,7 +67,15 @@ export function mapStreamEventToPrivate(event: unknown): PrivateOperationalEvent
     return [{ kind: 'lifecycle', state: typeof record.subtype === 'string' ? record.subtype : 'started', detail: null }];
   }
 
-  if (type === 'assistant' || type === 'user') {
+  // ASSISTANT ONLY. `user` events in the stream-json transcript are the harness echoing tool_result
+  // blocks back into the conversation — worker output, not agent narration. Today those blocks are
+  // skipped below because they carry no tool name, but that is a property of Claude Code's current
+  // wire format, not of this code: if a tool result were ever hoisted into a top-level `text` block
+  // on a user message, the loop below would mark it `visible: true` and persist it verbatim as an
+  // event summary. Gating on `assistant` makes the safety local instead of borrowed. Nothing is lost
+  // — a user message has no `tool_use` blocks, and its text is the operator's own approved prompt,
+  // which the caller already holds.
+  if (type === 'assistant') {
     const message = (record.message ?? {}) as Record<string, unknown>;
     const content = message.content;
     const out: PrivateOperationalEvent[] = [];
@@ -80,7 +88,8 @@ export function mapStreamEventToPrivate(event: unknown): PrivateOperationalEvent
         } else if (block.type === 'tool_use' && typeof block.name === 'string') {
           out.push({ kind: 'tool', name: block.name, status: 'started' });
         }
-        // tool_result blocks carry no tool name — they cannot form a valid public `tool` event, so skip.
+        // Every other block type — tool_result, thinking, images — is dropped. Only `text` and
+        // `tool_use` are projected, so an unrecognized block can never become an event payload.
       }
     }
     return out;

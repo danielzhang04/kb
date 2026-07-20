@@ -712,7 +712,8 @@ export function createFileResultIntegrator(options: FileResultIntegratorOptions)
       if (!input.summary || input.summary.includes('\0') || Buffer.byteLength(input.summary, 'utf8') > MAX_RESULT_SUMMARY_BYTES) {
         throw new ExecutionAdapterError('canonical result summary is invalid');
       }
-      if (redactSensitiveText(input.summary) !== input.summary) throw new ExecutionAdapterError('canonical result summary contains recognized sensitive data');
+      // Credential-shape gate only — `redactSensitiveText` recognizes secrets, not PII or content.
+      if (redactSensitiveText(input.summary) !== input.summary) throw new ExecutionAdapterError('canonical result summary contains a recognized secret');
       for (const ref of [input.runRef, input.stageRef, input.stageId, input.attemptRef, input.canonicalCardRef]) {
         if (!SAFE_REF.test(ref) || ref.includes('..')) throw new ExecutionAdapterError('canonical result identity is invalid');
       }
