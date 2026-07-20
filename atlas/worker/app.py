@@ -48,9 +48,15 @@ def _build_tts(cfg: dict):
     if entry["vendor"] == "deepgram":
         return deepgram.TTS(model=entry["model"])
     if entry["vendor"] == "elevenlabs":
-        # plugin's env fallback is ELEVEN_API_KEY; our env file uses ELEVENLABS_API_KEY — pass explicitly
+        from livekit.agents.utils import http_context
+        # plugin's env fallback is ELEVEN_API_KEY; our env file uses ELEVENLABS_API_KEY — pass explicitly.
+        # http_session passed explicitly: the plugin otherwise creates it lazily on FIRST synthesis,
+        # and our first synthesis ("Yes?") fires from the wake-thread callback via call_soon_threadsafe,
+        # which runs outside the job-context ContextVar -> RuntimeError (desk traceback 2026-07-20).
+        # _build_tts is only called from entrypoint, where the job context is active.
         return elevenlabs.TTS(voice_id=entry["voice_id"], model=entry["model"],
-                              api_key=os.environ.get("ELEVENLABS_API_KEY"))
+                              api_key=os.environ.get("ELEVENLABS_API_KEY"),
+                              http_session=http_context.http_session())
     raise ValueError(f"unknown voice vendor: {entry['vendor']}")
 
 # Text-mode console (`--text`) bypasses audio entirely, so wake gating doesn't apply — only the
