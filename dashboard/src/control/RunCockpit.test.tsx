@@ -136,4 +136,188 @@ describe('RunCockpit', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Start successor Manager' }));
     expect(onManagerSuccessor).toHaveBeenCalledTimes(1);
   });
+
+  // ---- arc-3: the fields that were arriving in the browser and being discarded ----
+
+  it('RENDERS THE DIFF BODY that the old event flattening discarded', () => {
+    const patch = '@@ -1,3 +1,3 @@\n-const timeout = 30;\n+const timeout = 60;';
+    const withDiff: OperationalEventDto[] = [{
+      cursor: 9, runRef: 'run-1', kind: 'diff', source: 'worker', stageRef: 'stage-1',
+      attemptRef: 'attempt-1', sessionRef: 'session-worker', status: 'success', summary: null,
+      command: null, toolName: null, path: 'src/config.ts', diff: patch,
+      createdAt: '2026-07-18T10:02:00.000Z', checkpoint: null,
+    }];
+
+    render(<RunCockpit detail={detail} events={withDiff} />);
+    openTab('changes');
+
+    expect(screen.getByTestId('run-change-9-diff').textContent).toBe(patch);
+    expect(screen.getByText('src/config.ts')).toBeTruthy();
+  });
+
+  it('counts only diff-bearing events on the Changes tab', () => {
+    const mixed: OperationalEventDto[] = [
+      ...events,
+      {
+        cursor: 9, runRef: 'run-1', kind: 'diff', source: 'worker', stageRef: null, attemptRef: null,
+        sessionRef: null, status: 'success', summary: null, command: null, toolName: null,
+        path: 'src/a.ts', diff: '+one', createdAt: '2026-07-18T10:02:00.000Z', checkpoint: null,
+      },
+    ];
+
+    render(<RunCockpit detail={detail} events={mixed} />);
+    expect(within(screen.getByTestId('entity-tab-changes')).getByText('1')).toBeTruthy();
+    expect(within(screen.getByTestId('entity-tab-timeline')).getByText('2')).toBeTruthy();
+  });
+
+  it('states honestly that no changes were recorded rather than showing an empty tab', () => {
+    render(<RunCockpit detail={detail} events={events} />);
+    openTab('changes');
+    expect(screen.getByText(/No file changes have been recorded/i)).toBeTruthy();
+  });
+
+  it("renders a checkpoint's STATE as distinct from its NAME", () => {
+    // The old chain read `summary` first, which on the broker path holds the STATE — so it printed
+    // the bare word "reached" and lost "tests-green" entirely. Both must now be present and separate.
+    const checkpointEvents: OperationalEventDto[] = [{
+      cursor: 11, runRef: 'run-1', kind: 'checkpoint', source: 'manager', stageRef: 'stage-1',
+      attemptRef: null, sessionRef: 'session-manager', status: 'success', summary: 'reached',
+      command: null, toolName: null, path: null, diff: null, checkpoint: 'tests-green',
+      createdAt: '2026-07-18T10:03:00.000Z',
+    }];
+
+    render(<RunCockpit detail={detail} events={checkpointEvents} />);
+    openTab('timeline');
+
+    const name = screen.getByTestId('run-event-11-checkpoint-name');
+    const state = screen.getByTestId('run-event-11-checkpoint-state');
+
+    expect(name.textContent).toBe('tests-green');
+    expect(state.textContent).toBe('reached');
+    // They are genuinely separate elements, not one concatenated string.
+    expect(name).not.toBe(state);
+  });
+
+  it('distinguishes a blocked checkpoint from a reached one', () => {
+    const blocked: OperationalEventDto[] = [{
+      cursor: 12, runRef: 'run-1', kind: 'checkpoint', source: 'manager', stageRef: null,
+      attemptRef: null, sessionRef: null, status: 'waiting', summary: 'blocked', command: null,
+      toolName: null, path: null, diff: null, checkpoint: 'scope-review',
+      createdAt: '2026-07-18T10:04:00.000Z',
+    }];
+
+    render(<RunCockpit detail={detail} events={blocked} />);
+    openTab('timeline');
+
+    const state = screen.getByTestId('run-event-12-checkpoint-state');
+    expect(state.textContent).toBe('blocked');
+    expect(state.className).toContain('run-activity__checkpoint--blocked');
+  });
+
+  it('renders the whole attempt chain, not only the current attempt', () => {
+    const retried: RunDetailDto = {
+      ...detail,
+      attempts: [
+        { ...detail.attempts[0], attemptRef: 'attempt-0', generation: 1, state: 'failed', predecessorAttemptRef: null },
+        { ...detail.attempts[0], attemptRef: 'attempt-1', generation: 2, state: 'running', predecessorAttemptRef: 'attempt-0' },
+      ],
+    };
+
+    render(<RunCockpit detail={retried} events={[]} />);
+    openTab('stages');
+
+    // The failed first attempt was previously invisible: only `stage.currentAttemptRef` was ever read.
+    expect(screen.getByTestId('run-attempt-attempt-0')).toBeTruthy();
+    const current = screen.getByTestId('run-attempt-attempt-1');
+    expect(current.className).toContain('run-attempt--current');
+    expect(within(current).getByText('retry of attempt-0')).toBeTruthy();
+  });
+
+  it('renders the managed-run dependency graph from dependsOn', () => {
+    const chained: RunDetailDto = {
+      ...detail,
+      stages: [{ ...detail.stages[0], dependsOn: ['compile', 'lint'] }],
+    };
+
+    render(<RunCockpit detail={chained} events={[]} />);
+    openTab('stages');
+
+    expect(screen.getByTestId('run-stage-stage-1-depends').textContent).toBe('depends on compile, lint');
+  });
+
+  it('shows the proposal hash in full rather than sliced to 12 characters', () => {
+    render(<RunCockpit detail={detail} events={[]} />);
+    expect(within(screen.getByTestId('entity-detail-facts')).getByText('a'.repeat(64))).toBeTruthy();
+  });
+
+  it('offers the compiled checkpoints as a pick list instead of free text', () => {
+    const onSteer = vi.fn();
+    render(
+      <RunCockpit
+        detail={detail}
+        events={[]}
+        onSteer={onSteer}
+        checkpoints={[{ id: 'after-tests', label: 'After tests' }, { id: 'after-review', label: 'After review' }]}
+      />,
+    );
+
+    const select = screen.getByLabelText('Safe checkpoint');
+    expect(select.tagName).toBe('SELECT');
+
+    fireEvent.change(select, { target: { value: 'after-review' } });
+    fireEvent.change(screen.getByLabelText('Steering instruction'), { target: { value: 'Narrow the scope.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Queue steering' }));
+
+    expect(onSteer).toHaveBeenCalledWith('after-review', 'Narrow the scope.');
+  });
+
+  it('falls back to free text when the compiled checkpoint list could not be loaded', () => {
+    // Steering must degrade, never disappear, if the proposal revision read fails.
+    render(<RunCockpit detail={detail} events={[]} onSteer={vi.fn()} checkpoints={[]} />);
+    expect(screen.getByLabelText('Safe checkpoint').tagName).toBe('INPUT');
+  });
+
+  it('flags the section that needs the operator', () => {
+    render(<RunCockpit detail={detail} events={[]} />);
+    expect(screen.getByTestId('entity-tab-overview-attention')).toBeTruthy();
+  });
+
+  it('calls back with the label of the surface it returns to', () => {
+    const onBack = vi.fn();
+    render(<RunCockpit detail={detail} events={[]} onBack={onBack} backLabel="All runs" />);
+
+    const back = screen.getByTestId('entity-detail-back');
+    expect(back.textContent).toContain('All runs');
+    fireEvent.click(back);
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports tab changes so the nav stack can restore them, and honours a controlled section', () => {
+    const onSectionChange = vi.fn();
+    render(
+      <RunCockpit detail={detail} events={[]} activeSectionId="changes" onSectionChange={onSectionChange} />,
+    );
+
+    // The controlled section wins over the default first tab.
+    expect(screen.getByTestId('entity-tab-changes').getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByTestId('entity-tab-overview').getAttribute('aria-selected')).toBe('false');
+
+    fireEvent.click(screen.getByTestId('entity-tab-stages'));
+    expect(onSectionChange).toHaveBeenCalledWith('stages');
+  });
+
+  it('links a stage to its canonical queue card', () => {
+    const onNavigate = vi.fn();
+    render(<RunCockpit detail={detail} events={[]} onNavigate={onNavigate} />);
+    openTab('stages');
+
+    fireEvent.click(screen.getByTestId('run-stage-stage-1-card'));
+    expect(onNavigate).toHaveBeenCalledWith({ view: 'tasks', focus: { kind: 'card', id: 'card-1' } });
+  });
+
+  it('does not call this surface a terminal', () => {
+    render(<RunCockpit detail={detail} events={events} />);
+    expect(screen.getByTestId('entity-tab-timeline').textContent).toContain('Activity stream');
+    expect(document.body.textContent).not.toMatch(/terminal/i);
+  });
 });
