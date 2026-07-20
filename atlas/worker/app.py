@@ -43,11 +43,19 @@ TEXT_MODE = "--text" in sys.argv
 _BG_TASKS: set = set()   # strong refs to fire-and-forget tasks (silence watcher)
 
 
-def _is_dismiss(transcript: str) -> bool:
-    """True when a final transcript says "that's all" (case-insensitive, trailing punctuation ok).
-    Deepgram may or may not emit the apostrophe, so both "that's all" and "thats all" match."""
-    t = re.sub(r"[.!?,;:\s]+$", "", transcript.strip().lower())
-    return t in ("that's all", "thats all")
+DEFAULT_DISMISS = ["that's all", "go to sleep", "thanks atlas", "thank you atlas"]
+
+
+def _norm_phrase(s: str) -> str:
+    """Lowercase, drop punctuation (incl. apostrophes — Deepgram may omit them), collapse spaces."""
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9\s]", "", s.lower())).strip()
+
+
+def _is_dismiss(transcript: str, phrases: list[str] | None = None) -> bool:
+    """True when a final transcript matches a configured dismiss phrase
+    (case/punctuation-insensitive; 'Thanks, Atlas.' == 'thanks atlas')."""
+    t = _norm_phrase(transcript)
+    return t in {_norm_phrase(p) for p in (phrases or DEFAULT_DISMISS)}
 
 
 def _cfg() -> dict:
@@ -151,10 +159,16 @@ async def entrypoint(ctx: JobContext) -> None:
     engagement = engagement_mod.Engagement(timeout_s=cfg["engagement_timeout_s"])
     session.input.set_audio_enabled(False)  # start ASLEEP: no audio to STT until "hey jarvis"
 
-    def _sleep() -> None:
-        if session.input.audio_enabled:
-            session.input.set_audio_enabled(False)
-            logger.info("ASLEEP — mic detached, no audio leaves the PC (wake word to re-engage)")
+    def _sleep(announce: bool = True) -> bool:
+        """Close the mic; returns True only on a real transition. Audible cue (Daniel's ask:
+        never leave him guessing whether Atlas is still listening)."""
+        if not session.input.audio_enabled:
+            return False
+        session.input.set_audio_enabled(False)
+        logger.info("ASLEEP — mic detached, no audio leaves the PC (wake word to re-engage)")
+        if announce:
+            session.say("Going to sleep.", add_to_chat_ctx=False)
+        return True
 
     def _engage() -> None:
         already = engagement.state == engagement_mod.ENGAGED
@@ -168,12 +182,14 @@ async def entrypoint(ctx: JobContext) -> None:
     def _on_wake() -> None:  # called from the wake-word thread; hop to the event loop
         loop.call_soon_threadsafe(_engage)
 
+    dismiss_phrases = cfg.get("dismiss_phrases", DEFAULT_DISMISS)
+
     @session.on("user_input_transcribed")
     def _on_transcript(ev) -> None:
         if not ev.is_final:
             return
-        engagement.heard_speech()          # re-stamp the silence clock
-        if _is_dismiss(ev.transcript):     # "that's all" -> immediate dismissal
+        engagement.heard_speech()                        # re-stamp the silence clock
+        if _is_dismiss(ev.transcript, dismiss_phrases):  # dismiss phrase -> immediate sleep + cue
             engagement.dismiss()
             _sleep()
 

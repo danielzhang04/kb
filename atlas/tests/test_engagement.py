@@ -30,3 +30,14 @@ def test_resolve_input_device_pins_by_substring():
     assert resolve_input_device("Speakers", devices) is None  # output-only never matches
     assert resolve_input_device(None, devices) is None
     assert resolve_input_device("nope", devices) is None
+
+
+def test_is_dismiss_phrases():
+    from worker.app import _is_dismiss
+    phrases = ["that's all", "go to sleep", "thanks atlas", "thank you atlas"]
+    assert _is_dismiss("That's all.", phrases)
+    assert _is_dismiss("thats all", phrases)          # Deepgram may drop the apostrophe
+    assert _is_dismiss("Thanks, Atlas!", phrases)
+    assert _is_dismiss("Go to sleep", phrases)
+    assert not _is_dismiss("that's all I know about it", phrases)
+    assert not _is_dismiss("what's in the queue?", phrases)
