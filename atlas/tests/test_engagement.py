@@ -17,3 +17,16 @@ def test_dismiss_is_immediate():
 def test_tick_while_asleep_stays_asleep():
     e = Engagement(timeout_s=15, clock=lambda: 99.0)
     assert e.tick() == "ASLEEP"
+
+
+def test_resolve_input_device_pins_by_substring():
+    from worker.wakeword import resolve_input_device
+    devices = [
+        {"name": "Headset (AirPods)", "max_input_channels": 1},
+        {"name": "Speakers (out only)", "max_input_channels": 0},
+        {"name": "Microphone Array (Intel Smart Sound)", "max_input_channels": 4},
+    ]
+    assert resolve_input_device("intel", devices) == 2
+    assert resolve_input_device("Speakers", devices) is None  # output-only never matches
+    assert resolve_input_device(None, devices) is None
+    assert resolve_input_device("nope", devices) is None

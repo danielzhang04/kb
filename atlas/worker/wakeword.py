@@ -45,9 +45,28 @@ def load_model(model_name: str):
     return Model(wakeword_models=[model_name], inference_framework="onnx")
 
 
-def listen(on_wake: Callable[[], None], model_name: str = "hey_jarvis") -> None:
+def resolve_input_device(substring: str | None, devices=None):
+    """Index of the first input device whose name contains substring (case-insensitive).
+    None/empty substring or no match -> None (system default). Pinning matters: Windows
+    drifts the default input (e.g. to a Bluetooth hands-free path whose audio is too
+    degraded/stuttery to score — 2026-07-20 desk finding), while a named wired mic is stable."""
+    if not substring:
+        return None
+    if devices is None:
+        import sounddevice as sd
+        devices = sd.query_devices()
+    for i, d in enumerate(devices):
+        if d["max_input_channels"] > 0 and substring.lower() in d["name"].lower():
+            return i
+    logger.warning("wake input device %r not found — falling back to system default", substring)
+    return None
+
+
+def listen(on_wake: Callable[[], None], model_name: str = "hey_jarvis",
+           device: str | None = None, threshold: float = THRESHOLD) -> None:
     """Blocking mic loop: read 1280-sample int16 frames at 16 kHz, score each with the wake
-    model, and call on_wake() whenever the score crosses THRESHOLD. Runs until interrupted.
+    model, and call on_wake() whenever the score crosses `threshold`. Runs until interrupted.
+    `device` is a name substring pinned via config (wake_input_device), resolved above.
 
     Any failure here (mic busy/exclusive-mode conflict, model load error) would otherwise kill
     the daemon thread silently and leave Atlas permanently ASLEEP — so log it LOUDLY (review
@@ -56,12 +75,15 @@ def listen(on_wake: Callable[[], None], model_name: str = "hey_jarvis") -> None:
         import sounddevice as sd
 
         model = load_model(model_name)
-        with sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="int16",
+        dev = resolve_input_device(device)
+        logger.info("wake listener on input device: %s",
+                    sd.query_devices(dev)["name"] if dev is not None else "system default")
+        with sd.InputStream(device=dev, samplerate=SAMPLE_RATE, channels=1, dtype="int16",
                             blocksize=FRAME_SAMPLES) as stream:
             while True:
                 frame, _ = stream.read(FRAME_SAMPLES)
                 scores = model.predict(frame[:, 0])
-                if scores.get(model_name, 0.0) > THRESHOLD:
+                if scores.get(model_name, 0.0) > threshold:
                     on_wake()
     except Exception:
         logger.critical(
