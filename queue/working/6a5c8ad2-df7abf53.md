@@ -4,9 +4,9 @@ project: atlas
 action: build LiveKit worker + pairing smoke
 target: atlas/worker/app.py
 risk-tier: T2
-owner: null
-claim-token: null
-state: inbox
+owner: worker-desktop
+claim-token: 57837b7eb89764d8
+state: working
 approval: null
 workflow: atlas-v0
 depends-on: []
