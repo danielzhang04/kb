@@ -128,7 +128,9 @@ before any vendor spend. Bar set by Daniel: equal-or-better only — latency/qua
 1. **STT — keep Deepgram Flux.** $200 signup credit ≈ 25,600 min ≈ ~7 years at wake-word-gated
    volume; native <300ms in-model EOT is the thing our 500–800ms bar depends on. Successor of
    record when the credit runs out: AssemblyAI Universal-Streaming ($0.0025/min, first-party plugin).
-2. **TTS — 3-way bake-off; Deepgram Aura-2 presumed default.** Cartesia/ElevenLabs free tiers
+2. **TTS — bake-off; Deepgram Aura-2 presumed default.** (Later on 2026-07-20 Daniel scratched
+   Cartesia — he holds an existing ElevenLabs paid subscription, so the bake-off is Aura-2 vs
+   ElevenLabs, two candidates.) Cartesia/ElevenLabs free tiers
    (20k/10k chars/mo) cannot sustain daily use; Aura-2 rides the same Deepgram credit (~6.7M chars)
    and rates above ElevenLabs on conversational naturalness. Ear-test can still overrule (paid tier
    ~$4–5/mo fits §4.2). Local fallback of record: Kokoro-82M via Kokoro-FastAPI — GPU-gated
@@ -143,4 +145,4 @@ before any vendor spend. Bar set by Daniel: equal-or-better only — latency/qua
    Task 8 latency harness is API-only (Daniel, 2026-07-20).
 
 Net: expected steady-state spend ≈ **$10/mo** (scoped Anthropic key only); human gate 4 shrinks to
-Deepgram + Cartesia-free + ElevenLabs-trial (LiveKit removed).
+Deepgram + a scoped key on Daniel's existing ElevenLabs paid account (Cartesia and LiveKit removed).
