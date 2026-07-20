@@ -28,11 +28,13 @@ _Updated: 2026-07-20 late (V0 LIVE at desk — Fable 5 boss session)_
   (PortAudio teardown race). Harmless at exit; polish candidate = suppress during shutdown.
 
 ## Next
-- ON DANIEL: merge PR #37 (V0 gate).
-- ON DANIEL: V1 go/no-go — "Hands" wave (file_card, launch_workflow, spoken completion
-  callbacks) + backlog: persona.md authoring session (how Atlas talks/responds — explicitly
-  wanted), TTFT input diet, spoken voice-switch tool, hot-follow Bluetooth output routing,
-  Deepgram credit-remaining tool.
+- MERGED 2026-07-20: PR #37 (V0 wave) and PR #39 (hey_atlas + desk fixes + mars flip) — main
+  matches the desk. PAUSED at Daniel's request; resume point in boss session memory.
+- RESUME ACTION: draft V1 "Hands" wave plan for Daniel's review (delta design §5/§7):
+  dashboard status panel + orb sequenced FIRST (read-only slice), then reflex lane, file_card,
+  launch_workflow, completion callbacks. Backlog to weave in: persona.md authoring session
+  (explicitly wanted), TTFT input diet, spoken voice-switch, hot-follow Bluetooth output
+  routing, Deepgram credit-remaining tool.
 - Retest native MCP attach on livekit-agents upgrade >1.6.6 (anthropic_compat shim removal
   condition: upstream #2519-class fix + two-turn pairing_smoke pass).
 
