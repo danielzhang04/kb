@@ -39,4 +39,4 @@ _Updated: 2026-07-20 late (V0 LIVE at desk — Fable 5 boss session)_
   condition: upstream #2519-class fix + two-turn pairing_smoke pass).
 
 ## Blocked
-- Nothing in-flight. All build work paused pending Daniel's two gates above.
+- Nothing in-flight. Paused at Daniel's request 2026-07-20 eve; resume = V1 plan draft above.
