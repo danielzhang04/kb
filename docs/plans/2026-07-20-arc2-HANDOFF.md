@@ -236,3 +236,70 @@ shot-by-shot unsupervised.
   known same-name PyPI squat.
 - **Usage telemetry**: `costUsdMicros` must be stripped SERVER-SIDE, not hidden client-side — if the
   number rides in the response body, "never surface dollars" is one devtools tab from being false.
+
+## WAVE CLOSE (arc-3) — final state
+
+**Gates at close:** vitest 178 files / 1502 passed / 2 skipped · pytest 497 passed · `tsc --noEmit` clean.
+Nothing pushed. Branches `claude/fleet-arc` (b79becc..982fd8e) and `claude/faceless-live-import`
+(..bdba308) await Daniel's review, per "for my review when I return".
+
+### Both adversarial reviews found the SAME class of defect, and it is the lesson of this arc
+
+The capability-cap fix was reviewed hostilely and judged **substantively correct** — no input could be
+constructed that spawns an uncapped worker; fail-closed verified independently at validator, resolver,
+adapter and registry loader; stored proposals re-validated on every read; run content-hash rejects a
+profile added or removed after the fact. But the reviewer broke six production lines deliberately and
+**two breaks left the whole suite green**:
+- `execution.ts:986` `?? null` changed to `?? 'producer'` (grants `Bash`) — 1453 tests passed.
+- `compile.ts:121` `profile: def.profile` deleted entirely — 1453 tests passed.
+
+Both are now pinned by tests that were mutation-verified (make the edit, watch the named test fail,
+revert). The UI review found the identical shape: the "renders a long title IN FULL" tests asserted
+`textContent`, which is invariant under a CSS ellipsis, so Daniel's most-emphasised requirement had
+ZERO protection — adding a clamp passed all 1453 tests. Now guarded by a CSS-source assertion, also
+mutation-verified.
+
+> **The through-line: a test that exercises a line is not a test that pins its behaviour, and a test
+> that reads a file is not a test that reads the RIGHT file.** Three separate defects this arc were
+> mechanisms that presented as enforced, passed their own tests, and governed nothing. Prefer
+> mutation-verification over coverage for anything load-bearing.
+
+### Fixed at wave close
+- **HIGH (live):** `orgDefSource.ts` served the alphabetically-first git ref and never consulted HEAD —
+  it resolved real content from a stale machine-generated approval branch, and a definition DELETED at
+  HEAD still compiled green. The git-object tier is **deleted** (a HEAD-only tier earns nothing: tier 1
+  already reads the working tree, a strict superset). Docstring corrected — it had claimed drift was
+  "structurally impossible" while serving any ref in the object DB. (`3ffd21a`)
+- **HIGH (latent):** same module was an arbitrary file read — `loadOrgDef('../../../.gitconfig')`
+  returned it, amplified across ~24 worktree anchors. Now segment-validated + containment-checked after
+  `realpath` (the symlink leg a pattern cannot see). Revision-spec injection closed twice over.
+- **HIGH (live, UI):** a dead run→run link left the operator on the WRONG run with live `Stop run` /
+  `Retry as successor` buttons acting on the previously-loaded run. Retention pruning makes it
+  reachable. Now an explicit not-found state plus a structural guard: `RunCockpit` is unreachable
+  unless the loaded detail IS the focused run. (`d09b69e`)
+- Activity stream showed the OLDEST 500 events while the card advertised the true total; now walks the
+  forward cursor for the newest 500, counts agree, and when the window is an interior slice the UI
+  **says so** rather than claiming "most recent".
+- `Pipeline.tsx` set `hidden` on the legacy graph, but an author `display:flex` outranks the UA sheet's
+  `[hidden]{display:none}` — it was never actually hidden. CSS-only, so jsdom is blind to it:
+  **reasoned, not test-covered, wants a real browser check.**
+
+### Known-open, deliberately not fixed
+- `createWorkflowToolPolicyResolver` still has **no production caller** — same property as the original
+  bug, but the executor is entirely gated behind activation (`409 automatic-runtime-not-activated`).
+  **At activation, verify by inspection that the real resolver is the injected one.** This is the moment
+  the cap can be re-severed with the suite green.
+- The **manager is uncapped by interface** (`ManagerAdapter.ensure` takes no tool policy). Bounded today:
+  the only implementation is a test fake and the real adapter would inherit the empty-allowlist refusal.
+  Give it a closed-set resolver mirroring the worker's BEFORE activation, not after.
+- Composer/ad-hoc proposals declare no profile, so they will now **refuse to spawn** once activated.
+  Correct direction, loud not silent — but expect it.
+- `catalog.ts` handles are whole-server prefixes (`mcp__google-workspace__`) that necessarily cover
+  `send_email`/`upload_video`. Inert today (nothing reads `handle` outside its test). The moment a
+  consumer expands a handle into an allowlist entry, `FORBIDDEN_WORKFLOW_TOOLS` is bypassed by
+  construction. Real enforcement stays the exact-match refusal in `claudeWorkerAdapter.ts`.
+- Two commits carry swapped subject lines (`dbde390`, `7514ee9`) from a concurrent `--amend` collision.
+  No content lost. **History rewrite was BLOCKED BY THE PERMISSION CLASSIFIER — twice — and not worked
+  around.** Corrected messages are prepared; needs Daniel's authorization.
+- `.control-cockpit` base rule is dead CSS; scoped out deliberately to avoid widening the diff under a
+  concurrent agent.
