@@ -12,6 +12,7 @@ Run (from atlas/):
 Console mode needs DEEPGRAM_API_KEY + ANTHROPIC_API_KEY in %USERPROFILE%\\.atlas\\env.
 """
 import asyncio
+import logging
 import re
 import sys
 import threading
@@ -27,6 +28,7 @@ from worker import engagement as engagement_mod
 from worker import fastlane, repl, wakeword
 
 ATLAS = Path(__file__).resolve().parents[1]
+logger = logging.getLogger("atlas.app")
 
 # Documented Aura-2 default voice — clear, conversational; rides the Deepgram $200 credit.
 # The production voice is chosen by ear in the Task 8 bake-off; this is the startup default.
@@ -113,10 +115,16 @@ async def entrypoint(ctx: JobContext) -> None:
     def _sleep() -> None:
         if session.input.audio_enabled:
             session.input.set_audio_enabled(False)
+            logger.info("ASLEEP — mic detached, no audio leaves the PC (wake word to re-engage)")
 
     def _engage() -> None:
+        already = engagement.state == engagement_mod.ENGAGED
         engagement.wake()
         session.input.set_audio_enabled(True)  # open the STT stream — audio now leaves the PC
+        logger.info("ENGAGED — listening (silence timeout %ss, or say \"that's all\")",
+                    cfg["engagement_timeout_s"])
+        if not already:
+            session.say("Yes?", add_to_chat_ctx=False)  # audible wake ack
 
     def _on_wake() -> None:  # called from the wake-word thread; hop to the event loop
         loop.call_soon_threadsafe(_engage)
