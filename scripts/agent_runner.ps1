@@ -150,6 +150,20 @@ if ($pre -ne 0) {
 }
 Write-RunnerLog ("preamble=OK agent=$Agent interpreter=$py")
 
+# --- step 4b: take a keep-awake lease so a closed lid cannot kill this run -----------
+# pid-only mode: this runner is a bounded process that exits when its work is done,
+# so PID liveness is the correct signal -- a long, quiet `codex exec` must never be
+# idle-expired. Best-effort: a keep-awake failure must not block real work.
+$keepAwake = Join-Path $RepoRoot 'scripts\keep_awake.ps1'
+$keepAwakeLabel = "codex-$Agent-$PID"
+try {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $keepAwake `
+        -Acquire -Label $keepAwakeLabel -Mode pid-only -ProcessId $PID | Out-Null
+    Write-RunnerLog ("keep-awake=acquired label=$keepAwakeLabel agent=$Agent")
+} catch {
+    Write-RunnerLog ("keep-awake=FAILED label=$keepAwakeLabel agent=$Agent :: $_ -- continuing unprotected")
+}
+
 # --- step 5: Codex billing guard (O8 decision 5) -- hard-fail, NEVER fall back to metered
 $billingFail = $null
 
@@ -468,6 +482,16 @@ if ($LASTEXITCODE -ne 0) {
 }
 else {
     Write-RunnerLog ("pushed agent=$Agent branch=$workBranch -- awaiting PR into ops (human or cloud leg opens/merges; runner never does)")
+}
+
+try {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $keepAwake `
+        -Release -Label $keepAwakeLabel | Out-Null
+    Write-RunnerLog ("keep-awake=released label=$keepAwakeLabel agent=$Agent")
+} catch {
+    # Not fatal: the supervisor prunes by PID liveness, so this process exiting
+    # releases the lease within one poll regardless.
+    Write-RunnerLog ("keep-awake=release-failed label=$keepAwakeLabel agent=$Agent :: $_")
 }
 
 Write-RunnerLog ("run-complete agent=$Agent branch=$workBranch overall-exit=$overallExit interpreter=$py")
