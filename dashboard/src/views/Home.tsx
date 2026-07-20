@@ -3,7 +3,9 @@
  * job is "what's running / to resume" front-and-centre plus usage KPIs. The fleet runs as desktop
  * tasks coordinating through git; this dashboard is only a projection — closing the tab stops nothing,
  * so on reopen Home reconstructs the operator's context from files (the `/api/index` snapshot): what is
- * mid-flight, what is waiting on a signature, where each project stands, and how much work has run.
+ * mid-flight, what is waiting on HIM (the human-inbox projection — approvals, operator gates, wake-me
+ * cards and halted runs alike, never merely `state: approvals`), where each project stands, and how
+ * much work has run.
  *
  * It stays a rollup — every row links CONCEPTUALLY to its entity view via the optional `onNavigate`
  * prop (the integrator wires it to the shell's nav switch); depth lives in the dedicated views, never
@@ -21,6 +23,7 @@
 import { useEffect, useState } from 'react';
 import type { PlaneAIndex } from '../../server/planeA/indexer';
 import type { ParsedCard } from '../../server/planeA/cards';
+import { projectHumanInbox } from '../../server/approvals/humanInbox';
 import type { DestinationId } from '../nav/config';
 import type { Session } from '../lib/authClient';
 import { useSse } from '../lib/sseClient';
@@ -114,7 +117,11 @@ function KpiTiles({
   index: PlaneAIndex;
   onNavigate?: (id: DestinationId) => void;
 }): React.JSX.Element {
-  const approvals = stateCount(index, 'approvals');
+  // The `waiting` tile counts WHO MUST ACT, not card state. `stateCount(index, 'approvals')` used to
+  // supply this number and rendered 0 while seven `human-operator` gates sat in `state: inbox` — the
+  // promotion step into `queue/approvals/` is not what makes something the operator's problem. This is
+  // the same projection the Approvals view lists, so the tile and that view can never disagree.
+  const waiting = projectHumanInbox(index).counts.total;
   return (
     <section className="v-home__kpis" aria-label="Fleet KPIs">
       <KpiTile testId="kpi-agents" label="agents" value={agentCount(index)} to="agents" onNavigate={onNavigate} />
@@ -122,9 +129,9 @@ function KpiTiles({
       <KpiTile
         testId="kpi-approvals"
         label="waiting"
-        value={approvals}
+        value={waiting}
         to="approvals"
-        accent={approvals > 0}
+        accent={waiting > 0}
         onNavigate={onNavigate}
       />
       <KpiTile testId="kpi-blocked" label="blocked" value={stateCount(index, 'blocked')} />
@@ -203,7 +210,9 @@ function RunningResume({
   onNavigate?: (id: DestinationId) => void;
 }): React.JSX.Element {
   const working = index.cards.working ?? [];
-  const approvals = index.cards.approvals ?? [];
+  // Same projection as the KPI tile and the Approvals view — NOT `index.cards.approvals`, which is the
+  // promoted-card bucket and was empty (only a `.gitkeep`) while seven operator gates waited in `inbox`.
+  const waiting = projectHumanInbox(index).items;
   const blocked = index.cards.blocked ?? [];
   const activity = index.ledgers.activity.rows;
 
@@ -226,17 +235,21 @@ function RunningResume({
         ))}
       </ResumeGroup>
 
+      {/* Titled "Waiting on you", not "…on your signature": most of these need an action in the world
+        * (clear an OAuth gate, decide a governance amendment), not a signature. The empty label may only
+        * render when the whole human-inbox projection is empty. */}
       <ResumeGroup
-        title="Waiting on your signature"
-        count={approvals.length}
-        emptyLabel="No approvals pending — nothing needs you."
+        title="Waiting on you"
+        count={waiting.length}
+        emptyLabel="Nothing is waiting on you."
       >
-        {approvals.map((c) => (
+        {waiting.map((item) => (
           <ResumeRow
-            key={String(c.meta.id)}
-            id={String(c.meta.id)}
-            main={cardMain(c)}
-            tier={c.meta['risk-tier']}
+            key={String(item.card.meta.id)}
+            id={String(item.card.meta.id)}
+            main={cardMain(item.card)}
+            meta={item.categoryLabel}
+            tier={item.card.meta['risk-tier']}
             dot="idle"
             to="approvals"
             onNavigate={onNavigate}

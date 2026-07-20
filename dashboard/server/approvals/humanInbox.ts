@@ -2,8 +2,13 @@
  * Read-only projection of the card queue into the operator's Human Inbox.
  *
  * The projection is deliberately conservative. Normal queued work and dependency-blocked DAG stages
- * are not human notifications. Only an approval boundary, an explicit human-facing action, a halted
- * run, or an unowned/dependency-free blocked card is surfaced. No item in this feed changes card state.
+ * are not human notifications. Only an approval boundary, an OPERATOR GATE (see {@link isHumanGate}),
+ * an explicit human-facing action, a halted run, or an unowned/dependency-free blocked card is
+ * surfaced. No item in this feed changes card state.
+ *
+ * The feed keys on WHO MUST ACT, not on card `state`. Keying on state alone is what hid seven
+ * `human-operator` gates — six of them T3, including the OAuth gates blocking all external reach —
+ * inside `state: inbox` while this surface reported that nothing was waiting.
  */
 import type { ApprovalButtons } from './assurance.ts';
 import { buttonsFor } from './assurance.ts';
@@ -11,13 +16,13 @@ import { workOrderOf } from '../auth/workOrder.ts';
 import type { ParsedCard } from '../planeA/cards.ts';
 import type { PlaneAIndex } from '../planeA/indexer.ts';
 
-export type HumanInboxCategory = 'decision' | 'input' | 'intervention';
+export type HumanInboxCategory = 'decision' | 'gate' | 'input' | 'intervention';
 export type HumanInboxUrgency = 'high' | 'normal' | 'low';
 
 export interface HumanInboxItem {
   card: ParsedCard;
   category: HumanInboxCategory;
-  categoryLabel: 'Decision' | 'Input' | 'Intervention';
+  categoryLabel: 'Decision' | 'Gate' | 'Input' | 'Intervention';
   urgency: HumanInboxUrgency;
   status: string;
   reason: string;
@@ -37,6 +42,7 @@ export interface HumanInboxItem {
 export interface HumanInboxCounts {
   total: number;
   decision: number;
+  gate: number;
   input: number;
   intervention: number;
 }
@@ -50,6 +56,26 @@ export interface HumanInboxProjection {
  *  server-side, rather than trusting the client's projected category. */
 export const HUMAN_INPUT_ACTION = /(?:^|[:/_-])(?:needs?-?input|human-?input|input-?required|question|human-?review|review-?required)(?:$|[:/_-])/i;
 export const WAKE_ACTION = /^wake-me(?::|$)/i;
+
+/** The owner id the dispatchers assign to a card only a human can move. */
+export const HUMAN_OPERATOR = 'human-operator';
+/** An explicit `approve:*` action — the second limb of the human-gate test. */
+export const APPROVE_ACTION = /^approve:/i;
+
+/**
+ * An OPERATOR GATE: a card that no agent can move, regardless of its `state`.
+ *
+ * This mirrors `scripts/brief.py::_is_human_gate` EXACTLY and deliberately — the morning brief shipped
+ * the identical defect (it reported "inbox and approvals are clear" while five T3 gates waited) and was
+ * fixed with this two-limb test. A second, drifting definition in the dashboard is precisely how the two
+ * surfaces would disagree about what needs Daniel, so this is the same predicate, not a similar one.
+ *
+ * Both limbs matter and neither implies the other: `decide:budget-gate-measures-nothing` matches only on
+ * `owner`, while an `approve:*` card assigned to an agent for staging matches only on `action`.
+ */
+export function isHumanGate(card: ParsedCard): boolean {
+  return text(card.meta.owner) === HUMAN_OPERATOR || APPROVE_ACTION.test(text(card.meta.action));
+}
 
 /** The exact marker prefixes `write/cardRespond.ts` writes — used to demote a replied input item and to
  *  hide an operator-resolved halted card. Scoped to the named body section so untrusted `## Evidence`
@@ -145,6 +171,25 @@ function classify(card: ParsedCard): HumanInboxItem | null {
     };
   }
 
+  // Ordered AFTER the input/wake limbs on purpose: a `wake-me:*` card owned by `human-operator` stays an
+  // Intervention (it has a real resolve path), and only cards with no other human-facing classification
+  // fall through to the generic gate.
+  if (state === 'inbox' && isHumanGate(card)) {
+    return {
+      card,
+      category: 'gate',
+      categoryLabel: 'Gate',
+      urgency: tierRank(card) >= 3 ? 'high' : 'normal',
+      status: 'Waiting on the human operator',
+      reason: 'This card is assigned to the human operator or carries an explicit approve action. No agent can move it.',
+      // Deliberately NOT a promise the dashboard can keep: `write/cardRespond.ts` authorizes reply/resolve
+      // only for input, wake-me, blocked and halted cards, so an operator gate is surfaced read-only
+      // rather than given a button that would fail closed on click.
+      nextAction: 'Carry out the work order below outside the dashboard, then move the card yourself. The dashboard has no automated path for an operator gate.',
+      context,
+    };
+  }
+
   if (state === 'halted') {
     if (sectionText(card.body, 'Result').includes(RESOLVE_RECORDED)) return null;
     return {
@@ -160,7 +205,9 @@ function classify(card: ParsedCard): HumanInboxItem | null {
     };
   }
 
-  const explicitlyHuman = WAKE_ACTION.test(action) || HUMAN_INPUT_ACTION.test(action);
+  // An operator gate that got blocked is still the human's to clear — without `isHumanGate` here it would
+  // need `owner === null` to surface, which an owner-matched gate never is.
+  const explicitlyHuman = WAKE_ACTION.test(action) || HUMAN_INPUT_ACTION.test(action) || isHumanGate(card);
   const unownedRootBlock = state === 'blocked' && card.meta.owner === null && dependencies(card).length === 0;
   if (state === 'blocked' && (explicitlyHuman || unownedRootBlock)) {
     return {
@@ -195,7 +242,7 @@ export function projectHumanInbox(index: PlaneAIndex): HumanInboxProjection {
       return text(a.card.meta.id).localeCompare(text(b.card.meta.id));
     });
 
-  const counts: HumanInboxCounts = { total: items.length, decision: 0, input: 0, intervention: 0 };
+  const counts: HumanInboxCounts = { total: items.length, decision: 0, gate: 0, input: 0, intervention: 0 };
   for (const item of items) counts[item.category] += 1;
   return { items, counts };
 }

@@ -123,7 +123,68 @@ describe('Home view — running / resume hero', () => {
     render(<Home snapshot={{ ...SNAPSHOT, cards: {} }} />);
     const resume = screen.getByTestId('home-resume');
     expect(resume.textContent).toMatch(/Nothing running/i);
-    expect(resume.textContent).toMatch(/No approvals pending/i);
+    // Legitimately empty: `cards: {}` means there is genuinely nothing for the operator anywhere.
+    expect(resume.textContent).toMatch(/Nothing is waiting on you/i);
+  });
+});
+
+/**
+ * REGRESSION: the `waiting` KPI counted `index.cards.approvals` — card STATE — and so rendered 0 while
+ * seven `human-operator` gates (six T3, including the four OAuth gates blocking all external reach)
+ * waited in `state: inbox`. `queue/approvals/` held only a `.gitkeep`, so the tile was structurally
+ * incapable of being non-zero. The resume hero then printed "No approvals pending — nothing needs you."
+ *
+ * These snapshots contain NOTHING in `approvals`, so the old state-keyed code renders 0 and the false
+ * empty state; every assertion below fails against it.
+ */
+function gate(id: string, action: string, owner: string | null = 'human-operator', tier = 'T3'): ParsedCard {
+  return {
+    meta: { id, project: 'kb', action, target: '.', 'risk-tier': tier, owner, state: 'inbox' },
+    body: '## Work order\n\nClear the gate.\n',
+  };
+}
+
+function snapshotOf(cards: ParsedCard[]): PlaneAIndex {
+  const grouped: Record<string, ParsedCard[]> = {};
+  for (const value of cards) (grouped[String(value.meta.state)] ??= []).push(value);
+  return { ...SNAPSHOT, cards: grouped, orgStates: [] };
+}
+
+describe('Home view — counts who must act, not card state', () => {
+  it('counts human-operator inbox gates in the waiting KPI even with an empty approvals bucket', () => {
+    render(<Home snapshot={snapshotOf([
+      gate('6a5d6b23-12ddfee2', 'approve:oauth-gate-g1'),
+      gate('6a5d6b23-05204b15', 'approve:oauth-gate-g2'),
+      gate('6a5e482a-3b8707b5', 'decide:budget-gate-measures-nothing'),
+    ])} />);
+
+    expect(screen.getByTestId('kpi-approvals').textContent).toContain('3');
+  });
+
+  it('counts a gate on the owner limb alone', () => {
+    // `decide:*` matches no other predicate — only `owner: human-operator` can surface it.
+    render(<Home snapshot={snapshotOf([gate('6a5e482a-3b8707b5', 'decide:budget-gate-measures-nothing')])} />);
+    expect(screen.getByTestId('kpi-approvals').textContent).toContain('1');
+  });
+
+  it('counts a gate on the approve:* limb alone, with an agent owner', () => {
+    render(<Home snapshot={snapshotOf([gate('6a5d6b23-12ddfee2', 'approve:oauth-gate-g1', 'codex-worker')])} />);
+    expect(screen.getByTestId('kpi-approvals').textContent).toContain('1');
+  });
+
+  it('lists the gates in the resume hero and never claims nothing is waiting', () => {
+    render(<Home snapshot={snapshotOf([
+      gate('6a5d6b23-12ddfee2', 'approve:oauth-gate-g1'),
+      gate('6a5e482a-3b8707b5', 'decide:budget-gate-measures-nothing'),
+    ])} />);
+    const resume = screen.getByTestId('home-resume');
+
+    expect(resume.textContent).toContain('6a5d6b23-12ddfee2');
+    expect(resume.textContent).toContain('approve:oauth-gate-g1');
+    expect(resume.textContent).toContain('decide:budget-gate-measures-nothing');
+    // The false empty state must be impossible while anything at all awaits the human.
+    expect(resume.textContent).not.toMatch(/Nothing is waiting on you/i);
+    expect(resume.textContent).not.toMatch(/nothing needs you/i);
   });
 });
 

@@ -63,8 +63,10 @@ function legacyDecision(card: ParsedCard): HumanInboxItem {
   };
 }
 
+const CATEGORY_ORDER: HumanInboxItem['category'][] = ['decision', 'gate', 'input', 'intervention'];
+
 function categoryRank(item: HumanInboxItem): number {
-  return item.category === 'decision' ? 0 : item.category === 'input' ? 1 : 2;
+  return CATEGORY_ORDER.indexOf(item.category);
 }
 
 export function Approvals({ items, pending = [], onVerify, onRespond, pendingRespond = false }: ApprovalsProps): React.JSX.Element {
@@ -86,7 +88,7 @@ export function Approvals({ items, pending = [], onVerify, onRespond, pendingRes
 
   const counts = inbox.reduce(
     (result, item) => ({ ...result, [item.category]: result[item.category] + 1 }),
-    { decision: 0, input: 0, intervention: 0 },
+    { decision: 0, gate: 0, input: 0, intervention: 0 },
   );
 
   if (inbox.length === 0) {
@@ -94,7 +96,7 @@ export function Approvals({ items, pending = [], onVerify, onRespond, pendingRes
       <div className="v-approvals" aria-label="Human Inbox">
         <div className="v-approvals__empty" data-testid="approvals-empty">
           <p className="v-approvals__empty-title">No human attention waiting</p>
-          <p className="v-approvals__empty-sub">Decisions, questions, wake-me cards, and halted work will appear here.</p>
+          <p className="v-approvals__empty-sub">Decisions, operator gates, questions, wake-me cards, and halted work will appear here.</p>
         </div>
       </div>
     );
@@ -105,6 +107,7 @@ export function Approvals({ items, pending = [], onVerify, onRespond, pendingRes
       <div>
         <div className="v-approvals__summary" aria-label="Inbox category counts">
           <span><strong>{counts.decision}</strong> Decisions</span>
+          <span data-testid="summary-gate"><strong>{counts.gate}</strong> Gates</span>
           <span><strong>{counts.input}</strong> Input</span>
           <span><strong>{counts.intervention}</strong> Interventions</span>
         </div>

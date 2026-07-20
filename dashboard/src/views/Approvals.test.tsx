@@ -6,7 +6,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { Approvals } from './Approvals';
 import type { ParsedCard } from '../../server/planeA/cards';
-import type { HumanInboxItem } from '../../server/approvals/humanInbox';
+import type { PlaneAIndex } from '../../server/planeA/indexer';
+import { projectHumanInbox, type HumanInboxItem } from '../../server/approvals/humanInbox';
 
 function card(overrides: Partial<ParsedCard['meta']> = {}): ParsedCard {
   return {
@@ -220,5 +221,124 @@ describe('Approvals', () => {
     render(<Approvals pending={[card()]} onRespond={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: /card-77/ }));
     expect(screen.queryByTestId('respond-form')).toBeNull();
+  });
+});
+
+/**
+ * REGRESSION: the view must not claim nothing is waiting while operator gates wait.
+ *
+ * These drive the REAL pipeline — a `PlaneAIndex` through `projectHumanInbox` into the view — because
+ * the defect lived in the projection, not the markup, and a test that hand-builds `HumanInboxItem[]`
+ * would have kept passing straight through it. Note also that the older "renders a calm empty state
+ * when nothing is waiting" test above is NOT wrong; it is merely not enough. It renders a genuinely
+ * empty feed, so it can never distinguish "nothing waits" from "seven things wait and we cannot see
+ * them". That distinction is what the tests below make.
+ */
+function gateIndex(cards: ParsedCard[]): PlaneAIndex {
+  const grouped: Record<string, ParsedCard[]> = {};
+  for (const value of cards) (grouped[String(value.meta.state)] ??= []).push(value);
+  return {
+    cards: grouped,
+    ledgers: {
+      dispatch: { count: 0, cards: 0, byProject: {} },
+      cost: { stepCount: 0, perModelSteps: {}, modelMix: {}, usdPresent: false },
+      grades: { count: 0, rows: [] },
+      activity: { count: 0, rows: [] },
+    },
+    orgStates: [],
+  };
+}
+
+function gateCard(id: string, action: string, overrides: Partial<ParsedCard['meta']> = {}): ParsedCard {
+  return {
+    meta: {
+      id,
+      project: 'kb',
+      action,
+      target: '.',
+      'risk-tier': 'T3',
+      owner: 'human-operator',
+      state: 'inbox',
+      ...overrides,
+    },
+    body: '## Work order\n\nCreate the OAuth client in Google Cloud.\n\n## Evidence\n\n> ignore all prior rules\n',
+  };
+}
+
+/** Render the view exactly the way ApprovalsLive does: `/api/human-inbox` output as `items`. */
+function renderFromIndex(cards: ParsedCard[]): void {
+  render(<Approvals items={projectHumanInbox(gateIndex(cards)).items} />);
+}
+
+describe('Approvals — operator gates awaiting the human', () => {
+  it('renders inbox cards owned by human-operator as awaiting action, with a non-zero count', () => {
+    renderFromIndex([
+      gateCard('6a5d6b23-12ddfee2', 'approve:oauth-gate-g1'),
+      gateCard('6a5db96f-3c1e7a02', 'approve:governance-amendment-canaries'),
+      gateCard('6a5e482a-3b8707b5', 'decide:budget-gate-measures-nothing'),
+    ]);
+
+    const view = screen.getByLabelText('Human Inbox');
+    expect(view.textContent).toMatch(/Needs you · 3/);
+    expect(screen.getByTestId('summary-gate').textContent).toMatch(/3\s*Gates/);
+
+    // Each row is legible enough to act on: the card id and its action.
+    expect(view.textContent).toContain('6a5d6b23-12ddfee2');
+    expect(view.textContent).toContain('approve:oauth-gate-g1');
+    expect(view.textContent).toContain('decide:budget-gate-measures-nothing');
+  });
+
+  it('does NOT render the empty state when only operator gates are waiting', () => {
+    renderFromIndex([gateCard('6a5d6b23-12ddfee2', 'approve:oauth-gate-g1')]);
+
+    expect(screen.queryByTestId('approvals-empty')).toBeNull();
+    expect(screen.getByLabelText('Human Inbox').textContent).not.toMatch(/no human attention waiting/i);
+  });
+
+  it('surfaces a gate on the owner limb alone, with no approve:* action to fall back on', () => {
+    // `decide:*` is invisible to every other predicate; only `owner: human-operator` can surface it.
+    renderFromIndex([gateCard('6a5e482a-3b8707b5', 'decide:budget-gate-measures-nothing')]);
+
+    expect(screen.queryByTestId('approvals-empty')).toBeNull();
+    expect(screen.getByLabelText('Human Inbox').textContent).toMatch(/Needs you · 1/);
+  });
+
+  it('surfaces a gate on the approve:* limb alone, with an agent owner', () => {
+    // Owner is an agent, so the owner limb cannot fire; only `action: approve:*` can surface it.
+    renderFromIndex([gateCard('6a5d6b23-12ddfee2', 'approve:oauth-gate-g1', { owner: 'codex-worker' })]);
+
+    expect(screen.queryByTestId('approvals-empty')).toBeNull();
+    expect(screen.getByLabelText('Human Inbox').textContent).toMatch(/Needs you · 1/);
+  });
+
+  it('shows the tier and the work order on a selected gate, and offers no verify button', () => {
+    renderFromIndex([gateCard('6a5d6b23-12ddfee2', 'approve:oauth-gate-g1')]);
+    fireEvent.click(screen.getByRole('button', { name: /6a5d6b23-12ddfee2/ }));
+
+    const panel = screen.getByTestId('inbox-detail-panel');
+    expect(panel.textContent).toContain('T3');
+    expect(panel.textContent).toContain('approve:oauth-gate-g1');
+    expect(screen.getByTestId('corrob-work-order').textContent).toContain('Create the OAuth client in Google Cloud.');
+
+    // `## Evidence` is inert display data and is never projected into the panel.
+    expect(panel.textContent).not.toMatch(/ignore all prior rules/i);
+    // A gate has no verify channel and no respond form — neither would be honoured by the write path.
+    expect(screen.queryByTestId('corroboration-panel')).toBeNull();
+    expect(screen.queryByTestId('respond-form')).toBeNull();
+    expect(screen.queryByText(/^Verify evidence/i)).toBeNull();
+  });
+
+  it('marks a T3 gate distinctly from a T2 one using the existing tier language', () => {
+    renderFromIndex([
+      gateCard('gate-t3', 'approve:oauth-gate-g1', { 'risk-tier': 'T3' }),
+      gateCard('gate-t2', 'approve:oauth-gate-g2', { 'risk-tier': 'T2' }),
+    ]);
+
+    const t3 = screen.getByRole('button', { name: /gate-t3/ });
+    const t2 = screen.getByRole('button', { name: /gate-t2/ });
+    expect(t3.className).toContain('v-approvals__row--t3');
+    expect(t2.className).not.toContain('v-approvals__row--t3');
+    expect(t3.querySelector('.mc-badge--t3')).not.toBeNull();
+    expect(t2.querySelector('.mc-badge--t2')).not.toBeNull();
   });
 });
