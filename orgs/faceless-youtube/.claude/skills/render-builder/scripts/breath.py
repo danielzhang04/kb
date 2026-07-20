@@ -21,6 +21,10 @@ whose `dur_s` is the sum, so `shift_timings` (sums all earlier dur) and `_splice
 set-dedupes cut points and would otherwise insert only the FIRST gap) AGREE on the spliced length.
 
 Flow (called by build_motion.build_piece_spec, after merge_gaps):
+  0. apply_onset_corrections(word_timings, corrections) -> R12 VIDEO-side fix: each sentence-initial
+     word's claimed onset snapped to the boundary's MEASURED real voice onset (the silence run's end,
+     from the same sentence_gap_analysis pass that sized the gaps). Runs AFTER the gaps are computed
+     from the claimed timeline, so audio placement (at_s/dur_s/cut_s -> vo.breath.mp3) never moves.
   1. shift_timings(word_timings, gaps) -> word-timings pushed later past each gap (ONE offset point;
      everything downstream reads the shifted list).
   2. splice_silence(vo.mp3, gaps, vo.breath.mp3) -> a DERIVED gapped audio (original untouched).
@@ -157,6 +161,112 @@ def measure_natural_gap(samples, sr, final_start_s, next_start_s,
             "start_s": round(s, 3), "end_s": round(e, 3)}
 
 
+def sentence_gap_analysis(word_timings, tokens=None, vo_path=None, samples=None):
+    """ONE measurement pass over every sentence boundary -> (gaps, onset_corrections).
+
+    `gaps` is EXACTLY sentence_gaps()'s output (the R10/R11 pad-to-target law — see sentence_gaps for
+    the full contract). `onset_corrections` is the VIDEO-side yield of the SAME acoustic measurement
+    (R12): the measured silence run's END is the incoming line's REAL voice onset, and the CLAIMED
+    ElevenLabs next-word onset sits EARLIER than it (measured on poyais: median 0.32s, max 0.73s — at
+    70/83 boundaries the claimed onset falls INSIDE the natural silence run; chunk-seam drift + onset
+    bias). Shots placed via retime_by_timings on the claimed onsets therefore cut MID-PAUSE instead of
+    on the next line's onset (against the documented design intent, D4 / audio-plan-schema "the frame
+    holds": silence lands on the OUTGOING frame; the cut lands on the incoming line's real onset).
+
+    Each correction entry is {"at_s": claimed_next_onset, "correction_s", "next_word"} with
+        correction_s = max(0, measured_run_end + half_frame - claimed_next_onset)
+    (`end_s` is the last silent frame's CENTER — voice resumes ~half a frame later). Corrections are
+    computed for EVERY measured boundary, padded or not (an unpadded boundary — natural already >=
+    target — still drifts); entries are emitted only where correction_s > 0. Proxy-fallback mode (no
+    PCM / no ffmpeg) and boundaries with NO below-threshold run yield NO correction — the claimed
+    onsets stand (there is no silence run to correct against).
+
+    The corrections feed apply_onset_corrections() on the WORD TIMINGS (the video/caption/card
+    timeline) ONLY — never the gaps: gap at_s / dur_s / natural_s / cut_s stay on the CLAIMED
+    timeline exactly as before, so shift_timings' offsets, the splice filtergraph and vo.breath.mp3
+    are bit-identical with or without the correction. This fix moves VIDEO placement only."""
+    t = tokens or {}
+    if not t.get("sentence_gap_enabled", True):
+        return [], []
+    min_insert = float(t.get("sentence_gap_min_insert_s", 0.02))
+    thr_db = float(t.get("sentence_gap_measure_threshold_db", _GAP_MEASURE_THRESHOLD_DB))
+    if samples is None and vo_path is not None:
+        samples = _decode_pcm_mono(Path(vo_path))
+    out, corrections = [], []
+    for b in sentence_boundaries(word_timings, t):
+        meas = measure_natural_gap(samples, _ANALYSIS_SR, b["final_s"], b["next_s"],
+                                   threshold_db=thr_db) if samples is not None else None
+        if meas is not None:
+            natural = meas["gap_s"]
+            if meas["end_s"] is not None:
+                # R12: real acoustic onset = the measured run's end (+ half a frame — end_s is the
+                # last silent frame CENTER). Clamped to >= 0: a claimed onset already at/after the
+                # run end (claimed LATE) needs no correction.
+                real_onset = meas["end_s"] + _GAP_FRAME_MS / 2000.0
+                corr = round(max(0.0, real_onset - b["next_s"]), 3)
+                if corr > 0:
+                    corrections.append({"at_s": b["next_s"], "correction_s": corr,
+                                        "next_word": b["next_word"]})
+        else:
+            natural = b["next_s"] - b["final_s"]   # onset proxy fallback (no PCM only)
+        insert = round(b["target_s"] - natural, 3)
+        if insert >= min_insert:
+            g = {"at_s": b["next_s"], "dur_s": insert, "source": "sentence"}
+            if meas is not None:
+                g["natural_s"] = natural   # measured true silence (report/verifier context)
+                if meas["start_s"] is not None:
+                    # valley INSIDE the real silence run (earliest at-floor point) — the splice cut
+                    g["cut_s"] = _valley_cut(samples, _ANALYSIS_SR,
+                                             (meas["start_s"] + meas["end_s"]) / 2.0,
+                                             window_s=max((meas["end_s"] - meas["start_s"]) / 2.0, 0.02))
+            out.append(g)
+    return out, corrections
+
+
+def apply_onset_corrections(word_timings, corrections):
+    """R12: snap each sentence-initial word's CLAIMED onset to its measured REAL acoustic onset,
+    on the VIDEO timeline only.
+
+    Call order (audio-invariance is the point): apply to the ORIGINAL (pre-shift) word timings AFTER
+    every audio consumer has read the claimed timeline — cue resolution (resolve_cues), gap
+    measurement (sentence_gap_analysis), merge_gaps, cue_role_events — and BEFORE shift_timings. The
+    shifted list that retime_by_timings / anchor_time / captions / apply_cards consume then reflects
+    real acoustics, while gap at_s/dur_s/cut_s (hence the splice and vo.breath.mp3) are untouched.
+
+    Scope (deliberate): ONLY the word at a corrected boundary's at_s — the incoming sentence's first
+    word — is snapped. Mid-sentence words keep their claimed onsets: they are contiguous speech with
+    no silence run to correct against, and their claimed onsets measured decently accurate — a shot
+    vo_ref anchored mid-sentence stays exactly where it was. Words FOLLOWING a snapped word are only
+    RAISED to keep the timeline monotone (a large snap can overtake the next word's claimed onset);
+    they are never otherwise moved and never moved earlier. shift_timings' `at_s <= t` condition
+    still assigns the snapped word its own gap's shift: the snap only moves t LATER, past its gap's
+    claimed at_s.
+
+    A correction is consumed by the FIRST spoken (non-tag) word whose onset matches its at_s (both
+    rounded to ms — the sentence_boundaries frame). Non-positive corrections are ignored (clamped
+    upstream too). Returns a NEW list; the input is not mutated."""
+    if not corrections or not word_timings:
+        return word_timings
+    pending = {}
+    for c in corrections:
+        corr = float(c.get("correction_s", 0.0))
+        if corr > 0:
+            pending[round(float(c["at_s"]), 3)] = corr
+    if not pending:
+        return word_timings
+    out, floor = [], None
+    for w, t in word_timings:
+        t = float(t)
+        corr = None if _is_tag_token(w) else pending.pop(round(t, 3), None)
+        if corr is not None:
+            t += corr        # snap: claimed onset -> measured real acoustic onset
+        if floor is not None and t < floor:
+            t = floor        # monotonic ratchet — a snap overtook this word's claimed onset
+        floor = t
+        out.append([w, round(t, 3)])
+    return out
+
+
 def sentence_gaps(word_timings, tokens=None, vo_path=None, samples=None) -> list:
     """The universal sentence-gap law — PAD-TO-TARGET semantics (R10, supersedes the R8-B additive law).
 
@@ -184,34 +294,11 @@ def sentence_gaps(word_timings, tokens=None, vo_path=None, samples=None) -> list
     defaults above; `sentence_gap_enabled:false` disables it entirely. Emits `source:"sentence"` gaps on
     the ORIGINAL timeline — merge_gaps() then stacks any co-located authored pause, and build_audio
     EXCLUDES source=="sentence" from dips + SFX withhold. The OLD keys
-    (`sentence_gap_s`/`sentence_gap_chained_s`) are superseded and ignored."""
-    t = tokens or {}
-    if not t.get("sentence_gap_enabled", True):
-        return []
-    min_insert = float(t.get("sentence_gap_min_insert_s", 0.02))
-    thr_db = float(t.get("sentence_gap_measure_threshold_db", _GAP_MEASURE_THRESHOLD_DB))
-    if samples is None and vo_path is not None:
-        samples = _decode_pcm_mono(Path(vo_path))
-    out = []
-    for b in sentence_boundaries(word_timings, t):
-        meas = measure_natural_gap(samples, _ANALYSIS_SR, b["final_s"], b["next_s"],
-                                   threshold_db=thr_db) if samples is not None else None
-        if meas is not None:
-            natural = meas["gap_s"]
-        else:
-            natural = b["next_s"] - b["final_s"]   # onset proxy fallback (no PCM only)
-        insert = round(b["target_s"] - natural, 3)
-        if insert >= min_insert:
-            g = {"at_s": b["next_s"], "dur_s": insert, "source": "sentence"}
-            if meas is not None:
-                g["natural_s"] = natural   # measured true silence (report/verifier context)
-                if meas["start_s"] is not None:
-                    # valley INSIDE the real silence run (earliest at-floor point) — the splice cut
-                    g["cut_s"] = _valley_cut(samples, _ANALYSIS_SR,
-                                             (meas["start_s"] + meas["end_s"]) / 2.0,
-                                             window_s=max((meas["end_s"] - meas["start_s"]) / 2.0, 0.02))
-            out.append(g)
-    return out
+    (`sentence_gap_s`/`sentence_gap_chained_s`) are superseded and ignored.
+
+    Thin wrapper over sentence_gap_analysis() (which also yields the R12 per-boundary onset
+    corrections from the same measurement pass); the gap list is identical either way."""
+    return sentence_gap_analysis(word_timings, tokens, vo_path=vo_path, samples=samples)[0]
 
 
 def merge_gaps(gaps) -> list:

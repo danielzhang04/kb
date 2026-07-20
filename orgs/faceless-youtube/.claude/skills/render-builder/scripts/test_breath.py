@@ -8,7 +8,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from breath import (shift_timings, _splice_filtergraph, splice_silence, sentence_gaps, merge_gaps,
                     resolve_cut_points, _valley_cut, _floor_span, _decode_pcm_mono, _load_np,
-                    measure_natural_gap, sentence_boundaries)
+                    measure_natural_gap, sentence_boundaries, sentence_gap_analysis,
+                    apply_onset_corrections)
 
 WT = [["The", 0.0], ["deal", 0.3], ["was", 0.6], ["Eight", 1.0], ["million", 1.4], ["acres", 1.8]]
 
@@ -400,6 +401,110 @@ def test_room_tone_fill_is_not_digital_silence_ffmpeg():
     import math as _m
     db = 20 * _m.log10(rms) if rms > 1e-6 else -120.0
     assert db > -80.0, f"gap floor {db:.1f} dBFS — expected sampled room tone, not digital silence"
+
+
+# --- R12: onset correction — video cuts land on the REAL voice onset ----------
+# The claimed ElevenLabs next-word onset sits EARLIER than the real acoustic voice onset at sentence
+# boundaries (poyais: median 0.32s, max 0.73s — the claimed onset falls inside the natural silence).
+# sentence_gap_analysis yields per-boundary corrections from the SAME silence-run measurement that
+# sizes the pads; apply_onset_corrections snaps ONLY the sentence-initial word (video timeline),
+# leaving the gap list — hence the splice and vo.breath.mp3 — bit-identical.
+
+def test_onset_correction_computed_from_measured_run_end():
+    np = _load_np()
+    if np is None:
+        print("  (skipped test_onset_correction_computed_from_measured_run_end: numpy absent)"); return
+    wt = [["Well", 0.0], ["hello", 0.25], ["world.", 0.5], ["Next", 1.1], ["one", 1.5], ["more.", 1.8]]
+    s = _speech_silence_speech(0.9, 1.4)          # real silence run; claimed onset 1.1 sits INSIDE it
+    gaps, corr = sentence_gap_analysis(wt, samples=s)
+    assert len(corr) == 1 and corr[0]["at_s"] == 1.1 and corr[0]["next_word"] == "Next", corr
+    # real onset = run end (~1.4); correction = real onset - claimed 1.1 ~= 0.3
+    assert 0.2 <= corr[0]["correction_s"] <= 0.4, corr
+
+
+def test_onset_correction_clamped_to_zero_when_claimed_onset_is_late():
+    # claimed onset AFTER the run end (claimed LATE, not early) -> correction would be negative ->
+    # clamped to 0 -> no entry emitted (claimed onset stands; we never move a word EARLIER).
+    np = _load_np()
+    if np is None:
+        print("  (skipped test_onset_correction_clamped_to_zero_when_claimed_onset_is_late: numpy absent)"); return
+    wt = [["Well", 0.0], ["hello", 0.25], ["world.", 0.5], ["Next", 1.5], ["one", 1.8], ["more.", 2.1]]
+    s = _speech_silence_speech(0.9, 1.45)         # run ends ~1.45 < claimed 1.5
+    gaps, corr = sentence_gap_analysis(wt, samples=s)
+    assert corr == [], corr
+
+
+def test_onset_correction_zero_in_proxy_fallback_mode():
+    # no PCM (unit-test / no-ffmpeg path) -> proxy natural, NO corrections; gaps == sentence_gaps.
+    gaps, corr = sentence_gap_analysis(SENT_WT)
+    assert corr == [], corr
+    assert gaps == sentence_gaps(SENT_WT), gaps
+
+
+def test_onset_correction_zero_when_no_silence_run():
+    # fully continuous speech at the boundary: no below-threshold run -> the whole target is padded
+    # (audio side) but there is no run END to correct against -> no correction (claimed onset stands).
+    np = _load_np()
+    if np is None:
+        print("  (skipped test_onset_correction_zero_when_no_silence_run: numpy absent)"); return
+    s = 0.3 * _load_np().sin(2 * _load_np().pi * 220 * _load_np().arange(int(2.5 * 16000)) / 16000)
+    wt = [["Well", 0.0], ["hello", 0.25], ["world.", 0.5], ["Next", 1.1], ["one", 1.5], ["more.", 1.8]]
+    gaps, corr = sentence_gap_analysis(wt, samples=s)
+    assert corr == [], corr
+    assert len(gaps) == 1 and gaps[0]["dur_s"] == 0.65, gaps   # natural 0.0 -> pad the whole target
+
+
+def test_apply_onset_corrections_snaps_only_the_boundary_word():
+    wt = [["The", 0.0], ["deal", 0.3], ["done.", 0.6], ["Next", 1.0], ["thing", 1.6], ["here.", 2.0]]
+    out = apply_onset_corrections(wt, [{"at_s": 1.0, "correction_s": 0.35}])
+    assert out[:3] == [["The", 0.0], ["deal", 0.3], ["done.", 0.6]], out   # before the boundary: untouched
+    assert out[3] == ["Next", 1.35], out                                   # snapped to the real onset
+    assert out[4:] == [["thing", 1.6], ["here.", 2.0]], out                # mid-sentence onsets stand
+    assert wt[3] == ["Next", 1.0], wt                                      # input not mutated
+
+
+def test_apply_onset_corrections_ratchets_overtaken_words_monotone():
+    # a large snap overtakes the next word's claimed onset: that word is RAISED to the snapped time
+    # (monotone timeline), later words that are already later are untouched.
+    wt = [["done.", 0.6], ["Next", 1.0], ["thing", 1.2], ["later", 1.9]]
+    out = apply_onset_corrections(wt, [{"at_s": 1.0, "correction_s": 0.5}])
+    assert out == [["done.", 0.6], ["Next", 1.5], ["thing", 1.5], ["later", 1.9]], out
+    assert all(a[1] <= b[1] for a, b in zip(out, out[1:])), out
+
+
+def test_apply_onset_corrections_ignores_nonpositive_and_empty():
+    wt = [["done.", 0.6], ["Next", 1.0]]
+    assert apply_onset_corrections(wt, []) == wt
+    assert apply_onset_corrections(wt, [{"at_s": 1.0, "correction_s": 0.0},
+                                        {"at_s": 0.6, "correction_s": -0.3}]) == wt
+
+
+def test_onset_correction_splice_invariance():
+    # THE audio-invariance guarantee: with and without the correction pass, the gap list (at_s, dur_s,
+    # natural_s, cut_s) and hence the resolved cuts + splice filtergraph are IDENTICAL — the correction
+    # touches word timings only, so vo.breath.mp3 cannot change.
+    np = _load_np()
+    if np is None:
+        print("  (skipped test_onset_correction_splice_invariance: numpy absent)"); return
+    wt = [["Well", 0.0], ["hello", 0.25], ["world.", 0.5], ["Next", 1.1], ["one", 1.5], ["more.", 1.8]]
+    s = _speech_silence_speech(0.9, 1.4)
+    gaps_old = sentence_gaps(wt, samples=s)                     # the pre-R12 audio path
+    gaps_new, corr = sentence_gap_analysis(wt, samples=s)       # the R12 path (corrections computed)
+    assert corr and gaps_new == gaps_old, (gaps_new, gaps_old)  # gap list identical, correction real
+    apply_onset_corrections(wt, corr)                           # applying corrections mutates nothing
+    assert sentence_gap_analysis(wt, samples=s)[0] == gaps_old
+    fc_old, _ = _splice_filtergraph(resolve_cut_points(None, gaps_old, samples=s))
+    fc_new, _ = _splice_filtergraph(resolve_cut_points(None, gaps_new, samples=s))
+    assert fc_old == fc_new, (fc_old, fc_new)                   # identical splice graph -> identical audio
+
+
+def test_shift_applies_own_gap_to_corrected_boundary_word():
+    # shift_timings' `at_s <= t` condition: the snapped word (t moved LATER, past its gap's claimed
+    # at_s) still receives its own gap's shift — correction and shift compose, never double or drop.
+    wt = [["done.", 0.6], ["Next", 1.0], ["thing", 1.4]]
+    gaps = [{"at_s": 1.0, "dur_s": 0.5, "source": "sentence"}]
+    shifted = shift_timings(apply_onset_corrections(wt, [{"at_s": 1.0, "correction_s": 0.3}]), gaps)
+    assert shifted == [["done.", 0.6], ["Next", 1.8], ["thing", 1.9]], shifted   # 1.0+0.3+0.5 / 1.4+0.5
 
 
 if __name__ == "__main__":
