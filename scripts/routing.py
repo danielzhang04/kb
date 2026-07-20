@@ -42,6 +42,17 @@ log = logging.getLogger(__name__)
 # runtime+model so dispatch never stalls for lack of a route.
 SAFE_DEFAULT: tuple[str, str] = ("claude", "claude-sonnet-5")
 
+# The escalation ladder over the model-routing ALIAS vocabulary — cheapest first,
+# strongest last. This is the SINGLE definition of tier order in the codebase; the
+# alias *names* (haiku/sonnet/opus) and their concrete model ids both come from the
+# runtime's `aliases` table in governance/model-routing.yaml (see the `claude` block
+# there), so `escalate_model` reuses that policy table rather than hardcoding a
+# parallel model map. Wave F escalation-on-failure (dispatch.requeue) walks a card
+# one rung UP this ladder on each failed attempt. A runtime whose model is not on
+# this ladder (e.g. the single-tier `codex` runtime) is treated as already-top: no
+# bump. Adding a tier means editing this tuple AND the policy's aliases — nowhere else.
+TIER_LADDER: tuple[str, ...] = ("haiku", "sonnet", "opus")
+
 # Ledger action names for the routed-vs-ran audit (R1.4).
 ROUTED_VS_RAN_ACTION = "wake-me:routed-vs-ran"
 
@@ -205,6 +216,40 @@ def _resolve_alias(policy: dict, runtime: str, model_or_alias: str) -> str:
     runtimes = (policy or {}).get("runtimes") or {}
     aliases = (runtimes.get(runtime) or {}).get("aliases") or {}
     return aliases.get(model_or_alias, model_or_alias)
+
+
+def escalate_model(policy: dict, runtime: str, model: str) -> tuple[str, bool]:
+    """Bump ``model`` one rung UP its runtime's alias ladder (Wave F escalation).
+
+    Returns ``(new_model, bumped)``. The concrete-id <-> alias mapping comes wholly
+    from ``runtimes[runtime].aliases`` in the policy (the same table ``resolve``'s
+    ``_resolve_alias`` reads) intersected with the ordered ``TIER_LADDER`` — there
+    is no parallel model table here. ``bumped`` is False (and ``model`` returned
+    unchanged) whenever a bump is impossible:
+      * an empty/absent policy (no alias table to read),
+      * a ``model`` that is not one of this runtime's laddered aliases (e.g. a
+        single-tier ``codex`` model, or an unknown id),
+      * a ``model`` already at the TOP tier of the ladder.
+    So a top-tier card, a codex card, and a policy-less card all "retry the same
+    tier" — the caller still counts the attempt against the retry cap.
+    """
+    if not model:
+        return model, False
+    runtimes = (policy or {}).get("runtimes") or {}
+    aliases = (runtimes.get(runtime) or {}).get("aliases") or {}
+    # Reverse the alias table: concrete model id -> alias tier name.
+    alias_of = {concrete: alias for alias, concrete in aliases.items()}
+    alias = alias_of.get(model)
+    if alias is None or alias not in TIER_LADDER:
+        return model, False                 # not a laddered model -> no bump
+    idx = TIER_LADDER.index(alias)
+    if idx >= len(TIER_LADDER) - 1:
+        return model, False                 # already the strongest tier -> no bump
+    next_alias = TIER_LADDER[idx + 1]
+    next_model = aliases.get(next_alias)
+    if not next_model:
+        return model, False                 # ladder tier missing a concrete id -> no bump
+    return str(next_model), True
 
 
 def _known_models(policy: dict, runtime: str) -> list | None:

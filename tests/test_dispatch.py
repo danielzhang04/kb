@@ -972,6 +972,104 @@ def test_routing_absent_policy_keeps_dispatcher_owner_and_safe_default(tmp_path)
     assert (c.meta["runtime"], c.meta["model"]) == routing.SAFE_DEFAULT
 
 
+# --------------------------------------------------------------------------- #
+# Wave F -- escalation-on-failure requeue (Quartermaster delta 1)             #
+# --------------------------------------------------------------------------- #
+#
+# requeue() bumps a failed card one MODEL tier up (routing.escalate_model over
+# routing.TIER_LADDER -- the single canonical ladder), increments a `retry_count`
+# frontmatter counter, and dead-letters to `rejected` + files one deduped
+# wake-me:dead-letter once the cap (RETRY_CAP=2) is spent. The R1_POLICY fixture
+# above supplies the claude alias ladder (haiku->sonnet->opus) requeue reads.
+
+
+def _routed_card(queue_root: Path, *, model, runtime="claude", retry_count=None,
+                 state="working", owner="worker-desktop"):
+    import cards
+    extra = {"state": state, "owner": owner, "runtime": runtime, "model": model}
+    if retry_count is not None:
+        extra["retry_count"] = retry_count
+    card = cards.new_card(project="kb", action="cadence:x", target="orgs/kb",
+                          risk_tier="T1", body="## Work order\n\ndo it\n", **extra)
+    cards.save(card, queue_root)
+    return card
+
+
+def test_requeue_escalates_one_tier(tmp_path):
+    import cards
+    _write_r1_policy(tmp_path)
+    card = _routed_card(tmp_path / "queue", model="claude-sonnet-5")
+    rep = dispatch.requeue(tmp_path, card, failure_summary="boom on attempt 1")
+    assert rep["outcome"] == "escalated"
+    assert rep["model"] == "claude-opus-4-8"   # sonnet -> opus, one tier up
+    assert rep["retry_count"] == 1
+    reread = cards.parse(rep["path"])
+    assert reread.meta["model"] == "claude-opus-4-8"
+    assert reread.meta["retry_count"] == 1
+    assert reread.meta["state"] == "inbox"
+    assert rep["path"].parent.name == "inbox"
+    assert "boom on attempt 1" in reread.body  # failure summary threaded as ## Feedback
+
+
+def test_requeue_top_tier_no_bump_still_counts(tmp_path):
+    import cards
+    _write_r1_policy(tmp_path)
+    card = _routed_card(tmp_path / "queue", model="claude-opus-4-8")  # already top
+    rep = dispatch.requeue(tmp_path, card)
+    assert rep["outcome"] == "retried-same-tier"
+    assert rep["model"] == "claude-opus-4-8"   # no bump at the top tier
+    assert rep["retry_count"] == 1             # ...but the attempt still counts
+    reread = cards.parse(rep["path"])
+    assert reread.meta["model"] == "claude-opus-4-8"
+    assert reread.meta["retry_count"] == 1
+
+
+def test_requeue_cap_dead_letters_and_mints_wake(tmp_path):
+    import cards
+    _write_r1_policy(tmp_path)
+    # Already retried to the cap -> the next failure dead-letters instead of bumping.
+    card = _routed_card(tmp_path / "queue", model="claude-opus-4-8", retry_count=2)
+    rep = dispatch.requeue(tmp_path, card, failure_summary="still broken")
+    assert rep["outcome"] == "dead-lettered"
+    reread = cards.parse(rep["path"])
+    assert reread.meta["state"] == dispatch.DEAD_LETTER_STATE == "rejected"
+    assert rep["path"].parent.name == "done"   # rejected resolves to queue/done/
+    wakes = [cards.parse(p) for p in (tmp_path / "queue").glob("*/*.md")
+             if cards.parse(p).meta.get("action") == "wake-me:dead-letter"]
+    assert len(wakes) == 1
+    assert wakes[0].meta["target"] == card.meta["id"]        # id
+    assert "cadence:x" in wakes[0].body                      # action
+    assert "claude-opus-4-8" in wakes[0].body                # last model
+    assert "still broken" in wakes[0].body                   # failure summary
+
+
+def test_requeue_dead_letter_wake_is_deduped(tmp_path):
+    import cards
+    _write_r1_policy(tmp_path)
+    card = _routed_card(tmp_path / "queue", model="claude-opus-4-8", retry_count=2)
+    dispatch.requeue(tmp_path, card, failure_summary="a")
+    # Requeue the same exhausted card again -> still dead-lettered, but NO 2nd wake.
+    dispatch.requeue(tmp_path, card, failure_summary="b")
+    wakes = [p for p in (tmp_path / "queue").glob("*/*.md")
+             if cards.parse(p).meta.get("action") == "wake-me:dead-letter"]
+    assert len(wakes) == 1
+
+
+def test_requeue_retry_count_persists_across_round_trip(tmp_path):
+    import cards
+    _write_r1_policy(tmp_path)
+    # haiku -> sonnet -> opus, with the counter surviving each parse/save round-trip.
+    card = _routed_card(tmp_path / "queue", model="claude-haiku-4-5")
+    rep = dispatch.requeue(tmp_path, card)
+    assert rep["model"] == "claude-sonnet-5" and rep["retry_count"] == 1
+    reread = cards.parse(rep["path"])
+    assert reread.meta["retry_count"] == 1
+    # Escalate again from the RE-PARSED card (proves the counter is read off disk).
+    rep2 = dispatch.requeue(tmp_path, reread)
+    assert rep2["model"] == "claude-opus-4-8" and rep2["retry_count"] == 2
+    assert cards.parse(rep2["path"]).meta["retry_count"] == 2
+
+
 def test_release_does_not_thread_into_a_non_depends_on_card(tmp_path):
     """A card with an empty depends-on (the common case -- every existing
     cadence-emitted card) must be completely untouched by the release pass."""

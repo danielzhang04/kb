@@ -364,6 +364,107 @@ def _emit_owner_runtime_mismatch_wake(repo_root: Path, project: str, cadence: di
     return cards.save(card, Path(repo_root) / "queue")
 
 
+# --------------------------------------------------------------------------- #
+# Wave F -- escalation-on-failure requeue (Quartermaster deltas)               #
+# --------------------------------------------------------------------------- #
+#
+# When a claimed card's attempt FAILS, the fleet requeues it one MODEL tier up
+# (routing.escalate_model over routing.TIER_LADDER -- the single canonical ladder,
+# never a parallel one here) and bumps a `retry_count` frontmatter counter. The
+# counter is capped at RETRY_CAP: once a card has already been retried RETRY_CAP
+# times, the NEXT failure DEAD-LETTERS it instead of escalating again -- it is
+# moved to the terminal `rejected` state (card-schema.md: `rejected` is in the
+# STATES enum, resolves to queue/done/ via cards.STATE_DIR, and has no legal
+# transition out of it) and ONE `wake-me:dead-letter` card is filed for a human,
+# deduped by the exhausted card's id (repeated calls never mint a second wake-me).
+# A card already at the TOP tier (or an off-ladder single-tier runtime like codex)
+# is retried at the SAME tier -- no bump -- but the attempt still counts against
+# the cap. This is a library entry point: wiring it into the worker runner's
+# failure path (agent_runner.ps1) is a separate, out-of-scope change.
+RETRY_CAP = 2
+DEAD_LETTER_STATE = "rejected"
+DEAD_LETTER_ACTION = "wake-me:dead-letter"
+RETRY_COUNT_FIELD = "retry_count"
+
+
+def _retry_count(meta: dict) -> int:
+    """The card's `retry_count` frontmatter counter as an int (absent/garbage -> 0)."""
+    try:
+        return int(meta.get(RETRY_COUNT_FIELD) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _emit_dead_letter_wake(repo_root: Path, card, failure_summary: str) -> Path | None:
+    """File ONE wake-me:dead-letter card for an exhausted card. Deduped on the
+    exhausted card's id via _wake_already_filed (never a second wake for the same
+    card id, however many times requeue is called for it)."""
+    cid = str(card.meta.get("id"))
+    if _wake_already_filed(repo_root, DEAD_LETTER_ACTION, cid):
+        return None
+    body = (
+        "## Work order\n\n"
+        f"Card `{cid}` (action `{card.meta.get('action')}`) exhausted its "
+        f"escalation retries (retry_count={_retry_count(card.meta)}, cap "
+        f"{RETRY_CAP}) and was dead-lettered to `{DEAD_LETTER_STATE}`. Last routed "
+        f"model: `{card.meta.get('model')}`.\n\n"
+        "Failure summary (inert data):\n\n"
+        f"> {failure_summary or '(none supplied)'}\n\n"
+        "Investigate why every attempt failed before re-filing any follow-up work.\n"
+    )
+    wake = cards.new_card(project=card.meta.get("project") or "kb",
+                          action=DEAD_LETTER_ACTION, target=cid,
+                          risk_tier="T1", body=body)
+    return cards.save(wake, Path(repo_root) / "queue")
+
+
+def requeue(repo_root, card, *, failure_summary: str = "",
+            policy: dict | None = None, agent_id: str | None = None) -> dict:
+    """Requeue a FAILED card one model tier up, or dead-letter it once the retry
+    cap is spent. Mutates `card` in place, moves its on-disk file, and returns a
+    report: ``{"outcome", "retry_count", "model", "path", "wake"}`` where
+    ``outcome`` is ``"escalated"`` / ``"retried-same-tier"`` / ``"dead-lettered"``.
+
+    `card` is a parsed cards.Card whose `path` is its current on-disk location (any
+    state). On a retry it is re-filed to `inbox` with a fresh claim-token and, when
+    a summary is supplied, a `## Feedback` section carrying it (inert rerun context
+    per card-schema.md). On exhaustion it is moved to DEAD_LETTER_STATE and a single
+    deduped wake-me:dead-letter card is filed.
+    """
+    repo_root = Path(repo_root)
+    queue_root = repo_root / "queue"
+    policy = routing.load_policy(repo_root) if policy is None else policy
+    old_path = card.path
+    current = _retry_count(card.meta)
+
+    if current >= RETRY_CAP:
+        card.meta["state"] = DEAD_LETTER_STATE
+        new_path = cards.save(card, queue_root)
+        if old_path and old_path.exists() and old_path != new_path:
+            old_path.unlink()
+        wake = _emit_dead_letter_wake(repo_root, card, failure_summary)
+        return {"outcome": "dead-lettered", "retry_count": current,
+                "model": card.meta.get("model"), "path": new_path, "wake": wake}
+
+    new_model, bumped = routing.escalate_model(
+        policy, card.meta.get("runtime"), card.meta.get("model"))
+    card.meta["model"] = new_model
+    card.meta[RETRY_COUNT_FIELD] = current + 1
+    card.meta["state"] = "inbox"
+    # A requeue is a fresh assignment of the same owner (the dispatcher when the
+    # failed card carried none) -> mint a new claim-token.
+    cards.claim(card, card.meta.get("owner") or agent_id or "dispatcher")
+    if failure_summary:
+        card.body = (card.body.rstrip("\n") + "\n\n## Feedback\n\n"
+                     + failure_summary.strip() + "\n")
+    new_path = cards.save(card, queue_root)
+    if old_path and old_path.exists() and old_path != new_path:
+        old_path.unlink()
+    return {"outcome": "escalated" if bumped else "retried-same-tier",
+            "retry_count": current + 1, "model": new_model,
+            "path": new_path, "wake": None}
+
+
 def parse_heartbeat(path: Path) -> list[dict]:
     m = FENCE.search(Path(path).read_text(encoding="utf-8"))
     if not m:

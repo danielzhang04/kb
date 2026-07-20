@@ -121,3 +121,56 @@ def test_uses_promotion_window_constants():
     # Guard the "import, don't copy" contract: trust reads promotion's tiers.
     assert trust.promotion is promotion
     assert "T1" in promotion._TIERS and promotion._TIERS["T1"]["window"] == 10
+
+
+# --------------------------------------------------------------------------- #
+# Wave F delta 2 -- per-(risk-)tier outcome columns (pass + escalation rates)  #
+# --------------------------------------------------------------------------- #
+
+def _card(root: Path, *, risk_tier="T1", retry_count=None):
+    import cards
+    extra = {"state": "inbox"}
+    if retry_count is not None:
+        extra["retry_count"] = retry_count
+    c = cards.new_card(project="kb", action="a", target="t", risk_tier=risk_tier,
+                       body="## Work order\n\nx\n", **extra)
+    cards.save(c, root / "queue")
+    return c
+
+
+def test_tier_outcomes_with_escalation_data(tmp_path):
+    root = tmp_path / "repo"
+    # Grades at T1: 3 at/above bar(90), 1 below -> pass rate 3/4.
+    _seed(root, worker="w", task_type="canary:card-parse", tier="T1",
+          scores=[(100, True), (95, True), (92, True), (50, False)])
+    # Queue cards at T1: one escalated (retry_count=1), three not -> 1/4.
+    _card(root, retry_count=1)
+    _card(root)
+    _card(root)
+    _card(root)
+
+    outcomes = trust.compute_tier_outcomes(root)
+    t1 = next(o for o in outcomes if o["tier"] == "T1")
+    assert t1["pass_rate"] == 0.75
+    assert t1["escalation_rate"] == 0.25
+
+    trust.compute_trust(root, write=True)
+    text = (root / "dashboards" / "trust.md").read_text(encoding="utf-8")
+    assert "Per-tier outcomes" in text
+    assert "75% (3/4)" in text          # pass rate
+    assert "25% (1/4)" in text          # escalation rate
+
+
+def test_tier_outcomes_without_escalation_data_renders_na(tmp_path):
+    root = tmp_path / "repo"
+    _seed(root, worker="w", task_type="canary:card-parse", tier="T1",
+          scores=[(100, True)] * 3)
+    # No queue/ cards at all -> escalation rate is not derivable for any tier.
+    outcomes = trust.compute_tier_outcomes(root)
+    t1 = next(o for o in outcomes if o["tier"] == "T1")
+    assert t1["pass_rate"] == 1.0
+    assert t1["escalation_rate"] is None
+
+    trust.compute_trust(root, write=True)
+    text = (root / "dashboards" / "trust.md").read_text(encoding="utf-8")
+    assert "n/a (no escalation data)" in text

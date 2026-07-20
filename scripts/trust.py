@@ -98,7 +98,103 @@ def check_regressions(repo_root) -> list[dict]:
     return [r for r in compute_trust(repo_root, write=False) if r["demote"]]
 
 
-def _render(rows: list[dict]) -> str:
+# --------------------------------------------------------------------------- #
+# Wave F delta 2 -- per-(risk-)tier outcome columns for threshold tuning       #
+# --------------------------------------------------------------------------- #
+#
+# Two honest, per-tier rates published alongside the per-subject table:
+#   pass rate       -- share of graded runs at/above the tier bar, aggregated
+#                      over the whole grade ledger (ledgers/grades/**).
+#   escalation rate -- share of queue/ cards at this risk tier that required an
+#                      escalation, derived from the `retry_count` frontmatter
+#                      counter that dispatch.requeue (Wave F delta 1) writes: a
+#                      card with retry_count>0 was escalated at least once.
+#
+# Keyed by RISK TIER (T1/T2/T3) deliberately: it is the ONE tier dimension both
+# data sources actually carry (grade rows carry `tier`; cards carry `risk-tier`),
+# it is immutable on a card (unlike the routed `model`, which escalation
+# OVERWRITES -- so an initial-model-tier escalation rate is not recoverable), and
+# it is exactly the axis promotion._TIERS tunes thresholds on. When a tier has no
+# grade rows the pass column renders "n/a"; when no queue card carries retry data
+# for a tier the escalation column renders "n/a (no escalation data)" rather than
+# inventing a rate (the design's explicit instruction).
+_RISK_TIERS = ("T1", "T2", "T3")
+
+
+def _iter_cards(repo_root: Path):
+    """Every parseable card across the whole queue/ tree. Fail-open per card
+    (skip an unparseable one) -- this is an advisory projection, like trust itself."""
+    import cards  # local import: keep trust a lean projection, avoid load-order coupling
+
+    queue_root = Path(repo_root) / "queue"
+    if not queue_root.exists():
+        return
+    for path in sorted(queue_root.glob("*/*.md")):
+        try:
+            yield cards.parse(path)
+        except Exception:  # noqa: BLE001 -- advisory scan: skip an unparseable card
+            continue
+
+
+def _card_retry_count(meta: dict) -> int:
+    try:
+        return int(meta.get("retry_count") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def compute_tier_outcomes(repo_root) -> list[dict]:
+    """One outcome row per risk tier (T1/T2/T3). Pure read: grade ledger for the
+    pass rate, queue/ cards' `retry_count` for the escalation rate. `pass_rate` /
+    `escalation_rate` are None when their source has no rows for that tier (the
+    dashboard renders those as "n/a")."""
+    repo_root = Path(repo_root)
+    grade_runs: dict[str, int] = defaultdict(int)
+    grade_passes: dict[str, int] = defaultdict(int)
+    for row in promotion.read_grades(repo_root):
+        tier = row.get("tier")
+        if tier not in _RISK_TIERS:
+            continue
+        grade_runs[tier] += 1
+        if _passes_bar(row, tier):
+            grade_passes[tier] += 1
+
+    card_total: dict[str, int] = defaultdict(int)
+    card_escalated: dict[str, int] = defaultdict(int)
+    for card in _iter_cards(repo_root):
+        tier = card.meta.get("risk-tier")
+        if tier not in _RISK_TIERS:
+            continue
+        card_total[tier] += 1
+        if _card_retry_count(card.meta) > 0:
+            card_escalated[tier] += 1
+
+    rows: list[dict] = []
+    for tier in _RISK_TIERS:
+        runs = grade_runs[tier]
+        passes = grade_passes[tier]
+        total = card_total[tier]
+        escalated = card_escalated[tier]
+        rows.append({
+            "tier": tier,
+            "grade_runs": runs,
+            "grade_passes": passes,
+            "pass_rate": (passes / runs) if runs else None,
+            "cards": total,
+            "escalated": escalated,
+            "escalation_rate": (escalated / total) if total else None,
+        })
+    return rows
+
+
+def _fmt_rate(rate, passes: int, total: int, na_text: str) -> str:
+    """A rate cell: "<pct>% (num/den)" when derivable, else `na_text`."""
+    if rate is None:
+        return na_text
+    return f"{rate * 100:.0f}% ({passes}/{total})"
+
+
+def _render(rows: list[dict], outcomes: list[dict] | None = None) -> str:
     ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
     out = [
         "# Trust — derived from ledgers/grades",
@@ -120,6 +216,27 @@ def _render(rows: list[dict]) -> str:
     if not rows:
         out.append("| _(no grade rows yet)_ | | | | | | |")
     out.append("")
+
+    # Wave F delta 2 -- per-(risk-)tier outcome columns for threshold tuning.
+    out += [
+        "## Per-tier outcomes",
+        "",
+        "> Pass rate: share of graded runs at/above the tier bar (ledgers/grades).",
+        "> Escalation rate: share of queue/ cards at this risk tier that required an",
+        "> escalation (`retry_count` > 0, the Wave F requeue counter). \"n/a (no",
+        "> escalation data)\" = no queue card carries retry data for this tier yet.",
+        "",
+        "| tier | pass rate | escalation rate |",
+        "|---|---|---|",
+    ]
+    for o in (outcomes or []):
+        pass_cell = _fmt_rate(o["pass_rate"], o["grade_passes"], o["grade_runs"], "n/a")
+        esc_cell = _fmt_rate(o["escalation_rate"], o["escalated"], o["cards"],
+                             "n/a (no escalation data)")
+        out.append(f"| {o['tier']} | {pass_cell} | {esc_cell} |")
+    if not outcomes:
+        out.append("| _(no tier data yet)_ | | |")
+    out.append("")
     return "\n".join(out)
 
 
@@ -127,7 +244,8 @@ def _write_dashboard(repo_root: Path, rows: list[dict]) -> Path:
     dash = Path(repo_root) / "dashboards"
     dash.mkdir(parents=True, exist_ok=True)
     path = dash / "trust.md"
-    path.write_text(_render(rows), encoding="utf-8")
+    outcomes = compute_tier_outcomes(repo_root)
+    path.write_text(_render(rows, outcomes), encoding="utf-8")
     return path
 
 

@@ -282,6 +282,34 @@ def test_canonical_hash_stable_regardless_of_key_order():
 
 
 # --------------------------------------------------------------------------- #
+# Wave F delta 3 -- reservations `id` column joins held/settled/released rows  #
+# --------------------------------------------------------------------------- #
+
+def test_reservations_id_column_joins_lifecycle_rows(tmp_path):
+    repo = _repo(tmp_path)
+    rid = sentinel.reserve(repo, "w", "build", "steps", 100, now=NOW)
+    sentinel.settle(repo, "w", "build", "steps", 80, rid, now=NOW)
+    sentinel.release(repo, "w", "build", "steps", rid, now=NOW)
+    shard = repo / "ledgers" / "audit" / f"reservations-w-{DAY}.tsv"
+    rows = [ln.split("\t") for ln in shard.read_text(encoding="utf-8").splitlines()
+            if ln.strip()]
+    header, data = rows[0], rows[1:]
+    assert "id" in header                       # the join column exists
+    id_col = header.index("id")
+    # All three lifecycle rows carry the SAME id -> held/settled/released joinable.
+    assert len(data) == 3
+    assert {r[id_col] for r in data} == {rid}
+
+
+def test_reservations_distinct_ids_even_for_same_agent_step(tmp_path):
+    repo = _repo(tmp_path)
+    r1 = sentinel.reserve(repo, "w", "a", "steps", 10, now=NOW)
+    r2 = sentinel.reserve(repo, "w", "a", "steps", 10, now=NOW)
+    # Identical agent+step, yet distinct ids -> the two reservations never collide.
+    assert r1 != r2
+
+
+# --------------------------------------------------------------------------- #
 # preamble gate                                                                #
 # --------------------------------------------------------------------------- #
 def test_cli_gate_blocks_when_stop_present(tmp_path):
