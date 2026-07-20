@@ -30,7 +30,7 @@ import type { WorkerAdapter, WorkerExecutionResult, ExecutionUsage } from './exe
 
 const DEFAULT_TIMEOUT_MS = 30 * 60_000;
 const DEFAULT_MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
-const DEFAULT_STDERR_TAIL_BYTES = 4_000;
+const DEFAULT_STDERR_TAIL_CHARS = 4_000;
 const DEFAULT_SUMMARY_MAX_CHARS = 60_000;
 const WAITING_HUMAN_MARKER = 'WAITING-HUMAN:';
 
@@ -61,27 +61,65 @@ export interface ClaudeProcess {
   onStdout(cb: (chunk: string) => void): void;
   onStderr(cb: (chunk: string) => void): void;
   onExit(cb: (code: number | null) => void): void;
+  /** Wire the child-level spawn/runtime 'error' channel (e.g. ENOENT). Optional so fakes may omit it. */
+  onError?(cb: (error: Error) => void): void;
   writeStdin(text: string): void;
   endStdin(): void;
-  /** Terminate the child. The real default uses SIGKILL — the same kill `runTrackedProcess` uses. */
+  /** The OS pid, when known — the seam `killTree` uses to reap the whole process tree, not just the direct child. */
+  pid?: number;
+  /** Terminate the direct child only. The real default uses SIGKILL — the same kill `runTrackedProcess` uses. */
   kill(): void;
 }
 
 /** Spawns a `claude` child for `request`. Injected for hermetic tests — never a real CLI under test. */
 export type ClaudeSpawner = (request: ClaudeSpawnRequest) => ClaudeProcess;
 
+/**
+ * Reap an entire `claude` process tree by pid — not just the direct child, which is all `ClaudeProcess.kill`
+ * can reach. Injected so the suite is hermetic (no real signals/taskkill are issued under test).
+ */
+export type KillTree = (pid: number) => void;
+
+/**
+ * The default real tree-killer. On Windows `taskkill /T /F` reaps the child and every descendant; elsewhere
+ * a negative-pid signal targets the child's process group (the group leader the default spawner detaches),
+ * with a direct-pid fallback. Best-effort throughout: a child that is already gone must never throw. Never
+ * invoked in this task — construction only; tests inject a fake.
+ */
+export const defaultKillTree: KillTree = (pid) => {
+  if (process.platform === 'win32') {
+    try {
+      const killer = spawnChildProcess('taskkill', ['/T', '/F', '/PID', String(pid)], { windowsHide: true, stdio: 'ignore' });
+      killer.unref();
+    } catch { /* the tree may already be gone */ }
+    return;
+  }
+  try {
+    process.kill(-pid, 'SIGKILL'); // negative pid signals the whole process group
+  } catch {
+    try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ }
+  }
+};
+
 export interface ClaudeWorkerAdapterOptions {
   /** Resolves the server-owned tool cap for a worker profile. Required — profiles carry no tool fields. */
   resolveToolPolicy(profile: ExecutionProfile): ClaudeToolPolicy;
   /** The process seam. Defaults to the real spawn-based runner, which nothing in this task invokes. */
   spawn?: ClaudeSpawner;
+  /** The tree-kill seam used on timeout / output-cap / cancellation paths. Defaults to `defaultKillTree`. */
+  killTree?: KillTree;
+  /**
+   * Invoked once at spawn with the attempt's operationKey and an idempotent `cancel` that runs the same
+   * finalize + tree-kill path as a timeout. Lets an external stop authority reap a still-running attempt.
+   */
+  registerCancellation?: (operationKey: string, cancel: () => void) => void;
   /** The parent env the allowlist filters. Defaults to process.env. */
   parentEnv?: Record<string, string | undefined>;
   /** The env-name allowlist. Defaults to the PTY host's DEFAULT_ENV_ALLOWLIST (denylist always applies). */
   envAllowlist?: readonly string[];
   timeoutMs?: number;
   maxOutputBytes?: number;
-  stderrTailBytes?: number;
+  stderrTailChars?: number;
   summaryMaxChars?: number;
 }
 
@@ -192,8 +230,10 @@ function extractUsage(resultEvent: Record<string, unknown>): ExecutionUsage {
     + safeCount(usage.cache_creation_input_tokens)
     + safeCount(usage.cache_read_input_tokens);
   const outputTokens = safeCount(usage.output_tokens);
-  // Subscription billing reports $0; still map faithfully as integer micro-dollars, never a float.
-  const costUsdMicros = safeCount(Math.round(safeCount(resultEvent.total_cost_usd) * 1_000_000));
+  // Subscription billing reports $0; still map faithfully as integer micro-dollars, never a float. Convert
+  // dollars→micros BEFORE flooring: `safeCount` would otherwise floor $0.0234 to $0 and lose sub-dollar cost.
+  const rawCost = Number(resultEvent.total_cost_usd);
+  const costUsdMicros = Number.isFinite(rawCost) ? safeCount(Math.round(rawCost * 1_000_000)) : 0;
   return {
     inputTokens: Math.min(inputTokens, Number.MAX_SAFE_INTEGER),
     outputTokens,
@@ -204,9 +244,10 @@ function extractUsage(resultEvent: Record<string, unknown>): ExecutionUsage {
 export interface StreamParseOptions {
   timedOut?: boolean;
   exceeded?: boolean;
+  cancelled?: boolean;
   timeoutMs?: number;
   maxOutputBytes?: number;
-  stderrTailBytes?: number;
+  stderrTailChars?: number;
   summaryMaxChars?: number;
 }
 
@@ -231,7 +272,10 @@ export function parseWorkerStream(
   options: StreamParseOptions = {},
 ): WorkerExecutionResult {
   const maxChars = options.summaryMaxChars ?? DEFAULT_SUMMARY_MAX_CHARS;
-  const tail = (stderr.trim().slice(-(options.stderrTailBytes ?? DEFAULT_STDERR_TAIL_BYTES))).trim();
+  const tail = (stderr.trim().slice(-(options.stderrTailChars ?? DEFAULT_STDERR_TAIL_CHARS))).trim();
+  if (options.cancelled) {
+    return failedResult(`claude worker was cancelled and its process tree was killed. ${tail}`.trim(), ZERO_USAGE, maxChars);
+  }
   if (options.timedOut) {
     return failedResult(`claude worker timed out after ${options.timeoutMs ?? DEFAULT_TIMEOUT_MS}ms and was killed. ${tail}`, ZERO_USAGE, maxChars);
   }
@@ -261,9 +305,11 @@ export function parseWorkerStream(
     return failedResult(`claude worker produced no stream-json result event. ${tail}`, ZERO_USAGE, maxChars);
   }
   const usage = extractUsage(resultEvent);
-  const isError = resultEvent.is_error === true || (typeof resultEvent.subtype === 'string' && resultEvent.subtype !== 'success');
+  // Fail-closed: success requires BOTH the explicit success subtype and a non-error flag. A clean-exit
+  // result event missing either field is treated as failed, never masqueraded into a success.
+  const isSuccess = resultEvent.subtype === 'success' && resultEvent.is_error !== true;
   const resultText = typeof resultEvent.result === 'string' ? resultEvent.result : '';
-  if (isError) {
+  if (!isSuccess) {
     return failedResult(`${resultText || 'claude worker reported an error result'} ${tail}`.trim(), usage, maxChars);
   }
   if (resultText.startsWith(WAITING_HUMAN_MARKER)) {
@@ -283,12 +329,16 @@ export const defaultClaudeSpawner: ClaudeSpawner = (request) => {
     env: request.env,
     shell: false,
     windowsHide: true,
+    // Off win32, lead a new process group so `defaultKillTree` can reap the whole tree via a negative pid.
+    detached: process.platform !== 'win32',
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   return {
+    get pid() { return child.pid; },
     onStdout(cb) { child.stdout?.on('data', (b: Buffer) => cb(b.toString('utf8'))); },
     onStderr(cb) { child.stderr?.on('data', (b: Buffer) => cb(b.toString('utf8'))); },
     onExit(cb) { child.on('close', (c) => cb(c)); },
+    onError(cb) { child.on('error', (e: Error) => cb(e)); },
     writeStdin(text) { child.stdin?.write(text); },
     endStdin() { child.stdin?.end(); },
     kill() { child.kill('SIGKILL'); },
@@ -304,9 +354,10 @@ export const defaultClaudeSpawner: ClaudeSpawner = (request) => {
  */
 export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): WorkerAdapter {
   const spawner = options.spawn ?? defaultClaudeSpawner;
+  const killTree = options.killTree ?? defaultKillTree;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const maxOutputBytes = options.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
-  const stderrTailBytes = options.stderrTailBytes ?? DEFAULT_STDERR_TAIL_BYTES;
+  const stderrTailChars = options.stderrTailChars ?? DEFAULT_STDERR_TAIL_CHARS;
   const summaryMaxChars = options.summaryMaxChars ?? DEFAULT_SUMMARY_MAX_CHARS;
 
   return {
@@ -328,6 +379,15 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
         let settled = false;
         let timedOut = false;
         let exceeded = false;
+        let cancelled = false;
+
+        // Reap the whole process tree, not just the direct child. `killTree` is invoked at most once.
+        const terminate = (): void => {
+          if (typeof proc.pid === 'number') {
+            try { killTree(proc.pid); return; } catch { /* fall through to the direct-child kill */ }
+          }
+          try { proc.kill(); } catch { /* the child may already be gone */ }
+        };
 
         const finalize = (code: number | null): void => {
           if (settled) return;
@@ -336,38 +396,55 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
           resolvePromise(parseWorkerStream(stdoutChunks.join(''), stderrTail, code, {
             timedOut,
             exceeded,
+            cancelled,
             timeoutMs,
             maxOutputBytes,
-            stderrTailBytes,
+            stderrTailChars,
             summaryMaxChars,
           }));
         };
 
         const timer = setTimeout(() => {
           timedOut = true;
-          try { proc.kill(); } catch { /* the child may already be gone */ }
+          terminate();
           finalize(null);
         }, timeoutMs);
         if (typeof timer.unref === 'function') timer.unref();
+
+        // Idempotent external stop: identical finalize + tree-kill path as a timeout. Repeat calls are no-ops.
+        const cancel = (): void => {
+          if (settled) return;
+          cancelled = true;
+          terminate();
+          finalize(null);
+        };
+        options.registerCancellation?.(input.operationKey, cancel);
+
+        proc.onError?.((error) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          resolvePromise(failedResult(`claude worker process error: ${error instanceof Error ? error.message : String(error)}`, ZERO_USAGE, summaryMaxChars));
+        });
 
         proc.onStdout((chunk) => {
           bytes += Buffer.byteLength(chunk, 'utf8');
           if (bytes > maxOutputBytes) {
             exceeded = true;
-            try { proc.kill(); } catch { /* fall through to finalize */ }
+            terminate();
             finalize(null);
             return;
           }
           stdoutChunks.push(chunk);
         });
-        proc.onStderr((chunk) => { stderrTail = (stderrTail + chunk).slice(-stderrTailBytes); });
+        proc.onStderr((chunk) => { stderrTail = (stderrTail + chunk).slice(-stderrTailChars); });
         proc.onExit((code) => finalize(code));
 
         try {
           proc.writeStdin(encodeStreamJsonUserMessage(prompt));
           proc.endStdin();
         } catch {
-          try { proc.kill(); } catch { /* best effort */ }
+          terminate();
           finalize(null);
         }
       });

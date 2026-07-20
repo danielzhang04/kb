@@ -22,11 +22,13 @@ import {
   buildWorkerEnv,
   encodeStreamJsonUserMessage,
   defaultClaudeSpawner,
+  defaultKillTree,
   type ClaudeSpawner,
   type ClaudeToolPolicy,
+  type KillTree,
 } from './claudeWorkerAdapter.ts';
 
-const DEFAULT_STDERR_TAIL_BYTES = 4_000;
+const DEFAULT_STDERR_TAIL_CHARS = 4_000;
 
 /** The launch parameters resolved from a spec's server-owned profile id — never smuggled by the caller. */
 export interface ClaudeSessionLaunch {
@@ -44,9 +46,11 @@ export interface ClaudeSessionAdapterOptions {
    */
   resolveLaunch(spec: ManagedStartSpec): ClaudeSessionLaunch;
   spawn?: ClaudeSpawner;
+  /** The tree-kill seam used by `stop()`. Defaults to `defaultKillTree`. */
+  killTree?: KillTree;
   parentEnv?: Record<string, string | undefined>;
   envAllowlist?: readonly string[];
-  stderrTailBytes?: number;
+  stderrTailChars?: number;
 }
 
 /**
@@ -83,9 +87,11 @@ export function mapStreamEventToPrivate(event: unknown): PrivateOperationalEvent
   }
 
   if (type === 'result') {
-    const isError = record.is_error === true || (typeof record.subtype === 'string' && record.subtype !== 'success');
+    // Fail-closed: success requires BOTH the explicit success subtype and a non-error flag. A result event
+    // missing either field maps to a failed lifecycle rather than masquerading as succeeded.
+    const isSuccess = record.subtype === 'success' && record.is_error !== true;
     const detail = typeof record.result === 'string' ? record.result : null;
-    return [{ kind: 'lifecycle', state: isError ? 'failed' : 'succeeded', detail }];
+    return [{ kind: 'lifecycle', state: isSuccess ? 'succeeded' : 'failed', detail }];
   }
 
   return [];
@@ -116,7 +122,8 @@ export function mapStreamLine(line: string): PublicOperationalEvent[] {
  */
 export function createClaudeSessionAdapter(options: ClaudeSessionAdapterOptions): ManagedSessionAdapter {
   const spawner = options.spawn ?? defaultClaudeSpawner;
-  const stderrTailBytes = options.stderrTailBytes ?? DEFAULT_STDERR_TAIL_BYTES;
+  const killTree = options.killTree ?? defaultKillTree;
+  const stderrTailChars = options.stderrTailChars ?? DEFAULT_STDERR_TAIL_CHARS;
 
   return {
     start(spec, observer): ManagedChild {
@@ -137,19 +144,33 @@ export function createClaudeSessionAdapter(options: ClaudeSessionAdapterOptions)
         }
       };
 
+      // Reap the whole process tree, not just the direct child. Invoked at most once (stop guard).
+      const terminate = (): void => {
+        if (typeof proc.pid === 'number') {
+          try { killTree(proc.pid); return; } catch { /* fall through to the direct-child kill */ }
+        }
+        try { proc.kill(); } catch { /* best-effort; the durable stop request is already recorded */ }
+      };
+
       proc.onStdout((chunk) => {
         pending += chunk;
         const lines = pending.split('\n');
         pending = lines.pop() ?? '';
         for (const line of lines) emit(line);
       });
-      proc.onStderr((chunk) => { stderrTail = (stderrTail + chunk).slice(-stderrTailBytes); });
+      proc.onStderr((chunk) => { stderrTail = (stderrTail + chunk).slice(-stderrTailChars); });
       proc.onExit((code) => {
         if (exited) return;
         exited = true;
         if (pending) { emit(pending); pending = ''; }
         const error = code === 0 ? null : (stderrTail.trim() || `claude session exited with code ${code ?? 'null'}`);
         try { observer.onExit(code, error); } catch { /* the child is gone; contain observer failures */ }
+      });
+      // A child-level spawn/runtime error finalizes immediately rather than waiting on an exit that won't come.
+      proc.onError?.((error) => {
+        if (exited) return;
+        exited = true;
+        try { observer.onExit(null, error instanceof Error ? error.message : 'claude session process error'); } catch { /* contain */ }
       });
 
       try {
@@ -166,7 +187,7 @@ export function createClaudeSessionAdapter(options: ClaudeSessionAdapterOptions)
         stop() {
           if (stopped) return;
           stopped = true;
-          try { proc.kill(); } catch { /* best-effort; the durable stop request is already recorded */ }
+          terminate();
         },
       };
     },

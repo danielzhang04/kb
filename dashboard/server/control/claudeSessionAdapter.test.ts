@@ -25,15 +25,20 @@ const SPEC: ManagedStartSpec = {
   approvedPrompt: 'AUTHORITATIVE WORK ORDER (follow these instructions):\nDo the thing.',
 };
 
+const FAKE_PID = 5353;
+
 function fakeProcess() {
   let stdout: (chunk: string) => void = () => {};
   let stderr: (chunk: string) => void = () => {};
   let exit: (code: number | null) => void = () => {};
+  let error: (err: Error) => void = () => {};
   const stdin: string[] = [];
   const proc: ClaudeProcess = {
     onStdout(cb) { stdout = cb; },
     onStderr(cb) { stderr = cb; },
     onExit(cb) { exit = cb; },
+    onError(cb) { error = cb; },
+    pid: FAKE_PID,
     writeStdin(text) { stdin.push(text); },
     endStdin: vi.fn(),
     kill: vi.fn(),
@@ -44,6 +49,7 @@ function fakeProcess() {
     emitStdout: (chunk: string) => stdout(chunk),
     emitStderr: (chunk: string) => stderr(chunk),
     emitExit: (code: number | null) => exit(code),
+    emitError: (err: Error) => error(err),
   };
 }
 
@@ -88,6 +94,11 @@ describe('mapStreamEventToPrivate', () => {
       .toEqual([{ kind: 'lifecycle', state: 'succeeded', detail: 'ok' }]);
     expect(mapStreamEventToPrivate({ type: 'result', subtype: 'error_during_execution', is_error: true, result: 'bad' }))
       .toEqual([{ kind: 'lifecycle', state: 'failed', detail: 'bad' }]);
+  });
+
+  it('fails closed on a result event missing subtype and is_error', () => {
+    expect(mapStreamEventToPrivate({ type: 'result', result: 'unverified' }))
+      .toEqual([{ kind: 'lifecycle', state: 'failed', detail: 'unverified' }]);
   });
 
   it('ignores unknown or malformed events', () => {
@@ -162,19 +173,31 @@ describe('createClaudeSessionAdapter.start', () => {
     expect(harness.exits).toEqual([{ code: 1, error: 'fatal: model unavailable' }]);
   });
 
-  it('stop() kills the child exactly once', () => {
+  it('stop() tree-kills the child exactly once', () => {
     const fake = fakeProcess();
-    const adapter = createClaudeSessionAdapter({ resolveLaunch: () => LAUNCH, spawn: () => fake.proc });
+    const killTree = vi.fn();
+    const adapter = createClaudeSessionAdapter({ resolveLaunch: () => LAUNCH, spawn: () => fake.proc, killTree });
     const harness = observerHarness();
     const child = adapter.start(SPEC, harness.observer);
     child.stop();
     child.stop();
-    expect(fake.proc.kill).toHaveBeenCalledTimes(1);
+    expect(killTree).toHaveBeenCalledTimes(1);
+    expect(killTree).toHaveBeenCalledWith(FAKE_PID);
+    expect(fake.proc.kill).not.toHaveBeenCalled();
+  });
+
+  it('reports a child spawn/runtime error as an immediate exit rather than waiting', () => {
+    const fake = fakeProcess();
+    const adapter = createClaudeSessionAdapter({ resolveLaunch: () => LAUNCH, spawn: () => fake.proc });
+    const harness = observerHarness();
+    adapter.start(SPEC, harness.observer);
+    fake.emitError(new Error('spawn claude ENOENT'));
+    expect(harness.exits).toEqual([{ code: null, error: 'spawn claude ENOENT' }]);
   });
 
   it('contains observer.onEvent exceptions so they never reach the daemon', () => {
     const fake = fakeProcess();
-    const adapter = createClaudeSessionAdapter({ resolveLaunch: () => LAUNCH, spawn: () => fake.proc });
+    const adapter = createClaudeSessionAdapter({ resolveLaunch: () => LAUNCH, spawn: () => fake.proc, killTree: vi.fn() });
     const child = adapter.start(SPEC, {
       onEvent: () => { throw new Error('observer blew up'); },
       onExit: () => {},

@@ -23,16 +23,21 @@ const WORKER_PROFILE: ExecutionProfile = {
 
 const TOOL_POLICY: ClaudeToolPolicy = { allowedTools: ['Read', 'Write', 'WebSearch'], permissionMode: 'default' };
 
+const FAKE_PID = 4242;
+
 /** A hermetic fake claude child the test drives directly — no real CLI is ever spawned. */
 function fakeProcess() {
   let stdout: (chunk: string) => void = () => {};
   let stderr: (chunk: string) => void = () => {};
   let exit: (code: number | null) => void = () => {};
+  let error: (err: Error) => void = () => {};
   const stdin: string[] = [];
   const proc: ClaudeProcess = {
     onStdout(cb) { stdout = cb; },
     onStderr(cb) { stderr = cb; },
     onExit(cb) { exit = cb; },
+    onError(cb) { error = cb; },
+    pid: FAKE_PID,
     writeStdin(text) { stdin.push(text); },
     endStdin: vi.fn(),
     kill: vi.fn(),
@@ -43,6 +48,7 @@ function fakeProcess() {
     emitStdout: (chunk: string) => stdout(chunk),
     emitStderr: (chunk: string) => stderr(chunk),
     emitExit: (code: number | null) => exit(code),
+    emitError: (err: Error) => error(err),
   };
 }
 
@@ -194,6 +200,24 @@ describe('parseWorkerStream — mapping matrix', () => {
     expect(result.checkpoints).toEqual([]);
   });
 
+  it('converts sub-dollar cost to micros before flooring ($0.0234 → 23400, never 0)', () => {
+    const result = parseWorkerStream(successLine('done', { input_tokens: 1, output_tokens: 1 }, 0.0234), '', 0);
+    expect(result.state).toBe('succeeded');
+    expect(result.usage.costUsdMicros).toBe(23_400);
+  });
+
+  it('converts a multi-dollar cost to micros ($1.99 → 1990000)', () => {
+    const result = parseWorkerStream(successLine('done', { input_tokens: 1, output_tokens: 1 }, 1.99), '', 0);
+    expect(result.usage.costUsdMicros).toBe(1_990_000);
+  });
+
+  it('fails closed on a clean-exit result event missing subtype and is_error', () => {
+    const line = `${JSON.stringify({ type: 'result', result: 'looks fine but unverified' })}\n`;
+    const result = parseWorkerStream(line, '', 0);
+    expect(result.state).toBe('failed');
+    expect(result.summary).toContain('looks fine but unverified');
+  });
+
   it('maps a nonzero exit to failed with a stderr tail', () => {
     const result = parseWorkerStream('', 'boom: something broke', 1);
     expect(result.state).toBe('failed');
@@ -262,21 +286,74 @@ describe('createClaudeWorkerAdapter.execute', () => {
     expect(fake.proc.endStdin).toHaveBeenCalled();
   });
 
-  it('kills the child and resolves failed when the kill-timeout fires (fake timers)', async () => {
+  it('tree-kills the child and resolves failed when the kill-timeout fires (fake timers)', async () => {
     vi.useFakeTimers();
     const fake = fakeProcess();
+    const killTree = vi.fn();
     const adapter = createClaudeWorkerAdapter({
       resolveToolPolicy: () => TOOL_POLICY,
       spawn: () => fake.proc,
+      killTree,
       timeoutMs: 5_000,
     });
     const promise = adapter.execute(executeInput());
     // Child never exits; advance past the kill-timeout.
     await vi.advanceTimersByTimeAsync(5_001);
     const result = await promise;
-    expect(fake.proc.kill).toHaveBeenCalledTimes(1);
+    expect(killTree).toHaveBeenCalledTimes(1);
+    expect(killTree).toHaveBeenCalledWith(FAKE_PID);
+    expect(fake.proc.kill).not.toHaveBeenCalled();
     expect(result.state).toBe('failed');
     expect(result.summary).toContain('timed out after 5000ms');
+  });
+
+  it('tree-kills the child when the output cap is exceeded', async () => {
+    const fake = fakeProcess();
+    const killTree = vi.fn();
+    const adapter = createClaudeWorkerAdapter({
+      resolveToolPolicy: () => TOOL_POLICY,
+      spawn: () => fake.proc,
+      killTree,
+      maxOutputBytes: 8,
+    });
+    const promise = adapter.execute(executeInput());
+    fake.emitStdout('x'.repeat(64)); // blow past the 8-byte cap
+    const result = await promise;
+    expect(killTree).toHaveBeenCalledTimes(1);
+    expect(killTree).toHaveBeenCalledWith(FAKE_PID);
+    expect(result.state).toBe('failed');
+    expect(result.summary).toContain('exceeded the 8-byte cap');
+  });
+
+  it('registers a cancel handle that tree-kills once and resolves a failed cancellation result', async () => {
+    const fake = fakeProcess();
+    const killTree = vi.fn();
+    let cancel: (() => void) | null = null;
+    const adapter = createClaudeWorkerAdapter({
+      resolveToolPolicy: () => TOOL_POLICY,
+      spawn: () => fake.proc,
+      killTree,
+      registerCancellation: (operationKey, fn) => { expect(operationKey).toBe('automatic-attempt:attempt-1'); cancel = fn; },
+    });
+    const promise = adapter.execute(executeInput());
+    expect(cancel).toBeTypeOf('function');
+    cancel!();
+    cancel!(); // idempotent — a second cancel must not kill again
+    const result = await promise;
+    expect(killTree).toHaveBeenCalledTimes(1);
+    expect(killTree).toHaveBeenCalledWith(FAKE_PID);
+    expect(result.state).toBe('failed');
+    expect(result.summary).toContain('cancelled');
+  });
+
+  it('resolves failed immediately on a child spawn/runtime error rather than waiting for the kill-timeout', async () => {
+    const fake = fakeProcess();
+    const adapter = createClaudeWorkerAdapter({ resolveToolPolicy: () => TOOL_POLICY, spawn: () => fake.proc });
+    const promise = adapter.execute(executeInput());
+    fake.emitError(new Error('spawn claude ENOENT'));
+    const result = await promise;
+    expect(result.state).toBe('failed');
+    expect(result.summary).toContain('spawn claude ENOENT');
   });
 
   it('never invokes the process seam more than once and ignores a late exit after settling', async () => {
