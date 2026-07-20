@@ -194,13 +194,23 @@ class Kit:
         return text
 
 def cmd_gen(k, reqs, force):
+    # Results are reported AS THEY LAND, not buffered to the end of the batch. A 20-scene batch
+    # is otherwise ~15 minutes of total silence, which (a) trips agent stream watchdogs and
+    # (b) hides a systematic per-gen failure until every call has already been paid for — a
+    # missing Pillow install once burned a batch's worth of API calls before the first line printed.
     os.makedirs(k.staging, exist_ok=True)
     results = []
+    total = len(reqs)
+
+    def report(name, status):
+        results.append((name, status))
+        print(f"  [{len(results)}/{total}] {name}: {status}", flush=True)
+
     for r in reqs:
         name = r["name"]; mode = r.get("mode", "identity")
         out = os.path.join(k.staging, name + ".png")
         if os.path.exists(out) and not force:
-            results.append((name, "skip (exists in staging)")); continue
+            report(name, "skip (exists in staging)"); continue
         seeds = r.get("seed")
         if not seeds:
             # A5: identity / new-character gens auto-seed the character portrait. environment & style
@@ -226,11 +236,12 @@ def cmd_gen(k, reqs, force):
             validate_png(data)
             with open(out, "wb") as f:
                 f.write(data)
-            results.append((name, "OK -> _staging/" + name + ".png"))
+            report(name, "OK -> _staging/" + name + ".png")
         except Exception as e:
-            results.append((name, "ERR " + str(e)[:160]))
-    for n, s in results:
-        print(f"  {n}: {s}", flush=True)
+            report(name, "ERR " + str(e)[:160])
+    ok = sum(1 for _, s in results if s.startswith("OK"))
+    err = sum(1 for _, s in results if s.startswith("ERR"))
+    print(f"  == {ok} generated, {err} failed, {len(results) - ok - err} skipped ==", flush=True)
 
 def cmd_montage(k, folder, out, cols):
     try:
