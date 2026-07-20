@@ -1,0 +1,96 @@
+"""Local wake-word listener (openwakeword 0.6.0, pretrained "hey jarvis" for V0).
+
+Always-on, on-device: it reads the mic in 80 ms / 1280-sample frames at 16 kHz and never
+sends audio anywhere — the only thing that leaves this module is the `on_wake()` call when
+the wake score crosses threshold. Audio only leaves the PC AFTER wake, via the Deepgram STT
+stream that app.py opens on the engagement transition (spec §2 Listening decision).
+
+openwakeword facts (installed 0.6.0, verified against site-packages):
+- `Model(wakeword_models=["hey_jarvis"], inference_framework="onnx")`. tflite_runtime is NOT
+  installed in atlas/.venv; onnxruntime is — so onnx is the working framework.
+- Model names: the pretrained key is `hey_jarvis` (file hey_jarvis_v0.1.onnx). The loader does
+  `name.replace(" ", "_")` when matching, so "hey jarvis" and "hey_jarvis" both resolve; we use
+  the underscore form from config (`wake_model`).
+- `model.predict(frame)` -> dict keyed by model name, e.g. {"hey_jarvis": 0.83}. Trigger at > 0.5.
+- One-time model download performed into the default openwakeword cache
+  (site-packages/openwakeword/resources/models) via openwakeword.utils.download_models(["hey_jarvis"]);
+  ensure_models() below re-runs it idempotently if the onnx files are missing.
+"""
+import logging
+import os
+from typing import Callable
+
+logger = logging.getLogger("atlas.wakeword")
+
+FRAME_SAMPLES = 1280   # 80 ms @ 16 kHz — openwakeword's expected chunk
+SAMPLE_RATE = 16000
+THRESHOLD = 0.5
+
+
+def ensure_models(model_name: str) -> None:
+    """Idempotently fetch the pretrained onnx model + feature models into the default cache."""
+    import openwakeword
+    models_dir = os.path.join(os.path.dirname(openwakeword.__file__), "resources", "models")
+    needed = ["melspectrogram.onnx", "embedding_model.onnx", f"{model_name}_v0.1.onnx"]
+    if all(os.path.exists(os.path.join(models_dir, f)) for f in needed):
+        return
+    from openwakeword.utils import download_models
+    download_models([model_name])
+
+
+def load_model(model_name: str):
+    """Build an openwakeword Model for a single pretrained wake word (onnx framework)."""
+    ensure_models(model_name)
+    from openwakeword.model import Model
+    return Model(wakeword_models=[model_name], inference_framework="onnx")
+
+
+def resolve_input_device(substring: str | None, devices=None):
+    """Index of the first input device whose name contains substring (case-insensitive).
+    None/empty substring or no match -> None (system default). Pinning matters: Windows
+    drifts the default input (e.g. to a Bluetooth hands-free path whose audio is too
+    degraded/stuttery to score — 2026-07-20 desk finding), while a named wired mic is stable."""
+    if not substring:
+        return None
+    if devices is None:
+        import sounddevice as sd
+        devices = sd.query_devices()
+    for i, d in enumerate(devices):
+        if d["max_input_channels"] > 0 and substring.lower() in d["name"].lower():
+            return i
+    logger.warning("wake input device %r not found — falling back to system default", substring)
+    return None
+
+
+def listen(on_wake: Callable[[], None], model_name: str = "hey_jarvis",
+           device: str | None = None, threshold: float = THRESHOLD) -> None:
+    """Blocking mic loop: read 1280-sample int16 frames at 16 kHz, score each with the wake
+    model, and call on_wake() whenever the score crosses `threshold`. Runs until interrupted.
+    `device` is a name substring pinned via config (wake_input_device), resolved above.
+
+    Any failure here (mic busy/exclusive-mode conflict, model load error) would otherwise kill
+    the daemon thread silently and leave Atlas permanently ASLEEP — so log it LOUDLY (review
+    finding, T7)."""
+    try:
+        import sounddevice as sd
+
+        model = load_model(model_name)
+        dev = resolve_input_device(device)
+        logger.info("wake listener on input device: %s",
+                    sd.query_devices(dev)["name"] if dev is not None else "system default")
+        import time as _time
+        with sd.InputStream(device=dev, samplerate=SAMPLE_RATE, channels=1, dtype="int16",
+                            blocksize=FRAME_SAMPLES) as stream:
+            last_trigger = 0.0
+            while True:
+                frame, _ = stream.read(FRAME_SAMPLES)
+                scores = model.predict(frame[:, 0])
+                if scores.get(model_name, 0.0) > threshold:
+                    now = _time.monotonic()
+                    if now - last_trigger > 3.0:   # refractory window: one wake per phrase,
+                        last_trigger = now          # not one per 80ms frame while scores stay high
+                        on_wake()
+    except Exception:
+        logger.critical(
+            "wake-word listener died — Atlas is DEAF until the worker restarts "
+            "(likely mic device conflict or model load failure)", exc_info=True)

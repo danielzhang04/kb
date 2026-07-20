@@ -1,0 +1,52 @@
+fast_model: claude-haiku-4-5
+escalation_model: claude-sonnet-4-6
+max_tool_turns: 5
+engagement_timeout_s: 120   # Daniel 2026-07-20: 2-min silence auto-sleep; wake word re-wakes anytime
+dismiss_phrases:            # any of these (case/punctuation-insensitive) -> immediate sleep
+  - that's all
+  - go to sleep
+  - thanks atlas
+  - thank you atlas
+# --- Voice toggle (Daniel 2026-07-20): named voices, switch by pointing active_voice at one
+# and restarting the console. V1 adds a spoken switch command. Matilda = round-2 winner (F);
+# male slot filled by round-3 audition.
+active_voice: matilda
+voices:
+  matilda: {vendor: elevenlabs, voice_id: XrExE9yKIg1WjnnlVkGX, model: eleven_turbo_v2_5}  # F — premium (paid-sub quota)
+  mars:    {vendor: deepgram,   model: aura-2-mars-en}                                      # M — $0 workhorse (Daniel's pick, rides credit)
+
+wake_model: hey_jarvis
+wake_input_device: Intel   # mic-name substring pin; Windows default drifts to AirPods HFP (unusable audio)
+wake_threshold: 0.5
+
+# --- Task 8 persona bake-off (2-way: Deepgram Aura-2 vs ElevenLabs stock; Cartesia scratched) ---
+# The 3 fixed lines below are synthesized per voice into .superpowers/sdd/t8-staging/persona-samples/
+# by worker.persona_samples; Daniel picks by ear at the V0 checkpoint. Registers span the three the
+# spec §10 calls for: butler / chief-of-staff / casual. Aura-2 encodes the voice in the model string
+# (aura-2-<voice>-en, no separate voice= param); ElevenLabs picks are stock/premade voice_ids.
+persona_candidates:
+  deepgram:
+    - {voice: draco,     register: butler,         model: aura-2-draco-en}       # British, warm, trustworthy baritone
+    - {voice: asteria,   register: chief-of-staff, model: aura-2-asteria-en}     # clear, confident, knowledgeable
+    - {voice: andromeda, register: casual,         model: aura-2-andromeda-en}   # casual/expressive — current worker default
+  elevenlabs:
+    - {voice: George,    register: butler,         voice_id: JBFqnCBsd6RMkjVDRZzb}   # British, warm, captivating
+    - {voice: Sarah,     register: chief-of-staff, voice_id: EXAVITQu4vr4xnSDxMaL}   # mature, reassuring, confident
+    - {voice: Roger,     register: casual,         voice_id: CwhRBWXzGAHq8TQ4Fs17}   # laid-back, casual, resonant
+  elevenlabs_model: eleven_turbo_v2_5   # production low-latency model (matches the voice-worker latency profile)
+
+# Authored in-register (spec §10 names the 3 sample TYPES — status report / completion callback /
+# approval readback — but gives no exact text; these follow the "lead with the point, one breath" rule).
+persona_lines:
+  - id: 1-status-report
+    text: >-
+      Three cards are in flight — two building, one in review — and today's spend is
+      eleven cents against the twenty-dollar cap.
+  - id: 2-completion-callback
+    text: >-
+      The render you asked for just finished — six hundred twenty-eight seconds, verified
+      clean. It's on your monitor.
+  - id: 3-approval-readback
+    text: >-
+      You're approving the merge of the atlas branch into main: thirty-one files, all tests
+      green. Say the word and I'll ship it.
