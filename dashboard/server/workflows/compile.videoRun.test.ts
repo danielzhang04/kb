@@ -12,10 +12,14 @@
  * the fixture and the org file were free to diverge with the suite fully green. The copy has been
  * deleted. `loadOrgDef` (see orgDefSource.ts) locates the one real file — across git worktrees, since
  * the org tree and the dashboard currently sit on different branches — and everything below compiles
- * THAT text. There is no second artifact left, so drift is not merely detected, it is impossible to
- * express. If the file cannot be found, `loadOrgDef` throws with a loud, self-explaining error rather
- * than falling back to anything stale.
+ * THAT text. There is no second artifact left, so fixture-vs-definition drift cannot be expressed at
+ * all. Cross-BRANCH drift is a different thing and is merely detected: the file may come from a
+ * sibling worktree on another branch, so the test asserts on `SOURCE.origin` to keep the source it
+ * compiled visible. If no live working tree has the file, `loadOrgDef` throws with a loud,
+ * self-explaining error rather than falling back to anything stale.
  */
+import { existsSync } from 'node:fs';
+import { sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parseWorkflowDef } from './defs.ts';
 import { compileWorkflowDef } from './compile.ts';
@@ -52,8 +56,14 @@ describe('video-run workflow definition (compile-proof)', () => {
   it('is loaded from the real org file on disk, never from an inline copy', () => {
     // Guards the property the old test lacked. If someone reintroduces a fixture, or the loader
     // starts returning something that is not the shipped definition, this fails.
+    // `origin` must be a real file in a live working tree — a git-object origin (`git:<ref>`) is no
+    // longer producible and must never come back: it served whichever ref sorted first alphabetically,
+    // including refs where the definition was stale or deleted.
     expect(SOURCE.origin).toBeTruthy();
-    expect(['worktree-local', 'worktree-sibling', 'git-ref']).toContain(SOURCE.via);
+    expect(SOURCE.origin).not.toMatch(/^git:/);
+    expect(existsSync(SOURCE.origin)).toBe(true);
+    expect(SOURCE.origin.endsWith(DEF_PATH.split('/').join(sep))).toBe(true);
+    expect(['worktree-local', 'worktree-sibling']).toContain(SOURCE.via);
     expect(VIDEO_RUN_DEF.length).toBeGreaterThan(1000);
     expect(VIDEO_RUN_DEF.startsWith('---\nid: video-run\n')).toBe(true);
   });
@@ -65,6 +75,9 @@ describe('video-run workflow definition (compile-proof)', () => {
     expect(parsed.value.id).toBe('video-run');
     expect(parsed.value.project).toBe('faceless-youtube');
     expect(parsed.value.title).toBe('Produce one video (faceless pipeline)');
+    // NB: this reads the PARSED DEFINITION. It says nothing about whether the compiler copies the
+    // profile onto the proposal — see the compiled-proposal assertion further down, which is the one
+    // that actually guards `compile.ts`'s `profile: def.profile`.
     expect(parsed.value.profile).toBe('producer');
     expect(parsed.value.stages).toHaveLength(13);
   });
@@ -164,8 +177,14 @@ describe('video-run workflow definition (compile-proof)', () => {
     // manager routes to opus, workers to sonnet, from the registry
     expect(compiled.value.manager.model).toBe('claude-opus-4-8');
     expect(compiled.value.stages.every((s) => s.worker.model === 'claude-sonnet-5')).toBe(true);
+    // The real definition's `producer` profile must land on the PROPOSAL, not merely in the parsed
+    // def. Without `compile.ts`'s `profile: def.profile`, this workflow's workers spawn with no
+    // --allowedTools at all, and every assertion above still passes.
+    expect(compiled.value.profile).toBe('producer');
     const validated = validatePlanProposal(compiled.value as unknown, REGISTRY);
     expect(validated.ok).toBe(true);
+    if (!validated.ok) return;
+    expect(validated.value.profile).toBe('producer');
   });
 
   // -------------------------------------------------------------------------
