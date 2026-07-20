@@ -213,4 +213,61 @@ Describe 'power arm and restore' {
     It 'restore is a no-op when nothing was armed' {
         Restore-PowerBaseline | Should -BeFalse
     }
+
+    # Regression test for the -and short-circuit bug: a naive
+    # `$ok = $ok -and (& $prov.SetAcValue ...)` chain stops calling SetAcValue
+    # the moment one call returns $false, so later settings are never even
+    # attempted. That is exactly what the global "no single failure may leave
+    # the machine permanently unable to sleep" constraint forbids, since the
+    # skipped settings are the ones that actually gate sleep. This fake
+    # provider fails only the lid write and records every GUID pair it was
+    # asked to write, so the test can prove all three were attempted regardless.
+    It 'attempts all three writes even when the first one fails' {
+        $script:Attempted = @()
+        Set-PowerProvider -Provider @{
+            GetAcValue = { param($SubGuid, $SettingGuid) $script:FakeStore["$SubGuid|$SettingGuid"] }
+            SetAcValue = {
+                param($SubGuid, $SettingGuid, $Value)
+                $script:Attempted += "$SubGuid|$SettingGuid"
+                if ($SettingGuid -eq '5ca83367-6e45-459f-a27b-476b1d01c936') { return $false }
+                $script:FakeStore["$SubGuid|$SettingGuid"] = $Value
+                return $true
+            }
+            GetScheme  = { '381b4222-f694-41f0-9685-ff5bb260df2e' }
+        }
+        Set-PowerArmed | Out-Null
+        $script:Attempted | Should -Contain '4f971e89-eebd-4455-a8de-9e59040e7347|5ca83367-6e45-459f-a27b-476b1d01c936'
+        $script:Attempted | Should -Contain '238c9fa8-0aad-41ed-83f4-97be242c8f20|29f6c1db-86da-48c5-9fdb-f2b67b1f44da'
+        $script:Attempted | Should -Contain '238c9fa8-0aad-41ed-83f4-97be242c8f20|9d7815a6-7ee4-497e-8888-515a05f02364'
+    }
+
+    It 'retains armed.json and its original baseline values when restore fails' {
+        Set-PowerArmed | Out-Null
+        Set-PowerProvider -Provider @{
+            GetAcValue = { param($SubGuid, $SettingGuid) $script:FakeStore["$SubGuid|$SettingGuid"] }
+            SetAcValue = { param($SubGuid, $SettingGuid, $Value) $false }
+            GetScheme  = { '381b4222-f694-41f0-9685-ff5bb260df2e' }
+        }
+        Restore-PowerBaseline | Should -BeFalse
+        Test-PowerArmed | Should -BeTrue
+        $b = Get-PowerBaseline
+        $b.original.lidaction_ac     | Should -Be 1
+        $b.original.standbyidle_ac   | Should -Be 1200
+        $b.original.hibernateidle_ac | Should -Be 900
+    }
+
+    It 'returns $false from Restore-PowerBaseline when any single write fails' {
+        Set-PowerArmed | Out-Null
+        Set-PowerProvider -Provider @{
+            GetAcValue = { param($SubGuid, $SettingGuid) $script:FakeStore["$SubGuid|$SettingGuid"] }
+            SetAcValue = {
+                param($SubGuid, $SettingGuid, $Value)
+                if ($SettingGuid -eq '9d7815a6-7ee4-497e-8888-515a05f02364') { return $false }
+                $script:FakeStore["$SubGuid|$SettingGuid"] = $Value
+                return $true
+            }
+            GetScheme  = { '381b4222-f694-41f0-9685-ff5bb260df2e' }
+        }
+        Restore-PowerBaseline | Should -BeFalse
+    }
 }

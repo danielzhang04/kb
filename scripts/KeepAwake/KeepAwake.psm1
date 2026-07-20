@@ -282,10 +282,15 @@ function Set-PowerArmed {
     # already durable on disk and -Repair can put them back.
     Save-PowerBaseline | Out-Null
     $prov = Get-PowerProvider
-    $ok = $true
-    $ok = $ok -and (& $prov.SetAcValue $script:SUB_BUTTONS $script:LIDACTION 0)
-    $ok = $ok -and (& $prov.SetAcValue $script:SUB_SLEEP $script:STANDBYIDLE 0)
-    $ok = $ok -and (& $prov.SetAcValue $script:SUB_SLEEP $script:HIBERNATEIDLE 0)
+    # Evaluate all three writes unconditionally rather than chaining them with
+    # PowerShell's short-circuiting -and: if an earlier write fails, the later
+    # ones must still be attempted, because those are what actually gate sleep.
+    # Silently skipping them on a partial failure would leave the machine armed
+    # and unable to sleep with no attempt made to fix it.
+    $r1 = & $prov.SetAcValue $script:SUB_BUTTONS $script:LIDACTION 0
+    $r2 = & $prov.SetAcValue $script:SUB_SLEEP $script:STANDBYIDLE 0
+    $r3 = & $prov.SetAcValue $script:SUB_SLEEP $script:HIBERNATEIDLE 0
+    $ok = $r1 -and $r2 -and $r3
     if ($ok) { Write-KeepAwakeLog 'power-armed lid=0 standby=0 hibernate=0 (AC only)' }
     else     { Write-KeepAwakeLog 'power-arm-FAILED one or more powercfg writes returned non-zero' }
     return $ok
@@ -295,10 +300,16 @@ function Restore-PowerBaseline {
     $b = Get-PowerBaseline
     if ($null -eq $b) { return $false }
     $prov = Get-PowerProvider
-    $ok = $true
-    $ok = $ok -and (& $prov.SetAcValue $script:SUB_BUTTONS $script:LIDACTION ([int]$b.original.lidaction_ac))
-    $ok = $ok -and (& $prov.SetAcValue $script:SUB_SLEEP $script:STANDBYIDLE ([int]$b.original.standbyidle_ac))
-    $ok = $ok -and (& $prov.SetAcValue $script:SUB_SLEEP $script:HIBERNATEIDLE ([int]$b.original.hibernateidle_ac))
+    # Evaluate all three writes unconditionally rather than chaining them with
+    # PowerShell's short-circuiting -and: if restoring the lid setting fails,
+    # STANDBYIDLE and HIBERNATEIDLE must still be attempted. Those two are what
+    # actually gate sleep, so short-circuiting past them on an earlier failure
+    # would silently strand the machine at "never sleep" -- exactly the outcome
+    # the global constraint forbids.
+    $r1 = & $prov.SetAcValue $script:SUB_BUTTONS $script:LIDACTION ([int]$b.original.lidaction_ac)
+    $r2 = & $prov.SetAcValue $script:SUB_SLEEP $script:STANDBYIDLE ([int]$b.original.standbyidle_ac)
+    $r3 = & $prov.SetAcValue $script:SUB_SLEEP $script:HIBERNATEIDLE ([int]$b.original.hibernateidle_ac)
+    $ok = $r1 -and $r2 -and $r3
     if ($ok) {
         Remove-Item (Get-ArmedPath) -Force -ErrorAction SilentlyContinue
         Write-KeepAwakeLog 'power-restored originals reapplied; armed.json cleared'
