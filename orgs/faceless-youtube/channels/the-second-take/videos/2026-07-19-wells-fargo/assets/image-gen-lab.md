@@ -767,8 +767,10 @@ instead of magnifying it).
 
 #### Clean
 
-**19 of the 68 carried no defect at all:** L07, L19, L25, L33, L53, L54, L56, L60, L65, L72, L77,
-L86, L87, L88, L89, L103, L113, L115, and L82/L84/L92/L112/L118 at LOW-only. **No £/€ glyph and no
+**18 of the 68 carried no defect at all:** L07, L19, L25, L33, L53, L54, L56, L60, L65, L72, L77,
+L86, L87, L88, L89, L103, L113, L115. A further **9 carried LOW-only** notes: L02, L22, L23, L82,
+L84, L92, L111, L112, L118. So **27 of 68 are at LOW or better, and 41 carry a MEDIUM-or-worse
+defect.** **No £/€ glyph and no
 malformed numeral was found outside L46.** L88's `7 YEARS` / `LIFTED 2025` is correctly derived from
 [F-34]; L111's four sentence values, L72's `$5.4 MILLION`, L98's `$69M`, L86's `$1.95T`, L89's
 `$3 BILLION`, L77's `$100M` and L57's `5,300 FIRED` all check out against the ledger and are
