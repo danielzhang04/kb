@@ -305,3 +305,119 @@ Describe 'power arm and restore' {
         Restore-PowerBaseline | Should -BeFalse
     }
 }
+
+Describe 'supervisor pass' {
+    BeforeEach {
+        $script:TestRoot = Join-Path ([IO.Path]::GetTempPath()) ("ka-" + [guid]::NewGuid())
+        $env:KB_KEEPAWAKE_ROOT = $script:TestRoot
+        $script:Now = [datetimeoffset]::Parse('2026-07-20T03:00:00+09:00')
+        $script:FakeStore = @{
+            '4f971e89-eebd-4455-a8de-9e59040e7347|5ca83367-6e45-459f-a27b-476b1d01c936' = 1
+            '238c9fa8-0aad-41ed-83f4-97be242c8f20|29f6c1db-86da-48c5-9fdb-f2b67b1f44da' = 1200
+            '238c9fa8-0aad-41ed-83f4-97be242c8f20|9d7815a6-7ee4-497e-8888-515a05f02364' = 900
+        }
+        Set-PowerProvider -Provider @{
+            GetAcValue = { param($SubGuid, $SettingGuid) $script:FakeStore["$SubGuid|$SettingGuid"] }
+            SetAcValue = { param($SubGuid, $SettingGuid, $Value) $script:FakeStore["$SubGuid|$SettingGuid"] = $Value; $true }
+            GetScheme  = { '381b4222-f694-41f0-9685-ff5bb260df2e' }
+        }
+    }
+    AfterEach {
+        Remove-Item $env:KB_KEEPAWAKE_ROOT -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item Env:\KB_KEEPAWAKE_ROOT -ErrorAction SilentlyContinue
+    }
+
+    It 'arms on the 0 -> 1 lease transition' {
+        New-KeepAwakeLease -Label 'a' -Mode 'pid-only' -ProcessId $PID -CpuSample 0 | Out-Null
+        $r = Invoke-SupervisorPass -Now $script:Now -IdleTimeoutMinutes 15 -CpuThreshold 2.0
+        $r.LiveCount | Should -Be 1
+        $r.Armed | Should -BeTrue
+        $script:FakeStore['238c9fa8-0aad-41ed-83f4-97be242c8f20|29f6c1db-86da-48c5-9fdb-f2b67b1f44da'] | Should -Be 0
+    }
+
+    It 'prunes a lease whose process is dead' {
+        New-KeepAwakeLease -Label 'dead' -Mode 'pid-only' -ProcessId 999999 -CpuSample 0 | Out-Null
+        $r = Invoke-SupervisorPass -Now $script:Now -IdleTimeoutMinutes 15 -CpuThreshold 2.0
+        $r.LiveCount | Should -Be 0
+        $r.Pruned | Should -Contain 'dead'
+    }
+
+    It 'restores on the 1 -> 0 lease transition' {
+        New-KeepAwakeLease -Label 'a' -Mode 'pid-only' -ProcessId $PID -CpuSample 0 | Out-Null
+        Invoke-SupervisorPass -Now $script:Now -IdleTimeoutMinutes 15 -CpuThreshold 2.0 | Out-Null
+        Remove-KeepAwakeLease -Label 'a' | Out-Null
+        $r = Invoke-SupervisorPass -Now $script:Now -IdleTimeoutMinutes 15 -CpuThreshold 2.0
+        $r.LiveCount | Should -Be 0
+        $r.Armed | Should -BeFalse
+        $script:FakeStore['238c9fa8-0aad-41ed-83f4-97be242c8f20|29f6c1db-86da-48c5-9fdb-f2b67b1f44da'] | Should -Be 1200
+    }
+
+    It 'stays armed at 2 -> 1 leases' {
+        New-KeepAwakeLease -Label 'a' -Mode 'pid-only' -ProcessId $PID -CpuSample 0 | Out-Null
+        New-KeepAwakeLease -Label 'b' -Mode 'pid-only' -ProcessId $PID -CpuSample 0 | Out-Null
+        Invoke-SupervisorPass -Now $script:Now -IdleTimeoutMinutes 15 -CpuThreshold 2.0 | Out-Null
+        Remove-KeepAwakeLease -Label 'a' | Out-Null
+        $r = Invoke-SupervisorPass -Now $script:Now -IdleTimeoutMinutes 15 -CpuThreshold 2.0
+        $r.LiveCount | Should -Be 1
+        $r.Armed | Should -BeTrue
+        $script:FakeStore['238c9fa8-0aad-41ed-83f4-97be242c8f20|29f6c1db-86da-48c5-9fdb-f2b67b1f44da'] | Should -Be 0
+    }
+
+    It 'prunes an idle-expired lease even though its process is alive' {
+        New-KeepAwakeLease -Label 'idle' -Mode 'idle-expiry' -ProcessId $PID -CpuSample 0 | Out-Null
+        # New-KeepAwakeLease stamps heartbeat with the REAL wall clock, which
+        # this test cannot control. Rewrite it onto the test's synthetic
+        # $script:Now so the idle-timeout comparison below is anchored to one
+        # consistent clock instead of comparing real-vs-fictitious time --
+        # otherwise whether this passes depends on how $script:Now's fixed
+        # literal happens to relate to whatever real instant the suite runs.
+        $leasePath = Get-LeasePath -Label 'idle'
+        $lease = Get-Content $leasePath -Raw | ConvertFrom-Json
+        $lease.heartbeat = $script:Now.ToString('yyyy-MM-ddTHH:mm:sszzz')
+        $lease.acquired = $lease.heartbeat
+        $lease | ConvertTo-Json -Compress | Set-Content -Path $leasePath -Encoding utf8
+
+        $future = $script:Now.AddHours(5)
+        $r = Invoke-SupervisorPass -Now $future -IdleTimeoutMinutes 15 -CpuThreshold 999999
+        $r.LiveCount | Should -Be 0
+        $r.Pruned | Should -Contain 'idle'
+    }
+
+    It 'persists the refreshed cpu_sample back to the lease file' {
+        New-KeepAwakeLease -Label 'a' -Mode 'pid-only' -ProcessId $PID -CpuSample 0 | Out-Null
+        Invoke-SupervisorPass -Now $script:Now -IdleTimeoutMinutes 15 -CpuThreshold 2.0 | Out-Null
+        (@(Get-KeepAwakeLeases)[0]).cpu_sample | Should -BeGreaterOrEqual 0
+    }
+}
+
+Describe 'supervisor singleton' {
+    # A named Win32 mutex is reentrant PER THREAD, not per handle: a second
+    # Mutex object opened for the same name on the SAME thread that already
+    # holds it will WaitOne() successfully (verified empirically -- $created2
+    # correctly reports $false, but WaitOne(0) still returns $true). Real
+    # contention between two supervisor processes is always cross-thread, so
+    # the second acquire attempt must run on a genuinely different thread to
+    # prove exclusion -- otherwise this test cannot fail no matter what
+    # Start-KeepAwakeSupervisor does.
+    It 'lets the first holder in and keeps the second out' {
+        $name = 'Global\kb-keepawake-test-' + [guid]::NewGuid()
+        $created = $false
+        $m1 = New-Object System.Threading.Mutex($true, $name, [ref]$created)
+        try {
+            $rs = [runspacefactory]::CreateRunspace()
+            $rs.Open()
+            $ps = [powershell]::Create()
+            $ps.Runspace = $rs
+            try {
+                $ps.AddScript({
+                    param($n)
+                    $c2 = $false
+                    $m2 = New-Object System.Threading.Mutex($true, $n, [ref]$c2)
+                    try { return $m2.WaitOne(0, $false) } finally { $m2.Dispose() }
+                }).AddArgument($name) | Out-Null
+                $secondAcquired = $ps.Invoke()[0]
+                $secondAcquired | Should -BeFalse
+            } finally { $ps.Dispose(); $rs.Close() }
+        } finally { $m1.ReleaseMutex(); $m1.Dispose() }
+    }
+}

@@ -321,8 +321,123 @@ function Restore-PowerBaseline {
     return $ok
 }
 
+Add-Type -Namespace KbPower -Name Native -MemberDefinition @'
+[DllImport("kernel32.dll", SetLastError = true)]
+public static extern uint SetThreadExecutionState(uint esFlags);
+'@ -ErrorAction SilentlyContinue
+
+$script:ES_CONTINUOUS      = [uint32]0x80000000L
+$script:ES_SYSTEM_REQUIRED = [uint32]0x00000001
+
+function Set-ExecutionStateHold {
+    # ES_SYSTEM_REQUIRED is OS-refcounted and released automatically when this
+    # process dies -- which is exactly why the supervisor can never leak it.
+    $r = [KbPower.Native]::SetThreadExecutionState($script:ES_CONTINUOUS -bor $script:ES_SYSTEM_REQUIRED)
+    Write-KeepAwakeLog ("exec-state-hold result=$r")
+    return ($r -ne 0)
+}
+
+function Clear-ExecutionStateHold {
+    $r = [KbPower.Native]::SetThreadExecutionState($script:ES_CONTINUOUS)
+    Write-KeepAwakeLog ("exec-state-clear result=$r")
+    return ($r -ne 0)
+}
+
+# One supervisor iteration, extracted so refcount transitions are testable
+# without a loop or a sleep.
+function Invoke-SupervisorPass {
+    param(
+        [Parameter(Mandatory)][datetimeoffset]$Now,
+        [int]$IdleTimeoutMinutes = 15,
+        [double]$CpuThreshold = 2.0
+    )
+    $pruned = @()
+    $live = 0
+    foreach ($lease in (Get-KeepAwakeLeases)) {
+        if (-not (Test-ProcessAlive -ProcessId $lease.pid)) {
+            Remove-Item $lease.path -Force -ErrorAction SilentlyContinue
+            Write-KeepAwakeLog ("lease-pruned label=$($lease.label) reason=process-dead pid=$($lease.pid)")
+            $pruned += $lease.label
+            continue
+        }
+        $cpuNow = Get-ProcessTreeCpu -ProcessId $lease.pid
+        $res = Update-LeaseActivity -Lease $lease -CpuNow $cpuNow -Now $Now `
+                   -IdleTimeoutMinutes $IdleTimeoutMinutes -CpuThreshold $CpuThreshold
+        if (-not $res.Active) {
+            Remove-Item $lease.path -Force -ErrorAction SilentlyContinue
+            Write-KeepAwakeLog ("lease-pruned label=$($lease.label) reason=$($res.Reason)")
+            $pruned += $lease.label
+            continue
+        }
+        # Persist the refreshed heartbeat/cpu_sample so the next pass compares
+        # against this pass's reading rather than the original acquisition value.
+        $u = $res.Lease
+        [ordered]@{
+            pid = $u.pid; label = $u.label; mode = $u.mode
+            acquired = $u.acquired; heartbeat = $u.heartbeat; cpu_sample = $u.cpu_sample
+        } | ConvertTo-Json -Compress | Set-Content -Path $lease.path -Encoding utf8
+        $live++
+    }
+
+    if ($live -gt 0 -and -not (Test-PowerArmed)) { Set-PowerArmed | Out-Null }
+    elseif ($live -eq 0 -and (Test-PowerArmed)) { Restore-PowerBaseline | Out-Null }
+
+    return @{ LiveCount = $live; Pruned = $pruned; Armed = (Test-PowerArmed) }
+}
+
+function Start-KeepAwakeSupervisor {
+    param(
+        [int]$PollSeconds = 60,
+        [int]$MaxHours = 16,
+        [int]$IdleTimeoutMinutes = 15,
+        [double]$CpuThreshold = 2.0
+    )
+    # A PID file alone is racy: two -Acquire calls can both observe "no
+    # supervisor" before either spawns. The named mutex is the authority.
+    $created = $false
+    $mutex = New-Object System.Threading.Mutex($true, 'Global\kb-keepawake-supervisor', [ref]$created)
+    if (-not $created) {
+        Write-KeepAwakeLog 'supervisor-exit reason=another-supervisor-holds-mutex'
+        $mutex.Dispose()
+        return 0
+    }
+
+    $pidFile = Join-Path (Get-KeepAwakeRoot) 'supervisor.pid'
+    Set-Content -Path $pidFile -Value $PID -Encoding utf8
+    Set-ExecutionStateHold | Out-Null
+    Write-KeepAwakeLog ("supervisor-start pid=$PID poll=${PollSeconds}s cap=${MaxHours}h idle=${IdleTimeoutMinutes}m")
+
+    $deadline = (Get-Date).AddHours($MaxHours)
+    $exit = 0
+    try {
+        while ($true) {
+            if ((Get-Date) -ge $deadline) {
+                Write-KeepAwakeLog "supervisor-CAP-REACHED after ${MaxHours}h -- force-disarming"
+                $exit = 3
+                break
+            }
+            $pass = Invoke-SupervisorPass -Now ([datetimeoffset]::Now) `
+                        -IdleTimeoutMinutes $IdleTimeoutMinutes -CpuThreshold $CpuThreshold
+            if ($pass.LiveCount -eq 0) {
+                Write-KeepAwakeLog 'supervisor-exit reason=no-live-leases'
+                break
+            }
+            Start-Sleep -Seconds $PollSeconds
+        }
+    } finally {
+        # Belt and braces: whatever happened above, never leave the machine armed.
+        if (Test-PowerArmed) { Restore-PowerBaseline | Out-Null }
+        Clear-ExecutionStateHold | Out-Null
+        Remove-Item $pidFile -Force -ErrorAction SilentlyContinue
+        Write-KeepAwakeLog ("supervisor-stop pid=$PID exit=$exit")
+        $mutex.ReleaseMutex(); $mutex.Dispose()
+    }
+    return $exit
+}
+
 Export-ModuleMember -Function Get-KeepAwakeRoot, Get-LeaseDir, Write-KeepAwakeLog,
     Get-SafeLabel, Get-LeasePath, New-KeepAwakeLease, Get-KeepAwakeLeases, Remove-KeepAwakeLease,
     Test-ProcessAlive, Get-ProcessTreeCpu, Update-LeaseActivity,
     Set-PowerProvider, Get-PowerProvider, Get-PowerBaseline, Save-PowerBaseline, Set-PowerArmed,
-    Restore-PowerBaseline, Test-PowerArmed
+    Restore-PowerBaseline, Test-PowerArmed,
+    Set-ExecutionStateHold, Clear-ExecutionStateHold, Invoke-SupervisorPass, Start-KeepAwakeSupervisor
