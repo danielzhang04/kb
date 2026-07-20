@@ -402,7 +402,13 @@ function Start-KeepAwakeSupervisor {
         return 0
     }
 
-    $pidFile = Join-Path (Get-KeepAwakeRoot) 'supervisor.pid'
+    $root = Get-KeepAwakeRoot
+    # Defensive: on a truly first-ever run nothing has created the root yet
+    # (Get-LeaseDir only runs once a lease is written), so this write would
+    # otherwise fail silently. The mutex above is the real singleton guard;
+    # this just keeps -Status able to find the pid file on that first run.
+    if (-not (Test-Path $root)) { New-Item -ItemType Directory -Path $root -Force | Out-Null }
+    $pidFile = Join-Path $root 'supervisor.pid'
     Set-Content -Path $pidFile -Value $PID -Encoding utf8
     Set-ExecutionStateHold | Out-Null
     Write-KeepAwakeLog ("supervisor-start pid=$PID poll=${PollSeconds}s cap=${MaxHours}h idle=${IdleTimeoutMinutes}m")
