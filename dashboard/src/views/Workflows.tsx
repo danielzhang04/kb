@@ -21,6 +21,7 @@ import { listProposalRevisions, listRuns, type ProposalRevisionMetadataDto, type
 import { runsForWorkflow, WORKFLOW_COMPOSER_REF } from '../control/entityLinks';
 import type { NavTarget } from '../nav/stack';
 import '../styles/views/workflows.css';
+import '../styles/views/entity.css';
 
 const EMPTY: WorkflowsIndex = { present: false, items: [] };
 
@@ -227,10 +228,42 @@ export function Workflows({
 
   /**
    * The definition detail REPLACES the tables in place — same pattern as runs and agents, no new nav
-   * destination. A focused ref that is not in the index (deleted definition, stale back-forward) falls
-   * through to the list rather than rendering an empty shell.
+   * destination.
+   *
+   * A focused ref that is NOT in the index (a definition deleted from `workflows/`, a stale `sourceTurnId`
+   * on an older run, a back-forward into a since-removed entry) gets an EXPLICIT dead-link state naming
+   * the ref, matching how a missing run is handled in `ManagedRuns`. It used to fall through to the
+   * roster: the operator clicked a link, landed on a list with no message, and an invisible extra entry
+   * sat on the nav stack with no back affordance rendered to pop it.
+   *
+   * Gated on the index having actually LOADED, not on it being non-empty — `fetchedDefs` is null until
+   * the fetch lands, and calling a definition "not registered" because the request is still in flight
+   * would be its own dishonesty.
    */
+  const defsLoaded = Boolean(definitions ?? fetchedDefs);
   const openDef = openDefRef ? defs.items.find((d) => d.ref === openDefRef) : undefined;
+  if (openDefRef && !openDef && defsLoaded) {
+    return (
+      <section className="v-workflows" aria-label="Workflows view">
+        <div className="entity-missing" data-testid="workflow-not-found">
+          <button
+            type="button"
+            className="entity-detail__back"
+            data-testid="workflow-not-found-back"
+            onClick={backToWorkflows}
+          >
+            <span aria-hidden="true">←</span> All workflows
+          </button>
+          <h3>This workflow is no longer registered</h3>
+          <p className="mc-mono entity-missing__ref" data-testid="workflow-not-found-ref">{openDefRef}</p>
+          <p className="control-help">
+            No definition with this ref is in the registry — it was most likely removed from
+            <code className="mc-mono"> workflows/</code>, while runs launched from it kept the reference.
+          </p>
+        </div>
+      </section>
+    );
+  }
   if (openDef) {
     return (
       <section className="v-workflows" aria-label="Workflows view">

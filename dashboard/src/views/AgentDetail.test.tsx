@@ -125,17 +125,37 @@ describe('reaching an agent detail and coming back', () => {
     expect(screen.queryByTestId('entity-detail-agent')).toBeNull();
   });
 
-  it('falls back to the roster when the focused agent is not on it', () => {
+  /**
+   * This used to fall through to the roster with no message, which is a SILENT degradation: the operator
+   * clicks a link, lands somewhere else, and an invisible extra entry sits on the nav stack with no back
+   * affordance rendered to pop it. The dead link is now named, with a way back.
+   */
+  it('says so explicitly when the focused agent is not on the roster, and offers a way back', () => {
+    const onBack = vi.fn();
     render(
       <Agents
         snapshot={EMPTY_INDEX}
         roster={[entry({ id: 'claude-worker' })]}
         focusAgentId="deleted-agent"
         onOpenAgent={vi.fn()}
+        onBack={onBack}
       />,
     );
+
     expect(screen.queryByTestId('entity-detail-agent')).toBeNull();
-    expect(screen.getByTestId('agent-row-claude-worker')).toBeTruthy();
+    // The missing id is NAMED, not swallowed.
+    expect(screen.getByTestId('agent-not-found-ref').textContent).toBe('deleted-agent');
+    // And the operator is not silently dumped on a roster they did not ask for.
+    expect(screen.queryByTestId('agent-row-claude-worker')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('agent-not-found-back'));
+    expect(onBack).toHaveBeenCalled();
+  });
+
+  it('does not cry "not found" while the roster is still loading', () => {
+    // No snapshot and no roster: nothing has loaded, so a focused id is UNKNOWN, not missing.
+    render(<Agents focusAgentId="claude-worker" onOpenAgent={vi.fn()} />);
+    expect(screen.queryByTestId('agent-not-found')).toBeNull();
   });
 });
 

@@ -84,6 +84,39 @@ describe('reaching a workflow detail and coming back', () => {
     expect(screen.queryByTestId('entity-detail-workflow')).toBeNull();
     expect(screen.getByTestId('workflow-def-kb~audio.md')).toBeTruthy();
   });
+
+  /**
+   * A `sourceTurnId` on an older run outlives the definition it names once that file is deleted from
+   * `workflows/`. This used to fall through to the roster with no message: the operator clicked a link,
+   * landed on a list, and an invisible extra entry sat on the nav stack with no back affordance to pop it.
+   */
+  it('says a focused definition is no longer registered instead of silently showing the roster', () => {
+    const onBack = vi.fn();
+    render(
+      <Workflows
+        data={{ present: false, items: [] }}
+        definitions={{ items: [def({ ref: 'kb~video.md' })] }}
+        focusWorkflowId="kb~deleted.md"
+        onOpenWorkflow={vi.fn()}
+        onBack={onBack}
+      />,
+    );
+
+    expect(screen.queryByTestId('entity-detail-workflow')).toBeNull();
+    // The dead ref is NAMED.
+    expect(screen.getByTestId('workflow-not-found-ref').textContent).toBe('kb~deleted.md');
+    // And the operator is not quietly dropped on a roster they did not ask for.
+    expect(screen.queryByTestId('workflow-def-kb~video.md')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('workflow-not-found-back'));
+    expect(onBack).toHaveBeenCalled();
+  });
+
+  it('does not call a definition unregistered while the index is still loading', () => {
+    // No `definitions` prop and no fetch result yet: the ref is UNKNOWN, not missing.
+    render(<Workflows data={{ present: false, items: [] }} focusWorkflowId="kb~video.md" onOpenWorkflow={vi.fn()} />);
+    expect(screen.queryByTestId('workflow-not-found')).toBeNull();
+  });
 });
 
 /** The step-2 payoff, asserted through the real join rather than a hand-fed run list. */

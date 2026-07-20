@@ -32,6 +32,7 @@ import { getRun, listRuns, type RunMetadataDto } from '../control/controlClient'
 import { cardOwnerIndex, runsForAgent, type RunWithStages } from '../control/entityLinks';
 import type { NavTarget } from '../nav/stack';
 import '../styles/views/agents.css';
+import '../styles/views/entity.css';
 
 /**
  * How many recent runs the agent → runs join will scan. Each one costs a governed detail read (stages
@@ -404,10 +405,39 @@ export function Agents({
    * The detail REPLACES the roster in place — "a separate window, still inside the agents sidebar, with
    * a back button", per the mandate. No new nav destination, no new App case: the locked IA is untouched.
    *
-   * An id that is in the nav stack but not in the roster (a deleted agent, a stale back-forward) falls
-   * through to the table rather than rendering an empty shell.
+   * An id that is in the nav stack but NOT in the roster (a deleted agent, a card whose owner has since
+   * been removed, a stale back-forward) gets an EXPLICIT state naming the id, consistent with the missing
+   * run and missing workflow cases. Falling through to the table meant the operator clicked a link,
+   * landed on a roster with no message, and an invisible extra entry sat on the nav stack with no back
+   * affordance rendered to pop it.
+   *
+   * Gated on the roster having actually LOADED — `fetched` is null until the index arrives, and calling an
+   * agent "not on the roster" while the request is still in flight would be its own dishonesty.
    */
+  const rosterLoaded = Boolean(enriched ?? snapshot ?? fetched);
   const openAgentRow = openAgentId ? agentRows.find((a) => a.id === openAgentId) : undefined;
+  if (openAgentId && !openAgentRow && rosterLoaded) {
+    return (
+      <section className="v-agents" aria-label="Agents view">
+        <div className="entity-missing" data-testid="agent-not-found">
+          <button
+            type="button"
+            className="entity-detail__back"
+            data-testid="agent-not-found-back"
+            onClick={backToRoster}
+          >
+            <span aria-hidden="true">←</span> All agents
+          </button>
+          <h3>This agent is not in the roster</h3>
+          <p className="mc-mono entity-missing__ref" data-testid="agent-not-found-ref">{openAgentId}</p>
+          <p className="control-help">
+            No agent with this id is on the board. Queue cards keep an owner id after the agent itself is
+            removed from the registry, so links can outlive the agent they point at.
+          </p>
+        </div>
+      </section>
+    );
+  }
   if (openAgentRow) {
     // `undefined` (not scanned) and `[]` (scanned, none) stay distinct all the way to the render.
     const joinedRuns = agentRuns
