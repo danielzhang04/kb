@@ -32,9 +32,25 @@ from worker import fastlane, repl, wakeword
 ATLAS = Path(__file__).resolve().parents[1]
 logger = logging.getLogger("atlas.app")
 
-# Documented Aura-2 default voice — clear, conversational; rides the Deepgram $200 credit.
-# The production voice is chosen by ear in the Task 8 bake-off; this is the startup default.
+# Fallback voice if config has no voices/active_voice (pre-bake-off default).
 TTS_VOICE = "aura-2-andromeda-en"
+
+
+def _build_tts(cfg: dict):
+    """TTS from the config voice toggle: voices[active_voice] -> vendor-specific plugin.
+    Daniel switches voices by editing active_voice and restarting the console (V1: spoken switch)."""
+    entry = (cfg.get("voices") or {}).get(cfg.get("active_voice") or "")
+    if not entry:
+        return deepgram.TTS(model=TTS_VOICE)
+    if entry["vendor"] == "deepgram":
+        return deepgram.TTS(model=entry["model"])
+    if entry["vendor"] == "elevenlabs":
+        import os
+        from livekit.plugins import elevenlabs
+        # plugin's env fallback is ELEVEN_API_KEY; our env file uses ELEVENLABS_API_KEY — pass explicitly
+        return elevenlabs.TTS(voice_id=entry["voice_id"], model=entry["model"],
+                              api_key=os.environ.get("ELEVENLABS_API_KEY"))
+    raise ValueError(f"unknown voice vendor: {entry['vendor']}")
 
 # Text-mode console (`--text`) bypasses audio entirely, so wake gating doesn't apply — only the
 # audio path is gated. Detected from argv because the CLI flag is parsed by livekit's typer app.
@@ -139,7 +155,7 @@ async def entrypoint(ctx: JobContext) -> None:
         # (see worker/anthropic_compat.py) — plain anthropic.LLM 400s on the 2nd LLM call
         # once a list-returning tool (e.g. running_work) enters chat history.
         llm=anthropic_compat.build_llm(cfg["fast_model"]),
-        tts=deepgram.TTS(model=TTS_VOICE),
+        tts=_build_tts(cfg),
         max_tool_steps=cfg["max_tool_turns"],        # 5, not the plugin default 3
     )
     await session.start(

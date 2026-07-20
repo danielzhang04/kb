@@ -41,3 +41,15 @@ def test_is_dismiss_phrases():
     assert _is_dismiss("Go to sleep", phrases)
     assert not _is_dismiss("that's all I know about it", phrases)
     assert not _is_dismiss("what's in the queue?", phrases)
+
+
+def test_build_tts_voice_toggle_config():
+    from worker.app import _build_tts
+    import worker.app as app
+    # config selects matilda (elevenlabs) — verify vendor routing without constructing plugins
+    cfg = {"active_voice": "x", "voices": {"x": {"vendor": "nope"}}}
+    try:
+        _build_tts(cfg)
+        assert False, "unknown vendor should raise"
+    except ValueError as e:
+        assert "unknown voice vendor" in str(e)
