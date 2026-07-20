@@ -166,3 +166,73 @@ is the input to the arc-3 UI design.
   commit only text artifacts, explicit paths, never `git add -A`.
 - **Model attribution caveat**: subagents were told to sign `Co-Authored-By: Claude Fable 5` but ran
   as Opus 4.8, so trailers on this branch's commits misattribute the model. Known; not rewritten.
+
+---
+
+# ARC-3 SESSION (2026-07-20, continued after strategic compact)
+
+## Two "controls that control nothing" — the headline finding
+
+Found independently by four agents on the same day. Same shape both times: **a mechanism that
+presents as enforced, passes its own tests, and is disconnected from the thing it governs.** Worth
+treating as a class, not as two bugs.
+
+1. **The `--allowedTools` capability cap is severed.** `PlanProposal` (`control/proposal.ts`) has no
+   `profile` field, so a workflow's declared execution profile feeds only `deriveProposalId`'s hash
+   preimage and is dropped as data; and `resolveToolPolicy` has no production caller (every
+   construction is in tests). Consequence: a run spawns with **no `--allowedTools` flag at all**,
+   while `profiles.test.ts` passes and the profiles read as capped.
+   **This gates executor activation** — activating before the fix yields uncapped workers while the
+   system reports them capped. Fix dispatched; requires fail-closed semantics so an empty allowlist
+   can never again mean "allow everything".
+2. **The daily budget gate measures nothing.** `budget.yaml` caps $5.00/day; one video costs
+   $17-27; the gate passes anyway because `preamble.py` compares against `ledgers/cost/` and image
+   spend is never written there (`0.0 <= 5.00`, always). Filed as decision card
+   **`6a5e482a-3b8707b5`** on `ops` (governance/ is human-edited; three options + recommendation).
+
+## Also fixed this session
+- `forge.py cmd_gen` buffered all output and printed only after the batch — the cause of the Round-1
+  "spend gate halt" (actually a 600s stream watchdog kill) AND of a Pillow failure that burned a
+  batch's API calls before the first line printed. Now streams per-image with `[n/total]`. (`4f30c66`)
+- The org `.gitignore` excluded the whole `assets/` DIRECTORY, so git never descended into it and
+  `image-gen-lab.md`, the manifests and batch planners were silently untracked despite being small,
+  hand-authored and NOT regenerable. Now ignores contents and re-admits .md/.json/.py/.txt. (`07bdd93`)
+- `compile.videoRun.test.ts` embedded the workflow definition as a string literal and never read the
+  org file, so it could not catch the drift its own header claimed to catch. Now resolves the real
+  file via git worktree topology (`orgDefSource.ts`) and compiles it; fixture deleted. Drift
+  demonstrated failing then passing. (`e66aff9` + `f4012f5` on faceless branch)
+
+## Binding environment fact learned the expensive way
+**`python` and `py -3` are DIFFERENT interpreters on this box.** `python` = 3.12, NO Pillow;
+`py -3` = 3.13, Pillow 12.3.0. `forge.py` converts the engine's JPEG to PNG *after* the paid API
+call, so a batch run under `python` pays for every image and saves none. Cost ~$1.50-3.50 before it
+was caught. ALWAYS `py -3`.
+
+## fyt-run-001 status
+Images COMPLETE: 115 frames (92 generated this session across 5 detached background shells, zero
+errors bar one). Assembly (place -> chains -> cutouts -> manifest -> completeness reconciliation)
+dispatched. Render NOT yet run.
+
+**One editorial judgement made unsupervised, needs Daniel's ruling** (recorded in
+`assets/image-gen-lab.md`): shot L105 depicted a named real executive face-on personally asserting a
+claim to investors; the engine refused it twice on identical input, having generated all three
+executive portraits fine in Pass 1. Re-authored ONCE to change *what is depicted* (scorecard becomes
+subject, presenter back-turned and unidentifiable) rather than hunting wording that slips past the
+filter. Generated first try. Consequences: `shots.json`'s `still_prompt` for L105 no longer matches
+the delivered frame, and **the line between caricature of documented public conduct and putting
+words in a real person's mouth is Daniel's to set in the style bible** — not an agent's to settle
+shot-by-shot unsupervised.
+
+## Arc-3 design decisions (both specs committed)
+- **Workflows vs runs**: a workflow is a reusable DEFINITION compiling to a proposal; a run is one
+  execution INSTANCE. 1:N, not the same entity — but they share ONE detail surface. Evidence:
+  `compileWorkflowDef` returns a `PlanProposal` specifically to reuse the approval path.
+  Spec: `docs/specs/2026-07-20-arc3-ui-design.md` (`3c3f8a5`).
+- **External reach**: use ONE local stdio MCP server, do NOT hand-write Gmail/Drive connectors. The
+  claude.ai `mcp__claude_ai_*` tools CANNOT be proxied — they don't load in headless `claude -p`,
+  which is how the dashboard executes. Local MCP keeps credentials inside the server, satisfying
+  "never handle credentials as objects" for free. Spec: `docs/specs/2026-07-20-external-reach-design.md`
+  (`956eaa5`). Riskiest item: `uvx workspace-mcp` is third-party code with full mail access and a
+  known same-name PyPI squat.
+- **Usage telemetry**: `costUsdMicros` must be stripped SERVER-SIDE, not hidden client-side — if the
+  number rides in the response body, "never surface dollars" is one devtools tab from being false.
