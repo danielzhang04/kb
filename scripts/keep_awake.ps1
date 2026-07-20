@@ -47,7 +47,27 @@ try {
     switch ($PSCmdlet.ParameterSetName) {
         'Acquire' {
             if (-not $Label) { throw '-Label is required with -Acquire' }
-            $target = if ($ProcessId -gt 0) { $ProcessId } else { $PID }
+            if ($ProcessId -gt 0) {
+                $target = $ProcessId
+            } else {
+                # Why: this CLI's own $PID is the ephemeral powershell.exe host
+                # running -Acquire (a Claude Code hook, or a bare invocation) --
+                # it writes the lease and exits within a second. A lease pinned
+                # to it is pruned by the supervisor's very first pass, before
+                # the machine is ever armed (reproduced empirically -- see
+                # task-5-report.md). Resolve the real long-lived owner instead.
+                $resolution = Resolve-KeepAwakeOwnerPid -StartProcessId $PID
+                if ($resolution.Resolved) {
+                    $target = $resolution.ProcessId
+                } else {
+                    # Failure case: no long-lived ancestor could be found. Fall
+                    # back to $PID (a hook must never throw), but log loudly --
+                    # this lease will very likely be pruned on the supervisor's
+                    # first pass, silently defeating the whole feature.
+                    $target = $PID
+                    Write-KeepAwakeLog ("pid-resolution-FAILED reason=$($resolution.Reason) label=$Label -- falling back to ephemeral PID=$PID; lease will likely be pruned immediately")
+                }
+            }
             $cpu = Get-ProcessTreeCpu -ProcessId $target
             New-KeepAwakeLease -Label $Label -Mode $Mode -ProcessId $target -CpuSample $cpu | Out-Null
             # Spawning is unconditional and cheap: a duplicate supervisor loses

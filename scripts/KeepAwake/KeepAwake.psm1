@@ -191,6 +191,73 @@ function Update-LeaseActivity {
     return @{ Lease = $updated; Active = $active; Reason = $reason }
 }
 
+# Process names that are themselves just launchers/shells rather than the
+# real long-lived owner a lease should be pinned to. If a parent-walk lands
+# on one of these it must keep going -- stopping here would just anchor the
+# lease to another process that is itself gone the moment this invocation
+# exits, reproducing the exact defect this seam exists to avoid.
+$script:EphemeralHostProcessNames = @('powershell.exe', 'pwsh.exe', 'cmd.exe')
+
+function Get-DefaultProcessInfoProvider {
+    return @{
+        GetProcessInfo = {
+            param([int]$ProcessId)
+            $p = Get-CimInstance Win32_Process -Filter "ProcessId=$ProcessId" -ErrorAction SilentlyContinue
+            if ($null -eq $p) { return $null }
+            return @{ Name = [string]$p.Name; ParentProcessId = [int]$p.ParentProcessId }
+        }
+    }
+}
+
+$script:ProcessInfoProvider = Get-DefaultProcessInfoProvider
+function Set-ProcessInfoProvider { param([Parameter(Mandatory)][hashtable]$Provider) $script:ProcessInfoProvider = $Provider }
+function Get-ProcessInfoProvider { return $script:ProcessInfoProvider }
+
+# Resolves the real long-lived process a lease should be pinned to, walking
+# up from the CLI's own (always-ephemeral) $PID rather than defaulting to it.
+# The CLI process running -Acquire (whether spawned by a Claude Code hook or
+# invoked by hand) does one write and exits almost immediately; a lease
+# pinned to it is pruned by the supervisor's very first pass before the
+# machine is ever armed (reproduced empirically in Task 5's smoke test --
+# see task-5-report.md). Empirically walking this chain (2026-07-20) on this
+# machine showed the immediate parent of such a CLI invocation can itself be
+# an ephemeral wrapper shell (a `powershell.exe` process that exits with the
+# single tool call that spawned it), with the real long-lived process
+# (`claude.exe`) one hop further up -- so a fixed single-hop walk is not
+# reliable and this instead walks past any number of recognized ephemeral
+# shell hops, bounded by -MaxHops as a safety cap. Pure given an injected
+# GetProcessInfo lookup, so the walk logic is unit-testable without touching
+# real OS process state; the default provider (Get-ProcessInfoProvider) is
+# the live seam used in production.
+function Resolve-KeepAwakeOwnerPid {
+    param(
+        [Parameter(Mandatory)][int]$StartProcessId,
+        [scriptblock]$GetProcessInfo = (Get-ProcessInfoProvider).GetProcessInfo,
+        [int]$MaxHops = 3
+    )
+    $currentId = $StartProcessId
+    $currentInfo = & $GetProcessInfo $currentId
+    if ($null -eq $currentInfo) {
+        return @{ ProcessId = 0; Resolved = $false; Reason = 'start-process-not-found'; Hops = 0 }
+    }
+    for ($hop = 1; $hop -le $MaxHops; $hop++) {
+        $parentId = [int]$currentInfo.ParentProcessId
+        if ($parentId -le 0) {
+            return @{ ProcessId = 0; Resolved = $false; Reason = 'no-parent'; Hops = $hop }
+        }
+        $parentInfo = & $GetProcessInfo $parentId
+        if ($null -eq $parentInfo) {
+            return @{ ProcessId = 0; Resolved = $false; Reason = 'parent-process-not-found'; Hops = $hop }
+        }
+        if ($script:EphemeralHostProcessNames -notcontains $parentInfo.Name) {
+            return @{ ProcessId = $parentId; Resolved = $true; Reason = 'ok'; Hops = $hop }
+        }
+        $currentId = $parentId
+        $currentInfo = $parentInfo
+    }
+    return @{ ProcessId = 0; Resolved = $false; Reason = 'max-hops-exceeded'; Hops = $MaxHops }
+}
+
 $script:SUB_BUTTONS   = '4f971e89-eebd-4455-a8de-9e59040e7347'
 $script:LIDACTION     = '5ca83367-6e45-459f-a27b-476b1d01c936'
 $script:SUB_SLEEP     = '238c9fa8-0aad-41ed-83f4-97be242c8f20'
@@ -444,6 +511,7 @@ function Start-KeepAwakeSupervisor {
 Export-ModuleMember -Function Get-KeepAwakeRoot, Get-LeaseDir, Write-KeepAwakeLog,
     Get-SafeLabel, Get-LeasePath, New-KeepAwakeLease, Get-KeepAwakeLeases, Remove-KeepAwakeLease,
     Test-ProcessAlive, Get-ProcessTreeCpu, Update-LeaseActivity,
+    Set-ProcessInfoProvider, Get-ProcessInfoProvider, Resolve-KeepAwakeOwnerPid,
     Set-PowerProvider, Get-PowerProvider, Get-PowerBaseline, Save-PowerBaseline, Set-PowerArmed,
     Restore-PowerBaseline, Test-PowerArmed,
     Set-ExecutionStateHold, Clear-ExecutionStateHold, Invoke-SupervisorPass, Start-KeepAwakeSupervisor

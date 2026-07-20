@@ -390,6 +390,104 @@ Describe 'supervisor pass' {
     }
 }
 
+Describe 'owner pid resolution' {
+    # Pure resolution logic over an injected fake process map -- no real OS
+    # process state involved, so this is fully deterministic.
+    BeforeAll {
+        function New-FakeProcessInfoLookup {
+            param([hashtable]$Map)
+            return {
+                param([int]$ProcessId)
+                if ($Map.ContainsKey($ProcessId)) { return $Map[$ProcessId] }
+                return $null
+            }.GetNewClosure()
+        }
+    }
+
+    It 'resolves directly when the immediate parent is not a shell' {
+        # cli(100) -> claude.exe(200)
+        $map = @{
+            100 = @{ Name = 'powershell.exe'; ParentProcessId = 200 }
+            200 = @{ Name = 'claude.exe'; ParentProcessId = 1 }
+        }
+        $r = Resolve-KeepAwakeOwnerPid -StartProcessId 100 -GetProcessInfo (New-FakeProcessInfoLookup -Map $map)
+        $r.Resolved  | Should -BeTrue
+        $r.ProcessId | Should -Be 200
+        $r.Hops      | Should -Be 1
+    }
+
+    It 'walks past one ephemeral shell hop to reach the real long-lived owner' {
+        # cli(100) -> wrapper shell(150) -> claude.exe(200)
+        # This is the shape observed empirically on this machine.
+        $map = @{
+            100 = @{ Name = 'powershell.exe'; ParentProcessId = 150 }
+            150 = @{ Name = 'powershell.exe'; ParentProcessId = 200 }
+            200 = @{ Name = 'claude.exe'; ParentProcessId = 1 }
+        }
+        $r = Resolve-KeepAwakeOwnerPid -StartProcessId 100 -GetProcessInfo (New-FakeProcessInfoLookup -Map $map)
+        $r.Resolved  | Should -BeTrue
+        $r.ProcessId | Should -Be 200
+        $r.Hops      | Should -Be 2
+    }
+
+    It 'walks past cmd.exe as well as powershell.exe' {
+        $map = @{
+            100 = @{ Name = 'powershell.exe'; ParentProcessId = 150 }
+            150 = @{ Name = 'cmd.exe'; ParentProcessId = 200 }
+            200 = @{ Name = 'agent_runner_host.exe'; ParentProcessId = 1 }
+        }
+        $r = Resolve-KeepAwakeOwnerPid -StartProcessId 100 -GetProcessInfo (New-FakeProcessInfoLookup -Map $map)
+        $r.Resolved  | Should -BeTrue
+        $r.ProcessId | Should -Be 200
+    }
+
+    It 'fails cleanly when the parent chain is entirely shells within MaxHops' {
+        $map = @{
+            100 = @{ Name = 'powershell.exe'; ParentProcessId = 150 }
+            150 = @{ Name = 'powershell.exe'; ParentProcessId = 160 }
+            160 = @{ Name = 'powershell.exe'; ParentProcessId = 170 }
+            170 = @{ Name = 'claude.exe'; ParentProcessId = 1 }
+        }
+        $r = Resolve-KeepAwakeOwnerPid -StartProcessId 100 -GetProcessInfo (New-FakeProcessInfoLookup -Map $map) -MaxHops 2
+        $r.Resolved | Should -BeFalse
+        $r.Reason   | Should -Be 'max-hops-exceeded'
+    }
+
+    It 'fails cleanly when a parent in the chain no longer exists' {
+        $map = @{
+            100 = @{ Name = 'powershell.exe'; ParentProcessId = 150 }
+            # 150 deliberately absent -- process already exited by the time we look it up.
+        }
+        $r = Resolve-KeepAwakeOwnerPid -StartProcessId 100 -GetProcessInfo (New-FakeProcessInfoLookup -Map $map)
+        $r.Resolved | Should -BeFalse
+        $r.Reason   | Should -Be 'parent-process-not-found'
+    }
+
+    It 'fails cleanly when the start pid itself has no parent info' {
+        $r = Resolve-KeepAwakeOwnerPid -StartProcessId 999999 -GetProcessInfo (New-FakeProcessInfoLookup -Map @{})
+        $r.Resolved | Should -BeFalse
+        $r.Reason   | Should -Be 'start-process-not-found'
+    }
+
+    It 'fails cleanly when the chain terminates with no further parent' {
+        $map = @{
+            100 = @{ Name = 'powershell.exe'; ParentProcessId = 0 }
+        }
+        $r = Resolve-KeepAwakeOwnerPid -StartProcessId 100 -GetProcessInfo (New-FakeProcessInfoLookup -Map $map)
+        $r.Resolved | Should -BeFalse
+        $r.Reason   | Should -Be 'no-parent'
+    }
+
+    It 'defaults to the live provider seam when no lookup is injected' {
+        # Integration smoke test against real OS state: this process's own
+        # chain must resolve to *something* live and non-ephemeral without
+        # throwing. Not asserting a specific PID -- that varies by host.
+        $r = Resolve-KeepAwakeOwnerPid -StartProcessId $PID
+        $r.Resolved | Should -BeTrue
+        Test-ProcessAlive -ProcessId $r.ProcessId | Should -BeTrue
+    }
+}
+
 Describe 'supervisor singleton' {
     # A named Win32 mutex is reentrant PER THREAD, not per handle: a second
     # Mutex object opened for the same name on the SAME thread that already
