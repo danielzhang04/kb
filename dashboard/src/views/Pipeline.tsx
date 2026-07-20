@@ -48,6 +48,7 @@ import { RoutingControl } from './routingControls';
 import { useSse } from '../lib/sseClient';
 import '../styles/views/pipeline.css';
 import { ManagedRuns } from '../control/ManagedRuns';
+import type { NavTarget } from '../nav/stack';
 
 type DotKind = 'idle' | 'running' | 'blocked' | 'done' | 'error';
 
@@ -292,12 +293,25 @@ export function Pipeline({
   sessionToken,
   onRequestSession,
   onOpenCard,
+  focusRunRef,
+  onOpenRun,
+  onBackToRuns,
+  activeSectionId,
+  onSectionChange,
+  onNavigate,
 }: {
   dag?: Dag;
   routing?: RoutingSnapshot;
   sessionToken?: string;
   onRequestSession?: () => Promise<Session | null>;
   onOpenCard?: (cardId: string) => void;
+  /** arc-3 nav stack: which run's detail is open, and how to push/pop/retab it. */
+  focusRunRef?: string | null;
+  onOpenRun?: (runRef: string) => void;
+  onBackToRuns?: () => void;
+  activeSectionId?: string;
+  onSectionChange?: (id: string) => void;
+  onNavigate?: (target: NavTarget) => void;
 } = {}): React.JSX.Element {
   const [fetchedDag, setFetchedDag] = useState<Dag | null>(dag ?? null);
   const [routingState, setRoutingState] = useState<RoutingSnapshot | null>(routing ?? null);
@@ -407,8 +421,21 @@ export function Pipeline({
           background runners; Terminal tabs are separate manual shells.
         </p>
       </header>
-      <ManagedRuns sessionToken={sessionToken} onRequestSession={onRequestSession} />
-      <details className="v-pipeline__legacy" open={groups.length > 0}>
+      <ManagedRuns
+        sessionToken={sessionToken}
+        onRequestSession={onRequestSession}
+        focusRunRef={focusRunRef}
+        onOpenRun={onOpenRun}
+        onBackToRuns={onBackToRuns}
+        activeSectionId={activeSectionId}
+        onSectionChange={onSectionChange}
+        onNavigate={onNavigate}
+      />
+      {/* The legacy queue-card graph is a DIFFERENT data source (queue cards, not managed stages). It
+       *  stays reachable but is hidden while a run's detail is open, so the operator is never looking at
+       *  two competing models of "the run" at once. The managed-run dependency graph is now rendered
+       *  honestly from `Stage.dependsOn` inside the run detail's Stages section. */}
+      <details className="v-pipeline__legacy" open={groups.length > 0} hidden={Boolean(focusRunRef)}>
         <summary>Canonical queue-card graph</summary>
       {groups.length > 0 ? (
         <nav className="v-pipeline__runs" aria-label="Run instances" data-testid="run-groups">

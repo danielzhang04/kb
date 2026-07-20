@@ -24,6 +24,15 @@ import {
   type DestinationId,
   type NavDestination,
 } from './nav/config';
+import {
+  backStack,
+  goToStack,
+  pushStack,
+  rootStack,
+  setSectionOnStack,
+  type NavEntry,
+  type NavTarget,
+} from './nav/stack';
 import { NewMenu } from './nav/NewMenu';
 import { CommandPalette } from './palette/CommandPalette';
 import type { PaletteCommand } from './palette/paletteModel';
@@ -409,6 +418,11 @@ function ViewBody({
   onRequestSession,
   onOpenCard,
   taskSelectedId,
+  entry,
+  onPush,
+  onBack,
+  onSectionChange,
+  onNavigateTarget,
 }: {
   view: DestinationId;
   sessionToken?: string;
@@ -418,6 +432,12 @@ function ViewBody({
   onOpenCard: (cardId: string) => void;
   /** The card the Tasks view should open on mount (set by a pipeline click-through). */
   taskSelectedId?: string;
+  /** The top nav-stack entry — carries the focused entity and the active detail section. */
+  entry: NavEntry;
+  onPush: (target: NavTarget) => void;
+  onBack: () => void;
+  onSectionChange: (id: string) => void;
+  onNavigateTarget: (target: NavTarget) => void;
 }): React.JSX.Element {
   switch (view) {
     case 'home':
@@ -448,7 +468,21 @@ function ViewBody({
       // D3.4 — React Flow canvas over the queue's depends-on DAG. Its governed node toggle reuses the
       // card-routing write; a node click-through opens that card in the Tasks detail surface. Pipeline
       // renders its own aria-labelled section.
-      return <Pipeline sessionToken={sessionToken} onRequestSession={onRequestSession} onOpenCard={onOpenCard} />;
+      // arc-3: a run card pushes that run's detail onto the nav stack WITHIN this destination — no new
+      // NAV_SECTIONS entry, no new case here. The locked entity-first IA is untouched.
+      return (
+        <Pipeline
+          sessionToken={sessionToken}
+          onRequestSession={onRequestSession}
+          onOpenCard={onOpenCard}
+          focusRunRef={entry.focus?.kind === 'run' ? entry.focus.id : null}
+          onOpenRun={(runRef) => onPush({ view: 'pipeline', focus: { kind: 'run', id: runRef } })}
+          onBackToRuns={onBack}
+          activeSectionId={entry.section}
+          onSectionChange={onSectionChange}
+          onNavigate={onNavigateTarget}
+        />
+      );
     case 'projects':
       return (
         <section aria-label="Projects view">
@@ -497,7 +531,13 @@ function persistOpenComposerRefs(refs: string[]): void {
 }
 
 export function App(): React.JSX.Element {
-  const [view, setView] = useState<DestinationId>(DEFAULT_DESTINATION);
+  // arc-3 — navigation is a STACK, not a single destination. `goTo` (a sidebar click) resets it to a
+  // fresh root so the mental model is unchanged; `push` drills into an entity detail and reveals a back
+  // affordance. Every existing read site still just reads `view`. See src/nav/stack.ts for why this is
+  // ~40 lines of stack rather than a router dependency.
+  const [stack, setStack] = useState<NavEntry[]>(() => rootStack(DEFAULT_DESTINATION));
+  const current = stack[stack.length - 1];
+  const view = current.view;
   const [rail, setRail] = useState(false);
   const [session, setSession] = useState<Session | null>(() => readStoredSession());
   const [unlockError, setUnlockError] = useState<string | null>(null);
@@ -584,10 +624,36 @@ export function App(): React.JSX.Element {
     });
   };
 
-  // Navigate to a destination, closing the transient Composer placeholder if it was open.
+  // Navigate to a destination, closing the transient Composer placeholder if it was open. A sidebar
+  // click RESETS the stack: a fresh root, no back arrow, no accumulated history.
   const goTo = (id: DestinationId): void => {
     setActiveComposerRef(null);
-    setView(id);
+    setStack(goToStack(id));
+  };
+
+  /** Drill into an entity detail within its own destination. Back becomes available. */
+  const push = (target: NavTarget): void => {
+    setActiveComposerRef(null);
+    setStack((s) => pushStack(s, target));
+  };
+
+  /** Pop one entry. A no-op at the root, where the affordance is not rendered. */
+  const back = (): void => setStack((s) => backStack(s));
+
+  /** Record the operator's active detail tab into the top entry so back-then-forward restores it. */
+  const setSection = (section: string): void => setStack((s) => setSectionOnStack(s, section));
+
+  /**
+   * Cross-entity navigation. A `card` focus keeps using the pre-existing Tasks detail-pane payload
+   * path rather than opening a second one.
+   */
+  const navigateTo = (target: NavTarget): void => {
+    if (target.focus?.kind === 'card') {
+      setOpenCardId(target.focus.id);
+      push({ view: 'tasks' });
+      return;
+    }
+    push(target);
   };
 
   // Pipeline canvas click-through: open the card in the Tasks detail pane and jump there.
@@ -808,6 +874,11 @@ export function App(): React.JSX.Element {
             onRequestSession={requestSession}
             onOpenCard={openCardInTasks}
             taskSelectedId={openCardId}
+            entry={current}
+            onPush={push}
+            onBack={back}
+            onSectionChange={setSection}
+            onNavigateTarget={navigateTo}
           />
         ) : null}
       </main>
