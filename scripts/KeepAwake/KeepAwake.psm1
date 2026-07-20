@@ -3,7 +3,7 @@
 #
 # Two seams keep this testable without touching real machine state:
 #   1. $env:KB_KEEPAWAKE_ROOT overrides the lease-store location.
-#   2. $script:PowerProvider (Task 3) wraps every powercfg/registry mutation.
+#   2. $script:PowerProvider wraps every powercfg/registry mutation.
 
 Set-StrictMode -Version Latest
 
@@ -43,17 +43,13 @@ function Get-LeasePath {
     return (Join-Path (Get-LeaseDir) ((Get-SafeLabel -Label $Label) + '.lease'))
 }
 
-# Shared atomic-write helper (I3 fix): every writer of a JSON state file in
-# this module (lease files, armed.json) used a plain Set-Content, which is not
-# atomic on Windows -- a crash or power loss mid-write leaves a truncated file
-# that the next reader chokes on. Writing to a unique temp file first and
-# renaming it into place with Move-Item -Force means any reader always sees
-# either the fully-old or fully-new content, never a partial write. The PID +
-# GUID suffix on the temp name means two writers racing for the same target
-# path (e.g. a -Heartbeat CLI invocation and a concurrent supervisor pass,
-# I3's exact scenario) never collide on the temp file itself -- only the final
-# Move-Item -Destination is a race, and Move-Item -Force resolves that
-# atomically at the filesystem level rather than via a torn read/write.
+# Shared atomic-write helper: a plain Set-Content is not atomic on Windows,
+# so a crash or power loss mid-write leaves a truncated file that the next
+# reader chokes on. Writing to a unique temp file then Move-Item -Force into
+# place means a reader always sees either the fully-old or fully-new
+# content. The PID + GUID suffix keeps concurrent writers (e.g. a -Heartbeat
+# CLI call racing the supervisor) from colliding on the temp file itself --
+# only the final Move-Item is a race, and -Force resolves that atomically.
 function Write-JsonFileAtomic {
     param(
         [Parameter(Mandatory)][string]$Path,
@@ -101,18 +97,12 @@ function New-KeepAwakeLease {
 }
 
 # Reads, updates only the heartbeat field, and atomically rewrites a lease
-# file. Moved into the module (I3 fix) rather than living in keep_awake.ps1's
-# -Heartbeat branch: this is the hottest path in the whole feature (a hook
-# fires it on every single tool call) and it used to do a raw read-modify-write
-# with no locking against Invoke-SupervisorPass's own rewrite of the same file
-# -- a torn read from that race threw under the CLI's
-# $ErrorActionPreference='Stop' into the top-level catch, which is exactly the
-# "must never throw into a hook" failure the script's own header comment
-# warns against. Containing the try/catch here means a torn/corrupt read is
-# treated the same as "lease already gone": a silent no-op, never a thrown
-# error. Projects every existing field forward rather than hand-listing them
-# (same reasoning as Invoke-SupervisorPass's lease rewrite, M1) so a future
-# field addition to New-KeepAwakeLease is never silently dropped here either.
+# file. This is the hottest path in the feature (a hook fires it on every
+# tool call) and races against Invoke-SupervisorPass's own rewrite of the
+# same file, so a torn/corrupt read must never throw into the hook -- treat
+# it as "lease already gone". Projects every existing field forward rather
+# than hand-listing them (same reasoning as the supervisor's rewrite below)
+# so a future field on New-KeepAwakeLease is never silently dropped here.
 function Update-KeepAwakeLeaseHeartbeat {
     param([Parameter(Mandatory)][string]$Label)
     $path = Get-LeasePath -Label $Label
@@ -147,14 +137,10 @@ function Get-KeepAwakeLeases {
                 path       = $f.FullName
             }
         } catch {
-            # M2 fix: a lease that fails to parse carries no recoverable
-            # information -- the pid/label/heartbeat it would have contributed
-            # are simply gone. Leaving the file in place meant it was skipped
-            # forever (every single pass, logging one lease-corrupt line every
-            # poll interval indefinitely) without ever being cleaned up.
-            # Deleting it here is safe: at worst it drops one lease's
-            # protection, exactly like any other corrupt/unparseable file
-            # already handled defensively throughout this module.
+            # A lease that fails to parse carries no recoverable information,
+            # so leaving it in place would just re-log the same corrupt-lease
+            # line every poll interval forever. Delete it: at worst this
+            # drops one lease's protection.
             Write-KeepAwakeLog ("lease-corrupt file=$($f.Name) -- deleting (unparseable, carries no recoverable state)")
             Remove-Item $f.FullName -Force -ErrorAction SilentlyContinue
         }
@@ -254,22 +240,14 @@ function Update-LeaseActivity {
     return @{ Lease = $updated; Active = $active; Reason = $reason }
 }
 
-# Process names that are themselves just launchers/shells rather than the
-# real long-lived owner a lease should be pinned to. If a parent-walk lands
-# on one of these it must keep going -- stopping here would just anchor the
-# lease to another process that is itself gone the moment this invocation
-# exits, reproducing the exact defect this seam exists to avoid.
-#
-# bash.exe/sh.exe added 2026-07-20 (Task 7) after being caught live: Claude
-# Code runs Windows hook commands through Git Bash ("Using bash path: C:\
-# Program Files\Git\bin\bash.exe" -- confirmed in --debug hooks output), so
-# the real chain for a hook-invoked keep_awake.ps1 is
-#   powershell.exe (this script) -> bash.exe (-c wrapper, one per hook firing)
-#   -> claude.exe/node.exe (the real long-lived session)
-# Before this fix, bash.exe was not on the list, so the walk stopped at hop 1
-# and accepted the -c wrapper as the "owner" with Reason='ok' -- reproducing
-# Finding A exactly. Confirmed by the supervisor pruning that lease as
-# process-dead one second after acquiring it (see task-7-report.md).
+# Process names that are themselves just launchers/shells, not the real
+# long-lived owner a lease should be pinned to -- a parent-walk landing on
+# one of these must keep going, or it anchors the lease to a wrapper gone
+# the moment this invocation exits. bash.exe/sh.exe are here because Claude
+# Code runs Windows hook commands through Git Bash, so the real chain is
+# powershell.exe -> bash.exe (-c wrapper) -> claude.exe/node.exe; without
+# them the walk stops at hop 1 and pins to the wrapper, which the supervisor
+# then prunes as process-dead a second later.
 $script:EphemeralHostProcessNames = @('powershell.exe', 'pwsh.exe', 'cmd.exe', 'bash.exe', 'sh.exe')
 
 function Get-DefaultProcessInfoProvider {
@@ -279,10 +257,9 @@ function Get-DefaultProcessInfoProvider {
             $p = Get-CimInstance Win32_Process -Filter "ProcessId=$ProcessId" -ErrorAction SilentlyContinue
             if ($null -eq $p) { return $null }
             # StartTime rides along on the same CIM query used for Name/ParentProcessId
-            # (Get-CimInstance auto-converts CreationDate to a real [datetime] -- verified
-            # empirically 2026-07-20, unlike the legacy Get-WmiObject WMI-datetime string).
-            # It feeds the freshly-spawned sanity check below; a second query per hop would
-            # be wasted CIM round-trips for a value already sitting on this same object.
+            # (Get-CimInstance auto-converts CreationDate to a real [datetime], unlike
+            # the legacy Get-WmiObject WMI-datetime string). A second query per hop
+            # would be a wasted CIM round-trip for a value already on this object.
             return @{ Name = [string]$p.Name; ParentProcessId = [int]$p.ParentProcessId; StartTime = $p.CreationDate }
         }
     }
@@ -292,38 +269,25 @@ $script:ProcessInfoProvider = Get-DefaultProcessInfoProvider
 function Get-ProcessInfoProvider { return $script:ProcessInfoProvider }
 
 # Resolves the real long-lived process a lease should be pinned to, walking
-# up from the CLI's own (always-ephemeral) $PID rather than defaulting to it.
-# The CLI process running -Acquire (whether spawned by a Claude Code hook or
-# invoked by hand) does one write and exits almost immediately; a lease
-# pinned to it is pruned by the supervisor's very first pass before the
-# machine is ever armed (reproduced empirically in Task 5's smoke test --
-# see task-5-report.md). Empirically walking this chain (2026-07-20) on this
-# machine showed the immediate parent of such a CLI invocation can itself be
-# an ephemeral wrapper shell (a `powershell.exe` process that exits with the
-# single tool call that spawned it), with the real long-lived process
-# (`claude.exe`) one hop further up -- so a fixed single-hop walk is not
-# reliable and this instead walks past any number of recognized ephemeral
-# shell hops, bounded by -MaxHops as a safety cap. Pure given an injected
-# GetProcessInfo lookup, so the walk logic is unit-testable without touching
-# real OS process state; the default provider (Get-ProcessInfoProvider) is
-# the live seam used in production.
+# up from the CLI's own (always-ephemeral) $PID rather than defaulting to it:
+# the -Acquire process does one write and exits almost immediately, and its
+# immediate parent can itself be an ephemeral wrapper (e.g. a `powershell.exe`
+# that exits with the single tool call that spawned it) with the real
+# long-lived process (`claude.exe`) one hop further up. So a fixed
+# single-hop walk is not reliable; this walks past any number of recognized
+# ephemeral shell hops, bounded by -MaxHops as a safety cap. Pure given an
+# injected GetProcessInfo lookup, so it is unit-testable without touching
+# real OS process state; Get-ProcessInfoProvider is the live production seam.
 function Resolve-KeepAwakeOwnerPid {
     param(
         [Parameter(Mandatory)][int]$StartProcessId,
         [scriptblock]$GetProcessInfo = (Get-ProcessInfoProvider).GetProcessInfo,
-        # 12, not 3: MaxHops is only a runaway/cycle guard, not a policy knob, so
-        # sizing it generously costs nothing. Each hop is accepted as "keep
-        # walking" ONLY when the parent's name is on $script:EphemeralHostProcessNames
-        # (see the -notcontains check below) -- so a larger limit can never make
-        # the walk overshoot past a genuine owner; it only allows deeper nesting
-        # of recognized shells before giving up. The walk still stops at the
-        # first non-ephemeral ancestor regardless of how large this is.
-        # Raised 2026-07-20 (Task 7 fix-round) after the real observed chain for
-        # a hook fired through nested Git Bash was measured empirically at 4 hops
-        # (powershell.exe -> bash.exe -> bash.exe -> bash.exe -> claude.exe) --
-        # see task-7-report.md fix-round section -- which exceeded the old
-        # default of 3 and made resolution fail with max-hops-exceeded even
-        # though the real long-lived owner was right there one hop further up.
+        # 12, not 3: MaxHops is only a runaway/cycle guard, not a policy knob.
+        # A hop is accepted as "keep walking" ONLY when the parent's name is on
+        # $script:EphemeralHostProcessNames, so a larger limit can never make
+        # the walk overshoot a genuine owner -- it only allows deeper nesting
+        # of recognized shells (a hook through nested Git Bash can chain 4+
+        # hops: powershell.exe -> bash.exe -> bash.exe -> bash.exe -> claude.exe).
         [int]$MaxHops = 12
     )
     $currentId = $StartProcessId
@@ -341,14 +305,10 @@ function Resolve-KeepAwakeOwnerPid {
             return @{ ProcessId = 0; Resolved = $false; Reason = 'parent-process-not-found'; Hops = $hop }
         }
         if ($script:EphemeralHostProcessNames -notcontains $parentInfo.Name) {
-            # StartTime rides along so a caller can layer a freshness sanity check on
-            # top (Resolve-KeepAwakeAcquireTarget does this) without a second lookup.
             # Indexer access (not dot-notation) on purpose: this module runs under
             # Set-StrictMode -Version Latest, which throws PropertyNotFoundException
-            # on dot-access to an absent hashtable key -- reproduced empirically
-            # against the existing name-only fake maps in this test file, which
-            # legitimately omit 'StartTime'. $h['StartTime'] returns $null for a
-            # missing key under strict mode with no error either way.
+            # on dot-access to an absent hashtable key. $h['StartTime'] returns
+            # $null for a missing key under strict mode with no error either way.
             return @{ ProcessId = $parentId; Resolved = $true; Reason = 'ok'; Hops = $hop; StartTime = $parentInfo['StartTime']; Name = $parentInfo.Name }
         }
         $currentId = $parentId
@@ -357,18 +317,13 @@ function Resolve-KeepAwakeOwnerPid {
     return @{ ProcessId = 0; Resolved = $false; Reason = 'max-hops-exceeded'; Hops = $MaxHops }
 }
 
-# Decision logic for keep_awake.ps1's -Acquire branch, moved into the module per
-# Task 7 finding B: the CLI-invoked script has zero Pester coverage of its own,
-# so the fallback-logging branch (Resolve-KeepAwakeOwnerPid failing) was never
-# exercised by any test -- only the success path got a manual smoke test. Living
-# here, the exact same logic the CLI runs is reachable with an injected
-# GetProcessInfo, so every branch (explicit PID, resolved walk, failed walk) is
-# unit-testable without spawning a real process tree. Keeps
-# scripts/keep_awake.ps1 itself thin, per the plan's stated architecture.
-#
-# No acquire-time freshness check here (removed in the Task 7 fix-round, see
-# the comment above Resolve-KeepAwakeOwnerPid's ephemeral-name list) -- that is
-# why this no longer takes a $Now.
+# Decision logic for keep_awake.ps1's -Acquire branch, kept in the module
+# (rather than in the CLI script) so every branch -- explicit PID, resolved
+# walk, failed walk -- is unit-testable with an injected GetProcessInfo.
+# No acquire-time freshness check: a legitimate owner and an ephemeral
+# wrapper are indistinguishable by freshness alone here (see
+# Invoke-SupervisorPass's ImmediatePruneThresholdSeconds below for why that
+# discriminator lives in the supervisor instead) -- hence no $Now param.
 function Resolve-KeepAwakeAcquireTarget {
     param(
         [Parameter(Mandatory)][int]$SelfProcessId,
@@ -377,18 +332,17 @@ function Resolve-KeepAwakeAcquireTarget {
         [scriptblock]$GetProcessInfo = (Get-ProcessInfoProvider).GetProcessInfo
     )
     if ($ProcessId -gt 0) {
-        # Caller (e.g. agent_runner.ps1, Task 6) already knows its own long-lived
-        # PID -- the ancestor walk exists only to guess this when the caller
-        # can't tell us directly, so skip it.
+        # Caller (e.g. agent_runner.ps1) already knows its own long-lived PID
+        # -- the ancestor walk exists only to guess this when the caller can't
+        # tell us directly, so skip it.
         return @{ ProcessId = $ProcessId; Resolved = $true; Reason = 'explicit' }
     }
 
     $resolution = Resolve-KeepAwakeOwnerPid -StartProcessId $SelfProcessId -GetProcessInfo $GetProcessInfo
     if (-not $resolution.Resolved) {
-        # Failure case: no long-lived ancestor could be found. Fall back to the
-        # ephemeral self PID (a hook must never throw), but log loudly -- this
-        # lease will very likely be pruned on the supervisor's first pass,
-        # silently defeating the whole feature otherwise.
+        # No long-lived ancestor found. Fall back to the ephemeral self PID
+        # (a hook must never throw), but log loudly -- this lease will very
+        # likely be pruned on the supervisor's first pass.
         Write-KeepAwakeLog ("pid-resolution-FAILED reason=$($resolution.Reason) label=$Label -- falling back to ephemeral PID=$SelfProcessId; lease will likely be pruned immediately")
         return @{ ProcessId = $SelfProcessId; Resolved = $false; Reason = $resolution.Reason }
     }
@@ -396,11 +350,10 @@ function Resolve-KeepAwakeAcquireTarget {
     return @{ ProcessId = $resolution.ProcessId; Resolved = $true; Reason = $resolution.Reason }
 }
 
-# Task 7: Claude Code does not expose the session id as an environment variable
-# to hook subprocesses (verified 2026-07-20 -- see task-7-report.md); it is only
-# available as `session_id` in the JSON payload every hook command receives on
-# stdin. This parses that payload into a lease label. Pure given the JSON text,
-# so it is testable with plain strings -- no real stdin plumbing needed in tests.
+# Claude Code does not expose the session id as an environment variable to
+# hook subprocesses; it is only available as `session_id` in the JSON payload
+# every hook command receives on stdin. Parses that payload into a lease
+# label; pure given the JSON text, so it is testable with plain strings.
 function Resolve-KeepAwakeSessionLabel {
     param(
         [string]$StdinJson = '',
@@ -413,10 +366,10 @@ function Resolve-KeepAwakeSessionLabel {
         $obj = $StdinJson | ConvertFrom-Json
         # Property-collection indexer, not dot-access: under this module's
         # Set-StrictMode -Version Latest, `$obj.session_id` on a PSCustomObject
-        # that genuinely lacks the property THROWS PropertyNotFoundException --
-        # reproduced empirically -- which would misclassify a well-formed hook
-        # payload missing session_id as a JSON-parse error instead of this
-        # branch. Indexing into .PSObject.Properties is always safe.
+        # that genuinely lacks the property THROWS PropertyNotFoundException,
+        # which would misclassify a well-formed hook payload missing
+        # session_id as a JSON-parse error instead of this branch. Indexing
+        # into .PSObject.Properties is always safe.
         if ($null -eq $obj.PSObject.Properties['session_id']) {
             return @{ Label = $FallbackLabel; Source = 'fallback-missing-session-id' }
         }
@@ -449,8 +402,8 @@ function Get-DefaultPowerProvider {
             return ''
         }
         # Read from the registry rather than parsing `powercfg /query`: the lid
-        # action is a HIDDEN setting and does not appear in query output at all
-        # (verified 2026-07-20), so query-parsing would silently miss it.
+        # action is a HIDDEN setting and does not appear in query output at
+        # all, so query-parsing would silently miss it.
         GetAcValue = {
             param([string]$SubGuid, [string]$SettingGuid)
             $scheme = & (Get-PowerProvider).GetScheme
@@ -481,13 +434,12 @@ function Test-PowerArmed { return (Test-Path (Get-ArmedPath)) }
 # to tell "absent" from "corrupt" from "valid" -- see that function.
 $script:BaselineRequiredKeys = @('lidaction_ac', 'standbyidle_ac', 'hibernateidle_ac')
 
-# C1 fix: Test-PowerArmed was path-existence only, so an armed.json that
-# exists but does not parse (a crash or power loss mid-write, since the write
-# used to be a plain non-atomic Set-Content) made Test-PowerArmed report
-# "armed" while Get-PowerBaseline silently returned $null -- Restore-PowerBaseline
-# then bailed immediately, -Repair said "nothing to repair", and the machine
-# was permanently stuck with sleep disabled. This distinguishes the three
-# states so callers can react correctly to each:
+# Path-existence alone can't distinguish a usable baseline from a corrupt
+# one: an armed.json that exists but doesn't parse (e.g. a crash or power
+# loss mid-write) would otherwise report "armed" while Get-PowerBaseline
+# silently returns $null, and a caller that bails on $null leaves the
+# machine permanently stuck with sleep disabled. Distinguish the three
+# states so callers can react correctly:
 #   'absent'  -- no armed.json at all; nothing is armed.
 #   'corrupt' -- armed.json exists but doesn't parse, or parses without all
 #                three required 'original' keys. Unusable as a baseline.
@@ -524,13 +476,12 @@ function Save-PowerBaseline {
         return (Get-PowerBaseline)
     }
     if ($status -eq 'corrupt') {
-        # C1.2 fix: an unreadable/incomplete armed.json means the machine may
-        # already be armed with the true originals lost. Capturing "now" would
-        # read back the already-armed zeros and durably record THOSE as the
-        # baseline, permanently destroying the real originals and defeating
+        # An unreadable/incomplete armed.json means the machine may already
+        # be armed with the true originals lost. Capturing "now" would
+        # durably record the already-armed zeros as the baseline, defeating
         # the adopt-never-overwrite invariant this function exists to uphold.
         # Refuse; -Repair (Restore-PowerBaseline's corrupt-baseline path) is
-        # the only safe way out of this state.
+        # the only safe way out.
         Write-KeepAwakeLog 'baseline-capture-REFUSED armed.json present but unreadable/incomplete -- refusing to recapture (would record already-armed values as if they were the originals); run -Repair'
         return $null
     }
@@ -552,9 +503,9 @@ function Save-PowerBaseline {
     }
     $root = Get-KeepAwakeRoot
     if (-not (Test-Path $root)) { New-Item -ItemType Directory -Path $root -Force | Out-Null }
-    # C1.3: atomic write (temp file + Move-Item -Force) rather than a direct
+    # Atomic write (temp file + Move-Item -Force) rather than a direct
     # Set-Content -- a crash or power loss mid-write is exactly the scenario
-    # that produced the corrupt-armed.json defect this whole fix addresses.
+    # that would otherwise leave a corrupt armed.json behind.
     Write-JsonFileAtomic -Path (Get-ArmedPath) -Data $baseline
     Write-KeepAwakeLog ("baseline-saved lid=$($baseline.original.lidaction_ac) standby=$($baseline.original.standbyidle_ac) hibernate=$($baseline.original.hibernateidle_ac)")
     return $baseline
@@ -566,12 +517,10 @@ function Set-PowerArmed {
     $baseline = Save-PowerBaseline
     if ($null -eq $baseline) {
         # Save-PowerBaseline only returns $null when it refused to capture
-        # (corrupt armed.json present, C1.2) -- mutating power settings
-        # without a trustworthy baseline on disk would make a future restore
-        # impossible. Not reachable via the normal supervisor path today
-        # (Test-PowerArmed already reports "armed" for a corrupt file, so
-        # Invoke-SupervisorPass never calls this in that state), but guarded
-        # here too as defense in depth for any other caller.
+        # (corrupt armed.json present) -- mutating power settings without a
+        # trustworthy baseline would make a future restore impossible. Not
+        # reachable via the normal supervisor path today, but guarded here
+        # too as defense in depth for any other caller.
         Write-KeepAwakeLog 'power-arm-ABORTED baseline capture refused (corrupt armed.json present) -- not mutating power settings without a trustworthy baseline; run -Repair first'
         return $false
     }
@@ -590,17 +539,16 @@ function Set-PowerArmed {
     return $ok
 }
 
-# Returns a result hashtable rather than a bare bool (I4 fix): a bare bool
-# collapsed three very different situations into the same "$false" --
-# "nothing to do" (fine), "restore attempted and failed" (stuck, operator
-# must act), and "armed.json unreadable" (fine now, since this function
-# repairs that itself -- see below) all looked identical to -Repair, which is
-# the operator's last line of defence. Reason values:
+# Returns a result hashtable rather than a bare bool: a bare bool would
+# collapse "nothing to do" (fine), "restore attempted and failed" (stuck,
+# operator must act), and "armed.json unreadable" (fine, this function
+# repairs it -- see below) into the same "$false" for -Repair, the
+# operator's last line of defence. Reason values:
 #   'nothing-to-restore'       -- not armed; no-op, nothing wrong.
 #   'restored'                 -- valid baseline found and reapplied.
 #   'restored-from-corruption' -- armed.json was corrupt/unreadable; the
 #                                  documented Windows defaults were reapplied
-#                                  instead (C1.1) and the corrupt file cleared.
+#                                  instead, and the corrupt file cleared.
 #   'restore-failed'           -- a baseline (real or default) was known, but
 #                                  one or more powercfg writes failed. The
 #                                  machine may still be unable to sleep;
@@ -611,16 +559,14 @@ function Restore-PowerBaseline {
 
     $prov = Get-PowerProvider
     if ($status -eq 'corrupt') {
-        # C1.1 fix: armed.json exists but Get-PowerBaseline can't read a usable
-        # baseline out of it (non-atomic writes could previously be torn by a
-        # crash or power loss). Bailing out here, as the old code did, left
-        # the machine stuck at lid=0/standby=0/hibernate=0 with NO automatic
-        # recovery path -- exactly what the paramount invariant forbids.
+        # armed.json exists but Get-PowerBaseline can't read a usable baseline
+        # out of it. Bailing out here would leave the machine stuck at
+        # lid=0/standby=0/hibernate=0 with NO automatic recovery path.
         # Save-PowerBaseline already trusts $script:PowerDefaults for any
-        # individual value missing from a scheme, so falling back to the full
-        # default set here when the whole record is unusable is the same
-        # assumption, not a new one -- and these defaults are this machine's
-        # documented true originals (lid=1, standby=1200, hibernate=900).
+        # individual value missing from a scheme, so falling back to the
+        # full default set when the whole record is unusable is the same
+        # assumption -- these are this machine's documented true originals
+        # (lid=1, standby=1200, hibernate=900).
         Write-KeepAwakeLog 'baseline-CORRUPT armed.json present but unreadable/incomplete -- restoring documented defaults (lid=1 standby=1200 hibernate=900) instead of stranding the machine armed'
         $original = $script:PowerDefaults
     } else {
@@ -632,12 +578,9 @@ function Restore-PowerBaseline {
         }
     }
 
-    # Evaluate all three writes unconditionally rather than chaining them with
-    # PowerShell's short-circuiting -and: if restoring the lid setting fails,
-    # STANDBYIDLE and HIBERNATEIDLE must still be attempted. Those two are what
-    # actually gate sleep, so short-circuiting past them on an earlier failure
-    # would silently strand the machine at "never sleep" -- exactly the outcome
-    # the global constraint forbids.
+    # Evaluate all three writes unconditionally, not with -and short-circuit
+    # (same reasoning as Set-PowerArmed above): STANDBYIDLE/HIBERNATEIDLE
+    # gate sleep and must still be attempted even if the lid write fails.
     $r1 = & $prov.SetAcValue $script:SUB_BUTTONS $script:LIDACTION ([int]$original.lidaction_ac)
     $r2 = & $prov.SetAcValue $script:SUB_SLEEP $script:STANDBYIDLE ([int]$original.standbyidle_ac)
     $r3 = & $prov.SetAcValue $script:SUB_SLEEP $script:HIBERNATEIDLE ([int]$original.hibernateidle_ac)
@@ -657,14 +600,13 @@ function Restore-PowerBaseline {
     return @{ Result = $false; Reason = 'restore-failed' }
 }
 
-# I2 fix: a hard-killed supervisor or a power loss can leave armed.json (and
-# the armed power values) sitting across a reboot with nothing scheduled to
+# A hard-killed supervisor or a power loss can leave armed.json (and the
+# armed power values) sitting across a reboot with nothing scheduled to
 # reconcile them -- by design, nothing is installed in Task Scheduler for
-# this feature. Rather than add that, -Acquire calls this at the top of every
-# acquisition: if the machine is armed but not one single lease on disk is
-# backed by a live process, that is unambiguously a stale arm (every session
-# that could have justified it is gone), so it is safe to restore immediately
-# before the new lease and a fresh supervisor take over.
+# this feature. So -Acquire calls this at the top of every acquisition: if
+# the machine is armed but no lease on disk is backed by a live process,
+# that is unambiguously a stale arm, safe to restore before the new lease
+# and a fresh supervisor take over.
 function Resolve-StaleArmReconciliation {
     if (-not (Test-PowerArmed)) { return $false }
     $liveCount = 0
@@ -682,6 +624,10 @@ Add-Type -Namespace KbPower -Name Native -MemberDefinition @'
 public static extern uint SetThreadExecutionState(uint esFlags);
 '@ -ErrorAction SilentlyContinue
 
+# The L suffix on 0x80000000 is required: PowerShell 5.1 parses a bare
+# 0x80000000 literal as a negative Int32, and casting that to [uint32] throws
+# at module-import time, taking down the whole module. The L suffix parses
+# it as Int64 first, which casts cleanly to 2147483648.
 $script:ES_CONTINUOUS      = [uint32]0x80000000L
 $script:ES_SYSTEM_REQUIRED = [uint32]0x00000001
 
@@ -706,16 +652,14 @@ function Invoke-SupervisorPass {
         [Parameter(Mandatory)][datetimeoffset]$Now,
         [int]$IdleTimeoutMinutes = 15,
         [double]$CpuThreshold = 2.0,
-        # Task 7 fix-round finding: acquire-time freshness cannot distinguish a
-        # legitimate owner from an ephemeral wrapper -- both are young at the
-        # instant a lease is acquired (claude.exe is genuinely only seconds old
-        # on every real SessionStart too). The discriminator only exists once
-        # the resolved PID either survives or dies: a real owner lives for
-        # minutes to hours, so a lease pruned as process-dead within one poll
-        # interval of its own acquisition is an unambiguous signature that
-        # Resolve-KeepAwakeOwnerPid pinned the lease to an ephemeral process
-        # instead of the real long-lived owner. 60s = one poll interval, so
-        # this reliably catches the first-pass case.
+        # Acquire-time freshness cannot distinguish a legitimate owner from an
+        # ephemeral wrapper -- both are young at the instant a lease is
+        # acquired (claude.exe is genuinely only seconds old on every real
+        # SessionStart too). The discriminator only exists once the resolved
+        # PID survives or dies: a real owner lives for minutes to hours, so a
+        # lease pruned as process-dead within one poll interval of its own
+        # acquisition unambiguously means Resolve-KeepAwakeOwnerPid pinned it
+        # to an ephemeral process instead. 60s = one poll interval.
         [double]$ImmediatePruneThresholdSeconds = 60
     )
     $pruned = @()
@@ -725,7 +669,7 @@ function Invoke-SupervisorPass {
         if (-not (Test-ProcessAlive -ProcessId $lease.pid)) {
             Remove-Item $lease.path -Force -ErrorAction SilentlyContinue
             # A corrupt/missing 'acquired' value must never crash the supervisor
-            # (same defensive stance as Get-KeepAwakeLeases below) -- treat it as
+            # (same defensive stance as Get-KeepAwakeLeases above) -- treat it as
             # an ordinary prune rather than throwing.
             $ageSeconds = $null
             try { $ageSeconds = ($Now - [datetimeoffset]::Parse($lease.acquired)).TotalSeconds } catch { }
@@ -749,15 +693,10 @@ function Invoke-SupervisorPass {
             continue
         }
         # Persist the refreshed heartbeat/cpu_sample so the next pass compares
-        # against this pass's reading rather than the original acquisition value.
-        # M1 fix: $u is Update-LeaseActivity's copy of the Get-KeepAwakeLeases
-        # hashtable, which carries a 'path' key alongside the real lease
-        # fields (pid/label/mode/acquired/heartbeat/cpu_sample). The old code
-        # hand-listed those six field names to exclude 'path' from what gets
-        # written back to disk -- so any field later added to
-        # New-KeepAwakeLease would silently vanish the very first time the
-        # supervisor rewrote that lease. Removing 'path' and writing
-        # everything else forward means new fields survive automatically.
+        # against this reading, not the original acquisition value. $u also
+        # carries a 'path' key alongside the real lease fields; removing just
+        # that (rather than hand-listing the real fields) means any field
+        # later added to New-KeepAwakeLease survives here automatically.
         $u = $res.Lease.Clone()
         $u.Remove('path')
         Write-JsonFileAtomic -Path $lease.path -Data $u
@@ -770,20 +709,18 @@ function Invoke-SupervisorPass {
     return @{ LiveCount = $live; Pruned = $pruned; Armed = (Test-PowerArmed); ImmediatePruned = $immediatePruned }
 }
 
-# I1 fix, extracted as its own seam so the shutdown-race decision is
-# unit-testable without a real loop, a real mutex, or a real sleep: the
-# supervisor used to break out of its loop the instant LiveCount hit 0, then
-# spend the rest of the `finally` block (three SetAcValue calls -> six
-# powercfg.exe spawns, plausibly 1-3 seconds) still holding the mutex before
-# releasing it. A concurrent -Acquire landing in that window spawns a new
-# supervisor that loses the mutex race and exits immediately -- and nothing
-# retries, because every other hook path only fires -Heartbeat, which no-ops
-# against a lease with no supervisor watching it. That lease then sits live
-# on disk with the machine unarmed and nothing protecting the session.
-# Re-checking for live leases immediately before committing to exit bounds
-# that window to a single iteration: if one appeared, $GetLiveLeaseCount
-# (the real Get-KeepAwakeLeases/Test-ProcessAlive combo by default) reports
-# it and the loop resumes instead of tearing down.
+# Extracted as its own seam so the shutdown-race decision is unit-testable
+# without a real loop, a real mutex, or a real sleep: breaking out of the
+# loop the instant LiveCount hits 0 would still leave the rest of the
+# `finally` block (three SetAcValue calls -> six powercfg.exe spawns,
+# plausibly 1-3 seconds) holding the mutex before releasing it. A concurrent
+# -Acquire landing in that window spawns a new supervisor that loses the
+# mutex race and exits immediately, and nothing retries -- every other hook
+# path only fires -Heartbeat, a no-op against a lease with no supervisor
+# watching it, so that lease sits live with the machine unarmed. Re-checking
+# for live leases immediately before committing to exit bounds that window
+# to a single iteration: if one appeared, $GetLiveLeaseCount reports it and
+# the loop resumes instead of tearing down.
 function Test-SupervisorShouldContinueAfterEmptyPass {
     param(
         [scriptblock]$GetLiveLeaseCount = {
@@ -837,9 +774,9 @@ function Start-KeepAwakeSupervisor {
             $pass = Invoke-SupervisorPass -Now ([datetimeoffset]::Now) `
                         -IdleTimeoutMinutes $IdleTimeoutMinutes -CpuThreshold $CpuThreshold
             if ($pass.LiveCount -eq 0) {
-                # I1 fix: re-check for a lease that appeared in the tiny window
-                # since Invoke-SupervisorPass computed LiveCount, before
-                # committing to exit and releasing the mutex. `continue` (not
+                # Re-check for a lease that appeared in the tiny window since
+                # Invoke-SupervisorPass computed LiveCount, before committing
+                # to exit and releasing the mutex. `continue` (not
                 # Start-Sleep then continue) so the next loop iteration re-runs
                 # Invoke-SupervisorPass immediately and re-arms without delay.
                 if (Test-SupervisorShouldContinueAfterEmptyPass) {
