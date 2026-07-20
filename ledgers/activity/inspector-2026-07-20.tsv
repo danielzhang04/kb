@@ -1,0 +1,2 @@
+note
+Graded card 6a5c8ad2-1d991c23 (atlas Task 5: router + fast lane + debug REPL, commit ad5fa9a): 96 PASS T2 (bar 95), axes C97/S98/E94/Sf98. Re-ran atlas/tests 14/14 pass, verified 7-file scope + spec conformance of router/fastlane/repl/atlas.yaml, live REPL smoke returned grounded queue answer, cost ledger row confirmed.
