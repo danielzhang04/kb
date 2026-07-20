@@ -69,7 +69,9 @@ async def entrypoint(ctx: JobContext) -> None:
     await ctx.connect()  # console mode: connects the simulated room
     session = AgentSession(
         stt=deepgram.STTv2(**stt_kwargs),
-        vad=silero.VAD.load(),                       # enables adaptive/vad barge-in (framework default)
+        vad=silero.VAD.load(),
+        interruption_detection="vad",                # pin VAD barge-in; adaptive path needs LiveKit-hosted
+                                                     # inference (LIVEKIT_API_KEY), absent by design (serverless)
         llm=anthropic.LLM(model=cfg["fast_model"]),
         tts=deepgram.TTS(model=TTS_VOICE),
         max_tool_steps=cfg["max_tool_turns"],        # 5, not the plugin default 3
