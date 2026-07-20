@@ -137,3 +137,80 @@ Describe 'lease activity rules' {
         (Get-ProcessTreeCpu -ProcessId 999999) | Should -Be 0
     }
 }
+
+Describe 'power arm and restore' {
+    BeforeEach {
+        $script:TestRoot = Join-Path ([IO.Path]::GetTempPath()) ("ka-" + [guid]::NewGuid())
+        $env:KB_KEEPAWAKE_ROOT = $script:TestRoot
+        # Fake provider: an in-memory power scheme. No real machine state is touched.
+        $script:FakeStore = @{
+            '4f971e89-eebd-4455-a8de-9e59040e7347|5ca83367-6e45-459f-a27b-476b1d01c936' = 1
+            '238c9fa8-0aad-41ed-83f4-97be242c8f20|29f6c1db-86da-48c5-9fdb-f2b67b1f44da' = 1200
+            '238c9fa8-0aad-41ed-83f4-97be242c8f20|9d7815a6-7ee4-497e-8888-515a05f02364' = 900
+        }
+        Set-PowerProvider -Provider @{
+            GetAcValue = { param($SubGuid, $SettingGuid) $script:FakeStore["$SubGuid|$SettingGuid"] }
+            SetAcValue = { param($SubGuid, $SettingGuid, $Value) $script:FakeStore["$SubGuid|$SettingGuid"] = $Value; $true }
+            GetScheme  = { '381b4222-f694-41f0-9685-ff5bb260df2e' }
+        }
+    }
+    AfterEach {
+        Remove-Item $env:KB_KEEPAWAKE_ROOT -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item Env:\KB_KEEPAWAKE_ROOT -ErrorAction SilentlyContinue
+    }
+
+    It 'captures the current values as the baseline' {
+        $b = Save-PowerBaseline
+        $b.original.lidaction_ac     | Should -Be 1
+        $b.original.standbyidle_ac   | Should -Be 1200
+        $b.original.hibernateidle_ac | Should -Be 900
+        Test-Path (Join-Path $script:TestRoot 'armed.json') | Should -BeTrue
+    }
+
+    It 'does not mutate anything while capturing the baseline' {
+        # Ordering is load-bearing: if arming dies half-way, the baseline must
+        # already be on disk or the original values are lost forever.
+        Save-PowerBaseline | Out-Null
+        $script:FakeStore['4f971e89-eebd-4455-a8de-9e59040e7347|5ca83367-6e45-459f-a27b-476b1d01c936'] |
+            Should -Be 1
+    }
+
+    It 'arms all three settings to never/do-nothing' {
+        Set-PowerArmed | Should -BeTrue
+        $script:FakeStore['4f971e89-eebd-4455-a8de-9e59040e7347|5ca83367-6e45-459f-a27b-476b1d01c936'] | Should -Be 0
+        $script:FakeStore['238c9fa8-0aad-41ed-83f4-97be242c8f20|29f6c1db-86da-48c5-9fdb-f2b67b1f44da'] | Should -Be 0
+        $script:FakeStore['238c9fa8-0aad-41ed-83f4-97be242c8f20|9d7815a6-7ee4-497e-8888-515a05f02364'] | Should -Be 0
+    }
+
+    It 'round-trips: restore puts every original value back exactly' {
+        Set-PowerArmed | Out-Null
+        Restore-PowerBaseline | Should -BeTrue
+        $script:FakeStore['4f971e89-eebd-4455-a8de-9e59040e7347|5ca83367-6e45-459f-a27b-476b1d01c936'] | Should -Be 1
+        $script:FakeStore['238c9fa8-0aad-41ed-83f4-97be242c8f20|29f6c1db-86da-48c5-9fdb-f2b67b1f44da'] | Should -Be 1200
+        $script:FakeStore['238c9fa8-0aad-41ed-83f4-97be242c8f20|9d7815a6-7ee4-497e-8888-515a05f02364'] | Should -Be 900
+    }
+
+    It 'clears armed.json after a successful restore' {
+        Set-PowerArmed | Out-Null
+        Test-PowerArmed | Should -BeTrue
+        Restore-PowerBaseline | Out-Null
+        Test-PowerArmed | Should -BeFalse
+    }
+
+    It 'adopts an existing armed.json instead of overwriting it' {
+        # Supervisor-crash recovery: a second supervisor must restore the ORIGINAL
+        # values, not capture the already-armed zeros as if they were the baseline.
+        Set-PowerArmed | Out-Null
+        Save-PowerBaseline | Out-Null
+        (Get-PowerBaseline).original.standbyidle_ac | Should -Be 1200
+    }
+
+    It 'treats an absent original value as the documented default' {
+        $script:FakeStore.Remove('4f971e89-eebd-4455-a8de-9e59040e7347|5ca83367-6e45-459f-a27b-476b1d01c936')
+        (Save-PowerBaseline).original.lidaction_ac | Should -Be 1
+    }
+
+    It 'restore is a no-op when nothing was armed' {
+        Restore-PowerBaseline | Should -BeFalse
+    }
+}
