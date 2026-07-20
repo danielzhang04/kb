@@ -247,3 +247,200 @@
     flex-direction: column;
   }
 }
+
+/* ===========================================================================
+ * Shared section primitives (agent + workflow details).
+ *
+ * Section BODIES are pure components, so their chrome lives here rather than in a per-view stylesheet:
+ * one blocks/rows/chips vocabulary keeps two detail views looking like one product. Still token-only,
+ * still no decorative hue — the sole colours reachable from here are the status dots the shell owns.
+ * ======================================================================== */
+
+.entity-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.entity-block__title {
+  margin: 0;
+  color: var(--fg-dim);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.entity-block__count {
+  margin-left: var(--space-2);
+  color: var(--fg-faint);
+  font-weight: 400;
+  text-transform: none;
+}
+
+/* Prose: a real sentence written by a human (an agent's purpose, a definition's detail). */
+.entity-prose {
+  margin: 0;
+  color: var(--fg-primary);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+/* Note: the app EXPLAINING itself — absence, derivation, provenance. Quieter than prose by design. */
+.entity-note {
+  margin: 0;
+  color: var(--fg-faint);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+.entity-empty-value {
+  color: var(--fg-faint);
+}
+
+/* ---- Key/value grid ---- */
+.entity-kv {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
+}
+
+.entity-kv__row {
+  min-width: 0;
+}
+
+.entity-kv__row dt {
+  margin-bottom: var(--space-1);
+  color: var(--fg-faint);
+  font-size: var(--text-xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.entity-kv__row dd {
+  margin: 0;
+  color: var(--fg-dim);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+/* ---- Chips: label-and-mono differentiated, never hue-differentiated ---- */
+.entity-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.entity-chip {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  color: var(--fg-dim);
+  font-size: var(--text-xs);
+}
+
+/* ---- Lists of linkable entities ---- */
+.entity-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.entity-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  /* The 2px left rail is transparent until hover/active so geometry never shifts. */
+  border: 1px solid var(--border);
+  border-left: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+}
+
+.entity-row--link {
+  cursor: pointer;
+  transition: color 150ms ease-out, border-color 150ms ease-out;
+}
+
+.entity-row--link:hover:not(:disabled) {
+  border-left-color: var(--accent-strong);
+  color: var(--fg-primary);
+}
+
+.entity-row--link:disabled {
+  cursor: default;
+}
+
+.entity-row--link:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: -1px;
+}
+
+.entity-row__main {
+  flex: 1 1 220px;
+  min-width: 0;
+  color: var(--fg-primary);
+  /* Titles wrap in full. Truncation is the defect this arc exists to remove. */
+  overflow-wrap: anywhere;
+}
+
+.entity-row__ref,
+.entity-row__meta {
+  color: var(--fg-faint);
+  font-size: var(--text-xs);
+}
+
+/* ---- The NOT-DECLARED panel ----
+ * Neutral chrome on purpose: a missing declaration is a FACT, not an error, and must not borrow the
+ * error hue. It reads as a stated absence, which is exactly what it is. */
+.entity-undeclared {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg-sunken);
+}
+
+.entity-undeclared__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--fg-primary);
+  font-size: var(--text-sm);
+}
+
+.entity-undeclared__tag {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--fg-dim);
+  font-size: var(--text-xs);
+  letter-spacing: 0.04em;
+}
+
+.entity-undeclared__body {
+  margin: 0;
+  color: var(--fg-dim);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+}

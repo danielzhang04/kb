@@ -27,6 +27,9 @@ import {
   type EffectiveView,
 } from '../lib/routingClient';
 import { RoutingControl } from './routingControls';
+import { AgentDetail } from './AgentDetail';
+import type { RunMetadataDto } from '../control/controlClient';
+import type { NavTarget } from '../nav/stack';
 import '../styles/views/agents.css';
 
 const EMPTY_INDEX: PlaneAIndex = {
@@ -56,6 +59,11 @@ interface AgentRow {
   runnerBound: boolean;
   /** The declared default runtime from the agent file (advisory), or null. */
   declaredRuntime: string | null;
+  /** arc-3 step 3 — fetched by the roster on every load, previously rendered nowhere. */
+  declaredModel: string | null;
+  description: string | null;
+  ledger: { dispatches: number; steps: number; days: number };
+  sources: Array<'queue' | 'ledger'>;
 }
 
 /** Normalise a card's `project` field (string | string[]) into a flat list of project names. */
@@ -97,6 +105,12 @@ export function deriveRoster(index: PlaneAIndex): AgentRow[] {
       declared: false,
       runnerBound: false,
       declaredRuntime: null,
+      // Snapshot-derived rows know nothing about declarations or ledgers — say zero/null honestly
+      // rather than inventing values the snapshot cannot support.
+      declaredModel: null,
+      description: null,
+      ledger: { dispatches: 0, steps: 0, days: 0 },
+      sources: ['queue'],
     });
   }
 
@@ -119,6 +133,10 @@ function rowFromEntry(e: AgentRosterEntry): AgentRow {
     declared: e.declared,
     runnerBound: e.runnerBound,
     declaredRuntime: e.declaredRuntime,
+    declaredModel: e.declaredModel,
+    description: e.description,
+    ledger: { dispatches: e.ledger.dispatches, steps: e.ledger.steps, days: e.ledger.days },
+    sources: e.sources,
   };
 }
 
@@ -184,16 +202,39 @@ export function Agents({
   routing,
   sessionToken,
   onRequestSession,
+  focusAgentId,
+  onOpenAgent,
+  onBack,
+  activeSectionId,
+  onSectionChange,
+  onNavigate,
+  agentRuns,
 }: {
   snapshot?: PlaneAIndex;
   roster?: AgentRosterEntry[];
   routing?: RoutingSnapshot;
   sessionToken?: string;
   onRequestSession?: () => Promise<Session | null>;
+  /**
+   * arc-3 step 3 — the open agent, driven by the nav stack. Mirrors ManagedRuns: when `onOpenAgent` is
+   * omitted the view keeps its own state so it stays usable (and testable) standalone. A detail surface
+   * whose every click is inert when rendered without a controller is a defect, not a simplification.
+   */
+  focusAgentId?: string | null;
+  onOpenAgent?: (agentId: string) => void;
+  onBack?: () => void;
+  activeSectionId?: string;
+  onSectionChange?: (id: string) => void;
+  onNavigate?: (target: NavTarget) => void;
+  /** Runs joined to this agent by the caller. `undefined` = not loaded, which the detail says out loud. */
+  agentRuns?: RunMetadataDto[];
 } = {}): React.JSX.Element {
   const [fetched, setFetched] = useState<PlaneAIndex | null>(null);
   const [rosterState, setRosterState] = useState<AgentRosterEntry[] | null>(roster ?? null);
   const [routingState, setRoutingState] = useState<RoutingSnapshot | null>(routing ?? null);
+  // Uncontrolled fallback for the open agent when no nav stack is wired above this view.
+  const [localOpenId, setLocalOpenId] = useState<string | null>(null);
+  const openAgentId = onOpenAgent ? focusAgentId ?? null : localOpenId;
 
   useEffect(() => {
     if (snapshot) return;
@@ -264,6 +305,78 @@ export function Agents({
     return undefined;
   }
 
+  /**
+   * The governed model-routing control for one agent. Extracted so the table cell and the detail's
+   * Routing section are literally the same control rather than two drifting copies — every mutation
+   * still carries its own scope/key and is an audited server write.
+   */
+  function routingControlFor(a: AgentRow): React.JSX.Element {
+    return (
+      <RoutingControl
+        label={a.id}
+        testIdPrefix={`agent-${a.id}`}
+        registry={registry}
+        effective={effectiveById.get(a.id) ?? null}
+        canAct={canAct}
+        ttl
+        canClear={hasOverride(effectiveById.get(a.id))}
+        onApply={async (runtime, model, expires) => {
+          const token = await resolveToken();
+          if (!token) return { ok: false, reason: 'no session' };
+          const res = await postRoutingOverride(
+            { op: 'set', scope: 'agent', key: a.id, runtime, model, expires },
+            token,
+          );
+          if (res.ok) await refreshRouting();
+          return res;
+        }}
+        onClear={async () => {
+          const token = await resolveToken();
+          if (!token) return { ok: false, reason: 'no session' };
+          const res = await postRoutingOverride({ op: 'clear', scope: 'agent', key: a.id }, token);
+          if (res.ok) await refreshRouting();
+          return res;
+        }}
+      />
+    );
+  }
+
+  const openAgent = (id: string): void => {
+    if (onOpenAgent) onOpenAgent(id);
+    else setLocalOpenId(id);
+  };
+
+  const backToRoster = (): void => {
+    if (onBack) onBack();
+    else setLocalOpenId(null);
+  };
+
+  /**
+   * The detail REPLACES the roster in place — "a separate window, still inside the agents sidebar, with
+   * a back button", per the mandate. No new nav destination, no new App case: the locked IA is untouched.
+   *
+   * An id that is in the nav stack but not in the roster (a deleted agent, a stale back-forward) falls
+   * through to the table rather than rendering an empty shell.
+   */
+  const openAgentRow = openAgentId ? agentRows.find((a) => a.id === openAgentId) : undefined;
+  if (openAgentRow) {
+    return (
+      <section className="v-agents" aria-label="Agents view">
+        <AgentDetail
+          agent={openAgentRow}
+          index={index}
+          runs={agentRuns}
+          routing={routingControlFor(openAgentRow)}
+          activeSectionId={activeSectionId}
+          onSectionChange={onSectionChange}
+          onNavigate={onNavigate}
+          onBack={backToRoster}
+          backLabel="All agents"
+        />
+      </section>
+    );
+  }
+
   return (
     <section className="v-agents" aria-label="Agents view">
       <h2 className="v-agents__title">
@@ -292,14 +405,24 @@ export function Agents({
                 {agentRows.map((a) => (
                   <tr key={a.id} data-testid={`agent-row-${a.id}`}>
                     <td>
-                      <span className="v-agents__agent">
+                      {/* The agent id is the click target into the detail. A button (not a row-level
+                       *  onClick) so it is keyboard-reachable and announced as an action — the routing
+                       *  cell in this same row is itself interactive, so a whole-row handler would
+                       *  swallow its clicks. */}
+                      <button
+                        type="button"
+                        className="v-agents__agent v-agents__agent--link"
+                        data-testid={`agent-open-${a.id}`}
+                        aria-label={`Open ${a.id} detail`}
+                        onClick={() => openAgent(a.id)}
+                      >
                         <span
                           className={`mc-status-dot ${a.working ? 'mc-status-dot--running' : 'mc-status-dot--idle'}`}
                           aria-hidden="true"
                         />
                         <span className="mc-mono">{a.id}</span>
                         <span className="v-agents__state">{a.working ? 'working' : 'idle'}</span>
-                      </span>
+                      </button>
                     </td>
                     <td>
                       {a.role ? (
@@ -364,34 +487,7 @@ export function Agents({
                     <td className="mc-mono v-agents__last-active">
                       {a.lastActive ?? <span className="v-agents__idle">—</span>}
                     </td>
-                    <td>
-                      <RoutingControl
-                        label={a.id}
-                        testIdPrefix={`agent-${a.id}`}
-                        registry={registry}
-                        effective={effectiveById.get(a.id) ?? null}
-                        canAct={canAct}
-                        ttl
-                        canClear={hasOverride(effectiveById.get(a.id))}
-                        onApply={async (runtime, model, expires) => {
-                          const token = await resolveToken();
-                          if (!token) return { ok: false, reason: 'no session' };
-                          const res = await postRoutingOverride(
-                            { op: 'set', scope: 'agent', key: a.id, runtime, model, expires },
-                            token,
-                          );
-                          if (res.ok) await refreshRouting();
-                          return res;
-                        }}
-                        onClear={async () => {
-                          const token = await resolveToken();
-                          if (!token) return { ok: false, reason: 'no session' };
-                          const res = await postRoutingOverride({ op: 'clear', scope: 'agent', key: a.id }, token);
-                          if (res.ok) await refreshRouting();
-                          return res;
-                        }}
-                      />
-                    </td>
+                    <td>{routingControlFor(a)}</td>
                   </tr>
                 ))}
               </tbody>

@@ -455,7 +455,21 @@ function ViewBody({
     case 'workflows':
       return <Workflows sessionToken={sessionToken} onRequestSession={onRequestSession} />;
     case 'agents':
-      return <Agents sessionToken={sessionToken} onRequestSession={onRequestSession} />;
+      // arc-3: an agent row pushes that agent's detail onto the nav stack WITHIN this destination —
+      // "a separate window, still inside the agents sidebar, with a back button". No new NAV_SECTIONS
+      // entry and no new case here; the locked entity-first IA is untouched.
+      return (
+        <Agents
+          sessionToken={sessionToken}
+          onRequestSession={onRequestSession}
+          focusAgentId={entry.focus?.kind === 'agent' ? entry.focus.id : null}
+          onOpenAgent={(agentId) => onPush({ view: 'agents', focus: { kind: 'agent', id: agentId } })}
+          onBack={onBack}
+          activeSectionId={entry.section}
+          onSectionChange={onSectionChange}
+          onNavigate={onNavigateTarget}
+        />
+      );
     case 'tasks':
       return (
         <Tasks
