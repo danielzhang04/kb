@@ -1,0 +1,14 @@
+[
+  {
+    "name": "wf-r6-L31-boulder-src",
+    "shot_id": "L31",
+    "layer": "boulder",
+    "mode": "environment",
+    "delta": "A single heavy round dark boulder in clean side profile, with the single marker numeral '8' painted LARGE on its face in the locked red accent #d7402b — the numeral 8 and NOTHING else: no other digits, no decimal point, no comma, no words, no marks. Isolated on one solid uniform FLAT magenta background, NO glow, NO gradient, NO vignette, framed for a clean cut-out; flat-cel 2.5D vector, even medium-thick #241a12 outline.",
+    "aspect": "2:3",
+    "seed": [
+      "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/plates/L31.png",
+      "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+    ]
+  }
+]

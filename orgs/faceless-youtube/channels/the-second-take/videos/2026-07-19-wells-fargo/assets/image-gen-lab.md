@@ -567,3 +567,295 @@ the label over a deliberately empty metric field, which also sets up the reveal 
 - **L16's palette runs broader than the locked 2-3 colour scene palette** (multi-coloured product
   icons) and carries an extra `INSURANCE LEAFLET` label; **L31's** left half is a large flat grey
   wedge that brushes section-6 "thin/sparse". Both advisory.
+
+---
+
+## Round 6 — 2026-07-20 — last two defects + the FULL census + the `should_hold` root fix (Claude Opus 4.8, `claude-opus-4-8[1m]`)
+
+**Calls used: 2** (2 first-pass, 0 retries), estimated spend **~$0.27** at the $0.134/img 2K pro tier —
+inside the 6-gen ceiling, 4 unspent. Batches: `assets/_batches/round6.json`, `round6b.json`.
+The review half cost nothing.
+
+### Part 1 — the two carried-forward defects, both CLOSED
+
+**L31 boulder cutout — the fabricated `1` is gone. PASS.**
+
+The sourced figure was verified against the ledger *for this beat* before anything was generated,
+exactly as Round 5 insisted. The beat is script line 21, "the pressure rolled downhill, **off the
+scorecard**"; the scorecard number is the eight-products target — **[F-01]** ("Going for Gr-eight",
+1999, [S12]), **[F-03]** (the ratio reported to investors, [S5]), and script line 18, "The target
+was eight." So the boulder *is* the 8. It is the same figure Round 5 put on L105 and L116, and the
+same one L119 closes on, so the video is now internally consistent on it.
+
+The **prompt bug was fixed first, so it cannot recur**: the `cutout_prompt` in `shots.motion.json`
+asked for "a large marker scorecard number" and supplied none — the identical unsupplied-number
+request that produced L16's `3.5`. It now names the numeral verbatim (`'8'`) and adds an explicit
+exclusion ("the numeral 8 and NOTHING else: no other digits, no decimal point, no comma, no words,
+no marks"). **`shots.json`'s `still_prompt` for L31 carried the same bug** ("marked with the
+scorecard number") and was corrected the same way — it would have re-seeded the defect on any
+future regen of the plate.
+
+The regen also dropped the old seed, which was `refs/env/env-exterior-vivid.png` — the tropical
+Poyais anchor. It now seeds **this video's own L31 plate + the marker-lettering exemplar**, per §8
+step 2 (a cutout seeds the plate it lands on plus a style anchor).
+
+Verified by measurement, not by eye (§8 "measure a matte, never eyeball it"):
+
+| check | result |
+| --- | --- |
+| magenta px (hue 255–350, s>0.28, v>0.35) | **0 — 0.0000%** of 376,823 opaque px |
+| purple spill (hue 265–345, s>0.12) | **0 — 0.0000%** |
+| corner alpha (all four) | **0, 0, 0, 0** |
+| enclosed transparency (4-connectivity flood fill) | **0.0000%** — correct; a solid boulder has no counters, matching Round 4's baseline |
+
+Then composited over the **real** plate at the motion plan's actual `height_frac` 0.22 and all three
+path points. The `8` is legible at render scale, red is the locked `#d7402b` accent, line weight and
+palette match the plate, no halo, no eaten edge.
+
+**L97 photoreal hand — FIXED, and the crowd did NOT regress. The retry WINS and was placed.**
+
+Round 5's retry failed because it fought the defect with **words** — a dense anti-realism block
+("NEVER photorealistic, no knuckle creases, no fingernails, no skin wrinkles, no soft gradient
+shading, no airbrushed rendering, no realistic anatomy"). Piling realism vocabulary into a delta
+pulls the *whole frame* toward those concepts, which is the most plausible reading of why twenty
+crowd faces grew noses while the one hand was being corrected.
+
+**This retry escalated the MECHANISM instead** (§8: "a worded delta is a weak lever on a seeded
+detail — escalate the mechanism instead of re-wording"), and the mechanism was sitting in the
+library unused. §5 is explicit: *an EXPOSED articulated hand MUST come from a seeded pose primitive,
+never free-drawn.* Neither Round 5 gen seeded one. This gen seeds **`refs/base/reach-to-take.png`**
+— the grip primitive that already carries the correct flat-cel four-digit reaching geometry —
+alongside `base.png` and this video's crowd anchor `L102.png` (3 seeds, inside the §5 cap of 4).
+The anti-realism prose was then **deleted**, and the digit fact stated once, positively, as a
+property of the seed ("that reference IS the hand: copy its shape, its cream flat fill, its even
+medium-thick #241a12 outline, and its digit count of three fingers plus one thumb").
+
+Adjudicated on crops, not prose (§3 — a hand ruling with no crop artifact does not count):
+
+- **Hand: four digits.** Three separate crops at 3–5× (`r6-L97-hand.png`, `r6-L97-fist.png`,
+  `r6-L97-upper.png`) resolve the closed fist into exactly four cream lobes — the thumb wrapping
+  over the note stack plus three curled fingers. Flat cel fill, even `#241a12` outline, **no
+  fingernails, no knuckle creases, no gradient modelling**. The photoreal five-digit hand is gone.
+- **Crowd: held.** At 3× the crowd is round near-circle heads, dot eyes, one plain mouth line, **no
+  noses, no ears, no teeth**, flat uniform tones — the §2d rig, clean across every figure. **The
+  twenty-nose regression did not recur.**
+- **Bonus:** the kept Round-5 frame carried a large blank cream banner across the top (an unrequested
+  blank sign). It is gone; the back wall is plain.
+
+**Honest cost of the trade.** The retry's composition is looser than the frame it replaces: the
+crowd is smaller and cropped at the left edge, heads are clipped along the top, and the upper-right
+is a large flat grey wall that brushes §6's "no dead air". That is a LOW/advisory-class note. It is
+being traded against a **HIGH** §3 rig FAIL (Round 4 rated the equivalent L62 hand HIGH) plus an
+unrequested blank sign. **Net strictly better on the §3 checklist**, so the retry was placed and the
+old frame is recoverable from git. Recorded plainly so a human can overrule the composition call.
+
+### Part 2 — the census is now COMPLETE: 119 / 119
+
+Round 4 opened 51 and said plainly its findings were a floor. This round opened **the complementary
+68** — derived from the file list minus Round 4's stated coverage, not guessed. **68 opened, 0 not
+opened, 0 failed to load.** Together with Round 4 that is **every one of the 119 long-form shots.**
+
+Round 4 was right to distrust its sample. **The unviewed half was worse than the viewed half.**
+
+#### BLOCKING — fabricated / wrong on-screen facts (7 NEW frames)
+
+This class had already produced £200,000, `3.5`, `1,44.27` and the boulder `1`. It is not
+exhausted — it is the largest blocking class in the video.
+
+| shot | what is on screen | why it is blocking |
+| --- | --- | --- |
+| **L108** | the charge card reads **`GROSS MISREPRESENTATION`** (FRAUD struck through) | **The worst defect found this round.** No such charge exists in this case or in the ledger. Tolstedt's 2023 plea was to **obstructing a bank examination** [F-32] — the script's whole point is that the one criminal count was *not* the fraud. This invents a criminal charge against a real, named, living person. |
+| **L42** | `+$800`, `+$480`, `+$250`, `+$120`, `+$50` in a FEES & INTEREST column; credit gauge annotated `100` and `500` | five invented dollar figures; the gauge numbers are also impossible as FICO endpoints (real range 300–850) |
+| **L18** | scorecard metric row reads `2` `3` `4`, red bullseye centred on **`3`** | asserts the target was three — contradicts the eight-products target [F-01] that L19/L22/L23/L25 all establish, in the same video |
+| **L30** | wall counter reads **`1045`** | unsourced; the correct value for this beat is `8` or none |
+| **L46** | LED display reads **`77,000`** with malformed seven-segment glyphs | unsourced *and* garbled. (The frame's `93 MILLION` and `2011-2015` are both correct.) |
+| **L69** | ethics-line poster carries phone number **`600-600-500…`** | a fabricated phone number attributed to a real company's ethics line |
+| **L106** | scorecard balloon reads **`100`** | wrong number on the scorecard concept; must be `8` |
+
+#### BLOCKING — the Poyais swamp anchor is STILL IN 7 FRAMES
+
+Round 5 confirmed `refs/env/env-exterior-muted.png` **depicts a dead mangrove swamp** and fixed the
+selector. It regenerated only its own 10 frames. **The frames generated before that fix were never
+re-checked, and the swamp is still sitting in seven of them:**
+
+**L18, L49, L52, L75, L76, L93, L95** — all carry the *same* plate: stilt/prop-root mangroves,
+drowned stumps, cattails, standing brown water, leaf litter. Two reviewers independently identified
+it as one leaked asset reused, not seven independent drifts. Consequences beyond period: **L75**'s
+newspapers and TV are half-submerged; **L76**'s three regulators wade through open water; **L93**
+puts the boardroom chairs ankle-deep in a bog, which **breaks continuity with L92**, the matching
+shot of the same room.
+
+Related period drift, same root cause: **L59** (19th-century crinoline gown, bustled skirt, frock
+coats, lace jabots on the executive floor — HIGH), **L09** (full cobblestone street with gas-lamp
+storefronts — MEDIUM), **L117** (desert dunes and arid mountains where a near-black field was asked
+for — MEDIUM), **L47** (scattered autumn leaves — MEDIUM, the mildest form of the same bleed),
+**L69** and **L59** (antique brass crank cash registers in a 1999–2023 branch — MEDIUM).
+
+#### NEW DEFECT CLASS — the prompt leaks into the artwork (3 frames)
+
+Neither Round 4 nor Round 5 named this. The engine rendered the still_prompt's own **instructions**
+as diegetic lettering:
+
+- **L100** — a document lettered **`rig form`**, in lowercase italic serif. Verbatim from the
+  prompt's "hold ONLY the rig form."
+- **L69** — a cash register labelled **`COMEDY OFF`** above a toggle switch. Verbatim from the
+  register directive "Grim but not gory; comedy off."
+- **L42** — a caption reading **`THE QUIET DAMAGE OF A CARD NOBODY WANTED`**, the prompt's own
+  descriptive prose, in a frame that explicitly said "short labels only, no unrequested text."
+
+*Generalises to:* **register/rig/style directives must not be phrased as noun phrases inside a
+prompt that also authors diegetic lettering** — the engine cannot always tell an instruction from a
+label. Worth a VPW authoring rule.
+
+#### RIG violations
+
+- **BLOCKING/HIGH — figures fully off the rig:** **L28** (six conveyor figures with individual
+  noses, pupils, eyebrows, glasses, a moustache, realistic adult proportions), **L66** (a figure
+  with nose, ears, jawline, styled hair and **five-digit hands** on both), **L73** (a detective
+  mascot with nose, ear, jawline, pompadour and a five-digit hand, reading as a corporate logo),
+  **L15** (visible **nose** *and* visible **ear**, oval head, gradient-shaded face, open mouth with
+  a tongue), **L59** (crowd figures with noses and individualised faces).
+- **HIGH — photoreal / five-digit hands, the known drift point:** **L85** (a descending marble hand
+  with five digits, individual **fingernails**, knuckle creases, tendon ridges, airbrush gradient —
+  the single largest style break found), **L68** (a giant anatomical hand macro at ~5 digits, in a
+  frame whose prompt said in terms "no hand macro").
+- **HIGH/MEDIUM — blank featureless foreground faces:** **L30** (the banker), **L49**, **L70**,
+  **L100** (centre figure). Adds to Round 4's L74 / L110 / L29.
+- **MEDIUM — proportion drift, still the most widespread deviation:** **L100** (~6 heads tall),
+  **L57** (~4 heads tall, plus mitt hands), **L30**, **L49**, **L28**. Confirms Round 4's finding
+  that anonymous figures carrying no proportion-pinning seed are the systemic weak point.
+- **MEDIUM — other:** **L63** (egg/oval head with drawn brow ridges; near-pure-black outline),
+  **L32** (hand an undifferentiated blob, face with no mouth), **L98** (a mangled reptilian/avian
+  talon that resolves into no coherent form), **L04** (head cropped above the eyeline so no eyes are
+  in frame).
+
+#### LETTERING
+
+- **HIGH:** **L45** — the consent form reads **`YOU NAME`** (should be `YOUR NAME`). Section-3
+  blocking-class misspelling.
+- **MEDIUM:** **L66** (unrequested `FIRED` stamp + `FRAUD WITH NO AUTHOR`), **L40** (unrequested
+  `LOAN` ×2, `CHECKING PASSBOOK`, and `INVESTMENT BOOKLET` clipped mid-word by the frame edge),
+  **L71** (the literal word **`STAMP`** rendered as a placeholder, plus garbled seal micro-text),
+  **L76** (unrequested `BANK` on the pediment).
+- **LOW:** **L39** (unrequested `BANK ACCOUNT`), **L100** (unrequested `BANK` signage), **L75**
+  (`2016` duplicated on two newspapers), **L93** (`NOTHING` tag rotated 90°, reads bottom-to-top),
+  **L69** (`ETHICS-LINE` vs L68's `ETHICS LINE` — continuity mismatch between adjacent shots),
+  **L76** (garbled badge micro-lettering), **L61** (badges clipped at both frame edges).
+
+#### STYLE
+
+- **MEDIUM:** **L50** (photographic depth-of-field **bokeh** on the background street), **L107**
+  (thin pale outlines + airbrush gradients throughout), **L104** (a quasi-realistic US federal eagle
+  seal filled with a **radial gradient**, in a frame that said "no logos"), **L18** (watercolour /
+  painterly with thin sketchy linework), **L95** (a frame-within-a-frame — a swamp picture hanging
+  inside a swamp), **L52** (an incoherent woven dome where a timeline slice was asked for), **L48**
+  (a literal fishing net; no timeline, no year axis, no brackets delivered).
+- **LOW:** **L28** (palette broken well past the locked 2–3 colours; red no longer the single
+  semantic accent), **L02** / **L46** (gradients where flat cel was specified), **L111** (bubbly
+  extruded 3D lettering with a drop shadow), **L41** (the red accent splits a numeral so `565,000`
+  reads in two colours), **L92** (`?` as a sketchy pure-black multi-stroke brush mark), **L37**
+  (lowercase email overflowing its input field), **L09** (thin light linework).
+
+#### Fidelity misses — the frame did not deliver the shot
+
+**L52** (no timeline, no pile), **L48** (no timeline), **L93** (not the same room as L92), **L73**
+(a detective mascot, not a whistleblower award medallion), **L63** (worried, where the beat asked
+for a bored unsurprised shrug — a §3 expression-register defect), **L70** (mid-stride, where the
+prompt asked for a held stance), **L22** (a domestic living room, not a rally wall), **L02** (a
+pastoral park, not the base of the account tower), **L45** (the magnifier duplicates the signature
+instead of magnifying it).
+
+#### Clean
+
+**19 of the 68 carried no defect at all:** L07, L19, L25, L33, L53, L54, L56, L60, L65, L72, L77,
+L86, L87, L88, L89, L103, L113, L115, and L82/L84/L92/L112/L118 at LOW-only. **No £/€ glyph and no
+malformed numeral was found outside L46.** L88's `7 YEARS` / `LIFTED 2025` is correctly derived from
+[F-34]; L111's four sentence values, L72's `$5.4 MILLION`, L98's `$69M`, L86's `$1.95T`, L89's
+`$3 BILLION`, L77's `$100M` and L57's `5,300 FIRED` all check out against the ledger and are
+correctly labelled.
+
+### Part 3 — the `should_hold` root fix, APPLIED and mutation-verified
+
+Round 5 found the mechanism and fixed only the symptom, in `plan_pass2.py` — a per-video planner
+that protects one video. The root cause was applied this round, in the shared skill:
+`.claude/skills/image-generation/scripts/forge.py`.
+
+**Before:** `should_hold(mode, resolved_seeds)` derived the §2c RIG-HOLD block from the **seed
+list**, and `_is_char_seed()` returns False for everything under `/refs/env/`. A frame whose prompt
+was full of people but whose seeds were all environment anchors therefore received **no rig
+invariants at all** — the no-nose / no-ears / four-digit rules survived only as prose the engine
+ignored. That set was exactly **L01, L10, L17, L31**: Round 4's four worst rig frames.
+
+**After:** rig-hold derives from **what the frame CONTAINS**. A new `depicts_figures(prompt)` reads
+the prompt text — the only place that states what the image depicts — against a word-boundary
+figure vocabulary, and `should_hold(mode, resolved_seeds, delta="")` holds when **either** the
+content signal **or** the character-bearing seed signal fires. The seed signal is kept deliberately,
+so a terse delta on a seeded character ("him, seated") still holds.
+
+Two design points worth keeping:
+
+1. **The asymmetry is deliberate and is documented in the source.** A false positive costs one extra
+   paragraph on a figure-free gen — §2c is scoped to "every FOREGROUND / named / seeded cartoon
+   figure in this image", so it is inert when there are none. A false negative ships an off-rig
+   frame that must be paid for twice. **When in doubt, HOLD.**
+2. **A `_FIGURE_FALSE_FRIENDS` strip list runs before matching.** "hand" and "head" are genuine
+   figure signals (they caught the L62/L85/L97 hands), but this channel's prompts are full of
+   `hand-lettered`, `marker hand`, `hand-drawn`, `headline`, `letterhead`. Those idioms describe a
+   *rendering style*, not a body in frame, and are stripped so a pure lettering gen is not forced to
+   hold.
+
+**Tests: 4 colocated, all run with `py -3` before and after.**
+
+| test | before | after |
+| --- | --- | --- |
+| `test_forge_hold.py` | PASS | PASS |
+| `test_cutout.py` | OK | OK |
+| `test_forge_prop_guard.py` | PASS | PASS |
+| `test_forge_seed_requirement.py` | PASS | PASS |
+
+Two tests were added to `test_forge_hold.py`.
+`test_env_seeded_frame_that_depicts_figures_still_gets_rig_hold` reconstructs the actual bug: L31's
+real shape (env-only seeds, a prompt full of figures) plus L10's and L01's, and asserts the hold
+fires. It also asserts the fix did **not** degrade to "always true" — a genuinely figure-free
+environment, and a lettering-only prompt naming the marker hand, must both still return False, and
+`identity` mode must still never re-append.
+`test_depicts_figures_vocabulary_and_false_friends` pins the vocabulary and the substring safety
+(`management` / `manifest` must not read as `man`).
+
+**MUTATION RESULT — verified, not asserted.** The content signal was reverted in place (the
+`if depicts_figures(delta): return True` branch replaced with a comment), the suite re-run, and the
+new test **failed by name**:
+
+```
+test_env_seeded_frame_that_depicts_figures_still_gets_rig_hold
+  assert should_hold("environment", env, l31) is True
+AssertionError
+```
+
+The three pre-existing tests still passed under the mutation — confirming the new test, and only the
+new test, is what catches the regression. The fix was then restored from backup and all four suites
+re-run green.
+
+*Still surfaced, not self-applied (Round-3 convention):* a §5 bible note that an exposed articulated
+hand's fix is a **pose-primitive seed**, not stronger wording — this round's L97 result is the
+evidence for it.
+
+### Residual — what Round 6 did NOT fix
+
+- **Nothing from the Part-2 census was regenerated.** The 6-gen ceiling was owned by the two assigned
+  fixes (2 spent, 4 unspent). Every frame above is catalogued for a future pass, by design.
+- **Round 4's and Round 5's own untouched carry-forwards remain open:** L64 (`499 500 501 5? 54 55
+  66`), L62 (five-digit hand), L74 / L110 / L29 (blank faces), L94 / L38 / L43 / L55 / L34-36 / L81
+  (lettering and tier issues), L16's broad palette, L31's flat grey wedge.
+- **The inert manifest gate is still unfixed.** `render.resolve_scene_files` exempts every
+  `background.plate` shot, which is all 119. A green manifest still proves nothing here.
+- **`shots.json`'s `still_prompt` for L105 still describes a frame that does not exist** (Round 2's
+  one-time re-author). Carried since Round 3; a shot-list edit, not an art defect.
+- **Shorts remain unstarted** — 46 shots across 5 pieces, zero frames.
+
+### Re-render: NOT warranted yet
+
+Deliberately not run, and it should not be. A re-render now would bake in seven fabricated on-screen
+facts — including an **invented criminal charge against a real, named, living person** (L108) — plus
+seven swamp frames. The two fixes this round landed are real but they are 2 frames out of a
+36-frame defect list. **Re-render after the fact and period classes are cleared**, not before.
