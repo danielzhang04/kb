@@ -295,45 +295,43 @@ function Resolve-KeepAwakeOwnerPid {
     return @{ ProcessId = 0; Resolved = $false; Reason = 'max-hops-exceeded'; Hops = $MaxHops }
 }
 
-# Task 7 finding A: the name allowlist above can only ever catch KNOWN shell
-# names. If Claude Code's real hook-spawn chain interposes a wrapper that is
-# not on that list (bash.exe, wt.exe, a node helper, ...) the walk accepts it
-# silently with Reason='ok' and no warning -- reproducing the original defect
-# (lease pinned to a process about to exit) with no log line to diagnose it by.
-# A process created moments ago is almost certainly such a wrapper, not a real
-# long-lived owner, regardless of what it happens to be named -- so this is a
-# second, name-independent signal layered on top of the walk's result. Pure
-# function: just a duration comparison, no I/O, so it is trivially unit-testable.
-function Test-KeepAwakeOwnerFreshlySpawned {
-    param(
-        [Parameter(Mandatory)][datetime]$StartTime,
-        [Parameter(Mandatory)][datetime]$Now,
-        [double]$ThresholdSeconds = 5.0
-    )
-    return (($Now - $StartTime).TotalSeconds -lt $ThresholdSeconds)
-}
+# Task 7 finding A introduced an acquire-time "freshly spawned" sanity check
+# here (Test-KeepAwakeOwnerFreshlySpawned, since removed): if the resolved
+# owner process was created moments ago, it logged a best-effort warning and
+# continued. The Task 7 fix-round review found that signal close to useless --
+# it fires on nearly every legitimate SessionStart too, because the real owner
+# (claude.exe) genuinely *is* only seconds old at the instant a session
+# starts. At acquire time a legitimate owner is indistinguishable from an
+# ephemeral wrapper because both are young; the discriminator only exists once
+# the resolved process either survives or dies, which is why the replacement
+# detector (see Invoke-SupervisorPass's ImmediatePruneThresholdSeconds check)
+# lives in the supervisor's prune path instead: a lease pruned as process-dead
+# within seconds of its own acquisition is unambiguous, where "acquired
+# moments ago" alone never was.
 
 # Decision logic for keep_awake.ps1's -Acquire branch, moved into the module per
 # Task 7 finding B: the CLI-invoked script has zero Pester coverage of its own,
 # so the fallback-logging branch (Resolve-KeepAwakeOwnerPid failing) was never
 # exercised by any test -- only the success path got a manual smoke test. Living
 # here, the exact same logic the CLI runs is reachable with an injected
-# GetProcessInfo/Now, so every branch (explicit PID, resolved walk, failed walk,
-# freshly-spawned warning) is unit-testable without spawning a real process tree.
-# Keeps scripts/keep_awake.ps1 itself thin, per the plan's stated architecture.
+# GetProcessInfo, so every branch (explicit PID, resolved walk, failed walk) is
+# unit-testable without spawning a real process tree. Keeps
+# scripts/keep_awake.ps1 itself thin, per the plan's stated architecture.
+#
+# No acquire-time freshness check here (removed in the Task 7 fix-round, see
+# the comment above Resolve-KeepAwakeOwnerPid's ephemeral-name list) -- that is
+# why this no longer takes a $Now.
 function Resolve-KeepAwakeAcquireTarget {
     param(
         [Parameter(Mandatory)][int]$SelfProcessId,
         [int]$ProcessId = 0,
         [string]$Label = '',
-        [scriptblock]$GetProcessInfo = (Get-ProcessInfoProvider).GetProcessInfo,
-        [datetime]$Now = (Get-Date),
-        [double]$FreshnessThresholdSeconds = 5.0
+        [scriptblock]$GetProcessInfo = (Get-ProcessInfoProvider).GetProcessInfo
     )
     if ($ProcessId -gt 0) {
         # Caller (e.g. agent_runner.ps1, Task 6) already knows its own long-lived
-        # PID -- the ancestor walk and freshness heuristic both exist only to
-        # guess this when the caller can't tell us directly, so skip both.
+        # PID -- the ancestor walk exists only to guess this when the caller
+        # can't tell us directly, so skip it.
         return @{ ProcessId = $ProcessId; Resolved = $true; Reason = 'explicit' }
     }
 
@@ -345,13 +343,6 @@ function Resolve-KeepAwakeAcquireTarget {
         # silently defeating the whole feature otherwise.
         Write-KeepAwakeLog ("pid-resolution-FAILED reason=$($resolution.Reason) label=$Label -- falling back to ephemeral PID=$SelfProcessId; lease will likely be pruned immediately")
         return @{ ProcessId = $SelfProcessId; Resolved = $false; Reason = $resolution.Reason }
-    }
-
-    if ($resolution.StartTime -and (Test-KeepAwakeOwnerFreshlySpawned -StartTime $resolution.StartTime -Now $Now -ThresholdSeconds $FreshnessThresholdSeconds)) {
-        # Best-effort warning only -- per Task 7 finding A, a false positive here
-        # must never stop a session being protected, so the resolved PID is kept
-        # and used exactly as if this check hadn't run.
-        Write-KeepAwakeLog ("pid-resolution-SUSPICIOUS reason=freshly-spawned label=$Label pid=$($resolution.ProcessId) name=$($resolution.Name) hops=$($resolution.Hops) started=$($resolution.StartTime.ToString('yyyy-MM-ddTHH:mm:ss')) -- resolved owner was created moments ago and may be an ephemeral wrapper rather than the real long-lived owner; continuing best-effort")
     }
 
     return @{ ProcessId = $resolution.ProcessId; Resolved = $true; Reason = $resolution.Reason }
@@ -549,14 +540,37 @@ function Invoke-SupervisorPass {
     param(
         [Parameter(Mandatory)][datetimeoffset]$Now,
         [int]$IdleTimeoutMinutes = 15,
-        [double]$CpuThreshold = 2.0
+        [double]$CpuThreshold = 2.0,
+        # Task 7 fix-round finding: acquire-time freshness cannot distinguish a
+        # legitimate owner from an ephemeral wrapper -- both are young at the
+        # instant a lease is acquired (claude.exe is genuinely only seconds old
+        # on every real SessionStart too). The discriminator only exists once
+        # the resolved PID either survives or dies: a real owner lives for
+        # minutes to hours, so a lease pruned as process-dead within one poll
+        # interval of its own acquisition is an unambiguous signature that
+        # Resolve-KeepAwakeOwnerPid pinned the lease to an ephemeral process
+        # instead of the real long-lived owner. 60s = one poll interval, so
+        # this reliably catches the first-pass case.
+        [double]$ImmediatePruneThresholdSeconds = 60
     )
     $pruned = @()
+    $immediatePruned = @()
     $live = 0
     foreach ($lease in (Get-KeepAwakeLeases)) {
         if (-not (Test-ProcessAlive -ProcessId $lease.pid)) {
             Remove-Item $lease.path -Force -ErrorAction SilentlyContinue
-            Write-KeepAwakeLog ("lease-pruned label=$($lease.label) reason=process-dead pid=$($lease.pid)")
+            # A corrupt/missing 'acquired' value must never crash the supervisor
+            # (same defensive stance as Get-KeepAwakeLeases below) -- treat it as
+            # an ordinary prune rather than throwing.
+            $ageSeconds = $null
+            try { $ageSeconds = ($Now - [datetimeoffset]::Parse($lease.acquired)).TotalSeconds } catch { }
+            if ($null -ne $ageSeconds -and $ageSeconds -lt $ImmediatePruneThresholdSeconds) {
+                $ageRounded = [math]::Round($ageSeconds, 1)
+                Write-KeepAwakeLog ("lease-pruned-IMMEDIATELY label=$($lease.label) pid=$($lease.pid) age=${ageRounded}s -- PID resolution likely picked an ephemeral process; the owning session is NOT protected")
+                $immediatePruned += $lease.label
+            } else {
+                Write-KeepAwakeLog ("lease-pruned label=$($lease.label) reason=process-dead pid=$($lease.pid)")
+            }
             $pruned += $lease.label
             continue
         }
@@ -582,7 +596,7 @@ function Invoke-SupervisorPass {
     if ($live -gt 0 -and -not (Test-PowerArmed)) { Set-PowerArmed | Out-Null }
     elseif ($live -eq 0 -and (Test-PowerArmed)) { Restore-PowerBaseline | Out-Null }
 
-    return @{ LiveCount = $live; Pruned = $pruned; Armed = (Test-PowerArmed) }
+    return @{ LiveCount = $live; Pruned = $pruned; Armed = (Test-PowerArmed); ImmediatePruned = $immediatePruned }
 }
 
 function Start-KeepAwakeSupervisor {
@@ -645,7 +659,7 @@ Export-ModuleMember -Function Get-KeepAwakeRoot, Get-LeaseDir, Write-KeepAwakeLo
     Get-SafeLabel, Get-LeasePath, New-KeepAwakeLease, Get-KeepAwakeLeases, Remove-KeepAwakeLease,
     Test-ProcessAlive, Get-ProcessTreeCpu, Update-LeaseActivity,
     Set-ProcessInfoProvider, Get-ProcessInfoProvider, Resolve-KeepAwakeOwnerPid,
-    Test-KeepAwakeOwnerFreshlySpawned, Resolve-KeepAwakeAcquireTarget, Resolve-KeepAwakeSessionLabel,
+    Resolve-KeepAwakeAcquireTarget, Resolve-KeepAwakeSessionLabel,
     Set-PowerProvider, Get-PowerProvider, Get-PowerBaseline, Save-PowerBaseline, Set-PowerArmed,
     Restore-PowerBaseline, Test-PowerArmed,
     Set-ExecutionStateHold, Clear-ExecutionStateHold, Invoke-SupervisorPass, Start-KeepAwakeSupervisor

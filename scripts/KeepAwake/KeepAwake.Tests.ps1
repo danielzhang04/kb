@@ -342,6 +342,48 @@ Describe 'supervisor pass' {
         $r.Pruned | Should -Contain 'dead'
     }
 
+    # Task 7 fix-round: acquire-time freshness can't tell a legitimate owner
+    # from an ephemeral wrapper (both are young at that instant), so the
+    # unambiguous signal is moved here -- a lease pruned as process-dead
+    # within seconds of its own acquisition means PID resolution almost
+    # certainly pinned the lease to a wrapper, not the real long-lived owner.
+    It 'flags a lease pruned within seconds of acquisition as an immediate prune' {
+        New-KeepAwakeLease -Label 'wrapper' -Mode 'pid-only' -ProcessId 999999 -CpuSample 0 | Out-Null
+        # New-KeepAwakeLease stamps 'acquired' with the REAL wall clock, which
+        # this test cannot control -- rewrite it onto the test's synthetic
+        # $script:Now (same pattern as the idle-expiry test below) so the age
+        # comparison is deterministic (clock-injected via -Now) rather than
+        # depending on real wall-clock time or which shell invoked the suite.
+        $leasePath = Get-LeasePath -Label 'wrapper'
+        $lease = Get-Content $leasePath -Raw | ConvertFrom-Json
+        $lease.acquired = $script:Now.ToString('yyyy-MM-ddTHH:mm:sszzz')
+        $lease | ConvertTo-Json -Compress | Set-Content -Path $leasePath -Encoding utf8
+
+        $r = Invoke-SupervisorPass -Now $script:Now.AddSeconds(5) -IdleTimeoutMinutes 15 -CpuThreshold 2.0
+        $r.LiveCount | Should -Be 0
+        $r.Pruned | Should -Contain 'wrapper'
+        $r.ImmediatePruned | Should -Contain 'wrapper'
+        $logText = Get-Content (Join-Path $script:TestRoot 'keepawake.log') -Raw
+        $logText | Should -Match 'lease-pruned-IMMEDIATELY label=wrapper'
+        $logText | Should -Match 'NOT protected'
+    }
+
+    It 'does not flag a lease pruned long after acquisition as an immediate prune' {
+        New-KeepAwakeLease -Label 'stale' -Mode 'pid-only' -ProcessId 999999 -CpuSample 0 | Out-Null
+        $leasePath = Get-LeasePath -Label 'stale'
+        $lease = Get-Content $leasePath -Raw | ConvertFrom-Json
+        $lease.acquired = $script:Now.AddHours(-2).ToString('yyyy-MM-ddTHH:mm:sszzz')
+        $lease | ConvertTo-Json -Compress | Set-Content -Path $leasePath -Encoding utf8
+
+        $r = Invoke-SupervisorPass -Now $script:Now -IdleTimeoutMinutes 15 -CpuThreshold 2.0
+        $r.LiveCount | Should -Be 0
+        $r.Pruned | Should -Contain 'stale'
+        $r.ImmediatePruned | Should -Not -Contain 'stale'
+        $logText = Get-Content (Join-Path $script:TestRoot 'keepawake.log') -Raw
+        $logText | Should -Match 'lease-pruned label=stale reason=process-dead'
+        $logText | Should -Not -Match 'lease-pruned-IMMEDIATELY'
+    }
+
     It 'restores on the 1 -> 0 lease transition' {
         New-KeepAwakeLease -Label 'a' -Mode 'pid-only' -ProcessId $PID -CpuSample 0 | Out-Null
         Invoke-SupervisorPass -Now $script:Now -IdleTimeoutMinutes 15 -CpuThreshold 2.0 | Out-Null
@@ -536,39 +578,21 @@ Describe 'owner pid resolution' {
     }
 }
 
-Describe 'owner freshness sanity check' {
-    # Finding A (Task 5 review, closed in Task 7): the name allowlist can only
-    # ever catch KNOWN wrapper names. A process created moments ago is a
-    # name-independent signal that it's probably a wrapper about to exit,
-    # regardless of what it's called -- this is the seam that catches the NEXT
-    # unknown wrapper the allowlist hasn't been taught about yet.
-    It 'flags a process created a moment ago as freshly spawned' {
-        $now = [datetime]'2026-07-20T15:00:00'
-        Test-KeepAwakeOwnerFreshlySpawned -StartTime $now.AddSeconds(-1) -Now $now -ThresholdSeconds 5.0 |
-            Should -BeTrue
-    }
-
-    It 'does not flag a process that has been running well past the threshold' {
-        $now = [datetime]'2026-07-20T15:00:00'
-        Test-KeepAwakeOwnerFreshlySpawned -StartTime $now.AddMinutes(-10) -Now $now -ThresholdSeconds 5.0 |
-            Should -BeFalse
-    }
-
-    It 'treats the threshold boundary as not-yet-suspicious (strict less-than)' {
-        $now = [datetime]'2026-07-20T15:00:00'
-        Test-KeepAwakeOwnerFreshlySpawned -StartTime $now.AddSeconds(-5) -Now $now -ThresholdSeconds 5.0 |
-            Should -BeFalse
-    }
-}
-
 Describe 'acquire target resolution (Task 7 finding B: CLI decision logic, moved into the module)' {
     # This is the exact logic scripts/keep_awake.ps1's -Acquire branch runs.
-    # Living here as a pure function over an injected GetProcessInfo/Now means
-    # every branch -- explicit PID, resolved walk, failed walk, freshly-spawned
-    # warning -- is unit-testable without spawning a real process tree or a
-    # real detached supervisor (which would risk touching real machine power
-    # state -- see task-7-report.md for why that path is NOT exercised via a
-    # real scripts/keep_awake.ps1 subprocess in this suite).
+    # Living here as a pure function over an injected GetProcessInfo means
+    # every branch -- explicit PID, resolved walk, failed walk -- is
+    # unit-testable without spawning a real process tree or a real detached
+    # supervisor (which would risk touching real machine power state -- see
+    # task-7-report.md for why that path is NOT exercised via a real
+    # scripts/keep_awake.ps1 subprocess in this suite).
+    #
+    # Task 7 finding A originally added a "freshly spawned" acquire-time
+    # warning here. The Task 7 fix-round review found it fired on nearly every
+    # legitimate SessionStart (a real owner is also young at acquire time) and
+    # replaced it with a precise post-hoc detector in Invoke-SupervisorPass
+    # (immediate-prune -- see 'supervisor pass' > 'immediate-prune detector'
+    # below), so that warning and its tests were removed.
     BeforeAll {
         function New-FakeProcessInfoLookup2 {
             param([hashtable]$Map)
@@ -597,35 +621,34 @@ Describe 'acquire target resolution (Task 7 finding B: CLI decision logic, moved
         $r.Reason    | Should -Be 'explicit'
     }
 
-    It 'uses the resolved walk target when the owner is well-established (not freshly spawned)' {
-        $now = [datetime]'2026-07-20T15:00:00'
+    It 'uses the resolved walk target when the owner is well-established' {
         $map = @{
             100 = @{ Name = 'powershell.exe'; ParentProcessId = 200 }
-            200 = @{ Name = 'claude.exe'; ParentProcessId = 1; StartTime = $now.AddHours(-2) }
+            200 = @{ Name = 'claude.exe'; ParentProcessId = 1 }
         }
-        $r = Resolve-KeepAwakeAcquireTarget -SelfProcessId 100 -Label 'x' -Now $now `
+        $r = Resolve-KeepAwakeAcquireTarget -SelfProcessId 100 -Label 'x' `
                 -GetProcessInfo (New-FakeProcessInfoLookup2 -Map $map)
         $r.Resolved  | Should -BeTrue
         $r.ProcessId | Should -Be 200
-        (Get-Content (Join-Path $script:TestRoot 'keepawake.log') -Raw -ErrorAction SilentlyContinue) |
-            Should -Not -Match 'pid-resolution-SUSPICIOUS'
     }
 
-    It 'logs pid-resolution-SUSPICIOUS but still returns the resolved PID when the owner looks freshly spawned' {
+    It 'resolves the walk target and does not warn even when the owner was created moments ago' {
+        # No acquire-time freshness warning any more (Task 7 fix-round): a
+        # legitimate owner (claude.exe) is genuinely just as young as an
+        # ephemeral wrapper at this instant, so this case is indistinguishable
+        # here by design -- the resolved PID is used as-is, and the real
+        # detector lives downstream in the supervisor's prune path instead.
         $now = [datetime]'2026-07-20T15:00:00'
         $map = @{
             100 = @{ Name = 'powershell.exe'; ParentProcessId = 200 }
             200 = @{ Name = 'claude.exe'; ParentProcessId = 1; StartTime = $now.AddSeconds(-1) }
         }
-        $r = Resolve-KeepAwakeAcquireTarget -SelfProcessId 100 -Label 'sess-1' -Now $now -FreshnessThresholdSeconds 5.0 `
+        $r = Resolve-KeepAwakeAcquireTarget -SelfProcessId 100 -Label 'sess-1' `
                 -GetProcessInfo (New-FakeProcessInfoLookup2 -Map $map)
-        # Best-effort continue: a false positive must never withhold protection.
         $r.Resolved  | Should -BeTrue
         $r.ProcessId | Should -Be 200
-        $logText = Get-Content (Join-Path $script:TestRoot 'keepawake.log') -Raw
-        $logText | Should -Match 'pid-resolution-SUSPICIOUS'
-        $logText | Should -Match 'label=sess-1'
-        $logText | Should -Match 'name=claude.exe'
+        (Get-Content (Join-Path $script:TestRoot 'keepawake.log') -Raw -ErrorAction SilentlyContinue) |
+            Should -Not -Match 'pid-resolution-SUSPICIOUS'
     }
 
     It 'falls back to the self PID and logs pid-resolution-FAILED when the walk cannot resolve an owner' {
