@@ -15,7 +15,7 @@ voices:
   matilda: {vendor: elevenlabs, voice_id: XrExE9yKIg1WjnnlVkGX, model: eleven_turbo_v2_5}  # F — premium (paid-sub quota)
   mars:    {vendor: deepgram,   model: aura-2-mars-en}                                      # M — $0 workhorse (Daniel's pick, rides credit)
 
-wake_model: hey_jarvis
+wake_model: hey_atlas   # custom-trained model at config/hey_atlas.onnx; set to hey_jarvis (pretrained fallback) if it misbehaves
 wake_input_device: Intel   # mic-name substring pin; Windows default drifts to AirPods HFP (unusable audio)
 wake_threshold: 0.5
 

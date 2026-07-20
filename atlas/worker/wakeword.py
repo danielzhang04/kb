@@ -1,4 +1,5 @@
-"""Local wake-word listener (openwakeword 0.6.0, pretrained "hey jarvis" for V0).
+"""Local wake-word listener (openwakeword 0.6.0; custom-trained "hey atlas", pretrained
+"hey jarvis" as fallback).
 
 Always-on, on-device: it reads the mic in 80 ms / 1280-sample frames at 16 kHz and never
 sends audio anywhere — the only thing that leaves this module is the `on_wake()` call when
@@ -6,43 +7,72 @@ the wake score crosses threshold. Audio only leaves the PC AFTER wake, via the D
 stream that app.py opens on the engagement transition (spec §2 Listening decision).
 
 openwakeword facts (installed 0.6.0, verified against site-packages):
-- `Model(wakeword_models=["hey_jarvis"], inference_framework="onnx")`. tflite_runtime is NOT
-  installed in atlas/.venv; onnxruntime is — so onnx is the working framework.
-- Model names: the pretrained key is `hey_jarvis` (file hey_jarvis_v0.1.onnx). The loader does
-  `name.replace(" ", "_")` when matching, so "hey jarvis" and "hey_jarvis" both resolve; we use
-  the underscore form from config (`wake_model`).
-- `model.predict(frame)` -> dict keyed by model name, e.g. {"hey_jarvis": 0.83}. Trigger at > 0.5.
-- One-time model download performed into the default openwakeword cache
-  (site-packages/openwakeword/resources/models) via openwakeword.utils.download_models(["hey_jarvis"]);
-  ensure_models() below re-runs it idempotently if the onnx files are missing.
+- `Model(wakeword_models=[<arg>], inference_framework="onnx")`. tflite_runtime is NOT installed
+  in atlas/.venv; onnxruntime is — so onnx is the working framework.
+- Each entry in `wakeword_models` is resolved per-entry (model.py L89-100): if `os.path.exists(entry)`
+  it is loaded AS A FILE and keyed by its STEM `os.path.splitext(os.path.basename(entry))[0]`
+  (model.py L92); otherwise it is treated as a pretrained NAME, matched via `name.replace(" ", "_")`
+  against the shipped catalog and keyed by that bare name (model.py L95-100).
+- So a custom-trained model → pass the full path `config/hey_atlas.onnx`, predict-key = `hey_atlas`.
+  A pretrained model → pass the bare name `hey_jarvis`, predict-key = `hey_jarvis`. Because we name
+  the custom file `<wake_model>.onnx`, the stem == the configured name in both cases; `load_model()`
+  returns the exact key anyway so a rename can never silently break the score lookup in `listen()`.
+- `model.predict(frame)` -> dict keyed as above for single-output wake models (model.py L313-314),
+  e.g. {"hey_atlas": 0.91}. Trigger at > 0.5.
+- Feature models (melspectrogram.onnx + embedding_model.onnx) are shared by ALL wake models and
+  loaded by the preprocessor from the default cache (utils.py L70-73). A path-loaded custom model
+  needs ONLY those two — no pretrained download. Pretrained names additionally need `<name>_v0.1.onnx`.
+  `ensure_models()` fetches whatever is missing via openwakeword.utils.download_models (which always
+  grabs the feature models, and skips any name it can't match in the catalog — utils.py L662-668).
 """
 import logging
 import os
+from pathlib import Path
 from typing import Callable
 
 logger = logging.getLogger("atlas.wakeword")
+
+ATLAS = Path(__file__).resolve().parents[1]  # same root convention as worker/app.py
 
 FRAME_SAMPLES = 1280   # 80 ms @ 16 kHz — openwakeword's expected chunk
 SAMPLE_RATE = 16000
 THRESHOLD = 0.5
 
 
+def _resolve_model(model_name: str) -> tuple[str, str]:
+    """Map a configured wake_model to (openwakeword-arg, predict-dict-key).
+    Custom-trained models live at <ATLAS>/config/<name>.onnx and load by full path (keyed by
+    the file stem); anything else is passed through as a pretrained name (keyed by that name)."""
+    custom = ATLAS / "config" / f"{model_name}.onnx"
+    if custom.exists():
+        return str(custom), custom.stem
+    return model_name, model_name
+
+
 def ensure_models(model_name: str) -> None:
-    """Idempotently fetch the pretrained onnx model + feature models into the default cache."""
+    """Idempotently fetch the onnx models the given wake model needs into the default cache.
+    A custom `config/<name>.onnx` needs only the shared feature models; a pretrained name also
+    needs `<name>_v0.1.onnx`."""
     import openwakeword
     models_dir = os.path.join(os.path.dirname(openwakeword.__file__), "resources", "models")
-    needed = ["melspectrogram.onnx", "embedding_model.onnx", f"{model_name}_v0.1.onnx"]
+    needed = ["melspectrogram.onnx", "embedding_model.onnx"]
+    if not (ATLAS / "config" / f"{model_name}.onnx").exists():
+        needed.append(f"{model_name}_v0.1.onnx")  # pretrained model file lives in the cache too
     if all(os.path.exists(os.path.join(models_dir, f)) for f in needed):
         return
     from openwakeword.utils import download_models
-    download_models([model_name])
+    download_models([model_name])  # always fetches feature models; skips names not in the catalog
 
 
 def load_model(model_name: str):
-    """Build an openwakeword Model for a single pretrained wake word (onnx framework)."""
+    """Build an openwakeword Model for a single wake word (onnx framework) and return
+    (model, predict_key). `predict_key` is the key `model.predict()` uses for this model, which
+    `listen()` must look up — see the module docstring for how it is derived per model kind."""
     ensure_models(model_name)
     from openwakeword.model import Model
-    return Model(wakeword_models=[model_name], inference_framework="onnx")
+    model_arg, predict_key = _resolve_model(model_name)
+    model = Model(wakeword_models=[model_arg], inference_framework="onnx")
+    return model, predict_key
 
 
 def resolve_input_device(substring: str | None, devices=None):
@@ -74,7 +104,7 @@ def listen(on_wake: Callable[[], None], model_name: str = "hey_jarvis",
     try:
         import sounddevice as sd
 
-        model = load_model(model_name)
+        model, predict_key = load_model(model_name)
         dev = resolve_input_device(device)
         logger.info("wake listener on input device: %s",
                     sd.query_devices(dev)["name"] if dev is not None else "system default")
@@ -85,7 +115,7 @@ def listen(on_wake: Callable[[], None], model_name: str = "hey_jarvis",
             while True:
                 frame, _ = stream.read(FRAME_SAMPLES)
                 scores = model.predict(frame[:, 0])
-                if scores.get(model_name, 0.0) > threshold:
+                if scores.get(predict_key, 0.0) > threshold:
                     now = _time.monotonic()
                     if now - last_trigger > 3.0:   # refractory window: one wake per phrase,
                         last_trigger = now          # not one per 80ms frame while scores stay high
