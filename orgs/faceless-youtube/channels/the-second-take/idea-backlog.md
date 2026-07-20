@@ -23,7 +23,7 @@ premise, no famous name · **C** = pure-obscure anchor (hold/repackage while the
 
 | Rank | ID | Score | Anchor | Working title | Format | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | ST-033 | 95 | A | A Bank Opened 3.5 Million Accounts Nobody Asked For | long + shorts | idea |
+| 1 | ST-033 | 95 | A | A Bank Opened 3.5 Million Accounts Nobody Asked For | long + shorts | scripted |
 | 2 | ST-013 | 94 | A | Diamonds Are Worthless. One Ad Made Them Forever. | long + shorts | idea |
 | 3 | ST-029 | 94 | A | The $30 Billion Truck That Only Rolled Downhill | long + shorts | idea |
 | 4 | ST-017 | 93 | A | Europe's Hottest Company Had $2 Billion That Didn't Exist | long + shorts | idea |
@@ -670,7 +670,7 @@ premise, no famous name · **C** = pure-obscure anchor (hold/repackage while the
 - **Score:** 95/100 (payload 18, hook 15, lever 9, demand 15, monetization 15, diff 14, fit 4, feasibility 5)
 - **Candidate shorts (provisional):** • "A bank opened 3.5 million accounts no one asked for" • the fraud that came from a rhyme: 'eight is great' • they fired the employees who reported it
 - **Sources:** en.wikipedia.org/wiki/Wells_Fargo_cross-selling_scandal · sec.gov press release 2020-281 (Stumpf/Tolstedt charges) · congress.gov IF11129 (timeline) · cnn.com Tolstedt sentencing (2023-09-15)
-- **Status:** idea
+- **Status:** scripted
 
 ## Parking lot (raw, unranked — strong bench from the 2026-07-04 scout, promote on demand)
 
