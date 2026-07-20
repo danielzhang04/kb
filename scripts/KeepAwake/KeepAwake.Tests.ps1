@@ -47,10 +47,60 @@ Describe 'lease store' {
         (Get-LeasePath -Label '../../evil') | Should -BeLike "$leaseDir*"
     }
 
-    It 'ignores corrupt lease files rather than throwing' {
+    It 'ignores corrupt lease files rather than throwing, and deletes them (M2)' {
+        # M2 fix: a lease that fails to parse used to be silently skipped on
+        # every single pass forever (logging one lease-corrupt line every poll
+        # interval indefinitely) without ever being cleaned up. It carries no
+        # recoverable information, so the fix deletes it outright.
         New-KeepAwakeLease -Label 'good' -Mode 'idle-expiry' -ProcessId $PID -CpuSample 0 | Out-Null
-        Set-Content -Path (Join-Path $script:TestRoot 'leases\bad.lease') -Value '{not json' -Encoding utf8
+        $badPath = Join-Path $script:TestRoot 'leases\bad.lease'
+        Set-Content -Path $badPath -Value '{not json' -Encoding utf8
         @(Get-KeepAwakeLeases).Count | Should -Be 1
+        Test-Path $badPath | Should -BeFalse
+    }
+
+    It 'writes lease files atomically (no bare temp file left behind)' {
+        New-KeepAwakeLease -Label 'atomic-check' -Mode 'idle-expiry' -ProcessId $PID -CpuSample 0 | Out-Null
+        $leaseDir = Join-Path $script:TestRoot 'leases'
+        @(Get-ChildItem $leaseDir -Filter '*.tmp').Count | Should -Be 0
+        @(Get-ChildItem $leaseDir -Filter '*.lease').Count | Should -Be 1
+    }
+}
+
+Describe 'lease heartbeat update (I3: atomic, corruption-safe, moved off the CLI)' {
+    BeforeEach {
+        $script:TestRoot = Join-Path ([IO.Path]::GetTempPath()) ("ka-" + [guid]::NewGuid())
+        $env:KB_KEEPAWAKE_ROOT = $script:TestRoot
+    }
+    AfterEach {
+        Remove-Item $env:KB_KEEPAWAKE_ROOT -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item Env:\KB_KEEPAWAKE_ROOT -ErrorAction SilentlyContinue
+    }
+
+    It 'updates the heartbeat field and preserves every other field' {
+        New-KeepAwakeLease -Label 'hb' -Mode 'idle-expiry' -ProcessId $PID -CpuSample 12.5 | Out-Null
+        $before = @(Get-KeepAwakeLeases)[0]
+
+        (Update-KeepAwakeLeaseHeartbeat -Label 'hb') | Should -BeTrue
+
+        $after = @(Get-KeepAwakeLeases)[0]
+        $after.pid        | Should -Be $before.pid
+        $after.label      | Should -Be $before.label
+        $after.mode       | Should -Be $before.mode
+        $after.acquired   | Should -Be $before.acquired
+        $after.cpu_sample | Should -Be $before.cpu_sample
+    }
+
+    It 'is a silent no-op (returns $false, does not throw) when the lease does not exist' {
+        { Update-KeepAwakeLeaseHeartbeat -Label 'nobody-here' } | Should -Not -Throw
+        (Update-KeepAwakeLeaseHeartbeat -Label 'nobody-here') | Should -BeFalse
+    }
+
+    It 'treats a corrupt lease file as a no-op instead of throwing (must never surface into a hook)' {
+        $path = Get-LeasePath -Label 'corrupt-hb'
+        Set-Content -Path $path -Value '{not valid json' -Encoding utf8
+        { Update-KeepAwakeLeaseHeartbeat -Label 'corrupt-hb' } | Should -Not -Throw
+        (Update-KeepAwakeLeaseHeartbeat -Label 'corrupt-hb') | Should -BeFalse
     }
 }
 
@@ -184,7 +234,9 @@ Describe 'power arm and restore' {
 
     It 'round-trips: restore puts every original value back exactly' {
         Set-PowerArmed | Out-Null
-        Restore-PowerBaseline | Should -BeTrue
+        $r = Restore-PowerBaseline
+        $r.Result | Should -BeTrue
+        $r.Reason | Should -Be 'restored'
         $script:FakeStore['4f971e89-eebd-4455-a8de-9e59040e7347|5ca83367-6e45-459f-a27b-476b1d01c936'] | Should -Be 1
         $script:FakeStore['238c9fa8-0aad-41ed-83f4-97be242c8f20|29f6c1db-86da-48c5-9fdb-f2b67b1f44da'] | Should -Be 1200
         $script:FakeStore['238c9fa8-0aad-41ed-83f4-97be242c8f20|9d7815a6-7ee4-497e-8888-515a05f02364'] | Should -Be 900
@@ -211,7 +263,9 @@ Describe 'power arm and restore' {
     }
 
     It 'restore is a no-op when nothing was armed' {
-        Restore-PowerBaseline | Should -BeFalse
+        $r = Restore-PowerBaseline
+        $r.Result | Should -BeFalse
+        $r.Reason | Should -Be 'nothing-to-restore'
     }
 
     # Regression test for the -and short-circuit bug: a naive
@@ -282,7 +336,9 @@ Describe 'power arm and restore' {
             SetAcValue = { param($SubGuid, $SettingGuid, $Value) $false }
             GetScheme  = { '381b4222-f694-41f0-9685-ff5bb260df2e' }
         }
-        Restore-PowerBaseline | Should -BeFalse
+        $r = Restore-PowerBaseline
+        $r.Result | Should -BeFalse
+        $r.Reason | Should -Be 'restore-failed'
         Test-PowerArmed | Should -BeTrue
         $b = Get-PowerBaseline
         $b.original.lidaction_ac     | Should -Be 1
@@ -290,7 +346,7 @@ Describe 'power arm and restore' {
         $b.original.hibernateidle_ac | Should -Be 900
     }
 
-    It 'returns $false from Restore-PowerBaseline when any single write fails' {
+    It 'returns Result=$false from Restore-PowerBaseline when any single write fails' {
         Set-PowerArmed | Out-Null
         Set-PowerProvider -Provider @{
             GetAcValue = { param($SubGuid, $SettingGuid) $script:FakeStore["$SubGuid|$SettingGuid"] }
@@ -302,7 +358,112 @@ Describe 'power arm and restore' {
             }
             GetScheme  = { '381b4222-f694-41f0-9685-ff5bb260df2e' }
         }
-        Restore-PowerBaseline | Should -BeFalse
+        (Restore-PowerBaseline).Result | Should -BeFalse
+    }
+
+    # C1 fix regression tests: a corrupt/unparseable armed.json used to make
+    # Test-PowerArmed report "armed" (path-existence only) while
+    # Get-PowerBaseline silently returned $null, so Restore-PowerBaseline
+    # bailed immediately and the machine was stuck at lid=0/standby=0/
+    # hibernate=0 with no automatic recovery -- and -Repair claimed "nothing
+    # to repair" while the file sat right there. These prove the fix: the
+    # documented Windows defaults (this machine's true originals) are
+    # restored instead of stranding the machine armed.
+    It 'restores the documented defaults and clears the file when armed.json is unparseable' {
+        New-Item -ItemType Directory -Path $script:TestRoot -Force | Out-Null
+        Set-Content -Path (Join-Path $script:TestRoot 'armed.json') -Value '{not valid json' -Encoding utf8
+        Test-PowerArmed | Should -BeTrue
+        $r = Restore-PowerBaseline
+        $r.Result | Should -BeTrue
+        $r.Reason | Should -Be 'restored-from-corruption'
+        $script:FakeStore['4f971e89-eebd-4455-a8de-9e59040e7347|5ca83367-6e45-459f-a27b-476b1d01c936'] | Should -Be 1
+        $script:FakeStore['238c9fa8-0aad-41ed-83f4-97be242c8f20|29f6c1db-86da-48c5-9fdb-f2b67b1f44da'] | Should -Be 1200
+        $script:FakeStore['238c9fa8-0aad-41ed-83f4-97be242c8f20|9d7815a6-7ee4-497e-8888-515a05f02364'] | Should -Be 900
+        Test-PowerArmed | Should -BeFalse
+    }
+
+    It 'restores the documented defaults when armed.json parses but is missing the original keys' {
+        # Reproduces a torn/partial write specifically: valid JSON, but the
+        # 'original' block never made it to disk.
+        New-Item -ItemType Directory -Path $script:TestRoot -Force | Out-Null
+        '{"armed_at":"2026-07-20T00:00:00+00:00","scheme":"x"}' |
+            Set-Content -Path (Join-Path $script:TestRoot 'armed.json') -Encoding utf8
+        $r = Restore-PowerBaseline
+        $r.Result | Should -BeTrue
+        $r.Reason | Should -Be 'restored-from-corruption'
+        $script:FakeStore['238c9fa8-0aad-41ed-83f4-97be242c8f20|29f6c1db-86da-48c5-9fdb-f2b67b1f44da'] | Should -Be 1200
+    }
+
+    It 'Save-PowerBaseline refuses to recapture when armed.json is present but corrupt' {
+        # Regression for the defeat-the-adopt-invariant scenario: recapturing
+        # "now" against a corrupt armed.json would read back the already-armed
+        # zeros and durably record THOSE as the baseline, losing the real
+        # originals forever.
+        New-Item -ItemType Directory -Path $script:TestRoot -Force | Out-Null
+        Set-Content -Path (Join-Path $script:TestRoot 'armed.json') -Value '{not valid json' -Encoding utf8
+        $result = Save-PowerBaseline
+        $result | Should -BeNullOrEmpty
+        # The corrupt file must be left exactly as it was for -Repair to see --
+        # refusing must not itself further mutate the file.
+        (Get-Content (Join-Path $script:TestRoot 'armed.json') -Raw).TrimEnd("`r", "`n") | Should -Be '{not valid json'
+    }
+
+    It 'Set-PowerArmed aborts without mutating power settings when baseline capture is refused' {
+        New-Item -ItemType Directory -Path $script:TestRoot -Force | Out-Null
+        Set-Content -Path (Join-Path $script:TestRoot 'armed.json') -Value '{not valid json' -Encoding utf8
+        (Set-PowerArmed) | Should -BeFalse
+        # Values must be untouched -- Set-PowerArmed must not have proceeded
+        # to write zeros without a trustworthy baseline on disk.
+        $script:FakeStore['238c9fa8-0aad-41ed-83f4-97be242c8f20|29f6c1db-86da-48c5-9fdb-f2b67b1f44da'] | Should -Be 1200
+    }
+}
+
+Describe 'stale arm reconciliation (I2: reconcile after a hard kill or power loss)' {
+    BeforeEach {
+        $script:TestRoot = Join-Path ([IO.Path]::GetTempPath()) ("ka-" + [guid]::NewGuid())
+        $env:KB_KEEPAWAKE_ROOT = $script:TestRoot
+        $script:FakeStore = @{
+            '4f971e89-eebd-4455-a8de-9e59040e7347|5ca83367-6e45-459f-a27b-476b1d01c936' = 1
+            '238c9fa8-0aad-41ed-83f4-97be242c8f20|29f6c1db-86da-48c5-9fdb-f2b67b1f44da' = 1200
+            '238c9fa8-0aad-41ed-83f4-97be242c8f20|9d7815a6-7ee4-497e-8888-515a05f02364' = 900
+        }
+        Set-PowerProvider -Provider @{
+            GetAcValue = { param($SubGuid, $SettingGuid) $script:FakeStore["$SubGuid|$SettingGuid"] }
+            SetAcValue = { param($SubGuid, $SettingGuid, $Value) $script:FakeStore["$SubGuid|$SettingGuid"] = $Value; $true }
+            GetScheme  = { '381b4222-f694-41f0-9685-ff5bb260df2e' }
+        }
+    }
+    AfterEach {
+        Remove-Item $env:KB_KEEPAWAKE_ROOT -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item Env:\KB_KEEPAWAKE_ROOT -ErrorAction SilentlyContinue
+    }
+
+    It 'reconciles (restores originals) when armed with zero live leases -- the stale-arm signature' {
+        Set-PowerArmed | Out-Null
+        # A dead pid stands in for "a hard-killed supervisor's session is gone".
+        New-KeepAwakeLease -Label 'ghost' -Mode 'pid-only' -ProcessId 999999 -CpuSample 0 | Out-Null
+
+        (Resolve-StaleArmReconciliation) | Should -BeTrue
+        Test-PowerArmed | Should -BeFalse
+        $script:FakeStore['238c9fa8-0aad-41ed-83f4-97be242c8f20|29f6c1db-86da-48c5-9fdb-f2b67b1f44da'] | Should -Be 1200
+    }
+
+    It 'does nothing when at least one lease is backed by a live process' {
+        Set-PowerArmed | Out-Null
+        New-KeepAwakeLease -Label 'alive' -Mode 'pid-only' -ProcessId $PID -CpuSample 0 | Out-Null
+
+        (Resolve-StaleArmReconciliation) | Should -BeFalse
+        Test-PowerArmed | Should -BeTrue
+    }
+
+    It 'does nothing when the machine is not armed at all' {
+        (Resolve-StaleArmReconciliation) | Should -BeFalse
+    }
+
+    It 'also reconciles when armed with no lease files present at all (zero is zero either way)' {
+        Set-PowerArmed | Out-Null
+        (Resolve-StaleArmReconciliation) | Should -BeTrue
+        Test-PowerArmed | Should -BeFalse
     }
 }
 
@@ -429,6 +590,90 @@ Describe 'supervisor pass' {
         New-KeepAwakeLease -Label 'a' -Mode 'pid-only' -ProcessId $PID -CpuSample 0 | Out-Null
         Invoke-SupervisorPass -Now $script:Now -IdleTimeoutMinutes 15 -CpuThreshold 2.0 | Out-Null
         (@(Get-KeepAwakeLeases)[0]).cpu_sample | Should -BeGreaterOrEqual 0
+    }
+
+    # M1 regression test: the supervisor's lease rewrite used to hand-list six
+    # field names (pid/label/mode/acquired/heartbeat/cpu_sample), so any field
+    # later added to New-KeepAwakeLease would be silently dropped the first
+    # time the supervisor rewrote that lease. The fix instead clones the
+    # in-memory lease and removes only 'path' (the one key that must never
+    # reach disk), so anything else present flows through untouched. This
+    # exercises that exact mechanism directly against a lease hashtable
+    # carrying a field the schema does not define today, which is the
+    # cleanest deterministic way to prove "preserved by exclusion" rather
+    # than "dropped by hand-listed inclusion" -- Get-KeepAwakeLeases' own
+    # read-side projection is a separate, pre-existing concern not in scope
+    # for this fix (it was not named in the finding) and is left untouched.
+    It 'the rewrite mechanism preserves unknown/future fields by removing "path" rather than hand-listing known ones (M1)' {
+        $leasePath = Get-LeasePath -Label 'future'
+        $lease = @{
+            pid = $PID; label = 'future'; mode = 'pid-only'
+            acquired = '2026-07-20T00:00:00+00:00'; heartbeat = '2026-07-20T00:00:00+00:00'
+            cpu_sample = 0.0; path = $leasePath; future_field = 'keep-me'
+        }
+        # Exactly the two lines Invoke-SupervisorPass runs before persisting.
+        $toWrite = $lease.Clone()
+        $toWrite.Remove('path')
+        Write-JsonFileAtomic -Path $leasePath -Data $toWrite
+
+        $onDisk = Get-Content $leasePath -Raw | ConvertFrom-Json
+        $onDisk.future_field | Should -Be 'keep-me'
+        $onDisk.pid          | Should -Be $PID
+        # 'path' is an internal Get-KeepAwakeLeases artifact, never a real
+        # lease field, and must not leak into the file on disk.
+        $onDisk.PSObject.Properties['path'] | Should -BeNullOrEmpty
+    }
+
+    It 'writes the rewritten lease file atomically (no bare temp file left behind)' {
+        New-KeepAwakeLease -Label 'a' -Mode 'pid-only' -ProcessId $PID -CpuSample 0 | Out-Null
+        Invoke-SupervisorPass -Now $script:Now -IdleTimeoutMinutes 15 -CpuThreshold 2.0 | Out-Null
+        $leaseDir = Join-Path $script:TestRoot 'leases'
+        @(Get-ChildItem $leaseDir -Filter '*.tmp').Count | Should -Be 0
+    }
+}
+
+Describe 'supervisor shutdown race (I1: a concurrent -Acquire must not be lost)' {
+    # The supervisor used to break out of its loop the instant LiveCount hit
+    # 0, then spend the rest of its `finally` block (three SetAcValue calls --
+    # six powercfg.exe spawns, plausibly 1-3 seconds) still holding the mutex
+    # before releasing it. A concurrent -Acquire landing in that window spawns
+    # a new supervisor that loses the mutex race and exits immediately, and
+    # nothing retries -- the new lease sits live and unprotected. This tests
+    # the extracted decision seam (Test-SupervisorShouldContinueAfterEmptyPass)
+    # directly rather than the real blocking loop/mutex/Start-Sleep, per the
+    # brief's "do not test by sleeping" constraint -- both with an injected
+    # fake lease-count query (fully deterministic) and with the real default
+    # seam against actual lease files in a test root (still no timing
+    # dependency: it only checks presence/absence, never elapsed time).
+    BeforeEach {
+        $script:TestRoot = Join-Path ([IO.Path]::GetTempPath()) ("ka-" + [guid]::NewGuid())
+        $env:KB_KEEPAWAKE_ROOT = $script:TestRoot
+    }
+    AfterEach {
+        Remove-Item $env:KB_KEEPAWAKE_ROOT -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item Env:\KB_KEEPAWAKE_ROOT -ErrorAction SilentlyContinue
+    }
+
+    It 'resumes (returns $true) when a lease appeared during the final check' {
+        Test-SupervisorShouldContinueAfterEmptyPass -GetLiveLeaseCount { 1 } | Should -BeTrue
+    }
+
+    It 'exits normally (returns $false) when no lease appeared during the final check' {
+        Test-SupervisorShouldContinueAfterEmptyPass -GetLiveLeaseCount { 0 } | Should -BeFalse
+    }
+
+    It 'default seam: detects a real live lease present on disk' {
+        New-KeepAwakeLease -Label 'race-winner' -Mode 'pid-only' -ProcessId $PID -CpuSample 0 | Out-Null
+        Test-SupervisorShouldContinueAfterEmptyPass | Should -BeTrue
+    }
+
+    It 'default seam: reports $false when the lease directory is empty' {
+        Test-SupervisorShouldContinueAfterEmptyPass | Should -BeFalse
+    }
+
+    It 'default seam: ignores a lease whose process is dead (does not falsely resume)' {
+        New-KeepAwakeLease -Label 'dead' -Mode 'pid-only' -ProcessId 999999 -CpuSample 0 | Out-Null
+        Test-SupervisorShouldContinueAfterEmptyPass | Should -BeFalse
     }
 }
 
