@@ -2,3 +2,4 @@ card_id	inspector_id	kind	project	task_type	tier	ts	worker
 6a5c8ad2-1d991c23	inspector@agents.local	grade	atlas	build router + fast lane + debug REPL	T2	2026-07-20T19:29:57.780470+00:00	worker-desktop
 6a5c8ad2-df7abf53	inspector@agents.local	grade	atlas	build LiveKit worker + pairing smoke	T2	2026-07-20T19:29:57.782623+00:00	worker-desktop
 6a5c8ad2-a1613d5a	inspector@agents.local	grade	atlas	wake-word gating + engagement window	T2	2026-07-20T20:48:04.942767+00:00	worker-desktop
+6a5c8ad2-984e5ccf	inspector@agents.local	grade	atlas	latency harness + persona samples + V0 checkpoint	T2	2026-07-20T21:47:59.165524+00:00	worker-desktop
