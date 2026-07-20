@@ -110,5 +110,87 @@ function Remove-KeepAwakeLease {
     return $false
 }
 
+function Test-ProcessAlive {
+    param([Parameter(Mandatory)][int]$ProcessId)
+    try {
+        $p = Get-Process -Id $ProcessId -ErrorAction Stop
+        return (-not $p.HasExited)
+    } catch { return $false }
+}
+
+# Sum CPU seconds across the process and every descendant. Descendants matter
+# enormously here: subagents, Workflow fan-outs and `codex exec` children are
+# where the real work happens, and the parent may be near-idle while they run.
+function Get-ProcessTreeCpu {
+    param([Parameter(Mandatory)][int]$ProcessId)
+    if (-not (Test-ProcessAlive -ProcessId $ProcessId)) { return 0.0 }
+    try {
+        $all = Get-CimInstance Win32_Process -ErrorAction Stop |
+               Select-Object ProcessId, ParentProcessId
+    } catch {
+        # Without the parent map we can still measure the root process alone.
+        try { return [double](Get-Process -Id $ProcessId -ErrorAction Stop).CPU } catch { return 0.0 }
+    }
+    $childMap = @{}
+    foreach ($p in $all) {
+        $parent = [int]$p.ParentProcessId
+        if (-not $childMap.ContainsKey($parent)) { $childMap[$parent] = @() }
+        $childMap[$parent] += [int]$p.ProcessId
+    }
+    $total = 0.0
+    $seen = @{}
+    $queue = New-Object System.Collections.Queue
+    $queue.Enqueue($ProcessId)
+    while ($queue.Count -gt 0) {
+        $current = [int]$queue.Dequeue()
+        # PIDs are recycled and a malformed parent map could contain a cycle;
+        # without this guard the walk could loop forever inside the supervisor.
+        if ($seen.ContainsKey($current)) { continue }
+        $seen[$current] = $true
+        try {
+            $proc = Get-Process -Id $current -ErrorAction Stop
+            if ($null -ne $proc.CPU) { $total += [double]$proc.CPU }
+        } catch { }
+        if ($childMap.ContainsKey($current)) {
+            foreach ($child in $childMap[$current]) { $queue.Enqueue($child) }
+        }
+    }
+    return $total
+}
+
+# Pure decision function -- no I/O, so the entire activity policy is testable
+# with plain values. Returns the updated lease plus the active verdict.
+function Update-LeaseActivity {
+    param(
+        [Parameter(Mandatory)][hashtable]$Lease,
+        [Parameter(Mandatory)][double]$CpuNow,
+        [Parameter(Mandatory)][datetimeoffset]$Now,
+        [int]$IdleTimeoutMinutes = 15,
+        [double]$CpuThreshold = 2.0
+    )
+    $updated = @{}
+    foreach ($k in $Lease.Keys) { $updated[$k] = $Lease[$k] }
+
+    $reason = ''
+    $cpuDelta = $CpuNow - [double]$Lease.cpu_sample
+    # Union of positive signals: CPU activity refreshes the heartbeat exactly as
+    # a hook event would. Neither signal is trusted alone (see spec).
+    if ($cpuDelta -ge $CpuThreshold) {
+        $updated.heartbeat = $Now.ToString($script:TimeFormat)
+        $reason = 'cpu-activity'
+    }
+    $updated.cpu_sample = $CpuNow
+
+    if ($Lease.mode -eq 'pid-only') {
+        return @{ Lease = $updated; Active = $true; Reason = 'pid-only' }
+    }
+
+    $hb = [datetimeoffset]::Parse($updated.heartbeat)
+    $active = ($Now - $hb).TotalMinutes -lt $IdleTimeoutMinutes
+    if (-not $reason) { $reason = if ($active) { 'heartbeat-fresh' } else { 'idle-timeout' } }
+    return @{ Lease = $updated; Active = $active; Reason = $reason }
+}
+
 Export-ModuleMember -Function Get-KeepAwakeRoot, Get-LeaseDir, Write-KeepAwakeLog,
-    Get-SafeLabel, Get-LeasePath, New-KeepAwakeLease, Get-KeepAwakeLeases, Remove-KeepAwakeLease
+    Get-SafeLabel, Get-LeasePath, New-KeepAwakeLease, Get-KeepAwakeLeases, Remove-KeepAwakeLease,
+    Test-ProcessAlive, Get-ProcessTreeCpu, Update-LeaseActivity
