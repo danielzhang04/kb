@@ -233,3 +233,177 @@ a review pass or a human FEEL gate on the render.
 - **Shorts are not started.** 46 shots across 5 pieces (short-01..05, 4 `publish` + 1 `bench`)
   have zero `scenes/short-NN-SNN-NN.png` frames. Out of this round's scope.
 - The 3 `wf-thumbnail-*` frames remain in `_staging/`, unplaced.
+
+---
+
+## Round 4 â€” fresh-eyes visual review (2026-07-20)
+
+Independent reviewer, Claude Opus 4.8 (`claude-opus-4-8[1m]`). Reviewed against
+`visual-kit/style-bible.md` sections 1 / 2c / 2d / 2e / 3 / 6. **Generated nothing; edited no frame.**
+
+**Verdict: NOT PUBLISHABLE AS-IS.** Round 3 was correct that its mechanical stamp proved nothing.
+The automated gate is inert for all 119 shots (`cutout_layer_ids` exempts plate-only passthrough, and
+this motion plan sets `background.plate` on every shot), and this pass found blocking defects in
+three independent classes.
+
+### Coverage â€” what was actually looked at
+
+**51 of 119 shots visually inspected** (46 of the 114 `scenes/*.png` opened full-frame, plus all 5
+layered shots checked as plate + measured cutout + composite). About 22 additional 3-6x zoom crops
+were cut with Pillow for rig adjudication. **68 scene frames were NOT individually viewed** â€” the
+findings below are therefore a floor, not a census.
+
+Frames opened: L01 L03 L05 L06 L08 L10 L11 L12 L13 L14 L16 L17 L20 L21 L24 L26 L27 L29 L34 L35 L36
+L38 L43 L51 L55 L58 L62 L64 L67 L74 L78 L79 L80 L81 L83 L91 L94 L96 L97 L102 L105 L109 L110 L114
+L116 L119, plus plates and cutouts for L31 L44 L90 L99 L101.
+
+### The 5 layered shots â€” the chroma-key fix HOLDS (measured, not eyeballed)
+
+Per section 8, "measure a matte, never eyeball it". Pillow measurement of all 5 cutouts:
+
+| cutout | magenta px (opaque) | purple spill | corner alpha | enclosed transparent |
+| --- | --- | --- | --- | --- |
+| L44-stamp | 0 (0.0000%) | 0.0000% | 0,0,0,0 | 16.13% |
+| L90-stamp | 0 (0.0000%) | 0.0000% | 0,0,0,0 | 19.41% |
+| L99-stamp | 0 (0.0000%) | 0.0000% | 0,0,0,0 | 19.02% |
+| L101-stamp | 0 (0.0000%) | 0.0000% | 0,0,0,0 | 20.94% |
+| L31-boulder | 0 (0.0000%) | 0.0000% | 0,0,0,0 | 0.00% (solid, expected) |
+
+Zero magenta pixels, zero purple spill, clean corners, and a 4-connectivity flood fill confirms
+**16-21 percent of each stamp frame is ENCLOSED transparency** â€” the letter counters and the interior
+of the stamp border are keyed through, which is exactly the region that previously shipped opaque.
+Composited over their real destination plates, the stamp ink, the thin `#241a12` letter contour and
+the edge distress are all intact, with no halo and no eaten interior detail. **The
+opaque-magenta-interior defect is fixed and did not survive. This was the single most likely place
+for a surviving defect and it is clean.**
+
+(One composition note, not a cutout defect: on **L99** the `FIRED FOR CAUSE` stamp lands over the
+grasping hand, and because the counters are correctly transparent the hand reads through the
+letterforms and softens legibility of "CAUSE". Placement, not matte.)
+
+### BLOCKING â€” content that misstates a real fraud case
+
+- **L105 â€” the screen reads a pound-sterling figure of 200,000.** Blocking; the worst defect in the
+  video. This shot carries the SEC's charge against a named living executive. The metric in this
+  story is *eight products per household* (script line 18). The rendered figure is (a) fabricated,
+  appearing nowhere in the script or the sources, (b) **denominated in pounds sterling on a US
+  banking story**, and (c) framed as the cross-sell number she championed to investors. Putting an
+  invented money figure on screen as the subject of a real SEC action is not a style issue.
+  Separately, confirming the Round-3 carry-forward: the delivered frame is a scorecard tableau with a
+  small back-turned silhouetted presenter, not the named-executive framing still described in
+  `still_prompt`. The re-authored framing itself reads as intentional and is fine. **The number on it
+  is not.**
+- **L16 â€” `PRODUCTS PER HOUSEHOLD` over `3.5`.** High. The prompt asked for "one prominent number"
+  without supplying one, so the engine invented `3.5`. Wells Fargo's reported cross-sell ratio was
+  about 6.1; worse, `3.5` collides head-on with the video's own title figure (3.5 **million**
+  accounts), so the frame asserts a wrong metric and also invites the viewer to conflate two
+  different numbers.
+- **L17 â€” placard reads `1510 up / 270 up / 1,44.27`.** High. `1,44.27` is a malformed numeral.
+  Under section 3 a garbled render of in-world lettering is a **blocking** flag, and this is the
+  "reported it to investors" beat, so garbage numerals land directly on a credibility line.
+- **L12 â€” `CHECKIG`** (missing the N). High. Section-3 blocking-class misspelling, and conspicuous
+  because the identical card renders correctly as `CHECKING` in **L11, L13 and L14** on either side
+  of it. In motion it is a one-frame flicker inside a delta chain.
+- **L64 â€” counter reads `499 500 501 5? 54 55 66`.** Medium. A rising counter that stops counting;
+  the tail digits are incoherent.
+
+### BLOCKING â€” rig invariant violations (sections 1 and 3)
+
+The prior round's fully-drawn-ears failure mode has recurred, and it is not isolated.
+
+- **L01 â€” a fully drawn EAR.** High, and it is the **cold-open frame**. The lone customer is bald, so
+  nothing fills the side zone, and a complete protruding ear is drawn on the head. Its hand is also
+  an undifferentiated blob. This is the first thing a viewer sees.
+- **L21 â€” fully drawn EARS on both sides** of the right-hand foreground figure (the 1999 "Going for
+  Gr-eight" rally). Both podium figures also carry egg/oval heads with jaw structure, and wide
+  open-mouth caricature faces on what is an ordinary beat.
+- **L10 â€” NOSES on the investor row.** High. Clear protruding nose profiles plus egg heads with chins
+  and jawlines on multiple near-foreground figures. The `still_prompt` explicitly demanded "round
+  near-circle heads, NO noses, NO ears" and the engine ignored it.
+- **L31 (plate) â€” the worst rig frame in the video.** All four executives have drawn NOSES. The
+  teller has a NOSE, a visible EAR, a near-profile head with realistic jaw and chin, and fully
+  realistic adult proportions. The render is washed-out and thin-lined against the rest of the video;
+  it reads as a different show. Note this is a *plate*, so the inert gate skipped it entirely.
+- **L62 â€” a photoreal FIVE-DIGIT hand.** High. The marker-holding hand is thumb plus four fingers,
+  with anatomical knuckle detail and gradient shading â€” the engine's realistic 5-finger prior, on an
+  exposed articulated grip, which section 5 names as the known drift point.
+- **Blank-faced foreground figures** where the prompt asked for a full rig: **L74** (prompt said
+  "round head, NO nose, NO ears"; delivered a completely featureless head with what read as spectacle
+  temples), **L110** (both figures featureless), **L29** (no mouth at all, plus oversized
+  pupil-bearing eyes that do not match the canonical eye style). Medium each.
+  (**L12/L13/L14**'s faceless household figure and **L102**'s eight grey suited figures read as
+  deliberate anonymous-everyman treatments and are advisory only.)
+- **Tier confusion, section 2d versus 2e.** Prominent foreground figures rendered on the simplified
+  crowd rig: **L17** presenter, **L34/L35/L36** teller, **L94** the large bald figure at the right
+  counter â€” while in that same L94 frame a background figure carries a *full* detailed face. Medium.
+- **Proportion drift â€” systemic.** Anonymous figures across **L03, L58, L64, L91, L97, L116** render
+  as realistically-proportioned tall/lanky adults rather than the squat large-head base rig. Section
+  3 names this a first-class FAIL axis precisely because these figures carry no seed to pin
+  proportion. Medium severity, but the single most widespread deviation found.
+
+### BLOCKING â€” period drift (art style, proportions and period "never switch", section 8 step 3)
+
+- **L97 and L116 are 19th-century scenes** â€” top hats, bonnets, waistcoats, period dresses,
+  cobblestone village and mangrove swamp â€” inside a story about 1999 to 2023 American banking.
+  **L116** is a Poyais-style swamp tableau. Neither `still_prompt` asked for a period; L97's asked
+  for "a crowd of ordinary people".
+- **L03** puts American bank customers in a tropical palm valley, and **L17** shows the same tropical
+  jungle river valley *through the window of a 1990s bank boardroom*.
+- **L10** seats 1990s Wall Street investors in Victorian top hats.
+- **Probable root cause:** the mandatory section-5 style anchor for these gens appears to have been
+  drawn from the channel's Poyais (1820s) library â€” the bible names the "gold Poyais scenes" as the
+  density bar â€” and the anchor dragged its period costume and its Central-American geography across
+  along with the line weight. This is worth fixing at the anchor-selection level, not frame by frame.
+
+### Lower-severity
+
+- **L94** â€” Tolstedt's head occludes the `COMMUNITY BANK` sign; it reads `COMMU_ITY`. Section 6's
+  "give the caption its own architectural element with clear margin" was not applied.
+- **L38** â€” the trash can occludes `CANCEL`; it reads `CANCE`.
+- **L43** â€” `RENTERS` and `LIFE INSURANCE` warp into near-illegibility along the folder edges.
+- **L55** â€” the thousands comma in `100,000` renders as a large decorative red squiggle with a ghosted
+  extra zero; legible but sloppy.
+- **L34/L35/L36** â€” the counter form's lettering is mirror-reversed and degrades to an illegible
+  smear along the chain.
+- **L12/L13/L14** â€” the chain runs noticeably paler and thinner-lined than the video's baseline;
+  brushes section 6's "thin/sparse/basic" failure mode without clearly crossing it.
+- **L81** â€” the senator crowd has dot eyes but **no mouths at all**; section 2d specifies dot eyes
+  plus one simple mouth.
+
+### Clean and good (spot-checked, no defect found)
+
+**L78/L79/L80** is the strongest sequence in the video â€” the 35M / 100M / 50M / 185M chain holds
+style perfectly across all four frames and every figure matches the script. **L51** (2.1M struck
+through to 2.55M) is exactly right per source [S4]. **L05, L06, L26, L83, L114, L119** are clean,
+on-recipe and well-composed; L119's glowing `8` on the witness stand is a genuinely good closer.
+**L44, L90, L101** composite cleanly.
+
+On the six character-bearing shots, **every rig-critical invariant passes on the named cast
+themselves** â€” L27 Kovacevich, L81 Stumpf, L94/L96/L109 Tolstedt and L96 Stumpf all hold round heads,
+no nose, no ears (hair fills the side zones), and a flat uniform head tone, with **four-digit hands
+verified on zoom crops** (L27, L81, L96 and L109 all show three fingers plus a thumb, both hands
+matched in size). The cast is on-model. The failures live in the anonymous figures, the plates and
+the lettering.
+
+### Taste / editorial
+
+No frame mocks a person's appearance. Stumpf's distress in L81 and the L96 "walking out with the
+money bags" tableau both track documented conduct in the script and are fair. The only editorial
+risk found is **L105's fabricated pound-sterling figure**, which asserts something the script does
+not.
+
+### Required before publish
+
+1. Regenerate **L105** with the correct metric, or with no number. Non-negotiable.
+2. Regenerate **L16** (3.5, to the sourced figure or none), **L17** (`1,44.27`), **L12**
+   (`CHECKIG`).
+3. Regenerate **L31 plate**, **L01**, **L10**, **L21**, **L62** fresh from canonicals â€” per section 5
+   a rig fix never seeds the defective frame.
+4. Re-author **L97** and **L116** with a period-correct style anchor, and audit **L03** and **L17**
+   backgrounds for the same leak.
+5. **Review the 68 frames this pass did not open.** Given the defect rate in a 51-frame sample, the
+   unviewed remainder should be assumed to contain more.
+6. Fix the inert gate. `render.resolve_scene_files` exempting every `background.plate` shot means
+   `verified.scene/rig` can never fail on a plate-driven video, so a green manifest here is
+   structurally incapable of catching any of the above.
+
