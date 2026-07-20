@@ -156,6 +156,39 @@ def test_prune_dead_reference(tmp_path):
     assert report.files[0].counts()["NOOP"] == 1
 
 
+def test_dead_ref_ignores_long_domain_url(tmp_path):
+    # Regression for the adversarial review of bae4a71: a fixed 8-char lookback
+    # missed the "://" on a long subdomain, misclassifying the URL as a dead
+    # repo-relative path and proposing a false DELETE.
+    repo = _repo(tmp_path)
+    _mem(repo, "a.md",
+         "## 2026-07-15\n"
+         "- See https://really-long-subdomain.example.com/deep/path/to/file.md "
+         "for the writeup\n")
+    report = dream.dream_report(repo, now=NOW)
+    reasons = _ops_by_reason(report)
+    assert reasons.get("prune-dead-ref") is None
+    assert report.files[0].counts()["NOOP"] == 1
+
+
+def test_dead_ref_precedes_pair_based(tmp_path):
+    # An entry that is BOTH a dead-ref (missing path) and would otherwise pair
+    # with a later change-marker entry (replace-stale) must resolve as
+    # dead-ref — precedence is dead-ref > pair-based, per analyze_file's
+    # documented order.
+    repo = _repo(tmp_path)
+    _mem(repo, "a.md",
+         "## 2026-07-15\n"
+         "- Plan: the fleet build lives on the claude branch and proceeds tonight as planned\n"
+         "  see docs/plans/gone-forever.md for the full writeup\n"
+         "## 2026-07-16\n"
+         "- CORRECTION: the fleet build lives on the claude branch was rolled back tonight\n")
+    report = dream.dream_report(repo, now=NOW)
+    op = report.files[0].proposals[0]
+    assert op.op == "DELETE" and op.reason == "prune-dead-ref"
+    assert "gone-forever.md" in op.detail
+
+
 def test_prune_resolved_todo(tmp_path):
     repo = _repo(tmp_path)
     _mem(repo, "a.md",
@@ -248,6 +281,17 @@ def test_cli_refuses_apply_mode(tmp_path, monkeypatch, capsys):
     err = capsys.readouterr().err
     assert rc == dream.EXIT_GATED
     assert "design-gated" in err and "never rewrites memory/" in err
+
+
+def test_cli_apply_mode_leaves_memory_byte_identical(tmp_path, monkeypatch, capsys):
+    repo = _repo(tmp_path)
+    original = "## 2026-07-15\n- a single clean distinct lesson entry\n"
+    _mem(repo, "a.md", original)
+    monkeypatch.setattr(dream.preamble, "check", lambda *a, **k: [])
+    rc = dream.main(["--repo", str(repo)])   # no --dry-run: apply-mode is refused
+    capsys.readouterr()
+    assert rc == dream.EXIT_GATED
+    assert (repo / "memory" / "a.md").read_text(encoding="utf-8") == original
 
 
 def test_cli_dry_run_prints_and_writes_out(tmp_path, monkeypatch, capsys):

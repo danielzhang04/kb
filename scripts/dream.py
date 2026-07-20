@@ -228,7 +228,16 @@ def _extract_paths(text: str) -> list[str]:
     for m in _PATH_RE.finditer(text):
         tok = m.group(1)
         start = m.start(1)
-        if "://" in text[max(0, start - 8):start + len(tok)]:
+        end = start + len(tok)
+        # Scan the full contiguous non-whitespace run containing the token —
+        # a fixed lookback window misses "://" on long-domain URLs.
+        run_start = start
+        while run_start > 0 and not text[run_start - 1].isspace():
+            run_start -= 1
+        run_end = end
+        while run_end < len(text) and not text[run_end].isspace():
+            run_end += 1
+        if "://" in text[run_start:run_end]:
             continue
         if tok not in found:
             found.append(tok)
@@ -442,6 +451,10 @@ def render(report: DreamReport) -> str:
     out.append(">")
     out.append("> Router vocabulary (Mem0): ADD · UPDATE · DELETE · NOOP. ADD is reserved")
     out.append("> for the trusted apply path; this dry-run's scope is UPDATE / DELETE / NOOP.")
+    out.append(">")
+    out.append("> Dead-ref DELETEs flag a path missing from this checkout only — the artifact")
+    out.append("> may still exist on another branch or in history, so confirm with a human")
+    out.append("> before dropping the entry.")
     out.append("")
     out.append(f"generated: {report.generated}")
     out.append(f"inputs: {len(report.files)} memory file(s); "
