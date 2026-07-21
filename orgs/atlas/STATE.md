@@ -19,7 +19,7 @@ _Updated: 2026-07-20 (V1 "Hands" wave OPEN — Fable 5 boss session)_
   remediation+re-grade), T4 state core 8ca17da (96), T5 /state server 72786fc (97, live-smoked),
   T6 transcript ledger 8f08503 (96 after remediation+re-grade), T7 panel route ef4e0be (95),
   T8 Atlas view + global mini-orb 87552c2 (96). Suites: atlas 68, fleet 530, dashboard 1551 —
-  all green. **GATE A (Slice-1 desk check) STAGED, awaiting Daniel:** branch dashboard live on
+  all green. **GATE A PASSED (Daniel, desk, 2026-07-20 late)** — orb/mini-orb/transcript/history/OFFLINE all verified live; one desk fix during bring-up: console mic index reshuffled 2->1 (indices drift on BT connect; wake thread already name-pinned; polish candidate = name-pin the console flag too). Staging was:  branch dashboard live on
   127.0.0.1:4317 (DASHBOARD_REPO_ROOT=dashboard-ops, matches prod env; pm2/5317 untouched).
   Landmine fixed: stale inspector identity in shared kb/.git/config mislabeled two commits —
   restored, history reauthored, per-command -c identity now a standing rule in all prompts.
