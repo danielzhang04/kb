@@ -249,6 +249,16 @@
 
 ## Execution notes
 
+- WAVE CLOSED 2026-07-21: GATE C PASSED at the desk (Daniel) — read-back-confirmed voice card
+  6a5efefd-e8c9d511 filed+completed with the engaged callback heard; card 6a5f0092-ca47fa86
+  filed, slept, completed, announced ONE-SHOT while asleep (orb dim, mic closed); 10 session
+  transcripts on ops + served by the history pane. Gate-C finding #2 fixed same-session:
+  file_card normalizes project id (lowercase) + risk tier (uppercase) — 622cd3f. Final suites:
+  atlas 132, fleet 530, dashboard 1551 + typecheck — all green. Consistency sweep clean (no
+  key leaks, no stub refs). Backlog flagged: app.py at 444 lines (extract wiring in V2);
+  console --input-device by name substring; TTFT diet, voice-switch, BT hot-follow, SSE panel
+  push (all carried from design §1 deferrals).
+
 - GATE C finding #1 (2026-07-21, desk, fixed before checkpoint resumed): "Okay. Go to sleep." /
   "No. Go to sleep." missed the exact-match reflex and fell to the LLM, which ROLE-PLAYED going
   dark while the mic stayed open (live /state transcript was the evidence). Two-layer fix, all
