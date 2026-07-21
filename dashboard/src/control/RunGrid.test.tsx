@@ -14,7 +14,7 @@ function run(overrides: Partial<RunMetadataDto> = {}): RunMetadataDto {
     runRef: 'run-8f2c19ab', predecessorRunRef: null, title: 'Synthetic control run',
     proposalRef: 'proposal-1', proposalRevision: 2, proposalHash: 'a'.repeat(64),
     publicationState: 'published', state: 'running', version: 4, managerSessionRef: 'session-manager',
-    managerGeneration: 1, createdAt: '2026-07-18T10:00:00.000Z', updatedAt: '2026-07-18T11:56:00.000Z',
+    managerGeneration: 1, managerAssignment: null, createdAt: '2026-07-18T10:00:00.000Z', updatedAt: '2026-07-18T11:56:00.000Z',
     stageCount: 6, attemptCount: 11, sessionCount: 3, openHumanRequestCount: 0, eventCount: 340,
     ...overrides,
   };

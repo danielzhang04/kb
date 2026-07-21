@@ -10,11 +10,20 @@ const detail: RunDetailDto = {
   run: {
     runRef: 'run-1', predecessorRunRef: null, title: 'Synthetic control run', proposalRef: 'proposal-1', proposalRevision: 2,
     proposalHash: 'a'.repeat(64), publicationState: 'published', state: 'running', version: 4, managerSessionRef: 'session-manager',
-    managerGeneration: 1, createdAt: '2026-07-18T10:00:00.000Z', updatedAt: '2026-07-18T10:01:00.000Z',
+    managerGeneration: 1,
+    managerAssignment: {
+      agentId: 'fyt-manager', declarationPath: 'agents/fyt-manager.md', declarationHash: 'm'.repeat(64),
+      profileId: 'manager:claude:claude-sonnet-5', runtime: 'claude', model: 'claude-sonnet-5',
+    },
+    createdAt: '2026-07-18T10:00:00.000Z', updatedAt: '2026-07-18T10:01:00.000Z',
   },
   stages: [{
     stageRef: 'stage-1', runRef: 'run-1', stageId: 'compile', title: 'Compile proposal', dependsOn: [],
     canonicalCardRef: 'card-1', state: 'running', version: 2, currentAttemptRef: 'attempt-1',
+    assignment: {
+      agentId: 'fyt-worker', declarationPath: 'agents/fyt-worker.md', declarationHash: 'w'.repeat(64),
+      profileId: 'worker:codex:gpt-5.6-sol', runtime: 'codex', model: 'gpt-5.6-sol',
+    },
     createdAt: '2026-07-18T10:00:00.000Z', updatedAt: '2026-07-18T10:01:00.000Z',
   }],
   attempts: [{
@@ -50,13 +59,15 @@ describe('RunCockpit', () => {
     render(<RunCockpit detail={detail} events={events} />);
     expect(screen.getByRole('heading', { name: 'Synthetic control run' })).toBeTruthy();
     expect(screen.getByText('session-manager')).toBeTruthy();
+    expect(screen.getByText('fyt-manager · manager:claude:claude-sonnet-5')).toBeTruthy();
 
     openTab('stages');
     expect(screen.getByText('card-1')).toBeTruthy();
     const attempt = screen.getByTestId('run-attempt-attempt-1');
     expect(within(attempt).getByText('attempt 1')).toBeTruthy();
     expect(within(attempt).getByText('codex · gpt-5.6-sol')).toBeTruthy();
-    expect(screen.getByText('Plan amendment required')).toBeTruthy();
+    expect(screen.getByTestId('run-stage-stage-1-assignment').textContent).toContain('fyt-worker · worker:codex:gpt-5.6-sol');
+    expect(screen.getByText('Immutable logical assignment')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Reroute Compile proposal/ })).toBeNull();
 
     openTab('timeline');
@@ -64,11 +75,24 @@ describe('RunCockpit', () => {
     expect(screen.getByText(/private reasoning and raw tool payloads are not part/i)).toBeTruthy();
   });
 
+  it('names null run and stage assignments as unassigned without conflating them with executors', () => {
+    const legacy: RunDetailDto = {
+      ...detail,
+      run: { ...detail.run, managerAssignment: null },
+      stages: detail.stages.map((stage) => ({ ...stage, assignment: null })),
+    };
+    render(<RunCockpit detail={legacy} events={[]} />);
+    expect(screen.getByText('unassigned')).toBeTruthy();
+    openTab('stages');
+    expect(screen.getByTestId('run-stage-stage-1-assignment').textContent).toContain('unassigned');
+    expect(screen.getByText('codex · gpt-5.6-sol')).toBeTruthy();
+  });
+
   it('offers an exact reroute only for a queued attempt whose stage has not started', () => {
     const onReroute = vi.fn();
     const queued: RunDetailDto = {
       ...detail,
-      stages: detail.stages.map((stage) => ({ ...stage, state: 'ready' })),
+      stages: detail.stages.map((stage) => ({ ...stage, state: 'ready', assignment: null })),
       attempts: detail.attempts.map((attempt) => ({ ...attempt, state: 'queued' })),
       sessions: [
         ...detail.sessions,
@@ -89,6 +113,30 @@ describe('RunCockpit', () => {
     fireEvent.change(screen.getByLabelText('Model for Compile proposal'), { target: { value: 'claude-sonnet-5' } });
     fireEvent.click(button);
     expect(onReroute).toHaveBeenCalledWith(queued.stages[0], queued.attempts[0], 'claude', 'claude-sonnet-5');
+  });
+
+  it('withholds reroute controls and callbacks for an assigned queued stage', () => {
+    const onReroute = vi.fn();
+    const assignedQueued: RunDetailDto = {
+      ...detail,
+      stages: detail.stages.map((stage) => ({ ...stage, state: 'ready' })),
+      attempts: detail.attempts.map((attempt) => ({ ...attempt, state: 'queued' })),
+      sessions: [
+        ...detail.sessions,
+        {
+          sessionRef: 'session-worker', runRef: 'run-1', stageRef: 'stage-1', attemptRef: 'attempt-1', role: 'worker',
+          generation: 1, predecessorSessionRef: null, runtime: 'codex', model: 'gpt-5.6-sol', state: 'pending',
+          version: 1, createdAt: '2026-07-18T10:00:00.000Z', updatedAt: '2026-07-18T10:01:00.000Z',
+        },
+      ],
+      humanRequests: [],
+    };
+    render(<RunCockpit detail={assignedQueued} events={[]} onReroute={onReroute} />);
+    openTab('stages');
+    expect(screen.getByText('Immutable logical assignment')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Reroute Compile proposal' })).toBeNull();
+    expect(screen.queryByLabelText('Runtime for Compile proposal')).toBeNull();
+    expect(onReroute).not.toHaveBeenCalled();
   });
 
   it('keeps manager conversation separate from checkpoint-bound steering', () => {

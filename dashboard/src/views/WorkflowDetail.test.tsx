@@ -54,6 +54,7 @@ const run = (over: Partial<RunMetadataDto> & { runRef: string }): RunMetadataDto
   version: 1,
   managerSessionRef: 'sess-m',
   managerGeneration: 0,
+  managerAssignment: null,
   createdAt: '2026-07-20T10:01:00.000Z',
   updatedAt: '2026-07-20T10:02:00.000Z',
   stageCount: 6,

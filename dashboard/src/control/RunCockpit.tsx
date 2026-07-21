@@ -26,6 +26,7 @@ import type {
   HumanRequestDto,
   ManagedSessionDto,
   OperationalEventDto,
+  ResolvedAgentAssignmentDto,
   RunDetailDto,
   StageDto,
 } from './controlClient';
@@ -82,9 +83,14 @@ export interface RunCockpitProps {
 
 type RerouteDisposition =
   | { allowed: true; label: 'Reroutable before start' }
-  | { allowed: false; label: 'Plan amendment required' | 'Successor attempt required' | 'Immutable' };
+  | { allowed: false; label: 'Plan amendment required' | 'Successor attempt required' | 'Immutable' | 'Immutable logical assignment' };
+
+function logicalAssignment(assignment: ResolvedAgentAssignmentDto | null): string {
+  return assignment ? `${assignment.agentId} · ${assignment.profileId}` : 'unassigned';
+}
 
 function rerouteDisposition(detail: RunDetailDto, stage: StageDto, attempt: AttemptDto | undefined): RerouteDisposition {
+  if (stage.assignment !== null) return { allowed: false, label: 'Immutable logical assignment' };
   if (stage.state === 'waiting-human' || detail.humanRequests.some((request) => request.stageRef === stage.stageRef)) {
     return { allowed: false, label: 'Plan amendment required' };
   }
@@ -206,6 +212,9 @@ export function StagesSection({
               )}
               <span className="mc-mono">
                 {timestampLabel(stage.createdAt)} → {timestampLabel(stage.updatedAt)}
+              </span>
+              <span data-testid={`run-stage-${stage.stageRef}-assignment`}>
+                Logical assignment <span className="mc-mono">{logicalAssignment(stage.assignment)}</span>
               </span>
             </div>
 
@@ -442,7 +451,8 @@ export function RunCockpit({
         <dl className="control-facts">
           <div><dt>Generation</dt><dd>{detail.run.managerGeneration}</dd></div>
           <div><dt>Session</dt><dd className="mc-mono">{detail.run.managerSessionRef}</dd></div>
-          <div><dt>Runtime</dt><dd className="mc-mono">{manager ? `${manager.runtime} · ${manager.model}` : 'recovering'}</dd></div>
+          <div><dt>Executor</dt><dd className="mc-mono">{manager ? `${manager.runtime} · ${manager.model}` : 'recovering'}</dd></div>
+          <div><dt>Logical assignment</dt><dd className="mc-mono">{logicalAssignment(detail.run.managerAssignment)}</dd></div>
           <div><dt>State</dt><dd>{manager?.state ?? 'unavailable'}</dd></div>
         </dl>
         <button

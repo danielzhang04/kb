@@ -19,6 +19,16 @@ export interface ProposalRoutingDto {
   model: string;
 }
 
+/** Immutable compiler-resolved logical identity. This is provenance, never a queue-card owner. */
+export interface ResolvedAgentAssignmentDto {
+  agentId: string;
+  declarationPath: string;
+  declarationHash: string;
+  profileId: string;
+  runtime: string;
+  model: string;
+}
+
 export interface ProposalScopeDto {
   read: string[];
   write: string[];
@@ -42,6 +52,8 @@ export interface ProposalStageDto {
     kind: 'input' | 'approval' | 'review' | 'intervention' | 'governance-refusal';
     prompt: string;
   }>;
+  /** Present only for an immutable compiler-resolved logical assignment. */
+  assignment?: ResolvedAgentAssignmentDto;
 }
 
 export interface PlanProposalDto {
@@ -50,7 +62,7 @@ export interface PlanProposalDto {
   project: string;
   title: string;
   summary: string;
-  manager: ProposalRoutingDto & { requiredSkills: string[] };
+  manager: ProposalRoutingDto & { requiredSkills: string[]; assignment?: ResolvedAgentAssignmentDto };
   scope: ProposalScopeDto;
   governanceRefs: string[];
   stages: ProposalStageDto[];
@@ -119,6 +131,8 @@ export interface RunDto {
   version: number;
   managerSessionRef: string;
   managerGeneration: number;
+  /** Immutable logical-manager provenance, or null for a legacy/unassigned run. */
+  managerAssignment: ResolvedAgentAssignmentDto | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -141,6 +155,8 @@ export interface StageDto {
   state: StageState;
   version: number;
   currentAttemptRef: string | null;
+  /** Immutable logical-worker provenance, or null for a legacy/unassigned stage. */
+  assignment: ResolvedAgentAssignmentDto | null;
   createdAt: string;
   updatedAt: string;
 }

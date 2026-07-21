@@ -18,14 +18,14 @@ const runs: RunMetadataDto[] = [
   {
     runRef: 'run-1', predecessorRunRef: null, title: LONG_TITLE, proposalRef: 'proposal-1',
     proposalRevision: 2, proposalHash: 'a'.repeat(64), publicationState: 'published', state: 'running',
-    version: 4, managerSessionRef: 'session-manager', managerGeneration: 1,
+    version: 4, managerSessionRef: 'session-manager', managerGeneration: 1, managerAssignment: null,
     createdAt: '2026-07-18T10:00:00.000Z', updatedAt: '2026-07-18T11:56:00.000Z',
     stageCount: 6, attemptCount: 11, sessionCount: 3, openHumanRequestCount: 0, eventCount: 340,
   },
   {
     runRef: 'run-2', predecessorRunRef: null, title: 'A second run', proposalRef: 'proposal-2',
     proposalRevision: 1, proposalHash: 'b'.repeat(64), publicationState: 'published', state: 'succeeded',
-    version: 2, managerSessionRef: 'session-manager-2', managerGeneration: 1,
+    version: 2, managerSessionRef: 'session-manager-2', managerGeneration: 1, managerAssignment: null,
     createdAt: '2026-07-18T09:00:00.000Z', updatedAt: '2026-07-18T09:30:00.000Z',
     stageCount: 2, attemptCount: 2, sessionCount: 1, openHumanRequestCount: 0, eventCount: 12,
   },
@@ -38,6 +38,7 @@ const detailFor = (runRef: string) => ({
     stages: [{
       stageRef: 'stage-1', runRef, stageId: 'compile', title: 'Compile proposal', dependsOn: [],
       canonicalCardRef: 'card-1', state: 'running', version: 2, currentAttemptRef: 'attempt-1',
+      assignment: null,
       createdAt: '2026-07-18T10:00:00.000Z', updatedAt: '2026-07-18T10:01:00.000Z',
     }],
     attempts: [{
