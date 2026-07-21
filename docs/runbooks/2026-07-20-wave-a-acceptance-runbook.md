@@ -11,11 +11,17 @@ low-risk, no-op** run against **throwaway** roots. Nothing here writes real proj
 
 ---
 
-## Why it is safe to run
+## Why it is safe to run (isolation is code-enforced)
 
 - The harness (`dashboard/server/control/synthetic-acceptance.ts`) `git clone --local`s the repo into a
-  temp dir and points a throwaway `DASHBOARD_STATE_ROOT` at another temp dir. The synthetic card, canonical
-  cards, reconcile commit, worktrees, and fleet ledger all land in those throwaway dirs.
+  temp dir, creates a local `ops` branch there, and **re-points the clone's `origin` at a fresh throwaway
+  BARE mirror** — replacing the `origin` that `git clone` set to the real repo. The canonical `## Result`
+  writeback and the `defaultReconcileTriggerCard` push therefore land in the throwaway mirror and
+  **provably cannot reach the real repo** (the remote is a different repository, not the real one guarded
+  only by git defaults). `assertCoordinationRemoteIsolated` aborts the run if the coordination remote ever
+  resolves back to the real repo path.
+- `DASHBOARD_STATE_ROOT` points at a separate temp dir, so the control-plane state, worktrees, and fleet
+  ledger are throwaway too. The harness prints all three throwaway paths (repo / mirror / state).
 - The synthetic work order is a single-file write with **no** web / tool / spend / publish intent.
 - The harness **refuses** unless `DASHBOARD_EXECUTION_ACTIVATED=1` is already set in its process **and**
   `--confirm-live` is passed. It never sets the gate itself and never touches the live daemon / pm2 env.

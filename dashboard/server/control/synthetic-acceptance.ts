@@ -13,10 +13,15 @@
  *   - REFUSES unless the gate is ALREADY on in this process (`DASHBOARD_EXECUTION_ACTIVATED === '1'`) AND
  *     `--confirm-live` is passed. It NEVER sets the activation gate itself, and never touches the live
  *     daemon / pm2 env — Daniel sets the gate in his watched session; the harness only reads it.
- *   - CANNOT MUTATE REAL PROJECT STATE. It `git clone --local`s the current repo into a throwaway temp
- *     dir and points a throwaway `DASHBOARD_STATE_ROOT` at another temp dir. Every write — the synthetic
- *     card, the canonical cards, the reconcile commit, the worktrees, the fleet ledger — lands in those
- *     throwaway roots. The real worktree and the real dashboard state root are never written.
+ *   - CANNOT MUTATE REAL PROJECT STATE, enforced by code (not by git defaults). `setUpThrowawayRepo`
+ *     `git clone --local`s the current repo into a throwaway temp dir, creates a local `ops` branch (the
+ *     coordination seam in write/branch.ts refuses any coordination write unless HEAD is exactly `ops`
+ *     and it pull/pushes `origin ops`), and RE-POINTS the clone's `origin` at an ISOLATED throwaway BARE
+ *     mirror — replacing the `origin` that `git clone` set to the REAL repo. So the canonical `## Result`
+ *     writeback and `defaultReconcileTriggerCard` push land in the throwaway mirror and PROVABLY cannot
+ *     reach real state. `assertCoordinationRemoteIsolated` is a belt-and-braces guard: it refuses to run
+ *     if the coordination remote ever resolves back to the real repo path. `DASHBOARD_STATE_ROOT` points
+ *     at a separate temp dir, so the control-plane state, worktrees, and fleet ledger are throwaway too.
  *   - The synthetic work order is a no-op single-file write with NO web/tool/spend/publish intent.
  *
  * The fault matrix (daemon restart, Stop, Retry, Reroute, HumanRequest round-trip, publication-fault) is
@@ -27,9 +32,9 @@
  * Strip-only floor: no TS enums, parameter properties, or namespaces. ESM with explicit `.ts` specifiers.
  */
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, existsSync, readdirSync, readFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeSurfaceContext } from '../http/surface.ts';
 import { isExecutionActivated, DASHBOARD_EXECUTOR_SUBJECT } from './activation.ts';
@@ -97,15 +102,62 @@ function git(repo: string, args: readonly string[]): string {
   return execFileSync('git', [...args], { cwd: repo, encoding: 'utf8' });
 }
 
-/** Clone the current repo locally into a throwaway dir so every write is isolated from real project state. */
-function setUpThrowawayRepo(sourceRepo: string): string {
+/** Best-effort real absolute path so a mirror path and a real-repo path compare canonically. */
+function canonicalPath(p: string): string {
+  try {
+    return realpathSync(p);
+  } catch {
+    return resolve(p);
+  }
+}
+
+/** The isolated coordination target for one acceptance run: the throwaway clone + its bare mirror. */
+export interface ThrowawayRepo {
+  /** The working clone; `repoRoot` for the run. On `ops`, `origin` -> the bare mirror. */
+  repoRoot: string;
+  /** The bare mirror the coordination remote pushes to. NEVER the real repo. */
+  coordinationRemote: string;
+}
+
+/**
+ * Stand up an isolated throwaway repo for one acceptance run. Three moves, all required for the real
+ * coordination seam (write/branch.ts) to work AND for isolation to be CODE-enforced:
+ *   1. `git clone --local` the source (full content, so policy/profiles/orgs load in the clone).
+ *   2. Create a local `ops` branch — `assertCoordinationCheckout` refuses any coordination write unless
+ *      HEAD is exactly `ops`, and prepare/commit pull/push `origin ops`.
+ *   3. RE-POINT `origin` at a fresh throwaway BARE mirror (replacing the `origin` clone set to the REAL
+ *      repo) and seed `origin/ops` in it. Now the canonical writeback + reconcile push land in the mirror
+ *      and cannot reach the real repo — not by git's incidental `receive.denyCurrentBranch`, but because
+ *      the remote is a different repository entirely.
+ */
+export function setUpThrowawayRepo(sourceRepo: string): ThrowawayRepo {
   const clone = mkdtempSync(join(tmpdir(), 'wave-a-accept-repo-'));
+  const mirror = mkdtempSync(join(tmpdir(), 'wave-a-accept-mirror-'));
   git(sourceRepo, ['clone', '--local', '--no-hardlinks', sourceRepo, clone]);
-  // The reconcile/canonical writers commit on the coordination branch in-place; ensure identity + a clean
-  // working tree exist in the clone (never touching the source repo's config).
   git(clone, ['config', 'user.email', 'wave-a-acceptance@local']);
   git(clone, ['config', 'user.name', 'wave-a-acceptance']);
-  return clone;
+  // A local `ops` branch, from the cloned content, is REQUIRED by the coordination seam.
+  git(clone, ['checkout', '-B', 'ops']);
+  // Isolate the coordination remote: a fresh bare mirror, replacing the real-repo origin.
+  git(mirror, ['init', '--bare', '--quiet']);
+  git(clone, ['remote', 'set-url', 'origin', mirror]);
+  // Seed origin/ops in the mirror so `pull --rebase origin ops` has an upstream and pushes land there.
+  git(clone, ['push', '--quiet', 'origin', 'ops']);
+  return { repoRoot: clone, coordinationRemote: mirror };
+}
+
+/**
+ * Belt-and-braces isolation guard: refuse to run if the clone's coordination remote (`origin`) resolves
+ * to the REAL repo path. Any coordination push would otherwise reach real state. Called before dispatch.
+ */
+export function assertCoordinationRemoteIsolated(repoRoot: string, realRepo: string): void {
+  const remoteUrl = git(repoRoot, ['remote', 'get-url', 'origin']).trim();
+  if (canonicalPath(remoteUrl) === canonicalPath(realRepo)) {
+    throw new AcceptanceRefusal(
+      `refusing to run: the coordination remote '${remoteUrl}' resolves to the REAL repo '${realRepo}'; `
+        + 'isolation was not established (expected a throwaway bare mirror).',
+    );
+  }
 }
 
 interface Check { label: string; ok: boolean; detail: string; }
@@ -135,7 +187,10 @@ export async function main(): Promise<number> {
   assertAcceptanceGate();
   const sourceRepo = process.env.DASHBOARD_REPO_ROOT ?? fileURLToPath(new URL('../../../', import.meta.url));
 
-  const repoRoot = setUpThrowawayRepo(sourceRepo);
+  const { repoRoot, coordinationRemote } = setUpThrowawayRepo(sourceRepo);
+  // Belt-and-braces: prove the coordination remote is the throwaway mirror, not the real repo, BEFORE
+  // any dispatch could push. A failure here aborts with no run.
+  assertCoordinationRemoteIsolated(repoRoot, sourceRepo);
   const stateRoot = mkdtempSync(join(tmpdir(), 'wave-a-accept-state-'));
   // Point THIS process (never the live daemon) at the throwaway roots, gate already on.
   process.env.DASHBOARD_REPO_ROOT = repoRoot;
@@ -188,17 +243,19 @@ export async function main(): Promise<number> {
     const passed = checks.every((c) => c.ok);
     // eslint-disable-next-line no-console
     console.log(`\n${passed ? 'ACCEPTANCE PASS' : 'ACCEPTANCE FAIL'} — ${checks.filter((c) => c.ok).length}/${checks.length} checks`);
-    console.log(`Throwaway repo:  ${repoRoot}`);
-    console.log(`Throwaway state: ${stateRoot}`);
+    console.log(`Throwaway repo:   ${repoRoot}`);
+    console.log(`Throwaway mirror: ${coordinationRemote}`);
+    console.log(`Throwaway state:  ${stateRoot}`);
     keepArtifacts = keepArtifacts || !passed;
     return passed ? 0 : 1;
   } finally {
     if (!keepArtifacts) {
       rmSync(repoRoot, { recursive: true, force: true });
+      rmSync(coordinationRemote, { recursive: true, force: true });
       rmSync(stateRoot, { recursive: true, force: true });
     } else {
       // eslint-disable-next-line no-console
-      console.log(`\n(left throwaway artifacts for inspection; delete when done)\n  ${repoRoot}\n  ${stateRoot}`);
+      console.log(`\n(left throwaway artifacts for inspection; delete when done)\n  ${repoRoot}\n  ${coordinationRemote}\n  ${stateRoot}`);
     }
   }
 }
