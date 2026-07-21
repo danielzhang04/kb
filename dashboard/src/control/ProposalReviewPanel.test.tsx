@@ -10,7 +10,7 @@ afterEach(() => {
 });
 
 const session: ComposerSession = {
-  composerRef: 'composer-1', title: 'Plan control', state: 'open', sourceComposerRef: null,
+  composerRef: 'composer-1', title: 'Plan control', state: 'open', sourceComposerRef: null, agent: null,
   createdAt: '2026-07-18T10:00:00.000Z', updatedAt: '2026-07-18T10:01:00.000Z',
   turns: [{
     turnId: 'turn-1', prompt: 'Make a plan', state: 'complete', model: null, error: null,

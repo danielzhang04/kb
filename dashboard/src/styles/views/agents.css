@@ -18,6 +18,24 @@
   font-weight: 400;
 }
 
+/* Two different truth classes: authoritative definitions lead; observed runtime ids remain visible
+ * below them without being presented as agents somebody declared. */
+.v-agents__group {
+  margin: 0 0 var(--space-5);
+}
+
+.v-agents__group-title {
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-base);
+  font-weight: 600;
+}
+
+.v-agents__group-note {
+  margin: 0 0 var(--space-3);
+  color: var(--fg-dim);
+  font-size: var(--text-sm);
+}
+
 .v-agents__empty {
   color: var(--fg-dim);
   font-size: var(--text-base);

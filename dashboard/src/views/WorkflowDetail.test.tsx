@@ -68,7 +68,6 @@ describe('reaching a workflow detail and coming back', () => {
   it('opens the detail on a definition click and returns to the list on back', () => {
     render(
       <Workflows
-        data={{ present: false, items: [] }}
         definitions={{ items: [def({ ref: 'kb~video.md' }), def({ ref: 'kb~audio.md', title: 'Audio pipeline' })] }}
       />,
     );
@@ -94,7 +93,6 @@ describe('reaching a workflow detail and coming back', () => {
     const onBack = vi.fn();
     render(
       <Workflows
-        data={{ present: false, items: [] }}
         definitions={{ items: [def({ ref: 'kb~video.md' })] }}
         focusWorkflowId="kb~deleted.md"
         onOpenWorkflow={vi.fn()}
@@ -114,7 +112,7 @@ describe('reaching a workflow detail and coming back', () => {
 
   it('does not call a definition unregistered while the index is still loading', () => {
     // No `definitions` prop and no fetch result yet: the ref is UNKNOWN, not missing.
-    render(<Workflows data={{ present: false, items: [] }} focusWorkflowId="kb~video.md" onOpenWorkflow={vi.fn()} />);
+    render(<Workflows focusWorkflowId="kb~video.md" onOpenWorkflow={vi.fn()} />);
     expect(screen.queryByTestId('workflow-not-found')).toBeNull();
   });
 });
@@ -125,7 +123,6 @@ describe('workflow -> its launched runs', () => {
     const onNavigate = vi.fn();
     render(
       <Workflows
-        data={{ present: false, items: [] }}
         definitions={{ items: [def({ ref: 'kb~video.md' })] }}
         focusWorkflowId="kb~video.md"
         onOpenWorkflow={vi.fn()}

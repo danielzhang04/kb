@@ -36,6 +36,7 @@ describe('ComposerWorkspaceStore authorization and lifecycle', () => {
       sourceComposerRef: null,
       createdAt: expect.any(String),
       updatedAt: expect.any(String),
+      agent: null,
       turns: [],
     });
     expect(JSON.stringify(created)).not.toContain('alice');
@@ -89,7 +90,11 @@ describe('ComposerWorkspaceStore authorization and lifecycle', () => {
 
   it('forks public history under a new ref without sharing the mutable provider handle', () => {
     const store = memoryStore();
-    const source = store.create('alice', 'Source');
+    const agent = {
+      id: 'research-worker', path: 'agents/research-worker.md', sourceHash: 'a'.repeat(64),
+      instructionMarkdown: 'Use the immutable research declaration.',
+    };
+    const source = store.create('alice', 'Source', agent);
     const sourceLease = store.acquireWriter('alice', source.composerRef);
     if (!sourceLease.ok) throw new Error('lease');
     store.setProviderId('alice', source.composerRef, sourceLease.lease, PROVIDER_ID);
@@ -100,8 +105,11 @@ describe('ComposerWorkspaceStore authorization and lifecycle', () => {
     if (!fork.ok) return;
     expect(fork.workspace.composerRef).not.toBe(source.composerRef);
     expect(fork.workspace.sourceComposerRef).toBe(source.composerRef);
+    expect(fork.workspace.agent).toEqual({ id: agent.id, path: agent.path, sourceHash: agent.sourceHash });
+    expect(JSON.stringify(fork.workspace)).not.toContain(agent.instructionMarkdown);
     const forkLease = store.acquireWriter('alice', fork.workspace.composerRef);
     expect(forkLease.ok && forkLease.providerId).toBeNull();
+    expect(forkLease.ok && forkLease.agent).toEqual(agent);
   });
 });
 
@@ -111,7 +119,11 @@ describe('file-backed ComposerWorkspaceStore', () => {
     roots.push(root);
     const protector = createProviderIdProtector(SECRET);
     const first = createFileComposerStore(root, { protector });
-    const workspace = first.create('alice', 'Persistent');
+    const agent = {
+      id: 'research-worker', path: 'agents/research-worker.md', sourceHash: 'b'.repeat(64),
+      instructionMarkdown: 'Persist this immutable declaration.',
+    };
+    const workspace = first.create('alice', 'Persistent', agent);
     const lease = first.acquireWriter('alice', workspace.composerRef);
     if (!lease.ok) throw new Error('lease');
     const begun = first.beginTurn('alice', workspace.composerRef, lease.lease, 'persist me');
@@ -131,10 +143,15 @@ describe('file-backed ComposerWorkspaceStore', () => {
     const restarted = createFileComposerStore(root, { protector });
     expect(restarted.get('alice', workspace.composerRef)).toMatchObject({
       ok: true,
-      workspace: { title: 'Persistent', turns: [{ prompt: 'persist me', state: 'complete', model: MODEL }] },
+      workspace: {
+        title: 'Persistent',
+        agent: { id: agent.id, path: agent.path, sourceHash: agent.sourceHash },
+        turns: [{ prompt: 'persist me', state: 'complete', model: MODEL }],
+      },
     });
     const resumed = restarted.acquireWriter('alice', workspace.composerRef);
     expect(resumed.ok && resumed.providerId).toBe(PROVIDER_ID);
+    expect(resumed.ok && resumed.agent).toEqual(agent);
   });
 
   it('drops only an unreadable provider handle and keeps the visible workspace resumable', () => {

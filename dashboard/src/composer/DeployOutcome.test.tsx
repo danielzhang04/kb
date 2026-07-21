@@ -17,8 +17,13 @@ import type { DeployPlan } from './artifactTypes';
 type DeployFn = (plan: DeployPlan, sessionToken?: string) => Promise<DeployResult>;
 
 beforeEach(() => {
-  // ComposerChat only touches fetch on send; a never-resolving stub keeps the chat pane inert.
-  vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
+  // Workflow Composer reads the server-owned profile registry; other Composer fetches remain inert.
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    if (input === '/api/workflows/profiles') {
+      return { ok: true, status: 200, json: async () => ({ profiles: ['research'] }) } as Response;
+    }
+    return new Promise<Response>(() => {});
+  }));
 });
 afterEach(() => {
   cleanup();
@@ -32,11 +37,14 @@ function fillTask(): void {
   fireEvent.change(screen.getByLabelText('Task target'), { target: { value: 'ledgers/' } });
 }
 
-function fillWorkflow(): void {
-  fireEvent.change(screen.getByLabelText('Workflow filename'), { target: { value: 'wf_tidy.md' } });
+async function fillWorkflow(): Promise<void> {
+  await waitFor(() => expect((screen.getByLabelText('Execution profile') as HTMLSelectElement).disabled).toBe(false));
+  fireEvent.change(screen.getByLabelText('Workflow filename'), { target: { value: 'tidy.md' } });
   fireEvent.change(screen.getByLabelText('Workflow project'), { target: { value: 'kb' } });
+  fireEvent.change(screen.getByLabelText('Execution profile'), { target: { value: 'research' } });
   fireEvent.change(screen.getByLabelText('Workflow notes'), { target: { value: 'do the thing' } });
   fireEvent.change(screen.getByLabelText('Stage 1 action'), { target: { value: 'tidy' } });
+  fireEvent.change(screen.getByLabelText('Stage 1 target'), { target: { value: 'orgs/kb' } });
   fireEvent.change(screen.getByLabelText('Stage 1 work order'), { target: { value: 'Tidy the thing' } });
 }
 
@@ -137,7 +145,7 @@ describe('DeployOutcome — governed deploy + results strip', () => {
     );
     render(<DeployOutcome sessionToken="tok" initialKind="workflow" onBack={() => {}} deployImpl={deployImpl} />);
 
-    fillWorkflow();
+    await fillWorkflow();
     fireEvent.click(screen.getByRole('button', { name: /Deploy|Run task|Save definition/ }));
 
     const strip = await screen.findByTestId('composer-outcome');
@@ -145,29 +153,11 @@ describe('DeployOutcome — governed deploy + results strip', () => {
     expect(deployImpl.mock.calls[0][0]).toMatchObject({ kind: 'workflow', endpoint: 'save' });
   });
 
-  it('Run now launches the structured workflow DAG without saving the definition', async () => {
-    const deployImpl = vi.fn<DeployFn>();
-    const fetchMock = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(async () => ({
-      ok: true,
-      status: 200,
-      json: async () => ({ runId: 'run-wf-tidy-1', cards: [{ stageId: 'stage-1', cardId: 'c1', state: 'inbox' }] }),
-    } as Response));
-    vi.stubGlobal('fetch', fetchMock);
-    render(<DeployOutcome sessionToken="tok" initialKind="workflow" onBack={() => {}} deployImpl={deployImpl} />);
+  it('does not expose the legacy direct workflow-run control', async () => {
+    render(<DeployOutcome sessionToken="tok" initialKind="workflow" onBack={() => {}} deployImpl={vi.fn<DeployFn>()} />);
 
-    fillWorkflow();
-    fireEvent.click(screen.getByRole('button', { name: 'Run now' }));
-
-    expect(await screen.findByText(/run-wf-tidy-1/)).toBeTruthy();
-    expect(deployImpl).not.toHaveBeenCalled();
-    const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe('/api/write/workflow-runs');
-    const body = JSON.parse((init as RequestInit).body as string);
-    expect(body).toMatchObject({
-      name: 'wf_tidy',
-      project: 'kb',
-      stages: [{ id: 'stage-1', owner: 'codex-worker', riskTier: 'T2' }],
-    });
+    await fillWorkflow();
+    expect(screen.queryByRole('button', { name: 'Run now' })).toBeNull();
   });
 
   it('deploy_refusal_shows_reason', async () => {

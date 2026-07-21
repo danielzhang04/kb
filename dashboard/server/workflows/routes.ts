@@ -16,8 +16,8 @@
  * injected (production state), the run publishes canonical cards and then stalls at the existing
  * activation gate (`activationGated: true`), exactly like a manual proposal launch does today.
  */
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { auditFn, type SurfaceContext } from '../http/context.ts';
 import { requireSession, verifiedSession, writeRateLimitHook } from '../http/middleware.ts';
@@ -41,7 +41,7 @@ interface WorkflowStagePreview {
   riskTier: 'T1' | 'T2' | 'T3';
 }
 
-interface WorkflowDefEntry {
+export interface WorkflowDefEntry {
   /** URL id: the definition's own id when it parses, else a stable path-derived fallback. */
   ref: string;
   project: string;
@@ -59,38 +59,102 @@ interface WorkflowDefEntry {
 const ORGS_DIR = 'orgs';
 const WORKFLOWS_SUBDIR = 'workflows';
 
+/** True only when the real candidate remains inside the real root (including the root itself). */
+function isWithin(root: string, candidate: string): boolean {
+  const rel = relative(root, candidate);
+  return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
+}
+
+function invalidEntry(project: string, basename: string, path: string, detail: string): ScannedDef {
+  return {
+    def: null,
+    entry: {
+      ref: `${project}~${basename}`,
+      project,
+      path,
+      valid: false,
+      title: null,
+      profile: null,
+      stageCount: 0,
+      riskTier: null,
+      stages: [],
+      detail,
+    },
+  };
+}
+
 function highestTier(def: WorkflowDef): 'T1' | 'T2' | 'T3' {
   const rank = { T1: 1, T2: 2, T3: 3 } as const;
   return def.stages.reduce<'T1' | 'T2' | 'T3'>((max, stage) => (rank[stage.riskTier] > rank[max] ? stage.riskTier : max), 'T1');
 }
 
-interface ScannedDef {
+export interface ScannedDef {
   entry: WorkflowDefEntry;
   def: WorkflowDef | null;
 }
 
 /** Scan `orgs/<project>/workflows/*.md`, parsing each definition and recording its validation status. */
-function scanWorkflowDefs(repoRoot: string): ScannedDef[] {
+export function scanWorkflowDefs(repoRoot: string): ScannedDef[] {
   const orgsRoot = join(repoRoot, ORGS_DIR);
   if (!existsSync(orgsRoot)) return [];
+  let rootReal: string;
+  let orgsReal: string;
+  try {
+    rootReal = realpathSync(resolve(repoRoot));
+    orgsReal = realpathSync(orgsRoot);
+  } catch {
+    return [];
+  }
+  if (!isWithin(rootReal, orgsReal)) return [];
   const knownProfiles = workflowProfileIds();
   const scanned: ScannedDef[] = [];
   for (const project of readdirSync(orgsRoot, { withFileTypes: true })) {
     if (!project.isDirectory()) continue;
-    const dir = join(orgsRoot, project.name, WORKFLOWS_SUBDIR);
+    const projectDir = join(orgsRoot, project.name);
+    let projectReal: string;
+    try {
+      projectReal = realpathSync(projectDir);
+    } catch {
+      continue;
+    }
+    if (!isWithin(rootReal, projectReal) || !isWithin(orgsReal, projectReal)) continue;
+    const dir = join(projectDir, WORKFLOWS_SUBDIR);
     if (!existsSync(dir)) continue;
+    let workflowsReal: string;
+    try {
+      // Do not traverse a project workflow directory that is itself a symlink/junction to another tree.
+      if (lstatSync(dir).isSymbolicLink()) continue;
+      workflowsReal = realpathSync(dir);
+    } catch {
+      continue;
+    }
+    if (!isWithin(rootReal, workflowsReal) || !isWithin(projectReal, workflowsReal)) continue;
     for (const name of readdirSync(dir)) {
       if (!name.endsWith('.md')) continue;
       const relPath = `${ORGS_DIR}/${project.name}/${WORKFLOWS_SUBDIR}/${name}`;
       const basename = name.replace(/\.md$/, '');
       let text: string;
       try {
-        text = readFileSync(join(dir, name), 'utf8');
+        const candidate = join(dir, name);
+        // A symlinked definition could otherwise escape the project after the directory check.
+        if (!lstatSync(candidate).isFile() || lstatSync(candidate).isSymbolicLink()) continue;
+        const fileReal = realpathSync(candidate);
+        if (!isWithin(rootReal, fileReal) || !isWithin(workflowsReal, fileReal)) continue;
+        text = readFileSync(fileReal, 'utf8');
       } catch {
         continue;
       }
       const parsed = parseWorkflowDef(text, { knownProfiles });
       if (parsed.ok) {
+        if (parsed.value.project !== project.name) {
+          scanned.push(invalidEntry(
+            project.name,
+            basename,
+            relPath,
+            `definition project '${parsed.value.project}' does not match path project '${project.name}'`,
+          ));
+          continue;
+        }
         scanned.push({
           def: parsed.value,
           entry: {
@@ -109,22 +173,34 @@ function scanWorkflowDefs(repoRoot: string): ScannedDef[] {
           },
         });
       } else {
-        scanned.push({
-          def: null,
-          entry: {
-            ref: `${project.name}~${basename}`,
-            project: project.name,
-            path: relPath,
-            valid: false,
-            title: null,
-            profile: null,
-            stageCount: 0,
-            riskTier: null,
-            stages: [],
-            detail: parsed.detail,
-          },
-        });
+        scanned.push(invalidEntry(project.name, basename, relPath, parsed.detail));
       }
+    }
+  }
+  // The detail/launch API is keyed by `id`. Do not select the first matching file when two projects
+  // declare the same id: both become invalid, path-qualified entries, so neither can be launched.
+  const byId = new Map<string, ScannedDef[]>();
+  for (const candidate of scanned) {
+    if (!candidate.def) continue;
+    const matches = byId.get(candidate.def.id) ?? [];
+    matches.push(candidate);
+    byId.set(candidate.def.id, matches);
+  }
+  for (const [id, matches] of byId) {
+    if (matches.length < 2) continue;
+    for (const candidate of matches) {
+      candidate.def = null;
+      candidate.entry = {
+        ...candidate.entry,
+        ref: `${candidate.entry.project}~${id}`,
+        valid: false,
+        title: null,
+        profile: null,
+        stageCount: 0,
+        riskTier: null,
+        stages: [],
+        detail: `workflow id '${id}' is duplicated; ids must be globally unique`,
+      };
     }
   }
   scanned.sort((a, b) => a.entry.ref.localeCompare(b.entry.ref));
@@ -237,6 +313,8 @@ export function registerWorkflows(app: FastifyInstance, ctx: SurfaceContext): vo
 
   // Read-only, pre-auth (like registerRegistry).
   app.get('/api/workflows', async () => ({ items: scanWorkflowDefs(repoRoot).map((scanned) => scanned.entry) }));
+  // Profiles are server-owned execution policy. Clients must read them rather than infer a default.
+  app.get('/api/workflows/profiles', async () => ({ profiles: [...workflowProfileIds()].sort() }));
 
   app.get('/api/workflows/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     const { id } = req.params as { id: string };

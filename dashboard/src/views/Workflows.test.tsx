@@ -1,172 +1,94 @@
 // @vitest-environment jsdom
-/**
- * U3 — Workflows lists registered definition artifacts; it does not present definitions as live runs.
- * The designed empty state stays calm and explanatory, and points launched queue-card graphs to Runs.
- */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { Workflows } from './Workflows';
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
+const definition = (over: Partial<{
+  ref: string; project: string; path: string; valid: boolean; title: string | null; profile: string | null;
+  stageCount: number; riskTier: string | null; stages: Array<{ id: string; action: string; target: string; riskTier: string }>;
+  detail: string | null;
+}> = {}) => ({
+  ref: 'research-brief', project: 'kb-ops', path: 'orgs/kb-ops/workflows/research-brief.md', valid: true,
+  title: 'Research brief (cited)', profile: 'research', stageCount: 1, riskTier: 'T2',
+  stages: [{ id: 'brief', action: 'research:web-brief', target: 'orgs/kb-ops/output', riskTier: 'T2' }], detail: null,
+  ...over,
+});
+
 describe('Workflows view', () => {
-  it('renders the designed empty state when no workflows are registered', () => {
-    render(<Workflows data={{ present: false, items: [] }} />);
+  it('renders an honest canonical empty state when no org definitions exist', () => {
+    render(<Workflows definitions={{ items: [] }} />);
+
     expect(screen.getByLabelText('Workflows view')).toBeTruthy();
     const empty = screen.getByTestId('workflows-empty');
-    expect(within(empty).getByText('No workflows registered yet')).toBeTruthy();
-    expect(within(empty).getByText(/executable workflow-v1 definitions expose Run now/i)).toBeTruthy();
-    expect(within(empty).getByText(/their graph appears in Runs/i)).toBeTruthy();
+    expect(within(empty).getByText('No org workflow definitions found')).toBeTruthy();
+    expect(within(empty).getByText(/reusable staged DAG/i)).toBeTruthy();
+    expect(within(empty).getByText(/compiles a valid definition into a governed run/i)).toBeTruthy();
+    expect(screen.queryByText(/workflow-v1|No workflows registered yet/i)).toBeNull();
   });
 
-  it('renders the empty state when the registry is present but has no workflows', () => {
-    render(<Workflows data={{ present: true, items: [] }} />);
-    expect(screen.getByTestId('workflows-empty')).toBeTruthy();
-  });
+  it('uses only the canonical org-definition list and exposes its stage preview', () => {
+    render(<Workflows definitions={{ items: [definition()] }} />);
 
-  it('does not use any error styling in the empty state', () => {
-    const { container } = render(<Workflows data={{ present: false, items: [] }} />);
-    // No error/blocked semantic classes anywhere in the empty view.
-    expect(container.querySelector('[class*="error"]')).toBeNull();
-    expect(container.querySelector('[class*="blocked"]')).toBeNull();
-  });
-
-  it('lists registered workflows with name, id, path, and a live status marker', () => {
-    render(
-      <Workflows
-        data={{
-          present: true,
-          items: [
-            { id: 'wf_ship-review', path: 'workflows/wf_ship-review.md', name: 'Ship review', status: 'active' },
-            { id: 'wf_nightly-sweep', path: 'workflows/wf_nightly-sweep.md', name: 'wf_nightly-sweep', status: 'registered' },
-          ],
-        }}
-      />,
-    );
-    // The human name renders; when it differs from the id, the mono id is shown alongside it.
-    expect(screen.getByText('Ship review')).toBeTruthy();
-    expect(screen.getByText('wf_ship-review')).toBeTruthy();
-    expect(screen.getByText('workflows/wf_ship-review.md')).toBeTruthy();
-    // A name equal to the id renders once (no duplicate id chip).
-    expect(screen.getByText('wf_nightly-sweep')).toBeTruthy();
-    // Each row carries its own status from the read model.
-    expect(screen.getByText('active')).toBeTruthy();
-    expect(screen.getByText('registered')).toBeTruthy();
-    expect(screen.queryByTestId('workflows-empty')).toBeNull();
-  });
-
-  it('distinguishes registered definitions from launched queue-card graphs without a stale placeholder', () => {
-    render(<Workflows data={{ present: false, items: [] }} />);
-    expect(screen.getByText(/registered reusable definitions/i)).toBeTruthy();
-    expect(screen.getByTestId('workflows-runs-note').textContent).toMatch(/Run now creates a new instance/i);
-    expect(screen.queryByText(/D3\.4|will render here/i)).toBeNull();
-  });
-
-  it('lists org workflow definitions with a validation badge and a compiled stage preview', () => {
-    render(
-      <Workflows
-        data={{ present: false, items: [] }}
-        definitions={{ items: [
-          {
-            ref: 'research-brief', project: 'kb-ops', path: 'orgs/kb-ops/workflows/research-brief.md',
-            valid: true, title: 'Research brief (cited)', profile: 'research', stageCount: 1, riskTier: 'T2',
-            stages: [{ id: 'brief', action: 'research:web-brief', target: 'orgs/kb-ops/output', riskTier: 'T2' }],
-            detail: null,
-          },
-        ] }}
-      />,
-    );
     const section = screen.getByTestId('workflow-defs');
     expect(within(section).getByText('Research brief (cited)')).toBeTruthy();
     expect(within(section).getByText('research')).toBeTruthy();
     expect(within(section).getByText(/research:web-brief → orgs\/kb-ops\/output/)).toBeTruthy();
     expect(within(section).getByText('valid')).toBeTruthy();
     expect(within(section).getByRole('button', { name: 'Launch' })).toBeTruthy();
+    expect(screen.queryByText('Run now')).toBeNull();
   });
 
-  it('launches an org definition and reports the honest activation-gated status', async () => {
-    const fetchMock = vi.fn(async () => ({
-      ok: true,
-      status: 202,
+  it('uses one stable launch intent while pending and reports the honest activation-gated status', async () => {
+    let resolveResponse: ((response: Response) => void) | undefined;
+    const fetchMock = vi.fn(() => new Promise<Response>((resolve) => { resolveResponse = resolve; }));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<Workflows sessionToken="tok" definitions={{ items: [definition()] }} />);
+
+    const launch = screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement;
+    fireEvent.click(launch);
+    fireEvent.click(launch);
+    expect(launch.disabled).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    resolveResponse?.({
+      ok: true, status: 202,
       json: async () => ({ ok: true, runRef: 'run-ref-9', activationGated: true, waitingHuman: true }),
-    } as Response));
-    vi.stubGlobal('fetch', fetchMock);
-    render(
-      <Workflows
-        sessionToken="tok"
-        data={{ present: false, items: [] }}
-        definitions={{ items: [
-          {
-            ref: 'research-brief', project: 'kb-ops', path: 'orgs/kb-ops/workflows/research-brief.md',
-            valid: true, title: 'Research brief (cited)', profile: 'research', stageCount: 1, riskTier: 'T2',
-            stages: [{ id: 'brief', action: 'research:web-brief', target: 'orgs/kb-ops/output', riskTier: 'T2' }],
-            detail: null,
-          },
-        ] }}
-      />,
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Launch' }));
+    } as Response);
     expect(await screen.findByText(/Run created run-ref-9; execution awaits activation/)).toBeTruthy();
+    await waitFor(() => expect(launch.disabled).toBe(false));
     expect(fetchMock).toHaveBeenCalledWith('/api/workflows/research-brief/launch', expect.objectContaining({ method: 'POST' }));
-    // The server refuses any launch whose body lacks a non-empty idempotencyKey ≤512 chars. Every prior
-    // test mocked fetch, so `body: '{}'` shipped and the live button always got "Refused". Assert the
-    // ACTUAL body here so that regression cannot return silently.
-    const init = (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1];
-    expect(typeof init.body).toBe('string');
-    const sent = JSON.parse(init.body as string) as { idempotencyKey?: unknown };
-    expect(typeof sent.idempotencyKey).toBe('string');
-    const key = sent.idempotencyKey as string;
-    expect(key.trim()).not.toBe('');
-    expect(key.length).toBeLessThanOrEqual(512);
-    // Stable, readable prefix scoping the key to this definition (unique-per-click suffix follows).
-    expect(key.startsWith('launch:research-brief:')).toBe(true);
+    const launchCalls = fetchMock.mock.calls as unknown as Array<[RequestInfo | URL, RequestInit]>;
+    const launchInit = launchCalls.find(([url]) => url === '/api/workflows/research-brief/launch')?.[1];
+    expect(launchInit).toBeTruthy();
+    const idempotencyKey = JSON.parse(launchInit!.body as string).idempotencyKey as string;
+    expect(idempotencyKey).toMatch(/^workflow-launch:research-brief:/);
+    expect(idempotencyKey.length).toBeLessThanOrEqual(512);
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/write/workflow-runs', expect.anything());
   });
 
-  it('sends a UNIQUE idempotencyKey per Launch click so each explicit click is a distinct run', async () => {
-    const fetchMock = vi.fn(async () => ({
-      ok: true,
-      status: 202,
-      json: async () => ({ ok: true, runRef: 'run-ref-9', activationGated: true }),
-    } as Response));
+  it('re-enables after a failed intent and gives a retry a fresh idempotency key', async () => {
+    const responses = [
+      { ok: false, status: 409, json: async () => ({ error: 'definition-invalid', detail: 'definition changed' }) },
+      { ok: true, status: 202, json: async () => ({ runRef: 'run-ref-10', activationGated: true }) },
+    ] as Response[];
+    const fetchMock = vi.fn(async () => responses.shift()!);
     vi.stubGlobal('fetch', fetchMock);
-    render(
-      <Workflows
-        sessionToken="tok"
-        data={{ present: false, items: [] }}
-        definitions={{ items: [
-          {
-            ref: 'research-brief', project: 'kb-ops', path: 'orgs/kb-ops/workflows/research-brief.md',
-            valid: true, title: 'Research brief (cited)', profile: 'research', stageCount: 1, riskTier: 'T2',
-            stages: [{ id: 'brief', action: 'research:web-brief', target: 'orgs/kb-ops/output', riskTier: 'T2' }],
-            detail: null,
-          },
-        ] }}
-      />,
-    );
-    const button = screen.getByRole('button', { name: 'Launch' });
-    fireEvent.click(button);
-    await screen.findByText(/Run created run-ref-9/);
-    fireEvent.click(button);
-    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-    const keyOf = (call: number): string =>
-      (JSON.parse((fetchMock.mock.calls[call] as unknown as [string, RequestInit])[1].body as string) as { idempotencyKey: string }).idempotencyKey;
-    expect(keyOf(0)).not.toBe(keyOf(1));
-  });
+    render(<Workflows sessionToken="tok" definitions={{ items: [definition()] }} />);
 
-  it('runs a strict registered workflow as a new instance', async () => {
-    const fetchMock = vi.fn(async () => ({
-      ok: true,
-      status: 200,
-      json: async () => ({ runId: 'run-ship-1', runners: [{ status: 'triggered' }] }),
-    } as Response));
-    vi.stubGlobal('fetch', fetchMock);
-    render(<Workflows sessionToken="tok" data={{ present: true, items: [{
-      id: 'wf_ship', path: 'workflows/wf_ship.md', name: 'Ship', status: 'active',
-      definition: { name: 'wf_ship', project: 'kb', stages: [{ id: 'build', action: 'build', target: '.', workOrder: 'Build', riskTier: 'T2', owner: 'codex-worker', dependsOn: [] }] },
-    }] }} />);
+    const launch = screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement;
+    fireEvent.click(launch);
+    expect(await screen.findByText('Refused: definition changed')).toBeTruthy();
+    await waitFor(() => expect(launch.disabled).toBe(false));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Run now' }));
-    expect(await screen.findByText(/Launched run-ship-1.*background runner signaled/)).toBeTruthy();
-    expect(fetchMock).toHaveBeenCalledWith('/api/write/workflow-runs', expect.objectContaining({ method: 'POST' }));
+    fireEvent.click(launch);
+    expect(await screen.findByText(/Run created run-ref-10; execution awaits activation/)).toBeTruthy();
+    const calls = fetchMock.mock.calls as unknown as Array<[RequestInfo | URL, RequestInit]>;
+    const keys = calls.map(([, init]) => JSON.parse(init.body as string).idempotencyKey);
+    expect(keys).toHaveLength(2);
+    expect(keys[0]).toMatch(/^workflow-launch:research-brief:/);
+    expect(keys[1]).toMatch(/^workflow-launch:research-brief:/);
+    expect(keys[1]).not.toBe(keys[0]);
   });
 });

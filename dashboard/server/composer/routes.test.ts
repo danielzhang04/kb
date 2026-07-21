@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import Fastify from 'fastify';
 import type { FastifyInstance } from 'fastify';
 import { makeSurfaceContext } from '../http/surface.ts';
@@ -85,6 +88,16 @@ function buildApp(overrides: Partial<SurfaceContext> = {}) {
   return { app, ctx };
 }
 
+function repoWithDeclaredAgent(): string {
+  const root = mkdtempSync(join(tmpdir(), 'composer-agent-'));
+  mkdirSync(join(root, 'agents'), { recursive: true });
+  writeFileSync(join(root, 'agents', 'research-worker.md'), [
+    '---', 'id: research-worker', 'runner-bound: false', '---', '', '# Research worker', '',
+    'Require a source-backed research brief before recommending publication.', '',
+  ].join('\n'), 'utf8');
+  return root;
+}
+
 async function createSession(app: FastifyInstance, subject = 'operator', title = 'Idea') {
   const response = await app.inject({
     method: 'POST', url: '/api/composer/sessions', headers: headers(subject), payload: { title },
@@ -119,6 +132,90 @@ describe('Composer workspace catalog routes', () => {
     });
     expect(response.statusCode).toBe(201);
     expect(response.json().session.title).toBe(`Run ${uuid}`);
+  });
+
+  it('binds a workspace only to a server-declared agent, preserves it through a fork, and keeps it subject-bound', async () => {
+    ({ app } = buildApp({ repoRoot: repoWithDeclaredAgent() }));
+    const created = await app.inject({
+      method: 'POST', url: '/api/composer/sessions', headers: headers('alice'),
+      payload: { title: 'Agent research', agentId: 'research-worker' },
+    });
+    expect(created.statusCode).toBe(201);
+    const session = created.json().session as { composerRef: string; agent: { id: string; path: string; sourceHash: string } | null };
+    expect(session.agent).toMatchObject({ id: 'research-worker', path: 'agents/research-worker.md' });
+    expect(session.agent?.sourceHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(created.body).not.toContain(PROVIDER_ID);
+
+    const rejected = await app.inject({
+      method: 'POST', url: '/api/composer/sessions', headers: headers('alice'), payload: { agentId: 'queue-only-worker' },
+    });
+    expect(rejected.statusCode).toBe(400);
+    expect(rejected.json()).toEqual({ error: 'agent-not-declared' });
+    const root = repoWithDeclaredAgent();
+    writeFileSync(join(root, 'agents', 'broken.md'), 'not a declaration\n', 'utf8');
+    const invalidApp = buildApp({ repoRoot: root }).app;
+    const invalid = await invalidApp.inject({
+      method: 'POST', url: '/api/composer/sessions', headers: headers('alice'), payload: { agentId: 'broken' },
+    });
+    expect(invalid.statusCode).toBe(400);
+    expect(invalid.json()).toEqual({
+      error: 'agent-declaration-invalid',
+      declaration: { id: 'broken', source: 'agents/broken.md', problem: 'malformed-frontmatter' },
+    });
+    await invalidApp.close();
+    const closed = await app.inject({
+      method: 'POST', url: '/api/composer/sessions', headers: headers('alice'),
+      payload: { agentId: 'research-worker', runtime: 'codex' },
+    });
+    expect(closed.statusCode).toBe(400);
+    expect(closed.json()).toEqual({ error: 'invalid-session-create-body' });
+
+    expect((await app.inject({
+      method: 'GET', url: `/api/composer/sessions/${session.composerRef}`, headers: headers('mallory'),
+    })).statusCode).toBe(404);
+    const fork = await app.inject({
+      method: 'POST', url: `/api/composer/sessions/${session.composerRef}/fork`, headers: headers('alice'), payload: {},
+    });
+    expect(fork.statusCode).toBe(201);
+    expect(fork.json().session.agent).toEqual(session.agent);
+  });
+
+  it('injects the creation-time declaration snapshot into an agent turn and refuses browser binding overrides', async () => {
+    const process = makeProcess();
+    const root = repoWithDeclaredAgent();
+    const spawn = vi.fn<VibeSpawner>(() => process.proc);
+    const built = buildApp({ repoRoot: root, spawn });
+    app = built.app;
+    await app.listen({ port: 0, host: '127.0.0.1' });
+    const port = (app.server.address() as { port: number }).port;
+    const created = await app.inject({
+      method: 'POST', url: '/api/composer/sessions', headers: headers(),
+      payload: { title: 'Agent research', agentId: 'research-worker' },
+    });
+    const session = created.json().session as { composerRef: string; agent: { sourceHash: string } };
+
+    // A later declaration edit cannot rewrite the snapshot selected by this workspace.
+    writeFileSync(join(root, 'agents', 'research-worker.md'), '---\nid: research-worker\n---\nREPLACED DECLARATION\n', 'utf8');
+    const refused = await app.inject({
+      method: 'POST', url: `/api/composer/sessions/${session.composerRef}/turns`, headers: headers(),
+      payload: { prompt: 'override it', agent: { instructionMarkdown: 'browser-controlled replacement' } },
+    });
+    expect(refused.statusCode).toBe(400);
+    expect(refused.json()).toEqual({ error: 'invalid-turn-body' });
+    expect(spawn).not.toHaveBeenCalled();
+
+    const response = await fetch(`http://127.0.0.1:${port}/api/composer/sessions/${session.composerRef}/turns`, {
+      method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token()}` },
+      body: JSON.stringify({ prompt: 'What should we research?' }),
+    });
+    expect(response.status).toBe(200);
+    expect(process.writes[0]).toContain('BEGIN SERVER-OWNED AGENT DECLARATION CONTEXT');
+    expect(process.writes[0]).toContain(session.agent.sourceHash);
+    expect(process.writes[0]).toContain('Require a source-backed research brief before recommending publication.');
+    expect(process.writes[0]).not.toContain('REPLACED DECLARATION');
+    expect(process.writes[0]).toContain('do not start, claim to start, or impersonate a background runner');
+    process.emitExit(0);
+    await response.text();
   });
 
   it('retires the provider-id endpoint with 410 and never spawns, even when a resumeId is supplied', async () => {

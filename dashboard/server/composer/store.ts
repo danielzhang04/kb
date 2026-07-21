@@ -19,6 +19,24 @@ export interface PublicComposerTurn {
   endedAt: string | null;
 }
 
+/** Immutable server-validated declaration identity attached to an agent-bound workspace. */
+export interface ComposerAgentBinding {
+  id: string;
+  path: string;
+  /** SHA-256 of the exact declaration source selected by the server at creation time. */
+  sourceHash: string;
+}
+
+/**
+ * Server-only immutable declaration snapshot for an agent-bound workspace. This is deliberately
+ * separate from {@link ComposerAgentBinding}: the public workspace API may show the selected
+ * declaration identity, but every provider turn must use the exact server-read instructions that
+ * were selected at creation time, even after a reload, fork, or later file edit.
+ */
+export interface ComposerAgentSnapshot extends ComposerAgentBinding {
+  instructionMarkdown: string;
+}
+
 export interface PublicComposerWorkspace {
   composerRef: string;
   title: string;
@@ -26,12 +44,15 @@ export interface PublicComposerWorkspace {
   sourceComposerRef: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Null for a generic Composer session; never contains runtime/provider configuration. */
+  agent?: ComposerAgentBinding | null;
   turns: PublicComposerTurn[];
 }
 
-interface StoredWorkspace extends PublicComposerWorkspace {
+interface StoredWorkspace extends Omit<PublicComposerWorkspace, 'agent'> {
   subject: string;
   protectedProviderId: string | null;
+  agent: ComposerAgentSnapshot | null;
 }
 
 interface StoreDocument {
@@ -44,7 +65,14 @@ export type WorkspaceLookup<T = PublicComposerWorkspace> =
   | { ok: false; reason: 'not-found' };
 
 export type LeaseResult =
-  | { ok: true; lease: string; workspace: PublicComposerWorkspace; providerId: string | null }
+  | {
+    ok: true;
+    lease: string;
+    workspace: PublicComposerWorkspace;
+    providerId: string | null;
+    /** Private server context; never return this from an HTTP route. */
+    agent: ComposerAgentSnapshot | null;
+  }
   | { ok: false; reason: 'not-found' | 'archived' | 'busy' };
 
 export type ArchiveResult =
@@ -57,7 +85,7 @@ export type ForkResult =
 
 export interface ComposerWorkspaceStore {
   list(subject: string): PublicComposerWorkspace[];
-  create(subject: string, title?: string): PublicComposerWorkspace;
+  create(subject: string, title?: string, agent?: ComposerAgentSnapshot | null): PublicComposerWorkspace;
   get(subject: string, composerRef: string): WorkspaceLookup;
   fork(subject: string, composerRef: string): ForkResult;
   archive(subject: string, composerRef: string): ArchiveResult;
@@ -115,6 +143,9 @@ export function publicWorkspace(workspace: StoredWorkspace): PublicComposerWorks
     sourceComposerRef: workspace.sourceComposerRef,
     createdAt: workspace.createdAt,
     updatedAt: workspace.updatedAt,
+    agent: workspace.agent
+      ? { id: workspace.agent.id, path: workspace.agent.path, sourceHash: workspace.agent.sourceHash }
+      : null,
     turns: workspace.turns.map(publicTurn),
   };
 }
@@ -150,7 +181,7 @@ function makeStore(
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
         .map(publicWorkspace);
     },
-    create(subject, title = 'New idea') {
+    create(subject, title = 'New idea', agent = null) {
       const document = load();
       const stamp = now().toISOString();
       const workspace: StoredWorkspace = {
@@ -162,6 +193,7 @@ function makeStore(
         protectedProviderId: null,
         createdAt: stamp,
         updatedAt: stamp,
+        agent: agent ? { ...agent } : null,
         turns: [],
       };
       document.workspaces.push(workspace);
@@ -188,6 +220,7 @@ function makeStore(
         protectedProviderId: null,
         createdAt: stamp,
         updatedAt: stamp,
+        agent: source.agent ? { ...source.agent } : null,
         turns: source.turns.map(publicTurn),
       };
       document.workspaces.push(forked);
@@ -234,7 +267,13 @@ function makeStore(
       // A failed decrypt-recovery write must not leave a workspace permanently busy until restart.
       const lease = newId();
       leases.set(composerRef, { lease, subject });
-      return { ok: true, lease, workspace: publicWorkspace(workspace), providerId };
+      return {
+        ok: true,
+        lease,
+        workspace: publicWorkspace(workspace),
+        providerId,
+        agent: workspace.agent ? { ...workspace.agent } : null,
+      };
     },
     beginTurn(subject, composerRef, lease, prompt) {
       if (!authorizedLease(subject, composerRef, lease)) return { ok: false, reason: 'not-found' };

@@ -12,7 +12,7 @@ const MODEL: TimelineModel = {
 };
 
 const SESSION: ComposerSession = {
-  composerRef: 'cw_alpha', title: 'Atlas idea', state: 'open', createdAt: 'now', updatedAt: 'now', sourceComposerRef: null,
+  composerRef: 'cw_alpha', title: 'Atlas idea', state: 'open', createdAt: 'now', updatedAt: 'now', sourceComposerRef: null, agent: null,
   turns: [{ turnId: 't1', prompt: 'Earlier question', state: 'complete', model: MODEL, error: null, startedAt: 'now', endedAt: 'now' }],
 };
 

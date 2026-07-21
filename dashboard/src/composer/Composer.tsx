@@ -19,12 +19,12 @@
  * Composer adds NO new gate, NO new auth, NO I/O of its own: the chat rides ComposerChat's governed
  * /api/composer/turn path, and deploy is delegated to the injected dispatcher. Pure composition + UI.
  */
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ComposerChat } from './ComposerChat';
 import { defaultComposerStream } from './chatClient';
 import type { ComposerStreamFn } from './chatClient';
 import type { Session } from '../lib/authClient';
-import { RISK_TIERS, seedTemplate, toDeploy, validateDraft, workflowRunRequest } from './artifactTypes';
+import { RISK_TIERS, seedTemplate, toDeploy, validateDraft } from './artifactTypes';
 import type {
   ArtifactKind,
   AgentDraft,
@@ -38,7 +38,6 @@ import type {
   WorkflowDraft,
   WorkflowStageDraft,
 } from './artifactTypes';
-import type { WorkflowRunRequest } from '../../server/write/workflowRun';
 import type { ComposerSession } from './workspaceClient';
 import '../styles/views/composer.css';
 
@@ -77,10 +76,8 @@ export interface ComposerProps {
   ideaText?: string;
   /** Governed deploy dispatcher (C4). Invoked with the validated DeployPlan when Deploy is pressed. */
   onDeploy: (plan: DeployPlan) => void | Promise<void>;
-  onRunWorkflow?: (request: WorkflowRunRequest) => void | Promise<void>;
   /** True while the wrapper is resolving auth or deploying. Disables the primary action to prevent duplicates. */
   deployPending?: boolean;
-  runPending?: boolean;
   /** Return to the underlying view — the Back affordance (parity with the former placeholder). */
   onBack?: () => void;
   /** Injected chat stream (DI seam, mirrors ComposerChat). Composer wraps it to compose the seed. */
@@ -116,6 +113,7 @@ interface FormState {
   wfFilename: string;
   wfBody: string;
   wfProject: string;
+  wfProfile: string;
   wfStages: WorkflowStageDraft[];
   // project
   projName: string;
@@ -144,7 +142,8 @@ function initialForm(): FormState {
     wfFilename: '',
     wfBody: '',
     wfProject: '',
-    wfStages: [{ id: 'stage-1', action: '', target: '.', workOrder: '', riskTier: 'T2', owner: 'codex-worker', dependsOn: [] }],
+    wfProfile: '',
+    wfStages: [{ id: 'stage-1', action: '', target: '.', workOrder: '', riskTier: 'T2', dependsOn: [] }],
     projName: '',
     projDate: today(),
     agentId: '',
@@ -168,7 +167,7 @@ function buildDraft(
     case 'skill':
       return { name: f.skillName, description: f.skillDescription, body: f.skillBody };
     case 'workflow':
-      return { filename: f.wfFilename, project: f.wfProject, body: f.wfBody, stages: f.wfStages };
+      return { filename: f.wfFilename, project: f.wfProject, profile: f.wfProfile, body: f.wfBody, stages: f.wfStages };
     case 'project':
       return { name: f.projName, date: f.projDate };
     case 'agent':
@@ -204,9 +203,7 @@ export function Composer({
   initialKind = 'idea',
   ideaText = '',
   onDeploy,
-  onRunWorkflow,
   deployPending = false,
-  runPending = false,
   onBack,
   stream = defaultComposerStream,
   renderOutcome,
@@ -214,6 +211,28 @@ export function Composer({
 }: ComposerProps): React.JSX.Element {
   const [kind, setKind] = useState<SeedKind>(initialKind);
   const [form, setForm] = useState<FormState>(initialForm);
+  const [workflowProfiles, setWorkflowProfiles] = useState<string[] | null>(null);
+  const [workflowProfilesError, setWorkflowProfilesError] = useState(false);
+
+  // Profiles are server-owned execution policy. Do not infer a default: a workflow remains undeployable
+  // until this read-only registry has loaded and the operator explicitly selects one.
+  useEffect(() => {
+    if (kind !== 'workflow' || workflowProfiles !== null) return;
+    let cancelled = false;
+    void fetch('/api/workflows/profiles')
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const body = await response.json() as { profiles?: unknown };
+        if (!Array.isArray(body.profiles) || body.profiles.some((profile) => typeof profile !== 'string' || profile === '')) {
+          throw new Error('invalid profile registry');
+        }
+        if (!cancelled) setWorkflowProfiles([...body.profiles].sort());
+      })
+      .catch(() => {
+        if (!cancelled) setWorkflowProfilesError(true);
+      });
+    return () => { cancelled = true; };
+  }, [kind, workflowProfiles]);
 
   // Refs so the wrapped stream closure always reads the CURRENT kind and re-seed flag regardless of React
   // batching / closure staleness. The seed turn is: the first turn, and every turn right after a chip swap.
@@ -248,7 +267,10 @@ export function Composer({
   );
 
   const draft = buildDraft(kind, form);
-  const problems: Problem[] = kind === 'idea' || draft === null ? [] : validateDraft(kind, draft as never);
+  const draftProblems: Problem[] = kind === 'idea' || draft === null ? [] : validateDraft(kind, draft as never);
+  const problems: Problem[] = kind === 'workflow' && workflowProfiles === null
+    ? [...draftProblems, { field: 'profile', message: workflowProfilesError ? 'execution profiles could not be loaded' : 'execution profiles are loading' }]
+    : draftProblems;
   const isConcrete = kind !== 'idea' && draft !== null;
   const isValid = isConcrete && problems.length === 0;
   const plan: DeployPlan | null = useMemo(
@@ -260,12 +282,6 @@ export function Composer({
     if (plan && !deployPending) void onDeploy(plan);
   }, [plan, onDeploy, deployPending]);
 
-  const onRunClick = useCallback((): void => {
-    if (kind === 'workflow' && draft && isValid && onRunWorkflow && !runPending) {
-      void onRunWorkflow(workflowRunRequest(draft as WorkflowDraft));
-    }
-  }, [draft, isValid, kind, onRunWorkflow, runPending]);
-
   return (
     <section className="v-composer" aria-label="Composer">
       <header className="v-composer__head">
@@ -274,6 +290,12 @@ export function Composer({
           <p className="v-composer__lede">
             Explore the idea with a read-only planning model, then open Draft &amp; run when the plan is ready.
           </p>
+          {composerSession?.agent ? (
+            <p className="v-composer__agent-target mc-mono" data-testid="composer-agent-target">
+              Agent workspace · {composerSession.agent.id} · {composerSession.agent.path} · revision{' '}
+              {composerSession.agent.sourceHash.slice(0, 12)}
+            </p>
+          ) : null}
         </div>
         {onBack ? <button type="button" className="mc-btn mc-btn--quiet" onClick={onBack}>Back</button> : null}
       </header>
@@ -322,7 +344,7 @@ export function Composer({
             </p>
           ) : (
             <>
-              <DraftForm kind={kind as ArtifactKind} form={form} setField={setField} />
+              <DraftForm kind={kind as ArtifactKind} form={form} setField={setField} workflowProfiles={workflowProfiles} />
 
               <p className="v-composer__deploy-note" data-testid="composer-deploy-note">
                 {deployNote(kind as ArtifactKind)}
@@ -354,20 +376,10 @@ export function Composer({
                   type="button"
                   className="mc-btn mc-btn--primary v-composer__deploy"
                   onClick={onDeployClick}
-                  disabled={!isValid || deployPending || runPending}
+                  disabled={!isValid || deployPending}
                 >
                   {deployPending ? (kind === 'task' ? 'Launching…' : 'Saving…') : kind === 'workflow' ? 'Save definition' : kind === 'task' ? 'Run task' : 'Deploy'}
                 </button>
-                {kind === 'workflow' ? (
-                  <button
-                    type="button"
-                    className="mc-btn v-composer__run"
-                    onClick={onRunClick}
-                    disabled={!isValid || deployPending || runPending || !onRunWorkflow}
-                  >
-                    {runPending ? 'Launching…' : 'Run now'}
-                  </button>
-                ) : null}
               </div>
 
               {/* C5 mounts the governed deploy-outcome strip here (result / refusal / follow-up saves). */}
@@ -385,10 +397,12 @@ function DraftForm({
   kind,
   form,
   setField,
+  workflowProfiles,
 }: {
   kind: ArtifactKind;
   form: FormState;
   setField: <K extends keyof FormState>(key: K, value: FormState[K]) => void;
+  workflowProfiles: string[] | null;
 }): React.JSX.Element {
   switch (kind) {
     case 'task':
@@ -440,9 +454,21 @@ function DraftForm({
             label="Workflow filename"
             value={form.wfFilename}
             onChange={(v) => setField('wfFilename', v)}
-            placeholder="wf_<name>.md"
+            placeholder="<slug>.md"
           />
           <Field label="Workflow project" value={form.wfProject} onChange={(v) => setField('wfProject', v)} />
+          <label className="v-composer__field">
+            <span className="v-composer__field-label">Execution profile</span>
+            <select
+              aria-label="Execution profile"
+              value={form.wfProfile}
+              disabled={workflowProfiles === null}
+              onChange={(e) => setField('wfProfile', e.target.value)}
+            >
+              <option value="">{workflowProfiles === null ? 'Loading profiles…' : 'Choose a profile…'}</option>
+              {(workflowProfiles ?? []).map((profile) => <option key={profile} value={profile}>{profile}</option>)}
+            </select>
+          </label>
           <Field label="Workflow notes" value={form.wfBody} onChange={(v) => setField('wfBody', v)} multiline />
           <div className="v-composer__stages" aria-label="Workflow stages">
             {form.wfStages.map((stage, index) => {
@@ -469,12 +495,6 @@ function DraftForm({
                       <option value="T1">T1</option><option value="T2">T2</option>
                     </select>
                   </label>
-                  <label className="v-composer__field">
-                    <span className="v-composer__field-label">Runner</span>
-                    <select value={stage.owner} onChange={(e) => update('owner', e.target.value)}>
-                      <option value="codex-worker">Codex worker · background</option>
-                    </select>
-                  </label>
                   {form.wfStages.length > 1 ? (
                     <button type="button" className="mc-btn mc-btn--quiet" onClick={() => setField('wfStages', form.wfStages.filter((_, i) => i !== index))}>
                       Remove stage
@@ -488,7 +508,7 @@ function DraftForm({
               className="mc-btn mc-btn--quiet"
               onClick={() => setField('wfStages', [...form.wfStages, {
                 id: `stage-${form.wfStages.length + 1}`,
-                action: '', target: '.', workOrder: '', riskTier: 'T2', owner: 'codex-worker',
+                action: '', target: '.', workOrder: '', riskTier: 'T2',
                 dependsOn: form.wfStages.length ? [form.wfStages.at(-1)!.id] : [],
               }])}
             >
@@ -535,7 +555,7 @@ function deployNote(kind: ArtifactKind): string {
     case 'task':
       return 'Run task files a queue card assigned to its background runner and signals pickup. No Terminal tab is opened.';
     case 'workflow':
-      return 'Save definition registers a workflow artifact; it does not run the workflow. Run now atomically launches this stage graph.';
+      return 'Save definition creates a canonical workflow definition; it does not run the workflow.';
     case 'skill':
       return 'Deploy registers a learned skill; it does not promote or activate the skill.';
     case 'project':

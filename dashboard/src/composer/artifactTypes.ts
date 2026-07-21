@@ -22,7 +22,7 @@
  *     (the LEARNED tier — binding, never curated, so the sync_skills curated-mirror hook is never
  *     tripped). Project → orgs/<name>/_index.md rendered from templates/_index.md (the other three
  *     rendered files ride along as `followUps` the UI may offer as subsequent saves). Workflow →
- *     workflows/wf_<name>.md.
+ *     orgs/<project>/workflows/<slug>.md.
  *   - Task maps to the launch endpoint's fields {project, action, target, riskTier, body}.
  */
 
@@ -64,21 +64,21 @@ export interface SkillDraft {
   body: string;
 }
 
-/** Workflow draft — the registry derives `id` from the wf_-prefixed filename; there is no frontmatter
- *  schema today, so we validate the filename shape + a non-empty body. */
+/** Workflow draft — a canonical project-scoped definition. The filename stem is its stable id/title. */
 export interface WorkflowStageDraft {
   id: string;
   action: string;
   target: string;
   workOrder: string;
   riskTier: 'T1' | 'T2';
-  owner: string;
   dependsOn: string[];
 }
 
 export interface WorkflowDraft {
   filename: string;
   project: string;
+  /** Server-owned execution profile. Never default this client-side. */
+  profile: string;
   body: string;
   stages: WorkflowStageDraft[];
 }
@@ -315,7 +315,7 @@ function ideaSeed(idea: string): string {
     'small artifact instead converges to a typed deploy —',
     'help decide which TYPE this idea wants to become. The kinds are:',
     '- task — a single governed work order filed as a queue card (project, action, target, risk tier).',
-    '- workflow — a reusable multi-step procedure saved as workflows/wf_<name>.md.',
+    '- workflow — a reusable multi-step procedure saved as orgs/<project>/workflows/<slug>.md.',
     '- skill — a packaged capability saved as skills/learned/<slug>/SKILL.md (name + description + body).',
     '- project — a new orgs/<name>/ workspace scaffolded from the standard templates.',
     '- agent — a first-class fleet identity (id, role, runtime) declared as agents/<id>.md. Declaring it',
@@ -341,9 +341,9 @@ function kindSeed(kind: ArtifactKind, idea: string): string {
     case 'workflow':
       return [
         ...header,
-        'Draft a WORKFLOW — a reusable procedure saved as workflows/wf_<name>.md.',
-        'The filename MUST be wf_<name>.md (the registry derives its id from the filename). Write the',
-        'full Markdown body (the steps). Deploy is durable: work branch → PR to main.',
+        'Draft a WORKFLOW — a reusable procedure saved as orgs/<project>/workflows/<slug>.md.',
+        'Use a lowercase <slug>.md filename and choose a server-owned execution profile. Write the full',
+        'Markdown body and canonical stages. Deploy is durable: work branch → PR to main.',
       ].join('\n');
     case 'skill':
       return [
@@ -414,15 +414,16 @@ function validateSkill(draft: SkillDraft): Problem[] {
 
 function validateWorkflow(draft: WorkflowDraft): Problem[] {
   const problems: Problem[] = [];
-  // The registry derives the id from the filename; it MUST be wf_<name>.md. review F4 — the old
-  // `^wf_.+\.md$` accepted `wf_../../x.md` (the `.+` swallowed the traversal), so the durable relpath
-  // `workflows/<filename>` could escape workflows/. Constrain the name to a single safe segment of
-  // lowercase alphanumerics + hyphens — no `/`, no `.`, so no traversal survives.
-  if (!/^wf_[a-z0-9-]+\.md$/.test(draft.filename ?? '')) {
-    problems.push({ field: 'filename', message: 'filename must match wf_<name>.md (lowercase name, no path separators or "..")' });
+  // A filename becomes the definition id and a path segment. Keep it a single, canonical slug file so
+  // `orgs/<project>/workflows/<filename>` cannot traverse outside its project tree.
+  if (!/^[a-z0-9][a-z0-9-]*\.md$/.test(draft.filename ?? '')) {
+    problems.push({ field: 'filename', message: 'filename must match <slug>.md (lowercase, no path separators or "..")' });
   }
   requireNonEmpty(problems, 'body', draft.body, 'a workflow body is required');
   requireNonEmpty(problems, 'project', draft.project, 'workflow project is required');
+  const projectProblem = nameSegmentProblem('project', draft.project);
+  if (projectProblem) problems.push(projectProblem);
+  requireNonEmpty(problems, 'profile', draft.profile, 'a server-owned execution profile is required');
   if (!Array.isArray(draft.stages) || draft.stages.length === 0) {
     problems.push({ field: 'stages', message: 'at least one executable stage is required' });
     return problems;
@@ -439,7 +440,6 @@ function validateWorkflow(draft: WorkflowDraft): Problem[] {
     requireNonEmpty(problems, `${prefix}.action`, stage.action, 'stage action is required');
     requireNonEmpty(problems, `${prefix}.target`, stage.target, 'stage target is required');
     requireNonEmpty(problems, `${prefix}.workOrder`, stage.workOrder, 'stage work order is required');
-    requireNonEmpty(problems, `${prefix}.owner`, stage.owner, 'stage owner is required');
     if (!['T1', 'T2'].includes(stage.riskTier)) {
       problems.push({ field: `${prefix}.riskTier`, message: 'Run now v1 accepts T1 or T2 only' });
     }
@@ -561,22 +561,31 @@ function skillPlan(draft: SkillDraft): DeployPlan {
 }
 
 function workflowPlan(draft: WorkflowDraft): DeployPlan {
-  const relpath = `workflows/${draft.filename}`;
-  const definition = workflowRunRequest(draft);
+  const id = draft.filename.replace(/\.md$/, '');
+  const relpath = `orgs/${draft.project}/workflows/${draft.filename}`;
   const content = [
     '---',
-    `name: ${definition.name}`,
-    'status: active',
-    'format: workflow-v1',
+    `id: ${JSON.stringify(id)}`,
+    `project: ${JSON.stringify(draft.project)}`,
+    // The former draft had no distinct title field. The slug is a safe, deterministic display title
+    // until the canonical authoring form adds one.
+    `title: ${JSON.stringify(id)}`,
+    `profile: ${JSON.stringify(draft.profile)}`,
+    'stages:',
+    ...draft.stages.flatMap((stage) => [
+      `  - id: ${JSON.stringify(stage.id)}`,
+      `    title: ${JSON.stringify(stage.id)}`,
+      `    action: ${JSON.stringify(stage.action)}`,
+      `    target: ${JSON.stringify(stage.target)}`,
+      `    workOrder: ${JSON.stringify(stage.workOrder)}`,
+      `    riskTier: ${JSON.stringify(stage.riskTier)}`,
+      `    dependsOn: ${JSON.stringify(stage.dependsOn)}`,
+    ]),
     '---',
     '',
-    `# ${definition.name}`,
+    `# ${id}`,
     '',
     draft.body.trim(),
-    '',
-    '```workflow-v1',
-    JSON.stringify(definition, null, 2),
-    '```',
     '',
   ].join('\n');
   return {
@@ -585,17 +594,6 @@ function workflowPlan(draft: WorkflowDraft): DeployPlan {
     content,
     branchClass: classifyRelpath(relpath),
     endpoint: 'save',
-  };
-}
-
-/** The same strict shape POST /api/write/workflow-runs accepts. */
-export function workflowRunRequest(draft: WorkflowDraft): import('../../server/write/workflowRun').WorkflowRunRequest {
-  const definitionId = draft.filename.replace(/\.md$/, '');
-  return {
-    name: definitionId,
-    project: draft.project,
-    workflowDefinitionId: definitionId,
-    stages: draft.stages.map((stage) => ({ ...stage, dependsOn: [...stage.dependsOn] })),
   };
 }
 

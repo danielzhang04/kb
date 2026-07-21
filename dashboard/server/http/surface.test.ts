@@ -187,6 +187,65 @@ describe('write surface — composition chain', () => {
     expect(prCalls).toHaveLength(1); // durable content -> PR to main
   });
 
+  it('refuses an invalid canonical workflow definition before any governed save or audit', async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'u2-workflow-save-'));
+    const audit = recordingAudit();
+    ({ app } = buildApp({ repoRoot, appendAudit: audit.fn, saveGit: okGit, openPr: () => {} }));
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/write/save',
+      headers: headers(true),
+      payload: {
+        relpath: 'orgs/kb-ops/workflows/bad.md',
+        content: [
+          '---',
+          'id: bad',
+          'project: kb-ops',
+          'title: Bad',
+          'profile: made-up-profile',
+          'stages: []',
+          '---',
+          'body',
+          '',
+        ].join('\n'),
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ error: 'workflow-definition-invalid' });
+    expect(audit.rows).toHaveLength(0);
+  });
+
+  it('refuses a canonical workflow whose declared project does not match its path', async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'u2-workflow-project-'));
+    ({ app } = buildApp({ repoRoot, appendAudit: recordingAudit().fn, saveGit: okGit, openPr: () => {} }));
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/write/save',
+      headers: headers(true),
+      payload: {
+        relpath: 'orgs/kb-ops/workflows/mismatch.md',
+        content: [
+          '---',
+          'id: mismatch',
+          'project: other',
+          'title: Mismatch',
+          'profile: research',
+          'stages:',
+          '  - id: research',
+          '    title: Research',
+          '    action: research:brief',
+          '    target: orgs/other/output',
+          '    workOrder: research it',
+          '---',
+          'body',
+          '',
+        ].join('\n'),
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().reason).toMatch(/does not match path project/);
+  });
+
   it('audits a governed launch that clears the preamble + session gates', async () => {
     const audit = recordingAudit();
     ({ app } = buildApp({

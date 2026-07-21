@@ -185,16 +185,17 @@ describe('Agents view', () => {
       expect(within(binding).getByText('claude')).toBeTruthy();
     });
 
-    it('shows the runnable state for a runner-bound agent and for a default_worker id', () => {
+    it('keeps declared runner binding distinct from an observed runtime default', () => {
       render(<Agents roster={DECLARED_ROSTER} routing={ROUTING as never} sessionToken="tok" />);
       // Declared + human-bound → runner-bound.
       const bound = within(screen.getByTestId('agent-row-codex-a')).getByTestId('agent-binding-codex-a');
       expect(within(bound).getByText('runner-bound')).toBeTruthy();
       expect(within(bound).queryByText('no runner')).toBeNull();
-      // Not declared, but a registry default_worker → also runnable.
+      // Not declared, but a registry default_worker → a runtime routing fact, not a declaration claim.
       const dw = within(screen.getByTestId('agent-row-worker-desktop')).getByTestId('agent-binding-worker-desktop');
       expect(within(dw).getByText('observed')).toBeTruthy();
-      expect(within(dw).getByText('runner-bound')).toBeTruthy();
+      expect(within(dw).getByText('runtime default')).toBeTruthy();
+      expect(within(dw).queryByText('runner-bound')).toBeNull();
     });
 
     it('keeps the existing per-agent routing control rendering for declared agents', () => {
@@ -203,11 +204,21 @@ describe('Agents view', () => {
       const chip = screen.getByTestId('agent-composer-scribe-routing-chip');
       expect((chip as HTMLButtonElement).disabled).toBe(false);
     });
+
+    it('puts definitions before observed runtime identities without dropping either roster source', () => {
+      render(<Agents roster={DECLARED_ROSTER} routing={ROUTING as never} sessionToken="tok" />);
+
+      const declared = screen.getByRole('region', { name: /Declared agents/ });
+      const observed = screen.getByRole('region', { name: /Observed runtime identities/ });
+      expect(within(declared).getByTestId('agent-row-composer-scribe')).toBeTruthy();
+      expect(within(observed).getByTestId('agent-row-worker-desktop')).toBeTruthy();
+      expect(within(observed).queryByTestId('agent-row-composer-scribe')).toBeNull();
+    });
   });
 
   it('degrades to a calm empty state when no agents are on the board', () => {
     render(<Agents snapshot={{ cards: {}, ledgers: EMPTY_LEDGERS, orgStates: [] }} />);
-    expect(screen.getByText('No agents on the board.')).toBeTruthy();
+    expect(screen.getByText('No declared agents or observed runtime identities are on the board.')).toBeTruthy();
     expect(screen.queryByRole('table')).toBeNull();
   });
 });

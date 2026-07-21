@@ -188,6 +188,33 @@ describe('spawnComposerTurn — resume-flag injection (review F1: equals-form + 
     ]);
   });
 
+  it('appends the immutable selected agent declaration on every turn without changing planning-only args', async () => {
+    const first = fakeProcess();
+    const second = fakeProcess();
+    const { spawner, calls } = recordingSpawner([first.proc, second.proc]);
+    const deps = baseDeps({ spawn: spawner });
+    deps.resumeRegistry.record('operator-1', ISSUED_ID);
+    const agent = {
+      id: 'research-worker', path: 'agents/research-worker.md', sourceHash: 'a'.repeat(64),
+      instructionMarkdown: 'Require a source-backed research brief before recommending publication.',
+    };
+
+    await spawnComposerTurn('first request', null, validSession(), { onDelta: vi.fn() }, deps, agent);
+    await spawnComposerTurn('second request', ISSUED_ID, validSession(), { onDelta: vi.fn() }, deps, agent);
+
+    for (const written of [first.writes[0], second.writes[0]]) {
+      expect(written).toContain('BEGIN SERVER-OWNED AGENT DECLARATION CONTEXT');
+      expect(written).toContain('Selected declaration id: research-worker');
+      expect(written).toContain(agent.sourceHash);
+      expect(written).toContain(agent.instructionMarkdown);
+      expect(written).toContain('do not start, claim to start, or impersonate a background runner');
+    }
+    expect(calls[0].args).toContain('--permission-mode');
+    expect(calls[0].args).toContain('plan');
+    expect(calls[0].args).not.toContain('--dangerously-skip-permissions');
+    expect(calls[1].args).toContain(`--resume=${ISSUED_ID}`);
+  });
+
   it('captured_id_is_recorded_then_admitted: a first turn records its captured id, a later turn may resume it', async () => {
     const fp = fakeProcess();
     const { spawner, calls } = recordingSpawner([fp.proc, fakeProcess().proc]);

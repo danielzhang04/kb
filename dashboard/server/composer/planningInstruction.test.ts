@@ -25,5 +25,18 @@ describe('server-owned Composer planning protocol', () => {
     expect(governed).toContain('permission bypasses');
     expect(governed).toContain('environment variables');
   });
-});
 
+  it('adds only a server-selected immutable agent declaration context when one is supplied', () => {
+    const governed = withComposerPlanningInstruction('Plan the next research step.', {
+      id: 'research-worker',
+      path: 'agents/research-worker.md',
+      sourceHash: 'a'.repeat(64),
+      instructionMarkdown: 'Ask for evidence before recommending a research direction.',
+    });
+    expect(governed).toContain('BEGIN SERVER-OWNED AGENT DECLARATION CONTEXT');
+    expect(governed).toContain('Selected declaration id: research-worker');
+    expect(governed).toContain(`Selected declaration revision: ${'a'.repeat(64)}`);
+    expect(governed).toContain('Ask for evidence before recommending a research direction.');
+    expect(governed).toContain('do not start, claim to start, or impersonate a background runner');
+  });
+});

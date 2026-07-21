@@ -5,11 +5,37 @@ import { isValidResumeId } from './resumeRegistry.ts';
 import { requireSession, verifiedSession } from '../http/middleware.ts';
 import type { SurfaceContext } from '../http/context.ts';
 import type { TimelineModel } from '../../src/lib/timelineModel.ts';
-import type { PublicComposerWorkspace } from './store.ts';
+import type { ComposerAgentSnapshot, PublicComposerWorkspace } from './store.ts';
 import { publicTimeline, redactSensitiveText, visibleAssistantText } from './publicTimeline.ts';
+import { readAgentDeclarationProblems, readDeclaredAgentDetails } from '../agents/roster.ts';
 
 function asRecord(body: unknown): Record<string, unknown> {
   return body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
+}
+
+type SessionCreateInput = { ok: true; title: string | undefined; agentId: string | undefined }
+  | { ok: false };
+
+type TurnInput = { ok: true; prompt: string } | { ok: false };
+
+/** Closed creation body: a browser can select a declaration id, never its runtime, tools, or cwd. */
+function sessionCreateInput(body: unknown): SessionCreateInput {
+  const record = asRecord(body);
+  if (Object.keys(record).some((key) => key !== 'title' && key !== 'agentId')) return { ok: false };
+  const title = record.title;
+  const agentId = record.agentId;
+  if (title !== undefined && typeof title !== 'string') return { ok: false };
+  if (agentId !== undefined && (typeof agentId !== 'string' || agentId.trim() === '')) return { ok: false };
+  return { ok: true, title, agentId };
+}
+
+/** Closed turn body: a workspace's immutable server binding cannot be supplied or replaced by the browser. */
+function turnInput(body: unknown): TurnInput {
+  const record = asRecord(body);
+  if (Object.keys(record).some((key) => key !== 'prompt')) return { ok: false };
+  const prompt = typeof record.prompt === 'string' ? record.prompt.trim() : '';
+  if (prompt.length === 0 || prompt.length > 100_000) return { ok: false };
+  return { ok: true, prompt };
 }
 
 function refusalStatus(outcome: Extract<VibeSpawnOutcome, { ok: false }>): number {
@@ -97,12 +123,29 @@ export function registerComposerRoutes(scope: FastifyInstance, ctx: SurfaceConte
     const verified = verifiedSession(req);
     const subject = verified?.claims.sub;
     if (!verified || !subject) return reply.code(401).send({ error: 'unauthenticated' });
-    const body = asRecord(req.body);
-    const title = typeof body.title === 'string' ? body.title : undefined;
+    const input = sessionCreateInput(req.body);
+    if (!input.ok) return reply.code(400).send({ error: 'invalid-session-create-body' });
+    const { title, agentId } = input;
     if (title && redactText(title, publicSecrets(ctx, verified.token, null)) !== title) {
       return reply.code(400).send({ error: 'sensitive-content-refused', field: 'title' });
     }
-    return reply.code(201).send({ session: ctx.composerStore.create(subject, title) });
+    let agent: ComposerAgentSnapshot | null = null;
+    if (agentId !== undefined) {
+      const declaration = readDeclaredAgentDetails(ctx.repoRoot).get(agentId);
+      if (!declaration) {
+        const problem = readAgentDeclarationProblems(ctx.repoRoot).get(agentId);
+        return reply.code(400).send(problem
+          ? { error: 'agent-declaration-invalid', declaration: problem }
+          : { error: 'agent-not-declared' });
+      }
+      agent = {
+        id: declaration.id,
+        path: declaration.source,
+        sourceHash: declaration.sourceHash,
+        instructionMarkdown: declaration.instructionMarkdown,
+      };
+    }
+    return reply.code(201).send({ session: ctx.composerStore.create(subject, title, agent) });
   });
 
   scope.get('/api/composer/sessions/:composerRef', { preHandler }, async (req, reply) => {
@@ -147,11 +190,9 @@ export function registerComposerRoutes(scope: FastifyInstance, ctx: SurfaceConte
       const subject = verified?.claims.sub;
       const { composerRef } = req.params as { composerRef: string };
       if (!verified || !subject) return reply.code(401).send({ error: 'unauthenticated' });
-      const body = asRecord(req.body);
-      const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
-      if (prompt.length === 0 || prompt.length > 100_000) {
-        return reply.code(400).send({ error: 'invalid-prompt' });
-      }
+      const input = turnInput(req.body);
+      if (!input.ok) return reply.code(400).send({ error: 'invalid-turn-body' });
+      const { prompt } = input;
       if (redactText(prompt, publicSecrets(ctx, verified.token, null)) !== prompt) {
         return reply.code(400).send({ error: 'sensitive-content-refused', field: 'prompt' });
       }
@@ -281,6 +322,7 @@ export function registerComposerRoutes(scope: FastifyInstance, ctx: SurfaceConte
             now: ctx.now,
             resumeRegistry: ctx.resumeRegistry,
           },
+          acquired.agent,
         );
       } catch {
         settle('failed', 'composer spawn failed');

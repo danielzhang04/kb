@@ -13,6 +13,13 @@ export interface ComposerTurn {
   endedAt: string | null;
 }
 
+/** Immutable declaration identity captured when this Composer workspace was opened for an agent. */
+export interface ComposerAgentTarget {
+  id: string;
+  path: string;
+  sourceHash: string;
+}
+
 export interface ComposerSession {
   composerRef: string;
   title: string;
@@ -20,7 +27,14 @@ export interface ComposerSession {
   createdAt: string;
   updatedAt: string;
   sourceComposerRef: string | null;
+  agent: ComposerAgentTarget | null;
   turns: ComposerTurn[];
+}
+
+export interface CreateComposerSessionInput {
+  title?: string;
+  /** Server resolves this declaration and persists its path + source revision; the browser never invents it. */
+  agentId?: string;
 }
 
 export interface ComposerStreamOutcome {
@@ -66,13 +80,13 @@ export async function listComposerSessions(sessionToken: string, fetchImpl: Fetc
 
 export async function createComposerSession(
   sessionToken: string,
-  title?: string,
+  input: CreateComposerSessionInput = {},
   fetchImpl: FetchLike = fetch,
 ): Promise<ComposerSession> {
   const response = await fetchImpl('/api/composer/sessions', {
     method: 'POST',
     headers: authHeaders(sessionToken, true),
-    body: JSON.stringify(title ? { title } : {}),
+    body: JSON.stringify(input),
   });
   if (!response.ok) throw await failure(response);
   return ((await response.json()) as { session: ComposerSession }).session;

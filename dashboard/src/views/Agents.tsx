@@ -28,6 +28,7 @@ import {
 } from '../lib/routingClient';
 import { RoutingControl } from './routingControls';
 import { AgentDetail } from './AgentDetail';
+import { fetchAgentDetail, type AgentDetailDto } from '../lib/agentClient';
 import { getRun, listRuns, type RunMetadataDto } from '../control/controlClient';
 import { cardOwnerIndex, runsForAgent, type RunWithStages } from '../control/entityLinks';
 import type { NavTarget } from '../nav/stack';
@@ -149,13 +150,11 @@ function rowFromEntry(e: AgentRosterEntry): AgentRow {
 }
 
 /**
- * An agent is RUNNABLE when a runner will actually claim its cards: either a human has flipped its
- * `runner-bound` flag true, or its id is a registered `default_worker` in the runtime registry (the
- * pre-C7 onboarding path). A declared agent that is neither is "declared — no runner": registered but
- * inert. `defaultWorkers` is the set of `default_worker` ids across the routing registry.
+ * Runtime defaults are registry routing facts, distinct from a declaration's human-set `runner-bound`
+ * flag. In particular, an observed `default_worker` must never be presented as a declared binding.
  */
-function isRunnable(row: AgentRow, defaultWorkers: Set<string>): boolean {
-  return row.runnerBound || defaultWorkers.has(row.id);
+function isRuntimeDefault(row: AgentRow, defaultWorkers: Set<string>): boolean {
+  return defaultWorkers.has(row.id);
 }
 
 /** True when either field of an agent's effective routing was supplied by an override entry. */
@@ -204,6 +203,74 @@ function RoutingAuditStrip({ audit }: { audit: RoutingSnapshot['audit'] }): Reac
   );
 }
 
+/** One truthful roster slice. Declared and observed identities intentionally never share a table. */
+function AgentRosterTable({
+  rows,
+  defaultWorkers,
+  onOpenAgent,
+  renderRouting,
+}: {
+  rows: AgentRow[];
+  defaultWorkers: Set<string>;
+  onOpenAgent: (id: string) => void;
+  renderRouting: (agent: AgentRow) => React.JSX.Element;
+}): React.JSX.Element {
+  return (
+    <div className="v-agents__table-wrap">
+      <table className="mc-table v-agents__table">
+        <thead>
+          <tr>
+            <th scope="col">Agent</th><th scope="col">Role</th><th scope="col">Binding</th>
+            <th scope="col">Doing</th><th scope="col">Projects</th>
+            <th scope="col" className="v-agents__col-num">Cards</th><th scope="col">Last active</th><th scope="col">Model</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((agent) => {
+            const runtimeDefault = isRuntimeDefault(agent, defaultWorkers);
+            return (
+              <tr key={agent.id} data-testid={`agent-row-${agent.id}`}>
+                <td>
+                  <button type="button" className="v-agents__agent v-agents__agent--link" data-testid={`agent-open-${agent.id}`}
+                    aria-label={`Open ${agent.id} detail`} onClick={() => onOpenAgent(agent.id)}>
+                    <span className={`mc-status-dot ${agent.working ? 'mc-status-dot--running' : 'mc-status-dot--idle'}`} aria-hidden="true" />
+                    <span className="mc-mono">{agent.id}</span><span className="v-agents__state">{agent.working ? 'working' : 'idle'}</span>
+                  </button>
+                </td>
+                <td>{agent.role ? <span className="v-agents__role mc-mono">{agent.role}</span> : <span className="v-agents__idle">—</span>}</td>
+                <td>
+                  <span className="v-agents__binding" data-testid={`agent-binding-${agent.id}`}>
+                    <span className={`v-agents__provenance v-agents__provenance--${agent.declared ? 'declared' : 'observed'}`}>
+                      {agent.declared ? 'declared' : 'observed'}
+                    </span>
+                    {agent.declared ? (
+                      <span className={`v-agents__runner v-agents__runner--${agent.runnerBound ? 'bound' : 'unbound'}`}
+                        title={agent.runnerBound ? 'This declaration is runner-bound' : 'This declaration has no runner-bound flag'}>
+                        {agent.runnerBound ? 'runner-bound' : 'no runner'}
+                      </span>
+                    ) : null}
+                    {runtimeDefault ? (
+                      <span className="v-agents__runner v-agents__runner--bound" title="Default worker in the runtime registry">
+                        runtime default
+                      </span>
+                    ) : !agent.declared ? <span className="v-agents__runner v-agents__runner--unbound">no runner</span> : null}
+                    {agent.declaredRuntime ? <span className="mc-mono v-agents__declared-runtime">{agent.declaredRuntime}</span> : null}
+                  </span>
+                </td>
+                <td>{agent.current ? <span className="v-agents__doing"><span className="v-agents__action">{agent.current.action}</span><span className="mc-mono v-agents__card-id">{agent.current.id}</span></span> : <span className="v-agents__idle">idle</span>}</td>
+                <td>{agent.projects.length ? <span className="v-agents__projects">{agent.projects.map((project) => <span key={project} className="v-agents__proj mc-mono">{project}</span>)}</span> : <span className="v-agents__idle">—</span>}</td>
+                <td className="mc-mono v-agents__col-num">{agent.cardCount}</td>
+                <td className="mc-mono v-agents__last-active">{agent.lastActive ?? <span className="v-agents__idle">—</span>}</td>
+                <td>{renderRouting(agent)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export function Agents({
   snapshot,
   roster,
@@ -216,6 +283,7 @@ export function Agents({
   activeSectionId,
   onSectionChange,
   onNavigate,
+  onWorkWithAgent,
   agentRuns,
 }: {
   snapshot?: PlaneAIndex;
@@ -234,6 +302,8 @@ export function Agents({
   activeSectionId?: string;
   onSectionChange?: (id: string) => void;
   onNavigate?: (target: NavTarget) => void;
+  /** Opens the existing Composer workspace for one declared agent; never invokes a runner directly. */
+  onWorkWithAgent?: (agent: { id: string }) => void;
   /** Runs joined to this agent by the caller. `undefined` = not loaded, which the detail says out loud. */
   agentRuns?: RunMetadataDto[];
 } = {}): React.JSX.Element {
@@ -243,6 +313,8 @@ export function Agents({
   // Uncontrolled fallback for the open agent when no nav stack is wired above this view.
   const [localOpenId, setLocalOpenId] = useState<string | null>(null);
   const [scannedRuns, setScannedRuns] = useState<RunWithStages[] | null>(null);
+  const [detail, setDetail] = useState<AgentDetailDto | null>(null);
+  const [detailState, setDetailState] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
   const openAgentId = onOpenAgent ? focusAgentId ?? null : localOpenId;
 
   useEffect(() => {
@@ -337,6 +409,32 @@ export function Agents({
   // Prefer the enriched server roster (queue owners ∪ ledger writers ∪ roles); fall back to the
   // snapshot-derived roster until it loads (and in tests that pass only a snapshot).
   const agentRows = enriched ? enriched.map(rowFromEntry) : deriveRoster(index);
+  const detailTarget = openAgentId ? agentRows.find((agent) => agent.id === openAgentId) : undefined;
+
+  // The compact roster is enough for navigation. Declaration instructions, codebase links, workflow
+  // relationships, and runner facts are loaded only after opening a DECLARED agent. Observed runtime
+  // identities are deliberately not treated as source files or executable agents.
+  useEffect(() => {
+    if (!detailTarget?.declared) {
+      setDetail(null);
+      setDetailState('idle');
+      return;
+    }
+    let cancelled = false;
+    setDetail(null);
+    setDetailState('loading');
+    void fetchAgentDetail(detailTarget.id)
+      .then((next) => {
+        if (!cancelled) {
+          setDetail(next);
+          setDetailState('ready');
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setDetailState('unavailable');
+      });
+    return () => { cancelled = true; };
+  }, [detailTarget?.declared, detailTarget?.id]);
 
   const effectiveById = new Map(routingSnap.agents.map((a) => [a.id, a.effective]));
   const registry = routingSnap.policy.runtimes;
@@ -347,6 +445,8 @@ export function Agents({
       .map((r) => r.default_worker)
       .filter((w): w is string => typeof w === 'string' && w !== ''),
   );
+  const declaredRows = agentRows.filter((agent) => agent.declared);
+  const observedRows = agentRows.filter((agent) => !agent.declared);
   const canAct = Boolean(sessionToken) || Boolean(onRequestSession);
 
   async function resolveToken(): Promise<string | undefined> {
@@ -450,6 +550,9 @@ export function Agents({
           runs={joinedRuns}
           runScanLimit={AGENT_RUN_SCAN_LIMIT}
           routing={routingControlFor(openAgentRow)}
+          detail={detail}
+          detailState={detailState === 'idle' ? undefined : detailState}
+          onWorkWithAgent={onWorkWithAgent}
           activeSectionId={activeSectionId}
           onSectionChange={onSectionChange}
           onNavigate={onNavigate}
@@ -467,117 +570,22 @@ export function Agents({
       </h2>
 
       {agentRows.length === 0 ? (
-        <p className="v-agents__empty">No agents on the board.</p>
+        <p className="v-agents__empty">No declared agents or observed runtime identities are on the board.</p>
       ) : (
         <>
-          <div className="v-agents__table-wrap">
-            <table className="mc-table v-agents__table">
-              <thead>
-                <tr>
-                  <th scope="col">Agent</th>
-                  <th scope="col">Role</th>
-                  <th scope="col">Binding</th>
-                  <th scope="col">Doing</th>
-                  <th scope="col">Projects</th>
-                  <th scope="col" className="v-agents__col-num">Cards</th>
-                  <th scope="col">Last active</th>
-                  <th scope="col">Model</th>
-                </tr>
-              </thead>
-              <tbody>
-                {agentRows.map((a) => (
-                  <tr key={a.id} data-testid={`agent-row-${a.id}`}>
-                    <td>
-                      {/* The agent id is the click target into the detail. A button (not a row-level
-                       *  onClick) so it is keyboard-reachable and announced as an action — the routing
-                       *  cell in this same row is itself interactive, so a whole-row handler would
-                       *  swallow its clicks. */}
-                      <button
-                        type="button"
-                        className="v-agents__agent v-agents__agent--link"
-                        data-testid={`agent-open-${a.id}`}
-                        aria-label={`Open ${a.id} detail`}
-                        onClick={() => openAgent(a.id)}
-                      >
-                        <span
-                          className={`mc-status-dot ${a.working ? 'mc-status-dot--running' : 'mc-status-dot--idle'}`}
-                          aria-hidden="true"
-                        />
-                        <span className="mc-mono">{a.id}</span>
-                        <span className="v-agents__state">{a.working ? 'working' : 'idle'}</span>
-                      </button>
-                    </td>
-                    <td>
-                      {a.role ? (
-                        <span className="v-agents__role mc-mono">{a.role}</span>
-                      ) : (
-                        <span className="v-agents__idle">—</span>
-                      )}
-                    </td>
-                    <td>
-                      {(() => {
-                        const runnable = isRunnable(a, defaultWorkers);
-                        return (
-                          <span className="v-agents__binding" data-testid={`agent-binding-${a.id}`}>
-                            {/* Declared-vs-observed: an authoritative agents/<id>.md vs merely observed activity. */}
-                            <span
-                              className={`v-agents__provenance v-agents__provenance--${a.declared ? 'declared' : 'observed'}`}
-                            >
-                              {a.declared ? 'declared' : 'observed'}
-                            </span>
-                            {/* Runner-bound status: runnable (a runner claims its cards) vs "no runner" (inert). */}
-                            <span
-                              className={`v-agents__runner v-agents__runner--${runnable ? 'bound' : 'unbound'}`}
-                              title={
-                                runnable
-                                  ? 'A runner claims this agent’s cards'
-                                  : 'Declared but no runner claims its cards yet'
-                              }
-                            >
-                              {runnable ? 'runner-bound' : 'no runner'}
-                            </span>
-                            {a.declaredRuntime ? (
-                              <span className="mc-mono v-agents__declared-runtime">{a.declaredRuntime}</span>
-                            ) : null}
-                          </span>
-                        );
-                      })()}
-                    </td>
-                    <td>
-                      {a.current ? (
-                        <span className="v-agents__doing">
-                          <span className="v-agents__action">{a.current.action}</span>
-                          <span className="mc-mono v-agents__card-id">{a.current.id}</span>
-                        </span>
-                      ) : (
-                        <span className="v-agents__idle">idle</span>
-                      )}
-                    </td>
-                    <td>
-                      {a.projects.length === 0 ? (
-                        <span className="v-agents__idle">—</span>
-                      ) : (
-                        <span className="v-agents__projects">
-                          {a.projects.map((p) => (
-                            <span key={p} className="v-agents__proj mc-mono">
-                              {p}
-                            </span>
-                          ))}
-                        </span>
-                      )}
-                    </td>
-                    <td className="mc-mono v-agents__col-num">{a.cardCount}</td>
-                    <td className="mc-mono v-agents__last-active">
-                      {a.lastActive ?? <span className="v-agents__idle">—</span>}
-                    </td>
-                    <td>{routingControlFor(a)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <section className="v-agents__group" aria-labelledby="declared-agents-title">
+            <h3 id="declared-agents-title" className="v-agents__group-title">Declared agents <span className="mc-num">({declaredRows.length})</span></h3>
+            <p className="v-agents__group-note">Authoritative definitions in <code className="mc-mono">agents/*.md</code>. These are the agents you can open into a dedicated Composer workspace.</p>
+            {declaredRows.length ? <AgentRosterTable rows={declaredRows} defaultWorkers={defaultWorkers} onOpenAgent={openAgent} renderRouting={routingControlFor} /> : <p className="v-agents__empty">No declared agents are registered.</p>}
+          </section>
+          <section className="v-agents__group" aria-labelledby="observed-runtimes-title">
+            <h3 id="observed-runtimes-title" className="v-agents__group-title">Observed runtime identities <span className="mc-num">({observedRows.length})</span></h3>
+            <p className="v-agents__group-note">IDs observed in queue ownership or ledger activity. They can be inspected, but are not authoritative agent declarations.</p>
+            {observedRows.length ? <AgentRosterTable rows={observedRows} defaultWorkers={defaultWorkers} onOpenAgent={openAgent} renderRouting={routingControlFor} /> : <p className="v-agents__empty">No observed runtime identities are recorded.</p>}
+          </section>
           <p className="v-agents__note">
-            Roster unions card owners, ledger writers, and the role catalog. The model cell shows
+            Observed identities are retained from card owners and ledger writers; declared agents are
+            additionally sourced from their definition files. The model cell shows
             effective routing (source tag); with a passkey session it writes a governed, audited
             agent-scope override.
           </p>

@@ -9,13 +9,11 @@
  */
 import type { PlaneAIndex } from '../../server/planeA/indexer';
 import type { ParsedCard } from '../../server/planeA/cards';
-import type { WorkflowsIndex } from '../../server/registry/workflows';
 import type { ConnectionsIndex } from '../../server/registry/connections';
 import type { DestinationId } from '../nav/config';
 
 /** The registry slices a flyout may read (subset of `/api/registry`). */
 export interface RegistrySnapshot {
-  workflows?: WorkflowsIndex;
   connections?: ConnectionsIndex;
 }
 
@@ -39,7 +37,6 @@ export interface FlyoutSummary {
 /** Destinations that carry a hover-flyout. Home/Activity/Atlas/Terminal do not. */
 export const FLYOUT_DESTINATIONS: ReadonlySet<DestinationId> = new Set<DestinationId>([
   'approvals',
-  'workflows',
   'agents',
   'tasks',
   'projects',
@@ -139,18 +136,6 @@ function filesSummary(index: PlaneAIndex): FlyoutSummary {
   };
 }
 
-function workflowsSummary(registry: RegistrySnapshot): FlyoutSummary {
-  const wf = registry.workflows;
-  const items = wf?.present ? wf.items : [];
-  return {
-    title: 'Workflows',
-    lines: [{ label: 'registered', value: items.length }],
-    ids: items.slice(0, MAX_IDS).map((w) => w.id),
-    idLabel: items.length > 0 ? 'registered' : undefined,
-    empty: items.length === 0,
-  };
-}
-
 function connectorsSummary(registry: RegistrySnapshot): FlyoutSummary {
   const conn = registry.connections;
   const items = conn?.items ?? [];
@@ -203,8 +188,6 @@ export function summaryFor(
       return projectsSummary(index);
     case 'files':
       return filesSummary(index);
-    case 'workflows':
-      return workflowsSummary(registry);
     case 'connectors':
       return connectorsSummary(registry);
     case 'ledgers':

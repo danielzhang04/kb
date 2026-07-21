@@ -170,6 +170,7 @@ role: work
 runtime: codex
 model: gpt-5.6-sol
 runner-bound: false
+projects: [kb-ops]
 description: Volume worker for kb-ops housekeeping.
 ---
 
@@ -187,6 +188,7 @@ describe('readDeclaredAgents / buildRoster declared source (C7.3)', () => {
       runtime: 'codex',
       model: 'gpt-5.6-sol',
       runnerBound: false,
+      projects: ['kb-ops'],
       description: 'Volume worker for kb-ops housekeeping.',
     });
   });
@@ -206,6 +208,7 @@ describe('readDeclaredAgents / buildRoster declared source (C7.3)', () => {
     expect(entry!.declaredRuntime).toBe('codex');
     expect(entry!.declaredModel).toBe('gpt-5.6-sol');
     expect(entry!.description).toBe('Volume worker for kb-ops housekeeping.');
+    expect(entry!.projects).toEqual(['kb-ops']);
     expect(entry!.cardCount).toBe(0);
     expect(entry!.sources).toEqual([]); // neither a card owner nor a ledger writer
   });
@@ -228,7 +231,7 @@ describe('readDeclaredAgents / buildRoster declared source (C7.3)', () => {
     expect(buildRoster(indexOf([]), bare, POLICY, { overrides: [] })).toEqual([]);
   });
 
-  it('a malformed agent file is skipped, not fatal', () => {
+  it('a malformed agent file is not treated as declared but is surfaced as a bounded roster diagnostic', () => {
     const root = repoWithAgents({
       'research-worker.md': AGENT_FILE,
       'broken.md': 'no frontmatter here at all\njust prose\n',
@@ -238,7 +241,9 @@ describe('readDeclaredAgents / buildRoster declared source (C7.3)', () => {
     expect(declared.has('broken')).toBe(false);
     const roster = buildRoster(indexOf([]), root, POLICY, { overrides: [] });
     expect(roster.map((r) => r.id)).toContain('research-worker');
-    expect(roster.map((r) => r.id)).not.toContain('broken');
+    expect(roster).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'broken', declared: false, declarationProblem: 'malformed-frontmatter' }),
+    ]));
   });
 
   it('a non-declared agent (queue/ledger only) has declared false and runnerBound false', () => {
