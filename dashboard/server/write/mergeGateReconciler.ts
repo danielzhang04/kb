@@ -46,11 +46,20 @@ export type GhRunner = (prNumber: string) => PrStatus | null;
 /**
  * Default `gh pr view` runner. Ambient auth — the credential is never read/printed/copied; this is a READ
  * whose stdout we parse. Any throw (gh absent, non-zero exit, timeout, malformed JSON) collapses to `null`.
+ *
+ * `repoRoot` PINS the subprocess `cwd` so `gh` resolves the PR against THIS repo, never whatever ambient
+ * directory the daemon happens to run in — otherwise a same-numbered PR in an unrelated repo checked out
+ * elsewhere could wrong-close a gate. The `exec` seam is injectable so the pinned cwd is unit-asserted.
  */
-export function defaultGhRunner(timeoutMs = 15_000): GhRunner {
+export function defaultGhRunner(
+  repoRoot: string,
+  timeoutMs = 15_000,
+  exec: typeof execFileSync = execFileSync,
+): GhRunner {
   return (prNumber) => {
     try {
-      const out = execFileSync('gh', ['pr', 'view', prNumber, '--json', 'state,mergedAt'], {
+      const out = exec('gh', ['pr', 'view', prNumber, '--json', 'state,mergedAt'], {
+        cwd: repoRoot,
         timeout: timeoutMs,
         windowsHide: true,
         encoding: 'utf8',
@@ -101,7 +110,7 @@ export interface ReconcileDeps {
  * (branch-only target, gh unknown, PR not yet merged, or a mutation failure — all leave the card OPEN).
  */
 export async function reconcileMergeGates(deps: ReconcileDeps): Promise<{ closed: string[]; skipped: string[] }> {
-  const gh = deps.gh ?? defaultGhRunner();
+  const gh = deps.gh ?? defaultGhRunner(deps.repoRoot);
   const index = (deps.indexRepo ?? indexRepo)(deps.repoRoot);
   const execute = deps.executeCardMutation ?? executeCardMutation;
   const commit = deps.commitPreparedCoordination ?? commitPreparedCoordination;
@@ -135,6 +144,18 @@ export async function reconcileMergeGates(deps: ReconcileDeps): Promise<{ closed
       continue;
     }
 
+    // State-aware close walk — mirrors merge_gate.py close(): only a gate parked in a state with a legal
+    // walk to `done` can be auto-closed. `inbox` walks inbox->working->done; `working` walks working->done
+    // (a `working->working` step is illegal, so a hardcoded ['working','done'] would throw on a working
+    // gate). Any OTHER live state (blocked / approvals / stop-requested / halting) has no legal walk, so
+    // the gate is left OPEN (fail toward surfacing) rather than fed an illegal transition.
+    const state = text(card.meta.state);
+    const transitions = state === 'inbox' ? ['working', 'done'] : state === 'working' ? ['done'] : null;
+    if (transitions === null) {
+      skipped.push(cardId); // no legal walk to done from this live state — leave OPEN
+      continue;
+    }
+
     try {
       const disposition = status.merged ? 'merged' : 'closed';
       const iso = clock().toISOString();
@@ -142,7 +163,7 @@ export async function reconcileMergeGates(deps: ReconcileDeps): Promise<{ closed
         cardId,
         section: 'Result',
         block: `Reconciler: PR #${prNumber} ${disposition} — merge gate cleared at ${iso}.`,
-        transitions: ['working', 'done'],
+        transitions,
         claimOwner: 'human-operator',
       };
       await withOpsTransaction(async () => {

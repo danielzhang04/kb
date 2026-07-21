@@ -5,6 +5,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  defaultGhRunner,
   parseMergeTarget,
   reconcileMergeGates,
   startMergeGateReconciler,
@@ -45,8 +46,12 @@ function index(cards: ParsedCard[]): PlaneAIndex {
 
 /** A recording deps set that uses the REAL executeCardMutation (so prepare<py ordering is exercised),
  *  with every external effect (index, gh, prepareWrite, runPy, audit, commit) injected. */
-function recordingDeps(cards: ParsedCard[], gh: ReconcileDeps['gh']): { deps: ReconcileDeps; calls: string[] } {
+function recordingDeps(
+  cards: ParsedCard[],
+  gh: ReconcileDeps['gh'],
+): { deps: ReconcileDeps; calls: string[]; ops: Array<{ cardId: string; transitions: string[] }> } {
   const calls: string[] = [];
+  const ops: Array<{ cardId: string; transitions: string[] }> = [];
   const deps: ReconcileDeps = {
     repoRoot: '/repo',
     indexRepo: () => index(cards),
@@ -54,14 +59,15 @@ function recordingDeps(cards: ParsedCard[], gh: ReconcileDeps['gh']): { deps: Re
     prepareWrite: async () => { calls.push('prepare'); },
     runPy: (_repo, _code, jsonArg) => {
       calls.push('py');
-      const op = JSON.parse(jsonArg) as { cardId: string };
+      const op = JSON.parse(jsonArg) as { cardId: string; transitions: string[] };
+      ops.push({ cardId: op.cardId, transitions: op.transitions });
       return { exitCode: 0, stdout: JSON.stringify({ id: op.cardId, state: 'done', paths: [`queue/inbox/${op.cardId}.md`, `queue/done/${op.cardId}.md`] }), stderr: '' };
     },
     appendAuditLocal: (_repo, event) => { calls.push('audit'); return { ts: '2026-07-20T00:00:00.000Z', ...event }; },
     commitPreparedCoordination: (async (..._args: unknown[]) => { calls.push('commit'); }) as ReconcileDeps['commitPreparedCoordination'],
     now: () => new Date('2026-07-20T00:00:00.000Z'),
   };
-  return { deps, calls };
+  return { deps, calls, ops };
 }
 
 describe('parseMergeTarget', () => {
@@ -138,6 +144,46 @@ describe('reconcileMergeGates', () => {
     deps.runPy = () => ({ exitCode: 1, stdout: '', stderr: 'illegal transition' });
     const result = await reconcileMergeGates(deps);
     expect(result).toEqual({ closed: [], skipped: ['g1'] });
+  });
+
+  it('walks an INBOX gate inbox->working->done', async () => {
+    const { deps, ops } = recordingDeps([gateCard('g1', '42', 'inbox')], () => ({ merged: true, closed: false }));
+    const result = await reconcileMergeGates(deps);
+    expect(result.closed).toEqual(['g1']);
+    expect(ops).toEqual([{ cardId: 'g1', transitions: ['working', 'done'] }]);
+  });
+
+  it('walks a WORKING gate working->done only (no illegal working->working step)', async () => {
+    const { deps, ops } = recordingDeps([gateCard('g1', '42', 'working')], () => ({ merged: true, closed: false }));
+    const result = await reconcileMergeGates(deps);
+    expect(result.closed).toEqual(['g1']);
+    expect(ops).toEqual([{ cardId: 'g1', transitions: ['done'] }]);
+  });
+
+  it('leaves a merged gate parked in a non-closeable live state (e.g. blocked) OPEN', async () => {
+    const { deps, calls } = recordingDeps([gateCard('g1', '42', 'blocked')], () => ({ merged: true, closed: false }));
+    const result = await reconcileMergeGates(deps);
+    expect(result).toEqual({ closed: [], skipped: ['g1'] });
+    expect(calls).toEqual([]); // no mutation attempted for a state with no legal walk to done
+  });
+});
+
+describe('defaultGhRunner', () => {
+  it('PINS the gh subprocess cwd to repoRoot (no ambient-cwd wrong-repo close)', () => {
+    let seenOpts: { cwd?: string } | undefined;
+    const fakeExec = ((_cmd: string, _args: string[], opts: { cwd?: string }) => {
+      seenOpts = opts;
+      return JSON.stringify({ state: 'MERGED', mergedAt: '2026-07-20T00:00:00Z' });
+    }) as unknown as typeof import('node:child_process').execFileSync;
+    const gh = defaultGhRunner('/pinned/repo', 15_000, fakeExec);
+    const status = gh('42');
+    expect(seenOpts?.cwd).toBe('/pinned/repo');
+    expect(status).toEqual({ merged: true, closed: false });
+  });
+
+  it('collapses any exec throw to null (gh absent / timeout / parse fault)', () => {
+    const boom = (() => { throw new Error('gh not found'); }) as unknown as typeof import('node:child_process').execFileSync;
+    expect(defaultGhRunner('/repo', 15_000, boom)('42')).toBeNull();
   });
 });
 
