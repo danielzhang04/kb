@@ -331,6 +331,51 @@ def test_sync_fetches_stale_main_before_checkout(tmp_path):
     assert _origin_ops_has(caller, "orgs/bar/workflows/new.md")
 
 
+def test_sync_split_root_ignores_stale_repo_root(tmp_path):
+    # MINOR-1 (round 2): repo_root != ops_root and repo_root is a STALE clone
+    # frozen before a new org merged. sync must enumerate what to mirror from the
+    # freshly-fetched ops_root, never the stale repo_root, or the new org is
+    # silently skipped — re-opening the drift class this tool kills.
+    origin = tmp_path / "origin.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(origin)],
+                   check=True, capture_output=True)
+
+    caller = tmp_path / "caller"
+    subprocess.run(["git", "clone", "-q", str(origin), str(caller)],
+                   check=True, capture_output=True)
+    _git(caller, "config", "core.autocrlf", "false")
+    _git(caller, "checkout", "-q", "-b", "main")
+    _write(caller, "agents/fyt.md", "agent one\n")
+    _commit_all(caller, "main v1")
+    _git(caller, "push", "-q", "-u", "origin", "main")
+    _git(caller, "checkout", "-q", "-b", "ops", "main")
+    _git(caller, "push", "-q", "-u", "origin", "ops")
+    _git(caller, "checkout", "-q", "main")
+
+    # A distinct clone used ONLY as repo_root — deliberately never fetched again,
+    # so its origin/main is frozen at v1 (no orgs/bar).
+    stale_repo_root = tmp_path / "stale_repo"
+    subprocess.run(["git", "clone", "-q", str(origin), str(stale_repo_root)],
+                   check=True, capture_output=True)
+
+    opsclone = tmp_path / "opsclone"
+    subprocess.run(["git", "clone", "-q", str(origin), str(opsclone)],
+                   check=True, capture_output=True)
+    _git(opsclone, "config", "core.autocrlf", "false")
+    ops_root = tmp_path / "ops_wt"
+    _git(opsclone, "worktree", "add", "-q", str(ops_root), "ops")
+
+    # main advances with a brand-new org AFTER both other clones froze.
+    _write(caller, "orgs/bar/workflows/new.md", "brand new workflow\n")
+    _commit_all(caller, "main v2 adds orgs/bar")
+    _git(caller, "push", "-q", "origin", "main")
+
+    result = sdd.sync(stale_repo_root, sdd.DAEMON_READ_DIRS, ops_root,
+                      main_ref="origin/main")
+    assert result["committed"] and result["pushed"], result
+    assert _origin_ops_has(caller, "orgs/bar/workflows/new.md")
+
+
 def test_sync_ignores_unrelated_worktree_files_when_in_sync(tmp_path):
     # B2/b: unrelated untracked (.playwright-mcp/) + staged files in the shared
     # ops worktree must not crash an already-in-sync run nor trigger a commit.

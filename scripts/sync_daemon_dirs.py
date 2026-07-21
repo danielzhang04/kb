@@ -159,10 +159,23 @@ def _rebase_or_abort(ops_root: Path) -> None:
     """
     r = _git(ops_root, "pull", "--rebase", "--autostash", "origin", "ops", check=False)
     if r.returncode != 0:
-        _git(ops_root, "rebase", "--abort", check=False)  # best-effort cleanup
+        # Distinguish a rebase-in-progress failure (conflict during replay) from
+        # an autostash-reapply failure (rebase already finished, then the stash
+        # pop conflicted). Only the former can be `git rebase --abort`-ed; saying
+        # "rebase aborted" for the latter would misdescribe the worktree state.
+        rebase_dir = _git(ops_root, "rev-parse", "--git-path", "rebase-merge",
+                          check=False).stdout.strip()
+        mid_rebase = bool(rebase_dir) and (ops_root / rebase_dir).exists()
+        if mid_rebase:
+            _git(ops_root, "rebase", "--abort", check=False)  # best-effort cleanup
+            detail = "rebase aborted, worktree restored"
+        else:
+            detail = ("autostash reapply failed; the rebase itself completed but "
+                      "the mirror did NOT run — inspect the ops worktree for "
+                      "conflict markers or a dangling stash (git stash list)")
         raise SystemExit(
-            "git pull --rebase origin ops failed (rebase aborted, worktree "
-            f"restored):\n{r.stderr.strip()}"
+            f"git pull --rebase --autostash origin ops failed ({detail}):\n"
+            f"{r.stderr.strip()}"
         )
 
 
@@ -278,6 +291,11 @@ def sync(
     content in, commit only if something changed, push, retry once on a rejected
     push after re-rebasing. Ops-only files are reported and left in place unless
     ``prune`` is set. Returns a summary dict.
+
+    ``repo_root`` is accepted for call-site symmetry with ``check()`` but is
+    intentionally NOT read: every git operation (fetch, rebase, ls-tree,
+    checkout) runs inside ``ops_root`` so the enumerated pathspecs always match
+    the freshly-fetched refs we check out from.
     """
     ops_root = Path(ops_root)
     if not ops_root.is_dir():
@@ -295,12 +313,17 @@ def sync(
     _rebase_or_abort(ops_root)
 
     # 2. Copy main's version of every daemon-read dir into the ops worktree.
-    pathspecs = _checkout_pathspecs(repo_root, main_ref, patterns, matchers)
+    #    Enumerate the pathspecs and the main file set from ops_root's refs —
+    #    the SAME refs we just fetched and check out from — not the caller's
+    #    (possibly un-fetched, different-cwd) repo_root. Reading a stale
+    #    repo_root here would silently skip a brand-new org and re-open the very
+    #    drift class this tool exists to kill.
+    pathspecs = _checkout_pathspecs(ops_root, main_ref, patterns, matchers)
     if pathspecs:
         _git(ops_root, "checkout", main_ref, "--", *pathspecs)
 
     # 3. Handle ops-only files: prune (explicit) or report + keep (default).
-    main_files = _list_ref(repo_root, main_ref, matchers)
+    main_files = _list_ref(ops_root, main_ref, matchers)
     ops_only = sorted(p for p in _list_disk(ops_root, patterns) if p not in main_files)
     if prune and ops_only:
         _git(ops_root, "rm", "--quiet", "--", *ops_only)
