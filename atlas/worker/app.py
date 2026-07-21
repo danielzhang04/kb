@@ -275,6 +275,22 @@ async def entrypoint(ctx: JobContext) -> None:
         watcher.watch(p["id"], p["action"])
     toolreg.set_post_file_hook(_post_file)
 
+    async def _purge_quiet(item_id: str) -> None:
+        # Gate finding #2 (2026-07-21 desk): [quiet] turns left in chat history teach the model
+        # that silence answers everything — it began [quiet]-ing DIRECT addresses ("Atlas, can
+        # you hear me?"). Drop the marker turn and the ambient user line that triggered it, so
+        # ambient noise never accumulates as conversational precedent. chat_ctx.copy() yields a
+        # fresh mutable context; update_chat_ctx replaces the agent's (installed agent.py:235).
+        ctx = agent.chat_ctx.copy()
+        idx = ctx.index_by_id(item_id)
+        if idx is None:
+            return
+        items = ctx.items
+        del items[idx]
+        if idx > 0 and getattr(items[idx - 1], "role", None) == "user":
+            del items[idx - 1]
+        await agent.update_chat_ctx(ctx)
+
     @session.on("conversation_item_added")
     def _on_item(ev) -> None:
         # Final committed turns for BOTH roles feed the transcript mirror (agent_session.py
@@ -294,7 +310,10 @@ async def entrypoint(ctx: JobContext) -> None:
             # 30s expiry could never break. A [quiet] turn (the LLM's structural silence) is
             # therefore neither spoken (sanitizer strips it), mirrored, nor window-re-arming.
             if sanitize.is_quiet_turn(text):
-                logger.info("quiet turn — no audio, window not re-armed")
+                logger.info("quiet turn — no audio, window not re-armed, purged from chat ctx")
+                purge = asyncio.create_task(_purge_quiet(msg.id))
+                _BG_TASKS.add(purge)
+                purge.add_done_callback(_BG_TASKS.discard)
                 return
             addr.mark_activity()   # a CONTENT Atlas turn re-arms the window (rules design §1)
         publisher.add_line("atlas" if role == "assistant" else "user", text)

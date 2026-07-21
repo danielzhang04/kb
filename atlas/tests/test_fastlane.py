@@ -74,3 +74,10 @@ def test_persona_quiet_marker_rule():
     # Gate finding #1 (2026-07-21): ambient speech must yield the silent-turn marker, not chat.
     text = fastlane.load_persona()
     assert "[quiet]" in text
+
+
+def test_persona_never_quiet_when_named():
+    # Gate finding #2 (2026-07-21): a named address must always get a content answer.
+    text = fastlane.load_persona()
+    assert "Loud and clear" in text
+    assert "[quiet] is forbidden" in text
