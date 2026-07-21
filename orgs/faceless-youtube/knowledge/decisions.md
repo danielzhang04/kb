@@ -3115,3 +3115,13 @@ run brief binds nobody — a fresh terminal reads the style-bible and skill docs
   flag false. tVmQR0pfp-Q superseded (record archived; Daniel deletes both old uploads).
 - If any future channel ships realistic synthetic media: flag true + description line both return
   (metadata-writer Step 9 records the condition).
+
+## 2026-07-21 — Captions policy: CC track yes (script-exact), burned subtitles no
+
+- Long-form ships a **closed-caption track generated from the render's measured sentence
+  boundaries** (vo.txt + motion-json sentenceBoundaries → .srt; poyais: 120 cues, 0 drift) —
+  auto-captions would mangle the load-bearing proper nouns (Poyais, Cazique, MacGregor).
+  Uploaded manually in Studio (no captions tool in the uploader MCP). **No burned-in full
+  subtitles on long-form** (no reference channel does; fights the locked look; the motion
+  grammar's selective on-screen text stands). Shorts keep burned captions per shorts doctrine.
+  *Follow-up owed:* fold srt generation into the render/publish tail as a standing step.
