@@ -223,6 +223,41 @@ def test_licensing_credited_asset_passes(video_dir):
     assert ok is True
 
 
+def test_licensing_credit_block_all_matched_passes(video_dir):
+    # a Credits block whose every entry matches a licensed asset -> PASS, no orphans.
+    lib = json.loads((video_dir / "assets" / "library" / "manifest.json").read_text())
+    lib["assets"].append({"name": "stock-clip-7", "license": "CC-BY 4.0 by Jane Roe"})
+    (video_dir / "assets" / "library" / "manifest.json").write_text(json.dumps(lib))
+    meta = _load_meta(video_dir)
+    meta["long_form"]["description"] += "\n\nCredits:\nCC-BY 4.0 by Jane Roe\n"
+    _save_meta(video_dir, meta)
+    ok, detail = cc.check_licensing(video_dir)
+    assert ok is True
+
+
+def test_licensing_orphan_credit_fails(video_dir):
+    # a Credits block entry with no backing licensed asset -> FAIL naming the orphan line.
+    lib = json.loads((video_dir / "assets" / "library" / "manifest.json").read_text())
+    lib["assets"].append({"name": "stock-clip-7", "license": "CC-BY 4.0 by Jane Roe"})
+    (video_dir / "assets" / "library" / "manifest.json").write_text(json.dumps(lib))
+    meta = _load_meta(video_dir)
+    meta["long_form"]["description"] += (
+        "\n\nCredits:\nCC-BY 4.0 by Jane Roe\nPhoto by Someone Else\n"
+    )
+    _save_meta(video_dir, meta)
+    ok, detail = cc.check_licensing(video_dir)
+    assert ok is False
+    assert "Photo by Someone Else" in detail
+    assert cc.build_report(video_dir)[1] == 1
+
+
+def test_licensing_no_credit_block_no_licensed_assets_passes(video_dir):
+    # existing behavior intact: nothing licensed, no Credits block -> vacuously PASS.
+    ok, detail = cc.check_licensing(video_dir)
+    assert ok is True
+    assert "no licensed assets" in detail
+
+
 def test_thumbnail_wrong_size_fails(video_dir):
     Image.new("RGB", (1920, 1080), "black").save(video_dir / "assets" / "thumbnail.png")
     ok, detail = cc.check_thumbnail(video_dir)

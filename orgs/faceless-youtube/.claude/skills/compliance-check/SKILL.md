@@ -60,9 +60,20 @@ open).
    the finished duration (duration read back from the render manifest).
 3. **privacy + AI disclosure** — `defaults.privacy_status == "private"` and
    `defaults.contains_synthetic_media == true`. This is the Stage-0 policy floor.
-4. **licensing / credits** — every asset in `audio-plan.json` / `library/manifest.json` that declares
-   a license/attribution field appears, credited, in the description; no orphan credits. (Vacuously
-   green when nothing is licensed — the current corpus is all `source: generated`/`reused`.)
+4. **licensing / credits** — two directions, both convention-based (substring matching), on every
+   asset in `audio-plan.json` / `library/manifest.json` that declares a license/attribution field:
+   - *credited*: every such licensed asset's credit string or id appears somewhere in the description.
+   - *no orphan credits*: every entry in the description's **Credits block** (see below) matches at
+     least one licensed asset's credit string or id.
+   The description MAY contain a Credits block: a contiguous run of lines starting right after a line
+   matching `^credits:?$` (case-insensitive, optional markdown heading `#`/`##`/... or bold `**`
+   markers around the word), and ending at the first blank line or end-of-description. Each non-empty
+   line in that block is one credit entry. No Credits block present → orphan detection is vacuously
+   fine (there's nothing to check). Matching is convention-based, not semantic — a credit block is
+   required for orphan detection to see credits at all; a credit buried outside a recognized block, or
+   phrased so it shares no substring with the licensed asset's credit/id, will not be caught either
+   way. (Vacuously green on both directions when nothing is licensed and there's no Credits block —
+   the current corpus is all `source: generated`/`reused`.)
 5. **thumbnail 1280×720** — `assets/thumbnail.png` exists and is exactly 1280×720 (verified with PIL).
 6. **scene-review invariant** — every entry in `scenes/manifest.json` is shippable under **Task-2
    semantics**: `review_status == "verified"`, or (when `review_status` is absent) legacy

@@ -195,11 +195,54 @@ def check_privacy(video_dir: Path):
 # Schema note (pinned from real artifacts, 2026-07-20): wells-fargo/poyais assets in
 # audio-plan.json and assets/library/manifest.json are all `source: generated`/`reused`
 # and carry NO license/attribution fields — there is no external licensed media in the
-# corpus yet. So the check is a two-way match that is VACUOUSLY GREEN when nothing
-# declares a license, and bites the moment a licensed asset (or an orphan credit) appears.
+# corpus yet. So this check is VACUOUSLY GREEN on both directions when nothing declares
+# a license and the description has no Credits block, and bites the moment a licensed
+# asset goes uncredited OR a credit names something no licensed asset backs.
 # A licensed asset is any entry that declares one of the license/attribution keys below.
+#
+# Credit-block convention (description side, see SKILL.md): a description MAY contain a
+# Credits block — a contiguous run of lines following a line matching `^credits:?$`
+# (case-insensitive, optional markdown heading `#`/`##`/... or bold `**` markers around
+# it), ending at the first blank line or end-of-description. Each non-empty line in that
+# block is one credit entry. Matching (both directions) is substring containment between
+# a licensed asset's credit string/id and the relevant description text — the reverse
+# direction checks each credit-block entry against every licensed asset's credit/id.
+# No Credits block present -> orphan detection is vacuously fine (nothing to check).
 # ---------------------------------------------------------------------------
 _LICENSE_KEYS = ("license", "attribution", "credit", "credit_text", "attribution_text")
+_CREDIT_HEADER_RE = re.compile(r"^#{0,6}\s*\*{0,2}\s*credits\s*:?\s*\*{0,2}\s*$", re.IGNORECASE)
+
+
+def _credit_block_entries(description: str):
+    """Return the list of non-empty lines in the description's Credits block, if any.
+
+    The block starts at the first line matching `_CREDIT_HEADER_RE` and runs until the
+    first blank line or end of description. Returns [] when there is no such header.
+    """
+    entries = []
+    in_block = False
+    for raw in description.splitlines():
+        line = raw.strip()
+        if not in_block:
+            if _CREDIT_HEADER_RE.match(line):
+                in_block = True
+            continue
+        if line == "":
+            break
+        entries.append(line)
+    return entries
+
+
+def _orphan_credit_entries(description: str, licensed: dict):
+    """Credit-block entries with no backing licensed asset (same substring matching rule
+    as the credited direction, applied in reverse: does this entry contain a known
+    licensed asset's credit string or id?)."""
+    orphans = []
+    for entry in _credit_block_entries(description):
+        matched = any(credit in entry or aid in entry for aid, credit in licensed.items())
+        if not matched:
+            orphans.append(entry)
+    return orphans
 
 
 def _collect_licensed_ids(video_dir: Path):
@@ -233,13 +276,28 @@ def check_licensing(video_dir: Path):
     if err:
         return False, err
     description = ((data.get("long_form") or {}).get("description")) or ""
+
+    problems = []
+    if licensed:
+        uncredited = [aid for aid, credit in licensed.items()
+                      if credit not in description and aid not in description]
+        if uncredited:
+            problems.append(
+                f"licensed asset(s) not credited in description: {', '.join(sorted(uncredited))}"
+            )
+
+    orphans = _orphan_credit_entries(description, licensed)
+    if orphans:
+        problems.append(
+            "orphan credit(s) in description Credits block with no matching licensed asset: "
+            + "; ".join(repr(o) for o in orphans)
+        )
+
+    if problems:
+        return False, "; ".join(problems)
     if not licensed:
         return True, "no licensed assets declared (nothing to credit)"
-    uncredited = [aid for aid, credit in licensed.items()
-                  if credit not in description and aid not in description]
-    if uncredited:
-        return False, f"licensed asset(s) not credited in description: {', '.join(sorted(uncredited))}"
-    return True, f"all {len(licensed)} licensed asset(s) credited in description"
+    return True, f"all {len(licensed)} licensed asset(s) credited in description; no orphan credits"
 
 
 # ---------------------------------------------------------------------------
