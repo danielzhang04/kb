@@ -6,7 +6,7 @@ target: orgs/kb-ops/output
 risk-tier: T1
 owner: worker-desktop
 claim-token: 4a35049d84682c32
-state: inbox
+state: done
 approval: null
 workflow: run-7b0b8de8-268e-4d94-bab3-a3b765101c62
 depends-on: []
@@ -58,3 +58,9 @@ Write the report to `orgs/kb-ops/output/self-lint-report-YYYY-MM-DD.md` (today's
   outward release of anything.
 - Never print or copy a suspected sensitive value — report only the containing path.
 - If you cannot complete the scan, write a short report saying what blocked you and stop. Do not guess.
+
+## Result
+
+```kb.canonical-stage-result/v1
+{"artifacts":[],"attemptRef":"attempt-a87b25ec-1f9c-4f70-a745-70ab00e3fb76","changed":[{"digest":"5d3f866f3e324f3dc026b2c259ceefb04268a0a985037ef8342ebdd6eb30d30f","path":"orgs/kb-ops/output/self-lint-report-2026-07-21.md"}],"checkpoints":[],"integrationCommit":"75e9b8ce3fe543b255d042a4ba6b273b07b3f2a5","resultHash":"ad5e00bb508f553b2211f668537d4588c6784dd8331875464a806feb8aafc28a","runRef":"run-7b0b8de8-268e-4d94-bab3-a3b765101c62","stageId":"report","summary":"Report written to `orgs/kb-ops/output/self-lint-report-2026-07-21.md`. Summary:\n\n- **Health: attention-needed (minor)** — no credentials, secrets, or committed absolute paths found within scope; `orgs/kb-ops/_index.md` links all resolve.\n- **Scope limitation**: this run's work order restricted reads to `orgs/kb-ops`, narrower than the general self-lint-report definition (which also expects `queue/`, `dashboards/`, `ledgers/`, and full top-level link resolution). Those three categories were marked **not scanned** rather than guessed. One incidental read of the top-level `_index.md` happened before I fully resolved the scope conflict — disclosed in the report, no data copied out.\n- **Finding**: `orgs/kb-ops/STATE.md` is stale (dated 2026-07-16, still says \"nothing yet\") despite the daily heartbeat cadence expecting it to be updated each run — left untouched since write scope was `output/` only.\n- Confirmed read-only: only the one new report file was written; nothing else touched."}
+```
