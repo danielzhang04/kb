@@ -37,6 +37,33 @@ export type SessionCheck =
   | { ok: true; claims: SessionClaims }
   | { ok: false; reason: 'malformed' | 'bad-signature' | 'expired' };
 
+/** The discriminant of an internal service caller — a stable literal used at the launch auth gate. */
+export const INTERNAL_SERVICE_CALLER_KIND = 'internal-service-caller';
+
+/**
+ * A sanctioned internal service caller — an in-process principal, NOT a bearer token. Where a WebAuthn
+ * session token is minted only after a human passkey assertion and is replayable by anyone who holds the
+ * string, this is a plain object that never crosses a wire, is never persisted or logged, and cannot be
+ * forged by an HTTP client. It authorizes a governed launch as `subject` in lieu of a token. It is ONLY
+ * constructed by the gate-on activation path (`control/activation.ts#createInternalServiceCaller`, which
+ * throws unless `DASHBOARD_EXECUTION_ACTIVATED === '1'`); no HTTP route ever constructs or forwards one.
+ */
+export interface InternalServiceCaller {
+  readonly kind: typeof INTERNAL_SERVICE_CALLER_KIND;
+  readonly subject: string;
+}
+
+/**
+ * True only for a well-formed internal service caller. Used as the auth-gate bypass key so the bypass is a
+ * strict shape match, never a loose truthiness test on an arbitrary object an HTTP body might smuggle in.
+ */
+export function isInternalServiceCaller(value: unknown): value is InternalServiceCaller {
+  return typeof value === 'object' && value !== null
+    && (value as { kind?: unknown }).kind === INTERNAL_SERVICE_CALLER_KIND
+    && typeof (value as { subject?: unknown }).subject === 'string'
+    && (value as { subject: string }).subject.length > 0;
+}
+
 function b64urlEncode(input: Buffer): string {
   return input.toString('base64url');
 }

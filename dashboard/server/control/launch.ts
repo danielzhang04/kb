@@ -24,6 +24,7 @@ import { loadPolicyEnvironment, loadRuntimeSkillRegistry } from './environment.t
 import { reconcileCanonicalPublication } from './publication.ts';
 import type { ControlResult, HumanRequest, JsonObject } from './types.ts';
 import type { CreateHumanRequestInput } from './store.ts';
+import type { InternalServiceCaller } from '../auth/session.ts';
 
 /** A transport-neutral HTTP outcome. Routes serialise it with `reply.code(status).send(body)`. */
 export interface LaunchOutcome {
@@ -37,8 +38,14 @@ export interface ApprovedLaunchInput {
   /** The exact approved revision hash the caller already verified against the request. */
   storedHash: string;
   snapshot: JsonObject;
-  /** The verified session token forwarded to the canonical card writer (never minted here). */
+  /** The verified session token forwarded to the launch auth gate (never minted here). */
   sessionToken: string | undefined;
+  /**
+   * A sanctioned internal service caller (the activation-gated queue bridge) that authorizes the launch in
+   * lieu of `sessionToken`. Never set by any HTTP launch route (they build this input explicitly and pass
+   * only `sessionToken`); only the gated bridge threads it. See `control/activation.ts#createInternalServiceCaller`.
+   */
+  internalService?: InternalServiceCaller;
   /** Client-supplied launch identity. Empty is rejected by the store, never invented server-side. */
   idempotencyKey: string;
   predecessorRunRef: string | null;
@@ -221,7 +228,7 @@ export async function executeApprovedLaunch(
     const workflow = compiled.value.workflow;
     const publishing = ctx.controlStore.transitionPublication(sub, runRef, launchRun.version, 'publishing');
     if (!publishing.ok) return failure(publishing);
-    const outcome = await launchWorkflowRun(workflow, { token: input.sessionToken, config: ctx.sessionConfig }, {
+    const outcome = await launchWorkflowRun(workflow, { token: input.sessionToken, config: ctx.sessionConfig, internalService: input.internalService }, {
       repoRoot: ctx.repoRoot,
       runPreamble: ctx.runPreamble,
       runPy: ctx.runPy,

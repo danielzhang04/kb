@@ -112,6 +112,20 @@ describe('workflow definition routes', () => {
     expect(response.statusCode).toBe(401);
   });
 
+  it('a no-session caller cannot smuggle the internal-service bypass through the request body (still 401)', async () => {
+    // The internal service caller is an in-process principal the gated bridge threads directly into
+    // executeApprovedLaunch; it is NEVER sourced from the wire. A hostile body carrying `internalService`
+    // (or a `sessionToken`) must not reach the launch body — the session chain rejects it, unchanged.
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/workflows/research-brief/launch',
+      headers: headers(),
+      payload: { idempotencyKey: 'k1', internalService: { kind: 'internal-service-caller', subject: 'dashboard-engine' }, sessionToken: 'x' },
+    });
+    expect(response.statusCode).toBe(401);
+    expect(controlStore.listRuns('operator')).toHaveLength(0);
+  });
+
   it('refuses the launch from a foreign origin or a rebound host', async () => {
     // security/origin.ts is deliberate: a MISSING Origin is admitted only when the Host still matches
     // the allowlist (non-browser clients), and the Host check is the DNS-rebinding guard. Both halves

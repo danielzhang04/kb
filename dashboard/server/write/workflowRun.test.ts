@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { mintSession } from '../auth/session.ts';
+import { mintSession, INTERNAL_SERVICE_CALLER_KIND } from '../auth/session.ts';
 import type { SessionConfig } from '../auth/session.ts';
 import {
   launchWorkflowRun,
@@ -256,6 +256,58 @@ role_default: { runtime: claude, model: sonnet }
       detail: "owner 'ghost-agent' on stage 'research' is not a declared agent or registered default_worker",
     });
     expect(prepareWrite).not.toHaveBeenCalled();
+    expect(runPy).not.toHaveBeenCalled();
+  });
+
+  // --- launch caller authentication: the WebAuthn token gate (HTTP) vs. the internal service caller (bridge) ---
+
+  // A runPy that publishes the two-stage DAG successfully — used to prove a call reaches PAST the auth gate.
+  const okDagRunPy: PyRunner = () => ({
+    exitCode: 0,
+    stdout: JSON.stringify({
+      runId: 'wf-test-0001',
+      cards: [
+        { stageId: 'research', cardId: 'wf-9b91ad52f99f63f91e0cbd97', state: 'inbox', cardPath: 'queue/inbox/wf-9b91ad52f99f63f91e0cbd97.md' },
+        { stageId: 'draft', cardId: 'wf-3b727f072438eb3bf76b26bc', state: 'blocked', cardPath: 'queue/inbox/wf-3b727f072438eb3bf76b26bc.md' },
+      ],
+    }),
+    stderr: '',
+  });
+
+  it('rejects a launch with no session token and no internal caller (the HTTP-equivalent unauthenticated path, unchanged)', async () => {
+    const runPy = vi.fn(okDagRunPy);
+    const outcome = await launchWorkflowRun(request, { token: undefined, config: CONFIG }, deps(runPy));
+    expect(outcome).toEqual({ ok: false, reason: 'unauthenticated', detail: 'no WebAuthn session token supplied' });
+    expect(runPy).not.toHaveBeenCalled();
+  });
+
+  it('rejects a launch bearing a tampered/invalid session token and no internal caller', async () => {
+    const runPy = vi.fn(okDagRunPy);
+    const outcome = await launchWorkflowRun(request, { token: 'not.a-valid-token', config: CONFIG }, deps(runPy));
+    expect(outcome).toMatchObject({ ok: false, reason: 'unauthenticated' });
+    expect(runPy).not.toHaveBeenCalled();
+  });
+
+  it('authorizes a launch by a sanctioned internal service caller with NO token (the bridge path)', async () => {
+    const runPy = vi.fn(okDagRunPy);
+    const outcome = await launchWorkflowRun(
+      request,
+      { token: undefined, config: CONFIG, internalService: { kind: INTERNAL_SERVICE_CALLER_KIND, subject: 'dashboard-engine' } },
+      deps(runPy),
+    );
+    expect(outcome.ok).toBe(true);
+    expect(runPy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT accept a malformed bypass object as an internal caller (strict shape, not loose truthiness)', async () => {
+    const runPy = vi.fn(okDagRunPy);
+    // A hostile/truthy object missing the exact discriminant must NOT bypass the token gate.
+    const outcome = await launchWorkflowRun(
+      request,
+      { token: undefined, config: CONFIG, internalService: { kind: 'not-the-kind', subject: 'x' } as never },
+      deps(runPy),
+    );
+    expect(outcome).toEqual({ ok: false, reason: 'unauthenticated', detail: 'no WebAuthn session token supplied' });
     expect(runPy).not.toHaveBeenCalled();
   });
 

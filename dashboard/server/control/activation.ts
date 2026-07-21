@@ -47,11 +47,32 @@ import {
   createWorkerCancellationRegistry,
 } from './managedExecution.ts';
 import { settleFleetLedgerForRun } from './queueBridge.ts';
+import { INTERNAL_SERVICE_CALLER_KIND } from '../auth/session.ts';
+import type { InternalServiceCaller } from '../auth/session.ts';
 
 export class ActivationError extends Error {}
 
 /** The single dashboard executor identity (D1): card owner, broker subject, ledger agent, run subject. */
 export const DASHBOARD_EXECUTOR_SUBJECT = 'dashboard-engine';
+
+/**
+ * Construct the sanctioned internal service caller for the dashboard executor. Constructible ONLY when the
+ * activation gate is on (Daniel's flip) — it throws otherwise, so no gate-off code path can obtain one and
+ * the bridge fails closed rather than launching unauthenticated. No HTTP route imports or calls it. The
+ * result is an in-process principal (see `auth/session.ts#InternalServiceCaller`), never a bearer token, so
+ * nothing replayable against an HTTP write route is ever minted. The queue bridge presents it to
+ * `executeApprovedLaunch` in place of a WebAuthn session token to authorize the daemon-internal launch of a
+ * run it already imported and approved under its own subject.
+ */
+export function createInternalServiceCaller(
+  subject: string = DASHBOARD_EXECUTOR_SUBJECT,
+  env: Record<string, string | undefined> = process.env,
+): InternalServiceCaller {
+  if (!isExecutionActivated(env)) {
+    throw new ActivationError('the internal service caller is only constructible with the activation gate on');
+  }
+  return { kind: INTERNAL_SERVICE_CALLER_KIND, subject };
+}
 
 /** Wave-A default project whose contract/governance the single held policy environment is loaded for. */
 const DEFAULT_POLICY_PROJECT = 'kb-ops';
