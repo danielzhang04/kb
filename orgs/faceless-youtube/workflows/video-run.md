@@ -66,6 +66,13 @@ stages:
     riskTier: T2
     dependsOn: [shots]
     workOrder: "Invoke the image-generation skill against the locked style bible. Materialize every plate/cutout still for shots.json into the video asset library. THIS STAGE SPENDS REAL MONEY on the paid Gemini image API (gemini-3-pro-image, billed per generated image) — a full long-form video runs roughly 130-200 generation calls, on the order of twenty US dollars. It therefore requires explicit per-run human authorization recorded on a queue card BEFORE it starts; without that recorded authorization, halt and ask. Honour the run's call ceiling and log actual spend."
+  - id: image-review
+    title: Batched review of every generated still (the image gate)
+    action: review:image-gate
+    target: orgs/faceless-youtube/channels
+    riskTier: T2
+    dependsOn: [images, motion]
+    workOrder: "Run the batched image review that image-generation/SKILL.md specifies as prose — now a real DAG node, not an optional prose step. Open EVERY scene PNG under channels/<channel>/videos/<slug>/assets/scenes/ AND every layered shot's plate + cutouts, enumerating the full reviewable surface from the motion plan's cutout_layer_ids so nothing renders unreviewed (never just scenes/<shot-id>.png). Dispatch the three concurrent review mandates (identity/rig, fidelity, style) over the whole batch; transcribe every authored in-image line LETTER-BY-LETTER against the still_prompt and treat a garbled, misspelled or partial render as blocking; silence on any seeded or foreground figure is disallowed — each gets a forced PASS/FAIL. Write the shard rulings + merged.json under channels/<channel>/videos/<slug>/assets/_review/, then END by stamping channels/<channel>/videos/<slug>/assets/scenes/manifest.json review_status per shot — verified, or parked with its reasons — via image-generation/scripts/stamp_review.py. The artifact of this stage is the honestly-stamped manifest; the DAG is NOT satisfied by PNG files merely existing on disk. fyt-run-001 law: a stage never holds the gate that blocks its own work — this node is run by the conductor/orchestrator, NEVER by the generating agent, which grades its own frames leniently."
   - id: voiceover
     title: Generate the narration audio (paid TTS)
     action: build:voiceover
@@ -85,7 +92,7 @@ stages:
     action: build:render
     target: orgs/faceless-youtube/channels
     riskTier: T2
-    dependsOn: [metadata, shorts, motion, images, audio-plan]
+    dependsOn: [metadata, shorts, motion, image-review, audio-plan]
     workOrder: "Invoke the render-builder skill. Assemble the finished MP4(s) for the long-form and each publish-tagged short via the local Remotion engine from shots.json + the verified stills + the voiceover audio + the audio plan into channels/<channel>/videos/<slug>/. Local render, no API spend; first runs stay orchestrator-driven. Produces local files only; it does NOT upload or publish."
   - id: verify
     title: Verify the render against the manifests
@@ -108,8 +115,10 @@ directory; an earlier revision of this definition claimed one and was wrong.
 
 The DAG mirrors the pipeline skills: idea -> research -> script -> judge-gate, then the accepted script
 fans out into the short-form bench, the publishing metadata, and the visual shot list; shots feed the
-motion plan and the still generation; the script feeds the voiceover; the audio plan converges the
-script, the shot list and the voiceover; and everything converges on render + verify.
+motion plan and the still generation; the generated stills then pass the batched image-review gate
+(which reads the motion plan to enumerate every plate + cutout) before anything renders; the script
+feeds the voiceover; the audio plan converges the script, the shot list and the voiceover; and
+everything converges on render + verify.
 
 ## Spend
 
