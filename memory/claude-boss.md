@@ -224,3 +224,25 @@ Fresh terminal: read the spec at `memory/handoffs/2026-07-20-fyt-post-render-tai
 **Verified/corrected state:** fleet-arc 14c0fed and keep-awake PR #36 ARE in main (memory corrected); agents/ main↔ops drift currently zero; PR #50 got merged mid-session → Wave A live-fire is unblocked (recipe in next-arc memory); pre-existing 4-test failure on main in compile.videoRun.test.ts (13-vs-14 stages) — not from this session.
 
 **Lessons:** (1) Sustained API stream drops killed agents repeatedly; SendMessage resume-from-transcript + "write in small chunks, commit early" made every retry cheap — adopt as standard flaky-network tactic. (2) The build→adversarial-review→fix loop caught 2 BLOCKING defects a solo build would have shipped (stale-refs mirror that can never converge; commit sweep polluting ops). (3) A --check-style tool run against reality on first build is a free acceptance test — it found real drift immediately. (4) Windows: git worktree remove can deregister but fail file deletion (Permission denied) leaving an orphan dir; sandbox classifier blocks rm -rf — plan for human-finishes-deletion.
+
+## 2026-07-21 (late night) — WAVE A LIVE-FIRE PASSED
+
+Supervised live-fire of `self-lint-report` through the governed executor COMPLETED (run-7b0b8de8, 2.5min,
+worker claude-sonnet-5). All four runbook checks pass: done card queue/done/wf-8a2b8acc75dde27efcead7b0.md
+with canonical ## Result; one 87-line report integrated as commit 75e9b8c on managed branch
+codex/managed-de2c79e441d631066af38b72 (pushed, awaits merge to main); cost row
+ledgers/cost/operator-2026-07-21.tsv (subscription, $0 — subject is 'operator' for UI launches, not
+dashboard-engine); control-run-launch audit row. Daemon returned INERT (fresh pm2 start from clean config,
+gate verified unset). Wave A COMPLETE.
+
+Two live-fire discoveries, both fixed same night: (1) PR #57 — one-step launch route refused when gate on
+(PR #33-era refusal vs runbook D0-A conflict; adversarially reviewed SHIP, no alternative path existed);
+(2) PR #58 — the def's own safety-rule wording tripped the executor's restrictedIntent keyword scan
+(credential/spend/publish vocabulary in prohibition sentences; governance-refusal boundaries are
+deliberately non-overridable, so run-aca15641 is permanently parked — wording was the only fix).
+
+FOLLOW-UPS: merge managed report branch to main; clean up parked run-aca15641 + its card wf-57e9c87b;
+restrictedIntent false-positive footgun (prohibition mentions read as intent — negation-aware match or
+action/target-only scan, deliberate session); worker read-scope was bounded to orgs/kb-ops (narrower than
+def's scan list — worker honestly marked categories not-scanned; scope derivation worth a look);
+report's real finding: orgs/kb-ops/STATE.md stale since 2026-07-16. Atlas #55 restart+verify still pending.
