@@ -17,10 +17,13 @@ level — `livekit_tool()` imports `function_tool` lazily when first called.
 """
 import inspect
 import json
+import logging
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
 from kbmcp import kb_tools
+
+logger = logging.getLogger("atlas.toolreg")
 
 
 @dataclass(frozen=True)
@@ -50,6 +53,61 @@ def _running_work(args: dict) -> str:
     return json.dumps(kb_tools.running_work(kb_tools.kb_root()))
 
 
+# --- write tools + credit (Task 9) ------------------------------------------------------------
+# Publisher-agnostic post-file hook: app.py sets this at startup to publisher.add_filed_card so a
+# voice-filed card appears in the /state snapshot's `filed_cards` — toolreg never imports state
+# or a publisher. A hook failure is best-effort (the card is already filed): logged, not raised.
+_post_file_hook: Optional[Callable[[dict], None]] = None
+
+
+def set_post_file_hook(fn: Optional[Callable[[dict], None]]) -> None:
+    """Install (or clear, with None) the post-file callback. Called once from app.py's entrypoint
+    with `lambda p: publisher.add_filed_card(p["id"], p["action"])`."""
+    global _post_file_hook
+    _post_file_hook = fn
+
+
+def _fire_post_file_hook(payload: dict) -> None:
+    if _post_file_hook is not None:
+        try:
+            _post_file_hook(payload)
+        except Exception:
+            logger.exception("atlas post-file hook raised; card is filed regardless")
+
+
+def _require_confirmed(args: dict) -> None:
+    """Structural read-back gate: the LLM must set confirmed=true only after speaking project/
+    action/target/risk-tier and getting a yes. Raised BEFORE any write, so an unconfirmed call
+    writes NOTHING; dispatch turns the ValueError into the exact spoken ERROR string."""
+    if args.get("confirmed") is not True:
+        raise ValueError("not confirmed — read the card back and get a yes.")
+
+
+def _file_card(args: dict) -> str:
+    _require_confirmed(args)
+    result = kb_tools.file_card(str(kb_tools.ops_root()), args.get("project"), args.get("action"),
+                                args.get("target"), args.get("risk_tier"), body=args.get("body", ""),
+                                workflow=None)
+    _fire_post_file_hook({"id": result["id"], "action": args.get("action"), "path": result["path"]})
+    return json.dumps(result)
+
+
+def _launch_workflow(args: dict) -> str:
+    _require_confirmed(args)
+    result = kb_tools.file_card(str(kb_tools.ops_root()), args.get("project"), args.get("action"),
+                                args.get("target"), args.get("risk_tier"), body=args.get("body", ""),
+                                workflow=args.get("workflow"))
+    _fire_post_file_hook({"id": result["id"], "action": args.get("action"), "path": result["path"]})
+    return json.dumps(result)
+
+
+def _credit_remaining(args: dict) -> str:
+    return json.dumps(kb_tools.credit_remaining())
+
+
+_READBACK = ("You MUST first read back the project, action, target, and risk-tier aloud and get "
+             "an explicit spoken yes; only then set confirmed=true. ")
+
 REGISTRY: list[ToolSpec] = [
     ToolSpec("queue_summary",
              "Task-card queue counts + cards, optionally one state (inbox/working/done/approvals).",
@@ -67,6 +125,38 @@ REGISTRY: list[ToolSpec] = [
     ToolSpec("running_work", "Cards currently in 'working'.",
              {"type": "object", "properties": {}, "required": []},
              _running_work),
+    ToolSpec("file_card",
+             "File a task card into the kb queue for Daniel's fleet to pick up (Atlas does not "
+             "run it). " + _READBACK,
+             {"type": "object",
+              "properties": {
+                  "project": {"type": "string", "description": "kb project the card belongs to."},
+                  "action": {"type": "string", "description": "One-line imperative of the ask."},
+                  "target": {"type": "string", "description": "What it acts on (path/area)."},
+                  "risk_tier": {"type": "string", "description": "T1, T2, or T3."},
+                  "body": {"type": "string", "description": "Optional work-order detail."},
+                  "confirmed": {"type": "boolean",
+                                "description": "true ONLY after the spoken read-back was confirmed."}},
+              "required": ["project", "action", "target", "risk_tier", "confirmed"]},
+             _file_card),
+    ToolSpec("launch_workflow",
+             "File a card that launches a named kb workflow for the fleet to run (Atlas does not "
+             "run it). " + _READBACK,
+             {"type": "object",
+              "properties": {
+                  "workflow": {"type": "string", "description": "The named workflow to launch."},
+                  "project": {"type": "string", "description": "kb project the card belongs to."},
+                  "action": {"type": "string", "description": "One-line imperative of the ask."},
+                  "target": {"type": "string", "description": "What it acts on (path/area)."},
+                  "risk_tier": {"type": "string", "description": "T1, T2, or T3."},
+                  "body": {"type": "string", "description": "Optional work-order detail."},
+                  "confirmed": {"type": "boolean",
+                                "description": "true ONLY after the spoken read-back was confirmed."}},
+              "required": ["workflow", "project", "action", "target", "risk_tier", "confirmed"]},
+             _launch_workflow),
+    ToolSpec("credit_remaining", "How much Deepgram voice credit is left (USD).",
+             {"type": "object", "properties": {}, "required": []},
+             _credit_remaining),
 ]
 
 _BY_NAME: dict[str, ToolSpec] = {s.name: s for s in REGISTRY}
@@ -81,12 +171,15 @@ def anthropic_tools() -> list[dict]:
 def dispatch(name: str, args: dict) -> str:
     """Run a tool by name against the parsed args, returning its string result.
 
-    Reproduces `fastlane._dispatch` exactly: FileNotFoundError -> `"ERROR: <e>"`; an unknown
-    tool name raises KeyError (the lookup is inside the try, but only FileNotFoundError is caught).
+    Reproduces `fastlane._dispatch` for the read tools (FileNotFoundError -> `"ERROR: <e>"`) and
+    extends it for the write tools: a `ValueError` — the unconfirmed gate and card-schema
+    validation failures (Task 9) — also becomes a speakable `"ERROR: <e>"` (e.g. the exact
+    "ERROR: not confirmed — read the card back and get a yes."). An unknown tool name still raises
+    KeyError (the lookup is inside the try, but KeyError is not caught).
     """
     try:
         return _BY_NAME[name].fn(args)
-    except FileNotFoundError as e:
+    except (FileNotFoundError, ValueError) as e:
         return f"ERROR: {e}"
 
 
@@ -125,14 +218,18 @@ def mcp_tool(spec: ToolSpec) -> Callable[..., str]:
     props: dict = spec.input_schema.get("properties", {})
     required = set(spec.input_schema.get("required", []))
 
-    params = []
-    for pname in props:
-        if pname in required:
-            params.append(inspect.Parameter(pname, inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                                             annotation=str))
-        else:
-            params.append(inspect.Parameter(pname, inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                                             annotation=Optional[str], default=None))
+    # Required params (no default) MUST precede optional ones (default None) or the synthesized
+    # signature is illegal ("non-default argument follows default argument"). Emit all required in
+    # schema order, then all optional in schema order — FastMCP reads the annotations, not order,
+    # so the produced parameter schema is unchanged. `confirmed` is boolean; every other field str.
+    def _ann(pname: str):
+        return bool if props[pname].get("type") == "boolean" else str
+
+    params = [inspect.Parameter(p, inspect.Parameter.POSITIONAL_OR_KEYWORD, annotation=_ann(p))
+              for p in props if p in required]
+    params += [inspect.Parameter(p, inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                                 annotation=Optional[_ann(p)], default=None)
+               for p in props if p not in required]
     sig = inspect.Signature(params, return_annotation=str)
 
     def _tool(*args: Any, **kwargs: Any) -> str:

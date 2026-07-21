@@ -6,9 +6,14 @@ and tests keep working unchanged — that stability is the no-behavior-change pr
 """
 from worker import toolreg
 
+# NOTE: this text (persona + the read-back-confirm rule below) relocates to atlas/config/persona.md
+# in Task 12 (design §9); the loader lands there. Kept inline here until that gate.
 SYSTEM = ("You are Atlas, the spoken interface to Daniel's kb agentic OS. Answers are read "
           "aloud: lead with the point, one breath long by default; offer detail on request. "
-          "Use tools to ground every factual claim about kb state.")
+          "Use tools to ground every factual claim about kb state. "
+          "Before filing a card (file_card) or launching a workflow (launch_workflow), read back "
+          "the project, action, target, and risk-tier and get an explicit spoken yes — only then "
+          "call the tool with confirmed=true. Never set confirmed=true without that spoken yes.")
 
 # Re-exports from the single tool registry (see worker/toolreg.py).
 TOOLS = toolreg.anthropic_tools()

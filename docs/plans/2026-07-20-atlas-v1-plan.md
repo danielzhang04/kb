@@ -280,6 +280,15 @@
   pre-branch code until merge). Panel verified serving live ops cards + OFFLINE worker shape.
 - Console-redirect note: worker output piped to a file needs PYTHONUTF8=1 (livekit banner
   emoji vs cp1252); interactive terminals unaffected.
+- Task 9 scope amendment (2026-07-20, orchestrator, PRE-DECLARED before grading): Task 9's
+  Files list is amended to ADD — `atlas/worker/gitseam.py` (new: the Task-6 git seam factored
+  into one shared home, orchestrator-instructed "factor a shared helper if clean"),
+  `atlas/worker/ledgerwriter.py` (refactored onto gitseam, behavior unchanged),
+  `atlas/worker/app.py` (post-file hook wiring required by the task's Wiring bullet),
+  and assertion updates in test_state/test_stateserver/test_fastlane/test_toolreg (the 8-tool
+  surface + filed_cards snapshot). Also fixed in-scope: latent `mcp_tool` param-ordering bug.
+  GATE A PASSED at the desk (Daniel, 2026-07-20 late); one desk fix: console mic index 2→1
+  (BT reshuffle; wake thread already name-pinned; console-flag name-pinning = polish backlog).
 - Task 6 scope amendment (2026-07-20, orchestrator): `atlas/config/atlas.yaml` is ADDED to
   Task 6's modify list — the orchestrator's dispatch instructed making the ledger's ops root
   configurable (`ops_root` key, default = the real ops worktree) per design §5 wiring; the

@@ -25,6 +25,8 @@ def test_answer_runs_tool_loop(kb_fixture, monkeypatch):
     assert out == "One card in inbox."
     assert any(t["name"] == "queue_summary" for t in fake.calls[0]["tools"])
 
-def test_tool_names_cover_v0_surface():
+def test_tool_names_cover_surface():
+    # V0 read tools + the Task-9 voice tools (file_card / launch_workflow / credit_remaining).
     assert {t["name"] for t in TOOLS} == {
-        "queue_summary", "read_dashboard", "read_state", "ledger_rollup", "running_work"}
+        "queue_summary", "read_dashboard", "read_state", "ledger_rollup", "running_work",
+        "file_card", "launch_workflow", "credit_remaining"}

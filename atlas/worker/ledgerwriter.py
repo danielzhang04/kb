@@ -22,13 +22,17 @@ tests run against a throwaway repo + bare remote with no network.
 
 Author identity is passed inline per commit (`git -c user.name=... -c user.email=...`) — NEVER
 `git config`, so a stale identity in shared config can't attach to a transcript commit.
+
+The git plumbing (default runner, per-call check, rejected-push retry, inline identity) lives in
+`worker.gitseam`, shared with voice card filing (Task 9) so the ops-write pattern has one home.
 """
 import json
 import logging
-import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
+
+from worker import gitseam
 
 logger = logging.getLogger("atlas.ledger")
 
@@ -39,22 +43,9 @@ OPS_REMOTE = "origin"
 OPS_BRANCH = "ops"
 DEFAULT_PUSH_RETRIES = 3
 
-# Inline commit identity (never `git config`) — see module docstring.
-ATLAS_IDENTITY = ["-c", "user.name=atlas-worker", "-c", "user.email=atlas-worker@agents.local"]
-
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
-
-
-def _default_git_runner(args: list[str], cwd) -> "subprocess.CompletedProcess":
-    """Production seam: run the plain git CLI in `cwd`, capturing output, WITHOUT check=True —
-    the caller inspects `returncode` (push rejection is a normal, expected non-zero)."""
-    return subprocess.run(["git", *args], cwd=str(cwd), capture_output=True, text=True)
-
-
-class _GitError(RuntimeError):
-    """A git invocation that was expected to succeed returned non-zero."""
 
 
 class SessionLedger:
@@ -67,7 +58,7 @@ class SessionLedger:
     def __init__(
         self,
         ops_root,
-        git_runner: Callable[[list, object], object] = _default_git_runner,
+        git_runner: Callable[[list, object], object] = gitseam.default_git_runner,
         clock: Callable[[], datetime] = _utcnow,
         push_retries: int = DEFAULT_PUSH_RETRIES,
     ) -> None:
@@ -149,31 +140,16 @@ class SessionLedger:
             # Only commit when there is a staged change — a re-flush of an already-committed
             # (but unpushed) session finds nothing staged and falls through to push.
             if self._git(["diff", "--cached", "--quiet"], check=False).returncode != 0:
-                self._git([*ATLAS_IDENTITY, "commit", "-m", f"atlas: session transcript {session_id}"])
+                self._git([*gitseam.ATLAS_IDENTITY, "commit", "-m",
+                           f"atlas: session transcript {session_id}"])
 
-            return self._push_with_retry()
+            return gitseam.push_with_retry(self._git_runner, self._ops_root,
+                                           OPS_REMOTE, OPS_BRANCH, self._push_retries)
         except Exception:
             logger.exception("atlas transcript flush failed for session %s; retaining lines", session_id)
             return False
 
-    def _push_with_retry(self) -> bool:
-        """Push to origin/ops; on a rejected (non-fast-forward) push, pull-rebase and retry,
-        bounded. Returns True once a push reports success."""
-        for _ in range(self._push_retries):
-            if self._git(["push", OPS_REMOTE, OPS_BRANCH], check=False).returncode == 0:
-                return True
-            self._git(["pull", "--rebase", OPS_REMOTE, OPS_BRANCH])  # reconcile, then retry
-        logger.error("atlas transcript push rejected after %d attempts; retaining", self._push_retries)
-        return False
-
     def _git(self, args: list[str], check: bool = True):
-        """Run one git command through the injected runner. With check=True (default) a non-zero
-        exit raises `_GitError` (caught by `_flush_session`); the runner itself raising also
-        propagates there. Push/diff pass check=False and inspect `returncode` directly."""
-        result = self._git_runner(args, self._ops_root)
-        if check and getattr(result, "returncode", 1) != 0:
-            raise _GitError(
-                f"git {' '.join(args)} -> {getattr(result, 'returncode', '?')}: "
-                f"{getattr(result, 'stderr', '')}"
-            )
-        return result
+        """Run one git command through the shared seam. check=True raises `gitseam.GitError`
+        (caught by `_flush_session`); push/diff pass check=False and inspect `returncode`."""
+        return gitseam.run(self._git_runner, self._ops_root, args, check=check)

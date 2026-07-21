@@ -153,6 +153,12 @@ async def entrypoint(ctx: JobContext) -> None:
     # this ONE stream. `voice` mirrors the active config voice.
     publisher = state.StatePublisher(voice=cfg.get("active_voice"))
 
+    # Publisher-agnostic post-file hook (design §3/§6, Task 9): when the LLM files a card via
+    # file_card/launch_workflow, mirror it into the /state snapshot's `filed_cards` so the orb
+    # shows filed work. toolreg stays publisher-agnostic — it only knows a callable. Task 11's
+    # done-watcher will later call publisher.update_filed_card(id, state) as outcomes land.
+    toolreg.set_post_file_hook(lambda p: publisher.add_filed_card(p["id"], p["action"]))
+
     @session.on("conversation_item_added")
     def _on_item(ev) -> None:
         # Final committed turns for BOTH roles feed the transcript mirror (agent_session.py

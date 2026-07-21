@@ -32,19 +32,28 @@ V0_TOOLS = [
 ]
 
 
-def test_registry_covers_exactly_v0_names():
-    assert {s.name for s in toolreg.REGISTRY} == V0_NAMES
-    assert len(toolreg.REGISTRY) == 5  # no dupes
+# Task 9 added file_card / launch_workflow / credit_remaining; the 5 V0 read tools' shapes
+# stay frozen (below), and they remain the first entries of the registry.
+V1_ADDED = {"file_card", "launch_workflow", "credit_remaining"}
 
 
-def test_anthropic_tools_matches_v0_literal():
-    assert toolreg.anthropic_tools() == V0_TOOLS
+def test_registry_covers_v0_names_plus_task9():
+    names = [s.name for s in toolreg.REGISTRY]
+    assert set(names) == V0_NAMES | V1_ADDED
+    assert len(names) == len(set(names)) == 8  # no dupes
+
+
+def test_v0_read_tool_schemas_unchanged():
+    """The V0 read tools keep their exact anthropic schema — Task 9 only appends new tools."""
+    by_name = {t["name"]: t for t in toolreg.anthropic_tools()}
+    for t in V0_TOOLS:
+        assert by_name[t["name"]] == t
 
 
 def test_anthropic_tools_equals_fastlane_TOOLS():
-    """The re-export proof: fastlane.TOOLS is now the registry projection, unchanged in shape."""
+    """The re-export proof: fastlane.TOOLS is still the registry projection, unchanged in shape."""
     from worker import fastlane
-    assert fastlane.TOOLS == V0_TOOLS
+    assert fastlane.TOOLS == toolreg.anthropic_tools()
 
 
 def test_dispatch_queue_summary_against_fixture(kb_fixture, monkeypatch):
@@ -118,7 +127,7 @@ def test_mcp_registration_is_a_registry_loop():
     for spec in toolreg.REGISTRY:
         app.add_tool(toolreg.mcp_tool(spec), name=spec.name, description=spec.description)
     tools = {t.name: t for t in app._tool_manager.list_tools()}
-    assert set(tools) == V0_NAMES
+    assert set(tools) == V0_NAMES | V1_ADDED
     # descriptions reach the (MCP client's) LLM verbatim from the registry
     assert tools["read_dashboard"].description == "Read a dashboard markdown (default: executive)."
     # per-tool parameter schemas are preserved (not a single opaque dict arg)

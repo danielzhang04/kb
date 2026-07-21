@@ -156,12 +156,12 @@ def test_snapshot_schema_keys():
     p.start_session()
     snap = p.snapshot()
     assert set(snap.keys()) == {
-        "version", "state", "since", "session_id", "voice", "transcript",
+        "version", "state", "since", "session_id", "voice", "transcript", "filed_cards",
     }
     assert snap["version"] == 1
     assert snap["voice"] == "mars"
+    assert snap["filed_cards"] == []  # Task 9: present, empty until a card is filed
     assert "heartbeat" not in snap    # the HTTP layer (Task 5) stamps it at request time
-    assert "filed_cards" not in snap  # Task 9 adds it
 
 
 def test_voice_is_settable_by_wiring():

@@ -63,6 +63,10 @@ class StatePublisher:
         self._since = clock()
         self._session_id: str | None = None
         self._ring: deque[dict] = deque(maxlen=ring_size)
+        # Cards Atlas has filed by voice this process — {"id","action","state"}. Grown by
+        # add_filed_card on each successful file_card (state starts "inbox"); their outcomes are
+        # updated by update_filed_card (Task 11's done-watcher). Surfaced in snapshot (design §3).
+        self._filed_cards: list[dict] = []
         self._subs: list[Callable] = []
 
     @property
@@ -92,6 +96,22 @@ class StatePublisher:
         self._ring.append(line)
         self._emit(("line", line))
 
+    def add_filed_card(self, card_id: str, action: str) -> None:
+        """Record a card Atlas just filed (state starts 'inbox'); emits ("filed_card", {...}).
+        Called from app.py's post-file hook on each successful file_card (design §3/§6)."""
+        entry = {"id": card_id, "action": action, "state": "inbox"}
+        self._filed_cards.append(entry)
+        self._emit(("filed_card", dict(entry)))
+
+    def update_filed_card(self, card_id: str, new_state: str) -> None:
+        """Update a filed card's outcome (Task 11's done-watcher calls this when a watched card
+        reaches done/failure); emits ("filed_card", {...}). No-op for an unknown id."""
+        for entry in self._filed_cards:
+            if entry["id"] == card_id:
+                entry["state"] = new_state
+                self._emit(("filed_card", dict(entry)))
+                return
+
     def subscribe(self, fn: Callable) -> None:
         self._subs.append(fn)
 
@@ -102,8 +122,7 @@ class StatePublisher:
             pass
 
     def snapshot(self) -> dict:
-        """The design §3 snapshot MINUS `heartbeat` (the HTTP layer stamps it at request
-        time) and MINUS `filed_cards` (Task 9 adds it)."""
+        """The design §3 snapshot MINUS `heartbeat` (the HTTP layer stamps it at request time)."""
         return {
             "version": SNAPSHOT_VERSION,
             "state": self._state,
@@ -111,6 +130,7 @@ class StatePublisher:
             "session_id": self._session_id,
             "voice": self.voice,
             "transcript": list(self._ring),
+            "filed_cards": [dict(c) for c in self._filed_cards],
         }
 
     def _emit(self, event: tuple) -> None:
