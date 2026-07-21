@@ -30,7 +30,7 @@ from livekit.plugins import deepgram, elevenlabs, silero
 from kbmcp import kb_tools
 from worker import anthropic_compat
 from worker import engagement as engagement_mod
-from worker import fastlane, repl, state, toolreg, wakeword
+from worker import fastlane, repl, state, stateserver, toolreg, wakeword
 
 ATLAS = Path(__file__).resolve().parents[1]
 logger = logging.getLogger("atlas.app")
@@ -164,6 +164,18 @@ async def entrypoint(ctx: JobContext) -> None:
         if not text:
             return
         publisher.add_line("atlas" if role == "assistant" else "user", text)
+
+    # --- Local read-only /state surface (design §3, Task 5). Started HERE on the job-context
+    # event loop (same placement discipline as _build_tts) so it stays inside the job context and
+    # off the wake thread — the V0 landmine. Bound to 127.0.0.1 only; serves publisher.snapshot()
+    # + a request-time heartbeat. Started BEFORE the TEXT_MODE return so the --text REPL path also
+    # exposes /state (the REPL benefits from the same surface), and its shutdown is registered for
+    # both paths.
+    state_srv = await stateserver.start(publisher, cfg["state_port"])
+
+    async def _stop_state_server() -> None:
+        await state_srv.stop()
+    ctx.add_shutdown_callback(_stop_state_server)
 
     if TEXT_MODE:
         return  # audio-free smoke: no wake gate, no mic loop — text turns flow straight through
