@@ -706,6 +706,17 @@ anchor (§3a). Lead with the universal, concrete **human / absurd / visual** ima
 families sailed to a country that didn't exist," not "you could buy sovereign bonds for a fictional
 state." Applies to any jargon-heavy niche, not just finance.)
 
+**The packaging-continuity rule (person-led packaging → person-led hook; Daniel-confirmed 2026-07-21).**
+When the title/thumbnail is built on a PERSON (the con-man, the founder, the villain), the hook opens on
+that person — the viewer clicked on a face and a name-shaped promise, and a hook about anyone else breaks
+the click's continuity (same principle as the hook-relevant 0:00 frame). Name them **within the first two
+sentences** — withholding the name (Crayon's "This man controlled 90% of America's oil…") is only worth it
+when the reveal is famous; teasing an unknown name buys nothing. The stakes/human-cost beat does not
+disappear — it moves to the turn a few sentences in, where it still licenses the register (§1.4-adjacent).
+Shape: "In 1822, one man sold thousands of people a country that didn't exist. His name was Gregor
+MacGregor…" Structures 11 (protagonist-walkthrough) and 1 (cold-open-then-rewind) compose naturally with
+this rule; topic-led packaging keeps its free choice of structure.
+
 10 structures, each with mechanism:
 
 1. **Cold-open-then-rewind.** Show the climax (or a fragment) first, cut, then rewind to "how we got

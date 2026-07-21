@@ -3125,3 +3125,13 @@ run brief binds nobody — a fresh terminal reads the style-bible and skill docs
   subtitles on long-form** (no reference channel does; fights the locked look; the motion
   grammar's selective on-screen text stands). Shorts keep burned captions per shorts doctrine.
   *Follow-up owed:* fold srt generation into the render/publish tail as a standing step.
+
+## 2026-07-21 — Packaging-continuity hook rule (Daniel-confirmed)
+
+- **Person-led packaging → person-led hook**, named within two sentences (tease a name only when the
+  reveal is famous); stakes/human-cost moves to the turn, never disappears (it sets the register
+  dial). Grounding: title/thumbnail promise a person, the click's continuity should not break —
+  same principle as the hook-relevant 0:00 frame; Crayon/Boyle/Wendover all open person-led.
+  Routed: universal.md §5 (full rule) + storytelling-grammar §2.1 (channel note). Poyais keeps its
+  crowd-first gold hook AS SHIPPED — its first-minute retention curve (cliff before MacGregor
+  enters ~0:35?) is the standing empirical check before any regen.

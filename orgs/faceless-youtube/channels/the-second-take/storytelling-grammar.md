@@ -104,7 +104,13 @@ metaphor lands at the **payoff** (the swamp), never the setup (the guidebook).
 ## 2. The story — what to tell
 
 **2.1 — The hook gets them in the door; it does not tell the story.** State the intrigue and stop: no
-outline, no preview, no "he was not some nobody." Roughly four to five sentences.
+outline, no preview, no "he was not some nobody." Roughly four to five sentences. **Person-led packaging →
+person-led hook (Daniel, 2026-07-21; full rule `universal.md §5`):** when the title/thumbnail promise a
+person, open ON that person and name them within two sentences (an unknown name is never worth teasing);
+the human-cost/stakes beat moves to the turn, it does not vanish — it still sets the register dial (§1.4).
+Note the §0 gold hook predates this rule: its crowd-first open under a person-led title is the shape the
+rule corrects — the poyais retention curve (first-minute, cliff before the protagonist enters at ~0:35?)
+is the standing empirical check.
 
 **2.2 — Select by story value; develop what you keep.** `research.md` is a pool, not a checklist. Cut the
 beats that don't carry the story, and give the ones that do their real color: the scene, the concrete detail,
