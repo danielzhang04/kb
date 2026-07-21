@@ -40,6 +40,7 @@ import type { SurfaceContext } from '../http/context.ts';
 import { auditFn } from '../http/context.ts';
 import { appendAuditRowLocal, AUDIT_REL_PATH } from '../audit/log.ts';
 import { triggerRunner as defaultTriggerRunner } from '../runner/trigger.ts';
+import { ownerLiveness, type OwnerLiveness } from '../runner/liveness.ts';
 
 function asRecord(body: unknown): Record<string, unknown> {
   return body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
@@ -533,7 +534,20 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
         alsoStage: [...rest, AUDIT_REL_PATH],
         message: `chore(queue): ${verb} card ${cardId}`,
       });
-      return reply.code(200).send({ ok: true, cardId, state: outcome.state });
+      // G3 reply-liveness: the write is DONE and committed. Now report whether any consumer is online for
+      // this card's owner so a hanging reply is VISIBLE, not silent. This is a read-only probe AFTER the
+      // commit — it must never turn a committed 200 into a 500, so a fault degrades to `consumer:'none'`.
+      let liveness: OwnerLiveness = { consumer: 'none', online: false, detail: '' };
+      try {
+        liveness = ownerLiveness(str(parsed.meta.owner), parsed, {
+          run: ctx.schtasksRun,
+          cache: ctx.livenessCache,
+          now: ctx.now ? () => ctx.now!().getTime() : undefined,
+        });
+      } catch {
+        liveness = { consumer: 'none', online: false, detail: '' };
+      }
+      return reply.code(200).send({ ok: true, cardId, state: outcome.state, liveness });
     } catch (err) {
       return reply.code(500).send({
         error: 'card-respond-commit-failed',

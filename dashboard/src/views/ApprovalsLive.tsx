@@ -124,9 +124,17 @@ export function ApprovalsLive({
       }
 
       if (result.ok) {
+        // G3 reply-liveness: the write committed, but a reply only PROGRESSES if a consumer runs. When the
+        // server reports no online consumer for the owner, say so plainly instead of implying delivery.
+        const committed = action === 'reply' ? `${cardId}: reply recorded and committed.` : `${cardId}: resolved and committed.`;
+        const liveness = result.liveness;
+        const ownerRaw = items.find((item) => item.card.meta.id === cardId)?.card.meta.owner;
+        const ownerLabel = typeof ownerRaw === 'string' && ownerRaw ? `\`${ownerRaw}\`` : 'its owner';
         setOutcome({
           kind: 'success',
-          message: action === 'reply' ? `${cardId}: reply recorded.` : `${cardId}: resolved.`,
+          message: liveness && !liveness.online
+            ? `${committed} No runner is online for ${ownerLabel} — this card will not progress until one runs.`
+            : committed,
         });
         try {
           setItems((await fetchHumanInbox(fetchImpl)).items);
