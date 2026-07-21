@@ -9,9 +9,7 @@ _Updated: 2026-07-21 (V1 COMPLETE — all gates passed — Fable 5 boss session)
   callback heard -> second card announced ONE-SHOT while asleep; 10 session transcripts on ops).
   Two Gate-C findings fixed same-session: filler-tolerant reflex + real go_to_sleep tool
   (4c55796); voice-filed project/tier normalization (622cd3f). Final suites: atlas 132, fleet
-  530, dashboard 1551 — green. Branch claude/atlas pushed; **PR to main pending Daniel's merge**;
-  after merge: 5317 prod dashboard picks up the Atlas view via pull/build/pm2 restart, kill the
-  temporary 4317 daemon. V2 "Trust" planning = next session, Daniel's go/no-go.
+  530, dashboard 1551 — green. Branch claude/atlas pushed; **PR #44 MERGED (aa35b00) + PROD ROLLED OUT 2026-07-21**: main checkout on main, dashboard rebuilt, pm2 restarted — Atlas view LIVE on 127.0.0.1:5317 with live worker passthrough verified; temporary 4317 daemon killed. V2 "Trust" planning = Daniel's go/no-go.
 - **V1 "Hands" wave UNDERWAY.** Authority: `docs/plans/2026-07-20-atlas-v1-plan.md` +
   `docs/specs/2026-07-20-atlas-v1-hands-design.md` (both approved by Daniel 2026-07-20,
   committed on `claude/atlas` at db250e6). Scope: Slice 1 status surface (state core,
