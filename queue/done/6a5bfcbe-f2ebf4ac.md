@@ -4,9 +4,9 @@ project: kb-ops
 action: implement:dashboard-managed-workflows-waves-b-d
 target: dashboard/ and docs/plans/2026-07-18-dashboard-*.md
 risk-tier: T2
-owner: codex-worker
-claim-token: e381966ea5b2a95b
-state: inbox
+owner: human-operator
+claim-token: 0bdbc54403005fc1
+state: done
 approval: null
 workflow: null
 depends-on: []
@@ -42,3 +42,7 @@ Continue codex/dashboard-operational-surfaces from d1bf5d3.
   wave boundary. Preserve existing functionality without redundant parallel paths.
   Update HANDOFF.md at completion. Do not deploy; deployment requires a separate T3
   WebAuthn-approved action.
+
+## Result
+
+Resolved by operator (zombie: dashboard control-plane Waves B-D landed at 75da1b9, in origin/main; deploy/activation was explicitly out of card scope)
