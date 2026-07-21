@@ -79,6 +79,11 @@ The Second Take, finance, financial history, money stories, business documentary
 
 ## Studio checklist (ordered, one sitting)
 
+0. Settings (gear) → Channel → **Advanced settings → Audience → "No, set this channel as not made
+   for kids."** (COPPA channel default. Without it, uploads can land flagged made-for-kids — the
+   2026-07-21 poyais upload did, killing comments + notifications; the animated look pattern-matches
+   YouTube's kids classifier, but intended audience is what governs, and ours is general/adult.
+   Also fix any already-flagged video: Content → video → Audience → "No, it's not made for kids.")
 1. Customization → Basic info: display name → **The Second Take**; paste the About description.
 2. Basic info → contact email: set (record above).
 3. Settings → Channel → Basic info: paste keywords.
