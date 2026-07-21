@@ -265,4 +265,18 @@
   dropped. The Task 3 Interfaces line "Consumes: kbmcp.kb_tools (unchanged)" is amended
   accordingly. Inspector grade 93 FAIL (ops d358a7c) flagged this + unattached evidence;
   remediation = this amendment, attached suite output, and a live REPL smoke appended to the
-  card, then fresh-context re-grade.
+  card, then fresh-context re-grade. Re-grade: 95 PASS (ops d6fadfa).
+- Slice 1 built 2026-07-20 (all TDD, all suites green at every step): T4 state core 8ca17da
+  (96 PASS), T5 /state server 72786fc (97 PASS; live text-mode smoke: curl 4360/state exact
+  schema), T7 panel route ef4e0be (95 PASS), T8 view + mini-orb 87552c2 (96 PASS), T6 ledger
+  8f08503 (grade pending). Fleet suite 530 green post-Slice-1.
+- LANDMINE fixed 2026-07-20: an inspector session had left `inspector@agents.local` in the
+  SHARED repo git config (kb/.git/config — all worktrees inherit it), mislabeling two work
+  commits; config restored to codex-worker, branch history reauthored (f5b7ca2→8ca17da,
+  6cec338→cbf1719). Standing rule now in every worker/inspector prompt: git identity is passed
+  per-command with `-c user.name/-c user.email`, NEVER via `git config`.
+- Gate A staging: dev daemon from the branch on 127.0.0.1:4317 with
+  DASHBOARD_REPO_ROOT=dashboard-ops (matches pm2 production env; pm2/5317 untouched, runs
+  pre-branch code until merge). Panel verified serving live ops cards + OFFLINE worker shape.
+- Console-redirect note: worker output piped to a file needs PYTHONUTF8=1 (livekit banner
+  emoji vs cp1252); interactive terminals unaffected.
