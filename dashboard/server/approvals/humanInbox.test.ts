@@ -43,7 +43,7 @@ describe('projectHumanInbox', () => {
       card('halted', 'halted', 'research:atlas', { owner: 'codex-worker' }),
     ]));
 
-    expect(result.counts).toEqual({ total: 4, decision: 1, gate: 0, input: 1, intervention: 2, stranded: 0 });
+    expect(result.counts).toEqual({ total: 4, decision: 1, gate: 0, input: 1, intervention: 2 });
     expect(Object.fromEntries(result.items.map((item) => [item.card.meta.id, item.category]))).toEqual({
       approval: 'decision',
       halted: 'intervention',
@@ -59,11 +59,11 @@ describe('projectHumanInbox', () => {
       card('child', 'blocked', 'write:report', { owner: 'codex-worker', 'depends-on': ['root'] }),
       card('working', 'working', 'build:site', { owner: 'codex-worker' }),
     ]));
-    // Stays green under the T3 stranded predicate BECAUSE every id here is non-hex ('ordinary', 'child',
-    // 'working') — cardAgeMs returns null (unknown age), so no card is ever classified stranded (Decision 1).
+    // Ordinary agent work and dependency-blocked stages are never human notifications; stranded cards are
+    // handled by the daemon archiver, not this projection, so an all-agent-work index is an empty feed.
     expect(result).toEqual({
       items: [],
-      counts: { total: 0, decision: 0, gate: 0, input: 0, intervention: 0, stranded: 0 },
+      counts: { total: 0, decision: 0, gate: 0, input: 0, intervention: 0 },
     });
   });
 
@@ -222,24 +222,16 @@ describe('projectHumanInbox — operator gates (who must act, not card state)', 
 });
 
 /**
- * T3 — the four uncovered predicates: the stop ladder (stop-requested / halting), the repo-root STOP
- * freeze file (a synthetic projection item, NOT a card), and stranded owned cards (age from the card-id
- * 8-hex epoch prefix). `now` is injected so age is deterministic.
+ * The stop ladder (stop-requested / halting) and the repo-root STOP freeze file (a synthetic projection
+ * item, NOT a card). Stranded owned cards are deliberately NOT here anymore — they are AUTO-ARCHIVED by
+ * the daemon stranded-archiver (write/strandedArchiver.ts) and never reach this projection.
  */
-describe('projectHumanInbox — T3 coverage (stop ladder, STOP file, stranded)', () => {
-  const NOW = 1_800_000_000_000; // epoch-ms
-  const NOW_SEC = NOW / 1000;
-  /** A card id whose 8-hex epoch prefix is `secondsAgo` before NOW. */
-  function hexId(secondsAgo: number, suffix = 'abcd1234'): string {
-    return `${Math.floor(NOW_SEC - secondsAgo).toString(16).padStart(8, '0')}-${suffix}`;
-  }
-  const H = 3600;
-
+describe('projectHumanInbox — stop ladder + STOP file', () => {
   it('classifies stop-requested and halting cards as high-urgency interventions', () => {
     const result = projectHumanInbox(index([
       card('sr', 'stop-requested', 'research:atlas', { owner: 'codex-worker' }),
       card('hl', 'halting', 'research:atlas', { owner: 'codex-worker' }),
-    ]), { now: NOW });
+    ]));
     const byId = Object.fromEntries(result.items.map((i) => [i.card.meta.id, i]));
     expect(byId.sr.category).toBe('intervention');
     expect(byId.sr.urgency).toBe('high');
@@ -252,7 +244,7 @@ describe('projectHumanInbox — T3 coverage (stop ladder, STOP file, stranded)',
 
   it('prepends a critical STOP intervention with a stable id when stopPresent, and omits it otherwise', () => {
     const idx = index([card('input', 'inbox', 'needs-input:x')]);
-    const withStop = projectHumanInbox(idx, { now: NOW, stopPresent: true });
+    const withStop = projectHumanInbox(idx, { stopPresent: true });
     const stop = withStop.items.find((i) => i.card.meta.id === 'stop-file');
     expect(stop).toBeTruthy();
     expect(stop?.category).toBe('intervention');
@@ -263,33 +255,19 @@ describe('projectHumanInbox — T3 coverage (stop ladder, STOP file, stranded)',
     expect(withStop.counts.intervention).toBe(1); // STOP counts as an intervention
     expect(withStop.counts.total).toBe(2);
 
-    const withoutStop = projectHumanInbox(idx, { now: NOW, stopPresent: false });
+    const withoutStop = projectHumanInbox(idx, { stopPresent: false });
     expect(withoutStop.items.find((i) => i.card.meta.id === 'stop-file')).toBeUndefined();
   });
 
-  it('marks an old agent-owned card stranded, but not a recent one, an operator-owned one, or a non-hex id', () => {
+  it('never surfaces an old agent-owned card — stranded is the archiver’s job, not this projection', () => {
+    // A 25h-old agent-owned inbox card (the shape that used to classify `stranded`) now yields NO item;
+    // the daemon archiver moves it to queue/archived/ instead.
+    const oldId = `${(1_700_000_000).toString(16).padStart(8, '0')}-old00001`;
     const result = projectHumanInbox(index([
-      card(hexId(25 * H, 'old00001'), 'inbox', 'research:topic', { owner: 'codex-worker' }),   // 25h old -> stranded
-      card(hexId(1 * H, 'new00002'), 'inbox', 'research:topic', { owner: 'codex-worker' }),     // 1h old -> not
-      card(hexId(48 * H, 'gate0003'), 'inbox', 'decide:budget', { owner: 'human-operator' }),   // operator-owned -> gate
-      card('ordinary', 'inbox', 'research:topic', { owner: 'codex-worker' }),                    // non-hex id -> never stranded
-    ]), { now: NOW });
-    const byId = Object.fromEntries(result.items.map((i) => [i.card.meta.id, i.category]));
-    expect(byId[hexId(25 * H, 'old00001')]).toBe('stranded');
-    expect(byId[hexId(1 * H, 'new00002')]).toBeUndefined();   // recent -> not projected at all
-    expect(byId[hexId(48 * H, 'gate0003')]).toBe('gate');      // operator gate, never stranded
-    expect(byId.ordinary).toBeUndefined();                     // non-hex age unknown -> not stranded
-    expect(result.counts.stranded).toBe(1);
-    const stranded = result.items.find((i) => i.category === 'stranded');
-    expect(stranded?.urgency).toBe('low');
-    expect(stranded?.reason).toMatch(/codex-worker/);
-  });
-
-  it('a working-state agent-owned card old enough is stranded (working is reachable, not just inbox)', () => {
-    const result = projectHumanInbox(index([
-      card(hexId(30 * H, 'wk000001'), 'working', 'build:site', { owner: 'codex-worker' }),
-    ]), { now: NOW });
-    expect(result.items).toHaveLength(1);
-    expect(result.items[0].category).toBe('stranded');
+      card(oldId, 'inbox', 'research:topic', { owner: 'codex-worker' }),
+      card(`${(1_700_000_000).toString(16).padStart(8, '0')}-wk000001`, 'working', 'build:site', { owner: 'codex-worker' }),
+    ]));
+    expect(result.items).toEqual([]);
+    expect(result.counts).toEqual({ total: 0, decision: 0, gate: 0, input: 0, intervention: 0 });
   });
 });

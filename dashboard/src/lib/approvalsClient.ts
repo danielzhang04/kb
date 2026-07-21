@@ -40,9 +40,9 @@ export async function fetchHumanInbox(fetchImpl: FetchLike = fetch): Promise<Hum
   const body = (await res.json()) as HumanInboxProjection;
   return {
     items: Array.isArray(body.items) ? body.items : [],
-    // Default must match the server HumanInboxCounts shape EXACTLY — `gate` and `stranded` were omitted,
-    // which left those tiles blank on the pre-first-fetch render.
-    counts: body.counts ?? { total: 0, decision: 0, gate: 0, input: 0, intervention: 0, stranded: 0 },
+    // Default must match the server HumanInboxCounts shape EXACTLY, or a tile blanks on the pre-first-fetch
+    // render (stranded is no longer a category — it is auto-archived by the daemon, never surfaced).
+    counts: body.counts ?? { total: 0, decision: 0, gate: 0, input: 0, intervention: 0 },
   };
 }
 

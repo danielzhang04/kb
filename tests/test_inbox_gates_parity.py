@@ -31,11 +31,14 @@ def test_classify_category_matches_every_fixture_case():
         )
 
 
-def test_stranded_needs_a_clock_now_none_never_strands():
-    """render_brief calls classify_category with now=None; the 25h-old stranded
-    fixture card must then classify as None (advisory, surfaced live by the
-    dashboard, never in the clock-free brief)."""
+def test_old_agent_owned_card_is_never_surfaced_now_or_clockless():
+    """The old agent-owned cards (which used to classify `stranded`) are now
+    AUTO-ARCHIVED by the daemon and never surfaced — so classify_category returns
+    None whether or not a clock is supplied. `stranded` is no longer a category."""
     _, cases = _load()
-    stranded = next(c for c in cases if c["expected"] == "stranded")
-    card = cards.Card(meta=dict(stranded["meta"]), body=stranded.get("body", ""))
-    assert brief.classify_category(card, now=None) is None
+    old_cards = [c for c in cases if "auto-archived" in c["name"]]
+    assert old_cards, "fixture must still carry the old-agent-owned cases"
+    for case in old_cards:
+        card = cards.Card(meta=dict(case["meta"]), body=case.get("body", ""))
+        assert brief.classify_category(card, now=_load()[0]) is None
+        assert brief.classify_category(card, now=None) is None

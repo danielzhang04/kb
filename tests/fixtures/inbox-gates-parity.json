@@ -1,5 +1,5 @@
 {
-  "_doc": "Shared inbox-gate classification fixture. Consumed by BOTH tests/test_inbox_gates_parity.py (brief.classify_category) and dashboard/server/approvals/inboxGatesParity.test.ts (classify via projectHumanInbox). Any drift between the Python and TypeScript classifiers is a RED test here. `now` is unix epoch MILLISECONDS; stranded/recent ids carry an 8-hex unix-epoch-seconds prefix (cards.new_id shape). STOP is NOT a card, so it is tested per-language, not here. Canonical categories are the dashboard vocabulary: decision | gate | input | intervention | stranded | null.",
+  "_doc": "Shared inbox-gate classification fixture. Consumed by BOTH tests/test_inbox_gates_parity.py (brief.classify_category) and dashboard/server/approvals/inboxGatesParity.test.ts (classify via projectHumanInbox). Any drift between the Python and TypeScript classifiers is a RED test here. `now` is unix epoch MILLISECONDS; the old agent-owned ids carry an 8-hex unix-epoch-seconds prefix (cards.new_id shape). STOP is NOT a card, so it is tested per-language, not here. Canonical categories are the dashboard vocabulary: decision | gate | input | intervention | null. NOTE: `stranded` is NO LONGER a category — an idle agent-owned card is AUTO-ARCHIVED by the daemon stranded-archiver, never surfaced, so the old-agent-owned cases below classify as null on BOTH sides.",
   "now": 1800000000000,
   "cases": [
     {
@@ -81,14 +81,14 @@
       "expected": null
     },
     {
-      "name": "old agent-owned inbox card (hex epoch 25h old) -> stranded",
+      "name": "old agent-owned inbox card (hex epoch 25h old) -> null (auto-archived, not surfaced)",
       "meta": { "id": "6b487270-stranded", "project": "kb", "action": "research:topic", "target": ".", "risk-tier": "T2", "owner": "codex-worker", "state": "inbox" },
-      "expected": "stranded"
+      "expected": null
     },
     {
-      "name": "old agent-owned WORKING card (hex epoch 25h old) -> stranded",
+      "name": "old agent-owned WORKING card (hex epoch 25h old) -> null (auto-archived, not surfaced)",
       "meta": { "id": "6b487270-workstranded", "project": "kb", "action": "build:site", "target": ".", "risk-tier": "T2", "owner": "codex-worker", "state": "working" },
-      "expected": "stranded"
+      "expected": null
     },
     {
       "name": "recent agent-owned inbox card (hex epoch 1h old) -> null",

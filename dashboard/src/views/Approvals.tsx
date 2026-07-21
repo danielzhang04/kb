@@ -64,7 +64,7 @@ function legacyDecision(card: ParsedCard): HumanInboxItem {
   };
 }
 
-const CATEGORY_ORDER: HumanInboxItem['category'][] = ['decision', 'gate', 'input', 'intervention', 'stranded'];
+const CATEGORY_ORDER: HumanInboxItem['category'][] = ['decision', 'gate', 'input', 'intervention'];
 
 function categoryRank(item: HumanInboxItem): number {
   return CATEGORY_ORDER.indexOf(item.category);
@@ -89,10 +89,8 @@ export function Approvals({ items, pending = [], onVerify, onRespond, pendingRes
   });
 
   const counts = inbox.reduce(
-    // `stranded` seeded so the T3 HumanInboxCategory addition keeps this indexed reduce type-safe; full
-    // stranded/STOP rendering + summary spans land in T6.
     (result, item) => ({ ...result, [item.category]: result[item.category] + 1 }),
-    { decision: 0, gate: 0, input: 0, intervention: 0, stranded: 0 },
+    { decision: 0, gate: 0, input: 0, intervention: 0 },
   );
 
   if (inbox.length === 0) {
@@ -114,7 +112,6 @@ export function Approvals({ items, pending = [], onVerify, onRespond, pendingRes
           <span data-testid="summary-gate"><strong>{counts.gate}</strong> Gates</span>
           <span><strong>{counts.input}</strong> Input</span>
           <span><strong>{counts.intervention}</strong> Interventions</span>
-          <span data-testid="summary-stranded"><strong>{counts.stranded}</strong> Stranded</span>
         </div>
         <p className="v-approvals__list-head">Needs you · {inbox.length}</p>
         <ul className="v-approvals__list">

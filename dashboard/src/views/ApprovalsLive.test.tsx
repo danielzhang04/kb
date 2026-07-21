@@ -153,7 +153,7 @@ describe('ApprovalsLive', () => {
         category: 'input', categoryLabel: 'Input', urgency: 'normal', status: 'Waiting for your input',
         reason: 'Explicit question.', nextAction: 'Reply below.', context: 'Pick.', respond: 'reply',
       }],
-      counts: { total: 1, decision: 0, gate: 0, input: 1, intervention: 0, stranded: 0 },
+      counts: { total: 1, decision: 0, gate: 0, input: 1, intervention: 0 },
     });
   }
 

@@ -16,6 +16,7 @@ import { registerPtyRoute, makePtyRouteContext } from './pty/route.ts';
 import { originPlugin } from './security/origin.ts';
 import { installShutdownHandlers } from './shutdown.ts';
 import { startMergeGateReconciler } from './write/mergeGateReconciler.ts';
+import { startStrandedArchiver } from './write/strandedArchiver.ts';
 
 /** Loopback-only bind. Network location is never a trust boundary (ordering law 4). */
 export const HOST = '127.0.0.1';
@@ -30,6 +31,16 @@ export function resolveMergeGateIntervalMs(): number {
   if (raw === undefined || raw === '') return DEFAULT_MERGE_GATE_INTERVAL_MS;
   const parsed = Number(raw);
   return Number.isFinite(parsed) ? parsed : DEFAULT_MERGE_GATE_INTERVAL_MS;
+}
+
+/** Stranded-archiver cadence: default 5 minutes; a value <= 0 (or non-numeric) disables it. On-by-default
+ *  is fail-safe — every archiver failure leaves the card in place, so disabling only stops auto-archiving. */
+export const DEFAULT_STRANDED_ARCHIVE_INTERVAL_MS = 300_000;
+export function resolveStrandedArchiveIntervalMs(): number {
+  const raw = process.env.DASHBOARD_STRANDED_ARCHIVE_INTERVAL_MS;
+  if (raw === undefined || raw === '') return DEFAULT_STRANDED_ARCHIVE_INTERVAL_MS;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : DEFAULT_STRANDED_ARCHIVE_INTERVAL_MS;
 }
 
 /**
@@ -98,6 +109,27 @@ export function buildApp(): FastifyInstance {
     resolveMergeGateIntervalMs(),
   );
   app.addHook('onClose', async () => { stopMergeGateReconciler(); });
+
+  // Stranded-card auto-archiver (approved 2026-07-21). Same wiring shape as the reconciler: it reads the
+  // canonical ops worktree, and for each card owned by a REAL agent, idle in inbox/working past 24h, whose
+  // owner's runner the shared liveness probe reports OFFLINE, MOVES it to queue/archived/ through the SAME
+  // governed transaction path. All three conditions are required; every failure leaves the card untouched
+  // (fail toward NOT archiving). The liveness probe reuses the write surface's schtasks TTL cache + hard
+  // timeout so a slow schtasks never blocks a tick. Unref'd timer; stop fn registered on shutdown. Ticks
+  // only after Daniel's deliberate daemon restart, like the reconciler.
+  const stopStrandedArchiver = startStrandedArchiver(
+    {
+      repoRoot: surfaceCtx.repoRoot,
+      opsGit: surfaceCtx.opsGit,
+      runPy: surfaceCtx.runPy,
+      appendAuditLocal: surfaceCtx.appendAuditLocal,
+      schtasksRun: surfaceCtx.schtasksRun,
+      livenessCache: surfaceCtx.livenessCache,
+      now: surfaceCtx.now,
+    },
+    resolveStrandedArchiveIntervalMs(),
+  );
+  app.addHook('onClose', async () => { stopStrandedArchiver(); });
 
   // Always-on: serve the built SPA (dist/) with an SPA fallback, if it exists; API-only otherwise.
   // Registered last — every /api/* route above and the hub's /events + /ws already claim their exact

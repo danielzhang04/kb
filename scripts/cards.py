@@ -15,7 +15,13 @@ STATES = ("inbox", "blocked", "working", "done", "approvals", "approved", "rejec
           # -> halted (stopped; terminal). SIGKILL is the backstop if a worker
           # never polls for stop-requested. Purely additive: no existing state,
           # dir mapping, or transition is changed by this.
-          "stop-requested", "halting", "halted")
+          "stop-requested", "halting", "halted",
+          # Terminal state for the daemon stranded-archiver: a card owned by a
+          # real agent, idle in inbox/working past the 24h threshold, whose owner's
+          # runner is OFFLINE, is MOVED out of the active queue into queue/archived/
+          # rather than surfaced. Terminal but REVERSIBLE -- a human un-archives by
+          # walking it back to inbox (see LEGAL below).
+          "archived")
 RISK_TIERS = ("T1", "T2", "T3")
 ROLES = ("scout", "manage", "work", "inspect", "consolidate")
 # Execution runtimes a card may be routed to (Phase R1). Validated only when the
@@ -35,16 +41,25 @@ STATE_DIR = {
     # being stopped stays visible where it ran rather than jumping to a new
     # directory mid-stop (design choice, D1.3/D1.4).
     "stop-requested": "working", "halting": "working", "halted": "working",
+    # The stranded-archiver's terminal sink -- its own physical directory so an
+    # auto-archived card leaves the active inbox/working scan surfaces entirely.
+    "archived": "archived",
 }
 LEGAL = {
-    "inbox": {"working", "blocked"},
+    # inbox may additionally be auto-archived (stranded sink); working/blocked
+    # are the pre-existing targets.
+    "inbox": {"working", "blocked", "archived"},
     "blocked": {"inbox"},
-    # working may additionally be walked into the stop ladder; every other
-    # existing target (done/approvals/blocked) is untouched.
-    "working": {"done", "approvals", "blocked", "stop-requested"},
+    # working may additionally be walked into the stop ladder or the archived
+    # sink; every other existing target (done/approvals/blocked) is untouched.
+    "working": {"done", "approvals", "blocked", "stop-requested", "archived"},
     "approvals": {"approved", "rejected"},
     "approved": {"done"},
     "done": set(), "rejected": set(),
+    # archived is terminal but REVERSIBLE: the only legal move out is back to
+    # inbox, so a human can un-archive (reopen) a card the archiver retired. No
+    # other transition out exists -- it never re-enters working/approvals directly.
+    "archived": {"inbox"},
     # The stop ladder itself: working -> stop-requested -> halting -> halted.
     # No state other than "working" may transition INTO stop-requested (their
     # target sets above are unchanged), and halted is terminal -- no transition

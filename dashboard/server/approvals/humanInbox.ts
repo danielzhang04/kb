@@ -16,13 +16,15 @@ import { workOrderOf } from '../auth/workOrder.ts';
 import type { ParsedCard } from '../planeA/cards.ts';
 import type { PlaneAIndex } from '../planeA/indexer.ts';
 
-export type HumanInboxCategory = 'decision' | 'gate' | 'input' | 'intervention' | 'stranded';
+// `stranded` is no longer an inbox category: a stranded card is AUTO-ARCHIVED out of the active queue by
+// the daemon stranded-archiver (write/strandedArchiver.ts), never surfaced here (approved 2026-07-21).
+export type HumanInboxCategory = 'decision' | 'gate' | 'input' | 'intervention';
 export type HumanInboxUrgency = 'critical' | 'high' | 'normal' | 'low';
 
 export interface HumanInboxItem {
   card: ParsedCard;
   category: HumanInboxCategory;
-  categoryLabel: 'Decision' | 'Gate' | 'Input' | 'Intervention' | 'Stranded';
+  categoryLabel: 'Decision' | 'Gate' | 'Input' | 'Intervention';
   urgency: HumanInboxUrgency;
   status: string;
   reason: string;
@@ -45,7 +47,6 @@ export interface HumanInboxCounts {
   gate: number;
   input: number;
   intervention: number;
-  stranded: number;
 }
 
 export interface HumanInboxProjection {
@@ -122,31 +123,7 @@ function tierRank(card: ParsedCard): number {
   return match ? Number(match[1]) : 0;
 }
 
-/** A card is STRANDED once it is owned by a real agent yet has made no progress for this long — a
- *  strong hint the owner's runner is offline. Advisory (low urgency); a false positive is only noise. */
-const STRANDED_AGE_MS = 24 * 60 * 60 * 1000;
-/** `cards.new_id` prefixes every id with an 8-hex-digit unix-epoch-seconds stamp (`f"{int(time):08x}-…"`).
- *  A non-matching id (legacy / hand-authored) yields an UNKNOWN age — never a stranded classification. */
-const CARD_ID_EPOCH_RE = /^([0-9a-f]{8})-/;
-
-/** Age of a card in ms, derived purely from its id's epoch prefix, or `null` when the id does not carry
- *  one. Keeps `classify` pure and fixture-testable (Decision 1) — no file mtime, no indexer change. */
-function cardAgeMs(card: ParsedCard, now: number): number | null {
-  const match = CARD_ID_EPOCH_RE.exec(text(card.meta.id));
-  if (!match) return null;
-  const epochSec = parseInt(match[1], 16);
-  if (!Number.isFinite(epochSec)) return null;
-  return now - epochSec * 1000;
-}
-
-/** A compact human age for the stranded reason line (`25h`, `2d`). */
-function formatAge(ms: number): string {
-  const hours = Math.floor(ms / (60 * 60 * 1000));
-  if (hours < 48) return `${hours}h`;
-  return `${Math.floor(hours / 24)}d`;
-}
-
-function classify(card: ParsedCard, now: number): HumanInboxItem | null {
+function classify(card: ParsedCard): HumanInboxItem | null {
   const state = text(card.meta.state).toLowerCase();
   const action = text(card.meta.action);
   const context = safeWorkOrder(card);
@@ -267,30 +244,9 @@ function classify(card: ParsedCard, now: number): HumanInboxItem | null {
     };
   }
 
-  // STRANDED: an agent-owned card sitting in `inbox`/`working` with no progress for longer than the
-  // threshold — a strong hint the owner's runner is offline (the two dead cloud cadences that sat
-  // unnoticed since 07-18). Advisory (low urgency). Excludes operator gates (owner === human-operator,
-  // already surfaced as a Gate) and unowned cards; a non-hex id yields an unknown age and is NEVER
-  // stranded (Decision 1 — a false stranded is noise, so skip rather than surface). Ordered last so any
-  // richer classification (input / wake / gate) wins first.
-  const owner = text(card.meta.owner);
-  if ((state === 'inbox' || state === 'working') && owner !== '' && owner !== HUMAN_OPERATOR) {
-    const age = cardAgeMs(card, now);
-    if (age !== null && age > STRANDED_AGE_MS) {
-      const human = formatAge(age);
-      return {
-        card,
-        category: 'stranded',
-        categoryLabel: 'Stranded',
-        urgency: 'low',
-        status: 'Owned but not progressing',
-        reason: `Owned by \`${owner}\`, no progress for ${human} — is its runner online?`,
-        nextAction: `Confirm \`${owner}\`'s runner is online; otherwise reassign or close this card. No automated dashboard path exists for a stranded card.`,
-        context,
-      };
-    }
-  }
-
+  // A stranded card (agent-owned, idle >24h in inbox/working, owner runner offline) is NOT surfaced here:
+  // the daemon stranded-archiver (write/strandedArchiver.ts) MOVES it to queue/archived/ instead, so it
+  // never reaches this projection at all. Nothing to classify.
   return null;
 }
 
@@ -329,19 +285,19 @@ function stopFileItem(): HumanInboxItem {
 
 /**
  * Build the Human Inbox from an existing Plane-A snapshot; never scans or mutates the repository.
- * `opts.now` (default `Date.now()`) makes stranded-age deterministic; `opts.stopPresent` prepends the
- * synthetic STOP intervention (the caller/route decides presence from the filesystem).
+ * `opts.stopPresent` prepends the synthetic STOP intervention (the caller/route decides presence from the
+ * filesystem). `opts.now` is accepted for call-site compatibility but unused — the projection is now
+ * clock-free (stranded classification moved to the daemon stranded-archiver).
  */
 export function projectHumanInbox(
   index: PlaneAIndex,
   opts: { now?: number; stopPresent?: boolean } = {},
 ): HumanInboxProjection {
-  const now = opts.now ?? Date.now();
   const cards = Object.values(index.cards).flat();
   const urgencyRank = (item: HumanInboxItem): number =>
     item.urgency === 'critical' ? 0 : item.urgency === 'high' ? 1 : item.urgency === 'normal' ? 2 : 3;
   const projected = cards
-    .map((card) => classify(card, now))
+    .map((card) => classify(card))
     .filter((item): item is HumanInboxItem => item !== null);
   const items = (opts.stopPresent ? [stopFileItem(), ...projected] : projected).sort((a, b) => {
     if (a.urgency !== b.urgency) return urgencyRank(a) - urgencyRank(b);
@@ -350,7 +306,7 @@ export function projectHumanInbox(
     return text(a.card.meta.id).localeCompare(text(b.card.meta.id));
   });
 
-  const counts: HumanInboxCounts = { total: items.length, decision: 0, gate: 0, input: 0, intervention: 0, stranded: 0 };
+  const counts: HumanInboxCounts = { total: items.length, decision: 0, gate: 0, input: 0, intervention: 0 };
   for (const item of items) counts[item.category] += 1;
   return { items, counts };
 }
