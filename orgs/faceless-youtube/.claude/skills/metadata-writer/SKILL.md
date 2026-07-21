@@ -102,15 +102,57 @@ Apply `universal.md §3`:
 
 ## Step 3 — Thumbnails (long-form: primary + 2 challengers)
 Concepts only — text overlay + visual concept (the actual pixels come later from
-`visual-prompt-writer`/render). Apply `universal.md §8`:
-- **Title + thumbnail = one asset**: the thumbnail delivers the promise visually; neither fully
-  resolves the question. Don't restate the title text on the thumbnail.
-- **≤3–4 words** of overlay text, **no all-caps** (mobile-CTR negative). Neo-minimalism: one dominant
-  subject, **≥50% negative space, ≤2 primary colors**.
-- Prefer **"proof of human"** (real-photo subject + AI/graphic background beats fully-AI ~18–22%) and
-  a **closed-mouth determined expression** over open-mouth shock (+15–20% CTR) *where the channel's
-  faceless visual style allows a subject* — otherwise use the channel's locked signature subject.
-- Each challenger pairs with its title challenger as a coherent package.
+`visual-prompt-writer`/render). Apply `universal.md §8` **as deepened by the frame-level reference-channel
+teardown** (`channels/the-second-take/research/thumbnail-teardown-2026-07-21.md` — 8 high-CTR channels,
+~55 thumbnails read pixel-by-pixel; it is the grounding for the mechanical rules below and it **refuted**
+the old "no-face / ≥50%-negative-space / one-money-object / ≤3-word" spec as the single weakest
+configuration in the whole set). Rules are tagged **[EMOTION]/[CHARACTER]/[ABSURD]** (the personality
+hooks — where the winners live) vs **[COMP]** (composition/legibility — necessary frame, not the hook).
+**When they conflict, EMOTION/CHARACTER/ABSURD beat COMP** — a busy, imperfect frame with a great
+emotional hook out-clicks a clean, tasteful, empty one.
+
+- **[CHARACTER][EMOTION] A hero with ONE loud, readable emotion is mandatory.** Default = a member of
+  the channel's cast (the con-man, the mark, the personified institution) wearing a single big expression
+  — **smug, menacing, panicked, or gloating**. If no human fits, **personify the money object and give it
+  a face** (a crowned banknote with an evil grin, a sweating bond — the Crayon move done right). **A cold,
+  faceless object with no emotion is banned as the sole subject** (that is exactly what sank the rejected
+  Poyais set). The only no-face exception: a single loaded metaphor-icon that itself carries dread (skull,
+  fire, scissors cutting, a crash line). Faces ARE allowed — a channel whose visual kit has a cast SHOULD
+  use it.
+- **[EMOTION] The overlay text is a PUNCHLINE / VERDICT / fake-quote, ≤6 words — NEVER the premise or a
+  neutral label.** It must land the joke or the alarm in a half-second. The strongest form is a **fake
+  first-person quote in quote marks put in the subject's mouth** (`"I LOVE INFLATION"`). **Ban
+  task-prompts** ("Spot the fake") and quiet labels ("As advertised", "Population: 0") — those describe
+  the premise instead of delivering a verdict. (VPW still owns the final on-pixel word count / lettering;
+  keep the *concept* text tight and punchy.)
+- **[COMP] Exactly ONE dominant thing, big and simple, legible at 168px.** No fine engraving, no rows of
+  near-identical items, no numbers smaller than ~15% of frame height. If understanding the anomaly
+  requires *inspection* (a task, not a glance), the thumbnail fails — blow the anomaly up until it reads
+  at feed size. Negative space is not a driver; a filled, packed frame with one clear focal face is the
+  norm across the winners.
+- **[COMP] The one red accent must POINT at the anomaly or highlight the payoff word** — a hand-drawn
+  marker arrow, circle, string-web, or underline, OR the payoff word in the channel's accent colour (the
+  way RealLifeLore yellows `COLLAPSE`). Red is the director's finger, not just the colour of a money
+  number. Keep one-red discipline (one red element).
+- **[ABSURD] Prefer an absurd or menacing juxtaposition over a literal illustration.** Subvert the
+  subject's own branding (a con's "brochure" turned against it), stage an impossible/damning scene, or an
+  oversized prop — the image itself should be the joke or the threat, not a neutral depiction of the
+  premise.
+- **[COMP] Lead with a familiar anchor** (a recognizable brand/face/place/era the story touches — same
+  rule as titles, `dna.md`); the obscure specifics are the payoff.
+- **[COMP] Title + thumbnail = one asset**: the thumbnail delivers the promise visually; neither fully
+  resolves the question. Don't restate the title text on the thumbnail. A **persistent corner wordmark**
+  carries channel identity.
+- **[COMP] "Proof of human"** (a real/photographic or on-style illustrated *character* subject) beats a
+  cold graphic ~18–22%; on an illustrated channel, use its locked cast as that subject.
+- Each challenger pairs with its title challenger as a coherent package, testing a **genuinely different
+  hook** (a different hero/emotion/absurd framing) within the locked lever — not a cosmetic variant.
+
+**The 168px half-second acceptance test (apply to every concept):** shrink the concept to ~168px wide in
+your mind's eye and give it half a second. If a first-time viewer can't read (a) one loud emotion and (b)
+the punchline's joke/alarm in that glance, the concept fails — restage it before it goes to
+`visual-prompt-writer`. This is the check that the rejected Poyais set (cold objects, fine detail,
+label-text, no face, no pointing accent) could not pass.
 
 ## Step 4 — Description
 Structure (see `references/metadata-schema.md` for exact field + char limits):

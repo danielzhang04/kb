@@ -24,3 +24,7 @@ $0 this run. No paid stage executed.
 - Gate-3 path to green: (1) authorize + generate thumbnail candidates (paid) or supply an image,
   then `finalize_thumbnail.py`; (2) either review L17 and stamp it via a ruling in `_review/` +
   `stamp_review.py`, or accept the carve-out and record the exception in the Gate-3 decision.
+
+## Publish (2026-07-21)
+
+Uploaded PRIVATE via youtube-uploader MCP: video id 8Rv5SwFiZ4Y, channel Second Takes (UCSiK6AWvPQJTl-jmD-6qVUQ). publish-record.json written; preflight now exits 2 (already published). Thumbnail A ("Trust me, it%s paradise") finalized pre-upload; compliance 6/6. Remaining manual: Daniel sets thumbnail in Studio + flips public. MCP OAuth bug found+worked around: exchange leg ignores the authorize redirect override (core/oauth.go copy bug) — authenticate with redirect_uri=http://localhost to match the client JSON default.
