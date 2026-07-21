@@ -3,26 +3,24 @@
   "channel": "the-second-take",
   "video_slug": "2026-07-04-poyais",
   "source_idea_id": "ST-009",
-  "generated": "2026-07-08",
+  "generated": "2026-07-21",
   "status": "metadata-drafted",
-
   "defaults": {
     "privacy_status": "private",
     "made_for_kids": false,
-    "contains_synthetic_media": true,
+    "contains_synthetic_media": false,
     "default_language": "en",
     "default_audio_language": "en",
     "license": "youtube",
     "embeddable": true
   },
-
   "long_form": {
     "title_primary": "The Prince Who Sold a Country That Didn't Exist",
     "title_challengers": [
       "The Fake Country That Fooled the Stock Exchange",
       "The Paradise Brochure That Got Its Buyers Killed"
     ],
-    "description": "In 1822, London investors bought land, banknotes, and government bonds for Poyais, a young Central American nation with a prince, a capital city, and a national bank. None of it existed.\n\nThis is the story of Gregor MacGregor, the Scottish war hero who invented an entire country, crowned himself its prince, and sold its debt on the floor of the London Stock Exchange right next to Colombia and Peru. It's also the story of the roughly 250 people who sold everything they owned and sailed for a five-star paradise that turned out to be empty jungle. How one confident man with letterhead and a title manufactured a country out of nothing, why the smartest money in Europe lined up to buy it, and what was actually waiting on the beach when the ships arrived.\n\nChapters:\n00:00 The country that never was\n0:39 A war hero and 8 million acres of jungle\n2:11 Inventing a prince, a capital, and a guidebook\n2:55 Fake banknotes and land for two shillings an acre\n4:13 Selling a nation's bonds on the real exchange\n5:55 What was actually waiting on the beach\n6:31 The rainy season, and the ones who came home\n8:01 How the con man walked away\n\n#FinanceHistory #Poyais #GregorMacGregor #Scams\n\nThe Second Take uses AI-assisted narration and illustration to tell true money stories.\nThis channel is history and entertainment, not financial advice.\n\nSources:\n- \"Gregor MacGregor,\" Wikipedia (featured article, sourced to David Sinclair's The Land That Never Was and Tamar Frankel's The Ponzi Scheme Puzzle): the guidebook claims, banknote / land / bond mechanics, named victims, the Black River deaths, the survivors' affidavit, the French acquittal, and the Venezuela death.\n- \"Gregor MacGregor,\" Undiscovered Scotland biography: the two ships and settler counts, the 200,000 pound London loan, and the guidebook.\n- \"Thomas Strangeways\" (pseud.), Sketch of the Mosquito Shore, including the Territory of Poyais (Edinburgh/London, 1822): the primary guidebook and its climate, harvest, and gold claims.\n- Tamar Frankel, The Ponzi Scheme Puzzle, plus economic-history accounts of the 1822 London Latin-American sovereign-bond boom and collapse.\n- Aggregated reputable secondary accounts (The Hustle; History Skills; the Poyais Scheme genealogy record): the ship and settler numbers, the death toll, the Edinburgh cobbler, and James Hastie.",
+    "description": "In 1822, London investors bought land, banknotes, and government bonds for Poyais, a young Central American nation with a prince, a capital city, and a national bank. None of it existed.\n\nThis is the story of Gregor MacGregor, the Scottish war hero who invented an entire country, crowned himself its prince, and sold its debt on the floor of the London Stock Exchange right next to Colombia and Peru. It's also the story of the roughly 250 people who sold everything they owned and sailed for a five-star paradise that turned out to be empty jungle. How one confident man with letterhead and a title manufactured a country out of nothing, why the smartest money in Europe lined up to buy it, and what was actually waiting on the beach when the ships arrived.\n\nChapters:\n00:00 The country that never was\n0:37 Eight million acres of nothing\n1:58 The guidebook to nowhere\n2:40 Fake money, cheap land\n3:53 Bonds for a fake country\n5:23 What the settlers found\n6:21 The rainy season\n7:37 The getaway\n\nThis channel is history and entertainment, not financial advice.\n\nSources:\n- \"Gregor MacGregor,\" Wikipedia (featured article, sourced to David Sinclair's The Land That Never Was and Tamar Frankel's The Ponzi Scheme Puzzle): the guidebook claims, banknote / land / bond mechanics, named victims, the Black River deaths, the survivors' affidavit, the French acquittal, and the Venezuela death.\n- \"Gregor MacGregor,\" Undiscovered Scotland biography: the two ships and settler counts, the 200,000 pound London loan, and the guidebook.\n- \"Thomas Strangeways\" (pseud.), Sketch of the Mosquito Shore, including the Territory of Poyais (Edinburgh/London, 1822): the primary guidebook and its climate, harvest, and gold claims.\n- Tamar Frankel, The Ponzi Scheme Puzzle, plus economic-history accounts of the 1822 London Latin-American sovereign-bond boom and collapse.\n- Aggregated reputable secondary accounts (The Hustle; History Skills; the Poyais Scheme genealogy record): the ship and settler numbers, the death toll, the Edinburgh cobbler, and James Hastie.\n\nThe Fake Country That Fooled the Stock Exchange\nThe Paradise Brochure That Got Its Buyers Killed\n",
     "tags": [
       "Poyais",
       "Gregor MacGregor",
@@ -45,20 +43,44 @@
       "forgotten history",
       "The Second Take"
     ],
-    "hashtags": ["#FinanceHistory", "#Poyais", "#GregorMacGregor", "#Scams"],
+    "hashtags": [],
     "category_id": "27",
     "category_name": "Education",
     "chapters": [
-      {"time": "00:00", "label": "The country that never was"},
-      {"time": "0:39", "label": "A war hero and 8 million acres of jungle"},
-      {"time": "2:11", "label": "Inventing a prince, a capital, and a guidebook"},
-      {"time": "2:55", "label": "Fake banknotes and land for two shillings an acre"},
-      {"time": "4:13", "label": "Selling a nation's bonds on the real exchange"},
-      {"time": "5:55", "label": "What was actually waiting on the beach"},
-      {"time": "6:31", "label": "The rainy season, and the ones who came home"},
-      {"time": "8:01", "label": "How the con man walked away"}
+      {
+        "time": "00:00",
+        "label": "The country that never was"
+      },
+      {
+        "time": "0:37",
+        "label": "Eight million acres of nothing"
+      },
+      {
+        "time": "1:58",
+        "label": "The guidebook to nowhere"
+      },
+      {
+        "time": "2:40",
+        "label": "Fake money, cheap land"
+      },
+      {
+        "time": "3:53",
+        "label": "Bonds for a fake country"
+      },
+      {
+        "time": "5:23",
+        "label": "What the settlers found"
+      },
+      {
+        "time": "6:21",
+        "label": "The rainy season"
+      },
+      {
+        "time": "7:37",
+        "label": "The getaway"
+      }
     ],
-    "chapters_status": "estimated-from-script — re-time after render before publish",
+    "chapters_status": "measured-from-render 2026-07-21 (motion-json shot starts)",
     "thumbnail": {
       "grammar": "Rebuilt 2026-07-21 on the reference-channel teardown (research/thumbnail-teardown-2026-07-21.md) — the old cold-money-object / no-face / label-text set was refuted. Each concept now leads with a HERO carrying ONE loud emotion (a cast face or a personified money object), a punchline/verdict/fake-quote overlay (never a premise/label), one big thing legible at 168px, one red accent that POINTS, and an absurd/menacing juxtaposition. Faces allowed (2.5D vector cast).",
       "primary": {
@@ -87,6 +109,5 @@
       "note": "YouTube Studio-only (Test & Compare, desktop, long-form) holds 3 thumbnail slots — Data API v3 cannot submit any of this. Set up manually: pick title_primary+challengers and the thumbnail primary + the first 2 challengers ('Prince of nothing', 'Good as gold'); the 3rd thumbnail challenger ('Five-star paradise') is a bench concept for a later swap. All four rebuilt 2026-07-21 on the teardown grammar and test genuinely different HERO hooks within the locked vindication lever — (primary) the con-man gloating mid-sell, (ch1) the absurd self-crowned prince of nothing, (ch2) the personified worthless banknote, (ch3) the mark's horror on the empty beach."
     }
   },
-
   "shorts": []
 }

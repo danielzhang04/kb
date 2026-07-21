@@ -3061,3 +3061,77 @@ run brief binds nobody — a fresh terminal reads the style-bible and skill docs
   mis-inspection — struck in the manifest); slim flat-cel L27 arrow at [0.302,0.42] hf 0.085.
   Reviewer-disagreement tiebreaks (nose claim, glossy-vs-flat direction) resolved by orchestrator
   pixel-scan + eyeball per the R9 rule; Chile neck chroma removed by deterministic despill.
+
+## 2026-07-21 — Metadata teardown → doctrine + Poyais re-upload
+
+- **Opening lead-in REJECTED by measurement:** 6 top videos (Crayon/HMW/Boyle) all land the first
+  spoken word at 0.16–0.48s — no intros, no logo stings, no music-only lead-ins anywhere in the
+  cohort. Poyais's 0.12s instant start IS the genre convention; the levers that matter are a
+  hook-relevant 0:00 frame (ours is) and a ~0.3s breath after the hook sentence (ours has it).
+  *Rejected:* adding a 0.5–1s settle/ambience lead-in (refuted by the data before build).
+- **Metadata teardown (36 videos / 9 board channels) → `channels/the-second-take/research/
+  metadata-teardown-2026-07-21.md`**, routed into `metadata-writer`: hashtags 0–3 default 0 (dead
+  in genre, 6/9 channels use none); alternate-titles block = title_challengers as bare description
+  bottom lines (Magnates move); chapter labels ≤5-word curiosity punches; pinned = warm engagement
+  pin (future sponsor slot); tags/sources/AI-disclosure/hook-above-fold confirmed unchanged.
+  *Rejected:* HMW script-excerpt SEO tail (slop against the humanize pass), Crayon
+  "may-contain-inaccuracies" hedge (spends the trust the accuracy leash buys), competitor-name tags.
+- **Chapters must ship MEASURED — enforced:** poyais went live with estimated chapters drifting up
+  to ~31s. metadata-writer now specifies re-timing from motion-json per-shot starts;
+  `compliance-check` FAILs `estimated…` chapters_status or desync'd description/array lines
+  (+2 tests, 22 pass).
+- **Poyais re-uploaded private as `tVmQR0pfp-Q`** (same final.mp4 SHA, new metadata: measured
+  chapters, short labels, no hashtags, alt-titles block). Old `8Rv5SwFiZ4Y` superseded — record
+  archived; Daniel deletes it in Studio + redoes thumbnail/A-B/pin/flip on the new ID.
+
+## 2026-07-21 — Channel-page layer (harvest → forge stage 12 → Second Take draft)
+
+- **Channel-page harvest (9 channels)** appended to `metadata-teardown-2026-07-21.md §Channel-page`:
+  About one-liner-first skeleton, bimodal length (ultra-short vs full pitch — never between),
+  faceless/no-product wing carries 0–4 links (Crayon: zero), business email = table stakes,
+  keywords optional, trailer = representative banger or empty (new channel: empty), cadence claims
+  skippable (1/9).
+- **`channel-forge` gains stage 12 `channel-page`** (genesis-stages.md/.json + validated recipe):
+  produces `channels/<name>/channel-page.md` — locked copy + Studio checklist; the HUMAN applies it
+  (channel branding not API-writable under the credential ceiling; outward-facing, clause H).
+  *Rejected:* API application via extracted OAuth tokens (hard-ceiling violation — the hook blocked
+  the probe, correctly).
+- **The Second Take's `channel-page.md` drafted** (live page confirmed EMPTY): ultra-short About
+  (one-liner + locked AI/not-advice lines, ≈210 chars; 2 alternates), zero links at launch,
+  keywords set offered, avatar/banner verified to spec (1024² / 2048×1152), trailer deliberately
+  empty. **FLAG for Daniel: live display name "Second Takes" ≠ locked "The Second Take"** —
+  recommend renaming display name in Studio (handle can stay).
+
+## 2026-07-21 — AI-disclosure scratched for clearly-animated registers (Daniel's ruling)
+
+- **Ruling:** YouTube's altered-content disclosure applies to synthetic media a viewer could
+  mistake for REAL; our locked registers are clearly animated (the uncanny middle is banned
+  project-wide), so neither the upload flag nor a description AI-line is required — and no
+  reference channel discloses (n=36). **Scratched everywhere:** metadata-writer Step 4/Step 9 +
+  schema (contains_synthetic_media now an explicit per-register boolean, false for animated;
+  compliance-check FAILs only a MISSING flag; 23 tests pass), channel-page About draft, poyais
+  description. The not-financial-advice line STAYS (YMYL guardrail, Boyle precedent).
+- **Poyais re-uploaded (v3) private as `J5KU-4IEGEQ`** — same final.mp4, AI line removed,
+  flag false. tVmQR0pfp-Q superseded (record archived; Daniel deletes both old uploads).
+- If any future channel ships realistic synthetic media: flag true + description line both return
+  (metadata-writer Step 9 records the condition).
+
+## 2026-07-21 — Captions policy: CC track yes (script-exact), burned subtitles no
+
+- Long-form ships a **closed-caption track generated from the render's measured sentence
+  boundaries** (vo.txt + motion-json sentenceBoundaries → .srt; poyais: 120 cues, 0 drift) —
+  auto-captions would mangle the load-bearing proper nouns (Poyais, Cazique, MacGregor).
+  Uploaded manually in Studio (no captions tool in the uploader MCP). **No burned-in full
+  subtitles on long-form** (no reference channel does; fights the locked look; the motion
+  grammar's selective on-screen text stands). Shorts keep burned captions per shorts doctrine.
+  *Follow-up owed:* fold srt generation into the render/publish tail as a standing step.
+
+## 2026-07-21 — Packaging-continuity hook rule (Daniel-confirmed)
+
+- **Person-led packaging → person-led hook**, named within two sentences (tease a name only when the
+  reveal is famous); stakes/human-cost moves to the turn, never disappears (it sets the register
+  dial). Grounding: title/thumbnail promise a person, the click's continuity should not break —
+  same principle as the hook-relevant 0:00 frame; Crayon/Boyle/Wendover all open person-led.
+  Routed: universal.md §5 (full rule) + storytelling-grammar §2.1 (channel note). Poyais keeps its
+  crowd-first gold hook AS SHIPPED — its first-minute retention curve (cliff before MacGregor
+  enters ~0:35?) is the standing empirical check before any regen.

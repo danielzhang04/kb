@@ -57,7 +57,10 @@ def _good_metadata():
         "defaults": {"privacy_status": "private", "contains_synthetic_media": True},
         "long_form": {
             "title_primary": "A Perfectly Legal Title Under One Hundred Characters",
-            "description": "A clean description.\n\nSources:\nCFPB press release 2016.",
+            "description": (
+                "A clean description.\n\nChapters:\n00:00 Intro\n01:10 Middle\n05:24 End\n\n"
+                "Sources:\nCFPB press release 2016."
+            ),
             "tags": ["one", "two", "three"],
             "category_id": "27",
             "chapters": [
@@ -65,6 +68,7 @@ def _good_metadata():
                 {"time": "01:10", "label": "Middle"},
                 {"time": "05:24", "label": "End"},
             ],
+            "chapters_status": "measured-from-render 2026-07-21 (motion-json shot starts)",
         },
     }
 
@@ -185,6 +189,24 @@ def test_metadata_chapter_past_duration_fails(video_dir):
     assert ok is False and "duration" in detail
 
 
+def test_metadata_estimated_chapters_fail(video_dir):
+    meta = _load_meta(video_dir)
+    meta["long_form"]["chapters_status"] = (
+        "estimated-from-script — re-time after render before publish"
+    )
+    _save_meta(video_dir, meta)
+    ok, detail = cc.check_metadata(video_dir)
+    assert ok is False and "estimated" in detail
+
+
+def test_metadata_chapter_desc_out_of_sync_fails(video_dir):
+    meta = _load_meta(video_dir)
+    meta["long_form"]["chapters"][1] = {"time": "01:20", "label": "Middle"}
+    _save_meta(video_dir, meta)
+    ok, detail = cc.check_metadata(video_dir)
+    assert ok is False and "out of sync" in detail
+
+
 def test_privacy_not_private_fails(video_dir):
     meta = _load_meta(video_dir)
     meta["defaults"]["privacy_status"] = "public"
@@ -196,10 +218,19 @@ def test_privacy_not_private_fails(video_dir):
 
 def test_synthetic_media_flag_missing_fails(video_dir):
     meta = _load_meta(video_dir)
-    meta["defaults"]["contains_synthetic_media"] = False
+    del meta["defaults"]["contains_synthetic_media"]
     _save_meta(video_dir, meta)
     ok, detail = cc.check_privacy(video_dir)
     assert ok is False and "synthetic" in detail
+
+
+def test_synthetic_media_explicit_false_passes(video_dir):
+    # clearly-animated register: false is the deliberate, correct call (ruling 2026-07-21)
+    meta = _load_meta(video_dir)
+    meta["defaults"]["contains_synthetic_media"] = False
+    _save_meta(video_dir, meta)
+    ok, detail = cc.check_privacy(video_dir)
+    assert ok is True and "contains_synthetic_media=false" in detail
 
 
 def test_licensing_uncredited_asset_fails(video_dir):

@@ -5,7 +5,7 @@
   "fps": 30,
   "width": 1920,
   "height": 1080,
-  "audio": "vo.breath.mp3",
+  "audio": "vo.mp3",
   "audio_seconds": 637.0600000000001,
   "tokens": {
     "_doc": "The Second Take's motion-engine style tokens \u2014 data the niche-agnostic Remotion engine reads. Character/palette law: style-bible.md; this file only styles ENGINE-drawn elements (captions, device cards, camera feel). Values marked (measured) come from the 2026-07-08 motion teardown \u2014 see research/motion-logs/ + universal.md \u00a713a-iii.",
@@ -163,7 +163,7 @@
       ],
       [
         "Real",
-        9.047
+        9.255
       ],
       [
         "people",
@@ -243,7 +243,7 @@
       ],
       [
         "And",
-        15.275
+        15.528
       ],
       [
         "when",
@@ -347,7 +347,7 @@
       ],
       [
         "What",
-        22.605
+        22.925
       ],
       [
         "you",
@@ -415,7 +415,7 @@
       ],
       [
         "The",
-        28.465
+        28.788
       ],
       [
         "bank",
@@ -435,7 +435,7 @@
       ],
       [
         "And",
-        30.865
+        31.065
       ],
       [
         "for",
@@ -507,7 +507,7 @@
       ],
       [
         "Cross-selling",
-        37.297
+        37.365
       ],
       [
         "just",
@@ -631,7 +631,7 @@
       ],
       [
         "More",
-        48.551
+        48.864
       ],
       [
         "products",
@@ -647,7 +647,7 @@
       ],
       [
         "Wells",
-        50.638
+        50.724
       ],
       [
         "Fargo",
@@ -715,7 +715,7 @@
       ],
       [
         "They",
-        56.58
+        56.885
       ],
       [
         "reported",
@@ -771,7 +771,7 @@
       ],
       [
         "And",
-        60.79
+        61.08
       ],
       [
         "they",
@@ -799,7 +799,7 @@
       ],
       [
         "The",
-        63.055
+        63.177
       ],
       [
         "target",
@@ -815,7 +815,7 @@
       ],
       [
         "Eight",
-        64.807
+        64.942
       ],
       [
         "products",
@@ -835,7 +835,7 @@
       ],
       [
         "Back",
-        67.051
+        67.341
       ],
       [
         "in",
@@ -903,7 +903,7 @@
       ],
       [
         "And",
-        74.2
+        74.592
       ],
       [
         "the",
@@ -975,7 +975,7 @@
       ],
       [
         "That",
-        80.491
+        80.57
       ],
       [
         "was",
@@ -995,7 +995,7 @@
       ],
       [
         "A",
-        81.955
+        82.192
       ],
       [
         "rhyme.",
@@ -1003,7 +1003,7 @@
       ],
       [
         "And",
-        83.025
+        83.175
       ],
       [
         "the",
@@ -1067,7 +1067,7 @@
       ],
       [
         "It",
-        87.07
+        87.245
       ],
       [
         "traces",
@@ -1167,7 +1167,7 @@
       ],
       [
         "But",
-        96.605
+        96.795
       ],
       [
         "once",
@@ -1263,7 +1263,7 @@
       ],
       [
         "And",
-        103.29
+        103.467
       ],
       [
         "the",
@@ -1387,7 +1387,7 @@
       ],
       [
         "A",
-        112.95
+        113.105
       ],
       [
         "teller",
@@ -1475,11 +1475,11 @@
       ],
       [
         "To",
-        119.517
+        119.925
       ],
       [
         "make",
-        119.922
+        119.925
       ],
       [
         "it",
@@ -1547,7 +1547,7 @@
       ],
       [
         "They'd",
-        124.792
+        125.297
       ],
       [
         "set",
@@ -1607,11 +1607,11 @@
       ],
       [
         "And",
-        131.24
+        131.513
       ],
       [
         "they'd",
-        131.512
+        131.513
       ],
       [
         "invent",
@@ -1743,11 +1743,11 @@
       ],
       [
         "The",
-        143.53
+        143.655
       ],
       [
         "move",
-        143.624
+        143.655
       ],
       [
         "even",
@@ -1779,11 +1779,11 @@
       ],
       [
         "Pinning.",
-        146.355
+        146.474
       ],
       [
         "It",
-        147.568
+        147.975
       ],
       [
         "wasn't",
@@ -1803,7 +1803,7 @@
       ],
       [
         "Employees",
-        150.038
+        150.048
       ],
       [
         "ordered",
@@ -1931,7 +1931,7 @@
       ],
       [
         "They",
-        163.542
+        163.644
       ],
       [
         "signed",
@@ -1983,7 +1983,7 @@
       ],
       [
         "And",
-        168.635
+        169.026
       ],
       [
         "years",
@@ -2087,7 +2087,7 @@
       ],
       [
         "The",
-        178.99
+        179.136
       ],
       [
         "forged",
@@ -2131,11 +2131,11 @@
       ],
       [
         "The",
-        183.02
+        183.303
       ],
       [
         "bank",
-        183.264
+        183.303
       ],
       [
         "admitted",
@@ -2147,11 +2147,11 @@
       ],
       [
         "The",
-        184.61
+        184.747
       ],
       [
         "first",
-        184.743
+        184.747
       ],
       [
         "tally",
@@ -2219,7 +2219,7 @@
       ],
       [
         "It",
-        192.805
+        193.165
       ],
       [
         "found",
@@ -2263,7 +2263,7 @@
       ],
       [
         "Then",
-        198.005
+        198.423
       ],
       [
         "in",
@@ -2407,7 +2407,7 @@
       ],
       [
         "Now,",
-        214.535
+        214.925
       ],
       [
         "that",
@@ -2443,7 +2443,7 @@
       ],
       [
         "It",
-        218.287
+        218.691
       ],
       [
         "didn't.",
@@ -2451,11 +2451,11 @@
       ],
       [
         "The",
-        219.36
+        219.588
       ],
       [
         "bigger",
-        219.574
+        219.588
       ],
       [
         "review",
@@ -2575,7 +2575,7 @@
       ],
       [
         "Same",
-        233.508
+        233.71
       ],
       [
         "fraud.",
@@ -2583,7 +2583,7 @@
       ],
       [
         "They'd",
-        234.499
+        234.867
       ],
       [
         "just",
@@ -2607,7 +2607,7 @@
       ],
       [
         "Of",
-        236.328
+        236.553
       ],
       [
         "all",
@@ -2655,11 +2655,11 @@
       ],
       [
         "And",
-        241.965
+        242.277
       ],
       [
         "as",
-        242.258
+        242.277
       ],
       [
         "many",
@@ -2779,7 +2779,7 @@
       ],
       [
         "Somebody",
-        252.373
+        252.785
       ],
       [
         "paid",
@@ -2831,7 +2831,7 @@
       ],
       [
         "Between",
-        257.525
+        257.962
       ],
       [
         "2011",
@@ -2911,7 +2911,7 @@
       ],
       [
         "And",
-        270.035
+        270.403
       ],
       [
         "these",
@@ -2947,7 +2947,7 @@
       ],
       [
         "Tellers",
-        273.966
+        274.11
       ],
       [
         "and",
@@ -2963,7 +2963,7 @@
       ],
       [
         "Not",
-        276.37
+        276.495
       ],
       [
         "anyone",
@@ -2975,11 +2975,11 @@
       ],
       [
         "When",
-        278.089
+        278.425
       ],
       [
         "the",
-        278.365
+        278.425
       ],
       [
         "board",
@@ -3159,7 +3159,7 @@
       ],
       [
         "So",
-        295.574
+        295.607
       ],
       [
         "the",
@@ -3195,7 +3195,7 @@
       ],
       [
         "Year",
-        298.728
+        299.065
       ],
       [
         "after",
@@ -3315,7 +3315,7 @@
       ],
       [
         "Nobody",
-        308.588
+        308.953
       ],
       [
         "had",
@@ -3359,11 +3359,11 @@
       ],
       [
         "It",
-        311.93
+        312.145
       ],
       [
         "took",
-        312.138
+        312.145
       ],
       [
         "a",
@@ -3455,7 +3455,7 @@
       ],
       [
         "Some",
-        320.745
+        320.869
       ],
       [
         "employees",
@@ -3479,11 +3479,11 @@
       ],
       [
         "They",
-        322.977
+        323.537
       ],
       [
         "called",
-        323.459
+        323.537
       ],
       [
         "the",
@@ -3551,7 +3551,7 @@
       ],
       [
         "In",
-        330.138
+        330.791
       ],
       [
         "cases",
@@ -3603,11 +3603,11 @@
       ],
       [
         "And",
-        334.615
+        335.12
       ],
       [
         "on",
-        335.062
+        335.12
       ],
       [
         "their",
@@ -3731,7 +3731,7 @@
       ],
       [
         "In",
-        344.048
+        344.69
       ],
       [
         "2017",
@@ -3875,11 +3875,11 @@
       ],
       [
         "At",
-        359.163
+        359.56
       ],
       [
         "the",
-        359.47
+        359.56
       ],
       [
         "time",
@@ -3943,11 +3943,11 @@
       ],
       [
         "It",
-        364.302
+        364.801
       ],
       [
         "ordered",
-        364.705
+        364.801
       ],
       [
         "the",
@@ -4075,11 +4075,11 @@
       ],
       [
         "The",
-        377.395
+        377.815
       ],
       [
         "outside",
-        377.685
+        377.815
       ],
       [
         "world",
@@ -4103,11 +4103,11 @@
       ],
       [
         "On",
-        380.66
+        381.075
       ],
       [
         "September",
-        381.02
+        381.075
       ],
       [
         "8th,",
@@ -4135,11 +4135,11 @@
       ],
       [
         "The",
-        383.83
+        384.334
       ],
       [
         "Consumer",
-        384.243
+        384.334
       ],
       [
         "Financial",
@@ -4211,7 +4211,7 @@
       ],
       [
         "The",
-        391.23
+        391.635
       ],
       [
         "OCC,",
@@ -4259,11 +4259,11 @@
       ],
       [
         "The",
-        396.935
+        397.46
       ],
       [
         "city",
-        397.359
+        397.46
       ],
       [
         "and",
@@ -4299,7 +4299,7 @@
       ],
       [
         "About",
-        400.81
+        401.35
       ],
       [
         "185",
@@ -4331,7 +4331,7 @@
       ],
       [
         "Later",
-        405.05
+        405.645
       ],
       [
         "that",
@@ -4499,11 +4499,11 @@
       ],
       [
         "He",
-        418.103
+        418.697
       ],
       [
         "resigned",
-        418.583
+        418.697
       ],
       [
         "that",
@@ -4563,11 +4563,11 @@
       ],
       [
         "On",
-        424.738
+        425.134
       ],
       [
         "February",
-        425.058
+        425.134
       ],
       [
         "2nd,",
@@ -4655,7 +4655,7 @@
       ],
       [
         "It",
-        433.475
+        433.835
       ],
       [
         "froze",
@@ -4787,11 +4787,11 @@
       ],
       [
         "The",
-        445.095
+        445.59
       ],
       [
         "Fed",
-        445.475
+        445.59
       ],
       [
         "had",
@@ -4839,11 +4839,11 @@
       ],
       [
         "It",
-        448.978
+        449.338
       ],
       [
         "stayed",
-        449.291
+        449.338
       ],
       [
         "on",
@@ -4895,11 +4895,11 @@
       ],
       [
         "In",
-        453.885
+        454.575
       ],
       [
         "2020",
-        454.445
+        454.575
       ],
       [
         "the",
@@ -4951,11 +4951,11 @@
       ],
       [
         "It",
-        460.265
+        460.56
       ],
       [
         "admitted,",
-        460.478
+        460.56
       ],
       [
         "on",
@@ -5107,7 +5107,7 @@
       ],
       [
         "Five",
-        474.561
+        474.968
       ],
       [
         "hundred",
@@ -5163,7 +5163,7 @@
       ],
       [
         "So",
-        479.36
+        479.682
       ],
       [
         "what",
@@ -5203,11 +5203,11 @@
       ],
       [
         "For",
-        482.555
+        482.909
       ],
       [
         "a",
-        482.835
+        482.909
       ],
       [
         "while,",
@@ -5223,7 +5223,7 @@
       ],
       [
         "Carrie",
-        485.016
+        485.27
       ],
       [
         "Tolstedt",
@@ -5323,7 +5323,7 @@
       ],
       [
         "She",
-        494.095
+        494.52
       ],
       [
         "had",
@@ -5407,7 +5407,7 @@
       ],
       [
         "Both",
-        500.003
+        500.39
       ],
       [
         "she",
@@ -5463,11 +5463,11 @@
       ],
       [
         "It",
-        505.132
+        505.456
       ],
       [
         "took",
-        505.393
+        505.456
       ],
       [
         "months",
@@ -5527,11 +5527,11 @@
       ],
       [
         "In",
-        510.542
+        510.884
       ],
       [
         "the",
-        510.795
+        510.884
       ],
       [
         "end",
@@ -5635,15 +5635,15 @@
       ],
       [
         "And",
-        520.41
+        520.805
       ],
       [
         "the",
-        520.67
+        520.805
       ],
       [
         "regulators",
-        520.788
+        520.805
       ],
       [
         "weren't",
@@ -5655,7 +5655,7 @@
       ],
       [
         "In",
-        522.732
+        523.007
       ],
       [
         "2020",
@@ -5755,11 +5755,11 @@
       ],
       [
         "It",
-        534.105
+        534.558
       ],
       [
         "brought",
-        534.455
+        534.558
       ],
       [
         "actions",
@@ -5791,11 +5791,11 @@
       ],
       [
         "The",
-        537.565
+        538.065
       ],
       [
         "SEC",
-        538.005
+        538.065
       ],
       [
         "charged",
@@ -5835,7 +5835,7 @@
       ],
       [
         "Tolstedt",
-        542.275
+        542.76
       ],
       [
         "settled",
@@ -5935,11 +5935,11 @@
       ],
       [
         "The",
-        550.78
+        551.248
       ],
       [
         "SEC's",
-        551.18
+        551.248
       ],
       [
         "case",
@@ -6115,11 +6115,11 @@
       ],
       [
         "And",
-        567.665
+        568.123
       ],
       [
         "out",
-        568.005
+        568.123
       ],
       [
         "of",
@@ -6171,7 +6171,7 @@
       ],
       [
         "Carrie",
-        573.338
+        573.865
       ],
       [
         "Tolstedt.",
@@ -6179,11 +6179,11 @@
       ],
       [
         "But",
-        575.455
+        575.93
       ],
       [
         "not",
-        575.795
+        575.93
       ],
       [
         "for",
@@ -6199,11 +6199,11 @@
       ],
       [
         "In",
-        577.208
+        577.5
       ],
       [
         "2023",
-        577.475
+        577.5
       ],
       [
         "she",
@@ -6303,11 +6303,11 @@
       ],
       [
         "That",
-        585.746
+        586.218
       ],
       [
         "September,",
-        586.186
+        586.218
       ],
       [
         "a",
@@ -6407,7 +6407,7 @@
       ],
       [
         "No",
-        596.802
+        597.225
       ],
       [
         "prison.",
@@ -6415,11 +6415,11 @@
       ],
       [
         "The",
-        598.475
+        599.034
       ],
       [
         "judge",
-        598.962
+        599.034
       ],
       [
         "turned",
@@ -6487,11 +6487,11 @@
       ],
       [
         "So",
-        604.535
+        604.925
       ],
       [
         "the",
-        604.875
+        604.925
       ],
       [
         "whole",
@@ -6523,11 +6523,11 @@
       ],
       [
         "And",
-        608.33
+        608.823
       ],
       [
         "it",
-        608.683
+        608.823
       ],
       [
         "wasn't",
@@ -6559,15 +6559,15 @@
       ],
       [
         "It",
-        611.287
+        611.725
       ],
       [
         "was",
-        611.54
+        611.725
       ],
       [
         "for",
-        611.7
+        611.725
       ],
       [
         "getting",
@@ -6607,7 +6607,7 @@
       ],
       [
         "Nobody",
-        614.538
+        614.788
       ],
       [
         "was",
@@ -6675,11 +6675,11 @@
       ],
       [
         "There",
-        620.172
+        620.663
       ],
       [
         "was",
-        620.545
+        620.663
       ],
       [
         "just",
@@ -6775,11 +6775,11 @@
       ],
       [
         "The",
-        628.43
+        629.017
       ],
       [
         "people",
-        628.884
+        629.017
       ],
       [
         "who",
@@ -6827,15 +6827,15 @@
       ],
       [
         "And",
-        633.12
+        633.442
       ],
       [
         "the",
-        633.32
+        633.442
       ],
       [
         "number",
-        633.426
+        633.442
       ],
       [
         "that",
@@ -6888,47 +6888,47 @@
       {
         "track": "audio/beds/underscore-1.mp3",
         "at_s": 0.0,
-        "dur_s": 61.855,
+        "dur_s": 61.977,
         "base_db": 10.0,
         "fade_in_s": 1.2,
         "fade_out_s": 2.5
       },
       {
         "track": "audio/beds/upbeat-2.mp3",
-        "at_s": 63.055,
-        "dur_s": 32.35,
+        "at_s": 63.177,
+        "dur_s": 32.418,
         "base_db": 10.0,
         "fade_in_s": 1.2,
         "fade_out_s": 2.5
       },
       {
         "track": "audio/beds/sneaky-2.mp3",
-        "at_s": 96.605,
-        "dur_s": 86.805,
+        "at_s": 96.795,
+        "dur_s": 86.752,
         "base_db": 10.0,
         "fade_in_s": 1.2,
         "fade_out_s": 2.5
       },
       {
         "track": "audio/beds/underscore-1.mp3",
-        "at_s": 184.61,
-        "dur_s": 66.563,
+        "at_s": 184.747,
+        "dur_s": 66.838,
         "base_db": 10.0,
         "fade_in_s": 1.2,
         "fade_out_s": 2.5
       },
       {
         "track": "audio/beds/somber-1.mp3",
-        "at_s": 252.373,
-        "dur_s": 123.822,
+        "at_s": 252.785,
+        "dur_s": 123.83,
         "base_db": 13.0,
         "fade_in_s": 1.2,
         "fade_out_s": 3.5
       },
       {
         "track": "audio/beds/upbeat-4.mp3",
-        "at_s": 377.395,
-        "dur_s": 41.85,
+        "at_s": 377.815,
+        "dur_s": 41.43,
         "base_db": 10.0,
         "fade_in_s": 1.2,
         "fade_out_s": 2.5
@@ -6936,23 +6936,23 @@
       {
         "track": "audio/beds/underscore-1.mp3",
         "at_s": 420.445,
-        "dur_s": 57.715,
+        "dur_s": 58.037,
         "base_db": 10.0,
         "fade_in_s": 1.2,
         "fade_out_s": 2.5
       },
       {
         "track": "audio/beds/sneaky-2.mp3",
-        "at_s": 479.36,
-        "dur_s": 88.305,
+        "at_s": 479.682,
+        "dur_s": 88.441,
         "base_db": 10.0,
         "fade_in_s": 1.2,
         "fade_out_s": 2.5
       },
       {
         "track": "audio/beds/underscore-1.mp3",
-        "at_s": 577.208,
-        "dur_s": 59.852,
+        "at_s": 577.5,
+        "dur_s": 59.56,
         "base_db": 10.0,
         "fade_in_s": 1.2,
         "fade_out_s": 2.5
@@ -6967,7 +6967,7 @@
       },
       {
         "sfx": "audio/sfx/whoosh-1.mp3",
-        "at_s": 28.465,
+        "at_s": 28.788,
         "gain_db": -7,
         "dur_s": 0.296
       },
@@ -6985,25 +6985,25 @@
       },
       {
         "sfx": "audio/sfx/pop-1.mp3",
-        "at_s": 119.517,
+        "at_s": 119.925,
         "gain_db": -8,
         "dur_s": 0.097
       },
       {
         "sfx": "audio/sfx/pop-1.mp3",
-        "at_s": 124.792,
+        "at_s": 125.297,
         "gain_db": -8,
         "dur_s": 0.097
       },
       {
         "sfx": "audio/sfx/pop-1.mp3",
-        "at_s": 131.24,
+        "at_s": 131.513,
         "gain_db": -8,
         "dur_s": 0.097
       },
       {
         "sfx": "audio/sfx/stamp-1.mp3",
-        "at_s": 143.53,
+        "at_s": 143.655,
         "gain_db": -7,
         "dur_s": 0.545
       },
@@ -7015,13 +7015,13 @@
       },
       {
         "sfx": "audio/sfx/whoosh-1.mp3",
-        "at_s": 377.395,
+        "at_s": 377.815,
         "gain_db": -7,
         "dur_s": 0.296
       },
       {
         "sfx": "audio/sfx/cash-1.mp3",
-        "at_s": 383.83,
+        "at_s": 384.334,
         "gain_db": -8,
         "dur_s": 2.157
       },
@@ -7039,7 +7039,7 @@
       },
       {
         "sfx": "audio/sfx/cash-1.mp3",
-        "at_s": 453.885,
+        "at_s": 454.575,
         "gain_db": -8,
         "dur_s": 2.157
       },
@@ -7069,15 +7069,45 @@
     "music_missing": 0,
     "sfx_tail_warnings": [
       {
+        "at_s": 63.055,
+        "sfx": "audio/sfx/ding-1.mp3",
+        "overshoot_s": 1.29,
+        "anchor": "The target was eight"
+      },
+      {
+        "at_s": 80.491,
+        "sfx": "audio/sfx/record_scratch-1.mp3",
+        "overshoot_s": 0.369,
+        "anchor": "That was the real reason"
+      },
+      {
+        "at_s": 400.81,
+        "sfx": "audio/sfx/boom-1.mp3",
+        "overshoot_s": 1.185,
+        "anchor": "About 185 million dollars in"
+      },
+      {
+        "at_s": 433.475,
+        "sfx": "audio/sfx/powerdown-1.mp3",
+        "overshoot_s": 0.816,
+        "anchor": "It froze the bank's total"
+      },
+      {
         "at_s": 482.555,
         "sfx": "audio/sfx/womp-1.mp3",
-        "overshoot_s": 1.299,
+        "overshoot_s": 3.406,
         "anchor": "For a while, almost nothing"
+      },
+      {
+        "at_s": 522.732,
+        "sfx": "audio/sfx/buzzer-1.mp3",
+        "overshoot_s": 0.782,
+        "anchor": "In 2020 the OCC banned"
       },
       {
         "at_s": 575.455,
         "sfx": "audio/sfx/sting-1.mp3",
-        "overshoot_s": 0.595,
+        "overshoot_s": 1.873,
         "anchor": "But not for the fraud"
       }
     ]
@@ -7104,7 +7134,7 @@
     {
       "id": "L02",
       "start_s": 2.216,
-      "duration_s": 6.831,
+      "duration_s": 7.039,
       "beat": "hook",
       "image": "scenes/L02.png",
       "placeholder": null,
@@ -7121,8 +7151,8 @@
     },
     {
       "id": "L03",
-      "start_s": 9.047,
-      "duration_s": 3.588,
+      "start_s": 9.255,
+      "duration_s": 3.38,
       "beat": "hook",
       "image": "scenes/L03.png",
       "placeholder": null,
@@ -7140,7 +7170,7 @@
     {
       "id": "L04",
       "start_s": 12.635,
-      "duration_s": 2.64,
+      "duration_s": 2.893,
       "beat": "hook",
       "image": "scenes/L04.png",
       "placeholder": null,
@@ -7157,8 +7187,8 @@
     },
     {
       "id": "L05",
-      "start_s": 15.275,
-      "duration_s": 2.92,
+      "start_s": 15.528,
+      "duration_s": 2.667,
       "beat": "hook",
       "image": "scenes/L05.png",
       "placeholder": null,
@@ -7176,7 +7206,7 @@
     {
       "id": "L06",
       "start_s": 18.195,
-      "duration_s": 4.41,
+      "duration_s": 4.73,
       "beat": "hook",
       "image": "scenes/L06.png",
       "placeholder": null,
@@ -7193,8 +7223,8 @@
     },
     {
       "id": "L07",
-      "start_s": 22.605,
-      "duration_s": 2.366,
+      "start_s": 22.925,
+      "duration_s": 2.046,
       "beat": "hook",
       "image": "scenes/L07.png",
       "placeholder": null,
@@ -7212,7 +7242,7 @@
     {
       "id": "L08",
       "start_s": 24.971,
-      "duration_s": 3.494,
+      "duration_s": 3.817,
       "beat": "hook",
       "image": "scenes/L08.png",
       "placeholder": null,
@@ -7229,8 +7259,8 @@
     },
     {
       "id": "L09",
-      "start_s": 28.465,
-      "duration_s": 2.4,
+      "start_s": 28.788,
+      "duration_s": 2.277,
       "beat": "second-gate",
       "image": "scenes/L09.png",
       "placeholder": null,
@@ -7247,8 +7277,8 @@
     },
     {
       "id": "L10",
-      "start_s": 30.865,
-      "duration_s": 6.432,
+      "start_s": 31.065,
+      "duration_s": 6.3,
       "beat": "premise",
       "image": "scenes/L10.png",
       "placeholder": null,
@@ -7265,8 +7295,8 @@
     },
     {
       "id": "L11",
-      "start_s": 37.297,
-      "duration_s": 4.766,
+      "start_s": 37.365,
+      "duration_s": 4.698,
       "beat": "premise",
       "image": "scenes/L11.png",
       "placeholder": null,
@@ -7320,7 +7350,7 @@
     {
       "id": "L14",
       "start_s": 45.39,
-      "duration_s": 3.161,
+      "duration_s": 3.474,
       "beat": "premise",
       "image": "scenes/L14.png",
       "placeholder": null,
@@ -7337,8 +7367,8 @@
     },
     {
       "id": "L15",
-      "start_s": 48.551,
-      "duration_s": 2.087,
+      "start_s": 48.864,
+      "duration_s": 1.86,
       "beat": "premise",
       "image": "scenes/L15.png",
       "placeholder": null,
@@ -7355,8 +7385,8 @@
     },
     {
       "id": "L16",
-      "start_s": 50.638,
-      "duration_s": 5.942,
+      "start_s": 50.724,
+      "duration_s": 6.161,
       "beat": "premise",
       "image": "scenes/L16.png",
       "placeholder": null,
@@ -7373,8 +7403,8 @@
     },
     {
       "id": "L17",
-      "start_s": 56.58,
-      "duration_s": 4.21,
+      "start_s": 56.885,
+      "duration_s": 4.195,
       "beat": "premise",
       "image": "scenes/L17.png",
       "placeholder": null,
@@ -7391,8 +7421,8 @@
     },
     {
       "id": "L18",
-      "start_s": 60.79,
-      "duration_s": 2.265,
+      "start_s": 61.08,
+      "duration_s": 2.097,
       "beat": "premise",
       "image": "scenes/L18.png",
       "placeholder": null,
@@ -7409,8 +7439,8 @@
     },
     {
       "id": "L19",
-      "start_s": 63.055,
-      "duration_s": 1.752,
+      "start_s": 63.177,
+      "duration_s": 1.765,
       "beat": "body",
       "image": "scenes/L19.png",
       "placeholder": null,
@@ -7427,8 +7457,8 @@
     },
     {
       "id": "L20",
-      "start_s": 64.807,
-      "duration_s": 2.244,
+      "start_s": 64.942,
+      "duration_s": 2.399,
       "beat": "body",
       "image": "scenes/L20.png",
       "placeholder": null,
@@ -7445,8 +7475,8 @@
     },
     {
       "id": "L21",
-      "start_s": 67.051,
-      "duration_s": 4.75,
+      "start_s": 67.341,
+      "duration_s": 4.46,
       "beat": "body",
       "image": "scenes/L21.png",
       "placeholder": null,
@@ -7464,7 +7494,7 @@
     {
       "id": "L22",
       "start_s": 71.801,
-      "duration_s": 2.399,
+      "duration_s": 2.791,
       "beat": "body",
       "image": "scenes/L22.png",
       "placeholder": null,
@@ -7481,8 +7511,8 @@
     },
     {
       "id": "L23",
-      "start_s": 74.2,
-      "duration_s": 3.18,
+      "start_s": 74.592,
+      "duration_s": 2.788,
       "beat": "body",
       "image": "scenes/L23.png",
       "placeholder": null,
@@ -7500,7 +7530,7 @@
     {
       "id": "L24",
       "start_s": 77.38,
-      "duration_s": 3.111,
+      "duration_s": 3.19,
       "beat": "body",
       "image": "scenes/L24.png",
       "placeholder": null,
@@ -7517,8 +7547,8 @@
     },
     {
       "id": "L25",
-      "start_s": 80.491,
-      "duration_s": 2.534,
+      "start_s": 80.57,
+      "duration_s": 2.605,
       "beat": "body",
       "image": "scenes/L25.png",
       "placeholder": null,
@@ -7535,8 +7565,8 @@
     },
     {
       "id": "L26",
-      "start_s": 83.025,
-      "duration_s": 4.045,
+      "start_s": 83.175,
+      "duration_s": 4.07,
       "beat": "body",
       "image": "scenes/L26.png",
       "placeholder": null,
@@ -7553,8 +7583,8 @@
     },
     {
       "id": "L27",
-      "start_s": 87.07,
-      "duration_s": 3.38,
+      "start_s": 87.245,
+      "duration_s": 3.205,
       "beat": "body",
       "image": "scenes/L27.png",
       "placeholder": null,
@@ -7572,7 +7602,7 @@
     {
       "id": "L28",
       "start_s": 90.45,
-      "duration_s": 6.155,
+      "duration_s": 6.345,
       "beat": "body",
       "image": "scenes/L28.png",
       "placeholder": null,
@@ -7589,8 +7619,8 @@
     },
     {
       "id": "L29",
-      "start_s": 96.605,
-      "duration_s": 2.594,
+      "start_s": 96.795,
+      "duration_s": 2.404,
       "beat": "body",
       "image": "scenes/L29.png",
       "placeholder": null,
@@ -7608,7 +7638,7 @@
     {
       "id": "L30",
       "start_s": 99.199,
-      "duration_s": 4.091,
+      "duration_s": 4.268,
       "beat": "body",
       "image": "scenes/L30.png",
       "placeholder": null,
@@ -7625,8 +7655,8 @@
     },
     {
       "id": "L31",
-      "start_s": 103.29,
-      "duration_s": 5.05,
+      "start_s": 103.467,
+      "duration_s": 4.873,
       "beat": "mid-arm",
       "image": null,
       "placeholder": {
@@ -7675,7 +7705,7 @@
     {
       "id": "L32",
       "start_s": 108.34,
-      "duration_s": 4.61,
+      "duration_s": 4.765,
       "beat": "body",
       "image": "scenes/L32.png",
       "placeholder": null,
@@ -7692,8 +7722,8 @@
     },
     {
       "id": "L33",
-      "start_s": 112.95,
-      "duration_s": 3.107,
+      "start_s": 113.105,
+      "duration_s": 2.952,
       "beat": "body",
       "image": "scenes/L33.png",
       "placeholder": null,
@@ -7711,7 +7741,7 @@
     {
       "id": "L34",
       "start_s": 116.057,
-      "duration_s": 3.46,
+      "duration_s": 3.868,
       "beat": "body",
       "image": "scenes/L34.png",
       "placeholder": null,
@@ -7728,8 +7758,8 @@
     },
     {
       "id": "L35",
-      "start_s": 119.517,
-      "duration_s": 5.275,
+      "start_s": 119.925,
+      "duration_s": 5.372,
       "beat": "body",
       "image": "scenes/L35.png",
       "placeholder": null,
@@ -7746,8 +7776,8 @@
     },
     {
       "id": "L36",
-      "start_s": 124.792,
-      "duration_s": 6.448,
+      "start_s": 125.297,
+      "duration_s": 6.216,
       "beat": "body",
       "image": "scenes/L36.png",
       "placeholder": null,
@@ -7764,8 +7794,8 @@
     },
     {
       "id": "L37",
-      "start_s": 131.24,
-      "duration_s": 6.533,
+      "start_s": 131.513,
+      "duration_s": 6.26,
       "beat": "body",
       "image": "scenes/L37.png",
       "placeholder": null,
@@ -7783,7 +7813,7 @@
     {
       "id": "L38",
       "start_s": 137.773,
-      "duration_s": 5.757,
+      "duration_s": 5.882,
       "beat": "body",
       "image": "scenes/L38.png",
       "placeholder": null,
@@ -7800,8 +7830,8 @@
     },
     {
       "id": "L39",
-      "start_s": 143.53,
-      "duration_s": 4.038,
+      "start_s": 143.655,
+      "duration_s": 4.32,
       "beat": "body",
       "image": "scenes/L39.png",
       "placeholder": null,
@@ -7818,8 +7848,8 @@
     },
     {
       "id": "L40",
-      "start_s": 147.568,
-      "duration_s": 2.47,
+      "start_s": 147.975,
+      "duration_s": 2.073,
       "beat": "body",
       "image": "scenes/L40.png",
       "placeholder": null,
@@ -7836,8 +7866,8 @@
     },
     {
       "id": "L41",
-      "start_s": 150.038,
-      "duration_s": 8.08,
+      "start_s": 150.048,
+      "duration_s": 8.07,
       "beat": "body",
       "image": "scenes/L41.png",
       "placeholder": null,
@@ -7855,7 +7885,7 @@
     {
       "id": "L42",
       "start_s": 158.118,
-      "duration_s": 5.424,
+      "duration_s": 5.526,
       "beat": "body",
       "image": "scenes/L42.png",
       "placeholder": null,
@@ -7872,8 +7902,8 @@
     },
     {
       "id": "L43",
-      "start_s": 163.542,
-      "duration_s": 5.093,
+      "start_s": 163.644,
+      "duration_s": 5.382,
       "beat": "body",
       "image": "scenes/L43.png",
       "placeholder": null,
@@ -7890,8 +7920,8 @@
     },
     {
       "id": "L44",
-      "start_s": 168.635,
-      "duration_s": 10.355,
+      "start_s": 169.026,
+      "duration_s": 10.11,
       "beat": "body",
       "image": null,
       "placeholder": {
@@ -7928,8 +7958,8 @@
     },
     {
       "id": "L45",
-      "start_s": 178.99,
-      "duration_s": 5.62,
+      "start_s": 179.136,
+      "duration_s": 5.611,
       "beat": "body",
       "image": "scenes/L45.png",
       "placeholder": null,
@@ -7946,8 +7976,8 @@
     },
     {
       "id": "L46",
-      "start_s": 184.61,
-      "duration_s": 8.195,
+      "start_s": 184.747,
+      "duration_s": 8.418,
       "beat": "body",
       "image": "scenes/L46.png",
       "placeholder": null,
@@ -7964,8 +7994,8 @@
     },
     {
       "id": "L47",
-      "start_s": 192.805,
-      "duration_s": 5.2,
+      "start_s": 193.165,
+      "duration_s": 5.258,
       "beat": "body",
       "image": "scenes/L47.png",
       "placeholder": null,
@@ -7982,8 +8012,8 @@
     },
     {
       "id": "L48",
-      "start_s": 198.005,
-      "duration_s": 12.94,
+      "start_s": 198.423,
+      "duration_s": 12.522,
       "beat": "body",
       "image": "scenes/L48.png",
       "placeholder": null,
@@ -8001,7 +8031,7 @@
     {
       "id": "L49",
       "start_s": 210.945,
-      "duration_s": 3.59,
+      "duration_s": 3.98,
       "beat": "body",
       "image": "scenes/L49.png",
       "placeholder": null,
@@ -8018,8 +8048,8 @@
     },
     {
       "id": "L50",
-      "start_s": 214.535,
-      "duration_s": 4.825,
+      "start_s": 214.925,
+      "duration_s": 4.663,
       "beat": "body",
       "image": "scenes/L50.png",
       "placeholder": null,
@@ -8036,8 +8066,8 @@
     },
     {
       "id": "L51",
-      "start_s": 219.36,
-      "duration_s": 8.7,
+      "start_s": 219.588,
+      "duration_s": 8.472,
       "beat": "body",
       "image": "scenes/L51.png",
       "placeholder": null,
@@ -8055,7 +8085,7 @@
     {
       "id": "L52",
       "start_s": 228.06,
-      "duration_s": 5.448,
+      "duration_s": 5.65,
       "beat": "body",
       "image": "scenes/L52.png",
       "placeholder": null,
@@ -8072,8 +8102,8 @@
     },
     {
       "id": "L53",
-      "start_s": 233.508,
-      "duration_s": 2.82,
+      "start_s": 233.71,
+      "duration_s": 2.843,
       "beat": "body",
       "image": "scenes/L53.png",
       "placeholder": null,
@@ -8090,8 +8120,8 @@
     },
     {
       "id": "L54",
-      "start_s": 236.328,
-      "duration_s": 5.637,
+      "start_s": 236.553,
+      "duration_s": 5.724,
       "beat": "body",
       "image": "scenes/L54.png",
       "placeholder": null,
@@ -8108,8 +8138,8 @@
     },
     {
       "id": "L55",
-      "start_s": 241.965,
-      "duration_s": 10.408,
+      "start_s": 242.277,
+      "duration_s": 10.508,
       "beat": "body",
       "image": "scenes/L55.png",
       "placeholder": null,
@@ -8126,8 +8156,8 @@
     },
     {
       "id": "L56",
-      "start_s": 252.373,
-      "duration_s": 5.152,
+      "start_s": 252.785,
+      "duration_s": 5.177,
       "beat": "body",
       "image": "scenes/L56.png",
       "placeholder": null,
@@ -8144,8 +8174,8 @@
     },
     {
       "id": "L57",
-      "start_s": 257.525,
-      "duration_s": 8.81,
+      "start_s": 257.962,
+      "duration_s": 8.373,
       "beat": "mid-arm",
       "image": "scenes/L57.png",
       "placeholder": null,
@@ -8163,7 +8193,7 @@
     {
       "id": "L58",
       "start_s": 266.335,
-      "duration_s": 3.7,
+      "duration_s": 4.068,
       "beat": "body",
       "image": "scenes/L58.png",
       "placeholder": null,
@@ -8180,8 +8210,8 @@
     },
     {
       "id": "L59",
-      "start_s": 270.035,
-      "duration_s": 8.054,
+      "start_s": 270.403,
+      "duration_s": 8.022,
       "beat": "body",
       "image": "scenes/L59.png",
       "placeholder": null,
@@ -8198,8 +8228,8 @@
     },
     {
       "id": "L60",
-      "start_s": 278.089,
-      "duration_s": 4.176,
+      "start_s": 278.425,
+      "duration_s": 3.84,
       "beat": "body",
       "image": "scenes/L60.png",
       "placeholder": null,
@@ -8235,7 +8265,7 @@
     {
       "id": "L62",
       "start_s": 290.305,
-      "duration_s": 5.269,
+      "duration_s": 5.302,
       "beat": "body",
       "image": "scenes/L62.png",
       "placeholder": null,
@@ -8252,8 +8282,8 @@
     },
     {
       "id": "L63",
-      "start_s": 295.574,
-      "duration_s": 3.154,
+      "start_s": 295.607,
+      "duration_s": 3.458,
       "beat": "body",
       "image": "scenes/L63.png",
       "placeholder": null,
@@ -8270,8 +8300,8 @@
     },
     {
       "id": "L64",
-      "start_s": 298.728,
-      "duration_s": 9.86,
+      "start_s": 299.065,
+      "duration_s": 9.888,
       "beat": "body",
       "image": "scenes/L64.png",
       "placeholder": null,
@@ -8288,8 +8318,8 @@
     },
     {
       "id": "L65",
-      "start_s": 308.588,
-      "duration_s": 3.342,
+      "start_s": 308.953,
+      "duration_s": 3.192,
       "beat": "body",
       "image": "scenes/L65.png",
       "placeholder": null,
@@ -8306,8 +8336,8 @@
     },
     {
       "id": "L66",
-      "start_s": 311.93,
-      "duration_s": 8.815,
+      "start_s": 312.145,
+      "duration_s": 8.724,
       "beat": "body",
       "image": "scenes/L66.png",
       "placeholder": null,
@@ -8324,8 +8354,8 @@
     },
     {
       "id": "L67",
-      "start_s": 320.745,
-      "duration_s": 2.232,
+      "start_s": 320.869,
+      "duration_s": 2.668,
       "beat": "body",
       "image": "scenes/L67.png",
       "placeholder": null,
@@ -8342,8 +8372,8 @@
     },
     {
       "id": "L68",
-      "start_s": 322.977,
-      "duration_s": 7.161,
+      "start_s": 323.537,
+      "duration_s": 7.254,
       "beat": "body",
       "image": "scenes/L68.png",
       "placeholder": null,
@@ -8360,8 +8390,8 @@
     },
     {
       "id": "L69",
-      "start_s": 330.138,
-      "duration_s": 4.477,
+      "start_s": 330.791,
+      "duration_s": 4.329,
       "beat": "body",
       "image": "scenes/L69.png",
       "placeholder": null,
@@ -8378,8 +8408,8 @@
     },
     {
       "id": "L70",
-      "start_s": 334.615,
-      "duration_s": 9.433,
+      "start_s": 335.12,
+      "duration_s": 9.57,
       "beat": "body",
       "image": "scenes/L70.png",
       "placeholder": null,
@@ -8396,8 +8426,8 @@
     },
     {
       "id": "L71",
-      "start_s": 344.048,
-      "duration_s": 11.187,
+      "start_s": 344.69,
+      "duration_s": 10.545,
       "beat": "body",
       "image": "scenes/L71.png",
       "placeholder": null,
@@ -8415,7 +8445,7 @@
     {
       "id": "L72",
       "start_s": 355.235,
-      "duration_s": 3.928,
+      "duration_s": 4.325,
       "beat": "body",
       "image": "scenes/L72.png",
       "placeholder": null,
@@ -8432,8 +8462,8 @@
     },
     {
       "id": "L73",
-      "start_s": 359.163,
-      "duration_s": 5.139,
+      "start_s": 359.56,
+      "duration_s": 5.241,
       "beat": "body",
       "image": "scenes/L73.png",
       "placeholder": null,
@@ -8450,8 +8480,8 @@
     },
     {
       "id": "L74",
-      "start_s": 364.302,
-      "duration_s": 13.093,
+      "start_s": 364.801,
+      "duration_s": 13.014,
       "beat": "body",
       "image": "scenes/L74.png",
       "placeholder": null,
@@ -8468,8 +8498,8 @@
     },
     {
       "id": "L75",
-      "start_s": 377.395,
-      "duration_s": 3.265,
+      "start_s": 377.815,
+      "duration_s": 3.26,
       "beat": "body",
       "image": "scenes/L75.png",
       "placeholder": null,
@@ -8486,8 +8516,8 @@
     },
     {
       "id": "L76",
-      "start_s": 380.66,
-      "duration_s": 3.17,
+      "start_s": 381.075,
+      "duration_s": 3.259,
       "beat": "climax",
       "image": "scenes/L76.png",
       "placeholder": null,
@@ -8504,8 +8534,8 @@
     },
     {
       "id": "L77",
-      "start_s": 383.83,
-      "duration_s": 7.4,
+      "start_s": 384.334,
+      "duration_s": 7.301,
       "beat": "climax",
       "image": "scenes/L77.png",
       "placeholder": null,
@@ -8522,8 +8552,8 @@
     },
     {
       "id": "L78",
-      "start_s": 391.23,
-      "duration_s": 5.705,
+      "start_s": 391.635,
+      "duration_s": 5.825,
       "beat": "climax",
       "image": "scenes/L78.png",
       "placeholder": null,
@@ -8540,8 +8570,8 @@
     },
     {
       "id": "L79",
-      "start_s": 396.935,
-      "duration_s": 3.875,
+      "start_s": 397.46,
+      "duration_s": 3.89,
       "beat": "climax",
       "image": "scenes/L79.png",
       "placeholder": null,
@@ -8558,8 +8588,8 @@
     },
     {
       "id": "L80",
-      "start_s": 400.81,
-      "duration_s": 4.24,
+      "start_s": 401.35,
+      "duration_s": 4.295,
       "beat": "climax",
       "image": "scenes/L80.png",
       "placeholder": null,
@@ -8576,8 +8606,8 @@
     },
     {
       "id": "L81",
-      "start_s": 405.05,
-      "duration_s": 7.216,
+      "start_s": 405.645,
+      "duration_s": 6.621,
       "beat": "climax",
       "image": "scenes/L81.png",
       "placeholder": null,
@@ -8595,7 +8625,7 @@
     {
       "id": "L82",
       "start_s": 412.266,
-      "duration_s": 5.837,
+      "duration_s": 6.431,
       "beat": "climax",
       "image": "scenes/L82.png",
       "placeholder": null,
@@ -8612,8 +8642,8 @@
     },
     {
       "id": "L83",
-      "start_s": 418.103,
-      "duration_s": 2.342,
+      "start_s": 418.697,
+      "duration_s": 1.748,
       "beat": "climax",
       "image": "scenes/L83.png",
       "placeholder": null,
@@ -8631,7 +8661,7 @@
     {
       "id": "L84",
       "start_s": 420.445,
-      "duration_s": 4.293,
+      "duration_s": 4.689,
       "beat": "body",
       "image": "scenes/L84.png",
       "placeholder": null,
@@ -8648,8 +8678,8 @@
     },
     {
       "id": "L85",
-      "start_s": 424.738,
-      "duration_s": 8.737,
+      "start_s": 425.134,
+      "duration_s": 8.701,
       "beat": "body",
       "image": "scenes/L85.png",
       "placeholder": null,
@@ -8666,8 +8696,8 @@
     },
     {
       "id": "L86",
-      "start_s": 433.475,
-      "duration_s": 11.62,
+      "start_s": 433.835,
+      "duration_s": 11.755,
       "beat": "body",
       "image": "scenes/L86.png",
       "placeholder": null,
@@ -8684,8 +8714,8 @@
     },
     {
       "id": "L87",
-      "start_s": 445.095,
-      "duration_s": 3.883,
+      "start_s": 445.59,
+      "duration_s": 3.748,
       "beat": "body",
       "image": "scenes/L87.png",
       "placeholder": null,
@@ -8702,8 +8732,8 @@
     },
     {
       "id": "L88",
-      "start_s": 448.978,
-      "duration_s": 4.907,
+      "start_s": 449.338,
+      "duration_s": 5.237,
       "beat": "body",
       "image": "scenes/L88.png",
       "placeholder": null,
@@ -8720,8 +8750,8 @@
     },
     {
       "id": "L89",
-      "start_s": 453.885,
-      "duration_s": 6.38,
+      "start_s": 454.575,
+      "duration_s": 5.985,
       "beat": "body",
       "image": "scenes/L89.png",
       "placeholder": null,
@@ -8738,8 +8768,8 @@
     },
     {
       "id": "L90",
-      "start_s": 460.265,
-      "duration_s": 14.296,
+      "start_s": 460.56,
+      "duration_s": 14.408,
       "beat": "body",
       "image": null,
       "placeholder": {
@@ -8776,8 +8806,8 @@
     },
     {
       "id": "L91",
-      "start_s": 474.561,
-      "duration_s": 4.799,
+      "start_s": 474.968,
+      "duration_s": 4.714,
       "beat": "body",
       "image": "scenes/L91.png",
       "placeholder": null,
@@ -8794,8 +8824,8 @@
     },
     {
       "id": "L92",
-      "start_s": 479.36,
-      "duration_s": 3.195,
+      "start_s": 479.682,
+      "duration_s": 3.227,
       "beat": "body",
       "image": "scenes/L92.png",
       "placeholder": null,
@@ -8812,8 +8842,8 @@
     },
     {
       "id": "L93",
-      "start_s": 482.555,
-      "duration_s": 2.461,
+      "start_s": 482.909,
+      "duration_s": 2.361,
       "beat": "body",
       "image": "scenes/L93.png",
       "placeholder": null,
@@ -8830,8 +8860,8 @@
     },
     {
       "id": "L94",
-      "start_s": 485.016,
-      "duration_s": 9.079,
+      "start_s": 485.27,
+      "duration_s": 9.25,
       "beat": "body",
       "image": "scenes/L94.png",
       "placeholder": null,
@@ -8848,8 +8878,8 @@
     },
     {
       "id": "L95",
-      "start_s": 494.095,
-      "duration_s": 5.908,
+      "start_s": 494.52,
+      "duration_s": 5.87,
       "beat": "body",
       "image": "scenes/L95.png",
       "placeholder": null,
@@ -8866,8 +8896,8 @@
     },
     {
       "id": "L96",
-      "start_s": 500.003,
-      "duration_s": 5.129,
+      "start_s": 500.39,
+      "duration_s": 5.066,
       "beat": "body",
       "image": "scenes/L96.png",
       "placeholder": null,
@@ -8884,8 +8914,8 @@
     },
     {
       "id": "L97",
-      "start_s": 505.132,
-      "duration_s": 5.41,
+      "start_s": 505.456,
+      "duration_s": 5.428,
       "beat": "body",
       "image": "scenes/L97.png",
       "placeholder": null,
@@ -8902,8 +8932,8 @@
     },
     {
       "id": "L98",
-      "start_s": 510.542,
-      "duration_s": 4.213,
+      "start_s": 510.884,
+      "duration_s": 3.871,
       "beat": "body",
       "image": "scenes/L98.png",
       "placeholder": null,
@@ -8921,7 +8951,7 @@
     {
       "id": "L99",
       "start_s": 514.755,
-      "duration_s": 5.655,
+      "duration_s": 6.05,
       "beat": "body",
       "image": null,
       "placeholder": {
@@ -8958,8 +8988,8 @@
     },
     {
       "id": "L100",
-      "start_s": 520.41,
-      "duration_s": 2.322,
+      "start_s": 520.805,
+      "duration_s": 2.202,
       "beat": "body",
       "image": "scenes/L100.png",
       "placeholder": null,
@@ -8976,8 +9006,8 @@
     },
     {
       "id": "L101",
-      "start_s": 522.732,
-      "duration_s": 11.373,
+      "start_s": 523.007,
+      "duration_s": 11.551,
       "beat": "body",
       "image": null,
       "placeholder": {
@@ -9014,8 +9044,8 @@
     },
     {
       "id": "L102",
-      "start_s": 534.105,
-      "duration_s": 3.46,
+      "start_s": 534.558,
+      "duration_s": 3.507,
       "beat": "body",
       "image": "scenes/L102.png",
       "placeholder": null,
@@ -9032,8 +9062,8 @@
     },
     {
       "id": "L103",
-      "start_s": 537.565,
-      "duration_s": 4.71,
+      "start_s": 538.065,
+      "duration_s": 4.695,
       "beat": "body",
       "image": "scenes/L103.png",
       "placeholder": null,
@@ -9050,8 +9080,8 @@
     },
     {
       "id": "L104",
-      "start_s": 542.275,
-      "duration_s": 8.505,
+      "start_s": 542.76,
+      "duration_s": 8.488,
       "beat": "body",
       "image": "scenes/L104.png",
       "placeholder": null,
@@ -9068,8 +9098,8 @@
     },
     {
       "id": "L105",
-      "start_s": 550.78,
-      "duration_s": 11.047,
+      "start_s": 551.248,
+      "duration_s": 10.579,
       "beat": "body",
       "image": "scenes/L105.png",
       "placeholder": null,
@@ -9087,7 +9117,7 @@
     {
       "id": "L106",
       "start_s": 561.827,
-      "duration_s": 5.838,
+      "duration_s": 6.296,
       "beat": "body",
       "image": "scenes/L106.png",
       "placeholder": null,
@@ -9104,8 +9134,8 @@
     },
     {
       "id": "L107",
-      "start_s": 567.665,
-      "duration_s": 7.79,
+      "start_s": 568.123,
+      "duration_s": 7.807,
       "beat": "withheld-peak",
       "image": "scenes/L107.png",
       "placeholder": null,
@@ -9122,8 +9152,8 @@
     },
     {
       "id": "L108",
-      "start_s": 575.455,
-      "duration_s": 1.753,
+      "start_s": 575.93,
+      "duration_s": 1.57,
       "beat": "withheld-peak",
       "image": "scenes/L108.png",
       "placeholder": null,
@@ -9140,8 +9170,8 @@
     },
     {
       "id": "L109",
-      "start_s": 577.208,
-      "duration_s": 5.657,
+      "start_s": 577.5,
+      "duration_s": 5.365,
       "beat": "withheld-peak",
       "image": "scenes/L109.png",
       "placeholder": null,
@@ -9159,7 +9189,7 @@
     {
       "id": "L110",
       "start_s": 582.865,
-      "duration_s": 2.881,
+      "duration_s": 3.353,
       "beat": "withheld-peak",
       "image": "scenes/L110.png",
       "placeholder": null,
@@ -9176,8 +9206,8 @@
     },
     {
       "id": "L111",
-      "start_s": 585.746,
-      "duration_s": 12.729,
+      "start_s": 586.218,
+      "duration_s": 12.816,
       "beat": "withheld-peak",
       "image": "scenes/L111.png",
       "placeholder": null,
@@ -9194,8 +9224,8 @@
     },
     {
       "id": "L112",
-      "start_s": 598.475,
-      "duration_s": 6.06,
+      "start_s": 599.034,
+      "duration_s": 5.891,
       "beat": "withheld-peak",
       "image": "scenes/L112.png",
       "placeholder": null,
@@ -9212,8 +9242,8 @@
     },
     {
       "id": "L113",
-      "start_s": 604.535,
-      "duration_s": 3.795,
+      "start_s": 604.925,
+      "duration_s": 3.898,
       "beat": "close",
       "image": "scenes/L113.png",
       "placeholder": null,
@@ -9230,8 +9260,8 @@
     },
     {
       "id": "L114",
-      "start_s": 608.33,
-      "duration_s": 6.208,
+      "start_s": 608.823,
+      "duration_s": 5.965,
       "beat": "close",
       "image": "scenes/L114.png",
       "placeholder": null,
@@ -9248,8 +9278,8 @@
     },
     {
       "id": "L115",
-      "start_s": 614.538,
-      "duration_s": 5.634,
+      "start_s": 614.788,
+      "duration_s": 5.875,
       "beat": "close",
       "image": "scenes/L115.png",
       "placeholder": null,
@@ -9266,8 +9296,8 @@
     },
     {
       "id": "L116",
-      "start_s": 620.172,
-      "duration_s": 3.013,
+      "start_s": 620.663,
+      "duration_s": 2.522,
       "beat": "close",
       "image": "scenes/L116.png",
       "placeholder": null,
@@ -9285,7 +9315,7 @@
     {
       "id": "L117",
       "start_s": 623.185,
-      "duration_s": 5.245,
+      "duration_s": 5.832,
       "beat": "close",
       "image": "scenes/L117.png",
       "placeholder": null,
@@ -9302,8 +9332,8 @@
     },
     {
       "id": "L118",
-      "start_s": 628.43,
-      "duration_s": 4.69,
+      "start_s": 629.017,
+      "duration_s": 4.425,
       "beat": "close",
       "image": "scenes/L118.png",
       "placeholder": null,
@@ -9320,8 +9350,8 @@
     },
     {
       "id": "L119",
-      "start_s": 633.12,
-      "duration_s": 3.94,
+      "start_s": 633.442,
+      "duration_s": 3.618,
       "beat": "close",
       "image": "scenes/L119.png",
       "placeholder": null,
@@ -9882,469 +9912,469 @@
       "final_word": "for.",
       "final_s": 8.3,
       "next_word": "Real",
-      "next_s": 9.047,
+      "next_s": 9.255,
       "target_s": 0.65
     },
     {
       "final_word": "it.",
       "final_s": 14.748,
       "next_word": "And",
-      "next_s": 15.275,
+      "next_s": 15.528,
       "target_s": 0.65
     },
     {
       "final_word": "one.",
       "final_s": 21.995,
       "next_word": "What",
-      "next_s": 22.605,
+      "next_s": 22.925,
       "target_s": 0.65
     },
     {
       "final_word": "great.",
       "final_s": 27.578,
       "next_word": "The",
-      "next_s": 28.465,
+      "next_s": 28.788,
       "target_s": 0.65
     },
     {
       "final_word": "Fargo.",
       "final_s": 29.965,
       "next_word": "And",
-      "next_s": 30.865,
+      "next_s": 31.065,
       "target_s": 0.65
     },
     {
       "final_word": "cross-selling.",
       "final_s": 35.825,
       "next_word": "Cross-selling",
-      "next_s": 37.297,
+      "next_s": 37.365,
       "target_s": 0.65
     },
     {
       "final_word": "insurance.",
       "final_s": 47.514,
       "next_word": "More",
-      "next_s": 48.551,
+      "next_s": 48.864,
       "target_s": 0.65
     },
     {
       "final_word": "person.",
       "final_s": 49.644,
       "next_word": "Wells",
-      "next_s": 50.638,
+      "next_s": 50.724,
       "target_s": 0.65
     },
     {
       "final_word": "had.",
       "final_s": 55.885,
       "next_word": "They",
-      "next_s": 56.58,
+      "next_s": 56.885,
       "target_s": 0.65
     },
     {
       "final_word": "run.",
       "final_s": 60.1,
       "next_word": "And",
-      "next_s": 60.79,
+      "next_s": 61.08,
       "target_s": 0.65
     },
     {
       "final_word": "it.",
       "final_s": 62.077,
       "next_word": "The",
-      "next_s": 63.055,
+      "next_s": 63.177,
       "target_s": 0.65
     },
     {
       "final_word": "eight.",
       "final_s": 63.882,
       "next_word": "Eight",
-      "next_s": 64.807,
+      "next_s": 64.942,
       "target_s": 0.65
     },
     {
       "final_word": "household.",
       "final_s": 66.136,
       "next_word": "Back",
-      "next_s": 67.051,
+      "next_s": 67.341,
       "target_s": 0.65
     },
     {
       "final_word": "Gr-eight.",
       "final_s": 73.062,
       "next_word": "And",
-      "next_s": 74.2,
+      "next_s": 74.592,
       "target_s": 0.65
     },
     {
       "final_word": "great.",
       "final_s": 79.02,
       "next_word": "That",
-      "next_s": 80.491,
+      "next_s": 80.57,
       "target_s": 0.65
     },
     {
       "final_word": "reason.",
       "final_s": 81.092,
       "next_word": "A",
-      "next_s": 81.955,
+      "next_s": 82.192,
       "target_s": 0.65
     },
     {
       "final_word": "rhyme.",
       "final_s": 82.235,
       "next_word": "And",
-      "next_s": 83.025,
+      "next_s": 83.175,
       "target_s": 0.45
     },
     {
       "final_word": "scandal.",
       "final_s": 86.065,
       "next_word": "It",
-      "next_s": 87.07,
+      "next_s": 87.245,
       "target_s": 0.65
     },
     {
       "final_word": "Fargo.",
       "final_s": 95.71,
       "next_word": "But",
-      "next_s": 96.605,
+      "next_s": 96.795,
       "target_s": 0.65
     },
     {
       "final_word": "number.",
       "final_s": 102.422,
       "next_word": "And",
-      "next_s": 103.29,
+      "next_s": 103.467,
       "target_s": 0.65
     },
     {
       "final_word": "day.",
       "final_s": 112.14,
       "next_word": "A",
-      "next_s": 112.95,
+      "next_s": 113.105,
       "target_s": 0.65
     },
     {
       "final_word": "for.",
       "final_s": 119.01,
       "next_word": "To",
-      "next_s": 119.517,
+      "next_s": 119.925,
       "target_s": 0.65
     },
     {
       "final_word": "it.",
       "final_s": 124.477,
       "next_word": "They'd",
-      "next_s": 124.792,
+      "next_s": 125.297,
       "target_s": 0.65
     },
     {
       "final_word": "it.",
       "final_s": 130.733,
       "next_word": "And",
-      "next_s": 131.24,
+      "next_s": 131.513,
       "target_s": 0.65
     },
     {
       "final_word": "see.",
       "final_s": 141.8,
       "next_word": "The",
-      "next_s": 143.53,
+      "next_s": 143.655,
       "target_s": 0.65
     },
     {
       "final_word": "bank.",
       "final_s": 145.464,
       "next_word": "Pinning.",
-      "next_s": 146.355,
+      "next_s": 146.474,
       "target_s": 0.65
     },
     {
       "final_word": "Pinning.",
-      "final_s": 146.355,
+      "final_s": 146.474,
       "next_word": "It",
-      "next_s": 147.568,
+      "next_s": 147.975,
       "target_s": 0.45
     },
     {
       "final_word": "accounts.",
       "final_s": 148.848,
       "next_word": "Employees",
-      "next_s": 150.038,
+      "next_s": 150.048,
       "target_s": 0.65
     },
     {
       "final_word": "scores.",
       "final_s": 162.459,
       "next_word": "They",
-      "next_s": 163.542,
+      "next_s": 163.644,
       "target_s": 0.65
     },
     {
       "final_word": "insurance.",
       "final_s": 167.726,
       "next_word": "And",
-      "next_s": 168.635,
+      "next_s": 169.026,
       "target_s": 0.65
     },
     {
       "final_word": "permission.",
       "final_s": 177.906,
       "next_word": "The",
-      "next_s": 178.99,
+      "next_s": 179.136,
       "target_s": 0.65
     },
     {
       "final_word": "rumor.",
       "final_s": 182.283,
       "next_word": "The",
-      "next_s": 183.02,
+      "next_s": 183.303,
       "target_s": 0.65
     },
     {
       "final_word": "it.",
       "final_s": 183.947,
       "next_word": "The",
-      "next_s": 184.61,
+      "next_s": 184.747,
       "target_s": 0.65
     },
     {
       "final_word": "2015.",
       "final_s": 191.41,
       "next_word": "It",
-      "next_s": 192.805,
+      "next_s": 193.165,
       "target_s": 0.65
     },
     {
       "final_word": "authorized.",
       "final_s": 197.023,
       "next_word": "Then",
-      "next_s": 198.005,
+      "next_s": 198.423,
       "target_s": 0.65
     },
     {
       "final_word": "million.",
       "final_s": 213.835,
       "next_word": "Now,",
-      "next_s": 214.535,
+      "next_s": 214.925,
       "target_s": 0.65
     },
     {
       "final_word": "doubling.",
       "final_s": 217.326,
       "next_word": "It",
-      "next_s": 218.287,
+      "next_s": 218.691,
       "target_s": 0.65
     },
     {
       "final_word": "didn't.",
       "final_s": 218.708,
       "next_word": "The",
-      "next_s": 219.36,
+      "next_s": 219.588,
       "target_s": 0.45
     },
     {
       "final_word": "more.",
       "final_s": 232.26,
       "next_word": "Same",
-      "next_s": 233.508,
+      "next_s": 233.71,
       "target_s": 0.65
     },
     {
       "final_word": "fraud.",
       "final_s": 233.927,
       "next_word": "They'd",
-      "next_s": 234.499,
+      "next_s": 234.867,
       "target_s": 0.45
     },
     {
       "final_word": "it.",
       "final_s": 235.768,
       "next_word": "Of",
-      "next_s": 236.328,
+      "next_s": 236.553,
       "target_s": 0.65
     },
     {
       "final_word": "fees.",
       "final_s": 241.027,
       "next_word": "And",
-      "next_s": 241.965,
+      "next_s": 242.277,
       "target_s": 0.65
     },
     {
       "final_word": "fakes.",
       "final_s": 251.485,
       "next_word": "Somebody",
-      "next_s": 252.373,
+      "next_s": 252.785,
       "target_s": 0.65
     },
     {
       "final_word": "employees.",
       "final_s": 256.027,
       "next_word": "Between",
-      "next_s": 257.525,
+      "next_s": 257.962,
       "target_s": 0.65
     },
     {
       "final_word": "investigation.",
       "final_s": 268.858,
       "next_word": "And",
-      "next_s": 270.035,
+      "next_s": 270.403,
       "target_s": 0.65
     },
     {
       "final_word": "counter.",
       "final_s": 272.935,
       "next_word": "Tellers",
-      "next_s": 273.966,
+      "next_s": 274.11,
       "target_s": 0.65
     },
     {
       "final_word": "bankers.",
       "final_s": 275.15,
       "next_word": "Not",
-      "next_s": 276.37,
+      "next_s": 276.495,
       "target_s": 0.65
     },
     {
       "final_word": "upstairs.",
       "final_s": 276.98,
       "next_word": "When",
-      "next_s": 278.089,
+      "next_s": 278.425,
       "target_s": 0.65
     },
     {
       "final_word": "business.",
       "final_s": 293.207,
       "next_word": "So",
-      "next_s": 295.574,
+      "next_s": 295.607,
       "target_s": 0.65
     },
     {
       "final_word": "headquarters.",
       "final_s": 297.56,
       "next_word": "Year",
-      "next_s": 298.728,
+      "next_s": 299.065,
       "target_s": 0.65
     },
     {
       "final_word": "climbing.",
       "final_s": 307.773,
       "next_word": "Nobody",
-      "next_s": 308.588,
+      "next_s": 308.953,
       "target_s": 0.65
     },
     {
       "final_word": "fraud.",
       "final_s": 310.965,
       "next_word": "It",
-      "next_s": 311.93,
+      "next_s": 312.145,
       "target_s": 0.65
     },
     {
       "final_word": "caught.",
       "final_s": 319.884,
       "next_word": "Some",
-      "next_s": 320.745,
+      "next_s": 320.869,
       "target_s": 0.65
     },
     {
       "final_word": "along.",
       "final_s": 322.412,
       "next_word": "They",
-      "next_s": 322.977,
+      "next_s": 323.537,
       "target_s": 0.65
     },
     {
       "final_word": "happening.",
       "final_s": 328.761,
       "next_word": "In",
-      "next_s": 330.138,
+      "next_s": 330.791,
       "target_s": 0.65
     },
     {
       "final_word": "fired.",
       "final_s": 333.925,
       "next_word": "And",
-      "next_s": 334.615,
+      "next_s": 335.12,
       "target_s": 0.65
     },
     {
       "final_word": "else.",
       "final_s": 343.275,
       "next_word": "In",
-      "next_s": 344.048,
+      "next_s": 344.69,
       "target_s": 0.65
     },
     {
       "final_word": "dollars.",
       "final_s": 358.155,
       "next_word": "At",
-      "next_s": 359.163,
+      "next_s": 359.56,
       "target_s": 0.65
     },
     {
       "final_word": "whistleblower.",
       "final_s": 363.321,
       "next_word": "It",
-      "next_s": 364.302,
+      "next_s": 364.801,
       "target_s": 0.65
     },
     {
       "final_word": "dollars.",
       "final_s": 376.425,
       "next_word": "The",
-      "next_s": 377.395,
+      "next_s": 377.815,
       "target_s": 0.65
     },
     {
       "final_word": "2016.",
       "final_s": 379.235,
       "next_word": "On",
-      "next_s": 380.66,
+      "next_s": 381.075,
       "target_s": 0.65
     },
     {
       "final_word": "together.",
       "final_s": 383.104,
       "next_word": "The",
-      "next_s": 383.83,
+      "next_s": 384.334,
       "target_s": 0.65
     },
     {
       "final_word": "out.",
       "final_s": 390.65,
       "next_word": "The",
-      "next_s": 391.23,
+      "next_s": 391.635,
       "target_s": 0.65
     },
     {
       "final_word": "million.",
       "final_s": 396.24,
       "next_word": "The",
-      "next_s": 396.935,
+      "next_s": 397.46,
       "target_s": 0.65
     },
     {
       "final_word": "50.",
       "final_s": 399.615,
       "next_word": "About",
-      "next_s": 400.81,
+      "next_s": 401.35,
       "target_s": 0.65
     },
     {
       "final_word": "day.",
       "final_s": 404.53,
       "next_word": "Later",
-      "next_s": 405.05,
+      "next_s": 405.645,
       "target_s": 0.65
     },
     {
       "final_word": "great.",
       "final_s": 417.477,
       "next_word": "He",
-      "next_s": 418.103,
+      "next_s": 418.697,
       "target_s": 0.65
     },
     {
@@ -10358,238 +10388,238 @@
       "final_word": "before.",
       "final_s": 423.954,
       "next_word": "On",
-      "next_s": 424.738,
+      "next_s": 425.134,
       "target_s": 0.65
     },
     {
       "final_word": "get.",
       "final_s": 432.285,
       "next_word": "It",
-      "next_s": 433.475,
+      "next_s": 433.835,
       "target_s": 0.65
     },
     {
       "final_word": "run.",
       "final_s": 444.535,
       "next_word": "The",
-      "next_s": 445.095,
+      "next_s": 445.59,
       "target_s": 0.65
     },
     {
       "final_word": "that.",
       "final_s": 448.323,
       "next_word": "It",
-      "next_s": 448.978,
+      "next_s": 449.338,
       "target_s": 0.65
     },
     {
       "final_word": "2025.",
       "final_s": 452.765,
       "next_word": "In",
-      "next_s": 453.885,
+      "next_s": 454.575,
       "target_s": 0.65
     },
     {
       "final_word": "dollars.",
       "final_s": 459.165,
       "next_word": "It",
-      "next_s": 460.265,
+      "next_s": 460.56,
       "target_s": 0.65
     },
     {
       "final_word": "information.",
       "final_s": 473.518,
       "next_word": "Five",
-      "next_s": 474.561,
+      "next_s": 474.968,
       "target_s": 0.65
     },
     {
       "final_word": "investors.",
       "final_s": 478.137,
       "next_word": "So",
-      "next_s": 479.36,
+      "next_s": 479.682,
       "target_s": 0.65
     },
     {
       "final_word": "number?",
       "final_s": 481.269,
       "next_word": "For",
-      "next_s": 482.555,
+      "next_s": 482.909,
       "target_s": 0.65
     },
     {
       "final_word": "nothing.",
       "final_s": 484.055,
       "next_word": "Carrie",
-      "next_s": 485.016,
+      "next_s": 485.27,
       "target_s": 0.65
     },
     {
       "final_word": "2016.",
       "final_s": 492.89,
       "next_word": "She",
-      "next_s": 494.095,
+      "next_s": 494.52,
       "target_s": 0.65
     },
     {
       "final_word": "out.",
       "final_s": 499.375,
       "next_word": "Both",
-      "next_s": 500.003,
+      "next_s": 500.39,
       "target_s": 0.65
     },
     {
       "final_word": "intact.",
       "final_s": 504.046,
       "next_word": "It",
-      "next_s": 505.132,
+      "next_s": 505.456,
       "target_s": 0.65
     },
     {
       "final_word": "back.",
       "final_s": 509.729,
       "next_word": "In",
-      "next_s": 510.542,
+      "next_s": 510.884,
       "target_s": 0.65
     },
     {
       "final_word": "fact.",
       "final_s": 519.635,
       "next_word": "And",
-      "next_s": 520.41,
+      "next_s": 520.805,
       "target_s": 0.65
     },
     {
       "final_word": "finished.",
       "final_s": 521.672,
       "next_word": "In",
-      "next_s": 522.732,
+      "next_s": 523.007,
       "target_s": 0.65
     },
     {
       "final_word": "that.",
       "final_s": 533.473,
       "next_word": "It",
-      "next_s": 534.105,
+      "next_s": 534.558,
       "target_s": 0.65
     },
     {
       "final_word": "all.",
       "final_s": 536.985,
       "next_word": "The",
-      "next_s": 537.565,
+      "next_s": 538.065,
       "target_s": 0.65
     },
     {
       "final_word": "million.",
       "final_s": 541.515,
       "next_word": "Tolstedt",
-      "next_s": 542.275,
+      "next_s": 542.76,
       "target_s": 0.65
     },
     {
       "final_word": "inflated.",
       "final_s": 549.948,
       "next_word": "The",
-      "next_s": 550.78,
+      "next_s": 551.248,
       "target_s": 0.65
     },
     {
       "final_word": "unauthorized.",
       "final_s": 566.428,
       "next_word": "And",
-      "next_s": 567.665,
+      "next_s": 568.123,
       "target_s": 0.65
     },
     {
       "final_word": "charged.",
       "final_s": 572.505,
       "next_word": "Carrie",
-      "next_s": 573.338,
+      "next_s": 573.865,
       "target_s": 0.65
     },
     {
       "final_word": "Tolstedt.",
       "final_s": 574.055,
       "next_word": "But",
-      "next_s": 575.455,
+      "next_s": 575.93,
       "target_s": 0.45
     },
     {
       "final_word": "fraud.",
       "final_s": 576.235,
       "next_word": "In",
-      "next_s": 577.208,
+      "next_s": 577.5,
       "target_s": 0.65
     },
     {
       "final_word": "it.",
       "final_s": 585.288,
       "next_word": "That",
-      "next_s": 585.746,
+      "next_s": 586.218,
       "target_s": 0.65
     },
     {
       "final_word": "service.",
       "final_s": 595.8,
       "next_word": "No",
-      "next_s": 596.802,
+      "next_s": 597.225,
       "target_s": 0.65
     },
     {
       "final_word": "prison.",
       "final_s": 597.244,
       "next_word": "The",
-      "next_s": 598.475,
+      "next_s": 599.034,
       "target_s": 0.45
     },
     {
       "final_word": "out.",
       "final_s": 603.915,
       "next_word": "So",
-      "next_s": 604.535,
+      "next_s": 604.925,
       "target_s": 0.65
     },
     {
       "final_word": "conviction.",
       "final_s": 607.313,
       "next_word": "And",
-      "next_s": 608.33,
+      "next_s": 608.823,
       "target_s": 0.65
     },
     {
       "final_word": "account.",
       "final_s": 610.52,
       "next_word": "It",
-      "next_s": 611.287,
+      "next_s": 611.725,
       "target_s": 0.65
     },
     {
       "final_word": "them.",
       "final_s": 613.708,
       "next_word": "Nobody",
-      "next_s": 614.538,
+      "next_s": 614.788,
       "target_s": 0.65
     },
     {
       "final_word": "it.",
       "final_s": 619.688,
       "next_word": "There",
-      "next_s": 620.172,
+      "next_s": 620.663,
       "target_s": 0.65
     },
     {
       "final_word": "great.",
       "final_s": 627.572,
       "next_word": "The",
-      "next_s": 628.43,
+      "next_s": 629.017,
       "target_s": 0.65
     },
     {
       "final_word": "jobs.",
       "final_s": 631.522,
       "next_word": "And",
-      "next_s": 633.12,
+      "next_s": 633.442,
       "target_s": 0.65
     }
   ]
