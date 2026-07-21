@@ -168,12 +168,27 @@ function record(checks: Check[], label: string, ok: boolean, detail = ''): void 
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}${detail ? ` — ${detail}` : ''}`);
 }
 
-async function pollRunTerminal(ctx: SurfaceContext, runRef: string, maxMs = 20 * 60_000): Promise<string> {
+/**
+ * Poll the run until it reaches a state where OBSERVATION should stop, then return that state. The four
+ * terminal run states are obvious stops; `waiting-human` is ALSO a stop FOR OBSERVATION PURPOSES — a
+ * parked run will not progress without a human action, so the observer must return promptly and let the
+ * check logic assess the parked state, never dead-spin the 20-min cap (the confusing hang that let a
+ * park sit for ~17min). This is strictly better for the happy path: with the core.longpaths worktree fix
+ * the run should reach `succeeded` and never park, but if it EVER parks at `waiting-human` that is a real
+ * FAIL to surface immediately, not to wait out. Returning `waiting-human` does NOT relax the check:
+ * `main()`'s terminal-state check deliberately excludes `waiting-human`, so a park still registers as a
+ * FAIL of "run reached a terminal state". Exported for direct testing. Used ONLY by `main()`'s happy path
+ * (single call site) — it is not shared with any fault path, so this stop condition cannot disturb the
+ * runbook's fault-injection #5 human round-trip (a manual store/route-driven step, not automated here).
+ */
+export async function pollRunTerminal(ctx: SurfaceContext, runRef: string, maxMs = 20 * 60_000): Promise<string> {
   const deadline = Date.now() + maxMs;
-  const terminal = new Set(['succeeded', 'failed', 'stopped', 'interrupted']);
+  // Observation stop states: the four terminal run states PLUS `waiting-human` (parked; needs a human to
+  // advance). This is NOT a pass list — the caller's terminal check excludes `waiting-human`.
+  const stop = new Set(['succeeded', 'failed', 'stopped', 'interrupted', 'waiting-human']);
   for (;;) {
     const got = ctx.controlStore.getRun(DASHBOARD_EXECUTOR_SUBJECT, runRef);
-    if (got.ok && terminal.has(got.value.run.state)) return got.value.run.state;
+    if (got.ok && stop.has(got.value.run.state)) return got.value.run.state;
     if (Date.now() > deadline) return got.ok ? got.value.run.state : 'unknown';
     await new Promise((r) => setTimeout(r, 2_000));
   }

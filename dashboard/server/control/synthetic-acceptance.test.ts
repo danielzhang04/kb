@@ -13,8 +13,20 @@ import {
   AcceptanceRefusal,
   setUpThrowawayRepo,
   assertCoordinationRemoteIsolated,
+  pollRunTerminal,
   type ThrowawayRepo,
 } from './synthetic-acceptance.ts';
+import type { SurfaceContext } from '../http/context.ts';
+
+function ctxReturning(state: string | null): SurfaceContext {
+  return {
+    controlStore: {
+      getRun: () => (state === null
+        ? { ok: false as const }
+        : { ok: true as const, value: { run: { state } } }),
+    },
+  } as unknown as SurfaceContext;
+}
 
 describe('assertAcceptanceGate — the harness refuses to run unless watched + gated', () => {
   it('refuses when the activation gate is off, whatever the args', () => {
@@ -28,6 +40,27 @@ describe('assertAcceptanceGate — the harness refuses to run unless watched + g
 
   it('passes only when the gate is on AND the run is explicitly confirmed', () => {
     expect(() => assertAcceptanceGate({ DASHBOARD_EXECUTION_ACTIVATED: '1' }, ['--confirm-live'])).not.toThrow();
+  });
+});
+
+describe('pollRunTerminal — a parked run is an observation stop, not a 20-min dead-spin', () => {
+  it('returns waiting-human PROMPTLY (parked runs need a human; never wait out the cap)', async () => {
+    const started = Date.now();
+    // A generous cap: if waiting-human were NOT a stop, this would spin the full cap before returning.
+    const state = await pollRunTerminal(ctxReturning('waiting-human'), 'run-1', 30 * 60_000);
+    expect(state).toBe('waiting-human');
+    // First-iteration return happens before the 2s poll sleep, so this is effectively instant.
+    expect(Date.now() - started).toBeLessThan(1_000);
+  });
+
+  it('returns the terminal state promptly (succeeded)', async () => {
+    expect(await pollRunTerminal(ctxReturning('succeeded'), 'run-1', 30 * 60_000)).toBe('succeeded');
+  });
+
+  it('still respects the cap for a non-stop state (in-flight run never parked)', async () => {
+    // `running` is neither terminal nor a park, so the observer honors the deadline and returns the last
+    // observed state — proving the new stop condition did not remove the bounded-wait safety net.
+    expect(await pollRunTerminal(ctxReturning('running'), 'run-1', 5)).toBe('running');
   });
 });
 
