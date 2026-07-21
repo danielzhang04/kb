@@ -6,7 +6,7 @@ target: orgs/kb-ops/output
 risk-tier: T1
 owner: worker-desktop
 claim-token: 4a35049d84682c32
-state: blocked
+state: inbox
 approval: null
 workflow: run-7b0b8de8-268e-4d94-bab3-a3b765101c62
 depends-on: []
