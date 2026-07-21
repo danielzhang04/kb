@@ -35,3 +35,19 @@ def test_hash_in_pr_number_reads_clean():
 def test_plain_speech_untouched():
     text = "Quiet. Twenty-ish cards in inbox, four working, nothing stuck."
     assert sanitize_for_tts(text) == text
+
+
+def test_quiet_marker_never_spoken():
+    # Gate finding #1: [quiet] is the LLM's structural silence — stripped before synthesis.
+    assert sanitize_for_tts("[quiet]").strip() == ""
+    assert sanitize_for_tts("[Quiet].").strip() == ""
+    # a rule-violating mixed turn still loses the marker but keeps the content
+    assert sanitize_for_tts("[quiet] I'm here").strip() == "I'm here"
+
+
+def test_is_quiet_turn_detection():
+    from worker.sanitize import is_quiet_turn
+    assert is_quiet_turn("[quiet]")
+    assert is_quiet_turn("  [Quiet]. ")
+    assert not is_quiet_turn("[quiet] I'm here")
+    assert not is_quiet_turn("Quiet. Twenty-ish cards in inbox.")

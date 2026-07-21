@@ -68,3 +68,9 @@ def test_persona_v2_canonical_lines_and_rules():
     for banned in ("I'm standing by", "let me know if"):
         # the banned filler phrases appear ONLY inside the Never-say list, quoted
         assert text.count(banned) <= 1
+
+
+def test_persona_quiet_marker_rule():
+    # Gate finding #1 (2026-07-21): ambient speech must yield the silent-turn marker, not chat.
+    text = fastlane.load_persona()
+    assert "[quiet]" in text

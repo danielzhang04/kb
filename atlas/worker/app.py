@@ -289,7 +289,14 @@ async def entrypoint(ctx: JobContext) -> None:
         if not text:
             return
         if role == "assistant":
-            addr.mark_activity()   # any Atlas turn re-arms the window (rules design §1)
+            # Gate finding #1 (2026-07-21 desk): a reply to ambient chatter re-armed the window,
+            # which kept the next ambient line addressed, whose reply re-armed again — a loop the
+            # 30s expiry could never break. A [quiet] turn (the LLM's structural silence) is
+            # therefore neither spoken (sanitizer strips it), mirrored, nor window-re-arming.
+            if sanitize.is_quiet_turn(text):
+                logger.info("quiet turn — no audio, window not re-armed")
+                return
+            addr.mark_activity()   # a CONTENT Atlas turn re-arms the window (rules design §1)
         publisher.add_line("atlas" if role == "assistant" else "user", text)
 
     # --- Local read-only /state surface (design §3, Task 5). Started HERE on the job-context
