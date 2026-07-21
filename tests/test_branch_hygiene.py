@@ -356,6 +356,19 @@ class TestWakeMeDedup:
         assert card_id is not None
         assert list((tmp_path / "queue" / "inbox").glob("*.md"))
 
+    def test_approved_card_in_approvals_does_not_suppress(self, tmp_path: Path) -> None:
+        # "approved" is a resolved state but shares queue/approvals/ with the live
+        # "approvals" state -- directory scanning alone would wrongly dedup against it.
+        import cards  # noqa: PLC0415
+
+        approved = cards.new_card(
+            project="kb", action="wake-me", target="branch-hygiene:needs-human",
+            risk_tier="T1", body="approved earlier", state="approved",
+        )
+        cards.save(approved, tmp_path / "queue")
+
+        assert bh.file_wake_me(tmp_path, self._plan(), "") is not None
+
     def test_live_card_in_inbox_suppresses(self, tmp_path: Path) -> None:
         # A still-open card in a live state DOES dedup, so a persistent blocker files one
         # card rather than one per week.

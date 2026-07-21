@@ -300,8 +300,12 @@ def file_wake_me(repo_root: Path, plan: Plan, ff_problem: str) -> str | None:
                     existing = cards.parse(path)
                 except Exception:
                     continue
+                # The approvals/ dir is shared by the live "approvals" state and the
+                # resolved "approved" state, so directory membership alone is not
+                # proof of liveness -- check the parsed state too.
                 if (existing.meta.get("action") == "wake-me"
-                        and existing.meta.get("target") == target):
+                        and existing.meta.get("target") == target
+                        and existing.meta.get("state") not in resolved_states):
                     return None
     card = cards.new_card(project="kb", action="wake-me", target=target,
                           risk_tier="T1", body=_card_body(plan, ff_problem))
