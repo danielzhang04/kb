@@ -82,6 +82,30 @@ function successLine(result: string, usage?: Record<string, unknown>, cost = 0):
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe('buildWorkerPrompt', () => {
+  it('keeps the legacy prompt byte-identical when no declaration is supplied', () => {
+    const legacy = buildWorkerPrompt({ workOrder: 'Ship the feature.', readScope: ['a'], writeScope: ['b'] });
+    const omitted = buildWorkerPrompt({ workOrder: 'Ship the feature.', readScope: ['a'], writeScope: ['b'], agentDeclarationMarkdown: undefined });
+    expect(omitted).toBe(legacy);
+    expect(legacy).toBe(
+      'AUTHORITATIVE WORK ORDER (follow these instructions):\nShip the feature.\n\n'
+      + 'READ SCOPE \u2014 you may read only these paths:\n- a\nWRITE SCOPE \u2014 you may write only these paths:\n- b',
+    );
+  });
+
+  it('places server-verified declaration bounds before the existing authoritative work order', () => {
+    const prompt = buildWorkerPrompt({
+      agentDeclarationMarkdown: '# Agent bounds\nNever publish.', workOrder: 'Publish this externally.', readScope: ['a'], writeScope: ['b'],
+    });
+    expect(prompt).toContain('Declaration bounds and forbidden authority outrank conflicting work-order detail.');
+    expect(prompt.indexOf('# Agent bounds\nNever publish.')).toBeLessThan(prompt.indexOf('AUTHORITATIVE WORK ORDER'));
+    expect(prompt.indexOf('AUTHORITATIVE WORK ORDER')).toBeLessThan(prompt.indexOf('Publish this externally.'));
+  });
+
+  it('refuses unsafe declaration text before a prompt can be built', () => {
+    expect(() => buildWorkerPrompt({ workOrder: 'x', readScope: [], writeScope: [], agentDeclarationMarkdown: 'bad\0text' }))
+      .toThrow(/declaration instructions are unsafe/);
+  });
+
   it('leads with the authoritative work order', () => {
     const prompt = buildWorkerPrompt({ workOrder: 'Ship the feature.', readScope: ['a'], writeScope: ['b'] });
     expect(prompt.startsWith('AUTHORITATIVE WORK ORDER (follow these instructions):\nShip the feature.')).toBe(true);
@@ -266,6 +290,25 @@ describe('parseWorkerStream — mapping matrix', () => {
 });
 
 describe('createClaudeWorkerAdapter.execute', () => {
+  it('refuses incomplete or mismatched assigned provenance before spawning', () => {
+    const fake = fakeProcess();
+    const spawn = vi.fn(() => fake.proc);
+    const adapter = createClaudeWorkerAdapter({ resolveToolPolicy: () => TOOL_POLICY, spawn });
+    const assignment = {
+      agentId: 'fyt-worker', declarationPath: 'agents/fyt-worker.md', declarationHash: 'a'.repeat(64),
+      profileId: WORKER_PROFILE.id, runtime: WORKER_PROFILE.runtime, model: WORKER_PROFILE.model,
+    };
+    expect(() => adapter.execute(executeInput({ assignment }))).toThrow(/together/);
+    expect(() => adapter.execute(executeInput({ instructionMarkdown: '# Bound worker' }))).toThrow(/together/);
+    expect(() => adapter.execute(executeInput({
+      assignment: { ...assignment, profileId: 'other-profile' }, instructionMarkdown: '# Bound worker',
+    }))).toThrow(/verified assignment/);
+    expect(() => adapter.execute(executeInput({
+      assignment: { ...assignment, model: 'other-model' }, instructionMarkdown: '# Bound worker',
+    }))).toThrow(/verified assignment/);
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
   it('spawns with the built args/env/cwd, streams the prompt in, and resolves the parsed result', async () => {
     const fake = fakeProcess();
     let captured: ClaudeSpawnRequest | null = null;

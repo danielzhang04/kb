@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -102,8 +102,11 @@ function createApprovedRun(store: ControlPlaneStore, plan: PlanProposal): { runR
     expectedProposalHash: createdProposal.value.hash,
     managerRuntime: plan.manager.runtime,
     managerModel: plan.manager.model,
+    managerAssignment: plan.manager.assignment,
     idempotencyKey: `launch-${createdProposal.value.proposalRef}`,
-    stages: plan.stages.map((item) => ({ stageId: item.id, title: item.title, dependsOn: item.dependsOn })),
+    stages: plan.stages.map((item) => ({
+      stageId: item.id, title: item.title, dependsOn: item.dependsOn, assignment: item.assignment,
+    })),
   });
   expect(run.ok).toBe(true);
   if (!run.ok) throw new Error(run.detail);
@@ -234,6 +237,114 @@ afterEach(() => {
 });
 
 describe('AutomaticExecutionEngine', () => {
+  it('rejects a stored/proposal assignment mismatch before invoking an assigned-agent resolver', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'kb-assignment-binding-'));
+    tempDirs.push(root);
+    const store = createFileControlPlaneStore(root, { newId: () => `id-${++sequence}` });
+    const managerAssignment = {
+      agentId: 'fyt-manager', declarationPath: 'agents/fyt-manager.md', declarationHash: 'a'.repeat(64),
+      profileId: 'manager-claude', runtime: 'claude' as const, model: 'claude-opus',
+    };
+    const workerAssignment = {
+      agentId: 'fyt-worker', declarationPath: 'agents/fyt-worker.md', declarationHash: 'b'.repeat(64),
+      profileId: 'worker-codex', runtime: 'codex' as const, model: 'codex-safe',
+    };
+    const plan = {
+      ...proposal([{ ...stage('assigned-binding'), assignment: workerAssignment }]),
+      manager: { ...proposal([]).manager, assignment: managerAssignment },
+    };
+    const run = createApprovedRun(store, plan);
+    const path = join(root, 'control', 'control-plane.json');
+    const persisted = JSON.parse(readFileSync(path, 'utf8')) as { runs: Array<{ managerAssignment: { declarationHash: string } }> };
+    persisted.runs[0].managerAssignment.declarationHash = 'c'.repeat(64);
+    writeFileSync(path, `${JSON.stringify(persisted)}\n`, 'utf8');
+    const resolver = { resolve: vi.fn() };
+    const fake = fakes();
+    const options = engineOptions(createFileControlPlaneStore(root), fake);
+    options.assignedAgents = resolver;
+    await expect(new AutomaticExecutionEngine(options).runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan }))
+      .rejects.toThrow(/manager assignment differs/);
+    expect(resolver.resolve).not.toHaveBeenCalled();
+  });
+
+  it('passes only server-resolved assignment instructions to the manager and worker adapters', async () => {
+    const store = createStore();
+    const managerAssignment = {
+      agentId: 'fyt-manager', declarationPath: 'agents/fyt-manager.md', declarationHash: 'a'.repeat(64),
+      profileId: 'manager-claude', runtime: 'claude' as const, model: 'claude-opus',
+    };
+    const workerAssignment = {
+      agentId: 'fyt-worker', declarationPath: 'agents/fyt-worker.md', declarationHash: 'b'.repeat(64),
+      profileId: 'worker-codex', runtime: 'codex' as const, model: 'codex-safe',
+    };
+    const plan = {
+      ...proposal([{ ...stage('assigned-pass'), assignment: workerAssignment }]),
+      manager: { ...proposal([]).manager, assignment: managerAssignment },
+    };
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const workerExecute = vi.fn(fake.workers.execute);
+    fake.workers.execute = workerExecute;
+    const managerEnsure = vi.fn(async () => {});
+    fake.managers.ensure = managerEnsure;
+    const resolver = {
+      resolve: vi.fn((input: { assignment: typeof managerAssignment | typeof workerAssignment }) => ({
+        assignment: input.assignment, instructionMarkdown: `# ${input.assignment.agentId}\nNo publication.`,
+      })),
+    };
+    const options = engineOptions(store, fake);
+    options.assignedAgents = resolver;
+    await expect(new AutomaticExecutionEngine(options).runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan })).resolves
+      .toMatchObject({ state: 'succeeded' });
+    expect(managerEnsure).toHaveBeenCalledWith(expect.objectContaining({
+      assignment: managerAssignment, instructionMarkdown: '# fyt-manager\nNo publication.',
+    }));
+    expect(workerExecute).toHaveBeenCalledWith(expect.objectContaining({
+      assignment: workerAssignment, instructionMarkdown: '# fyt-worker\nNo publication.',
+    }));
+    expect(resolver.resolve).toHaveBeenCalledTimes(2);
+  });
+
+  it('resolves every assigned node once before a stage policy boundary can mutate the store', async () => {
+    const store = createStore();
+    const managerAssignment = {
+      agentId: 'fyt-manager', declarationPath: 'agents/fyt-manager.md', declarationHash: 'a'.repeat(64),
+      profileId: 'manager-claude', runtime: 'claude' as const, model: 'claude-opus',
+    };
+    const workerAssignment = {
+      agentId: 'fyt-worker', declarationPath: 'agents/fyt-worker.md', declarationHash: 'b'.repeat(64),
+      profileId: 'worker-codex', runtime: 'codex' as const, model: 'codex-safe',
+    };
+    const plan = {
+      ...proposal([
+        { ...stage('boundary-a'), action: 'publish:external', assignment: workerAssignment },
+        { ...stage('boundary-b', ['boundary-a']), assignment: workerAssignment },
+      ]),
+      manager: { ...proposal([]).manager, assignment: managerAssignment },
+    };
+    const run = createApprovedRun(store, plan);
+    const order: string[] = [];
+    const originalCreateRequest = store.createHumanRequest.bind(store);
+    store.createHumanRequest = ((...args: Parameters<ControlPlaneStore['createHumanRequest']>) => {
+      order.push('boundary');
+      return originalCreateRequest(...args);
+    }) as ControlPlaneStore['createHumanRequest'];
+    const resolver = {
+      resolve: vi.fn((input: { assignment: typeof managerAssignment | typeof workerAssignment }) => {
+        order.push(`resolve:${input.assignment.agentId}`);
+        return { assignment: input.assignment, instructionMarkdown: '# Bound declaration' };
+      }),
+    };
+    const fake = fakes();
+    const options = engineOptions(store, fake);
+    options.assignedAgents = resolver;
+    await expect(new AutomaticExecutionEngine(options).runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan })).resolves
+      .toMatchObject({ state: 'waiting-human' });
+    expect(resolver.resolve).toHaveBeenCalledTimes(3);
+    expect(order.slice(0, 3)).toEqual(['resolve:fyt-manager', 'resolve:fyt-worker', 'resolve:fyt-worker']);
+    expect(order.indexOf('boundary')).toBeGreaterThan(2);
+  });
+
   it('keeps the held Wave-A kb-ops policy when no per-project resolver is supplied', async () => {
     const store = createStore();
     const plan = proposal([stage('held-policy')]);

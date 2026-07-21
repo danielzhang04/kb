@@ -6,7 +6,8 @@
  *
  * Realization follows Wave-A decision D3(b): the DAG is driven IN-PROCESS by `runToBoundary`, so the
  * logical Manager needs no second `claude` subprocess. `ensure()` therefore validates its server-owned
- * inputs and records the logical manager as ensured — it never spawns. The `broker` option is accepted
+ * provenance inputs and records the logical manager as ensured — it never spawns and never constructs a
+ * manager prompt. Declaration instruction Markdown is validation evidence only and is discarded. The `broker` option is accepted
  * (and used only for `cancelManager` → `broker.stop`) so a later D3(b→a) upgrade to a broker-backed
  * manager session is a local change here, not a re-wiring of the engine.
  *
@@ -76,6 +77,18 @@ export function createBrokerManagerAdapter(_options: BrokerManagerAdapterOptions
       }
       if (typeof input.sessionRef !== 'string' || input.sessionRef === '') {
         throw new Error('manager adapter requires a managed session reference');
+      }
+      if ((input.assignment === undefined) !== (input.instructionMarkdown === undefined)) {
+        throw new Error('manager adapter requires assignment and declaration instructions together');
+      }
+      if (input.assignment) {
+        if (input.assignment.runtime !== profile.runtime || input.assignment.model !== profile.model
+          || input.assignment.profileId !== profile.id || input.instructionMarkdown === undefined
+          || input.instructionMarkdown.length > 64 * 1024 || input.instructionMarkdown.includes('\0')) {
+          throw new Error('manager adapter requires verified assignment provenance and safe declaration instructions');
+        }
+        // D3(b): prove the resolver supplied bounded text, then intentionally discard it. No manager child exists.
+        void input.instructionMarkdown;
       }
       // D3(b): no `claude` manager child is spawned; the logical manager is simply recorded as ensured.
       ensured.add(input.sessionRef);

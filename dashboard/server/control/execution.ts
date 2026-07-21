@@ -3,7 +3,8 @@ import { isAbsolute, relative, resolve, sep } from 'node:path';
 import type { ControlPlaneStore } from './store.ts';
 import type { Attempt, ManagedSession, RunDetail, Stage } from './types.ts';
 import { classifyActionRisk, evaluateExecutionPolicy, type ExecutionProfile, type PolicyEnvironment } from './policy.ts';
-import { isSafeRepoRelativePath, proposalContentHash, type PlanProposal, type ProposalStage } from './proposal.ts';
+import { isSafeRepoRelativePath, proposalContentHash, type PlanProposal, type ProposalStage, type ResolvedAgentAssignment } from './proposal.ts';
+import type { AssignedAgentResolver, ResolvedAssignedAgent } from './agentAssignmentResolver.ts';
 
 const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const SAFE_PROJECT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
@@ -77,6 +78,10 @@ export interface ManagerAdapter {
     predecessorSessionRef: string | null;
     proposalHash: string;
     profile: ExecutionProfile;
+    /** Present only after a server-owned assignment resolver verifies the current declaration. */
+    assignment?: ResolvedAgentAssignment;
+    /** D3(b) validation evidence only; no manager child or prompt consumes this text. */
+    instructionMarkdown?: string;
   }): Promise<void>;
 }
 
@@ -126,6 +131,10 @@ export interface WorkerAdapter {
     readScope: readonly string[];
     writeScope: readonly string[];
     checkpoints: readonly string[];
+    /** Present only after a server-owned assignment resolver verifies the current declaration. */
+    assignment?: ResolvedAgentAssignment;
+    /** Exact bounded declaration Markdown, never browser/prompt input. */
+    instructionMarkdown?: string;
   }): Promise<WorkerExecutionResult>;
 }
 
@@ -189,6 +198,8 @@ export interface AutomaticExecutionOptions {
   policyProject?: string;
   /** Optional server-owned project resolver. It is invoked once, then snapshotted, per run. */
   resolvePolicy?: (project: string) => PolicyEnvironment;
+  /** Required only for assigned compiler snapshots; legacy unassigned runs never invoke it. */
+  assignedAgents?: AssignedAgentResolver;
   worktreeRoot: string;
   maxConcurrency: number;
   budget: ExecutionBudget;
@@ -312,6 +323,16 @@ function stableHumanTitle(kind: 'gate' | 'policy' | 'budget' | 'execution', stag
 
 function profileFor(policy: PolicyEnvironment, role: 'manager' | 'worker', runtime: string, model: string): ExecutionProfile | null {
   return policy.profiles.find((profile) => profile.role === role && profile.runtime === runtime && profile.model === model) ?? null;
+}
+
+function sameAssignment(left: ResolvedAgentAssignment | null, right: ResolvedAgentAssignment | null): boolean {
+  return left === right || (left !== null && right !== null
+    && left.agentId === right.agentId
+    && left.declarationPath === right.declarationPath
+    && left.declarationHash === right.declarationHash
+    && left.profileId === right.profileId
+    && left.runtime === right.runtime
+    && left.model === right.model);
 }
 
 interface RestrictedIntentRule {
@@ -459,7 +480,8 @@ export class AutomaticExecutionEngine {
       // browser-supplied proposal must never select a project policy loader before it is known to be the
       // exact approved graph attached to this run.
       const policy = this.resolveProjectPolicy(input.proposal.project);
-      if (!(await this.ensureManager(input, policy))) {
+      const resolvedAgents = this.resolveRunAssignments(input, policy);
+      if (!(await this.ensureManager(input, policy, resolvedAgents.manager))) {
         return { state: this.detail(input).run.state, startedStageIds, completedStageIds, waitingStageIds };
       }
       for (let pass = 0; pass <= input.proposal.stages.length; pass += 1) {
@@ -506,7 +528,9 @@ export class AutomaticExecutionEngine {
           return { state: settled.state, startedStageIds, completedStageIds, waitingStageIds };
         }
         const prepared = batch
-          .map(({ stage, proposalStage }) => this.prepareOrContain(input, stage, proposalStage, policy))
+          .map(({ stage, proposalStage }) => this.prepareOrContain(
+            input, stage, proposalStage, policy, resolvedAgents.stages.get(proposalStage.id) ?? null,
+          ))
           .filter((item): item is NonNullable<typeof item> => item !== null);
         for (const item of prepared) if (!startedStageIds.includes(item.proposalStage.id)) startedStageIds.push(item.proposalStage.id);
         this.activeWorkers += prepared.length;
@@ -661,6 +685,9 @@ export class AutomaticExecutionEngine {
       throw new AutomaticExecutionError('proposal does not match the immutable run hash');
     }
     if (input.proposal.stages.length !== detail.stages.length) throw new AutomaticExecutionError('run graph does not match proposal graph');
+    if (!sameAssignment(detail.run.managerAssignment, input.proposal.manager.assignment ?? null)) {
+      throw new AutomaticExecutionError('run manager assignment differs from the approved proposal');
+    }
     const runStages = new Map(detail.stages.map((stage) => [stage.stageId, stage]));
     for (const stage of input.proposal.stages) {
       const stored = runStages.get(stage.id);
@@ -668,10 +695,45 @@ export class AutomaticExecutionEngine {
         throw new AutomaticExecutionError(`run graph differs at stage '${stage.id}'`);
       }
       if (!stored.canonicalCardRef) throw new AutomaticExecutionError(`stage '${stage.id}' lacks a canonical card link`);
+      if (!sameAssignment(stored.assignment, stage.assignment ?? null)) {
+        throw new AutomaticExecutionError(`run assignment differs at stage '${stage.id}'`);
+      }
     }
   }
 
-  private async ensureManager(input: ExecuteRunInput, policy: PolicyEnvironment): Promise<boolean> {
+  private resolveAssignedAgent(
+    input: ExecuteRunInput,
+    assignment: ResolvedAgentAssignment | null,
+    role: 'manager' | 'worker',
+    policy: PolicyEnvironment,
+  ): ResolvedAssignedAgent | null {
+    if (assignment === null) return null;
+    if (!this.options.assignedAgents) throw new AutomaticExecutionError('assigned run requires a server-owned agent resolver');
+    try {
+      return this.options.assignedAgents.resolve({ assignment, role, project: input.proposal.project, profiles: policy.profiles });
+    } catch (error) {
+      throw new AutomaticExecutionError(`assigned agent resolution failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /** Resolve every assignment once per invocation before any policy boundary or durable mutation. */
+  private resolveRunAssignments(
+    input: ExecuteRunInput,
+    policy: PolicyEnvironment,
+  ): { manager: ResolvedAssignedAgent | null; stages: ReadonlyMap<string, ResolvedAssignedAgent | null> } {
+    const stages = new Map<string, ResolvedAssignedAgent | null>();
+    const manager = this.resolveAssignedAgent(input, input.proposal.manager.assignment ?? null, 'manager', policy);
+    for (const stage of input.proposal.stages) {
+      stages.set(stage.id, this.resolveAssignedAgent(input, stage.assignment ?? null, 'worker', policy));
+    }
+    return { manager, stages };
+  }
+
+  private async ensureManager(
+    input: ExecuteRunInput,
+    policy: PolicyEnvironment,
+    assignedAgent: ResolvedAssignedAgent | null,
+  ): Promise<boolean> {
     let detail = this.detail(input);
     if ((detail.run.state === 'waiting-human' || detail.run.state === 'interrupted') && !runBoundariesAccepted(detail)) {
       return false;
@@ -710,6 +772,7 @@ export class AutomaticExecutionEngine {
           predecessorSessionRef: manager.predecessorSessionRef,
           proposalHash: detail.run.proposalHash,
           profile,
+          ...(assignedAgent ? { assignment: assignedAgent.assignment, instructionMarkdown: assignedAgent.instructionMarkdown } : {}),
         });
         if (this.cancellationObserved(input)) return false;
         if (manager.state === 'starting') this.transitionSession(input, manager.sessionRef, 'running');
@@ -877,9 +940,10 @@ export class AutomaticExecutionEngine {
     stage: Stage,
     proposalStage: ProposalStage,
     policy: PolicyEnvironment,
+    assignedAgent: ResolvedAssignedAgent | null,
   ): ReturnType<AutomaticExecutionEngine['prepareAttempt']> {
     try {
-      return this.prepareAttempt(input, stage, proposalStage, policy);
+      return this.prepareAttempt(input, stage, proposalStage, policy, assignedAgent);
     } catch (error) {
       const detail = this.detail(input);
       const latestStage = detail.stages.find((item) => item.stageRef === stage.stageRef) as Stage;
@@ -905,12 +969,19 @@ export class AutomaticExecutionEngine {
     }
   }
 
-  private prepareAttempt(input: ExecuteRunInput, initial: Stage, proposalStage: ProposalStage, policy: PolicyEnvironment): {
+  private prepareAttempt(
+    input: ExecuteRunInput,
+    initial: Stage,
+    proposalStage: ProposalStage,
+    policy: PolicyEnvironment,
+    assignedAgent: ResolvedAssignedAgent | null,
+  ): {
     stage: Stage;
     proposalStage: ProposalStage;
     attempt: Attempt;
     session: ManagedSession;
     profile: ExecutionProfile;
+    assignedAgent: ResolvedAssignedAgent | null;
   } | null {
     let detail = this.detail(input);
     let stage = detail.stages.find((candidate) => candidate.stageRef === initial.stageRef) as Stage;
@@ -956,12 +1027,18 @@ export class AutomaticExecutionEngine {
     if (session.state === 'starting') session = this.transitionSession(input, session.sessionRef, 'running');
     attempt = this.detail(input).attempts.find((candidate) => candidate.attemptRef === attempt?.attemptRef) as Attempt;
     if (attempt.state === 'starting') attempt = this.transitionAttempt(input, attempt.attemptRef, 'running');
-    return { stage: this.detail(input).stages.find((candidate) => candidate.stageRef === stage.stageRef) as Stage, proposalStage, attempt, session, profile };
+    return {
+      stage: this.detail(input).stages.find((candidate) => candidate.stageRef === stage.stageRef) as Stage,
+      proposalStage, attempt, session, profile, assignedAgent,
+    };
   }
 
   private async executeAttempt(
     input: ExecuteRunInput,
-    prepared: { stage: Stage; proposalStage: ProposalStage; attempt: Attempt; session: ManagedSession; profile: ExecutionProfile },
+    prepared: {
+      stage: Stage; proposalStage: ProposalStage; attempt: Attempt; session: ManagedSession;
+      profile: ExecutionProfile; assignedAgent: ResolvedAssignedAgent | null;
+    },
     policy: PolicyEnvironment,
   ): Promise<({ state: 'succeeded' | 'waiting-human' | 'stopped'; stageId: string })> {
     try {
@@ -997,10 +1074,13 @@ export class AutomaticExecutionEngine {
 
   private async executeAttemptUnsafe(
     input: ExecuteRunInput,
-    prepared: { stage: Stage; proposalStage: ProposalStage; attempt: Attempt; session: ManagedSession; profile: ExecutionProfile },
+    prepared: {
+      stage: Stage; proposalStage: ProposalStage; attempt: Attempt; session: ManagedSession;
+      profile: ExecutionProfile; assignedAgent: ResolvedAssignedAgent | null;
+    },
     policy: PolicyEnvironment,
   ): Promise<({ state: 'succeeded' | 'waiting-human' | 'stopped'; stageId: string })> {
-    const { stage, proposalStage, attempt, session, profile } = prepared;
+    const { stage, proposalStage, attempt, session, profile, assignedAgent } = prepared;
     const operationKey = `automatic-attempt:${attempt.attemptRef}`;
     const resultOperationKey = `result:${input.runRef}:${stage.stageId}`;
     const worktreePath = planAttemptWorktreePath(this.options.worktreeRoot, input.runRef, attempt.attemptRef);
@@ -1098,6 +1178,7 @@ export class AutomaticExecutionEngine {
         readScope: proposalStage.scope.read,
         writeScope: proposalStage.scope.write,
         checkpoints: proposalStage.checkpoints.map((checkpoint) => checkpoint.id),
+        ...(assignedAgent ? { assignment: assignedAgent.assignment, instructionMarkdown: assignedAgent.instructionMarkdown } : {}),
       });
     } catch (error) {
       result = {

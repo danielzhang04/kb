@@ -29,6 +29,7 @@ import { createSubjectBrokerPersistence } from './brokerStore.ts';
 import { createGitWorktreeAdapter, createCuratedSkillResolver, createFileAccountingAdapter } from './adapters.ts';
 import { createCanonicalGitResultIntegrator } from './canonicalResultIntegrator.ts';
 import { createClaudeWorkerAdapter, createWorkflowToolPolicyResolver } from './claudeWorkerAdapter.ts';
+import { createAssignedAgentResolver } from './agentAssignmentResolver.ts';
 import {
   AutomaticExecutionEngine,
   type AutomaticExecutionOptions,
@@ -131,6 +132,7 @@ export interface ActivationDeps {
   createAccounting: typeof createFileAccountingAdapter;
   createResults: typeof createCanonicalGitResultIntegrator;
   createToolPolicyResolver: typeof createWorkflowToolPolicyResolver;
+  createAssignedAgentResolver: typeof createAssignedAgentResolver;
   createWorkers: typeof createClaudeWorkerAdapter;
   createRegistry: typeof createWorkerCancellationRegistry;
   createManagers: typeof createBrokerManagerAdapter;
@@ -198,6 +200,7 @@ function defaultDeps(): ActivationDeps {
     createAccounting: createFileAccountingAdapter,
     createResults: createCanonicalGitResultIntegrator,
     createToolPolicyResolver: createWorkflowToolPolicyResolver,
+    createAssignedAgentResolver: createAssignedAgentResolver,
     createWorkers: createClaudeWorkerAdapter,
     createRegistry: createWorkerCancellationRegistry,
     createManagers: createBrokerManagerAdapter,
@@ -251,6 +254,7 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
 
   const policy = deps.loadPolicy(repoRoot, project, [...refs]);
   const resolvePolicy = createProjectPolicyResolver(repoRoot, deps.loadPolicy, project, policy);
+  const assignedAgents = deps.createAssignedAgentResolver(repoRoot);
 
   const broker = deps.createBroker(
     deps.createSessionAdapter({ resolveLaunch }),
@@ -288,6 +292,7 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
     policy,
     policyProject: project,
     resolvePolicy,
+    assignedAgents,
     worktreeRoot,
     maxConcurrency,
     budget,

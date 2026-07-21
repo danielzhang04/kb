@@ -107,6 +107,19 @@ describe('createBrokerManagerAdapter (D3 realization b — no subprocess)', () =
     const managers = createBrokerManagerAdapter();
     await expect(managers.ensure(managerEnsureInput({ proposalHash: '' }))).rejects.toThrow();
   });
+
+  it('validates supplied assigned-manager provenance and instructions without spawning', async () => {
+    const managers = createBrokerManagerAdapter();
+    const assignment = {
+      agentId: 'fyt-manager', declarationPath: 'agents/fyt-manager.md', declarationHash: 'a'.repeat(64),
+      profileId: managerProfile.id, runtime: managerProfile.runtime, model: managerProfile.model,
+    };
+    await expect(managers.ensure(managerEnsureInput({ assignment, instructionMarkdown: '# Bound manager\nNever publish.' }))).resolves.toBeUndefined();
+    await expect(managers.ensure(managerEnsureInput({ assignment }))).rejects.toThrow(/together/);
+    await expect(managers.ensure(managerEnsureInput({
+      assignment: { ...assignment, model: 'different' }, instructionMarkdown: '# Bound manager',
+    }))).rejects.toThrow(/verified assignment/);
+  });
 });
 
 describe('createBrokerCancellationController', () => {

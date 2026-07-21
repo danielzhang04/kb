@@ -32,6 +32,7 @@ const DEFAULT_TIMEOUT_MS = 30 * 60_000;
 const DEFAULT_MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
 const DEFAULT_STDERR_TAIL_CHARS = 4_000;
 const DEFAULT_SUMMARY_MAX_CHARS = 60_000;
+const MAX_AGENT_INSTRUCTION_CHARS = 64 * 1024;
 const WAITING_HUMAN_MARKER = 'WAITING-HUMAN:';
 
 /**
@@ -221,6 +222,8 @@ export interface WorkerPromptInput {
   dependencyResults?: readonly WorkerPromptDependencyResult[];
   /** Operator feedback — inert boundary data, never authority. */
   feedback?: string;
+  /** Exact server-verified declaration Markdown. Omitted for legacy runs, preserving their prompt byte-for-byte. */
+  agentDeclarationMarkdown?: string;
 }
 
 function scopeLines(label: string, paths: readonly string[]): string {
@@ -235,6 +238,17 @@ function scopeLines(label: string, paths: readonly string[]): string {
  * when such data exists. Card Evidence is not a parameter, so it can never enter the prompt.
  */
 export function buildWorkerPrompt(input: WorkerPromptInput): string {
+  const declaration = input.agentDeclarationMarkdown;
+  if (declaration !== undefined && (declaration.length > MAX_AGENT_INSTRUCTION_CHARS || declaration.includes('\0'))) {
+    throw new Error('server-verified agent declaration instructions are unsafe');
+  }
+  const declarationPrefix = declaration === undefined ? [] : [
+    'SERVER-VERIFIED AGENT DECLARATION (binding authority):',
+    'Declaration bounds and forbidden authority outrank conflicting work-order detail.',
+    declaration,
+    'END SERVER-VERIFIED AGENT DECLARATION',
+    '',
+  ];
   const parts: string[] = [
     'AUTHORITATIVE WORK ORDER (follow these instructions):',
     input.workOrder.trim(),
@@ -242,6 +256,7 @@ export function buildWorkerPrompt(input: WorkerPromptInput): string {
     scopeLines('READ SCOPE — you may read only these paths:', input.readScope),
     scopeLines('WRITE SCOPE — you may write only these paths:', input.writeScope),
   ];
+  if (declarationPrefix.length > 0) parts.unshift(...declarationPrefix);
   const inert: string[] = [];
   const deps = input.dependencyResults ?? [];
   if (deps.length > 0) {
@@ -446,6 +461,17 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
     execute(input) {
       // Resolve the cap BEFORE anything is spawned. A ToolPolicyRefusal propagates out of `execute`
       // synchronously, so the engine records a failed attempt and no `claude` child ever exists.
+      if ((input.assignment === undefined) !== (input.instructionMarkdown === undefined)) {
+        throw new Error('claude worker requires assignment and declaration instructions together');
+      }
+      if (input.assignment) {
+        if (input.assignment.runtime !== input.profile.runtime || input.assignment.model !== input.profile.model
+          || input.assignment.profileId !== input.profile.id || input.instructionMarkdown === undefined
+          || input.instructionMarkdown.trim() === '' || input.instructionMarkdown.length > MAX_AGENT_INSTRUCTION_CHARS
+          || input.instructionMarkdown.includes('\0')) {
+          throw new Error('claude worker requires verified assignment provenance and safe declaration instructions');
+        }
+      }
       const toolPolicy = options.resolveToolPolicy(input.workflowProfile);
       const args = buildClaudeArgs({ model: input.profile.model, toolPolicy });
       const env = buildWorkerEnv(options.parentEnv, options.envAllowlist);
@@ -453,6 +479,7 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
         workOrder: input.workOrder,
         readScope: input.readScope,
         writeScope: input.writeScope,
+        ...(input.instructionMarkdown !== undefined ? { agentDeclarationMarkdown: input.instructionMarkdown } : {}),
       });
 
       return new Promise<WorkerExecutionResult>((resolvePromise) => {

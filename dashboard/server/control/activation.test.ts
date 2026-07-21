@@ -39,6 +39,7 @@ function spyDeps(): ActivationDeps {
     createAccounting: vi.fn().mockReturnValue({}) as never,
     createResults: vi.fn().mockReturnValue({}) as never,
     createToolPolicyResolver: vi.fn().mockReturnValue(() => ({ allowedTools: ['Read'], permissionMode: 'default' })) as never,
+    createAssignedAgentResolver: vi.fn().mockReturnValue({ resolve: vi.fn() }) as never,
     createWorkers: vi.fn().mockReturnValue({}) as never,
     createRegistry: vi.fn().mockReturnValue({ register: vi.fn(), cancel: vi.fn(), clear: vi.fn() }) as never,
     createManagers: vi.fn().mockReturnValue({ ensure: vi.fn() }) as never,
@@ -107,6 +108,18 @@ describe('buildActivatedExecution — gate ON', () => {
     expect(result?.controlBroker).toBeDefined();
     expect(typeof result?.runAutomatic).toBe('function');
     expect(typeof result?.cancelAutomatic).toBe('function');
+  });
+
+  it('constructs the assigned-agent resolver only behind the activation gate and passes it to the engine', () => {
+    const off = spyDeps();
+    buildActivatedExecution(baseOptions(off, {}));
+    expect(off.createAssignedAgentResolver).not.toHaveBeenCalled();
+
+    const on = spyDeps();
+    buildActivatedExecution(baseOptions(on, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
+    expect(on.createAssignedAgentResolver).toHaveBeenCalledWith('/repo');
+    const engineOptions = (on.createEngine as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(engineOptions.assignedAgents).toBe((on.createAssignedAgentResolver as ReturnType<typeof vi.fn>).mock.results[0].value);
   });
 
   it('runAutomatic delegates to engine.runToBoundary and cancelAutomatic to engine.cancelRun', async () => {
