@@ -9,6 +9,8 @@ import type { FastifyInstance } from 'fastify';
 import { loadPolicy, loadOverride } from '../routing/policy.ts';
 import { buildHealthPanel } from './health.ts';
 import { buildUsagePanel } from './usage.ts';
+import { buildAtlasPanel } from './atlas.ts';
+import type { AtlasWorkerOptions } from './atlas.ts';
 
 /** dashboard/server/panels/routes.ts → ../../../ is the repo root. Overridable for tests/config. */
 export function resolveRepoRoot(): string {
@@ -25,4 +27,27 @@ export function registerPanels(app: FastifyInstance, repoRoot: string = resolveR
   });
   // Quartermaster — usage rollup (per-model steps, model mix, card/dispatch counts). USD suppressed.
   app.get('/api/panels/usage', async () => buildUsagePanel(repoRoot));
+  // Atlas — voice worker mirror: worker /state passthrough (OFFLINE-explicit) + transcript history + cards.
+  registerAtlasPanel(app, repoRoot);
+}
+
+/**
+ * Register the Atlas panel route (`GET /api/panels/atlas`). Split out so the worker fetch is an
+ * injectable seam (`options.fetchImpl`) for hermetic tests, mirroring the claudeWorkerAdapter DI
+ * precedent — the live daemon calls this with defaults (the global fetch against `ATLAS_STATE_URL`).
+ * The last-known worker heartbeat is remembered across requests so a dropped worker degrades to an
+ * OFFLINE shape that still carries "last seen", never a blank.
+ */
+export function registerAtlasPanel(
+  app: FastifyInstance,
+  repoRoot: string = resolveRepoRoot(),
+  options: AtlasWorkerOptions = {},
+): void {
+  let lastHeartbeat: string | null = options.lastHeartbeat ?? null;
+  app.get('/api/panels/atlas', async () => {
+    const panel = await buildAtlasPanel(repoRoot, { ...options, lastHeartbeat });
+    const heartbeat = (panel.worker as Record<string, unknown>).heartbeat;
+    if (typeof heartbeat === 'string') lastHeartbeat = heartbeat;
+    return panel;
+  });
 }
