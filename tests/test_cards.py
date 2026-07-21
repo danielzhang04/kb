@@ -114,6 +114,60 @@ def test_legal_stop_ladder_transitions(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
+# Stranded-archiver -- the terminal, reversible `archived` state               #
+# --------------------------------------------------------------------------- #
+
+def test_archived_is_a_valid_state_under_its_own_dir(tmp_path):
+    c = cards.new_card("p", "a", "t", "T1", state="archived", owner="codex-worker")
+    p = cards.save(c, tmp_path)  # must resolve STATE_DIR["archived"] without KeyError
+    assert p.parent.name == "archived"
+    assert cards.parse(p).meta["state"] == "archived"
+
+
+def test_inbox_can_be_archived_directly(tmp_path):
+    # The archiver walks an idle owned inbox card straight to archived.
+    c = cards.new_card("p", "a", "t", "T1", owner="codex-worker")
+    cards.save(c, tmp_path)
+    p2 = cards.transition(c, "archived", tmp_path)
+    assert p2.parent.name == "archived"
+    assert not (tmp_path / "inbox" / p2.name).exists()
+
+
+def test_working_can_be_archived_directly(tmp_path):
+    # working is reachable (owner is set), so the archiver can archive it too.
+    c = cards.new_card("p", "a", "t", "T1")
+    cards.save(c, tmp_path)
+    cards.claim(c, "codex-worker")
+    cards.transition(c, "working", tmp_path)
+    p2 = cards.transition(c, "archived", tmp_path)
+    assert p2.parent.name == "archived"
+    assert not (tmp_path / "working" / p2.name).exists()
+
+
+def test_archived_reverses_to_inbox_only(tmp_path):
+    # Reversibility: a human un-archives by walking archived -> inbox. Every other
+    # move out of archived is illegal (it is terminal in every other direction).
+    c = cards.new_card("p", "a", "t", "T1", state="archived", owner="codex-worker")
+    cards.save(c, tmp_path)
+    p2 = cards.transition(c, "inbox", tmp_path)
+    assert p2.parent.name == "inbox"
+    for illegal in ("working", "done", "approvals", "archived"):
+        reread = cards.new_card("p", "a", "t2", "T1", state="archived", owner="codex-worker")
+        cards.save(reread, tmp_path)
+        with pytest.raises(cards.ValidationError):
+            cards.transition(reread, illegal, tmp_path)
+
+
+def test_terminal_states_cannot_be_archived(tmp_path):
+    # done/rejected are already terminal; archived is not a legal escape from them.
+    for terminal in ("done", "rejected"):
+        c = cards.new_card("p", "a", "t", "T1", state=terminal)
+        cards.save(c, tmp_path)
+        with pytest.raises(cards.ValidationError):
+            cards.transition(c, "archived", tmp_path)
+
+
+# --------------------------------------------------------------------------- #
 # Phase R1.2 -- optional runtime/model routing fields + stamp_routing         #
 # --------------------------------------------------------------------------- #
 
@@ -164,7 +218,9 @@ def test_model_is_free_form_not_enum_checked():
 
 
 def test_existing_transitions_unchanged(tmp_path):
-    assert cards.LEGAL["inbox"] == {"working", "blocked"}
+    # inbox and working each GAINED `archived` (the stranded sink); every other
+    # pre-existing target is untouched, asserted by subset below.
+    assert cards.LEGAL["inbox"] == {"working", "blocked", "archived"}
     assert cards.LEGAL["blocked"] == {"inbox"}
     assert cards.LEGAL["approvals"] == {"approved", "rejected"}
     assert cards.LEGAL["approved"] == {"done"}
