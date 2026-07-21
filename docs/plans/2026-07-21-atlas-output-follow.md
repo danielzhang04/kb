@@ -32,7 +32,7 @@
 **Interfaces:**
 - Produces: `decide(prev_id, current_id) -> str` returning one of `"baseline" | "none" | "swap"`; `current_default_output() -> tuple[str, str] | None` (endpoint_id, friendly_name); `DeviceWatcher(probe, on_change, period_s=1.5)` thread class with `.start()`/`.stop()`; module logger named `"atlas.devicewatch"`.
 
-- [ ] **Step 1: Write the failing tests for `decide()` and the watcher shell**
+- [x] **Step 1: Write the failing tests for `decide()` and the watcher shell**
 
 ```python
 # atlas/tests/test_devicewatch.py
@@ -105,12 +105,12 @@ def test_watcher_survives_probe_exception():
     assert calls == ["Px7"]
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `.venv/Scripts/python -m pytest tests/test_devicewatch.py -q`
 Expected: FAIL / ERROR with `ModuleNotFoundError: No module named 'worker.devicewatch'` (or ImportError).
 
-- [ ] **Step 3: Implement `devicewatch.py`**
+- [x] **Step 3: Implement `devicewatch.py`**
 
 ```python
 # atlas/worker/devicewatch.py
@@ -215,12 +215,12 @@ class DeviceWatcher:
             self._stop.wait(self._period_s)
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `.venv/Scripts/python -m pytest tests/test_devicewatch.py -q`
 Expected: `6 passed`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add worker/devicewatch.py tests/test_devicewatch.py
