@@ -1,25 +1,8 @@
 # System Handover
-_Generated: 2026-07-20T06:09Z_
+_Generated: 2026-07-21 06:09 UTC_
 
-**What happened.** The nightly cadence ran cleanly. Both health checks are green — the
-preamble passes and the skills registry shows no drift. Tonight's `nightly-review`
-(`6a5dbb3e-295a9d2b`) dispatched and executed; yesterday saw a busy day on kb-ops and
-atlas — 11 inspector-graded tasks closed (hook/skill imports on kb-ops, two atlas MCP
-read-tool builds). Spend is $0.00 today against the $5.00 daily cap; everything runs on
-subscription billing. No card has been stuck in `working/` long enough to worry about
-(oldest ~21.6h).
+**What happened.** The nightly cadence ran cleanly — preamble green, skills registry no drift. Tonight's `nightly-review` (`6a5f0cef-53d31df4`) dispatched and executed. The headline since you left: **Atlas V1 "Hands" wave is COMPLETE and live in prod.** All three human gates passed at the desk, PR #44 merged (aa35b00), and the Atlas view is running on 127.0.0.1:5317 with live worker passthrough verified; inspector graded the wave's cards 95–97, and suites are green (atlas 132, fleet 530, dashboard 1551). Spend today is $0.94 of the $5.00 cap (Poyais thumbnail regen, which you ordered).
 
-**What is waiting on you.** Five T3 approval cards need your sign-off: four OAuth gates
-(`approve:oauth-gate-g1`…`g4`) and a governance amendment for canaries
-(`approve:governance-amendment-canaries`), all under kb-ops. Nothing can proceed on those
-tracks until you approve or reject them. Separately, atlas V0 is deliberately PAUSED
-mid-wave — tasks 1–5 are built and reviewed clean, and card `6a5c8ad2-1d991c23` sits in
-working awaiting a live smoke test; the full resume map is in
-`docs/plans/2026-07-19-atlas-v0-HANDOFF.md` on branch `claude/atlas`. faceless-youtube has
-a video-production pipeline queued under claude-boss but nothing needing you.
+**What is waiting on you.** A T3 **decision** card says the daily budget gate is structurally broken — it only ever sees $0.00 subscription rows, so image spend (a single video is 3–5× the daily cap) never registers; since `governance/` is human-edited, this is yours to decide. Four T3 OAuth-gate approvals (Google Workspace MCP setup) and a T2 delivery-gate flip (blocked on your ecc-import wave-1 checkpoint) also wait. On faceless-youtube, **PR #41** (post-render tail + fyt-runner) is ready to merge — land it with its fyt-video-run-test companion — and the Poyais video is parked at GATE 3 needing your thumbnail authorization, an L17 call, and publish approval. Atlas V2 "Trust" planning awaits your go/no-go.
 
-**What the system will do next unattended.** The nightly cadence keeps running on schedule
-and regenerates these two dashboards each run. The dispatcher will keep assigning cards to
-their owners, but the five approval cards are owned by the human operator — they will not
-move without you. If a health check or preamble ever fails, the routine stops and drops a
-wake-me card into the inbox rather than pressing on.
+**What the system will do next unattended.** The nightly cadence keeps running and regenerates these two dashboards each pass. The dispatcher keeps assigning cards to their owners, but every item above is human-owned and will not move without you. Four atlas conversation-rules cards are in `working/` (opened early today, well under the 48h staleness line). If any health check or preamble fails, the routine stops and drops a wake-me card rather than pressing on. One cosmetic nit: yesterday's nightly card is sitting `done` in the inbox folder — harmless.

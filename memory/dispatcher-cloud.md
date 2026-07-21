@@ -98,3 +98,21 @@
   inbox for owner==human-operator approve:* cards too.
 - No stale working cards (oldest atlas 6a5c8ad2-1d991c23 ~21.6h). atlas V0 PAUSED awaiting live
   smoke; faceless-youtube pipeline queued under claude-boss.
+
+## 2026-07-21 nightly-review (card 6a5f0cef-53d31df4)
+- Ran clean: preamble OK, sync_skills --check exit 0 (no drift), pyyaml importable. Dispatcher
+  emitted exactly one card (nightly cadence self-card), owned + executed.
+- Dashboards regenerated: inbox 8 / working 4 / done 54 / approvals-dir 0. Budget: $0.94 spent
+  today ($4.06 remaining) — first non-zero cost row I've seen: 7 gemini-image calls for Poyais
+  thumbnail regen, ledgered under faceless-youtube. Yesterday $0.54.
+- WORKED: read cost from ledgers/cost/ directly (grep + awk sum), not ledger.read_day('cost')
+  — read_day returned 0 rows for today's cost kind while the tsv clearly had a row. The image
+  cost rows use a different column layout than the subscription 0.0 rows; the raw-file sum is
+  the trustworthy number. Lesson: cross-check ledger.read_day against the raw tsv for cost.
+- ANOMALY surfaced: yesterday's nightly card 6a5dbb3e-295a9d2b sits in queue/inbox/ at
+  state:done (never moved to queue/done/). Cosmetic, inflates inbox count. Noted, not "fixed"
+  (didn't touch it — not in my work order).
+- Action-required scan again pulled human-owned cards from inbox (4 oauth gates + the
+  decide:budget-gate-measures-nothing T3 + the T2 delivery-gate flip), reaffirming last night's
+  lesson that "Action required" != only queue/approvals/.
+- Notable: Atlas V1 "Hands" wave COMPLETE + prod rollout (PR #44 merged, view live on :5317).
