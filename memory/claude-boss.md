@@ -167,3 +167,16 @@ Fresh terminal: read the spec at `memory/handoffs/2026-07-20-fyt-post-render-tai
 - LESSON: "two independent guards" claims must be verified against what git actually checks (branch -d checks HEAD/upstream, NOT origin/main) — same class as the inbox dedup-by-directory bug (approvals/ dir hosts a live AND a resolved state). Guard claims are review targets, not documentation.
 - LESSON: parity-by-fixture only guards limbs the fixtures exercise — all-empty bodies structurally could not catch the halted-marker drift. Fixtures must carry every field a limb reads.
 - REMAINS (Daniel, in order): merge #38/#40/#41/#42/#43; after #40 merge, boss closes wake-me 6a5b182e-a5aaf9b0 + stranded cadence cards 6a5b178f-375f9872/6a5b178f-c0723cf2 on ops; hand-edit governance/card-schema.md to add execution-controller (proposal doc in #42); deliberate daemon restart (activates reconciler + liveness); THEN watched-session Wave A gate flip → synthetic acceptance (runbook) → supervised live-fire (runbook). Nothing recurring re-enabled.
+
+## 2026-07-21 — Atlas V1 Hands wave: COMPLETE, all gates passed
+- What worked: pre-declaring scope amendments in plan execution notes BEFORE inspection (T9/T10
+  graded 96/97 first-pass vs T3/T6 fail->remediate->re-grade); one shared git seam (gitseam.py)
+  reused by ledger + card filing; desk gates catching real trust bugs (LLM role-played sleeping
+  with mic open -> filler-tolerant reflex + go_to_sleep tool + state-honesty persona rule).
+- Landmines burned in: NEVER git config (stale inspector identity in shared kb/.git/config
+  mislabeled work commits; per-command -c everywhere now); Windows audio indices reshuffle on BT
+  connect (console --input-device by NAME = polish backlog); PYTHONUTF8=1 when piping the worker
+  console; livekit event names only from installed source.
+- Remains: Daniel merges PR (claude/atlas -> main), prod 5317 update + kill 4317 dev daemon,
+  V2 Trust planning (voice-prepares/passkey-completes approvals, proactivity, morning brief) +
+  deferred backlog (TTFT diet, voice-switch, BT hot-follow, SSE push, app.py extraction).

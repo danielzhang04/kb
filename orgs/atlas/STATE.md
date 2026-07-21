@@ -1,8 +1,17 @@
 # atlas — STATE
 
-_Updated: 2026-07-20 (V1 "Hands" wave OPEN — Fable 5 boss session)_
+_Updated: 2026-07-21 (V1 COMPLETE — all gates passed — Fable 5 boss session)_
 
 ## Now
+- **V1 "HANDS" WAVE COMPLETE 2026-07-21 — ALL THREE GATES PASSED at the desk.** T3-T12 built,
+  graded (95/96/97/96/95/96/96/97/97 — every card past the T2 bar), Gate A (status surface),
+  Gate B (persona co-authored), Gate C (voice card filed with read-back confirm -> engaged
+  callback heard -> second card announced ONE-SHOT while asleep; 10 session transcripts on ops).
+  Two Gate-C findings fixed same-session: filler-tolerant reflex + real go_to_sleep tool
+  (4c55796); voice-filed project/tier normalization (622cd3f). Final suites: atlas 132, fleet
+  530, dashboard 1551 — green. Branch claude/atlas pushed; **PR to main pending Daniel's merge**;
+  after merge: 5317 prod dashboard picks up the Atlas view via pull/build/pm2 restart, kill the
+  temporary 4317 daemon. V2 "Trust" planning = next session, Daniel's go/no-go.
 - **V1 "Hands" wave UNDERWAY.** Authority: `docs/plans/2026-07-20-atlas-v1-plan.md` +
   `docs/specs/2026-07-20-atlas-v1-hands-design.md` (both approved by Daniel 2026-07-20,
   committed on `claude/atlas` at db250e6). Scope: Slice 1 status surface (state core,
