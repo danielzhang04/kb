@@ -105,3 +105,70 @@ def _read_ref_blob(repo_root: Path, ref: str, path: str) -> bytes:
         capture_output=True,
         check=True,
     ).stdout
+
+
+def _list_disk(ops_root: Path, patterns: list[str]) -> set[str]:
+    """Return posix relpaths of daemon-read files present on disk under ops_root."""
+    found: set[str] = set()
+    for pattern in patterns:
+        pat_dir = pattern.rstrip("/")
+        for base in ops_root.glob(pat_dir):  # glob expands ``orgs/*/workflows``
+            if base.is_dir():
+                for f in base.rglob("*"):
+                    if f.is_file():
+                        found.add(f.relative_to(ops_root).as_posix())
+    return found
+
+
+# --- Check (read-only drift report) -----------------------------------------
+def check(
+    repo_root: Path,
+    patterns: list[str],
+    ops_root: Path | None,
+    main_ref: str = DEFAULT_MAIN_REF,
+    ops_ref: str = DEFAULT_OPS_REF,
+) -> dict:
+    """Compare main against ops and report drift. Never writes.
+
+    If ``ops_root`` exists on disk, compare main against that checkout (what the
+    daemon actually reads). Otherwise fall back to comparing ``main_ref`` against
+    ``ops_ref`` directly so the check is safe to run from the cloud.
+    Line endings are normalized before content comparison so a CRLF checkout of
+    identical content is not reported as drift.
+    """
+    matchers = _compile(patterns)
+    main = _list_ref(repo_root, main_ref, matchers)
+    report: dict = {"mode": "", "main_only": [], "ops_only": [], "differs": []}
+
+    if ops_root is not None and Path(ops_root).is_dir():
+        ops_root = Path(ops_root)
+        report["mode"] = f"disk: {ops_root}"
+        disk = _list_disk(ops_root, patterns)
+        for path in sorted(main):
+            target = ops_root / path
+            if not target.exists():
+                report["main_only"].append(path)
+            else:
+                main_b = _read_ref_blob(repo_root, main_ref, path).replace(b"\r\n", b"\n")
+                disk_b = target.read_bytes().replace(b"\r\n", b"\n")
+                if main_b != disk_b:
+                    report["differs"].append(path)
+        for path in sorted(disk):
+            if path not in main:
+                report["ops_only"].append(path)
+    else:
+        report["mode"] = f"refs: {main_ref} vs {ops_ref}"
+        ops = _list_ref(repo_root, ops_ref, matchers)
+        for path, sha in sorted(main.items()):
+            if path not in ops:
+                report["main_only"].append(path)
+            elif ops[path] != sha:
+                report["differs"].append(path)
+        for path in sorted(ops):
+            if path not in main:
+                report["ops_only"].append(path)
+    return report
+
+
+def has_drift(report: dict) -> bool:
+    return bool(report["main_only"] or report["ops_only"] or report["differs"])
