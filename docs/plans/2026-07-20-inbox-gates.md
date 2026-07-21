@@ -71,6 +71,27 @@ live daemon — deploy = Daniel merges, then he triggers a deliberate daemon res
    **Recommendation:** accept this as "fail toward surfacing"; a future `git branch --merged origin/ops`
    check could auto-close branch gates. Confirm this is acceptable for the wave.
 
+## Decisions (RESOLVED 2026-07-20 — boss terminal)
+
+The five open questions above are resolved as follows (binding on all tasks):
+
+1. **DECIDED** — Stranded age derives from the card-id 8-hex epoch prefix; a
+   non-matching id → age unknown → NOT stranded (keeps `classify()` pure; a false
+   stranded is noise). Do not preclude T3's later work here.
+2. **DECIDED** — Merge-gate reconciler is on-by-default; `DASHBOARD_MERGE_GATE_INTERVAL_MS`
+   defaults to `300000`; a value `<= 0` disables it (fail-safe: every reconciler
+   failure leaves cards OPEN).
+3. **DECIDED** — The repo-root `STOP` file path is ADDED to the chokidar watch
+   targets so the synthetic STOP item surfaces immediately (overrides the
+   "accept next-tick refresh" recommendation).
+4. **DECIDED** — The shared parity fixture vocabulary is the dashboard `category`
+   set (`decision`/`gate`/`input`/`intervention`/`stranded`); `brief.py` gains
+   `classify_category` returning that set (its rendered "kind" text stays a display
+   mapping).
+5. **DECIDED** — Branch-only merge gates persist until a manual `merge_gate.py close`
+   — accepted as fail-toward-surfacing (the reconciler only `gh pr view`s PR-number
+   targets).
+
 ---
 
 ## Grounding notes carried into the tasks (verify-don't-trust results)
