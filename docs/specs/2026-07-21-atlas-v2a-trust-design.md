@@ -1,8 +1,9 @@
 # Atlas V2a "Trust" — design (voice-stages / passkey-completes approval loop)
 
-**Status:** APPROVED at the conversation gate (Daniel, 2026-07-21, boss session — the same gate V0
-and V1 passed). Two decisions were settled at the gate and are folded in below (§8 records them);
-the earlier open-questions list is closed. Build is authorized to proceed to the plan under §11.
+**Status:** DESIGN GATE PASSED (Daniel, 2026-07-21, boss session — the same conversation gate V0
+and V1 used). Two decisions were settled at the gate and are folded in below (§8 records them);
+the earlier open-questions list is closed. **The build wave itself is NOT yet authorized** — per
+the go/no-go brief, starting the §11 wave is a separate, explicit go from Daniel.
 **Amends:** `2026-07-19-atlas-build-delta-design.md` §5 (V2 row) and §3 (V2 tool row) — this doc
 takes only the *approval-loop* portion of that V2 row and designs it in full. Every other decision
 in the delta design and the V1 hands design stands.
@@ -371,6 +372,6 @@ and owns pushes/ops writes, inspector grades fresh-context, human gates one at a
 **P1** = same-day live passkey sweep (build-day opener), **P2** = T3 adversarial security review
 (explicit wave stage), **P3 / §9** = desk end-to-end checkpoint. Work branch `claude/atlas-v2a`
 (worktree under `C:/Users/danie/kb-worktrees/`), one PR at wave end unless review says split. This
-design doc was the conversation-gate artifact; **Daniel approved it at the gate on 2026-07-21** (§8),
-so the wave above is authorized to proceed — beginning with the P1 build-day sweep, no build code
-before it.
+design doc was the conversation-gate artifact; **Daniel settled its design decisions at the gate on
+2026-07-21** (§8). The wave above still awaits Daniel's explicit build go; when given, it begins
+with the P1 build-day sweep — no build code before it.
