@@ -136,10 +136,21 @@ export function setUpThrowawayRepo(sourceRepo: string): ThrowawayRepo {
   git(sourceRepo, ['clone', '--local', '--no-hardlinks', sourceRepo, clone]);
   git(clone, ['config', 'user.email', 'wave-a-acceptance@local']);
   git(clone, ['config', 'user.name', 'wave-a-acceptance']);
+  // The coordination remote for this run is an isolated LOCAL bare mirror (a filesystem path, not
+  // https/ssh), so every coordination push AND the canonical integrator's lineage publish/fetch use git's
+  // `file` transport. The PRODUCTION integrator prefixes every git command with `-c protocol.allow=never`
+  // (whitelisting only https/ssh) to protect real remotes — that deny-by-default ALSO blocks `file`, which
+  // is correct for production (real origin is https GitHub) but fatal here ("transport 'file' not allowed").
+  // Re-permit `file` ONLY inside these THROWAWAY repos via repo-local config: the protocol-specific
+  // `protocol.file.allow` key wins over the general `-c protocol.allow=never` default for the file protocol
+  // alone, so the isolated run publishes to its mirror WITHOUT weakening the daemon's prefix (unchanged, and
+  // still denying `file` for the real https/ssh remotes). Scoped to this clone+mirror; real repo untouched.
+  git(clone, ['config', 'protocol.file.allow', 'always']);
   // A local `ops` branch, from the cloned content, is REQUIRED by the coordination seam.
   git(clone, ['checkout', '-B', 'ops']);
   // Isolate the coordination remote: a fresh bare mirror, replacing the real-repo origin.
   git(mirror, ['init', '--bare', '--quiet']);
+  git(mirror, ['config', 'protocol.file.allow', 'always']);
   git(clone, ['remote', 'set-url', 'origin', mirror]);
   // Seed origin/ops in the mirror so `pull --rebase origin ops` has an upstream and pushes land there.
   git(clone, ['push', '--quiet', 'origin', 'ops']);

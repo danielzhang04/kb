@@ -119,6 +119,12 @@ function fixture(options: {
       expect(fullArgs.slice(0, 3)).toEqual(['-c', 'protocol.allow=never', '-c']);
       expect(fullArgs).toContain('protocol.https.allow=always');
       expect(fullArgs).toContain('protocol.ssh.allow=always');
+      // The daemon NEVER re-permits the `file` transport: the harness-only fix (permitting `file` for the
+      // acceptance run's local bare mirror) lives in the throwaway repo's own config, not in this production
+      // prefix. Prove on every integrator git op that file transport stays denied for the real remote.
+      expect(fullArgs).not.toContain('protocol.file.allow=always');
+      expect(fullArgs.some((a) => /^protocol\.file\./.test(String(a)))).toBe(false);
+      expect(fullArgs).not.toContain('protocol.allow=always');
       expect(fullArgs).toContainEqual(expect.stringMatching(/^core\.hooksPath=/));
       expect(fullArgs).toContain('--literal-pathspecs');
       const args = fullArgs.slice(fullArgs.indexOf('--literal-pathspecs') + 1);
@@ -187,6 +193,10 @@ function fixture(options: {
   const coordinationGit: GitRunner = (_cwd, fullArgs) => {
     expect(fullArgs.slice(0, 3)).toEqual(['-c', 'protocol.allow=never', '-c']);
     expect(fullArgs).toContain('protocol.https.allow=always');
+    // Coordination pushes also keep the `file` transport denied on the daemon path (harness-only fix).
+    expect(fullArgs).not.toContain('protocol.file.allow=always');
+    expect(fullArgs.some((a) => /^protocol\.file\./.test(String(a)))).toBe(false);
+    expect(fullArgs).not.toContain('protocol.allow=always');
     expect(fullArgs).toContainEqual(expect.stringMatching(/^core\.hooksPath=/));
     expect(fullArgs).toContain('--literal-pathspecs');
     const args = fullArgs.slice(fullArgs.indexOf('--literal-pathspecs') + 1);

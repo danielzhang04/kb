@@ -114,6 +114,46 @@ describe('setUpThrowawayRepo / assertCoordinationRemoteIsolated — coordination
     expect(git(sourceRepo, ['rev-list', '--count', 'HEAD']).trim()).toBe('1');
   });
 
+  // The daemon canonical integrator (canonicalResultIntegrator.ts) prefixes EVERY git op with
+  // `-c protocol.allow=never` and whitelists only https/ssh — which also denies the `file` transport. The
+  // throwaway coordination remote is a LOCAL bare mirror (a filesystem path → file transport), so without a
+  // scoped re-permit the integrator's lineage `push origin HEAD:refs/heads/<branch>` (L569) fails
+  // "transport 'file' not allowed" and the run parks at waiting-human. setUpThrowawayRepo re-permits `file`
+  // in the throwaway clone+mirror config only; these two tests prove the fix works AND is load-bearing.
+  const daemonPrefix = ['-c', 'protocol.allow=never', '-c', 'protocol.https.allow=always', '-c', 'protocol.ssh.allow=always'];
+
+  it('lineage publish/fetch under the daemon restrictive prefix succeeds against the throwaway file mirror', () => {
+    writeFileSync(join(iso.repoRoot, 'lineage-note.txt'), 'lineage publish\n');
+    git(iso.repoRoot, ['add', 'lineage-note.txt']);
+    git(iso.repoRoot, ['commit', '--quiet', '-m', 'lineage commit']);
+    const head = git(iso.repoRoot, ['rev-parse', 'HEAD']).trim();
+    // The exact shape of the previously-failing op (integrator L569) + its paired fetch (L570-572).
+    expect(() => git(iso.repoRoot, [...daemonPrefix, 'push', 'origin', 'HEAD:refs/heads/lineage-proof'])).not.toThrow();
+    expect(git(iso.coordinationRemote, ['rev-parse', 'lineage-proof']).trim()).toBe(head);
+    expect(() => git(iso.repoRoot, [...daemonPrefix, 'fetch', '--no-tags', 'origin',
+      'refs/heads/lineage-proof:refs/remotes/origin/lineage-proof'])).not.toThrow();
+  });
+
+  it('the file-transport permission is SCOPED — a clone without it still refuses (proving the fix is load-bearing)', () => {
+    // Negative control: a fresh clone that did NOT receive `protocol.file.allow=always` reproduces the
+    // original failure under the daemon prefix, so the harness config — not some ambient default — is the fix.
+    const bare = mkdtempSync(join(tmpdir(), 'wave-a-ctl-mirror-'));
+    const plain = mkdtempSync(join(tmpdir(), 'wave-a-ctl-clone-'));
+    created.push(bare, plain);
+    git(bare, ['init', '--bare', '--quiet']);
+    git(sourceRepo, ['clone', '--local', '--no-hardlinks', sourceRepo, plain]);
+    git(plain, ['remote', 'set-url', 'origin', bare]);
+    let err: unknown;
+    try {
+      git(plain, [...daemonPrefix, 'push', 'origin', 'HEAD:refs/heads/main']);
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeDefined();
+    const stderr = String((err as { stderr?: string }).stderr ?? (err as Error).message);
+    expect(stderr).toMatch(/transport 'file' not allowed/);
+  });
+
   it('assertCoordinationRemoteIsolated: passes for the mirror, REFUSES if origin resolves to the real repo', () => {
     expect(() => assertCoordinationRemoteIsolated(iso.repoRoot, sourceRepo)).not.toThrow();
     // Simulate the dangerous misconfiguration: point origin back at the real repo.
