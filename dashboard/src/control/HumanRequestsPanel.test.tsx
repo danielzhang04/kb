@@ -43,4 +43,43 @@ describe('HumanRequestsPanel', () => {
       response: 'Narrow the write path.',
     });
   });
+
+  it('surfaces a waiting-human run with NO open request as a distinct, non-actionable inspect row', async () => {
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url === '/api/control/runs') {
+        return response({ runs: [{ runRef: 'run-parked', state: 'waiting-human', openHumanRequestCount: 0, title: 'Parked render' }] });
+      }
+      if (url === '/api/control/runs/run-parked') {
+        return response({ ok: true, value: { run: {}, stages: [], attempts: [], sessions: [], humanRequests: [] } });
+      }
+      throw new Error(`unexpected ${url}`);
+    });
+
+    render(<HumanRequestsPanel sessionToken="token" fetchImpl={fetchImpl as unknown as typeof fetch} />);
+
+    const row = await screen.findByTestId('waiting-no-request-run-parked');
+    expect(row.textContent).toMatch(/NO open request/i);
+    expect(screen.getByTestId('inspect-run-run-parked').textContent).toMatch(/run-parked/);
+    // Non-actionable: no approve/respond buttons for a request-less parked run.
+    expect(screen.queryByRole('button', { name: /Approve|Respond|Request changes/i })).toBeNull();
+    // The "nothing needs attention" empty note must NOT show when a stranded run is present.
+    expect(screen.queryByText(/No managed run requests need attention/i)).toBeNull();
+  });
+
+  it('does not surface a waiting-human run that HAS an open request as a stranded row (it renders as a request)', async () => {
+    const request = {
+      requestRef: 'req-x', runRef: 'run-y', stageRef: null, kind: 'review', revision: 1, state: 'open',
+      title: 'Approve me', prompt: 'ok?', response: null,
+      createdAt: '2026-07-18T10:00:00.000Z', updatedAt: '2026-07-18T10:00:00.000Z',
+    };
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url === '/api/control/runs') return response({ runs: [{ runRef: 'run-y', state: 'waiting-human', openHumanRequestCount: 1, title: 'Has request' }] });
+      if (url === '/api/control/runs/run-y') return response({ ok: true, value: { run: {}, stages: [], attempts: [], sessions: [], humanRequests: [request] } });
+      throw new Error(`unexpected ${url}`);
+    });
+
+    render(<HumanRequestsPanel sessionToken="token" fetchImpl={fetchImpl as unknown as typeof fetch} />);
+    expect(await screen.findByRole('heading', { name: 'Approve me' })).toBeTruthy();
+    expect(screen.queryByTestId('waiting-no-request-run-y')).toBeNull();
+  });
 });

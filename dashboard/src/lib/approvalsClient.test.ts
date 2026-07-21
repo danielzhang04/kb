@@ -42,6 +42,12 @@ describe('fetchHumanInbox', () => {
     expect(result.counts.total).toBe(1);
     expect(result.items[0].category).toBe('decision');
   });
+
+  it('defaults every count key (incl. gate and stranded) to 0 when the body omits counts', async () => {
+    const fake = vi.fn(async () => jsonResponse({ items: [] })); // no `counts` field
+    const result = await fetchHumanInbox(fake as unknown as typeof fetch);
+    expect(result.counts).toEqual({ total: 0, decision: 0, gate: 0, input: 0, intervention: 0, stranded: 0 });
+  });
 });
 
 describe('verifyApproval', () => {
