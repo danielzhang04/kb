@@ -30,13 +30,16 @@ from livekit.plugins import deepgram, elevenlabs, silero
 from kbmcp import kb_tools
 from worker import anthropic_compat
 from worker import engagement as engagement_mod
-from worker import fastlane, repl, state, stateserver, toolreg, wakeword
+from worker import fastlane, ledgerwriter, repl, state, stateserver, toolreg, wakeword
 
 ATLAS = Path(__file__).resolve().parents[1]
 logger = logging.getLogger("atlas.app")
 
 # Fallback voice if config has no voices/active_voice (pre-bake-off default).
 TTS_VOICE = "aura-2-andromeda-en"
+
+# Fallback ops worktree for the transcript ledger if config omits `ops_root` (design §5, Task 6).
+DEFAULT_OPS_ROOT = "C:/Users/danie/kb-worktrees/dashboard-ops"
 
 
 def _build_tts(cfg: dict):
@@ -189,6 +192,19 @@ async def entrypoint(ctx: JobContext) -> None:
     engagement = engagement_mod.Engagement(timeout_s=cfg["engagement_timeout_s"])
     session.input.set_audio_enabled(False)  # start ASLEEP: no audio to STT until "hey jarvis"
 
+    # --- Durable transcript ledger (design §5, Task 6): a second consumer of the ONE publisher
+    # stream. It buckets each wake-session's lines and, at sleep, commits+pushes them to the ops
+    # worktree. It's built with the atlas-worker commit identity inline (never git config) and
+    # never raises into the voice loop — a git/network failure retains the lines and retries at
+    # the next sleep. ops_root is configurable (default = the real ops worktree).
+    ledger = ledgerwriter.SessionLedger(cfg.get("ops_root", DEFAULT_OPS_ROOT))
+    ledger.subscribe_to(publisher)
+
+    async def _flush_transcript(sid: str) -> None:
+        # Run the synchronous git subprocess work in a thread so the sleep cue / TTS is never
+        # blocked (design §5: the voice loop is never blocked by git). flush() never raises.
+        await loop.run_in_executor(None, ledger.flush, sid)
+
     def _sleep(announce: bool = True) -> bool:
         """Close the mic; returns True only on a real transition. Audible cue (Daniel's ask:
         never leave him guessing whether Atlas is still listening)."""
@@ -200,6 +216,14 @@ async def entrypoint(ctx: JobContext) -> None:
         if announce:
             session.say("Going to sleep.", add_to_chat_ctx=False)
             publisher.add_line("atlas", "Going to sleep.")  # audible, so it's mirrored
+        # Flush this wake-session's transcript to ops as a fire-and-forget task so the sleep cue
+        # is never blocked. Capture the session_id NOW — a future wake re-mints it, but the
+        # ledger buckets by id so flush(sid) drains exactly this wake's lines.
+        sid = publisher.session_id
+        if sid is not None:
+            flush_task = asyncio.create_task(_flush_transcript(sid))
+            _BG_TASKS.add(flush_task)
+            flush_task.add_done_callback(_BG_TASKS.discard)
         return True
 
     def _engage() -> None:
