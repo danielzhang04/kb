@@ -7,3 +7,5 @@ card_id	inspector_id	pass	project	rubric_version	score	task_type	tier	ts	worker
 6a5ec41c-b18aa9f1	inspector@agents.local	False	atlas	inspector-v1	93	tool-registry consolidation (no behavior change)	T2	2026-07-21T01:18:29.446382+00:00	claude/atlas
 6a5ec41c-b18aa9f1	inspector@agents.local	True	atlas	inspector-v1	95	tool-registry consolidation (no behavior change)	T2	2026-07-21T01:24:37.428066+00:00	claude/atlas
 6a5ec41c-f7d86587	inspector@agents.local	True	atlas	inspector-v1	96	worker state core + turn observation	T2	2026-07-21T01:26:37.987500+00:00	claude/atlas
+6a5ec41c-d2e26925	inspector@agents.local	True	atlas	inspector-v1	97	worker HTTP /state surface on 127.0.0.1:4360	T2	2026-07-20T22:20:00Z	claude/atlas
+6a5ec41c-caabe932	inspector@agents.local	True	atlas	inspector-v1	96	dashboard Atlas view + global mini-orb	T2	2026-07-21T01:34:53.501853+00:00	claude/atlas
