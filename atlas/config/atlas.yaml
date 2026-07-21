@@ -11,7 +11,8 @@ engaged_window_s: 30        # conversation-rules §1: window armed by Atlas-side
 # from seed_keyterms). Outside the engaged window an utterance must contain "atlas" or hit
 # one of these to reach the LLM; everything else gets silence.
 address_vocab: [card, cards, queue, inbox, approvals, approval, workflow, workflows,
-                project, projects, credit, dashboard, working, ledger, budget, status]
+                project, projects, credit, dashboard, working, ledger, budget, status,
+                alice]   # Deepgram mishears "Atlas" as "Alice" (desk 2026-07-21) — the name must gate through
 # dismiss phrases MIGRATED to config/intents.yaml (design §7 reflex lane, Task 10): the reflex
 # lane's `dismiss` intent is now the single source of dismiss matching data — no key here anymore.
 # --- Voice toggle (Daniel 2026-07-20): named voices, switch by pointing active_voice at one
