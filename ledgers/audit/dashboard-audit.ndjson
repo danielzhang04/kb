@@ -86,3 +86,4 @@
 {"ts":"2026-07-21T07:43:58.951Z","action":"auth","owner":"operator","result":"login"}
 {"ts":"2026-07-21T18:48:43.081Z","action":"auth","owner":"operator","result":"login"}
 {"ts":"2026-07-21T18:50:30.276Z","action":"pty-open","owner":"operator","result":"spawn-failed","detail":{"error":"Cannot find module 'node-pty'\nRequire stack:\n- C:\\Users\\danie\\kb\\dashboard\\server\\pty\\host.ts"}}
+{"ts":"2026-07-21T21:31:34.194Z","action":"auth","owner":"operator","result":"login"}
