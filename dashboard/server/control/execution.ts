@@ -307,16 +307,71 @@ function profileFor(policy: PolicyEnvironment, role: 'manager' | 'worker', runti
   return policy.profiles.find((profile) => profile.role === role && profile.runtime === runtime && profile.model === model) ?? null;
 }
 
+interface RestrictedIntentRule {
+  readonly pattern: RegExp;
+  /** Disposition when the vocabulary appears in the stage's structured `action` id. */
+  readonly action: { kind: 'refuse' | 'waiting'; reason: string };
+  /** Disposition when the vocabulary appears only in the free-text `workOrder` prose. */
+  readonly prose: { kind: 'refuse' | 'waiting'; reason: string };
+}
+
+/**
+ * Restricted-intent vocabulary, evaluated per-field rather than over one concatenated blob.
+ *
+ * The `action` id is a compiled, structured declaration of what a stage DOES; restricted vocabulary
+ * there is a deliberate statement of intent, so it keeps the original hard disposition (credential /
+ * spending are non-overridable refusals; publication waits for approval).
+ *
+ * The `workOrder` is free-text instructions handed to a tool-capped, scope-bound worker — and, as the
+ * `self-lint-report` false positive proved, the natural place for a def to state its OWN safety rules
+ * ("report the path only — never echo a suspected secret's value", "no spend, no publish"). Those
+ * prohibition sentences contain exactly the vocabulary this scanner hunts. A prose match is therefore
+ * kept as defense-in-depth but downgraded to an `approval`-kind `waiting` boundary instead of a
+ * non-overridable `governance-refusal`.
+ *
+ * What that downgrade does and does NOT buy (verified empirically in review): the flagged stage parks
+ * waiting-human BEFORE any worker runs, and — because this check recomputes from immutable proposal
+ * content on every engine pass and never consults the human decision — an approval does NOT release the
+ * flagged stage; it re-parks on the next pass. The benefit is that an approved `approval` boundary
+ * (unlike a `governance-refusal`, see launch.ts#acceptsBoundary) no longer poisons the REST of the run:
+ * sibling stages can proceed. A false positive on a single-stage def still parks that run permanently —
+ * the def must be reworded (as PR #58 did for self-lint-report).
+ *
+ * CONSTRAINT for future editors: if this branch is ever made releasable-on-approval, the human request
+ * MUST be extended to show the full work order at decision time — today it carries only the reason slug,
+ * and a reviewer must never approve prose they cannot see.
+ *
+ * Structured defenses (classifyActionRisk on the action namespace, evaluateExecutionPolicy, the worker
+ * tool cap and write-scope) remain unchanged beneath this scan. Target paths are intentionally NOT
+ * scanned here — legitimate paths such as `docs/credential-policy.md` would false-positive, and target
+ * safety is already enforced structurally by evaluateExecutionPolicy.
+ */
+const RESTRICTED_INTENT_RULES: readonly RestrictedIntentRule[] = [
+  {
+    pattern: /\b(?:credential|password|private key|api key|access token|secret)\b/,
+    action: { kind: 'refuse', reason: 'credential-handling-intent-is-forbidden' },
+    prose: { kind: 'waiting', reason: 'credential-handling-language-requires-human-review' },
+  },
+  {
+    pattern: /\b(?:purchase|spend|payment|credit card|buy)\b/,
+    action: { kind: 'refuse', reason: 'real-spending-intent-is-forbidden' },
+    prose: { kind: 'waiting', reason: 'spending-language-requires-human-review' },
+  },
+  {
+    pattern: /\b(?:publish|publication|deploy|release externally|upload externally)\b/,
+    action: { kind: 'waiting', reason: 'external-publication-intent-requires-human-approval' },
+    prose: { kind: 'waiting', reason: 'external-publication-intent-requires-human-approval' },
+  },
+];
+
 function restrictedIntent(stage: ProposalStage): { kind: 'refuse' | 'waiting'; reason: string } | null {
-  const text = `${stage.action}\n${stage.workOrder}`.toLowerCase();
-  if (/\b(?:credential|password|private key|api key|access token|secret)\b/.test(text)) {
-    return { kind: 'refuse', reason: 'credential-handling-intent-is-forbidden' };
+  const action = stage.action.toLowerCase();
+  for (const rule of RESTRICTED_INTENT_RULES) {
+    if (rule.pattern.test(action)) return rule.action;
   }
-  if (/\b(?:purchase|spend|payment|credit card|buy)\b/.test(text)) {
-    return { kind: 'refuse', reason: 'real-spending-intent-is-forbidden' };
-  }
-  if (/\b(?:publish|publication|deploy|release externally|upload externally)\b/.test(text)) {
-    return { kind: 'waiting', reason: 'external-publication-intent-requires-human-approval' };
+  const prose = stage.workOrder.toLowerCase();
+  for (const rule of RESTRICTED_INTENT_RULES) {
+    if (rule.pattern.test(prose)) return rule.prose;
   }
   return null;
 }
