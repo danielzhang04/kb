@@ -1,9 +1,16 @@
 """Engagement window state machine (spec §2 Listening decision: audio leaves the PC ONLY
-while ENGAGED). Pure logic, no audio — driven by wake word, speech events, and a clock.
+while ENGAGED). Pure logic, no audio — driven by wake word, interaction events, and a clock.
 
 ASLEEP --wake()--> ENGAGED --(clock()-last_activity > timeout_s via tick())--> ASLEEP
                             --dismiss()--> ASLEEP (immediate)
-heard_speech() re-stamps the silence clock while ENGAGED.
+interacted() re-stamps the silence clock while ENGAGED.
+
+The silence clock measures time since the last *directed interaction with Atlas* — wake, an
+Atlas reply, or a kept-awake reflex — NOT time since the last transcribed sound. That distinction
+is the whole point: while ENGAGED the mic streams the WHOLE room to STT, so background chatter is
+transcribed too. Re-stamping on every transcript (the pre-2026-07-21 bug) let ambient talk defeat
+the 2-min silence window forever; re-stamping only on Atlas interaction lets the room stay noisy
+and Atlas still sleeps timeout_s after it was last actually engaged.
 """
 import time
 
@@ -27,8 +34,13 @@ class Engagement:
         self._state = ENGAGED
         self._last_activity = self._clock()
 
-    def heard_speech(self) -> None:
-        """A final transcript arrived: re-stamp the silence clock (no-op while asleep)."""
+    def interacted(self) -> None:
+        """A directed interaction with Atlas occurred (Atlas woke, replied, or handled a
+        keep-awake reflex): re-stamp the silence clock (no-op while asleep).
+
+        NOT called for raw user transcripts — ambient room speech that Atlas does not act on must
+        NOT re-stamp the clock, or continuous background talk keeps Atlas awake forever (the
+        symptom this method's rename encodes)."""
         if self._state == ENGAGED:
             self._last_activity = self._clock()
 

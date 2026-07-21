@@ -98,6 +98,30 @@ def resolve_input_device(substring: str | None, devices=None):
     return None
 
 
+def resolve_output_device(substring: str | None, devices=None):
+    """Index of the first OUTPUT device whose name contains substring (case-insensitive).
+    None/empty substring or no match -> None (system default). This is the speaker analogue of
+    resolve_input_device: the wake INPUT is pinned by name because the Windows default drifts to a
+    Bluetooth hands-free path; the TTS OUTPUT has the SAME drift (default hops to an AirPods HFP
+    sink that is inaudible) and needs the same explicit pin, so Atlas speaks to the speaker Daniel
+    is actually on (2026-07-21 finding: TTS was silent on the main speaker).
+
+    First-match note: on Windows sounddevice enumerates the SAME physical speaker once per host API
+    (MME, WASAPI, DirectSound...), so one substring can match several rows; we return the first,
+    normally the MME copy (host-API 0). That is fine for playback — pass a more specific substring
+    if a particular host API is required."""
+    if not substring:
+        return None
+    if devices is None:
+        import sounddevice as sd
+        devices = sd.query_devices()
+    for i, d in enumerate(devices):
+        if d["max_output_channels"] > 0 and substring.lower() in d["name"].lower():
+            return i
+    logger.warning("tts output device %r not found — falling back to system default", substring)
+    return None
+
+
 def listen(on_wake: Callable[[], None], model_name: str = "hey_jarvis",
            device: str | None = None, threshold: float = THRESHOLD) -> None:
     """Blocking mic loop: read 1280-sample int16 frames at 16 kHz, score each with the wake

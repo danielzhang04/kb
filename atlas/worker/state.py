@@ -67,11 +67,20 @@ class StatePublisher:
         # add_filed_card on each successful file_card (state starts "inbox"); their outcomes are
         # updated by update_filed_card (Task 11's done-watcher). Surfaced in snapshot (design §3).
         self._filed_cards: list[dict] = []
+        # TTS output-device pin status for the /state snapshot (M4, 2026-07-21):
+        # {"configured": <substring or None>, "resolved": <device name or None>}. `configured` set
+        # with `resolved` null == a bad pin the dashboard can flag (TTS is falling back to the
+        # drifting system default). None until the wiring calls set_output_device.
+        self._output_device: dict | None = None
         self._subs: list[Callable] = []
 
     @property
     def state(self) -> str:
         return self._state
+
+    def set_output_device(self, status: dict | None) -> None:
+        """Record the TTS output-device pin status ({configured, resolved}) for the snapshot."""
+        self._output_device = status
 
     @property
     def session_id(self) -> str | None:
@@ -131,6 +140,7 @@ class StatePublisher:
             "voice": self.voice,
             "transcript": list(self._ring),
             "filed_cards": [dict(c) for c in self._filed_cards],
+            "output_device": dict(self._output_device) if self._output_device else None,
         }
 
     def _emit(self, event: tuple) -> None:

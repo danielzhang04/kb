@@ -157,11 +157,23 @@ def test_snapshot_schema_keys():
     snap = p.snapshot()
     assert set(snap.keys()) == {
         "version", "state", "since", "session_id", "voice", "transcript", "filed_cards",
+        "output_device",
     }
     assert snap["version"] == 1
     assert snap["voice"] == "mars"
     assert snap["filed_cards"] == []  # Task 9: present, empty until a card is filed
+    assert snap["output_device"] is None  # M4: null until the wiring sets a pin status
     assert "heartbeat" not in snap    # the HTTP layer (Task 5) stamps it at request time
+
+
+def test_snapshot_surfaces_output_device_pin():
+    # M4 (2026-07-21): a configured-but-unresolved pin must be visible in /state so the dashboard
+    # can flag that TTS fell back to the (drifting) system default.
+    p = StatePublisher(clock=lambda: _dt(0))
+    p.set_output_device({"configured": "Speakers", "resolved": None})
+    assert p.snapshot()["output_device"] == {"configured": "Speakers", "resolved": None}
+    p.set_output_device({"configured": "Speakers", "resolved": "Speakers (Realtek)"})
+    assert p.snapshot()["output_device"]["resolved"] == "Speakers (Realtek)"
 
 
 def test_voice_is_settable_by_wiring():

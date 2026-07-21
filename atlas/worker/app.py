@@ -117,6 +117,63 @@ def _kb_function_tools():
     return [toolreg.livekit_tool(spec) for spec in toolreg.REGISTRY]
 
 
+def _apply_agent_state(engagement, publisher, agent_state: str) -> None:
+    """Body of the agent_state_changed handler, extracted so the wiring is unit-testable.
+
+    design §2: THINKING = LLM turn in flight, SPEAKING = TTS playing, else LISTENING. The session's
+    own AgentState (agent_session.py:1757) gives these directly. Guarded by ENGAGED so session
+    chatter while ASLEEP — the "Going to sleep." ack, warm-up ("initializing"->"listening") — never
+    overrides the ASLEEP orb.
+
+    Silence-clock re-stamp (2026-07-21 fix): Atlas entering SPEAKING is proof of a real, directed
+    interaction — Atlas answered, ack'd a wake ("Yes?"), or spoke a reflex reply ("repeat that") —
+    so it re-opens the 2-min window. We deliberately do NOT re-stamp on THINKING or on raw user
+    transcripts: while ENGAGED the mic streams the WHOLE room to STT, so ambient chatter is
+    transcribed (and can even spin up a THINKING turn) without Atlas ever speaking. Keying the window
+    off Atlas's own voice is what lets a noisy room go quiet into ASLEEP after timeout_s."""
+    if engagement.state != engagement_mod.ENGAGED:
+        return
+    mapped = state.STATE_FROM_AGENT.get(agent_state)
+    if mapped is not None:
+        publisher.set_state(mapped)
+    if mapped == state.SPEAKING:
+        engagement.interacted()
+
+
+def _silence_decision(orb_state: str) -> str:
+    """What the silence watcher should do this tick given the current orb state (M2 fix, 2026-07-21).
+
+    'restamp' while SPEAKING — Atlas is actually talking, so measure silence from the END of the
+    utterance, never sleep out from under a >120s reply. 'defer' while THINKING — an LLM turn is in
+    flight (possibly a follow-up asked at t≈timeout), so don't sleep mid-generation, but don't
+    extend the window either (ambient chatter also spins up THINKING and must not hold Atlas awake).
+    'check' otherwise — LISTENING/ASLEEP: run the normal timeout check."""
+    if orb_state == state.SPEAKING:
+        return "restamp"
+    if orb_state == state.THINKING:
+        return "defer"
+    return "check"
+
+
+def _output_device_status(cfg: dict, resolve=wakeword.resolve_output_device) -> dict:
+    """{'configured': <substring or None>, 'resolved': <device name or None>} for the TTS output
+    pin, surfaced in GET /state so a bad pin is visible on the dashboard (M4, 2026-07-21) instead of
+    only a scrolling CRITICAL log line. `resolved` is null when the configured name matches nothing —
+    exactly the case that would otherwise silently reproduce the original wrong-device bug."""
+    configured = cfg.get("tts_output_device")
+    if not configured:
+        return {"configured": None, "resolved": None}
+    idx = resolve(configured)
+    if idx is None:
+        return {"configured": configured, "resolved": None}
+    try:
+        import sounddevice as sd
+        name = sd.query_devices(idx)["name"]
+    except Exception:
+        name = str(idx)
+    return {"configured": configured, "resolved": name}
+
+
 class AtlasAgent(Agent):
     """Agent that gives the reflex lane (design §7) its interception point AHEAD of the LLM turn.
 
@@ -180,6 +237,9 @@ async def entrypoint(ctx: JobContext) -> None:
     # surface (Task 5), transcript ledger (Task 6), and done-watcher (Task 11) all consume
     # this ONE stream. `voice` mirrors the active config voice.
     publisher = state.StatePublisher(voice=cfg.get("active_voice"))
+    # M4 (2026-07-21): surface the TTS output-device pin in /state so a bad pin (configured but not
+    # resolved) is visible on the dashboard after Daniel walks away, not just a scrolling log line.
+    publisher.set_output_device(_output_device_status(cfg))
 
     # Done-watcher (design §8, Task 11): watches the ops queue for the cards Atlas files by voice
     # and speaks their completion. Its sidecar (default %USERPROFILE%\.atlas\watched.json) is
@@ -283,15 +343,7 @@ async def entrypoint(ctx: JobContext) -> None:
 
     @session.on("agent_state_changed")
     def _on_agent_state(ev) -> None:
-        # design §2: THINKING = LLM turn in flight, SPEAKING = TTS playing, else LISTENING.
-        # The session's own AgentState (agent_session.py:1757) gives these directly. Guarded
-        # by ENGAGED so session chatter while ASLEEP — the "Going to sleep." ack, session
-        # warm-up ("initializing"->"listening") — never overrides the ASLEEP orb.
-        if engagement.state != engagement_mod.ENGAGED:
-            return
-        mapped = state.STATE_FROM_AGENT.get(ev.new_state)
-        if mapped is not None:
-            publisher.set_state(mapped)
+        _apply_agent_state(engagement, publisher, ev.new_state)
 
     # Gate-C fix (2026-07-21): give the LLM a real go_to_sleep tool so a conversational dismissal
     # that slips past the reflex lane ACTUALLY closes the mic instead of being role-played.
@@ -304,14 +356,15 @@ async def entrypoint(ctx: JobContext) -> None:
     def _on_wake() -> None:  # called from the wake-word thread; hop to the event loop
         loop.call_soon_threadsafe(_engage)
 
-    @session.on("user_input_transcribed")
-    def _on_transcript(ev) -> None:
-        # Every final utterance re-stamps the silence clock so a reflex ("repeat that") keeps Atlas
-        # awake. Reflex CLASSIFICATION + dispatch happens in AtlasAgent.on_user_turn_completed (the
-        # only hook that can keep a reflex utterance out of the LLM chat context — see AtlasAgent);
-        # this handler just keeps the engagement clock honest.
-        if ev.is_final:
-            engagement.heard_speech()
+    # NOTE (2026-07-21 fix): there is deliberately NO `user_input_transcribed` -> engagement
+    # re-stamp any more. While ENGAGED the mic streams the ENTIRE room to Deepgram, so every sound
+    # in the room becomes a "final" transcript — including background conversation Atlas is not part
+    # of. Re-stamping the silence clock on those (the old behavior) meant any nearby talking kept
+    # Atlas awake indefinitely and the 2-min auto-sleep never fired (Daniel's report, 2026-07-21).
+    # The window is now re-opened only by Atlas's own SPEAKING (see _on_agent_state) — a directed
+    # interaction — plus wake(). A reflex reply ("repeat that") still keeps Atlas awake, because
+    # speaking it flips the session to SPEAKING; reflex classification is unchanged
+    # (AtlasAgent.on_user_turn_completed).
 
     # --- Reflex lane (design §7). intents.yaml is the ONLY matching source; the handler runs ahead
     # of the LLM turn via AtlasAgent.on_user_turn_completed and returns True to suppress the reply.
@@ -383,6 +436,18 @@ async def entrypoint(ctx: JobContext) -> None:
     async def _silence_watcher() -> None:
         while True:
             await asyncio.sleep(1.0)
+            # M2 fix (2026-07-21): never sleep out from under an in-flight turn. While Atlas is
+            # SPEAKING, re-stamp so silence is measured from the END of the utterance (fixes a >120s
+            # reply, and the wake ack, being cut off mid-speech). While THINKING (e.g. a follow-up
+            # question asked right at the timeout), defer the sleep decision without extending the
+            # window — ambient chatter also spins up THINKING and must not hold Atlas awake. Only
+            # when idle-LISTENING do we run the timeout check.
+            decision = _silence_decision(publisher.state)
+            if decision == "restamp":
+                engagement.interacted()
+                continue
+            if decision == "defer":
+                continue
             if engagement.tick() == engagement_mod.ASLEEP:
                 _sleep()
 
@@ -411,7 +476,12 @@ async def entrypoint(ctx: JobContext) -> None:
         """Deliver one completion callback. ENGAGED -> inline; ASLEEP + announce_when_asleep -> a
         one-shot say that does NOT open STT (audio stays detached, orb stays ASLEEP — TTS out is
         not capture). BOTH speaking paths mirror the line (transcript ring + ledger). The filed-card
-        outcome is updated in the /state snapshot regardless of whether we spoke."""
+        outcome is updated in the /state snapshot regardless of whether we spoke.
+
+        Accepted-for-now (2026-07-21): if a callback fires while ENGAGED, speaking it flips the orb
+        to SPEAKING, which re-stamps the silence window (Atlas legitimately spoke to Daniel). A burst
+        of completion callbacks could thus extend the window; this is intentional — a callback IS a
+        directed interaction — and callbacks are rare (only for cards this session filed)."""
         engaged = engagement.state == engagement_mod.ENGAGED
         if engaged or announce_when_asleep:
             # add_to_chat_ctx=False: a callback is not a conversation turn for Claude, and (like the
@@ -435,7 +505,51 @@ async def entrypoint(ctx: JobContext) -> None:
     done_task.add_done_callback(_BG_TASKS.discard)
 
 
+def _console_output_args(argv: list[str], cfg: dict,
+                         resolve=wakeword.resolve_output_device) -> list[str]:
+    """Extra CLI args pinning the TTS OUTPUT device for `console` audio mode (Bug 2, 2026-07-21).
+
+    livekit's console output falls back to `sd.default.device[1]` — the drifting Windows default
+    output — and opens its OutputStream on it ONCE at startup (cli/_legacy.py set_speaker_enabled),
+    so TTS can end up on an inaudible AirPods HFP sink and never follow Daniel switching to the main
+    speaker. When atlas.yaml sets `tts_output_device` (a name substring, exactly like
+    `wake_input_device`) and an audio console is running without an explicit --output-device, we
+    resolve it to a device index and pass `--output-device <idx>`, which livekit hands straight to
+    sounddevice. Returns [] (system default, unchanged) when: not a console run, --text/--list-devices,
+    an explicit --output-device is already present, no config key, or the configured device is not
+    found (resolve() logs a loud warning — never a silent swap)."""
+    if "console" not in argv or "--text" in argv or "--list-devices" in argv:
+        return []
+    if any(a == "--output-device" or a.startswith("--output-device=") for a in argv):
+        return []
+    substring = cfg.get("tts_output_device")
+    if not substring:
+        return []
+    idx = resolve(substring)
+    if idx is None:
+        # Loud, non-fatal: Atlas still starts, but Daniel is told WHY he may hear nothing.
+        logger.critical(
+            "TTS output device %r not found — Atlas will fall back to the system default output, "
+            "which on this machine drifts to an inaudible Bluetooth sink; you may hear nothing. "
+            "Fix `tts_output_device` in atlas/config/atlas.yaml or connect the named speaker.",
+            substring)
+        return []
+    try:
+        import sounddevice as sd
+        name = sd.query_devices(idx)["name"]
+    except Exception:
+        name = "?"
+    logger.info("TTS output pinned to device [%d] %s (config tts_output_device=%r)",
+                idx, name, substring)
+    return ["--output-device", str(idx)]
+
+
 def main() -> int:
+    # Pin the TTS output device from config before livekit resolves the (drifting) system default.
+    try:
+        sys.argv.extend(_console_output_args(sys.argv, _cfg()))
+    except Exception:
+        logger.exception("could not resolve tts_output_device — using the system default output")
     cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
     return 0
 
