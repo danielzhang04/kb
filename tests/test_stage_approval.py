@@ -104,3 +104,70 @@ def test_stage_cloud_opens_pr(tmp_path):
     assert ref == f"PR:{branch}"
     flat = [tok for call in runner.calls for tok in call]
     assert not any("merge" in tok for tok in flat)   # cloud opener never merges
+
+
+# --------------------------------------------------------------------------- #
+# T2 — open_pr files a merge-gate card (via T1) after opening the PR           #
+# --------------------------------------------------------------------------- #
+
+def test_open_pr_files_merge_gate(tmp_path):
+    # push (git) -> open (pr_opener) -> file (gate_filer), in that order; the gate
+    # is filed against the PR ref the opener returned.
+    repo, card, path = _make_card(tmp_path)
+    events = []
+
+    def runner(args, cwd=None):
+        events.append(("git", args[0]))
+
+    def fake_pr_opener(branch):
+        events.append(("open", branch))
+        return "PR:foo"
+
+    def rec_gate_filer(**kw):
+        events.append(("file", kw))
+
+    ref = stage_approval.open_pr("br", repo, runner,
+                                 pr_opener=fake_pr_opener, gate_filer=rec_gate_filer)
+    assert ref == "PR:foo"
+    kinds = [e[0] for e in events]
+    assert kinds == ["git", "open", "file"]          # push BEFORE open BEFORE file
+    assert events[0][1] == "push"
+    file_kw = events[2][1]
+    assert file_kw["target"] == "PR:foo"             # gate keyed on the opened PR ref
+    assert file_kw["pr_url"] == "PR:foo"
+    assert file_kw["branch"] == "br"
+
+
+def test_open_pr_gate_filer_default_is_merge_gate(tmp_path, monkeypatch):
+    # With no injected gate_filer, the default resolves to merge_gate.file bound to
+    # the repo's queue/.
+    import merge_gate
+    repo, card, path = _make_card(tmp_path)
+    runner = FakeRunner()
+    recorded = {}
+
+    def fake_file(queue_root, *, target, repo, branch, pr_url, unblocks, **kw):
+        recorded.update(target=target, queue_root=str(queue_root), repo=repo,
+                        branch=branch, pr_url=pr_url, unblocks=unblocks)
+        return "sentinel-card"
+
+    monkeypatch.setattr(merge_gate, "file", fake_file)
+    ref = stage_approval.open_pr("br", repo, runner, pr_opener=lambda b: "PR:xyz")
+    assert ref == "PR:xyz"
+    assert recorded["target"] == "PR:xyz"
+    assert recorded["pr_url"] == "PR:xyz"
+    assert recorded["branch"] == "br"
+    assert recorded["queue_root"].endswith("queue")   # bound to repo's queue/
+
+
+def test_open_pr_gate_failure_never_breaks_the_open(tmp_path):
+    # A gate-filing failure must NEVER undo an opened PR (surfacing is best-effort).
+    repo, card, path = _make_card(tmp_path)
+    runner = FakeRunner()
+
+    def boom(**kw):
+        raise RuntimeError("queue write failed")
+
+    ref = stage_approval.open_pr("br", repo, runner,
+                                 pr_opener=lambda b: "PR:ok", gate_filer=boom)
+    assert ref == "PR:ok"                              # PR ref still returned

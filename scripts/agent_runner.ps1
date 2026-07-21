@@ -482,6 +482,45 @@ if ($LASTEXITCODE -ne 0) {
 }
 else {
     Write-RunnerLog ("pushed agent=$Agent branch=$workBranch -- awaiting PR into ops (human or cloud leg opens/merges; runner never does)")
+
+    # --- inbox-gates G1: file a merge-gate card so the pushed work branch shows
+    # up in the dashboard Inbox as a human merge gate (predicate #4) instead of
+    # being invisible in both feeds. This is a BRANCH-ONLY gate: the runner never
+    # opens a PR (trust-anchor invariant), so the target is $workBranch with no PR
+    # number, and the daemon reconciler cannot auto-close it -- a human closes it
+    # on merge (Decision 5, accepted as fail-toward-surfacing).
+    #
+    # Best-effort: the push already succeeded, so a merge_gate failure only logs
+    # and NEVER changes $overallExit. The gate card is committed to $workBranch and
+    # re-pushed so it rides the human's PR into ops -- that PR is the ONLY
+    # coordination path this runner has (it cannot push ops directly). All merge_gate
+    # writes go through scripts/cards.py APIs (via merge_gate.py) so they inherit
+    # its schema/dedup conventions; no hand-rolled frontmatter here.
+    try {
+        $gateOut = (& $py "$RepoRoot/scripts/merge_gate.py" file `
+            --queue-root "$RepoRoot/queue" `
+            --target $workBranch `
+            --repo kb `
+            --branch $workBranch `
+            --unblocks "merge of $workBranch into ops" | Out-String).Trim()
+        Write-RunnerLog ("merge-gate-filed agent=$Agent branch=$workBranch :: $gateOut")
+
+        # Exact-path staging scoped to queue/ only (never sweep ledgers/ or work
+        # files): the sole uncommitted queue change here is the new gate card
+        # (the result card was already committed above). On a dedup hit no new file
+        # exists, so `git commit` finds nothing staged (nonzero exit) and the push
+        # is skipped -- the existing gate already reached ops on an earlier run.
+        git -C $RepoRoot add -- queue
+        git -C $RepoRoot commit -m "chore(inbox-gates): merge-gate card for $workBranch"
+        if ($LASTEXITCODE -eq 0) {
+            git -C $RepoRoot push $PushRemote $workBranch
+            if ($LASTEXITCODE -ne 0) {
+                Write-RunnerLog ("merge-gate-push-failed agent=$Agent branch=$workBranch -- gate committed locally; human reconciles on merge")
+            }
+        }
+    } catch {
+        Write-RunnerLog ("merge-gate-failed agent=$Agent branch=$workBranch :: $_")
+    }
 }
 
 try {
