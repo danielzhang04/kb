@@ -168,10 +168,15 @@ export function Workflows({
         setLaunchStatus((current) => ({ ...current, [ref]: 'Unlock refused.' }));
         return;
       }
+      // The server REQUIRES a non-empty client-supplied idempotencyKey (≤512 chars): a server-minted key
+      // would turn every proxy retry into a duplicate run, so it refuses an absent one rather than invent it.
+      // An explicit Launch click is a distinct launch intent, so the key is UNIQUE per click — each click is
+      // meant to create a new run. A content-hash would wrongly dedup repeat launches into a single run.
+      const idempotencyKey = `launch:${ref}:${typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : Date.now().toString(36)}`;
       const response = await fetch(`/api/workflows/${encodeURIComponent(ref)}/launch`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-        body: '{}',
+        body: JSON.stringify({ idempotencyKey }),
       });
       await invalidateSessionOnGovernedAuthFailure(response);
       const body = (await response.json()) as { runRef?: string; activationGated?: boolean; error?: string; detail?: unknown };

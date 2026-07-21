@@ -108,6 +108,49 @@ describe('Workflows view', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Launch' }));
     expect(await screen.findByText(/Run created run-ref-9; execution awaits activation/)).toBeTruthy();
     expect(fetchMock).toHaveBeenCalledWith('/api/workflows/research-brief/launch', expect.objectContaining({ method: 'POST' }));
+    // The server refuses any launch whose body lacks a non-empty idempotencyKey ≤512 chars. Every prior
+    // test mocked fetch, so `body: '{}'` shipped and the live button always got "Refused". Assert the
+    // ACTUAL body here so that regression cannot return silently.
+    const init = (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1];
+    expect(typeof init.body).toBe('string');
+    const sent = JSON.parse(init.body as string) as { idempotencyKey?: unknown };
+    expect(typeof sent.idempotencyKey).toBe('string');
+    const key = sent.idempotencyKey as string;
+    expect(key.trim()).not.toBe('');
+    expect(key.length).toBeLessThanOrEqual(512);
+    // Stable, readable prefix scoping the key to this definition (unique-per-click suffix follows).
+    expect(key.startsWith('launch:research-brief:')).toBe(true);
+  });
+
+  it('sends a UNIQUE idempotencyKey per Launch click so each explicit click is a distinct run', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 202,
+      json: async () => ({ ok: true, runRef: 'run-ref-9', activationGated: true }),
+    } as Response));
+    vi.stubGlobal('fetch', fetchMock);
+    render(
+      <Workflows
+        sessionToken="tok"
+        data={{ present: false, items: [] }}
+        definitions={{ items: [
+          {
+            ref: 'research-brief', project: 'kb-ops', path: 'orgs/kb-ops/workflows/research-brief.md',
+            valid: true, title: 'Research brief (cited)', profile: 'research', stageCount: 1, riskTier: 'T2',
+            stages: [{ id: 'brief', action: 'research:web-brief', target: 'orgs/kb-ops/output', riskTier: 'T2' }],
+            detail: null,
+          },
+        ] }}
+      />,
+    );
+    const button = screen.getByRole('button', { name: 'Launch' });
+    fireEvent.click(button);
+    await screen.findByText(/Run created run-ref-9/);
+    fireEvent.click(button);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    const keyOf = (call: number): string =>
+      (JSON.parse((fetchMock.mock.calls[call] as unknown as [string, RequestInit])[1].body as string) as { idempotencyKey: string }).idempotencyKey;
+    expect(keyOf(0)).not.toBe(keyOf(1));
   });
 
   it('runs a strict registered workflow as a new instance', async () => {
