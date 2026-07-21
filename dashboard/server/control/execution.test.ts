@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createFileControlPlaneStore, createInMemoryControlPlaneStore, type ControlPlaneStore } from './store.ts';
 import type { JsonObject } from './types.ts';
 import type { PlanProposal, ProposalStage } from './proposal.ts';
@@ -198,12 +198,188 @@ function engineOptions(store: ControlPlaneStore, fake: Fakes, root = join(tmpdir
   };
 }
 
+function fytPolicy(curatedSkills: string[]): PolicyEnvironment {
+  return {
+    ...policy,
+    curatedSkills: new Set(curatedSkills),
+    contractText: 'faceless-youtube queues-for-me; publication requires human approval',
+    governanceContents: {
+      'CLAUDE.md': 'constitution',
+      'governance/agent-rules.md': 'rules',
+      'governance/risk-tiers.md': 'risk tiers',
+      'orgs/faceless-youtube/contract.md': 'fyt contract',
+    },
+  };
+}
+
+function fytProposal(requiredSkills: string[] = ['tests']): PlanProposal {
+  const fytStage: ProposalStage = {
+    ...stage('fyt'),
+    target: 'orgs/faceless-youtube/output',
+    requiredSkills,
+    scope: { read: ['orgs/faceless-youtube'], write: ['orgs/faceless-youtube'] },
+    artifacts: [{ id: 'fyt-result', path: 'orgs/faceless-youtube/output/fyt.txt', description: 'fyt output' }],
+  };
+  return {
+    ...proposal([fytStage]),
+    project: 'faceless-youtube',
+    scope: { read: ['orgs/faceless-youtube'], write: ['orgs/faceless-youtube'] },
+    governanceRefs: ['CLAUDE.md', 'governance/agent-rules.md', 'governance/risk-tiers.md', 'orgs/faceless-youtube/contract.md'],
+  };
+}
+
 const tempDirs: string[] = [];
 afterEach(() => {
   while (tempDirs.length > 0) rmSync(tempDirs.pop() as string, { recursive: true, force: true });
 });
 
 describe('AutomaticExecutionEngine', () => {
+  it('keeps the held Wave-A kb-ops policy when no per-project resolver is supplied', async () => {
+    const store = createStore();
+    const plan = proposal([stage('held-policy')]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const options = engineOptions(store, fake);
+    const outcome = await new AutomaticExecutionEngine(options).runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
+    expect(outcome.state).toBe('succeeded');
+  });
+
+  it('proves the immutable proposal and graph binding before resolving a forged project policy', async () => {
+    const store = createStore();
+    const approved = proposal([stage('approved-kb-ops')]);
+    const run = createApprovedRun(store, approved);
+    const fake = fakes();
+    const options = engineOptions(store, fake);
+    const resolver = vi.fn(() => fytPolicy(['tests']));
+    options.resolvePolicy = resolver;
+    options.policyProject = 'kb-ops';
+
+    // The FYT proposal is individually policy-safe, but it is not the immutable proposal attached to this
+    // kb-ops run. It must not cause even a read of the FYT policy environment.
+    await expect(new AutomaticExecutionEngine(options).runToBoundary({
+      subject: 'operator', runRef: run.runRef, proposal: fytProposal(['tests']),
+    })).rejects.toThrow('proposal does not match the immutable run hash');
+    expect(resolver).not.toHaveBeenCalled();
+    expect(fake.executionOrder).toEqual([]);
+  });
+
+  it('resolves one FYT policy snapshot and refuses a stage that only the held kb-ops curated set would allow', async () => {
+    const store = createStore();
+    const plan = fytProposal(['tests']);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const options = engineOptions(store, fake);
+    const resolver = vi.fn()
+      .mockReturnValueOnce(fytPolicy([]))
+      .mockReturnValueOnce(policy);
+    options.resolvePolicy = resolver;
+    options.policyProject = 'kb-ops';
+    const outcome = await new AutomaticExecutionEngine(options).runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
+    expect(outcome.state).toBe('waiting-human');
+    expect(resolver).toHaveBeenCalledTimes(1);
+    expect(resolver).toHaveBeenCalledWith('faceless-youtube');
+    expect(fake.executionOrder).toEqual([]);
+    const detail = store.getRun('operator', run.runRef);
+    expect(detail.ok && detail.value.humanRequests.some((request) => request.prompt.includes('skill-not-curated:tests'))).toBe(true);
+  });
+
+  it('loads a fresh FYT policy for each run boundary, so a later policy change is observed', async () => {
+    const store = createStore();
+    const firstPlan = fytProposal(['tests']);
+    const secondPlan = { ...fytProposal(['tests']), proposalId: 'synthetic-fyt-second' };
+    const firstRun = createApprovedRun(store, firstPlan);
+    const secondRun = createApprovedRun(store, secondPlan);
+    const fake = fakes();
+    fake.worktrees.inspect = async () => ({
+      changed: [{ path: 'orgs/faceless-youtube/output/fyt.txt', digest: 'b'.repeat(64) }],
+    });
+    const options = engineOptions(store, fake);
+    const resolver = vi.fn()
+      .mockReturnValueOnce(fytPolicy(['tests']))
+      .mockReturnValueOnce(fytPolicy([]));
+    options.resolvePolicy = resolver;
+    options.policyProject = 'kb-ops';
+    const engine = new AutomaticExecutionEngine(options);
+
+    await expect(engine.runToBoundary({ subject: 'operator', runRef: firstRun.runRef, proposal: firstPlan }))
+      .resolves.toMatchObject({ state: 'succeeded' });
+    await expect(engine.runToBoundary({ subject: 'operator', runRef: secondRun.runRef, proposal: secondPlan }))
+      .resolves.toMatchObject({ state: 'waiting-human', waitingStageIds: ['fyt'] });
+    expect(resolver).toHaveBeenCalledTimes(2);
+    expect(resolver).toHaveBeenNthCalledWith(1, 'faceless-youtube');
+    expect(resolver).toHaveBeenNthCalledWith(2, 'faceless-youtube');
+  });
+
+  it('snapshots a resolved policy before asynchronous manager work, isolating in-flight source mutation', async () => {
+    const store = createStore();
+    const plan = fytProposal(['tests']);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    fake.worktrees.inspect = async () => ({
+      changed: [{ path: 'orgs/faceless-youtube/output/fyt.txt', digest: 'b'.repeat(64) }],
+    });
+    const source = fytPolicy(['tests']);
+    fake.managers.ensure = async () => {
+      source.curatedSkills.clear();
+    };
+    const options = engineOptions(store, fake);
+    options.resolvePolicy = () => source;
+    options.policyProject = 'kb-ops';
+
+    await expect(new AutomaticExecutionEngine(options).runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan }))
+      .resolves.toMatchObject({ state: 'succeeded', completedStageIds: ['fyt'] });
+    expect(fake.executionOrder).toEqual(['fyt']);
+  });
+
+  it('uses the FYT policy snapshot for manager profile admission before any stage can start', async () => {
+    const store = createStore();
+    const plan = fytProposal([]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const options = engineOptions(store, fake);
+    options.resolvePolicy = () => ({ ...fytPolicy([]), profiles: fytPolicy([]).profiles.filter((profile) => profile.role !== 'manager') });
+    await expect(new AutomaticExecutionEngine(options).runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan }))
+      .rejects.toThrow('manager is not a server-owned runtime profile');
+    expect(fake.executionOrder).toEqual([]);
+  });
+
+  it('fails closed when the project resolver returns missing canonical policy anchors', async () => {
+    const store = createStore();
+    const plan = fytProposal([]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const options = engineOptions(store, fake);
+    options.resolvePolicy = () => policy; // kb-ops environment, intentionally wrong for FYT
+    await expect(new AutomaticExecutionEngine(options).runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan }))
+      .rejects.toThrow('project policy environment is incomplete');
+    expect(fake.executionOrder).toEqual([]);
+  });
+
+  it('surfaces a resolver failure without starting a manager or worker', async () => {
+    const store = createStore();
+    const plan = fytProposal([]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const options = engineOptions(store, fake);
+    options.resolvePolicy = () => { throw new Error('canonical policy read failed'); };
+
+    await expect(new AutomaticExecutionEngine(options).runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan }))
+      .rejects.toThrow('project policy resolution failed: canonical policy read failed');
+    expect(fake.executionOrder).toEqual([]);
+  });
+
+  it('refuses a different project when no server-owned policy resolver is configured', async () => {
+    const store = createStore();
+    const plan = fytProposal([]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+
+    await expect(new AutomaticExecutionEngine(engineOptions(store, fake)).runToBoundary({
+      subject: 'operator', runRef: run.runRef, proposal: plan,
+    })).rejects.toThrow('project policy resolver is required for this proposal project');
+    expect(fake.executionOrder).toEqual([]);
+  });
+
   it('executes a durable validated reroute without rewriting the approved stage policy or predecessor routing', async () => {
     const store = createStore();
     const plan = proposal([stage('rerouted')]);

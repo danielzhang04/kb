@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   isExecutionActivated,
   buildActivatedExecution,
+  createProjectPolicyResolver,
   DASHBOARD_EXECUTOR_SUBJECT,
   type ActivationDeps,
   type BuildActivatedExecutionOptions,
@@ -79,6 +80,26 @@ describe('buildActivatedExecution — gate OFF (core inert invariant)', () => {
 });
 
 describe('buildActivatedExecution — gate ON', () => {
+  it('retains the held Wave-A policy but freshly loads each non-held project policy', () => {
+    const deps = spyDeps();
+    const held = {
+      profiles: [], curatedSkills: new Set<string>(), contractText: 'kb',
+      governanceContents: {
+        'CLAUDE.md': 'c', 'governance/agent-rules.md': 'a', 'governance/risk-tiers.md': 'r',
+        'orgs/kb-ops/contract.md': 'kb',
+      },
+    };
+    const resolver = createProjectPolicyResolver('/repo', deps.loadPolicy, 'kb-ops', held);
+    expect(resolver('kb-ops')).toBe(held);
+    resolver('faceless-youtube');
+    resolver('faceless-youtube');
+    expect(deps.loadPolicy).toHaveBeenCalledTimes(2);
+    expect(deps.loadPolicy).toHaveBeenCalledWith('/repo', 'faceless-youtube', [
+      'CLAUDE.md', 'governance/agent-rules.md', 'governance/risk-tiers.md', 'orgs/faceless-youtube/contract.md',
+    ]);
+    expect(() => resolver('../faceless-youtube')).toThrow(/unsafe/);
+  });
+
   it('returns all three injection fields', () => {
     const deps = spyDeps();
     const result = buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));

@@ -6,6 +6,8 @@ import { classifyActionRisk, evaluateExecutionPolicy, type ExecutionProfile, typ
 import { isSafeRepoRelativePath, proposalContentHash, type PlanProposal, type ProposalStage } from './proposal.ts';
 
 const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const SAFE_PROJECT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+const REQUIRED_POLICY_REFS = ['CLAUDE.md', 'governance/agent-rules.md', 'governance/risk-tiers.md'] as const;
 const REQUIRED_WORKER_CAPABILITIES = [
   'read',
   'write-approved-scope',
@@ -181,7 +183,12 @@ export interface CanonicalStageResult {
 
 export interface AutomaticExecutionOptions {
   store: ControlPlaneStore;
+  /** Held Wave-A environment, retained for the configured default project only. */
   policy: PolicyEnvironment;
+  /** Project represented by the held policy. Defaults to the Wave-A kb-ops project. */
+  policyProject?: string;
+  /** Optional server-owned project resolver. It is invoked once, then snapshotted, per run. */
+  resolvePolicy?: (project: string) => PolicyEnvironment;
   worktreeRoot: string;
   maxConcurrency: number;
   budget: ExecutionBudget;
@@ -364,6 +371,23 @@ const RESTRICTED_INTENT_RULES: readonly RestrictedIntentRule[] = [
   },
 ];
 
+/** Copy and validate one server-owned project policy before any manager or worker decision is made. */
+function snapshotProjectPolicy(project: string, environment: PolicyEnvironment): PolicyEnvironment {
+  if (!SAFE_PROJECT.test(project)) throw new AutomaticExecutionError('proposal project is unsafe for policy resolution');
+  const contractRef = `orgs/${project}/contract.md`;
+  const required = [...REQUIRED_POLICY_REFS, contractRef];
+  if (required.some((ref) => typeof environment.governanceContents[ref] !== 'string')
+    || !environment.contractText.trim()) {
+    throw new AutomaticExecutionError('project policy environment is incomplete');
+  }
+  return {
+    profiles: environment.profiles.map((profile) => ({ ...profile, capabilities: [...profile.capabilities] })),
+    curatedSkills: new Set(environment.curatedSkills),
+    contractText: environment.contractText,
+    governanceContents: { ...environment.governanceContents },
+  };
+}
+
 function restrictedIntent(stage: ProposalStage): { kind: 'refuse' | 'waiting'; reason: string } | null {
   const action = stage.action.toLowerCase();
   for (const rule of RESTRICTED_INTENT_RULES) {
@@ -431,7 +455,11 @@ export class AutomaticExecutionEngine {
     const waitingStageIds: string[] = [];
     try {
       this.assertRunBinding(input);
-      if (!(await this.ensureManager(input))) {
+      // Resolve only after the immutable run/proposal binding is proven. In particular, an arbitrary
+      // browser-supplied proposal must never select a project policy loader before it is known to be the
+      // exact approved graph attached to this run.
+      const policy = this.resolveProjectPolicy(input.proposal.project);
+      if (!(await this.ensureManager(input, policy))) {
         return { state: this.detail(input).run.state, startedStageIds, completedStageIds, waitingStageIds };
       }
       for (let pass = 0; pass <= input.proposal.stages.length; pass += 1) {
@@ -455,7 +483,7 @@ export class AutomaticExecutionEngine {
         for (const stage of [...refreshed.stages].sort((left, right) => left.stageId.localeCompare(right.stageId))) {
           if (stage.state !== 'ready' && stage.state !== 'interrupted' && stage.state !== 'waiting-human') continue;
           const proposalStage = stageById(input.proposal, stage.stageId);
-          const boundary = this.stageBoundary(input, refreshed, stage, proposalStage);
+          const boundary = this.stageBoundary(input, refreshed, stage, proposalStage, policy);
           if (boundary === 'waiting') {
             if (!waitingStageIds.includes(stage.stageId)) waitingStageIds.push(stage.stageId);
             continue;
@@ -478,13 +506,13 @@ export class AutomaticExecutionEngine {
           return { state: settled.state, startedStageIds, completedStageIds, waitingStageIds };
         }
         const prepared = batch
-          .map(({ stage, proposalStage }) => this.prepareOrContain(input, stage, proposalStage))
+          .map(({ stage, proposalStage }) => this.prepareOrContain(input, stage, proposalStage, policy))
           .filter((item): item is NonNullable<typeof item> => item !== null);
         for (const item of prepared) if (!startedStageIds.includes(item.proposalStage.id)) startedStageIds.push(item.proposalStage.id);
         this.activeWorkers += prepared.length;
         let results: Awaited<ReturnType<AutomaticExecutionEngine['executeAttempt']>>[];
         try {
-          results = await Promise.all(prepared.map((item) => this.executeAttempt(input, item)));
+          results = await Promise.all(prepared.map((item) => this.executeAttempt(input, item, policy)));
         } finally {
           this.activeWorkers -= prepared.length;
           for (const wake of this.capacityWaiters.splice(0)) wake();
@@ -611,6 +639,22 @@ export class AutomaticExecutionEngine {
     return result.value;
   }
 
+  private resolveProjectPolicy(project: string): PolicyEnvironment {
+    const heldProject = this.options.policyProject ?? 'kb-ops';
+    if (!SAFE_PROJECT.test(heldProject)) throw new AutomaticExecutionError('held policy project is unsafe');
+    if (!this.options.resolvePolicy) {
+      if (project !== heldProject) throw new AutomaticExecutionError('project policy resolver is required for this proposal project');
+      return snapshotProjectPolicy(project, this.options.policy);
+    }
+    let resolved: PolicyEnvironment;
+    try {
+      resolved = this.options.resolvePolicy(project);
+    } catch (error) {
+      throw new AutomaticExecutionError(`project policy resolution failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    return snapshotProjectPolicy(project, resolved);
+  }
+
   private assertRunBinding(input: ExecuteRunInput): void {
     const detail = this.detail(input);
     if (proposalContentHash(input.proposal) !== detail.run.proposalHash) {
@@ -627,15 +671,15 @@ export class AutomaticExecutionEngine {
     }
   }
 
-  private async ensureManager(input: ExecuteRunInput): Promise<boolean> {
+  private async ensureManager(input: ExecuteRunInput, policy: PolicyEnvironment): Promise<boolean> {
     let detail = this.detail(input);
     if ((detail.run.state === 'waiting-human' || detail.run.state === 'interrupted') && !runBoundariesAccepted(detail)) {
       return false;
     }
     const requested = input.proposal.manager;
-    const profile = profileFor(this.options.policy, 'manager', requested.runtime, requested.model);
+    const profile = profileFor(policy, 'manager', requested.runtime, requested.model);
     if (!profile) throw new AutomaticExecutionError('manager is not a server-owned runtime profile');
-    if (requested.requiredSkills.some((skill) => !this.options.policy.curatedSkills.has(skill))) {
+    if (requested.requiredSkills.some((skill) => !policy.curatedSkills.has(skill))) {
       throw new AutomaticExecutionError('manager requested a non-curated skill');
     }
     let manager = getSession(detail, detail.run.managerSessionRef);
@@ -711,6 +755,7 @@ export class AutomaticExecutionEngine {
     detail: RunDetail,
     stage: Stage,
     proposalStage: ProposalStage,
+    policy: PolicyEnvironment,
   ): 'allow' | 'waiting' | 'refused' {
     if (detail.humanRequests.some((request) => request.stageRef === stage.stageRef && request.state === 'open')) {
       this.ensureStageWaiting(input, stage.stageRef);
@@ -777,7 +822,7 @@ export class AutomaticExecutionEngine {
       governanceRefs: input.proposal.governanceRefs,
       proposalHash: this.detail(input).run.proposalHash,
       approvedHash: this.detail(input).run.proposalHash,
-    }, this.options.policy);
+    }, policy);
     if (decision.disposition !== 'allow') {
       const title = stableHumanTitle('policy', stage.stageId, decision.reason);
       if (!detail.humanRequests.some((request) => request.stageRef === stage.stageRef && request.title === title)) {
@@ -827,9 +872,14 @@ export class AutomaticExecutionEngine {
     if (!transitioned.ok) throw new AutomaticExecutionError(transitioned.detail);
   }
 
-  private prepareOrContain(input: ExecuteRunInput, stage: Stage, proposalStage: ProposalStage): ReturnType<AutomaticExecutionEngine['prepareAttempt']> {
+  private prepareOrContain(
+    input: ExecuteRunInput,
+    stage: Stage,
+    proposalStage: ProposalStage,
+    policy: PolicyEnvironment,
+  ): ReturnType<AutomaticExecutionEngine['prepareAttempt']> {
     try {
-      return this.prepareAttempt(input, stage, proposalStage);
+      return this.prepareAttempt(input, stage, proposalStage, policy);
     } catch (error) {
       const detail = this.detail(input);
       const latestStage = detail.stages.find((item) => item.stageRef === stage.stageRef) as Stage;
@@ -855,7 +905,7 @@ export class AutomaticExecutionEngine {
     }
   }
 
-  private prepareAttempt(input: ExecuteRunInput, initial: Stage, proposalStage: ProposalStage): {
+  private prepareAttempt(input: ExecuteRunInput, initial: Stage, proposalStage: ProposalStage, policy: PolicyEnvironment): {
     stage: Stage;
     proposalStage: ProposalStage;
     attempt: Attempt;
@@ -882,7 +932,7 @@ export class AutomaticExecutionEngine {
       stage = detail.stages.find((candidate) => candidate.stageRef === stage.stageRef) as Stage;
     }
     if (attempt.state !== 'queued') throw new AutomaticExecutionError(`attempt '${attempt.attemptRef}' is not safely resumable`);
-    const profile = profileFor(this.options.policy, 'worker', attempt.runtime, attempt.model);
+    const profile = profileFor(policy, 'worker', attempt.runtime, attempt.model);
     if (!profile) {
       throw new AutomaticExecutionError('attempt routing is not an approved server-owned profile');
     }
@@ -912,9 +962,10 @@ export class AutomaticExecutionEngine {
   private async executeAttempt(
     input: ExecuteRunInput,
     prepared: { stage: Stage; proposalStage: ProposalStage; attempt: Attempt; session: ManagedSession; profile: ExecutionProfile },
+    policy: PolicyEnvironment,
   ): Promise<({ state: 'succeeded' | 'waiting-human' | 'stopped'; stageId: string })> {
     try {
-      return await this.executeAttemptUnsafe(input, prepared);
+      return await this.executeAttemptUnsafe(input, prepared, policy);
     } catch (error) {
       if (this.cancellationObserved(input)) return { state: 'stopped', stageId: prepared.stage.stageId };
       const current = this.detail(input);
@@ -947,6 +998,7 @@ export class AutomaticExecutionEngine {
   private async executeAttemptUnsafe(
     input: ExecuteRunInput,
     prepared: { stage: Stage; proposalStage: ProposalStage; attempt: Attempt; session: ManagedSession; profile: ExecutionProfile },
+    policy: PolicyEnvironment,
   ): Promise<({ state: 'succeeded' | 'waiting-human' | 'stopped'; stageId: string })> {
     const { stage, proposalStage, attempt, session, profile } = prepared;
     const operationKey = `automatic-attempt:${attempt.attemptRef}`;
@@ -998,7 +1050,7 @@ export class AutomaticExecutionEngine {
     if (this.cancellationObserved(input)) return { state: 'stopped', stageId: stage.stageId };
     const skills = await this.options.skills.resolve({ operationKey: `skills:${attempt.attemptRef}`, profile, requested: proposalStage.requiredSkills });
     if (this.cancellationObserved(input)) return { state: 'stopped', stageId: stage.stageId };
-    if (!skills.ok || skills.skills.some((skill) => !this.options.policy.curatedSkills.has(skill))) {
+    if (!skills.ok || skills.skills.some((skill) => !policy.curatedSkills.has(skill))) {
       this.createBoundary(input, stage, 'governance-refusal', stableHumanTitle('policy', stage.stageId, 'skill-resolution'), skills.ok ? 'skill resolver widened the curated set' : skills.reason);
       this.transitionAttempt(input, attempt.attemptRef, 'waiting-human');
       this.transitionSession(input, session.sessionRef, 'waiting');
