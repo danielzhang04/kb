@@ -30,7 +30,8 @@ from livekit.plugins import deepgram, elevenlabs, silero
 from kbmcp import kb_tools
 from worker import anthropic_compat
 from worker import engagement as engagement_mod
-from worker import fastlane, ledgerwriter, repl, router, state, stateserver, toolreg, wakeword
+from worker import (donewatcher, fastlane, ledgerwriter, repl, router, state, stateserver,
+                    toolreg, wakeword)
 
 ATLAS = Path(__file__).resolve().parents[1]
 logger = logging.getLogger("atlas.app")
@@ -180,11 +181,20 @@ async def entrypoint(ctx: JobContext) -> None:
     # this ONE stream. `voice` mirrors the active config voice.
     publisher = state.StatePublisher(voice=cfg.get("active_voice"))
 
+    # Done-watcher (design §8, Task 11): watches the ops queue for the cards Atlas files by voice
+    # and speaks their completion. Its sidecar (default %USERPROFILE%\.atlas\watched.json) is
+    # restart-safe, so callbacks survive a worker restart. Same configurable ops_root as the ledger.
+    watcher = donewatcher.DoneWatcher(cfg.get("ops_root", DEFAULT_OPS_ROOT))
+
     # Publisher-agnostic post-file hook (design §3/§6, Task 9): when the LLM files a card via
     # file_card/launch_workflow, mirror it into the /state snapshot's `filed_cards` so the orb
-    # shows filed work. toolreg stays publisher-agnostic — it only knows a callable. Task 11's
-    # done-watcher will later call publisher.update_filed_card(id, state) as outcomes land.
-    toolreg.set_post_file_hook(lambda p: publisher.add_filed_card(p["id"], p["action"]))
+    # shows filed work (toolreg stays publisher-agnostic — it only knows a callable), AND register
+    # it with the done-watcher so its completion gets a spoken callback (Task 11). The watcher later
+    # calls publisher.update_filed_card(id, state) via the announce path as outcomes land.
+    def _post_file(p: dict) -> None:
+        publisher.add_filed_card(p["id"], p["action"])
+        watcher.watch(p["id"], p["action"])
+    toolreg.set_post_file_hook(_post_file)
 
     @session.on("conversation_item_added")
     def _on_item(ev) -> None:
@@ -379,9 +389,42 @@ async def entrypoint(ctx: JobContext) -> None:
                      kwargs={"device": cfg.get("wake_input_device"),
                              "threshold": cfg.get("wake_threshold", wakeword.THRESHOLD)},
                      daemon=True).start()
-    watcher = asyncio.create_task(_silence_watcher())
-    _BG_TASKS.add(watcher)                     # retain handle so the watcher can't be GC'd
-    watcher.add_done_callback(_BG_TASKS.discard)
+    silence_task = asyncio.create_task(_silence_watcher())
+    _BG_TASKS.add(silence_task)                # retain handle so the watcher can't be GC'd
+    silence_task.add_done_callback(_BG_TASKS.discard)
+
+    # --- Completion callbacks (design §8, Task 11): poll the ops queue for the cards Atlas filed
+    # and speak the outcome. The poll (git pull + file scan, blocking) runs off the event loop; it
+    # ONLY runs while the sidecar has pending watches, so an idle worker does no git/file work. ----
+    announce_when_asleep = cfg.get("announce_when_asleep", True)
+    watch_period = cfg.get("watch_period_s", 30)
+
+    def _announce(ann: donewatcher.Announcement) -> None:
+        """Deliver one completion callback. ENGAGED -> inline; ASLEEP + announce_when_asleep -> a
+        one-shot say that does NOT open STT (audio stays detached, orb stays ASLEEP — TTS out is
+        not capture). BOTH speaking paths mirror the line (transcript ring + ledger). The filed-card
+        outcome is updated in the /state snapshot regardless of whether we spoke."""
+        engaged = engagement.state == engagement_mod.ENGAGED
+        if engaged or announce_when_asleep:
+            # add_to_chat_ctx=False: a callback is not a conversation turn for Claude, and (like the
+            # wake/sleep acks) it therefore does NOT arrive via conversation_item_added, so we mirror
+            # it here. The ASLEEP _on_agent_state guard keeps this say from flipping the orb.
+            session.say(ann.text, add_to_chat_ctx=False)
+            publisher.add_line("atlas", ann.text)
+        # Reflect the outcome on the orb's filed-cards list even if we stayed silent while asleep.
+        publisher.update_filed_card(ann.card_id, "done" if ann.outcome == "success" else "failed")
+
+    async def _done_watch_loop() -> None:
+        while True:
+            await asyncio.sleep(watch_period)
+            if not watcher.has_watches():       # cheap sidecar check — no busy git work when empty
+                continue
+            for ann in await loop.run_in_executor(None, watcher.poll):
+                _announce(ann)
+
+    done_task = asyncio.create_task(_done_watch_loop())
+    _BG_TASKS.add(done_task)
+    done_task.add_done_callback(_BG_TASKS.discard)
 
 
 def main() -> int:
