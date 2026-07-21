@@ -292,6 +292,15 @@ async def entrypoint(ctx: JobContext) -> None:
         mapped = state.STATE_FROM_AGENT.get(ev.new_state)
         if mapped is not None:
             publisher.set_state(mapped)
+        # Silence-clock re-stamp (2026-07-21 fix): Atlas entering SPEAKING is proof of a real,
+        # directed interaction — Atlas answered, ack'd a wake ("Yes?"), or spoke a reflex reply
+        # ("repeat that") — so it re-opens the 2-min window. We deliberately do NOT re-stamp on
+        # THINKING or on raw user transcripts: while ENGAGED the mic streams the WHOLE room to STT,
+        # so ambient chatter is transcribed (and can even spin up a THINKING turn) without Atlas
+        # ever speaking. Keying the window off Atlas's own voice is what lets a noisy room go quiet
+        # into ASLEEP after timeout_s (the "never sleeps on background talk" bug).
+        if mapped == state.SPEAKING:
+            engagement.interacted()
 
     # Gate-C fix (2026-07-21): give the LLM a real go_to_sleep tool so a conversational dismissal
     # that slips past the reflex lane ACTUALLY closes the mic instead of being role-played.
@@ -304,14 +313,15 @@ async def entrypoint(ctx: JobContext) -> None:
     def _on_wake() -> None:  # called from the wake-word thread; hop to the event loop
         loop.call_soon_threadsafe(_engage)
 
-    @session.on("user_input_transcribed")
-    def _on_transcript(ev) -> None:
-        # Every final utterance re-stamps the silence clock so a reflex ("repeat that") keeps Atlas
-        # awake. Reflex CLASSIFICATION + dispatch happens in AtlasAgent.on_user_turn_completed (the
-        # only hook that can keep a reflex utterance out of the LLM chat context — see AtlasAgent);
-        # this handler just keeps the engagement clock honest.
-        if ev.is_final:
-            engagement.heard_speech()
+    # NOTE (2026-07-21 fix): there is deliberately NO `user_input_transcribed` -> engagement
+    # re-stamp any more. While ENGAGED the mic streams the ENTIRE room to Deepgram, so every sound
+    # in the room becomes a "final" transcript — including background conversation Atlas is not part
+    # of. Re-stamping the silence clock on those (the old behavior) meant any nearby talking kept
+    # Atlas awake indefinitely and the 2-min auto-sleep never fired (Daniel's report, 2026-07-21).
+    # The window is now re-opened only by Atlas's own SPEAKING (see _on_agent_state) — a directed
+    # interaction — plus wake(). A reflex reply ("repeat that") still keeps Atlas awake, because
+    # speaking it flips the session to SPEAKING; reflex classification is unchanged
+    # (AtlasAgent.on_user_turn_completed).
 
     # --- Reflex lane (design §7). intents.yaml is the ONLY matching source; the handler runs ahead
     # of the LLM turn via AtlasAgent.on_user_turn_completed and returns True to suppress the reply.
@@ -435,7 +445,51 @@ async def entrypoint(ctx: JobContext) -> None:
     done_task.add_done_callback(_BG_TASKS.discard)
 
 
+def _console_output_args(argv: list[str], cfg: dict,
+                         resolve=wakeword.resolve_output_device) -> list[str]:
+    """Extra CLI args pinning the TTS OUTPUT device for `console` audio mode (Bug 2, 2026-07-21).
+
+    livekit's console output falls back to `sd.default.device[1]` — the drifting Windows default
+    output — and opens its OutputStream on it ONCE at startup (cli/_legacy.py set_speaker_enabled),
+    so TTS can end up on an inaudible AirPods HFP sink and never follow Daniel switching to the main
+    speaker. When atlas.yaml sets `tts_output_device` (a name substring, exactly like
+    `wake_input_device`) and an audio console is running without an explicit --output-device, we
+    resolve it to a device index and pass `--output-device <idx>`, which livekit hands straight to
+    sounddevice. Returns [] (system default, unchanged) when: not a console run, --text/--list-devices,
+    an explicit --output-device is already present, no config key, or the configured device is not
+    found (resolve() logs a loud warning — never a silent swap)."""
+    if "console" not in argv or "--text" in argv or "--list-devices" in argv:
+        return []
+    if any(a == "--output-device" or a.startswith("--output-device=") for a in argv):
+        return []
+    substring = cfg.get("tts_output_device")
+    if not substring:
+        return []
+    idx = resolve(substring)
+    if idx is None:
+        # Loud, non-fatal: Atlas still starts, but Daniel is told WHY he may hear nothing.
+        logger.critical(
+            "TTS output device %r not found — Atlas will fall back to the system default output, "
+            "which on this machine drifts to an inaudible Bluetooth sink; you may hear nothing. "
+            "Fix `tts_output_device` in atlas/config/atlas.yaml or connect the named speaker.",
+            substring)
+        return []
+    try:
+        import sounddevice as sd
+        name = sd.query_devices(idx)["name"]
+    except Exception:
+        name = "?"
+    logger.info("TTS output pinned to device [%d] %s (config tts_output_device=%r)",
+                idx, name, substring)
+    return ["--output-device", str(idx)]
+
+
 def main() -> int:
+    # Pin the TTS output device from config before livekit resolves the (drifting) system default.
+    try:
+        sys.argv.extend(_console_output_args(sys.argv, _cfg()))
+    except Exception:
+        logger.exception("could not resolve tts_output_device — using the system default output")
     cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
     return 0
 

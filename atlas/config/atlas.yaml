@@ -20,6 +20,14 @@ wake_model: hey_atlas   # custom-trained model at config/hey_atlas.onnx; set to 
 wake_input_device: Intel   # mic-name substring pin; Windows default drifts to AirPods HFP (unusable audio)
 wake_threshold: 0.5
 
+# TTS OUTPUT device pin (Bug 2, 2026-07-21): speaker-name substring, the output analogue of
+# wake_input_device. livekit console TTS otherwise rides the drifting Windows DEFAULT output and
+# opens it ONCE at startup, so audio lands on an inaudible AirPods HFP sink and Daniel hears nothing
+# on the main speaker. Substring-matched against output devices; unset/no-match -> system default
+# (a loud warning is logged, never a silent wrong-device swap). Run `python -m worker.app console
+# --list-devices` to see the exact name and adjust if "Speakers" is not your main output.
+tts_output_device: Speakers
+
 # --- Task 8 persona bake-off (2-way: Deepgram Aura-2 vs ElevenLabs stock; Cartesia scratched) ---
 # The 3 fixed lines below are synthesized per voice into .superpowers/sdd/t8-staging/persona-samples/
 # by worker.persona_samples; Daniel picks by ear at the V0 checkpoint. Registers span the three the
