@@ -205,32 +205,46 @@ def resolve_scene_files(scenes_dir: Path, piece: str, shots: list, is_short: boo
     plate+layers)."""
     manifest = _load_scene_manifest(scenes_dir)   # S2
     layered_ids = layered_ids or set()
-    files, missing, gate_failed = [], [], []
+    files, missing, gate_failed, parked = [], [], [], []
     for shot in shots:
         sid = shot.get("id", "")
         stem = f"{piece}-{sid}" if is_short else sid
         p = scenes_dir / f"{stem}.png"
         is_fallback = ((shot.get("source") or "ai-gen") in INLINE_FALLBACK_SOURCES
                        or sid in layered_ids)
-        reason = None  # None = usable/fallback; "missing" = no valid PNG; "gate" = unverified
+        # None = usable/fallback; "missing" = no valid PNG; "gate" = unreviewed/unverified;
+        # "parked: <reasons>" = reviewed, defects known, honestly NOT shippable.
+        reason = None
         if p.exists() and _valid_scene_image(p):               # S1-B
             if manifest is not None and not is_fallback:       # S2 — manifest is the gate
                 entry = manifest.get(sid)
-                v = (entry or {}).get("verified") or {}
-                if entry is None or v.get("scene") is not True or v.get("rig") is not True:
-                    reason = "gate"
+                rs = (entry or {}).get("review_status")
+                if rs is not None:                             # review_status is authoritative
+                    if rs == "verified":
+                        reason = None                          # shippable on its own
+                    elif rs == "parked":
+                        reason = "parked: " + "; ".join(
+                            (entry.get("parked_reasons") or ["no reasons recorded"]))
+                    else:                                      # "unreviewed" / anything unknown
+                        reason = "gate"
+                else:                                          # legacy: boolean gate unchanged
+                    v = (entry or {}).get("verified") or {}
+                    if entry is None or v.get("scene") is not True or v.get("rig") is not True:
+                        reason = "gate"
             if reason is None:
                 files.append(p)
                 continue
         elif not is_fallback:
             reason = "missing"
         files.append(None)
-        if reason == "gate":
-            gate_failed.append(sid or "?")
-        elif reason == "missing":
+        if reason == "missing":
             missing.append(sid or "?")
+        elif reason == "gate":
+            gate_failed.append(sid or "?")
+        elif reason:                                           # "parked: ..."
+            parked.append((sid or "?", reason))
 
-    if (missing or gate_failed) and not allow_missing:
+    if (missing or gate_failed or parked) and not allow_missing:
         parts = []
         if missing:
             parts.append(f"{len(missing)} with no valid scene PNG "
@@ -239,11 +253,15 @@ def resolve_scene_files(scenes_dir: Path, piece: str, shots: list, is_short: boo
             parts.append(f"{len(gate_failed)} present but NOT verified in manifest.json "
                          f"(verified.scene/rig != true: {', '.join(gate_failed[:20])}"
                          f"{' …' if len(gate_failed) > 20 else ''})")
+        if parked:
+            parts.append(f"{len(parked)} parked (reviewed, defects known — NOT shippable): "
+                         f"{'; '.join(f'{sid} → {r}' for sid, r in parked[:20])}"
+                         f"{' …' if len(parked) > 20 else ''}")
         raise SystemExit(
             f"{piece}: {'; '.join(parts)} in {scenes_dir} — run image-generation pass 2 and its "
             f"verify gate first (or --allow-missing for a test slice). Rendering these would bypass "
             f"the locked-style / rig gate.")
-    allowed = missing + gate_failed
+    allowed = missing + gate_failed + [sid for sid, _ in parked]
     if allowed:
         print(f"  ! {piece}: --allow-missing — {len(allowed)} shot(s) fall back to a placeholder card "
               f"(style NOT locked): {', '.join(allowed[:10])}{' …' if len(allowed) > 10 else ''}")
