@@ -73,7 +73,11 @@ function defaultStatMs(filePath: string): number | null {
 }
 
 /** Read-only, credential-free `git log`. Bounded to one line; any fault (git absent, empty repo, unknown
- *  author) degrades to `null` rather than throwing — a git failure must never make an owner look dead. */
+ *  author) degrades to `null` rather than throwing — a git failure must never make an owner look dead.
+ *  NOTE: `--author` is a SUBSTRING (regex) match, so `worker` would match `worker-desktop`'s commits. That
+ *  over-match is DELIBERATE: it can only make an owner look MORE recently active (skew toward ALIVE), the
+ *  safe fail direction for a gate that would otherwise archive — it never makes a card wrongly-archivable.
+ *  The exact-owner-prefix shard match above remains the precise signal. */
 function defaultGitAuthorLastMs(owner: string, repoRoot: string): number | null {
   if (!owner) return null;
   try {

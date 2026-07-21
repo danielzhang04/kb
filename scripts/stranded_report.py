@@ -1,12 +1,18 @@
 """Stranded-archive report — the weekly-audit surface's count of auto-archived cards.
 
-The daemon stranded-archiver (dashboard/server/write/strandedArchiver.ts) MOVES an
-abandoned card (owned by a real agent, idle >24h in inbox/working, owner runner
-offline) into ``queue/archived/`` and records a ``## Result`` marker line carrying the
-ISO archive timestamp::
+The daemon stranded-archiver v2 (dashboard/server/write/strandedArchiver.ts), in its
+LIVE mode, MOVES an abandoned card — owned by a REAL agent, with BOTH the card AND its
+owner idle in inbox/working past the stranded window (default 7 days) — into
+``queue/archived/`` and records a ``## Result`` marker line carrying the ISO archive
+timestamp::
 
     Auto-archived by the stranded-archiver (2026-07-21T00:00:00.000Z):
-    auto-archived: stranded >24h, owner codex-worker offline, not revisited per policy (reversible: move to inbox to reopen)
+    auto-archived: stranded — card idle 200h AND owner codex-worker idle 200h, both past the 168h window (reversible: move to inbox to reopen)
+
+NOTE: the archiver currently ships DRY-RUN-ONLY and DEFAULT-OFF (it reports what it would
+archive and moves nothing), so ``queue/archived/`` stays empty and this report prints 0
+until a human enables live archiving. The report is forward-compatible: it keys only on the
+``Auto-archived by the stranded-archiver (<ISO>)`` marker prefix, unchanged across v1/v2.
 
 ``report(repo_root, since, until)`` scans ``queue/archived/`` and returns the cards whose
 archive timestamp falls in the ``[since, until]`` window (both optional; default window is

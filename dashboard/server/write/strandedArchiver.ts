@@ -254,11 +254,16 @@ export async function archiveStrandedCards(deps: StrandedArchiveDeps): Promise<S
 
     // Predicate 4 — OWNER-IDLE. Newest of the owner's real artifacts OR the card's own body write. If NONE
     // resolve (owner never observed), owner-idle is UNKNOWN => treat as ALIVE => SKIP (the key inversion).
+    // A THROWING reader is itself UNKNOWN — we cannot observe the owner at all, so it must force SKIP
+    // outright, NOT fall through to a body-only owner clock (which could archive off one stale ## Result
+    // timestamp). This is the same fail direction as unknown-owner: absence of evidence never authorizes.
     let activity: OwnerActivity;
     try {
       activity = ownerActivity(owner, deps.repoRoot);
     } catch {
-      activity = { lastActivityMs: null, sources: [] }; // a throwing reader must never look like "dead"
+      skipped.push(cardId);
+      decisions.push({ cardId, owner, state, cardIdleMs, ownerIdleMs: null, ownerActivitySources: [], liveness: 'not-probed', wouldArchive: false, skipReason: 'owner-activity reader threw => UNKNOWN => treated as ALIVE' });
+      continue;
     }
     const ownerLastMs = Math.max(activity.lastActivityMs ?? Number.NEGATIVE_INFINITY, bodyMs ?? Number.NEGATIVE_INFINITY);
     if (!Number.isFinite(ownerLastMs)) {

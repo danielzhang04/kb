@@ -7,11 +7,14 @@
 
 ## Context
 
-The daemon stranded-archiver now MOVES abandoned cards (owner a real agent, idle >24h in
-inbox/working, owner runner offline) into `queue/archived/` instead of surfacing them in the
-Human Inbox or the morning brief. Both the daily brief and the dashboard projection are now
-QUIET on stranded cards. So that auto-archiving stays visible to a human on a slower cadence,
-the **weekly-audit** cadence should report how many cards were archived in the period.
+The daemon stranded-archiver (v2) identifies abandoned cards — owner a REAL agent, and BOTH the
+card AND its owner idle in inbox/working past the stranded window (default **7 days**) — and, in
+its eventual live mode, MOVES them into `queue/archived/`. **This PR ships the archiver DRY-RUN-ONLY
+and DEFAULT-OFF: it reports what it WOULD archive and moves nothing.** The Human Inbox and the
+morning brief **remain surfacing `stranded` cards** — those surfaces are intentionally KEPT until
+dry-run proves the archiver picks the right cards (redesign §3d Q6). Once live archiving is enabled
+and proven, this weekly-audit report keeps auto-archiving visible to a human on a slower cadence.
+Until then it will simply report 0 (nothing is archived while dry-run).
 
 There is no code seam into weekly-audit — it is a PROMPT executed by `dispatcher-cloud`. The
 count is produced by a small helper instead:

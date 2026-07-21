@@ -181,6 +181,40 @@ describe('archiveStrandedCards — corrected predicates (live mode for the mutat
     expect(result.decisions[0].skipReason).toMatch(/card-idle/);
   });
 
+  it('REGRESSION (review round 2, finding 1): a THROWING ownerActivity reader forces SKIP even with a stale ## Result body timestamp — it must NOT fall through to a body-only owner clock', async () => {
+    // Old id AND a stale (30d-old) body write. If the throwing reader fell through to
+    // ownerLastMs = max(-Infinity, staleBodyMs), owner-idle would read stale and the card would ARCHIVE
+    // off a single clock. It must skip: a reader we cannot observe is UNKNOWN => ALIVE.
+    const body = `## Result\nlast touched 2026-06-21T00:00:00Z\n`; // ~30 days before NOW
+    const throwing: OwnerActivityReader = () => { throw new Error('git blew up'); };
+    const { deps, calls } = recordingDeps([card(hexId(20 * DAY, 'throw001'), 'inbox', 'codex-worker', {}, body)], { ownerActivity: throwing });
+    const result = await archiveStrandedCards(deps);
+    expect(result.archived).toEqual([]);
+    expect(result.wouldArchive).toEqual([]);
+    expect(result.skipped).toEqual([hexId(20 * DAY, 'throw001')]);
+    expect(result.decisions[0].skipReason).toMatch(/reader threw.*ALIVE/);
+    expect(calls).toEqual([]); // no mutation attempted
+  });
+
+  it('REGRESSION (the motivating bug): an ~84h worker-desktop cadence card with NO owner footprint SURVIVES under the 7-day window (v1 archived it)', async () => {
+    // Exactly the two live cards the hold prevented: worker-desktop owner, ~84h old, unobserved. Uses the
+    // DEFAULT 7-day window (no windowMs override) and the real dry-run default. Must NOT be archived.
+    const eightyFourHoursSec = 84 * H;
+    const { deps, calls } = recordingDeps(
+      [card(hexId(eightyFourHoursSec, 'cadence1'), 'inbox', 'worker-desktop', { action: 'cadence:nightly-review' })],
+      { dryRun: undefined, windowMs: undefined, ownerActivity: UNKNOWN_OWNER },
+    );
+    delete (deps as { dryRun?: boolean }).dryRun;   // exercise the shipped dry-run default
+    delete (deps as { windowMs?: number }).windowMs; // exercise the shipped 7-day default
+    const result = await archiveStrandedCards(deps);
+    expect(result.wouldArchive).toEqual([]); // not even a dry-run candidate
+    expect(result.archived).toEqual([]);
+    expect(result.skipped).toEqual([hexId(eightyFourHoursSec, 'cadence1')]);
+    // card-idle (~84h) < 168h window is the first gate that spares it; owner-idle UNKNOWN would spare it too.
+    expect(result.decisions[0].skipReason).toMatch(/card-idle/);
+    expect(calls).toEqual([]);
+  });
+
   it('does NOT archive a human-operator-owned card (an operator gate)', async () => {
     const { deps } = recordingDeps([card(hexId(20 * DAY, 'opgate01'), 'inbox', 'human-operator')]);
     const result = await archiveStrandedCards(deps);
