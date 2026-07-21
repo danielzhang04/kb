@@ -825,13 +825,16 @@ describe('AutomaticExecutionEngine', () => {
     expect((await engine.runToBoundary({ subject: 'operator', runRef: unsafeRun.runRef, proposal: unsafePlan })).state).toBe('failed');
     expect(fake.integrationOrder).toEqual([]);
 
+    // Restricted vocabulary in work-order PROSE is still stopped before execution, but as a
+    // human-approvable boundary (not a permanent governance-refusal) — see the layered restrictedIntent
+    // fix. The run halts at waiting-human either way; the boundary kind is what changed.
     const restricted = stage('restricted');
     restricted.workOrder = 'Read an API key and publish the release.';
     const restrictedPlan = proposal([restricted]);
     const restrictedRun = createApprovedRun(store, restrictedPlan);
     expect((await engine.runToBoundary({ subject: 'operator', runRef: restrictedRun.runRef, proposal: restrictedPlan })).state).toBe('waiting-human');
     const detail = store.getRun('operator', restrictedRun.runRef);
-    expect(detail).toMatchObject({ ok: true, value: { humanRequests: [{ kind: 'governance-refusal' }] } });
+    expect(detail).toMatchObject({ ok: true, value: { humanRequests: [{ kind: 'approval' }] } });
   });
 
   it('recovers a crashed file-backed run with manager and worker successor generations', async () => {
@@ -898,5 +901,162 @@ describe('AutomaticExecutionEngine', () => {
     const changed = { ...plan, summary: 'Changed after approval.' };
     await expect(engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: changed })).rejects.toThrow('immutable run hash');
     expect(fake.executionOrder).toEqual([]);
+  });
+});
+
+// -------------------------------------------------------------------------------------------------
+// restrictedIntent — layered per-field intent scan (regression for the self-lint-report false positive).
+//
+// The pre-PR-#58 self-lint def was permanently parked (`credential-handling-intent-is-forbidden`,
+// a non-overridable governance-refusal) because its OWN prose safety rules quoted the prohibition
+// vocabulary the scanner hunts. The layered fix keeps hard refusals for restricted vocabulary in the
+// structured `action` id, but downgrades a match found only in `workOrder` prose to a human-approvable
+// boundary: genuine in-prose directives are still stopped for a human before any worker runs, while a
+// def stating its own safety rules parks for one review click instead of bricking.
+// -------------------------------------------------------------------------------------------------
+
+// Faithful reproduction of the pre-PR-#58 self-lint-report body (git 09e127a). Its work order states
+// its own read-only safety rules using credential / secret / spend / publish vocabulary — all in prose,
+// none in the `report:self-lint` action id.
+const ORIGINAL_SELF_LINT_WORK_ORDER = [
+  "# Self-lint report — read-only repository health scan",
+  "",
+  "Produce a **read-only** hygiene report on the `kb` repository. This is the Wave-A supervised live-fire",
+  "target: a genuinely low-risk (T1), no-external-action cadence. You write exactly **one** report file and",
+  "change nothing else.",
+  "",
+  "## Profile / capability note",
+  "",
+  "This definition names the server-owned `producer` profile (`Read`, `Glob`, `Grep`, `Write`, `Edit`,",
+  "`Bash`). Use **only** `Read` / `Glob` / `Grep` to inspect the repo and a single `Write` to author the",
+  "report. Do **not** edit, delete, move, or reformat any existing file; do **not** run any command that",
+  "mutates the repo, the network, or any external system. The engine bounds accepted changes to this stage's",
+  "write scope (derived from the `orgs/kb-ops/output` target) regardless of the tool cap — but the intent here",
+  "is a pure scan-and-report.",
+  "",
+  "## What to scan (read-only)",
+  "",
+  "1. Stale or orphaned entries under `queue/` (cards in `working`/`inbox` with no recent activity).",
+  "2. `dashboards/` and `ledgers/` freshness — obviously stale or malformed rows.",
+  "3. Broken relative links in the top-level `_index.md` and `orgs/kb-ops/_index.md`.",
+  "4. Any tracked file that looks like it holds a credential or an absolute local path that should not be",
+  "   committed (report the path only — never echo a suspected secret's value).",
+  "",
+  "## Output",
+  "",
+  "Write the report to `orgs/kb-ops/output/self-lint-report-YYYY-MM-DD.md` (today's date). It MUST contain:",
+  "",
+  "- A one-paragraph summary (overall health: green / attention-needed).",
+  "- A findings list: each finding is a file/area, a one-line description, and a suggested follow-up. If there",
+  "  are no findings in a category, say so explicitly.",
+  "- An **explicitly read-only** note confirming no files other than the report were changed.",
+  "",
+  "## Rules",
+  "",
+  "- Read-only outside the single report file. No external action, no network, no spend, no publish.",
+  "- Never print or copy a suspected credential's value — report only the containing path.",
+  "- If you cannot complete the scan, write a short report saying what blocked you and stop. Do not guess.",
+].join('\n');
+
+describe('AutomaticExecutionEngine restricted-intent scan', () => {
+  async function runSingleStage(configure: (stage: ProposalStage) => void): Promise<{
+    outcome: Awaited<ReturnType<AutomaticExecutionEngine['runToBoundary']>>;
+    detail: Extract<ReturnType<ControlPlaneStore['getRun']>, { ok: true }>['value'];
+    fake: ReturnType<typeof fakes>;
+  }> {
+    const store = createStore();
+    const target = stage('intent');
+    configure(target);
+    const plan = proposal([target]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
+    const outcome = await engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
+    const detail = store.getRun('operator', run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    return { outcome, detail: detail.value, fake };
+  }
+
+  it('does NOT hard-refuse a def whose prose safety rules quote restricted vocabulary (original self-lint wording)', async () => {
+    const { outcome, detail, fake } = await runSingleStage((target) => {
+      target.action = 'report:self-lint';
+      target.title = 'Scan the repo for hygiene issues and write a read-only report';
+      target.workOrder = ORIGINAL_SELF_LINT_WORK_ORDER;
+    });
+    // Stopped before execution, but as a human-approvable boundary — NOT a permanent governance-refusal.
+    expect(outcome.state).toBe('waiting-human');
+    expect(fake.executionOrder).toEqual([]);
+    expect(detail.humanRequests).toHaveLength(1);
+    expect(detail.humanRequests[0].kind).toBe('approval');
+    expect(detail.humanRequests[0].kind).not.toBe('governance-refusal');
+    expect(detail.humanRequests[0].prompt).toBe('credential-handling-language-requires-human-review');
+  });
+
+  it('still STOPS a genuine credential directive stated in work-order prose (human-approvable)', async () => {
+    const { outcome, detail, fake } = await runSingleStage((target) => {
+      target.action = 'code:sync-billing';
+      target.workOrder = 'Read the value of the production API key and use it to authenticate to the billing service.';
+    });
+    expect(outcome.state).toBe('waiting-human');
+    expect(fake.executionOrder).toEqual([]);
+    expect(detail.humanRequests[0].kind).toBe('approval');
+    expect(detail.humanRequests[0].prompt).toBe('credential-handling-language-requires-human-review');
+  });
+
+  it('still STOPS a genuine spending directive stated in work-order prose (human-approvable)', async () => {
+    const { outcome, detail, fake } = await runSingleStage((target) => {
+      target.action = 'code:acquire-domain';
+      target.workOrder = 'Purchase the poyais.com domain and pay with the company credit card.';
+    });
+    expect(outcome.state).toBe('waiting-human');
+    expect(fake.executionOrder).toEqual([]);
+    expect(detail.humanRequests[0].kind).toBe('approval');
+    expect(detail.humanRequests[0].prompt).toBe('spending-language-requires-human-review');
+  });
+
+  it('still STOPS a genuine publication directive stated in work-order prose (human-approvable)', async () => {
+    const { outcome, detail, fake } = await runSingleStage((target) => {
+      target.action = 'code:finalize-cut';
+      target.workOrder = 'Upload the finished video and publish it publicly on the channel.';
+    });
+    expect(outcome.state).toBe('waiting-human');
+    expect(fake.executionOrder).toEqual([]);
+    expect(detail.humanRequests[0].kind).toBe('approval');
+    expect(detail.humanRequests[0].prompt).toBe('external-publication-intent-requires-human-approval');
+  });
+
+  it('HARD-refuses restricted credential vocabulary in the structured action id (non-overridable)', async () => {
+    // Namespace `code` clears classifyActionRisk, but the action NAME declares credential handling — a
+    // deliberate, structured statement of intent that keeps the permanent governance-refusal.
+    const { outcome, detail, fake } = await runSingleStage((target) => {
+      target.action = 'code:read-credential-and-authenticate';
+      target.workOrder = 'Execute the sync.';
+    });
+    expect(outcome.state).toBe('waiting-human');
+    expect(fake.executionOrder).toEqual([]);
+    expect(detail.humanRequests[0].kind).toBe('governance-refusal');
+    expect(detail.humanRequests[0].prompt).toBe('credential-handling-intent-is-forbidden');
+  });
+
+  it('HARD-refuses restricted spending vocabulary in the structured action id (non-overridable)', async () => {
+    const { outcome, detail, fake } = await runSingleStage((target) => {
+      target.action = 'code:spend-remaining-budget';
+      target.workOrder = 'Execute the task.';
+    });
+    expect(outcome.state).toBe('waiting-human');
+    expect(fake.executionOrder).toEqual([]);
+    expect(detail.humanRequests[0].kind).toBe('governance-refusal');
+    expect(detail.humanRequests[0].prompt).toBe('real-spending-intent-is-forbidden');
+  });
+
+  it('allows an ordinary stage whose action and prose carry no restricted vocabulary', async () => {
+    const { outcome, fake } = await runSingleStage((target) => {
+      // Keep the action's second segment === the stage id so the fake worker's derived artifact
+      // (`<segment>.txt`) matches the stage's declared artifact and the stage integrates cleanly.
+      target.action = 'code:intent';
+      target.workOrder = 'Reformat the module and add unit tests.';
+    });
+    expect(outcome.state).toBe('succeeded');
+    expect(fake.executionOrder).toEqual(['intent']);
   });
 });
