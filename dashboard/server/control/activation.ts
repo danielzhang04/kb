@@ -1,0 +1,245 @@
+/**
+ * Wave A activation — the env-gated assembly of the governed automatic executor and its injection point
+ * into the surface context.
+ *
+ * CORE INERT INVARIANT (design "Authorization boundary", plan D3): unless
+ * `DASHBOARD_EXECUTION_ACTIVATED === '1'`, `buildActivatedExecution` returns `null` BEFORE touching any
+ * construction factory. Nothing is imported eagerly that spawns; nothing is `new`-ed at module load. With
+ * the gate off the daemon behaves byte-for-byte as today: no broker, no engine, no `claude` subprocess
+ * reachable. The live flip is Daniel's alone.
+ *
+ * When the gate is on this wires, behind the gate, the already-built, already-reviewed control-plane
+ * pieces into one `AutomaticExecutionEngine`:
+ *   - the D4-approved CANONICAL git result integrator (never the app-local file integrator),
+ *   - the production `claudeWorkerAdapter` (env-stripping, stdin-only work order, kill-timeout — reused
+ *     verbatim, never re-implemented or weakened here),
+ *   - the D3(b) no-subprocess manager adapter + cancellation controller from `managedExecution.ts`.
+ *
+ * Every collaborator is injectable via `deps` so the gate-off "constructs nothing" invariant and the
+ * gate-on delegation are both hermetically testable without a real repo, git, or CLI.
+ *
+ * Strip-only floor: no TS enums, parameter properties, or namespaces. ESM with `.ts` specifiers.
+ */
+import { execFileSync } from 'node:child_process';
+import { join } from 'node:path';
+import { ManagedSessionBroker } from './broker.ts';
+import type { BrokerPersistence, ManagedSessionAdapter, ManagedStartSpec } from './broker.ts';
+import { createClaudeSessionAdapter, type ClaudeSessionLaunch } from './claudeSessionAdapter.ts';
+import { createSubjectBrokerPersistence } from './brokerStore.ts';
+import { createGitWorktreeAdapter, createCuratedSkillResolver, createFileAccountingAdapter } from './adapters.ts';
+import { createCanonicalGitResultIntegrator } from './canonicalResultIntegrator.ts';
+import { createClaudeWorkerAdapter, createWorkflowToolPolicyResolver } from './claudeWorkerAdapter.ts';
+import {
+  AutomaticExecutionEngine,
+  type AutomaticExecutionOptions,
+  type CancelRunInput,
+  type CancellationOutcome,
+  type ExecuteRunInput,
+  type ExecutionBudget,
+  type ExecutionOutcome,
+} from './execution.ts';
+import { loadPolicyEnvironment } from './environment.ts';
+import type { PolicyEnvironment } from './policy.ts';
+import type { ControlPlaneStore } from './store.ts';
+import {
+  createBrokerCancellationController,
+  createBrokerManagerAdapter,
+  createWorkerCancellationRegistry,
+} from './managedExecution.ts';
+
+export class ActivationError extends Error {}
+
+/** The single dashboard executor identity (D1): card owner, broker subject, ledger agent, run subject. */
+export const DASHBOARD_EXECUTOR_SUBJECT = 'dashboard-engine';
+
+/** Wave-A default project whose contract/governance the single held policy environment is loaded for. */
+const DEFAULT_POLICY_PROJECT = 'kb-ops';
+
+/** The closed governance anchors loaded into the held policy environment for the Wave-A project. */
+const DEFAULT_GOVERNANCE_REFS: readonly string[] = [
+  'CLAUDE.md',
+  'governance/agent-rules.md',
+  'governance/risk-tiers.md',
+];
+
+/**
+ * Conservative execution caps for single-stage Wave-A runs. Subscription runs report 0 cost; the micro-
+ * dollar ceiling is a fail-closed guard, never a spend authorization.
+ */
+const DEFAULT_BUDGET: ExecutionBudget = {
+  maxAttempts: 3,
+  maxInputTokens: 2_000_000,
+  maxOutputTokens: 400_000,
+  maxCostUsdMicros: 5_000_000,
+};
+
+const FULL_COMMIT = /^[a-f0-9]{40}$/;
+
+/** The whole gate. Reads exactly one variable; any value other than the literal '1' means OFF. */
+export function isExecutionActivated(env: Record<string, string | undefined> = process.env): boolean {
+  return env.DASHBOARD_EXECUTION_ACTIVATED === '1';
+}
+
+export interface ActivationEngine {
+  runToBoundary(input: ExecuteRunInput): Promise<ExecutionOutcome>;
+  cancelRun(input: CancelRunInput): Promise<CancellationOutcome>;
+}
+
+export interface ActivatedExecution {
+  controlBroker: ManagedSessionBroker;
+  runAutomatic: (input: ExecuteRunInput) => Promise<ExecutionOutcome>;
+  cancelAutomatic: (input: CancelRunInput) => Promise<CancellationOutcome>;
+}
+
+/**
+ * Every construction factory, injectable. Defaults reference the real production factories; tests pass
+ * spies to prove the gate-off path calls NONE of them and the gate-on path delegates correctly.
+ */
+export interface ActivationDeps {
+  loadPolicy(repoRoot: string, project: string, refs: string[]): PolicyEnvironment;
+  resolveBaseCommit(repoRoot: string): string;
+  createSessionAdapter: typeof createClaudeSessionAdapter;
+  createBrokerPersistence: typeof createSubjectBrokerPersistence;
+  createBroker(adapter: ManagedSessionAdapter, persistence: BrokerPersistence): ManagedSessionBroker;
+  createWorktrees: typeof createGitWorktreeAdapter;
+  createSkills: typeof createCuratedSkillResolver;
+  createAccounting: typeof createFileAccountingAdapter;
+  createResults: typeof createCanonicalGitResultIntegrator;
+  createToolPolicyResolver: typeof createWorkflowToolPolicyResolver;
+  createWorkers: typeof createClaudeWorkerAdapter;
+  createRegistry: typeof createWorkerCancellationRegistry;
+  createManagers: typeof createBrokerManagerAdapter;
+  createCancellation: typeof createBrokerCancellationController;
+  createEngine(options: AutomaticExecutionOptions): ActivationEngine;
+}
+
+export interface BuildActivatedExecutionOptions {
+  /** Gate source. Defaults to `process.env`. */
+  env?: Record<string, string | undefined>;
+  /** The app-local durable control-plane store the surface already resolved. */
+  controlStore: ControlPlaneStore;
+  /** Canonical ops worktree — used for policy load, worktree provisioning, and canonical integration. */
+  repoRoot: string;
+  /** Dashboard state root (outside the repo) — accounting ledger, worktrees, integration lineage. */
+  stateRoot: string;
+  subject?: string;
+  project?: string;
+  governanceRefs?: string[];
+  worktreeRoot?: string;
+  integrationRoot?: string;
+  baseCommit?: string;
+  budget?: ExecutionBudget;
+  maxConcurrency?: number;
+  /**
+   * Manager-session launch resolver. Dormant under D3(b) (no manager broker session is started), so the
+   * default is fail-closed: any unexpected managed-session spawn throws rather than launching an
+   * unconfigured `claude`. Supply a real resolver only when adopting the D3(b→a) broker-backed manager.
+   */
+  resolveLaunch?: (spec: ManagedStartSpec) => ClaudeSessionLaunch;
+  deps?: Partial<ActivationDeps>;
+}
+
+const dormantResolveLaunch = (_spec: ManagedStartSpec): ClaudeSessionLaunch => {
+  throw new ActivationError('no managed manager session is started under D3(b); resolveLaunch is dormant');
+};
+
+function defaultResolveBaseCommit(repoRoot: string): string {
+  const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' }).trim();
+  if (!FULL_COMMIT.test(head)) throw new ActivationError('git rev-parse HEAD did not yield a full immutable commit id');
+  return head;
+}
+
+function defaultDeps(): ActivationDeps {
+  return {
+    loadPolicy: loadPolicyEnvironment,
+    resolveBaseCommit: defaultResolveBaseCommit,
+    createSessionAdapter: createClaudeSessionAdapter,
+    createBrokerPersistence: createSubjectBrokerPersistence,
+    createBroker: (adapter, persistence) => new ManagedSessionBroker(adapter, persistence),
+    createWorktrees: createGitWorktreeAdapter,
+    createSkills: createCuratedSkillResolver,
+    createAccounting: createFileAccountingAdapter,
+    createResults: createCanonicalGitResultIntegrator,
+    createToolPolicyResolver: createWorkflowToolPolicyResolver,
+    createWorkers: createClaudeWorkerAdapter,
+    createRegistry: createWorkerCancellationRegistry,
+    createManagers: createBrokerManagerAdapter,
+    createCancellation: createBrokerCancellationController,
+    createEngine: (options) => new AutomaticExecutionEngine(options),
+  };
+}
+
+/**
+ * Returns the executor injection triple when the gate is on, or `null` when it is off. The gate is
+ * checked FIRST: on the off path this function touches no factory, resolves no policy, and shells no git.
+ */
+export function buildActivatedExecution(options: BuildActivatedExecutionOptions): ActivatedExecution | null {
+  const env = options.env ?? process.env;
+  if (!isExecutionActivated(env)) return null;
+
+  const deps = { ...defaultDeps(), ...options.deps };
+  const subject = options.subject ?? DASHBOARD_EXECUTOR_SUBJECT;
+  const project = options.project ?? DEFAULT_POLICY_PROJECT;
+  const refs = options.governanceRefs ?? [...DEFAULT_GOVERNANCE_REFS, `orgs/${project}/contract.md`];
+  const stateRoot = options.stateRoot;
+  const repoRoot = options.repoRoot;
+  const worktreeRoot = options.worktreeRoot ?? join(stateRoot, 'control', 'worktrees');
+  const integrationRoot = options.integrationRoot ?? join(stateRoot, 'control', 'integration');
+  const budget = options.budget ?? DEFAULT_BUDGET;
+  const maxConcurrency = options.maxConcurrency ?? 1;
+  const baseCommit = options.baseCommit ?? deps.resolveBaseCommit(repoRoot);
+  const resolveLaunch = options.resolveLaunch ?? dormantResolveLaunch;
+
+  const policy = deps.loadPolicy(repoRoot, project, [...refs]);
+
+  const broker = deps.createBroker(
+    deps.createSessionAdapter({ resolveLaunch }),
+    deps.createBrokerPersistence(options.controlStore, subject),
+  );
+
+  const worktrees = deps.createWorktrees({ repoRoot, worktreeRoot, baseCommit });
+  const skills = deps.createSkills(policy.curatedSkills);
+  const accounting = deps.createAccounting({
+    stateRoot,
+    windowId: new Date().toISOString().slice(0, 10),
+    maxConcurrency,
+    globalBudget: budget,
+  });
+  const results = deps.createResults({
+    repoRoot,
+    coordinationRoot: repoRoot,
+    integrationRoot,
+    worktreeRoot,
+    stateRoot,
+    baseCommit,
+  });
+
+  const registry = deps.createRegistry();
+  const workers = deps.createWorkers({
+    resolveToolPolicy: deps.createToolPolicyResolver(),
+    registerCancellation: registry.register,
+  });
+  const managers = deps.createManagers({ broker });
+  const cancellation = deps.createCancellation({ broker, registry });
+
+  const engine = deps.createEngine({
+    store: options.controlStore,
+    policy,
+    worktreeRoot,
+    maxConcurrency,
+    budget,
+    worktrees,
+    managers,
+    workers,
+    skills,
+    accounting,
+    results,
+    cancellation,
+  });
+
+  return {
+    controlBroker: broker,
+    runAutomatic: (input) => engine.runToBoundary(input),
+    cancelAutomatic: (input) => engine.cancelRun(input),
+  };
+}
