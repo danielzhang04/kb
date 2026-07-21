@@ -8,11 +8,13 @@ modelled on the trusted `scripts/sync_skills.py` pattern:
 
   * `--check` — read-only drift report (exit nonzero on drift). Compares main
     against the on-disk ops checkout when it exists, else against `origin/ops`
-    directly so it is safe to run from the cloud with no worktree present.
+    directly so it is safe to run from the cloud with no worktree present. Both
+    modes fetch first and CRLF/LF-normalize content, so they always agree.
   * default / `--sync` — in the ops worktree, follow the constitution's ops-write
-    protocol (pull --rebase, checkout main content, commit-if-changed, push, retry
-    once) to bring ops back in line with main. Never deletes ops-only files unless
-    `--prune` is passed.
+    protocol (fetch main, pull --rebase, checkout main content, commit-if-changed
+    SCOPED to the mirrored paths, push, retry once) to bring ops back in line with
+    main. Never deletes ops-only files unless `--prune` is passed. A rebase that
+    conflicts is aborted cleanly rather than left in the daemon's worktree.
 
 Adding another daemon-read directory later is a one-line edit to DAEMON_READ_DIRS.
 """
@@ -107,6 +109,60 @@ def _read_ref_blob(repo_root: Path, ref: str, path: str) -> bytes:
     ).stdout
 
 
+def _split_ref(ref: str) -> tuple[str, str] | None:
+    """Split ``origin/main`` -> (``origin``, ``main``) so we can fetch it.
+
+    Returns None for a ref with no remote prefix (a bare local branch), which
+    cannot be fetched — the caller then works from whatever the ref points at.
+    """
+    remote, sep, branch = ref.partition("/")
+    if not sep or not branch:
+        return None
+    return remote, branch
+
+
+def _fetch_ref(repo_root: Path, ref: str, *, required: bool) -> bool:
+    """Refresh ``ref`` in ``repo_root``'s refs before it is read/checked out.
+
+    This is the fix for the stale-local-ref failure: the production dashboard-ops
+    worktree's ``origin/main`` is essentially never refreshed, so without this a
+    sync would checkout stale content forever and a newly-merged org would crash
+    the ``git checkout`` pathspec. ``required=True`` (sync) fails loudly on a
+    fetch error; ``required=False`` (check) warns and proceeds on stale refs.
+    Returns True if the fetch ran and succeeded.
+    """
+    parsed = _split_ref(ref)
+    if parsed is None:
+        return False
+    remote, branch = parsed
+    r = _git(repo_root, "fetch", remote, branch, check=False)
+    if r.returncode != 0:
+        msg = f"git fetch {remote} {branch} failed:\n{r.stderr.strip()}"
+        if required:
+            raise SystemExit(msg)
+        print(f"WARNING: {msg}\n  (comparison uses possibly-stale local refs)",
+              file=sys.stderr)
+        return False
+    return True
+
+
+def _rebase_or_abort(ops_root: Path) -> None:
+    """`git pull --rebase origin ops`, aborting cleanly on conflict.
+
+    A raw rebase that hits a conflict leaves conflict markers and a
+    .git/rebase-merge state in the very worktree the live daemon reads. On any
+    failure we best-effort `git rebase --abort` to restore a clean tree, then
+    exit with a clear error rather than leaving a half-rebased worktree behind.
+    """
+    r = _git(ops_root, "pull", "--rebase", "origin", "ops", check=False)
+    if r.returncode != 0:
+        _git(ops_root, "rebase", "--abort", check=False)  # best-effort cleanup
+        raise SystemExit(
+            "git pull --rebase origin ops failed (rebase aborted, worktree "
+            f"restored):\n{r.stderr.strip()}"
+        )
+
+
 def _list_disk(ops_root: Path, patterns: list[str]) -> set[str]:
     """Return posix relpaths of daemon-read files present on disk under ops_root."""
     found: set[str] = set()
@@ -133,10 +189,15 @@ def check(
     If ``ops_root`` exists on disk, compare main against that checkout (what the
     daemon actually reads). Otherwise fall back to comparing ``main_ref`` against
     ``ops_ref`` directly so the check is safe to run from the cloud.
-    Line endings are normalized before content comparison so a CRLF checkout of
-    identical content is not reported as drift.
+
+    Refs are fetched first (best-effort; a fetch failure warns and proceeds on
+    stale local refs) so the report reflects the true remote state rather than a
+    never-refreshed local ``origin/main``. Both modes normalize CRLF/LF before a
+    content comparison, so a CRLF checkout of logically identical content is
+    never reported as drift and the two modes always agree.
     """
     matchers = _compile(patterns)
+    _fetch_ref(repo_root, main_ref, required=False)
     main = _list_ref(repo_root, main_ref, matchers)
     report: dict = {"mode": "", "main_only": [], "ops_only": [], "differs": []}
 
@@ -158,12 +219,18 @@ def check(
                 report["ops_only"].append(path)
     else:
         report["mode"] = f"refs: {main_ref} vs {ops_ref}"
+        _fetch_ref(repo_root, ops_ref, required=False)
         ops = _list_ref(repo_root, ops_ref, matchers)
         for path, sha in sorted(main.items()):
             if path not in ops:
                 report["main_only"].append(path)
             elif ops[path] != sha:
-                report["differs"].append(path)
+                # SHAs differ, but git may store one side CRLF and the other LF.
+                # Compare normalized content so refs mode agrees with disk mode.
+                main_b = _read_ref_blob(repo_root, main_ref, path).replace(b"\r\n", b"\n")
+                ops_b = _read_ref_blob(repo_root, ops_ref, path).replace(b"\r\n", b"\n")
+                if main_b != ops_b:
+                    report["differs"].append(path)
         for path in sorted(ops):
             if path not in main:
                 report["ops_only"].append(path)
@@ -215,8 +282,14 @@ def sync(
     matchers = _compile(patterns)
     result: dict = {"pushed": False, "committed": False, "pruned": [], "kept_ops_only": []}
 
-    # 1. Rebase onto the latest ops.
-    _git(ops_root, "pull", "--rebase", "origin", "ops")
+    # 0. Refresh main in THIS worktree's refs. Without it the ops worktree's
+    #    never-refreshed origin/main means we would mirror stale content forever
+    #    and a newly-merged org would crash the checkout below on a bad pathspec.
+    _fetch_ref(ops_root, main_ref, required=True)
+
+    # 1. Rebase onto the latest ops, aborting cleanly on conflict so we never
+    #    leave a half-rebased tree in the worktree the live daemon reads.
+    _rebase_or_abort(ops_root)
 
     # 2. Copy main's version of every daemon-read dir into the ops worktree.
     pathspecs = _checkout_pathspecs(repo_root, main_ref, patterns, matchers)
@@ -232,20 +305,30 @@ def sync(
     else:
         result["kept_ops_only"] = ops_only
 
-    # 4. Stage and commit only if something actually changed.
+    # 4. Stage, detect changes, and commit — all SCOPED to the mirrored paths.
+    #    The shared ops worktree carries unrelated untracked files (e.g.
+    #    .playwright-mcp/) and may have unrelated staged changes; a bare
+    #    `git status` / `git commit` would either crash an in-sync run (empty
+    #    index but dirty status) or sweep foreign changes into the mirror commit.
+    #    (git rm already staged any pruned deletions, so `add` covers only the
+    #    mirrored dirs; commit_specs unions in ops_only for prunes whose dir is
+    #    not itself a mirrored pathspec.)
     if pathspecs:
         _git(ops_root, "add", "--", *pathspecs)
-    status = _git(ops_root, "status", "--porcelain").stdout.strip()
+    commit_specs = sorted(set(pathspecs) | set(ops_only))
+    if not commit_specs:
+        return result  # no daemon-read dirs to mirror — nothing to do.
+    status = _git(ops_root, "status", "--porcelain", "--", *commit_specs).stdout.strip()
     if not status:
         return result  # ops already matches main — nothing to push.
 
-    _git(ops_root, "commit", "-m", COMMIT_MSG)
+    _git(ops_root, "commit", "-m", COMMIT_MSG, "--", *commit_specs)
     result["committed"] = True
 
-    # 5. Push, retrying once after a re-rebase on rejection.
+    # 5. Push, retrying once after a clean re-rebase on rejection.
     push = _git(ops_root, "push", "origin", "ops", check=False)
     if push.returncode != 0:
-        _git(ops_root, "pull", "--rebase", "origin", "ops")
+        _rebase_or_abort(ops_root)
         _git(ops_root, "push", "origin", "ops")
     result["pushed"] = True
     return result
@@ -300,7 +383,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--main-ref", default=DEFAULT_MAIN_REF)
     ap.add_argument("--ops-ref", default=DEFAULT_OPS_REF)
     ap.add_argument("--prune", action="store_true",
-                    help="in --sync, git rm ops-only files not present on main")
+                    help="in --sync, git rm ops-only files under the mirrored dirs "
+                         "that are not on main (WARNING: this DELETES an ops-staged "
+                         "workflow/agent still awaiting its main merge)")
     args = ap.parse_args(argv)
 
     repo_root = args.repo_root or Path.cwd()
