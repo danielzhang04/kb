@@ -97,3 +97,89 @@ class DeviceWatcher:
                     # watcher alive if it raised unexpectedly.
                     logger.exception("on_change callback raised")
             self._stop.wait(self._period_s)
+
+
+class OutputFollower:
+    """Turns a new default-device NAME into a live output-stream move (design 'Swap orchestration').
+
+    All collaborators injected: `console` is livekit's AgentsConsole (or a test fake) whose
+    set_speaker_enabled CLOSES the old stream before opening the new one — which is why we
+    pre-validate the candidate first and reopen the previous index if an open still fails:
+    a failed swap must cost a blip, never deafness. `swap_to` returns the /state-shaped
+    status so the caller can publish it without re-deriving anything."""
+
+    def __init__(self, console, *, wake_input_substring, resolve_output, resolve_input,
+                 sd_module, lock=None):
+        self._console = console
+        self._wake_input = wake_input_substring
+        self._resolve_output = resolve_output
+        self._resolve_input = resolve_input
+        self._sd = sd_module
+        self._lock = lock or threading.Lock()
+        self._last_idx: int | None = None
+
+    def _status(self, idx: int | None) -> dict:
+        if idx is None:
+            return {"configured": "follow", "resolved": None, "following": True}
+        try:
+            name = self._sd.query_devices(idx)["name"]
+        except Exception:
+            name = str(idx)
+        return {"configured": "follow", "resolved": name, "following": True}
+
+    def _reinit_audio(self) -> None:
+        """Rare path: device absent from the boot PortAudio snapshot (first-ever pairing
+        mid-session). Close BOTH streams, cycle PortAudio so it re-enumerates, re-pin the
+        mic. Costs <1s of mic downtime — accepted in the design."""
+        self._console.set_microphone_enabled(False)
+        self._console.set_speaker_enabled(False)
+        self._sd._terminate()
+        self._sd._initialize()
+        mic_idx = self._resolve_input(self._wake_input)
+        self._console.set_microphone_enabled(True, device=mic_idx)
+
+    def _open(self, idx: int) -> bool:
+        try:
+            self._console.set_speaker_enabled(True, device=idx)
+            return True
+        except Exception:
+            logger.critical(
+                "output swap: opening device %d failed after validation — reopening previous", idx,
+                exc_info=True)
+            return False
+
+    def swap_to(self, name: str) -> dict:
+        with self._lock:
+            idx = self._resolve_output(name)
+            if idx is None:
+                # Not in the current snapshot -> rare path: refresh the snapshot and retry.
+                self._reinit_audio()
+                idx = self._resolve_output(name)
+                if idx is None:
+                    logger.critical(
+                        "output follow: Windows default moved to %r but no PortAudio device "
+                        "matches even after re-enumeration — keeping the previous output", name)
+                    if self._last_idx is not None:
+                        self._open(self._last_idx)
+                    return self._status(None)
+                if self._open(idx):
+                    self._last_idx = idx
+                    return self._status(idx)
+                if self._last_idx is not None and self._open(self._last_idx):
+                    return self._status(self._last_idx)
+                return self._status(None)
+            # Common path: pre-validate (set_speaker_enabled tears down BEFORE opening).
+            try:
+                self._sd.query_devices(idx, kind="output")
+            except Exception:
+                logger.critical(
+                    "output follow: candidate device %d (%r) failed validation — keeping the "
+                    "previous output", idx, name)
+                return self._status(self._last_idx)
+            if self._open(idx):
+                self._last_idx = idx
+                return self._status(idx)
+            if self._last_idx is not None and self._open(self._last_idx):
+                return self._status(self._last_idx)
+            logger.critical("output follow: could not reopen ANY output device — TTS is deaf")
+            return self._status(None)

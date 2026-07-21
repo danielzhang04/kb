@@ -241,7 +241,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - Consumes: `wakeword.resolve_output_device(substring, devices=None) -> int | None`, `wakeword.resolve_input_device(substring, devices=None) -> int | None` (existing).
 - Produces: `class OutputFollower` with `swap_to(name) -> dict` returning the new `/state`-shaped status `{"configured": "follow", "resolved": <name or None>, "following": True}`; constructor `OutputFollower(console, *, wake_input_substring, resolve_output, resolve_input, sd_module, lock=None)`. `console` needs `.set_speaker_enabled(enable, *, device)` and `.set_microphone_enabled(enable, *, device)`. Task 4 constructs it with the real livekit singleton.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # append to atlas/tests/test_devicewatch.py
@@ -344,12 +344,12 @@ def test_swap_prevalidation_failure_keeps_current_stream_untouched():
     assert status["resolved"] == "dev-5"
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `.venv/Scripts/python -m pytest tests/test_devicewatch.py -q`
 Expected: FAIL with `AttributeError: ... has no attribute 'OutputFollower'`
 
-- [ ] **Step 3: Implement `OutputFollower` (append to `devicewatch.py`)**
+- [x] **Step 3: Implement `OutputFollower` (append to `devicewatch.py`)**
 
 ```python
 class OutputFollower:
@@ -440,12 +440,12 @@ class OutputFollower:
 
 The tests are the contract — if code and tests disagree, fix the code, never weaken the tests.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `.venv/Scripts/python -m pytest tests/test_devicewatch.py -q`
 Expected: `11 passed`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add worker/devicewatch.py tests/test_devicewatch.py
