@@ -23,7 +23,15 @@ the discrepancy is called out.
 
 ## Decisions needed (boss decides — do not silently pick)
 
+> **RESOLVED by boss 2026-07-20.** One-line DECIDED entries below (D0–D5, D7). D6 remains a human
+> governance edit (see its section). These bind the T1–T5 implementation.
+
 ### D0 — CRITICAL: the canonical integrator is hard-bound to `workflowCardId(runRef, stageId)`; the bridge cannot push an arbitrary pre-existing fleet card through canonical writeback
+
+> **DECIDED (D0): Option A** — the bridge synthesizes a workflow-shaped run via
+> `compile.ts` → `control/launch.ts#executeApprovedLaunch`; the fleet trigger card is only a signal and
+> is reconciled after the minted canonical card runs. `canonicalResultIntegrator.ts` is untouched. T4/T5
+> are written against the compile→launch machinery; the T8 live-fire is a workflow-definition launch.
 
 **What the code actually enforces** (verified, not from the design):
 
@@ -78,6 +86,11 @@ wants raw fleet cards to execute *as themselves* (Option B), T4/T5 change materi
 canonical-integrator re-review task must be inserted — flagged inline.
 
 ### D1 — The single dashboard executor subject / agent id
+
+> **DECIDED (D1): `dashboard-engine`** — the one id used as bridge-claimed card `owner`, broker
+> persistence subject, fleet ledger `agent`, and the `subject` passed to `runToBoundary`/`cancelRun`.
+> Exported as `DASHBOARD_EXECUTOR_SUBJECT` from `control/activation.ts` (T2).
+
 The broker persistence is **subject-scoped** (`brokerStore.ts#createSubjectBrokerPersistence(store, subject)`)
 and `surface.ts` holds exactly one `controlBroker`. So Wave A runs under **one** dashboard subject.
 The executor-activation design says `owner == dashboard-engine` (D5). **Decision:** confirm the id
@@ -86,6 +99,17 @@ persistence subject, (c) fleet ledger `agent` for cost rows, (d) `subject` passe
 `runToBoundary`/`cancelRun`. Recommend a single dedicated id, registered in the agent registry.
 
 ### D2 — Which `PolicyEnvironment` the engine holds
+
+> **DECIDED (D2): load once for the ops project; VERIFIED in `environment.ts`.** Finding: `profiles`
+> (`loadExecutionProfiles`) and `curatedSkills` (`loadRuntimeSkillRegistry`) are pure functions of
+> `repoRoot` — globally valid, project-independent. `contractText` + `governanceContents`, however, ARE
+> project-scoped, and `policy.ts#evaluateExecutionPolicy` reads them from the *held* env (lines 71/145/148),
+> not per-run. So the single held env's profiles/skills are safe globally, but its contract/governance are
+> the loaded project's. For Wave A (single-project kb-ops live-fire) the engine loads the env once for
+> project `kb-ops` (T2 default `DEFAULT_POLICY_PROJECT`, refs = CLAUDE.md + governance/agent-rules.md +
+> governance/risk-tiers.md + orgs/kb-ops/contract.md). **T3–T5 note:** a future *multi-project* engine must
+> construct one env per project (or widen the load) — do not assume one held env serves cross-project runs.
+
 `AutomaticExecutionOptions.policy` is a **single** `PolicyEnvironment` fixed at construction, but
 `loadPolicyEnvironment(repoRoot, project, refs)` (`control/environment.ts`) is project-scoped, and
 runs may span projects. The engine passes each run's own `project`/`governanceRefs` into
@@ -96,6 +120,12 @@ curatedSkills** must be global and only `governanceRefs` vary per run. **Decisio
 the load must be widened. Recommend loading once with the ops project and verifying profile globality.
 
 ### D3 — Manager adapter realization (real `claude` manager vs. no-subprocess stub)
+
+> **DECIDED (D3): realization (b)** — `createBrokerManagerAdapter` (T1) has an idempotent `ensure()` that
+> validates the server-owned manager profile + immutable proposal hash and spawns **no** subprocess (the
+> DAG is driven in-process by `runToBoundary`). The `broker` option is accepted only for `cancelManager` →
+> `broker.stop` and the future (b→a) upgrade. `resolveLaunch` is therefore dormant (fail-closed default).
+
 `ManagerAdapter` has **no production constructor** today (only an inline fake in
 `execution.test.ts`). `AutomaticExecutionEngine.ensureManager` calls `managers.ensure(...)` then
 marks the session running; the DAG itself is driven **in-process** by `runToBoundary`, not by a
@@ -107,6 +137,13 @@ manager LLM. **Decision:**
   for Wave A** — lower blast radius, no extra spawn, sufficient for single-stage T1 runs; defer (a).
 
 ### D4 — Where the fleet (`scripts/ledger.py`) cost row is emitted
+
+> **DECIDED (D4): emit from the bridge post-run seam (T5), not the accounting adapter.** The control-plane
+> accounting adapter stays unmodified; T2 wires the D4-approved **canonical** result integrator as the
+> engine's `results`. The "both ledgers" invariant is met by control-plane accounting (engine) + fleet
+> ledger (bridge seam). **T5's concern** — T1/T2 only ensured nothing precludes it (the bridge reads run
+> detail for `model`/`card_id`/`usd` at the post-run seam).
+
 D8 says "the accounting adapter also appends `scripts/ledger.py` cost rows." But
 `AccountingAdapter.settle({operationKey, reservationRef, usage})` (`execution.ts`) has **no model
 and no card id** in scope, and `ledger.append` / the routed-vs-ran audit want `usd`, `model`,
@@ -118,6 +155,13 @@ ledgers" invariant is satisfied — control-plane accounting via the engine, fle
 bridge).
 
 ### D5 — `pm2.config.cjs` gate default + roots/base-commit resolution
+
+> **DECIDED (D5): ship the gate UNSET (commented placeholder).** `pm2.config.cjs` (T2) carries a commented,
+> unset `DASHBOARD_EXECUTION_ACTIVATED` placeholder documenting the one-line Daniel-only flip; the bootstrap
+> reads `process.env.DASHBOARD_EXECUTION_ACTIVATED === '1'`. `worktreeRoot = <DASHBOARD_STATE_ROOT>/control/
+> worktrees` and `integrationRoot = <…>/control/integration` (both outside the repo, disjoint from repoRoot);
+> `baseCommit` = `git rev-parse HEAD` of the ops `repoRoot` at boot, asserted `/^[a-f0-9]{40}$/`.
+
 `DASHBOARD_EXECUTION_ACTIVATED` is documented but read **nowhere** in code today, and is **not** in
 `pm2.config.cjs`. **Decision:** ship `pm2.config.cjs` with the var **unset** (a commented
 placeholder documenting the one-line flip), so default is OFF and the committed repo is inert; the
@@ -135,6 +179,11 @@ dashboard|<null>` to the schema. This plan emits a `docs/proposals/` note reques
 than touching governance.
 
 ### D7 — Preamble enforcement mechanism in the bridge
+
+> **DECIDED (D7): reuse `ctx.runPreamble`** (the `write/preambleGate.ts#PreambleRunner` seam already in
+> `SurfaceContext`) rather than re-implementing the three checks in TS. **T5's concern** — T1/T2 did not
+> preclude it (the seam is untouched and still on `SurfaceContext`).
+
 The bridge must honor `scripts/preamble.py` semantics (STOP file, `ANTHROPIC_API_KEY` unset, daily
 budget) before dispatching (design §"Error handling"). **Decision:** shell `python
 scripts/preamble.py` and gate on exit code (2 = fail), reusing the existing
