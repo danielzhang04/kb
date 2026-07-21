@@ -40,6 +40,60 @@ function sendTurn(text: string): void {
   fireEvent.submit(screen.getByLabelText('Composer prompt'));
 }
 
+const WORKFLOW_AGENT_ROSTER = [
+  {
+    id: 'fyt-runner', declared: true, projects: ['kb'], runnerBound: true,
+    defaultProfile: 'manager:claude:claude-opus-4-8',
+    allowedProfiles: ['manager:claude:claude-opus-4-8', 'manager:codex:gpt-5.6-sol'],
+  },
+  {
+    id: 'manager-backup', declared: true, projects: ['kb'], runnerBound: false,
+    defaultProfile: 'worker:codex:gpt-5.6-sol',
+    allowedProfiles: ['manager:codex:gpt-5.6-sol', 'worker:codex:gpt-5.6-sol'],
+  },
+  {
+    id: 'worker-primary', declared: true, projects: ['kb'], runnerBound: true,
+    defaultProfile: 'worker:claude:claude-opus-4-8',
+    allowedProfiles: ['worker:claude:claude-opus-4-8', 'worker:codex:gpt-5.6-sol'],
+  },
+  {
+    id: 'worker-only', declared: true, projects: ['kb'], runnerBound: false,
+    defaultProfile: 'worker:codex:gpt-5.6-sol',
+    allowedProfiles: ['worker:codex:gpt-5.6-sol'],
+  },
+  {
+    id: 'other-project', declared: true, projects: ['atlas'], runnerBound: true,
+    defaultProfile: 'worker:claude:claude-opus-4-8',
+    allowedProfiles: ['manager:claude:claude-opus-4-8', 'worker:claude:claude-opus-4-8'],
+  },
+  {
+    id: 'observed-worker', declared: false, projects: ['kb'], runnerBound: true,
+    defaultProfile: 'worker:claude:claude-opus-4-8',
+    allowedProfiles: ['worker:claude:claude-opus-4-8'],
+  },
+];
+
+function stubWorkflowRegistries(roster = WORKFLOW_AGENT_ROSTER): void {
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    if (input === '/api/workflows/profiles') {
+      return { ok: true, status: 200, json: async () => ({ profiles: ['research'] }) } as Response;
+    }
+    if (input === '/api/agents') {
+      return { ok: true, status: 200, json: async () => roster } as Response;
+    }
+    throw new Error(`unexpected fetch: ${String(input)}`);
+  }));
+}
+
+function fillWorkflowDraft(): void {
+  fireEvent.change(screen.getByLabelText('Workflow filename'), { target: { value: 'brief.md' } });
+  fireEvent.change(screen.getByLabelText('Workflow project'), { target: { value: 'kb' } });
+  fireEvent.change(screen.getByLabelText('Workflow notes'), { target: { value: 'Research the brief.' } });
+  fireEvent.change(screen.getByLabelText('Stage 1 action'), { target: { value: 'research' } });
+  fireEvent.change(screen.getByLabelText('Stage 1 target'), { target: { value: 'orgs/kb' } });
+  fireEvent.change(screen.getByLabelText('Stage 1 work order'), { target: { value: 'Research the brief.' } });
+}
+
 describe('Composer', () => {
   it('starts_in_idea_mode_with_disambiguation_seed', async () => {
     const { calls, stream } = recordingStream();
@@ -248,5 +302,110 @@ describe('Composer', () => {
     expect(deploy.disabled).toBe(false);
     fireEvent.click(deploy);
     expect(onDeploy).toHaveBeenCalledWith(expect.objectContaining({ relpath: 'orgs/kb/workflows/brief.md' }));
+  });
+
+  it('filters declared manager and worker selectors by project/profile role and states runner binding', async () => {
+    stubWorkflowRegistries();
+    render(<Composer initialKind="workflow" onDeploy={vi.fn()} onBack={vi.fn()} />);
+    fillWorkflowDraft();
+
+    const manager = screen.getByLabelText('Workflow manager agent') as HTMLSelectElement;
+    const stage = screen.getByLabelText('Stage 1 agent') as HTMLSelectElement;
+    await waitFor(() => expect(manager.options).toHaveLength(2));
+
+    expect([...manager.options].map((option) => option.text)).toEqual([
+      'No logical assignment',
+      'fyt-runner · runner-bound',
+    ]);
+    expect([...stage.options].map((option) => option.text)).toEqual([
+      'No logical assignment',
+      'manager-backup · declared only',
+      'worker-only · declared only',
+      'worker-primary · runner-bound',
+    ]);
+    expect([...manager.options].map((option) => option.value)).not.toContain('manager-backup');
+    expect([...stage.options].map((option) => option.value)).not.toContain('fyt-runner');
+    expect(screen.getByTestId('workflow-assignment-note').textContent).toMatch(/do not choose a technical executor/i);
+    expect(screen.getByTestId('workflow-assignment-note').textContent).toMatch(/adapter availability/i);
+  });
+
+  it('selecting agents chooses the role default/first profile, allows overrides, and resets on switch', async () => {
+    stubWorkflowRegistries();
+    render(<Composer initialKind="workflow" onDeploy={vi.fn()} onBack={vi.fn()} />);
+    fillWorkflowDraft();
+    const manager = screen.getByLabelText('Workflow manager agent') as HTMLSelectElement;
+    await waitFor(() => expect(manager.options).toHaveLength(2));
+
+    fireEvent.change(manager, { target: { value: 'fyt-runner' } });
+    const managerProfile = screen.getByLabelText('Workflow manager profile') as HTMLSelectElement;
+    expect(managerProfile.value).toBe('manager:claude:claude-opus-4-8');
+    expect([...managerProfile.options].map((option) => option.value)).toEqual([
+      'manager:claude:claude-opus-4-8',
+      'manager:codex:gpt-5.6-sol',
+    ]);
+    fireEvent.change(managerProfile, { target: { value: 'manager:codex:gpt-5.6-sol' } });
+    expect(screen.getByTestId('workflow-manager-agent-selection').textContent).toMatch(/Profile override/i);
+
+    const stage = screen.getByLabelText('Stage 1 agent') as HTMLSelectElement;
+    fireEvent.change(stage, { target: { value: 'worker-primary' } });
+    const stageProfile = screen.getByLabelText('Stage 1 profile') as HTMLSelectElement;
+    expect(stageProfile.value).toBe('worker:claude:claude-opus-4-8');
+    expect([...stageProfile.options].map((option) => option.value)).toEqual([
+      'worker:claude:claude-opus-4-8',
+      'worker:codex:gpt-5.6-sol',
+    ]);
+    fireEvent.change(stageProfile, { target: { value: 'worker:codex:gpt-5.6-sol' } });
+    expect(screen.getByTestId('stage-1-agent-selection').textContent).toMatch(/Profile override/i);
+
+    fireEvent.change(stage, { target: { value: 'worker-only' } });
+    expect(stageProfile.value).toBe('worker:codex:gpt-5.6-sol');
+    fireEvent.change(stage, { target: { value: '' } });
+    expect(stage.value).toBe('');
+    expect(stageProfile.disabled).toBe(true);
+  });
+
+  it('serializes selected logical manager and stage assignments without raw executor routing fields', async () => {
+    const onDeploy = vi.fn();
+    stubWorkflowRegistries();
+    render(<Composer initialKind="workflow" onDeploy={onDeploy} onBack={vi.fn()} />);
+    fillWorkflowDraft();
+    const manager = screen.getByLabelText('Workflow manager agent') as HTMLSelectElement;
+    await waitFor(() => expect(manager.options).toHaveLength(2));
+    fireEvent.change(manager, { target: { value: 'fyt-runner' } });
+    fireEvent.change(screen.getByLabelText('Stage 1 agent'), { target: { value: 'worker-only' } });
+    const profile = screen.getByLabelText('Execution profile') as HTMLSelectElement;
+    await waitFor(() => expect(profile.disabled).toBe(false));
+    fireEvent.change(profile, { target: { value: 'research' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save definition' }));
+
+    const content = onDeploy.mock.calls[0][0].content as string;
+    expect(content).toContain('manager:\n  agentId: "fyt-runner"\n  profileId: "manager:claude:claude-opus-4-8"\nstages:');
+    expect(content).toContain('agentId: "worker-only"');
+    expect(content).toContain('profileId: "worker:codex:gpt-5.6-sol"');
+    expect(content).not.toContain('owner:');
+    expect(content).not.toContain('runtime:');
+    expect(content).not.toContain('model:');
+  });
+
+  it('keeps an unassigned legacy workflow deployable when the agent roster cannot load', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      if (input === '/api/workflows/profiles') {
+        return { ok: true, status: 200, json: async () => ({ profiles: ['research'] }) } as Response;
+      }
+      if (input === '/api/agents') return { ok: false, status: 503, json: async () => ({}) } as Response;
+      throw new Error(`unexpected fetch: ${String(input)}`);
+    }));
+    const onDeploy = vi.fn();
+    render(<Composer initialKind="workflow" onDeploy={onDeploy} onBack={vi.fn()} />);
+    fillWorkflowDraft();
+    const profile = screen.getByLabelText('Execution profile') as HTMLSelectElement;
+    await waitFor(() => expect(profile.disabled).toBe(false));
+    fireEvent.change(profile, { target: { value: 'research' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save definition' }));
+
+    expect(onDeploy).toHaveBeenCalledTimes(1);
+    expect(onDeploy.mock.calls[0][0].content).not.toContain('manager:');
+    expect(onDeploy.mock.calls[0][0].content).not.toContain('agentId:');
+    expect(screen.getByTestId('workflow-assignment-note').textContent).toMatch(/could not be loaded/i);
   });
 });

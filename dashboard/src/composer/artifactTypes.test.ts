@@ -227,6 +227,17 @@ describe('composer/artifactTypes — deploy mapping', () => {
     expect(plan.content).not.toContain('model:');
   });
 
+  it('workflow manager emits its logical agent/profile pair before stages', () => {
+    const plan = toDeploy('workflow', workflow({
+      manager: { agentId: 'fyt-runner', profileId: 'manager:claude:claude-opus-4-8' },
+    }));
+
+    expect(plan.content).toContain('manager:\n  agentId: "fyt-runner"\n  profileId: "manager:claude:claude-opus-4-8"\nstages:');
+    expect(plan.content).not.toContain('owner:');
+    expect(plan.content).not.toContain('runtime:');
+    expect(plan.content).not.toContain('model:');
+  });
+
   it('workflow stage requires an all-or-nothing logical agent/profile pair', () => {
     const withAgentOnly = workflow({ stages: [{
       id: 'stage-1', action: 'research', target: 'orgs/kb', workOrder: 'Do the work', riskTier: 'T2', dependsOn: [],
@@ -241,6 +252,12 @@ describe('composer/artifactTypes — deploy mapping', () => {
       expect(validateDraft('workflow', draft).map((problem) => problem.field)).toContain('stages[0].assignment');
       expect(() => toDeploy('workflow', draft)).toThrow();
     }
+  });
+
+  it('workflow manager requires an all-or-nothing logical agent/profile pair', () => {
+    const draft = workflow({ manager: { agentId: 'fyt-runner' } });
+    expect(validateDraft('workflow', draft).map((problem) => problem.field)).toContain('manager.assignment');
+    expect(() => toDeploy('workflow', draft)).toThrow();
   });
 
   it('legacy workflow stage serialization remains byte-for-byte unchanged without an assignment pair', () => {
