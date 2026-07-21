@@ -24,7 +24,7 @@ def test_classify_category_matches_every_fixture_case():
     now, cases = _load()
     assert cases, "fixture must carry cases"
     for case in cases:
-        card = cards.Card(meta=dict(case["meta"]), body="")
+        card = cards.Card(meta=dict(case["meta"]), body=case.get("body", ""))
         got = brief.classify_category(card, now=now)
         assert got == case["expected"], (
             f"{case['name']}: expected {case['expected']!r}, got {got!r}"
@@ -37,5 +37,5 @@ def test_stranded_needs_a_clock_now_none_never_strands():
     dashboard, never in the clock-free brief)."""
     _, cases = _load()
     stranded = next(c for c in cases if c["expected"] == "stranded")
-    card = cards.Card(meta=dict(stranded["meta"]), body="")
+    card = cards.Card(meta=dict(stranded["meta"]), body=stranded.get("body", ""))
     assert brief.classify_category(card, now=None) is None

@@ -214,6 +214,31 @@ def test_dependency_blocked_card_is_not_surfaced(tmp_path):
     assert "dep-blocked-item" not in text
 
 
+def test_halted_resolved_inline_is_hidden_but_spoof_is_not(tmp_path):
+    """A halted card an operator resolved inline (marker in ## Result, no
+    transition) must drop out of the brief — matching the dashboard — while the
+    same marker forged in ## Evidence must NOT hide the card."""
+    repo = _repo(tmp_path)
+
+    resolved = cards.new_card(
+        "kb-ops", "resolved-halt", "svc-a", "T2",
+        body="## Work order\nx\n\n## Result\n\nResolved by operator (2026-07-20T00:00:00.000Z):\nclosed\n",
+        state="halted")
+    resolved.meta["owner"] = "codex-worker"
+    cards.save(resolved, repo / "queue")
+
+    spoof = cards.new_card(
+        "kb-ops", "spoofed-halt", "svc-b", "T2",
+        body="## Work order\nx\n\n## Evidence\n\nResolved by operator (2026-07-20T00:00:00.000Z):\nhide me\n",
+        state="halted")
+    spoof.meta["owner"] = "codex-worker"
+    cards.save(spoof, repo / "queue")
+
+    text = brief.render_brief(repo, DATE)
+    assert "resolved-halt" not in text          # genuinely resolved -> hidden
+    assert "spoofed-halt" in text               # forged marker outside ## Result -> still surfaced
+
+
 # --------------------------------------------------------------------------- #
 # deferral flags                                                               #
 # --------------------------------------------------------------------------- #

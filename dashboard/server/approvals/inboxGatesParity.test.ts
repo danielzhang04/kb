@@ -17,6 +17,7 @@ import type { PlaneAIndex } from '../planeA/indexer.ts';
 interface ParityCase {
   name: string;
   meta: Record<string, unknown>;
+  body?: string;
   expected: HumanInboxCategory | null;
 }
 
@@ -38,8 +39,8 @@ function indexOf(card: ParsedCard): PlaneAIndex {
 
 /** The category the dashboard would project for one card, or null — bridges the
  *  `HumanInboxItem | null` classifier through the real projection entry point. */
-function categoryOf(meta: Record<string, unknown>): HumanInboxCategory | null {
-  const card: ParsedCard = { meta: meta as unknown as CardMeta, body: '' };
+function categoryOf(meta: Record<string, unknown>, body: string): HumanInboxCategory | null {
+  const card: ParsedCard = { meta: meta as unknown as CardMeta, body };
   const items = projectHumanInbox(indexOf(card), { now: fixture.now }).items;
   return items[0]?.category ?? null;
 }
@@ -51,7 +52,7 @@ describe('inbox-gate classifier parity (dashboard side)', () => {
 
   for (const testCase of fixture.cases) {
     it(`${testCase.name}`, () => {
-      expect(categoryOf(testCase.meta)).toBe(testCase.expected);
+      expect(categoryOf(testCase.meta, testCase.body ?? '')).toBe(testCase.expected);
     });
   }
 });

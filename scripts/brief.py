@@ -58,6 +58,13 @@ _WAKE_ACTION = re.compile(r"^wake-me(?::|$)", re.I)
 STRANDED_AGE_MS = 24 * 60 * 60 * 1000
 _CARD_ID_EPOCH_RE = re.compile(r"^([0-9a-f]{8})-")
 
+# The exact marker prefix write/cardRespond.ts writes into a halted card's
+# ## Result section when an operator resolves it inline (no state transition). It
+# must be matched ONLY inside ## Result — never elsewhere in the body — or inert
+# ## Evidence text could spoof a resolution. Byte-identical to humanInbox.ts
+# RESOLVE_RECORDED so both surfaces hide a resolved halted card in lockstep.
+_RESOLVE_RECORDED = "Resolved by operator ("
+
 # One canonical category (dashboard vocabulary) -> the brief's presentation "kind"
 # label. The category IS the shared truth; "kind" is only how the brief renders it.
 _CATEGORY_KIND = {
@@ -184,6 +191,26 @@ def _dependencies(card: cards.Card) -> list:
     return value if isinstance(value, list) else []
 
 
+def _section_text(body: str, section: str) -> str:
+    """Return the text of one ``## <section>`` block (up to the next ``## `` header
+    or EOF), or ``""`` if absent. Byte-for-byte mirror of humanInbox.ts
+    ``sectionText`` — the header line is matched STRIPPED (``line.strip() ==
+    header``) and the block ends at the next line that STARTSWITH ``## ``, so a
+    marker is only ever counted inside its own named section and inert
+    ## Evidence text cannot spoof it."""
+    lines = str(body or "").split("\n")
+    header = f"## {section}"
+    start = next((i for i, ln in enumerate(lines) if ln.strip() == header), -1)
+    if start == -1:
+        return ""
+    end = len(lines)
+    for j in range(start + 1, len(lines)):
+        if lines[j].startswith("## "):
+            end = j
+            break
+    return "\n".join(lines[start + 1:end])
+
+
 def classify_category(card: cards.Card, stop_present: bool = False, now: int | None = None):
     """Return the canonical inbox category for one card — the dashboard vocabulary
     ``decision | gate | input | intervention | stranded`` or ``None`` — mirroring
@@ -209,6 +236,11 @@ def classify_category(card: cards.Card, stop_present: bool = False, now: int | N
     if state == "inbox" and _is_human_gate(card):
         return "gate"
     if state == "halted":
+        # An operator who resolved this terminal card inline recorded the marker in
+        # ## Result (cardRespond, no transition). humanInbox.ts then HIDES it; the
+        # brief must too, or it would re-list a resolved halted card forever.
+        if _RESOLVE_RECORDED in _section_text(str(card.body or ""), "Result"):
+            return None
         return "intervention"
     if state in ("stop-requested", "halting"):
         return "intervention"
