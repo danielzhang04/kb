@@ -28,7 +28,10 @@ def read_dashboard(repo_root: Path, name: str = "executive") -> str:
 def read_state(repo_root: Path, project: str) -> str:
     p = repo_root / "orgs" / project / "STATE.md"
     if not p.is_file():
-        raise FileNotFoundError(f"no such project STATE: {project}")
+        # Name the known projects in the error so every tool surface (fastlane/LiveKit/MCP all
+        # funnel this through dispatch's "ERROR: ..." path) hands the LLM a recovery hint.
+        known = ", ".join(sorted(d.name for d in (repo_root / "orgs").iterdir() if d.is_dir()))
+        raise FileNotFoundError(f"no such project STATE: {project}. Known projects: {known}")
     return p.read_text(encoding="utf-8")
 
 def ledger_rollup(repo_root: Path) -> dict:

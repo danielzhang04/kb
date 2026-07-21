@@ -30,7 +30,7 @@ from livekit.plugins import deepgram, elevenlabs, silero
 from kbmcp import kb_tools
 from worker import anthropic_compat
 from worker import engagement as engagement_mod
-from worker import fastlane, repl, wakeword
+from worker import fastlane, repl, toolreg, wakeword
 
 ATLAS = Path(__file__).resolve().parents[1]
 logger = logging.getLogger("atlas.app")
@@ -104,36 +104,11 @@ def seed_keyterms(root: Path) -> list[str]:
 
 
 def _kb_function_tools():
-    """The 5 kb read tools as LiveKit function_tools delegating to fastlane._dispatch
-    (same pattern as pairing_smoke.py path b — the proven-good tool path)."""
-    from livekit.agents import RunContext, function_tool
+    """The kb read tools as LiveKit function_tools — one raw-schema wrapper per registry entry.
 
-    @function_tool()
-    async def queue_summary(context: RunContext, state: str | None = None) -> str:
-        """Task-card queue counts + cards, optionally one state (inbox/working/done/approvals)."""
-        return fastlane._dispatch("queue_summary", {"state": state} if state else {})
-
-    @function_tool()
-    async def read_dashboard(context: RunContext, name: str = "executive") -> str:
-        """Read a dashboard markdown (default: executive)."""
-        return fastlane._dispatch("read_dashboard", {"name": name})
-
-    @function_tool()
-    async def read_state(context: RunContext, project: str) -> str:
-        """Read a project's STATE.md."""
-        return fastlane._dispatch("read_state", {"project": project})
-
-    @function_tool()
-    async def ledger_rollup(context: RunContext) -> str:
-        """Today's cost (USD) and activity counts."""
-        return fastlane._dispatch("ledger_rollup", {})
-
-    @function_tool()
-    async def running_work(context: RunContext) -> str:
-        """Cards currently in 'working'."""
-        return fastlane._dispatch("running_work", {})
-
-    return [queue_summary, read_dashboard, read_state, ledger_rollup, running_work]
+    Adding a tool is now a single edit in worker/toolreg.py; this loop and the MCP server pick it
+    up automatically. Each wrapper delegates to toolreg.dispatch (== fastlane._dispatch)."""
+    return [toolreg.livekit_tool(spec) for spec in toolreg.REGISTRY]
 
 
 async def entrypoint(ctx: JobContext) -> None:
