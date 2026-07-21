@@ -66,3 +66,65 @@ def build(tmp_path, ops_mutate=None):
     _git(wc, "push", "-q", "-u", "origin", "ops")
     _git(wc, "fetch", "-q", "origin")
     return wc
+
+
+# --- Unit tests for the path matcher ----------------------------------------
+def test_matcher_covers_daemon_dirs_only():
+    matchers = sdd._compile(sdd.DAEMON_READ_DIRS)
+    assert sdd._matches("agents/fyt.md", matchers)
+    assert sdd._matches("orgs/foo/workflows/run.md", matchers)
+    assert sdd._matches("orgs/foo/workflows/seg/a.js", matchers)
+    # Not daemon-read: sibling STATE.md, top-level file, deeper non-workflows.
+    assert not sdd._matches("orgs/foo/STATE.md", matchers)
+    assert not sdd._matches("agents", matchers)  # the dir entry itself, no file
+    assert not sdd._matches("orgs/foo/docs/plan.md", matchers)
+
+
+# --- check() in refs-fallback mode (no ops worktree on disk) ----------------
+def test_check_clean_no_drift(tmp_path):
+    wc = build(tmp_path)  # ops == main
+    report = sdd.check(wc, sdd.DAEMON_READ_DIRS, ops_root=None,
+                       main_ref="origin/main", ops_ref="origin/ops")
+    assert report["mode"].startswith("refs")
+    assert not sdd.has_drift(report), report
+
+
+def test_check_detects_main_only(tmp_path):
+    # ops is missing a file that exists on main.
+    def mutate(wc):
+        _git(wc, "rm", "-q", "orgs/foo/workflows/run.md")
+    wc = build(tmp_path, mutate)
+    report = sdd.check(wc, sdd.DAEMON_READ_DIRS, ops_root=None,
+                       main_ref="origin/main", ops_ref="origin/ops")
+    assert report["main_only"] == ["orgs/foo/workflows/run.md"]
+    assert sdd.has_drift(report)
+
+
+def test_check_detects_content_differs(tmp_path):
+    def mutate(wc):
+        _write(wc, "agents/fyt.md", "agent CHANGED on ops\n")
+    wc = build(tmp_path, mutate)
+    report = sdd.check(wc, sdd.DAEMON_READ_DIRS, ops_root=None,
+                       main_ref="origin/main", ops_ref="origin/ops")
+    assert report["differs"] == ["agents/fyt.md"]
+    assert sdd.has_drift(report)
+
+
+def test_check_detects_ops_only(tmp_path):
+    def mutate(wc):
+        _write(wc, "agents/ghost.md", "extra ops agent\n")
+    wc = build(tmp_path, mutate)
+    report = sdd.check(wc, sdd.DAEMON_READ_DIRS, ops_root=None,
+                       main_ref="origin/main", ops_ref="origin/ops")
+    assert report["ops_only"] == ["agents/ghost.md"]
+    assert sdd.has_drift(report)
+
+
+def test_check_ignores_non_daemon_dirs(tmp_path):
+    # A change to a sibling STATE.md must not register as drift.
+    def mutate(wc):
+        _write(wc, "orgs/foo/STATE.md", "ops edited state\n")
+    wc = build(tmp_path, mutate)
+    report = sdd.check(wc, sdd.DAEMON_READ_DIRS, ops_root=None,
+                       main_ref="origin/main", ops_ref="origin/ops")
+    assert not sdd.has_drift(report), report
