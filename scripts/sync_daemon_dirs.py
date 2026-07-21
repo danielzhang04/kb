@@ -172,3 +172,80 @@ def check(
 
 def has_drift(report: dict) -> bool:
     return bool(report["main_only"] or report["ops_only"] or report["differs"])
+
+
+# --- Sync (ops-write; follows the constitution's ops protocol) --------------
+def _checkout_pathspecs(
+    repo_root: Path, ref: str, patterns: list[str], matchers: list[re.Pattern[str]]
+) -> list[str]:
+    """Concrete directory pathspecs to hand to ``git checkout <ref> -- ...``.
+
+    Derived from the files present in ``ref`` so globs like ``orgs/*/workflows``
+    expand to the actual org dirs (``orgs/faceless-youtube/workflows``, ...).
+    A directory pathspec checkout adds/updates the ref's files but leaves
+    ops-only files untouched — deletion is gated behind --prune.
+    """
+    main = _list_ref(repo_root, ref, matchers)
+    specs: set[str] = set()
+    for path in main:
+        for pattern, matcher in zip(patterns, matchers):
+            if matcher.match(path):
+                segs = path.split("/")
+                specs.add("/".join(segs[: _pattern_depth(pattern)]))
+    return sorted(specs)
+
+
+def sync(
+    repo_root: Path,
+    patterns: list[str],
+    ops_root: Path,
+    main_ref: str = DEFAULT_MAIN_REF,
+    prune: bool = False,
+) -> dict:
+    """Bring the ops worktree's daemon-read dirs in line with main.
+
+    Follows the constitution's ops-write protocol: pull --rebase, copy main's
+    content in, commit only if something changed, push, retry once on a rejected
+    push after re-rebasing. Ops-only files are reported and left in place unless
+    ``prune`` is set. Returns a summary dict.
+    """
+    ops_root = Path(ops_root)
+    if not ops_root.is_dir():
+        raise SystemExit(f"sync requires an ops worktree at {ops_root} (not found)")
+    matchers = _compile(patterns)
+    result: dict = {"pushed": False, "committed": False, "pruned": [], "kept_ops_only": []}
+
+    # 1. Rebase onto the latest ops.
+    _git(ops_root, "pull", "--rebase", "origin", "ops")
+
+    # 2. Copy main's version of every daemon-read dir into the ops worktree.
+    pathspecs = _checkout_pathspecs(repo_root, main_ref, patterns, matchers)
+    if pathspecs:
+        _git(ops_root, "checkout", main_ref, "--", *pathspecs)
+
+    # 3. Handle ops-only files: prune (explicit) or report + keep (default).
+    main_files = _list_ref(repo_root, main_ref, matchers)
+    ops_only = sorted(p for p in _list_disk(ops_root, patterns) if p not in main_files)
+    if prune and ops_only:
+        _git(ops_root, "rm", "--quiet", "--", *ops_only)
+        result["pruned"] = ops_only
+    else:
+        result["kept_ops_only"] = ops_only
+
+    # 4. Stage and commit only if something actually changed.
+    if pathspecs:
+        _git(ops_root, "add", "--", *pathspecs)
+    status = _git(ops_root, "status", "--porcelain").stdout.strip()
+    if not status:
+        return result  # ops already matches main — nothing to push.
+
+    _git(ops_root, "commit", "-m", COMMIT_MSG)
+    result["committed"] = True
+
+    # 5. Push, retrying once after a re-rebase on rejection.
+    push = _git(ops_root, "push", "origin", "ops", check=False)
+    if push.returncode != 0:
+        _git(ops_root, "pull", "--rebase", "origin", "ops")
+        _git(ops_root, "push", "origin", "ops")
+    result["pushed"] = True
+    return result
