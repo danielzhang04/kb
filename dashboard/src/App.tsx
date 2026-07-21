@@ -54,7 +54,8 @@ import { Ledgers } from './views/Ledgers';
 import { Sentinel } from './views/panels/Sentinel';
 import { Quartermaster } from './views/panels/Quartermaster';
 import { FlightRecorder } from './views/panels/FlightRecorder';
-import { Atlas } from './views/panels/Atlas';
+import { Atlas } from './views/Atlas';
+import { AtlasMiniOrb } from './components/AtlasMiniOrb';
 import { Terminal } from './views/Terminal';
 import { DeployOutcome } from './composer/DeployOutcome';
 import { WorkspaceTabs } from './composer/WorkspaceTabs';
@@ -325,8 +326,9 @@ const DEST_BY_ID: Record<string, NavDestination> = Object.fromEntries(
   NAV_SECTIONS.flatMap((s) => s.items).map((d) => [d.id, d]),
 );
 
-/** Placeholder body for a destination whose real view has not been built yet. After U3 only the greyed
- *  soon/future stubs (Atlas/Terminal) fall through here — the switch keeps this case to stay total. */
+/** Placeholder body for a destination whose real view has not been built yet. Every current destination
+ *  now maps to a real view (Atlas went live in Atlas V1, Terminal in D3.2); this case is kept only to
+ *  keep the switch total against the DestinationId union. */
 function ComingSoon({ id }: { id: DestinationId }): React.JSX.Element {
   const dest = DEST_BY_ID[id];
   const live = dest ? isLive(dest) : false;
@@ -374,13 +376,13 @@ function ComposerView({
 }
 
 /** The read-only layer panels, reachable from the single `sentinel` nav destination via an underline-tab
- *  bar (the Registry internal-tab pattern — one nav entry, four panels behind it). Sentinel (liveness) is
- *  the default tab; Atlas is a static future-layer stub. Each panel self-fetches its own read-only source. */
+ *  bar (the Registry internal-tab pattern — one nav entry, three panels behind it). Sentinel (liveness) is
+ *  the default tab. Each panel self-fetches its own read-only source. (Atlas was retired from this tab bar
+ *  in Atlas V1 — it is now a top-level nav destination with its own full view + global mini-orb.) */
 const LAYER_PANELS = [
   { id: 'sentinel', label: 'Sentinel', render: () => <Sentinel /> },
   { id: 'quartermaster', label: 'Quartermaster', render: () => <Quartermaster /> },
   { id: 'recorder', label: 'Flight Recorder', render: () => <FlightRecorder /> },
-  { id: 'atlas', label: 'Atlas', render: () => <Atlas /> },
 ] as const;
 
 function LayerPanels(): React.JSX.Element {
@@ -452,6 +454,10 @@ function ViewBody({
           <Timeline />
         </section>
       );
+    case 'atlas':
+      // Atlas V1 — the desk voice worker mirror (big orb + live transcript + activity history + filed
+      // cards). Reads the shared useAtlasState poller; renders its own aria-labelled section.
+      return <Atlas />;
     case 'workflows':
       // arc-3: a definition row pushes its detail onto the nav stack within this destination, and its
       // Runs section links onward to the runs it launched — the join the un-dropped `sourceTurnId` made
@@ -915,6 +921,9 @@ export function App(): React.JSX.Element {
         onClose={() => setPaletteOpen(false)}
         onRun={handlePaletteRun}
       />
+      {/* Atlas V1 — the global mini-orb renders over EVERY view except the Atlas view itself (no double
+       *  orb). It hides itself while the worker is ASLEEP/OFFLINE; a click jumps to the Atlas view. */}
+      {view !== 'atlas' ? <AtlasMiniOrb onOpen={() => goTo('atlas')} /> : null}
     </div>
   );
 }

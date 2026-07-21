@@ -18,3 +18,18 @@ def test_ops_worktree_is_ops_branch():
     r = subprocess.run(["git", "-C", str(OPS), "branch", "--show-current"],
                        capture_output=True, text=True)
     assert r.stdout.strip() == "ops"
+
+# --- V1 additions (2026-07-20): infra the Hands wave leans on ---
+
+def test_dispatcher_importable():
+    """V1 sweep static guard: the dispatcher Atlas-filed cards flow through parses/imports.
+    (The live end-to-end proof is a wave-open gate, not CI — see V1 plan Task 1.)"""
+    sys.path.insert(0, str(REPO / "scripts"))
+    import dispatch  # noqa: F401
+    assert callable(dispatch.run)
+
+def test_dashboard_panels_surface_exists():
+    """The panel tier Task 7 extends must exist where the plan says it does."""
+    panels = REPO / "dashboard" / "server" / "panels"
+    assert panels.is_dir()
+    assert (panels / "routes.ts").is_file()

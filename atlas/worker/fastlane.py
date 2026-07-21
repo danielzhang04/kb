@@ -1,36 +1,45 @@
-"""Fast conversational lane: Anthropic tool-use loop over kb read tools (in-process)."""
-import json
-from kbmcp import kb_tools
+"""Fast conversational lane: Anthropic tool-use loop over kb read tools (in-process).
 
-SYSTEM = ("You are Atlas, the spoken interface to Daniel's kb agentic OS. Answers are read "
-          "aloud: lead with the point, one breath long by default; offer detail on request. "
-          "Use tools to ground every factual claim about kb state.")
+Tool definitions now live in `worker.toolreg` (single registry shared by fastlane, the LiveKit
+worker, and the kb-MCP server). `TOOLS` and `_dispatch` are thin re-exports so existing callers
+and tests keep working unchanged — that stability is the no-behavior-change proof for the refactor.
+"""
+from pathlib import Path
 
-TOOLS = [
-    {"name": "queue_summary", "description": "Task-card queue counts + cards, optionally one state (inbox/working/done/approvals).",
-     "input_schema": {"type": "object", "properties": {"state": {"type": "string"}}, "required": []}},
-    {"name": "read_dashboard", "description": "Read a dashboard markdown (default: executive).",
-     "input_schema": {"type": "object", "properties": {"name": {"type": "string"}}, "required": []}},
-    {"name": "read_state", "description": "Read a project's STATE.md.",
-     "input_schema": {"type": "object", "properties": {"project": {"type": "string"}}, "required": ["project"]}},
-    {"name": "ledger_rollup", "description": "Today's cost (USD) and activity counts.",
-     "input_schema": {"type": "object", "properties": {}, "required": []}},
-    {"name": "running_work", "description": "Cards currently in 'working'.",
-     "input_schema": {"type": "object", "properties": {}, "required": []}},
-]
+from worker import toolreg
+
+# The V0 system text, kept ONLY as the fallback when config/persona.md is missing — the worker
+# must never fail to start over persona (design §9). The file is the source of truth.
+_FALLBACK_PERSONA = (
+    "You are Atlas, the spoken interface to Daniel's kb agentic OS. Answers are read "
+    "aloud: lead with the point, one breath long by default; offer detail on request. "
+    "Use tools to ground every factual claim about kb state. "
+    "Before filing a card (file_card) or launching a workflow (launch_workflow), read back "
+    "the project, action, target, and risk-tier and get an explicit spoken yes — only then "
+    "call the tool with confirmed=true. Never set confirmed=true without that spoken yes.")
+
+_PERSONA_PATH = Path(__file__).resolve().parents[1] / "config" / "persona.md"
+
+
+def load_persona(path: Path = _PERSONA_PATH) -> str:
+    """The system prompt from atlas/config/persona.md (Task 12 / design §9); both the live voice
+    path (Agent instructions) and the REPL consume this. Missing/empty file -> the V0 fallback."""
+    try:
+        text = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return _FALLBACK_PERSONA
+    return text or _FALLBACK_PERSONA
+
+
+SYSTEM = load_persona()
+
+# Re-exports from the single tool registry (see worker/toolreg.py).
+TOOLS = toolreg.anthropic_tools()
+
 
 def _dispatch(name: str, args: dict) -> str:
-    root = kb_tools.kb_root()
-    fns = {"queue_summary": lambda: kb_tools.queue_summary(root, args.get("state")),
-           "read_dashboard": lambda: kb_tools.read_dashboard(root, args.get("name", "executive")),
-           "read_state": lambda: kb_tools.read_state(root, args["project"]),
-           "ledger_rollup": lambda: kb_tools.ledger_rollup(root),
-           "running_work": lambda: kb_tools.running_work(root)}
-    try:
-        out = fns[name]()
-        return out if isinstance(out, str) else json.dumps(out)
-    except FileNotFoundError as e:
-        return f"ERROR: {e}"
+    return toolreg.dispatch(name, args)
+
 
 def answer(question: str, client, model: str, max_turns: int = 5) -> str:
     messages = [{"role": "user", "content": question}]

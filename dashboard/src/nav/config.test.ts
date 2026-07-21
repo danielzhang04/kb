@@ -119,8 +119,8 @@ describe('nav/config', () => {
     }
     // Terminal is LIVE as of D3.2 (the PTY pane).
     expect(status('terminal')).toBe('live');
-    // Atlas remains a greyed "soon" stub — present in the IA, not yet reachable.
-    expect(status('atlas')).toBe('soon');
+    // Atlas is LIVE as of Atlas V1 — the old greyed "soon" stub is promoted to the full voice-worker view.
+    expect(status('atlas')).toBe('live');
   });
 
 });

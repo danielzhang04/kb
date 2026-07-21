@@ -1,0 +1,44 @@
+# Reflex-lane intents (design §7, Task 10). This file is the ONLY source of reflex matching data —
+# router.py hardcodes no phrases. The three-lane dispatch is: reflex (matched here, no LLM call) |
+# fast (unmatched -> the tool-use LLM loop) | work (V2).
+#
+# Matching (router.route): the utterance is normalized — casefold, punctuation stripped, whitespace
+# collapsed — then compared against each intent, first match wins:
+#   phrases:   exact match after the same normalization ("Thanks, Atlas!" == "thanks atlas").
+#   patterns:  anchored regex (re.fullmatch) against the normalized utterance, so it must match the
+#              WHOLE utterance — a longer sentence that merely contains the phrase does NOT match.
+# Exact/anchored matching is what keeps near-misses ("cancel the deploy card", "repeat that to the
+# team") out of the reflex lane — they fall through to fast.
+intents:
+  dismiss:                 # migrated verbatim from atlas.yaml dismiss_phrases -> immediate sleep
+    phrases:
+      - that's all
+      - go to sleep
+      - thanks atlas
+      - thank you atlas
+
+  cancel:                  # abort the in-flight agent turn
+    phrases:
+      - cancel
+      - cancel that
+      - never mind
+      - nevermind
+      - stop
+      - stop that
+
+  repeat:                  # replay the last atlas line from the transcript ring
+    phrases:
+      - repeat that
+      - repeat
+      - say that again
+      - come again
+      - what did you say
+
+  credit:                  # -> credit_remaining, spoken
+    phrases:
+      - how much credit is left
+      - credit remaining
+      - what's my credit
+      - check my credit
+    patterns:
+      - how much credit (is|do i have) ?(left|remaining)?

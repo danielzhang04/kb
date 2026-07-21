@@ -191,12 +191,14 @@ describe('App shell — entity-first sidebar navigation', () => {
     fireEvent.click(btn);
     expect(btn.getAttribute('aria-current')).toBe('page');
 
-    // The layer-panel host mounts with its four sub-tabs; Sentinel (liveness) is the default panel.
+    // The layer-panel host mounts with its three sub-tabs; Sentinel (liveness) is the default panel.
+    // (Atlas V1 retired the Atlas sub-tab — it is now its own top-level nav destination.)
     const view = screen.getByLabelText('Sentinel view');
     const tablist = within(view).getByRole('tablist', { name: 'Layer panels' });
-    for (const label of ['Sentinel', 'Quartermaster', 'Flight Recorder', 'Atlas']) {
+    for (const label of ['Sentinel', 'Quartermaster', 'Flight Recorder']) {
       expect(within(tablist).getByRole('tab', { name: label })).toBeTruthy();
     }
+    expect(within(tablist).queryByRole('tab', { name: 'Atlas' })).toBeNull();
     expect(within(view).getByLabelText('Sentinel panel')).toBeTruthy();
 
     // Switching sub-tabs swaps the active panel without leaving the destination.
@@ -206,14 +208,17 @@ describe('App shell — entity-first sidebar navigation', () => {
     expect(screen.getByLabelText('Flight Recorder panel')).toBeTruthy();
   });
 
-  it('the greyed "soon" item (Atlas) is unclickable and never becomes active', () => {
+  it('routes the live Atlas destination (Atlas V1 voice-worker mirror) to its real view', () => {
     render(<App />);
-    // Atlas is the only remaining greyed stub — Terminal went live in D3.2.
+    // Atlas went live in Atlas V1 — the greyed "soon" stub was promoted to a full top-level view.
     const btn = screen.getByRole('button', { name: /^Atlas/ }) as HTMLButtonElement;
-    expect(btn.disabled).toBe(true);
+    expect(btn.disabled).toBe(false);
     fireEvent.click(btn);
-    // Still on the default Home view — the disabled click was a no-op.
-    expect(screen.getByLabelText('Home view')).toBeTruthy();
+    expect(btn.getAttribute('aria-current')).toBe('page');
+    // The real Atlas view mounts (self-fetch stubbed to never resolve → empty-safe scaffold), not the
+    // "built in U3" placeholder.
+    const view = screen.getByLabelText('Atlas view');
+    expect(view.textContent ?? '').not.toMatch(/built in U3/i);
   });
 
   it('routes the live Terminal destination (D3.2 PTY pane) to its real view', () => {

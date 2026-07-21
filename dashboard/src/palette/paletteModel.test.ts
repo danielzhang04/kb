@@ -12,13 +12,14 @@ import {
 } from './paletteModel';
 
 describe('paletteModel — command set', () => {
-  it('has one navigate command per nav destination, including greyed soon ones (disabled)', () => {
+  it('has one navigate command per nav destination, actionable for live destinations', () => {
     const byId = new Map(NAVIGATE_COMMANDS.map((c) => [c.target, c]));
     // Live destinations are actionable…
     expect(byId.get('workflows')?.disabled).toBe(false);
     expect(byId.get('home')?.disabled).toBe(false);
-    // …soon/future destinations are present but non-actionable, with their hint visible.
-    expect(byId.get('atlas')?.disabled).toBe(true);
+    // Atlas went live in Atlas V1 (promoted from the greyed "soon" stub) — actionable, no greyed hint.
+    expect(byId.get('atlas')?.disabled).toBe(false);
+    expect(byId.get('atlas')?.hint).toBeUndefined();
     // Terminal went live in D3.2 — actionable, no greyed hint.
     expect(byId.get('terminal')?.disabled).toBe(false);
     expect(byId.get('terminal')?.hint).toBeUndefined();

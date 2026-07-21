@@ -76,19 +76,20 @@ describe('command palette — navigate', () => {
     expect(screen.queryByRole('dialog', { name: 'Command palette' })).toBeNull();
   });
 
-  it('shows greyed soon destinations but they are non-actionable', () => {
+  it('navigates to a promoted destination (Atlas went live in Atlas V1)', () => {
     render(<App />);
     openPalette();
-    // Atlas is the remaining greyed "soon" stub (Terminal went live in D3.2).
+    // Atlas was the last greyed "soon" stub; Atlas V1 promoted it to a live top-level view, so its
+    // palette command is now actionable (not aria-disabled) and Enter navigates to it.
     fireEvent.change(paletteInput(), { target: { value: 'atlas' } });
 
     const opt = screen.getByTestId('palette-cmd-nav:atlas');
-    expect(opt.getAttribute('aria-disabled')).toBe('true');
+    expect(opt.getAttribute('aria-disabled')).not.toBe('true');
 
     fireEvent.keyDown(paletteInput(), { key: 'Enter' });
-    // Enter on a disabled row is inert: still on Home, palette stays open.
-    expect(screen.getByLabelText('Home view')).toBeTruthy();
-    expect(screen.getByRole('dialog', { name: 'Command palette' })).toBeTruthy();
+    // Enter on the live row navigates to the Atlas view and closes the palette.
+    expect(screen.getByLabelText('Atlas view')).toBeTruthy();
+    expect(screen.queryByRole('dialog', { name: 'Command palette' })).toBeNull();
   });
 });
 
