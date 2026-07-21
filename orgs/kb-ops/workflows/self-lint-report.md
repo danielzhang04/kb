@@ -31,8 +31,8 @@ is a pure scan-and-report.
 1. Stale or orphaned entries under `queue/` (cards in `working`/`inbox` with no recent activity).
 2. `dashboards/` and `ledgers/` freshness — obviously stale or malformed rows.
 3. Broken relative links in the top-level `_index.md` and `orgs/kb-ops/_index.md`.
-4. Any tracked file that looks like it holds a credential or an absolute local path that should not be
-   committed (report the path only — never echo a suspected secret's value).
+4. Any tracked file that looks like it holds sign-in material (tokens, keys) or an absolute local path
+   that should not be committed (report the path only — never echo the suspected value).
 
 ## Output
 
@@ -45,6 +45,7 @@ Write the report to `orgs/kb-ops/output/self-lint-report-YYYY-MM-DD.md` (today's
 
 ## Rules
 
-- Read-only outside the single report file. No external action, no network, no spend, no publish.
-- Never print or copy a suspected credential's value — report only the containing path.
+- Read-only outside the single report file. No external action, no network, no money movement, no
+  outward release of anything.
+- Never print or copy a suspected sensitive value — report only the containing path.
 - If you cannot complete the scan, write a short report saying what blocked you and stop. Do not guess.
