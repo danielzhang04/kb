@@ -300,3 +300,14 @@ def test_filed_card_events_emitted():
     assert len(filed) == 2
     assert filed[0][1] == {"id": "card-1", "action": "do x", "state": "inbox"}
     assert filed[1][1]["state"] == "working"
+
+
+def test_file_card_normalizes_project_case_and_tier(ops_work):
+    # Gate-C finding #2: "Atlas"/"t1" from the LLM must land as canonical "atlas"/"T1".
+    import cards
+    origin, work = ops_work
+    out = kb_tools.file_card(str(work), "Atlas", "case check", "orgs/atlas/", "t1",
+                             git_runner=_real_runner)
+    card = cards.parse_text(_origin_file(origin, f"queue/inbox/{out['id']}.md"))
+    assert card.meta["project"] == "atlas"
+    assert card.meta["risk-tier"] == "T1"

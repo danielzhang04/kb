@@ -78,6 +78,11 @@ def file_card(ops_root, project, action, target, risk_tier, body: str = "",
     any git write, so an invalid card never touches the repo.
     """
     try:
+        # Gate-C finding #2 (2026-07-21): the LLM said "Atlas"; kb project ids are lowercase and
+        # the dashboard cards pane filters exactly — normalize here so voice-filed cards always
+        # land under the canonical project id. risk_tier is uppercased for the same reason (t1->T1).
+        project = (project or "").strip().lower()
+        risk_tier = (risk_tier or "").strip().upper()
         card = kb_cards.new_card(project, action, target, risk_tier, body=body,
                                  workflow=(workflow or "atlas-voice"))
     except kb_cards.ValidationError as e:
