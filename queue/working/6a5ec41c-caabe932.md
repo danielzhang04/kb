@@ -4,9 +4,9 @@ project: atlas
 action: dashboard Atlas view + global mini-orb
 target: dashboard/src/views/Atlas.tsx
 risk-tier: T2
-owner: null
-claim-token: null
-state: inbox
+owner: claude-boss@agents.local
+claim-token: 4b80de47ce1004ed
+state: working
 approval: null
 workflow: atlas-v1
 depends-on: []
