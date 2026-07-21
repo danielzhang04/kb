@@ -211,6 +211,61 @@ describe('composer/artifactTypes — deploy mapping', () => {
     expect(plan.branchClass).toBe('durable');
     expect(plan.endpoint).toBe('save');
   });
+
+  it('workflow stage emits a logical agent/profile pair without raw executor routing fields', () => {
+    const plan = toDeploy('workflow', workflow({
+      stages: [{
+        id: 'stage-1', action: 'research', target: 'orgs/kb', workOrder: 'Do the work', riskTier: 'T2', dependsOn: [],
+        agentId: 'fyt-runner', profileId: 'worker:claude:claude-opus-4-8',
+      }],
+    }));
+
+    expect(plan.content).toContain('agentId: "fyt-runner"');
+    expect(plan.content).toContain('profileId: "worker:claude:claude-opus-4-8"');
+    expect(plan.content).not.toContain('owner:');
+    expect(plan.content).not.toContain('runtime:');
+    expect(plan.content).not.toContain('model:');
+  });
+
+  it('workflow stage requires an all-or-nothing logical agent/profile pair', () => {
+    const withAgentOnly = workflow({ stages: [{
+      id: 'stage-1', action: 'research', target: 'orgs/kb', workOrder: 'Do the work', riskTier: 'T2', dependsOn: [],
+      agentId: 'fyt-runner',
+    }] });
+    const withProfileOnly = workflow({ stages: [{
+      id: 'stage-1', action: 'research', target: 'orgs/kb', workOrder: 'Do the work', riskTier: 'T2', dependsOn: [],
+      profileId: 'worker:claude:claude-opus-4-8',
+    }] });
+
+    for (const draft of [withAgentOnly, withProfileOnly]) {
+      expect(validateDraft('workflow', draft).map((problem) => problem.field)).toContain('stages[0].assignment');
+      expect(() => toDeploy('workflow', draft)).toThrow();
+    }
+  });
+
+  it('legacy workflow stage serialization remains byte-for-byte unchanged without an assignment pair', () => {
+    expect(toDeploy('workflow', workflow()).content).toBe([
+      '---',
+      'id: "nightly"',
+      'project: "kb"',
+      'title: "nightly"',
+      'profile: "research"',
+      'stages:',
+      '  - id: "stage-1"',
+      '    title: "stage-1"',
+      '    action: "research"',
+      '    target: "orgs/kb"',
+      '    workOrder: "Do the work"',
+      '    riskTier: "T2"',
+      '    dependsOn: []',
+      '---',
+      '',
+      '# nightly',
+      '',
+      'steps',
+      '',
+    ].join('\n'));
+  });
 });
 
 describe('composer/artifactTypes — F4 client-side path-traversal rejection', () => {

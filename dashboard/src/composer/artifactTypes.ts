@@ -72,6 +72,10 @@ export interface WorkflowStageDraft {
   workOrder: string;
   riskTier: 'T1' | 'T2';
   dependsOn: string[];
+  /** Optional logical agent assignment. Must be authored with profileId. */
+  agentId?: string;
+  /** Optional declared execution profile assignment. Must be authored with agentId. */
+  profileId?: string;
 }
 
 export interface WorkflowDraft {
@@ -443,6 +447,19 @@ function validateWorkflow(draft: WorkflowDraft): Problem[] {
     if (!['T1', 'T2'].includes(stage.riskTier)) {
       problems.push({ field: `${prefix}.riskTier`, message: 'Run now v1 accepts T1 or T2 only' });
     }
+    const hasAgentId = stage.agentId !== undefined;
+    const hasProfileId = stage.profileId !== undefined;
+    if (hasAgentId !== hasProfileId) {
+      problems.push({
+        field: `${prefix}.assignment`,
+        message: 'agentId and profileId must be authored together',
+      });
+    } else if (hasAgentId) {
+      // These are declared ids only. Workflow composition/compiler validates their live registry
+      // membership and adapter availability before an executable proposal can exist.
+      requireNonEmpty(problems, `${prefix}.agentId`, stage.agentId, 'stage agentId must be non-empty');
+      requireNonEmpty(problems, `${prefix}.profileId`, stage.profileId, 'stage profileId must be non-empty');
+    }
   }
   for (const [index, stage] of draft.stages.entries()) {
     for (const dep of stage.dependsOn) {
@@ -580,6 +597,12 @@ function workflowPlan(draft: WorkflowDraft): DeployPlan {
       `    workOrder: ${JSON.stringify(stage.workOrder)}`,
       `    riskTier: ${JSON.stringify(stage.riskTier)}`,
       `    dependsOn: ${JSON.stringify(stage.dependsOn)}`,
+      ...(stage.agentId !== undefined && stage.profileId !== undefined
+        ? [
+            `    agentId: ${JSON.stringify(stage.agentId)}`,
+            `    profileId: ${JSON.stringify(stage.profileId)}`,
+          ]
+        : []),
     ]),
     '---',
     '',

@@ -34,6 +34,10 @@ const ORGS_DIR = 'orgs';
 
 const SAFE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const SAFE_ACTION_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
+/** Matches the declared-agent catalog grammar; these ids are syntax only until compiler binding. */
+const SAFE_AGENT_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
+/** Matches the declared-agent profile grammar; these ids are syntax only until compiler binding. */
+const SAFE_EXECUTION_PROFILE_ID_RE = /^[a-z0-9][a-z0-9:._-]{0,127}$/;
 
 const RISK_RANK: Record<ProposalRiskTier, number> = { T1: 1, T2: 2, T3: 3 };
 
@@ -50,13 +54,26 @@ export interface WorkflowStageDef {
   declaredRiskTier: ProposalRiskTier | null;
   /** The floor derived from the action namespace registry. */
   classifiedFloor: ProposalRiskTier;
+  /** Optional declared worker identity; present only with `profileId`. */
+  agentId?: string;
+  /** Optional declared execution profile identity; present only with `agentId`. */
+  profileId?: string;
+}
+
+/** A closed declaration-side manager assignment. It is syntax only; compiler resolves authority later. */
+export interface WorkflowManagerAssignment {
+  agentId: string;
+  profileId: string;
 }
 
 export interface WorkflowDef {
   id: string;
   project: string;
   title: string;
+  /** Existing workflow tool profile; distinct from the optional execution-profile assignment below. */
   profile: string;
+  /** Optional manager declaration. Omitted for legacy workflow definitions. */
+  manager?: WorkflowManagerAssignment;
   /** The Markdown body after the frontmatter (also the fallback work order for a stage). */
   description: string;
   stages: WorkflowStageDef[];
@@ -95,6 +112,30 @@ function effectiveTier(declared: ProposalRiskTier | null, floor: ProposalRiskTie
   return RISK_RANK[declared] >= RISK_RANK[floor] ? declared : floor;
 }
 
+function hasOwn(record: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(record, key);
+}
+
+/** Validate a closed, syntactic agent/profile pair without consulting live declarations or runner state. */
+function validateAgentProfileAssignment(
+  raw: unknown,
+  label: string,
+): { ok: true; value: WorkflowManagerAssignment } | { ok: false; detail: string } {
+  if (!isRecord(raw)) return { ok: false, detail: `${label} must be a mapping` };
+  const allowed = new Set(['agentId', 'profileId']);
+  const unknownKey = Object.keys(raw).find((key) => !allowed.has(key));
+  if (unknownKey) return { ok: false, detail: `${label} has unknown field '${unknownKey}'` };
+  const agentId = asString(raw.agentId);
+  if (agentId === null || !SAFE_AGENT_ID_RE.test(agentId)) {
+    return { ok: false, detail: `${label}.agentId must be a safe identifier of 1-64 characters` };
+  }
+  const profileId = asString(raw.profileId);
+  if (profileId === null || !SAFE_EXECUTION_PROFILE_ID_RE.test(profileId)) {
+    return { ok: false, detail: `${label}.profileId must be a safe execution profile identifier of 1-128 characters` };
+  }
+  return { ok: true, value: { agentId, profileId } };
+}
+
 function validateStage(
   raw: unknown,
   index: number,
@@ -103,7 +144,7 @@ function validateStage(
 ): { ok: true; value: WorkflowStageDef } | { ok: false; detail: string } {
   const label = `stages[${index}]`;
   if (!isRecord(raw)) return { ok: false, detail: `${label} must be a mapping` };
-  const allowed = new Set(['id', 'title', 'action', 'target', 'workOrder', 'dependsOn', 'riskTier']);
+  const allowed = new Set(['id', 'title', 'action', 'target', 'workOrder', 'dependsOn', 'riskTier', 'agentId', 'profileId']);
   const unknownKey = Object.keys(raw).find((key) => !allowed.has(key));
   if (unknownKey) return { ok: false, detail: `${label} has unknown field '${unknownKey}'` };
 
@@ -175,6 +216,15 @@ function validateStage(
     declaredRiskTier = raw.riskTier;
   }
   const floor = classified.minimumTier;
+  const hasAgentId = hasOwn(raw, 'agentId');
+  const hasProfileId = hasOwn(raw, 'profileId');
+  if (hasAgentId !== hasProfileId) return { ok: false, detail: `${label}.agentId and profileId must appear together` };
+  let assignment: WorkflowManagerAssignment | undefined;
+  if (hasAgentId && hasProfileId) {
+    const validated = validateAgentProfileAssignment({ agentId: raw.agentId, profileId: raw.profileId }, label);
+    if (!validated.ok) return validated;
+    assignment = validated.value;
+  }
   return {
     ok: true,
     value: {
@@ -187,6 +237,7 @@ function validateStage(
       riskTier: effectiveTier(declaredRiskTier, floor),
       declaredRiskTier,
       classifiedFloor: floor,
+      ...(assignment ?? {}),
     },
   };
 }
@@ -208,7 +259,7 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
     return { ok: false, detail: 'definition frontmatter is not valid YAML' };
   }
   if (!isRecord(frontmatter)) return { ok: false, detail: 'definition frontmatter must be a mapping' };
-  const allowed = new Set(['id', 'project', 'title', 'profile', 'stages']);
+  const allowed = new Set(['id', 'project', 'title', 'profile', 'manager', 'stages']);
   const unknownKey = Object.keys(frontmatter).find((key) => !allowed.has(key));
   if (unknownKey) return { ok: false, detail: `frontmatter has unknown field '${unknownKey}'` };
 
@@ -226,6 +277,13 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
   }
   if (options.knownProfiles && !options.knownProfiles.has(profile)) {
     return { ok: false, detail: `profile '${profile}' is not a server-owned execution profile` };
+  }
+
+  let manager: WorkflowManagerAssignment | undefined;
+  if (hasOwn(frontmatter, 'manager')) {
+    const validated = validateAgentProfileAssignment(frontmatter.manager, 'manager');
+    if (!validated.ok) return validated;
+    manager = validated.value;
   }
 
   const description = split.body.trim();
@@ -268,5 +326,5 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
   }
   if (visited !== stages.length) return { ok: false, detail: 'stage dependency graph contains a cycle' };
 
-  return { ok: true, value: { id, project, title, profile, description, stages } };
+  return { ok: true, value: { id, project, title, profile, ...(manager ? { manager } : {}), description, stages } };
 }

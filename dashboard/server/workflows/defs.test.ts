@@ -27,7 +27,10 @@ describe('parseWorkflowDef', () => {
     if (!result.ok) return;
     expect(result.value.id).toBe('research-brief');
     expect(result.value.profile).toBe('research');
+    expect(result.value).not.toHaveProperty('manager');
     expect(result.value.stages).toHaveLength(1);
+    expect(result.value.stages[0]).not.toHaveProperty('agentId');
+    expect(result.value.stages[0]).not.toHaveProperty('profileId');
     expect(result.value.stages[0].workOrder).toContain('work order lives in the body');
     expect(result.value.stages[0].riskTier).toBe('T2');
   });
@@ -124,6 +127,59 @@ describe('parseWorkflowDef', () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.detail).toMatch(/unknown field/);
+  });
+
+  it('parses complete optional manager and stage agent-profile assignments without resolving them', () => {
+    const fm = SINGLE.replace('profile: research', [
+      'profile: research',
+      'manager:',
+      '  agentId: fyt-runner',
+      '  profileId: manager:claude:claude-opus-4-8',
+    ].join('\n')).replace('    riskTier: T2', [
+      '    riskTier: T2',
+      '    agentId: fyt-preproduction',
+      '    profileId: worker:codex:gpt-5.6-sol',
+    ].join('\n'));
+    const result = parseWorkflowDef(md(fm), { knownProfiles: KNOWN });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.manager).toEqual({
+      agentId: 'fyt-runner', profileId: 'manager:claude:claude-opus-4-8',
+    });
+    expect(result.value.stages[0]).toMatchObject({
+      agentId: 'fyt-preproduction', profileId: 'worker:codex:gpt-5.6-sol',
+    });
+  });
+
+  it('rejects unknown manager fields and a non-object manager', () => {
+    const unknown = SINGLE.replace('profile: research', [
+      'profile: research', 'manager:', '  agentId: fyt-runner',
+      '  profileId: manager:claude:claude-opus-4-8', '  runnerBound: true',
+    ].join('\n'));
+    const unknownResult = parseWorkflowDef(md(unknown), { knownProfiles: KNOWN });
+    expect(unknownResult).toMatchObject({ ok: false, detail: expect.stringMatching(/manager.*unknown field/) });
+    const scalar = SINGLE.replace('profile: research', 'profile: research\nmanager: fyt-runner');
+    const scalarResult = parseWorkflowDef(md(scalar), { knownProfiles: KNOWN });
+    expect(scalarResult).toMatchObject({ ok: false, detail: expect.stringMatching(/manager must be a mapping/) });
+  });
+
+  it('rejects unsafe manager/stage ids and one-sided agent-profile assignments', () => {
+    const unsafeManager = SINGLE.replace('profile: research', [
+      'profile: research', 'manager:', '  agentId: ../fyt-runner', '  profileId: manager:claude:claude-opus-4-8',
+    ].join('\n'));
+    expect(parseWorkflowDef(md(unsafeManager), { knownProfiles: KNOWN }))
+      .toMatchObject({ ok: false, detail: expect.stringMatching(/manager\.agentId/) });
+    const oneSidedManager = SINGLE.replace('profile: research', 'profile: research\nmanager:\n  agentId: fyt-runner');
+    expect(parseWorkflowDef(md(oneSidedManager), { knownProfiles: KNOWN }))
+      .toMatchObject({ ok: false, detail: expect.stringMatching(/manager\.profileId/) });
+    const oneSidedStage = SINGLE.replace('    riskTier: T2', '    riskTier: T2\n    agentId: fyt-preproduction');
+    expect(parseWorkflowDef(md(oneSidedStage), { knownProfiles: KNOWN }))
+      .toMatchObject({ ok: false, detail: expect.stringMatching(/agentId and profileId/) });
+    const unsafeStage = SINGLE.replace('    riskTier: T2', [
+      '    riskTier: T2', '    agentId: fyt-preproduction', '    profileId: ../worker',
+    ].join('\n'));
+    expect(parseWorkflowDef(md(unsafeStage), { knownProfiles: KNOWN }))
+      .toMatchObject({ ok: false, detail: expect.stringMatching(/profileId/) });
   });
 
   it('rejects a file with no frontmatter', () => {
