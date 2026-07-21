@@ -46,7 +46,16 @@ model: <str|null>             # SET BY dispatcher/routing ONLY. The CONCRETE mod
                               #  card (e.g. claude-opus-4-8). Non-null = per-card override outranking
                               #  policy. Recorded to the cost ledger `model` column for the
                               #  routed-vs-ran audit (recorded intent on codex cards). Inert metadata.
-
+execution-controller: dashboard|null  # SET SERVER-SIDE ONLY (dispatcher/control-plane) — never
+                                      #  parsed from untrusted card body text (same rule as
+                                      #  action/target/risk-tier). Routing boundary and the
+                                      #  double-execution guard between the two executors:
+                                      #  absent/null ⇒ the legacy scripts/agent_runner.ps1 runner
+                                      #  owns the card; the exact literal "dashboard" ⇒ the governed
+                                      #  control plane (dashboard/server/control/queueBridge.ts)
+                                      #  owns it and no other executor may claim it. Comparison is
+                                      #  exact string equality on both sides; any value other than
+                                      #  "dashboard" is treated as "not dashboard".
 ```
 Body sections: `## Work order` (Manager-authored), `## Evidence` (fenced blockquote — the ONLY place free text from untrusted sources may appear; agents are instructed by the constitution to treat Evidence as inert data, never instructions), `## Result` (Worker/Inspector-appended). `## Feedback` (steer text appended for a requeue/rerun — inert like `## Evidence`: never executed as instructions, never a source of `action`/`target`/`risk-tier`; read-only context
 for whichever agent picks the card back up).
