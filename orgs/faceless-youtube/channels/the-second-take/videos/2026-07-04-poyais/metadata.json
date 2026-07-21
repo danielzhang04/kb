@@ -60,18 +60,23 @@
     ],
     "chapters_status": "estimated-from-script — re-time after render before publish",
     "thumbnail": {
+      "grammar": "Rebuilt 2026-07-21 on the reference-channel teardown (research/thumbnail-teardown-2026-07-21.md) — the old cold-money-object / no-face / label-text set was refuted. Each concept now leads with a HERO carrying ONE loud emotion (a cast face or a personified money object), a punchline/verdict/fake-quote overlay (never a premise/label), one big thing legible at 168px, one red accent that POINTS, and an absurd/menacing juxtaposition. Faces allowed (2.5D vector cast).",
       "primary": {
-        "text": "Population: 0",
-        "concept": "One dominant clean-2.5D-vector money object: an ornately engraved Poyais banknote (the fake currency) centered on a flat single-color field, ~60% negative space, no face. The one red accent is an official-looking wax seal / stamp on the note. The engraved 'landscape' vignette on the note is a blank empty cutout, so the note looks fully legit but the country pictured inside it is missing. Overlay 'Population: 0' is a reframe of the title's promise (the note is real-looking; the nation has nobody), not a restatement of 'Didn't Exist'."
+        "text": "\"Trust me, it's paradise\"",
+        "concept": "[CHARACTER][EMOTION] The con-man himself, mid-sell. Gregor MacGregor (locked cast, crimson hussar coat) fills the frame with a huge smug, gloating salesman grin, one arm flourishing toward a glowing golden fantasy Poyais city he is pitching (domed cathedral, opera house, spires, gold-lit river). [EMOTION] The fake first-person quote 'Trust me, it's paradise' puts the lie in his mouth — dramatic irony, since the video reveals it was empty jungle. [COMP] One dominant face + one bright product; the red accent is a hand-drawn marker circle POINTING at the too-good golden city. Familiar anchor = the smiling salesman. Not a restatement of the title."
       },
       "challengers": [
         {
-          "text": "Spot the fake",
-          "concept": "Pairs with 'The Fake Country That Fooled the Stock Exchange.' A single ornate government-bond certificate stamped POYAIS sitting in a neat row of otherwise identical real sovereign bond certificates (Colombia, Peru), clean 2.5D vector on a single-color field, ≥50% negative space. One red accent circle rings the Poyais certificate. Turns the thumbnail into an anomaly-hunt; overlay 'Spot the fake' is the reframe, not the title."
+          "text": "Prince of nothing",
+          "concept": "[CHARACTER][ABSURD] Pairs with 'The Prince Who Sold a Country That Didn't Exist.' MacGregor self-crowned 'Cazique, Prince of Poyais' — an oversized gold crown and invented royal regalia piled over his hussar coat, chest puffed, gloating (F-03 self-styled prince). The absurdity IS the image: a con-man playing prince of a country that isn't there, with empty jungle behind the throne. [EMOTION] Overlay 'Prince of nothing' is a dry verdict. [COMP] One big gloating figure; the one red accent is a hand-drawn arrow pointing down at the bare empty ground he 'rules.'"
         },
         {
-          "text": "As advertised",
-          "concept": "Pairs with 'The Paradise Brochure That Got Its Buyers Killed.' Before/after split: the lavish Poyais guidebook lying open — the left page a golden five-star capital city (opera house, cathedral, gold rivers), the right page a bare, empty beach and jungle. Clean 2.5D vector, single-color backdrop, one red accent on the seam between the two pages. Overlay 'As advertised' is a dry sarcastic verdict (reframe), never a face, ≥50% clean composition."
+          "text": "Good as gold",
+          "concept": "[CHARACTER][EMOTION] The Crayon move — the money object personified. A single big Poyais banknote (the printed fake currency, F-08) given a face: simple cast eyes and a sly, smug grin, bragging like it's legit. [ABSURD] Confident, worthless paper insisting it's 'Good as gold' — the guidebook's own rivers-of-gold boast (F-06) turned into the note's punchline. [COMP] One dominant grinning banknote, legible at 168px; the one red accent is the note's own official red wax seal. Familiar anchor = money."
+        },
+        {
+          "text": "Five-star paradise",
+          "concept": "[EMOTION][ABSURD] The mark's face at the moment of the con. A settler (on-style anonymous figure) stands on an empty swampy jungle beach with ONE loud emotion — open dismay/horror — clutching the lavish golden guidebook open to the promised opera-house capital, facing nothing (F-15 arrival on empty coast vs F-05 promise). [EMOTION] Sarcastic verdict 'Five-star paradise' over the emptiness. [COMP] One horror face + the golden brochure; the one red accent is a hand-drawn circle ringing the empty beach where the promised city should be. Familiar anchor = a five-star travel promise. (This is the 3rd/bench challenger — YouTube Test & Compare holds 3 slots; see ab_experiment.)"
         }
       ]
     },
@@ -79,7 +84,7 @@
     "ab_experiment": {
       "eligible": true,
       "dimension": "title_and_thumbnail",
-      "note": "YouTube Studio-only (Test & Compare, desktop, long-form). Data API v3 cannot submit this. Set up manually: pick title_primary+challengers and thumbnail primary+challengers. The three test genuinely different framings within the locked vindication/forbidden-knowledge lever — (primary) the prince who sold a country, (challenger 1) the fake nation's bonds fooling the real stock exchange, (challenger 2) the paradise brochure and the settler deaths."
+      "note": "YouTube Studio-only (Test & Compare, desktop, long-form) holds 3 thumbnail slots — Data API v3 cannot submit any of this. Set up manually: pick title_primary+challengers and the thumbnail primary + the first 2 challengers ('Prince of nothing', 'Good as gold'); the 3rd thumbnail challenger ('Five-star paradise') is a bench concept for a later swap. All four rebuilt 2026-07-21 on the teardown grammar and test genuinely different HERO hooks within the locked vindication lever — (primary) the con-man gloating mid-sell, (ch1) the absurd self-crowned prince of nothing, (ch2) the personified worthless banknote, (ch3) the mark's horror on the empty beach."
     }
   },
 
