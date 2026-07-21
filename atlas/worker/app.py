@@ -293,6 +293,14 @@ async def entrypoint(ctx: JobContext) -> None:
         if mapped is not None:
             publisher.set_state(mapped)
 
+    # Gate-C fix (2026-07-21): give the LLM a real go_to_sleep tool so a conversational dismissal
+    # that slips past the reflex lane ACTUALLY closes the mic instead of being role-played.
+    # LiveKit tool calls run on the event loop, so calling the closures directly is safe.
+    def _sleep_via_tool() -> None:
+        engagement.dismiss()
+        _sleep()
+    toolreg.set_sleep_hook(_sleep_via_tool)
+
     def _on_wake() -> None:  # called from the wake-word thread; hop to the event loop
         loop.call_soon_threadsafe(_engage)
 

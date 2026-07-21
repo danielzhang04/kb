@@ -138,11 +138,11 @@ def test_file_card_invalid_risk_tier_raises_valueerror_and_writes_nothing(ops_wo
 
 
 # --- registry / dispatch ---------------------------------------------------------------------
-def test_registry_covers_exactly_8_names():
+def test_registry_covers_exactly_9_names():
     expected = {"queue_summary", "read_dashboard", "read_state", "ledger_rollup", "running_work",
-                "file_card", "launch_workflow", "credit_remaining"}
+                "file_card", "launch_workflow", "credit_remaining", "go_to_sleep"}
     assert {s.name for s in toolreg.REGISTRY} == expected
-    assert len(toolreg.REGISTRY) == 8
+    assert len(toolreg.REGISTRY) == 9
 
 
 def test_file_card_and_launch_workflow_schemas_require_confirmed():

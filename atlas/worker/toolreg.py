@@ -105,6 +105,29 @@ def _credit_remaining(args: dict) -> str:
     return json.dumps(kb_tools.credit_remaining())
 
 
+# Gate-C desk finding (2026-07-21): with no sleep tool, a conversational dismissal that slips past
+# the reflex lane makes the LLM ROLE-PLAY sleeping while the mic stays open. This hook lets the
+# LLM actually perform the state change: app.py installs the real _sleep closure at startup.
+# Without a hook installed (REPL, MCP, tests) the tool reports that it can't sleep here.
+_sleep_hook: Optional[Callable[[], None]] = None
+
+
+def set_sleep_hook(fn: Optional[Callable[[], None]]) -> None:
+    global _sleep_hook
+    _sleep_hook = fn
+
+
+def _go_to_sleep(args: dict) -> str:
+    if _sleep_hook is None:
+        return "Sleep is not available in this mode."
+    try:
+        _sleep_hook()
+    except Exception:
+        logger.exception("atlas sleep hook raised")
+        return "ERROR: sleep failed — the mic may still be open."
+    return "Sleeping now. (The audible cue already played; add nothing beyond a brief sign-off.)"
+
+
 _READBACK = ("You MUST first read back the project, action, target, and risk-tier aloud and get "
              "an explicit spoken yes; only then set confirmed=true. ")
 
@@ -157,6 +180,12 @@ REGISTRY: list[ToolSpec] = [
     ToolSpec("credit_remaining", "How much Deepgram voice credit is left (USD).",
              {"type": "object", "properties": {}, "required": []},
              _credit_remaining),
+    ToolSpec("go_to_sleep",
+             "ACTUALLY end the listening session (close the mic) when the user asks you to sleep, "
+             "stop listening, or wraps up. You cannot sleep by saying so — you MUST call this tool; "
+             "never claim to be sleeping without it.",
+             {"type": "object", "properties": {}, "required": []},
+             _go_to_sleep),
 ]
 
 _BY_NAME: dict[str, ToolSpec] = {s.name: s for s in REGISTRY}

@@ -249,6 +249,14 @@
 
 ## Execution notes
 
+- GATE C finding #1 (2026-07-21, desk, fixed before checkpoint resumed): "Okay. Go to sleep." /
+  "No. Go to sleep." missed the exact-match reflex and fell to the LLM, which ROLE-PLAYED going
+  dark while the mic stayed open (live /state transcript was the evidence). Two-layer fix, all
+  TDD (suite 131): (1) router filler_variants() — bounded lead/tail filler stripping before
+  phrase/pattern matching, content words still near-miss to fast; (2) new go_to_sleep registry
+  tool (9 tools now) + set_sleep_hook wired to the real _sleep closure, plus a persona
+  "state honesty" rule: never claim a state change without the tool call that performs it.
+
 - Task 1 (2026-07-20): atlas 23/23 + fleet 530/530 green. Canary 6a5ec3bb-65db6d11 through
   inbox→claim→working→done with ops pushes. Dashboard daemon: live under pm2 on
   **127.0.0.1:5317** (ALWAYS-ON config; dev default 4317 — live checks in Tasks 7/8 use 5317).

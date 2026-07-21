@@ -95,3 +95,31 @@ def test_load_intents_shape(intents):
     assert set(intents) >= {"dismiss", "cancel", "repeat", "credit"}
     assert "that's all" in intents["dismiss"]["phrases"]
     assert isinstance(intents["credit"].get("patterns", []), list)
+
+
+# --- Gate-C desk finding (2026-07-21): filler-wrapped dismissals must still hit reflex ---
+
+def _intents():
+    from worker.router import load_intents
+    from pathlib import Path
+    return load_intents(Path(__file__).resolve().parents[1] / "config" / "intents.yaml")
+
+def test_filler_wrapped_dismiss_routes_reflex():
+    from worker.router import route
+    intents = _intents()
+    for u in ("Okay. Go to sleep.", "No. Go to sleep.", "atlas go to sleep",
+              "yeah thats all", "go to sleep please", "okay thanks atlas"):
+        assert route(u, intents) == ("reflex", "dismiss"), u
+
+def test_filler_wrapped_cancel_and_repeat():
+    from worker.router import route
+    intents = _intents()
+    assert route("okay cancel that", intents) == ("reflex", "cancel")
+    assert route("um repeat that please", intents) == ("reflex", "repeat")
+
+def test_content_words_still_route_fast():
+    from worker.router import route
+    intents = _intents()
+    for u in ("cancel the deploy card", "go to sleep after the render finishes",
+              "repeat that to the team", "no I want the other one"):
+        assert route(u, intents) == ("fast", None), u

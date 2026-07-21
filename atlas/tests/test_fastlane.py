@@ -29,7 +29,7 @@ def test_tool_names_cover_surface():
     # V0 read tools + the Task-9 voice tools (file_card / launch_workflow / credit_remaining).
     assert {t["name"] for t in TOOLS} == {
         "queue_summary", "read_dashboard", "read_state", "ledger_rollup", "running_work",
-        "file_card", "launch_workflow", "credit_remaining"}
+        "file_card", "launch_workflow", "credit_remaining", "go_to_sleep"}
 
 
 def test_load_persona_reads_file_and_falls_back(tmp_path):

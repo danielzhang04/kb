@@ -30,6 +30,36 @@ def normalize(s: str) -> str:
     return _WS.sub(" ", _STRIP.sub("", s.casefold())).strip()
 
 
+# Gate-C desk finding (2026-07-21): real dismissals arrive wrapped in filler — "Okay. Go to sleep.",
+# "No. Go to sleep." — and exact matching bounced them to the LLM, which then ROLE-PLAYED sleeping
+# with the mic still open. Bounded fix: strip leading filler tokens and trailing courtesy tokens
+# BEFORE phrase matching. Content-bearing words are deliberately NOT in these sets, so
+# "cancel the deploy card" still routes fast (near-miss protection intact).
+_LEAD_FILLER = {"okay", "ok", "no", "yes", "yeah", "please", "atlas", "hey", "now", "just",
+                "uh", "um", "so", "alright", "all", "right"}
+_TAIL_FILLER = {"please", "now", "atlas", "okay", "ok"}
+
+
+def filler_variants(norm: str) -> list:
+    """Candidate forms of an already-normalized utterance for phrase matching: as-is,
+    lead-filler-stripped, and lead+tail-stripped (bounded sets, iterative). All variants are
+    matched, so a phrase that itself ENDS in a filler token ("thanks atlas") still matches its
+    lead-stripped form. Never strips to empty — a pure-filler utterance keeps its last token."""
+    tokens = norm.split()
+    while len(tokens) > 1 and tokens[0] in _LEAD_FILLER:
+        tokens.pop(0)
+    lead = " ".join(tokens)
+    tokens = list(tokens)
+    while len(tokens) > 1 and tokens[-1] in _TAIL_FILLER:
+        tokens.pop()
+    both = " ".join(tokens)
+    out = [norm]
+    for v in (lead, both):
+        if v not in out:
+            out.append(v)
+    return out
+
+
 def load_intents(path) -> dict:
     """Load reflex intents from a YAML file. Returns the intent mapping
     `{name: {"phrases": [...], "patterns": [...]}}` (both keys optional per intent)."""
@@ -42,15 +72,15 @@ def route(utterance: str, intents: dict) -> tuple:
     must never route a blank final transcript). First intent to match wins (declaration order)."""
     if not utterance or not utterance.strip():
         raise ValueError("utterance is empty")
-    norm = normalize(utterance)
+    variants = filler_variants(normalize(utterance))
     for name, spec in (intents or {}).items():
         spec = spec or {}
         phrases = {normalize(p) for p in (spec.get("phrases") or [])}
-        if norm in phrases:
+        if any(v in phrases for v in variants):
             return ("reflex", name)
         for pattern in (spec.get("patterns") or []):
-            # Anchored: re.fullmatch requires the pattern to consume the WHOLE normalized utterance,
-            # so trailing/leading words defeat the match (near-misses stay in the fast lane).
-            if re.fullmatch(pattern, norm):
+            # Anchored: re.fullmatch must consume a WHOLE variant, so content-bearing extra
+            # words defeat the match (near-misses stay in the fast lane).
+            if any(re.fullmatch(pattern, v) for v in variants):
                 return ("reflex", name)
     return ("fast", None)

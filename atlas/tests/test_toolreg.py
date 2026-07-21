@@ -34,13 +34,13 @@ V0_TOOLS = [
 
 # Task 9 added file_card / launch_workflow / credit_remaining; the 5 V0 read tools' shapes
 # stay frozen (below), and they remain the first entries of the registry.
-V1_ADDED = {"file_card", "launch_workflow", "credit_remaining"}
+V1_ADDED = {"file_card", "launch_workflow", "credit_remaining", "go_to_sleep"}
 
 
 def test_registry_covers_v0_names_plus_task9():
     names = [s.name for s in toolreg.REGISTRY]
     assert set(names) == V0_NAMES | V1_ADDED
-    assert len(names) == len(set(names)) == 8  # no dupes
+    assert len(names) == len(set(names)) == 9  # no dupes
 
 
 def test_v0_read_tool_schemas_unchanged():
@@ -141,3 +141,17 @@ def test_mcp_tool_callable_dispatches(kb_fixture, monkeypatch):
     spec = next(s for s in toolreg.REGISTRY if s.name == "read_state")
     fn = toolreg.mcp_tool(spec)
     assert "testing" in fn(project="demo")
+
+
+def test_go_to_sleep_tool_uses_hook():
+    # Gate-C fix: the LLM must be able to ACTUALLY sleep; without a hook it says it can't.
+    from worker import toolreg
+    out = toolreg.dispatch("go_to_sleep", {})
+    assert "not available" in out
+    calls = []
+    toolreg.set_sleep_hook(lambda: calls.append(1))
+    try:
+        out = toolreg.dispatch("go_to_sleep", {})
+        assert calls == [1] and "Sleeping" in out
+    finally:
+        toolreg.set_sleep_hook(None)
