@@ -131,9 +131,10 @@ mapping: `references/motion-schema.md`.
 - The video's backlog status flips to **`produced`** once the video is fully assembled (files are the
   memory — this step is done because the MP4s + render manifest exist).
 - Hand off to `compliance-check` (originality + policy + quality gate), then
-  `publish-queue`. `publish-queue` owns the thumbnail: it uses the pre-generated, verified
-  `assets/scenes/thumbnail-primary.png` when present, else generates from `shots.json`'s thumbnail
-  block — render-builder assembles the video only.
+  `publish-queue`. The thumbnail is owned upstream by `image-generation`, which generates the
+  candidates into `assets/thumbs/` and, after the human picks a winner, finalizes the publishable
+  `assets/thumbnail.png` (the file every downstream gate/publish step reads) — render-builder
+  assembles the video only.
 
 ## Full field mapping + schema
 
