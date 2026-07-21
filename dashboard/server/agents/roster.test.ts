@@ -6,7 +6,16 @@ import { parseYaml } from '../routing/yaml.ts';
 import type { PolicyDoc, OverrideDoc } from '../routing/policy.ts';
 import type { PlaneAIndex } from '../planeA/indexer.ts';
 import type { ParsedCard } from '../planeA/cards.ts';
-import { listAgents, buildRoster, readLedgerWriters, readRoles, roleFor, readDeclaredAgents } from './roster.ts';
+import {
+  listAgents,
+  buildRoster,
+  readAgentDeclarationProblems,
+  readDeclaredAgentDetails,
+  readLedgerWriters,
+  readRoles,
+  roleFor,
+  readDeclaredAgents,
+} from './roster.ts';
 
 const POLICY = parseYaml(`version: 1
 runtimes:
@@ -283,5 +292,37 @@ describe('readDeclaredAgents / buildRoster declared source (C7.3)', () => {
     expect(declared.has('research-worker')).toBe(true);
     expect(declared.has('sneaky')).toBe(false); // symlink content not followed
     expect(declared.has('link')).toBe(false); // link stem not registered either
+  });
+
+  it('rejects a symlinked agents directory before it can read external declarations', () => {
+    const root = mkdtempSync(join(tmpdir(), 'roster-agent-dir-'));
+    const outside = mkdtempSync(join(tmpdir(), 'roster-agent-dir-outside-'));
+    writeFileSync(join(outside, 'escape.md'), '---\nid: escape\n---\nEXTERNAL INSTRUCTIONS\n');
+    try {
+      symlinkSync(outside, join(root, 'agents'), 'junction');
+    } catch {
+      return; // Junction creation is privilege-gated on some Windows hosts.
+    }
+    expect(readDeclaredAgentDetails(root).size).toBe(0);
+    expect(readDeclaredAgents(root).size).toBe(0);
+    expect(JSON.stringify(readAgentDeclarationProblems(root))).not.toContain('EXTERNAL INSTRUCTIONS');
+  });
+
+  it('rejects unsafe, mismatched, and duplicate claimed ids without allowing any ambiguous declaration', () => {
+    const root = repoWithAgents({
+      'unsafe.md': '---\nid: ../escape\n---\nunsafe\n',
+      'mismatch.md': '---\nid: different\n---\nmismatch\n',
+      'first.md': '---\nid: shared\n---\nfirst\n',
+      'second.md': '---\nid: shared\n---\nsecond\n',
+    });
+    const details = readDeclaredAgentDetails(root);
+    expect(details.has('unsafe')).toBe(false);
+    expect(details.has('different')).toBe(false);
+    expect(details.has('shared')).toBe(false);
+    const problems = readAgentDeclarationProblems(root);
+    expect(problems.get('unsafe')?.problem).toBe('unsafe-id');
+    expect(problems.get('mismatch')?.problem).toBe('id-mismatch');
+    expect(problems.get('first')?.problem).toBe('duplicate-id');
+    expect(problems.get('second')?.problem).toBe('duplicate-id');
   });
 });

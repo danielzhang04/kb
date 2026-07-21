@@ -153,7 +153,15 @@ export interface AgentDeclarationProblem {
   /** Filename stem, never an authored frontmatter id from malformed content. */
   id: string;
   source: string;
-  problem: 'symlink-refused' | 'not-a-file' | 'oversized' | 'malformed-frontmatter' | 'unreadable';
+  problem:
+    | 'symlink-refused'
+    | 'not-a-file'
+    | 'oversized'
+    | 'malformed-frontmatter'
+    | 'unreadable'
+    | 'unsafe-id'
+    | 'id-mismatch'
+    | 'duplicate-id';
 }
 
 const EMPTY_ACTIVITY: AgentLedgerActivity = { dispatches: 0, steps: 0, days: 0, lastActive: null };
@@ -249,6 +257,52 @@ export function isContainedRepoPath(repoRoot: string, path: string): boolean {
 }
 
 const SAFE_PROJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+const SAFE_AGENT_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
+
+interface AgentDeclarationDirectory {
+  repoRoot: string;
+  agentsDir: string;
+}
+
+function containedRealPath(root: string, candidate: string): boolean {
+  const rel = relative(root, candidate);
+  return rel === '' || (!isAbsolute(rel) && rel !== '..' && !rel.startsWith('../') && !rel.startsWith('..\\'));
+}
+
+/**
+ * Establish the only directory trusted for declaration reads. `agents` must be a real, direct
+ * child of the repository's canonical root; a symlink/junction cannot redirect reads elsewhere.
+ */
+function declarationDirectory(repoRoot: string): AgentDeclarationDirectory | null {
+  try {
+    const root = realpathSync(repoRoot);
+    const rootStat = lstatSync(root);
+    if (!rootStat.isDirectory()) return null;
+    const candidate = resolve(root, 'agents');
+    if (!existsSync(candidate)) return null;
+    const stat = lstatSync(candidate);
+    if (stat.isSymbolicLink() || !stat.isDirectory()) return null;
+    const agentsDir = realpathSync(candidate);
+    if (!containedRealPath(root, agentsDir) || relative(root, agentsDir) !== 'agents') return null;
+    return { repoRoot: root, agentsDir };
+  } catch {
+    return null;
+  }
+}
+
+interface ParsedAgentCandidate {
+  name: string;
+  stem: string;
+  source: string;
+  text: string;
+  parsed: ReturnType<typeof parseCardFrontmatter>;
+  claimedId: string;
+}
+
+interface AgentDeclarationScan {
+  details: Map<string, DeclaredAgentDetail>;
+  problems: Map<string, AgentDeclarationProblem>;
+}
 
 /** Frontmatter supports the established `projects: [project-a, project-b]` declaration shape. */
 function projectIds(v: unknown): string[] {
@@ -267,57 +321,118 @@ function declaredCodebasePaths(repoRoot: string, instructionMarkdown: string): s
   return [...paths].sort();
 }
 
+/** Read each trusted declaration at most once and make ambiguity a diagnostic, never authority. */
+function scanAgentDeclarations(repoRoot: string): AgentDeclarationScan {
+  const details = new Map<string, DeclaredAgentDetail>();
+  const problems = new Map<string, AgentDeclarationProblem>();
+  const directory = declarationDirectory(repoRoot);
+  if (!directory) return { details, problems };
+  let names: string[];
+  try {
+    names = readdirSync(directory.agentsDir).sort();
+  } catch {
+    return { details, problems };
+  }
+  const candidates: ParsedAgentCandidate[] = [];
+  for (const name of names) {
+    if (!name.endsWith('.md')) continue;
+    const stem = name.replace(/\.md$/, '');
+    const source = `agents/${name}`;
+    const full = join(directory.agentsDir, name);
+    let stat;
+    try {
+      stat = lstatSync(full);
+      if (stat.isSymbolicLink()) {
+        problems.set(stem, { id: stem, source, problem: 'symlink-refused' });
+        continue;
+      }
+      if (!stat.isFile()) {
+        problems.set(stem, { id: stem, source, problem: 'not-a-file' });
+        continue;
+      }
+      // Verify the child remains the direct canonical child we enumerated before reading it.
+      const resolved = realpathSync(full);
+      if (!containedRealPath(directory.agentsDir, resolved) || relative(directory.agentsDir, resolved) !== name) {
+        problems.set(stem, { id: stem, source, problem: 'symlink-refused' });
+        continue;
+      }
+    } catch {
+      problems.set(stem, { id: stem, source, problem: 'unreadable' });
+      continue;
+    }
+    if (stat.size > MAX_AGENT_FILE_BYTES) {
+      problems.set(stem, { id: stem, source, problem: 'oversized' });
+      continue;
+    }
+    let text: string;
+    let parsed: ReturnType<typeof parseCardFrontmatter>;
+    try {
+      text = readFileSync(full, 'utf-8');
+      parsed = parseCardFrontmatter(text);
+    } catch {
+      problems.set(stem, { id: stem, source, problem: 'malformed-frontmatter' });
+      continue;
+    }
+    const rawId = (parsed.meta as Record<string, unknown>).id;
+    if (rawId !== undefined && typeof rawId !== 'string') {
+      problems.set(stem, { id: stem, source, problem: 'unsafe-id' });
+      continue;
+    }
+    const claimedId = rawId === undefined ? stem : rawId;
+    if (!SAFE_AGENT_ID.test(stem) || !SAFE_AGENT_ID.test(claimedId)) {
+      problems.set(stem, { id: stem, source, problem: 'unsafe-id' });
+      continue;
+    }
+    candidates.push({ name, stem, source, text, parsed, claimedId });
+  }
+
+  const claims = new Map<string, ParsedAgentCandidate[]>();
+  for (const candidate of candidates) {
+    const entries = claims.get(candidate.claimedId) ?? [];
+    entries.push(candidate);
+    claims.set(candidate.claimedId, entries);
+  }
+  for (const candidate of candidates) {
+    const sameId = claims.get(candidate.claimedId) ?? [];
+    if (sameId.length > 1) {
+      problems.set(candidate.stem, { id: candidate.stem, source: candidate.source, problem: 'duplicate-id' });
+      continue;
+    }
+    if (candidate.claimedId !== candidate.stem) {
+      problems.set(candidate.stem, { id: candidate.stem, source: candidate.source, problem: 'id-mismatch' });
+      continue;
+    }
+    const meta = candidate.parsed.meta as Record<string, unknown>;
+    const codebasePaths = declaredCodebasePaths(directory.repoRoot, candidate.parsed.body);
+    const inferredProjects = [...new Set(codebasePaths
+      .map((path) => /^orgs\/([^/]+)/.exec(path)?.[1])
+      .filter((project): project is string => project !== undefined))].sort();
+    const projects = [...new Set([...projectIds(meta.projects), ...inferredProjects])].sort();
+    details.set(candidate.claimedId, {
+      id: candidate.claimedId,
+      role: strFieldOrNull(meta.role),
+      runtime: strFieldOrNull(meta.runtime),
+      model: strFieldOrNull(meta.model),
+      runnerBound: meta['runner-bound'] === true,
+      description: strFieldOrNull(meta.description),
+      source: candidate.source,
+      instructionMarkdown: candidate.parsed.body,
+      sourceHash: createHash('sha256').update(candidate.text, 'utf8').digest('hex'),
+      codebasePaths,
+      projects,
+      workflowPaths: codebasePaths.filter((path) => /^orgs\/[^/]+\/workflows\//.test(path)),
+    });
+  }
+  return { details, problems };
+}
+
 /**
  * Read valid agent declarations once, retaining their authored Markdown only for the explicit
  * inspection route. This remains safe on a sparse or hostile checkout: symlinks, oversized files,
  * malformed frontmatter, and paths outside the repo are excluded.
  */
 export function readDeclaredAgentDetails(repoRoot: string): Map<string, DeclaredAgentDetail> {
-  const out = new Map<string, DeclaredAgentDetail>();
-  const dir = join(repoRoot, 'agents');
-  if (!existsSync(dir)) return out;
-  for (const name of readdirSync(dir)) {
-    if (!name.endsWith('.md')) continue;
-    const full = join(dir, name);
-    let st;
-    try {
-      st = lstatSync(full);
-    } catch {
-      continue;
-    }
-    if (st.isSymbolicLink() || !st.isFile() || st.size > MAX_AGENT_FILE_BYTES) continue;
-    const stem = name.replace(/\.md$/, '');
-    let source: string;
-    let parsed: ReturnType<typeof parseCardFrontmatter>;
-    try {
-      source = readFileSync(full, 'utf-8');
-      parsed = parseCardFrontmatter(source);
-    } catch {
-      continue;
-    }
-    const meta = parsed.meta as Record<string, unknown>;
-    const id = strFieldOrNull(meta.id) ?? stem;
-    const codebasePaths = declaredCodebasePaths(repoRoot, parsed.body);
-    const inferredProjects = [...new Set(codebasePaths
-      .map((path) => /^orgs\/([^/]+)/.exec(path)?.[1])
-      .filter((project): project is string => project !== undefined))].sort();
-    const projects = [...new Set([...projectIds(meta.projects), ...inferredProjects])].sort();
-    out.set(id, {
-      id,
-      role: strFieldOrNull(meta.role),
-      runtime: strFieldOrNull(meta.runtime),
-      model: strFieldOrNull(meta.model),
-      runnerBound: meta['runner-bound'] === true,
-      description: strFieldOrNull(meta.description),
-      source: `agents/${name}`,
-      instructionMarkdown: parsed.body,
-      sourceHash: createHash('sha256').update(source, 'utf8').digest('hex'),
-      codebasePaths,
-      projects,
-      workflowPaths: codebasePaths.filter((path) => /^orgs\/[^/]+\/workflows\//.test(path)),
-    });
-  }
-  return out;
+  return scanAgentDeclarations(repoRoot).details;
 }
 
 /**
@@ -325,74 +440,21 @@ export function readDeclaredAgentDetails(repoRoot: string): Map<string, Declared
  * can tell an operator why a named declaration is unavailable instead of silently making it vanish.
  */
 export function readAgentDeclarationProblems(repoRoot: string): Map<string, AgentDeclarationProblem> {
-  const out = new Map<string, AgentDeclarationProblem>();
-  const dir = join(repoRoot, 'agents');
-  if (!existsSync(dir)) return out;
-  for (const name of readdirSync(dir)) {
-    if (!name.endsWith('.md')) continue;
-    const id = name.replace(/\.md$/, '');
-    const source = `agents/${name}`;
-    const full = join(dir, name);
-    try {
-      const st = lstatSync(full);
-      if (st.isSymbolicLink()) {
-        out.set(id, { id, source, problem: 'symlink-refused' });
-        continue;
-      }
-      if (!st.isFile()) {
-        out.set(id, { id, source, problem: 'not-a-file' });
-        continue;
-      }
-      if (st.size > MAX_AGENT_FILE_BYTES) {
-        out.set(id, { id, source, problem: 'oversized' });
-        continue;
-      }
-      try {
-        parseCardFrontmatter(readFileSync(full, 'utf-8'));
-      } catch {
-        out.set(id, { id, source, problem: 'malformed-frontmatter' });
-      }
-    } catch {
-      out.set(id, { id, source, problem: 'unreadable' });
-    }
-  }
-  return out;
+  return scanAgentDeclarations(repoRoot).problems;
 }
 
 export function readDeclaredAgents(repoRoot: string): Map<string, DeclaredAgent> {
   const out = new Map<string, DeclaredAgent>();
-  const dir = join(repoRoot, 'agents');
-  if (!existsSync(dir)) return out;
-  for (const name of readdirSync(dir)) {
-    if (!name.endsWith('.md')) continue;
-    const full = join(dir, name);
-    // Hardening (Finding 3): don't follow symlinks, and cap the read so a single oversized file can't
-    // stall the roster. lstat (never stat) so a symlink is detected, not resolved. Any stat failure →
-    // skip (fail-open, same as the malformed-file path).
-    let st;
-    try {
-      st = lstatSync(full);
-    } catch {
-      continue;
-    }
-    if (st.isSymbolicLink() || !st.isFile()) continue;
-    if (st.size > MAX_AGENT_FILE_BYTES) continue; // skip unbounded reads
-    const stem = name.replace(/\.md$/, '');
-    let meta: Record<string, unknown>;
-    try {
-      meta = parseCardFrontmatter(readFileSync(full, 'utf-8')).meta as Record<string, unknown>;
-    } catch {
-      continue; // malformed agent file (no/unterminated frontmatter) → skip, never fatal
-    }
-    const id = strFieldOrNull(meta.id) ?? stem;
+  for (const detail of readDeclaredAgentDetails(repoRoot).values()) {
+    const id = detail.id;
     out.set(id, {
       id,
-      role: strFieldOrNull(meta.role),
-      runtime: strFieldOrNull(meta.runtime),
-      model: strFieldOrNull(meta.model),
-      runnerBound: meta['runner-bound'] === true,
-      description: strFieldOrNull(meta.description),
-      projects: projectIds(meta.projects),
+      role: detail.role,
+      runtime: detail.runtime,
+      model: detail.model,
+      runnerBound: detail.runnerBound,
+      description: detail.description,
+      projects: detail.projects,
     });
   }
   return out;

@@ -102,6 +102,21 @@ describe('agent declaration detail route', () => {
     await app.close();
   });
 
+  it('surfaces a filename/frontmatter id mismatch and never serves it under the claimed id', async () => {
+    const root = fixture();
+    writeFileSync(join(root, 'agents', 'mismatch.md'), '---\nid: claimed-agent\n---\nambiguous\n', 'utf8');
+    const app = Fastify();
+    registerAgents(app, root);
+    const mismatch = await app.inject({ method: 'GET', url: '/api/agents/mismatch' });
+    expect(mismatch.statusCode).toBe(422);
+    expect(mismatch.json()).toEqual({
+      error: 'agent-declaration-invalid',
+      declaration: { id: 'mismatch', source: 'agents/mismatch.md', problem: 'id-mismatch' },
+    });
+    expect((await app.inject({ method: 'GET', url: '/api/agents/claimed-agent' })).statusCode).toBe(404);
+    await app.close();
+  });
+
   it('does not advertise a project root that is symlinked outside the repo', async () => {
     const root = fixture();
     const outside = mkdtempSync(join(tmpdir(), 'agent-codebase-outside-'));

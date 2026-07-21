@@ -163,6 +163,19 @@ describe('Composer workspace catalog routes', () => {
       declaration: { id: 'broken', source: 'agents/broken.md', problem: 'malformed-frontmatter' },
     });
     await invalidApp.close();
+    const ambiguousRoot = repoWithDeclaredAgent();
+    writeFileSync(join(ambiguousRoot, 'agents', 'mismatch.md'), '---\nid: other-agent\n---\nno\n', 'utf8');
+    writeFileSync(join(ambiguousRoot, 'agents', 'one.md'), '---\nid: shared-agent\n---\nno\n', 'utf8');
+    writeFileSync(join(ambiguousRoot, 'agents', 'two.md'), '---\nid: shared-agent\n---\nno\n', 'utf8');
+    const ambiguousApp = buildApp({ repoRoot: ambiguousRoot }).app;
+    for (const [agentId, problem] of [['mismatch', 'id-mismatch'], ['one', 'duplicate-id'], ['two', 'duplicate-id']] as const) {
+      const response = await ambiguousApp.inject({
+        method: 'POST', url: '/api/composer/sessions', headers: headers('alice'), payload: { agentId },
+      });
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toMatchObject({ error: 'agent-declaration-invalid', declaration: { id: agentId, problem } });
+    }
+    await ambiguousApp.close();
     const closed = await app.inject({
       method: 'POST', url: '/api/composer/sessions', headers: headers('alice'),
       payload: { agentId: 'research-worker', runtime: 'codex' },
