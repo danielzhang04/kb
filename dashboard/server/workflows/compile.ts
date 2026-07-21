@@ -62,6 +62,9 @@ function deriveProposalId(def: WorkflowDef): string {
       dependsOn: [...stage.dependsOn].sort(),
       riskTier: stage.riskTier,
       ...(stage.agentId && stage.profileId ? { agentId: stage.agentId, profileId: stage.profileId } : {}),
+      ...(stage.workflowProfile ? { workflowProfile: stage.workflowProfile } : {}),
+      ...(stage.review ? { review: stage.review } : {}),
+      ...(stage.completionGate ? { completionGate: stage.completionGate } : {}),
     })),
     ...(def.manager ? { manager: { agentId: def.manager.agentId, profileId: def.manager.profileId } } : {}),
   });
@@ -175,6 +178,12 @@ export function compileWorkflowDef(def: WorkflowDef, env: CompileWorkflowEnviron
       if (!resolved.ok) return resolved;
       assignment = resolved.value;
     }
+    if (stage.review && stage.workflowProfile !== 'checker-readonly') {
+      return { ok: false, reason: 'review-workflow-profile-required', detail: `review stage '${stage.id}' requires workflowProfile 'checker-readonly'` };
+    }
+    if (stage.workflowProfile !== undefined && !(env.registry.workflowProfiles ?? []).includes(stage.workflowProfile)) {
+      return { ok: false, reason: 'stage-workflow-profile-unavailable', detail: `stage '${stage.id}' workflow profile '${stage.workflowProfile}' is not server-owned` };
+    }
     stages.push({
       id: stage.id,
       title: stage.title,
@@ -191,6 +200,9 @@ export function compileWorkflowDef(def: WorkflowDef, env: CompileWorkflowEnviron
       checkpoints: [],
       humanGates: [],
       ...(assignment ? { assignment } : {}),
+      ...(stage.workflowProfile ? { workflowProfile: stage.workflowProfile } : {}),
+      ...(stage.review ? { review: structuredClone(stage.review) } : {}),
+      ...(stage.completionGate ? { completionGate: { ...stage.completionGate } } : {}),
     });
   }
 

@@ -15,7 +15,7 @@ const REGISTRY: RuntimeSkillRegistry = {
   // The proposal validator fails CLOSED on `profile`: an absent or empty list admits nothing, so a
   // registry without this field refuses every compiled proposal. The fixture must publish the same
   // closed set the def parser validates against.
-  workflowProfiles: ['research', 'gmail-triage', 'drive-author', 'producer'],
+  workflowProfiles: ['research', 'gmail-triage', 'drive-author', 'producer', 'checker-readonly'],
 };
 
 // Derived, not restated — the def parser and the proposal validator must agree on the closed set,
@@ -81,6 +81,16 @@ const ASSIGNED = def([
   'stages:',
   '  - id: brief', '    title: Research a topic', '    action: research:web-brief', '    target: orgs/kb-ops/output', '    riskTier: T2',
   '    agentId: fyt-production', '    profileId: worker:claude:claude-sonnet-5',
+].join('\n'));
+
+const CHECKER = def([
+  'id: checker', 'project: kb-ops', 'title: Checker', 'profile: research',
+  'stages:',
+  '  - id: create', '    title: Create', '    action: implement:thing', '    target: orgs/kb-ops/output', '    workOrder: Create',
+  '  - id: check', '    title: Check', '    action: review:thing', '    target: orgs/kb-ops/output', '    workOrder: Check', '    dependsOn: [create]',
+  '    agentId: fyt-production', '    profileId: worker:claude:claude-sonnet-5', '    workflowProfile: checker-readonly',
+  '    review:', '      subjectStageId: create', '      maxCreatorReworks: 1', '      criteria:', '        - id: safety', '          description: No unsafe changes',
+  '    completionGate:', '      id: checker-approval', '      kind: approval', '      prompt: Approve checker result?', '      requiresReview: pass',
 ].join('\n'));
 
 describe('compileWorkflowDef', () => {
@@ -154,6 +164,43 @@ describe('compileWorkflowDef', () => {
     expect(differentSelectedProfile.ok).toBe(true);
     if (!differentSelectedProfile.ok) return;
     expect(differentSelectedProfile.value.proposalId).not.toBe(compiled.value.proposalId);
+  });
+
+  it('compiles checker metadata into compiler-only proposal fields and includes it in proposal identity', () => {
+    const compiled = compileWorkflowDef(CHECKER, bindingEnvironment());
+    expect(compiled).toMatchObject({ ok: true, value: { stages: [
+      {}, {
+        workflowProfile: 'checker-readonly',
+        review: { subjectStageId: 'create', maxCreatorReworks: 1, criteria: [{ id: 'safety' }] },
+        completionGate: { id: 'checker-approval', kind: 'approval', requiresReview: 'pass' },
+      },
+    ] } });
+    if (!compiled.ok) return;
+    expect(validatePlanProposal(compiled.value, REGISTRY)).toMatchObject({ ok: false });
+    expect(validateServerCompiledPlanProposal(compiled.value, REGISTRY)).toMatchObject({ ok: true });
+    const changed = compileWorkflowDef({
+      ...CHECKER,
+      stages: [CHECKER.stages[0], { ...CHECKER.stages[1], review: { ...CHECKER.stages[1].review!, maxCreatorReworks: 2 } }],
+    }, bindingEnvironment());
+    expect(changed.ok && changed.value.proposalId).not.toBe(compiled.value.proposalId);
+  });
+
+  it('refuses a checker workflow profile missing from the compile registry', () => {
+    expect(compileWorkflowDef(CHECKER, bindingEnvironment({ registry: { ...REGISTRY, workflowProfiles: ['research'] } })))
+      .toMatchObject({ ok: false, reason: 'stage-workflow-profile-unavailable' });
+  });
+
+  it('defends against programmatic review stages without the checker-readonly workflow profile', () => {
+    const checkerStage = CHECKER.stages[1];
+    const { workflowProfile: _ignored, ...withoutProfile } = checkerStage;
+    for (const invalidStage of [
+      withoutProfile,
+      { ...checkerStage, workflowProfile: 'producer' },
+      { ...checkerStage, workflowProfile: 'research' },
+    ]) {
+      expect(compileWorkflowDef({ ...CHECKER, stages: [CHECKER.stages[0], invalidStage] }, bindingEnvironment()))
+        .toMatchObject({ ok: false, reason: 'review-workflow-profile-required' });
+    }
   });
 
   it('fails closed for missing bindings, wrong roles, unknown/non-bound/project-mismatched agents, and disallowed/default-mismatched profiles', () => {

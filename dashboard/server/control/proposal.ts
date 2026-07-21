@@ -100,6 +100,16 @@ export interface ProposalHumanGate {
   prompt: string;
 }
 
+/** Compiler-only checker review contract. Browser proposals cannot carry this field. */
+export interface ProposalReviewCriterion { id: string; description: string; }
+export interface ProposalReview {
+  subjectStageId: string;
+  maxCreatorReworks: number;
+  criteria: ProposalReviewCriterion[];
+}
+/** Compiler-only checker completion gate. Browser proposals cannot carry this field. */
+export interface ProposalCompletionGate { id: string; kind: 'approval'; prompt: string; requiresReview: 'pass'; }
+
 /** Each stage is one executable task node in the deterministic DAG. */
 export interface ProposalStage {
   id: string;
@@ -116,6 +126,9 @@ export interface ProposalStage {
   checkpoints: ProposalCheckpoint[];
   humanGates: ProposalHumanGate[];
   assignment?: ResolvedAgentAssignment;
+  workflowProfile?: string;
+  review?: ProposalReview;
+  completionGate?: ProposalCompletionGate;
 }
 
 export interface PlanProposal {
@@ -184,11 +197,14 @@ const STAGE_FIELDS = new Set([
   'id', 'title', 'action', 'target', 'workOrder', 'riskTier', 'dependsOn', 'worker', 'requiredSkills',
   'scope', 'artifacts', 'checkpoints', 'humanGates',
 ]);
-const COMPILED_STAGE_FIELDS = new Set([...STAGE_FIELDS, 'assignment']);
+const COMPILED_STAGE_FIELDS = new Set([...STAGE_FIELDS, 'assignment', 'workflowProfile', 'review', 'completionGate']);
 const ASSIGNMENT_FIELDS = new Set(['agentId', 'declarationPath', 'declarationHash', 'profileId', 'runtime', 'model']);
 const ARTIFACT_FIELDS = new Set(['id', 'path', 'description']);
 const CHECKPOINT_FIELDS = new Set(['id', 'label']);
 const HUMAN_GATE_FIELDS = new Set(['id', 'kind', 'prompt']);
+const REVIEW_FIELDS = new Set(['subjectStageId', 'maxCreatorReworks', 'criteria']);
+const REVIEW_CRITERION_FIELDS = new Set(['id', 'description']);
+const COMPLETION_GATE_FIELDS = new Set(['id', 'kind', 'prompt', 'requiresReview']);
 const SOURCE_FIELDS = new Set(['role', 'state', 'visibility', 'text']);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -484,6 +500,67 @@ function validateStage(
     }
     assignment = parsed.value;
   }
+  let workflowProfile: string | undefined;
+  if (allowResolvedAssignments && Object.prototype.hasOwnProperty.call(value, 'workflowProfile')) {
+    const parsed = validateId(value.workflowProfile, `${label}.workflowProfile`);
+    if (!parsed.ok) return parsed;
+    if (!(registry.workflowProfiles ?? []).includes(parsed.value)) {
+      return { ok: false, detail: `${label}.workflowProfile '${parsed.value}' is not a server-owned workflow execution profile` };
+    }
+    workflowProfile = parsed.value;
+  }
+  let review: ProposalReview | undefined;
+  if (allowResolvedAssignments && Object.prototype.hasOwnProperty.call(value, 'review')) {
+    if (!assignment || !value.action.startsWith('review:') || workflowProfile !== 'checker-readonly') {
+      return { ok: false, detail: `${label}.review requires a review action, resolved assignment, and workflowProfile 'checker-readonly'` };
+    }
+    if (!isRecord(value.review)) return { ok: false, detail: `${label}.review must be an object` };
+    const reviewFields = exactFields(value.review, REVIEW_FIELDS, ['subjectStageId', 'maxCreatorReworks', 'criteria']);
+    if (reviewFields) return { ok: false, detail: `${label}.review: ${reviewFields}` };
+    const subjectStageId = validateId(value.review.subjectStageId, `${label}.review.subjectStageId`);
+    if (!subjectStageId.ok) return subjectStageId;
+    if (!(dependsOn.value as string[]).includes(subjectStageId.value)) {
+      return { ok: false, detail: `${label}.review.subjectStageId must be a direct dependency` };
+    }
+    const maxCreatorReworks = value.review.maxCreatorReworks;
+    if (typeof maxCreatorReworks !== 'number' || !Number.isSafeInteger(maxCreatorReworks) || maxCreatorReworks < 0 || maxCreatorReworks > 2) {
+      return { ok: false, detail: `${label}.review.maxCreatorReworks must be an integer from 0 to 2` };
+    }
+    if (!Array.isArray(value.review.criteria) || value.review.criteria.length < 1 || value.review.criteria.length > 16) {
+      return { ok: false, detail: `${label}.review.criteria must contain 1-16 items` };
+    }
+    const criteria: ProposalReviewCriterion[] = [];
+    const criterionIds = new Set<string>();
+    for (let criterionIndex = 0; criterionIndex < value.review.criteria.length; criterionIndex += 1) {
+      const raw = value.review.criteria[criterionIndex];
+      if (!isRecord(raw)) return { ok: false, detail: `${label}.review.criteria[${criterionIndex}] must be an object` };
+      const criterionFields = exactFields(raw, REVIEW_CRITERION_FIELDS, ['id', 'description']);
+      if (criterionFields) return { ok: false, detail: `${label}.review.criteria[${criterionIndex}]: ${criterionFields}` };
+      const criterionId = validateId(raw.id, `${label}.review.criteria[${criterionIndex}].id`);
+      if (!criterionId.ok) return criterionId;
+      const description = validateText(raw.description, `${label}.review.criteria[${criterionIndex}].description`, MAX_TITLE_CHARS);
+      if (!description.ok) return description;
+      if (criterionIds.has(criterionId.value)) return { ok: false, detail: `${label}.review.criteria ids must be unique` };
+      criterionIds.add(criterionId.value);
+      criteria.push({ id: criterionId.value, description: description.value });
+    }
+    review = { subjectStageId: subjectStageId.value, maxCreatorReworks, criteria };
+  }
+  let completionGate: ProposalCompletionGate | undefined;
+  if (allowResolvedAssignments && Object.prototype.hasOwnProperty.call(value, 'completionGate')) {
+    if (!review) return { ok: false, detail: `${label}.completionGate requires review` };
+    if (!isRecord(value.completionGate)) return { ok: false, detail: `${label}.completionGate must be an object` };
+    const gateFields = exactFields(value.completionGate, COMPLETION_GATE_FIELDS, ['id', 'kind', 'prompt', 'requiresReview']);
+    if (gateFields) return { ok: false, detail: `${label}.completionGate: ${gateFields}` };
+    const gateId = validateId(value.completionGate.id, `${label}.completionGate.id`);
+    if (!gateId.ok) return gateId;
+    if (value.completionGate.kind !== 'approval' || value.completionGate.requiresReview !== 'pass') {
+      return { ok: false, detail: `${label}.completionGate must be approval requiring review pass` };
+    }
+    const prompt = validateText(value.completionGate.prompt, `${label}.completionGate.prompt`, 2_000);
+    if (!prompt.ok) return prompt;
+    completionGate = { id: gateId.value, kind: 'approval', prompt: prompt.value, requiresReview: 'pass' };
+  }
   return {
     ok: true,
     value: {
@@ -501,6 +578,9 @@ function validateStage(
       checkpoints: checkpoints.value,
       humanGates: humanGates.value,
       ...(assignment ? { assignment } : {}),
+      ...(workflowProfile ? { workflowProfile } : {}),
+      ...(review ? { review } : {}),
+      ...(completionGate ? { completionGate } : {}),
     },
   };
 }

@@ -54,6 +54,10 @@ export const FORBIDDEN_WORKFLOW_TOOLS: readonly string[] = [
 
 const WORKFLOW_EXECUTION_PROFILES: readonly WorkflowExecutionProfile[] = [
   {
+    id: 'checker-readonly',
+    allowedTools: ['Read', 'Glob', 'Grep'],
+  },
+  {
     id: 'research',
     allowedTools: ['WebSearch', 'WebFetch', 'Read', 'Glob', 'Grep'],
   },

@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { loadExecutionProfiles, loadPolicyEnvironment, loadRuntimeSkillRegistry } from './environment.ts';
+import { loadExecutionProfiles, loadPolicyEnvironment, loadRuntimeSkillRegistry, loadWorkflowProfiles } from './environment.ts';
 
 function fixture(): string {
   const root = mkdtempSync(join(tmpdir(), 'control-environment-'));
@@ -35,6 +35,11 @@ describe('control environment', () => {
     expect(profiles).toContainEqual(expect.objectContaining({ id: 'manager:claude:claude-opus', role: 'manager' }));
     expect(profiles).not.toContainEqual(expect.objectContaining({ role: 'manager', runtime: 'codex' }));
     expect(profiles).toContainEqual(expect.objectContaining({ id: 'worker:codex:codex-safe', role: 'worker' }));
+  });
+
+  it('exposes the readonly checker tool profile without write, shell, network, or publish tools', () => {
+    const checker = loadWorkflowProfiles().find((profile) => profile.id === 'checker-readonly');
+    expect(checker?.allowedTools).toEqual(['Read', 'Glob', 'Grep']);
   });
 
   it('loads only supported executable governance references', () => {

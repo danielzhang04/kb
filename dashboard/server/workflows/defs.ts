@@ -28,6 +28,8 @@ const MAX_PROFILE_CHARS = 64;
 const MAX_ACTION_CHARS = 256;
 const MAX_WORK_ORDER_CHARS = 64 * 1024;
 const MAX_DESCRIPTION_CHARS = 64 * 1024;
+const MAX_GATE_PROMPT_CHARS = 2_000;
+const MAX_REVIEW_CRITERIA = 16;
 
 /** Every workflow target must live under `orgs/<project>/` — see the containment note in validateStage. */
 const ORGS_DIR = 'orgs';
@@ -58,6 +60,23 @@ export interface WorkflowStageDef {
   agentId?: string;
   /** Optional declared execution profile identity; present only with `agentId`. */
   profileId?: string;
+  /** Optional per-stage server-owned tool allowlist override. */
+  workflowProfile?: string;
+  review?: WorkflowReviewDef;
+  completionGate?: WorkflowCompletionGateDef;
+}
+
+export interface WorkflowReviewCriterionDef { id: string; description: string; }
+export interface WorkflowReviewDef {
+  subjectStageId: string;
+  maxCreatorReworks: number;
+  criteria: WorkflowReviewCriterionDef[];
+}
+export interface WorkflowCompletionGateDef {
+  id: string;
+  kind: 'approval';
+  prompt: string;
+  requiresReview: 'pass';
 }
 
 /** A closed declaration-side manager assignment. It is syntax only; compiler resolves authority later. */
@@ -141,10 +160,11 @@ function validateStage(
   index: number,
   body: string,
   project: string,
+  knownProfiles?: ReadonlySet<string>,
 ): { ok: true; value: WorkflowStageDef } | { ok: false; detail: string } {
   const label = `stages[${index}]`;
   if (!isRecord(raw)) return { ok: false, detail: `${label} must be a mapping` };
-  const allowed = new Set(['id', 'title', 'action', 'target', 'workOrder', 'dependsOn', 'riskTier', 'agentId', 'profileId']);
+  const allowed = new Set(['id', 'title', 'action', 'target', 'workOrder', 'dependsOn', 'riskTier', 'agentId', 'profileId', 'workflowProfile', 'review', 'completionGate']);
   const unknownKey = Object.keys(raw).find((key) => !allowed.has(key));
   if (unknownKey) return { ok: false, detail: `${label} has unknown field '${unknownKey}'` };
 
@@ -225,6 +245,70 @@ function validateStage(
     if (!validated.ok) return validated;
     assignment = validated.value;
   }
+  let workflowProfile: string | undefined;
+  if (hasOwn(raw, 'workflowProfile')) {
+    const profile = asString(raw.workflowProfile);
+    if (profile === null || !SAFE_EXECUTION_PROFILE_ID_RE.test(profile)) {
+      return { ok: false, detail: `${label}.workflowProfile must be a safe execution profile identifier` };
+    }
+    if (knownProfiles && !knownProfiles.has(profile)) {
+      return { ok: false, detail: `${label}.workflowProfile '${profile}' is not a server-owned execution profile` };
+    }
+    workflowProfile = profile;
+  }
+  let review: WorkflowReviewDef | undefined;
+  if (hasOwn(raw, 'review')) {
+    if (!action.startsWith('review:')) return { ok: false, detail: `${label}.review requires an action beginning 'review:'` };
+    if (!assignment) return { ok: false, detail: `${label}.review requires agentId and profileId assignment` };
+    if (workflowProfile !== 'checker-readonly') return { ok: false, detail: `${label}.review requires workflowProfile 'checker-readonly'` };
+    if (!isRecord(raw.review)) return { ok: false, detail: `${label}.review must be a mapping` };
+    const reviewAllowed = new Set(['subjectStageId', 'maxCreatorReworks', 'criteria']);
+    const reviewUnknown = Object.keys(raw.review).find((key) => !reviewAllowed.has(key));
+    if (reviewUnknown) return { ok: false, detail: `${label}.review has unknown field '${reviewUnknown}'` };
+    const subjectStageId = asString(raw.review.subjectStageId);
+    if (subjectStageId === null || !SAFE_ID_RE.test(subjectStageId) || !dependsOn.includes(subjectStageId)) {
+      return { ok: false, detail: `${label}.review.subjectStageId must be a direct dependsOn stage id` };
+    }
+    const maxCreatorReworks = raw.review.maxCreatorReworks;
+    if (typeof maxCreatorReworks !== 'number' || !Number.isSafeInteger(maxCreatorReworks) || maxCreatorReworks < 0 || maxCreatorReworks > 2) {
+      return { ok: false, detail: `${label}.review.maxCreatorReworks must be an integer from 0 to 2` };
+    }
+    if (!Array.isArray(raw.review.criteria) || raw.review.criteria.length < 1 || raw.review.criteria.length > MAX_REVIEW_CRITERIA) {
+      return { ok: false, detail: `${label}.review.criteria must contain 1-${MAX_REVIEW_CRITERIA} items` };
+    }
+    const criteria: WorkflowReviewCriterionDef[] = [];
+    const criterionIds = new Set<string>();
+    for (let criterionIndex = 0; criterionIndex < raw.review.criteria.length; criterionIndex += 1) {
+      const criterion = raw.review.criteria[criterionIndex];
+      if (!isRecord(criterion) || Object.keys(criterion).some((key) => key !== 'id' && key !== 'description')) {
+        return { ok: false, detail: `${label}.review.criteria[${criterionIndex}] must be a closed mapping` };
+      }
+      const criterionId = asString(criterion.id);
+      const description = asString(criterion.description);
+      if (criterionId === null || !SAFE_ID_RE.test(criterionId) || criterionIds.has(criterionId)
+        || description === null || description.trim() === '' || description.length > MAX_TITLE_CHARS || description.includes('\0')) {
+        return { ok: false, detail: `${label}.review.criteria must have unique safe ids and bounded descriptions` };
+      }
+      criterionIds.add(criterionId);
+      criteria.push({ id: criterionId, description });
+    }
+    review = { subjectStageId, maxCreatorReworks, criteria };
+  }
+  let completionGate: WorkflowCompletionGateDef | undefined;
+  if (hasOwn(raw, 'completionGate')) {
+    if (!review) return { ok: false, detail: `${label}.completionGate requires review` };
+    if (!isRecord(raw.completionGate)) return { ok: false, detail: `${label}.completionGate must be a mapping` };
+    const gateAllowed = new Set(['id', 'kind', 'prompt', 'requiresReview']);
+    const gateUnknown = Object.keys(raw.completionGate).find((key) => !gateAllowed.has(key));
+    if (gateUnknown) return { ok: false, detail: `${label}.completionGate has unknown field '${gateUnknown}'` };
+    const gateId = asString(raw.completionGate.id);
+    const prompt = asString(raw.completionGate.prompt);
+    if (gateId === null || !SAFE_ID_RE.test(gateId) || raw.completionGate.kind !== 'approval' || raw.completionGate.requiresReview !== 'pass'
+      || prompt === null || prompt.trim() === '' || prompt.length > MAX_GATE_PROMPT_CHARS || prompt.includes('\0')) {
+      return { ok: false, detail: `${label}.completionGate must be an approval requiring review pass with a bounded prompt` };
+    }
+    completionGate = { id: gateId, kind: 'approval', prompt, requiresReview: 'pass' };
+  }
   return {
     ok: true,
     value: {
@@ -238,6 +322,9 @@ function validateStage(
       declaredRiskTier,
       classifiedFloor: floor,
       ...(assignment ?? {}),
+      ...(workflowProfile ? { workflowProfile } : {}),
+      ...(review ? { review } : {}),
+      ...(completionGate ? { completionGate } : {}),
     },
   };
 }
@@ -296,7 +383,7 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
   const stages: WorkflowStageDef[] = [];
   const ids = new Set<string>();
   for (let index = 0; index < rawStages.length; index += 1) {
-    const stage = validateStage(rawStages[index], index, description, project);
+    const stage = validateStage(rawStages[index], index, description, project, options.knownProfiles);
     if (!stage.ok) return stage;
     if (ids.has(stage.value.id)) return { ok: false, detail: `duplicate stage id '${stage.value.id}'` };
     ids.add(stage.value.id);
