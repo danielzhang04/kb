@@ -80,6 +80,13 @@ def apply_digest(md_text, date, block) -> str:
     return text.rstrip("\n") + "\n\n" + block + "\n"
 
 
+def _org_root() -> Path:
+    """The org root: .../orgs/faceless-youtube — four levels up from this scripts/ file
+    (scripts -> analytics-reporter -> skills -> .claude -> faceless-youtube). Module-level and
+    argument-free so it is unit-testable without invoking main()."""
+    return Path(__file__).resolve().parents[4]
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description="Append a dated analytics digest to performance.md.")
     p.add_argument("--channel", required=True)
@@ -88,7 +95,7 @@ def main(argv=None) -> int:
     p.add_argument("--channel-root", default=None)
     args = p.parse_args(argv)
 
-    org_root = Path(__file__).resolve().parents[3]
+    org_root = _org_root()
     analytics_root = Path(args.analytics_root) if args.analytics_root else org_root / "analytics"
     channel_root = (Path(args.channel_root) if args.channel_root
                     else org_root / "channels" / args.channel)

@@ -217,6 +217,13 @@ def discover_videos(channel_root) -> list:
     return found
 
 
+def _org_root() -> Path:
+    """The org root: .../orgs/faceless-youtube — four levels up from this scripts/ file
+    (scripts -> analytics-reporter -> skills -> .claude -> faceless-youtube). Module-level and
+    argument-free so it is unit-testable without invoking main() or touching the network."""
+    return Path(__file__).resolve().parents[4]
+
+
 # ------------------------------------------------------------------------------------------------
 # Orchestration (network path; not unit-tested).
 # ------------------------------------------------------------------------------------------------
@@ -254,7 +261,7 @@ def main(argv=None) -> int:
                    help="analytics dir (default: analytics/ relative to org root)")
     args = p.parse_args(argv)
 
-    org_root = Path(__file__).resolve().parents[3]  # .../orgs/faceless-youtube
+    org_root = _org_root()
     channel_root = Path(args.channel_root) if args.channel_root else org_root / "channels" / args.channel
     analytics_root = Path(args.analytics_root) if args.analytics_root else org_root / "analytics"
 

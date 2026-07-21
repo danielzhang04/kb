@@ -86,7 +86,7 @@ The three OAuth env vars — `YOUTUBE_OAUTH_CLIENT_ID`, `YOUTUBE_OAUTH_CLIENT_SE
 ONLY token-minting network call. The minted access token flows only into `_fetch_report` (which owns
 the `Authorization: Bearer` header); no parser, rollup, discovery, or file-writing function ever
 receives it. urllib exception chains are scrubbed (`from None`) and error messages carry only an HTTP
-status code — a token can never reach a log, a file, or a raised message. `test_no_secret_leak`
+status code — a token can never reach a log, a file, or a raised message. `SecretLeakTests`
 (`scripts/test_analytics.py`) enforces this by grepping the source; keep it green.
 
 ## Tests

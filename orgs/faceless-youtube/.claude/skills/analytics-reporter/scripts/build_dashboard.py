@@ -60,19 +60,20 @@ def _fmt(n) -> str:
 
 
 def _retention_svg(curve) -> str:
-    """Inline SVG retention polyline: x = elapsedVideoTimeRatio (0..1), y = audienceWatchRatio."""
+    """Inline SVG retention polyline: x = elapsedVideoTimeRatio (0..1), y = audienceWatchRatio
+    plotted against a FIXED 0.0-1.0 ceiling (not each video's own peak), so retention severity is
+    visually comparable across videos — a video that only ever holds 50% of viewers must not look
+    identical to one that holds 100%. Values above 1.0 (a data anomaly) are clamped to 1.0."""
     w, h, pad = 320, 90, 6
     if not curve:
         return f'<svg viewBox="0 0 {w} {h}" width="{w}" height="{h}" role="img" aria-label="no retention data"></svg>'
     pts = []
-    ratios = [p[1] for p in curve if p[1] is not None]
-    ymax = max(ratios) if ratios else 1.0
-    ymax = ymax if ymax > 0 else 1.0
     for x_ratio, y_ratio in curve:
         if x_ratio is None or y_ratio is None:
             continue
+        y_clamped = max(0.0, min(y_ratio, 1.0))
         x = pad + x_ratio * (w - 2 * pad)
-        y = (h - pad) - (y_ratio / ymax) * (h - 2 * pad)
+        y = (h - pad) - y_clamped * (h - 2 * pad)
         pts.append(f"{x:.1f},{y:.1f}")
     poly = " ".join(pts)
     return (
@@ -202,6 +203,13 @@ def _has_data(rollups) -> bool:
     return any((r.get("videos") or {}) for r in rollups.values())
 
 
+def _org_root() -> Path:
+    """The org root: .../orgs/faceless-youtube — four levels up from this scripts/ file
+    (scripts -> analytics-reporter -> skills -> .claude -> faceless-youtube). Module-level and
+    argument-free so it is unit-testable without invoking main()."""
+    return Path(__file__).resolve().parents[4]
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description="Render the file-backed analytics dashboard.")
     p.add_argument("--analytics-root", default=None,
@@ -210,7 +218,7 @@ def main(argv=None) -> int:
                    help="output HTML (default: <analytics-root>/dashboard.html)")
     args = p.parse_args(argv)
 
-    org_root = Path(__file__).resolve().parents[3]
+    org_root = _org_root()
     analytics_root = Path(args.analytics_root) if args.analytics_root else org_root / "analytics"
     output = Path(args.output) if args.output else analytics_root / "dashboard.html"
 

@@ -220,6 +220,27 @@ class DashboardTests(unittest.TestCase):
             self.assertEqual(rc, 0)
             self.assertIn("<polyline", out.read_text(encoding="utf-8"))
 
+    def test_retention_scales_to_fixed_ceiling_not_per_video_peak(self):
+        """Two videos with different true retention peaks (1.0 vs 0.5) must plot against the SAME
+        fixed 0.0-1.0 y-ceiling. Under the old self-peak normalization, both curves' first points
+        would land at the identical top pixel row (each video visually "looks like" 100% retention
+        even though one only ever reaches 50%) — that's the bug. w=320,h=90,pad=6, so
+        x = pad + x_ratio*(w-2*pad) and y = (h-pad) - clamp(y_ratio,0,1)*(h-2*pad)."""
+        curve_full = [[0.0, 1.0], [1.0, 0.3]]   # true peak 1.0
+        curve_low = [[0.0, 0.5], [1.0, 0.15]]   # true peak 0.5 — half as good
+        svg_full = bd._retention_svg(curve_full)
+        svg_low = bd._retention_svg(curve_low)
+        self.assertIn("6.0,6.0", svg_full)     # ratio 1.0 against a 1.0 ceiling -> top of chart
+        self.assertIn("6.0,45.0", svg_low)     # ratio 0.5 against the SAME 1.0 ceiling -> mid-chart
+        # would be "6.0,6.0" too under the old normalize-to-own-peak behavior — must NOT happen now
+        self.assertNotIn("6.0,6.0", svg_low)
+
+    def test_retention_clamps_values_above_one(self):
+        """A value >1.0 (data anomaly) must clamp to the 1.0 ceiling, not overflow above the chart
+        (which an unclamped y = (h-pad) - y_ratio*(h-2*pad) would produce as a negative y)."""
+        svg = bd._retention_svg([[0.0, 1.4], [1.0, 0.2]])
+        self.assertIn("6.0,6.0", svg)   # clamped to the ceiling, not "6.0,-25.2"
+
 
 PERF_SEED = """# Performance log — The Second Take
 
@@ -273,6 +294,28 @@ class DigestTests(unittest.TestCase):
         self.assertEqual(twice.count("<!-- digest:2026-07-27 START -->"), 1)
         # newest at the bottom
         self.assertLess(twice.index("digest:2026-07-20"), twice.index("digest:2026-07-27"))
+
+
+class OrgRootTests(unittest.TestCase):
+    """Pins the default org-root resolution WITHOUT network. Each script lives at
+    .../orgs/faceless-youtube/.claude/skills/analytics-reporter/scripts/<file>.py — its `_org_root()`
+    must resolve to the `faceless-youtube` directory (which contains `.claude`), NOT `.claude` itself
+    (an off-by-one in `parents[N]` silently makes every flagless invocation write to the wrong tree)."""
+
+    def _assert_is_org_root(self, root):
+        self.assertEqual(root.name, "faceless-youtube",
+                          f"expected org root 'faceless-youtube', got {root}")
+        self.assertTrue((root / ".claude").is_dir(),
+                         f"{root} does not contain .claude — not the real org root")
+
+    def test_pull_analytics_org_root(self):
+        self._assert_is_org_root(pa._org_root())
+
+    def test_build_dashboard_org_root(self):
+        self._assert_is_org_root(bd._org_root())
+
+    def test_append_digest_org_root(self):
+        self._assert_is_org_root(ad._org_root())
 
 
 class SecretLeakTests(unittest.TestCase):
