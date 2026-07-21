@@ -7,7 +7,7 @@ import type { ComposerSession } from './workspaceClient';
 afterEach(cleanup);
 
 const session: ComposerSession = {
-  composerRef: 'cw-live', title: 'Live plan', state: 'open', sourceComposerRef: null,
+  composerRef: 'cw-live', title: 'Live plan', state: 'open', sourceComposerRef: null, agent: null,
   createdAt: 'now', updatedAt: 'now', turns: [],
 };
 

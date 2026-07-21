@@ -7,7 +7,7 @@
  *
  *   POST /api/write/save          -> write/governedSave.ts#save
  *   POST /api/write/launch        -> write/launch.ts#launchCard
- *   POST /api/write/workflow-runs -> write/workflowRun.ts#launchWorkflowRun
+ *   POST /api/write/workflow-runs -> retired (canonical definitions launch through /api/workflows/:id/launch)
  *   POST /api/write/rerun         -> write/launch.ts#rerunAsDependsOn
  *   POST /api/write/stop          -> stop/floor.ts#writeStop        (nuclear, fleet-wide STOP sentinel)
  *   POST /api/write/stop-card     -> stop/floor.ts#requestStop      (scoped: working -> stop-requested -> halting)
@@ -29,8 +29,6 @@ import { respondToCard, resolveCardPath } from './cardRespond.ts';
 import type { RespondVerb } from './cardRespond.ts';
 import { parseCardFrontmatter } from '../planeA/cards.ts';
 import { redactSensitiveText } from '../composer/publicTimeline.ts';
-import { launchWorkflowRun } from './workflowRun.ts';
-import type { WorkflowRunOutcome } from './workflowRun.ts';
 import { writeStop, requestStop, pauseCadence } from '../stop/floor.ts';
 import { setOverride, clearOverride } from './routingOverride.ts';
 import type { OverrideScope } from './routingOverride.ts';
@@ -41,6 +39,8 @@ import { auditFn } from '../http/context.ts';
 import { appendAuditRowLocal, AUDIT_REL_PATH } from '../audit/log.ts';
 import { triggerRunner as defaultTriggerRunner } from '../runner/trigger.ts';
 import { ownerLiveness, type OwnerLiveness } from '../runner/liveness.ts';
+import { workflowProfileIds } from '../control/environment.ts';
+import { parseWorkflowDef } from '../workflows/defs.ts';
 
 function asRecord(body: unknown): Record<string, unknown> {
   return body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
@@ -73,21 +73,18 @@ function launchStatus(outcome: Extract<LaunchOutcome, { ok: false }>): number {
   }
 }
 
-function workflowRunStatus(outcome: Extract<WorkflowRunOutcome, { ok: false }>): number {
-  switch (outcome.reason) {
-    case 'fleet-frozen':
-      return 503;
-    case 'unauthenticated':
-      return 401;
-    case 'invalid-workflow':
-    case 'owner-not-registered':
-      return 400;
-    case 'routing-failed':
-    case 'card-op-failed':
-      return 500;
-    default:
-      return 500;
+const CANONICAL_WORKFLOW_PATH = /^orgs\/([A-Za-z0-9][A-Za-z0-9._-]{0,63})\/workflows\/([A-Za-z0-9][A-Za-z0-9._-]{0,63})\.md$/;
+
+/** Validate only canonical org workflow saves; other governed durable artifacts retain their own schemas. */
+function canonicalWorkflowSaveProblem(relpath: string, content: string): string | null {
+  const match = CANONICAL_WORKFLOW_PATH.exec(relpath.replace(/\\/g, '/'));
+  if (!match) return null;
+  const parsed = parseWorkflowDef(content, { knownProfiles: workflowProfileIds() });
+  if (!parsed.ok) return parsed.detail;
+  if (parsed.value.project !== match[1]) {
+    return `definition project '${parsed.value.project}' does not match path project '${match[1]}'`;
   }
+  return null;
 }
 
 /** Register the governed write routes on an ALREADY-GUARDED scope. Every route additionally requires a
@@ -101,6 +98,7 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
     const session = verifiedSession(req);
     const body = asRecord(req.body);
     const relpath = str(body.relpath);
+    const content = str(body.content);
     // FINDING 1: the SERVER owns durable work-branch selection; the client never chooses it. A caller
     // that tries to smuggle a protected branch (main/ops) is hard-rejected before any filesystem or git
     // activity — belt-and-suspenders over branch.ts's own denylist. `workBranch` is intentionally NOT
@@ -109,12 +107,16 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
     if (typeof body.workBranch === 'string' && isProtectedBranch(body.workBranch)) {
       return reply.code(403).send({ error: 'forbidden-branch', reason: 'workBranch may not target main or ops; the server selects the durable work branch' });
     }
+    const workflowProblem = canonicalWorkflowSaveProblem(relpath, content);
+    if (workflowProblem) {
+      return reply.code(400).send({ error: 'workflow-definition-invalid', reason: workflowProblem });
+    }
     const outcome = await save({
       // Durable artifacts must never be written into the canonical ops checkout. Production points
       // this at an isolated worktree on DEFAULT_WORK_BRANCH; tests fall back to repoRoot.
       repoRoot: ctx.durableRepoRoot ?? ctx.repoRoot,
       relpath,
-      content: str(body.content),
+      content,
       sessionToken: session?.token,
       sessionConfig: ctx.sessionConfig,
       runGit: ctx.saveGit,
@@ -203,75 +205,14 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
     });
   });
 
-  scope.post('/api/write/workflow-runs', { preHandler }, async (req, reply: FastifyReply) => {
-    const session = verifiedSession(req);
-    return withOpsTransaction(async () => {
-    const outcome = await launchWorkflowRun(
-      req.body,
-      { token: session?.token, config: ctx.sessionConfig },
-      {
-        repoRoot: ctx.repoRoot,
-        runPreamble: ctx.runPreamble,
-        runPy: ctx.runPy,
-        prepareWrite: (repoRoot) => prepareCoordination(repoRoot, ctx.opsGit ?? defaultGitRunner),
-      },
-    );
-    if (!outcome.ok) {
-      return reply.code(workflowRunStatus(outcome)).send({
-        error: outcome.reason,
-        detail: 'detail' in outcome ? outcome.detail : outcome.problems,
-      });
-    }
-
-    try {
-      const appendLocal = ctx.appendAuditLocal ?? appendAuditRowLocal;
-      const request = asRecord(req.body);
-      appendLocal(ctx.repoRoot, {
-        action: 'workflow-run',
-        owner: session?.claims.sub,
-        target: str(request.name),
-        result: `launched:${outcome.runId}`,
-        detail: {
-          runId: outcome.runId,
-          project: str(request.project),
-          stageCount: outcome.cards.length,
-          ...(typeof request.workflowDefinitionId === 'string'
-            ? { workflowDefinitionId: request.workflowDefinitionId }
-            : {}),
-        },
-      }, ctx.now);
-
-      const [first, ...rest] = outcome.cards.map((card) => card.cardPath);
-      // Validation guarantees at least one stage, and the subprocess result parser enforces parity.
-      if (!first) throw new Error('workflow run produced no card paths');
-      await commitPreparedCoordination(ctx.repoRoot, first, {
-        runGit: ctx.opsGit ?? defaultGitRunner,
-        alsoStage: [...rest, AUDIT_REL_PATH],
-        message: `chore(queue): launch workflow run ${outcome.runId}`,
-      });
-      const requestStages = Array.isArray(request.stages) ? request.stages : [];
-      const rootOwners = [...new Set(requestStages
-        .filter((stage) => {
-          const rec = asRecord(stage);
-          return Array.isArray(rec.dependsOn) && rec.dependsOn.length === 0;
-        })
-        .map((stage) => str(asRecord(stage).owner))
-        .filter(Boolean))];
-      const runners = rootOwners.map((rootOwner) => (ctx.triggerRunner ?? defaultTriggerRunner)(rootOwner));
-      return reply.code(200).send({
-        ok: true,
-        runId: outcome.runId,
-        cards: outcome.cards.map(({ stageId, cardId, state }) => ({ stageId, cardId, state })),
-        runners,
-      });
-    } catch (error) {
-      return reply.code(500).send({
-        error: 'workflow-run-commit-failed',
-        detail: error instanceof Error ? error.message : String(error),
-      });
-    }
-    });
-  });
+  // Retired: client-authored workflow DAGs bypassed canonical definition parsing and project confinement.
+  // The endpoint remains explicit (rather than silently 404) so old callers get an actionable migration.
+  scope.post('/api/write/workflow-runs', { preHandler }, async (_req, reply: FastifyReply) =>
+    reply.code(410).send({
+      error: 'workflow-runs-retired',
+      detail: 'save a canonical org workflow definition, then launch it via /api/workflows/:id/launch',
+    }),
+  );
 
   scope.post('/api/write/rerun', { preHandler }, async (req, reply: FastifyReply) => {
     const session = verifiedSession(req);

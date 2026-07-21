@@ -199,6 +199,65 @@ describe('the not-declared empty state', () => {
     const declared = screen.getByTestId('agent-declared');
     expect(declared.textContent).toContain('claude-opus-4-8');
   });
+
+  it('renders declaration-backed instructions, codebases, workflows, and runner facts without inventing them', () => {
+    render(
+      <AgentDetail
+        agent={agent({ id: 'fyt-runner', declared: true })}
+        detailState="ready"
+        detail={{
+          id: 'fyt-runner',
+          declaration: {
+            path: 'agents/fyt-runner.md',
+            source: 'faceless-youtube',
+            instructions: '## Operating instructions\n\nRun the approved workflow stages in order and stop at human gates.\n\n<script>doEvil()</script>',
+          },
+          codebases: [{ project: 'faceless-youtube', path: 'orgs/faceless-youtube', relationship: 'owns pipeline work' }],
+          workflows: [{ ref: 'video-run', title: 'Video run', path: 'orgs/faceless-youtube/workflows/video-run.md', relationship: 'stage runner' }],
+          howItRuns: { summary: 'Claims approved queue stages', runner: 'codex-worker', command: 'workflow run video-run' },
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId('agent-declaration').textContent).toContain('agents/fyt-runner.md');
+    const instructions = screen.getByTestId('agent-instructions');
+    expect(within(instructions).getByRole('heading', { name: 'Operating instructions' })).toBeTruthy();
+    expect(instructions.textContent).toContain('human gates');
+    expect(instructions.querySelector('script')).toBeNull();
+    expect(instructions.textContent).toContain('<script>doEvil()</script>');
+    expect(screen.getByTestId('agent-codebases').textContent).toContain('faceless-youtube');
+    expect(screen.getByTestId('agent-workflows').textContent).toContain('video-run');
+    expect(screen.getByTestId('agent-how-it-runs').textContent).toContain('codex-worker');
+  });
+
+  it('opens a dedicated Composer workspace only for a declared agent', () => {
+    const onWorkWithAgent = vi.fn();
+    render(<AgentDetail agent={agent({ id: 'fyt-runner', declared: true })} onWorkWithAgent={onWorkWithAgent} />);
+
+    fireEvent.click(screen.getByTestId('agent-work-with'));
+    expect(onWorkWithAgent).toHaveBeenCalledWith(expect.objectContaining({ id: 'fyt-runner' }));
+  });
+
+  it('links a related workflow to its canonical detail and Launch surface', () => {
+    const onNavigate = vi.fn();
+    render(
+      <AgentDetail
+        agent={agent({ id: 'fyt-runner', declared: true })}
+        detailState="ready"
+        detail={{
+          id: 'fyt-runner', declaration: null, codebases: [],
+          workflows: [{ ref: 'video-run', title: 'Video run', path: 'orgs/faceless-youtube/workflows/video-run.md', relationship: 'stage runner' }],
+          howItRuns: null,
+        }}
+        onNavigate={onNavigate}
+      />,
+    );
+
+    const workflow = screen.getByTestId('agent-workflow-video-run');
+    expect(workflow.textContent).toContain('Open workflow');
+    fireEvent.click(workflow);
+    expect(onNavigate).toHaveBeenCalledWith({ view: 'workflows', focus: { kind: 'workflow', id: 'video-run' } });
+  });
 });
 
 describe('fields the roster fetched and never rendered', () => {

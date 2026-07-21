@@ -1,5 +1,5 @@
 import Fastify from 'fastify';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, cpSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, cpSync, existsSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -87,6 +87,12 @@ describe('workflow definition routes', () => {
     const brief = items.find((item) => item.ref === 'research-brief');
     expect(triage).toMatchObject({ valid: true, project: 'kb-ops', riskTier: 'T2' });
     expect(brief).toMatchObject({ valid: true, project: 'kb-ops', riskTier: 'T2' });
+  });
+
+  it('lists server-owned execution profiles in stable order', async () => {
+    const response = await app.inject({ method: 'GET', url: '/api/workflows/profiles' });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ profiles: ['drive-author', 'gmail-triage', 'producer', 'research'] });
   });
 
   it('returns a definition with its compiled proposal preview and content hash', async () => {
@@ -246,7 +252,11 @@ describe('workflow launch governance boundaries', () => {
 
   /** A scratch repo root carrying the real governance/policy files plus one synthetic definition. */
   function writeDefinition(name: string, text: string): void {
-    const dir = join(repoRoot, 'orgs', 'kb-ops', 'workflows');
+    writeDefinitionFor('kb-ops', name, text);
+  }
+
+  function writeDefinitionFor(project: string, name: string, text: string): void {
+    const dir = join(repoRoot, 'orgs', project, 'workflows');
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, `${name}.md`), text, 'utf8');
   }
@@ -335,6 +345,59 @@ describe('workflow launch governance boundaries', () => {
     expect(launched.statusCode).toBe(409);
     expect(launched.json().error).toBe('definition-invalid');
     expect(controlStore.listRuns('operator')).toHaveLength(0);
+  });
+
+  it('hard-rejects duplicate ids instead of selecting one project definition', async () => {
+    const definition = [
+      '---',
+      'id: shared',
+      'project: kb-ops',
+      'title: Shared',
+      'profile: research',
+      'stages:',
+      '  - id: research',
+      '    title: Research',
+      '    action: research:brief',
+      '    target: orgs/kb-ops/output',
+      '    workOrder: research it',
+      '---',
+      'body',
+      '',
+    ].join('\n');
+    writeDefinition('shared-a', definition);
+    writeDefinitionFor('other', 'shared-b', definition
+      .replace('project: kb-ops', 'project: other')
+      .replace('target: orgs/kb-ops/output', 'target: orgs/other/output'));
+
+    const listed = await app.inject({ method: 'GET', url: '/api/workflows' });
+    const entries = listed.json().items as Array<{ ref: string; valid: boolean; detail: string }>;
+    expect(entries.find((entry) => entry.ref === 'kb-ops~shared')).toMatchObject({ valid: false, detail: expect.stringMatching(/duplicated/) });
+    expect(entries.find((entry) => entry.ref === 'other~shared')).toMatchObject({ valid: false, detail: expect.stringMatching(/duplicated/) });
+    expect((await app.inject({ method: 'GET', url: '/api/workflows/shared' })).statusCode).toBe(404);
+
+    const launched = await app.inject({
+      method: 'POST', url: '/api/workflows/kb-ops~shared/launch', headers: headers(token), payload: { idempotencyKey: 'shared' },
+    });
+    expect(launched.statusCode).toBe(409);
+    expect(launched.json()).toMatchObject({ error: 'definition-invalid' });
+    expect(controlStore.listRuns('operator')).toHaveLength(0);
+  });
+
+  it('does not scan a workflow directory that resolves through a symlink outside its project', async () => {
+    const outside = join(repoRoot, 'outside-workflows');
+    mkdirSync(outside, { recursive: true });
+    writeFileSync(join(outside, 'escape.md'), [
+      '---', 'id: escape-link', 'project: kb-ops', 'title: Escape', 'profile: research', 'stages:',
+      '  - id: research', '    title: Research', '    action: research:brief', '    target: orgs/kb-ops/output', '    workOrder: research it',
+      '---', 'body', '',
+    ].join('\n'), 'utf8');
+    const project = join(repoRoot, 'orgs', 'kb-ops');
+    mkdirSync(project, { recursive: true });
+    symlinkSync(outside, join(project, 'workflows'), 'junction');
+
+    const listed = await app.inject({ method: 'GET', url: '/api/workflows' });
+    expect((listed.json().items as Array<{ ref: string }>).some((entry) => entry.ref === 'escape-link')).toBe(false);
+    expect((await app.inject({ method: 'GET', url: '/api/workflows/escape-link' })).statusCode).toBe(404);
   });
 
   it('stalls a T3 definition at the human boundary and publishes NO canonical cards', async () => {

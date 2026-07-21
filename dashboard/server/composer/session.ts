@@ -37,6 +37,7 @@ import type { TranscriptRecord } from '../planeB/tailer.ts';
 import type { ResumeRegistry } from './resumeRegistry.ts';
 import { isValidResumeId } from './resumeRegistry.ts';
 import { withComposerPlanningInstruction } from './planningInstruction.ts';
+import type { ComposerAgentSnapshot } from './store.ts';
 
 /** Vibe handlers plus the one Composer addition: the captured CLI session id for the next turn. */
 export interface ComposerHandlers extends VibeHandlers {
@@ -72,10 +73,11 @@ export function spawnComposerTurn(
   session: SessionInput,
   handlers: ComposerHandlers,
   deps: ComposerDeps,
+  agent: ComposerAgentSnapshot | null = null,
 ): Promise<VibeSpawnOutcome> {
   // This instruction is composed here, after browser validation and any inert visible-history
   // rehydration. Callers cannot weaken it, and only the raw operator prompt remains in public storage.
-  const governedPrompt = withComposerPlanningInstruction(prompt);
+  const governedPrompt = withComposerPlanningInstruction(prompt, agent);
   // Decorate the spawner so every Composer turn is read-only planning. A continuing turn also gets a
   // SINGLE `--resume=<id>` token (review F1: the fused equals form removes parser ambiguity).
   const baseSpawn = deps.spawn ?? defaultVibeSpawner;

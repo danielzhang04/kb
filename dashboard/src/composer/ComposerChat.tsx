@@ -24,6 +24,7 @@ const FALLBACK_SESSION: ComposerSession = {
   createdAt: '',
   updatedAt: '',
   sourceComposerRef: null,
+  agent: null,
   turns: [],
 };
 

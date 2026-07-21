@@ -271,7 +271,7 @@ describe('App shell — entity-first sidebar navigation', () => {
 
 function composerSession(composerRef: string, title: string, state: 'open' | 'archived' = 'open') {
   const now = '2026-07-18T12:00:00.000Z';
-  return { composerRef, title, state, createdAt: now, updatedAt: now, sourceComposerRef: null, turns: [] };
+  return { composerRef, title, state, createdAt: now, updatedAt: now, sourceComposerRef: null, agent: null, turns: [] };
 }
 
 function unlockForWorkspaceTests(): void {

@@ -44,10 +44,6 @@ const POPULATED: PlaneAIndex = {
 };
 
 const REGISTRY: RegistrySnapshot = {
-  workflows: {
-    present: true,
-    items: [{ id: 'wf_build', path: 'workflows/wf_build.md', name: 'wf_build', status: 'registered' }],
-  },
   connections: {
     count: 2,
     items: [
@@ -79,8 +75,7 @@ describe('summaryFor — populated', () => {
     expect(s.ids).toEqual(['c_appr']);
   });
 
-  it('workflows + connectors come from the registry', () => {
-    expect(summaryFor('workflows', EMPTY, REGISTRY)!.lines[0].value).toBe(1);
+  it('connectors come from the registry', () => {
     const conn = summaryFor('connectors', EMPTY, REGISTRY)!;
     expect(conn.lines.find((l) => l.label === 'connections')?.value).toBe(2);
     expect(conn.ids).toContain('Gmail');

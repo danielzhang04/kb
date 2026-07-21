@@ -10,8 +10,9 @@
  * so an agent that only shows up in the ledgers (or is idle) still appears, with its role + ledger
  * activity. Reads the filesystem; degrades gracefully on a sparse checkout (missing dirs → empty).
  */
-import { existsSync, readdirSync, readFileSync, lstatSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readdirSync, readFileSync, lstatSync, realpathSync } from 'node:fs';
+import { join, relative, resolve, isAbsolute } from 'node:path';
+import { createHash } from 'node:crypto';
 import type { PlaneAIndex } from '../planeA/indexer.ts';
 import type { ParsedCard } from '../planeA/cards.ts';
 import { parseCardFrontmatter } from '../planeA/cards.ts';
@@ -115,6 +116,8 @@ export interface AgentRosterEntry {
   declaredModel: string | null;
   /** One-line human description from the agent file, or null. */
   description: string | null;
+  /** A declaration file was found for this id but could not safely be used. */
+  declarationProblem?: string | null;
 }
 
 /** A declared agent parsed from `agents/<id>.md` frontmatter (C7.3). */
@@ -125,6 +128,40 @@ export interface DeclaredAgent {
   model: string | null;
   runnerBound: boolean;
   description: string | null;
+  /** Declared project relationships are display metadata, never routing authority. */
+  projects: string[];
+}
+
+/** The inspectable, server-owned view of one `agents/<id>.md` declaration. */
+export interface DeclaredAgentDetail extends DeclaredAgent {
+  /** Canonical repo-relative declaration source, always `agents/<filename>.md`. */
+  source: string;
+  /** Markdown after the declaration's YAML frontmatter. */
+  instructionMarkdown: string;
+  /** SHA-256 of the exact declaration source read by the server. */
+  sourceHash: string;
+  /** Existing repo-contained paths explicitly named by the declaration. Names only; never contents. */
+  codebasePaths: string[];
+  /** Safe declared project ids unioned with project ids inferred from declared codebase paths. */
+  projects: string[];
+  /** Declared paths under an org workflow directory. */
+  workflowPaths: string[];
+}
+
+/** Safe, bounded diagnostic for a declaration which was discovered but cannot be used. */
+export interface AgentDeclarationProblem {
+  /** Filename stem, never an authored frontmatter id from malformed content. */
+  id: string;
+  source: string;
+  problem:
+    | 'symlink-refused'
+    | 'not-a-file'
+    | 'oversized'
+    | 'malformed-frontmatter'
+    | 'unreadable'
+    | 'unsafe-id'
+    | 'id-mismatch'
+    | 'duplicate-id';
 }
 
 const EMPTY_ACTIVITY: AgentLedgerActivity = { dispatches: 0, steps: 0, days: 0, lastActive: null };
@@ -202,39 +239,222 @@ function strFieldOrNull(v: unknown): string | null {
  */
 const MAX_AGENT_FILE_BYTES = 64 * 1024;
 
-export function readDeclaredAgents(repoRoot: string): Map<string, DeclaredAgent> {
-  const out = new Map<string, DeclaredAgent>();
-  const dir = join(repoRoot, 'agents');
-  if (!existsSync(dir)) return out;
-  for (const name of readdirSync(dir)) {
+const SAFE_PATH_SEGMENT = /^[A-Za-z0-9._-]+$/;
+
+/** Return true only for an existing path that resolves inside this repo. */
+export function isContainedRepoPath(repoRoot: string, path: string): boolean {
+  if (path === '' || isAbsolute(path)) return false;
+  const parts = path.split('/');
+  if (parts.some((part) => part === '' || part === '.' || part === '..' || !SAFE_PATH_SEGMENT.test(part))) return false;
+  try {
+    const root = realpathSync(repoRoot);
+    const candidate = realpathSync(resolve(repoRoot, path));
+    const rel = relative(root, candidate);
+    return rel === '' || (!isAbsolute(rel) && rel !== '..' && !rel.startsWith('../') && !rel.startsWith('..\\'));
+  } catch {
+    return false;
+  }
+}
+
+const SAFE_PROJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+const SAFE_AGENT_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
+
+interface AgentDeclarationDirectory {
+  repoRoot: string;
+  agentsDir: string;
+}
+
+function containedRealPath(root: string, candidate: string): boolean {
+  const rel = relative(root, candidate);
+  return rel === '' || (!isAbsolute(rel) && rel !== '..' && !rel.startsWith('../') && !rel.startsWith('..\\'));
+}
+
+/**
+ * Establish the only directory trusted for declaration reads. `agents` must be a real, direct
+ * child of the repository's canonical root; a symlink/junction cannot redirect reads elsewhere.
+ */
+function declarationDirectory(repoRoot: string): AgentDeclarationDirectory | null {
+  try {
+    const root = realpathSync(repoRoot);
+    const rootStat = lstatSync(root);
+    if (!rootStat.isDirectory()) return null;
+    const candidate = resolve(root, 'agents');
+    if (!existsSync(candidate)) return null;
+    const stat = lstatSync(candidate);
+    if (stat.isSymbolicLink() || !stat.isDirectory()) return null;
+    const agentsDir = realpathSync(candidate);
+    if (!containedRealPath(root, agentsDir) || relative(root, agentsDir) !== 'agents') return null;
+    return { repoRoot: root, agentsDir };
+  } catch {
+    return null;
+  }
+}
+
+interface ParsedAgentCandidate {
+  name: string;
+  stem: string;
+  source: string;
+  text: string;
+  parsed: ReturnType<typeof parseCardFrontmatter>;
+  claimedId: string;
+}
+
+interface AgentDeclarationScan {
+  details: Map<string, DeclaredAgentDetail>;
+  problems: Map<string, AgentDeclarationProblem>;
+}
+
+/** Frontmatter supports the established `projects: [project-a, project-b]` declaration shape. */
+function projectIds(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  return [...new Set(v.filter((item): item is string => typeof item === 'string' && SAFE_PROJECT_ID.test(item)))].sort();
+}
+
+/** Extract display-only, repo-contained paths from the declaration body. */
+function declaredCodebasePaths(repoRoot: string, instructionMarkdown: string): string[] {
+  const matcher = /(?:^|[^A-Za-z0-9._-])((?:agents|dashboard|docs|knowledge|ledgers|memory|orgs|queue|routines|scripts|workflows|\.claude)\/[A-Za-z0-9._/-]+)/g;
+  const paths = new Set<string>();
+  for (const match of instructionMarkdown.matchAll(matcher)) {
+    const raw = match[1].replace(/[),.;:]+$/, '').replace(/\/$/, '');
+    if (raw !== '' && isContainedRepoPath(repoRoot, raw)) paths.add(raw);
+  }
+  return [...paths].sort();
+}
+
+/** Read each trusted declaration at most once and make ambiguity a diagnostic, never authority. */
+function scanAgentDeclarations(repoRoot: string): AgentDeclarationScan {
+  const details = new Map<string, DeclaredAgentDetail>();
+  const problems = new Map<string, AgentDeclarationProblem>();
+  const directory = declarationDirectory(repoRoot);
+  if (!directory) return { details, problems };
+  let names: string[];
+  try {
+    names = readdirSync(directory.agentsDir).sort();
+  } catch {
+    return { details, problems };
+  }
+  const candidates: ParsedAgentCandidate[] = [];
+  for (const name of names) {
     if (!name.endsWith('.md')) continue;
-    const full = join(dir, name);
-    // Hardening (Finding 3): don't follow symlinks, and cap the read so a single oversized file can't
-    // stall the roster. lstat (never stat) so a symlink is detected, not resolved. Any stat failure →
-    // skip (fail-open, same as the malformed-file path).
-    let st;
+    const stem = name.replace(/\.md$/, '');
+    const source = `agents/${name}`;
+    const full = join(directory.agentsDir, name);
+    let stat;
     try {
-      st = lstatSync(full);
+      stat = lstatSync(full);
+      if (stat.isSymbolicLink()) {
+        problems.set(stem, { id: stem, source, problem: 'symlink-refused' });
+        continue;
+      }
+      if (!stat.isFile()) {
+        problems.set(stem, { id: stem, source, problem: 'not-a-file' });
+        continue;
+      }
+      // Verify the child remains the direct canonical child we enumerated before reading it.
+      const resolved = realpathSync(full);
+      if (!containedRealPath(directory.agentsDir, resolved) || relative(directory.agentsDir, resolved) !== name) {
+        problems.set(stem, { id: stem, source, problem: 'symlink-refused' });
+        continue;
+      }
     } catch {
+      problems.set(stem, { id: stem, source, problem: 'unreadable' });
       continue;
     }
-    if (st.isSymbolicLink() || !st.isFile()) continue;
-    if (st.size > MAX_AGENT_FILE_BYTES) continue; // skip unbounded reads
-    const stem = name.replace(/\.md$/, '');
-    let meta: Record<string, unknown>;
-    try {
-      meta = parseCardFrontmatter(readFileSync(full, 'utf-8')).meta as Record<string, unknown>;
-    } catch {
-      continue; // malformed agent file (no/unterminated frontmatter) → skip, never fatal
+    if (stat.size > MAX_AGENT_FILE_BYTES) {
+      problems.set(stem, { id: stem, source, problem: 'oversized' });
+      continue;
     }
-    const id = strFieldOrNull(meta.id) ?? stem;
-    out.set(id, {
-      id,
+    let text: string;
+    let parsed: ReturnType<typeof parseCardFrontmatter>;
+    try {
+      text = readFileSync(full, 'utf-8');
+      parsed = parseCardFrontmatter(text);
+    } catch {
+      problems.set(stem, { id: stem, source, problem: 'malformed-frontmatter' });
+      continue;
+    }
+    const rawId = (parsed.meta as Record<string, unknown>).id;
+    if (rawId !== undefined && typeof rawId !== 'string') {
+      problems.set(stem, { id: stem, source, problem: 'unsafe-id' });
+      continue;
+    }
+    const claimedId = rawId === undefined ? stem : rawId;
+    if (!SAFE_AGENT_ID.test(stem) || !SAFE_AGENT_ID.test(claimedId)) {
+      problems.set(stem, { id: stem, source, problem: 'unsafe-id' });
+      continue;
+    }
+    candidates.push({ name, stem, source, text, parsed, claimedId });
+  }
+
+  const claims = new Map<string, ParsedAgentCandidate[]>();
+  for (const candidate of candidates) {
+    const entries = claims.get(candidate.claimedId) ?? [];
+    entries.push(candidate);
+    claims.set(candidate.claimedId, entries);
+  }
+  for (const candidate of candidates) {
+    const sameId = claims.get(candidate.claimedId) ?? [];
+    if (sameId.length > 1) {
+      problems.set(candidate.stem, { id: candidate.stem, source: candidate.source, problem: 'duplicate-id' });
+      continue;
+    }
+    if (candidate.claimedId !== candidate.stem) {
+      problems.set(candidate.stem, { id: candidate.stem, source: candidate.source, problem: 'id-mismatch' });
+      continue;
+    }
+    const meta = candidate.parsed.meta as Record<string, unknown>;
+    const codebasePaths = declaredCodebasePaths(directory.repoRoot, candidate.parsed.body);
+    const inferredProjects = [...new Set(codebasePaths
+      .map((path) => /^orgs\/([^/]+)/.exec(path)?.[1])
+      .filter((project): project is string => project !== undefined))].sort();
+    const projects = [...new Set([...projectIds(meta.projects), ...inferredProjects])].sort();
+    details.set(candidate.claimedId, {
+      id: candidate.claimedId,
       role: strFieldOrNull(meta.role),
       runtime: strFieldOrNull(meta.runtime),
       model: strFieldOrNull(meta.model),
       runnerBound: meta['runner-bound'] === true,
       description: strFieldOrNull(meta.description),
+      source: candidate.source,
+      instructionMarkdown: candidate.parsed.body,
+      sourceHash: createHash('sha256').update(candidate.text, 'utf8').digest('hex'),
+      codebasePaths,
+      projects,
+      workflowPaths: codebasePaths.filter((path) => /^orgs\/[^/]+\/workflows\//.test(path)),
+    });
+  }
+  return { details, problems };
+}
+
+/**
+ * Read valid agent declarations once, retaining their authored Markdown only for the explicit
+ * inspection route. This remains safe on a sparse or hostile checkout: symlinks, oversized files,
+ * malformed frontmatter, and paths outside the repo are excluded.
+ */
+export function readDeclaredAgentDetails(repoRoot: string): Map<string, DeclaredAgentDetail> {
+  return scanAgentDeclarations(repoRoot).details;
+}
+
+/**
+ * Report unusable declaration files without parsing their body into authority. Roster/detail callers
+ * can tell an operator why a named declaration is unavailable instead of silently making it vanish.
+ */
+export function readAgentDeclarationProblems(repoRoot: string): Map<string, AgentDeclarationProblem> {
+  return scanAgentDeclarations(repoRoot).problems;
+}
+
+export function readDeclaredAgents(repoRoot: string): Map<string, DeclaredAgent> {
+  const out = new Map<string, DeclaredAgent>();
+  for (const detail of readDeclaredAgentDetails(repoRoot).values()) {
+    const id = detail.id;
+    out.set(id, {
+      id,
+      role: detail.role,
+      runtime: detail.runtime,
+      model: detail.model,
+      runnerBound: detail.runnerBound,
+      description: detail.description,
+      projects: detail.projects,
     });
   }
   return out;
@@ -270,12 +490,14 @@ export function buildRoster(
   const writers = readLedgerWriters(repoRoot);
   const roles = readRoles(repoRoot);
   const declared = readDeclaredAgents(repoRoot);
+  const declarationProblems = readAgentDeclarationProblems(repoRoot);
 
-  const ids = new Set<string>([...byId.keys(), ...writers.keys(), ...declared.keys()]);
+  const ids = new Set<string>([...byId.keys(), ...writers.keys(), ...declared.keys(), ...declarationProblems.keys()]);
   const entries: AgentRosterEntry[] = [];
   for (const id of ids) {
     const cr = byId.get(id);
     const dec = declared.get(id);
+    const declarationProblem = declarationProblems.get(id)?.problem ?? null;
     const ledger = writers.get(id) ?? EMPTY_ACTIVITY;
     const sources: Array<'queue' | 'ledger'> = [];
     if (cr) sources.push('queue');
@@ -286,7 +508,7 @@ export function buildRoster(
       role: dec?.role ?? roleFor(id, roles),
       working: cr?.working ?? false,
       current: cr?.current ?? null,
-      projects: cr?.projects ?? [],
+      projects: [...new Set([...(cr?.projects ?? []), ...(dec?.projects ?? [])])].sort(),
       cardCount: cr?.cardCount ?? 0,
       ledger,
       sources,
@@ -296,6 +518,7 @@ export function buildRoster(
       declaredRuntime: dec?.runtime ?? null,
       declaredModel: dec?.model ?? null,
       description: dec?.description ?? null,
+      declarationProblem,
     });
   }
 

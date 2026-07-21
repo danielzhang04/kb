@@ -12,12 +12,10 @@
 import { useEffect, useState } from 'react';
 import type { SkillsIndex, SkillEntry, SkillTier } from '../../server/registry/skills';
 import type { ConnectionsIndex } from '../../server/registry/connections';
-import type { WorkflowsIndex } from '../../server/registry/workflows';
 
 export interface RegistryData {
   skills: SkillsIndex;
   connections: ConnectionsIndex;
-  workflows: WorkflowsIndex;
 }
 
 const TIER_ORDER: SkillTier[] = ['curated', 'evolved', 'imported', 'learned'];
@@ -75,27 +73,9 @@ function ConnectionsSection({ connections }: { connections: ConnectionsIndex }):
   );
 }
 
-function WorkflowsSection({ workflows }: { workflows: WorkflowsIndex }): React.JSX.Element {
-  return (
-    <section className="registry__section" aria-label="Workflows registry">
-      <h3>Workflows</h3>
-      {!workflows.present ? (
-        <p className="registry__empty">No workflows registered yet.</p>
-      ) : (
-        <ul>
-          {workflows.items.map((w) => (
-            <li key={w.id}>{w.id}</li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
-
 const EMPTY: RegistryData = {
   skills: { count: 0, items: [], byTier: { curated: [], evolved: [], imported: [], learned: [] }, trust: { present: false, count: 0 } },
   connections: { count: 0, items: [], byProject: {} },
-  workflows: { present: false, items: [] },
 };
 
 /** Registry view. Accepts data directly (tests/D0.9) or self-fetches from `/api/registry`. */
@@ -123,7 +103,6 @@ export function Registry({ data }: { data?: RegistryData }): React.JSX.Element {
     <div className="registry">
       <SkillsSection skills={view.skills} />
       <ConnectionsSection connections={view.connections} />
-      <WorkflowsSection workflows={view.workflows} />
     </div>
   );
 }

@@ -357,13 +357,18 @@ function ComposerView({
   sessionToken,
   onRequestSession,
   onRunningChange,
+  onBack,
 }: {
   composerSession: ComposerSession;
   onComposerSessionChange: (session: ComposerSession) => void;
   sessionToken?: string;
   onRequestSession: () => Promise<Session | null>;
   onRunningChange: (running: boolean) => void;
+  onBack?: () => void;
 }): React.JSX.Element {
+  const ideaText = composerSession.agent
+    ? `Work with the declared agent at ${composerSession.agent.path} (source revision ${composerSession.agent.sourceHash}). First read that authoritative declaration, explain what it does and how it is configured to run, then help the operator plan work through the normal governed workflow. This Composer workspace is planning-only: do not invent a runner or claim a background queue runner has started unless the observed facts prove it.`
+    : undefined;
   return (
     <DeployOutcome
       composerSession={composerSession}
@@ -371,6 +376,8 @@ function ComposerView({
       sessionToken={sessionToken}
       onRequestSession={onRequestSession}
       onRunningChange={onRunningChange}
+      ideaText={ideaText}
+      onBack={onBack}
     />
   );
 }
@@ -425,6 +432,7 @@ function ViewBody({
   onBack,
   onSectionChange,
   onNavigateTarget,
+  onWorkWithAgent,
 }: {
   view: DestinationId;
   sessionToken?: string;
@@ -440,6 +448,7 @@ function ViewBody({
   onBack: () => void;
   onSectionChange: (id: string) => void;
   onNavigateTarget: (target: NavTarget) => void;
+  onWorkWithAgent: (agent: { id: string }) => void;
 }): React.JSX.Element {
   switch (view) {
     case 'home':
@@ -488,6 +497,7 @@ function ViewBody({
           activeSectionId={entry.section}
           onSectionChange={onSectionChange}
           onNavigate={onNavigateTarget}
+          onWorkWithAgent={onWorkWithAgent}
         />
       );
     case 'tasks':
@@ -768,6 +778,16 @@ export function App(): React.JSX.Element {
     });
   };
 
+  /** Open a normal persistent Composer workspace, scoped to a declared agent's authoritative file. */
+  const workWithAgent = (agent: { id: string }): void => {
+    void withWorkspaceToken(async (token) => {
+      const created = await createComposerSession(token, { title: `Agent · ${agent.id}`, agentId: agent.id });
+      upsertComposerSession(created);
+      setOpenComposerRefs((current) => [...current.filter((ref) => ref !== created.composerRef), created.composerRef]);
+      setActiveComposerRef(created.composerRef);
+    });
+  };
+
   const closeComposerTab = (composerRef: string): void => {
     if (runningComposerRefs.has(composerRef)) return;
     setOpenComposerRefs((current) => {
@@ -897,6 +917,7 @@ export function App(): React.JSX.Element {
               sessionToken={session?.token}
               onRequestSession={requestSession}
               onRunningChange={(running) => setComposerRunning(workspace.composerRef, running)}
+              onBack={workspace.agent ? () => setActiveComposerRef(null) : undefined}
             />
           </div>
         ))}
@@ -913,6 +934,7 @@ export function App(): React.JSX.Element {
             onBack={back}
             onSectionChange={setSection}
             onNavigateTarget={navigateTo}
+            onWorkWithAgent={workWithAgent}
           />
         ) : null}
       </main>

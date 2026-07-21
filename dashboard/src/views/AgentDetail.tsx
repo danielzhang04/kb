@@ -22,6 +22,8 @@ import type { PlaneAIndex } from '../../server/planeA/indexer';
 import type { RunMetadataDto } from '../control/controlClient';
 import { cardsForAgent } from '../control/entityLinks';
 import { EntityDetail, type DetailSection, type EntityLink } from '../entity/EntityDetail';
+import type { AgentDetailDto } from '../lib/agentClient';
+import { renderMarkdown } from '../lib/markdown';
 import type { NavTarget } from '../nav/stack';
 import '../styles/views/entity.css';
 
@@ -61,6 +63,12 @@ export interface AgentDetailProps {
   runScanLimit?: number;
   /** The governed per-agent model routing control, passed in so this view stays presentational. */
   routing?: React.ReactNode;
+  /** Read-only declaration-backed facts from GET /api/agents/:id. */
+  detail?: AgentDetailDto | null;
+  /** Distinguishes a request still in flight from a detail that has no optional relationships. */
+  detailState?: 'loading' | 'ready' | 'unavailable';
+  /** Opens the existing Composer workspace targeted to this declared agent; it never starts a runner directly. */
+  onWorkWithAgent?: (agent: AgentDetailRow) => void;
   activeSectionId?: string;
   onSectionChange?: (id: string) => void;
   onNavigate?: (target: NavTarget) => void;
@@ -107,6 +115,9 @@ export function AgentDetail({
   runs,
   runScanLimit,
   routing,
+  detail,
+  detailState,
+  onWorkWithAgent,
   activeSectionId,
   onSectionChange,
   onNavigate,
@@ -176,6 +187,98 @@ export function AgentDetail({
           )}
         </div>
       </section>
+
+      <section className="entity-block" aria-label="Declaration source and instructions">
+        <h3 className="entity-block__title">Declaration</h3>
+        {detailState === 'loading' ? (
+          <p className="entity-note" data-testid="agent-detail-loading">Loading declaration-backed relationships…</p>
+        ) : detailState === 'unavailable' ? (
+          <p className="entity-note" data-testid="agent-detail-unavailable">
+            Additional declaration facts are unavailable. The roster facts above remain the last safe data loaded.
+          </p>
+        ) : detail?.declaration ? (
+          <>
+            <dl className="entity-kv" data-testid="agent-declaration">
+              <div className="entity-kv__row">
+                <dt>Source file</dt>
+                <dd className="mc-mono">{detail.declaration.path}</dd>
+              </div>
+              <div className="entity-kv__row">
+                <dt>Source</dt>
+                <dd>{orDash(detail.declaration.source)}</dd>
+              </div>
+            </dl>
+            {detail.declaration.instructions ? (
+              <div
+                className="entity-prose"
+                data-testid="agent-instructions"
+                // Safe: renderMarkdown escapes all source HTML before transforming Markdown.
+                dangerouslySetInnerHTML={{ __html: renderMarkdown(detail.declaration.instructions) }}
+              />
+            ) : (
+              <p className="entity-note">No runnable instructions are recorded in this declaration.</p>
+            )}
+          </>
+        ) : agent.declared ? (
+          <p className="entity-note">No declaration detail was returned for this declared roster entry.</p>
+        ) : (
+          <p className="entity-note">Observed runtime identities have no declaration source or instructions.</p>
+        )}
+      </section>
+
+      {detailState === 'ready' && detail ? (
+        <>
+          <section className="entity-block" aria-label="Codebase relationships">
+            <h3 className="entity-block__title">Codebases</h3>
+            {detail.codebases.length ? (
+              <ul className="entity-list" data-testid="agent-codebases">
+                {detail.codebases.map((codebase) => (
+                  <li key={`${codebase.project}:${codebase.path ?? ''}`} className="entity-row">
+                    <span className="entity-row__main">{codebase.project}</span>
+                    {codebase.path ? <span className="mc-mono entity-row__ref">{codebase.path}</span> : null}
+                    {codebase.relationship ? <span className="entity-row__meta">{codebase.relationship}</span> : null}
+                  </li>
+                ))}
+              </ul>
+            ) : <p className="entity-note">No codebase relationship is declared.</p>}
+          </section>
+
+          <section className="entity-block" aria-label="Workflow relationships">
+            <h3 className="entity-block__title">Workflows</h3>
+            {detail.workflows.length ? (
+              <ul className="entity-list" data-testid="agent-workflows">
+                {detail.workflows.map((workflow) => (
+                  <li key={workflow.ref}>
+                    <button
+                      type="button"
+                      className="entity-row entity-row--link"
+                      data-testid={`agent-workflow-${workflow.ref}`}
+                      disabled={!onNavigate}
+                      onClick={() => onNavigate?.({ view: 'workflows', focus: { kind: 'workflow', id: workflow.ref } })}
+                    >
+                      <span className="entity-row__main">{workflow.title ?? workflow.ref}</span>
+                      <span className="mc-mono entity-row__ref">{workflow.path ?? workflow.ref}</span>
+                      {workflow.relationship ? <span className="entity-row__meta">{workflow.relationship}</span> : null}
+                      <span className="entity-row__meta">Open workflow</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : <p className="entity-note">No workflow relationship is declared.</p>}
+          </section>
+
+          <section className="entity-block" aria-label="How this agent runs">
+            <h3 className="entity-block__title">How it runs</h3>
+            {detail.howItRuns ? (
+              <dl className="entity-kv" data-testid="agent-how-it-runs">
+                <div className="entity-kv__row"><dt>Mode</dt><dd>{orDash(detail.howItRuns.summary)}</dd></div>
+                <div className="entity-kv__row"><dt>Runner</dt><dd className="mc-mono">{orDash(detail.howItRuns.runner)}</dd></div>
+                <div className="entity-kv__row"><dt>Command</dt><dd className="mc-mono">{orDash(detail.howItRuns.command)}</dd></div>
+              </dl>
+            ) : <p className="entity-note">No executable runner facts are declared.</p>}
+          </section>
+        </>
+      ) : null}
     </>
   );
 
@@ -371,6 +474,19 @@ export function AgentDetail({
       onNavigate={onNavigate}
       onBack={onBack}
       backLabel={backLabel}
+      actions={agent.declared && onWorkWithAgent ? (
+        <div>
+          <button
+            type="button"
+            className="mc-btn mc-btn--primary"
+            data-testid="agent-work-with"
+            onClick={() => onWorkWithAgent(agent)}
+          >
+            Work with this agent
+          </button>
+          <p className="entity-note">Opens a Composer workspace; it does not start the background runner.</p>
+        </div>
+      ) : undefined}
     />
   );
 }

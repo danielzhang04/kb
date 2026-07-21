@@ -22,13 +22,15 @@ import {
   type ProjectDraft,
   type AgentDraft,
 } from './artifactTypes';
+import { parseWorkflowDef } from '../../server/workflows/defs';
 
 function workflow(over: Partial<WorkflowDraft> = {}): WorkflowDraft {
   return {
-    filename: 'wf_nightly.md',
+    filename: 'nightly.md',
     project: 'kb',
+    profile: 'research',
     body: 'steps',
-    stages: [{ id: 'stage-1', action: 'research', target: '.', workOrder: 'Do the work', riskTier: 'T2', owner: 'codex-worker', dependsOn: [] }],
+    stages: [{ id: 'stage-1', action: 'research', target: 'orgs/kb', workOrder: 'Do the work', riskTier: 'T2', dependsOn: [] }],
     ...over,
   };
 }
@@ -100,12 +102,15 @@ describe('composer/artifactTypes — draft schemas', () => {
     expect(fields).toContain('description');
   });
 
-  it('workflow_draft_requires_wf_prefixed_filename', () => {
+  it('workflow_draft_requires_canonical_filename_and_profile', () => {
     const ok: WorkflowDraft = workflow();
     expect(validateDraft('workflow', ok)).toEqual([]);
 
-    const badName = validateDraft('workflow', workflow({ filename: 'nightly.md' }));
+    const badName = validateDraft('workflow', workflow({ filename: 'wf_nightly.md' }));
     expect(badName.map((p) => p.field)).toContain('filename');
+
+    const missingProfile = validateDraft('workflow', workflow({ profile: '' }));
+    expect(missingProfile.map((p) => p.field)).toContain('profile');
 
     const badBody = validateDraft('workflow', workflow({ body: '' }));
     expect(badBody.map((p) => p.field)).toContain('body');
@@ -166,7 +171,7 @@ describe('composer/artifactTypes — deploy mapping', () => {
 
     const durable: Array<[ArtifactKind, unknown]> = [
       ['skill', { name: 'n', description: 'd', body: 'b' } satisfies SkillDraft],
-      ['workflow', workflow({ filename: 'wf_x.md', body: 'b' })],
+      ['workflow', workflow({ filename: 'x.md', body: 'b' })],
       ['project', { name: 'proj', date: '2026-07-17' } satisfies ProjectDraft],
     ];
     for (const [kind, draft] of durable) {
@@ -191,23 +196,30 @@ describe('composer/artifactTypes — deploy mapping', () => {
     expect(plan.content).toContain('description: d');
   });
 
-  it('workflow deploy targets workflows/wf_<name>.md durable-save', () => {
+  it('workflow deploy targets a canonical project workflow definition', () => {
     const plan = toDeploy('workflow', workflow({ body: 'the steps' }));
-    expect(plan.relpath).toBe('workflows/wf_nightly.md');
+    expect(plan.relpath).toBe('orgs/kb/workflows/nightly.md');
     expect(plan.content).toContain('the steps');
+    expect(plan.content).toContain('profile: "research"');
+    expect(plan.content).toContain('workOrder: "Do the work"');
+    expect(plan.content).not.toContain('workflow-v1');
+    expect(plan.content).not.toContain('owner:');
+    expect(parseWorkflowDef(plan.content, { knownProfiles: new Set(['research']) })).toMatchObject({
+      ok: true,
+      value: { id: 'nightly', project: 'kb', profile: 'research' },
+    });
     expect(plan.branchClass).toBe('durable');
     expect(plan.endpoint).toBe('save');
   });
 });
 
 describe('composer/artifactTypes — F4 client-side path-traversal rejection', () => {
-  // review F4: the old `^wf_.+\.md$` let `.+` swallow a `../../` traversal, so a workflow filename could
-  // emit an ESCAPING durable relpath (`workflows/wf_../../x.md`); slug-derived skill/project names could
+  // Workflow filenames are path segments under the canonical project workflows directory; slug-derived skill/project names could
   // collapse to an empty on-disk segment (`skills/learned//SKILL.md`). validateDraft must now REPORT
   // these and toDeploy must refuse them (defense-in-depth + honest preview; the server still owns real
   // confinement).
   it('rejects a workflow filename carrying path traversal', () => {
-    for (const filename of ['wf_../../x.md', 'wf_../secrets.md', 'wf_a/b.md']) {
+    for (const filename of ['../../x.md', '../secrets.md', 'a/b.md']) {
       const problems = validateDraft('workflow', workflow({ filename }));
       expect(problems.map((p) => p.field)).toContain('filename');
       expect(() => toDeploy('workflow', workflow({ filename }))).toThrow();

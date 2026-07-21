@@ -16,12 +16,11 @@
  * `deployImpl` is injectable so the suite drives a fake — no real network, no real server, no real claude.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { invalidateSessionOnGovernedAuthFailure, SESSION_INVALIDATED_EVENT, type Session } from '../lib/authClient';
+import { SESSION_INVALIDATED_EVENT, type Session } from '../lib/authClient';
 import { Composer } from './Composer';
 import { deploy as defaultDeploy } from './deploy';
 import type { DeployRefusal, DeployResult, DeploySuccess } from './deploy';
 import type { ArtifactKind, DeployPlan, FollowUp, SeedKind } from './artifactTypes';
-import type { WorkflowRunRequest } from '../../server/write/workflowRun';
 import type { ComposerSession } from './workspaceClient';
 import { ProposalReviewPanel } from '../control/ProposalReviewPanel';
 
@@ -71,8 +70,6 @@ export function DeployOutcome({
   deployImpl = defaultDeploy,
 }: DeployOutcomeProps): React.JSX.Element {
   const [pending, setPending] = useState(false);
-  const [runPending, setRunPending] = useState(false);
-  const [runOutcome, setRunOutcome] = useState<{ ok: boolean; message: string } | null>(null);
   const [outcome, setOutcome] = useState<DeployResult | null>(null);
   const [followUps, setFollowUps] = useState<Record<string, FollowUpState>>({});
   const [localToken, setLocalToken] = useState<string | undefined>(sessionToken);
@@ -150,45 +147,6 @@ export function DeployOutcome({
     [deployImpl, resolveToken],
   );
 
-  const runWorkflow = useCallback(async (request: WorkflowRunRequest): Promise<void> => {
-    setRunPending(true);
-    setRunOutcome(null);
-    try {
-      const token = await resolveToken();
-      if (!token) {
-        setRunOutcome({ ok: false, message: 'Unlock dashboard to launch this run.' });
-        return;
-      }
-      const response = await fetch('/api/write/workflow-runs', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-        body: JSON.stringify(request),
-      });
-      await invalidateSessionOnGovernedAuthFailure(response);
-      const data = (await response.json()) as {
-        runId?: string;
-        cards?: unknown[];
-        runners?: Array<{ status?: string }>;
-        error?: string;
-        detail?: unknown;
-      };
-      if (response.ok && data.runId) {
-        const signaled = data.runners?.filter((runner) => runner.status === 'triggered').length ?? 0;
-        const pickup = signaled > 0
-          ? ` · ${signaled} background runner${signaled === 1 ? '' : 's'} signaled.`
-          : ' · queued; no background runner was signaled.';
-        setRunOutcome({ ok: true, message: `Launched ${data.runId} · ${data.cards?.length ?? 0} stages queued${pickup}` });
-      } else {
-        const detail = typeof data.detail === 'string' ? data.detail : data.error ?? `HTTP ${response.status}`;
-        setRunOutcome({ ok: false, message: `Run refused: ${detail}` });
-      }
-    } catch (error) {
-      setRunOutcome({ ok: false, message: `Run request failed: ${error instanceof Error ? error.message : String(error)}` });
-    } finally {
-      setRunPending(false);
-    }
-  }, [resolveToken]);
-
   return (
     <Composer
       composerSession={composerSession}
@@ -201,8 +159,6 @@ export function DeployOutcome({
       onBack={onBack}
       onDeploy={runPrimary}
       deployPending={pending}
-      onRunWorkflow={runWorkflow}
-      runPending={runPending}
       renderOutcome={
         <>
           <OutcomeStrip
@@ -211,11 +167,6 @@ export function DeployOutcome({
             followUps={followUps}
             onSaveFollowUp={saveFollowUp}
           />
-          {runOutcome ? (
-            <p className={`v-composer__run-outcome${runOutcome.ok ? ' v-composer__run-outcome--ok' : ''}`} role="status">
-              {runOutcome.message}
-            </p>
-          ) : null}
         </>
       }
       renderProposalReview={composerSession ? (

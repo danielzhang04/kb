@@ -14,7 +14,10 @@ import { toDeploy } from './artifactTypes';
 import type { ComposerStreamFn } from './chatClient';
 import type { TimelineModel } from '../lib/timelineModel';
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 const REPLY = (text: string): TimelineModel => ({
   turns: [{ index: 0, model: 'claude-sonnet-5', timestamp: null, usage: null, steps: [{ kind: 'text', text }] }],
@@ -179,7 +182,7 @@ describe('Composer', () => {
     const { calls, stream } = recordingStream();
     render(<Composer
       composerSession={{
-        composerRef: 'cw-persisted', title: 'New idea', state: 'open', sourceComposerRef: null,
+        composerRef: 'cw-persisted', title: 'New idea', state: 'open', sourceComposerRef: null, agent: null,
         createdAt: '2026-07-18T00:00:00.000Z', updatedAt: '2026-07-18T00:00:00.000Z', turns: [],
       }}
       sessionToken="tok"
@@ -194,6 +197,21 @@ describe('Composer', () => {
     expect(calls[0].prompt).toMatch(/which TYPE this idea wants to become/);
   });
 
+  it('shows the durable agent identity and declaration revision for an agent workspace', () => {
+    render(<Composer
+      composerSession={{
+        composerRef: 'cw-agent', title: 'Agent · fyt-runner', state: 'open', sourceComposerRef: null,
+        agent: { id: 'fyt-runner', path: 'agents/fyt-runner.md', sourceHash: 'abcdef0123456789fedcba' },
+        createdAt: '2026-07-18T00:00:00.000Z', updatedAt: '2026-07-18T00:00:00.000Z', turns: [],
+      }}
+      onDeploy={vi.fn()}
+    />);
+
+    expect(screen.getByTestId('composer-agent-target').textContent).toContain('fyt-runner');
+    expect(screen.getByTestId('composer-agent-target').textContent).toContain('agents/fyt-runner.md');
+    expect(screen.getByTestId('composer-agent-target').textContent).toContain('abcdef012345');
+  });
+
   it('states honestly what each deploy creates', () => {
     render(<Composer initialKind="task" onDeploy={vi.fn()} onBack={vi.fn()} />);
     expect(screen.getByTestId('composer-deploy-note').textContent).toMatch(/files a queue card/i);
@@ -201,5 +219,34 @@ describe('Composer', () => {
     expect(screen.getByTestId('composer-deploy-note').textContent).toMatch(/does not run the workflow/i);
     fireEvent.click(screen.getByRole('button', { name: 'Skill' }));
     expect(screen.getByTestId('composer-deploy-note').textContent).toMatch(/does not promote or activate/i);
+  });
+
+  it('loads server-owned workflow profiles and never defaults one', async () => {
+    const onDeploy = vi.fn();
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      if (input === '/api/workflows/profiles') {
+        return { ok: true, status: 200, json: async () => ({ profiles: ['research'] }) } as Response;
+      }
+      throw new Error(`unexpected fetch: ${String(input)}`);
+    }));
+    render(<Composer initialKind="workflow" onDeploy={onDeploy} onBack={vi.fn()} />);
+
+    fireEvent.change(screen.getByLabelText('Workflow filename'), { target: { value: 'brief.md' } });
+    fireEvent.change(screen.getByLabelText('Workflow project'), { target: { value: 'kb' } });
+    fireEvent.change(screen.getByLabelText('Workflow notes'), { target: { value: 'Research the brief.' } });
+    fireEvent.change(screen.getByLabelText('Stage 1 action'), { target: { value: 'research' } });
+    fireEvent.change(screen.getByLabelText('Stage 1 target'), { target: { value: 'orgs/kb' } });
+    fireEvent.change(screen.getByLabelText('Stage 1 work order'), { target: { value: 'Research the brief.' } });
+    const deploy = screen.getByRole('button', { name: 'Save definition' }) as HTMLButtonElement;
+    expect(deploy.disabled).toBe(true);
+
+    const profile = screen.getByLabelText('Execution profile') as HTMLSelectElement;
+    await waitFor(() => expect(profile.disabled).toBe(false));
+    expect(profile.value).toBe('');
+    expect(deploy.disabled).toBe(true);
+    fireEvent.change(profile, { target: { value: 'research' } });
+    expect(deploy.disabled).toBe(false);
+    fireEvent.click(deploy);
+    expect(onDeploy).toHaveBeenCalledWith(expect.objectContaining({ relpath: 'orgs/kb/workflows/brief.md' }));
   });
 });
