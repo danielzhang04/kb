@@ -30,7 +30,7 @@ from livekit.plugins import deepgram, elevenlabs, silero
 from kbmcp import kb_tools
 from worker import anthropic_compat
 from worker import engagement as engagement_mod
-from worker import fastlane, repl, toolreg, wakeword
+from worker import fastlane, repl, state, toolreg, wakeword
 
 ATLAS = Path(__file__).resolve().parents[1]
 logger = logging.getLogger("atlas.app")
@@ -145,6 +145,26 @@ async def entrypoint(ctx: JobContext) -> None:
         room=ctx.room,
     )
 
+    # --- Unified worker state (design §2): a pure observer of the voice loop. The HTTP
+    # surface (Task 5), transcript ledger (Task 6), and done-watcher (Task 11) all consume
+    # this ONE stream. `voice` mirrors the active config voice.
+    publisher = state.StatePublisher(voice=cfg.get("active_voice"))
+
+    @session.on("conversation_item_added")
+    def _on_item(ev) -> None:
+        # Final committed turns for BOTH roles feed the transcript mirror (agent_session.py
+        # emits this at :1836 for every inserted ChatMessage). The synthetic session.say acks
+        # use add_to_chat_ctx=False so they DON'T arrive here — they're mirrored at their
+        # callsites. Non-message items (e.g. AgentHandoff) have no `role` and are skipped.
+        msg = ev.item
+        role = getattr(msg, "role", None)
+        if role not in ("user", "assistant"):
+            return
+        text = getattr(msg, "text_content", None)
+        if not text:
+            return
+        publisher.add_line("atlas" if role == "assistant" else "user", text)
+
     if TEXT_MODE:
         return  # audio-free smoke: no wake gate, no mic loop — text turns flow straight through
 
@@ -163,9 +183,11 @@ async def entrypoint(ctx: JobContext) -> None:
         if not session.input.audio_enabled:
             return False
         session.input.set_audio_enabled(False)
+        publisher.set_state(state.ASLEEP)
         logger.info("ASLEEP — mic detached, no audio leaves the PC (wake word to re-engage)")
         if announce:
             session.say("Going to sleep.", add_to_chat_ctx=False)
+            publisher.add_line("atlas", "Going to sleep.")  # audible, so it's mirrored
         return True
 
     def _engage() -> None:
@@ -175,7 +197,22 @@ async def entrypoint(ctx: JobContext) -> None:
         logger.info("ENGAGED — listening (silence timeout %ss, or say \"that's all\")",
                     cfg["engagement_timeout_s"])
         if not already:
+            publisher.start_session()             # new wake-session id per wake
+            publisher.set_state(state.LISTENING)
             session.say("Yes?", add_to_chat_ctx=False)  # audible wake ack
+            publisher.add_line("atlas", "Yes?")         # audible, so it's mirrored
+
+    @session.on("agent_state_changed")
+    def _on_agent_state(ev) -> None:
+        # design §2: THINKING = LLM turn in flight, SPEAKING = TTS playing, else LISTENING.
+        # The session's own AgentState (agent_session.py:1757) gives these directly. Guarded
+        # by ENGAGED so session chatter while ASLEEP — the "Going to sleep." ack, session
+        # warm-up ("initializing"->"listening") — never overrides the ASLEEP orb.
+        if engagement.state != engagement_mod.ENGAGED:
+            return
+        mapped = state.STATE_FROM_AGENT.get(ev.new_state)
+        if mapped is not None:
+            publisher.set_state(mapped)
 
     def _on_wake() -> None:  # called from the wake-word thread; hop to the event loop
         loop.call_soon_threadsafe(_engage)
@@ -196,6 +233,12 @@ async def entrypoint(ctx: JobContext) -> None:
             await asyncio.sleep(1.0)
             if engagement.tick() == engagement_mod.ASLEEP:
                 _sleep()
+
+    # Quiet the "Atlas is DEAF" CRITICAL on Ctrl+C: flag teardown so the wake thread's error
+    # path knows the stream tore down deliberately (a mid-run mic failure still logs loudly).
+    async def _quiet_shutdown() -> None:
+        wakeword.shutting_down.set()
+    ctx.add_shutdown_callback(_quiet_shutdown)
 
     # daemon thread: blocking mic read + onnx wake scoring, off the event loop
     threading.Thread(target=wakeword.listen, args=(_on_wake, cfg["wake_model"]),

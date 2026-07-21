@@ -27,6 +27,7 @@ openwakeword facts (installed 0.6.0, verified against site-packages):
 """
 import logging
 import os
+import threading
 from pathlib import Path
 from typing import Callable
 
@@ -37,6 +38,11 @@ ATLAS = Path(__file__).resolve().parents[1]  # same root convention as worker/ap
 FRAME_SAMPLES = 1280   # 80 ms @ 16 kHz — openwakeword's expected chunk
 SAMPLE_RATE = 16000
 THRESHOLD = 0.5
+
+# Set by app.py's shutdown callback so the wake thread's error path stays quiet on Ctrl+C.
+# A mic/model failure MID-RUN still logs CRITICAL (Atlas going silently DEAF is the real
+# incident); only teardown-time stream teardown is suppressed.
+shutting_down = threading.Event()
 
 
 def _resolve_model(model_name: str) -> tuple[str, str]:
@@ -121,6 +127,9 @@ def listen(on_wake: Callable[[], None], model_name: str = "hey_jarvis",
                         last_trigger = now          # not one per 80ms frame while scores stay high
                         on_wake()
     except Exception:
+        if shutting_down.is_set():
+            logger.info("wake listener stopped during shutdown")
+            return
         logger.critical(
             "wake-word listener died — Atlas is DEAF until the worker restarts "
             "(likely mic device conflict or model load failure)", exc_info=True)
