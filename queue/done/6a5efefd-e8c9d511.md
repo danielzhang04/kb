@@ -4,9 +4,9 @@ project: Atlas
 action: Tidy the checkpoint notes in the state file
 target: state file
 risk-tier: T2
-owner: null
-claim-token: null
-state: inbox
+owner: claude-boss@agents.local
+claim-token: f7ab34b37e5c0e0d
+state: done
 approval: null
 workflow: atlas-voice
 depends-on: []
@@ -17,3 +17,5 @@ runtime: null
 model: null
 ---
 
+## Result
+Gate C checkpoint: voice-filed card completed by the fleet (boss session). Checkpoint notes tidy per orgs/atlas/STATE.md current revision.
