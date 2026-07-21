@@ -101,6 +101,112 @@ def test_console_output_args_falls_back_loud_when_device_missing():
     assert _console_output_args(["app", "console"], cfg, resolve=lambda s: None) == []
 
 
+# --- M3: wiring-level tests for the silence-clock re-stamp (2026-07-21) ---------------------------
+
+def _engaged(timeout=120):
+    """A woken Engagement plus its controllable clock list, for wiring assertions."""
+    from worker.engagement import Engagement
+    t = [0.0]
+    e = Engagement(timeout_s=timeout, clock=lambda: t[0])
+    e.wake()
+    return e, t
+
+
+def test_apply_agent_state_restamps_only_on_speaking():
+    # The actual wiring (_on_agent_state body): SPEAKING re-opens the window; THINKING, LISTENING and
+    # idle do NOT. "listening"/"idle" are the states a finished USER turn drives the agent into, so
+    # this also proves raw user transcripts do not re-stamp. "speaking" is exactly the path a reflex
+    # reply ("repeat that") takes, so the reflex-lane->SPEAKING->re-stamp path is covered too.
+    from worker.app import _apply_agent_state
+    from worker import state
+    for agent_state, restamps in [("speaking", True), ("thinking", False),
+                                  ("listening", False), ("idle", False)]:
+        e, t = _engaged()
+        pub = state.StatePublisher()
+        t[0] = 50
+        _apply_agent_state(e, pub, agent_state)
+        t[0] = 170
+        # re-stamped at 50 -> silence is 120s (== timeout, not >) -> ENGAGED; else 170s -> ASLEEP.
+        assert (e.tick() == "ENGAGED") is restamps, agent_state
+
+
+def test_apply_agent_state_is_noop_while_asleep():
+    # Guard: agent chatter while ASLEEP (warm-up, the "Going to sleep." ack) must not re-stamp/wake.
+    from worker.app import _apply_agent_state
+    from worker.engagement import Engagement
+    from worker import state
+    e = Engagement(timeout_s=120, clock=lambda: 0.0)   # never woken -> ASLEEP
+    _apply_agent_state(e, state.StatePublisher(), "speaking")
+    assert e.state == "ASLEEP"
+
+
+# --- M2: never sleep out from under an in-flight turn --------------------------------------------
+
+def test_silence_decision_matrix():
+    from worker.app import _silence_decision
+    from worker import state
+    assert _silence_decision(state.SPEAKING) == "restamp"
+    assert _silence_decision(state.THINKING) == "defer"
+    assert _silence_decision(state.LISTENING) == "check"
+    assert _silence_decision(state.ASLEEP) == "check"
+
+
+def _simulate_watcher(e, t, timeline):
+    """Drive the _silence_watcher decision loop over [(time, orb_state), ...]; return True if a
+    sleep would have fired."""
+    from worker.app import _silence_decision
+    slept = False
+    for now, orb in timeline:
+        t[0] = now
+        d = _silence_decision(orb)
+        if d == "restamp":
+            e.interacted()
+        elif d == "defer":
+            continue
+        elif e.tick() == "ASLEEP":
+            slept = True
+    return slept
+
+
+def test_no_midturn_sleep_when_followup_lands_at_timeout():
+    # Regression (M2): a follow-up question asked at t≈118s -> THINKING at the 120s tick. The watcher
+    # must DEFER (not speak "Going to sleep." over the in-flight answer). Then Atlas answers ->
+    # SPEAKING re-stamps.
+    e, t = _engaged()
+    e.interacted()  # Atlas's wake ack at t=0
+    timeline = [(s, "LISTENING") for s in range(1, 118)]
+    timeline += [(s, "THINKING") for s in range(118, 122)]   # user asked ~118s; LLM generating
+    timeline += [(s, "SPEAKING") for s in range(122, 125)]   # Atlas answering
+    assert _simulate_watcher(e, t, timeline) is False        # never slept mid-turn
+    # sanity: WITHOUT the defer (old behavior) the 120/121s LISTENING ticks would have slept.
+    assert e.state == "ENGAGED"
+
+
+def test_no_sleep_during_long_utterance_and_full_window_after():
+    # Regression (M2): a >120s TTS utterance must not sleep mid-speech (SPEAKING stamps at onset
+    # only), and the window is measured from the END of the utterance.
+    e, t = _engaged()
+    timeline = [(s, "SPEAKING") for s in range(1, 131)]      # 130s utterance
+    timeline += [(131, "LISTENING")]
+    assert _simulate_watcher(e, t, timeline) is False        # never slept during the utterance
+    t[0] = 249; assert e.tick() == "ENGAGED"                 # 249-130 = 119 < 120 -> still awake
+    t[0] = 251; assert e.tick() == "ASLEEP"                  # 251-130 = 121 > 120 -> sleeps after end
+
+
+# --- M4: output-device pin status surfaced in /state --------------------------------------------
+
+def test_output_device_status_reports_configured_and_resolution():
+    from worker.app import _output_device_status
+    # no config -> both null
+    assert _output_device_status({}, resolve=lambda s: None) == {"configured": None, "resolved": None}
+    # configured but unresolved -> visible bad pin (resolved null)
+    assert _output_device_status({"tts_output_device": "Ghost"},
+                                 resolve=lambda s: None) == {"configured": "Ghost", "resolved": None}
+    # configured + resolved -> configured echoed, resolved is a device name (idx 0 here)
+    st = _output_device_status({"tts_output_device": "Speakers"}, resolve=lambda s: 0)
+    assert st["configured"] == "Speakers" and st["resolved"] is not None
+
+
 def test_resolve_model_custom_path_loads_by_file_and_stem_key():
     # config/hey_atlas.onnx exists in the repo -> load by full path, predict-key = file stem.
     # openwakeword keys a path-loaded single-output model by os.path.splitext(basename)[0].

@@ -47,7 +47,7 @@ def test_state_endpoint_returns_200_and_full_schema():
     body = json.loads(text)
     assert set(body.keys()) == {
         "version", "state", "since", "session_id", "voice", "transcript", "heartbeat",
-        "filed_cards",
+        "filed_cards", "output_device",
     }
     assert body["version"] == 1
     assert body["state"] == "ASLEEP"
