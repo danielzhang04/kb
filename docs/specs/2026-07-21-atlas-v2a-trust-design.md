@@ -83,16 +83,27 @@ a new channel.
   authority. Unchanged.
 - `dashboard/server/approvals/humanInbox.ts` — `classify()` surfaces any `state === 'approvals'` card
   as a **Decision** with `buttonsFor(card)` gating, and treats an `approve:*` action as an operator
-  gate via `isHumanGate()`. This is where a staged card *appears* for Daniel. **One additive change
-  in V2a** (gate Decision 2): a card carrying the `staged-by: atlas-voice` marker (§3.5) renders a
-  distinct **"voice-staged"** badge with a link to the session transcript, so Daniel can see at a
-  glance that Atlas routed it and can open the spoken-confirm trail before he taps. The classification,
-  gating channels, and commit path are otherwise untouched — the badge is presentation-only and
-  changes nothing about how the card is verified.
+  gate via `isHumanGate()`. This is where a staged card *appears* for Daniel. **Two additive changes
+  in V2a** (gate Decision 2), both presentation-only inside the existing `state === 'approvals'`
+  Decision branch — neither changes classification, gating channels, or the commit path:
+  1. **Voice-staged badge.** A card carrying the `staged-by: atlas-voice` marker (§3.5) renders a
+     distinct **"voice-staged"** badge linking to the session transcript, so Daniel can see at a glance
+     that Atlas routed it and open the spoken-confirm trail before he taps.
+  2. **Expired-stage branch** (the TTL mechanism, §3a). When the stamp's `expires-at` (§3a) is in the
+     past, the **same** `approvals` Decision instead renders **"voice stage expired — re-confirm to
+     re-stage"** and drops the voice-staged badge. Crucially the card **stays in `state: approvals`
+     and stays fully committable** — expiry kills only the *voice-stage annotation*, never the card's
+     approvability. This is why the card must remain in a real `approvals` state (there is no
+     `approvals-pending` state in the schema; a card in a non-enum state would return `null` from
+     `classify()` and vanish from the Inbox — the exact outcome V2a forbids). The badge/expired-branch
+     is presentation-only and changes nothing about how the card is verified.
 - `dashboard/server/approvals/assurance.ts` — `buttonsFor(card)` decides, purely from the
   fleet-emitted `card.meta.assurance_class`, which channels a card offers. A novel/first-ever T3
-  (`T3-novel`) or any unknown class fails closed to **signed + WebAuthn only** (no possession/tap).
-  V2a inherits this fail-closed cutline unchanged.
+  (`T3-novel`) or any unknown/absent class fails closed to **signed + WebAuthn only** (no
+  possession/tap). V2a inherits this fail-closed cutline unchanged **and depends on it**: because
+  `stage_approval` strips `assurance_class` from any card it stages or moves (§3a, MAJOR-2 fix), every
+  voice-routed card reaches `buttonsFor` with an absent class and therefore offers only signed +
+  WebAuthn — the weak possession/tap channel is never available on a voice-staged T3.
 - `scripts/webauthn_verify.py` (D2.3) + the SHA-anchored credential store (D2.12, passkey armed for
   localhost, sentinel pinned) — the actual assertion verifier. **Not read, not touched, not proxied**
   by Atlas.
@@ -103,6 +114,16 @@ injected git seam V1 already uses (pull-rebase-before-write, rejected-push→rec
 difference from `file_card` is the target state/section — see §3. No new vendor, no new key, no new
 route, no new credential. Same key-free discipline that made V1's `GET /state` provably key-free: the
 worker's process env never appears in a staged card, and `stage_approval` never reads it.
+
+**Intentional coupling to the WebAuthn channel (MINOR-b).** Writing the `staged-by`/`staged-at`/
+`expires-at` stamp (and, in `move` mode, changing `state`) **rewrites the card's introducing commit**
+on ops. This is safe **only because V2a is WebAuthn-channel-only**: the WebAuthn verifier is
+`content_hash`-bound (it re-checks the pinned card content, D2.3), and imposes **no commit-signature
+requirement** — so re-committing the card body does not invalidate a later passkey approval. The same
+rewrite **would break the `signed` channel** (which binds to the commit signature/object). V2a
+therefore deliberately never routes a staged card to the signed channel; this coupling is stated so a
+future V2b that wants signed-channel voice-staging knows it must revisit the stamp mechanism rather
+than inherit it silently.
 
 ## 3. The `stage_approval` MCP tool (new — the only new surface)
 
@@ -144,9 +165,14 @@ stage_approval(card_id, mode, readback_ack, session_transcript_ref) -> { staged:
    `session_transcript_ref` linking to the voice transcript ledger (V1 §5), so every staging (and
    every `move`) has a retained spoken-confirm trail alongside it. The `staged-by` marker also drives
    the Human Inbox "voice-staged" badge (§2, gate Decision 2).
-6. **Supervised, per contract.** `orgs/atlas/contract.md` classes filing-on-behalf-of-the-user as
-   *queues-for-me* (supervised until graded). Staging is the same posture: it queues a decision *for
-   the human*, it does not act. It never appears in `acts-alone`.
+6. **Supervised, per contract.** The Atlas contract (`orgs/atlas-prep/contract.md` — the only Atlas
+   contract present in `main`; the `orgs/atlas/` stub and its contract live on the `ops` branch, and
+   the exact file Daniel edits is whichever is canonical at build time — note the V1 "Hands" design
+   §3/§6 cites the not-yet-in-`main` `orgs/atlas/contract.md`, the same mis-citation this fixes)
+   classes filing-on-behalf-of-the-user as *queues-for-me* (supervised until graded). Staging is the
+   same posture: it queues a decision *for the human*, it does not act. It never appears in
+   `acts-alone`. **Move-mode additionally requires a human contract amendment before it may ship —
+   see §6a (build prerequisite).**
 
 ### 3a. The `move` mode — the one permitted transition, with guardrails
 
@@ -162,15 +188,30 @@ Guardrails (all binding):
   action-verb + target echo-confirm (§5). A misheard or ambient utterance cannot move a card because
   it cannot satisfy the echo-confirm; this is a named threat-model row (§7 #10).
 - **T3-only, same as surface mode** (contract item 3): a move is refused for any non-T3 card.
+- **`assurance_class` is stripped, never trusted (MAJOR-2 fix).** `buttonsFor()` trusts
+  `card.meta.assurance_class` as if `promotion.decide()` emitted it — but move-mode bypasses the
+  `working → approvals` promotion path where that value is authoritatively minted, so a card filed to
+  `inbox` with a **self-declared** `risk-tier: T3` + `assurance_class: T3-established` would otherwise
+  open the weak **possession** button on a T3, violating D2.13. Therefore `stage_approval`
+  **strips/removes `assurance_class`** from every card it stages *or* moves (both modes), forcing
+  `buttonsFor` to fail closed to **signed + WebAuthn only** (its rule for an absent/unknown class).
+  Voice can never launder a card into a weaker channel. (Threat row §7 #2 covers this; note F4 in
+  `approvals.py` is *not* a recompute — see §7 #2 — so this strip is the real protection, not a
+  backstop.)
 - **Audited with transcript reference** (contract item 5): the moved card carries `staged-by:
   atlas-voice` + `session_transcript_ref`, so the transition is never silent.
-- **Reverts are never silent** (gate Decision 2 TTL, §8-2). A staged approval carries a **15-minute
-  TTL**; if Daniel has not tapped within the window, the card does **not** auto-revert to `inbox` and
-  is **never deleted**. Instead it returns to an *approvals-pending* resting state with an explicit
-  Human Inbox notice ("voice-staged approval expired, re-confirm to re-stage"), so an expired stage is
-  always visible and recoverable, never a card that quietly vanished from the gate. (The exact
-  mechanism — a TTL field the Human Inbox reads vs. a swept re-classification — is the one residual
-  implementation question, §8 residual.)
+- **TTL is concrete and visibility-safe (MAJOR-1 fix).** A staged approval carries a **15-minute TTL**
+  realized as a `staged-at` / `expires-at` pair in the stamp; **the card STAYS in `state: approvals`
+  the entire time** — it is never moved to any other state and never deleted. When `expires-at` passes,
+  `classify()`'s new expired-stage branch (§2) renders it as **"voice stage expired — re-confirm to
+  re-stage"** while it **remains a fully committable `approvals` Decision**. Expiry kills only the
+  *voice-stage annotation* (the badge and the readback's freshness), never the card's approvability or
+  its presence in the Inbox. This is the pinned mechanism, chosen deliberately: a status *annotation on
+  a still-`approvals` card* is the only design that keeps the card both **visible** (a non-enum
+  `approvals-pending` state would make `classify()` return `null` and the card would vanish — the
+  forbidden outcome) **and** honestly expirable (leaving it a normal committable card with no
+  annotation would make "expiry" meaningless). Re-staging simply refreshes `staged-at`/`expires-at`
+  after a fresh readback + echo-confirm.
 
 **What `stage_approval` explicitly may NOT do:** commit or verify an approval; call
 `/api/approvals/verify`; move a card in **any** direction other than `inbox → approvals` (never
@@ -230,6 +271,18 @@ parking the wrong card at the boundary. Mirrors and tightens V1's `file_card` re
 4. **The readback is a courtesy, not a credential.** It never substitutes for the passkey. Even a
    perfect readback + confirm only *stages*; Daniel's tap is still required to commit. This asymmetry
    is the whole design.
+5. **The confirm must be a distinct human turn strictly AFTER the readback TTS completes (MAJOR-4
+   fix).** Atlas speaks the verb+target readback in the *same audio modality* the confirm is captured
+   in; with the mic live during TTS, Atlas could otherwise transcribe **its own readback** as the
+   confirm — echo-matching verb+target perfectly, with no human in the loop. Invariant: during the
+   readback the worker is **mic-deaf for confirm capture** — STT transcripts produced while state is
+   `SPEAKING` (and until TTS playback fully completes) are **discarded and can never satisfy
+   `readback_ack`**. The confirm is only accepted as a *new* `LISTENING`-state user turn that begins
+   after playback ends. Any overlap between playback tail and the candidate confirm, or ambiguity
+   about which turn it belongs to, forces a **re-ask** — never a stage. (This is the audio-loop
+   analogue of the anti-self-approval rule; threat row §7 #11.) On hardware without acoustic echo
+   cancellation (delta §11.3 console mode), this discard-during-SPEAKING rule is the load-bearing
+   guard, not AEC.
 
 ## 6. Prerequisite gates (in plan order)
 
@@ -251,6 +304,30 @@ discipline. These are **binding gates**, not aspirations:
 - **(P3) Desk checkpoint = end-to-end spoken staging + passkey commit of one real gated action.**
   The closing human gate (§9). Daniel personally verifies the full loop on a genuine T3 action.
 
+### 6a. Build prerequisite — human contract amendment for move-mode (MAJOR-3b)
+
+Move-mode performs a card-state **transition** (`inbox → approvals`). The Atlas contract's `acts-alone`
+list does **not** contain any transition, and per `governance/risk-tiers.md` contracts are
+**human-edited** (agents draft, Daniel commits — the same rule that governs the risk-tier carve-outs).
+Therefore **the wave MUST NOT ship move-mode until Daniel has hand-amended the Atlas contract.**
+Surface-mode (staging a card already in `approvals/`) does not transition state and may build without
+this amendment; only the `move` capability is gated on it.
+
+Proposed contract line(s) for Daniel to add to the Atlas contract (`orgs/atlas-prep/contract.md` in
+`main`, or the `orgs/atlas/contract.md` stub on `ops` — whichever is canonical at build time), under a
+new bounded clause (not a blanket `acts-alone` entry):
+
+> **## voice-staging (V2a, human-directed)**
+> * Atlas may move a card `inbox → approvals` **only** on Daniel's live spoken direction, **only**
+>   after a full readback and a verb+target echo-confirm captured as a distinct post-TTS human turn,
+>   **only** for `risk-tier: T3` targets, and **only** from a live engaged voice turn (never
+>   proactive/ambient/timer). Every such move strips `assurance_class`, is stamped `staged-by:
+>   atlas-voice` + a session-transcript reference, and is auditable. This is the *sole* card-state
+>   transition Atlas may perform; it stages only and **never commits** an approval — the WebAuthn
+>   passkey commit is unchanged and human-only.
+
+Until that clause is committed by Daniel, move-mode stays out of scope and only surface-mode ships.
+
 ## 7. Threat-model sketch — ways the loop could degrade the T3 bar, and the invariant that blocks each
 
 The design's job is to make it *structurally impossible* for the voice side to weaken the passkey
@@ -259,7 +336,7 @@ bar. Enumerated failure modes and the blocking invariant for each:
 | # | Degradation path | Blocking invariant |
 |---|---|---|
 | 1 | **Voice commits directly** — `stage_approval` (or a sibling) writes an `approval` field / verified record. | The tool writes only card *state/location*; it rejects any `approval`/`verified`/`assurance` input and has no code path to the verifier. Only `scripts/webauthn_verify.py` behind the passkey mints an approval. (§3.1, §3.2) |
-| 2 | **Staging forges a stronger assurance class** to unlock a weaker channel (e.g. stamps `T3-established` to surface a possession/tap button on a novel T3). | `assurance_class` is fleet-emitted (`promotion.decide()`), read-only to the dashboard; `buttonsFor` fails closed to signed+WebAuthn for anything it doesn't recognize, and `verify_telegram_approval`'s F4 check re-enforces "no possession for novel T3" dispatcher-side. `stage_approval` never sets `assurance_class`. |
+| 2 | **`assurance_class` laundering** — a card is filed to `inbox` with a **self-declared** `risk-tier: T3` + `assurance_class: T3-established`, then voice-moved to `approvals`; `buttonsFor` trusts the class and opens the weak **possession** button on a T3 (D2.13 violation). Move-mode is the live vector because it bypasses the `working → approvals` promotion path where `promotion.decide()` authoritatively mints the class. | **`stage_approval` STRIPS `assurance_class` from every card it stages or moves** (§3a), so it always reaches `buttonsFor` absent → fail-closed to **signed + WebAuthn only**. This strip is the *primary* protection, not a backstop: `approvals.py`'s F4 is **not** a dispatcher-side recompute — it is a self-declared-frontmatter-flag check for the novel-only case, explicitly labelled defense-in-depth by its own `SECURITY-TODO(wave3/N2)` (novelty "MUST be recomputed at verify time … Until then … defense-in-depth only"). So the loop must not lean on F4; the strip closes the hole at the source. |
 | 3 | **Mishear / wrong card staged** — Atlas parks the wrong action at the boundary, and Daniel taps trusting the readback. | Full readback of action/target/risk-tier/scope from the card's own frontmatter + action-echo confirm gate `readback_ack` (§5); and the passkey commit shows the pinned card view — Daniel still sees what he is signing, independent of the spoken readback. |
 | 4 | **Replay / spoofed voice** confirms a stage (someone in the room, a recording, TTS synthesis). | Staging is not authentication — a spoofed confirm can at worst *stage* a card; it cannot commit. The commit requires the WebAuthn assertion bound to Daniel's authenticator, which a voice replay cannot produce. (§4 refutation, §5.4) |
 | 5 | **Weak-channel smuggling** — a staged card offers or routes to Telegram/possession for a T3. | `buttonsFor` + `POSSESSION_ADMISSIBLE` gate channels from assurance class, not from who staged; a T3-novel card shows only signed+WebAuthn. `stage_approval` cannot alter that. D2.13 rule holds: weak transport MUST NOT authorize T3. |
@@ -267,7 +344,8 @@ bar. Enumerated failure modes and the blocking invariant for each:
 | 7 | **State-jump** — staging transitions a card past `approvals` (to `done`/executed), skipping the gate. | The tool's only legal target is `state: approvals` / `queue/approvals/`; it may not write `queue/done/`, set `owner`, or transition beyond the boundary. Anything else voids the trust floor (wake-me). (§3 "may NOT do") |
 | 8 | **Unattended staging loop** — Atlas stages on its own initiative / on a timer, flooding the gate. | Staging happens only inside an engaged session after a spoken readback+confirm; there is no proactive/timer path in V2a (proactivity is V2b, explicitly out). Contract keeps staging *queues-for-me*, never `acts-alone`. |
 | 9 | **Audit gap** — a staged (or mis-staged) card leaves no trail. | Every stage is stamped `staged-by: atlas-voice` + `session_transcript_ref` into the retained voice transcript ledger (§3.5); the commit path already writes an ops audit row on success (`routes.ts` FINDING 3). |
-| 10 | **Unintended `inbox → approvals` move** — ambient speech, a recording, or a misheard command triggers the new move transition (gate Decision 1) and parks a card at the gate Daniel never meant to advance. | The move requires the same full readback + **action-verb + target echo-confirm** (§5) — ambient/misheard input cannot produce the specific two-part echo, and ambiguity forces a re-ask, not a move; the move is **T3-target-only** (a non-T3 card cannot be moved at all); it fires **only** from a live engaged tool loop (no proactive/ambient/timer path exists in V2a); and every move is **audited** with `staged-by: atlas-voice` + transcript reference, so an unintended move is always visible and reversible (and its 15-min TTL returns it to approvals-pending with an Inbox notice, never a silent revert or delete — §3a). Worst case it *stages* a T3 card; it still cannot commit — the passkey is required. |
+| 10 | **Unintended `inbox → approvals` move** — ambient speech, a recording, or a misheard command triggers the new move transition (gate Decision 1) and parks a card at the gate Daniel never meant to advance. | The move requires the same full readback + **action-verb + target echo-confirm** (§5) — ambient/misheard input cannot produce the specific two-part echo, and ambiguity forces a re-ask, not a move; the move is **T3-target-only** (a non-T3 card cannot be moved at all); it fires **only** from a live engaged tool loop (no proactive/ambient/timer path exists in V2a); and every move is **audited** with `staged-by: atlas-voice` + transcript reference, so an unintended move is always visible and reversible (and its 15-min TTL leaves the card in `approvals` but marks the voice stage expired with an Inbox notice, never a silent revert or delete — §3a). Worst case it *stages* a T3 card; it still cannot commit — the passkey is required. |
+| 11 | **Self-audio approval loop** — Atlas's readback TTS is captured by the live mic and transcribed as the verb+target confirm, satisfying `readback_ack` with **no human turn** (acute in console mode, which has no AEC — delta §11.3). | STT transcripts produced while state is `SPEAKING` (and until playback fully completes) are **discarded and can never set `readback_ack`** (§5.5); the confirm is accepted only as a *new* `LISTENING` user turn after the readback ends, and any playback/confirm overlap forces a re-ask. The self-transcribed readback is structurally ineligible as a confirm. And even a *successful* spoofed confirm only stages — the passkey still commits. |
 
 The invariant that subsumes the table: **voice can only ever move a card *to* the boundary — and only
 that one `inbox → approvals` direction, only on Daniel's echo-confirmed spoken direction; crossing the
@@ -286,22 +364,27 @@ recorded here with rationale so the plan is written against fixed answers, not a
    §0/§3a: *Atlas performs exactly one transition class — `inbox → approvals` — only on Daniel's
    spoken direction, never autonomously.* Guardrails (all in §3a): the move requires the same full
    readback + action-echo confirm; it is audited with a transcript reference; it never auto-triggers
-   from a proactive/ambient context (none exist in V2a); and a moved-then-untapped/expired card does
-   **not** silently revert — expiry returns it to an approvals-pending resting state with an Inbox
-   notice, never a delete. *Rationale:* the highest-value voice flow is "advance this to the gate for
-   me," which needs the move; the risk (an unintended move) is contained by the echo-confirm + T3-only
-   + audit invariants (new threat row §7 #10), and the passkey still commits, so voice never crosses
-   the T3 boundary.
+   from a proactive/ambient context (none exist in V2a); it strips `assurance_class` so it can never
+   open a weaker channel (§3a, threat §7 #2); and a moved-then-untapped/expired card does **not**
+   silently revert — it stays in `approvals` (a real schema state) with an expired-stage Inbox notice,
+   never a delete (§3a, MAJOR-1 fix). *Rationale:* the highest-value voice flow is "advance this to the
+   gate for me," which needs the move; the risk (an unintended move) is contained by the echo-confirm +
+   T3-only + assurance-strip + audit invariants (threat rows §7 #2, #10), and the passkey still commits,
+   so voice never crosses the T3 boundary. **Move-mode is gated on a human contract amendment before it
+   ships (§6a).**
 2. **Which states/tiers may be targeted → T3 gated targets only (Decision 2).** T1/T2 are approvable
    over weaker channels already, so voice-staging them adds no value and needlessly widens the surface.
    The tool refuses any non-T3 card (§3 item 3). *(Answers draft Q1.)*
 3. **May Atlas stage a card it did not file → yes** (Decision 1), including fleet-produced merge cards
    and workflow-launch approvals. Staging is routing, not authoring (§3 item 3). *(Answers draft
    Q2/Q9.)*
-4. **Staging-card TTL → 15-minute auto-expiry** (Decision 2). If Daniel has not tapped within 15 min,
-   the staged approval expires; it does **not** auto-revert to `inbox` and is **never deleted** — it
-   returns to an approvals-pending resting state with an explicit Human Inbox notice, so an expired
-   stage is always visible and recoverable (§3a). *(Answers draft Q3.)*
+4. **Staging-card TTL → 15-minute auto-expiry** (Decision 2). Realized concretely (MAJOR-1 fix) as a
+   `staged-at`/`expires-at` stamp on a card that **stays in `state: approvals`**; when `expires-at`
+   passes, `classify()`'s new expired-stage branch renders "voice stage expired — re-confirm to
+   re-stage" while the card **remains a fully committable Decision**. Expiry kills only the voice-stage
+   annotation, never the card's approvability, and never removes it from the Inbox (an
+   `approvals-pending` state does not exist in the schema and would make the card vanish). Not
+   auto-reverted to `inbox`, never deleted (§2, §3a). *(Answers draft Q3.)*
 5. **Readback contents → action verb + target + risk tier + scope** (Decision 2), drawn verbatim from
    the card's frontmatter (§5.1). *(Answers draft Q4.)*
 6. **Confirm strictness → echo must name verb + target; ambiguity → re-ask** (Decision 2). A bare
@@ -311,25 +394,39 @@ recorded here with rationale so the plan is written against fixed answers, not a
    an unreachable-ops git rejection, or a failing P1 sweep is both spoken back to Daniel and surfaced
    as a Human Inbox item, never a silent drop. *(Answers draft Q5.)*
 8. **Human Inbox presentation → distinct "voice-staged" badge + transcript link** (Decision 2). A
-   card carrying `staged-by: atlas-voice` renders a distinct badge linking to the session transcript;
-   this is the one additive `humanInbox.ts` change in V2a (§2). *(Answers draft Q6.)*
+   card carrying `staged-by: atlas-voice` renders a distinct badge linking to the session transcript.
+   This is one of **two** additive `humanInbox.ts` changes in V2a (§2) — the other is the
+   expired-stage branch that realizes the TTL (MAJOR-1); both are presentation-only inside the existing
+   `approvals` Decision branch. *(Answers draft Q6.)*
 9. **The `inbox → approvals` move is permitted** (Decision 1), resolving the draft's sharpest boundary
    question (Q7): yes, with the §3a guardrails and the honest §0 reframing of the transition invariant.
 
-### Residual implementation questions (non-blocking; for the plan, not a fresh gate)
+### 8a. T3-surface review amendments (2026-07-21, SHIP-WITH-FIXES)
 
-- **TTL mechanism.** *How* the 15-min expiry is realized — a `staged-at`/`expires-at` field the Human
-  Inbox reads and renders as expired, vs. a periodic sweep that re-classifies the card — is an
-  implementation choice for the plan. Either satisfies Decision 2's "never silently revert or delete"
-  requirement; no TTL machinery exists in the read code today, so this is a build detail, not a design
-  gap.
-- **"Scope" field composition.** The readback's *scope* signal (Decision 2) will be assembled from
-  whatever the card frontmatter carries — diff size, test state, PR number as available — with a
-  graceful fallback when a field is absent. Exact assembly is a plan-time detail; the four required
-  fields themselves are fixed.
+An independent T3-surface review after the gate confirmed the core invariant (voice never commits;
+the WebAuthn path is untouched and correctly cited) and returned four MAJORs + two MINORs, all folded
+in above: **(M1)** the TTL is pinned to a `staged-at`/`expires-at` stamp on a card that stays in the
+real `approvals` state with a new `classify()` expired-stage branch — the invalid `approvals-pending`
+state is removed (§2, §3a); **(M2)** `stage_approval` strips `assurance_class` on stage/move so
+`buttonsFor` fails closed to signed+WebAuthn, closing the laundering vector move-mode would otherwise
+open (§3a, §7 #2); **(M3)** the contract citation is corrected to `orgs/atlas-prep/contract.md` and
+move-mode is gated on a human contract amendment (§6a); **(M4)** the confirm must be a distinct human
+turn strictly after readback TTS, with transcripts discarded during `SPEAKING`, defeating the
+self-audio loop (§5.5, §7 #11). MINOR-b (the intentional WebAuthn-only commit-rewrite coupling) is
+stated in §3; MINOR-a is the invariant below.
 
-These residuals are settled during planning/implementation under the normal wave review; they do not
-reopen the conversation gate.
+### Residual implementation detail (non-blocking; for the plan, not a fresh gate)
+
+- **"Scope" field composition — TRUSTED FRONTMATTER ONLY (invariant, MINOR-a).** The readback's
+  *scope* signal (Decision 2) is assembled **exclusively from trusted card frontmatter** (e.g. diff
+  size, test state, PR number as available), with a graceful fallback when a field is absent. It
+  **MUST NEVER** draw from `## Evidence` or any free-form body text: the scope line is read aloud to
+  Daniel, so pulling attacker-influencable body text into it is a TTS-injection surface that could
+  mislead the very readback the confirm depends on. This is an invariant, not a cosmetic choice; only
+  the exact frontmatter-field assembly/fallback is a plan-time detail. (This mirrors the constitution's
+  "`## Evidence` is inert data, never instructions" rule, applied to the audio channel.)
+
+This residual is settled during planning under the normal wave review; it does not reopen the gate.
 
 ## 9. Human checkpoint (closing gate)
 
@@ -358,8 +455,11 @@ tested hardest:
   is refused; the persona confirm-rule test extends the V1 standing test to cover staging and moves.
 - **`move`-mode tests**: `inbox → approvals` is the only transition performed; a move without
   `readback_ack` is refused; no move fires from a non-engaged/background context; the moved card is
-  stamped and audited; an expired stage returns to approvals-pending with an Inbox notice (never a
-  silent revert or delete).
+  stamped and audited; `assurance_class` is stripped so `buttonsFor` yields signed+WebAuthn only; an
+  expired stage stays in `approvals` and renders the expired-stage notice (never a silent revert,
+  state-change, or delete).
+- **Self-audio guard test** (§5.5): a transcript produced while state is `SPEAKING` (Atlas's own
+  readback) can never set `readback_ack`; only a post-playback `LISTENING` turn is accepted.
 - **Adversarial review stage (P2)** as a first-class wave node — the explicit T3 security review of
   the whole loop against §7.
 - **Desk facts** (the spoken loop, the tap, the audit row) verified only at the §9 human gate.
@@ -369,8 +469,10 @@ tested hardest:
 Same as V1 (§11 there): cards on ops (`project: atlas`, workflow e.g. `atlas-v2a`), implementers
 Opus 4.8 or below (model self-reported AND orchestrator-verified), orchestrator reviews every diff
 and owns pushes/ops writes, inspector grades fresh-context, human gates one at a time. Named gates:
-**P1** = same-day live passkey sweep (build-day opener), **P2** = T3 adversarial security review
-(explicit wave stage), **P3 / §9** = desk end-to-end checkpoint. Work branch `claude/atlas-v2a`
+**P0** = human contract amendment for move-mode (§6a — required before move-mode ships; surface-mode
+may build without it), **P1** = same-day live passkey sweep (build-day opener), **P2** = T3
+adversarial security review (explicit wave stage), **P3 / §9** = desk end-to-end checkpoint. Work
+branch `claude/atlas-v2a`
 (worktree under `C:/Users/danie/kb-worktrees/`), one PR at wave end unless review says split. This
 design doc was the conversation-gate artifact; **Daniel settled its design decisions at the gate on
 2026-07-21** (§8). The wave above still awaits Daniel's explicit build go; when given, it begins
