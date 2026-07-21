@@ -132,11 +132,11 @@ class DoneWatcher:
             card_state = self._card_state(card_id)
             if card_state in DONE_STATES:
                 announcements.append(Announcement(
-                    card_id, "success", f"The card to {label} is done."))
+                    card_id, "success", f"Your card — {label} — is done."))
             elif card_state in FAILURE_STATES:
                 announcements.append(Announcement(
                     card_id, "failure",
-                    f"The card to {label} came back {card_state} — it didn't complete."))
+                    f"Your card — {label} — came back {card_state}. It didn't complete."))
             elif card_state is None:
                 # Missing everywhere: retain, but bound so a permanent ghost can't poll forever.
                 misses = int(info.get("misses", 0)) + 1
