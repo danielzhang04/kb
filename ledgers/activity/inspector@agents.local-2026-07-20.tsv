@@ -11,3 +11,4 @@ card_id	inspector_id	kind	project	task_type	tier	ts	worker
 6a5ec41c-caabe932	inspector@agents.local	grade	atlas	dashboard Atlas view + global mini-orb	T2	2026-07-21T01:34:53.501853+00:00	claude/atlas
 6a5ec41c-216ad53f	inspector@agents.local	grade	atlas	transcript ledger on ops	T2	2026-07-21T01:51:55.234773+00:00	claude/atlas
 6a5ec41c-216ad53f	inspector@agents.local	grade	atlas	transcript ledger on ops	T2	2026-07-21T01:57:14.829568+00:00	claude/atlas
+6a5ec41c-d8332ebf	inspector@agents.local	grade	atlas	voice tools: file_card / launch_workflow / credit_remaining	T2	2026-07-21T03:50:30.523782+00:00	claude/atlas
