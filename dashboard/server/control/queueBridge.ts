@@ -20,7 +20,8 @@
  */
 import { defaultPyRunner, type PyRunner } from '../write/launch.ts';
 import { assertFleetRunnable, type PreambleRunner } from '../write/preambleGate.ts';
-import { DASHBOARD_EXECUTOR_SUBJECT } from './activation.ts';
+import { DASHBOARD_EXECUTOR_SUBJECT, createInternalServiceCaller } from './activation.ts';
+import type { InternalServiceCaller } from '../auth/session.ts';
 import { parseWorkflowDef, type WorkflowDef } from '../workflows/defs.ts';
 import { compileWorkflowDef } from '../workflows/compile.ts';
 import { loadRuntimeSkillRegistry, workflowProfileIds, type RuntimeSkillRegistry } from './environment.ts';
@@ -396,6 +397,14 @@ export interface DispatchCardDeps {
   reconcile?: (ctx: SurfaceContext, card: OwnedCard, runRef: string) => Promise<void>;
   /** The shared preamble seam re-asserted before dispatch (D7). Default: the real `scripts/preamble.py`. */
   runPreamble?: PreambleRunner;
+  /**
+   * Construct the sanctioned internal service caller presented to `executeApprovedLaunch` in lieu of a
+   * WebAuthn session token (the bridge is a daemon-internal dispatcher with no human session). Default: the
+   * activation-gated `createInternalServiceCaller`, which THROWS with the gate off — so a bridge ever driven
+   * gate-off fails closed instead of launching unauthenticated. Tests inject a stub to drive dispatch
+   * hermetically without the process-wide gate.
+   */
+  internalCaller?: (subject: string) => InternalServiceCaller;
 }
 
 export interface DispatchCardResult {
@@ -441,6 +450,7 @@ export async function dispatchClaimedCard(
   const snapshotHash = deps.snapshotHash ?? proposalSnapshotHash;
   const launch = deps.launch ?? executeApprovedLaunch;
   const reconcile = deps.reconcile ?? defaultReconcileTriggerCard;
+  const internalCaller = deps.internalCaller ?? createInternalServiceCaller;
 
   // D7 belt-and-suspenders: re-assert the shared preamble (STOP file + budget) immediately before
   // dispatch, even though the poll tick already gated on it — a STOP dropped mid-batch must halt the very
@@ -525,7 +535,11 @@ export async function dispatchClaimedCard(
     revision,
     storedHash: contentHash,
     snapshot,
+    // The bridge has no human WebAuthn session. It authorizes the launch of the run it just imported and
+    // approved under its OWN subject with a gated internal service caller (constructible only when the
+    // activation gate is on), NOT a token. The HTTP launch surfaces still require a WebAuthn token.
     sessionToken: undefined,
+    internalService: internalCaller(subject),
     idempotencyKey,
     predecessorRunRef: null,
     expectedPredecessorVersion: -1,

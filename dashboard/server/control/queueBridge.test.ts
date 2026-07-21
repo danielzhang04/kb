@@ -298,6 +298,9 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
   const owned = { id: '6a5ed0b7-56cc254c', path: 'queue/inbox/6a5ed0b7-56cc254c.md', state: 'inbox' };
 
   const okPre = () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' });
+  // A stub internal service caller so unit tests drive dispatch hermetically without flipping the
+  // process-wide activation gate (the default `createInternalServiceCaller` throws gate-off, by design).
+  const stubCaller = (subject: string) => ({ kind: 'internal-service-caller' as const, subject });
   const commonDeps = (over: Record<string, unknown> = {}) => ({
     readCard: () => baseCard(),
     loadRegistry: () => ({} as never),
@@ -306,6 +309,7 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
     validate: (() => ({ ok: true, value: proposal })) as never,
     snapshotHash: () => 'hash-abc',
     runPreamble: okPre,
+    internalCaller: stubCaller,
     ...over,
   });
 
@@ -346,6 +350,46 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
     expect(input.idempotencyKey).toBe('queue-bridge:6a5ed0b7-56cc254c');
     expect(input.predecessorRunRef).toBeNull();
     expect(reconcile).toHaveBeenCalledWith(ctx, owned, 'run-1');
+  });
+
+  it('dispatches with NO ambient WebAuthn session: passes an internal service caller, sessionToken undefined (the check-3 fix)', async () => {
+    // This is the exact previously-failing acceptance path: the bridge is a daemon-internal dispatcher with
+    // no human session. It must authorize the launch with a gated internal service caller in lieu of a
+    // WebAuthn token — never by supplying a token — so launchWorkflowRun's auth gate is satisfied without
+    // one. Before the fix the bridge passed sessionToken: undefined and NO caller, so the launch returned
+    // 500 unauthenticated / "no WebAuthn session token supplied".
+    const { ctx } = fakeCtx();
+    const launch = vi.fn().mockResolvedValue({ status: 201, body: { runRef: 'run-1', cards: [] } });
+    const res = await dispatchClaimedCard(ctx, owned, commonDeps({ launch: launch as never, reconcile: vi.fn() }));
+    expect(res.outcome).toBe('launched');
+    const input = launch.mock.calls[0][2];
+    expect(input.sessionToken).toBeUndefined();
+    expect(input.internalService).toEqual({ kind: 'internal-service-caller', subject: 'dashboard-engine' });
+  });
+
+  it('default internalCaller is the activation-gated factory: fails closed when the gate is off, constructs a caller when on', async () => {
+    // No internalCaller injected: the real createInternalServiceCaller default runs. It reads the process
+    // gate, so the bridge cannot launch unauthenticated with the gate off (fail-closed), and threads a
+    // valid caller with the gate on.
+    const { ctx } = fakeCtx();
+    const launch = vi.fn().mockResolvedValue({ status: 201, body: { runRef: 'run-1', cards: [] } });
+    // strip the stub so the production default is exercised
+    const depsNoStub = () => { const d = commonDeps({ launch: launch as never, reconcile: vi.fn() }); delete (d as Record<string, unknown>).internalCaller; return d; };
+
+    const saved = process.env.DASHBOARD_EXECUTION_ACTIVATED;
+    try {
+      delete process.env.DASHBOARD_EXECUTION_ACTIVATED;
+      await expect(dispatchClaimedCard(ctx, owned, depsNoStub())).rejects.toThrow(/activation gate/);
+      expect(launch).not.toHaveBeenCalled();
+
+      process.env.DASHBOARD_EXECUTION_ACTIVATED = '1';
+      const res = await dispatchClaimedCard(ctx, owned, depsNoStub());
+      expect(res.outcome).toBe('launched');
+      expect(launch.mock.calls[0][2].internalService).toEqual({ kind: 'internal-service-caller', subject: 'dashboard-engine' });
+    } finally {
+      if (saved === undefined) delete process.env.DASHBOARD_EXECUTION_ACTIVATED;
+      else process.env.DASHBOARD_EXECUTION_ACTIVATED = saved;
+    }
   });
 
   it('does NOT reconcile the trigger card on a 202 activationGated launch', async () => {
