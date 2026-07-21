@@ -64,6 +64,8 @@ def build(tmp_path, ops_mutate=None):
         ops_mutate(wc)
         _commit_all(wc, "ops content")
     _git(wc, "push", "-q", "-u", "origin", "ops")
+    # Leave the clone on main so ops is free to be checked out as a worktree.
+    _git(wc, "checkout", "-q", "main")
     _git(wc, "fetch", "-q", "origin")
     return wc
 
@@ -128,3 +130,138 @@ def test_check_ignores_non_daemon_dirs(tmp_path):
     report = sdd.check(wc, sdd.DAEMON_READ_DIRS, ops_root=None,
                        main_ref="origin/main", ops_ref="origin/ops")
     assert not sdd.has_drift(report), report
+
+
+# --- check() in disk mode (ops worktree present) ----------------------------
+def _add_ops_worktree(wc, path):
+    _git(wc, "worktree", "add", "-q", str(path), "ops")
+    return Path(path)
+
+
+def test_check_disk_clean(tmp_path):
+    wc = build(tmp_path)
+    ops_root = _add_ops_worktree(wc, tmp_path / "ops_wt")
+    report = sdd.check(wc, sdd.DAEMON_READ_DIRS, ops_root=ops_root,
+                       main_ref="origin/main")
+    assert report["mode"].startswith("disk")
+    assert not sdd.has_drift(report), report
+
+
+def test_check_disk_content_differs(tmp_path):
+    def mutate(wc):
+        _write(wc, "orgs/foo/workflows/run.md", "ops-diverged workflow\n")
+    wc = build(tmp_path, mutate)
+    ops_root = _add_ops_worktree(wc, tmp_path / "ops_wt")
+    report = sdd.check(wc, sdd.DAEMON_READ_DIRS, ops_root=ops_root,
+                       main_ref="origin/main")
+    assert report["differs"] == ["orgs/foo/workflows/run.md"]
+    assert sdd.has_drift(report)
+
+
+def test_check_disk_main_only(tmp_path):
+    def mutate(wc):
+        _git(wc, "rm", "-q", "agents/fyt.md")
+    wc = build(tmp_path, mutate)
+    ops_root = _add_ops_worktree(wc, tmp_path / "ops_wt")
+    report = sdd.check(wc, sdd.DAEMON_READ_DIRS, ops_root=ops_root,
+                       main_ref="origin/main")
+    assert report["main_only"] == ["agents/fyt.md"]
+
+
+def test_check_disk_falls_back_when_ops_root_missing(tmp_path):
+    # A nonexistent ops_root must fall back to origin/main vs origin/ops refs
+    # (this is the cloud path — no worktree present).
+    wc = build(tmp_path)
+    missing = tmp_path / "does-not-exist"
+    report = sdd.check(wc, sdd.DAEMON_READ_DIRS, ops_root=missing,
+                       main_ref="origin/main", ops_ref="origin/ops")
+    assert report["mode"].startswith("refs")
+    assert not sdd.has_drift(report)
+
+
+# --- sync() (ops-write path) ------------------------------------------------
+def _origin_ops_has(wc, path):
+    _git(wc, "fetch", "-q", "origin")
+    r = _git(wc, "cat-file", "-e", f"origin/ops:{path}", check=False)
+    return r.returncode == 0
+
+
+def test_sync_pushes_main_content_to_ops(tmp_path):
+    # ops is missing run.md and has stale agents/fyt.md; sync fixes both.
+    def mutate(wc):
+        _git(wc, "rm", "-q", "orgs/foo/workflows/run.md")
+        _write(wc, "agents/fyt.md", "STALE ops agent\n")
+    wc = build(tmp_path, mutate)
+    ops_root = _add_ops_worktree(wc, tmp_path / "ops_wt")
+
+    result = sdd.sync(ops_root, sdd.DAEMON_READ_DIRS, ops_root, main_ref="origin/main")
+    assert result["committed"] and result["pushed"]
+
+    # origin/ops now carries main's content.
+    assert _origin_ops_has(wc, "orgs/foo/workflows/run.md")
+    _git(wc, "fetch", "-q", "origin")
+    fixed = _git(wc, "show", "origin/ops:agents/fyt.md").stdout
+    assert "STALE" not in fixed and "agent one" in fixed
+
+    # A follow-up check reports clean.
+    report = sdd.check(wc, sdd.DAEMON_READ_DIRS, ops_root=None,
+                       main_ref="origin/main", ops_ref="origin/ops")
+    assert not sdd.has_drift(report), report
+
+
+def test_sync_noop_when_already_synced(tmp_path):
+    wc = build(tmp_path)  # ops already == main
+    ops_root = _add_ops_worktree(wc, tmp_path / "ops_wt")
+    result = sdd.sync(ops_root, sdd.DAEMON_READ_DIRS, ops_root, main_ref="origin/main")
+    assert not result["committed"] and not result["pushed"]
+
+
+def test_sync_keeps_ops_only_without_prune(tmp_path):
+    def mutate(wc):
+        _write(wc, "agents/ghost.md", "extra ops-only agent\n")
+    wc = build(tmp_path, mutate)
+    ops_root = _add_ops_worktree(wc, tmp_path / "ops_wt")
+    result = sdd.sync(ops_root, sdd.DAEMON_READ_DIRS, ops_root,
+                      main_ref="origin/main", prune=False)
+    assert result["kept_ops_only"] == ["agents/ghost.md"]
+    assert result["pruned"] == []
+    assert (ops_root / "agents" / "ghost.md").exists()
+
+
+def test_sync_prune_removes_ops_only(tmp_path):
+    def mutate(wc):
+        _write(wc, "agents/ghost.md", "extra ops-only agent\n")
+    wc = build(tmp_path, mutate)
+    ops_root = _add_ops_worktree(wc, tmp_path / "ops_wt")
+    result = sdd.sync(ops_root, sdd.DAEMON_READ_DIRS, ops_root,
+                      main_ref="origin/main", prune=True)
+    assert result["pruned"] == ["agents/ghost.md"]
+    assert not (ops_root / "agents" / "ghost.md").exists()
+    assert not _origin_ops_has(wc, "agents/ghost.md")
+
+
+# --- CLI (exercises the exact invocation a cadence runs) --------------------
+def test_cli_check_exits_nonzero_on_drift(tmp_path):
+    def mutate(wc):
+        _write(wc, "agents/fyt.md", "drifted\n")
+    wc = build(tmp_path, mutate)
+    script = Path(sdd.__file__)
+    clean = subprocess.run(
+        [sys.executable, str(script), "--check", "--repo-root", str(wc),
+         "--ops-root", str(tmp_path / "no-worktree")],
+        capture_output=True, text=True,
+    )
+    assert clean.returncode == 1, clean.stdout + clean.stderr
+    assert "content-differs" in clean.stdout
+
+
+def test_cli_check_exits_zero_when_clean(tmp_path):
+    wc = build(tmp_path)
+    script = Path(sdd.__file__)
+    r = subprocess.run(
+        [sys.executable, str(script), "--check", "--repo-root", str(wc),
+         "--ops-root", str(tmp_path / "no-worktree")],
+        capture_output=True, text=True,
+    )
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "clean" in r.stdout
