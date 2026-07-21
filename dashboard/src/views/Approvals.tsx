@@ -87,8 +87,10 @@ export function Approvals({ items, pending = [], onVerify, onRespond, pendingRes
   });
 
   const counts = inbox.reduce(
+    // `stranded` seeded so the T3 HumanInboxCategory addition keeps this indexed reduce type-safe; full
+    // stranded/STOP rendering + summary spans land in T6.
     (result, item) => ({ ...result, [item.category]: result[item.category] + 1 }),
-    { decision: 0, gate: 0, input: 0, intervention: 0 },
+    { decision: 0, gate: 0, input: 0, intervention: 0, stranded: 0 },
   );
 
   if (inbox.length === 0) {

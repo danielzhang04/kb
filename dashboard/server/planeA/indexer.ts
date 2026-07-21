@@ -97,11 +97,20 @@ export function watchPlaneA(
   const debounceMs = opts.debounceMs ?? 50;
   let index = indexRepo(repoRoot);
 
-  // Only watch surfaces that exist — chokidar stalls its `ready` event on absent paths, and the
+  // Only watch surfaces that exist — chokidar stalls its `ready` event on absent glob/dir paths, and the
   // fleet repo may legitimately lack e.g. dashboards/ or skills/ at a given moment.
   const targets = ['queue', 'ledgers', 'dashboards', 'orgs', 'skills', 'memory']
     .map((d) => join(repoRoot, d))
     .filter((p) => existsSync(p));
+
+  // Decision 3 (inbox-gates): watch the repo-root STOP freeze file so the synthetic STOP inbox item
+  // surfaces/clears the instant it is created/removed (a projection recompute is triggered on the next
+  // tick). STOP is deliberately uncommitted/local and usually ABSENT, so it is added UNFILTERED — a
+  // single-file target that does not exist is watched fine by chokidar 5 (it emits add/unlink on
+  // create/remove; the initial `ready` still fires — verified), whereas the existsSync filter above
+  // would drop it and miss its creation. It classifies as the `cards` slice, so a change reindexes cards
+  // and fans out an onChange the SSE bridge already forwards to the UI's /api/human-inbox refetch.
+  targets.push(join(repoRoot, 'STOP'));
 
   const watcher = watch(targets, { ignoreInitial: true, persistent: true });
 
