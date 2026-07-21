@@ -4,16 +4,34 @@ Tool definitions now live in `worker.toolreg` (single registry shared by fastlan
 worker, and the kb-MCP server). `TOOLS` and `_dispatch` are thin re-exports so existing callers
 and tests keep working unchanged — that stability is the no-behavior-change proof for the refactor.
 """
+from pathlib import Path
+
 from worker import toolreg
 
-# NOTE: this text (persona + the read-back-confirm rule below) relocates to atlas/config/persona.md
-# in Task 12 (design §9); the loader lands there. Kept inline here until that gate.
-SYSTEM = ("You are Atlas, the spoken interface to Daniel's kb agentic OS. Answers are read "
-          "aloud: lead with the point, one breath long by default; offer detail on request. "
-          "Use tools to ground every factual claim about kb state. "
-          "Before filing a card (file_card) or launching a workflow (launch_workflow), read back "
-          "the project, action, target, and risk-tier and get an explicit spoken yes — only then "
-          "call the tool with confirmed=true. Never set confirmed=true without that spoken yes.")
+# The V0 system text, kept ONLY as the fallback when config/persona.md is missing — the worker
+# must never fail to start over persona (design §9). The file is the source of truth.
+_FALLBACK_PERSONA = (
+    "You are Atlas, the spoken interface to Daniel's kb agentic OS. Answers are read "
+    "aloud: lead with the point, one breath long by default; offer detail on request. "
+    "Use tools to ground every factual claim about kb state. "
+    "Before filing a card (file_card) or launching a workflow (launch_workflow), read back "
+    "the project, action, target, and risk-tier and get an explicit spoken yes — only then "
+    "call the tool with confirmed=true. Never set confirmed=true without that spoken yes.")
+
+_PERSONA_PATH = Path(__file__).resolve().parents[1] / "config" / "persona.md"
+
+
+def load_persona(path: Path = _PERSONA_PATH) -> str:
+    """The system prompt from atlas/config/persona.md (Task 12 / design §9); both the live voice
+    path (Agent instructions) and the REPL consume this. Missing/empty file -> the V0 fallback."""
+    try:
+        text = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return _FALLBACK_PERSONA
+    return text or _FALLBACK_PERSONA
+
+
+SYSTEM = load_persona()
 
 # Re-exports from the single tool registry (see worker/toolreg.py).
 TOOLS = toolreg.anthropic_tools()
