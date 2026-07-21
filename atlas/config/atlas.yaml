@@ -26,7 +26,10 @@ wake_threshold: 0.5
 # on the main speaker. Substring-matched against output devices; unset/no-match -> system default
 # (a loud warning is logged, never a silent wrong-device swap). Run `python -m worker.app console
 # --list-devices` to see the exact name and adjust if "Speakers" is not your main output.
-tts_output_device: Speakers
+# 2026-07-21 verify step 0: on this machine bare "Speakers" first-matches the real Realtek main
+# speaker (id 5) but also substring-matches virtual sinks (Nahimic mirror, SteelSeries Sonar,
+# "Speakers ()"); pinned tighter so a device-order shift can't silently reroute TTS.
+tts_output_device: Speakers (Realtek
 
 # --- Task 8 persona bake-off (2-way: Deepgram Aura-2 vs ElevenLabs stock; Cartesia scratched) ---
 # The 3 fixed lines below are synthesized per voice into .superpowers/sdd/t8-staging/persona-samples/
