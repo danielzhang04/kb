@@ -147,9 +147,22 @@ output_format: mp3_44100_128
 
 ## Branding
 
-- **Thumbnail style:** one dominant clean-2.5D-vector money object as the anomaly (a shredded paycheck, a
-  padlocked account, a comically large invoice), locked single-color field + the red accent, ≥50% negative
-  space, ≤3-word overlay, no face, no clutter, distinctly *our* illustration style.
+- **Thumbnail style (SUPERSEDED 2026-07-21 — flagged for Daniel's veto):** the old spec here ("one
+  dominant clean-2.5D-vector money object as the anomaly, locked single-color field + the red accent,
+  ≥50% negative space, ≤3-word overlay, no face, no clutter") was **refuted** by the frame-level
+  reference-channel teardown (`research/thumbnail-teardown-2026-07-21.md`, 8 high-CTR channels): a
+  no-face / empty-vignette / cold-money-object frame is the single weakest configuration in the whole set,
+  and it is exactly what sank the rejected Poyais candidates. **New grammar (built into `metadata-writer`
+  §Step 3 + `visual-prompt-writer` §Step 4, per Daniel's regen order):** a **hero with ONE loud emotion**
+  (a cast member — the con-man, the mark — OR a personified money object *with a face*, smug / menacing /
+  panicked / gloating; a cold faceless object is banned as the sole subject); **ONE big thing legible at
+  168px**; overlay text is a **punchline / verdict / fake-quote ≤6 words, never a premise or label**; the
+  **one red accent POINTS** (arrow / circle / underline) or highlights the payoff word; **absurd or
+  menacing juxtaposition over literal illustration**; a **familiar anchor** leads; a persistent corner
+  wordmark. Faces ARE now allowed — we have the 2.5D vector cast. Still distinctly *our* illustration
+  style (flat-cel 2.5D, `#241a12` outline, the one red `#d7402b`). Acceptance = the 168px half-second
+  test. *(This edit was made under Daniel's explicit "build the findings in" order; `dna.md` is otherwise
+  human-edited — flagged here for his veto.)*
 - **Banner / profile:** locked 2–3 color palette + accent; the illustrated wordmark.
 - **Naming conventions for titles:** curiosity-gap **story** declaratives — "The [person] Who [did the
   impossible-sounding thing]" / "The [famous thing] That [hidden twist]" / "The [scam/collapse] That
