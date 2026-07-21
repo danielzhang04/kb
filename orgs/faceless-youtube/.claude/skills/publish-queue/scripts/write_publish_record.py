@@ -26,12 +26,18 @@ Notes:
   * Idempotent by refusal: if publish-record.json already exists this EXITS 2 and touches nothing. A
     record is the proof of a completed publish; overwriting it would erase the video_id of the live
     upload. Re-running is therefore safe (it never clobbers).
+  * The write is ATOMIC: we write to `publish-record.json.tmp` in the same directory, then
+    `os.replace()` it onto `publish-record.json`. A mid-write crash (kill, power loss) can only ever
+    leave behind a stray `.tmp` file, cleaned up in a `finally` — it can never leave a truncated
+    `publish-record.json` that both this script and publish_preflight.py would mistake for a
+    completed publish with no valid video_id.
 """
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -101,7 +107,16 @@ def main(argv=None) -> int:
         file_sha256=sha256_file(final_mp4),
         metadata=metadata,
     )
-    record_path.write_text(json.dumps(record, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    tmp_path = record_path.with_suffix(".json.tmp")
+    try:
+        tmp_path.write_text(json.dumps(record, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        os.replace(tmp_path, record_path)
+    finally:
+        # If the rename above succeeded, tmp_path is already gone. If we crashed or raised
+        # before/during the rename, remove the partial tmp file so it never gets mistaken
+        # for a real record — record_path itself is only ever touched by the atomic rename.
+        if tmp_path.exists():
+            tmp_path.unlink()
     sys.stdout.write(f"wrote {record_path} (video_id={args.video_id}, private)\n")
     return 0
 

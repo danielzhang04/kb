@@ -15,8 +15,10 @@ Exit codes (the contract the runner reads):
 
 Idempotency is checked FIRST: if the record exists the video is already done (exit 2), whatever else
 is on disk. Otherwise readiness is: (a) compliance-report.md exists AND its `## Mechanical checks`
-section has no `FAIL — ` line (we PARSE the report the compliance-check skill already wrote — we never
-re-run the checks), and (b) assets/final.mp4 exists.
+section has at least one `PASS — `/`FAIL — ` check line AND no `FAIL — ` line (we PARSE the report the
+compliance-check skill already wrote — we never re-run the checks), and (b) assets/final.mp4 exists.
+An empty mechanical section (heading present, zero check lines) is NOT-READY, not GO — a section with
+no checks proves nothing passed.
 """
 from __future__ import annotations
 
@@ -26,6 +28,7 @@ from pathlib import Path
 
 MECHANICAL_HEADING = "## Mechanical checks"
 FAIL_PREFIX = "FAIL — "
+PASS_PREFIX = "PASS — "
 
 
 def _record_video_id(record_path: Path) -> str:
@@ -72,7 +75,10 @@ def preflight(video_dir: Path) -> tuple[int, str]:
     section = mechanical_section(report.read_text(encoding="utf-8"))
     if section is None:
         return 1, "not ready: compliance-report.md has no '## Mechanical checks' section"
-    fails = [ln for ln in section if ln.startswith(FAIL_PREFIX)]
+    checks = [ln for ln in section if ln.startswith(FAIL_PREFIX) or ln.startswith(PASS_PREFIX)]
+    if not checks:
+        return 1, "not ready: mechanical section has no check lines"
+    fails = [ln for ln in checks if ln.startswith(FAIL_PREFIX)]
     if fails:
         return 1, "not ready: compliance report has mechanical FAIL(s):\n  " + "\n  ".join(fails)
 

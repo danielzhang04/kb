@@ -124,6 +124,15 @@ class PreflightTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("already published: VID12345", msg)
 
+    def test_empty_mechanical_section_is_not_ready(self):
+        # Heading present but zero check lines must NOT be treated as GO (fail-open bug).
+        vdir = _ready_video(self.tmp)
+        report = GOOD_REPORT.split("## Mechanical checks")[0] + "## Mechanical checks\n\n## Provenance (warn-level)\n\nNo provenance warnings.\n"
+        _write(vdir / "compliance-report.md", report)
+        code, msg = pf.preflight(vdir)
+        self.assertEqual(code, 1)
+        self.assertIn("no check lines", msg.lower())
+
     def test_fail_only_in_provenance_section_does_not_block(self):
         # A FAIL — line OUTSIDE the mechanical section must not trip the gate.
         vdir = _ready_video(self.tmp)
@@ -184,6 +193,39 @@ class WriteRecordTests(unittest.TestCase):
     def test_timestamp_is_required(self):
         with self.assertRaises(SystemExit):
             wr.main([str(self.vdir), "--video-id", "vid"])
+
+    def test_atomic_write_leaves_no_tmp_file_and_valid_json(self):
+        ts = "2026-07-20T18:30:00Z"
+        code = wr.main([str(self.vdir), "--video-id", "dQw4w9WgXcQ", "--timestamp", ts])
+        self.assertEqual(code, 0)
+        record_path = self.vdir / "publish-record.json"
+        tmp_path = record_path.with_suffix(".json.tmp")
+        self.assertFalse(tmp_path.exists(), "tmp file must not remain after a successful write")
+        # No other stray .tmp files in the video dir either.
+        self.assertEqual(list(self.vdir.glob("*.tmp")), [])
+        rec = json.loads(record_path.read_text(encoding="utf-8"))
+        self.assertEqual(rec["video_id"], "dQw4w9WgXcQ")
+
+    def test_crash_during_finalize_leaves_no_partial_record(self):
+        # Simulate a crash at the finalize step (the os.replace rename). A correct atomic
+        # writer never lets record_path exist until the rename succeeds, and cleans up its
+        # tmp file on the way out. The old single write_text() implementation writes
+        # record_path directly and never calls os.replace at all, so this patch is a no-op
+        # for it and the "crash" never actually happens — record_path ends up written in
+        # full, which is exactly the fail-open bug: a real mid-write crash (kill -9, power
+        # loss) leaves a truncated file in the same spot with no tmp-file safety net.
+        import os
+        import unittest.mock as mock
+
+        record_path = self.vdir / "publish-record.json"
+        tmp_path = record_path.with_suffix(".json.tmp")
+
+        with mock.patch("os.replace", side_effect=OSError("simulated crash during finalize")):
+            with self.assertRaises(OSError):
+                wr.main([str(self.vdir), "--video-id", "dQw4w9WgXcQ", "--timestamp", "2026-07-20T18:30:00Z"])
+
+        self.assertFalse(record_path.exists(), "record must not exist unless the atomic rename completed")
+        self.assertFalse(tmp_path.exists(), "tmp file must be cleaned up when finalize fails")
 
 
 if __name__ == "__main__":
