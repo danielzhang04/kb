@@ -5,6 +5,7 @@ card's parsed ``state`` field, NEVER on which directory the file happens to live
 in (the approvals/ dir hosts both live and resolved states). These tests prove
 parsed state wins over directory membership.
 """
+import pytest
 import yaml
 
 import cards
@@ -109,6 +110,33 @@ def test_close_walks_gate_to_done(tmp_path):
 
     # close on an absent target returns None
     assert merge_gate.close(qr, target="does-not-exist", result="x") is None
+
+
+# --------------------------------------------------------------------------- #
+# close(): a live gate parked in a non-closeable state fails clearly           #
+# --------------------------------------------------------------------------- #
+
+def test_close_non_closeable_state_raises_clear_error(tmp_path):
+    """A live gate whose parsed state is neither inbox nor working (e.g. blocked)
+    has no legal walk to done. close() must fail with a message that NAMES the
+    card id and state, not surface cards.py's raw 'illegal transition' error."""
+    qr = _repo(tmp_path) / "queue"
+    # blocked is a LIVE state (not done/rejected/halted) but LEGAL['blocked'] == {'inbox'},
+    # so a working transition is illegal. Hand-write it into inbox/ (its STATE_DIR).
+    gate = cards.new_card("kb", "approve:merge:66", "66", "T2",
+                          body="## Work order\n", owner="human-operator")
+    gate.meta["state"] = "blocked"
+    _write_raw(qr / "inbox" / f"{gate.meta['id']}.md", gate.meta)
+    assert gate.meta["state"] in merge_gate.LIVE_STATES  # it IS a live gate
+
+    with pytest.raises(cards.ValidationError) as exc:
+        merge_gate.close(qr, target="66", result="x")
+    msg = str(exc.value)
+    assert gate.meta["id"] in msg
+    assert "blocked" in msg
+    assert "illegal transition" not in msg
+    # the gate is untouched — still live, no partial move
+    assert merge_gate.find_live(qr, "66") is not None
 
 
 # --------------------------------------------------------------------------- #

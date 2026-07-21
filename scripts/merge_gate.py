@@ -25,6 +25,14 @@ import cards
 # close operate on live gates only.
 LIVE_STATES = tuple(s for s in cards.STATES if s not in {"done", "rejected", "halted"})
 
+# The only live states from which close() can legally walk a gate to `done` via
+# the (working -> done) path cards.transition enforces: `inbox` (inbox -> working
+# -> done) and `working` (working -> done). A live gate parked in any OTHER state
+# (e.g. blocked / approvals / stop-requested) has no legal walk to done, so close()
+# refuses with a clear message instead of surfacing cards.py's raw "illegal
+# transition" ValidationError that never names the card.
+_CLOSEABLE_STATES = frozenset({"inbox", "working"})
+
 
 def _action_for(target: str) -> str:
     """The exact action string the dashboard ``isHumanGate`` / brief gate test
@@ -119,8 +127,15 @@ def close(queue_root, *, target, result):
     card = find_live(queue_root, target)
     if card is None:
         return None
+    state = card.meta["state"]
+    if state not in _CLOSEABLE_STATES:
+        raise cards.ValidationError(
+            f"cannot close merge gate {card.meta['id']} (target {target!r}): live "
+            f"state {state!r} has no legal walk to done — only a gate in "
+            f"{sorted(_CLOSEABLE_STATES)} can be closed"
+        )
     card.body = _append_section(card.body, "Result", result)
-    if card.meta["state"] != "working":
+    if state != "working":
         cards.transition(card, "working", queue_root)
     cards.transition(card, "done", queue_root)
     return card
