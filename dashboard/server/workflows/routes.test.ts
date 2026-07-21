@@ -221,27 +221,6 @@ describe('workflow definition routes', () => {
     expect(controlStore.listProposalRevisions('operator')).toHaveLength(1);
   });
 
-  it('refuses the one-step launch once automatic execution is activated', async () => {
-    const activated = Fastify();
-    registerWorkflows(activated, makeSurfaceContext({
-      repoRoot: REPO_ROOT,
-      sessionConfig: SESSION,
-      allowedOrigins: [ORIGIN],
-      credentials: () => [],
-      controlStore: createInMemoryControlPlaneStore({ newId: () => `act-${Math.random()}` }),
-      ...runners(),
-      controlBroker: { isRunning: () => false } as never,
-      runAutomatic: (async () => ({ ok: true })) as never,
-    }));
-    await activated.ready();
-    const response = await activated.inject({
-      method: 'POST', url: '/api/workflows/research-brief/launch', headers: headers(token),
-      payload: { idempotencyKey: 'activated' },
-    });
-    expect(response.statusCode).toBe(409);
-    expect(response.json().error).toBe('workflow-launch-requires-manual-activation');
-    await activated.close();
-  });
 });
 
 describe('workflow launch governance boundaries', () => {
@@ -438,5 +417,73 @@ describe('workflow launch governance boundaries', () => {
     expect(run.value.run.state).toBe('waiting-human');
     expect(run.value.stages.every((stage) => stage.canonicalCardRef === null)).toBe(true);
     expect(run.value.humanRequests.length).toBeGreaterThan(0);
+  });
+
+  it('drives the one-step launch through the activated executor and hands the run to runAutomatic', async () => {
+    // Replaces the pre-2026-07-21 refusal test: with the execution engine injected, the one-step launch
+    // no longer 409s — it flows through the canonical executeApprovedLaunch, activates the root card, and
+    // fires runAutomatic with the created runRef (Wave-A live-fire runbook D0-A).
+    writeDefinition('activated-research', [
+      '---',
+      'id: activated-research',
+      'project: kb-ops',
+      'title: Activated research',
+      'profile: research',
+      'stages:',
+      '  - id: research',
+      '    title: Research',
+      '    action: research:brief',
+      '    target: orgs/kb-ops/output',
+      '    workOrder: research it',
+      '---',
+      'body',
+      '',
+    ].join('\n'));
+
+    const runAutomaticCalls: Array<{ runRef: string }> = [];
+    const activated = Fastify();
+    registerWorkflows(activated, makeSurfaceContext({
+      repoRoot,
+      sessionConfig: SESSION,
+      allowedOrigins: [ORIGIN],
+      credentials: () => [],
+      controlStore: createInMemoryControlPlaneStore({ newId: () => `act-${Math.random()}` }),
+      ...runners(),
+      // The activated managed-root step reads each published card back off disk and diffs it against
+      // `git show HEAD:<path>` (empty via the stub git). So the launch card op writes an EMPTY card file:
+      // the read resolves and the empty on-disk content matches the empty stubbed HEAD content.
+      runPy: (_repo: string, _code: string, jsonArg: string) => {
+        const op = JSON.parse(jsonArg) as { runId?: string; cardRefs?: string[]; stages?: Array<{ id: string }> };
+        if (op.cardRefs) {
+          const cards = [...op.cardRefs].sort().map((ref) => ({ cardRef: ref, path: `queue/inbox/${ref}.md`, changed: false }));
+          return { exitCode: 0, stdout: `${JSON.stringify({ cards })}\n`, stderr: '' };
+        }
+        const cards = (op.stages ?? []).map((stage) => {
+          const cardId = workflowCardId(op.runId as string, stage.id);
+          mkdirSync(join(repoRoot, 'queue', 'inbox'), { recursive: true });
+          writeFileSync(join(repoRoot, 'queue', 'inbox', `${cardId}.md`), '', 'utf8');
+          return { stageId: stage.id, cardId, state: 'blocked', cardPath: `queue/inbox/${cardId}.md` };
+        });
+        return { exitCode: 0, stdout: `${JSON.stringify({ runId: op.runId, cards })}\n`, stderr: '' };
+      },
+      controlBroker: { isRunning: () => true, drain: () => {} } as never,
+      // A spy async fn (invoked synchronously before its first await, so the call is recorded by the time
+      // the 201 returns even though executeApprovedLaunch fires it un-awaited).
+      runAutomatic: (async (arg: { runRef: string }) => { runAutomaticCalls.push(arg); return { ok: true }; }) as never,
+    }));
+    await activated.ready();
+
+    const response = await activated.inject({
+      method: 'POST', url: '/api/workflows/activated-research/launch', headers: headers(token),
+      payload: { idempotencyKey: 'activated' },
+    });
+    await activated.close();
+
+    expect(response.statusCode).toBe(201);
+    const body = response.json() as { ok: boolean; runRef: string; cards: unknown[] };
+    expect(body.ok).toBe(true);
+    expect(body.cards).toHaveLength(1);
+    expect(runAutomaticCalls).toHaveLength(1);
+    expect(runAutomaticCalls[0].runRef).toBe(body.runRef);
   });
 });

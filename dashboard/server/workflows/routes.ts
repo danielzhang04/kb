@@ -230,13 +230,11 @@ async function launchDefinition(
   def: WorkflowDef,
   idempotencyKey: string,
 ): Promise<LaunchOutcome> {
-  // The convenience one-step launch is only for the un-activated (deliberate-inactivity) daemon — the
-  // exact production state. If an execution engine is ever injected, the manual proposal → activate path
-  // owns release; refuse here rather than strand a run behind a bypassed activation gate.
-  if (ctx.controlBroker && ctx.runAutomatic) {
-    return { status: 409, body: { error: 'workflow-launch-requires-manual-activation', detail: 'automatic execution is activated; launch via the proposal → approve → activate path' } };
-  }
-
+  // The one-step launch is the sanctioned UI release path for workflow definitions in BOTH daemon
+  // postures: it always flows through the canonical `executeApprovedLaunch`, which parks the run
+  // waiting-human when the engine is absent and hands root-card activation + worker startup to the
+  // automatic executor when it is present. T2+/gated stages still stop at human requests before any
+  // execution. There is no separate manual proposal path for definitions to divert to, so do not refuse.
   const registry = loadRuntimeSkillRegistry(ctx.repoRoot);
   const compiled = compileWorkflowDef(def, { registry });
   if (!compiled.ok) return { status: 400, body: { error: compiled.reason, detail: compiled.detail } };
