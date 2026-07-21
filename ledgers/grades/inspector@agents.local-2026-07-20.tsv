@@ -5,3 +5,4 @@ card_id	inspector_id	pass	project	rubric_version	score	task_type	tier	ts	worker
 6a5c8ad2-984e5ccf	inspector@agents.local	True	atlas	inspector-v1	96	latency harness + persona samples + V0 checkpoint	T2	2026-07-20T21:47:59.165524+00:00	worker-desktop
 6a5ec41c-53ac36f7	inspector@agents.local	True	atlas	inspector-v1	95	dashboard atlas panel route (read-only)	T2	2026-07-21T01:17:29.405925+00:00	claude-boss@agents.local
 6a5ec41c-b18aa9f1	inspector@agents.local	False	atlas	inspector-v1	93	tool-registry consolidation (no behavior change)	T2	2026-07-21T01:18:29.446382+00:00	claude/atlas
+6a5ec41c-b18aa9f1	inspector@agents.local	True	atlas	inspector-v1	95	tool-registry consolidation (no behavior change)	T2	2026-07-21T01:24:37.428066+00:00	claude/atlas
