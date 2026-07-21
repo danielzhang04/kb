@@ -84,6 +84,31 @@ describe('Git worktree adapter', () => {
     expect(fake.calls.some((call) => call.args.includes('remove') || call.args.includes('prune'))).toBe(false);
   });
 
+  it('creates the attempt worktree with core.longpaths=true so deep state-root paths clear Windows MAX_PATH', async () => {
+    // Regression: the Wave-A acceptance run parked at waiting-human because `git worktree add` failed
+    // (128) "Filename too long" — the server-owned worktree lives at a deep state-root path
+    // (…/control/worktrees/run-…/attempt-…, ~164 chars) and a repo fixture at ~98 chars pushed the
+    // absolute path to 263 > Windows MAX_PATH (260). core.longpaths=true on the invocation is the fix;
+    // it must ride on the worktree-creation git call, not just be documented.
+    const root = temporaryRoot();
+    const repoRoot = join(root, 'repo');
+    const commonDir = join(repoRoot, '.git');
+    const worktreeRoot = join(root, 'worktrees');
+    mkdirSync(commonDir, { recursive: true });
+    const fake = fakeGit(repoRoot, commonDir);
+    const adapter = createGitWorktreeAdapter({ repoRoot, worktreeRoot, baseCommit: 'a'.repeat(40), runner: fake.runner });
+    const path = join(worktreeRoot, 'run-1', 'attempt-1');
+
+    await adapter.ensure({ operationKey: 'worktree:attempt-1', runRef: 'run-1', path });
+
+    const addition = fake.calls.find((call) => call.args.includes('worktree') && call.args.includes('add'));
+    expect(addition).toBeDefined();
+    // `-c core.longpaths=true` must appear as an adjacent -c/value pair on the worktree-add invocation.
+    const args = addition!.args;
+    expect(args).toContain('core.longpaths=true');
+    expect(args[args.indexOf('core.longpaths=true') - 1]).toBe('-c');
+  });
+
   it('rejects unplanned paths and mutable refs before invoking Git', () => {
     const root = temporaryRoot();
     const repoRoot = join(root, 'repo');

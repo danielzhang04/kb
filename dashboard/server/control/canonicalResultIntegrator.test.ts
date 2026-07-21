@@ -266,6 +266,14 @@ describe('canonical Git result integrator', () => {
     expect(await item.integrator.integrate(item.input)).toEqual({ status: 'replayed', resultHash: item.input.resultHash });
     expect(item.cardMutations()).toBe(1);
 
+    // Regression (Windows MAX_PATH): the integration worktree is created under the same deep state-root
+    // path as the attempt worktree, so its `git worktree add` must carry `-c core.longpaths=true` or it
+    // fails "Filename too long" (128) after the worker already succeeded. No-op off Windows; not a gate.
+    const worktreeAdd = item.gitCalls.find((call) => call.args[0] === 'worktree' && call.args[1] === 'add');
+    expect(worktreeAdd).toBeDefined();
+    expect(worktreeAdd!.fullArgs).toContain('core.longpaths=true');
+    expect(worktreeAdd!.fullArgs[worktreeAdd!.fullArgs.indexOf('core.longpaths=true') - 1]).toBe('-c');
+
     const cherryPick = item.gitCalls.findIndex((call) => call.args[0] === 'cherry-pick');
     const canonicalCommit = item.coordinationCalls.findIndex((args) => args[0] === 'commit');
     const push = item.coordinationCalls.findIndex((args) => args[0] === 'push');
