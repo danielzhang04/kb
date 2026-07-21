@@ -16,6 +16,7 @@ import { registerPtyRoute, makePtyRouteContext } from './pty/route.ts';
 import { originPlugin } from './security/origin.ts';
 import { installShutdownHandlers } from './shutdown.ts';
 import { startMergeGateReconciler } from './write/mergeGateReconciler.ts';
+import { startStrandedArchiver } from './write/strandedArchiver.ts';
 
 /** Loopback-only bind. Network location is never a trust boundary (ordering law 4). */
 export const HOST = '127.0.0.1';
@@ -30,6 +31,38 @@ export function resolveMergeGateIntervalMs(): number {
   if (raw === undefined || raw === '') return DEFAULT_MERGE_GATE_INTERVAL_MS;
   const parsed = Number(raw);
   return Number.isFinite(parsed) ? parsed : DEFAULT_MERGE_GATE_INTERVAL_MS;
+}
+
+/** Stranded-archiver cadence — DEFAULT-OFF (0 = disabled). Unlike the merge-gate reconciler this daemon
+ *  MOVES cards, so on-by-default is NOT fail-safe here: the v1 build defaulted ON at 5-min intervals and
+ *  would have wrongly archived live cards. It ships disabled and is opt-in via env, pending Daniel's
+ *  policy answers (window / recoverability / unattended operation / rollout gate). */
+export const DEFAULT_STRANDED_ARCHIVE_INTERVAL_MS = 0;
+export function resolveStrandedArchiveIntervalMs(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.DASHBOARD_STRANDED_ARCHIVE_INTERVAL_MS;
+  if (raw === undefined || raw === '') return DEFAULT_STRANDED_ARCHIVE_INTERVAL_MS;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : DEFAULT_STRANDED_ARCHIVE_INTERVAL_MS;
+}
+
+/** Compile-time policy flag guarding the LIVE MOVE path. DEFAULT-OFF, and awaiting Daniel's answers to the
+ *  §3d policy questions before it may be flipped. Even with this true, a live MOVE ALSO requires the env
+ *  gate below — two independent locks. While it is `false` the archiver is dry-run-only regardless of env. */
+export const STRANDED_ARCHIVE_LIVE_MOVE_ALLOWED = false;
+/** dryRun is TRUE (report only, move nothing) unless BOTH the compile-time flag is flipped AND the operator
+ *  sets `DASHBOARD_STRANDED_ARCHIVE_LIVE=1`. This ship: always dry-run. */
+export function resolveStrandedArchiveDryRun(env: NodeJS.ProcessEnv = process.env): boolean {
+  const envLive = env.DASHBOARD_STRANDED_ARCHIVE_LIVE === '1';
+  return !(STRANDED_ARCHIVE_LIVE_MOVE_ALLOWED && envLive);
+}
+
+/** Abandonment window — default 7 days (policy Q1), overridable via env for dry-run experimentation. */
+export const DEFAULT_STRANDED_ARCHIVE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+export function resolveStrandedArchiveWindowMs(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.DASHBOARD_STRANDED_ARCHIVE_WINDOW_MS;
+  if (raw === undefined || raw === '') return DEFAULT_STRANDED_ARCHIVE_WINDOW_MS;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_STRANDED_ARCHIVE_WINDOW_MS;
 }
 
 /**
@@ -98,6 +131,35 @@ export function buildApp(): FastifyInstance {
     resolveMergeGateIntervalMs(),
   );
   app.addHook('onClose', async () => { stopMergeGateReconciler(); });
+
+  // Stranded-card auto-archiver v2 (redesign 2026-07-21) — DEFAULT-OFF and DRY-RUN-ONLY. It reads the
+  // canonical ops worktree and, for each card owned by a REAL agent that is idle in inbox/working past the
+  // window with BOTH the card AND its owner showing no activity (the corrected liveness model; a missing
+  // schtasks task is NOT abandonment), decides what it WOULD archive. Two independent locks keep it inert:
+  // the interval defaults to 0 (disabled — the timer never schedules), and even when enabled `dryRun`
+  // stays TRUE (reports, moves nothing) until the compile-time STRANDED_ARCHIVE_LIVE_MOVE_ALLOWED flag AND
+  // an operator env gate are BOTH set — pending Daniel's policy answers. The live MOVE path reuses the same
+  // governed transaction as the reconciler; every failure leaves the card untouched. Unref'd; stop on close.
+  const stopStrandedArchiver = startStrandedArchiver(
+    {
+      repoRoot: surfaceCtx.repoRoot,
+      opsGit: surfaceCtx.opsGit,
+      runPy: surfaceCtx.runPy,
+      appendAuditLocal: surfaceCtx.appendAuditLocal,
+      schtasksRun: surfaceCtx.schtasksRun,
+      livenessCache: surfaceCtx.livenessCache,
+      now: surfaceCtx.now,
+      dryRun: resolveStrandedArchiveDryRun(),
+      windowMs: resolveStrandedArchiveWindowMs(),
+      // Dry-run report sink: one structured line per card the sweep WOULD archive, to the daemon log.
+      logDryRun: (d) => {
+        // eslint-disable-next-line no-console
+        console.info(`[stranded-archiver dry-run] WOULD archive ${d.cardId} (owner ${d.owner}, card-idle ${Math.round((d.cardIdleMs ?? 0) / 3.6e6)}h, owner-idle ${Math.round((d.ownerIdleMs ?? 0) / 3.6e6)}h; ${d.liveness})`);
+      },
+    },
+    resolveStrandedArchiveIntervalMs(),
+  );
+  app.addHook('onClose', async () => { stopStrandedArchiver(); });
 
   // Always-on: serve the built SPA (dist/) with an SPA fallback, if it exists; API-only otherwise.
   // Registered last — every /api/* route above and the hub's /events + /ws already claim their exact
