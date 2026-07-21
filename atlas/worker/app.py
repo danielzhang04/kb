@@ -622,14 +622,15 @@ def main() -> int:
         logger.exception("could not resolve tts_output_device — using the system default output")
     # Desk finding (2026-07-21, pm2 rollout): the console's STT mic is a SEPARATE capture from
     # the wake listener and defaults to the OS default input — which drifts to AirPods HFP
-    # (unusable) while indices reshuffle on BT connect (the V0 landmine). The CLI's
-    # --input-device is a string handed to sounddevice, which resolves name substrings natively
-    # (installed cli/_legacy.py:639 query_devices(input_device)), so pin it by NAME from the same
-    # config key the wake listener uses. An explicit user-passed flag wins.
+    # (unusable) while indices reshuffle on BT connect (the V0 landmine). A raw name substring
+    # can't ride the CLI flag: the same physical mic appears under MME/DirectSound/WASAPI and
+    # sounddevice raises on multiple matches — so resolve the INDEX here at start time with the
+    # wake listener's own resolver (first input device matching the name, same pin, same config
+    # key). An explicit user-passed flag wins.
     if "console" in sys.argv and "--input-device" not in sys.argv:
-        pin = _cfg().get("wake_input_device")
-        if pin:
-            sys.argv += ["--input-device", str(pin)]
+        idx = wakeword.resolve_input_device(_cfg().get("wake_input_device"))
+        if idx is not None:
+            sys.argv += ["--input-device", str(idx)]
     cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
     return 0
 
