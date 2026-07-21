@@ -12,11 +12,11 @@
 
 ## Global Constraints
 
-- **Deletion is gated on exactly one provable fact:** `git merge-base --is-ancestor <branch> origin/main`. No heuristics, no name matching, no age-based deletion.
-- **Only `git branch -d`, never `-D`.** Git's own refusal to delete unmerged branches is the second independent guard.
-- **`main`, `ops`, and the currently checked-out branch are excluded by name** before any other logic runs.
+- **Deletion is gated on exactly one provable fact:** `git merge-base --is-ancestor <branch> refs/remotes/origin/main`. No heuristics, no name matching, no age-based deletion. This is the **sole substantive gate**, so it — and every git query in the script — fails closed: a non-zero return code aborts rather than being read as "clean".
+- **Only `git branch -d`, never `-D`** — but understand what `-d` does and does not check. It refuses a branch that is unmerged relative to HEAD or the branch's *own configured upstream*; it **never consults `origin/main`**. A pushed agent branch therefore looks "merged" to `-d` regardless, so `-d` is a weak backstop, not an independent second guard. The ancestry gate above carries the guarantee.
+- **`main`, `ops`, and the currently checked-out branch are excluded by name** before any other logic runs. A detached or unknown HEAD aborts the run (exit 2) rather than proceed with nothing to protect by name.
 - **No remote mutation whatsoever.** No `git push`, no `--delete`, no contact with the `codex` remote. `git fetch origin --prune` is the only network call.
-- **Worktree removal requires both** that the branch is merged **and** that `git status --porcelain` shows no *tracked* modifications. Untracked files (`node_modules/`) do not block.
+- **Worktree removal requires both** that the branch is merged **and** that `git status --porcelain` (default untracked handling, so `.gitignore` is honoured) reports nothing — no tracked modification and no real untracked file. Gitignored build output (`dashboard/node_modules/`) does not block; a genuinely new unignored file does. An unreadable status fails closed to "dirty", re-checked immediately before removal.
 - **`main` is only ever fast-forwarded**, never reset or forced. A non-fast-forwardable `main` is reported, not resolved.
 - **Exit contract:** `0` = clean (no card). `1` = something needs a human, card already filed. `2` = could not run at all, no card.
 - A clean run files **no** card.
@@ -159,8 +159,12 @@ Design: docs/specs/2026-07-20-branch-hygiene-cadence-design.md
 
 The safety property this file exists to preserve: a branch is only ever deleted when every
 one of its commits is reachable from origin/main, so nothing unique can be lost. That is
-checked with `git merge-base --is-ancestor`, and `git branch -d` (never -D) refuses
-unmerged branches independently -- two guards that must BOTH fail before work disappears.
+checked with `git merge-base --is-ancestor <branch> refs/remotes/origin/main`, and it is the
+SOLE substantive gate. `git branch -d` (never -D) is only a weak backstop: it checks
+reachability from HEAD or the branch's own upstream, never from origin/main, so a pushed
+agent branch looks "merged" to it regardless. Because the ancestry check stands alone, it
+(and every git query here) must fail CLOSED: any non-zero return code is "not safe", never
+silently "clean".
 
 Local only, by design. Branches on origin are deleted by GitHub's own "automatically
 delete head branches" setting at merge time, which is strictly better than anything on a
@@ -224,17 +228,19 @@ class Git:
         return result
 
     def has_tracked_changes(self, path: Path | str) -> bool:
-        """True if any TRACKED file is modified or staged.
+        """True if the worktree holds work worth preserving -- and True (fail CLOSED) when
+        that cannot be determined, so a `worktree remove --force` never runs on an unknown
+        state.
 
-        Untracked files are deliberately ignored: every dashboard worktree carries a
-        node_modules/, and treating that as "work in progress" would make the prune step
-        a no-op in practice.
+        Default untracked handling is kept on purpose: `git status --porcelain` already
+        honours .gitignore, so gitignored build output (dashboard/node_modules/) stays
+        invisible while a real, unignored, never-staged file DOES count as work and blocks
+        removal. A non-zero return code means the state is unreadable -> treat as dirty.
         """
-        p = subprocess.run(
-            ["git", "status", "--porcelain", "--untracked-files=no"],
-            cwd=Path(path), capture_output=True, text=True,
-        )
-        return bool(p.stdout.strip())
+        code, out, _ = self._run_in(path, "status", "--porcelain")
+        if code != 0:
+            return True
+        return bool(out)
 ```
 
 - [ ] **Step 4: Run the tests to verify they pass**
@@ -594,8 +600,11 @@ def apply(git: Git, plan: Plan) -> list[str]:
 
 
 def _delete(git: Git, branch: str) -> list[str]:
-    # -d, never -D. classify() already proved this branch is an ancestor of origin/main;
-    # git's own refusal to delete unmerged branches is the second, independent guard.
+    # -d, never -D. The real guarantee is upstream: classify() already proved this branch
+    # is an ancestor of origin/main. `-d` is only a weak backstop -- it checks reachability
+    # from HEAD or the branch's configured upstream, NOT from origin/main, so a pushed agent
+    # branch looks "merged" to it regardless. Kept to reject a pathological bypass, not as a
+    # second independent proof.
     code, _, err = git.run("branch", "-d", branch)
     return [f"deleted {branch}"] if code == 0 else [f"delete-failed {branch}: {err}"]
 
@@ -793,7 +802,7 @@ This changes a shared repository setting rather than a local file, so state plai
 
 ## Notes for the implementing agent
 
-- **Never use `git branch -D`.** The whole safety argument rests on `-d` refusing unmerged branches as an independent second guard.
+- **Never use `git branch -D`.** But the safety argument does NOT rest on `-d`: `-d` only checks reachability from HEAD or the branch's own upstream, never from `origin/main`, so a pushed agent branch looks "merged" to it regardless. The real guarantee is the `merge-base --is-ancestor <branch> origin/main` gate, which is the sole substantive check and must fail closed on any git error. `-d` (never `-D`) is kept only as a weak backstop against a pathological bypass.
 - **Never push to `main` or `ops`**, and never add remote-delete capability to this script.
 - Use `py -3`, never bare `python` — the latter is a pip-less msys build on this machine.
 - If `--check` ever mutates state, stop immediately and report; the dry-run guarantee is load-bearing for trust in the cadence.

@@ -31,6 +31,10 @@ def repo(tmp_path: Path) -> Path:
     _git(work, "config", "user.email", "t@t")
     _git(work, "config", "user.name", "t")
     (work / "a.txt").write_text("a")
+    # Committed on main and inherited by every branch/worktree, so has_tracked_changes
+    # (which now keeps git's default .gitignore-honouring untracked handling) treats
+    # node_modules/ as ignored noise while a real untracked file still counts as work.
+    (work / ".gitignore").write_text("node_modules/\n")
     _git(work, "add", "-A")
     _git(work, "commit", "-qm", "init")
 
@@ -91,6 +95,21 @@ class TestGitSeam:
         _git(repo, "worktree", "add", "-q", str(wt), "merged-branch")
         (wt / "a.txt").write_text("modified")
         assert bh.Git(repo).has_tracked_changes(wt) is True
+
+    def test_untracked_real_file_is_a_tracked_change(self, repo: Path, tmp_path: Path) -> None:
+        # A genuinely new, unignored file is work-in-progress and MUST block a prune --
+        # only gitignored output (node_modules/) is allowed to be invisible.
+        wt = tmp_path / "wt-newfile"
+        _git(repo, "worktree", "add", "-q", str(wt), "merged-branch")
+        (wt / "brand-new.txt").write_text("unsaved work")
+        assert bh.Git(repo).has_tracked_changes(wt) is True
+
+    def test_unreadable_worktree_fails_closed(self, repo: Path, tmp_path: Path) -> None:
+        # If `git status` cannot report (path is not a git worktree at all), the state is
+        # unknown and must be treated as dirty so a --force removal never proceeds.
+        not_a_worktree = tmp_path / "plain-dir"
+        not_a_worktree.mkdir()
+        assert bh.Git(repo).has_tracked_changes(not_a_worktree) is True
 
 
 NOW = datetime(2026, 7, 20, 12, 0, 0, tzinfo=timezone.utc)
@@ -202,6 +221,46 @@ class TestApply:
         assert "merged-branch" in g.branches()
         assert plan.blocked and plan.blocked[0][0] == "merged-branch"
 
+    def test_untracked_real_file_in_worktree_blocks_prune(
+        self, repo: Path, tmp_path: Path
+    ) -> None:
+        # A worktree carrying an unsaved, unignored file must be reported, never pruned --
+        # the same protection tracked modifications get.
+        wt = tmp_path / "wt-newfile"
+        _git(repo, "worktree", "add", "-q", str(wt), "merged-branch")
+        (wt / "brand-new.txt").write_text("unsaved work")
+        g = bh.Git(repo)
+        plan = bh.build_plan(g)
+        bh.apply(g, plan)
+        assert "merged-branch" in g.branches()
+        assert plan.blocked and plan.blocked[0][0] == "merged-branch"
+        assert plan.prune_then_delete == []
+
+    def test_toctou_dirty_worktree_is_not_force_removed(
+        self, repo: Path, tmp_path: Path
+    ) -> None:
+        # classify() saw a clean worktree; a tracked file is then modified before apply.
+        # The last-moment re-check must reclassify it as blocked, not force-remove it.
+        wt = tmp_path / "wt-clean"
+        _git(repo, "worktree", "add", "-q", str(wt), "merged-branch")
+        g = bh.Git(repo)
+        plan = bh.build_plan(g)
+        assert plan.prune_then_delete and plan.prune_then_delete[0][0] == "merged-branch"
+        (wt / "a.txt").write_text("became dirty after planning")
+        bh.apply(g, plan)
+        assert "merged-branch" in g.branches()
+        assert "merged-branch" in g.worktrees()
+        assert any(b == "merged-branch" for b, _ in plan.blocked)
+
+    def test_fast_forward_reports_missing_local_main(self, repo: Path) -> None:
+        # With no local main, the check must say so plainly instead of inventing a
+        # "diverged" verdict from an empty rev-parse.
+        _git(repo, "checkout", "-q", "unmerged-branch")
+        _git(repo, "branch", "-D", "main")
+        moved, reason = bh.fast_forward_main(bh.Git(repo))
+        assert moved is False
+        assert reason == "local main not found"
+
     def test_fast_forward_advances_a_behind_main(self, repo: Path) -> None:
         # Move origin/main ahead, leave local main behind, then reconcile.
         _git(repo, "checkout", "-q", "-b", "ahead")
@@ -261,3 +320,44 @@ class TestExitContract:
 
     def test_unusable_repo_exits_two(self, tmp_path: Path) -> None:
         assert bh.main(["--repo", str(tmp_path)]) == 2
+
+    def test_detached_head_exits_two(self, repo: Path) -> None:
+        # No branch name to protect -> hard stop, no deletion attempted.
+        _git(repo, "checkout", "-q", "--detach", "HEAD")
+        assert bh.main(["--repo", str(repo), "--no-card"]) == 2
+
+    def test_unexpected_exception_exits_two(self, repo: Path, monkeypatch) -> None:
+        # A fail-closed git query raising mid-run must surface as exit 2 (no card), never
+        # as an uncaught traceback or a plan built on missing data.
+        def boom(*_a, **_k):
+            raise RuntimeError("git blew up")
+
+        monkeypatch.setattr(bh, "build_plan", boom)
+        assert bh.main(["--repo", str(repo), "--no-card"]) == 2
+
+
+class TestWakeMeDedup:
+    def _plan(self):
+        p = bh.Plan()
+        p.blocked.append(("feature", "/wt/feature"))
+        return p
+
+    def test_resolved_card_in_done_does_not_suppress(self, tmp_path: Path) -> None:
+        # A handled card sitting in queue/done/ must NOT silence a fresh alarm forever.
+        import cards  # noqa: PLC0415
+
+        done_card = cards.new_card(
+            project="kb", action="wake-me", target="branch-hygiene:needs-human",
+            risk_tier="T1", body="resolved earlier", state="done",
+        )
+        cards.save(done_card, tmp_path / "queue")
+
+        card_id = bh.file_wake_me(tmp_path, self._plan(), "")
+        assert card_id is not None
+        assert list((tmp_path / "queue" / "inbox").glob("*.md"))
+
+    def test_live_card_in_inbox_suppresses(self, tmp_path: Path) -> None:
+        # A still-open card in a live state DOES dedup, so a persistent blocker files one
+        # card rather than one per week.
+        assert bh.file_wake_me(tmp_path, self._plan(), "") is not None
+        assert bh.file_wake_me(tmp_path, self._plan(), "") is None

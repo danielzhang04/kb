@@ -89,9 +89,11 @@ Handles only what GitHub cannot see: local refs, stale worktrees, and the drifte
    resolve automatically.
 3. For each local branch, excluding `main`, `ops`, and the currently checked-out branch:
    - **Ancestor of `origin/main`?**
-     - Pinned by a worktree with **no tracked changes** → remove the worktree, then delete
-       the branch. Untracked build artifacts (`node_modules/`) do not block this; all three
-       "dirty" worktrees encountered during the manual cleanup contained only that.
+     - Pinned by a worktree with **no uncommitted work** → remove the worktree, then delete
+       the branch. `git status --porcelain` keeps git's default untracked handling, so
+       *gitignored* build output (`dashboard/node_modules/`, ignored by `.gitignore`) stays
+       invisible — but a real, unignored, never-staged file counts as work and blocks
+       removal. An unreadable status fails closed to "dirty".
      - Pinned by a worktree with **real uncommitted work** → skip, record for reporting.
      - Not pinned → delete.
    - **Not an ancestor?** Never touched. Recorded; reported if its last commit is older
@@ -106,11 +108,11 @@ reachable from `origin/main`**, so nothing unique is lost.
 
 | Invariant | Mechanism |
 |---|---|
-| Deletion gated on a provable fact | `git merge-base --is-ancestor <branch> origin/main`. No heuristics, no name matching, no age-based deletion. |
-| Defence in depth on that gate | Only `git branch -d`, never `-D`. Git independently refuses to delete an unmerged branch, so the ancestry check *and* git's own guard would both have to fail. |
-| Protected refs | `main`, `ops`, and the current branch are excluded by name before any other logic runs. |
+| Deletion gated on a provable fact | `git merge-base --is-ancestor <branch> refs/remotes/origin/main`. No heuristics, no name matching, no age-based deletion. This is the **sole substantive gate**, so it — and every other git query — fails closed: any non-zero return code is read as "not safe", never as "clean". |
+| `-d` is a weak backstop only | Only `git branch -d`, never `-D`. But `-d` checks reachability from HEAD or the branch's *own configured upstream*, **not** from `origin/main`; a pushed agent branch looks "merged" to it regardless of whether it ever reached `origin/main`. It is kept to reject the pathological bypass case, not as an independent proof — the ancestry gate above carries the guarantee. |
+| Protected refs | `main`, `ops`, and the current branch are excluded by name before any other logic runs; a detached/unknown HEAD aborts the run (exit 2) rather than proceed unprotected. |
 | No remote mutation | The script issues no `git push`, no `--delete`, and never contacts the `codex` remote. |
-| Worktree removal is bounded | Only when the branch is merged **and** `git status --porcelain` shows no tracked modifications. |
+| Worktree removal is bounded | Only when the branch is merged **and** `git status --porcelain` (default untracked, so `.gitignore` is honoured) reports nothing — neither a tracked change nor a real untracked file. An unreadable status fails closed to "dirty", and the state is re-checked immediately before removal to close the plan→apply TOCTOU window. |
 | Observability before action | `--check` performs a full dry run and mutates nothing, matching `sync_skills.py --check`. |
 
 ## Reporting policy
@@ -203,8 +205,11 @@ worktree behaviour that fakes cannot honestly model.
 
 ## Risks
 
-- **A wrong deletion is the only serious failure mode.** Mitigated by the ancestry gate plus
-  git's own `-d` refusal — two independent guards, both of which must fail.
+- **A wrong deletion is the only serious failure mode.** Mitigated by the ancestry gate
+  (`merge-base --is-ancestor <branch> origin/main`), which is the sole substantive guard and
+  fails closed on any git error. `git branch -d` is a weak backstop only — it never consults
+  `origin/main` — so it cannot be relied on as a second independent check; the ancestry gate
+  carries the whole guarantee.
 - **Worktree removal deletes directories**, a larger blast radius than deleting a ref.
   Bounded by requiring the branch to be merged *and* free of tracked changes.
 - **`--check` drift**: a dry run that diverges from real behaviour would erode trust in the
