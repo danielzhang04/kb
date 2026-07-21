@@ -1,2 +1,3 @@
 card_id	inspector_id	kind	project	task_type	tier	ts	worker
 6a5ec41c-6a21da88	inspector@agents.local	grade	atlas	reflex lane + intents.yaml	T2	2026-07-21T04:32:22.695670+00:00	claude/atlas
+6a5ec41c-4800fe6e	inspector@agents.local	grade	atlas	card-completion callbacks	T2	2026-07-21T04:45:49.772051+00:00	claude/atlas
