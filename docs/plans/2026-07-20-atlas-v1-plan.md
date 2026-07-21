@@ -280,3 +280,9 @@
   pre-branch code until merge). Panel verified serving live ops cards + OFFLINE worker shape.
 - Console-redirect note: worker output piped to a file needs PYTHONUTF8=1 (livekit banner
   emoji vs cp1252); interactive terminals unaffected.
+- Task 6 scope amendment (2026-07-20, orchestrator): `atlas/config/atlas.yaml` is ADDED to
+  Task 6's modify list — the orchestrator's dispatch instructed making the ledger's ops root
+  configurable (`ops_root` key, default = the real ops worktree) per design §5 wiring; the
+  plan's Files list simply hadn't named it. Inspector grade 92 FAIL (ops a87d0d8) flagged this
+  + assert-not-attach evidence; remediation = this amendment + verbatim outputs on the card,
+  then fresh-context re-grade.
