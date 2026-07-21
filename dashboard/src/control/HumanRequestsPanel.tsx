@@ -7,6 +7,7 @@ import {
   resumeRunAfterHumanResponse,
   type HumanRequestDecision,
   type HumanRequestDto,
+  type RunMetadataDto,
 } from './controlClient';
 import type { FetchLike } from './controlClient';
 import { decisionsForHumanRequest } from './humanBoundaries';
@@ -26,6 +27,9 @@ export function HumanRequestsPanel({
 }): React.JSX.Element {
   const [localToken, setLocalToken] = useState(sessionToken);
   const [requests, setRequests] = useState<HumanRequestDto[]>([]);
+  // Runs stuck `waiting-human` with NO open request — otherwise unreachable from the UI, so surface them
+  // as a distinct, non-actionable "inspect run" row rather than letting them hang invisibly (audit gap #3).
+  const [strandedRuns, setStrandedRuns] = useState<RunMetadataDto[]>([]);
   const [responses, setResponses] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,9 +43,12 @@ export function HumanRequestsPanel({
 
   const refresh = useCallback(async (activeToken: string): Promise<void> => {
     const runs = await listRuns(activeToken, fetchImpl);
-    const active = runs.filter((run) => run.openHumanRequestCount > 0);
+    // Widen beyond "has open requests" to also pull `waiting-human` runs — a run can be parked waiting on a
+    // human with zero open requests, a state otherwise invisible in both feeds.
+    const active = runs.filter((run) => run.openHumanRequestCount > 0 || run.state === 'waiting-human');
     const details = await Promise.all(active.map((run) => getRun(run.runRef, activeToken, fetchImpl)));
     setRequests(details.flatMap((detail) => detail.humanRequests).filter((request) => request.state === 'open'));
+    setStrandedRuns(runs.filter((run) => run.state === 'waiting-human' && run.openHumanRequestCount === 0));
   }, [fetchImpl]);
 
   useEffect(() => {
@@ -86,7 +93,17 @@ export function HumanRequestsPanel({
         )}
       </header>
       {error ? <p role="alert">{error}</p> : null}
-      {token && requests.length === 0 ? <p className="control-help">No managed run requests need attention.</p> : null}
+      {token && requests.length === 0 && strandedRuns.length === 0 ? <p className="control-help">No managed run requests need attention.</p> : null}
+      {strandedRuns.map((run) => (
+        <article key={run.runRef} className="control-request control-request--stranded" data-testid={`waiting-no-request-${run.runRef}`}>
+          <p className="control-eyebrow">waiting-human · no open request</p>
+          <h3>{run.title}</h3>
+          <p>This run is waiting on a human with NO open request — inspect the run to see why it is parked.</p>
+          {/* No actionable control here: with no open request there is nothing to approve/respond. The run
+              ref is the handle the operator uses to open it in the Governed runs view. */}
+          <p className="control-help mc-mono" data-testid={`inspect-run-${run.runRef}`}>run {run.runRef}</p>
+        </article>
+      ))}
       {requests.map((request) => (
         <article key={request.requestRef} className="control-request">
           <p className="control-eyebrow">{request.kind} · revision {request.revision} · run {request.runRef}</p>

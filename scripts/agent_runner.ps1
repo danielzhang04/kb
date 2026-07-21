@@ -482,6 +482,63 @@ if ($LASTEXITCODE -ne 0) {
 }
 else {
     Write-RunnerLog ("pushed agent=$Agent branch=$workBranch -- awaiting PR into ops (human or cloud leg opens/merges; runner never does)")
+
+    # --- inbox-gates G1: file a merge-gate card so the pushed work branch shows
+    # up in the dashboard Inbox as a human merge gate (predicate #4) instead of
+    # being invisible in both feeds. This is a BRANCH-ONLY gate: the runner never
+    # opens a PR (trust-anchor invariant), so the target is $workBranch with no PR
+    # number, and the daemon reconciler cannot auto-close it -- a human closes it
+    # on merge (Decision 5, accepted as fail-toward-surfacing).
+    #
+    # Best-effort: the push already succeeded, so a merge_gate failure only logs
+    # and NEVER changes $overallExit. The gate card is committed to $workBranch and
+    # re-pushed so it rides the human's PR into ops -- that PR is the ONLY
+    # coordination path this runner has (it cannot push ops directly). All merge_gate
+    # writes go through scripts/cards.py APIs (via merge_gate.py) so they inherit
+    # its schema/dedup conventions; no hand-rolled frontmatter here.
+    try {
+        $gateOut = (& $py "$RepoRoot/scripts/merge_gate.py" file `
+            --queue-root "$RepoRoot/queue" `
+            --target $workBranch `
+            --repo kb `
+            --branch $workBranch `
+            --unblocks "merge of $workBranch into ops" | Out-String).Trim()
+        Write-RunnerLog ("merge-gate-filed agent=$Agent branch=$workBranch :: $gateOut")
+
+        # EXACT-PATH staging (runner discipline, :456-458): stage ONLY this gate
+        # card, never a `git add -- queue` directory sweep that could catch an
+        # unrelated uncommitted queue/ file left behind by a processed card. The
+        # merge_gate.py `file` line prints `id=<id>`; parse it and stage the single
+        # freshly-minted card at queue/inbox/<id>.md (a new card is always minted
+        # into inbox/ by cards.save). On a DEDUP hit the card already exists on ops
+        # (nothing uncommitted), so `commit` finds nothing staged (nonzero exit) and
+        # the push is skipped -- the no-op dedup path is preserved.
+        $gateId = $null
+        if ($gateOut -match 'id=(\S+)') { $gateId = $Matches[1] }
+        if ($gateId) {
+            $gateCardRel = "queue/inbox/$gateId.md"
+            if (Test-Path (Join-Path $RepoRoot $gateCardRel)) {
+                git -C $RepoRoot add -- $gateCardRel
+                git -C $RepoRoot commit -m "chore(inbox-gates): merge-gate card $gateId for $workBranch"
+                if ($LASTEXITCODE -eq 0) {
+                    git -C $RepoRoot push $PushRemote $workBranch
+                    if ($LASTEXITCODE -ne 0) {
+                        Write-RunnerLog ("merge-gate-push-failed agent=$Agent branch=$workBranch -- gate committed locally; human reconciles on merge")
+                    }
+                } else {
+                    Write-RunnerLog ("merge-gate-nothing-to-commit agent=$Agent branch=$workBranch id=$gateId -- dedup hit; gate already on ops")
+                }
+            } else {
+                # Dedup hit whose existing live gate has already moved out of inbox/
+                # (e.g. state working): nothing new to stage. Never sweep.
+                Write-RunnerLog ("merge-gate-dedup agent=$Agent branch=$workBranch id=$gateId -- existing gate already tracked; nothing to commit")
+            }
+        } else {
+            Write-RunnerLog ("merge-gate-parse-failed agent=$Agent branch=$workBranch -- could not parse gate id from output; nothing staged")
+        }
+    } catch {
+        Write-RunnerLog ("merge-gate-failed agent=$Agent branch=$workBranch :: $_")
+    }
 }
 
 try {

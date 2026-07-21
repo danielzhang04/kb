@@ -111,6 +111,10 @@ export function makeSurfaceContext(
     runAutomatic: overrides.runAutomatic ?? activated?.runAutomatic,
     cancelAutomatic: overrides.cancelAutomatic ?? activated?.cancelAutomatic,
     triggerRunner: overrides.triggerRunner,
+    schtasksRun: overrides.schtasksRun,
+    // One liveness cache per context (see resumeRegistry) — persists across responds within this process,
+    // fresh per test context so schtasks probe results never leak between tests.
+    livenessCache: overrides.livenessCache ?? new Map(),
   };
 }
 

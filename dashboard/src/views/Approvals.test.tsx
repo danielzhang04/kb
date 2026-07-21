@@ -342,3 +342,50 @@ describe('Approvals — operator gates awaiting the human', () => {
     expect(t2.querySelector('.mc-badge--t2')).not.toBeNull();
   });
 });
+
+describe('Approvals — stranded + STOP (T6)', () => {
+  /** A stranded card: agent-owned, hex-epoch id older than the 24h threshold under an injected `now`. */
+  function strandedCard(): { card: ParsedCard; id: string; now: number } {
+    const epochSec = 1_700_000_000;
+    const id = `${epochSec.toString(16).padStart(8, '0')}-stranded`;
+    const now = (epochSec + 25 * 3600) * 1000; // 25h old > STRANDED_AGE_MS
+    return {
+      id,
+      now,
+      card: {
+        meta: { id, project: 'kb', action: 'research:topic', target: '.', 'risk-tier': 'T2', owner: 'codex-worker', state: 'inbox' },
+        body: '## Work order\n\nDo research.\n',
+      },
+    };
+  }
+
+  it('renders a stranded item, its summary-stranded count, and the Stranded category label', () => {
+    const { card: c, id, now } = strandedCard();
+    render(<Approvals items={projectHumanInbox(gateIndex([c]), { now }).items} />);
+
+    expect(screen.getByTestId('summary-stranded').textContent).toMatch(/1\s*Stranded/);
+    const row = screen.getByRole('button', { name: new RegExp(id) });
+    expect(row.textContent).toMatch(/Stranded/);
+    // The detail panel carries the honest "is its runner online?" reason.
+    fireEvent.click(row);
+    expect(screen.getByTestId('inbox-detail-panel').textContent).toMatch(/is its runner online/i);
+  });
+
+  it('renders the STOP freeze item first, with a critical caption, and counts it as an intervention', () => {
+    const items = projectHumanInbox(
+      gateIndex([gateCard('6a5d6b23-12ddfee2', 'approve:oauth-gate-g1')]),
+      { stopPresent: true },
+    ).items;
+    render(<Approvals items={items} />);
+
+    // Critical urgency sorts the STOP item to the top of the list.
+    const buttons = screen.getAllByRole('button').filter((b) => /stop-file|6a5d6b23/.test(b.textContent ?? ''));
+    expect(buttons[0].textContent).toContain('stop-file');
+
+    fireEvent.click(screen.getByRole('button', { name: /stop-file/ }));
+    expect(screen.getByTestId('stop-file-caption').textContent).toMatch(/Fleet frozen/i);
+    // Both Gates and Stranded summary tiles are present alongside Interventions.
+    expect(screen.getByTestId('summary-gate')).toBeTruthy();
+    expect(screen.getByTestId('summary-stranded')).toBeTruthy();
+  });
+});

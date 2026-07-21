@@ -12,6 +12,7 @@
 import type { ParsedCard } from '../../server/planeA/cards';
 import type { ApprovalButtons } from '../../server/approvals/assurance';
 import type { HumanInboxProjection } from '../../server/approvals/humanInbox';
+import type { OwnerLiveness } from '../../server/runner/liveness';
 import { invalidateSessionOnGovernedAuthFailure } from './authClient';
 
 export type ApprovalChannel = 'signed' | 'possession' | 'webauthn';
@@ -39,7 +40,9 @@ export async function fetchHumanInbox(fetchImpl: FetchLike = fetch): Promise<Hum
   const body = (await res.json()) as HumanInboxProjection;
   return {
     items: Array.isArray(body.items) ? body.items : [],
-    counts: body.counts ?? { total: 0, decision: 0, input: 0, intervention: 0 },
+    // Default must match the server HumanInboxCounts shape EXACTLY — `gate` and `stranded` were omitted,
+    // which left those tiles blank on the pre-first-fetch render.
+    counts: body.counts ?? { total: 0, decision: 0, gate: 0, input: 0, intervention: 0, stranded: 0 },
   };
 }
 
@@ -47,6 +50,9 @@ export interface VerifyResult {
   ok: boolean;
   reason: string;
   status: number;
+  /** Present only on a successful `card-respond` (G3): the server's read of whether any consumer is
+   *  online for the card's owner. Used to warn the operator when a reply will hang unread. */
+  liveness?: OwnerLiveness;
 }
 
 /**
@@ -80,6 +86,13 @@ export async function verifyApproval(
 
 export type RespondAction = 'reply' | 'resolve';
 
+/** The shape the `card-respond` success body carries beyond the base ack. */
+interface RespondBody {
+  reason?: string;
+  error?: string;
+  liveness?: OwnerLiveness;
+}
+
 /**
  * POST an inline operator response (a reply on an input card, or a resolve on a wake-me/blocked/halted
  * card) to the governed `POST /api/write/card-respond` route. Session-gated: without a bearer the server
@@ -102,11 +115,13 @@ export async function respondToCard(
   });
   await invalidateSessionOnGovernedAuthFailure(res);
   let reason = '';
+  let liveness: OwnerLiveness | undefined;
   try {
-    const body = (await res.json()) as { reason?: string; error?: string };
+    const body = (await res.json()) as RespondBody;
     reason = body.reason ?? body.error ?? '';
+    liveness = body.liveness;
   } catch {
     reason = 'no response body';
   }
-  return { ok: res.ok, reason, status: res.status };
+  return { ok: res.ok, reason, status: res.status, liveness };
 }

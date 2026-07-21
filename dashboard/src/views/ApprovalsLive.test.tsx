@@ -146,6 +146,50 @@ describe('ApprovalsLive', () => {
     expect(fetchImpl.mock.calls.filter((c) => c[0] === '/api/human-inbox').length).toBeGreaterThanOrEqual(2);
   });
 
+  function ownedInputInboxResponse(): Response {
+    return jsonResponse({
+      items: [{
+        card: { meta: { id: 'question-2', project: 'kb', action: 'needs-input:source', target: 't', 'risk-tier': 'T1', owner: 'worker-desktop', state: 'inbox' }, body: '## Work order\n\nPick.\n' },
+        category: 'input', categoryLabel: 'Input', urgency: 'normal', status: 'Waiting for your input',
+        reason: 'Explicit question.', nextAction: 'Reply below.', context: 'Pick.', respond: 'reply',
+      }],
+      counts: { total: 1, decision: 0, gate: 0, input: 1, intervention: 0, stranded: 0 },
+    });
+  }
+
+  it('G3: warns that no runner is online for the owner when the respond body reports offline liveness', async () => {
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url === '/api/human-inbox') return ownedInputInboxResponse();
+      return jsonResponse({ ok: true, state: 'inbox', liveness: { consumer: 'none', online: false, detail: 'no runner is registered for worker-desktop' } });
+    });
+    render(<ApprovalsLive sessionToken="sess-tok" fetchImpl={fetchImpl as unknown as typeof fetch} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /question-2/ }));
+    fireEvent.change(screen.getByTestId('respond-message'), { target: { value: 'Use source A.' } });
+    fireEvent.click(screen.getByTestId('respond-submit'));
+
+    const status = await screen.findByRole('status');
+    expect(status.textContent).toMatch(/reply recorded and committed/i);
+    expect(status.textContent).toMatch(/No runner is online for `worker-desktop`/);
+    expect(status.textContent).toMatch(/will not progress until one runs/i);
+  });
+
+  it('G3: an online consumer yields a plain committed message with no no-runner warning', async () => {
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url === '/api/human-inbox') return ownedInputInboxResponse();
+      return jsonResponse({ ok: true, state: 'inbox', liveness: { consumer: 'scheduled-task', online: true, detail: 'scheduled task kb-codex-runner is Ready' } });
+    });
+    render(<ApprovalsLive sessionToken="sess-tok" fetchImpl={fetchImpl as unknown as typeof fetch} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /question-2/ }));
+    fireEvent.change(screen.getByTestId('respond-message'), { target: { value: 'Use source A.' } });
+    fireEvent.click(screen.getByTestId('respond-submit'));
+
+    const status = await screen.findByRole('status');
+    expect(status.textContent).toMatch(/reply recorded and committed/i);
+    expect(status.textContent).not.toMatch(/No runner is online/);
+  });
+
   it('replaces an invalidated session once on a 401 and retries the respond', async () => {
     let respondCalls = 0;
     const fetchImpl = vi.fn(async (url: string, _init?: RequestInit) => {

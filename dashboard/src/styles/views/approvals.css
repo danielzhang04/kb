@@ -173,6 +173,22 @@
   color: var(--status-blocked);
 }
 
+/* Stranded: advisory, low-urgency. Muted (not alarm-colored) so it never competes with a real gate. */
+.v-approvals__category--stranded,
+.v-approvals__eyebrow--stranded {
+  color: var(--fg-faint);
+}
+
+/* STOP-file freeze: the single most urgent state the inbox can show. */
+.v-approvals__stop-banner {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--status-blocked);
+  background: var(--accent-quiet);
+  color: var(--fg-primary);
+  font-size: var(--text-sm);
+}
+
 .v-approvals__row:hover {
   background: var(--bg-elevated);
   color: var(--fg-primary);

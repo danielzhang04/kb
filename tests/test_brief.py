@@ -170,6 +170,76 @@ def test_human_gate_inbox_cards_included(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
+# G4 parity: halted, root-blocked, and the stop ladder are now surfaced        #
+# (previously the brief scanned only approvals+inbox and disagreed with the    #
+# dashboard on exactly these states)                                           #
+# --------------------------------------------------------------------------- #
+
+def test_halted_blocked_and_stop_ladder_surface_in_pending(tmp_path):
+    repo = _repo(tmp_path)
+
+    halted = cards.new_card("kb-ops", "halted-run", "svc-a", "T2",
+                            body="## Work order\nx\n", state="halted")
+    halted.meta["owner"] = "codex-worker"
+    cards.save(halted, repo / "queue")  # physically lands in queue/working/
+
+    root_block = cards.new_card("kb-ops", "root-blocked-item", "svc-b", "T2",
+                                body="## Work order\nx\n", state="blocked")
+    # unowned + no deps -> a human must clear it
+    cards.save(root_block, repo / "queue")  # physically lands in queue/inbox/
+
+    stopping = cards.new_card("kb-ops", "stopping-item", "svc-c", "T2",
+                              body="## Work order\nx\n", state="stop-requested")
+    stopping.meta["owner"] = "codex-worker"
+    cards.save(stopping, repo / "queue")  # physically lands in queue/working/
+
+    text = brief.render_brief(repo, DATE)
+    pending = text.split("## Pending", 1)[1].split("## Deferrals", 1)[0]
+    assert "halted-run" in pending
+    assert "root-blocked-item" in pending
+    assert "stopping-item" in pending
+
+
+def test_dependency_blocked_card_is_not_surfaced(tmp_path):
+    """A blocked card with an owner and a dependency releases automatically — it is
+    NOT a human gate and must stay out of the brief (parity with the dashboard)."""
+    repo = _repo(tmp_path)
+    dep_block = cards.new_card("kb-ops", "dep-blocked-item", "svc-d", "T2",
+                               body="## Work order\nx\n", state="blocked")
+    dep_block.meta["owner"] = "codex-worker"
+    dep_block.meta["depends-on"] = ["some-upstream"]
+    cards.save(dep_block, repo / "queue")
+
+    text = brief.render_brief(repo, DATE)
+    assert "dep-blocked-item" not in text
+
+
+def test_halted_resolved_inline_is_hidden_but_spoof_is_not(tmp_path):
+    """A halted card an operator resolved inline (marker in ## Result, no
+    transition) must drop out of the brief — matching the dashboard — while the
+    same marker forged in ## Evidence must NOT hide the card."""
+    repo = _repo(tmp_path)
+
+    resolved = cards.new_card(
+        "kb-ops", "resolved-halt", "svc-a", "T2",
+        body="## Work order\nx\n\n## Result\n\nResolved by operator (2026-07-20T00:00:00.000Z):\nclosed\n",
+        state="halted")
+    resolved.meta["owner"] = "codex-worker"
+    cards.save(resolved, repo / "queue")
+
+    spoof = cards.new_card(
+        "kb-ops", "spoofed-halt", "svc-b", "T2",
+        body="## Work order\nx\n\n## Evidence\n\nResolved by operator (2026-07-20T00:00:00.000Z):\nhide me\n",
+        state="halted")
+    spoof.meta["owner"] = "codex-worker"
+    cards.save(spoof, repo / "queue")
+
+    text = brief.render_brief(repo, DATE)
+    assert "resolved-halt" not in text          # genuinely resolved -> hidden
+    assert "spoofed-halt" in text               # forged marker outside ## Result -> still surfaced
+
+
+# --------------------------------------------------------------------------- #
 # deferral flags                                                               #
 # --------------------------------------------------------------------------- #
 

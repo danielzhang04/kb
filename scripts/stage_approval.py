@@ -40,6 +40,7 @@ from pathlib import Path
 
 import approvals
 import cards
+import merge_gate
 
 
 def _now() -> datetime.datetime:
@@ -55,12 +56,37 @@ def _git_runner(args, cwd=None):
 
 # --- injectable per-tier openers (the `opener` argument to stage) ------------
 
-def open_pr(branch, repo_root, runner, *, pr_opener):
+def _default_gate_filer(repo_root):
+    """Bind ``merge_gate.file`` to this repo's ``queue/``. Resolved at call time
+    (via the ``merge_gate`` module attribute) so a monkeypatch of
+    ``merge_gate.file`` is honoured."""
+    def _file(*, target, repo, branch, pr_url, unblocks):
+        return merge_gate.file(Path(repo_root) / "queue", target=target, repo=repo,
+                               branch=branch, pr_url=pr_url, unblocks=unblocks)
+    return _file
+
+
+def open_pr(branch, repo_root, runner, *, pr_opener, gate_filer=None):
     """Cloud/app opener: push ``branch`` then open a PR via the injected
     ``pr_opener`` (claude.ai GitHub-App integration). NEVER merges, NEVER uses a
-    REST token in the VM env. Returns the PR ref produced by ``pr_opener``."""
+    REST token in the VM env. Returns the PR ref produced by ``pr_opener``.
+
+    After the PR is opened, files a merge-gate card for the PR ref via T1's
+    ``merge_gate.file`` (injectable ``gate_filer`` keeps tests hermetic) so the
+    handoff surfaces in the dashboard Inbox. Gate filing is best-effort: a
+    failure NEVER undoes an opened PR — the PR exists and the gate can be filed
+    by hand.
+    """
     runner(["push", "origin", branch], cwd=repo_root)
-    return pr_opener(branch)
+    ref = pr_opener(branch)
+    filer = gate_filer or _default_gate_filer(repo_root)
+    try:
+        filer(target=ref, repo=Path(repo_root).name, branch=branch, pr_url=ref,
+              unblocks=f"merge of {branch} into ops")
+    except Exception:
+        # Surfacing is best-effort — never fail an opened PR on a gate write.
+        pass
+    return ref
 
 
 def push_branch_and_notify(branch, repo_root, runner, *, notifier):

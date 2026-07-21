@@ -52,7 +52,10 @@ function resolveCardPath(repoRoot: string, cardId: string): string | null {
 export function registerApprovalsRoutes(scope: FastifyInstance, ctx: SurfaceContext): void {
   scope.get('/api/human-inbox', async (_req, reply: FastifyReply) => {
     const index = indexRepo(ctx.repoRoot);
-    return reply.code(200).send(projectHumanInbox(index));
+    // The repo-root STOP freeze file is deliberately uncommitted/local; presence alone drives the
+    // synthetic STOP intervention. We check EXISTENCE only and never read its contents.
+    const stopPresent = existsSync(join(ctx.repoRoot, 'STOP'));
+    return reply.code(200).send(projectHumanInbox(index, { stopPresent }));
   });
 
   scope.get('/api/approvals', async (_req, reply: FastifyReply) => {

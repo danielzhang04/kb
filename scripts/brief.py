@@ -25,6 +25,8 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import re
+import time
 from pathlib import Path
 
 import cards
@@ -33,6 +35,45 @@ import preamble
 
 # Ledger streams summarized as "overnight" activity.
 OVERNIGHT_KINDS = ("dispatch", "cost", "activity", "grades")
+
+# The FOUR physical queue directories cards.py actually writes to (cards.STATE_DIR
+# values). `blocked` lives under inbox/, and all three stop-ladder states (incl.
+# terminal `halted`) under working/ — there is NO queue/blocked or queue/halted
+# directory, so scanning a state-named dir is the N1 trap. Scan these physical
+# dirs and filter by PARSED state instead.
+_PHYSICAL_QUEUE_DIRS = ("inbox", "working", "approvals", "done")
+
+# --- inbox-gate classification, mirrored EXACTLY from dashboard humanInbox.ts --- #
+# These predicates and the stranded threshold must stay byte-for-byte equivalent to
+# the dashboard `classify`; the shared fixture tests/fixtures/inbox-gates-parity.json
+# (consumed by BOTH pytest and vitest) turns any drift into a red test.
+_HUMAN_INPUT_ACTION = re.compile(
+    r"(?:^|[:/_-])(?:needs?-?input|human-?input|input-?required|question|"
+    r"human-?review|review-?required)(?:$|[:/_-])",
+    re.I,
+)
+_WAKE_ACTION = re.compile(r"^wake-me(?::|$)", re.I)
+# A card is STRANDED once it is owned by a real agent yet has made no progress for
+# this long — the same 24h threshold and hex-epoch age source as humanInbox.ts.
+STRANDED_AGE_MS = 24 * 60 * 60 * 1000
+_CARD_ID_EPOCH_RE = re.compile(r"^([0-9a-f]{8})-")
+
+# The exact marker prefix write/cardRespond.ts writes into a halted card's
+# ## Result section when an operator resolves it inline (no state transition). It
+# must be matched ONLY inside ## Result — never elsewhere in the body — or inert
+# ## Evidence text could spoof a resolution. Byte-identical to humanInbox.ts
+# RESOLVE_RECORDED so both surfaces hide a resolved halted card in lockstep.
+_RESOLVE_RECORDED = "Resolved by operator ("
+
+# One canonical category (dashboard vocabulary) -> the brief's presentation "kind"
+# label. The category IS the shared truth; "kind" is only how the brief renders it.
+_CATEGORY_KIND = {
+    "decision": "approval",
+    "gate": "human-gate",
+    "input": "input",
+    "intervention": "intervention",
+    "stranded": "stranded",
+}
 
 _TIER_RANK = {"T3": 3, "T2": 2, "T1": 1}
 # Placeholder text for the still-gated Google surfaces (brainstorm-doc
@@ -101,7 +142,8 @@ def _rank_key(card: cards.Card) -> tuple[int, int]:
 
 def _iter_cards(repo_root, state: str):
     """Yield parsed cards from ``queue/<state>/``; silently skip anything that
-    does not parse (a malformed file must never crash the brief)."""
+    does not parse (a malformed file must never crash the brief). Only valid for
+    the PHYSICAL dirs (inbox/working/approvals/done) — never a state-named dir."""
     d = Path(repo_root) / "queue" / state
     if not d.exists():
         return
@@ -112,15 +154,117 @@ def _iter_cards(repo_root, state: str):
             continue
 
 
+def _iter_all_cards(repo_root):
+    """Yield every parsed card across the FOUR physical queue dirs. Callers filter
+    on the PARSED ``state`` field — never on the directory name — so a `halted`
+    card (physically under working/) is found without ever globbing a nonexistent
+    ``queue/halted/`` (the N1 lesson, Python side)."""
+    for d in _PHYSICAL_QUEUE_DIRS:
+        yield from _iter_cards(repo_root, d)
+
+
 def _is_wake_me(card: cards.Card) -> bool:
-    return str(card.meta.get("action") or "").startswith("wake-me")
+    return bool(_WAKE_ACTION.match(str(card.meta.get("action") or "")))
 
 
 def _is_human_gate(card: cards.Card) -> bool:
     """An inbox card only a human can move: owned by the human operator (the
-    OAuth/governance gate pattern) or an explicit ``approve:*`` action."""
+    OAuth/governance gate pattern) or an explicit ``approve:*`` action. Kept
+    byte-identical to the dashboard ``isHumanGate`` two-limb test."""
     return (str(card.meta.get("owner") or "") == "human-operator"
             or str(card.meta.get("action") or "").startswith("approve:"))
+
+
+def _card_age_ms(card: cards.Card, now_ms: int):
+    """Age of a card in ms derived PURELY from its id's 8-hex unix-epoch-seconds
+    prefix (``cards.new_id``), or ``None`` when the id does not carry one — the
+    exact mirror of humanInbox.ts ``cardAgeMs``. A non-8-hex id yields an UNKNOWN
+    age and is therefore NEVER classified stranded (Decision 1)."""
+    m = _CARD_ID_EPOCH_RE.match(str(card.meta.get("id") or ""))
+    if not m:
+        return None
+    return now_ms - int(m.group(1), 16) * 1000
+
+
+def _dependencies(card: cards.Card) -> list:
+    value = card.meta.get("depends-on")
+    return value if isinstance(value, list) else []
+
+
+def _section_text(body: str, section: str) -> str:
+    """Return the text of one ``## <section>`` block (up to the next ``## `` header
+    or EOF), or ``""`` if absent. Byte-for-byte mirror of humanInbox.ts
+    ``sectionText`` — the header line is matched STRIPPED (``line.strip() ==
+    header``) and the block ends at the next line that STARTSWITH ``## ``, so a
+    marker is only ever counted inside its own named section and inert
+    ## Evidence text cannot spoof it."""
+    lines = str(body or "").split("\n")
+    header = f"## {section}"
+    start = next((i for i, ln in enumerate(lines) if ln.strip() == header), -1)
+    if start == -1:
+        return ""
+    end = len(lines)
+    for j in range(start + 1, len(lines)):
+        if lines[j].startswith("## "):
+            end = j
+            break
+    return "\n".join(lines[start + 1:end])
+
+
+def classify_category(card: cards.Card, stop_present: bool = False, now: int | None = None):
+    """Return the canonical inbox category for one card — the dashboard vocabulary
+    ``decision | gate | input | intervention | stranded`` or ``None`` — mirroring
+    dashboard ``classify`` limb-for-limb and in the same order.
+
+    ``now`` is unix epoch MILLISECONDS, used only for the stranded age gate; when it
+    is ``None`` the stranded limb is SKIPPED (so ``render_brief`` stays clock-free and
+    deterministic — stranded is advisory and surfaced live by the dashboard, not the
+    brief). ``stop_present`` is accepted for parity with the dashboard projection
+    entry point; the STOP freeze item is SYNTHETIC (never a card) so it does not
+    affect any real card's category here."""
+    del stop_present  # STOP is synthetic, not a card — see docstring.
+    state = str(card.meta.get("state") or "").lower()
+    action = str(card.meta.get("action") or "")
+    owner = str(card.meta.get("owner") or "")
+
+    if state == "approvals":
+        return "decision"
+    if state == "inbox" and _HUMAN_INPUT_ACTION.search(action):
+        return "input"
+    if state == "inbox" and _WAKE_ACTION.match(action):
+        return "intervention"
+    if state == "inbox" and _is_human_gate(card):
+        return "gate"
+    if state == "halted":
+        # An operator who resolved this terminal card inline recorded the marker in
+        # ## Result (cardRespond, no transition). humanInbox.ts then HIDES it; the
+        # brief must too, or it would re-list a resolved halted card forever.
+        if _RESOLVE_RECORDED in _section_text(str(card.body or ""), "Result"):
+            return None
+        return "intervention"
+    if state in ("stop-requested", "halting"):
+        return "intervention"
+
+    explicitly_human = (
+        bool(_WAKE_ACTION.match(action))
+        or bool(_HUMAN_INPUT_ACTION.search(action))
+        or _is_human_gate(card)
+    )
+    unowned_root_block = (
+        state == "blocked" and card.meta.get("owner") is None and not _dependencies(card)
+    )
+    if state == "blocked" and (explicitly_human or unowned_root_block):
+        return "intervention"
+
+    # Stranded — only when a clock is supplied (see docstring). Excludes operator
+    # gates (already surfaced) and unowned cards; a non-8-hex id => unknown age =>
+    # never stranded.
+    if now is not None and state in ("inbox", "working") and owner not in ("", "human-operator"):
+        age = _card_age_ms(card, now)
+        if age is not None and age > STRANDED_AGE_MS:
+            return "stranded"
+
+    return None
 
 
 # --------------------------------------------------------------------------- #
@@ -128,17 +272,21 @@ def _is_human_gate(card: cards.Card) -> bool:
 # --------------------------------------------------------------------------- #
 
 def _actionable_pending(repo_root) -> list[tuple[str, cards.Card]]:
-    """Ranked list of ``(kind, card)`` a human must act on: every
-    ``queue/approvals`` card, plus every wake-me card and every human-gate card
-    (human-operator-owned or ``approve:*``) in ``queue/inbox``."""
+    """Ranked list of ``(kind, card)`` a human must act on, derived through the
+    SAME ``classify_category`` the dashboard uses so the two surfaces agree: every
+    approval (decision), every operator gate, every input/wake/halted/stop-ladder
+    card, and every unowned root-blocked card. Scans the physical dirs and filters
+    by parsed state (so `halted`/`blocked` are surfaced without the N1 dir trap).
+
+    Stranded (advisory) is intentionally OMITTED: `classify_category` is called with
+    ``now=None`` so the brief stays clock-free, and the dashboard surfaces stranded
+    live. The rendered ``kind`` is a display mapping off the canonical category."""
     items: list[tuple[str, cards.Card]] = []
-    for card in _iter_cards(repo_root, "approvals"):
-        items.append(("approval", card))
-    for card in _iter_cards(repo_root, "inbox"):
-        if _is_wake_me(card):
-            items.append(("wake-me", card))
-        elif _is_human_gate(card):
-            items.append(("human-gate", card))
+    for card in _iter_all_cards(repo_root):
+        category = classify_category(card)  # now=None -> stranded skipped, deterministic
+        if category is None:
+            continue
+        items.append((_CATEGORY_KIND[category], card))
     items.sort(key=lambda kc: _rank_key(kc[1]))
     return items
 

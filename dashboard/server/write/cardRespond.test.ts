@@ -3,7 +3,7 @@
  * and respondToCard's refusal short-circuit + op composition (recording fake PyRunner, no real py).
  */
 import { describe, expect, it, vi } from 'vitest';
-import { planResponse, respondToCard } from './cardRespond.ts';
+import { CardOpError, executeCardMutation, planResponse, respondToCard } from './cardRespond.ts';
 import type { PyRunner } from './launch.ts';
 
 const ISO = '2026-07-19T12:00:00.000Z';
@@ -68,5 +68,43 @@ describe('respondToCard', () => {
       { repoRoot: '/repo', runPy, prepareWrite: async () => {} },
     );
     expect(outcome).toMatchObject({ ok: false, reason: 'card-op-failed', detail: 'illegal transition' });
+  });
+});
+
+/**
+ * T4 — the extracted cards.py executor the merge-gate reconciler reuses. respondToCard is now
+ * planResponse -> executeCardMutation, so the tests above are the behavior-unchanged regression for the
+ * respond path; these lock the extracted executor's own contract (plain success shape + CardOpError).
+ */
+describe('executeCardMutation', () => {
+  it('prepares before running cards.py and returns the parsed {id,state,paths}', async () => {
+    const calls: string[] = [];
+    const prepareWrite = vi.fn(async () => { calls.push('prepare'); });
+    const runPy: PyRunner = (_repo, _code, jsonArg) => {
+      calls.push('py');
+      const op = JSON.parse(jsonArg) as { cardId: string; section: string; transitions: string[]; claimOwner: string | null };
+      expect(op).toMatchObject({ cardId: 'c1', section: 'Result', transitions: ['working', 'done'], claimOwner: 'human-operator' });
+      return { exitCode: 0, stdout: JSON.stringify({ id: op.cardId, state: 'done', paths: ['queue/inbox/c1.md', 'queue/done/c1.md'] }), stderr: '' };
+    };
+    const result = await executeCardMutation(
+      { cardId: 'c1', section: 'Result', block: 'note', transitions: ['working', 'done'], claimOwner: 'human-operator' },
+      { repoRoot: '/repo', runPy, prepareWrite },
+    );
+    expect(result).toEqual({ id: 'c1', state: 'done', paths: ['queue/inbox/c1.md', 'queue/done/c1.md'] });
+    expect(calls).toEqual(['prepare', 'py']);
+  });
+
+  it('throws CardOpError on a non-zero cards.py exit and on a prepare failure', async () => {
+    const failPy: PyRunner = () => ({ exitCode: 1, stdout: '', stderr: 'illegal transition' });
+    await expect(executeCardMutation(
+      { cardId: 'c1', section: 'Result', block: 'n', transitions: [], claimOwner: null },
+      { repoRoot: '/repo', runPy: failPy, prepareWrite: async () => {} },
+    )).rejects.toBeInstanceOf(CardOpError);
+
+    const okPy: PyRunner = () => ({ exitCode: 0, stdout: '{}', stderr: '' });
+    await expect(executeCardMutation(
+      { cardId: 'c1', section: 'Result', block: 'n', transitions: [], claimOwner: null },
+      { repoRoot: '/repo', runPy: okPy, prepareWrite: async () => { throw new Error('pull failed'); } },
+    )).rejects.toThrow(/could not prepare coordination write: pull failed/);
   });
 });

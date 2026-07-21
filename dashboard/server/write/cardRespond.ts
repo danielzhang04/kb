@@ -188,6 +188,53 @@ function parseStdout(stdout: string): { id: string; state: string; paths: string
 }
 
 /**
+ * An already-authorized card mutation plan, decoupled from the (state, action, verb) authorization that
+ * produced it. `respondToCard` derives one from `planResponse`; the merge-gate reconciler builds its own
+ * (`section: 'Result'`, `transitions: ['working','done']`, `claimOwner: 'human-operator'`) so both mutate
+ * cards through the SAME cards.py executor and never hand-roll a frontmatter/state write.
+ */
+export interface CardMutationOp {
+  cardId: string;
+  section: 'Feedback' | 'Result';
+  block: string;
+  transitions: string[];
+  claimOwner: string | null;
+}
+
+/** A card-op failure that {@link respondToCard} maps to its `card-op-failed` outcome. Thrown (rather than
+ *  returned) so {@link executeCardMutation} can hand back the plain success shape the reconciler wants,
+ *  while a JSON-parse fault stays an uncaught throw exactly as before. */
+export class CardOpError extends Error {}
+
+/**
+ * The shared cards.py executor: reconcile ops (prepareWrite), run the fixed CARD_RESPOND_SCRIPT payload
+ * for `op`, and parse its `{id,state,paths}`. Throws {@link CardOpError} on a prepare failure or a
+ * non-zero cards.py exit (mirrors the strings respondToCard returned before this extraction); a malformed
+ * stdout still throws the raw JSON parse error. Does NOT authorize — the caller owns that.
+ */
+export async function executeCardMutation(op: CardMutationOp, deps: RespondDeps): Promise<{ id: string; state: string; paths: string[] }> {
+  try {
+    await deps.prepareWrite?.(deps.repoRoot);
+  } catch (err) {
+    throw new CardOpError(`could not prepare coordination write: ${(err as Error).message}`);
+  }
+
+  const runPy = deps.runPy ?? defaultPyRunner;
+  const jsonArg = JSON.stringify({
+    cardId: op.cardId,
+    section: op.section,
+    block: op.block,
+    transitions: op.transitions,
+    claimOwner: op.claimOwner,
+  });
+  const result = runPy(deps.repoRoot, CARD_RESPOND_SCRIPT, jsonArg);
+  if (result.exitCode !== 0) {
+    throw new CardOpError(result.stderr.trim() || result.stdout.trim());
+  }
+  return parseStdout(result.stdout);
+}
+
+/**
  * Execute an authorized operator response through cards.py. Authorization (the state/action/verb matrix)
  * happens first; a mismatch returns `not-allowed` (the route maps it to 409) BEFORE any pull or subprocess.
  */
@@ -198,23 +245,21 @@ export async function respondToCard(input: RespondInput, deps: RespondDeps): Pro
   }
 
   try {
-    await deps.prepareWrite?.(deps.repoRoot);
+    const { id, state, paths } = await executeCardMutation(
+      {
+        cardId: input.cardId,
+        section: planned.plan.section,
+        block: planned.plan.block,
+        transitions: planned.plan.transitions,
+        claimOwner: planned.plan.claimOwner,
+      },
+      deps,
+    );
+    return { ok: true, cardId: id, state, paths };
   } catch (err) {
-    return { ok: false, reason: 'card-op-failed', detail: `could not prepare coordination write: ${(err as Error).message}` };
+    if (err instanceof CardOpError) {
+      return { ok: false, reason: 'card-op-failed', detail: err.message };
+    }
+    throw err;
   }
-
-  const runPy = deps.runPy ?? defaultPyRunner;
-  const jsonArg = JSON.stringify({
-    cardId: input.cardId,
-    section: planned.plan.section,
-    block: planned.plan.block,
-    transitions: planned.plan.transitions,
-    claimOwner: planned.plan.claimOwner,
-  });
-  const result = runPy(deps.repoRoot, CARD_RESPOND_SCRIPT, jsonArg);
-  if (result.exitCode !== 0) {
-    return { ok: false, reason: 'card-op-failed', detail: result.stderr.trim() || result.stdout.trim() };
-  }
-  const { id, state, paths } = parseStdout(result.stdout);
-  return { ok: true, cardId: id, state, paths };
 }

@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react';
 import type { ParsedCard } from '../../server/planeA/cards';
 import { buttonsFor } from '../../server/approvals/assurance';
 import type { HumanInboxItem } from '../../server/approvals/humanInbox';
+import { STOP_FILE_ITEM_ID } from '../../server/approvals/humanInbox';
 import { workOrderOf } from '../../server/auth/workOrder';
 import '../styles/views/approvals.css';
 
@@ -63,7 +64,7 @@ function legacyDecision(card: ParsedCard): HumanInboxItem {
   };
 }
 
-const CATEGORY_ORDER: HumanInboxItem['category'][] = ['decision', 'gate', 'input', 'intervention'];
+const CATEGORY_ORDER: HumanInboxItem['category'][] = ['decision', 'gate', 'input', 'intervention', 'stranded'];
 
 function categoryRank(item: HumanInboxItem): number {
   return CATEGORY_ORDER.indexOf(item.category);
@@ -78,7 +79,8 @@ export function Approvals({ items, pending = [], onVerify, onRespond, pendingRes
   // A fresh selection clears any half-typed response — the box is always scoped to the visible item.
   useEffect(() => setDraft(''), [selectedId]);
 
-  const urgencyRank = (item: HumanInboxItem): number => (item.urgency === 'high' ? 0 : item.urgency === 'normal' ? 1 : 2);
+  const urgencyRank = (item: HumanInboxItem): number =>
+    item.urgency === 'critical' ? 0 : item.urgency === 'high' ? 1 : item.urgency === 'normal' ? 2 : 3;
   const ranked = [...inbox].sort((a, b) => {
     if (a.urgency !== b.urgency) return urgencyRank(a) - urgencyRank(b);
     const tier = tierRank(b.card) - tierRank(a.card);
@@ -87,8 +89,10 @@ export function Approvals({ items, pending = [], onVerify, onRespond, pendingRes
   });
 
   const counts = inbox.reduce(
+    // `stranded` seeded so the T3 HumanInboxCategory addition keeps this indexed reduce type-safe; full
+    // stranded/STOP rendering + summary spans land in T6.
     (result, item) => ({ ...result, [item.category]: result[item.category] + 1 }),
-    { decision: 0, gate: 0, input: 0, intervention: 0 },
+    { decision: 0, gate: 0, input: 0, intervention: 0, stranded: 0 },
   );
 
   if (inbox.length === 0) {
@@ -110,6 +114,7 @@ export function Approvals({ items, pending = [], onVerify, onRespond, pendingRes
           <span data-testid="summary-gate"><strong>{counts.gate}</strong> Gates</span>
           <span><strong>{counts.input}</strong> Input</span>
           <span><strong>{counts.intervention}</strong> Interventions</span>
+          <span data-testid="summary-stranded"><strong>{counts.stranded}</strong> Stranded</span>
         </div>
         <p className="v-approvals__list-head">Needs you · {inbox.length}</p>
         <ul className="v-approvals__list">
@@ -165,6 +170,12 @@ export function Approvals({ items, pending = [], onVerify, onRespond, pendingRes
           <p className="v-approvals__caption">
             {selected.category === 'decision' ? 'This is what your signature covers.' : selected.reason}
           </p>
+          {selected.card.meta.id === STOP_FILE_ITEM_ID ? (
+            <p className="v-approvals__stop-banner" role="alert" data-testid="stop-file-caption">
+              Fleet frozen — the repo-root STOP file is present. Every fleet agent halts at its preamble
+              until it is removed.
+            </p>
+          ) : null}
 
           <div className="v-approvals__fields">
             <div className="v-approvals__field" data-testid="corrob-card-id">
