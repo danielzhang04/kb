@@ -235,13 +235,17 @@ defect that will recur until fixed.
 
 ## Production state
 
-- **Poyais — PUBLISHED PRIVATE, awaiting Daniel's Studio pass (current 2026-07-21):** live upload =
-  **`J5KU-4IEGEQ`** (v3: same locked final.mp4; metadata rebuilt on the 2026-07-21 teardown —
-  measured chapters ≤5-word labels, no hashtags, alt-titles block — AND the AI-disclosure line
-  scratched per Daniel's ruling, contains_synthetic_media=false for the clearly-animated register;
-  compliance PASS 6/6). Superseded uploads `8Rv5SwFiZ4Y` + `tVmQR0pfp-Q` (records archived beside
-  publish-record.json) — Daniel deletes both in Studio, then on `J5KU-4IEGEQ`: thumbnail,
-  Test & Compare, pin the comment, public flip. Opening lead-in idea measured and REJECTED (first-word 0.16–0.48s is
+- **Poyais — PUBLIC (2026-07-21): the channel's first live video.** `J5KU-4IEGEQ`
+  (https://www.youtube.com/watch?v=J5KU-4IEGEQ) — v3 upload, verified logged-out: playable, all 8
+  measured chapters live, our thumbnail at maxres, clean description (no AI line — Daniel's ruling —
+  no hashtags, alt-titles block), 20 tags, comments ENABLED (made-for-kids mis-flag fixed in Studio;
+  root cause = the uploader MCP's Go zero-value bug omits MadeForKids:false, so YouTube's classifier
+  filled the blank; channel-page.md step 0 sets the channel default). YouTube auto-applied its
+  "Made with AI" info label (its detector, not our declaration — harmless). **Still open on this
+  video:** upload assets/captions/long-form.en.srt (script-exact, generated) in Studio; pin the
+  comment; Test & Compare. Superseded private uploads 8Rv5SwFiZ4Y + tVmQR0pfp-Q deleted by Daniel.
+  Channel-page Studio pass (rename to "The Second Take", About, art, email) still pending —
+  `channels/the-second-take/channel-page.md`. Analytics: start pulling J5KU-4IEGEQ next cycle. Opening lead-in idea measured and REJECTED (first-word 0.16–0.48s is
   the genre norm; see decisions 2026-07-21). Teardown:
   `channels/the-second-take/research/metadata-teardown-2026-07-21.md`.
 - **Channel PAGE — drafted, awaiting the same Studio pass (2026-07-21):** live page confirmed empty
