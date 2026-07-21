@@ -468,7 +468,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - Consumes: nothing new.
 - Produces: `_output_device_status(cfg, resolve=...)` now returns a third key `following: bool`; in follow mode `{"configured": "follow", "resolved": <boot default name or None>, "following": True}`. `_console_output_args` returns `[]` in follow mode (livekit opens on the boot default — correct by construction). `FOLLOW_SENTINEL = "follow"` module constant in `app.py`.
 
-- [ ] **Step 1: Write the failing tests (append to `atlas/tests/test_state.py`)**
+- [x] **Step 1: Write the failing tests (append to `atlas/tests/test_state.py`)**
 
 ```python
 def test_output_device_status_follow_mode_reports_following():
@@ -495,12 +495,12 @@ def test_console_output_args_follow_mode_passes_no_flag():
     assert out == []
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `.venv/Scripts/python -m pytest tests/test_state.py -q`
 Expected: new tests FAIL (`boot_default` unexpected keyword / missing `following` key). Pre-existing tests in the file must still pass.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `app.py`, add near the top-level constants: `FOLLOW_SENTINEL = "follow"`. Replace `_output_device_status`:
 
@@ -558,12 +558,12 @@ In `atlas/config/atlas.yaml`, replace the `tts_output_device: Speakers (Realtek`
 tts_output_device: follow
 ```
 
-- [ ] **Step 4: Run the full suite**
+- [x] **Step 4: Run the full suite**
 
 Run: `.venv/Scripts/python -m pytest -q`
 Expected: `168 passed` (165 baseline − 0 broken + 3 new here; Tasks 1-2 added 11 more → running total 179 if run after them — the number that matters: **0 failed**). If any pre-existing `_output_device_status` test asserts the two-key shape, update it to expect `following: False` — that is a legitimate contract change, note it in the commit.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add worker/app.py config/atlas.yaml tests/test_state.py

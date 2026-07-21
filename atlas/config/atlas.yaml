@@ -36,7 +36,11 @@ wake_threshold: 0.5
 # 2026-07-21 verify step 0: on this machine bare "Speakers" first-matches the real Realtek main
 # speaker (id 5) but also substring-matches virtual sinks (Nahimic mirror, SteelSeries Sonar,
 # "Speakers ()"); pinned tighter so a device-order shift can't silently reroute TTS.
-tts_output_device: Speakers (Realtek
+# 2026-07-21 (late): `follow` = output-follow mode (docs/specs/2026-07-21-atlas-output-follow-design.md):
+# TTS hot-follows the Windows default output (headphones connect -> TTS moves there, disconnect ->
+# back to speakers) with no worker restart. Any other string = static substring pin as before
+# (e.g. `Speakers (Realtek`). The wake INPUT stays pinned regardless — BT hands-free mics are unusable.
+tts_output_device: follow
 
 # --- Task 8 persona bake-off (2-way: Deepgram Aura-2 vs ElevenLabs stock; Cartesia scratched) ---
 # The 3 fixed lines below are synthesized per voice into .superpowers/sdd/t8-staging/persona-samples/

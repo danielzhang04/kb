@@ -39,6 +39,11 @@ logger = logging.getLogger("atlas.app")
 # Fallback voice if config has no voices/active_voice (pre-bake-off default).
 TTS_VOICE = "aura-2-andromeda-en"
 
+# Output-follow sentinel (docs/specs/2026-07-21-atlas-output-follow-design.md): tts_output_device
+# set to exactly this lowercase string switches TTS from static-pin to hot-follow the Windows default
+# output. Any other non-empty string is the existing static substring pin, byte-for-byte unchanged.
+FOLLOW_SENTINEL = "follow"
+
 # Fallback ops worktree for the transcript ledger if config omits `ops_root` (design §5, Task 6).
 DEFAULT_OPS_ROOT = "C:/Users/danie/kb-worktrees/dashboard-ops"
 
@@ -159,23 +164,37 @@ def _silence_decision(orb_state: str) -> str:
     return "check"
 
 
-def _output_device_status(cfg: dict, resolve=wakeword.resolve_output_device) -> dict:
-    """{'configured': <substring or None>, 'resolved': <device name or None>} for the TTS output
-    pin, surfaced in GET /state so a bad pin is visible on the dashboard (M4, 2026-07-21) instead of
-    only a scrolling CRITICAL log line. `resolved` is null when the configured name matches nothing —
-    exactly the case that would otherwise silently reproduce the original wrong-device bug."""
+def _boot_default_output_name() -> str | None:
+    """Name of the output device livekit opened at boot (PortAudio's boot-time default)."""
+    try:
+        import sounddevice as sd
+        return sd.query_devices(sd.default.device[1])["name"]
+    except Exception:
+        return None
+
+
+def _output_device_status(cfg: dict, resolve=wakeword.resolve_output_device,
+                          boot_default=_boot_default_output_name) -> dict:
+    """{'configured', 'resolved', 'following'} for the TTS output, surfaced in GET /state (M4).
+
+    Three modes: absent (system default, not following), a name substring (static pin,
+    unchanged since 2026-07-21), or the sentinel 'follow' (output-follow design: the
+    watcher moves the stream when the Windows default endpoint changes; `resolved` is
+    updated live by the follower and starts as the boot default)."""
     configured = cfg.get("tts_output_device")
     if not configured:
-        return {"configured": None, "resolved": None}
+        return {"configured": None, "resolved": None, "following": False}
+    if configured == FOLLOW_SENTINEL:
+        return {"configured": FOLLOW_SENTINEL, "resolved": boot_default(), "following": True}
     idx = resolve(configured)
     if idx is None:
-        return {"configured": configured, "resolved": None}
+        return {"configured": configured, "resolved": None, "following": False}
     try:
         import sounddevice as sd
         name = sd.query_devices(idx)["name"]
     except Exception:
         name = str(idx)
-    return {"configured": configured, "resolved": name}
+    return {"configured": configured, "resolved": name, "following": False}
 
 
 class AtlasAgent(Agent):
@@ -594,6 +613,11 @@ def _console_output_args(argv: list[str], cfg: dict,
         return []
     substring = cfg.get("tts_output_device")
     if not substring:
+        return []
+    if substring == FOLLOW_SENTINEL:
+        # Output-follow mode: pass no flag. livekit opens on the boot-time default, which
+        # IS the current Windows default at start; the devicewatch follower moves the
+        # stream afterward (docs/specs/2026-07-21-atlas-output-follow-design.md).
         return []
     idx = resolve(substring)
     if idx is None:
