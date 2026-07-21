@@ -249,4 +249,20 @@
 
 ## Execution notes
 
-- (filled during execution)
+- Task 1 (2026-07-20): atlas 23/23 + fleet 530/530 green. Canary 6a5ec3bb-65db6d11 through
+  inbox→claim→working→done with ops pushes. Dashboard daemon: live under pm2 on
+  **127.0.0.1:5317** (ALWAYS-ON config; dev default 4317 — live checks in Tasks 7/8 use 5317).
+  Dispatcher nuance recorded: dispatch.py emits cadence cards (today's ledger row confirms it
+  ran); hand-filed inbox cards — Atlas's path — are executed by fleet sessions after
+  assignment, same execution model as V0. Sweep verdict: PASS. Commit 267a8a6.
+- Task 2 (2026-07-20): cards filed workflow `atlas-v1` — T3 6a5ec41c-b18aa9f1,
+  T4 6a5ec41c-f7d86587, T5 6a5ec41c-d2e26925, T6 6a5ec41c-216ad53f, T7 6a5ec41c-53ac36f7,
+  T8 6a5ec41c-caabe932, T9 6a5ec41c-d8332ebf, T10 6a5ec41c-6a21da88, T11 6a5ec41c-4800fe6e,
+  T12 6a5ec41c-3a4808a7. STATE.md updated; ops pushed.
+- Task 3 scope amendment (2026-07-20, orchestrator): `atlas/kbmcp/kb_tools.py` WAS modified in
+  ae2e6f6 — one orchestrator-review edit widening `read_state`'s unknown-project error to name
+  known projects, replacing the MCP-only recovery hint the server.py loop rewrite would have
+  dropped. The Task 3 Interfaces line "Consumes: kbmcp.kb_tools (unchanged)" is amended
+  accordingly. Inspector grade 93 FAIL (ops d358a7c) flagged this + unattached evidence;
+  remediation = this amendment, attached suite output, and a live REPL smoke appended to the
+  card, then fresh-context re-grade.
