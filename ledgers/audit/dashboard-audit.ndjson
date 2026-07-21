@@ -89,3 +89,4 @@
 {"ts":"2026-07-21T21:31:34.194Z","action":"auth","owner":"operator","result":"login"}
 {"ts":"2026-07-21T21:39:33.267Z","action":"pty-open","owner":"operator","result":"opened","detail":{"sessionId":"pty-1784669973266-1"}}
 {"ts":"2026-07-21T22:15:22.296Z","action":"auth","owner":"operator","result":"login"}
+{"ts":"2026-07-21T22:15:30.054Z","action":"control-proposal-decision-authorize","owner":"operator","target":"proposal-843c99af-404e-4f90-a79d-f8daba97d56c","riskTier":"T1","result":"authorized:approved:c0335360b30363098386bbf384a89043d9633db91a47749a1eb5b69ac566b969","detail":{"proposalRef":"proposal-843c99af-404e-4f90-a79d-f8daba97d56c","revision":1,"proposalHash":"c0335360b30363098386bbf384a89043d9633db91a47749a1eb5b69ac566b969","decision":"approved","source":"workflow:self-lint-report"}}
