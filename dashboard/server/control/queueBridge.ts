@@ -25,7 +25,7 @@ import { parseWorkflowDef, type WorkflowDef } from '../workflows/defs.ts';
 import { compileWorkflowDef } from '../workflows/compile.ts';
 import { loadRuntimeSkillRegistry, workflowProfileIds, type RuntimeSkillRegistry } from './environment.ts';
 import { validatePlanProposal } from './proposal.ts';
-import { proposalSnapshotHash } from './store.ts';
+import { proposalSnapshotHash, type ControlPlaneStore } from './store.ts';
 import { executeApprovedLaunch, type LaunchOutcome } from './launch.ts';
 import type { JsonObject, RunDetail } from './types.ts';
 import { auditFn, type SurfaceContext } from '../http/context.ts';
@@ -705,4 +705,70 @@ export function settleFleetCostLedger(deps: SettleFleetLedgerDeps, input: Settle
     emitted += 1;
   }
   return { emitted, blocked: false };
+}
+
+// ===================================================================================================
+// T6 wire-up — the terminal-run observation seam (the T5-left-open point).
+//
+// After the gated executor drives a run to a terminal boundary, this reads the run's RunDetail from the
+// control store, projects its terminal stage costs, and settles the fleet cost ledger. It is invoked from
+// the ACTIVATION-GATED runAutomatic wrapper (activation.ts), so it exists ONLY when the gate is on — no
+// separate polling loop or timer is introduced. The engine's `runToBoundary` already runs a single-stage,
+// no-gate run to its terminal run state in one call and returns there (the "boundary"), so observing that
+// return IS the poll-to-terminal: reading `getRun` once at that moment yields the terminal RunDetail. A
+// run that returns at a NON-terminal boundary (waiting-human) is not settled here; the later runAutomatic
+// call that drives it to terminal settles it then. Fleet settlement therefore fires exactly once per run,
+// on the terminal boundary — no double emission for Wave-A's single-stage shape.
+// ===================================================================================================
+
+/** The terminal RUN states (not stage states): a run in one of these will never advance further. */
+const TERMINAL_RUN_STATES: readonly string[] = ['succeeded', 'failed', 'stopped', 'interrupted'];
+
+export interface SettleRunLedgerDeps {
+  controlStore: Pick<ControlPlaneStore, 'getRun'>;
+  repoRoot: string;
+  runPy?: PyRunner;
+  runPreamble?: PreambleRunner;
+}
+
+export interface SettleRunLedgerInput {
+  subject?: string;
+  runRef: string;
+  /**
+   * Reads settled usage micro-dollars for one terminal stage attempt. Injected (D4 seam). Wave-A runs
+   * under subscription billing (no ANTHROPIC_API_KEY; the worker reports $0), so the default reader
+   * returns 0 — the FAITHFUL subscription value, never an invented number. A future metered-billing wave
+   * supplies a reader over the control-plane accounting ledger through this same seam.
+   */
+  readUsageMicros?: (stageRef: string, attemptRef: string | null) => number;
+}
+
+export interface SettleRunLedgerResult {
+  /** true once the run is terminal and (preamble permitting) its fleet rows were emitted. */
+  settled: boolean;
+  emitted: number;
+  /** true when the preamble/STOP/budget gate suppressed emission for an otherwise-terminal run. */
+  blocked: boolean;
+}
+
+const ZERO_USAGE_MICROS = (): number => 0;
+
+/**
+ * Settle the fleet cost ledger for a run IF it has reached a terminal run state. Reads RunDetail via the
+ * control store (a single projection at the terminal boundary — see the module note above), projects the
+ * terminal stage costs, and emits one fleet cost row per terminal stage through the preamble-gated
+ * `settleFleetCostLedger`. A non-terminal or unknown run is a no-op (`settled: false`), never an error, so
+ * the wrapper can call it unconditionally after every boundary return.
+ */
+export function settleFleetLedgerForRun(deps: SettleRunLedgerDeps, input: SettleRunLedgerInput): SettleRunLedgerResult {
+  const subject = input.subject ?? DASHBOARD_EXECUTOR_SUBJECT;
+  const got = deps.controlStore.getRun(subject, input.runRef);
+  if (!got.ok) return { settled: false, emitted: 0, blocked: false };
+  if (!TERMINAL_RUN_STATES.includes(got.value.run.state)) return { settled: false, emitted: 0, blocked: false };
+  const stages = collectTerminalStageCosts(got.value, input.readUsageMicros ?? ZERO_USAGE_MICROS);
+  const res = settleFleetCostLedger(
+    { repoRoot: deps.repoRoot, runPy: deps.runPy, runPreamble: deps.runPreamble },
+    { subject, runRef: input.runRef, stages },
+  );
+  return { settled: !res.blocked, emitted: res.emitted, blocked: res.blocked };
 }

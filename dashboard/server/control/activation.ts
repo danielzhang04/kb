@@ -46,6 +46,7 @@ import {
   createBrokerManagerAdapter,
   createWorkerCancellationRegistry,
 } from './managedExecution.ts';
+import { settleFleetLedgerForRun } from './queueBridge.ts';
 
 export class ActivationError extends Error {}
 
@@ -111,6 +112,12 @@ export interface ActivationDeps {
   createManagers: typeof createBrokerManagerAdapter;
   createCancellation: typeof createBrokerCancellationController;
   createEngine(options: AutomaticExecutionOptions): ActivationEngine;
+  /**
+   * The terminal-run observation seam (T6 wire-up): settle the fleet cost ledger for a run once it is
+   * terminal. Default is the real `settleFleetLedgerForRun`. Wrapped around `runAutomatic` below so it
+   * exists only behind the gate. Injectable so the gate-on wrap is testable without a store or python.
+   */
+  settleLedgerForRun: typeof settleFleetLedgerForRun;
 }
 
 export interface BuildActivatedExecutionOptions {
@@ -136,6 +143,12 @@ export interface BuildActivatedExecutionOptions {
    * unconfigured `claude`. Supply a real resolver only when adopting the D3(b→a) broker-backed manager.
    */
   resolveLaunch?: (spec: ManagedStartSpec) => ClaudeSessionLaunch;
+  /**
+   * Reads settled usage micro-dollars for one terminal stage attempt, for the fleet-ledger post-run seam.
+   * Wave-A default (omitted) is 0 — the faithful subscription value (the worker reports $0 with no
+   * ANTHROPIC_API_KEY). A future metered-billing wave supplies a reader here.
+   */
+  readUsageMicros?: (stageRef: string, attemptRef: string | null) => number;
   deps?: Partial<ActivationDeps>;
 }
 
@@ -166,6 +179,7 @@ function defaultDeps(): ActivationDeps {
     createManagers: createBrokerManagerAdapter,
     createCancellation: createBrokerCancellationController,
     createEngine: (options) => new AutomaticExecutionEngine(options),
+    settleLedgerForRun: settleFleetLedgerForRun,
   };
 }
 
@@ -238,9 +252,29 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
     cancellation,
   });
 
+  // T6 wire-up: drive the run to its boundary, then — behind this same gate — settle the fleet cost
+  // ledger if the run is now terminal (see queueBridge.ts#settleFleetLedgerForRun). Settlement is
+  // best-effort and must NEVER mask the run outcome: a ledger failure (e.g. a STOP dropped mid-flight is
+  // handled inside as `blocked`, but an unexpected throw) is swallowed here so the executor's own result
+  // and error handling in launch.ts are unaffected. Fires exactly once per run (on the terminal boundary).
+  const settleLedgerForRun = deps.settleLedgerForRun;
+  const readUsageMicros = options.readUsageMicros;
+  const runAutomatic = async (input: ExecuteRunInput): Promise<ExecutionOutcome> => {
+    const outcome = await engine.runToBoundary(input);
+    try {
+      settleLedgerForRun(
+        { controlStore: options.controlStore, repoRoot },
+        { subject: input.subject, runRef: input.runRef, readUsageMicros },
+      );
+    } catch {
+      /* fleet-ledger settlement is best-effort; never let it mask the executor outcome */
+    }
+    return outcome;
+  };
+
   return {
     controlBroker: broker,
-    runAutomatic: (input) => engine.runToBoundary(input),
+    runAutomatic,
     cancelAutomatic: (input) => engine.cancelRun(input),
   };
 }

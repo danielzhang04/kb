@@ -43,6 +43,7 @@ function spyDeps(): ActivationDeps {
     createManagers: vi.fn().mockReturnValue({ ensure: vi.fn() }) as never,
     createCancellation: vi.fn().mockReturnValue({ cancelManager: vi.fn(), cancelWorker: vi.fn() }) as never,
     createEngine: vi.fn().mockReturnValue(engine),
+    settleLedgerForRun: vi.fn().mockReturnValue({ settled: true, emitted: 1, blocked: false }) as never,
   };
 }
 
@@ -98,6 +99,29 @@ describe('buildActivatedExecution — gate ON', () => {
     const cancelInput = { subject: 's', runRef: 'r', idempotencyKey: 'k', reason: 'x' } as never;
     await result?.cancelAutomatic(cancelInput);
     expect(engine.cancelRun).toHaveBeenCalledWith(cancelInput);
+  });
+
+  it('runAutomatic settles the fleet ledger for the run AFTER driving it to the boundary (T6 wire-up, gated)', async () => {
+    const deps = spyDeps();
+    const settle = deps.settleLedgerForRun as ReturnType<typeof vi.fn>;
+    const result = buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
+    const engine = (deps.createEngine as ReturnType<typeof vi.fn>).mock.results[0].value;
+    await result?.runAutomatic({ subject: 'dashboard-engine', runRef: 'run-9', proposal: {} } as never);
+    // Settlement ran once, keyed to the run, against the surface's control store + ops repo root.
+    expect(settle).toHaveBeenCalledTimes(1);
+    expect(settle).toHaveBeenCalledWith(
+      expect.objectContaining({ repoRoot: '/repo' }),
+      expect.objectContaining({ subject: 'dashboard-engine', runRef: 'run-9' }),
+    );
+    // Order: the boundary drive happens before settlement (runToBoundary resolved first).
+    expect(engine.runToBoundary.mock.invocationCallOrder[0]).toBeLessThan(settle.mock.invocationCallOrder[0]);
+  });
+
+  it('a fleet-ledger settlement throw never masks the executor outcome', async () => {
+    const deps = spyDeps();
+    (deps.settleLedgerForRun as ReturnType<typeof vi.fn>).mockImplementation(() => { throw new Error('ledger blew up'); });
+    const result = buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
+    await expect(result?.runAutomatic({ subject: 's', runRef: 'r', proposal: {} } as never)).resolves.toEqual({ state: 'succeeded' });
   });
 
   it('constructs under the single dashboard-engine subject (D1) and the CANONICAL result integrator (D4)', () => {
