@@ -15,10 +15,22 @@ import { registerStatic } from './static/routes.ts';
 import { registerPtyRoute, makePtyRouteContext } from './pty/route.ts';
 import { originPlugin } from './security/origin.ts';
 import { installShutdownHandlers } from './shutdown.ts';
+import { startMergeGateReconciler } from './write/mergeGateReconciler.ts';
 
 /** Loopback-only bind. Network location is never a trust boundary (ordering law 4). */
 export const HOST = '127.0.0.1';
 export const PORT = Number(process.env.DASHBOARD_PORT ?? 4317);
+
+/** G1 merge-gate reconciler cadence (Decision 2): default 5 minutes; a value <= 0 (or non-numeric)
+ *  disables it. On-by-default is fail-safe — every reconciler failure leaves gate cards OPEN, so the
+ *  only thing disabling it removes is the auto-close of already-merged PRs. */
+export const DEFAULT_MERGE_GATE_INTERVAL_MS = 300_000;
+export function resolveMergeGateIntervalMs(): number {
+  const raw = process.env.DASHBOARD_MERGE_GATE_INTERVAL_MS;
+  if (raw === undefined || raw === '') return DEFAULT_MERGE_GATE_INTERVAL_MS;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : DEFAULT_MERGE_GATE_INTERVAL_MS;
+}
 
 /**
  * Build the Fastify backend. `/healthz` and the read-only hub/registry/planeA routes stay pre-auth;
@@ -69,6 +81,24 @@ export function buildApp(): FastifyInstance {
       originPlugin(scope, { allowedOrigins: ptyCtx.allowedOrigins ?? [] });
     });
   }
+  // G1 — daemon-side merge-gate reconciler (inbox-gates). Wired here but only ticks AFTER Daniel's
+  // deliberate daemon restart (nothing in this wave restarts the live daemon). It reads the canonical ops
+  // worktree, asks gh (ambient auth) whether each open `approve:merge:<pr>` gate's PR is merged/closed,
+  // and closes the gate through the SAME governed transaction path as the card-respond route. The runner
+  // fields fall back to their real defaults in production; every failure leaves the gate OPEN. The interval
+  // is unref'd, so it never keeps the process alive; its stop fn is registered on shutdown.
+  const stopMergeGateReconciler = startMergeGateReconciler(
+    {
+      repoRoot: surfaceCtx.repoRoot,
+      opsGit: surfaceCtx.opsGit,
+      runPy: surfaceCtx.runPy,
+      appendAuditLocal: surfaceCtx.appendAuditLocal,
+      now: surfaceCtx.now,
+    },
+    resolveMergeGateIntervalMs(),
+  );
+  app.addHook('onClose', async () => { stopMergeGateReconciler(); });
+
   // Always-on: serve the built SPA (dist/) with an SPA fallback, if it exists; API-only otherwise.
   // Registered last — every /api/* route above and the hub's /events + /ws already claim their exact
   // paths, so this can never shadow them (see static/routes.ts for the precedence argument).
