@@ -1,42 +1,36 @@
 # atlas — STATE
 
-_Updated: 2026-07-20 late (V0 LIVE at desk — Fable 5 boss session)_
+_Updated: 2026-07-20 (V1 "Hands" wave OPEN — Fable 5 boss session)_
 
 ## Now
-- **V0 COMPLETE and WORKING at Daniel's desk.** T1–T8 done, all six inspector grades 96 PASS T2.
-  PR #37 (claude/atlas → main) open, now through f9375bd. Full loop verified live: "hey Atlas"
-  (custom model) → wake ack → multi-turn grounded kb answers → dismiss/2-min silence → sleep cue.
-- **Custom wake model DELIVERED 2026-07-20:** Daniel's Colab-trained `hey_atlas.onnx` lives in
-  `atlas/config/`; wakeword.py loads custom models by path (predict-key = file stem, verified
-  against installed oww 0.6.0 source), pretrained `hey_jarvis` kept as one-line fallback in
-  atlas.yaml. Triggered reliably at threshold 0.5, no tuning needed. (8203cdf)
-- **Active voice: mars** (Deepgram aura-2, $0 on credit) — Daniel's pick, switched after live
-  desk session. Matilda (ElevenLabs) remains in the toggle. (f9375bd)
-- Two desk-discovered fixes shipped during hey_atlas bring-up (both were latent since the voice
-  toggle landed; first console run on the ElevenLabs path exposed them):
-  - elevenlabs plugin must import at module level (main-thread registration) — fbc7a99
-  - elevenlabs TTS needs the job-context http session passed explicitly, because our first
-    synthesis fires from the wake-thread callback outside the context var — 7c6cf50
+- **V1 "Hands" wave UNDERWAY.** Authority: `docs/plans/2026-07-20-atlas-v1-plan.md` +
+  `docs/specs/2026-07-20-atlas-v1-hands-design.md` (both approved by Daniel 2026-07-20,
+  committed on `claude/atlas` at db250e6). Scope: Slice 1 status surface (state core,
+  `/state` on 127.0.0.1:4360, dashboard Atlas view + global mini-orb, transcript ledger)
+  then Slice 2 hands (registry consolidation, reflex lane, file_card / launch_workflow
+  card-backed / credit_remaining, completion callbacks, persona.md). Three human gates:
+  A Slice-1 desk check, B persona co-authoring, C checkpoint (card by voice → orb → callback).
+- **Task 1 sweep PASSED 2026-07-20:** atlas 23/23 + fleet 530/530 green; canary card
+  6a5ec3bb-65db6d11 through full lifecycle inbox→done with ops pushes; dashboard daemon
+  live under pm2 on **127.0.0.1:5317** (not dev 4317 — live checks use 5317); dispatch
+  ledger has today's row. Nuance recorded: dispatch.py emits cadence cards; hand-filed
+  cards (Atlas's path) are executed by fleet sessions after assignment — same model V0 used.
+- V1 cards filed (workflow `atlas-v1`): T3 6a5ec41c-b18aa9f1, T4 6a5ec41c-f7d86587,
+  T5 6a5ec41c-d2e26925, T6 6a5ec41c-216ad53f, T7 6a5ec41c-53ac36f7, T8 6a5ec41c-caabe932,
+  T9 6a5ec41c-d8332ebf, T10 6a5ec41c-6a21da88, T11 6a5ec41c-4800fe6e, T12 6a5ec41c-3a4808a7.
 
-## Desk prerequisites (operational, not code)
-- **Windows default INPUT must be the Intel mic array**, not the AirPods hands-free mic.
-  Root cause of the "silent Matilda" desk session 2026-07-20: while AirPods HFP holds default
-  input, Windows mutes the AirPods A2DP output the console plays into. With Intel as default
-  input, AirPods work as pure output. (Settings → System → Sound → Input.)
-- Run: `cd kb-worktrees\atlas\atlas; .venv\Scripts\python -m worker.app console --input-device 2`.
-- Known cosmetic: on Ctrl+C shutdown the wake thread logs a scary "Atlas is DEAF" CRITICAL
-  (PortAudio teardown race). Harmless at exit; polish candidate = suppress during shutdown.
+## V0 (shipped, for reference)
+- V0 live at desk since 2026-07-20: "hey Atlas" (custom `hey_atlas.onnx`) → grounded kb answers
+  → dismiss/2-min silence → sleep. Voice = mars (Aura-2). PRs #37 + #39 merged; six 96-PASS grades.
+- Desk prerequisites: Windows default INPUT = Intel mic array (AirPods HFP mutes A2DP out).
+  Run: `cd kb-worktrees\atlas\atlas; .venv\Scripts\python -m worker.app console --input-device 2`.
 
 ## Next
-- MERGED 2026-07-20: PR #37 (V0 wave) and PR #39 (hey_atlas + desk fixes + mars flip) — main
-  matches the desk. PAUSED at Daniel's request; resume point in boss session memory.
-- RESUME ACTION: draft V1 "Hands" wave plan for Daniel's review (delta design §5/§7):
-  dashboard status panel + orb sequenced FIRST (read-only slice), then reflex lane, file_card,
-  launch_workflow, completion callbacks. Backlog to weave in: persona.md authoring session
-  (explicitly wanted), TTFT input diet, spoken voice-switch, hot-follow Bluetooth output
-  routing, Deepgram credit-remaining tool.
-- Retest native MCP attach on livekit-agents upgrade >1.6.6 (anthropic_compat shim removal
-  condition: upstream #2519-class fix + two-turn pairing_smoke pass).
+- Execute T3→T12 per plan order (Slice 1 first: T4/T5/T6/T7/T8 after T3 refactor), gates
+  one at a time at their plan positions.
+- Deferred (named): TTFT input diet, spoken voice-switch, hot-follow BT routing, SSE panel
+  upgrade, tray widget, panel write-back, Agent-SDK in-process workflows (V2), native MCP
+  retest on livekit-agents upgrade past the #2519-class bug.
 
 ## Blocked
-- Nothing in-flight. Paused at Daniel's request 2026-07-20 eve; resume = V1 plan draft above.
+- Nothing. V2 "Trust" planning deliberately deferred to after gate C.
