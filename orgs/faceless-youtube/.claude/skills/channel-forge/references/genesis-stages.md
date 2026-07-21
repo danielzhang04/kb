@@ -18,6 +18,7 @@ to a channel gets the human's final say). Rich per-stage option-generation
 | 9 | `guardrails` | Channel-specific guardrails | `dna.md` Guardrails |
 | 10 | `scaffold` | Materialize the channel folder from the template | `channels/<name>/` |
 | 11 | `backlog` | Seed the first ranked ideas | `idea-backlog.md` (via `idea-generator`) |
+| 12 | `channel-page` | The YouTube channel PAGE: About copy, links, keywords, avatar/banner, trailer policy | `channels/<name>/channel-page.md` (locked copy + Studio checklist) |
 
 ## Notes
 - **Stage 1 (`niche`) is genuinely first** — you cannot choose a look or voice before you know what the
@@ -27,3 +28,9 @@ to a channel gets the human's final say). Rich per-stage option-generation
   (Enforcement Contract clause B, self-application).
 - **Reuse of existing artifacts:** stages that map onto existing skills/schemas reuse them (referenced, not
   duplicated — see `_TEMPLATE/README.md`). The wizard fills channel-specific content; the machinery is shared.
+- **Stage 12 (`channel-page`) ships copy, not clicks:** channel branding (About description, links,
+  business email, keywords, avatar/banner, trailer) is applied by the HUMAN in YouTube Studio — the
+  Data API path needs credential handling the constitution's hard ceiling forbids, and channel-level
+  branding is outward-facing (clause H). The stage produces the locked copy + an ordered Studio
+  checklist; grounding = the 2026-07-21 channel-page harvest in
+  `channels/the-second-take/research/metadata-teardown-2026-07-21.md` §channel-page.

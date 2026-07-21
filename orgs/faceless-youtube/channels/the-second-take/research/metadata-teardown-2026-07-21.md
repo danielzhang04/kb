@@ -1,8 +1,10 @@
 # Metadata teardown — 2026-07-21 (36 videos, 9 reference channels, fetched live)
 
-**What this is.** The packaging half *outside* the pixels: descriptions, links, hashtags, tags,
-chapters, pinned comments, disclosures, creator comment behavior — harvested live via yt-dlp from 4
-long-form videos each (2 top-view + 2 recent) on all 9 board channels (`../reference-channels.md`).
+**What this is.** The packaging half *outside* the pixels — two layers: **per-video** metadata
+(descriptions, links, hashtags, tags, chapters, pinned comments, disclosures, creator comment
+behavior — 4 long-form videos each, 2 top-view + 2 recent) and **channel-page** packaging (About
+description, header links, keywords, trailer, shelves — §Channel-page below), harvested live via
+yt-dlp from all 9 board channels (`../reference-channels.md`).
 Grounds the description/chapters/tags/pinned rules in `metadata-writer`. Raw JSON archived in the
 session scratchpad only; this doc is the durable record. Titles and thumbnails are NOT covered here
 (that is `thumbnail-teardown-2026-07-21.md` + `universal.md §3`).
@@ -73,3 +75,31 @@ boilerplate at the reference tier.**
   also the future sponsor slot.
 - Keep: hook above the fold (until sponsored), annotated sources block, ~15–25 subject tags,
   AI-disclosure + not-financial-advice lines, Education category.
+
+## Channel-page (harvested same day, all 9 channels)
+
+**Skeleton of an About description in this genre, in order:** (1) a **one-line positioning
+statement with attitude, always first** — it doubles as the search snippet ("Big finance, drawn
+small." — Crayon; "Mini movies about business & money." — Magnates; "Education-y explainer videos
+that are almost good enough to watch." — HAI); (2) optional 1–2-sentence genre expansion; (3)
+creator-identity/authority claim **only on channels with a face** (Boyle/ColdFusion/Magnates) —
+faceless channels skip it; (4) optional subscribe CTA; (5) finance-specific: Boyle carries a
+4-sentence not-financial-advice disclaimer (the most markets-adjacent channel — the one to copy for
+YMYL). **Length is bimodal**: ultra-short (25–270 chars: Crayon/HMW/HAI/Casually/Wendover/RLL) or a
+full ~700–1000-char pitch (Boyle/Magnates/ColdFusion — all have an identity or product to sell);
+nobody sits between.
+
+**Other channel-level facts (n=9):** business email affordance on ALL 9 (table stakes); links —
+the faceless no-product wing carries 0–4 (Crayon: **zero**; HMW: one newsletter; nobody links Nebula
+in the header); channel keywords optional (Crayon + HAI rank with none; when present: ~5–25
+niche+brand+adjacent terms); upload cadence stated by exactly 1/9 (skippable); trailer slot filled
+by 6/9 but almost always with a representative banger, not a made-for-purpose trailer (only
+ColdFusion made one) — **a new channel leaves it empty (Crayon) until a banger exists**; home
+shelves: standard Popular/Videos/playlists, with Magnates substituting welcome-copy shelf titles
+for a trailer.
+
+**Crayon Capital — the closest analog (young, small, faceless, finance-story) — runs the minimal
+answer:** 25-char description, zero links, zero keywords, no trailer, no shelves. The channel page
+does almost nothing; the videos carry everything.
+
+**Routed to:** `channel-forge` stage 12 (`channel-page`) + this channel's `../channel-page.md`.

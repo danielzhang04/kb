@@ -243,6 +243,11 @@ defect that will recur until fixed.
   pin the comment, public flip. Opening lead-in idea measured and REJECTED (first-word 0.16–0.48s is
   the genre norm; see decisions 2026-07-21). Teardown:
   `channels/the-second-take/research/metadata-teardown-2026-07-21.md`.
+- **Channel PAGE — drafted, awaiting the same Studio pass (2026-07-21):** live page confirmed empty
+  (no About, no keywords; display name "Second Takes" ≠ locked "The Second Take" — rename flagged).
+  `channels/the-second-take/channel-page.md` = the copy + ordered Studio checklist (About ≈210
+  chars, zero links, optional keywords, avatar/banner spec-verified, trailer deliberately empty).
+  `channel-forge` now has stage 12 `channel-page` so future channels get this at genesis.
 - **Front-half batch — IN PROGRESS (started 2026-07-09):** first real front-half run (idea → research →
   long-form → metadata; **shorts skipped this batch**), one video at a time with a checkpoint per step.
   **Video 1 = ST-004 "The Backstreet Boys Were Built to Hide a Fraud" (Lou Pearlman), slug

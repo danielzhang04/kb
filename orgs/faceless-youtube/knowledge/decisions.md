@@ -3083,3 +3083,21 @@ run brief binds nobody — a fresh terminal reads the style-bible and skill docs
 - **Poyais re-uploaded private as `tVmQR0pfp-Q`** (same final.mp4 SHA, new metadata: measured
   chapters, short labels, no hashtags, alt-titles block). Old `8Rv5SwFiZ4Y` superseded — record
   archived; Daniel deletes it in Studio + redoes thumbnail/A-B/pin/flip on the new ID.
+
+## 2026-07-21 — Channel-page layer (harvest → forge stage 12 → Second Take draft)
+
+- **Channel-page harvest (9 channels)** appended to `metadata-teardown-2026-07-21.md §Channel-page`:
+  About one-liner-first skeleton, bimodal length (ultra-short vs full pitch — never between),
+  faceless/no-product wing carries 0–4 links (Crayon: zero), business email = table stakes,
+  keywords optional, trailer = representative banger or empty (new channel: empty), cadence claims
+  skippable (1/9).
+- **`channel-forge` gains stage 12 `channel-page`** (genesis-stages.md/.json + validated recipe):
+  produces `channels/<name>/channel-page.md` — locked copy + Studio checklist; the HUMAN applies it
+  (channel branding not API-writable under the credential ceiling; outward-facing, clause H).
+  *Rejected:* API application via extracted OAuth tokens (hard-ceiling violation — the hook blocked
+  the probe, correctly).
+- **The Second Take's `channel-page.md` drafted** (live page confirmed EMPTY): ultra-short About
+  (one-liner + locked AI/not-advice lines, ≈210 chars; 2 alternates), zero links at launch,
+  keywords set offered, avatar/banner verified to spec (1024² / 2048×1152), trailer deliberately
+  empty. **FLAG for Daniel: live display name "Second Takes" ≠ locked "The Second Take"** —
+  recommend renaming display name in Studio (handle can stay).
