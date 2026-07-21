@@ -31,15 +31,20 @@ def decide(prev_id: str | None, current_id: str | None) -> str:
 def current_default_output():
     """(endpoint_id, friendly_name) of the Windows default render endpoint, or None.
 
-    pycaw's GetSpeakers() returns the default eRender/eMultimedia IMMDevice — the exact
-    endpoint Windows moves when Bluetooth headphones connect. Endpoint IDs are stable and
+    pycaw's GetSpeakers() returns the default eRender/eMultimedia endpoint — the exact
+    device Windows moves when Bluetooth headphones connect. Endpoint IDs are stable and
     unique; FriendlyName matches PortAudio's device-name strings closely enough for the
     existing substring resolver. Any COM failure -> None (the watcher treats it as a
-    failed poll, never a change)."""
+    failed poll, never a change).
+
+    API note (verified against installed pycaw 20251023 on 2026-07-21): GetSpeakers() now
+    returns a wrapped `AudioDevice` (with `.id`/`.FriendlyName`) directly, so calling the
+    older `CreateDevice(raw_immdevice)` on it raises. We use the wrapper if present and fall
+    back to CreateDevice for older pycaw that returns a raw IMMDevice — same return contract."""
     try:
         from pycaw.utils import AudioUtilities
         device = AudioUtilities.GetSpeakers()
-        wrapped = AudioUtilities.CreateDevice(device)
+        wrapped = device if hasattr(device, "id") else AudioUtilities.CreateDevice(device)
         if wrapped is None or not wrapped.id:
             return None
         return wrapped.id, (wrapped.FriendlyName or "")

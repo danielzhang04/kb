@@ -782,7 +782,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 
 **Interfaces:** none new.
 
-- [ ] **Step 1: Add the dependencies**
+- [x] **Step 1: Add the dependencies**
 
 Append to `atlas/requirements.txt`:
 
@@ -791,22 +791,22 @@ comtypes>=1.4      # COM plumbing for pycaw (output-follow watcher, 2026-07-21 d
 pycaw>=20240210    # Windows Core Audio default-endpoint probe (devicewatch.current_default_output)
 ```
 
-- [ ] **Step 2: Install into the worker venv**
+- [x] **Step 2: Install into the worker venv**
 
 Run: `.venv/Scripts/python -m pip install pycaw comtypes`
 Expected: both install cleanly (pure-Python wheels).
 
-- [ ] **Step 3: Prove the real probe works on this machine**
+- [x] **Step 3: Prove the real probe works on this machine**
 
 Run: `.venv/Scripts/python -c "from worker.devicewatch import current_default_output; print(current_default_output())"`
 Expected: a tuple like `('{0.0.0.00000000}...', 'Headphones (Px7 S2e)')` or the Realtek speakers — NOT None. If None, debug before proceeding (the watcher would silently never fire).
 
-- [ ] **Step 4: Full suite, one last time**
+- [x] **Step 4: Full suite, one last time**
 
 Run: `.venv/Scripts/python -m pytest -q`
 Expected: **0 failed**, total ≥ 180.
 
-- [ ] **Step 5: Commit and push**
+- [x] **Step 5: Commit and push**
 
 ```bash
 git add requirements.txt
