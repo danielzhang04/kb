@@ -218,6 +218,7 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
   const workers = deps.createWorkers({
     resolveToolPolicy: deps.createToolPolicyResolver(),
     registerCancellation: registry.register,
+    deregisterCancellation: registry.clear,
   });
   const managers = deps.createManagers({ broker });
   const cancellation = deps.createCancellation({ broker, registry });

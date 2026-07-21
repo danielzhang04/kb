@@ -177,6 +177,13 @@ export interface ClaudeWorkerAdapterOptions {
    * finalize + tree-kill path as a timeout. Lets an external stop authority reap a still-running attempt.
    */
   registerCancellation?: (operationKey: string, cancel: () => void) => void;
+  /**
+   * Invoked once when the attempt settles by any means (normal exit, error, timeout, cap, cancel), so the
+   * external stop authority drops the now-dead `cancel` it was handed at spawn. Without this the
+   * registration outlives the worker — a leak, and a stale handle the controller could still hold. The
+   * companion to `registerCancellation`; a call for an already-dropped/unknown key must be a no-op.
+   */
+  deregisterCancellation?: (operationKey: string) => void;
   /** The parent env the allowlist filters. Defaults to process.env. */
   parentEnv?: Record<string, string | undefined>;
   /** The env-name allowlist. Defaults to the PTY host's DEFAULT_ENV_ALLOWLIST (denylist always applies). */
@@ -470,6 +477,7 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
           if (settled) return;
           settled = true;
           clearTimeout(timer);
+          options.deregisterCancellation?.(input.operationKey);
           resolvePromise(parseWorkerStream(stdoutChunks.join(''), stderrTail, code, {
             timedOut,
             exceeded,
@@ -501,6 +509,7 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
           if (settled) return;
           settled = true;
           clearTimeout(timer);
+          options.deregisterCancellation?.(input.operationKey);
           resolvePromise(failedResult(`claude worker process error: ${error instanceof Error ? error.message : String(error)}`, ZERO_USAGE, summaryMaxChars));
         });
 

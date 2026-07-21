@@ -117,7 +117,10 @@ describe('buildActivatedExecution — gate ON', () => {
     const deps = spyDeps();
     buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
     const registry = (deps.createRegistry as ReturnType<typeof vi.fn>).mock.results[0].value;
-    expect(deps.createWorkers).toHaveBeenCalledWith(expect.objectContaining({ registerCancellation: registry.register }));
+    expect(deps.createWorkers).toHaveBeenCalledWith(expect.objectContaining({
+      registerCancellation: registry.register,
+      deregisterCancellation: registry.clear,
+    }));
     expect(deps.createCancellation).toHaveBeenCalledWith(expect.objectContaining({ registry }));
   });
 
