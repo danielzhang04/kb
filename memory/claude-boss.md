@@ -180,3 +180,29 @@ Fresh terminal: read the spec at `memory/handoffs/2026-07-20-fyt-post-render-tai
 - Remains: Daniel merges PR (claude/atlas -> main), prod 5317 update + kill 4317 dev daemon,
   V2 Trust planning (voice-prepares/passkey-completes approvals, proactivity, morning brief) +
   deferred backlog (TTFT diet, voice-switch, BT hot-follow, SSE push, app.py extraction).
+
+## Session 2026-07-21 (early AM) — Wave A executor PROVEN (acceptance 7/7); live-fire banked for fresh
+
+- **Milestone: synthetic acceptance PASSED 7/7** — the governed autonomous executor works end-to-end
+  (real `claude -p` worker → canonical `## Result` writeback → trigger-card reconcile → fleet cost row).
+- Got there via 4 fix PRs, each a genuine never-executed bug the rehearsal exposed (unit tests all
+  mocked runPy/fetch): **#46** auth (WeakSet-branded internal service caller — daemon bridge launches
+  without a passkey while HTTP WebAuthn stays intact; 2 adversarial security reviews, HELD BY
+  CONSTRUCTION), **#47** embedded-Python syntax (stray paren + JS-mangled `\n` escapes; + a guard test
+  ast-parsing all 16 `*_SCRIPT` constants), **#48** worker worktree MAX_PATH (`core.longpaths=true`, also
+  fixes live daemon), **#49** file-transport in the harness throwaway mirror (harness-only). All merged.
+- **Live-fire attempted on the REAL daemon, banked** (Daniel chose fresh, twice). Blockers = SETUP not
+  executor: (1) self-lint-report def was main-only; daemon reads orgs/*/workflows/ from OPS → staged to
+  ops (a93a140). SYSTEMIC: defs merged to main are invisible to the ops-reading daemon (propagation
+  decision owed; email-triage/research-brief still main-only). (2) Workflows Launch button dead (posted
+  `{}`, route needs idempotencyKey) → **PR #50** open.
+- Daemon returned to INERT + verified (gate UNSET from clean pm2.config.cjs).
+- LESSONS: `pm2 restart --update-env` does NOT clear a cached env var — use `pm2 delete && pm2 start
+  pm2.config.cjs`. Build client (`npm run build`) BEFORE restarting daemon (it snapshots dist at boot).
+- RESUME (fresh, Daniel watching): merge #50 → rebuild client → flip gate ON
+  (`DASHBOARD_EXECUTION_ACTIVATED=1 pm2 restart kb-dashboard --update-env`, verify) → UI unlock →
+  Workflows → self-lint-report → Launch → verify 4 checks (docs/plans/2026-07-20-wave-a-live-fire-runbook.md)
+  → flip inert. Fault-injection rows still optional. kb-codex-runner stays DISABLED.
+- PARKED: stranded auto-archiver (claude/stranded-archiver ced3716, NOT merged) — HELD; liveness signal
+  wrongly marks claude-*/dispatcher-cloud offline so it'd archive live work; needs redesign + Daniel
+  policy call + `archived` state governance line. claude/stranded-rollup SUPERSEDED, drop.
