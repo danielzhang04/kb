@@ -204,7 +204,10 @@ export function createGitWorktreeAdapter(options: GitWorktreeAdapterOptions): Wo
   mkdirSync(worktreeRoot, { recursive: true, mode: 0o700 });
   const hooksPath = join(worktreeRoot, '.disabled-hooks');
   mkdirSync(hooksPath, { recursive: true, mode: 0o700 });
-  const prefix = ['-c', 'protocol.allow=never', '-c', `core.hooksPath=${hooksPath}`, '--literal-pathspecs'] as const;
+  // core.longpaths=true: server-owned worktrees live under a deep state-root path
+  // (…/control/worktrees/run-…/attempt-…); combined with long repo-relative paths this exceeds Windows
+  // MAX_PATH (260) and `git worktree add` fails "Filename too long". A no-op off Windows. Not a gate.
+  const prefix = ['-c', 'protocol.allow=never', '-c', 'core.longpaths=true', '-c', `core.hooksPath=${hooksPath}`, '--literal-pathspecs'] as const;
 
   const verify = async (path: string): Promise<void> => {
     const top = await runGit(runner, prefix, ['rev-parse', '--show-toplevel'], path, 'worktree verification');

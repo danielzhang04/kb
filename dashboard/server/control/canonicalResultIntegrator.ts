@@ -283,14 +283,19 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
   const statePath = join(stateRoot, 'control', 'canonical-integration.json');
   const hooksPath = join(worktreeRoot, '.disabled-hooks');
   mkdirSync(hooksPath, { recursive: true, mode: 0o700 });
+  // core.longpaths=true: the integration worktree is created under the same deep state-root path as the
+  // attempt worktree, so long repo-relative paths tip over Windows MAX_PATH (260) without it. No-op off
+  // Windows; not a gate.
   const gitPrefix = [
     '-c', 'protocol.allow=never', '-c', 'protocol.https.allow=always', '-c', 'protocol.ssh.allow=always',
+    '-c', 'core.longpaths=true',
     '-c', `core.hooksPath=${hooksPath}`, '-c', 'commit.gpgsign=false', '--literal-pathspecs',
   ];
   const coordinationHooksPath = join(stateRoot, 'control', '.disabled-hooks');
   mkdirSync(coordinationHooksPath, { recursive: true, mode: 0o700 });
   const coordinationPrefix = [
     '-c', 'protocol.allow=never', '-c', 'protocol.https.allow=always', '-c', 'protocol.ssh.allow=always',
+    '-c', 'core.longpaths=true',
     '-c', `core.hooksPath=${coordinationHooksPath}`, '-c', 'commit.gpgsign=false', '--literal-pathspecs',
   ];
   const opsGit: GitRunner = (cwd, args) => rawOpsGit(cwd, [...coordinationPrefix, ...args]);
