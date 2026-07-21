@@ -1,0 +1,125 @@
+{
+  "video_id": "8Rv5SwFiZ4Y",
+  "url": "https://www.youtube.com/watch?v=8Rv5SwFiZ4Y",
+  "uploaded_at": "2026-07-21T01:48:55.5302109-04:00",
+  "privacy_status": "private",
+  "file_sha256": "4999a7a8440519f42f088a7b410cffc8058aecf17254368bb86f85b3edb4debc",
+  "metadata_snapshot": {
+    "schema": "faceless-youtube/metadata@1",
+    "channel": "the-second-take",
+    "video_slug": "2026-07-04-poyais",
+    "source_idea_id": "ST-009",
+    "generated": "2026-07-08",
+    "status": "metadata-drafted",
+    "defaults": {
+      "privacy_status": "private",
+      "made_for_kids": false,
+      "contains_synthetic_media": true,
+      "default_language": "en",
+      "default_audio_language": "en",
+      "license": "youtube",
+      "embeddable": true
+    },
+    "long_form": {
+      "title_primary": "The Prince Who Sold a Country That Didn't Exist",
+      "title_challengers": [
+        "The Fake Country That Fooled the Stock Exchange",
+        "The Paradise Brochure That Got Its Buyers Killed"
+      ],
+      "description": "In 1822, London investors bought land, banknotes, and government bonds for Poyais, a young Central American nation with a prince, a capital city, and a national bank. None of it existed.\n\nThis is the story of Gregor MacGregor, the Scottish war hero who invented an entire country, crowned himself its prince, and sold its debt on the floor of the London Stock Exchange right next to Colombia and Peru. It's also the story of the roughly 250 people who sold everything they owned and sailed for a five-star paradise that turned out to be empty jungle. How one confident man with letterhead and a title manufactured a country out of nothing, why the smartest money in Europe lined up to buy it, and what was actually waiting on the beach when the ships arrived.\n\nChapters:\n00:00 The country that never was\n0:39 A war hero and 8 million acres of jungle\n2:11 Inventing a prince, a capital, and a guidebook\n2:55 Fake banknotes and land for two shillings an acre\n4:13 Selling a nation's bonds on the real exchange\n5:55 What was actually waiting on the beach\n6:31 The rainy season, and the ones who came home\n8:01 How the con man walked away\n\n#FinanceHistory #Poyais #GregorMacGregor #Scams\n\nThe Second Take uses AI-assisted narration and illustration to tell true money stories.\nThis channel is history and entertainment, not financial advice.\n\nSources:\n- \"Gregor MacGregor,\" Wikipedia (featured article, sourced to David Sinclair's The Land That Never Was and Tamar Frankel's The Ponzi Scheme Puzzle): the guidebook claims, banknote / land / bond mechanics, named victims, the Black River deaths, the survivors' affidavit, the French acquittal, and the Venezuela death.\n- \"Gregor MacGregor,\" Undiscovered Scotland biography: the two ships and settler counts, the 200,000 pound London loan, and the guidebook.\n- \"Thomas Strangeways\" (pseud.), Sketch of the Mosquito Shore, including the Territory of Poyais (Edinburgh/London, 1822): the primary guidebook and its climate, harvest, and gold claims.\n- Tamar Frankel, The Ponzi Scheme Puzzle, plus economic-history accounts of the 1822 London Latin-American sovereign-bond boom and collapse.\n- Aggregated reputable secondary accounts (The Hustle; History Skills; the Poyais Scheme genealogy record): the ship and settler numbers, the death toll, the Edinburgh cobbler, and James Hastie.",
+      "tags": [
+        "Poyais",
+        "Gregor MacGregor",
+        "Poyais scam",
+        "Poyais scheme",
+        "fake country",
+        "Cazique of Poyais",
+        "MacGregor fraud",
+        "greatest cons in history",
+        "biggest con in history",
+        "financial history",
+        "London Stock Exchange 1822",
+        "Latin American bond bubble",
+        "1820s financial bubble",
+        "sovereign bond scam",
+        "history of scams",
+        "Mosquito Coast",
+        "money documentary",
+        "finance documentary",
+        "forgotten history",
+        "The Second Take"
+      ],
+      "hashtags": [
+        "#FinanceHistory",
+        "#Poyais",
+        "#GregorMacGregor",
+        "#Scams"
+      ],
+      "category_id": "27",
+      "category_name": "Education",
+      "chapters": [
+        {
+          "time": "00:00",
+          "label": "The country that never was"
+        },
+        {
+          "time": "0:39",
+          "label": "A war hero and 8 million acres of jungle"
+        },
+        {
+          "time": "2:11",
+          "label": "Inventing a prince, a capital, and a guidebook"
+        },
+        {
+          "time": "2:55",
+          "label": "Fake banknotes and land for two shillings an acre"
+        },
+        {
+          "time": "4:13",
+          "label": "Selling a nation's bonds on the real exchange"
+        },
+        {
+          "time": "5:55",
+          "label": "What was actually waiting on the beach"
+        },
+        {
+          "time": "6:31",
+          "label": "The rainy season, and the ones who came home"
+        },
+        {
+          "time": "8:01",
+          "label": "How the con man walked away"
+        }
+      ],
+      "chapters_status": "estimated-from-script — re-time after render before publish",
+      "thumbnail": {
+        "grammar": "Rebuilt 2026-07-21 on the reference-channel teardown (research/thumbnail-teardown-2026-07-21.md) — the old cold-money-object / no-face / label-text set was refuted. Each concept now leads with a HERO carrying ONE loud emotion (a cast face or a personified money object), a punchline/verdict/fake-quote overlay (never a premise/label), one big thing legible at 168px, one red accent that POINTS, and an absurd/menacing juxtaposition. Faces allowed (2.5D vector cast).",
+        "primary": {
+          "text": "\"Trust me, it's paradise\"",
+          "concept": "[CHARACTER][EMOTION] The con-man himself, mid-sell. Gregor MacGregor (locked cast, crimson hussar coat) fills the frame with a huge smug, gloating salesman grin, one arm flourishing toward a glowing golden fantasy Poyais city he is pitching (domed cathedral, opera house, spires, gold-lit river). [EMOTION] The fake first-person quote 'Trust me, it's paradise' puts the lie in his mouth — dramatic irony, since the video reveals it was empty jungle. [COMP] One dominant face + one bright product; the red accent is a hand-drawn marker circle POINTING at the too-good golden city. Familiar anchor = the smiling salesman. Not a restatement of the title."
+        },
+        "challengers": [
+          {
+            "text": "Prince of nothing",
+            "concept": "[CHARACTER][ABSURD] Pairs with 'The Prince Who Sold a Country That Didn't Exist.' MacGregor self-crowned 'Cazique, Prince of Poyais' — an oversized gold crown and invented royal regalia piled over his hussar coat, chest puffed, gloating (F-03 self-styled prince). The absurdity IS the image: a con-man playing prince of a country that isn't there, with empty jungle behind the throne. [EMOTION] Overlay 'Prince of nothing' is a dry verdict. [COMP] One big gloating figure; the one red accent is a hand-drawn arrow pointing down at the bare empty ground he 'rules.'"
+          },
+          {
+            "text": "Good as gold",
+            "concept": "[CHARACTER][EMOTION] The Crayon move — the money object personified. A single big Poyais banknote (the printed fake currency, F-08) given a face: simple cast eyes and a sly, smug grin, bragging like it's legit. [ABSURD] Confident, worthless paper insisting it's 'Good as gold' — the guidebook's own rivers-of-gold boast (F-06) turned into the note's punchline. [COMP] One dominant grinning banknote, legible at 168px; the one red accent is the note's own official red wax seal. Familiar anchor = money."
+          },
+          {
+            "text": "Five-star paradise",
+            "concept": "[EMOTION][ABSURD] The mark's face at the moment of the con. A settler (on-style anonymous figure) stands on an empty swampy jungle beach with ONE loud emotion — open dismay/horror — clutching the lavish golden guidebook open to the promised opera-house capital, facing nothing (F-15 arrival on empty coast vs F-05 promise). [EMOTION] Sarcastic verdict 'Five-star paradise' over the emptiness. [COMP] One horror face + the golden brochure; the one red accent is a hand-drawn circle ringing the empty beach where the promised city should be. Familiar anchor = a five-star travel promise. (This is the 3rd/bench challenger — YouTube Test & Compare holds 3 slots; see ab_experiment.)"
+          }
+        ]
+      },
+      "pinned_comment": "The part that still gets me: when the survivors finally made it home, six of them signed a sworn statement defending MacGregor and blaming the man he'd left in charge. After Poyais had cost them nearly everything, they still couldn't believe the prince had meant them any harm. If you'd sailed for Poyais and lived, do you think you'd have believed him too?",
+      "ab_experiment": {
+        "eligible": true,
+        "dimension": "title_and_thumbnail",
+        "note": "YouTube Studio-only (Test & Compare, desktop, long-form) holds 3 thumbnail slots — Data API v3 cannot submit any of this. Set up manually: pick title_primary+challengers and the thumbnail primary + the first 2 challengers ('Prince of nothing', 'Good as gold'); the 3rd thumbnail challenger ('Five-star paradise') is a bench concept for a later swap. All four rebuilt 2026-07-21 on the teardown grammar and test genuinely different HERO hooks within the locked vindication lever — (primary) the con-man gloating mid-sell, (ch1) the absurd self-crowned prince of nothing, (ch2) the personified worthless banknote, (ch3) the mark's horror on the empty beach."
+      }
+    },
+    "shorts": []
+  }
+}
