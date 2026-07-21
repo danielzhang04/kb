@@ -473,3 +473,36 @@ git commit -m "feat(atlas): persona v2 — judged canonical lines as example pai
 2. Desk gate (Daniel, live): wake → verbatim "Hey boss." greeting; talk past it for 60s+ → absolute silence; address it ("Atlas, ..." or any kb word) → tight nouned answer; file a card via the compressed confirm; "go to sleep" → verbatim sleep line; markdown never audible.
 3. Transcript ledger still records gated utterances (visible in the dashboard Atlas view for debugging).
 ```
+
+---
+
+## Execution notes (orchestrator record — amendments pre-declared BEFORE inspection)
+
+Executed 2026-07-21 on branch `claude/atlas-voice-rules` by four Opus 4.8 implementer subagents
+(model self-reported `claude-opus-4-8[1m]` by each, orchestrator-verified from reports); work left
+uncommitted by workers per dispatch, orchestrator reviewed every diff and authored the commits
+(0ab73f1 T1, 02f9652 T2, 0407930 T4, 3aa138a T3).
+
+**Scope amendments (contract of record):**
+1. **Task 2** — `_HEADER` line-anchored regex added ahead of the char pass. Pre-authorized by the
+   plan's own Step 4 contingency text; in-contract.
+2. **Task 4** — `from worker import fastlane` added to test_fastlane.py imports (the plan's test
+   snippet calls `fastlane.load_persona()` but the file only imported names). Supporting change,
+   no behavior. Also: the pre-existing confirm-rule test asserts against `SYSTEM`, so the new
+   invariant was applied there as `"confirmed=true" in SYSTEM and "spoken yes" in SYSTEM` —
+   the plan's Step 4 instruction realized against the actual test body.
+3. **Task 3** — `_announce` news/window logic flattened versus the plan's Step 8 sketch: the
+   speak-branch is unchanged; a single following `if engaged: addr.mark_activity() else:
+   pending_news.append(ann.text)` replaces the sketch's nested/elif form. Orchestrator-instructed
+   in the dispatch work order ("make the logic correct and simple; every not-engaged announcement
+   lands in pending_news exactly once"). Behavior identical to the sketch's intent; this note is
+   the formal amendment.
+
+**Evidence (verbatim, orchestrator re-run at 3aa138a):**
+- `.venv\Scripts\python -m pytest tests/ -q` → `148 passed in 24.27s` (132 baseline + 8
+  test_addressing + 7 test_sanitize + 1 net-new fastlane guard).
+- Task 3 `--text` console smoke: worker started clean under PYTHONUTF8=1 (plugins registered,
+  session built, addr constructed, handlers registered) and exited at `stateserver.start` with
+  `OSError 10048` — port 4360 held by PID 18812, the LIVE desk Atlas worker (netstat-confirmed).
+  Environment conflict, not code: the live worker predates this branch. Desk gate requires a
+  worker restart to load the new code (Gate-C lesson).
