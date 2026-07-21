@@ -315,9 +315,18 @@ Per shot, pick the **cheapest technique that holds the locked elements**:
 - **Shorts:** same walk per short's `shots[]` (+ its `first_frame`), aspect `9:16`, files
   `scenes/<short-file-stem>-<shot-id>.png`.
 - **Thumbnail:** generate `thumbnail.primary` AND each challenger — `16:9`, files
-  `scenes/thumbnail-primary.png` / `thumbnail-challenger-N.png`, from each `gen_prompt` —
+  `assets/thumbs/thumbnail-primary.png` / `thumbnail-challenger-N.png`, from each `gen_prompt` —
   seed any locked CHARACTER it features (most are character-free artifact thumbnails → compose fully, no
   seed). Do NOT bake the `text_overlay` into the image — it's applied at publish. The batched review applies.
+  These candidates are NOT the publishable file — a thumb PNG straight out of the engine is whatever
+  aspect/size the gen produced, and `compliance-check`'s Gate-3 mechanical check requires exactly
+  1280x720. After the human picks a winner from the reviewed candidates, run
+  `py -3 .claude/skills/image-generation/scripts/finalize_thumbnail.py <picked-candidate.png> <video_dir>`
+  — it center-crops the pick to 16:9 (then LANCZOS-resizes to 1280x720) and writes
+  `<video_dir>/assets/thumbnail.png`, the file every downstream gate/publish step reads. It refuses
+  (exit 1) to upscale a candidate whose crop is narrower than 640px, and is idempotent — safe to re-run
+  if a later round picks a different candidate. The unpicked challengers stay in `assets/thumbs/` for
+  future A/B swaps; they are never deleted just because one was finalized.
 
 **Worked example (Poyais L22, "MacGregor commissioned a guidebook…").** Technique (b) — seeds =
 `library/macgregor-base.png` (identity) + his `sit` pose frame + a `smug` expression frame, in ONE gen;
