@@ -249,3 +249,74 @@ def sync(
         _git(ops_root, "push", "origin", "ops")
     result["pushed"] = True
     return result
+
+
+# --- CLI --------------------------------------------------------------------
+def _print_check(report: dict) -> None:
+    print(f"sync_daemon_dirs --check ({report['mode']})")
+    if not has_drift(report):
+        print("  clean — ops matches main for all daemon-read dirs")
+        return
+    for label, key, hint in (
+        ("main-only (missing from ops)", "main_only", "run --sync"),
+        ("content-differs", "differs", "run --sync"),
+        ("ops-only (extra on ops)", "ops_only", "run --sync --prune to remove"),
+    ):
+        if report[key]:
+            print(f"  {label} [{hint}]:")
+            for path in report[key]:
+                print(f"    - {path}")
+
+
+def _print_sync(result: dict) -> None:
+    if result["pruned"]:
+        print(f"  pruned {len(result['pruned'])} ops-only file(s):")
+        for path in result["pruned"]:
+            print(f"    - {path}")
+    elif result["kept_ops_only"]:
+        print(f"  kept {len(result['kept_ops_only'])} ops-only file(s) "
+              "(pass --prune to remove):")
+        for path in result["kept_ops_only"]:
+            print(f"    - {path}")
+    if not result["committed"]:
+        print("  no changes — ops already matches main")
+    else:
+        print("  committed daemon-read dirs from main; "
+              f"pushed={result['pushed']}")
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(
+        description="Mirror main-authored daemon-read dirs onto the ops branch."
+    )
+    ap.add_argument("--check", action="store_true",
+                    help="read-only drift report; exit nonzero on drift; no writes")
+    ap.add_argument("--sync", action="store_true",
+                    help="mirror main content onto ops (default action)")
+    ap.add_argument("--ops-root", type=Path, default=DEFAULT_OPS_ROOT,
+                    help="ops worktree path (default: the dashboard-ops worktree)")
+    ap.add_argument("--repo-root", type=Path, default=None,
+                    help="repo whose git refs are queried (default: cwd)")
+    ap.add_argument("--main-ref", default=DEFAULT_MAIN_REF)
+    ap.add_argument("--ops-ref", default=DEFAULT_OPS_REF)
+    ap.add_argument("--prune", action="store_true",
+                    help="in --sync, git rm ops-only files not present on main")
+    args = ap.parse_args(argv)
+
+    repo_root = args.repo_root or Path.cwd()
+
+    if args.check:
+        report = check(repo_root, DAEMON_READ_DIRS, args.ops_root,
+                       args.main_ref, args.ops_ref)
+        _print_check(report)
+        return 1 if has_drift(report) else 0
+
+    result = sync(repo_root, DAEMON_READ_DIRS, args.ops_root,
+                  args.main_ref, args.prune)
+    print(f"sync_daemon_dirs --sync (ops worktree: {args.ops_root})")
+    _print_sync(result)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
