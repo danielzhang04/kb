@@ -354,6 +354,39 @@ describe('createClaudeWorkerAdapter.execute', () => {
     expect(result.summary).toContain('cancelled');
   });
 
+  it('deregisters the cancellation on a normal completion so the registry does not leak', async () => {
+    const fake = fakeProcess();
+    const registry = new Map<string, () => void>();
+    const adapter = createClaudeWorkerAdapter({
+      resolveToolPolicy: () => TOOL_POLICY,
+      spawn: () => fake.proc,
+      registerCancellation: (operationKey, fn) => { registry.set(operationKey, fn); },
+      deregisterCancellation: (operationKey) => { registry.delete(operationKey); },
+    });
+    const promise = adapter.execute(executeInput());
+    expect(registry.size).toBe(1); // registered at spawn
+    fake.emitStdout(successLine('done'));
+    fake.emitExit(0);
+    await promise;
+    expect(registry.size).toBe(0); // cleared on the normal settle path
+  });
+
+  it('deregisters the cancellation on an error completion so the registry does not leak', async () => {
+    const fake = fakeProcess();
+    const registry = new Map<string, () => void>();
+    const adapter = createClaudeWorkerAdapter({
+      resolveToolPolicy: () => TOOL_POLICY,
+      spawn: () => fake.proc,
+      registerCancellation: (operationKey, fn) => { registry.set(operationKey, fn); },
+      deregisterCancellation: (operationKey) => { registry.delete(operationKey); },
+    });
+    const promise = adapter.execute(executeInput());
+    expect(registry.size).toBe(1);
+    fake.emitError(new Error('spawn claude ENOENT'));
+    await promise;
+    expect(registry.size).toBe(0); // cleared on the error settle path too
+  });
+
   it('resolves failed immediately on a child spawn/runtime error rather than waiting for the kill-timeout', async () => {
     const fake = fakeProcess();
     const adapter = createClaudeWorkerAdapter({ resolveToolPolicy: () => TOOL_POLICY, spawn: () => fake.proc });

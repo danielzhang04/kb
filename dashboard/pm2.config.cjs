@@ -77,6 +77,13 @@ module.exports = {
         // The SESSION SECRET stays OUT of this file (ephemeral per-process unless DASHBOARD_SESSION_SECRET
         // is provisioned out-of-band); ANTHROPIC_API_KEY MUST remain unset (subscription billing only;
         // preamble gate enforces).
+        //
+        // WAVE-A EXECUTOR ACTIVATION GATE (D3/D5) — deliberately UNSET so the committed daemon is inert:
+        // with this variable absent, buildActivatedExecution returns null, no automatic engine/broker is
+        // constructed, and no `claude` worker can spawn (the daemon behaves byte-for-byte as today). The
+        // LIVE flip is Daniel's alone, in a watched session, per the acceptance runbooks — uncomment the
+        // one line below to arm it, restart, and re-comment to roll back:
+        // DASHBOARD_EXECUTION_ACTIVATED: '1',  // Daniel-only live flip; keep commented/unset by default
       },
     },
   ],

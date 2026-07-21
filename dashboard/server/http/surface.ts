@@ -34,6 +34,7 @@ import { drainVibeProcesses } from '../vibe/session.ts';
 import { drainAsyncGit } from '../write/asyncGit.ts';
 import { createFileControlPlaneStore } from '../control/store.ts';
 import { registerControlRoutes } from '../control/routes.ts';
+import { buildActivatedExecution } from '../control/activation.ts';
 
 /** dashboard/server/http/surface.ts -> ../../../ is the repo root. Overridable via env / tests. */
 export function resolveRepoRoot(): string {
@@ -44,12 +45,41 @@ export function resolveDurableRepoRoot(): string {
   return process.env.DASHBOARD_DURABLE_REPO_ROOT ?? resolveRepoRoot();
 }
 
+/**
+ * Optional seam for the Wave-A executor activation. Production passes nothing: `build` defaults to the
+ * real `buildActivatedExecution` and `env` to `process.env`, so the gate (`DASHBOARD_EXECUTION_ACTIVATED`)
+ * is read from the real environment and the executor is constructed only when it is `'1'`. Tests inject a
+ * hermetic `build`/`env` so the gate-on wiring is exercised without shelling git or touching the fs.
+ */
+export interface SurfaceActivationSeam {
+  build?: typeof buildActivatedExecution;
+  env?: Record<string, string | undefined>;
+}
+
 /** Build a full {@link SurfaceContext}, filling every field not supplied in `overrides` with its real
  *  default. `sessionConfig`'s secret is resolved exactly once (see module doc). */
-export function makeSurfaceContext(overrides: Partial<SurfaceContext> = {}): SurfaceContext {
+export function makeSurfaceContext(
+  overrides: Partial<SurfaceContext> = {},
+  activation: SurfaceActivationSeam = {},
+): SurfaceContext {
   const sessionConfig = overrides.sessionConfig ?? { secret: resolveSessionSecret(), ttlMs: resolveSessionTtlMs() };
+  const repoRoot = overrides.repoRoot ?? resolveRepoRoot();
+  const stateRoot = resolveDashboardStateRoot();
+  const controlStore = overrides.controlStore ?? createFileControlPlaneStore(stateRoot);
+  // Wave-A executor activation (env-gated, default OFF). When any of the three executor fields is already
+  // supplied as an override (tests, or a future explicit injection), activation is skipped entirely so no
+  // construction is attempted. Otherwise `buildActivatedExecution` returns `null` unless the gate is on —
+  // meaning production, gate absent, constructs no broker/engine and spawns no `claude` (the core inert
+  // invariant): the executor fields below stay `undefined` exactly as today.
+  const activationOverridden = overrides.controlBroker !== undefined
+    || overrides.runAutomatic !== undefined
+    || overrides.cancelAutomatic !== undefined;
+  const build = activation.build ?? buildActivatedExecution;
+  const activated = activationOverridden
+    ? null
+    : build({ env: activation.env, controlStore, repoRoot, stateRoot });
   return {
-    repoRoot: overrides.repoRoot ?? resolveRepoRoot(),
+    repoRoot,
     durableRepoRoot: overrides.durableRepoRoot ?? overrides.repoRoot ?? resolveDurableRepoRoot(),
     sessionConfig,
     allowedOrigins: overrides.allowedOrigins ?? resolveAllowedOrigins(),
@@ -73,13 +103,13 @@ export function makeSurfaceContext(overrides: Partial<SurfaceContext> = {}): Sur
     resumeRegistry: overrides.resumeRegistry ?? createResumeRegistry(),
     composerStore:
       overrides.composerStore ??
-      createFileComposerStore(resolveDashboardStateRoot(), {
+      createFileComposerStore(stateRoot, {
         protector: createProviderIdProtector(sessionConfig.secret),
       }),
-    controlStore: overrides.controlStore ?? createFileControlPlaneStore(resolveDashboardStateRoot()),
-    controlBroker: overrides.controlBroker,
-    runAutomatic: overrides.runAutomatic,
-    cancelAutomatic: overrides.cancelAutomatic,
+    controlStore,
+    controlBroker: overrides.controlBroker ?? activated?.controlBroker,
+    runAutomatic: overrides.runAutomatic ?? activated?.runAutomatic,
+    cancelAutomatic: overrides.cancelAutomatic ?? activated?.cancelAutomatic,
     triggerRunner: overrides.triggerRunner,
   };
 }

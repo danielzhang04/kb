@@ -696,6 +696,53 @@ describe('human inbox surface', () => {
   });
 });
 
+describe('surface — Wave-A executor activation wiring (env-gated, default OFF)', () => {
+  const activatedTriple = () => ({
+    controlBroker: { drain() {} } as unknown as NonNullable<SurfaceContext['controlBroker']>,
+    runAutomatic: (async () => ({ state: 'succeeded', startedStageIds: [], completedStageIds: [], waitingStageIds: [] })) as unknown as NonNullable<SurfaceContext['runAutomatic']>,
+    cancelAutomatic: (async () => ({ state: 'stopped', stoppedSessionRefs: [], interruptedSessionRefs: [], replayed: false })) as unknown as NonNullable<SurfaceContext['cancelAutomatic']>,
+  });
+
+  it('CORE INERT INVARIANT: gate unset ⇒ controlBroker/runAutomatic/cancelAutomatic are undefined', () => {
+    // Real builder, deterministic gate-off env — must return null and construct nothing.
+    const ctx = makeSurfaceContext({ repoRoot: REPO_A, sessionConfig, allowedOrigins: [GOOD_ORIGIN] }, { env: {} });
+    expect(ctx.controlBroker).toBeUndefined();
+    expect(ctx.runAutomatic).toBeUndefined();
+    expect(ctx.cancelAutomatic).toBeUndefined();
+  });
+
+  it('gate set ⇒ the three executor fields are populated from the builder result', () => {
+    const triple = activatedTriple();
+    const build = vi.fn().mockReturnValue(triple);
+    const ctx = makeSurfaceContext(
+      { repoRoot: REPO_A, sessionConfig, allowedOrigins: [GOOD_ORIGIN] },
+      { build: build as never, env: { DASHBOARD_EXECUTION_ACTIVATED: '1' } },
+    );
+    expect(build).toHaveBeenCalledTimes(1);
+    // The builder receives the gate env, the resolved control store, and the ops repo root.
+    expect(build).toHaveBeenCalledWith(expect.objectContaining({
+      env: { DASHBOARD_EXECUTION_ACTIVATED: '1' },
+      repoRoot: REPO_A,
+    }));
+    expect(ctx.controlBroker).toBe(triple.controlBroker);
+    expect(ctx.runAutomatic).toBe(triple.runAutomatic);
+    expect(ctx.cancelAutomatic).toBe(triple.cancelAutomatic);
+  });
+
+  it('an explicit executor override wins and short-circuits activation entirely (builder never called)', () => {
+    const build = vi.fn().mockReturnValue(activatedTriple());
+    const overrideBroker = { drain() {} } as unknown as NonNullable<SurfaceContext['controlBroker']>;
+    const ctx = makeSurfaceContext(
+      { repoRoot: REPO_A, sessionConfig, allowedOrigins: [GOOD_ORIGIN], controlBroker: overrideBroker },
+      { build: build as never, env: { DASHBOARD_EXECUTION_ACTIVATED: '1' } },
+    );
+    expect(build).not.toHaveBeenCalled();
+    expect(ctx.controlBroker).toBe(overrideBroker);
+    expect(ctx.runAutomatic).toBeUndefined();
+    expect(ctx.cancelAutomatic).toBeUndefined();
+  });
+});
+
 describe('vibe surface — gate wiring', () => {
   it('401s without a session (before any spawn)', async () => {
     const spawn = vi.fn();
