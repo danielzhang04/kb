@@ -76,12 +76,12 @@ if card.meta.get("execution-controller") != "dashboard":
     raise cards.ValidationError("canonical managed card controller differs")
 
 wire = json.dumps(op["result"], sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-block = "## Result\n\n\`\`\`kb.canonical-stage-result/v1\n" + wire + "\n\`\`\`\n"
+block = "## Result\\n\\n\`\`\`kb.canonical-stage-result/v1\\n" + wire + "\\n\`\`\`\\n"
 if "## Result" in card.body:
-    if card.body.rstrip() != (card.body.split("## Result", 1)[0].rstrip() + "\n\n" + block).rstrip():
+    if card.body.rstrip() != (card.body.split("## Result", 1)[0].rstrip() + "\\n\\n" + block).rstrip():
         raise cards.ValidationError("canonical card already has a different Result")
 else:
-    card.body = card.body.rstrip() + "\n\n" + block
+    card.body = card.body.rstrip() + "\\n\\n" + block
 
 old_path = source
 changed = card.meta.get("state") != "done" or cards.parse(source).body != card.body
@@ -120,11 +120,11 @@ if card.meta.get("id") != op["cardRef"] or card.meta.get("workflow") != op["runR
     raise cards.ValidationError("committed canonical result identity differs")
 if card.meta.get("execution-controller") != "dashboard" or card.meta.get("state") != "done":
     raise cards.ValidationError("committed canonical result controller or state differs")
-marker = "\`\`\`kb.canonical-stage-result/v1\n"
+marker = "\`\`\`kb.canonical-stage-result/v1\\n"
 if card.body.count("## Result") != 1 or card.body.count(marker) != 1:
     raise cards.ValidationError("committed canonical Result section is missing or ambiguous")
 start = card.body.index(marker) + len(marker)
-end = card.body.find("\n\`\`\`", start)
+end = card.body.find("\\n\`\`\`", start)
 if end < 0:
     raise cards.ValidationError("committed canonical Result fence is incomplete")
 wire = json.loads(card.body[start:end])

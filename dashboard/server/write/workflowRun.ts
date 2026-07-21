@@ -125,7 +125,7 @@ for card_id in op["cardRefs"]:
     if not path.is_file():
         raise cards.ValidationError("managed root card is absent from queue/inbox")
     card = cards.parse(path)
-    if (card.meta.get("id") != card_id or card.meta.get("workflow") != op["runRef"]:
+    if card.meta.get("id") != card_id or card.meta.get("workflow") != op["runRef"]:
         raise cards.ValidationError("managed root card identity differs")
     if card.meta.get("execution-controller") != "dashboard":
         raise cards.ValidationError("managed root card controller differs")
