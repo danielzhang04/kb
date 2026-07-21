@@ -9,6 +9,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 import sync_daemon_dirs as sdd  # noqa: E402
 
@@ -25,7 +27,10 @@ def _git(cwd, *args, check=True):
 def _write(root, rel, content):
     p = Path(root) / rel
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(content, encoding="utf-8")
+    # newline="" disables Windows \n->\r\n translation so "\n" content is stored
+    # as genuine LF (otherwise every fixture would silently be CRLF on disk).
+    with open(p, "w", encoding="utf-8", newline="") as f:
+        f.write(content)
 
 
 def _commit_all(root, msg):
@@ -52,6 +57,9 @@ def build(tmp_path, ops_mutate=None):
     wc = Path(tmp_path) / "wc"
     subprocess.run(["git", "clone", "-q", str(origin), str(wc)],
                    check=True, capture_output=True)
+    # Deterministic bytes so CRLF tests store exactly what they write (shared
+    # config is inherited by worktrees added from this clone).
+    _git(wc, "config", "core.autocrlf", "false")
 
     _git(wc, "checkout", "-q", "-b", "main")
     for rel, content in MAIN_LAYOUT.items():
@@ -265,3 +273,160 @@ def test_cli_check_exits_zero_when_clean(tmp_path):
     )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "clean" in r.stdout
+
+
+# --- Review round 1 regression tests ----------------------------------------
+def test_crlf_content_clean_in_both_modes(tmp_path):
+    # M2/d: ops holds the same logical content as main but with CRLF line
+    # endings. Neither mode may report drift, and they must agree.
+    def mutate(wc):
+        (Path(wc) / "agents" / "fyt.md").write_bytes(b"agent one\r\n")  # main: LF
+    wc = build(tmp_path, mutate)
+
+    refs = sdd.check(wc, sdd.DAEMON_READ_DIRS, ops_root=None,
+                     main_ref="origin/main", ops_ref="origin/ops")
+    assert not sdd.has_drift(refs), refs  # refs mode: normalized, clean
+
+    ops_root = _add_ops_worktree(wc, tmp_path / "ops_wt")
+    disk = sdd.check(wc, sdd.DAEMON_READ_DIRS, ops_root=ops_root,
+                     main_ref="origin/main")
+    assert not sdd.has_drift(disk), disk  # disk mode agrees
+
+
+def test_sync_fetches_stale_main_before_checkout(tmp_path):
+    # B1/e: the ops worktree's origin/main is stale; a new org merged on main
+    # after the worktree was created must still be mirrored (requires an internal
+    # fetch). repo_root and ops_root are separate clones — the real topology.
+    origin = tmp_path / "origin.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(origin)],
+                   check=True, capture_output=True)
+
+    caller = tmp_path / "caller"
+    subprocess.run(["git", "clone", "-q", str(origin), str(caller)],
+                   check=True, capture_output=True)
+    _git(caller, "config", "core.autocrlf", "false")
+    _git(caller, "checkout", "-q", "-b", "main")
+    _write(caller, "agents/fyt.md", "agent one\n")
+    _commit_all(caller, "main v1")
+    _git(caller, "push", "-q", "-u", "origin", "main")
+    _git(caller, "checkout", "-q", "-b", "ops", "main")
+    _git(caller, "push", "-q", "-u", "origin", "ops")
+    _git(caller, "checkout", "-q", "main")
+
+    # Separate ops clone + worktree; its origin/main now freezes at v1.
+    opsclone = tmp_path / "opsclone"
+    subprocess.run(["git", "clone", "-q", str(origin), str(opsclone)],
+                   check=True, capture_output=True)
+    _git(opsclone, "config", "core.autocrlf", "false")
+    ops_root = tmp_path / "ops_wt"
+    _git(opsclone, "worktree", "add", "-q", str(ops_root), "ops")
+
+    # main advances: a brand-new org's workflow lands. opsclone hasn't fetched.
+    _write(caller, "orgs/bar/workflows/new.md", "brand new workflow\n")
+    _commit_all(caller, "main v2 adds orgs/bar")
+    _git(caller, "push", "-q", "origin", "main")
+
+    result = sdd.sync(ops_root, sdd.DAEMON_READ_DIRS, ops_root, main_ref="origin/main")
+    assert result["committed"] and result["pushed"], result
+    assert _origin_ops_has(caller, "orgs/bar/workflows/new.md")
+
+
+def test_sync_ignores_unrelated_worktree_files_when_in_sync(tmp_path):
+    # B2/b: unrelated untracked (.playwright-mcp/) + staged files in the shared
+    # ops worktree must not crash an already-in-sync run nor trigger a commit.
+    wc = build(tmp_path)
+    ops_root = _add_ops_worktree(wc, tmp_path / "ops_wt")
+    _write(ops_root, ".playwright-mcp/session.json", "{}\n")   # untracked
+    _write(ops_root, "notes-unrelated.md", "wip\n")            # staged, unrelated
+    _git(ops_root, "add", "notes-unrelated.md")
+
+    result = sdd.sync(ops_root, sdd.DAEMON_READ_DIRS, ops_root, main_ref="origin/main")
+    assert not result["committed"], "unrelated files must not produce a mirror commit"
+    assert (ops_root / ".playwright-mcp" / "session.json").exists()
+    assert (ops_root / "notes-unrelated.md").exists()
+
+
+def test_sync_commit_excludes_unrelated_staged_files(tmp_path):
+    # B2/b: when a real mirror change IS committed, unrelated staged/untracked
+    # files in the shared worktree must NOT be swept into the ops mirror commit.
+    def mutate(wc):
+        _write(wc, "agents/fyt.md", "STALE ops agent\n")
+    wc = build(tmp_path, mutate)
+    ops_root = _add_ops_worktree(wc, tmp_path / "ops_wt")
+    _write(ops_root, "notes-unrelated.md", "wip\n")
+    _git(ops_root, "add", "notes-unrelated.md")
+    _write(ops_root, ".playwright-mcp/session.json", "{}\n")
+
+    result = sdd.sync(ops_root, sdd.DAEMON_READ_DIRS, ops_root, main_ref="origin/main")
+    assert result["committed"]
+    committed = _git(ops_root, "show", "--name-only", "--format=", "HEAD").stdout
+    assert "agents/fyt.md" in committed
+    assert "notes-unrelated.md" not in committed, committed
+    # The unrelated changes survive uncommitted in the worktree.
+    assert (ops_root / "notes-unrelated.md").exists()
+    assert (ops_root / ".playwright-mcp" / "session.json").exists()
+
+
+def test_sync_aborts_cleanly_on_rebase_conflict(tmp_path):
+    # M1/c: a conflicting rebase must not leave conflict markers or a
+    # rebase-merge state in the worktree the live daemon reads.
+    wc = build(tmp_path)
+    ops_root = _add_ops_worktree(wc, tmp_path / "ops_wt")
+    target = "orgs/kb-ops/workflows/email-triage.md"
+
+    # Local (unpushed) ops commit editing the file.
+    _write(ops_root, target, "LOCAL ops edit\n")
+    _commit_all(ops_root, "local ops edit")
+
+    # Conflicting remote ops commit to the same file, via a separate clone.
+    rc = tmp_path / "rc"
+    subprocess.run(["git", "clone", "-q", str(tmp_path / "origin.git"), str(rc)],
+                   check=True, capture_output=True)
+    _git(rc, "checkout", "-q", "ops")
+    _write(rc, target, "REMOTE ops edit\n")
+    _commit_all(rc, "remote ops edit")
+    _git(rc, "push", "-q", "origin", "ops")
+
+    with pytest.raises(SystemExit):
+        sdd.sync(ops_root, sdd.DAEMON_READ_DIRS, ops_root, main_ref="origin/main")
+
+    # No mid-rebase state left behind, no conflict markers in the file.
+    rebase_dir = _git(ops_root, "rev-parse", "--git-path", "rebase-merge").stdout.strip()
+    assert not (ops_root / rebase_dir).exists() and not Path(rebase_dir).exists()
+    assert "<<<<<<<" not in (ops_root / target).read_text(encoding="utf-8")
+
+
+def test_sync_retries_on_rejected_push(tmp_path, monkeypatch):
+    # M3/a: a concurrent writer advances origin/ops between our rebase and push,
+    # so the first push is rejected; sync must re-rebase and push successfully.
+    def mutate(wc):
+        _write(wc, "agents/fyt.md", "STALE ops agent\n")
+    wc = build(tmp_path, mutate)
+    ops_root = _add_ops_worktree(wc, tmp_path / "ops_wt")
+    origin = tmp_path / "origin.git"
+
+    original_git = sdd._git
+    state = {"injected": False}
+
+    def racing_git(cwd, *args, **kwargs):
+        if args[:3] == ("push", "origin", "ops") and not state["injected"]:
+            state["injected"] = True
+            # A competing writer lands an unrelated commit on origin/ops first.
+            rc = tmp_path / "racer"
+            subprocess.run(["git", "clone", "-q", str(origin), str(rc)],
+                           check=True, capture_output=True)
+            _git(rc, "checkout", "-q", "ops")
+            _write(rc, "orgs/kb-ops/STATE.md", "competing writer\n")
+            _commit_all(rc, "competing commit")
+            _git(rc, "push", "-q", "origin", "ops")
+        return original_git(cwd, *args, **kwargs)
+
+    monkeypatch.setattr(sdd, "_git", racing_git)
+    result = sdd.sync(ops_root, sdd.DAEMON_READ_DIRS, ops_root, main_ref="origin/main")
+    assert result["committed"] and result["pushed"]
+
+    # Both the competing commit and our mirror landed on origin/ops.
+    assert _origin_ops_has(wc, "orgs/kb-ops/STATE.md")
+    _git(wc, "fetch", "-q", "origin")
+    fixed = _git(wc, "show", "origin/ops:agents/fyt.md").stdout
+    assert "STALE" not in fixed and "agent one" in fixed

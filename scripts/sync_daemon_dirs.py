@@ -147,14 +147,17 @@ def _fetch_ref(repo_root: Path, ref: str, *, required: bool) -> bool:
 
 
 def _rebase_or_abort(ops_root: Path) -> None:
-    """`git pull --rebase origin ops`, aborting cleanly on conflict.
+    """`git pull --rebase --autostash origin ops`, aborting cleanly on conflict.
 
-    A raw rebase that hits a conflict leaves conflict markers and a
-    .git/rebase-merge state in the very worktree the live daemon reads. On any
-    failure we best-effort `git rebase --abort` to restore a clean tree, then
-    exit with a clear error rather than leaving a half-rebased worktree behind.
+    ``--autostash`` lets the rebase proceed even though the shared ops worktree
+    carries unrelated uncommitted changes (staged or not) — they are stashed and
+    reapplied around the rebase, never swept into the mirror commit (which is
+    itself pathspec-scoped). A rebase that hits a *content* conflict would
+    otherwise leave conflict markers and a .git/rebase-merge state in the very
+    worktree the live daemon reads, so on any failure we best-effort
+    ``git rebase --abort`` to restore a clean tree, then exit with a clear error.
     """
-    r = _git(ops_root, "pull", "--rebase", "origin", "ops", check=False)
+    r = _git(ops_root, "pull", "--rebase", "--autostash", "origin", "ops", check=False)
     if r.returncode != 0:
         _git(ops_root, "rebase", "--abort", check=False)  # best-effort cleanup
         raise SystemExit(
