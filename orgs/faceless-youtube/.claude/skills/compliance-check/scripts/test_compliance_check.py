@@ -218,10 +218,19 @@ def test_privacy_not_private_fails(video_dir):
 
 def test_synthetic_media_flag_missing_fails(video_dir):
     meta = _load_meta(video_dir)
-    meta["defaults"]["contains_synthetic_media"] = False
+    del meta["defaults"]["contains_synthetic_media"]
     _save_meta(video_dir, meta)
     ok, detail = cc.check_privacy(video_dir)
     assert ok is False and "synthetic" in detail
+
+
+def test_synthetic_media_explicit_false_passes(video_dir):
+    # clearly-animated register: false is the deliberate, correct call (ruling 2026-07-21)
+    meta = _load_meta(video_dir)
+    meta["defaults"]["contains_synthetic_media"] = False
+    _save_meta(video_dir, meta)
+    ok, detail = cc.check_privacy(video_dir)
+    assert ok is True and "contains_synthetic_media=false" in detail
 
 
 def test_licensing_uncredited_asset_fails(video_dir):

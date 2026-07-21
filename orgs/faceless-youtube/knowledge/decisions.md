@@ -3101,3 +3101,17 @@ run brief binds nobody — a fresh terminal reads the style-bible and skill docs
   keywords set offered, avatar/banner verified to spec (1024² / 2048×1152), trailer deliberately
   empty. **FLAG for Daniel: live display name "Second Takes" ≠ locked "The Second Take"** —
   recommend renaming display name in Studio (handle can stay).
+
+## 2026-07-21 — AI-disclosure scratched for clearly-animated registers (Daniel's ruling)
+
+- **Ruling:** YouTube's altered-content disclosure applies to synthetic media a viewer could
+  mistake for REAL; our locked registers are clearly animated (the uncanny middle is banned
+  project-wide), so neither the upload flag nor a description AI-line is required — and no
+  reference channel discloses (n=36). **Scratched everywhere:** metadata-writer Step 4/Step 9 +
+  schema (contains_synthetic_media now an explicit per-register boolean, false for animated;
+  compliance-check FAILs only a MISSING flag; 23 tests pass), channel-page About draft, poyais
+  description. The not-financial-advice line STAYS (YMYL guardrail, Boyle precedent).
+- **Poyais re-uploaded (v3) private as `J5KU-4IEGEQ`** — same final.mp4, AI line removed,
+  flag false. tVmQR0pfp-Q superseded (record archived; Daniel deletes both old uploads).
+- If any future channel ships realistic synthetic media: flag true + description line both return
+  (metadata-writer Step 9 records the condition).

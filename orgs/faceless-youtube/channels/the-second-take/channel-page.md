@@ -21,12 +21,13 @@ The genre's About length is bimodal — ultra-short (25–270 chars: Crayon/HMW/
 **ultra-short**, one-liner first (it doubles as the search snippet), plus our locked YMYL/AI lines
 (Boyle precedent — the most markets-adjacent channel carries the disclaimer).
 
-**Recommended (≈210 chars):**
+**Recommended (≈175 chars; no AI line — Daniel's ruling 2026-07-21: YouTube disclosure covers
+realistic synthetic media only, and our register is clearly animated):**
 
 ```
 Every money story has an official version. This is the second take.
 
-The Second Take uses AI-assisted narration and illustration to tell true money stories. History and entertainment, not financial advice.
+True stories of cons, bubbles, and billion-dollar mistakes. History and entertainment, not financial advice.
 ```
 
 One-liner alternates (pick one; same register, different angle):

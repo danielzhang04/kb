@@ -187,7 +187,7 @@ def check_metadata(video_dir: Path, duration_s: float | None = None):
 
 
 # ---------------------------------------------------------------------------
-# Mechanical check 3 — Stage-0 policy: private + AI-disclosed.
+# Mechanical check 3 — Stage-0 policy: private + a deliberate synthetic-media call.
 # ---------------------------------------------------------------------------
 def check_privacy(video_dir: Path):
     data, err = _load_json(video_dir / "metadata.json")
@@ -197,11 +197,18 @@ def check_privacy(video_dir: Path):
     problems = []
     if defaults.get("privacy_status") != "private":
         problems.append(f"privacy_status={defaults.get('privacy_status')!r} (must be 'private')")
-    if defaults.get("contains_synthetic_media") is not True:
-        problems.append("contains_synthetic_media is not true (AI disclosure required)")
+    # YouTube's altered-content disclosure applies to REALISTIC synthetic media only
+    # (Daniel's ruling 2026-07-21); clearly-animated registers set false. The gate
+    # requires the call to be made explicitly — a missing flag is an unmade decision.
+    csm = defaults.get("contains_synthetic_media")
+    if not isinstance(csm, bool):
+        problems.append(
+            "contains_synthetic_media missing/non-boolean — the synthetic-media call must be "
+            "explicit (false for clearly-animated registers, true for realistic synthetic media)"
+        )
     if problems:
         return False, "; ".join(problems)
-    return True, "privacy_status=private, contains_synthetic_media=true"
+    return True, f"privacy_status=private, contains_synthetic_media={str(csm).lower()}"
 
 
 # ---------------------------------------------------------------------------

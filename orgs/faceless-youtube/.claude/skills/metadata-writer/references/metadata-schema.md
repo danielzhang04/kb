@@ -28,7 +28,7 @@ YouTube Data API v3 with **no interpretation**.
   "defaults": {
     "privacy_status": "private",
     "made_for_kids": false,
-    "contains_synthetic_media": true,
+    "contains_synthetic_media": false,
     "default_language": "en",
     "default_audio_language": "en",
     "license": "youtube",
@@ -178,8 +178,10 @@ These come from `knowledge/playbook.md` + CLAUDE.md and are non-negotiable at **
 - **`privacy_status: "private"`** — an unaudited OAuth app uploads everything locked private. Never
   default to `public` or `unlisted`. `publish-queue`/a human flips this only when the audit has cleared
   and the human gate approves.
-- **`contains_synthetic_media: true`** — AI/synthetic disclosure is required; also write a
-  human-readable disclosure line into the description.
+- **`contains_synthetic_media`** — an explicit boolean per the channel's visual register (ruling
+  2026-07-21): `false` for clearly-animated registers (YouTube's disclosure covers *realistic*
+  synthetic media only; no description AI-line either); `true` — plus the human-readable
+  description line — only for content a viewer could mistake for real.
 - **`made_for_kids: false`** — these niches are not child-directed. Set `true` only if a channel
   genuinely is (rare here; changes comment/personalization behavior).
 - **No misleading metadata** — the title/thumbnail must be something the video actually pays off.

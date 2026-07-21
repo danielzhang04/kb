@@ -176,9 +176,13 @@ title+thumbnail carry all discovery):
 5. **Hashtags — 0–3, default 0** (teardown: 6 of 9 reference channels use none; Crayon dropped its
    block in 2026; a hashtag wall reads small-channel). Include one only when it adds real topical
    discovery; for Shorts include `#Shorts`.
-6. **AI-synthetic disclosure line** (human-readable) — required by policy; pair with the machine flag.
-   Keep even though no reference channel discloses; do NOT adopt Crayon's "may contain inaccuracies"
-   hedge — we are accuracy-leashed and the hedge would spend the trust the leash buys.
+6. **Channel disclosure lines per `dna.md` guardrails** (e.g. the not-financial-advice line on YMYL
+   channels). **NO AI-disclosure line** (ruling 2026-07-21): YouTube's altered-content policy covers
+   *realistic* synthetic media a viewer could mistake for real — clearly-animated registers are
+   exempt, no reference channel discloses (n=36), and a volunteered AI label spends trust for
+   nothing. Also do NOT adopt Crayon's "may contain inaccuracies" hedge — we are accuracy-leashed
+   and the hedge would spend the trust the leash buys. (If a channel ever ships realistic synthetic
+   media, the disclosure line AND the machine flag both come back — see Step 9.)
 7. **Sources** — if `script.md` carried a Sources list (health/engineering/business trust), reproduce
    it **compactly**. This is part of the originality/trust moat — a deliberate divergence from the
    references (majors cite nothing; the closest analogs cite one doc/URL-dump/named source).
@@ -242,8 +246,12 @@ punch-first), `description` (1–2 lines + `#Shorts` + 2–3 hashtags), a tight 
 Set in the `defaults` block, applied to long-form + every short:
 - `privacy_status: "private"` — the **audit gate**; unaudited OAuth uploads everything private. Never
   default to public. (`playbook.md` / CLAUDE.md.)
-- `contains_synthetic_media: true` — AI/altered-content **disclosure** (also add the human-readable
-  line in the description).
+- `contains_synthetic_media` — an **explicit boolean, decided per channel register** (compliance-check
+  FAILs a missing flag). YouTube's disclosure obligation covers *realistic* synthetic media only
+  (ruling 2026-07-21): clearly-animated registers (every current channel; the uncanny middle is
+  banned project-wide) set **`false`** and carry no description disclosure line. Set `true` — and
+  restore the human-readable description line — only if a channel ships synthetic media a viewer
+  could mistake for real.
 - `made_for_kids: false` (these niches are not child-directed; override only if a channel truly is).
 - `default_language` / `default_audio_language` from `dna.md` (default `en`).
 Enforce any **niche policy quirk**: no health claim in metadata without the script's sourcing; no

@@ -235,12 +235,13 @@ defect that will recur until fixed.
 
 ## Production state
 
-- **Poyais — PUBLISHED PRIVATE, awaiting Daniel's Studio pass (current 2026-07-21):** re-uploaded as
-  **`tVmQR0pfp-Q`** (same locked final.mp4, metadata rebuilt on the 2026-07-21 metadata teardown:
-  measured chapters ≤5-word labels, hashtags dropped, alt-titles block; compliance PASS 6/6 with the
-  new estimated-chapters FAIL gate). Prior upload `8Rv5SwFiZ4Y` superseded (record archived beside
-  publish-record.json) — Daniel deletes it in Studio, then on the new ID: thumbnail, Test & Compare,
-  pin the comment, public flip. Opening lead-in idea measured and REJECTED (first-word 0.16–0.48s is
+- **Poyais — PUBLISHED PRIVATE, awaiting Daniel's Studio pass (current 2026-07-21):** live upload =
+  **`J5KU-4IEGEQ`** (v3: same locked final.mp4; metadata rebuilt on the 2026-07-21 teardown —
+  measured chapters ≤5-word labels, no hashtags, alt-titles block — AND the AI-disclosure line
+  scratched per Daniel's ruling, contains_synthetic_media=false for the clearly-animated register;
+  compliance PASS 6/6). Superseded uploads `8Rv5SwFiZ4Y` + `tVmQR0pfp-Q` (records archived beside
+  publish-record.json) — Daniel deletes both in Studio, then on `J5KU-4IEGEQ`: thumbnail,
+  Test & Compare, pin the comment, public flip. Opening lead-in idea measured and REJECTED (first-word 0.16–0.48s is
   the genre norm; see decisions 2026-07-21). Teardown:
   `channels/the-second-take/research/metadata-teardown-2026-07-21.md`.
 - **Channel PAGE — drafted, awaiting the same Studio pass (2026-07-21):** live page confirmed empty
