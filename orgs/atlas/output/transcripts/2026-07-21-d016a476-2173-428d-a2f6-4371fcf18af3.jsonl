@@ -1,0 +1,8 @@
+{"t": "2026-07-21T07:10:59.819182+00:00", "role": "atlas", "text": "Hey boss. What can I do for you?"}
+{"t": "2026-07-21T07:11:10.467299+00:00", "role": "user", "text": "How is the queue looking?"}
+{"t": "2026-07-21T07:11:25.495110+00:00", "role": "atlas", "text": "Eight in the inbox. Four oauth approvals to sign off on, two nightly reviews, one to flip the delivery gate after soak, and one budget gate decision. Nothing actively working. Fifty-eight done."}
+{"t": "2026-07-21T07:11:34.473803+00:00", "role": "user", "text": "Did we upload the Poyais video?"}
+{"t": "2026-07-21T07:11:45.048712+00:00", "role": "user", "text": "Hello?"}
+{"t": "2026-07-21T07:11:50.774445+00:00", "role": "user", "text": "Okay."}
+{"t": "2026-07-21T07:11:54.955997+00:00", "role": "user", "text": "Alright. Go to sleep."}
+{"t": "2026-07-21T07:11:54.957317+00:00", "role": "atlas", "text": "Okay, sleeping. Wake me when you need something."}
