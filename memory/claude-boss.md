@@ -206,3 +206,21 @@ Fresh terminal: read the spec at `memory/handoffs/2026-07-20-fyt-post-render-tai
 - PARKED: stranded auto-archiver (claude/stranded-archiver ced3716, NOT merged) — HELD; liveness signal
   wrongly marks claude-*/dispatcher-cloud offline so it'd archive live work; needs redesign + Daniel
   policy call + `archived` state governance line. claude/stranded-rollup SUPERSEDED, drop.
+
+## 2026-07-21 (boss session, evening) — debt-clearing wave + Atlas live fixes
+
+**What ran:** Daniel picked two arcs (Atlas V2 go/no-go prep + debt clearing), then added two live Atlas bugs mid-session. All work by dispatched Opus 4.8 agents with adversarial review loops; boss did hygiene + ops writes directly.
+
+**Shipped (all PRs open, awaiting Daniel):**
+- PR #51 (draft): Atlas V2a Trust design — passkey-approval loop only, 9 open questions for the conversation gate. V2 had NO spec before this. Brief's verdict: reduced-scope GO; proactivity → V2b; eng-debt → maintenance card.
+- PR #52: scripts/sync_daemon_dirs.py (main→ops mirror for agents/ + orgs/*/workflows/), 23 tests. 2 review rounds: 2 BLOCKING (stale-refs no-fetch; unscoped commit sweep) + 4 others found and fixed. First real --check caught live drift (FYT segments/ subtree) → hand-staged to ops b87b1cd; both modes now clean. Cadence wiring = proposal in PR body (HEARTBEAT untouched).
+- PR #53: stranded-archiver v2 — corrected liveness (card-idle AND owner-idle, UNKNOWN=alive, schtasks veto-only, 7d window), dry-run-only, default-off, double-locked MOVE, stranded surface kept. Review: SHIP-WITH-FIXES, all applied (ffacb5d). Empirical: the two 84h worker-desktop cards v1 would have archived are spared. v1 root cause = trigger.ts taskForOwner maps only codex-worker. stranded-rollup dropped (confirmed superseded).
+- PR #55: Atlas live fixes — (1) never-sleeps: app.py re-stamped silence clock on EVERY STT transcript incl. ambient room talk; now re-stamps only on Atlas SPEAKING onset; (2) silent TTS on main speaker: no output device ever selected, TTS rode process-start default; now tts_output_device config + loud fallback. 138 tests. Daniel verify steps in PR body.
+
+**Ops writes (protocol followed):** pushed stranded e7fe6fc; staged email-triage/research-brief/video-run defs (63b1922); staged FYT segments/ (b87b1cd).
+
+**Hygiene executed (Daniel-approved):** 7 merged worktrees + 4 local branches removed, 41 merged origin branches deleted. Leftover: kb-worktrees/wave-a-activation dir is git-deregistered but undeletable (file lock + classifier); Daniel deletes manually. NEEDS-HUMAN: detached worktrees codex-runner-runtime + v05b; faceless-import has 2 modified tracked wells-fargo JSONs (unexplained).
+
+**Verified/corrected state:** fleet-arc 14c0fed and keep-awake PR #36 ARE in main (memory corrected); agents/ main↔ops drift currently zero; PR #50 got merged mid-session → Wave A live-fire is unblocked (recipe in next-arc memory); pre-existing 4-test failure on main in compile.videoRun.test.ts (13-vs-14 stages) — not from this session.
+
+**Lessons:** (1) Sustained API stream drops killed agents repeatedly; SendMessage resume-from-transcript + "write in small chunks, commit early" made every retry cheap — adopt as standard flaky-network tactic. (2) The build→adversarial-review→fix loop caught 2 BLOCKING defects a solo build would have shipped (stale-refs mirror that can never converge; commit sweep polluting ops). (3) A --check-style tool run against reality on first build is a free acceptance test — it found real drift immediately. (4) Windows: git worktree remove can deregister but fail file deletion (Permission denied) leaving an orphan dir; sandbox classifier blocks rm -rf — plan for human-finishes-deletion.
