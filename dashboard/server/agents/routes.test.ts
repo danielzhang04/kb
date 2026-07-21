@@ -52,6 +52,8 @@ describe('agent declaration detail route', () => {
         source: 'agents-declaration',
         sourceHash: expect.stringMatching(/^[a-f0-9]{64}$/),
         instructions: expect.stringContaining('Follow the assigned workflow'),
+        defaultProfile: null,
+        allowedProfiles: null,
       },
       codebases: [{ project: 'kb-ops', path: 'orgs/kb-ops' }],
       workflows: [{
@@ -99,6 +101,22 @@ describe('agent declaration detail route', () => {
     expect(roster.json()).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'broken', declared: false, declarationProblem: 'malformed-frontmatter' }),
     ]));
+    await app.close();
+  });
+
+  it('surfaces an incomplete execution-profile contract as an unavailable declaration', async () => {
+    const root = fixture();
+    writeFileSync(join(root, 'agents', 'broken-profile.md'), [
+      '---', 'id: broken-profile', 'default-profile: worker:codex:gpt-5.6-sol', '---', '', '# Broken profile', '',
+    ].join('\n'), 'utf8');
+    const app = Fastify();
+    registerAgents(app, root);
+    const detail = await app.inject({ method: 'GET', url: '/api/agents/broken-profile' });
+    expect(detail.statusCode).toBe(422);
+    expect(detail.json()).toEqual({
+      error: 'agent-declaration-invalid',
+      declaration: { id: 'broken-profile', source: 'agents/broken-profile.md', problem: 'invalid-profile-config' },
+    });
     await app.close();
   });
 

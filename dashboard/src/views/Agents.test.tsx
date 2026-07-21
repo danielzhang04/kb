@@ -27,6 +27,8 @@ function entry(over: Partial<AgentRosterEntry> & { id: string }): AgentRosterEnt
     runnerBound: false,
     declaredRuntime: null,
     declaredModel: null,
+    defaultProfile: null,
+    allowedProfiles: null,
     description: null,
     ...over,
   };

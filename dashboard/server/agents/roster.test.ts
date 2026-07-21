@@ -196,10 +196,49 @@ describe('readDeclaredAgents / buildRoster declared source (C7.3)', () => {
       role: 'work',
       runtime: 'codex',
       model: 'gpt-5.6-sol',
+      defaultProfile: null,
+      allowedProfiles: null,
       runnerBound: false,
       projects: ['kb-ops'],
       description: 'Volume worker for kb-ops housekeeping.',
     });
+  });
+
+  it('projects a complete declared execution-profile contract into detail and roster rows', () => {
+    const configured = AGENT_FILE.replace(
+      'runner-bound: false',
+      'default-profile: worker:codex:gpt-5.6-sol\nallowed-profiles: [worker:codex:gpt-5.6-sol, worker:claude:claude-sonnet-5]\nrunner-bound: false',
+    );
+    const root = repoWithAgents({ 'research-worker.md': configured });
+    expect(readDeclaredAgentDetails(root).get('research-worker')).toMatchObject({
+      defaultProfile: 'worker:codex:gpt-5.6-sol',
+      allowedProfiles: ['worker:codex:gpt-5.6-sol', 'worker:claude:claude-sonnet-5'],
+    });
+    expect(buildRoster(indexOf([]), root, POLICY, { overrides: [] }).find((entry) => entry.id === 'research-worker'))
+      .toMatchObject({
+        defaultProfile: 'worker:codex:gpt-5.6-sol',
+        allowedProfiles: ['worker:codex:gpt-5.6-sol', 'worker:claude:claude-sonnet-5'],
+      });
+  });
+
+  it('rejects partial, unsafe, or ambiguous execution-profile contracts as non-authoritative', () => {
+    const root = repoWithAgents({
+      'only-default.md': '---\nid: only-default\ndefault-profile: worker:codex:gpt-5.6-sol\n---\n',
+      'only-allowed.md': '---\nid: only-allowed\nallowed-profiles: [worker:codex:gpt-5.6-sol]\n---\n',
+      'unsafe-profile.md': '---\nid: unsafe-profile\ndefault-profile: ../worker\nallowed-profiles: [../worker]\n---\n',
+      'duplicate-profile.md': '---\nid: duplicate-profile\ndefault-profile: worker:codex:gpt-5.6-sol\nallowed-profiles: [worker:codex:gpt-5.6-sol, worker:codex:gpt-5.6-sol]\n---\n',
+      'default-not-allowed.md': '---\nid: default-not-allowed\ndefault-profile: worker:codex:gpt-5.6-sol\nallowed-profiles: [worker:claude:claude-sonnet-5]\n---\n',
+      'scalar-allowed.md': '---\nid: scalar-allowed\ndefault-profile: worker:codex:gpt-5.6-sol\nallowed-profiles: worker:codex:gpt-5.6-sol\n---\n',
+    });
+    const details = readDeclaredAgentDetails(root);
+    const problems = readAgentDeclarationProblems(root);
+    for (const id of ['only-default', 'only-allowed', 'unsafe-profile', 'duplicate-profile', 'default-not-allowed', 'scalar-allowed']) {
+      expect(details.has(id)).toBe(false);
+      expect(problems.get(id)?.problem).toBe('invalid-profile-config');
+    }
+    expect(buildRoster(indexOf([]), root, POLICY, { overrides: [] })).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'only-default', declared: false, declarationProblem: 'invalid-profile-config' }),
+    ]));
   });
 
   it('reads runner-bound: true as runnerBound true', () => {

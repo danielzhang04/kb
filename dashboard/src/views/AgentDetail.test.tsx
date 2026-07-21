@@ -29,6 +29,8 @@ function agent(over: Partial<AgentDetailRow> & { id: string }): AgentDetailRow {
     runnerBound: false,
     declaredRuntime: null,
     declaredModel: null,
+    defaultProfile: null,
+    allowedProfiles: null,
     description: null,
     ledger: { dispatches: 0, steps: 0, days: 0 },
     sources: [],
@@ -50,6 +52,8 @@ function entry(over: Partial<AgentRosterEntry> & { id: string }): AgentRosterEnt
     runnerBound: false,
     declaredRuntime: null,
     declaredModel: null,
+    defaultProfile: null,
+    allowedProfiles: null,
     description: null,
     ...over,
   };
@@ -188,6 +192,8 @@ describe('the not-declared empty state', () => {
           description: 'Executes graded build cards on the claude runtime.',
           declaredModel: 'claude-opus-4-8',
           declaredRuntime: 'claude',
+          defaultProfile: 'worker:claude:claude-opus-4-8',
+          allowedProfiles: ['worker:claude:claude-opus-4-8', 'worker:codex:gpt-5.6-sol'],
         })}
       />,
     );
@@ -198,6 +204,15 @@ describe('the not-declared empty state', () => {
     );
     const declared = screen.getByTestId('agent-declared');
     expect(declared.textContent).toContain('claude-opus-4-8');
+    expect(screen.getByTestId('agent-default-profile').textContent).toContain('worker:claude:claude-opus-4-8');
+    expect(screen.getByTestId('agent-allowed-profiles').textContent).toContain('worker:codex:gpt-5.6-sol');
+  });
+
+  it('states legacy profile nulls instead of rendering blank execution-profile fields', () => {
+    render(<AgentDetail agent={agent({ id: 'legacy-runner', declared: true })} />);
+
+    expect(screen.getByTestId('agent-default-profile').textContent).toMatch(/not declared \(legacy\)/i);
+    expect(screen.getByTestId('agent-allowed-profiles').textContent).toMatch(/not declared \(legacy\)/i);
   });
 
   it('renders declaration-backed instructions, codebases, workflows, and runner facts without inventing them', () => {
@@ -211,6 +226,8 @@ describe('the not-declared empty state', () => {
             path: 'agents/fyt-runner.md',
             source: 'faceless-youtube',
             instructions: '## Operating instructions\n\nRun the approved workflow stages in order and stop at human gates.\n\n<script>doEvil()</script>',
+            defaultProfile: 'worker:claude:claude-opus-4-8',
+            allowedProfiles: ['worker:claude:claude-opus-4-8'],
           },
           codebases: [{ project: 'faceless-youtube', path: 'orgs/faceless-youtube', relationship: 'owns pipeline work' }],
           workflows: [{ ref: 'video-run', title: 'Video run', path: 'orgs/faceless-youtube/workflows/video-run.md', relationship: 'stage runner' }],
@@ -228,6 +245,8 @@ describe('the not-declared empty state', () => {
     expect(screen.getByTestId('agent-codebases').textContent).toContain('faceless-youtube');
     expect(screen.getByTestId('agent-workflows').textContent).toContain('video-run');
     expect(screen.getByTestId('agent-how-it-runs').textContent).toContain('codex-worker');
+    expect(screen.getByTestId('agent-default-profile').textContent).toContain('worker:claude:claude-opus-4-8');
+    expect(screen.getByTestId('agent-allowed-profiles').textContent).toContain('worker:claude:claude-opus-4-8');
   });
 
   it('opens a dedicated Composer workspace only for a declared agent', () => {

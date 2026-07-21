@@ -22,7 +22,14 @@ import {
 /** Inspectable declaration detail consumed by the Agents screen; no referenced file contents are exposed. */
 export interface AgentDetailResponse {
   id: string;
-  declaration: { path: string; instructions: string; sourceHash: string; source: 'agents-declaration' };
+  declaration: {
+    path: string;
+    instructions: string;
+    sourceHash: string;
+    source: 'agents-declaration';
+    defaultProfile: string | null;
+    allowedProfiles: string[] | null;
+  };
   codebases: Array<{ project: string; path: string }>;
   workflows: Array<{
     ref: string;
@@ -70,6 +77,8 @@ export function readAgentDetail(repoRoot: string, id: string): AgentDetailRespon
       instructions: declaration.instructionMarkdown,
       sourceHash: declaration.sourceHash,
       source: 'agents-declaration',
+      defaultProfile: declaration.defaultProfile,
+      allowedProfiles: declaration.allowedProfiles === null ? null : [...declaration.allowedProfiles],
     },
     codebases,
     workflows,

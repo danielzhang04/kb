@@ -27,6 +27,8 @@ function rosterEntry(over: Partial<AgentRosterEntry> & { id: string }): AgentRos
     runnerBound: false,
     declaredRuntime: null,
     declaredModel: null,
+    defaultProfile: null,
+    allowedProfiles: null,
     description: null,
     ...over,
   };
