@@ -1,3 +1,5 @@
+import type { ResolvedAgentAssignment } from './proposal.ts';
+
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 export type JsonObject = { [key: string]: JsonValue };
@@ -64,6 +66,8 @@ export interface Run {
   version: number;
   managerSessionRef: string;
   managerGeneration: number;
+  /** Compiler-resolved declaration/profile provenance; never an executor identity. */
+  managerAssignment: ResolvedAgentAssignment | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -86,6 +90,8 @@ export interface Stage {
   state: StageState;
   version: number;
   currentAttemptRef: string | null;
+  /** Compiler-resolved declaration/profile provenance; never an executor identity. */
+  assignment: ResolvedAgentAssignment | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -9,9 +9,22 @@ import {
   proposalSnapshotHash,
 } from './store.ts';
 import type { ControlPlaneStore } from './store.ts';
+import type { JsonObject } from './types.ts';
 
 const roots: string[] = [];
 const SOURCE = { sourceComposerRef: 'composer-1', sourceTurnId: 'turn-1' } as const;
+const MANAGER_ASSIGNMENT = {
+  agentId: 'fyt-runner', declarationPath: 'agents/fyt-runner.md', declarationHash: 'a'.repeat(64),
+  profileId: 'claude:manager', runtime: 'claude' as const, model: 'claude-sonnet-5',
+};
+const BUILD_ASSIGNMENT = {
+  agentId: 'fyt-builder', declarationPath: 'agents/fyt-builder.md', declarationHash: 'b'.repeat(64),
+  profileId: 'codex:worker', runtime: 'codex' as const, model: 'gpt-5.6-sol',
+};
+const VERIFY_ASSIGNMENT = {
+  agentId: 'fyt-verifier', declarationPath: 'agents/fyt-verifier.md', declarationHash: 'c'.repeat(64),
+  profileId: 'claude:worker', runtime: 'claude' as const, model: 'claude-sonnet-5',
+};
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
@@ -25,11 +38,19 @@ function deterministicOptions() {
   };
 }
 
-function createApprovedProposal(store: ControlPlaneStore, subject = 'alice') {
+function createApprovedProposal(
+  store: ControlPlaneStore,
+  subject = 'alice',
+  snapshot: JsonObject = {
+    schema: 'kb.plan-proposal/v1', title: 'Synthetic workflow', manager: {}, stages: [
+      { id: 'build', title: 'Build', dependsOn: [] }, { id: 'verify', title: 'Verify', dependsOn: ['build'] },
+    ],
+  },
+) {
   const created = store.createProposalRevision(subject, {
     ...SOURCE,
     title: 'Synthetic workflow',
-    snapshot: { schema: 'kb.plan-proposal/v1', title: 'Synthetic workflow', stages: [{ id: 'build' }] },
+    snapshot,
   });
   if (!created.ok) throw new Error(created.detail);
   const approved = store.decideProposal(subject, created.value.proposalRef, created.value.revision, {
@@ -61,8 +82,40 @@ function createRun(store: ControlPlaneStore, subject = 'alice') {
   return created.value;
 }
 
-function settleRetryPredecessor(store: ControlPlaneStore, subject = 'alice') {
-  const created = createRun(store, subject);
+function createAssignedRun(
+  store: ControlPlaneStore,
+  subject = 'alice',
+  assignments = {
+    manager: structuredClone(MANAGER_ASSIGNMENT), build: structuredClone(BUILD_ASSIGNMENT), verify: structuredClone(VERIFY_ASSIGNMENT),
+  },
+) {
+  const proposal = createApprovedProposal(store, subject, {
+    schema: 'kb.plan-proposal/v1',
+    manager: { assignment: assignments.manager },
+    stages: [
+      { id: 'build', title: 'Build', dependsOn: [], assignment: assignments.build },
+      { id: 'verify', title: 'Verify', dependsOn: ['build'], assignment: assignments.verify },
+    ],
+  });
+  const created = store.createRun(subject, {
+    title: 'Assigned synthetic run', proposalRef: proposal.proposalRef, proposalRevision: proposal.revision,
+    expectedProposalHash: proposal.hash, managerRuntime: assignments.manager.runtime, managerModel: assignments.manager.model,
+    managerAssignment: assignments.manager, idempotencyKey: 'launch-assigned',
+    stages: [
+      { stageId: 'build', title: 'Build', dependsOn: [], assignment: assignments.build },
+      { stageId: 'verify', title: 'Verify', dependsOn: ['build'], assignment: assignments.verify },
+    ],
+  });
+  if (!created.ok) throw new Error(created.detail);
+  return created.value;
+}
+
+function settleRetryPredecessor(
+  store: ControlPlaneStore,
+  subject = 'alice',
+  factory: (store: ControlPlaneStore, subject: string) => ReturnType<typeof createRun> = createRun,
+) {
+  const created = factory(store, subject);
   for (const stage of created.stages) {
     const linked = store.linkStageCard(subject, stage.stageRef, stage.version, `card-${stage.stageId}`);
     if (!linked.ok) throw new Error(linked.detail);
@@ -191,7 +244,7 @@ describe('proposal revision persistence', () => {
 describe('run graph, attempts, and managed sessions', () => {
   it('replays an identical launch key and refuses key reuse with changed content', () => {
     const store = createInMemoryControlPlaneStore(deterministicOptions());
-    const proposal = createApprovedProposal(store);
+    const proposal = createApprovedProposal(store, 'alice', { manager: {}, stages: [{ id: 'build', title: 'Build', dependsOn: [] }] });
     const input = {
       title: 'Idempotent run', proposalRef: proposal.proposalRef, proposalRevision: proposal.revision,
       expectedProposalHash: proposal.hash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
@@ -202,6 +255,123 @@ describe('run graph, attempts, and managed sessions', () => {
     expect(first.ok && replay.ok && replay.value.run.runRef).toBe(first.ok ? first.value.run.runRef : '');
     expect(replay).toMatchObject({ ok: true, replayed: true });
     expect(store.createRun('alice', { ...input, title: 'Changed' })).toMatchObject({ ok: false, reason: 'idempotency-conflict' });
+  });
+
+  it('copies only the exact approved assignment snapshot into a run and its stages', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const inputAssignments = {
+      manager: structuredClone(MANAGER_ASSIGNMENT), build: structuredClone(BUILD_ASSIGNMENT), verify: structuredClone(VERIFY_ASSIGNMENT),
+    };
+    const created = createAssignedRun(store, 'alice', inputAssignments);
+    expect(created.run.managerAssignment).toEqual(MANAGER_ASSIGNMENT);
+    expect(created.stages).toEqual(expect.arrayContaining([
+      expect.objectContaining({ stageId: 'build', assignment: BUILD_ASSIGNMENT }),
+      expect.objectContaining({ stageId: 'verify', assignment: VERIFY_ASSIGNMENT }),
+    ]));
+    const detail = store.getRun('alice', created.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    expect(detail.value.run.managerAssignment).toEqual(MANAGER_ASSIGNMENT);
+    expect(detail.value.stages.find((stage) => stage.stageId === 'build')?.assignment).toEqual(BUILD_ASSIGNMENT);
+    inputAssignments.manager.model = 'mutated-after-create';
+    inputAssignments.build.model = 'mutated-after-create';
+    const afterMutation = store.getRun('alice', created.run.runRef);
+    if (!afterMutation.ok) throw new Error(afterMutation.detail);
+    expect(afterMutation.value.run.managerAssignment).toEqual(MANAGER_ASSIGNMENT);
+    expect(afterMutation.value.stages.find((stage) => stage.stageId === 'build')?.assignment).toEqual(BUILD_ASSIGNMENT);
+  });
+
+  it('refuses tampered or malformed assignment provenance before a run is created', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const proposal = createApprovedProposal(store, 'alice', {
+      manager: { assignment: MANAGER_ASSIGNMENT }, stages: [{ id: 'build', title: 'Build', dependsOn: [], assignment: BUILD_ASSIGNMENT }],
+    });
+    const input = {
+      title: 'Tampered assignment', proposalRef: proposal.proposalRef, proposalRevision: proposal.revision,
+      expectedProposalHash: proposal.hash, managerRuntime: MANAGER_ASSIGNMENT.runtime, managerModel: MANAGER_ASSIGNMENT.model,
+      managerAssignment: { ...MANAGER_ASSIGNMENT }, idempotencyKey: 'tampered-assignment',
+      stages: [{ stageId: 'build', title: 'Build', dependsOn: [], assignment: { ...BUILD_ASSIGNMENT } }],
+    };
+    expect(store.createRun('alice', {
+      ...input,
+      managerAssignment: { ...MANAGER_ASSIGNMENT, declarationHash: 'd'.repeat(64) },
+    })).toMatchObject({ ok: false, reason: 'conflict' });
+    expect(store.createRun('alice', {
+      ...input,
+      stages: [{ ...input.stages[0], assignment: { ...BUILD_ASSIGNMENT, profileId: 'codex:other' } }],
+    })).toMatchObject({ ok: false, reason: 'conflict' });
+    expect(store.createRun('alice', {
+      ...input,
+      managerAssignment: { ...MANAGER_ASSIGNMENT, extra: 'nope' } as never,
+    })).toMatchObject({ ok: false, reason: 'invalid' });
+    expect(store.createRun('alice', {
+      ...input,
+      stages: [{ ...input.stages[0], title: 'Renamed build' }],
+    })).toMatchObject({ ok: false, reason: 'invalid' });
+    expect(store.createRun('alice', {
+      ...input,
+      stages: [{ ...input.stages[0], canonicalCardRef: 'card-injected' }],
+    })).toMatchObject({ ok: false, reason: 'invalid' });
+    const dependencyProposal = createApprovedProposal(store, 'alice', {
+      manager: {}, stages: [
+        { id: 'build', title: 'Build', dependsOn: [] }, { id: 'verify', title: 'Verify', dependsOn: ['build'] },
+      ],
+    });
+    expect(store.createRun('alice', {
+      title: 'Tampered dependencies', proposalRef: dependencyProposal.proposalRef, proposalRevision: dependencyProposal.revision,
+      expectedProposalHash: dependencyProposal.hash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
+      idempotencyKey: 'tampered-dependencies',
+      stages: [
+        { stageId: 'build', title: 'Build', dependsOn: [] }, { stageId: 'verify', title: 'Verify', dependsOn: [] },
+      ],
+    })).toMatchObject({ ok: false, reason: 'invalid' });
+    const incomplete = createApprovedProposal(store, 'alice', { manager: {}, stages: [{ id: 'build', title: 'Build', dependsOn: [] }] });
+    expect(store.createRun('alice', {
+      title: 'Missing approved stage', proposalRef: incomplete.proposalRef, proposalRevision: incomplete.revision,
+      expectedProposalHash: incomplete.hash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
+      idempotencyKey: 'missing-approved-stage',
+      stages: [
+        { stageId: 'build', title: 'Build', dependsOn: [] },
+        { stageId: 'verify', title: 'Verify', dependsOn: ['build'] },
+      ],
+    })).toMatchObject({ ok: false, reason: 'invalid' });
+    const excessive = createApprovedProposal(store, 'alice', {
+      manager: {}, stages: [
+        { id: 'build', title: 'Build', dependsOn: [] }, { id: 'verify', title: 'Verify', dependsOn: ['build'] },
+        { id: 'unexpected', title: 'Unexpected', dependsOn: [] },
+      ],
+    });
+    expect(store.createRun('alice', {
+      title: 'Extra approved stage', proposalRef: excessive.proposalRef, proposalRevision: excessive.revision,
+      expectedProposalHash: excessive.hash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
+      idempotencyKey: 'extra-approved-stage',
+      stages: [
+        { stageId: 'build', title: 'Build', dependsOn: [] },
+        { stageId: 'verify', title: 'Verify', dependsOn: ['build'] },
+      ],
+    })).toMatchObject({ ok: false, reason: 'invalid' });
+    expect(store.listRuns('alice')).toEqual([]);
+  });
+
+  it('keeps assignment provenance in Retry and binds it into idempotency', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const predecessor = settleRetryPredecessor(store, 'alice', createAssignedRun);
+    const input = {
+      title: 'Assigned Retry', proposalRef: predecessor.run.proposalRef, proposalRevision: predecessor.run.proposalRevision,
+      expectedProposalHash: predecessor.run.proposalHash, managerRuntime: MANAGER_ASSIGNMENT.runtime, managerModel: MANAGER_ASSIGNMENT.model,
+      managerAssignment: structuredClone(MANAGER_ASSIGNMENT), idempotencyKey: 'assigned-retry',
+      predecessorRunRef: predecessor.run.runRef, expectedPredecessorVersion: predecessor.run.version,
+      stages: [
+        { stageId: 'build', title: 'Build', dependsOn: [], assignment: structuredClone(BUILD_ASSIGNMENT) },
+        { stageId: 'verify', title: 'Verify', dependsOn: ['build'], assignment: structuredClone(VERIFY_ASSIGNMENT) },
+      ],
+    };
+    const successor = store.createRun('alice', input);
+    expect(successor).toMatchObject({ ok: true, value: { run: { managerAssignment: MANAGER_ASSIGNMENT } } });
+    expect(store.createRun('alice', input)).toMatchObject({ ok: true, replayed: true });
+    expect(store.createRun('alice', {
+      ...input,
+      stages: [{ ...input.stages[0], assignment: { ...BUILD_ASSIGNMENT, declarationHash: 'd'.repeat(64) } }, input.stages[1]],
+    })).toMatchObject({ ok: false, reason: 'idempotency-conflict' });
   });
 
   it('tracks canonical publication phases with run-version CAS', () => {
@@ -473,6 +643,33 @@ describe('run graph, attempts, and managed sessions', () => {
     });
   });
 
+  it('refuses to reroute an assigned stage while leaving legacy unassigned stages reroutable', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const assigned = createAssignedRun(store);
+    expect(store.rerouteStage('alice', assigned.stages[0].stageRef, {
+      expectedStageVersion: assigned.stages[0].version, expectedAttemptRef: 'attempt-expected', expectedAttemptVersion: 1,
+      runtime: 'claude', model: 'claude-sonnet-5', idempotencyKey: 'reroute-assigned',
+    })).toMatchObject({ ok: false, reason: 'invalid', detail: expect.stringContaining('assignment provenance is immutable') });
+  });
+
+  it('creates attempts for an assigned stage only with its resolved routing', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const assigned = createAssignedRun(store);
+    const stage = assigned.stages.find((candidate) => candidate.stageId === 'build');
+    if (!stage) throw new Error('assigned build stage missing');
+    expect(store.createAttempt('alice', stage.stageRef, {
+      expectedStageVersion: stage.version, runtime: 'claude', model: 'claude-sonnet-5',
+    })).toMatchObject({ ok: false, reason: 'invalid', detail: expect.stringContaining('assigned stage provenance') });
+    const afterRefusal = store.getRun('alice', assigned.run.runRef);
+    if (!afterRefusal.ok) throw new Error(afterRefusal.detail);
+    expect(afterRefusal.value.stages.find((candidate) => candidate.stageRef === stage.stageRef)).toMatchObject({
+      version: stage.version, currentAttemptRef: null,
+    });
+    expect(store.createAttempt('alice', stage.stageRef, {
+      expectedStageVersion: stage.version, runtime: BUILD_ASSIGNMENT.runtime, model: BUILD_ASSIGNMENT.model,
+    })).toMatchObject({ ok: true, value: { runtime: BUILD_ASSIGNMENT.runtime, model: BUILD_ASSIGNMENT.model } });
+  });
+
   it('rejects lifecycle edge skips, unmet dependencies, and premature run success', () => {
     const store = createInMemoryControlPlaneStore(deterministicOptions());
     const created = createRun(store);
@@ -629,6 +826,26 @@ describe('run graph, attempts, and managed sessions', () => {
       value: { run: { state: 'recovering', managerGeneration: 2, managerSessionRef: successor.ok ? successor.value.sessionRef : '' } },
     });
   });
+
+  it('allows an assigned Manager successor only on its resolved runtime and model', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const created = createAssignedRun(store);
+    const manager = created.sessions.find((session) => session.sessionRef === created.run.managerSessionRef);
+    if (!manager) throw new Error('manager missing');
+    const interrupted = store.transitionSession('alice', manager.sessionRef, manager.version, 'interrupted');
+    if (!interrupted.ok) throw new Error(interrupted.detail);
+    expect(store.createManagerSuccessor('alice', created.run.runRef, {
+      expectedManagerGeneration: 1, runtime: 'codex', model: 'gpt-5.6-sol', idempotencyKey: 'assigned-manager-wrong',
+    })).toMatchObject({ ok: false, reason: 'invalid' });
+    const input = {
+      expectedManagerGeneration: 1, runtime: MANAGER_ASSIGNMENT.runtime, model: MANAGER_ASSIGNMENT.model,
+      idempotencyKey: 'assigned-manager-right',
+    };
+    expect(store.createManagerSuccessor('alice', created.run.runRef, input)).toMatchObject({
+      ok: true, value: { runtime: MANAGER_ASSIGNMENT.runtime, model: MANAGER_ASSIGNMENT.model, generation: 2 },
+    });
+    expect(store.createManagerSuccessor('alice', created.run.runRef, input)).toMatchObject({ ok: true, replayed: true });
+  });
 });
 
 describe('Human Requests and operational events', () => {
@@ -679,6 +896,40 @@ describe('Human Requests and operational events', () => {
 });
 
 describe('durability, crash recovery, and retention', () => {
+  it('migrates legacy persisted runs and stages without assignment fields to null', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-'));
+    roots.push(root);
+    const first = createFileControlPlaneStore(root, deterministicOptions());
+    const created = createRun(first);
+    const path = join(root, 'control', 'control-plane.json');
+    const legacy = JSON.parse(readFileSync(path, 'utf8')) as { runs: Array<Record<string, unknown>>; stages: Array<Record<string, unknown>> };
+    delete legacy.runs[0].managerAssignment;
+    for (const stage of legacy.stages) delete stage.assignment;
+    writeFileSync(path, `${JSON.stringify(legacy)}\n`, 'utf8');
+
+    const restarted = createFileControlPlaneStore(root, deterministicOptions());
+    const detail = restarted.getRun('alice', created.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    expect(detail.value.run.managerAssignment).toBeNull();
+    expect(detail.value.stages.every((stage) => stage.assignment === null)).toBe(true);
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({
+      runs: [{ managerAssignment: null }], stages: [{ assignment: null }, { assignment: null }],
+    });
+  });
+
+  it('fails closed when persisted assignment provenance is present but malformed', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-'));
+    roots.push(root);
+    const first = createFileControlPlaneStore(root, deterministicOptions());
+    createRun(first);
+    const path = join(root, 'control', 'control-plane.json');
+    const document = JSON.parse(readFileSync(path, 'utf8')) as { runs: Array<Record<string, unknown>>; stages: Array<Record<string, unknown>> };
+    document.runs[0].managerAssignment = { agentId: 'fyt-runner' };
+    document.stages[0].assignment = 'not-an-assignment';
+    writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
+    expect(() => createFileControlPlaneStore(root, deterministicOptions())).toThrow('invalid control-plane assignment provenance');
+  });
+
   it('atomically persists, then normalizes active crash residue once on restart', () => {
     const root = mkdtempSync(join(tmpdir(), 'control-store-'));
     roots.push(root);

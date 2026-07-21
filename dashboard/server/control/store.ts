@@ -12,6 +12,7 @@ import {
 import { createHash, randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { redactSensitiveText } from '../composer/publicTimeline.ts';
+import type { ResolvedAgentAssignment } from './proposal.ts';
 import type {
   BrokerConsumption,
   BrokerMutation,
@@ -59,6 +60,9 @@ const MAX_SHORT_TEXT = 512;
 const MAX_LONG_TEXT = 64 * 1024;
 const HASH_RE = /^[a-f0-9]{64}$/;
 const SAFE_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const AGENT_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
+const PROFILE_ID_RE = /^[a-z0-9][a-z0-9:._-]{0,127}$/;
+const MODEL_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const PROPOSAL_DECISIONS = new Set<ProposalDecision>(['approved', 'rejected', 'changes-requested']);
 const HUMAN_REQUEST_KINDS = new Set<HumanRequestKind>(['input', 'approval', 'review', 'intervention', 'governance-refusal']);
 const HUMAN_DECISIONS = new Set<HumanRequestDecision>(['responded', 'approved', 'rejected', 'changes-requested']);
@@ -275,6 +279,8 @@ export interface CreateRunStageInput {
   title: string;
   dependsOn: string[];
   canonicalCardRef?: string | null;
+  /** Must exactly match the approved compiler snapshot for this stage. */
+  assignment?: ResolvedAgentAssignment | null;
 }
 
 export interface CreateRunInput {
@@ -284,6 +290,8 @@ export interface CreateRunInput {
   expectedProposalHash: string;
   managerRuntime: string;
   managerModel: string;
+  /** Must exactly match the approved compiler snapshot for the Manager. */
+  managerAssignment?: ResolvedAgentAssignment | null;
   idempotencyKey: string;
   predecessorRunRef?: string | null;
   expectedPredecessorVersion?: number;
@@ -551,6 +559,78 @@ function validNonEmpty(value: unknown, max: number): value is string {
   return typeof value === 'string' && value.trim().length > 0 && value.length <= max && !value.includes('\0');
 }
 
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
+}
+
+/**
+ * The proposal compiler owns this binding. The store repeats its closed-shape checks so a caller
+ * cannot substitute a declaration/profile after approval but before durable run creation.
+ */
+function normalizeAssignment(value: unknown): ResolvedAgentAssignment | null | undefined {
+  if (value === undefined || value === null) return null;
+  if (!isPlainRecord(value)) return undefined;
+  const keys = Object.keys(value).sort();
+  const expectedKeys = ['agentId', 'declarationHash', 'declarationPath', 'model', 'profileId', 'runtime'];
+  if (keys.length !== expectedKeys.length || keys.some((key, index) => key !== expectedKeys[index])) return undefined;
+  const { agentId, declarationPath, declarationHash, profileId, runtime, model } = value;
+  if (typeof agentId !== 'string' || !AGENT_ID_RE.test(agentId)
+    || typeof declarationPath !== 'string' || declarationPath !== `agents/${agentId}.md`
+    || typeof declarationHash !== 'string' || !HASH_RE.test(declarationHash)
+    || typeof profileId !== 'string' || !PROFILE_ID_RE.test(profileId)
+    || (runtime !== 'claude' && runtime !== 'codex')
+    || typeof model !== 'string' || !MODEL_ID_RE.test(model)) {
+    return undefined;
+  }
+  return { agentId, declarationPath, declarationHash, profileId, runtime, model };
+}
+
+function sameAssignment(left: ResolvedAgentAssignment | null, right: ResolvedAgentAssignment | null): boolean {
+  return left === right || (left !== null && right !== null
+    && left.agentId === right.agentId
+    && left.declarationPath === right.declarationPath
+    && left.declarationHash === right.declarationHash
+    && left.profileId === right.profileId
+    && left.runtime === right.runtime
+    && left.model === right.model);
+}
+
+function sameStringArray(left: readonly string[], right: unknown): boolean {
+  return Array.isArray(right) && left.length === right.length
+    && right.every((item, index) => typeof item === 'string' && item === left[index]);
+}
+
+function approvedAssignment(value: unknown): ResolvedAgentAssignment | null | undefined {
+  if (!isPlainRecord(value) || !Object.hasOwn(value, 'assignment')) return null;
+  return normalizeAssignment(value.assignment);
+}
+
+function approvedRunAssignments(
+  snapshot: JsonObject,
+  stages: readonly CreateRunStageInput[],
+): { manager: ResolvedAgentAssignment | null; stages: Map<string, ResolvedAgentAssignment | null> } | null {
+  if (!isPlainRecord(snapshot.manager) || !Array.isArray(snapshot.stages) || snapshot.stages.length !== stages.length) return null;
+  const manager = approvedAssignment(snapshot.manager);
+  if (manager === undefined) return null;
+  const snapshotStages = snapshot.stages;
+  const snapshotById = new Map<string, Record<string, unknown>>();
+  for (const snapshotStage of snapshotStages) {
+    if (!isPlainRecord(snapshotStage) || typeof snapshotStage.id !== 'string' || snapshotById.has(snapshotStage.id)) return null;
+    snapshotById.set(snapshotStage.id, snapshotStage);
+  }
+  const resolved = new Map<string, ResolvedAgentAssignment | null>();
+  for (const stage of stages) {
+    const snapshotStage = snapshotById.get(stage.stageId);
+    if (!snapshotStage) return null;
+    if (typeof snapshotStage.title !== 'string' || snapshotStage.title !== stage.title.trim()
+      || !sameStringArray(stage.dependsOn, snapshotStage.dependsOn)) return null;
+    const assignment = approvedAssignment(snapshotStage);
+    if (assignment === undefined) return null;
+    resolved.set(stage.stageId, assignment);
+  }
+  return { manager, stages: resolved };
+}
+
 function validOptionalEventText(input: OperationalEventInput): boolean {
   return ['summary', 'command', 'toolName', 'path', 'diff', 'checkpoint'].every((field) => {
     const value = (input as unknown as Record<string, unknown>)[field];
@@ -773,6 +853,12 @@ function normalizeCrash(document: StoreDocument, stamp: string): boolean {
   let changed = false;
   for (const run of document.runs) {
     let runChanged = false;
+    const managerAssignment = normalizeAssignment(run.managerAssignment);
+    if (managerAssignment === undefined) throw new Error('invalid control-plane assignment provenance');
+    if (run.managerAssignment === undefined) {
+      run.managerAssignment = null;
+      changed = true;
+    }
     if (run.state === 'running' || run.state === 'recovering' || run.state === 'stopping') {
       run.state = 'interrupted';
       run.version += 1;
@@ -780,6 +866,12 @@ function normalizeCrash(document: StoreDocument, stamp: string): boolean {
       runChanged = true;
     }
     for (const stage of document.stages.filter((item) => item.subject === run.subject && item.runRef === run.runRef)) {
+      const assignment = normalizeAssignment(stage.assignment);
+      if (assignment === undefined) throw new Error('invalid control-plane assignment provenance');
+      if (stage.assignment === undefined) {
+        stage.assignment = null;
+        changed = true;
+      }
       if (stage.state !== 'running') continue;
       stage.state = 'interrupted';
       stage.version += 1;
@@ -807,6 +899,22 @@ function normalizeCrash(document: StoreDocument, stamp: string): boolean {
     if (runChanged) {
       appendRecoveryEvent(document, run.subject, run.runRef, stamp);
       changed = true;
+    }
+  }
+  for (const bundle of document.quarantine) {
+    const managerAssignment = normalizeAssignment(bundle.run.managerAssignment);
+    if (managerAssignment === undefined) throw new Error('invalid control-plane assignment provenance');
+    if (bundle.run.managerAssignment === undefined) {
+      bundle.run.managerAssignment = null;
+      changed = true;
+    }
+    for (const stage of bundle.stages) {
+      const assignment = normalizeAssignment(stage.assignment);
+      if (assignment === undefined) throw new Error('invalid control-plane assignment provenance');
+      if (stage.assignment === undefined) {
+        stage.assignment = null;
+        changed = true;
+      }
     }
   }
   return changed;
@@ -1067,18 +1175,24 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
         return fail('invalid', 'run title and manager routing are required');
       }
       if (!validNonEmpty(input.idempotencyKey, MAX_SHORT_TEXT)) return fail('invalid', 'idempotencyKey is required');
+      const managerAssignment = normalizeAssignment(input.managerAssignment);
+      if (managerAssignment === undefined) return fail('invalid', 'manager assignment provenance is invalid');
       if (!Array.isArray(input.stages) || input.stages.length === 0 || input.stages.length > MAX_STAGES_PER_RUN) {
         return fail('limit', `run must contain 1-${MAX_STAGES_PER_RUN} stages`);
       }
       const ids = new Set<string>();
+      const stageAssignments = new Map<string, ResolvedAgentAssignment | null>();
       for (const stage of input.stages) {
         if (!validNonEmpty(stage.stageId, MAX_SHORT_TEXT) || !validNonEmpty(stage.title, MAX_TITLE) || ids.has(stage.stageId)
           || !Array.isArray(stage.dependsOn) || stage.dependsOn.some((item) => typeof item !== 'string')
           || new Set(stage.dependsOn).size !== stage.dependsOn.length
-          || (stage.canonicalCardRef != null && (!validNonEmpty(stage.canonicalCardRef, MAX_SHORT_TEXT) || !SAFE_REF_RE.test(stage.canonicalCardRef)))) {
+          || stage.canonicalCardRef != null) {
           return fail('invalid', 'stage ids and titles must be non-empty and stage ids must be unique');
         }
+        const assignment = normalizeAssignment(stage.assignment);
+        if (assignment === undefined) return fail('invalid', 'stage assignment provenance is invalid');
         ids.add(stage.stageId);
+        stageAssignments.set(stage.stageId, assignment);
       }
       if (input.stages.some((stage) => stage.dependsOn.some((dependency) => !ids.has(dependency) || dependency === stage.stageId))) {
         return fail('invalid', 'stage dependencies must reference a different stage in the same run');
@@ -1099,6 +1213,10 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       }
       if (visited !== input.stages.length) return fail('invalid', 'stage dependency graph contains a cycle');
       const document = load();
+      const fingerprintStages = input.stages.map((stage) => ({
+        ...stage,
+        assignment: stageAssignments.get(stage.stageId) ?? null,
+      }));
       const launchFingerprint = sha256(JSON.stringify({
         proposalRef: input.proposalRef,
         proposalRevision: input.proposalRevision,
@@ -1106,9 +1224,10 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
         title: input.title.trim(),
         managerRuntime: input.managerRuntime,
         managerModel: input.managerModel,
+        managerAssignment,
         predecessorRunRef: input.predecessorRunRef ?? null,
         expectedPredecessorVersion: input.expectedPredecessorVersion ?? null,
-        stages: input.stages,
+        stages: fingerprintStages,
       }));
       const replay = document.runs.find((item) => item.subject === subject && item.launchOperationKey === input.idempotencyKey);
       if (replay) {
@@ -1123,6 +1242,16 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       if (!proposal) return fail('not-found', 'proposal revision was not found');
       if (proposal.hash !== input.expectedProposalHash) return fail('conflict', 'proposal hash changed');
       if (proposal.approval?.decision !== 'approved') return fail('not-approved', 'proposal revision is not approved');
+      const approvedAssignments = approvedRunAssignments(proposal.snapshot, input.stages);
+      if (!approvedAssignments) return fail('invalid', 'approved proposal assignment provenance is invalid');
+      if (!sameAssignment(managerAssignment, approvedAssignments.manager)
+        || input.stages.some((stage) => !sameAssignment(stageAssignments.get(stage.stageId) ?? null, approvedAssignments.stages.get(stage.stageId) ?? null))) {
+        return fail('conflict', 'assignment provenance does not match the approved proposal snapshot');
+      }
+      if (managerAssignment !== null
+        && (input.managerRuntime !== managerAssignment.runtime || input.managerModel !== managerAssignment.model)) {
+        return fail('conflict', 'manager routing does not match its approved assignment provenance');
+      }
       const predecessorRunRef = input.predecessorRunRef ?? null;
       if (predecessorRunRef) {
         const predecessor = findRun(document, subject, predecessorRunRef);
@@ -1132,6 +1261,14 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
           return fail('invalid', 'only a terminal or interrupted run can have a Retry successor');
         }
         if (predecessor.proposalHash !== proposal.hash) return fail('conflict', 'Retry successor must bind the same approved proposal hash');
+        if (!sameAssignment(predecessor.managerAssignment, managerAssignment)
+          || input.stages.some((stage) => {
+            const predecessorStage = document.stages.find((item) =>
+              item.subject === subject && item.runRef === predecessor.runRef && item.stageId === stage.stageId);
+            return !predecessorStage || !sameAssignment(predecessorStage.assignment, stageAssignments.get(stage.stageId) ?? null);
+          })) {
+          return fail('conflict', 'Retry successor must preserve assignment provenance');
+        }
         const retryRefusal = retryPredecessorRefusal(document, predecessor);
         if (retryRefusal) return fail('invalid', retryRefusal);
       }
@@ -1153,6 +1290,7 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
         version: 1,
         managerSessionRef,
         managerGeneration: 1,
+        managerAssignment: clone(managerAssignment),
         createdAt,
         updatedAt: createdAt,
       };
@@ -1167,6 +1305,7 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
         state: inputStage.dependsOn.length === 0 ? 'ready' : 'blocked',
         version: 1,
         currentAttemptRef: null,
+        assignment: clone(stageAssignments.get(inputStage.stageId) ?? null),
         createdAt,
         updatedAt: createdAt,
       }));
@@ -1390,6 +1529,10 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       if (!stage) return fail('not-found', 'stage was not found');
       if (stage.version !== input.expectedStageVersion) return fail('conflict', 'stage version changed');
       if (!validNonEmpty(input.runtime, MAX_SHORT_TEXT) || !validNonEmpty(input.model, MAX_SHORT_TEXT)) return fail('invalid', 'attempt routing is required');
+      if (stage.assignment !== null
+        && (input.runtime !== stage.assignment.runtime || input.model !== stage.assignment.model)) {
+        return fail('invalid', 'attempt routing does not match assigned stage provenance');
+      }
       const previous = stage.currentAttemptRef
         ? document.attempts.find((item) => item.subject === subject && item.attemptRef === stage.currentAttemptRef)
         : undefined;
@@ -1451,6 +1594,9 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       }
       const stage = document.stages.find((item) => item.subject === subject && item.stageRef === stageRef);
       if (!stage) return fail('not-found', 'stage was not found');
+      if (stage.assignment !== null) {
+        return fail('invalid', 'assigned stages cannot reroute; assignment provenance is immutable');
+      }
       if (stage.version !== input.expectedStageVersion || stage.currentAttemptRef !== input.expectedAttemptRef) {
         return fail('conflict', 'stage version or current attempt changed');
       }
@@ -1605,6 +1751,10 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       if (TERMINAL_RUN.has(run.state)) return fail('invalid', 'terminal runs require a successor run, not a Manager replacement');
       if (!validNonEmpty(input.idempotencyKey, MAX_SHORT_TEXT) || !validNonEmpty(input.runtime, MAX_SHORT_TEXT) || !validNonEmpty(input.model, MAX_SHORT_TEXT)) {
         return fail('invalid', 'successor routing and idempotencyKey are required');
+      }
+      if (run.managerAssignment !== null
+        && (input.runtime !== run.managerAssignment.runtime || input.model !== run.managerAssignment.model)) {
+        return fail('invalid', 'assigned manager routing is immutable');
       }
       const fingerprint = sha256(JSON.stringify({ runRef, expected: input.expectedManagerGeneration, runtime: input.runtime, model: input.model }));
       const replay = document.sessions.find((item) => item.subject === subject && item.runRef === runRef && item.role === 'manager' && item.operationKey === input.idempotencyKey);
