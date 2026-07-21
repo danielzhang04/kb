@@ -104,7 +104,12 @@ def resolve_output_device(substring: str | None, devices=None):
     resolve_input_device: the wake INPUT is pinned by name because the Windows default drifts to a
     Bluetooth hands-free path; the TTS OUTPUT has the SAME drift (default hops to an AirPods HFP
     sink that is inaudible) and needs the same explicit pin, so Atlas speaks to the speaker Daniel
-    is actually on (2026-07-21 finding: TTS was silent on the main speaker)."""
+    is actually on (2026-07-21 finding: TTS was silent on the main speaker).
+
+    First-match note: on Windows sounddevice enumerates the SAME physical speaker once per host API
+    (MME, WASAPI, DirectSound...), so one substring can match several rows; we return the first,
+    normally the MME copy (host-API 0). That is fine for playback — pass a more specific substring
+    if a particular host API is required."""
     if not substring:
         return None
     if devices is None:
