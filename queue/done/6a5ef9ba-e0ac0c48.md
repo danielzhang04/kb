@@ -4,9 +4,9 @@ project: atlas
 action: 'T13 rehearsal: voice-filed lifecycle'
 target: orgs/atlas/STATE.md
 risk-tier: T1
-owner: null
-claim-token: null
-state: inbox
+owner: claude-boss@agents.local
+claim-token: efd37fe64fa55d60
+state: done
 approval: null
 workflow: atlas-voice
 depends-on: []
@@ -19,3 +19,6 @@ model: null
 
 ## Work order
 T13 Step-1 rehearsal card: complete via boss session; donewatcher must announce.
+
+## Result
+Rehearsal deliverable: lifecycle verified by the T13 Step-1 dry run.
