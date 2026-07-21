@@ -163,6 +163,21 @@ def check_metadata(video_dir: Path, duration_s: float | None = None):
             problems.append(f"chapter {ch.get('time')!r} >= duration {duration_s:.0f}s")
         prev = secs
 
+    # Estimated chapters must never reach a live description: the render exists by
+    # this stage, so times must be re-timed from measured shot starts first.
+    chapters_status = (lf.get("chapters_status") or "").lower()
+    if chapters and chapters_status.startswith("estimated"):
+        problems.append(
+            "chapters_status still 'estimated…' — re-time from the render's measured "
+            "shot starts (assets/motion/*.motion.json) and set a 'measured…' status"
+        )
+    # The description is what YouTube actually parses; the array is the mirror.
+    for ch in chapters:
+        line = f"{ch.get('time')} {ch.get('label')}"
+        if line not in description:
+            problems.append(f"chapter line missing/out of sync in description: {line!r}")
+            break
+
     if problems:
         return False, "; ".join(problems)
     return True, (

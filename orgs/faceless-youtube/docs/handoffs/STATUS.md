@@ -235,6 +235,14 @@ defect that will recur until fixed.
 
 ## Production state
 
+- **Poyais — PUBLISHED PRIVATE, awaiting Daniel's Studio pass (current 2026-07-21):** re-uploaded as
+  **`tVmQR0pfp-Q`** (same locked final.mp4, metadata rebuilt on the 2026-07-21 metadata teardown:
+  measured chapters ≤5-word labels, hashtags dropped, alt-titles block; compliance PASS 6/6 with the
+  new estimated-chapters FAIL gate). Prior upload `8Rv5SwFiZ4Y` superseded (record archived beside
+  publish-record.json) — Daniel deletes it in Studio, then on the new ID: thumbnail, Test & Compare,
+  pin the comment, public flip. Opening lead-in idea measured and REJECTED (first-word 0.16–0.48s is
+  the genre norm; see decisions 2026-07-21). Teardown:
+  `channels/the-second-take/research/metadata-teardown-2026-07-21.md`.
 - **Front-half batch — IN PROGRESS (started 2026-07-09):** first real front-half run (idea → research →
   long-form → metadata; **shorts skipped this batch**), one video at a time with a checkpoint per step.
   **Video 1 = ST-004 "The Backstreet Boys Were Built to Hide a Fraud" (Lou Pearlman), slug

@@ -83,6 +83,9 @@ and **Shorts are not eligible at all.** The Data API's `videos.insert` accepts e
   exactly** so `publish-queue` maps 1:1.
 - `channels/<name>/performance.md` (if it has data) — reuse title/thumbnail shapes that have proven
   CTR/retention for *this* channel; avoid ones that flopped.
+- `channels/<name>/research/metadata-teardown-*.md` (if present) — the measured reference-channel
+  packaging harvest grounding the description/chapters/hashtags/pinned rules below (The Second
+  Take's: `metadata-teardown-2026-07-21.md`, 36 videos / 9 channels).
 
 ## Step 2 — Titles (long-form: primary + 2 challengers)
 Apply `universal.md §3`:
@@ -155,9 +158,14 @@ the punchline's joke/alarm in that glance, the concept fails — restage it befo
 label-text, no face, no pointing accent) could not pass.
 
 ## Step 4 — Description
-Structure (see `references/metadata-schema.md` for exact field + char limits):
+Structure (see `references/metadata-schema.md` for exact field + char limits; measured grounding =
+the channel's metadata-teardown. The teardown's core fact: at the reference tier the description is
+**not a discovery surface** — it is a stable per-channel skeleton with one or two variable slots, and
+title+thumbnail carry all discovery):
 1. **First 1–2 lines (the only part visible before "…more")** = a compelling restatement of the
-   promise with the **primary keyword up front**. Not the title verbatim; open curiosity, don't resolve.
+   promise with the **primary keyword up front**. Not the title verbatim; open curiosity, don't
+   resolve. (Every sponsored reference video gives this fold to the sponsor CTA instead — the hook
+   holds the fold only until the channel has a sponsor; that is the slot a future sponsor displaces.)
 2. **Body (2–4 sentences)** expanding the promise — keyword-rich but **natural language, no keyword
    stuffing** (stuffing is spam under policy and reads as slop).
 3. **Chapters** (see Step 5).
@@ -165,17 +173,25 @@ Structure (see `references/metadata-schema.md` for exact field + char limits):
    but isn't known yet, use a `<...-url>` placeholder (same convention as the shorts' `<long-form-url>`);
    if there is genuinely nothing to link (e.g. the channel's first video), **omit this section**. (The
    Short→long-form CTA lives in the short's **pinned comment**, not here — `universal.md §9`.)
-5. **Hashtags line** — 3–5 (the first 3 render above the title). Include a broad niche tag + specific
-   ones; for Shorts include `#Shorts`.
+5. **Hashtags — 0–3, default 0** (teardown: 6 of 9 reference channels use none; Crayon dropped its
+   block in 2026; a hashtag wall reads small-channel). Include one only when it adds real topical
+   discovery; for Shorts include `#Shorts`.
 6. **AI-synthetic disclosure line** (human-readable) — required by policy; pair with the machine flag.
+   Keep even though no reference channel discloses; do NOT adopt Crayon's "may contain inaccuracies"
+   hedge — we are accuracy-leashed and the hedge would spend the trust the leash buys.
 7. **Sources** — if `script.md` carried a Sources list (health/engineering/business trust), reproduce
-   it. This is part of the originality/trust moat.
+   it **compactly**. This is part of the originality/trust moat — a deliberate divergence from the
+   references (majors cite nothing; the closest analogs cite one doc/URL-dump/named source).
+8. **Alternate-titles block** — the `title_challengers` pasted as bare lines at the very bottom
+   (below Sources): free extra search surface (the Magnates move). No header, no framing — bare lines.
 
-## Step 5 — Chapters (estimated)
+## Step 5 — Chapters (estimated at draft; MEASURED before publish)
 Derive chapter markers from the script's beats (hook → second gate → body cycles → mid-video re-arm →
 withheld peak → close). **First chapter must be `00:00`.** Real timestamps only exist after render, so
 mark `chapters_status: "estimated-from-script — re-time after render before publish"`. Include chapters
-only when the video warrants them (≥3); otherwise omit.
+only when the video warrants them (≥3); otherwise omit. **Labels are ≤5-word curiosity mini-headlines**
+("The guidebook to nowhere", "The getaway") — never sentence-length; long labels truncate in the
+player's chapter bar (teardown: Crayon/Wendover/Magnates all label in 2–5-word punches).
 
 **Timestamps come from the script's real word timing, not its beat labels.** The script header's
 **`Estimated runtime`** (words ÷ 150 wpm) is the single source of truth for length — your last chapter
@@ -188,8 +204,15 @@ otherwise the chapters will claim a 12-min video that is really 6, and desync fr
 in the position Step 4 specifies — YouTube only creates chapter markers when the timestamps physically
 appear in the description, so this is what actually works; and (2) the structured `chapters[]` array as a
 machine-readable mirror for re-timing. `publish-queue` submits the description **verbatim** and does not
-re-inject chapters. After render, whoever finalizes timings updates **both** the description lines and the
-array. Keep labels curiosity-open, not spoilers.
+re-inject chapters. Keep labels curiosity-open, not spoilers.
+
+**Re-timing is mandatory, not advisory** (Poyais shipped chapters drifting up to ~31s — the gap this
+closes). After render, re-time each chapter from the render's **measured per-shot starts**: in
+`assets/motion/<piece>.motion.json`, find the shot whose `vo_text` opens the chapter's beat and take its
+`start_s`. Update **both** the description lines and the array, then set
+`chapters_status: "measured-from-render <date> (motion-json shot starts)"`. `compliance-check` **FAILs**
+any video whose chapters are still `estimated…` or whose description/array chapter lines disagree — 
+estimated chapters cannot reach a live upload.
 
 ## Step 6 — Tags
 Front-load the **exact-match subject keyword**, then close variants, then broader niche terms. ~15–25
@@ -197,8 +220,12 @@ tags, **≤500 characters total**, no stuffing/irrelevant tags (misleading-metad
 minor SEO weight today; their real job is disambiguation. Shorts get a tighter, Short-appropriate set.
 
 ## Step 7 — Pinned comments
-- **Long-form:** an **engagement prompt** — a question tied to the video's lever/withheld peak that
-  invites comments (comments are a ranking signal). Not "like and subscribe."
+- **Long-form:** an **engagement pin, framed warm** — a short observation or thanks in the narrator's
+  voice + ONE question tied to the video's lever/withheld peak that invites comments (comments are a
+  ranking signal). Not "like and subscribe." (Teardown: references pin monetization CTAs — ColdFusion's
+  formula is question + thanks + plug, Magnates' is warmth + links; with nothing to sell, ours is the
+  warmth + question half, and this pin is the future sponsor slot. No reference creator replies to or
+  hearts comments — do not plan comment-reply ops.)
 - **Each short:** a **soft link back to the long-form** ("Full breakdown: <long-form URL>") — the
   Short→long CTA belongs in the pinned comment, and a description/pinned link on Shorts is worth
   ~+12% conversions among non-subscribers (`universal.md §9`). `publish-queue` fills the real URL after
