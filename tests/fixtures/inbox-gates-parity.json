@@ -1,0 +1,86 @@
+{
+  "_doc": "Shared inbox-gate classification fixture. Consumed by BOTH tests/test_inbox_gates_parity.py (brief.classify_category) and dashboard/server/approvals/inboxGatesParity.test.ts (classify via projectHumanInbox). Any drift between the Python and TypeScript classifiers is a RED test here. `now` is unix epoch MILLISECONDS; stranded/recent ids carry an 8-hex unix-epoch-seconds prefix (cards.new_id shape). STOP is NOT a card, so it is tested per-language, not here. Canonical categories are the dashboard vocabulary: decision | gate | input | intervention | stranded | null.",
+  "now": 1800000000000,
+  "cases": [
+    {
+      "name": "approvals-boundary -> decision",
+      "meta": { "id": "aa000001-approval", "project": "kb", "action": "deploy:prod", "target": ".", "risk-tier": "T3", "owner": "claude-m1", "state": "approvals" },
+      "expected": "decision"
+    },
+    {
+      "name": "approve:* action on an agent-owned inbox card -> gate (action limb)",
+      "meta": { "id": "aa000002-gate", "project": "kb", "action": "approve:oauth-gate-g1", "target": ".", "risk-tier": "T3", "owner": "codex-worker", "state": "inbox" },
+      "expected": "gate"
+    },
+    {
+      "name": "human-operator-owned inbox card with a non-approve action -> gate (owner limb)",
+      "meta": { "id": "aa000003-gate", "project": "kb", "action": "decide:budget-gate-measures-nothing", "target": ".", "risk-tier": "T2", "owner": "human-operator", "state": "inbox" },
+      "expected": "gate"
+    },
+    {
+      "name": "needs-input action -> input",
+      "meta": { "id": "aa000004-input", "project": "kb", "action": "needs-input:choose-source", "target": ".", "risk-tier": "T1", "owner": null, "state": "inbox" },
+      "expected": "input"
+    },
+    {
+      "name": "human-review action -> input",
+      "meta": { "id": "aa000005-input", "project": "kb", "action": "human-review:script", "target": ".", "risk-tier": "T2", "owner": null, "state": "inbox" },
+      "expected": "input"
+    },
+    {
+      "name": "wake-me inbox card -> intervention",
+      "meta": { "id": "aa000006-wake", "project": "kb", "action": "wake-me:runner-failed", "target": ".", "risk-tier": "T2", "owner": null, "state": "inbox" },
+      "expected": "intervention"
+    },
+    {
+      "name": "stop-requested -> intervention",
+      "meta": { "id": "aa000007-stop", "project": "kb", "action": "build:site", "target": ".", "risk-tier": "T2", "owner": "codex-worker", "state": "stop-requested" },
+      "expected": "intervention"
+    },
+    {
+      "name": "halting -> intervention",
+      "meta": { "id": "aa000008-halting", "project": "kb", "action": "build:site", "target": ".", "risk-tier": "T2", "owner": "codex-worker", "state": "halting" },
+      "expected": "intervention"
+    },
+    {
+      "name": "halted -> intervention",
+      "meta": { "id": "aa000009-halted", "project": "kb", "action": "research:atlas", "target": ".", "risk-tier": "T2", "owner": "codex-worker", "state": "halted" },
+      "expected": "intervention"
+    },
+    {
+      "name": "root blocked (unowned, no deps) -> intervention",
+      "meta": { "id": "aa00000a-block", "project": "kb", "action": "route:unknown", "target": ".", "risk-tier": "T2", "owner": null, "state": "blocked", "depends-on": [] },
+      "expected": "intervention"
+    },
+    {
+      "name": "dependency-blocked (agent-owned, has deps) -> null",
+      "meta": { "id": "aa00000b-block", "project": "kb", "action": "build:site", "target": ".", "risk-tier": "T2", "owner": "codex-worker", "state": "blocked", "depends-on": ["aa00000a-block"] },
+      "expected": null
+    },
+    {
+      "name": "ordinary agent inbox work (non-hex id) -> null",
+      "meta": { "id": "ordinary-work-1", "project": "kb", "action": "research:topic", "target": ".", "risk-tier": "T2", "owner": "codex-worker", "state": "inbox" },
+      "expected": null
+    },
+    {
+      "name": "old agent-owned inbox card (hex epoch 25h old) -> stranded",
+      "meta": { "id": "6b487270-stranded", "project": "kb", "action": "research:topic", "target": ".", "risk-tier": "T2", "owner": "codex-worker", "state": "inbox" },
+      "expected": "stranded"
+    },
+    {
+      "name": "old agent-owned WORKING card (hex epoch 25h old) -> stranded",
+      "meta": { "id": "6b487270-workstranded", "project": "kb", "action": "build:site", "target": ".", "risk-tier": "T2", "owner": "codex-worker", "state": "working" },
+      "expected": "stranded"
+    },
+    {
+      "name": "recent agent-owned inbox card (hex epoch 1h old) -> null",
+      "meta": { "id": "6b49c3f0-recent", "project": "kb", "action": "research:topic", "target": ".", "risk-tier": "T2", "owner": "codex-worker", "state": "inbox" },
+      "expected": null
+    },
+    {
+      "name": "old HUMAN-OPERATOR-owned inbox card is a gate, never stranded",
+      "meta": { "id": "6b487270-opgate", "project": "kb", "action": "decide:x", "target": ".", "risk-tier": "T2", "owner": "human-operator", "state": "inbox" },
+      "expected": "gate"
+    }
+  ]
+}
