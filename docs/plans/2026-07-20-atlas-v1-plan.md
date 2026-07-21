@@ -280,6 +280,16 @@
   pre-branch code until merge). Panel verified serving live ops cards + OFFLINE worker shape.
 - Console-redirect note: worker output piped to a file needs PYTHONUTF8=1 (livekit banner
   emoji vs cp1252); interactive terminals unaffected.
+- Task 10 scope amendment (2026-07-21, orchestrator, PRE-DECLARED before grading): (1) reflex
+  dispatch is implemented in a new `AtlasAgent.on_user_turn_completed` override raising
+  `StopResponse` rather than "in app.py's transcript handler" — installed-source trace
+  (agent_activity.py:2331/2334/2390) proved that is the ONLY 1.6.6 seam that both suppresses
+  the LLM reply and keeps the utterance out of chat_ctx; the plan's "ahead of the LLM turn"
+  intent is honored at the correct hook, and `_on_transcript` is retained solely for
+  engagement re-stamping. (2) `atlas/tests/test_engagement.py` is ADDED to Task 10's files —
+  it imported the deleted `_is_dismiss`; its dismiss test migrated to the router intent path.
+  (3) `cancel` wires a REAL abort: `session.interrupt(force=True)` (agent_session.py:1356,
+  agent_activity.py:1509, speech_handle.py:160/175) — spans LLM inference through TTS playout.
 - Task 9 scope amendment (2026-07-20, orchestrator, PRE-DECLARED before grading): Task 9's
   Files list is amended to ADD — `atlas/worker/gitseam.py` (new: the Task-6 git seam factored
   into one shared home, orchestrator-instructed "factor a shared helper if clean"),

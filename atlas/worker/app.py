@@ -13,16 +13,16 @@ Run (from atlas/):
 Console mode needs DEEPGRAM_API_KEY + ANTHROPIC_API_KEY in %USERPROFILE%\\.atlas\\env.
 """
 import asyncio
+import json
 import logging
 import os
-import re
 import sys
 import threading
 from pathlib import Path
 
 import yaml
 
-from livekit.agents import Agent, AgentSession, JobContext, WorkerOptions, cli
+from livekit.agents import Agent, AgentSession, JobContext, StopResponse, WorkerOptions, cli
 # elevenlabs imported at module level even though only some voices use it: livekit plugins
 # self-register on import and MUST do so on the main thread (job tasks raise RuntimeError).
 from livekit.plugins import deepgram, elevenlabs, silero
@@ -30,7 +30,7 @@ from livekit.plugins import deepgram, elevenlabs, silero
 from kbmcp import kb_tools
 from worker import anthropic_compat
 from worker import engagement as engagement_mod
-from worker import fastlane, ledgerwriter, repl, state, stateserver, toolreg, wakeword
+from worker import fastlane, ledgerwriter, repl, router, state, stateserver, toolreg, wakeword
 
 ATLAS = Path(__file__).resolve().parents[1]
 logger = logging.getLogger("atlas.app")
@@ -69,19 +69,21 @@ TEXT_MODE = "--text" in sys.argv
 _BG_TASKS: set = set()   # strong refs to fire-and-forget tasks (silence watcher)
 
 
+# Reflex intents live in config/intents.yaml (design §7, loaded by router.load_intents). This
+# constant is ONLY the fallback used when that file is missing, so sleep-by-voice never depends on
+# a file that failed to ship — the phrases themselves have MIGRATED out of atlas.yaml into
+# intents.yaml (the single source of reflex matching data).
 DEFAULT_DISMISS = ["that's all", "go to sleep", "thanks atlas", "thank you atlas"]
 
 
-def _norm_phrase(s: str) -> str:
-    """Lowercase, drop punctuation (incl. apostrophes — Deepgram may omit them), collapse spaces."""
-    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9\s]", "", s.lower())).strip()
-
-
-def _is_dismiss(transcript: str, phrases: list[str] | None = None) -> bool:
-    """True when a final transcript matches a configured dismiss phrase
-    (case/punctuation-insensitive; 'Thanks, Atlas.' == 'thanks atlas')."""
-    t = _norm_phrase(transcript)
-    return t in {_norm_phrase(p) for p in (phrases or DEFAULT_DISMISS)}
+def _load_intents() -> dict:
+    """Reflex intents from config/intents.yaml; if that file is absent, fall back to a
+    dismiss-only intent set so voice-sleep still works (Task 10 fallback, documented)."""
+    path = ATLAS / "config" / "intents.yaml"
+    if path.is_file():
+        return router.load_intents(path)
+    logger.warning("intents.yaml missing — reflex lane limited to the dismiss fallback")
+    return {"dismiss": {"phrases": DEFAULT_DISMISS}}
 
 
 def _cfg() -> dict:
@@ -114,6 +116,33 @@ def _kb_function_tools():
     return [toolreg.livekit_tool(spec) for spec in toolreg.REGISTRY]
 
 
+class AtlasAgent(Agent):
+    """Agent that gives the reflex lane (design §7) its interception point AHEAD of the LLM turn.
+
+    `on_user_turn_completed` is the ONLY livekit-agents 1.6.6 hook that runs after the user turn is
+    finalized but BEFORE the reply is generated, and whose `StopResponse` keeps the utterance out of
+    the LLM chat context: raising it there returns from `_user_turn_completed_task`
+    (agent_activity.py:2334) *before* the user ChatMessage is appended to chat_ctx and before
+    `_generate_reply` (verified against the installed source). That is what lets a reflex utterance
+    never reach Claude while a normal utterance falls straight through to the fast lane.
+
+    `reflex` is an async `fn(text) -> bool` installed by `entrypoint()` once the voice-loop closures
+    exist (None until then, and in --text mode, where it is left unset — same as V0 dismiss)."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.reflex = None
+
+    async def on_user_turn_completed(self, turn_ctx, new_message) -> None:
+        handler = self.reflex
+        if handler is None:
+            return
+        text = getattr(new_message, "text_content", None) or ""
+        if await handler(text):
+            # handled locally as a reflex — suppress the LLM reply AND the chat_ctx insertion.
+            raise StopResponse()
+
+
 async def entrypoint(ctx: JobContext) -> None:
     repl.load_env()  # DEEPGRAM_API_KEY / ANTHROPIC_API_KEY -> process env, before plugins build
     cfg = _cfg()
@@ -143,10 +172,8 @@ async def entrypoint(ctx: JobContext) -> None:
         tts=_build_tts(cfg),
         max_tool_steps=cfg["max_tool_turns"],        # 5, not the plugin default 3
     )
-    await session.start(
-        agent=Agent(instructions=fastlane.SYSTEM, tools=_kb_function_tools()),
-        room=ctx.room,
-    )
+    agent = AtlasAgent(instructions=fastlane.SYSTEM, tools=_kb_function_tools())
+    await session.start(agent=agent, room=ctx.room)
 
     # --- Unified worker state (design §2): a pure observer of the voice loop. The HTTP
     # surface (Task 5), transcript ledger (Task 6), and done-watcher (Task 11) all consume
@@ -259,16 +286,81 @@ async def entrypoint(ctx: JobContext) -> None:
     def _on_wake() -> None:  # called from the wake-word thread; hop to the event loop
         loop.call_soon_threadsafe(_engage)
 
-    dismiss_phrases = cfg.get("dismiss_phrases", DEFAULT_DISMISS)
-
     @session.on("user_input_transcribed")
     def _on_transcript(ev) -> None:
-        if not ev.is_final:
-            return
-        engagement.heard_speech()                        # re-stamp the silence clock
-        if _is_dismiss(ev.transcript, dismiss_phrases):  # dismiss phrase -> immediate sleep + cue
+        # Every final utterance re-stamps the silence clock so a reflex ("repeat that") keeps Atlas
+        # awake. Reflex CLASSIFICATION + dispatch happens in AtlasAgent.on_user_turn_completed (the
+        # only hook that can keep a reflex utterance out of the LLM chat context — see AtlasAgent);
+        # this handler just keeps the engagement clock honest.
+        if ev.is_final:
+            engagement.heard_speech()
+
+    # --- Reflex lane (design §7). intents.yaml is the ONLY matching source; the handler runs ahead
+    # of the LLM turn via AtlasAgent.on_user_turn_completed and returns True to suppress the reply.
+    intents = _load_intents()
+
+    def _reflex_say(text: str) -> None:
+        """Speak a reflex response and mirror it. add_to_chat_ctx=False keeps it out of the LLM
+        history (it is not a conversation turn for Claude) AND means it does NOT arrive via
+        conversation_item_added — so it is mirrored here, exactly like the "Yes?"/"Going to sleep."
+        acks."""
+        session.say(text, add_to_chat_ctx=False)
+        publisher.add_line("atlas", text)
+
+    def _last_atlas_line() -> str | None:
+        for line in reversed(publisher.snapshot()["transcript"]):
+            if line["role"] == "atlas":
+                return line["text"]
+        return None
+
+    def _format_credit(raw: str) -> str:
+        if not raw or raw.startswith("ERROR"):
+            return "I couldn't reach the credit balance just now."
+        try:
+            d = json.loads(raw)
+        except (ValueError, TypeError):
+            return "I couldn't read the credit balance."
+        return f"You have {d.get('balance')} {d.get('units', 'USD')} of Deepgram credit left."
+
+    async def _handle_reflex(text: str) -> bool:
+        """Route one final utterance. Returns True (and performs the reflex) on a reflex hit, so the
+        Agent suppresses the LLM reply; False -> the utterance flows to the fast lane unchanged.
+
+        Because the reply is suppressed (StopResponse), the user's reflex utterance does NOT arrive
+        via conversation_item_added, so BOTH the user line and Atlas's response are mirrored here —
+        no double-add (a fast-lane turn, by contrast, is mirrored by the conversation_item_added
+        handler and this method adds nothing)."""
+        if not text or not text.strip():
+            return False
+        lane, intent = router.route(text, intents)
+        if lane != "reflex":
+            return False
+        publisher.add_line("user", text)  # the reflex utterance, mirrored (won't arrive elsewhere)
+        if intent == "dismiss":
             engagement.dismiss()
-            _sleep()
+            _sleep()                       # speaks + mirrors "Going to sleep."
+        elif intent == "cancel":
+            # livekit-agents 1.6.6: AgentSession.interrupt(force=True) (agent_session.py:1356)
+            # aborts the in-flight turn — it cancels the current SpeechHandle, which spans LLM
+            # generation THROUGH TTS playout (speech_handle.py:160 interrupt -> _cancel), plus any
+            # preemptive generation and queued speeches (agent_activity.py:1509). force=True bypasses
+            # the allow_interruptions guard. So cancel is wired to a real abort, not just an ack.
+            try:
+                session.interrupt(force=True)
+            except RuntimeError:
+                pass                       # no active generation to interrupt — the ack still fires
+            _reflex_say("Cancelled.")
+        elif intent == "repeat":
+            last = _last_atlas_line()
+            _reflex_say(last if last else "There's nothing to repeat yet.")
+        elif intent == "credit":
+            # credit_remaining does blocking HTTP; run it off the event loop so the voice loop
+            # never stalls, then speak the result compactly.
+            raw = await loop.run_in_executor(None, lambda: toolreg.dispatch("credit_remaining", {}))
+            _reflex_say(_format_credit(raw))
+        return True
+
+    agent.reflex = _handle_reflex
 
     async def _silence_watcher() -> None:
         while True:

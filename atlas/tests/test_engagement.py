@@ -64,15 +64,17 @@ def test_ensure_models_custom_needs_only_feature_models(monkeypatch):
     assert called == []          # feature models present -> no fetch attempted for the custom model
 
 
-def test_is_dismiss_phrases():
-    from worker.app import _is_dismiss
-    phrases = ["that's all", "go to sleep", "thanks atlas", "thank you atlas"]
-    assert _is_dismiss("That's all.", phrases)
-    assert _is_dismiss("thats all", phrases)          # Deepgram may drop the apostrophe
-    assert _is_dismiss("Thanks, Atlas!", phrases)
-    assert _is_dismiss("Go to sleep", phrases)
-    assert not _is_dismiss("that's all I know about it", phrases)
-    assert not _is_dismiss("what's in the queue?", phrases)
+def test_dismiss_phrases_route_reflex():
+    # Task 10: _is_dismiss + the hardcoded dismiss list were MIGRATED into the reflex lane; dismiss
+    # detection is now router.route against the `dismiss` intent (config/intents.yaml).
+    from worker import router
+    intents = {"dismiss": {"phrases": ["that's all", "go to sleep", "thanks atlas", "thank you atlas"]}}
+    assert router.route("That's all.", intents) == ("reflex", "dismiss")
+    assert router.route("thats all", intents) == ("reflex", "dismiss")   # Deepgram may drop the apostrophe
+    assert router.route("Thanks, Atlas!", intents) == ("reflex", "dismiss")
+    assert router.route("Go to sleep", intents) == ("reflex", "dismiss")
+    assert router.route("that's all I know about it", intents) == ("fast", None)
+    assert router.route("what's in the queue?", intents) == ("fast", None)
 
 
 def test_build_tts_voice_toggle_config():

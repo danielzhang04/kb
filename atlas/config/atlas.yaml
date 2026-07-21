@@ -4,11 +4,8 @@ max_tool_turns: 5
 engagement_timeout_s: 120   # Daniel 2026-07-20: 2-min silence auto-sleep; wake word re-wakes anytime
 state_port: 4360            # local read-only /state surface, 127.0.0.1 only (design §3; daemon owns 4317)
 ops_root: C:/Users/danie/kb-worktrees/dashboard-ops   # ops worktree the transcript ledger commits+pushes to (design §5, Task 6)
-dismiss_phrases:            # any of these (case/punctuation-insensitive) -> immediate sleep
-  - that's all
-  - go to sleep
-  - thanks atlas
-  - thank you atlas
+# dismiss phrases MIGRATED to config/intents.yaml (design §7 reflex lane, Task 10): the reflex
+# lane's `dismiss` intent is now the single source of dismiss matching data — no key here anymore.
 # --- Voice toggle (Daniel 2026-07-20): named voices, switch by pointing active_voice at one
 # and restarting the console. V1 adds a spoken switch command. Matilda = round-2 winner (F);
 # male slot filled by round-3 audition.
