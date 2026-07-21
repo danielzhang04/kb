@@ -29,6 +29,7 @@ from livekit.plugins import deepgram, elevenlabs, silero
 
 from kbmcp import kb_tools
 from worker import anthropic_compat
+from worker import devicewatch
 from worker import engagement as engagement_mod
 from worker import (addressing as addressing_mod, donewatcher, fastlane, ledgerwriter, repl,
                     router, sanitize, state, stateserver, toolreg, wakeword)
@@ -197,6 +198,72 @@ def _output_device_status(cfg: dict, resolve=wakeword.resolve_output_device,
     return {"configured": configured, "resolved": name, "following": False}
 
 
+def _console_singleton():
+    """The live console object whose set_speaker_enabled hot-reopens the output stream.
+
+    livekit.agents.cli._legacy is a PRIVATE module (import-guarded here): AgentsConsole is a
+    singleton (get_instance, _legacy.py:285-293) and set_speaker_enabled (:597) is the same
+    close-and-reopen primitive livekit's own console UI calls (:1441). If a livekit upgrade
+    moves it, _start_output_follow degrades loudly instead of crashing the worker."""
+    from livekit.agents.cli._legacy import AgentsConsole
+    return AgentsConsole.get_instance()
+
+
+def _start_output_follow(cfg: dict, publisher, *,
+                         console_factory=_console_singleton,
+                         watcher_cls=devicewatch.DeviceWatcher,
+                         follower_cls=devicewatch.OutputFollower,
+                         probe=devicewatch.current_default_output):
+    """Start the output-follow watcher when configured; returns it, or None (pin/absent mode).
+
+    Failure to reach the console (livekit internals moved, pycaw missing) is loud-but-running:
+    CRITICAL log + /state shows following:false with the boot default — design 'fail loud,
+    run anyway'."""
+    if cfg.get("tts_output_device") != FOLLOW_SENTINEL:
+        return None
+    # Startup self-check (spec 'Dependencies'): a dead probe (pycaw missing, COM broken)
+    # means the watcher would silently never fire — refuse to claim following:true.
+    probe_ok = False
+    try:
+        probe_ok = probe() is not None
+    except Exception:
+        pass
+    if not probe_ok:
+        logger.critical(
+            "output-follow configured but the default-endpoint probe returned nothing "
+            "(pycaw/comtypes missing or COM failure) — TTS stays on the boot default and "
+            "will NOT follow device changes. `pip install pycaw comtypes` into the worker venv.")
+        publisher.set_output_device(
+            {"configured": FOLLOW_SENTINEL, "resolved": _boot_default_output_name(),
+             "following": False})
+        return None
+    try:
+        console = console_factory()
+    except Exception:
+        logger.critical(
+            "output-follow configured but the console audio object is unavailable — TTS stays "
+            "on the boot default and will NOT follow device changes", exc_info=True)
+        publisher.set_output_device(
+            {"configured": FOLLOW_SENTINEL, "resolved": _boot_default_output_name(),
+             "following": False})
+        return None
+    import sounddevice as sd
+    follower = follower_cls(
+        console,
+        wake_input_substring=cfg.get("wake_input_device"),
+        resolve_output=wakeword.resolve_output_device,
+        resolve_input=wakeword.resolve_input_device,
+        sd_module=sd)
+
+    def _on_change(name: str) -> None:
+        publisher.set_output_device(follower.swap_to(name))
+
+    watcher = watcher_cls(probe=probe, on_change=_on_change, period_s=1.5)
+    watcher.start()
+    logger.info("TTS output-follow active: tracking the Windows default output device")
+    return watcher
+
+
 class AtlasAgent(Agent):
     """Agent that gives the reflex lane (design §7) its interception point AHEAD of the LLM turn.
 
@@ -278,6 +345,11 @@ async def entrypoint(ctx: JobContext) -> None:
     # M4 (2026-07-21): surface the TTS output-device pin in /state so a bad pin (configured but not
     # resolved) is visible on the dashboard after Daniel walks away, not just a scrolling log line.
     publisher.set_output_device(_output_device_status(cfg))
+
+    # Output-follow (design 2026-07-21): when tts_output_device is 'follow', a watcher thread
+    # tracks the Windows default output endpoint and hot-moves the TTS stream — headphones
+    # connect, Atlas speaks there; disconnect, back to the speakers. No restart.
+    _start_output_follow(cfg, publisher)
 
     # Done-watcher (design §8, Task 11): watches the ops queue for the cards Atlas files by voice
     # and speaks their completion. Its sidecar (default %USERPROFILE%\.atlas\watched.json) is

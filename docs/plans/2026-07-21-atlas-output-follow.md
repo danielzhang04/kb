@@ -584,7 +584,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - Consumes: Task 1 `DeviceWatcher`, `current_default_output`; Task 2 `OutputFollower`; Task 3 `FOLLOW_SENTINEL`, `_output_device_status`.
 - Produces: `_start_output_follow(cfg, publisher, *, console_factory, watcher_cls, follower_cls, probe) -> DeviceWatcher | None` — a pure wiring seam in `app.py` that returns the started watcher in follow mode, `None` otherwise.
 
-- [ ] **Step 1: Write the failing tests (append to `atlas/tests/test_devicewatch.py`)**
+- [x] **Step 1: Write the failing tests (append to `atlas/tests/test_devicewatch.py`)**
 
 ```python
 def test_start_output_follow_not_in_follow_mode_returns_none():
@@ -672,12 +672,12 @@ def test_start_output_follow_dead_probe_degrades_loudly():
     assert published and published[-1]["following"] is False
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `.venv/Scripts/python -m pytest tests/test_devicewatch.py -q`
 Expected: FAIL with `AttributeError: module 'worker.app' has no attribute '_start_output_follow'`
 
-- [ ] **Step 3: Implement in `app.py`**
+- [x] **Step 3: Implement in `app.py`**
 
 Add import near the other worker imports: `from worker import devicewatch`.
 
@@ -759,12 +759,12 @@ In `entrypoint`, immediately after `publisher.set_output_device(_output_device_s
     _start_output_follow(cfg, publisher)
 ```
 
-- [ ] **Step 4: Run the full suite**
+- [x] **Step 4: Run the full suite**
 
 Run: `.venv/Scripts/python -m pytest -q`
 Expected: **0 failed** (running total ~182 passed).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add worker/app.py tests/test_devicewatch.py

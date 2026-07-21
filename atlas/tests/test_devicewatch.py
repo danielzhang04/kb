@@ -164,3 +164,88 @@ def test_swap_prevalidation_failure_keeps_current_stream_untouched():
     status = f.swap_to("Px7 S2e")
     assert console.calls == []                      # stream never touched
     assert status["resolved"] == "dev-5"
+
+
+def test_start_output_follow_not_in_follow_mode_returns_none():
+    from worker import app
+
+    class NoPublisher:
+        def set_output_device(self, s):
+            raise AssertionError("must not publish when not following")
+
+    got = app._start_output_follow(
+        {"tts_output_device": "Speakers (Realtek"}, NoPublisher(),
+        console_factory=lambda: (_ for _ in ()).throw(AssertionError("no console needed")),
+        watcher_cls=None, follower_cls=None, probe=None)
+    assert got is None
+
+
+def test_start_output_follow_wires_swap_to_publisher():
+    from worker import app
+
+    published = []
+
+    class Publisher:
+        def set_output_device(self, s):
+            published.append(s)
+
+    class FakeWatcher:
+        def __init__(self, probe, on_change, period_s):
+            self.on_change = on_change
+            self.started = False
+
+        def start(self):
+            self.started = True
+
+    class FakeFollower:
+        def __init__(self, console, **kw):
+            pass
+
+        def swap_to(self, name):
+            return {"configured": "follow", "resolved": name, "following": True}
+
+    w = app._start_output_follow(
+        {"tts_output_device": "follow", "wake_input_device": "Intel"}, Publisher(),
+        console_factory=lambda: object(),
+        watcher_cls=FakeWatcher, follower_cls=FakeFollower,
+        probe=lambda: ("id-A", "Realtek"))   # healthy probe: passes the startup self-check
+    assert w is not None and w.started
+    w.on_change("Px7 S2e")               # simulate a detected change
+    assert published[-1] == {"configured": "follow", "resolved": "Px7 S2e", "following": True}
+
+
+def test_start_output_follow_console_unavailable_degrades_loudly():
+    from worker import app
+
+    published = []
+
+    class Publisher:
+        def set_output_device(self, s):
+            published.append(s)
+
+    got = app._start_output_follow(
+        {"tts_output_device": "follow"}, Publisher(),
+        console_factory=lambda: (_ for _ in ()).throw(ImportError("no _legacy console")),
+        watcher_cls=None, follower_cls=None, probe=lambda: ("id-A", "Realtek"))
+    assert got is None
+    assert published and published[-1]["following"] is False   # /state tells the truth
+
+
+def test_start_output_follow_dead_probe_degrades_loudly():
+    """Spec: pycaw missing/broken with follow configured -> CRITICAL + following:false.
+    A probe that can't see the default endpoint at STARTUP means the watcher would silently
+    never fire while /state claims following:true — the startup self-check prevents that lie."""
+    from worker import app
+
+    published = []
+
+    class Publisher:
+        def set_output_device(self, s):
+            published.append(s)
+
+    got = app._start_output_follow(
+        {"tts_output_device": "follow"}, Publisher(),
+        console_factory=lambda: object(),
+        watcher_cls=None, follower_cls=None, probe=lambda: None)
+    assert got is None
+    assert published and published[-1]["following"] is False
