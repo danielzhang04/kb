@@ -1,0 +1,41 @@
+﻿# Localize shard B (L41-L80)
+- L41: NO FIGURES (fanned credit cards + price tag). full=0 crowd=0
+- L42: NO FIGURES (credit-score gauge + fees ribbon). full=0 crowd=0
+- L43: full=1 (folder-carrier-fg) crowd=0; crops -> assets/_review/crops/L43/
+- L44: NO FIGURES (Justice Dept letter, pen, inkwell on desk). full=0 crowd=0
+- L45: NO FIGURES (consent form, magnifier, FORGED stamp). full=0 crowd=0
+- L46: NO FIGURES (card-shredder machine, "93 MILLION"). full=0 crowd=0
+- L47: NO FIGURES (stack of blank cards "2.1 MILLION?" + leaves). full=0 crowd=0
+- L48: NO FIGURES (torn safety-net banner "165 MILLION"). full=0 crowd=0
+- L49: full=1 (climber-on-post, faceless mannequin gripping sign post) crowd=0; crops -> assets/_review/crops/L49/
+- L50: NO FIGURES (folded newspaper "FRAUD DOUBLES"). full=0 crowd=0
+- L51: NO FIGURES (typographic 2.1M crossed out vs 2.55M). full=0 crowd=0
+- L52: NO FIGURES (banded dome in dead swamp, +981,000 callout). full=0 crowd=0
+- L53: NO FIGURES (card stack + two rulers, SAME PILE tag). full=0 crowd=0
+- L54: NO FIGURES (paper pile + FEE stack + 190,000 callout). full=0 crowd=0
+- L55: NO FIGURES (typographic 100,000 with ESTIMATE tag over vault). full=0 crowd=0
+- L56: full=0 crowd=8 (cluster in scale pan; 4 sampled); crops -> assets/_review/crops/L56/
+- L57: full=9 (front-row exit queue: exit-walker-far-left, queue-fg-2/3, box-carrier-center-left, coat-carrier-center, box-carrier-center-right, box-carrier-right, coat-carrier-far-right, edge-right-fg) crowd=~20 (4 sampled); crops -> assets/_review/crops/L57/
+- L58: full=0 crowd=~50 dense crowd under "23,000+" sign (4 front-row sampled); crops -> assets/_review/crops/L58/
+- L59: full=0 crowd=~25 small figures in two-storey cutaway (4 sampled); crops -> assets/_review/crops/L59/
+- L60: NO FIGURES (INDEPENDENT INVESTIGATION book + magnifier). full=0 crowd=0
+- L61: NO FIGURES (bar chart with 1% pins; only briefcase/people ICON glyphs, not depicted humans). full=0 crowd=0
+- L62: full=1 (writing-hand-fg — disembodied foreground hand w/ red pen; NO FACE VISIBLE, face box omitted) crowd=0; crops -> assets/_review/crops/L62/
+- L63: full=1 (suited-spokesman-fg, 2 hands) crowd=0; crops -> assets/_review/crops/L63/
+- L64: full=0 crowd=8 pedestrians at revolving door (4 sampled); crops -> assets/_review/crops/L64/
+- L65: NO FIGURES (empty executive chair with target). full=0 crowd=0
+- L66: full=0 crowd=1 (panel-3 seated manager, small inside panel); crops -> assets/_review/crops/L66/
+- L67: full=2 (arms-crossed-employee-fg w/ 2 hands; counter-hand-right, hand only NO FACE) crowd=0; crops -> assets/_review/crops/L67/
+- L68: full=1 (phone-hand-left, hand+forearm only NO FACE) crowd=0; crops -> assets/_review/crops/L68/
+- L69: full=1 (terminated-letter-reader-fg, 2 hands) crowd=0; crops -> assets/_review/crops/L69/
+- L70: full=1 (corridor-walker, 2 hands) crowd=0; crops -> assets/_review/crops/L70/
+- L71: NO FIGURES (LABOR DEPT document + gavel). full=0 crowd=0
+- L72: NO FIGURES (cheque "$5.4 MILLION / REINSTATED"). full=0 crowd=0
+- L73: full=1 (medal-detective-emblem, stylized figure inside seal; 1 hand w/ magnifier) crowd=0; crops -> assets/_review/crops/L73/
+- L74: full=1 (clipboard-inspector-fg, 2 hands) crowd=0; crops -> assets/_review/crops/L74/
+- L75: NO FIGURES (drowned TV + 2016 newspapers in swamp). full=0 crowd=0
+- L76: full=3 (regulator-left/center/right, 2 hands each) crowd=0; crops -> assets/_review/crops/L76/
+- L77: NO FIGURES (CFPB $100M slab + coin stacks). full=0 crowd=0
+- L78: NO FIGURES (OCC $35M + CFPB $100M slabs). full=0 crowd=0
+- L79: NO FIGURES (LA $50M + CFPB $100M slabs). full=0 crowd=0
+- L80: NO FIGURES ($185M IN ONE DAY slab). full=0 crowd=0

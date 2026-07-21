@@ -1,0 +1,14 @@
+[
+  {
+    "name": "wf-r6-L97",
+    "shot_id": "L97",
+    "mode": "environment",
+    "aspect": "16:9",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/base/base.png",
+      "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L102.png",
+      "channels/the-second-take/visual-kit/refs/base/reach-to-take.png"
+    ],
+    "delta": "A crowd of ordinary modern American people together with a large raised gavel, all pressing down on one big red lever, while at the right a hand reluctantly claws bundles of banknotes back out of a money bag. Public and political pressure forcing a clawback, made physical. Cool slate-and-cream palette, one red accent #d7402b on the lever. HAND: take the reaching hand's GEOMETRY directly from the third reference image, the reaching-hand pose frame. That reference IS the hand: copy its shape, its cream flat fill, its even medium-thick #241a12 outline, and its digit count of three fingers plus one thumb. Draw it at a larger scale, angled down into the mouth of the money bag with the banknotes gripped between the fingers and the thumb. It is the same simple cartoon glove hand as every hand in the crowd, just bigger and closer. CROWD: keep the crowd EXACTLY as the second reference image draws its figures. Round near-circle cream heads, two simple DOT EYES, one small plain mouth line, smooth blank cheeks, NO noses, NO ears, NO teeth, NO eyebrows, one flat even cream tone across every head with no shading and no variation between figures, all squat and large-headed on the same short compact proportion. Every face in the crowd is the same simple mask. PERIOD: the United States in 2016. Everyone wears modern contemporary American clothing, coats, jumpers, shirts, jeans, trousers, business suits, and nobody wears a hat of any kind. SETTING: a plain modern interior, neutral slate ground, a simple flat cool wall behind. BACKGROUND: keep the back wall plain and unbroken, with no banner, no sign, no placard, no board, no panel and no text anywhere in the frame."
+  }
+]

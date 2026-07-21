@@ -43,6 +43,26 @@ animation-menu.md` (author ONLY menu animations). Rules: `references/animation-r
    `still_prompt` minus the cutout elements (in-video text is NOT subtracted — it stays baked diegetic;
    state what fills the region so no blank slot is left); `cutout_prompt` = the single element alone on a
    plain plate.
+   **SUPPLIED-TEXT law (HARD, lint-enforced).** Subtraction is not a licence to *paraphrase* an element.
+   If the `still_prompt` bakes a value — a number, a name, a date, a stamp face — carry that literal
+   **verbatim** into the `cutout_prompt`/`plate_prompt`; never restate it as a description. Writing
+   *"a large marker scorecard number painted on its face"* where the shot means the numeral `'8'` hands
+   the value to the diffusion model, which invents one — it rendered `1`. That exact line, in this file,
+   is how a fabricated on-screen fact shipped in the Wells Fargo documentary about a real, named person.
+   If the source prompt genuinely supplies no value, **cut the element** rather than gesture at it, and
+   flag the gap back to `visual-prompt-writer` — never invent a plausible number to fill it.
+   **LETTERING-FIDELITY laws (also HARD, also lint-enforced).** Subtraction inherits the still's wording
+   wholesale, which makes a `cutout_prompt` the easiest surface in the pipeline for these:
+   - **Carry a literal VERBATIM, never RECASED.** A cutout redraws every glyph from scratch, so a
+     lowercased literal is a guessed literal — the still's `'CHECKING'` becoming *"the checking
+     passbook"* is exactly what rendered `CHECKIG` on L12.
+   - **Strip production-control vocabulary when you subtract.** "hold ONLY the rig form" and "comedy
+     off" travel out of the `still_prompt` unless you delete them, and a cutout is a lone element on a
+     plain plate — the easiest possible surface for a stray instruction to get lettered onto. Both
+     `rig form` and `COMEDY OFF` shipped as artwork in this channel.
+   - **≤4 words per authored string**, uniformly.
+   `lint_motion_plan.py` imports all of these from `lint_shots.py` — one implementation, two callers.
+   Full law + worked examples: `visual-prompt-writer/references/shots-schema.md §4`.
 4. **Fresh-eyes critic** (`references/critics.md`, a fresh-context reviewer) → apply its fixes in ONE
    revise pass. The #1 defect it catches: a `plate_prompt` that still implies a moved element.
 5. **Write** `videos/<slug>/shots.motion.json` (schema per `shots-motion-schema.md`).

@@ -1,0 +1,119 @@
+=== L31 | beat=mid-arm | class=physicalized-imbalance | cast=[] | src=ai-gen
+VO: And the pressure rolled downhill, off the scorecard, past the executives,
+PROMPT: A steep slope: a heavy round boulder marked with the scorecard number '8' rolls DOWNHILL from a scorecard perched at the top, past small executive figures who step aside, toward a lone teller at a counter at the bottom of the hill about to be flattened. Pressure rolling downhill made physical. Cool slate slope, warm counter at the base, the one red accent on the boulder's numeral '8' (that numeral and no other digits). Deep top-to-bottom depth. Figures on the base/crowd rig as appropriate: round heads, NO noses, NO ears. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos
+
+=== L32 | beat=body | class=physicalized-imbalance | cast=[] | src=ai-gen
+VO: and onto the people standing at the counter who had a quota to hit by the end of the day.
+PROMPT: A single teller at the counter buckling under a heavy weight labelled 'QUOTA' pressing down on their shoulders, a clock on the wall reading near end-of-day. The person who actually carries the pressure. Base-rig anonymous teller: round head, NO nose, NO ears, four-digit hands, #241a12 outline, flat cel, a teal teller's uniform; hold ONLY the rig form. Warm counter palette, the one red accent on the 'QUOTA' weight. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'QUOTA', no logos; 16:9.
+
+=== L33 | beat=body | class=personified-character | cast=[] | src=ai-gen
+VO: A teller who needed one more product to hit the day's number
+PROMPT: A teller alone behind the counter at the end of the day, glancing at a day's-tally card one short of the quota â€” the setup for what they do next (pinning stage base). Base-rig anonymous teller: round head, NO nose, NO ears, four-digit hands, #241a12 outline, flat cel, teal uniform; hold ONLY the rig form. Warm-but-dimming counter palette, one red accent on the tally card's shortfall mark. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.
+
+=== L34 | beat=body | class=symbolic-stand-in-object | cast=[] | src=ai-gen
+VO: could open a checking account the customer never asked for.
+PROMPT: The SAME counter held, now a fresh account-opening form lies on it, a customer's name marker-written across the top and a small 'NEW ACCOUNT' tab â€” opened without the customer. Everything else held. Warm counter palette, one red accent on the 'NEW ACCOUNT' tab. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering only; the single red accent #d7402b on the tab; no photorealism, no on-screen narrator, no unrequested text beyond 'NEW ACCOUNT', no logos; 16:9.
+
+=== L35 | beat=body | class=symbolic-stand-in-object | cast=[] | src=ai-gen
+VO: To make it look real and active, they'd move a little of that customer's own money into it.
+PROMPT: The SAME counter held, now a thin marker-drawn trickle of coins arcs from a passbook marked with the customer's account into the new form, to make the phantom account look active. Everything else held. Warm counter palette, one red accent on the moving-coin arc. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering only; the single red accent #d7402b on the arc; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.
+
+=== L36 | beat=body | class=number-glued-to-object | cast=[] | src=ai-gen
+VO: They'd set the PIN on the new debit card to 0000, so they controlled it.
+PROMPT: The SAME counter held, now a debit-card PIN pad sits on it with a marker '0000' shown in its little display â€” the PIN set to four zeros so the teller keeps control. Everything else held. Warm counter palette, one red accent on the '0000' display frame. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering; the single red accent #d7402b on the display; no photorealism, no on-screen narrator, no unrequested text beyond '0000', no logos; 16:9.
+
+=== L37 | beat=body | class=diegetic-device | cast=[] | src=ai-gen
+VO: And they'd invent an email address, sometimes their own, to sign the customer up for online banking,
+PROMPT: Hard cut to a marker-drawn online-banking signup screen where a made-up email address is being typed into the field â€” a fake inbox invented to enroll the customer. Cool cream-and-teal screen palette, one red accent on the cursor in the email field. This is the base plate for the vanishing-alert delta. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text (an illegible placeholder email is fine), no logos; 16:9.
+
+=== L38 | beat=body | class=symbolic-stand-in-object | cast=[] | src=ai-gen
+VO: so the alerts that might have tipped anyone off went somewhere nobody would ever see. [PAUSE]
+PROMPT: The SAME signup screen held, now an alert-bell notification icon is sliding off the edge of the screen and dropping into a dark waste-bin below â€” the warning routed to an inbox nobody watches. Everything else held. Cool palette darkening at the bin, one red accent on the alert bell. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering only; the single red accent #d7402b on the bell; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.
+
+=== L39 | beat=body | class=diegetic-device | cast=[] | src=ai-gen
+VO: The move even had a nickname inside the bank. Pinning.
+PROMPT: The whole trick captured as one deadpan label: a big hand-lettered marker word 'PINNING' stamped across a folder that holds the account form, the PIN pad, and the fake-email note together â€” the bank's own nickname for it. Cool slate-and-cream palette, the one red accent on the 'PINNING' underline. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering; the single red accent #d7402b on the underline; no photorealism, no on-screen narrator, no unrequested text beyond 'PINNING', no logos; 16:9.
+
+=== L40 | beat=body | class=symbolic-stand-in-object | cast=[] | src=ai-gen
+VO: It wasn't just checking accounts.
+PROMPT: A lone checking passbook on a counter, and beyond it the hint of many more product types piling into frame â€” it wasn't just this one. Warm teal counter palette, one red accent reserved on an incoming card edge. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.
+
+=== L41 | beat=body | class=number-glued-to-object | cast=[] | src=ai-gen
+VO: Employees ordered debit cards and credit cards in customers' names, around 565,000 credit cards nobody had authorized,
+PROMPT: A wide splayed fan of unauthorized credit and debit cards filling the frame, a hand-lettered marker tag reading '565,000' pinned across them â€” cards nobody asked for. Cool slate ground, cream cards, the one red accent on the '565,000' tag. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering; the single red accent #d7402b on the tag; no photorealism, no on-screen narrator, no unrequested text beyond '565,000', no logos; 16:9.
+
+=== L42 | beat=body | class=register-shift-infographic | cast=[] | src=ai-gen
+VO: some of which quietly ran up annual fees and interest and dinged people's credit scores.
+PROMPT: A clean marker-drawn credit-score gauge with its needle dropping into the red, and a small statement beside it with fees and interest ticking up in a red column â€” the quiet damage of a card nobody wanted. Cool cream-and-slate infographic palette, the one red accent on the falling needle and the fee column. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering only; the single red accent #d7402b on the drop; no photorealism, no on-screen narrator, no unrequested text (short labels only), no logos; 16:9.
+
+=== L43 | beat=body | class=symbolic-stand-in-object | cast=[] | src=ai-gen
+VO: They signed customers up for insurance they didn't want, renters' insurance, life insurance.
+PROMPT: A stack of insurance policy folders (a house/renters icon, a life icon) dumped onto one anonymous customer's arms, a marker tag reading 'INSURANCE' on top â€” policies they never wanted. Base-rig customer: round head, NO nose, NO ears, four-digit hands, #241a12 outline, flat cel, plain clothes; hold ONLY the rig form. Warm cream palette, one red accent on the 'INSURANCE' tag. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b on the tag; no photorealism, no on-screen narrator, no unrequested text beyond 'INSURANCE', no logos; 16:9.
+
+=== L44 | beat=body | class=diegetic-device | cast=[] | src=ai-gen
+VO: And years later, when it settled with the Justice Department, the bank admitted that employees had created false records and used customers' personal information without permission.
+PROMPT: A formal settlement document on a desk with an official seal, a marker header 'JUSTICE DEPT', and a heavy red 'ADMITTED' stamp pressed across it â€” the bank conceding on the record. Cool slate-and-cream legal palette, the one red accent IS the 'ADMITTED' stamp. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering; the STAMP register red block caps for 'ADMITTED'; no photorealism, no on-screen narrator, no unrequested text beyond 'JUSTICE DEPT' and 'ADMITTED', no logos; 16:9.
+
+=== L45 | beat=body | class=ironic-counterpoint | cast=[] | src=ai-gen
+VO: The forged consent the scandal became famous for wasn't a rumor. The bank admitted it.
+PROMPT: A consent form on a desk with a scribbled forged signature, a magnifying glass held over the signature line revealing it as fake â€” the forged consent, admitted, not a rumor. Cool cream-and-slate palette, the one red accent on a small 'FORGED' mark by the signature. Desk/body scale, no hand macro. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b on 'FORGED'; no photorealism, no on-screen narrator, no unrequested text beyond 'FORGED', no logos; 16:9.
+
+=== L46 | beat=body | class=register-shift-infographic | cast=[] | src=ai-gen
+VO: The first tally came out of a review of about 93 million accounts opened between 2011 and 2015.
+PROMPT: A clean marker-drawn review scene: a huge ledger or scanner sweeping a mass of account cards, a header reading '93 MILLION' and a small window '2011-2015'. The first tally being counted. Cool cream-and-slate infographic palette, one red accent on the count window. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond '93 MILLION' and '2011-2015', no logos; 16:9.
+
+=== L47 | beat=body | class=number-glued-to-object | cast=[] | src=ai-gen
+VO: It found around 2.1 million that might not have been authorized.
+PROMPT: Out of the swept mass, a stack of flagged account cards pulled aside under a big marker tag '2.1 MILLION' with a small '?' â€” accounts that might not have been authorized. Cool slate ground, cream cards, the one red accent on the '2.1 MILLION' tag. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering; the single red accent #d7402b on the tag; no photorealism, no on-screen narrator, no unrequested text beyond '2.1 MILLION' and '?', no logos; 16:9.
+
+=== L48 | beat=body | class=register-shift-infographic | cast=[] | src=ai-gen
+VO: Then in 2017 the bank ran a wider review, reaching back to 2009 and forward to 2016, about 165 million accounts this time,
+PROMPT: The review window drawn wider on a timeline â€” brackets stretching back and forward over more years, a header '165 MILLION' and a small window '2009-2016'. A bigger net over more accounts. Cool cream-and-slate palette, one red accent on the widening brackets. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering; the single red accent #d7402b on the brackets; no photorealism, no on-screen narrator, no unrequested text beyond '165 MILLION' and '2009-2016', no logos; 16:9.
+
+=== L49 | beat=body | class=number-glued-to-object | cast=[] | src=ai-gen
+VO: and the number climbed to as many as three and a half million.
+PROMPT: A tally figure climbing up a marker bar to a new top reading '3.5 MILLION' â€” the wider count. Cool slate-and-cream palette, the one red accent on the '3.5 MILLION' cap. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering; the single red accent #d7402b on the cap; no photorealism, no on-screen narrator, no unrequested text beyond '3.5 MILLION', no logos; 16:9.
+
+=== L50 | beat=body | class=diegetic-device | cast=[] | src=ai-gen
+VO: Now, that jump got reported as the fraud doubling. It didn't.
+PROMPT: A tossed newspaper front page with a bold marker headline 'FRAUD DOUBLES' â€” how the jump got reported, about to be corrected. Cool newsprint-grey-and-cream palette, one red accent on the headline underline. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering; the single red accent #d7402b on the underline; no photorealism, no on-screen narrator, no unrequested text beyond 'FRAUD DOUBLES', no logos; 16:9.
+
+=== L51 | beat=body | class=comparison | cast=[] | src=ai-gen
+VO: The bigger review went back over those original years too and raised their count from 2.1 million to about 2.55 million,
+PROMPT: The same original years re-measured with a longer ruler: a marker figure that read '2.1M' being corrected upward to '2.55M' over the SAME window â€” same period, more counted. Cool cream-and-slate palette, one red accent on the corrected figure. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering; the single red accent #d7402b on the correction; no photorealism, no on-screen narrator, no unrequested text beyond '2.1M' and '2.55M', no logos; 16:9.
+
+=== L52 | beat=body | class=number-glued-to-object | cast=[] | src=ai-gen
+VO: and the newly added years brought in about 981,000 more.
+PROMPT: A small extra slice of the timeline (the newly added years) contributing a marker figure '+981,000' onto the pile â€” new years, not new fraud. Cool slate-and-cream palette, the one red accent on the '+981,000'. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering; the single red accent #d7402b on the figure; no photorealism, no on-screen narrator, no unrequested text beyond '+981,000', no logos; 16:9.
+
+=== L53 | beat=body | class=reaction-shot | cast=[] | src=ai-gen
+VO: Same fraud. They'd just counted more of it.
+PROMPT: Deadpan: the SAME single pile of account cards, measured once with a short ruler and once with a long ruler laid beside it, a marker tag reading 'SAME PILE' â€” the fraud didn't double, the measuring did. Cool slate-and-cream palette, one faint red accent on the long ruler's tip. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'SAME PILE', no logos; 16:9.
+
+=== L54 | beat=body | class=number-glued-to-object | cast=[] | src=ai-gen
+VO: Of all those accounts, about 190,000 actually got hit with real fees.
+PROMPT: From the big pile, a smaller marked-off subset of account cards each carrying a red 'FEE' dot, under a marker tag '190,000' â€” the ones that actually cost people money. Cool slate ground, cream cards, the one red accent on the fee dots and tag. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering; the single red accent #d7402b on the fee dots; no photorealism, no on-screen narrator, no unrequested text beyond '190,000' and 'FEE', no logos; 16:9.
+
+=== L55 | beat=body | class=register-shift-infographic | cast=[] | src=ai-gen
+VO: And as many as matters in every one of those numbers, because they're the bank's own estimate of accounts that might have been unauthorized, not a hard count of confirmed fakes.
+PROMPT: A single big marker figure with a '~' tilde in front of it and an 'ESTIMATE' tag clipped on, the digits deliberately a little soft/hand-wavy â€” the honest caveat that these are the bank's own estimate, not a hard count. Cool cream-and-slate palette, one red accent on the '~' and the 'ESTIMATE' tag. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond '~' and 'ESTIMATE', no logos; 16:9.
+
+=== L56 | beat=body | class=symbolic-stand-in-object | cast=[] | src=ai-gen
+VO: Somebody paid for all of this, and at first it was the employees.
+PROMPT: A big scale of blame with an empty pan at the top (the executives) tipping its whole weight down onto a small huddle of counter-workers at the bottom pan â€” somebody paid, and at first it was them. Cool slate-and-cream palette, one red accent on the tipping arrow. Figures on the crowd rig: round cream heads, DOT EYES, one simple mouth, NO noses, NO ears, NO teeth, squat proportion. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.
+
+=== L57 | beat=mid-arm | class=crowd-multiplication | cast=[] | src=ai-gen
+VO: Between 2011 and 2016, Wells Fargo fired about 5,300 people over sales-practice violations,
+PROMPT: A long line of anonymous counter-employees filing out through a single exit door, coats and boxes in hand, a marker tag overhead reading '5,300 FIRED'. Grim but not gory; comedy off. EVERY figure on the CROWD RIG: round cream-family heads, DOT EYES, one simple mouth (neutral / downturn), NO noses, NO ears, NO teeth, the EXACT same squat head-to-body proportion as the base rig, varied ordinary work clothes. Desaturated grey-and-cream palette (gravity register), one faint red accent on the exit sign. Deep receding line for depth. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond '5,300 FIRED', 
+
+=== L58 | beat=body | class=crowd-multiplication | cast=[] | src=ai-gen
+VO: and referred more than 23,000 for investigation.
+PROMPT: An even larger crowd of anonymous employees behind the fired line, marked for investigation, a marker tag '23,000+' over them â€” the number multiplies. Desaturated grey-and-cream palette, one faint red accent on the tag. Crowd on the CROWD RIG: round cream heads, DOT EYES, one simple mouth, NO noses, NO ears, NO teeth, squat proportion, varied work clothes. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond '23,000+', no logos; 16:9.
+
+=== L59 | beat=body | class=physicalized-imbalance | cast=[] | src=ai-gen
+VO: And these were, overwhelmingly, the people at the counter. Tellers and personal bankers. Not anyone upstairs.
+PROMPT: A two-floor building cutaway: the ground-floor counter level is emptied out, chairs knocked over, staff gone (the tellers and personal bankers); the executive floor directly above is untouched, calm, fully occupied. The imbalance made physical â€” punished below, undisturbed above. Desaturated grey below, warmer intact palette above, one red accent on a fallen 'CLOSED' till sign downstairs. Figures on the crowd rig upstairs. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.
+
+=== L60 | beat=body | class=diegetic-device | cast=[] | src=ai-gen
+VO: When the board finally ran its own independent investigation,
+PROMPT: A thick bound investigation report opening on the boardroom table, a marker cover label 'INDEPENDENT INVESTIGATION', a magnifying glass laid on it â€” the board finally looking inward. Cool slate-and-cream palette, one red accent on a tab sticking out of the report. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond the cover label, no logos; 16:9.

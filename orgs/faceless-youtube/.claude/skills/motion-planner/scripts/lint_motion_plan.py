@@ -20,8 +20,19 @@ import json, sys, re
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "render-builder" / "scripts"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "visual-prompt-writer" / "scripts"))
 from menu import load_menu           # noqa: E402
 from motion_plan import validate_plan  # noqa: E402
+# The SUPPLIED-TEXT law, imported rather than reimplemented. motion-planner authors
+# `cutout_prompt`/`plate_prompt` independently of visual-prompt-writer, so it is a SECOND
+# authoring surface for the same defect — and in fact the one that shipped it: the Wells
+# Fargo boulder's invented "1" came from a cutout_prompt reading "a large marker scorecard
+# number painted on its face". One implementation, two callers; a copy here would rot.
+from lint_shots import (  # noqa: E402
+    control_leak_check,
+    unsupplied_text_requests,
+    word_cap_check,
+)
 
 
 def _hybrid_ids(plan):
@@ -93,10 +104,28 @@ def _lineage_errors(plan, order, stage):
     return errors
 
 
-def lint(plan, shots_ids, shots_meta=None):
+def lint(plan, shots_ids, shots_meta=None, suffix=""):
     errors = list(validate_plan(plan, load_menu()))
     for shot in plan.get("shots", []):
         sid = shot.get("id", "<no id>")
+        # SUPPLIED-TEXT law (HARD): a prompt may not ask the engine to render text,
+        # a number, a name or a date without supplying that value verbatim inline.
+        for field, prompt in ([("plate_prompt", (shot.get("background") or {}).get("plate_prompt"))]
+                              + [(f"{(l or {}).get('id')}.cutout_prompt", (l or {}).get("cutout_prompt"))
+                                 for l in shot.get("layers", [])]):
+            for excerpt in unsupplied_text_requests(prompt or "", suffix):
+                errors.append(
+                    f"{sid}/{field}: asks the engine to render text without supplying its value "
+                    f"-> {excerpt!r}. The engine WILL invent one. Quote the literal inline next to "
+                    f"the element (from research.md's fact ledger), or cut the element.")
+            # LETTERING-FIDELITY laws (HARD), same import-don't-copy rule as above.
+            # A cutout_prompt is written BY SUBTRACTION from a still_prompt, so it
+            # inherits the still's control vocabulary verbatim — "hold ONLY the rig
+            # form" travels into the cutout unless something stops it, and a cutout
+            # is a lone element on a plain plate, which is the easiest possible
+            # surface for a stray instruction to get lettered onto.
+            word_cap_check(sid, [(sid, field, prompt or "")], suffix, errors)
+            control_leak_check(sid, [(sid, field, prompt or "")], suffix, errors)
         if sid not in shots_ids:
             errors.append(f"{sid}: not a shot id in shots.json")
         bg = shot.get("background") or {}
@@ -139,9 +168,10 @@ if __name__ == "__main__":
     if len(sys.argv) != 3:
         raise SystemExit("usage: lint_motion_plan.py <shots.motion.json> <shots.json>")
     plan = json.load(open(sys.argv[1], encoding="utf-8"))
-    meta = _shots_meta(json.load(open(sys.argv[2], encoding="utf-8")))
+    shots_json = json.load(open(sys.argv[2], encoding="utf-8"))
+    meta = _shots_meta(shots_json)
     ids = {m["id"] for m in meta if m.get("id") is not None}
-    errs = lint(plan, ids, meta)
+    errs = lint(plan, ids, meta, shots_json.get("global_prompt_suffix") or "")
     for e in errs:
         print("ERR", e)
     print(f"{len(errs)} error(s)")

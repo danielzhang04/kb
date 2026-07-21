@@ -103,8 +103,57 @@ def check_splice_continuity(vo_path, breath_gaps, warn_db=-35.0, fail_db=-30.0,
             "measured": {"gaps": len(gaps), "fail": n_fail, "warn": n_warn}}
 
 
+def check_sentence_gaps(spliced_vo_path, boundaries, tol_s=0.10, sr=16000,
+                        threshold_db=-38.0, search_after_s=1.5):
+    """R11 sentence-gap verifier: for EVERY sentence boundary (padded or not), measure the ACTUAL
+    acoustic silence (low-RMS run) in the SPLICED VO and report each boundary whose measured gap falls
+    below `target_s - tol_s`. `boundaries` = build_motion's spec["sentenceBoundaries"] — the SHIFTED
+    timeline ({final_s, next_s, target_s, ...} per breath.sentence_boundaries). Measurement reuses
+    breath.measure_natural_gap (the same run-scoring the padder used), so padder and verifier agree on
+    what counts as silence. WARN-level like the splice-continuity gate: `ok` False on any warning.
+    Skips cleanly (ok=True) with no vo/boundaries/PCM."""
+    bounds = boundaries or []
+    if not spliced_vo_path or not bounds:
+        return {"ok": True, "warnings": [], "worst": None, "measured": {"boundaries": len(bounds)}}
+    vp = Path(spliced_vo_path)
+    if not vp.exists():
+        return {"ok": True, "warnings": [], "worst": None,
+                "measured": {"boundaries": len(bounds), "vo": "missing"}}
+    samples = _decode_pcm_mono(vp, sr)
+    if samples is None:
+        return {"ok": True, "warnings": ["sentence-gap: could not decode spliced VO (ffmpeg?) — unchecked"],
+                "worst": None, "measured": {"boundaries": len(bounds)}}
+    try:
+        from breath import measure_natural_gap
+    except Exception as e:
+        return {"ok": True, "warnings": [f"sentence-gap: breath.measure_natural_gap unavailable ({e}) — unchecked"],
+                "worst": None, "measured": {"boundaries": len(bounds)}}
+    warnings, rows = [], []
+    for b in bounds:
+        target = float(b.get("target_s", 0.65))
+        meas = measure_natural_gap(samples, sr, float(b["final_s"]), float(b["next_s"]),
+                                   threshold_db=threshold_db, search_after_s=search_after_s)
+        gap = float(meas["gap_s"]) if meas is not None else 0.0
+        rows.append({"final_s": float(b["final_s"]), "next_s": float(b["next_s"]),
+                     "final_word": b.get("final_word", "?"), "next_word": b.get("next_word", "?"),
+                     "target_s": target, "measured_gap_s": round(gap, 3),
+                     "shortfall_s": round(max(0.0, target - gap), 3)})
+    below = [r for r in rows if r["measured_gap_s"] < r["target_s"] - tol_s]
+    for r in sorted(below, key=lambda r: -r["shortfall_s"]):
+        warnings.append(
+            f"SENTENCE-GAP short: {r['measured_gap_s']:.2f}s of silence after "
+            f"'{r['final_word']}' @ {r['final_s']:.2f}s (before '{r['next_word']}' @ {r['next_s']:.2f}s) "
+            f"— target {r['target_s']:.2f}s (tol {tol_s:.2f})")
+    worst = max(rows, key=lambda r: r["shortfall_s"]) if rows else None
+    gaps_meas = [r["measured_gap_s"] for r in rows]
+    return {"ok": not warnings, "warnings": warnings, "worst": worst, "rows": rows,
+            "measured": {"boundaries": len(rows), "below": len(below),
+                         "mean_gap_s": round(sum(gaps_meas) / len(gaps_meas), 3) if gaps_meas else None,
+                         "min_gap_s": round(min(gaps_meas), 3) if gaps_meas else None}}
+
+
 def check_audio(audio_spec, shots, loudnorm, master_target, lufs_tol=1.0, tp_tol=0.3,
-                vo_path=None, breath_gaps=None):
+                vo_path=None, breath_gaps=None, spliced_vo_path=None, sentence_bounds=None):
     """Deterministic (G2). Returns {ok, warnings, measured}. A warning never fails the render (G3)."""
     a = audio_spec or {}
     shots = shots or []
@@ -147,6 +196,16 @@ def check_audio(audio_spec, shots, loudnorm, master_target, lufs_tol=1.0, tp_tol
     if continuity is not None:
         warnings.extend(continuity["warnings"])
 
+    # 5. Sentence-gap presence (R11): EVERY sentence boundary in the SPLICED VO must carry a real
+    #    acoustic gap >= its target (0.65s / 0.45s chained) minus tolerance — the pad-to-target law,
+    #    verified against the audio the render actually played. Wired via optional spliced_vo_path +
+    #    sentence_bounds (build_motion passes spec["audio"] + spec["sentenceBoundaries"]); absent ->
+    #    skipped (unchanged behaviour for callers that don't supply them).
+    sgaps = (check_sentence_gaps(spliced_vo_path, sentence_bounds)
+             if (spliced_vo_path and sentence_bounds) else None)
+    if sgaps is not None:
+        warnings.extend(sgaps["warnings"])
+
     measured = {"lufs": lufs, "true_peak": tp,
                 "music_segments": len(a.get("music_states") or []),
                 "sfx_count": len(a.get("events") or []),
@@ -154,4 +213,57 @@ def check_audio(audio_spec, shots, loudnorm, master_target, lufs_tol=1.0, tp_tol
     if continuity is not None:
         measured["splice_continuity"] = continuity["measured"]
         measured["splice_continuity_worst"] = continuity["worst"]
+    if sgaps is not None:
+        measured["sentence_gaps"] = sgaps["measured"]
+        measured["sentence_gaps_worst"] = sgaps["worst"]
     return {"ok": not warnings, "warnings": warnings, "measured": measured}
+
+
+def main():
+    """Standalone sentence-gap (+ splice-continuity) verifier over a saved motion spec.
+
+        py -3 audio_checker.py <video_dir> [--piece long-form] [--tol 0.10] [--audio PATH]
+
+    Reads assets/motion/<piece>.motion.json (boundaries + which VO the render played), measures every
+    sentence boundary's real acoustic gap, prints the per-boundary table, and exits 1 when any boundary
+    is below target - tol (0 otherwise)."""
+    import argparse
+    import json
+    ap = argparse.ArgumentParser(description="Post-render sentence-gap verifier (R11).")
+    ap.add_argument("video_dir")
+    ap.add_argument("--piece", default="long-form")
+    ap.add_argument("--tol", type=float, default=0.10)
+    ap.add_argument("--audio", default="", help="override the VO file to measure (default: spec['audio'])")
+    args = ap.parse_args()
+    video_dir = Path(args.video_dir)
+    spec_path = video_dir / "assets" / "motion" / f"{args.piece}.motion.json"
+    if not spec_path.exists():
+        raise SystemExit(f"motion spec not found: {spec_path} (run build_motion first)")
+    spec = json.loads(spec_path.read_text(encoding="utf-8"))
+    bounds = spec.get("sentenceBoundaries") or []
+    if not bounds:
+        raise SystemExit(f"{spec_path} has no sentenceBoundaries — re-run build_motion (post-R11) first")
+    audio = Path(args.audio) if args.audio else (video_dir / "assets" / spec["audio"] if spec.get("audio") else None)
+    if audio is None or not audio.exists():
+        raise SystemExit(f"VO audio not found: {audio}")
+    print(f"sentence-gap verifier: {audio}  ({len(bounds)} boundaries, tol {args.tol:.2f}s)")
+    rep = check_sentence_gaps(audio, bounds, tol_s=args.tol)
+    for r in rep.get("rows", []):
+        mark = "  <-- SHORT" if r["measured_gap_s"] < r["target_s"] - args.tol else ""
+        print(f"  {r['final_s']:8.2f}s  {r['final_word'][:20]:20s} -> {r['next_word'][:14]:14s} "
+              f"measured {r['measured_gap_s']:5.2f}s  target {r['target_s']:.2f}s{mark}")
+    m = rep["measured"]
+    print(f"result: {m.get('below', 0)}/{m['boundaries']} below target-tol; "
+          f"mean gap {m.get('mean_gap_s')}s, min {m.get('min_gap_s')}s")
+    # also run the splice-continuity gate when the spec carries gaps + the raw VO exists
+    raw_vo = video_dir / "assets" / "vo.mp3"
+    if spec.get("breathGaps") and raw_vo.exists():
+        cont = check_splice_continuity(raw_vo, spec["breathGaps"])
+        for w in cont["warnings"]:
+            print(f"  ! {w}")
+        print(f"splice-continuity: {cont['measured']}")
+    raise SystemExit(1 if not rep["ok"] else 0)
+
+
+if __name__ == "__main__":
+    main()

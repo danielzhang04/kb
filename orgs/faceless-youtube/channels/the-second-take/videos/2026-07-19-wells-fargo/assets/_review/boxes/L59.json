@@ -1,0 +1,6 @@
+{"figures": [
+{"name": "desk-worker-far-left [crowd]", "face": [0.067, 0.241, 0.097, 0.297]},
+{"name": "table-left-standing [crowd]", "face": [0.303, 0.234, 0.333, 0.289]},
+{"name": "table-center-seated [crowd]", "face": [0.481, 0.208, 0.511, 0.263]},
+{"name": "desk-worker-far-right [crowd]", "face": [0.903, 0.234, 0.932, 0.289]}
+]}

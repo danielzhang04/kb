@@ -140,6 +140,46 @@ render if skipped. They are restated in context further down; collected here so 
    IS the payload, this is how a reveal is made visible (rule 3b). The lettering STYLE is pinned
    channel-wide (a locked exemplar image-gen seeds automatically — style-bible §6): never describe fonts,
    lettering, or handwriting style in a `still_prompt`.
+10. **Supplied-text law — NEVER name a text element without supplying its value (lint-enforced, HARD).**
+   Rule 9 governs text you *chose* to author. This rule governs the far more dangerous case: **referring
+   to on-screen text by DESCRIPTION instead of by VALUE.** A prompt that says *"a large marker scorecard
+   number painted on its face"*, *"one prominent number"*, or *"a customer's name marker-written across
+   the top"* has instructed the engine to render glyphs and told it nothing about which — so **the engine
+   invents them, every time.** It rendered `1` for the first and `3.5` for the second. On this channel's
+   Wells Fargo documentary — a real, named, living person and a documented SEC case — that mechanism put
+   an **invented criminal charge on screen against a real person**, alongside ~20 other fabricated
+   on-screen facts. The prompt looked completely reasonable; nothing downstream could catch it, because
+   by the time the value exists it is pixels and the frame looks intentional.
+   **The rule:** a prompt may never instruct the engine to render text, a figure, a name or a date
+   without supplying that value **verbatim, inline, adjacent to its own element**. If the value cannot be
+   sourced from `research.md`'s fact ledger, **OMIT the element entirely rather than gesture at it** — or
+   author it as deliberately blank ("the metric field left COMPLETELY EMPTY", "a single BLANK name line"),
+   which is a legitimate composition. **Do NOT invent a plausible value to satisfy the rule** — that is
+   the same fabrication with an extra step. Worked examples + the three resolutions:
+   `references/shots-schema.md §4`. `scripts/lint_shots.py` HARD-fails it; `motion-planner` carries the
+   identical law for `cutout_prompt`/`plate_prompt`, which is where the boulder's invented `1` was authored.
+11. **Lettering-fidelity laws — a SUPPLIED value can still render wrong (lint-enforced).** Rule 10 governs
+   a value you never supplied. These govern the value you did. Derived by measuring this shot list against
+   the **Poyais reference implementation** (236 shots, 250 authored literals); full evidence + worked pairs
+   in `references/shots-schema.md §4`.
+   - **L-1 Re-quote a carried literal on every frame that redraws it (HARD).** A delta regenerates the
+     whole image. `L11/L13/L14` wrote labelled `'CHECKING'`/`'SAVINGS'`/`'ONLINE'` and rendered clean;
+     `L12` alone wrote *"beside the checking passbook"* and rendered **`CHECKIG`**. Repeating a literal
+     character-for-character is fine; **downgrading it to lowercase prose is not.**
+   - **L-2 Keep production-control vocabulary out of the scene body (HARD).** The engine cannot always
+     tell an instruction from a label: *"hold ONLY the rig form"* → a document lettered **`rig form`**;
+     *"comedy off"* → a register labelled **`COMEDY OFF`**; the prompt's own editorial gloss → a rendered
+     caption. State a constraint as a property of the depicted thing ("round head, NO nose, NO ears"),
+     never as a noun phrase naming the rule. **Put the one-line editorial gloss in `notes`, not the
+     prompt** (advisory).
+   - **L-3 Authored lettering is capped at 4 words (HARD).** Rule 9's "1–4 words proven", now enforced,
+     **uniformly — including a short's `first_frame` caption.**
+   - **L-4 Prefer the word form for big numbers (advisory).** `'8 MILLION'` over `'8,000,000'` where the
+     beat allows. Deliberately NOT hard: measured garble rates among digit-bearing literals are ~6% here
+     vs ~7% in Poyais, so punctuation is not the cause — **volume is.**
+   **The single highest-leverage lever is authoring FEWER strings.** Poyais letters 37% of its shots;
+   this video letters 77% and ships proportionally more lettering defects. Every string you do not author
+   cannot garble — before writing a literal, ask whether the composition can carry the meaning instead.
 
 **Intent, never mechanism.** You author *what a shot depicts*; the engine owns the treatment (camera,
 entrance, timing) and the `audio-director` owns the sound. Never author mechanism anywhere in the file —
@@ -279,7 +319,12 @@ the *procedure* that applies them, per line, in order:
      `still_prompt` may still adjust the figure's *placement/angle*; the asset supplies the *hand/face*). If
      nothing is close, add a NEW entry to top-level `needed_assets` (`kind` + `slug` + `wants` + `why`) — then
      the gate (below) handles it.
-6. **State the facts (scene + placement only).** Write the `still_prompt` so every load-bearing SCENE fact is
+6. **State the facts (scene + placement only) — and supply every value you name.** Before writing any
+   element that carries text, a number, a name or a date, get its literal from `research.md`'s fact ledger
+   and quote it inline next to that element (cite the `[F-NN]` id in `notes`). **If the ledger has no such
+   fact, cut the element** — never write "a scorecard number", "one prominent number", "a customer's name"
+   and leave the engine to fill it (Load-bearing rule 10; this is a HARD lint failure, and it is how a
+   fabricated criminal charge reached a real person's frame). Otherwise: write the `still_prompt` so every load-bearing SCENE fact is
    explicit and checkable — layout, geography, who stands where, what a highlight/prop targets, the figure's
    narrative ACTION and PLACEMENT. **Do NOT describe the body pose, hand/finger mechanics, or facial
    expression** — those are seeded via `pose_ref`/`expression_ref` (step 5); authoring them here too is
@@ -440,8 +485,12 @@ short shot too** (classify → cast → tableau → facts → intent note) — s
 most-cloned surface, so the non-literal grammar + anti-slop guardrail matter most here:
 - **First frame IS the thumbnail** (§8/§11) — a pattern-interrupt tableau *already carrying the
   beat's tension* (a held pose loaded with the story's wrongness — not a freeze of motion), with the
-  short's on-frame caption text (3–7 words) **baked into the image** (diegetic, quoted verbatim, kept
-  short — TEXT law) that wins the swipe decision in ~1.3–1.8s. No static/ambient opening (anti-pattern 8).
+  short's on-frame caption text **baked into the image** (diegetic, quoted verbatim, **≤4 words —
+  rule 11 L-3, which is a HARD lint failure and applies here identically**) that wins the swipe decision
+  in ~1.3–1.8s. *(This cap read "3–7 words" until the lint was built and caught the file's own shorts
+  captions — `'IT STARTED WITH A RHYME'` and `'THEY CALLED THE ETHICS LINE'`, both 5 — contradicting
+  rule 9's proven 1–4. The proven number wins: a caption the engine garbles loses the swipe outright.
+  No shorts frames had been generated, so nothing was re-rendered to close this.)* No static/ambient opening (anti-pattern 8).
 - **A cut every 2–4 seconds** (§11c) — shorts are visually denser than long-form. Same per-shot
   fields as long-form.
 - **9:16 aspect.** Match the channel house style and locked lever (cross-lever visuals poison the

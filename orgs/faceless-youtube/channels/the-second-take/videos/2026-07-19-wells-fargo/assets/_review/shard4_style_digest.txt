@@ -1,0 +1,117 @@
+29
+=== L91 | beat: body | class: number-glued-to-object | cast: []
+VO: Five hundred million of that three billion was set aside to pay back investors.
+PROMPT: A single slice carved out of the big money stack and slid toward a small crowd of investor figures, a marker tag '$500M / FOR INVESTORS'. Cool slate-and-cream palette, one red accent on the carved slice. Investors on the crowd rig (round heads, dot eyes, no noses/ears/teeth). Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond '$500M' and 'FOR INVESTORS', no logos; 16:9.
+
+=== L92 | beat: body | class: symbolic-stand-in-object | cast: []
+VO: So what happened to the people who owned the number?
+PROMPT: Two empty executive chairs at the head of a table, a single large hand-lettered marker question mark hanging over them — what happened to the people who owned the number? Cool slate-and-cream palette, one red accent on the dot of the question mark. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond '?', no logos; 16:9.
+
+=== L93 | beat: body | class: reaction-shot | cast: []
+VO: For a while, almost nothing.
+PROMPT: The same two executive chairs, still and undisturbed, a little dust settling and a small marker tag 'NOTHING' — for a while, nothing happened to them. Deadpan. Cool slate-and-cream palette, one faint red accent on the tag. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'NOTHING', no logos; 16:9.
+
+=== L94 | beat: body | class: personified-character | cast: [{'character': 'tolstedt', 'pose_ref': 'action-armscrossed', 'expression_ref': 'expr-deadpan'}]
+VO: Carrie Tolstedt had run Wells Fargo's Community Bank, the retail arm that set and enforced the sales targets, for roughly a decade ending in 2016.
+PROMPT: Tolstedt revealed for the first time — a NEW cartoon person in the base family form, a blonde-grey short-bobbed executive woman with a flat pale head tone, in a burgundy business blazer — standing before the retail-branch floor she ran, a marker sign 'COMMUNITY BANK' behind her. The head of the retail arm that set the sales targets. Warm-but-cool office palette, one red accent on the sign underline. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'COMMUNITY BANK', no logos; 16:9.
+
+=== L95 | beat: body | class: ironic-counterpoint | cast: []
+VO: She had announced her retirement months before the scandal blew up, and the bank had praised her on the way out.
+PROMPT: A cheerful send-off scene: a gold retirement watch on a cushion and a marker 'THANK YOU' banner, while just outside the frame's edge storm clouds gather — praised on the way out, right before the scandal broke. Warm gold-and-cream palette turning cool at the edges, one red accent on the banner border. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'THANK YOU', no logos; 16:9.
+
+=== L96 | beat: body | class: staged-interaction | cast: [{'character': 'tolstedt', 'pose_ref': 'carry-by-handle', 'expression_ref': 'expr-deadpan'}, {'character': 'stumpf', 'pose_ref': 'carry-by-handle', 'expression_ref': 'expr-deadpan'}]
+VO: Both she and Stumpf were, at first, set to leave with their pay intact.
+PROMPT: Tolstedt (LEFT) and Stumpf (RIGHT) walking out of the bank side by side, each carrying a fat money bag, their pay intact — at first they left with everything. Both on their pinned looks (Tolstedt burgundy blazer; Stumpf navy pinstripe suit). Warm exit palette, one red accent on the money-bag ties. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.
+
+=== L97 | beat: body | class: staged-interaction | cast: []
+VO: It took months of public and political pressure before the board went and clawed it back.
+PROMPT: A crowd of ordinary people and a raised gavel together pressing on a big lever, and a hand reluctantly clawing money back out of the money bags — public and political pressure forcing the clawback. Crowd on the crowd rig (round heads, dot eyes, no noses/ears/teeth). Cool slate-and-cream palette, one red accent on the lever. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.
+
+=== L98 | beat: body | class: number-glued-to-object | cast: []
+VO: In the end it forced Stumpf to give up about 69 million dollars,
+PROMPT: A money bag being clawed back with a big marker tag '$69M' and a small 'STUMPF' label — the sum forfeited. Cool slate-and-cream palette, the one red accent on the '$69M'. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond '$69M' and 'STUMPF', no logos; 16:9.
+
+=== L99 | beat: body | class: number-glued-to-object | cast: []
+VO: and Tolstedt about 67 million, and it fired her for cause, after the fact.
+PROMPT: A second money bag clawed back with a marker tag '$67M' and a 'TOLSTEDT' label, and a heavy red 'FIRED FOR CAUSE' stamp landing beside it — clawed back and fired after the fact. Cool slate-and-cream palette, the one red accent IS the 'FIRED FOR CAUSE' stamp. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering; the STAMP register red block caps for 'FIRED FOR CAUSE'; no photorealism, no on-screen narrator, no unrequested text beyond '$67M', 'TOLSTEDT' and 'FIRED FOR CAUSE', no logos; 16:9.
+
+=== L100 | beat: body | class: staged-interaction | cast: []
+VO: And the regulators weren't finished.
+PROMPT: The regulator figures turning away from the bank building and toward a lineup of individual executive silhouettes — done with the institution, now after the people. Anonymous base-rig officials (round heads, no noses/ears, four-digit hands, dark coats); hold ONLY the rig form. Cool authoritative palette, one red accent on a pointing seal. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.
+
+=== L101 | beat: body | class: diegetic-device | cast: []
+VO: In 2020 the OCC banned Stumpf from the banking industry for life and fined him 17.5 million dollars, a record for a case like that.
+PROMPT: An OCC order barring the CEO from banking: a marker header 'OCC', a heavy red 'BANNED FOR LIFE' stamp across a banking license, and a fine figure '$17.5M' beside it. Cool cream-and-slate official palette, the one red accent IS the 'BANNED FOR LIFE' stamp. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering; the STAMP register red block caps for 'BANNED FOR LIFE'; no photorealism, no on-screen narrator, no unrequested text beyond 'OCC', 'BANNED FOR LIFE' and '$17.5M', no logos; 16:9.
+
+=== L102 | beat: body | class: crowd-multiplication | cast: []
+VO: It brought actions against eight former executives in all.
+PROMPT: A lineup of eight anonymous executive figures each tagged with an enforcement-action slip, a big marker '8' overhead — actions against eight in all, the number eight coming back around. Base-rig executives: round heads, NO noses, NO ears, four-digit hands, #241a12 outline, flat cel, dark suits; hold ONLY the rig form. Cool slate palette, the one red accent on the '8'. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering; the single red accent #d7402b on the '8'; no photorealism, no on-screen narrator, no unrequested text beyond '8', no logos; 16:9.
+
+=== L103 | beat: body | class: diegetic-device | cast: []
+VO: The SEC charged Stumpf too, and he settled for 2.5 million.
+PROMPT: An SEC seal pressed onto a charge document with a settlement figure marker-lettered '$2.5M' and a small 'STUMPF' label. Cool cream-and-slate official palette, one red accent on the seal ribbon. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'SEC', '$2.5M' and 'STUMPF', no logos; 16:9.
+
+=== L104 | beat: body | class: diegetic-device | cast: []
+VO: Tolstedt settled with the SEC in 2023 for a 3 million dollar penalty, plus giving back money she'd been paid while the numbers were inflated.
+PROMPT: A second SEC settlement document with a marker figure '$3M' and a small tag 'PLUS DISGORGEMENT', a 'TOLSTEDT' label — settled in 2023, plus giving money back. Cool cream-and-slate palette, one red accent on the seal. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'SEC', '$3M', 'PLUS DISGORGEMENT' and 'TOLSTEDT', no logos; 16:9.
+
+=== L105 | beat: body | class: staged-interaction | cast: [{'character': 'tolstedt', 'pose_ref': 'action-present', 'expression_ref': 'expr-smug'}]
+VO: The SEC's case against her was that from 2014 to 2016 she had publicly championed that cross-sell number to investors as proof the bank was the best in the business,
+PROMPT: A warm auditorium seen from the back of the room. A huge presentation screen fills the upper two-thirds carrying ONE enormous hand-lettered marker numeral, the single digit '8', with the hand-lettered label 'PRODUCTS PER HOUSEHOLD' beneath it; a marker banner above the screen reads 'BEST IN THE BUSINESS'. On the stage below, a SMALL back-turned presenter in silhouette at a lectern, face not visible, and a row of audience figures seen from behind as dark silhouetted head-and-shoulder shapes. The number is the subject of the frame, not the presenter. Warm cream-and-amber stage palette, one red accent on the banner border. The ONLY numeral in the frame is the single digit '8' (the sourced eight-products-per-household target, [F-01]/[F-03]) - no currency symbol, no comma, no decimal, no other digits. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; locked palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no logos; 16:9.
+
+=== L106 | beat: body | class: ironic-counterpoint | cast: []
+VO: while it was being pumped up by accounts that were unused, unneeded, or flat-out unauthorized.
+PROMPT: That same scorecard number drawn as a balloon inflated by a hidden pump, and underneath the pump a pile of fake account cards feeding it — the metric pumped up by unused, unneeded, unauthorized accounts, about to be exposed. Cool slate-and-cream palette, the one red accent on the leaking seam of the balloon. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.
+
+=== L107 | beat: withheld-peak | class: physicalized-imbalance | cast: []
+VO: And out of everyone, in the entire scandal, exactly one person was criminally charged. Carrie Tolstedt.
+PROMPT: A long lineup of everyone tied to the scandal — executives, managers, tellers — nearly all fading to pale ghost-outlines, leaving exactly ONE solid figure standing, a big marker '1' overhead. Out of everyone, one. Cool slate-and-cream palette, the one red accent on the '1'. Figures on the crowd rig (round heads, dot eyes, no noses/ears/teeth) except the one solid silhouette. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering; the single red accent #d7402b on the '1'; no photorealism, no on-screen narrator, no unrequested text beyond '1', no logos; 16:9.
+
+=== L108 | beat: withheld-peak | class: ironic-counterpoint | cast: []
+VO: But not for the fraud.
+PROMPT: A charge sheet where the word 'FRAUD' is struck through in red and a different charge is written in below it — charged, but not for the fraud. Cool cream-and-slate palette, the one red accent on the strike through 'FRAUD'. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering; the single red accent #d7402b on the strike; no photorealism, no on-screen narrator, no unrequested text beyond 'FRAUD', no logos; 16:9.
+
+=== L109 | beat: withheld-peak | class: personified-character | cast: [{'character': 'tolstedt', 'pose_ref': 'hold-one-hand', 'expression_ref': 'expr-deadpan'}]
+VO: In 2023 she pleaded guilty to a single count of obstructing a bank examination,
+PROMPT: Tolstedt standing at a courtroom lectern, a single charge document before her marker-lettered 'OBSTRUCTION' — the one guilty plea, to obstructing a bank examination. She is on her pinned look (burgundy blazer). Cool formal courtroom palette, one red accent on the 'OBSTRUCTION' underline. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'OBSTRUCTION', no logos; 16:9.
+
+=== L110 | beat: withheld-peak | class: symbolic-stand-in-object | cast: []
+VO: getting in the way of the regulators as they looked into it.
+PROMPT: A figure's arm sweeping papers to block a regulator's big magnifying glass mid-examination — getting in the way of the people looking into it. Base-rig figures at body scale, no hand macro; round heads, no noses/ears. Cool slate-and-cream palette, one red accent on the magnifier rim. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.
+
+=== L111 | beat: withheld-peak | class: register-shift-infographic | cast: []
+VO: That September, a judge sentenced her to three years of probation, six months of home confinement, a 100,000 dollar fine, and 120 hours of community service. No prison.
+PROMPT: A clean marker sentence-card that fills in four items in a column: '3 YRS PROBATION', '6 MO HOME', '$100K FINE', '120 HRS SERVICE' — the whole sentence laid out. Cool cream-and-slate palette, the one red accent on the column rule. A progressive four-item reveal. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond the four short lines, no logos; 16:9.
+
+=== L112 | beat: withheld-peak | class: aftermath-palette-turn | cast: []
+VO: The judge turned down the prosecutors' request for a year behind bars, and said she'd been singled out.
+PROMPT: An empty prison cell with its door standing open and untouched, a marker sign 'NO PRISON' on the bars and a small tag 'SINGLED OUT' — the year behind bars turned down. Cool desaturated grey-and-cream palette, one red accent on the 'NO PRISON' sign. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'NO PRISON' and 'SINGLED OUT', no logos; 16:9.
+
+=== L113 | beat: close | class: number-glued-to-object | cast: []
+VO: So the whole affair produced exactly one criminal conviction.
+PROMPT: A single lonely gavel-stamped conviction card on a wide empty table, a marker figure '1 CONVICTION' beneath it — out of everything, exactly one. Cool slate-and-cream palette, big negative space, the one red accent on the '1'. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering; the single red accent #d7402b on the '1'; no photorealism, no on-screen narrator, no unrequested text beyond '1 CONVICTION', no logos; 16:9.
+
+=== L114 | beat: close | class: ironic-counterpoint | cast: []
+VO: And it wasn't for opening a single fake account. It was for getting in the way of the people investigating them.
+PROMPT: A single fake account card sitting untouched and un-charged on one side, while on the other side a small 'OBSTRUCTION' tag carries the only conviction — the fraud itself went unanswered. Cool slate-and-cream palette, one red accent on the un-charged fake card's edge. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond 'OBSTRUCTION', no logos; 16:9.
+
+=== L115 | beat: close | class: symbolic-stand-in-object | cast: []
+VO: Nobody was ever convicted of the fraud itself, because in the end nobody had exactly ordered it.
+PROMPT: Final callback to the empty boardroom head chair, the red target-dial still glowing in it, nobody in the room to convict — no one ordered it, so no one answered for the fraud. Cool slate-and-cream palette, the one red accent on the dial. Big quiet negative space. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b on the dial; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.
+
+=== L116 | beat: close | class: physicalized-imbalance | cast: []
+VO: There was just a target the whole bank had been chasing,
+PROMPT: The whole bank — building, tellers, executives, all tiny — still chasing one enormous glowing scorecard number floating above them, everyone running toward it. The target that ran everything. Cool slate-and-cream palette, the one red accent on the giant number's rim. Deep scale-as-argument depth. Crowd on the crowd rig. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.
+
+=== L117 | beat: close | class: ironic-counterpoint | cast: []
+VO: a number somebody picked back in 1999 because it rhymed with the word great.
+PROMPT: Final rhyme callback on the near-black field: the glowing '8' and the marker word 'GREAT' side by side with a small marker date '1999' beneath — a number picked back then because it rhymed. Near-black ground, warm cream lettering, the one red accent underlining 'GREAT'. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading; marker lettering; near-black palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond '8', 'GREAT' and '1999', no logos; 16:9.
+
+=== L118 | beat: close | class: aftermath-palette-turn | cast: []
+VO: The people who called the ethics line to report it lost their jobs.
+PROMPT: A row of empty office chairs under a greyed 'ETHICS LINE' poster — the people who called to report it are gone, their desks vacated. Desaturated grey-and-cream gravity register, comedy off, one faint red accent on a single left-behind ID badge on a desk. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering only; the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text, no logos; 16:9.
+
+=== L119 | beat: close | class: symbolic-stand-in-object | cast: []
+VO: And the number that started all of it never had to answer for anything. ---
+PROMPT: The final image: the lone glowing '8' seated on an empty witness stand in a dark, vacated hearing room, no one there to question it — the number that started all of it, never having to answer for anything. Near-black-and-cream palette, the one red accent on the witness-stand rail. Big quiet negative space. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel with soft shading and depth, filled edge-to-edge; marker lettering; near-black palette plus the single red accent #d7402b used only semantically; no photorealism, no on-screen narrator, no unrequested text beyond '8', no logos; 16:9.
+

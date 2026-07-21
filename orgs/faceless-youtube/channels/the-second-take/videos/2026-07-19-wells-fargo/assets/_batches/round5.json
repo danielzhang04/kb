@@ -1,0 +1,115 @@
+[
+ {
+  "name": "wf-r5-L105",
+  "shot_id": "L105",
+  "mode": "environment",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L102.png"
+  ],
+  "delta": "A warm auditorium stage seen from the back of the room. Filling the upper two-thirds, a huge bright presentation screen carries ONE enormous hand-lettered marker numeral: the single digit 8. Directly under the 8, in smaller hand-lettered marker capitals, the label 'PRODUCTS PER HOUSEHOLD'. A hand-lettered marker banner above the screen reads 'BEST IN THE BUSINESS'. On the stage below, a SMALL back-turned presenter figure in silhouette at a lectern, face not visible at all, and a row of seated audience figures in modern dark business suits seen from behind as dark silhouetted head-and-shoulder shapes. Warm cream-and-amber stage palette, one red accent #d7402b on the banner border. NUMERAL LOCK, this is the whole point of the frame: the ONLY numeral anywhere in this image is the single digit 8. NO currency symbol of any kind, NO pound sign, NO dollar sign, NO euro sign, NO comma, NO decimal point, NO extra digits, NO zeroes after the 8. The number is exactly one character wide. The only other text in the frame is the two hand-lettered labels 'PRODUCTS PER HOUSEHOLD' and 'BEST IN THE BUSINESS', both spelled exactly as given. PERIOD LOCK: United States, 2014-2016, modern American business dress only, NO top hats, NO bonnets, NO 19th-century costume, NO tropical or jungle landscape, NO palm trees, NO mountains, no window to any exterior."
+ },
+ {
+  "name": "wf-r5-L16",
+  "shot_id": "L16",
+  "mode": "environment",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L51.png"
+  ],
+  "delta": "A clean marker-drawn dashboard: on the left, a jumbled pile of small product icons (a passbook, a card, a savings book, an online login window, an insurance leaflet) funnelling right through a broad arrow into a single large rounded metric box on the right. Inside the box, at the top, one line of hand-lettered marker capitals reads 'PRODUCTS PER HOUSEHOLD'. A single sweeping red #d7402b hand-drawn circle rings the metric box. Cool cream-and-slate infographic palette. EMPTY-FIELD LOCK, this is the entire point of the frame and must be obeyed exactly: the large metric field beneath the label inside the box is COMPLETELY EMPTY and BLANK. There is NO number in it. Render NO digits, NO numerals, NO decimal point, NO percent sign, NO currency symbol, NO question mark, NO dash, NO dots, NO placeholder glyph or scribble of any kind, anywhere in the entire image. The only text in the whole frame is the single hand-lettered label 'PRODUCTS PER HOUSEHOLD'. The empty field reads as a scorecard waiting for its one number. No figures in frame. PERIOD LOCK: modern American, NO 19th-century motifs, NO tropical or jungle landscape, NO palm trees, NO mangroves, NO swamp."
+ },
+ {
+  "name": "wf-r5-L17",
+  "shot_id": "L17",
+  "mode": "environment",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png",
+   "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+  ],
+  "delta": "Inside a modern 1990s corporate boardroom: a banker figure in a teal suit stands at the left holding up a large white presentation card toward a row of four nodding investor figures in modern dark business suits at the right, presenting it as proof the bank is well run. The card carries ONLY one line of hand-lettered marker capitals, 'PRODUCTS PER HOUSEHOLD', and a single red #d7402b underline beneath it. NUMERAL LOCK: there are NO numerals anywhere in this image at all. NO digits, NO decimal points, NO commas, NO percent signs, NO currency symbols, NO arrows with figures, NO chart with values, NO secondary placard. The card carries that one lettered label and nothing else. INTERIOR LOCK: the back wall is a solid panelled interior wall with the city skyline NOT visible. There is NO window, NO glass, NO opening, NO view to any exterior whatsoever, and absolutely NO landscape, NO river, NO valley, NO palm trees, NO jungle, NO fields, NO mountains, NO sunburst sky anywhere in the frame. RIG LOCK: every figure has a round near-circle head only slightly taller than wide, NO nose, NO ears, dot-and-lid eyes in the house style, four-digit cartoon hands (three fingers plus one thumb), and SQUAT large-headed cartoon proportions, never realistic adult proportions, never a jaw or chin profile, never an egg or oval head. Where hair shows it is a full side-covering sweep from temple to jaw that completely covers the side of the head. Warm boardroom palette over a cool slate base."
+ },
+ {
+  "name": "wf-r5-L12",
+  "shot_id": "L12",
+  "mode": "environment",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L11.png"
+  ],
+  "delta": "The SAME cutaway suburban house held EXACTLY from the seed frame, identical in layout, furniture, palette, line weight and figure. The single change: a second small marker card carrying a credit-card icon and the hand-lettered label 'CARD' is added to the right of the existing checking-account card, on the same low ledge. Everything else is held unchanged. SPELLING LOCK, this is the point of the regeneration: the existing card must read exactly 'CHECKING', spelled C-H-E-C-K-I-N-G, all eight letters present, with the N before the G. Do not drop, merge or omit any letter. The new card must read exactly 'CARD', spelled C-A-R-D. These two words are the ONLY text in the entire image. Warm cream-and-teal palette, one red accent #d7402b on the lettering."
+ },
+ {
+  "name": "wf-r5-L01",
+  "shot_id": "L01",
+  "mode": "environment",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L11.png"
+  ],
+  "delta": "A single ordinary customer, small, stands at a clean teal-and-cream American bank teller counter in the lower-left foreground, dwarfed. Behind and above the counter an impossibly tall leaning TOWER of account-opening forms and unactivated debit cards rises out of frame, filling the upper two-thirds, paperwork nobody signed for, teetering over one small person. One red accent #d7402b on a single overdue slip clipped to the pile. RIG LOCK, this is the cold-open frame and the rig must be exact: the customer has a round near-circle head only slightly taller than wide, NO nose, NO ears, NO ear shape, NO ear outline, nothing protruding from either side of the head at all, dot-and-lid eyes in the house style, and SQUAT large-headed cartoon proportions. HAIR LOCK: the customer is NOT bald. Give the customer a full dark side-covering hair sweep that runs from the temple all the way down to the jaw and completely covers the entire side of the head on both sides, so no flat side zone is exposed. Never a receding, thinning or shaved hairline. HAND LOCK: the hand holding the slip is a clean classic cartoon hand with clearly separated digits, exactly THREE fingers plus ONE thumb (four digits total), never a rounded undifferentiated blob, never a mitten, never five digits. Modern plain clothes, modern American bank interior. PERIOD LOCK: NO 19th-century costume, NO top hat, NO tropical landscape, NO palm trees."
+ },
+ {
+  "name": "wf-r5-L21",
+  "shot_id": "L21",
+  "mode": "environment",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L102.png",
+   "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+  ],
+  "delta": "A late-1990s American corporate rally: a small low stage with bunting, a few anonymous cheering staff on and around it, and a hand-lettered marker banner overhead reading '1999'. Warm nostalgic teal-and-cream palette, one red accent #d7402b on a banner tassel. EAR LOCK, this is the point of the regeneration: NOT ONE figure in this frame has an ear. No ear, no ear shape, no ear outline, no helix, nothing protruding from the side of any head, on any figure, foreground or background, near or far. HAIR LOCK: every figure with visible hair wears it as a FULL side-covering sweep running from temple down to jaw that completely covers the entire side of the head where an ear would otherwise sit. No bald heads, no receding hairlines, no shaved sides, nothing that exposes the flat side zone of a skull. RIG LOCK: every head is a round near-circle only slightly taller than wide, never an egg, never an oval, with NO nose, NO jaw line, NO chin profile, NO cheekbones. Crowd figures carry simple DOT EYES and ONE small simple closed or gently smiling mouth, never a wide open shouting caricature mouth, never visible teeth. All figures are SQUAT and large-headed, never realistically proportioned adults. Modern 1990s American business-casual dress. PERIOD LOCK: NO top hats, NO bonnets, NO waistcoats, NO 19th-century costume, NO tropical landscape, NO palm trees. The only text in the frame is '1999'."
+ },
+ {
+  "name": "wf-r5-L10",
+  "shot_id": "L10",
+  "mode": "environment",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png",
+   "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+  ],
+  "delta": "On a bright stage, a proud banker figure in a smart teal suit presents a big hand-lettered marker placard reading 'CROSS-SELLING' to a row of four seated investor figures who lean in, impressed. Warm gold-and-cream stage palette, one red accent #d7402b on the placard's underline. COSTUME LOCK, this is the point of the regeneration: the investors wear MODERN late-1990s American business suits and plain neckties, bare-headed. NOT ONE figure wears a hat of any kind. NO top hats, NO stovepipe hats, NO bowlers, NO cravats, NO waistcoats with watch chains, NO frock coats, NO 19th-century or Victorian or Regency dress anywhere in the frame. This is a 1999 American investor meeting. RIG LOCK: every figure has a round near-circle head only slightly taller than wide, and NO nose. No nose shape, no nose outline, no nostril, no bump, no protruding profile in the middle of any face, on any figure, near or far. NO ears either. No jaw line, no chin profile, no cheekbones, never an egg or oval head. Dot-and-lid eyes in the house style, four-digit cartoon hands (three fingers plus one thumb), SQUAT large-headed cartoon proportions, never realistic adult proportions. Where hair shows it is a full side-covering sweep from temple to jaw. The only text in the frame is 'CROSS-SELLING'."
+ },
+ {
+  "name": "wf-r5-L31",
+  "shot_id": "L31",
+  "mode": "environment",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
+  ],
+  "delta": "A steep downhill slope running from top-left to bottom-right: a scorecard board perched at the top-left of the slope, a few small executive figures part-way down the slope stepping aside out of the way, and a lone bank teller standing at a service counter at the bottom-right at the base of the hill. NO boulder is present, the slope itself is clear and empty. Cool slate slope, warm cream-and-teal counter at the base, one red accent #d7402b on the counter till. Deep top-to-bottom depth. RENDER LOCK, this frame previously came back washed out and off-style: use the SAME rich saturated flat cel colour and the SAME even MEDIUM-THICK dark warm brown-black #241a12 outline weight as the seed scene, on every element. Never thin, pale, faint, sketchy or watercoloured lines. Fill the frame edge to edge with built environment. RIG LOCK: every figure, the executives and the teller alike, has a round near-circle head only slightly taller than wide, with NO nose, NO ears, NO jaw line, NO chin profile, NO cheekbones, never an egg or oval head, never a three-quarter or side profile of a realistic face. Dot-and-lid eyes in the house style, four-digit cartoon hands (three fingers plus one thumb), and SQUAT large-headed cartoon proportions, never realistic adult proportions, never a naturalistic standing human figure. Where hair shows it is a full side-covering sweep from temple to jaw that completely covers the side of the head. SETTING LOCK: this is a modern American bank, an abstract slate slope with a bank counter. There is absolutely NO swamp, NO marsh, NO standing water, NO pond, NO mangroves, NO dead or bare trees, NO cattails, NO bulrushes, NO reeds, NO fallen dead leaves, NO mud, NO fog bank, NO distant blue mountain range, NO tropical vegetation, NO palm trees anywhere in this frame. No text in the frame."
+ },
+ {
+  "name": "wf-r5-L97",
+  "shot_id": "L97",
+  "mode": "environment",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L102.png"
+  ],
+  "delta": "A crowd of ordinary modern American people together with a large raised gavel, all pressing down on one big red lever, while at the right a hand reluctantly claws bundles of money back out of a money bag. Public and political pressure forcing a clawback, made physical. Cool slate-and-cream palette, one red accent #d7402b on the lever. PERIOD LOCK, this is the point of the regeneration: this is the United States in 2016. Every single person wears MODERN contemporary American clothing, plain coats, jumpers, shirts, jeans, trousers, modern business wear. NOT ONE figure wears a hat. There are absolutely NO top hats, NO bonnets, NO poke bonnets, NO headscarves, NO shawls, NO waistcoats, NO frock coats, NO breeches, NO white stockings, NO buckled shoes, NO long period dresses, NO Victorian, Regency or 19th-century costume of ANY kind anywhere in this frame. SETTING LOCK: the background is a plain modern setting, a neutral slate ground and a simple modern plaza or a flat cool backdrop. There are NO cobblestones, NO gabled period townhouses, NO village square, NO chimneys, NO shuttered windows, NO 19th-century street. And NO swamp, NO mangroves, NO dead trees, NO cattails, NO tropical landscape, NO palm trees. RIG LOCK: crowd figures on the simplified crowd rig, round near-circle cream-family heads, simple DOT EYES, one small simple mouth, NO noses, NO ears, NO teeth, all SQUAT and large-headed with the same proportion, never realistically proportioned adults. No text in the frame."
+ },
+ {
+  "name": "wf-r5-L116",
+  "shot_id": "L116",
+  "mode": "environment",
+  "aspect": "16:9",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L102.png",
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L51.png"
+  ],
+  "delta": "Deep scale-as-argument depth: a modern American bank building and a scatter of TINY figures, tellers and executives alike, all running toward and reaching up at ONE enormous glowing scorecard numeral floating high above them all. The giant floating numeral is the single digit 8, hand-lettered marker style, glowing, dominating the upper half of the frame. The target that ran everything. Cool slate-and-cream palette, the one red accent #d7402b on the giant numeral's rim. NUMERAL LOCK: the ONLY numeral anywhere in this image is that single digit 8. NO other digits, NO currency symbol, NO comma, NO decimal point, NO additional numbers. No other text in the frame. PERIOD LOCK, this is the point of the regeneration: this is the United States between 1999 and 2016. Every figure wears MODERN contemporary American dress, business suits and ordinary modern clothing. NOT ONE figure wears a hat. Absolutely NO top hats, NO bonnets, NO shawls, NO waistcoats, NO breeches, NO white stockings, NO long period dresses, NO Victorian, Regency or 19th-century costume of ANY kind. SETTING LOCK: absolutely NO swamp, NO marsh, NO standing water, NO pond, NO mangroves, NO mangrove roots, NO dead or bare trees, NO cattails, NO bulrushes, NO reeds, NO fallen dead leaves, NO mud, NO fog, NO tropical vegetation, NO palm trees, NO jungle, NO distant blue mountain range anywhere in this frame. The setting is a clean modern corporate ground plane with a modern bank building. RIG LOCK: every figure has a round near-circle head, NO nose, NO ears, simple dot eyes at this small scale, SQUAT large-headed proportions, never realistically proportioned adults."
+ }
+]

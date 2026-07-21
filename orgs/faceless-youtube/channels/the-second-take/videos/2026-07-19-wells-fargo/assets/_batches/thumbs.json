@@ -7,7 +7,7 @@
   "aspect": "16:9",
   "seed": [
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L11.png"
   ]
  },
  {
@@ -18,7 +18,7 @@
   "aspect": "16:9",
   "seed": [
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ]
  },
  {
@@ -28,8 +28,9 @@
   "delta": "One dominant clean-2.5D-vector object on a locked single-colour slate field: an empty executive chair at the head of a boardroom table with a single glowing red sales-target dial where a person should sit, >=60% negative space, no face, the one red accent on the dial. Small hand-lettered marker text 'NO MASTERMIND' in a corner. Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 outline, flat cel colours with soft shading; the single red accent #d7402b only on the dial; no photorealism, no host face, no logos; 16:9.",
   "aspect": "16:9",
   "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-   "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png"
+   "channels/the-second-take/videos/2026-07-19-wells-fargo/assets/scenes/L05.png"
   ]
  }
 ]

@@ -305,18 +305,28 @@ Per shot, pick the **cheapest technique that holds the locked elements**:
   lead reads as distinct at a glance (prevented a costume-starve proactively on a crowd-with-lead shot,
   2026-07-16). The lead is still judged against its canonical in the batched review.
 - Generate the scene, move it to `assets/scenes/<shot-id>.png`, and record `{shot_id, file, technique,
-  seeds, flagged: false, verified: {scene: false, rig: false}, notes}` in `assets/scenes/manifest.json`
-  (skipped shots get a `skipped` entry). `verified` starts false and is stamped true only by the batched
-  review below (a scene is NOT shippable until then) — `flagged` and `verified` are both set there.
-  **`verified` is the render gate:** `render-builder` treats a scene present on disk but with
-  `verified.scene`/`verified.rig` != true as NOT shippable (`render.py::resolve_scene_files`), so an
-  unstamped scene hard-errors the render exactly like a missing one.
+  seeds, flagged: false, review_status: "unreviewed", parked_reasons: [], notes}` in
+  `assets/scenes/manifest.json` (skipped shots get a `skipped` entry). `review_status` starts
+  `"unreviewed"` and is set to `"verified"` or `"parked"` ONLY by `stamp_review.py` after the batched
+  review below (a scene is NOT shippable until then).
+  **`review_status` is the render gate:** `render-builder` ships only `"verified"` entries; a
+  `"parked"` entry hard-errors with its `parked_reasons`, and `"unreviewed"`/unstamped hard-errors like a
+  missing scene (`render.py::_entry_review_reason`).
 - **Shorts:** same walk per short's `shots[]` (+ its `first_frame`), aspect `9:16`, files
   `scenes/<short-file-stem>-<shot-id>.png`.
 - **Thumbnail:** generate `thumbnail.primary` AND each challenger — `16:9`, files
-  `scenes/thumbnail-primary.png` / `thumbnail-challenger-N.png`, from each `gen_prompt` —
+  `assets/thumbs/thumbnail-primary.png` / `thumbnail-challenger-N.png`, from each `gen_prompt` —
   seed any locked CHARACTER it features (most are character-free artifact thumbnails → compose fully, no
   seed). Do NOT bake the `text_overlay` into the image — it's applied at publish. The batched review applies.
+  These candidates are NOT the publishable file — a thumb PNG straight out of the engine is whatever
+  aspect/size the gen produced, and `compliance-check`'s Gate-3 mechanical check requires exactly
+  1280x720. After the human picks a winner from the reviewed candidates, run
+  `py -3 .claude/skills/image-generation/scripts/finalize_thumbnail.py <picked-candidate.png> <video_dir>`
+  — it center-crops the pick to 16:9 (then LANCZOS-resizes to 1280x720) and writes
+  `<video_dir>/assets/thumbnail.png`, the file every downstream gate/publish step reads. It refuses
+  (exit 1) to upscale a candidate whose crop is narrower than 640px, and is idempotent — safe to re-run
+  if a later round picks a different candidate. The unpicked challengers stay in `assets/thumbs/` for
+  future A/B swaps; they are never deleted just because one was finalized.
 
 **Worked example (Poyais L22, "MacGregor commissioned a guidebook…").** Technique (b) — seeds =
 `library/macgregor-base.png` (identity) + his `sit` pose frame + a `smug` expression frame, in ONE gen;
@@ -440,16 +450,30 @@ fact. **Merge the three lists.** A frame no agent flagged ships as-is.
   artifact) — the human decides. No third attempt, no technique-switch escalation ladder. A systematic
   failure (the same invariant missing both times) that looks like a bible value being off → surface a
   proposed fix, never self-apply, and keep forging the rest.
-- **Stamp the gate — generating agents NEVER stamp; the ORCHESTRATOR alone merges manifest entries**, and
-  only after the crop battery + fresh-eyes review pass. A unit that generated a frame is invested in it and
-  grades leniently, so it may not write `verified` on its own output; the orchestrator collects every
-  agent's structured verdict and stamps the merged manifest. After the batch settles, write each shot's
-  manifest entry: a scene that ends with
-  NO identity/rig flag AND no fidelity/style flag → `verified: {scene: true, rig: true}`, `flagged: false`.
-  A scene still flagged after its one retry → keep `flagged: true` and leave `verified.scene`/`verified.rig`
-  **false on the axis that failed** (an identity/rig flag → `rig: false`; a fidelity/style flag → `scene:
-  false`). Only a fully-passed shot is `{scene: true, rig: true}`. This stamp IS what unblocks
-  render-builder's gate — a shipped-but-unstamped manifest rejects every scene.
+- **Stamp the gate — generating agents NEVER stamp; the ORCHESTRATOR alone runs the stamp**, and only
+  after the crop battery + fresh-eyes review pass. A unit that generated a frame is invested in it and
+  grades leniently, so it may not verify its own output. The orchestrator collects every agent's
+  structured verdict, **merges the three lists into `assets/_review/merged.json`** (one ruling per shot id,
+  each carrying the per-axis severities + `why`), then runs the honest stamp writer:
+
+  ```
+  py -3 .claude/skills/image-generation/scripts/stamp_review.py <video_dir>
+  ```
+
+  `stamp_review.py` is the ONLY writer of the render gate's verdict. It reads `merged.json` and writes
+  **`review_status` + `parked_reasons`** onto each shot's `scenes/manifest.json` entry — the three honest
+  states (Task 2, `render.py::_entry_review_reason`):
+  - **`verified`** — a fully-clean ruling (no fidelity/style/rig defect on any axis). Shippable. This is
+    the ONLY state render-builder ships.
+  - **`parked`** — ANY defect ruling (even LOW). Reviewed, defects known, **honestly NOT shippable**; the
+    ruling's defect strings become `parked_reasons`, which the render gate prints as `parked: <reasons>`.
+  - **`unreviewed`** — no ruling covered the shot (never stamped). Gated, not shippable.
+
+  Layered shots reviewed via their plate/cutout get an entry created; entries the review didn't cover are
+  left untouched. It **never** writes a `verified: true` boolean — that shape is what let fyt-run-001's
+  conductor falsely stamp 119 defective frames when "parked" had no representation. Prints
+  `stamped: N verified, M parked`. This stamp IS what unblocks render-builder's gate — a shipped-but-
+  unstamped manifest rejects every scene, and a parked one names why.
 
 ## Single-asset loop (one-offs, cast extension, library building)
 

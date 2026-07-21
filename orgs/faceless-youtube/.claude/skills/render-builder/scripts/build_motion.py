@@ -40,7 +40,8 @@ from render import (  # noqa: E402  (shared semantics — see docstring)
 )
 from motion_plan import cutout_layer_ids  # noqa: E402  (scene-gate exemption for layered shots)
 from build_audio import build_audio_spec, load_audio_tokens  # noqa: E402  (deterministic audio realizer)
-from breath import shift_timings, splice_silence, sentence_gaps, merge_gaps  # noqa: E402  (pause splicing + universal sentence law)
+from breath import (shift_timings, splice_silence, sentence_gap_analysis, apply_onset_corrections,
+                    merge_gaps, sentence_boundaries)  # noqa: E402  (pause splicing + universal sentence law + R12 onset correction)
 from audio_cues import load_cues, resolve_cues, cue_pause_gaps, cue_role_events  # noqa: E402  (2b authored cues)
 from music_cues import load_music_cues, resolve_music_cues  # noqa: E402  (3B authored music placement)
 from audio_plan import load_audio_plan, split_plan  # noqa: E402  (unified audio plan, additive)
@@ -455,7 +456,7 @@ def build_piece_spec(piece, shots, res, is_short, video_dir, vo_manifest, args, 
     # here; everything downstream (retime, captions, build_audio) reads the shifted list + plays the derived
     # vo.breath.mp3. Separate from the writer's [PAUSE] prosody.
     gaps, cue_events, cues_unresolved, sentence_gap_count = [], [], 0, 0
-    orig_word_timings = word_timings   # pre-shift snapshot (== shifted when there are no gaps)
+    orig_word_timings = word_timings   # pre-correction/pre-shift snapshot (== final list when no gaps)
     if not args.no_audio and word_timings:
         resolved = resolve_cues(_a_cues, word_timings)     # authored cues, on the ORIGINAL timeline
         cues_unresolved = len(_a_cues) - len(resolved)     # loudly warned per-cue by resolve_cues (stderr)
@@ -469,12 +470,44 @@ def build_piece_spec(piece, shots, res, is_short, video_dir, vo_manifest, args, 
         # gaps into one so the splice filtergraph (set-dedupes cut points) and shift_timings (sums dur)
         # AGREE. Sentence gaps shift the timeline but are excluded from dips + SFX withhold (build_audio).
         cue_gaps = cue_pause_gaps(resolved)
-        sent_gaps = sentence_gaps(word_timings, audio_tokens)
+        # R11: sentence_gaps measures each boundary's REAL acoustic silence from the VO itself when the
+        # audio is present (the onset-proxy `natural` overstated gaps by the final word's duration and
+        # drifted at TTS chunk seams — the r10 "rushed second half" defect). vo_path resolved here (and
+        # again below, unchanged) so the measurement also runs on --dry-run for honest gap stats.
+        _vo_for_gaps = vo_audio_path(video_dir, piece)
+        # R12: ONE measurement pass yields both the pad gaps (audio side) AND the per-boundary onset
+        # corrections (video side) — the measured silence run's END is the incoming line's REAL voice
+        # onset, which the claimed ElevenLabs onset undershoots (median 0.32s on poyais).
+        sent_gaps, onset_corr = sentence_gap_analysis(word_timings, audio_tokens,
+                                                      vo_path=_vo_for_gaps if _vo_for_gaps.exists() else None)
         sentence_gap_count = len(sent_gaps)
+        _n_bounds = len(sentence_boundaries(word_timings, audio_tokens))
+        _measured = sum(1 for g in sent_gaps if "natural_s" in g)
+        _corr_note = ""
+        if onset_corr:
+            _cs = sorted(c["correction_s"] for c in onset_corr)
+            _corr_note = (f"; onset-corrected {len(onset_corr)}/{_n_bounds} boundaries "
+                          f"(median +{_cs[len(_cs) // 2]:.2f}s, max +{_cs[-1]:.2f}s)")
+        print(f"  {piece}: sentence gaps — {sentence_gap_count}/{_n_bounds} boundaries padded, "
+              f"{sum(g['dur_s'] for g in sent_gaps):.2f}s inserted "
+              f"({'measured from audio' if _measured else 'onset-proxy (no VO audio)'}){_corr_note}")
         gaps = merge_gaps(cue_gaps + sent_gaps)                         # one gap per at_s, co-located dur SUMMED
         cue_events = cue_role_events(resolved, gaps)                    # SFX at the anchor, shifted past ALL gaps
+        # R12 ORDER (audio invariance): everything ABOVE — cue resolution, gap measurement + merge,
+        # SFX placement — consumed the CLAIMED (uncorrected) timeline and is byte-for-byte what it was
+        # before the onset correction existed, so the splice (gap at_s/dur_s/cut_s) and vo.breath.mp3
+        # cannot change. Only NOW is the VIDEO timeline corrected: snap each sentence-initial word's
+        # onset to its measured real acoustic onset, THEN shift. retime_by_timings / anchor_time /
+        # captions / apply_cards / music-cue resolution all read the corrected+shifted list, so shot
+        # cuts (and card + cutout-anim anchors) land on the incoming line's real onset instead of
+        # mid-pause. Mid-sentence anchors are untouched (no silence run to correct against — their
+        # claimed onsets measured decently accurate; see apply_onset_corrections). orig_word_timings
+        # stays the UNCORRECTED original: apply_cards matches card anchors against gap at_s values,
+        # which live on the claimed timeline.
+        orig_word_timings = word_timings                               # pre-correction, pre-shift snapshot
+        if onset_corr:
+            word_timings = apply_onset_corrections(word_timings, onset_corr)
         if gaps:
-            orig_word_timings = word_timings                           # pre-shift, for card→pause-gap matching
             word_timings = shift_timings(word_timings, gaps)
             vo_s = (vo_s or 0.0) + sum(g["dur_s"] for g in gaps)
     res_mcues, res_mdry = resolve_music_cues(_m_cues_raw, _m_dry_raw, word_timings)   # on the SHIFTED timeline
@@ -559,6 +592,13 @@ def build_piece_spec(piece, shots, res, is_short, video_dir, vo_manifest, args, 
         audio_spec = stage_audio_assets(audio_spec, video_dir, media_len_s=vo_s)
     spec["audioSpec"] = audio_spec
     spec["breathGaps"] = gaps   # carried for the post-render splice-continuity gate (audio_checker)
+    # Every sentence boundary on the CORRECTED + SHIFTED (spliced) timeline — carried for the
+    # post-render sentence-gap verifier (audio_checker.check_sentence_gaps): after the splice, EVERY
+    # boundary (padded or not) must show a real acoustic gap >= its target in the rendered VO.
+    # R12: word_timings here is onset-corrected, so each boundary's next_s is the measured real voice
+    # onset (+ shift) — exactly where the voice resumes in vo.breath.mp3, keeping the verifier truthful.
+    spec["sentenceBoundaries"] = sentence_boundaries(word_timings, audio_tokens) \
+        if (not args.no_audio and word_timings) else []
     meta = {
         "scene_count": len(shots),
         "sum_scene_seconds": round(sum(scaled), 2),
@@ -733,7 +773,13 @@ def main():
                 rec.update(ln)
                 audio_report = check_audio(spec.get("audioSpec") or {}, spec.get("shots") or [], ln, mt,
                                            vo_path=video_dir / "assets" / "vo.mp3",
-                                           breath_gaps=spec.get("breathGaps"))
+                                           breath_gaps=spec.get("breathGaps"),
+                                           # R11 sentence-gap verifier: measure the SPLICED VO the
+                                           # render actually played (spec["audio"] = vo.breath.mp3
+                                           # when gaps were spliced, else the raw vo)
+                                           spliced_vo_path=(video_dir / "assets" / spec["audio"])
+                                           if spec.get("audio") else None,
+                                           sentence_bounds=spec.get("sentenceBoundaries"))
                 rec["audio"] = audio_report                       # Phase 4: deterministic, warn-not-fail
                 if not audio_report["ok"]:
                     for w in audio_report["warnings"]:

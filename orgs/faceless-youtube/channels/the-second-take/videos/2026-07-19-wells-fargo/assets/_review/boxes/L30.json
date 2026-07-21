@@ -1,0 +1,4 @@
+{"figures": [
+ {"name": "teller-behind-counter [full]", "face": [0.330, 0.312, 0.430, 0.466], "hands": [[0.459, 0.216, 0.511, 0.294]]},
+ {"name": "customer-right-back-turned [full]", "face": [0.696, 0.318, 0.801, 0.492], "hands": [[0.670, 0.840, 0.715, 0.938]]}
+]}

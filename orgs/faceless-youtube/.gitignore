@@ -52,3 +52,7 @@ channels/*/visual-kit/research/audio-logs/_stems/
 
 # Remotion render cache (created at cwd by render-video.mjs)
 .remotion/
+
+# analytics: raw pulls + generated dashboard are regenerable, keep out of git (rollup.json and performance.md digests ARE tracked)
+analytics/*/raw/
+analytics/dashboard.html

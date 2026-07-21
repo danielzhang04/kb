@@ -189,48 +189,80 @@ def _load_scene_manifest(scenes_dir: Path):
     return {e.get("shot_id"): e for e in data.get("shots", []) if e.get("shot_id")}
 
 
+def _entry_review_reason(entry: dict):
+    """Task-2 per-entry status, applied to ANY shot that HAS a manifest entry (layered ones
+    included — layered membership never exempts a shot from this check). Returns None when the
+    entry is shippable, else the non-shippable reason:
+      * review_status is authoritative when present: "verified" → shippable (None); "parked" →
+        "parked: <'; '.join(parked_reasons)>"; "unreviewed"/anything else → "gate";
+      * absent → legacy boolean gate: scene and rig both true → shippable, else "gate"."""
+    rs = entry.get("review_status")
+    if rs is not None:
+        if rs == "verified":
+            return None
+        if rs == "parked":
+            return "parked: " + "; ".join(entry.get("parked_reasons") or ["no reasons recorded"])
+        return "gate"
+    v = entry.get("verified") or {}
+    if v.get("scene") is not True or v.get("rig") is not True:
+        return "gate"
+    return None
+
+
 def resolve_scene_files(scenes_dir: Path, piece: str, shots: list, is_short: bool,
                         allow_missing: bool, layered_ids=None):
     """Per-shot Path-or-None list for scenes mode. Naming convention (the image-generation
     output contract): long-form -> scenes/<shot-id>.png; shorts -> scenes/<piece>-<shot-id>.png.
 
     A scene is only usable when (S1-B) the PNG is real + non-truncated AND (S2) — when
-    scenes/manifest.json exists — the shot has an entry with verified.scene == verified.rig ==
-    true. The manifest IS the gate: a filename with no verified entry is NOT shippable. A shot
-    that fails either is a HARD ERROR (run image-generation pass 2 + its verify gate) unless
-    --allow-missing, which falls back to a placeholder card and warns. chart/screencap/stock/
-    archival shots are exempt (image-generation deliberately skips them → placeholder, not an
-    error). A shot whose id is in `layered_ids` — the motion plan materializes it as
-    plate+cutout — is exempt (it has no scenes/<id>.png; apply_motion_plan supplies its
-    plate+layers)."""
+    scenes/manifest.json exists — the shot has a shippable manifest entry (see
+    `_entry_review_reason`). The manifest IS the gate: a filename with no verified entry is NOT
+    shippable. A shot that fails either is a HARD ERROR (run image-generation pass 2 + its verify
+    gate) unless --allow-missing, which falls back to a placeholder card and warns.
+
+    chart/screencap/stock/archival shots, and any shot whose id is in `layered_ids` (the motion
+    plan materializes it as plate+cutout; apply_motion_plan supplies its plate+layers), are
+    exempt from the S1-B PNG-EXISTENCE requirement ONLY — they legitimately have no
+    scenes/<id>.png. They are NEVER exempt from the S2 status check: a layered/fallback shot with
+    a manifest entry is gated exactly like any other (the fyt-run-001 hole was exempting them
+    from S2 too, so a manifest in which nothing was verified still passed). Deliberate
+    compatibility carve-out: a manifest with NO entry at all for a layered/fallback shot passes
+    (legacy manifests never listed layered shots; stamp_review.py writes entries for new runs)."""
     manifest = _load_scene_manifest(scenes_dir)   # S2
     layered_ids = layered_ids or set()
-    files, missing, gate_failed = [], [], []
+    files, missing, gate_failed, parked = [], [], [], []
     for shot in shots:
         sid = shot.get("id", "")
         stem = f"{piece}-{sid}" if is_short else sid
         p = scenes_dir / f"{stem}.png"
         is_fallback = ((shot.get("source") or "ai-gen") in INLINE_FALLBACK_SOURCES
                        or sid in layered_ids)
-        reason = None  # None = usable/fallback; "missing" = no valid PNG; "gate" = unverified
-        if p.exists() and _valid_scene_image(p):               # S1-B
-            if manifest is not None and not is_fallback:       # S2 — manifest is the gate
-                entry = manifest.get(sid)
-                v = (entry or {}).get("verified") or {}
-                if entry is None or v.get("scene") is not True or v.get("rig") is not True:
-                    reason = "gate"
-            if reason is None:
-                files.append(p)
-                continue
-        elif not is_fallback:
+        png_ok = p.exists() and _valid_scene_image(p)          # S1-B
+        entry = manifest.get(sid) if manifest is not None else None
+        # None = usable/fallback; "missing" = no valid PNG; "gate" = unreviewed/unverified;
+        # "parked: <reasons>" = reviewed, defects known, honestly NOT shippable.
+        reason = None
+        if entry is not None:                                  # S2 — runs for EVERY shot w/ entry
+            reason = _entry_review_reason(entry)               # (layered/fallback NOT exempt here)
+        elif manifest is not None and not is_fallback:
+            # Filename with no verified entry: not shippable. PNG present → gate; absent → missing.
+            # (A layered/fallback shot with no entry is the deliberate compat carve-out → passes.)
+            reason = "gate" if png_ok else "missing"
+        # S1-B — PNG existence. layered_ids / fallback sources are exempt from THIS check only.
+        if reason is None and not is_fallback and not png_ok:
             reason = "missing"
+        if reason is None:
+            files.append(p if png_ok else None)
+            continue
         files.append(None)
-        if reason == "gate":
-            gate_failed.append(sid or "?")
-        elif reason == "missing":
+        if reason == "missing":
             missing.append(sid or "?")
+        elif reason == "gate":
+            gate_failed.append(sid or "?")
+        elif reason:                                           # "parked: ..."
+            parked.append((sid or "?", reason))
 
-    if (missing or gate_failed) and not allow_missing:
+    if (missing or gate_failed or parked) and not allow_missing:
         parts = []
         if missing:
             parts.append(f"{len(missing)} with no valid scene PNG "
@@ -239,11 +271,15 @@ def resolve_scene_files(scenes_dir: Path, piece: str, shots: list, is_short: boo
             parts.append(f"{len(gate_failed)} present but NOT verified in manifest.json "
                          f"(verified.scene/rig != true: {', '.join(gate_failed[:20])}"
                          f"{' …' if len(gate_failed) > 20 else ''})")
+        if parked:
+            parts.append(f"{len(parked)} parked (reviewed, defects known — NOT shippable): "
+                         f"{'; '.join(f'{sid} → {r}' for sid, r in parked[:20])}"
+                         f"{' …' if len(parked) > 20 else ''}")
         raise SystemExit(
             f"{piece}: {'; '.join(parts)} in {scenes_dir} — run image-generation pass 2 and its "
             f"verify gate first (or --allow-missing for a test slice). Rendering these would bypass "
             f"the locked-style / rig gate.")
-    allowed = missing + gate_failed
+    allowed = missing + gate_failed + [sid for sid, _ in parked]
     if allowed:
         print(f"  ! {piece}: --allow-missing — {len(allowed)} shot(s) fall back to a placeholder card "
               f"(style NOT locked): {', '.join(allowed[:10])}{' …' if len(allowed) > 10 else ''}")

@@ -1,0 +1,11 @@
+{"figures": [
+ {"name": "stage-fig1-teal-polo [full]", "face": [0.258, 0.272, 0.336, 0.400], "hands": [[0.250, 0.562, 0.282, 0.622], [0.322, 0.560, 0.354, 0.618]]},
+ {"name": "stage-fig2-suit [full]", "face": [0.355, 0.262, 0.434, 0.395], "hands": [[0.350, 0.538, 0.382, 0.596], [0.414, 0.534, 0.446, 0.592]]},
+ {"name": "stage-fig3-center-polo [full]", "face": [0.453, 0.255, 0.543, 0.408], "hands": [[0.443, 0.562, 0.478, 0.626], [0.524, 0.560, 0.560, 0.622]]},
+ {"name": "stage-fig4-dark-suit [full]", "face": [0.576, 0.268, 0.652, 0.400], "hands": [[0.583, 0.445, 0.627, 0.524]]},
+ {"name": "stage-fig5-blue-shirt [full]", "face": [0.667, 0.268, 0.743, 0.400], "hands": [[0.666, 0.451, 0.714, 0.530]]},
+ {"name": "crowd-left-fg-clapping [crowd]", "face": [0.040, 0.535, 0.108, 0.645]},
+ {"name": "crowd-left-back-laughing [crowd]", "face": [0.108, 0.470, 0.162, 0.568]},
+ {"name": "crowd-right-fg-back-turned [crowd]", "face": [0.764, 0.518, 0.842, 0.650]},
+ {"name": "crowd-right-blonde [crowd]", "face": [0.851, 0.497, 0.910, 0.600]}
+]}
