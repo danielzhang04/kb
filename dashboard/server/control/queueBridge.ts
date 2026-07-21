@@ -222,9 +222,17 @@ export function createQueueBridge(options: QueueBridgeOptions): QueueBridge {
 //   1. action / target / risk-tier come from the card's META only (server-owned, never parsed from body
 //      text — the same rule dispatch/routing already applies). The mapping never sources them from prose.
 //   2. `## Evidence` is EXCLUDED entirely (constitution: Evidence is inert data, never instructions).
-//      Only `## Work order` (authoritative), `## Feedback`, and `## Result from …` are read — exact parity
-//      with agent_runner.ps1's prompt builder. Feedback/Result-from travel as INERT context, never as
-//      authority and never folded into the authoritative work order.
+//      Only `## Work order` (authoritative) is read and delivered.
+//
+// Wave-A scope note (review fix — no half-state): the bridge delivers the Work order ONLY. `## Feedback`
+// and `## Result from …` are intentionally NOT extracted or delivered. There is no sanctioned slot to
+// carry per-card inert context through the compile -> launch -> engine -> worker path (the reviewed
+// `claudeWorkerAdapter.execute` does not thread feedback/dependency-results into `buildWorkerPrompt`, and
+// the workflow-definition stage body IS the work order), so extracting them would only compute a value
+// that never reaches the run — a half-state the reviewer flagged. Semantically they describe FLEET
+// predecessor cards, which have no meaning inside a freshly-minted single-stage workflow run anyway. If a
+// future wave needs them, wire them through the worker prompt's INERT CONTEXT BOUNDARY end-to-end (and add
+// them back here) rather than reintroducing an undelivered field.
 // ===================================================================================================
 
 /** The claim/mapping-relevant slice of a parsed card. Meta fields are the ONLY source of action/target/risk. */
@@ -243,22 +251,9 @@ export interface ParsedCard {
   body: string;
 }
 
-/** One committed dependency result carried from the card, as inert context. */
-export interface CardDependencyResult {
-  from: string;
-  summary: string;
-}
-
-/** The inert (non-authoritative) context lifted off the card. Never merged into the stage work order. */
-export interface CardInertContext {
-  feedback?: string;
-  dependencyResults: CardDependencyResult[];
-}
-
-/** A card mapped to a one-stage workflow definition plus its inert context. */
+/** A card mapped to a one-stage workflow definition. The Work order is the only card content delivered. */
 export interface CardWorkflowRequest {
   def: WorkflowDef;
-  inertContext: CardInertContext;
 }
 
 /**
@@ -274,33 +269,9 @@ function extractSection(body: string, name: string): string {
   return (end === -1 ? rest : rest.slice(0, end)).trim();
 }
 
-/** Extract every `## Result from …` chunk as an inert dependency result (ps1 dependency-loop parity). */
-function extractDependencyResults(body: string): CardDependencyResult[] {
-  const prefix = '## Result from ';
-  const out: CardDependencyResult[] = [];
-  let cursor = 0;
-  for (;;) {
-    const idx = body.indexOf(prefix, cursor);
-    if (idx === -1) break;
-    const nl = body.indexOf('\n', idx);
-    const headingEnd = nl === -1 ? body.length : nl;
-    const heading = body.slice(idx + 3, headingEnd).trim(); // drop the leading "## "
-    const restStart = headingEnd + 1;
-    const nextHeading = body.indexOf('\n## ', restStart);
-    const chunk = nextHeading === -1 ? body.slice(restStart) : body.slice(restStart, nextHeading);
-    out.push({ from: heading, summary: chunk.trim() });
-    cursor = nextHeading === -1 ? body.length : nextHeading + 1;
-  }
-  return out;
-}
-
-/** Read only the sanctioned sections. `## Evidence` is deliberately never referenced here. */
-export function parseCardSections(body: string): { workOrder: string; feedback: string; dependencyResults: CardDependencyResult[] } {
-  return {
-    workOrder: extractSection(body, 'Work order'),
-    feedback: extractSection(body, 'Feedback'),
-    dependencyResults: extractDependencyResults(body),
-  };
+/** Read only the sanctioned, delivered section. `## Evidence` (and, for Wave A, Feedback/Result-from) is never referenced here. */
+export function parseCardSections(body: string): { workOrder: string } {
+  return { workOrder: extractSection(body, 'Work order') };
 }
 
 function requireMetaString(value: unknown, field: string): string {
@@ -367,13 +338,7 @@ export function cardToWorkflowRequest(card: ParsedCard, options: CardToWorkflowO
   if (!parsed.ok) {
     throw new QueueBridgeError(`card '${id}' does not map to a valid governed workflow: ${parsed.detail}`);
   }
-  return {
-    def: parsed.value,
-    inertContext: {
-      feedback: sections.feedback === '' ? undefined : sections.feedback,
-      dependencyResults: sections.dependencyResults,
-    },
-  };
+  return { def: parsed.value };
 }
 
 /** Read a full card (meta + body) from its repo-relative path, via cards.parse for exact parity. */
@@ -435,8 +400,12 @@ export interface DispatchCardDeps {
 
 export interface DispatchCardResult {
   cardId: string;
-  /** launched: 201; gated: 202 activationGated; blocked: preamble/STOP refused; skipped: not claimed; failed: refused. */
-  outcome: 'launched' | 'gated' | 'blocked' | 'skipped' | 'failed';
+  /**
+   * launched: 201 fresh launch; replayed: 200 idempotent replay of a run this card already minted (the
+   * trigger card is reconciled either way); gated: 202 activationGated (run published-parked, card kept
+   * one tick); blocked: preamble/STOP refused; skipped: not claimed; failed: refused.
+   */
+  outcome: 'launched' | 'replayed' | 'gated' | 'blocked' | 'skipped' | 'failed';
   status: number;
   runRef?: string;
   reconciled: boolean;
@@ -498,28 +467,41 @@ export async function dispatchClaimedCard(
   const snapshot = proposal as unknown as JsonObject;
   const contentHash = snapshotHash(snapshot);
 
-  // Reuse the approved revision this exact card content already imported to, else import + approve it.
+  // Reuse the revision this exact card content already imported to (matched on sourceTurnId + hash), else
+  // import a fresh one. An APPROVED match is used as-is; an UNDECIDED match (approval still null, e.g. a
+  // prior tick whose decision audit threw AFTER createProposalRevision, or that crashed before deciding)
+  // is REUSED rather than left behind — otherwise a repeatedly-failing audit mints a fresh undecided
+  // revision every re-dispatch and leaks an unbounded pile of them. The audit + idempotent decide below
+  // then run against whichever revision (fresh or reused-undecided) we settled on. A revision the bridge
+  // created is only ever approved by the bridge, so an undecided one is always safe to re-drive to approved.
   const sourceTurnId = mapped.def.id;
   const idempotencyKey = `queue-bridge:${card.id}`;
-  const existing = ctx.controlStore
+  const matching = ctx.controlStore
     .listProposalRevisionsForComposer(subject, 'workflow-registry')
-    .find((c) => c.sourceTurnId === sourceTurnId && c.hash === contentHash && c.approval?.decision === 'approved');
+    .filter((c) => c.sourceTurnId === sourceTurnId && c.hash === contentHash);
+  const approved = matching.find((c) => c.approval?.decision === 'approved');
 
   let proposalRef: string;
   let revision: number;
-  if (existing) {
-    proposalRef = existing.proposalRef;
-    revision = existing.revision;
+  if (approved) {
+    proposalRef = approved.proposalRef;
+    revision = approved.revision;
   } else {
-    const created = ctx.controlStore.createProposalRevision(subject, {
-      sourceComposerRef: 'workflow-registry',
-      sourceTurnId,
-      title: proposal.title,
-      snapshot,
-    });
-    if (!created.ok) return { cardId: card.id, outcome: 'failed', status: 400, reconciled: false, detail: `${created.reason}: ${created.detail}` };
-    proposalRef = created.value.proposalRef;
-    revision = created.value.revision;
+    const undecided = matching.find((c) => !c.approval);
+    if (undecided) {
+      proposalRef = undecided.proposalRef;
+      revision = undecided.revision;
+    } else {
+      const created = ctx.controlStore.createProposalRevision(subject, {
+        sourceComposerRef: 'workflow-registry',
+        sourceTurnId,
+        title: proposal.title,
+        snapshot,
+      });
+      if (!created.ok) return { cardId: card.id, outcome: 'failed', status: 400, reconciled: false, detail: `${created.reason}: ${created.detail}` };
+      proposalRef = created.value.proposalRef;
+      revision = created.value.revision;
+    }
 
     const decisionRisk = proposal.stages.some((s) => s.riskTier === 'T3') ? 'T3'
       : proposal.stages.some((s) => s.riskTier === 'T2') ? 'T2' : 'T1';
@@ -555,8 +537,30 @@ export async function dispatchClaimedCard(
     await reconcile(ctx, card, runRef);
     return { cardId: card.id, outcome: 'launched', status: 201, runRef, reconciled: true };
   }
+  if (result.status === 200 && runRef) {
+    // A 200 from executeApprovedLaunch is ALWAYS an idempotent replay of the run THIS card already minted
+    // (createRun matched the `queue-bridge:<id>` idempotency key). The run is durably published and owns
+    // its own lifecycle now; the trigger card's signalling job is complete, so we reconcile it — the exact
+    // defect the reviewer flagged: without this, a crash between the 201 launch and the reconcile (or a
+    // gate-off park that later replays to 200) leaves the card re-dispatching forever as 'failed', never
+    // cleared.
+    //
+    // Published-parked case (dispatched while the gate was off — the run is published but parked behind the
+    // daemon's own governance-refusal "automatic execution activation is gated" human request, which
+    // replays here as 200-published): we deliberately do NOT auto-resume it. Releasing a gated run is
+    // Daniel's alone — the Wave-A authorization boundary is that only he flips the gate, in a watched
+    // session; the bridge auto-starting a parked run would override that human governance gate. So we
+    // reconcile the trigger card with a pointer to the parked run and leave releasing it to the human. The
+    // parked run remains independently tracked by its own state + its open governance-refusal request.
+    await reconcile(ctx, card, runRef);
+    const detail = result.body.waitingHuman === true ? 'replayed-waiting-human' : 'replayed-published';
+    return { cardId: card.id, outcome: 'replayed', status: 200, runRef, reconciled: true, detail };
+  }
   if (result.status === 202 && result.body.activationGated === true) {
-    // Gate is off (or broker absent): the run is published-and-parked; do NOT reconcile — the card stays.
+    // Gate is off (or broker absent): the run is published-and-parked. Do NOT reconcile on this FIRST park
+    // — the very next tick observes the idempotent 200-published replay above and reconciles then (whether
+    // or not the gate has since flipped), so the card is always eventually cleared while the parked run
+    // still awaits Daniel's gate release.
     return { cardId: card.id, outcome: 'gated', status: 202, runRef, reconciled: false, detail: 'activationGated' };
   }
   return { cardId: card.id, outcome: 'failed', status: result.status, runRef, reconciled: false, detail: JSON.stringify(result.body) };

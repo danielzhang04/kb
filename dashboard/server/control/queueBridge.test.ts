@@ -223,7 +223,7 @@ describe('cardToWorkflowRequest — mapping + Evidence exclusion', () => {
     expect(req.def.stages[0].target).toBe('orgs/kb-ops/output');
   });
 
-  it('carries ## Feedback and ## Result from as inert context only, never in the work order', () => {
+  it('delivers the Work order ONLY: ## Feedback and ## Result from are not extracted or delivered (Wave-A, no half-state)', () => {
     const extra = [
       '## Feedback',
       '',
@@ -234,12 +234,14 @@ describe('cardToWorkflowRequest — mapping + Evidence exclusion', () => {
       'produced foo.md',
     ].join('\n');
     const req = cardToWorkflowRequest(baseCard(extra), { knownProfiles: KNOWN });
-    expect(req.inertContext.feedback).toBe('prefer terse output');
-    expect(req.inertContext.dependencyResults).toEqual([{ from: 'Result from stage-upstream', summary: 'produced foo.md' }]);
-    // The authoritative work order contains none of the inert material.
+    // The mapped request has no inertContext field at all — nothing is computed that never reaches the run.
+    expect((req as unknown as Record<string, unknown>).inertContext).toBeUndefined();
+    // The authoritative work order contains none of the (undelivered) Feedback/Result-from material, and
+    // neither does the serialized request anywhere.
     expect(req.def.stages[0].workOrder).toBe('Write the brief. Do exactly this.');
-    expect(req.def.stages[0].workOrder).not.toContain('prefer terse output');
-    expect(req.def.stages[0].workOrder).not.toContain('produced foo.md');
+    const serialized = JSON.stringify(req);
+    expect(serialized).not.toContain('prefer terse output');
+    expect(serialized).not.toContain('produced foo.md');
   });
 
   it('sources risk-tier from meta and can never lower the classified floor', () => {
@@ -353,6 +355,68 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
     const res = await dispatchClaimedCard(ctx, owned, commonDeps({ launch: launch as never, reconcile }));
     expect(res).toMatchObject({ outcome: 'gated', status: 202, reconciled: false });
     expect(reconcile).not.toHaveBeenCalled();
+  });
+
+  it('crash-recovery replay: a 200 replayed-published result reconciles the trigger card (never spins as failed)', async () => {
+    // The 201 launch already fired runAutomatic, then the process died before reconciling. On re-tick the
+    // idempotent createRun replays the SAME published run and executeApprovedLaunch returns 200. The card
+    // must now be reconciled — not returned as 'failed' forever.
+    const { ctx } = fakeCtx();
+    const launch = vi.fn().mockResolvedValue({ status: 200, body: { ok: true, runRef: 'run-1', replayed: true, cards: [] } });
+    const reconcile = vi.fn().mockResolvedValue(undefined);
+    const res = await dispatchClaimedCard(ctx, owned, commonDeps({ launch: launch as never, reconcile }));
+    expect(res).toMatchObject({ outcome: 'replayed', status: 200, runRef: 'run-1', reconciled: true, detail: 'replayed-published' });
+    expect(reconcile).toHaveBeenCalledWith(ctx, owned, 'run-1');
+  });
+
+  it('gate-off park then gate-on: the first 202 keeps the card, the follow-up 200 replay reconciles it (parked run never auto-resumed)', async () => {
+    const { ctx } = fakeCtx();
+    // Tick 1, gate OFF: published-and-parked, card kept.
+    const gatedLaunch = vi.fn().mockResolvedValue({ status: 202, body: { runRef: 'run-1', activationGated: true } });
+    const reconcile1 = vi.fn();
+    const first = await dispatchClaimedCard(ctx, owned, commonDeps({ launch: gatedLaunch as never, reconcile: reconcile1 }));
+    expect(first).toMatchObject({ outcome: 'gated', reconciled: false });
+    expect(reconcile1).not.toHaveBeenCalled();
+
+    // Tick 2 (gate flipped on): the parked run replays as 200-published. The bridge reconciles the trigger
+    // card and does NOT attempt to start the parked run itself — releasing a gated run is Daniel's alone.
+    const replayLaunch = vi.fn().mockResolvedValue({ status: 200, body: { ok: true, runRef: 'run-1', replayed: true, cards: [] } });
+    const reconcile2 = vi.fn().mockResolvedValue(undefined);
+    const second = await dispatchClaimedCard(ctx, owned, commonDeps({ launch: replayLaunch as never, reconcile: reconcile2 }));
+    expect(second).toMatchObject({ outcome: 'replayed', status: 200, runRef: 'run-1', reconciled: true });
+    expect(reconcile2).toHaveBeenCalledWith(ctx, owned, 'run-1');
+    // The only launch call is the idempotent replay; there is no separate "resume/start parked run" call.
+    expect(replayLaunch).toHaveBeenCalledTimes(1);
+  });
+
+  it('reuses an UNDECIDED revision (prior audit failure) instead of minting a fresh one every re-dispatch', async () => {
+    // A prior tick created revision (p1, 1) then its decision audit threw, leaving it undecided. This tick
+    // must reuse p1/1 — not call createProposalRevision again and leak a second undecided revision.
+    const { ctx, store } = fakeCtx();
+    store.listProposalRevisionsForComposer.mockReturnValue([
+      { sourceTurnId: 'bridge-6a5ed0b7-56cc254c', hash: 'hash-abc', approval: null, proposalRef: 'p1', revision: 1 },
+    ]);
+    const launch = vi.fn().mockResolvedValue({ status: 201, body: { runRef: 'run-1' } });
+    const res = await dispatchClaimedCard(ctx, owned, commonDeps({ launch: launch as never, reconcile: vi.fn() }));
+    expect(res.outcome).toBe('launched');
+    expect(store.createProposalRevision).not.toHaveBeenCalled();
+    // The audit + decide ran against the REUSED undecided revision, and the launch used it.
+    expect(store.decideProposal).toHaveBeenCalledWith('dashboard-engine', 'p1', 1, expect.objectContaining({ decision: 'approved' }));
+    expect(launch.mock.calls[0][2].proposalRef).toBe('p1');
+    expect(launch.mock.calls[0][2].revision).toBe(1);
+  });
+
+  it('a decision-audit failure leaves no launch and reports decision-audit-required', async () => {
+    // auditFn(ctx) resolves ctx.appendAudit; a rejection is the decision audit failing.
+    const { ctx, store } = fakeCtx({ appendAudit: vi.fn().mockRejectedValue(new Error('ops push rejected')) });
+    store.listProposalRevisionsForComposer.mockReturnValue([]);
+    const launch = vi.fn();
+    const res = await dispatchClaimedCard(ctx, owned, commonDeps({ launch: launch as never }));
+    expect(res.outcome).toBe('failed');
+    expect(res.detail).toBe('decision-audit-required');
+    expect(launch).not.toHaveBeenCalled();
+    // The revision WAS created (one, not a leak); the reuse path guarantees the next tick won't create another.
+    expect(store.createProposalRevision).toHaveBeenCalledTimes(1);
   });
 
   it('reuses an already-approved revision for the same card content (no duplicate import)', async () => {
