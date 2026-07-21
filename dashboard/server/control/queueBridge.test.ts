@@ -295,6 +295,7 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
 
   const owned = { id: '6a5ed0b7-56cc254c', path: 'queue/inbox/6a5ed0b7-56cc254c.md', state: 'inbox' };
 
+  const okPre = () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' });
   const commonDeps = (over: Record<string, unknown> = {}) => ({
     readCard: () => baseCard(),
     loadRegistry: () => ({} as never),
@@ -302,7 +303,22 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
     compile: (() => ({ ok: true, value: proposal })) as never,
     validate: (() => ({ ok: true, value: proposal })) as never,
     snapshotHash: () => 'hash-abc',
+    runPreamble: okPre,
     ...over,
+  });
+
+  it('blocks (no launch) when the preamble refuses immediately before dispatch (D7)', async () => {
+    const { ctx } = fakeCtx();
+    const launch = vi.fn();
+    const readCard = vi.fn(() => baseCard());
+    const res = await dispatchClaimedCard(ctx, owned, commonDeps({
+      runPreamble: () => ({ exitCode: 2, stdout: '', stderr: 'STOP file present' }),
+      launch: launch as never,
+      readCard,
+    }));
+    expect(res.outcome).toBe('blocked');
+    expect(launch).not.toHaveBeenCalled();
+    expect(readCard).not.toHaveBeenCalled(); // gate is BEFORE the card read
   });
 
   it('skips a card that is no longer claimed by the bridge (stale scan)', async () => {
@@ -360,5 +376,93 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
     }));
     expect(res.outcome).toBe('failed');
     expect(launch).not.toHaveBeenCalled();
+  });
+});
+
+// ===================================================================================================
+// T5 — dual ledger: fleet cost row emission seam + terminal-stage projection + preamble gate
+// ===================================================================================================
+import {
+  emitFleetCostRow,
+  settleFleetCostLedger,
+  collectTerminalStageCosts,
+  QUEUE_BRIDGE_LEDGER_COST_SCRIPT,
+} from './queueBridge.ts';
+import type { RunDetail } from './types.ts';
+
+describe('emitFleetCostRow', () => {
+  it('appends {usd, billing:subscription, model, card_id} for the subject via scripts/ledger.py', () => {
+    const calls: string[] = [];
+    const runPy = (_r: string, _c: string, arg: string) => { calls.push(arg); return { exitCode: 0, stdout: '{"path":"x"}', stderr: '' }; };
+    emitFleetCostRow({ repoRoot: '/repo', runPy }, { subject: 'dashboard-engine', model: 'claude-sonnet', cardId: 'wf-abc', usd: 0 });
+    const op = JSON.parse(calls[0]);
+    expect(op.agent).toBe('dashboard-engine');
+    expect(op.record).toEqual({ usd: 0, billing: 'subscription', model: 'claude-sonnet', card_id: 'wf-abc' });
+  });
+
+  it('fails closed when ledger.append exits non-zero (a missed cost row is loud)', () => {
+    const runPy = () => ({ exitCode: 1, stdout: '', stderr: 'boom' });
+    expect(() => emitFleetCostRow({ repoRoot: '/repo', runPy }, { subject: 's', model: 'm', cardId: 'c', usd: 0 })).toThrow(QueueBridgeError);
+  });
+
+  it('the embedded script routes through the real ledger.append (never a hand-rolled TSV writer)', () => {
+    expect(QUEUE_BRIDGE_LEDGER_COST_SCRIPT).toContain('import ledger');
+    expect(QUEUE_BRIDGE_LEDGER_COST_SCRIPT).toContain('ledger.append');
+  });
+});
+
+describe('settleFleetCostLedger — post-run seam, preamble-gated', () => {
+  const okPre = () => ({ exitCode: 0, stdout: 'OK', stderr: '' });
+  const stopPre = () => ({ exitCode: 2, stdout: '', stderr: 'STOP file present' });
+
+  it('emits exactly one row per terminal stage with the derived usd (micros/1e6)', () => {
+    const records: Array<Record<string, unknown>> = [];
+    const runPy = (_r: string, _c: string, arg: string) => { records.push(JSON.parse(arg)); return { exitCode: 0, stdout: '{}', stderr: '' }; };
+    const res = settleFleetCostLedger(
+      { repoRoot: '/repo', runPy, runPreamble: okPre },
+      { subject: 'dashboard-engine', runRef: 'run-1', stages: [
+        { cardId: 'wf-a', model: 'claude-sonnet', costUsdMicros: 0 },
+        { cardId: 'wf-b', model: 'claude-opus', costUsdMicros: 2_340_000 },
+      ] },
+    );
+    expect(res).toEqual({ emitted: 2, blocked: false });
+    expect(records.map((r) => (r.record as Record<string, unknown>).usd)).toEqual([0, 2.34]);
+    expect(records.map((r) => (r.record as Record<string, unknown>).card_id)).toEqual(['wf-a', 'wf-b']);
+    expect(records.every((r) => (r.record as Record<string, unknown>).billing === 'subscription')).toBe(true);
+  });
+
+  it('emits NOTHING when the preamble refuses (STOP present / budget blown)', () => {
+    const runPy = vi.fn(() => ({ exitCode: 0, stdout: '{}', stderr: '' }));
+    const res = settleFleetCostLedger(
+      { repoRoot: '/repo', runPy, runPreamble: stopPre },
+      { runRef: 'run-1', stages: [{ cardId: 'wf-a', model: 'm', costUsdMicros: 0 }] },
+    );
+    expect(res).toEqual({ emitted: 0, blocked: true });
+    expect(runPy).not.toHaveBeenCalled();
+  });
+});
+
+describe('collectTerminalStageCosts', () => {
+  const detail = {
+    run: { state: 'succeeded' },
+    stages: [
+      { stageRef: 's1', stageId: 'run', canonicalCardRef: 'wf-a', state: 'succeeded', currentAttemptRef: 'a1' },
+      { stageRef: 's2', stageId: 'two', canonicalCardRef: 'wf-b', state: 'running', currentAttemptRef: 'a2' }, // not terminal
+      { stageRef: 's3', stageId: 'three', canonicalCardRef: null, state: 'succeeded', currentAttemptRef: 'a3' }, // no card
+    ],
+    attempts: [
+      { attemptRef: 'a1', model: 'claude-sonnet' },
+      { attemptRef: 'a2', model: 'claude-sonnet' },
+    ],
+  } as unknown as RunDetail;
+
+  it('projects only terminal stages that have a minted card and a resolvable attempt model', () => {
+    const got = collectTerminalStageCosts(detail, () => 0);
+    expect(got).toEqual([{ cardId: 'wf-a', model: 'claude-sonnet', costUsdMicros: 0 }]);
+  });
+
+  it('reads usage micros from the injected accounting reader, never inventing it', () => {
+    const got = collectTerminalStageCosts(detail, (stageRef) => (stageRef === 's1' ? 5_000 : 0));
+    expect(got[0].costUsdMicros).toBe(5_000);
   });
 });

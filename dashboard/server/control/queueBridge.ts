@@ -27,7 +27,7 @@ import { loadRuntimeSkillRegistry, workflowProfileIds, type RuntimeSkillRegistry
 import { validatePlanProposal } from './proposal.ts';
 import { proposalSnapshotHash } from './store.ts';
 import { executeApprovedLaunch, type LaunchOutcome } from './launch.ts';
-import type { JsonObject } from './types.ts';
+import type { JsonObject, RunDetail } from './types.ts';
 import { auditFn, type SurfaceContext } from '../http/context.ts';
 import { withOpsTransaction } from '../write/asyncGit.ts';
 import { commitPreparedCoordination, defaultGitRunner, prepareCoordination } from '../write/branch.ts';
@@ -429,12 +429,14 @@ export interface DispatchCardDeps {
   readCard?: (ctx: SurfaceContext, cardPath: string) => ParsedCard;
   /** Durably transition the trigger card out of inbox/working; T7 exercises the default's ops commit. */
   reconcile?: (ctx: SurfaceContext, card: OwnedCard, runRef: string) => Promise<void>;
+  /** The shared preamble seam re-asserted before dispatch (D7). Default: the real `scripts/preamble.py`. */
+  runPreamble?: PreambleRunner;
 }
 
 export interface DispatchCardResult {
   cardId: string;
-  /** launched: 201, engine kicked; gated: 202 activationGated; skipped: no longer claimed; failed: refused. */
-  outcome: 'launched' | 'gated' | 'skipped' | 'failed';
+  /** launched: 201; gated: 202 activationGated; blocked: preamble/STOP refused; skipped: not claimed; failed: refused. */
+  outcome: 'launched' | 'gated' | 'blocked' | 'skipped' | 'failed';
   status: number;
   runRef?: string;
   reconciled: boolean;
@@ -470,6 +472,14 @@ export async function dispatchClaimedCard(
   const snapshotHash = deps.snapshotHash ?? proposalSnapshotHash;
   const launch = deps.launch ?? executeApprovedLaunch;
   const reconcile = deps.reconcile ?? defaultReconcileTriggerCard;
+
+  // D7 belt-and-suspenders: re-assert the shared preamble (STOP file + budget) immediately before
+  // dispatch, even though the poll tick already gated on it — a STOP dropped mid-batch must halt the very
+  // next card, and never re-implemented in TS.
+  const preamble = assertFleetRunnable(ctx.repoRoot, deps.runPreamble ?? ctx.runPreamble);
+  if (!preamble.ok) {
+    return { cardId: card.id, outcome: 'blocked', status: 0, reconciled: false, detail: preamble.problems[0] ?? 'preamble refused dispatch' };
+  }
 
   // Re-assert the claim on the card's CURRENT meta: it may have changed between scan and dispatch.
   const parsed = readCard(ctx, card.path);
@@ -575,4 +585,120 @@ async function defaultReconcileTriggerCard(ctx: SurfaceContext, card: OwnedCard,
       message: `chore(queue): reconcile bridged trigger card ${card.id} -> ${runRef}`,
     });
   });
+}
+
+// ===================================================================================================
+// T5 — dual ledger: the FLEET cost row (scripts/ledger.py-compatible) emitted from the bridge post-run
+// seam. This is NOT a substitute for the control plane's own accounting (D8): the engine's
+// AccountingAdapter writes the control-plane row; this writes the fleet row. Both, not either.
+//
+// The `## Result` writeback + `cards.transition` to done happen INSIDE the engine via
+// createCanonicalGitResultIntegrator (wired in T2), under withOpsTransaction — this module does NOT
+// re-implement writeback; the T7/T8 acceptance verifies that path end-to-end on the real daemon.
+// ===================================================================================================
+
+/** Append one fleet cost row via scripts/ledger.py (columns are the sorted record keys: billing/card_id/model/usd). */
+export const QUEUE_BRIDGE_LEDGER_COST_SCRIPT = `
+import sys, json
+from pathlib import Path
+sys.path.insert(0, "scripts")
+import ledger
+op = json.loads(sys.argv[1])
+path = ledger.append(Path("."), "cost", op["agent"], op["record"])
+print(json.dumps({"path": str(path)}))
+`.trim();
+
+/** One fleet cost row. `usd` is the DERIVED dollar amount (micros/1e6) — 0.0 for subscription billing. */
+export interface FleetCostRow {
+  subject: string;
+  model: string;
+  cardId: string;
+  usd: number;
+}
+
+/**
+ * Emit one fleet `ledgers/cost/<subject>-<date>.tsv` row via scripts/ledger.py. `billing` is always
+ * `subscription` (the fleet never spends metered dollars); `usd` is derived, never invented. Fail-closed:
+ * a non-zero exit throws so a missed cost row is loud, never silent.
+ */
+export function emitFleetCostRow(deps: { repoRoot: string; runPy?: PyRunner }, row: FleetCostRow): void {
+  const runPy = deps.runPy ?? defaultPyRunner;
+  const record = { usd: row.usd, billing: 'subscription', model: row.model, card_id: row.cardId };
+  const res = runPy(deps.repoRoot, QUEUE_BRIDGE_LEDGER_COST_SCRIPT, JSON.stringify({ agent: row.subject, record }));
+  if (res.exitCode !== 0) {
+    throw new QueueBridgeError(`fleet cost-ledger append failed: ${res.stderr.trim() || res.stdout.trim() || '(no output)'}`);
+  }
+}
+
+const TERMINAL_STAGE_STATES: readonly string[] = ['succeeded', 'failed', 'stopped', 'interrupted'];
+
+/** The cost-bearing facts of one terminal stage: its minted canonical card, its worker model, its usage. */
+export interface TerminalStageCost {
+  cardId: string;
+  model: string;
+  costUsdMicros: number;
+}
+
+/**
+ * Project a control-plane RunDetail to the per-terminal-stage cost facts the fleet ledger needs: the
+ * minted `canonicalCardRef`, the worker `model` from the stage's current attempt, and the usage micros
+ * (read via `readUsageMicros` — the control-plane accounting is the source; subscription reports 0).
+ * A stage with no minted card or no resolvable attempt model is skipped (nothing to bill).
+ */
+export function collectTerminalStageCosts(
+  detail: RunDetail,
+  readUsageMicros: (stageRef: string, attemptRef: string | null) => number,
+): TerminalStageCost[] {
+  const out: TerminalStageCost[] = [];
+  for (const stage of detail.stages) {
+    if (!TERMINAL_STAGE_STATES.includes(stage.state)) continue;
+    if (!stage.canonicalCardRef) continue;
+    const attempt = detail.attempts.find((a) => a.attemptRef === stage.currentAttemptRef);
+    if (!attempt || !attempt.model) continue;
+    out.push({
+      cardId: stage.canonicalCardRef,
+      model: attempt.model,
+      costUsdMicros: readUsageMicros(stage.stageRef, stage.currentAttemptRef),
+    });
+  }
+  return out;
+}
+
+export interface SettleFleetLedgerDeps {
+  repoRoot: string;
+  runPy?: PyRunner;
+  runPreamble?: PreambleRunner;
+}
+
+export interface SettleFleetLedgerInput {
+  subject?: string;
+  runRef: string;
+  stages: TerminalStageCost[];
+}
+
+export interface SettleFleetLedgerResult {
+  emitted: number;
+  blocked: boolean;
+}
+
+/**
+ * The bridge post-run seam: emit one fleet cost row per terminal stage of a completed run. Gated on the
+ * shared preamble (D7) — a present STOP file or blown budget suppresses emission entirely (`blocked`),
+ * exactly like every other governed writer. `usd` is derived from usage micros (0.0 for subscription).
+ */
+export function settleFleetCostLedger(deps: SettleFleetLedgerDeps, input: SettleFleetLedgerInput): SettleFleetLedgerResult {
+  const preamble = assertFleetRunnable(deps.repoRoot, deps.runPreamble);
+  if (!preamble.ok) return { emitted: 0, blocked: true };
+  const subject = input.subject ?? DASHBOARD_EXECUTOR_SUBJECT;
+  let emitted = 0;
+  for (const stage of input.stages) {
+    emitFleetCostRow({ repoRoot: deps.repoRoot, runPy: deps.runPy }, {
+      subject,
+      model: stage.model,
+      cardId: stage.cardId,
+      usd: stage.costUsdMicros / 1_000_000,
+    });
+    emitted += 1;
+  }
+  return { emitted, blocked: false };
 }
