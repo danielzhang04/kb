@@ -57,6 +57,13 @@ function pythonAvailable(): boolean {
 
 describe('embedded Python scripts are syntactically valid', () => {
   const havePython = pythonAvailable();
+  // A guard that silently skips is worse than none: in CI it would go green while
+  // protecting nothing. Under CI, absence of Python is a hard failure; on a dev box
+  // without Python the checks skip rather than block unrelated work.
+  it('python is available (required in CI)', () => {
+    if (process.env.CI) expect(havePython, 'Python must be on PATH in CI for this guard').toBe(true);
+    else expect(true).toBe(true);
+  });
   for (const [name, script] of Object.entries(SCRIPTS)) {
     it.runIf(havePython)(`${name} parses`, () => {
       const r = spawnSync(python, ['-c', 'import ast,sys; ast.parse(sys.stdin.read())'], {
