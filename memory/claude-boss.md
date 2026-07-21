@@ -151,3 +151,10 @@ FYT Runner (`fyt-runner`, replaces faceless-producer): one FYT-specific agent ru
 
 ### Exact Next Step
 Fresh terminal: read the spec at `memory/handoffs/2026-07-20-fyt-post-render-tail-design.md`, confirm Daniel has (a) reviewed it and (b) lifted the FYT embargo. Then: commit spec into `orgs/faceless-youtube/docs/superpowers/specs/` on a work branch, invoke superpowers `writing-plans`, and build in the agreed order starting with compliance-check (immediately testable against poyais's real artifacts, no network).
+
+## 2026-07-20 (late) — FYT tail arc: built, reviewed, PR #41
+
+- Synthesized both FYT handoffs (post-render tail design + fyt-run-001) into one spec+plan; built ALL of it via SDD (14 task commits, per-task Opus reviews, 3 fix rounds, whole-branch review READY TO MERGE): image-review DAG node, third review_status state, cutout-gate fix, stamp_review, compliance-check, thumbnail finalizer, shot-board, publish-queue, analytics-reporter, fyt-runner agent (fyt-producer tombstoned), 4 workflow segments.
+- WORKED: task-brief/report/diff file handoffs kept boss context small across 20+ subagents; parallelizing only cross-worktree tasks avoided index races; giving reviewers one pre-authorized named-risk check caught the Critical (analytics parents[3] off-by-one) that task tests missed.
+- LESSON: generated-artifact paths (org-root resolution) need a test pinning the DEFAULT invocation, not just flag-injected paths — every CLI test passed while every documented flagless run was broken.
+- REMAINS: Daniel merges PR #41 + claude/fyt-video-run-test together; poyais Gate 3 (thumbnail authorization, L17, publish approval); .env analytics token; budget.yaml conflict.
