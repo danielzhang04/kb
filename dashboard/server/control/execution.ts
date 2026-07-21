@@ -326,13 +326,25 @@ interface RestrictedIntentRule {
  * `self-lint-report` false positive proved, the natural place for a def to state its OWN safety rules
  * ("report the path only — never echo a suspected secret's value", "no spend, no publish"). Those
  * prohibition sentences contain exactly the vocabulary this scanner hunts. A prose match is therefore
- * kept as defense-in-depth but downgraded to a human-approvable `waiting` boundary: a genuine in-prose
- * directive is still stopped for a human before any worker runs, while a false positive costs one review
- * click instead of permanently bricking the run on a non-overridable `governance-refusal`. Structured
- * defenses (classifyActionRisk on the action namespace, evaluateExecutionPolicy, the worker tool cap and
- * write-scope) remain unchanged beneath this scan. Target paths are intentionally NOT scanned here —
- * legitimate paths such as `docs/credential-policy.md` would false-positive, and target safety is already
- * enforced structurally by evaluateExecutionPolicy.
+ * kept as defense-in-depth but downgraded to an `approval`-kind `waiting` boundary instead of a
+ * non-overridable `governance-refusal`.
+ *
+ * What that downgrade does and does NOT buy (verified empirically in review): the flagged stage parks
+ * waiting-human BEFORE any worker runs, and — because this check recomputes from immutable proposal
+ * content on every engine pass and never consults the human decision — an approval does NOT release the
+ * flagged stage; it re-parks on the next pass. The benefit is that an approved `approval` boundary
+ * (unlike a `governance-refusal`, see launch.ts#acceptsBoundary) no longer poisons the REST of the run:
+ * sibling stages can proceed. A false positive on a single-stage def still parks that run permanently —
+ * the def must be reworded (as PR #58 did for self-lint-report).
+ *
+ * CONSTRAINT for future editors: if this branch is ever made releasable-on-approval, the human request
+ * MUST be extended to show the full work order at decision time — today it carries only the reason slug,
+ * and a reviewer must never approve prose they cannot see.
+ *
+ * Structured defenses (classifyActionRisk on the action namespace, evaluateExecutionPolicy, the worker
+ * tool cap and write-scope) remain unchanged beneath this scan. Target paths are intentionally NOT
+ * scanned here — legitimate paths such as `docs/credential-policy.md` would false-positive, and target
+ * safety is already enforced structurally by evaluateExecutionPolicy.
  */
 const RESTRICTED_INTENT_RULES: readonly RestrictedIntentRule[] = [
   {
