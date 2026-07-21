@@ -3,8 +3,9 @@ import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { mintSession, INTERNAL_SERVICE_CALLER_KIND } from '../auth/session.ts';
+import { mintSession } from '../auth/session.ts';
 import type { SessionConfig } from '../auth/session.ts';
+import { createInternalServiceCaller } from '../control/activation.ts';
 import {
   launchWorkflowRun,
   activateManagedRootCards,
@@ -290,13 +291,38 @@ role_default: { runtime: claude, model: sonnet }
 
   it('authorizes a launch by a sanctioned internal service caller with NO token (the bridge path)', async () => {
     const runPy = vi.fn(okDagRunPy);
+    // The caller must be MINTED by the activation-gated constructor — its identity is an unforgeable brand,
+    // not a shape. A hand-built object of the same shape is rejected (see the next two tests).
+    const saved = process.env.DASHBOARD_EXECUTION_ACTIVATED;
+    process.env.DASHBOARD_EXECUTION_ACTIVATED = '1';
+    try {
+      const caller = createInternalServiceCaller('dashboard-engine');
+      const outcome = await launchWorkflowRun(
+        request,
+        { token: undefined, config: CONFIG, internalService: caller },
+        deps(runPy),
+      );
+      expect(outcome.ok).toBe(true);
+      expect(runPy).toHaveBeenCalledTimes(1);
+    } finally {
+      if (saved === undefined) delete process.env.DASHBOARD_EXECUTION_ACTIVATED;
+      else process.env.DASHBOARD_EXECUTION_ACTIVATED = saved;
+    }
+  });
+
+  it('does NOT accept a correctly-shaped hand-built lookalike as an internal caller (unforgeable brand)', async () => {
+    const runPy = vi.fn(okDagRunPy);
+    // The exact object the adversarial review flagged: right kind, right subject, but NOT minted by the
+    // gated constructor. Under the WeakSet brand it is not an internal caller, so the launch falls through
+    // to the token gate and is rejected — a future route that threaded body data into `internalService`
+    // could no longer open a bypass.
     const outcome = await launchWorkflowRun(
       request,
-      { token: undefined, config: CONFIG, internalService: { kind: INTERNAL_SERVICE_CALLER_KIND, subject: 'dashboard-engine' } },
+      { token: undefined, config: CONFIG, internalService: { kind: 'internal-service-caller', subject: 'dashboard-engine' } as never },
       deps(runPy),
     );
-    expect(outcome.ok).toBe(true);
-    expect(runPy).toHaveBeenCalledTimes(1);
+    expect(outcome).toEqual({ ok: false, reason: 'unauthenticated', detail: 'no WebAuthn session token supplied' });
+    expect(runPy).not.toHaveBeenCalled();
   });
 
   it('does NOT accept a malformed bypass object as an internal caller (strict shape, not loose truthiness)', async () => {

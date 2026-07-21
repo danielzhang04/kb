@@ -37,13 +37,17 @@ export type SessionCheck =
   | { ok: true; claims: SessionClaims }
   | { ok: false; reason: 'malformed' | 'bad-signature' | 'expired' };
 
-/** The discriminant of an internal service caller — a stable literal used at the launch auth gate. */
+/**
+ * The `kind` tag of an internal service caller — a descriptive, log-friendly label. It is deliberately NOT
+ * the security discriminant: a plain JSON object can trivially carry this string, so identity is proven by
+ * an unforgeable runtime brand (the module-private registry below), never by this literal.
+ */
 export const INTERNAL_SERVICE_CALLER_KIND = 'internal-service-caller';
 
 /**
  * A sanctioned internal service caller — an in-process principal, NOT a bearer token. Where a WebAuthn
  * session token is minted only after a human passkey assertion and is replayable by anyone who holds the
- * string, this is a plain object that never crosses a wire, is never persisted or logged, and cannot be
+ * string, this is a branded object that never crosses a wire, is never persisted or logged, and cannot be
  * forged by an HTTP client. It authorizes a governed launch as `subject` in lieu of a token. It is ONLY
  * constructed by the gate-on activation path (`control/activation.ts#createInternalServiceCaller`, which
  * throws unless `DASHBOARD_EXECUTION_ACTIVATED === '1'`); no HTTP route ever constructs or forwards one.
@@ -54,14 +58,40 @@ export interface InternalServiceCaller {
 }
 
 /**
- * True only for a well-formed internal service caller. Used as the auth-gate bypass key so the bypass is a
- * strict shape match, never a loose truthiness test on an arbitrary object an HTTP body might smuggle in.
+ * Module-private brand registry. Identity is UNFORGEABLE BY CONSTRUCTION: the only way a value becomes an
+ * internal service caller is to be minted by `brandInternalServiceCaller` below — the single call
+ * `control/activation.ts#createInternalServiceCaller` makes behind its activation gate. Membership in a
+ * WeakSet is not expressible in JSON, so a plain object shaped `{ kind, subject }` smuggled through any
+ * present OR future HTTP route can never be in this set, and thus can never satisfy `isInternalServiceCaller`.
+ * The prior guard rested on a string discriminant plus the convention that no route threads request data
+ * into `internalService`; branding removes that reliance entirely — one careless future edit can no longer
+ * open a bypass.
+ */
+const internalServiceCallers = new WeakSet<InternalServiceCaller>();
+
+/**
+ * Mint the one and only kind of value that satisfies `isInternalServiceCaller`. This is the brand primitive:
+ * call it ONLY from the activation-gated `control/activation.ts#createInternalServiceCaller`, which is the
+ * sole sanctioned producer and throws unless `DASHBOARD_EXECUTION_ACTIVATED === '1'`. Throws on an empty
+ * subject, so a branded-but-identity-less caller can never exist.
+ */
+export function brandInternalServiceCaller(subject: string): InternalServiceCaller {
+  if (typeof subject !== 'string' || subject.length === 0) {
+    throw new Error('an internal service caller requires a non-empty subject');
+  }
+  const caller: InternalServiceCaller = { kind: INTERNAL_SERVICE_CALLER_KIND, subject };
+  internalServiceCallers.add(caller);
+  return caller;
+}
+
+/**
+ * True only for a value minted by `brandInternalServiceCaller` (i.e. by the activation-gated
+ * `createInternalServiceCaller`). Used as the auth-gate bypass key: identity is the unforgeable WeakSet
+ * brand, never a shape or string match — so no object an HTTP body could carry, however well-formed, can pass.
  */
 export function isInternalServiceCaller(value: unknown): value is InternalServiceCaller {
   return typeof value === 'object' && value !== null
-    && (value as { kind?: unknown }).kind === INTERNAL_SERVICE_CALLER_KIND
-    && typeof (value as { subject?: unknown }).subject === 'string'
-    && (value as { subject: string }).subject.length > 0;
+    && internalServiceCallers.has(value as InternalServiceCaller);
 }
 
 function b64urlEncode(input: Buffer): string {
