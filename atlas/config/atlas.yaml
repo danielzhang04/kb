@@ -6,6 +6,12 @@ state_port: 4360            # local read-only /state surface, 127.0.0.1 only (de
 ops_root: C:/Users/danie/kb-worktrees/dashboard-ops   # ops worktree the transcript ledger commits+pushes to (design §5, Task 6)
 announce_when_asleep: true  # design §8, Task 11: speak a completion callback even while ASLEEP (TTS out only — never opens STT)
 watch_period_s: 30          # done-watcher poll period; the timer only polls while cards are pending
+engaged_window_s: 30        # conversation-rules §1: window armed by Atlas-side activity only
+# Base kb vocabulary for the addressed-speech gate (project/skill names are added at startup
+# from seed_keyterms). Outside the engaged window an utterance must contain "atlas" or hit
+# one of these to reach the LLM; everything else gets silence.
+address_vocab: [card, cards, queue, inbox, approvals, approval, workflow, workflows,
+                project, projects, credit, dashboard, working, ledger, budget, status]
 # dismiss phrases MIGRATED to config/intents.yaml (design §7 reflex lane, Task 10): the reflex
 # lane's `dismiss` intent is now the single source of dismiss matching data — no key here anymore.
 # --- Voice toggle (Daniel 2026-07-20): named voices, switch by pointing active_voice at one

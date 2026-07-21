@@ -30,8 +30,8 @@ from livekit.plugins import deepgram, elevenlabs, silero
 from kbmcp import kb_tools
 from worker import anthropic_compat
 from worker import engagement as engagement_mod
-from worker import (donewatcher, fastlane, ledgerwriter, repl, router, state, stateserver,
-                    toolreg, wakeword)
+from worker import (addressing as addressing_mod, donewatcher, fastlane, ledgerwriter, repl,
+                    router, sanitize, state, stateserver, toolreg, wakeword)
 
 ATLAS = Path(__file__).resolve().parents[1]
 logger = logging.getLogger("atlas.app")
@@ -75,6 +75,10 @@ _BG_TASKS: set = set()   # strong refs to fire-and-forget tasks (silence watcher
 # a file that failed to ship — the phrases themselves have MIGRATED out of atlas.yaml into
 # intents.yaml (the single source of reflex matching data).
 DEFAULT_DISMISS = ["that's all", "go to sleep", "thanks atlas", "thank you atlas"]
+
+# Canonical session-frame lines (conversation-rules design §3, Daniel-judged 2026-07-21).
+WAKE_LINE = "Hey boss. What can I do for you?"
+SLEEP_LINE = "Okay, sleeping. Wake me when you need something."
 
 
 def _load_intents() -> dict:
@@ -200,11 +204,26 @@ class AtlasAgent(Agent):
             # handled locally as a reflex — suppress the LLM reply AND the chat_ctx insertion.
             raise StopResponse()
 
+    def tts_node(self, text, model_settings):
+        # Voice-clean seam (rules design §2): every spoken string — LLM turns AND session.say
+        # canned lines — passes through here; sanitize per chunk (split-safe by construction).
+        async def _clean():
+            async for chunk in text:
+                yield sanitize.sanitize_for_tts(chunk)
+        return Agent.default.tts_node(self, _clean(), model_settings)
+
 
 async def entrypoint(ctx: JobContext) -> None:
     repl.load_env()  # DEEPGRAM_API_KEY / ANTHROPIC_API_KEY -> process env, before plugins build
     cfg = _cfg()
     keyterms = seed_keyterms(kb_tools.kb_root())
+
+    # Addressed-speech gate (rules design §1): vocabulary = config base + kb proper nouns.
+    # Constructed unconditionally so the conversation_item_added handler can re-arm it in
+    # both text and audio modes; user speech never marks it (see addressing.Addressing).
+    addr = addressing_mod.Addressing(
+        cfg.get("engaged_window_s", 30),
+        list(cfg.get("address_vocab") or []) + keyterms)
 
     stt_kwargs: dict = {"model": "flux-general-en"}
     if keyterms:
@@ -269,6 +288,8 @@ async def entrypoint(ctx: JobContext) -> None:
         text = getattr(msg, "text_content", None)
         if not text:
             return
+        if role == "assistant":
+            addr.mark_activity()   # any Atlas turn re-arms the window (rules design §1)
         publisher.add_line("atlas" if role == "assistant" else "user", text)
 
     # --- Local read-only /state surface (design §3, Task 5). Started HERE on the job-context
@@ -295,6 +316,10 @@ async def entrypoint(ctx: JobContext) -> None:
     engagement = engagement_mod.Engagement(timeout_s=cfg["engagement_timeout_s"])
     session.input.set_audio_enabled(False)  # start ASLEEP: no audio to STT until "hey jarvis"
 
+    # Announcements spoken/queued while ASLEEP are re-told in the next wake greeting (canonical
+    # #3). Plain closed-over local; drained + cleared by _engage on wake.
+    pending_news: list = []
+
     # --- Durable transcript ledger (design §5, Task 6): a second consumer of the ONE publisher
     # stream. It buckets each wake-session's lines and, at sleep, commits+pushes them to the ops
     # worktree. It's built with the atlas-worker commit identity inline (never git config) and
@@ -317,8 +342,8 @@ async def entrypoint(ctx: JobContext) -> None:
         publisher.set_state(state.ASLEEP)
         logger.info("ASLEEP — mic detached, no audio leaves the PC (wake word to re-engage)")
         if announce:
-            session.say("Going to sleep.", add_to_chat_ctx=False)
-            publisher.add_line("atlas", "Going to sleep.")  # audible, so it's mirrored
+            session.say(SLEEP_LINE, add_to_chat_ctx=False)
+            publisher.add_line("atlas", SLEEP_LINE)  # audible, so it's mirrored
         # Flush this wake-session's transcript to ops as a fire-and-forget task so the sleep cue
         # is never blocked. Capture the session_id NOW — a future wake re-mints it, but the
         # ledger buckets by id so flush(sid) drains exactly this wake's lines.
@@ -336,10 +361,14 @@ async def entrypoint(ctx: JobContext) -> None:
         logger.info("ENGAGED — listening (silence timeout %ss, or say \"that's all\")",
                     cfg["engagement_timeout_s"])
         if not already:
+            addr.mark_activity()                  # wake re-arms the window (rules design §1)
             publisher.start_session()             # new wake-session id per wake
             publisher.set_state(state.LISTENING)
-            session.say("Yes?", add_to_chat_ctx=False)  # audible wake ack
-            publisher.add_line("atlas", "Yes?")         # audible, so it's mirrored
+            news = " ".join(pending_news)         # news queued while asleep (canonical #3)
+            pending_news.clear()
+            greeting = f"Hey boss. {news} What can I do for you?" if news else WAKE_LINE
+            session.say(greeting, add_to_chat_ctx=False)  # audible wake greeting
+            publisher.add_line("atlas", greeting)         # audible, so it's mirrored
 
     @session.on("agent_state_changed")
     def _on_agent_state(ev) -> None:
@@ -377,6 +406,7 @@ async def entrypoint(ctx: JobContext) -> None:
         acks."""
         session.say(text, add_to_chat_ctx=False)
         publisher.add_line("atlas", text)
+        addr.mark_activity()   # an Atlas spoken reply re-arms the window (rules design §1)
 
     def _last_atlas_line() -> str | None:
         for line in reversed(publisher.snapshot()["transcript"]):
@@ -391,7 +421,9 @@ async def entrypoint(ctx: JobContext) -> None:
             d = json.loads(raw)
         except (ValueError, TypeError):
             return "I couldn't read the credit balance."
-        return f"You have {d.get('balance')} {d.get('units', 'USD')} of Deepgram credit left."
+        bal, units = d.get("balance", 0), d.get("units", "USD")
+        amount = f"about {round(float(bal))} dollars" if units == "USD" else f"{bal} {units}"
+        return f"You've got {amount} of Deepgram credit left."
 
     async def _handle_reflex(text: str) -> bool:
         """Route one final utterance. Returns True (and performs the reflex) on a reflex hit, so the
@@ -405,6 +437,12 @@ async def entrypoint(ctx: JobContext) -> None:
             return False
         lane, intent = router.route(text, intents)
         if lane != "reflex":
+            if not addr.is_addressed(router.normalize(text)):
+                # Not for Atlas (rules design §1): zero LLM, zero TTS. Mirrored for the
+                # ledger so desk debugging can see what was gated.
+                publisher.add_line("user", text)
+                logger.info("gated (not addressed): %r", text)
+                return True
             return False
         publisher.add_line("user", text)  # the reflex utterance, mirrored (won't arrive elsewhere)
         if intent == "dismiss":
@@ -420,7 +458,7 @@ async def entrypoint(ctx: JobContext) -> None:
                 session.interrupt(force=True)
             except RuntimeError:
                 pass                       # no active generation to interrupt — the ack still fires
-            _reflex_say("Cancelled.")
+            _reflex_say("Dropped.")
         elif intent == "repeat":
             last = _last_atlas_line()
             _reflex_say(last if last else "There's nothing to repeat yet.")
@@ -489,6 +527,12 @@ async def entrypoint(ctx: JobContext) -> None:
             # it here. The ASLEEP _on_agent_state guard keeps this say from flipping the orb.
             session.say(ann.text, add_to_chat_ctx=False)
             publisher.add_line("atlas", ann.text)
+        # ENGAGED -> a spoken callback re-arms the window; not-engaged -> queue for the next wake
+        # greeting exactly once whether or not it was spoken (canonical #3, rules design §1).
+        if engaged:
+            addr.mark_activity()
+        else:
+            pending_news.append(ann.text)
         # Reflect the outcome on the orb's filed-cards list even if we stayed silent while asleep.
         publisher.update_filed_card(ann.card_id, "done" if ann.outcome == "success" else "failed")
 
