@@ -79,7 +79,7 @@ describe('video-run workflow definition (compile-proof)', () => {
     // profile onto the proposal — see the compiled-proposal assertion further down, which is the one
     // that actually guards `compile.ts`'s `profile: def.profile`.
     expect(parsed.value.profile).toBe('producer');
-    expect(parsed.value.stages).toHaveLength(13);
+    expect(parsed.value.stages).toHaveLength(14);
   });
 
   it('pins every stage id and title the dashboard launches from', () => {
@@ -99,6 +99,7 @@ describe('video-run workflow definition (compile-proof)', () => {
       ['shots', 'Build the visual shot list and prompts'],
       ['motion', 'Plan the per-shot motion layers'],
       ['images', 'Generate the on-style stills (SPENDS REAL MONEY)'],
+      ['image-review', 'Batched review of every generated still (the image gate)'],
       ['voiceover', 'Generate the narration audio (paid TTS)'],
       ['audio-plan', 'Author the unified audio plan'],
       ['render', 'Assemble the finished cut (heavyweight)'],
@@ -130,11 +131,15 @@ describe('video-run workflow definition (compile-proof)', () => {
     // shots -> motion + images
     expect(deps.motion).toEqual(['shots']);
     expect(deps.images).toEqual(['shots']);
+    // image-review is the batched gate on every generated still, gated on both the stills and the
+    // motion plan (it enumerates the reviewable surface from the motion plan's cutout_layer_ids)
+    expect(deps['image-review']).toEqual(['images', 'motion']);
     // audio-plan converges script + shots + voiceover: the audio-director skill reads script.md and
     // shots.json as well as the voiceover, so depending on voiceover alone under-declared its inputs.
     expect(deps['audio-plan']).toEqual(['script', 'shots', 'voiceover']);
-    // render converges the production artifacts; verify follows render
-    expect(deps.render).toEqual(['audio-plan', 'images', 'metadata', 'motion', 'shorts']);
+    // render converges the production artifacts (now gated behind the image-review stamp instead of
+    // the raw images stage); verify follows render
+    expect(deps.render).toEqual(['audio-plan', 'image-review', 'metadata', 'motion', 'shorts']);
     expect(deps.verify).toEqual(['render']);
   });
 
@@ -170,7 +175,7 @@ describe('video-run workflow definition (compile-proof)', () => {
     const compiled = compileWorkflowDef(parsed.value, { registry: REGISTRY });
     expect(compiled.ok).toBe(true);
     if (!compiled.ok) return;
-    expect(compiled.value.stages).toHaveLength(13);
+    expect(compiled.value.stages).toHaveLength(14);
     expect(compiled.value.project).toBe('faceless-youtube');
     expect(compiled.value.proposalId).toMatch(/^wf-[a-f0-9]{48}$/);
     expect(compiled.value.governanceRefs).toContain('orgs/faceless-youtube/contract.md');
