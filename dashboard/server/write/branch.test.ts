@@ -66,7 +66,7 @@ describe('routeWrite — durable content (skills/**, docs/**, KB markdown)', asy
     expect(calls[1]).toEqual(['diff', '--cached', '--name-only', '-z']);
     expect(calls[2]).toEqual(['add', '--', 'skills/curated/alpha-skill/SKILL.md']);
     expect(calls[3][0]).toBe('commit');
-    expect(calls[3]).toContain('--only');
+    expect(calls[3]).not.toContain('--only');
     expect(calls[3]).not.toContain('--no-verify');
 
     const pushCalls = calls.filter((c) => c[0] === 'push');
@@ -99,6 +99,24 @@ describe('routeWrite — durable content (skills/**, docs/**, KB markdown)', asy
     expect(calls.some((c) => c.join(' ').includes('claude/fresh-branch'))).toBe(true);
     expect(requests[0].head).toBe('claude/fresh-branch');
     expect(requests[0].base).toBe('main');
+  });
+
+  it('unstages the requested path and hook-generated mirrors when commit fails', async () => {
+    const calls: string[][] = [];
+    const runner: GitRunner = (_repoRoot, args) => {
+      calls.push(args);
+      if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return `${DEFAULT_WORK_BRANCH}\n`;
+      if (args[0] === 'commit') throw new Error('pre-commit rejected generated mirror drift');
+      return '';
+    };
+
+    await expect(routeWrite('/fake/repo', 'skills/curated/alpha-skill/SKILL.md', {
+      runGit: runner,
+      openPr: prRecorder().opener,
+    })).rejects.toMatchObject({ committed: false, pushed: false });
+
+    expect(calls.at(-1)).toEqual(['reset', 'HEAD', '--', '.']);
+    expect(calls.some((call) => call[0] === 'push')).toBe(false);
   });
 });
 

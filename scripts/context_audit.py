@@ -268,6 +268,7 @@ def audit(repo, claude_home, codex_home, include_sessions=False):
     memory_lines = sum(size_lines(p)[1] for p in memories)
     return {"instruction_files": {"count": len(instructions), "bytes": instruction_bytes, "lines": instruction_lines},
             "repo_skills": skill_totals([repo / ".claude" / "skills"]),
+            "codex_repo_skills": skill_totals([repo / ".agents" / "skills"]),
             "curated_skill_sources": skill_totals([repo / "skills" / "curated"]),
             "claude_plugins": skill_totals([child for p in enabled_plugin_roots(claude_home) for child in (p / "skills", p / ".claude" / "skills")]),
             "auto_memory": {"file_count": len(memories), "bytes": memory_bytes, "lines": memory_lines},

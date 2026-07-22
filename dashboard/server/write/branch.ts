@@ -199,7 +199,9 @@ export async function routeDurable(repoRoot: string, relpath: string, options: R
       await assertCleanIndex(repoRoot, runGit);
       await runGit(repoRoot, ['add', '--', relpath]);
       staged = true;
-      await runGit(repoRoot, ['commit', '-m', message, '--only', '--', relpath]);
+      // The index was proved clean before staging this path. Commit that bounded
+      // index so pre-commit may add generated runtime mirrors atomically.
+      await runGit(repoRoot, ['commit', '-m', message]);
       committed = true;
     // Push local HEAD onto the work-branch ref, regardless of the locally checked-out branch name —
     // never a bare `push origin main`/`push origin ops`.
@@ -209,7 +211,9 @@ export async function routeDurable(repoRoot: string, relpath: string, options: R
     return { branch, pr: pr ?? {} };
     } catch (error) {
       if (staged && !committed) {
-        try { await runGit(repoRoot, ['reset', 'HEAD', '--', relpath]); } catch { /* preserve original failure */ }
+        // The index was clean before this route started, so unstage both the
+        // requested path and anything a failed hook may have generated.
+        try { await runGit(repoRoot, ['reset', 'HEAD', '--', '.']); } catch { /* preserve original failure */ }
       }
       throw new DurableRouteError(error, { committed, pushed });
     }

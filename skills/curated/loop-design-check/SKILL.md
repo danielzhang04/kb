@@ -92,7 +92,7 @@ Retry cap, hard stop, the human flips the last switch (§7), and the repo-root *
 
 ### Step 5 · Land in three stages (don't go fully automatic on day one)
 
-① **Run it once by hand** (forces you to state exactly "how the judge decides") → ② harden into a skill / Claude Code sub-agents (a main loop dispatching plan/build/judge) → ③ declare it as a `HEARTBEAT.md` cadence for full automation.
+① **Run it once by hand** (forces you to state exactly "how the judge decides") → ② harden into a skill / runtime-native subagents (a main loop dispatching plan/build/judge) → ③ declare it as a `HEARTBEAT.md` cadence for full automation.
 
 ---
 

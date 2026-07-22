@@ -6,7 +6,7 @@ human promotes them to `skills/curated/`.
 
 Gate sequence — every import passes all four, in order:
 
-1. `python scripts/scan_skill.py <SKILL.md>` — quick injection/heuristic scan.
+1. `python scripts/scan_skill.py <skill-directory>` — quick injection/heuristic scan.
 2. CI validators (deep gate): `node scripts/ci/{check_unicode_safety,scan_supply_chain_iocs,validate_skills}.js`.
 3. Human read-through (§6 of the import design doc).
 4. Promotion imported -> curated.

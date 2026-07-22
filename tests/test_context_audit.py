@@ -8,10 +8,12 @@ import scripts.context_audit as audit
 
 def test_audit_counts_only_and_deduplicates(tmp_path):
     repo = tmp_path / "repo"; (repo / ".claude" / "skills" / "on").mkdir(parents=True)
+    (repo / ".agents" / "skills" / "on").mkdir(parents=True)
     (repo / "AGENTS.md").write_text("rules\n")
     (repo / ".claude" / "skills" / "on" / "SKILL.md").write_text("---\ndescription: abc\n  def\n---\nsecret body")
     off = repo / ".claude" / "skills" / "off"; off.mkdir(parents=True)
     (off / "SKILL.md").write_text("---\ndescription: hidden\ndisable-model-invocation: true\n---")
+    (repo / ".agents" / "skills" / "on" / "SKILL.md").write_text("---\ndescription: abc def\n---")
     curated = repo / "skills" / "curated" / "source"; curated.mkdir(parents=True)
     (curated / "SKILL.md").write_text("---\ndescription: source\n---")
     claude = tmp_path / "claude"; (claude / "plugins" / "p" / "skills" / "x").mkdir(parents=True)
@@ -27,6 +29,7 @@ def test_audit_counts_only_and_deduplicates(tmp_path):
     (claude / "a.jsonl").write_text('{"message":{"id":"a","usage":{"input_tokens":2,"cache_read_input_tokens":1}}}\n' * 2)
     result = audit.audit(repo, claude, tmp_path / "missing", include_sessions=True)
     assert result["repo_skills"] == {"skill_count": 1, "description_chars": 7, "disabled_skill_count": 1}
+    assert result["codex_repo_skills"] == {"skill_count": 1, "description_chars": 7, "disabled_skill_count": 0}
     assert result["claude_plugins"]["description_chars"] == 10
     assert result["claude_plugins"]["skill_count"] == 2
     assert result["curated_skill_sources"]["description_chars"] == 6

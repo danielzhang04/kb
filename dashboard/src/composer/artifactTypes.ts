@@ -582,8 +582,19 @@ function taskPlan(draft: TaskDraft): DeployPlan {
 function skillPlan(draft: SkillDraft): DeployPlan {
   const slug = slugify(draft.name);
   const relpath = `skills/learned/${slug}/SKILL.md`;
-  // SKILL.md = the two frontmatter fields the registry reads + the body.
-  const content = `---\nname: ${draft.name}\ndescription: ${draft.description}\n---\n\n${draft.body}\n`;
+  const learnedOn = new Date().toISOString().slice(0, 10);
+  const content = [
+    '---',
+    `name: ${draft.name}`,
+    `description: ${draft.description}`,
+    'source: dashboard-composer',
+    `imported: ${learnedOn}`,
+    'provenance-tier: learned',
+    '---',
+    '',
+    draft.body,
+    '',
+  ].join('\n');
   return {
     kind: 'skill',
     relpath,

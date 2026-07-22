@@ -194,6 +194,9 @@ describe('composer/artifactTypes — deploy mapping', () => {
     // Frontmatter the registry reads is present in the emitted content.
     expect(plan.content).toContain('name: Queue Watcher');
     expect(plan.content).toContain('description: d');
+    expect(plan.content).toContain('source: dashboard-composer');
+    expect(plan.content).toMatch(/imported: \d{4}-\d{2}-\d{2}/);
+    expect(plan.content).toContain('provenance-tier: learned');
   });
 
   it('workflow deploy targets a canonical project workflow definition', () => {

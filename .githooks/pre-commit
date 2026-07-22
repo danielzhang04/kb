@@ -1,11 +1,18 @@
 #!/bin/sh
 # Versioned hook (activated via: git config core.hooksPath .githooks)
-# Keep .claude/skills in sync with skills/curated on every commit that touches skills.
-if git diff --cached --name-only | grep -q "^skills/curated/"; then
+# Keep both runtime-native mirrors in sync with the reviewed source.
+case "$(git diff --cached --name-only)" in
+*"skills/curated/"*)
+  if ! git diff --quiet -- skills/curated ||
+     test -n "$(git ls-files --others --exclude-standard -- skills/curated)"; then
+    echo "commit blocked: skills/curated has unstaged content; stage it or restore it before syncing mirrors"
+    exit 1
+  fi
   python scripts/sync_skills.py || exit 1
-  git add .claude/skills
-fi
+  git add .claude/skills .agents/skills
+  ;;
+esac
 python scripts/sync_skills.py --check || {
-  echo "commit blocked: .claude/skills drifted from skills/curated (run: python scripts/sync_skills.py)";
+  echo "commit blocked: runtime skill mirrors drifted from skills/curated (run: python scripts/sync_skills.py)";
   exit 1;
 }
