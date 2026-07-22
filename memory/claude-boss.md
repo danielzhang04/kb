@@ -261,3 +261,17 @@ Branch head 930c07d. pycaw API note: modern pycaw GetSpeakers() returns wrapped 
 STILL OWED: claude/atlas-voice-rules is unmerged production code (no PR) — needs the review+PR
 treatment. Read-scope build queued behind codex/fyt-autonomous-runner merge. Daniel's #55 sleep
 verify steps (noisy-room, mid-turn) still unexercised by ear.
+
+## 2026-07-22 (1am) — 1-2-3 arc CLOSED: #62 + #63 merged, live failure fixed same night
+
+Voice-rules branch whole-branch reviewed (0 blocking) -> PR #62 MERGED. Read-scope A+C1+C2+C3
+built off the design branch, reviewed (SHIP-WITH-FIXES; C3 single-slash rules are worktree-
+relative = redundant with sparse — claim corrected, //-absolute upgrade deferred to the
+MANDATORY pre-activation pass) -> PR #63 MERGED. Output-follow's first live BT-disconnect
+exposed stale-PA-snapshot swaps landing on disconnected endpoints (silent void, /state lying);
+policy now: failed swap -> os._exit(21) -> pm2 revive w/ fresh snapshot; reinit path removed
+(kills retry-less wake listener); comtypes flood capped; Daniel verified follow + wake + sleep
+by ear on merged code. Ops synced clean; hygiene done. Codex session parked the primary
+checkout on its branch AGAIN (project-portfolio-research) — returned to main; that terminal
+needs its own worktree. OPEN: pre-activation pass for C2/C3; #62 body's 3 desk-tuning Qs;
+Daniel's standing gates (V2a build go, contract clause, archiver Qs, cadences, orphan dir).
