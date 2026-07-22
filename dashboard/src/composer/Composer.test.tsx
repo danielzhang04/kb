@@ -16,6 +16,7 @@ import type { TimelineModel } from '../lib/timelineModel';
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -177,6 +178,8 @@ describe('Composer', () => {
   });
 
   it('deploy_calls_injected_handler_with_plan', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-22T12:00:00Z'));
     const onDeploy = vi.fn();
     render(<Composer initialKind="skill" onDeploy={onDeploy} onBack={vi.fn()} />);
     fireEvent.change(screen.getByLabelText('Skill name'), { target: { value: 'My Helper' } });
@@ -186,7 +189,12 @@ describe('Composer', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Deploy' }));
     expect(onDeploy).toHaveBeenCalledTimes(1);
     expect(onDeploy).toHaveBeenCalledWith(
-      toDeploy('skill', { name: 'My Helper', description: 'does a thing', body: 'the steps' }),
+      toDeploy('skill', {
+        name: 'My Helper',
+        description: 'does a thing',
+        body: 'the steps',
+        date: '2026-07-22',
+      }),
     );
   });
 

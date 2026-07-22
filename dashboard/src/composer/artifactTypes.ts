@@ -57,11 +57,12 @@ export interface TaskDraft {
   owner?: string;
 }
 
-/** Skill draft — the two frontmatter fields registry/skills.ts reads, plus the Markdown body. */
+/** Skill draft — registry frontmatter, caller-owned render date, and the Markdown body. */
 export interface SkillDraft {
   name: string;
   description: string;
   body: string;
+  date: string;
 }
 
 /** Workflow draft — a canonical project-scoped definition. The filename stem is its stable id/title. */
@@ -421,6 +422,10 @@ function validateSkill(draft: SkillDraft): Problem[] {
   if (nameProblem) problems.push(nameProblem);
   requireNonEmpty(problems, 'description', draft.description, 'description frontmatter is required');
   requireNonEmpty(problems, 'body', draft.body, 'a SKILL.md body is required');
+  requireNonEmpty(problems, 'date', draft.date, 'an import date is required');
+  if (draft.date !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(draft.date)) {
+    problems.push({ field: 'date', message: 'import date must use YYYY-MM-DD' });
+  }
   return problems;
 }
 
@@ -582,8 +587,18 @@ function taskPlan(draft: TaskDraft): DeployPlan {
 function skillPlan(draft: SkillDraft): DeployPlan {
   const slug = slugify(draft.name);
   const relpath = `skills/learned/${slug}/SKILL.md`;
-  // SKILL.md = the two frontmatter fields the registry reads + the body.
-  const content = `---\nname: ${draft.name}\ndescription: ${draft.description}\n---\n\n${draft.body}\n`;
+  const content = [
+    '---',
+    `name: ${draft.name}`,
+    `description: ${draft.description}`,
+    'source: dashboard-composer',
+    `imported: ${draft.date}`,
+    'provenance-tier: learned',
+    '---',
+    '',
+    draft.body,
+    '',
+  ].join('\n');
   return {
     kind: 'skill',
     relpath,

@@ -40,6 +40,7 @@ const SKILL_PLAN: DeployPlan = toDeploy('skill', {
   name: 'My Skill',
   description: 'does a thing',
   body: '# steps',
+  date: '2026-07-22',
 });
 
 const PROJECT_PLAN: DeployPlan = toDeploy('project', { name: 'demo', date: '2026-07-17' });

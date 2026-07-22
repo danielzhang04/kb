@@ -1,161 +1,236 @@
-"""Authoritative skills sync: skills/curated -> .claude/skills (+ hash manifest).
+"""Mirror reviewed skills into each runtime's native discovery directory.
 
-.claude/skills is GENERATED (committed so cloud sessions get it) — never hand-edit.
-Drift between manifest and content = tampering (spec s6).
-
-Adapter renderers (RENDERERS map) project skills/curated/* into other agents'
-native formats under the same authoritative-sync + SHA-256 drift-guard model.
-Only `codex` ships today; `render_gemini` etc. can be added later without
-restructuring — each renderer is a pure `(repo_root) -> (artifact_path, text)`
-function, and sync()/check() drive them generically.
+``skills/curated`` is authoritative. ``.claude/skills`` and ``.agents/skills``
+are generated, committed projections for Claude and Codex respectively. Runtime
+copies are byte-identical and guarded by the same SHA-256 manifest contract.
 """
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
+import os
 import shutil
 import sys
 from pathlib import Path
 
 MANIFEST = "MANIFEST.json"
+MIRRORS = (Path(".claude/skills"), Path(".agents/skills"))
+LEGACY_OUTPUTS = (
+    Path(".codex/MANIFEST.json"),
+    Path(".codex/skills-catalog.md"),
+)
+REPARSE_POINT = 0x400
 
 
-def _hash_dir(d: Path) -> str:
-    h = hashlib.sha256()
-    for f in sorted(d.rglob("*"), key=lambda p: p.relative_to(d).as_posix()):
-        if f.is_file():
-            h.update(str(f.relative_to(d)).replace("\\", "/").encode())
-            h.update(f.read_bytes())
-    return h.hexdigest()
+def _lexists(path: Path) -> bool:
+    return os.path.lexists(path)
 
 
-def _dirs(repo_root: Path):
-    curated = Path(repo_root) / "skills" / "curated"
-    mirror = Path(repo_root) / ".claude" / "skills"
-    return curated, mirror
+def _is_link_or_reparse(path: Path) -> bool:
+    try:
+        attrs = getattr(path.lstat(), 'st_file_attributes', 0)
+    except FileNotFoundError:
+        return False
+    return path.is_symlink() or bool(attrs & REPARSE_POINT)
 
 
-def render_codex(repo_root: Path) -> tuple[Path, str]:
-    """Pure renderer: skills/curated/* -> deterministic .codex/skills-catalog.md.
-
-    Returns (artifact_path, rendered_text). No filesystem writes here — sync()
-    writes it, check() re-derives it read-only to compare against the manifest.
-    """
-    curated, _ = _dirs(repo_root)
-    catalog = Path(repo_root) / ".codex" / "skills-catalog.md"
-    names = sorted(p.name for p in curated.iterdir() if p.is_dir()) if curated.exists() else []
-    lines = [
-        "# Codex Skills Catalog",
-        "",
-        "Generated from skills/curated/ by scripts/sync_skills.py — do not hand-edit.",
-        "",
-    ]
-    lines.extend(f"- {name}" for name in names)
-    text = "\n".join(lines) + "\n"
-    return catalog, text
+def _real_directory(path: Path) -> bool:
+    return path.is_dir() and not _is_link_or_reparse(path)
 
 
-# Adapter dispatch, kept generic: add render_gemini etc. here later without
-# restructuring sync()/check(). Only codex ships today.
-RENDERERS = {
-    "codex": render_codex,
-}
+def _real_file(path: Path) -> bool:
+    return path.is_file() and not _is_link_or_reparse(path)
 
 
-def sync(repo_root: Path) -> dict:
-    curated, mirror = _dirs(repo_root)
-    mirror.mkdir(parents=True, exist_ok=True)
-    manifest: dict[str, str] = {}
-    wanted = set()
-    if curated.exists():
-        for src in sorted(p for p in curated.iterdir() if p.is_dir()):
-            wanted.add(src.name)
-            dest = mirror / src.name
-            if dest.exists():
-                shutil.rmtree(dest)
-            shutil.copytree(src, dest)
-            manifest[src.name] = _hash_dir(dest)
-    for existing in list(mirror.iterdir()):
-        if existing.is_dir() and existing.name not in wanted:
-            shutil.rmtree(existing)
-    (mirror / MANIFEST).write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+def _managed_path(
+    repo_root: Path, relative: Path, *, removable_leaf: bool = False
+) -> Path:
+    """Resolve a repo-relative path without traversing linked managed ancestors."""
+    path = Path(repo_root)
+    parts = relative.parts
+    for index, part in enumerate(parts):
+        path /= part
+        if not _lexists(path) or not _is_link_or_reparse(path):
+            continue
+        if removable_leaf and index == len(parts) - 1:
+            continue
+        raise ValueError(f"managed path contains a link or reparse point: {path}")
+    return path
 
-    for _adapter, render_fn in RENDERERS.items():
-        artifact, text = render_fn(repo_root)
-        artifact.parent.mkdir(parents=True, exist_ok=True)
-        # newline="" disables universal-newline translation on write (Windows
-        # would otherwise turn our "\n" into "\r\n", desyncing the on-disk
-        # bytes from the digest computed over `text`).
-        artifact.write_text(text, encoding="utf-8", newline="")
-        digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
-        adapter_manifest = artifact.parent / MANIFEST
-        adapter_manifest.write_text(
-            json.dumps({artifact.name: digest}, indent=2), encoding="utf-8"
-        )
+
+def _validate_tree(directory: Path) -> None:
+    if not _real_directory(directory):
+        raise ValueError(f'skill tree must be a real directory: {directory}')
+    for path in directory.rglob('*'):
+        if _is_link_or_reparse(path):
+            raise ValueError(f'skill tree contains a link or reparse point: {path}')
+        if not path.is_dir() and not path.is_file():
+            raise ValueError(f'skill tree contains an unsupported entry: {path}')
+
+
+def _matches_directory(path: Path, digest: str) -> bool:
+    if not _real_directory(path):
+        return False
+    try:
+        return _hash_dir(path) == digest
+    except (OSError, ValueError):
+        return False
+
+
+def _remove_managed_path(path: Path) -> None:
+    if not _lexists(path):
+        return
+    if path.is_symlink():
+        path.unlink()
+    elif _is_link_or_reparse(path):
+        if path.is_dir():
+            path.rmdir()
+        else:
+            path.unlink()
+    elif path.is_dir():
+        shutil.rmtree(path)
+    else:
+        path.unlink()
+
+
+def _ensure_directory(path: Path) -> None:
+    if _lexists(path) and not _real_directory(path):
+        _remove_managed_path(path)
+    path.mkdir(parents=True, exist_ok=True)
+
+
+def _hash_dir(directory: Path) -> str:
+    _validate_tree(directory)
+    digest = hashlib.sha256()
+    for path in sorted(
+        directory.rglob("*"), key=lambda item: item.relative_to(directory).as_posix()
+    ):
+        if path.is_file():
+            relative = path.relative_to(directory).as_posix().encode("utf-8")
+            content = path.read_bytes()
+            # Length-prefix both fields so different file maps cannot collapse
+            # into the same concatenated byte stream.
+            digest.update(len(relative).to_bytes(8, "big"))
+            digest.update(relative)
+            digest.update(len(content).to_bytes(8, "big"))
+            digest.update(content)
+    return digest.hexdigest()
+
+
+def _source(repo_root: Path) -> Path:
+    return _managed_path(Path(repo_root), Path("skills/curated"))
+
+
+def _manifest(source: Path) -> dict[str, str]:
+    if not _lexists(source):
+        return {}
+    _validate_tree(source)
+    return {
+        skill.name: _hash_dir(skill)
+        for skill in sorted(path for path in source.iterdir() if path.is_dir())
+    }
+
+
+def sync(repo_root: Path) -> dict[str, str]:
+    repo_root = Path(repo_root)
+    source = _source(repo_root)
+    manifest = _manifest(source)
+
+    for legacy in LEGACY_OUTPUTS:
+        _remove_managed_path(_managed_path(repo_root, legacy, removable_leaf=True))
+
+    for relative in MIRRORS:
+        mirror = _managed_path(repo_root, relative, removable_leaf=True)
+        _ensure_directory(mirror)
+        for name in manifest:
+            destination = mirror / name
+            if _matches_directory(destination, manifest[name]):
+                continue
+            if _lexists(destination):
+                _remove_managed_path(destination)
+            shutil.copytree(source / name, destination)
+        for existing in list(mirror.iterdir()):
+            if existing.name not in manifest and existing.name != MANIFEST:
+                _remove_managed_path(existing)
+        manifest_text = json.dumps(manifest, indent=2)
+        manifest_path = mirror / MANIFEST
+        if _lexists(manifest_path) and not _real_file(manifest_path):
+            _remove_managed_path(manifest_path)
+        if not _real_file(manifest_path) or manifest_path.read_text(encoding="utf-8") != manifest_text:
+            manifest_path.write_text(manifest_text, encoding="utf-8")
 
     return manifest
 
 
 def check(repo_root: Path) -> list[str]:
-    _, mirror = _dirs(repo_root)
-    mf = mirror / MANIFEST
+    repo_root = Path(repo_root)
     problems: list[str] = []
-    if not mf.exists():
-        problems.append("no manifest — run sync")
-    else:
-        manifest = json.loads(mf.read_text(encoding="utf-8"))
-        for name, digest in manifest.items():
-            d = mirror / name
-            if not d.exists():
-                problems.append(f"{name}: mirrored copy missing")
-            elif _hash_dir(d) != digest:
-                problems.append(f"{name}: mirrored copy does not match manifest (tampering/drift)")
-        for d in mirror.iterdir():
-            if d.is_dir() and d.name not in manifest:
-                problems.append(f"{d.name}: unmanifested skill in mirror")
+    try:
+        expected = _manifest(_source(repo_root))
+    except (OSError, ValueError) as error:
+        return [f"skills/curated: unsafe or unreadable source: {error}"]
 
-    for adapter, render_fn in RENDERERS.items():
-        artifact, expected_text = render_fn(repo_root)
-        adapter_manifest = artifact.parent / MANIFEST
-        if not adapter_manifest.exists():
-            problems.append(f"{adapter}: no manifest — run sync")
+    for legacy in LEGACY_OUTPUTS:
+        try:
+            legacy_path = _managed_path(repo_root, legacy, removable_leaf=True)
+        except ValueError as error:
+            problems.append(str(error))
             continue
-        adapter_data = json.loads(adapter_manifest.read_text(encoding="utf-8"))
-        expected_digest = adapter_data.get(artifact.name)
-        if expected_digest is None:
-            problems.append(f"{adapter}: {artifact.name} missing from manifest")
-            continue
-        if not artifact.exists():
-            problems.append(f"{adapter}: {artifact.name} missing")
-            continue
-        # Normalize CRLF -> LF before hashing: the manifest digest is computed
-        # over the LF text render_codex() produced, but core.autocrlf=true
-        # materializes the committed file with CRLF on a fresh checkout —
-        # hashing raw bytes would flag false "drift" in every new worktree and
-        # block all commits there. Real tampering still changes the normalized
-        # bytes, so the guard's strength is unchanged.
-        actual_digest = hashlib.sha256(
-            artifact.read_bytes().replace(b"\r\n", b"\n")
-        ).hexdigest()
-        if actual_digest != expected_digest:
+        if _lexists(legacy_path):
             problems.append(
-                f"{adapter}: {artifact.name} does not match manifest (tampering/drift)"
+                f"legacy generated output remains: {legacy.as_posix()} -- run sync"
             )
+    for relative in MIRRORS:
+        label = relative.as_posix()
+        try:
+            mirror = _managed_path(repo_root, relative, removable_leaf=True)
+        except ValueError as error:
+            problems.append(f"{label}: {error}")
+            continue
+        if not _real_directory(mirror):
+            problems.append(
+                f"{label}: mirror root is missing or not a real directory -- run sync"
+            )
+            continue
+        manifest_path = mirror / MANIFEST
+        if not _real_file(manifest_path):
+            problems.append(f"{label}: no manifest — run sync")
+            continue
+        try:
+            recorded = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            problems.append(f"{label}: unreadable manifest — run sync")
+            continue
+        if recorded != expected:
+            problems.append(f"{label}: manifest does not match skills/curated — run sync")
+        for name, digest in expected.items():
+            skill = mirror / name
+            if not _lexists(skill):
+                problems.append(f"{label}/{name}: mirrored copy missing")
+            elif not _real_directory(skill):
+                problems.append(f"{label}/{name}: mirrored copy is not a real directory")
+            elif not _matches_directory(skill, digest):
+                problems.append(f"{label}/{name}: mirrored copy does not match source")
+        allowed = set(expected) | {MANIFEST}
+        for entry in mirror.iterdir():
+            if entry.name not in allowed:
+                problems.append(f"{label}/{entry.name}: unmanifested entry in mirror")
+
     return problems
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--check", action="store_true")
-    args = ap.parse_args()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--check", action="store_true")
+    args = parser.parse_args()
     if args.check:
         problems = check(Path.cwd())
-        for p in problems:
-            print(f"DRIFT: {p}")
+        for problem in problems:
+            print(f"DRIFT: {problem}")
         return 1 if problems else 0
     manifest = sync(Path.cwd())
-    print(f"synced {len(manifest)} skill(s)")
+    print(f"synced {len(manifest)} skill(s) to {len(MIRRORS)} runtimes")
     return 0
 
 

@@ -92,8 +92,8 @@ export interface ComposerProps {
   renderProposalReview?: React.ReactNode;
 }
 
-/** Today's date (YYYY-MM-DD) for the project template's `{{date}}`. This is the ONE impurity the UI owns
- *  (the registry stays pure by taking the date IN); it seeds the editable Project date field. */
+/** Today's date (YYYY-MM-DD) for rendered artifact metadata. The UI owns this impurity once at form
+ *  initialization; the registry stays pure by taking dates in through each draft. */
 function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -111,6 +111,7 @@ interface FormState {
   skillName: string;
   skillDescription: string;
   skillBody: string;
+  skillDate: string;
   // workflow
   wfFilename: string;
   wfBody: string;
@@ -142,6 +143,7 @@ function initialForm(): FormState {
     skillName: '',
     skillDescription: '',
     skillBody: '',
+    skillDate: today(),
     wfFilename: '',
     wfBody: '',
     wfProject: '',
@@ -238,7 +240,7 @@ function buildDraft(
     case 'task':
       return { project: f.project, action: f.action, target: f.target, riskTier: f.riskTier, body: f.taskBody, owner: f.taskOwner };
     case 'skill':
-      return { name: f.skillName, description: f.skillDescription, body: f.skillBody };
+      return { name: f.skillName, description: f.skillDescription, body: f.skillBody, date: f.skillDate };
     case 'workflow':
       return {
         filename: f.wfFilename,

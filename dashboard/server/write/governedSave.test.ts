@@ -149,7 +149,7 @@ describe('save — path confinement', () => {
 });
 
 describe('save — sync_skills hook awareness', () => {
-  it('a skills/** save lets the sync_skills pre-commit hook run and includes its staged .claude/skills mirror', async () => {
+  it('a skills/** save lets the sync_skills pre-commit hook generate both runtime mirrors', async () => {
     const repo = await scratch();
     const { runner: runGit, calls } = recorder();
     const token = validToken();
@@ -171,12 +171,12 @@ describe('save — sync_skills hook awareness', () => {
     expect(commitCall).not.toContain('--no-verify');
     expect(calls.every((c) => !c.includes('--no-verify'))).toBe(true);
     // Content actually landed on disk before the commit, so the (real, active) pre-commit hook has a
-    // populated skills/curated/ tree to mirror into .claude/skills.
+    // populated skills/curated/ tree to mirror into both runtime-native skill directories.
     const onDisk = await readFile(join(repo, 'skills', 'curated', 'alpha-skill', 'SKILL.md'), 'utf-8');
     expect(onDisk).toContain('alpha skill');
   });
 
-  it('a drifted .claude/skills mirror fails the save rather than being bypassed', async () => {
+  it('a drifted runtime skill mirror fails the save rather than being bypassed', async () => {
     const repo = await scratch();
     const token = validToken();
     // Simulate the sync_skills.py --check failure inside the pre-commit hook: `git commit` exits
@@ -186,7 +186,7 @@ describe('save — sync_skills hook awareness', () => {
       if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'claude/m1-dashboard\n';
       if (args[0] === 'commit') {
         throw new Error(
-          'commit blocked: .claude/skills drifted from skills/curated (run: python scripts/sync_skills.py)',
+          'commit blocked: runtime skill mirrors drifted from skills/curated (run: python scripts/sync_skills.py)',
         );
       }
       return '';
