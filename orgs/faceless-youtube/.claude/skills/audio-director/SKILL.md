@@ -1,6 +1,6 @@
 ---
 name: audio-director
-description: Authors the complete audio plan for a scripted + storyboarded video in this project — SFX hits, deliberate pauses, music-bed placement, and dry/pull-back spans — as one unified videos/<slug>/audio-plan.json for the render engine. Use whenever the user wants to do the audio, "author the audio plan", place the SFX and music, "do the sound design", add pauses/silences, choose which bed plays where, or run the audio step after shots.json exists — for ANY channel with a visual-kit/audio setup (sfx_pools + music_pools). It merges what used to be two skills (SFX cues + music cues) into ONE director. It decides PLACEMENT (a judgment grounded in the script + shots.json + the measured audio grammar); the HUMAN ear-gates FEEL on the render. Timid by default. Runs AFTER visual-prompt-writer / motion-planner (needs shots.json), in parallel with voiceover, BEFORE render-builder. Do NOT use it to source/curate SFX or music files (sfx-forge / music-forge), to plan visual layers (motion-planner), to write the script (long-form-writer), or to assemble the video (render-builder).
+description: Authors the complete per-video audio plan for a scripted and storyboarded video in this project—SFX hits, deliberate pauses, music-bed placement, and dry/pull-back spans—for the render engine. Use whenever the user wants to author audio, place SFX or music, design sound, add pauses or silence, choose beds, or run the audio step after shots.json exists for a channel with visual-kit audio pools. It owns placement and leaves feel to the human ear gate; do not use it to source sounds, plan visuals, write scripts, or render video.
 ---
 
 # audio-director
@@ -27,16 +27,16 @@ Pins, the no-dip-in-pause law, and the SFX-tail convention: `references/grammar-
 ## Procedure
 1. **Read** the inputs above. Walk the script in narration order.
 2. **Draft, timid-by-default** — two sectioned passes into the SAME `cues` list:
-   - **SFX + pauses.** Place a hit only where content earns it: a money beat → `cash`, a hard pivot →
-     `record_scratch` + `in_pause`, a punchline/number/reveal → a punch (`boom`/`ding`) often with a
-     short `pause` before it. **Withhold** comedic SFX on human-cost / dialogue sections. Structural
-     sounds (a scene-change `whoosh`, a chapter `boom`) are placed **selectively by judgment** — NOT on
-     every instance (we don't want a whoosh on every cut). The one you must NOT miss: the number/reveal
-     punch. Correct failure direction = too few.
+   - **SFX + pauses.** Inspect material reveals, concrete numbers, pivots, visible entrances/draw-ons,
+     chapter turns, punchlines, and gravity turns. Place a hit only where sound improves the landing: a
+     money beat may earn `cash`, a hard pivot may earn `record_scratch` + `in_pause`, and a reveal may
+     earn a punch or held `pause`. **Withhold** comedic SFX on human-cost sections. Structural sounds
+     (a scene-change `whoosh`, a chapter `boom`) are selective, never automatic. A bed, visual/VO landing,
+     or deliberate silence may be the correct treatment; there is no cue-count target.
    - **Music + dry.** Segment into mood sections (few switches — let one bed run); pick each section's
      `mood` for its register (wry `sneaky` is the con-story workhorse; `casual-bed` default; `upbeat`
-     opt-in lift). **`dry`** across human-cost sections (music pulls back). The one you must NOT miss:
-     dry on human cost.
+     opt-in lift). Keep a restrained bed through concise human-cost sections unless a particular line
+     earns a full pull-back. **`dry` is rare and line-specific**, not an automatic consequence treatment.
 3. **Fresh-eyes critic** — dispatch a fresh-context reviewer with `references/critics.md` + the draft +
    the script + `grammar-guidance.md`. Apply its findings in ONE revise pass.
 4. **Write** `videos/<slug>/audio-plan.json` (schema: `audio-plan-schema.md`).
@@ -45,7 +45,8 @@ Pins, the no-dip-in-pause law, and the SFX-tail convention: `references/grammar-
    whether a structural sound should fire here) is tuned by ear on the actual render.
 
 ## Guardrails
-- **Timid.** Fewer hits, one bed running; the correct failure is under-cueing, not a laugh-track.
+- **Timid.** Fewer earned hits and one bed running beat a laugh-track, but timid does not mean silently
+  skipping a high-value reveal, pivot, entrance, or punchline. The fresh critic adjudicates the miss.
 - **Judgment, gated** — placement is a judgment (like the old cue-writers), backstopped by the critic +
   the lint + your ear-gate. The RENDER is deterministic given the plan.
 - **You CAN audition — don't under-claim it.** You never literally listen, but the tooling makes a real

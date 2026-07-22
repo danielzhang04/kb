@@ -59,6 +59,21 @@ def test_base_db_out_of_band_warns():
     assert r["ok"] is False and any("base_db" in w for w in r["warnings"])
 
 
+def test_authored_qa_is_reported_and_unresolved_anchor_warns():
+    qa = {"source": "unified",
+          "authored_by_kind": {"sfx": 2, "pause": 0, "music": 1, "dry": 0},
+          "resolved_by_kind": {"sfx": 1, "pause": 0, "music": 1, "dry": 0},
+          "unresolved_by_kind": {"sfx": 1, "pause": 0, "music": 0, "dry": 0}}
+    r = check_audio(_spec(qa=qa), SHOTS, LN, MT)
+    assert r["ok"] is False and any("audio anchor unresolved: sfx=1" in w for w in r["warnings"]), r
+    assert r["measured"]["authored_vs_resolved"] == qa, r
+
+
+def test_legacy_audio_without_authored_qa_stays_compatible():
+    r = check_audio(_spec(), SHOTS, LN, MT)
+    assert r["ok"] is True and "authored_vs_resolved" not in r["measured"], r
+
+
 # --- R11: sentence-gap verifier -----------------------------------------------
 # Measures the REAL acoustic silence at every sentence boundary in the SPLICED VO and warns on any
 # boundary below target - tol. Uses a synthetic wav (speech / silence / speech) written stdlib-only;
@@ -141,6 +156,8 @@ print("running")
 test_clean_render_passes(); test_missing_sfx_warns(); test_missing_music_warns()
 test_loudness_off_target_warns(); test_true_peak_over_warns(); test_loudnorm_soft_failed_warns()
 test_base_db_out_of_band_warns()
+test_authored_qa_is_reported_and_unresolved_anchor_warns()
+test_legacy_audio_without_authored_qa_stays_compatible()
 test_sentence_gap_verifier_passes_when_gaps_meet_target()
 test_sentence_gap_verifier_flags_short_boundary_with_timestamp()
 test_sentence_gap_verifier_skips_cleanly_without_inputs()

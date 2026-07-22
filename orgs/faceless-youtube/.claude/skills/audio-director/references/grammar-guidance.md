@@ -37,8 +37,8 @@ auto-fire rules.
   `pause` is free to author generously (it holds the frame + gives a
   breath) without fear of chopping the bed. `dry` is now a RARE tool — a lone big reveal, no longer human
   cost (see the retired human-cost pull-back above) — reach for it, not `pause`, only when you truly want the bed gone.
-- **Dips land on ~⅓ of punchlines — never all** (on a channel that keeps pause-dips on). Predictability
-  kills the gag; place the reveal/number punch and a few choice hits, not every beat.
+- **Dips are selective, never metronomic** (on a channel that keeps pause-dips on). Predictability kills
+  the gag; use one only when the landing improves, not because a fraction or count is owed.
 - **The sentence-gap floor is automatic — author only EXTRA silence.** Baked TTS pause tags
   (`[PAUSE]`/`[BEAT]`) are **RETIRED** for this channel (R8-B). The engine pads every sentence boundary's
   TOTAL gap up to a target (`sentence_gap_target_s` 0.65s, or 0.45s after a chained ≤2-word sentence),
@@ -51,7 +51,8 @@ auto-fire rules.
 - **Breath is selective (above the floor)** — beyond the universal sentence gap, a sustained hit earns
   ~0.55s (range 0.3–0.8) of EXTRA VO silence via a `pause` cue, but only ~20% of events. Most beats ride
   the sentence-gap floor with no added pause.
-- **Density** — story/comedic caps around ~20 SFX transients/min; explainer lower. Fewer is safer.
+- **Density is diagnostic, not a target.** Reference rates may reveal an under- or over-authored plan,
+  but acceptance follows semantic coverage and the human ear, never SFX/min.
 - **Register dial** — the bed mood tracks topic gravity: wry `sneaky` for the con/fraud spine, `casual-bed`
   as the neutral default, `upbeat` only as a deliberate lift; on human cost the bed stays PRESENT — a
   restrained `underscore` track + level carries the gravity (the human-cost dry pull-back is retired).

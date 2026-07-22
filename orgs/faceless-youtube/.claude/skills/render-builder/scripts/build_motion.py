@@ -44,7 +44,7 @@ from breath import (shift_timings, splice_silence, sentence_gap_analysis, apply_
                     merge_gaps, sentence_boundaries)  # noqa: E402  (pause splicing + universal sentence law + R12 onset correction)
 from audio_cues import load_cues, resolve_cues, cue_pause_gaps, cue_role_events  # noqa: E402  (2b authored cues)
 from music_cues import load_music_cues, resolve_music_cues  # noqa: E402  (3B authored music placement)
-from audio_plan import load_audio_plan, split_plan  # noqa: E402  (unified audio plan, additive)
+from audio_plan import build_audio_qa, load_audio_plan, split_plan  # noqa: E402  (unified plan + derived QA)
 from audio_checker import check_audio  # noqa: E402  (Phase 4 deterministic audio checker)
 
 ENGINE_DIR = Path(__file__).parent.parent / "engine"
@@ -466,13 +466,16 @@ def build_piece_spec(piece, shots, res, is_short, video_dir, vo_manifest, args, 
     _plan = load_audio_plan(video_dir)
     if _plan is not None:
         _a_cues, _m_cues_raw, _m_dry_raw = split_plan(_plan)
+        _audio_plan_source = "unified"
     else:
         _a_cues = load_cues(video_dir)
         _m_cues_raw, _m_dry_raw = load_music_cues(video_dir)
+        _audio_plan_source = "legacy" if any((_a_cues, _m_cues_raw, _m_dry_raw)) else "default"
     # PAUSE gaps: authored `pause` cues insert a silence gap. ONE offset point — shift the word-timings
     # here; everything downstream (retime, captions, build_audio) reads the shifted list + plays the derived
     # vo.breath.mp3. Separate from the writer's [PAUSE] prosody.
-    gaps, cue_events, cues_unresolved, sentence_gap_count = [], [], 0, 0
+    gaps, cue_gaps, cue_events, resolved = [], [], [], []
+    cues_unresolved, sentence_gap_count = 0, 0
     orig_word_timings = word_timings   # pre-correction/pre-shift snapshot (== final list when no gaps)
     if not args.no_audio and word_timings:
         resolved = resolve_cues(_a_cues, word_timings)     # authored cues, on the ORIGINAL timeline
@@ -609,6 +612,13 @@ def build_piece_spec(piece, shots, res, is_short, video_dir, vo_manifest, args, 
             lbl = w.get("anchor") or w["sfx"]
             print(f"  ! SFX tail overshoot: {w['sfx']} @ {w['at_s']:.2f}s ('{lbl}') rings "
                   f"{w['overshoot_s']:.2f}s past the next cut — pair a same-anchor pause (M20 tail law).")
+        _piece_end_s = (float(spec["shots"][-1].get("start_s", 0.0))
+                        + float(spec["shots"][-1].get("duration_s", 0.0))) if spec["shots"] else 0.0
+        audio_spec["qa"] = build_audio_qa(
+            authored_audio=_a_cues, authored_music=_m_cues_raw, authored_dry=_m_dry_raw,
+            resolved_audio=resolved, resolved_music=res_mcues, resolved_dry=res_mdry,
+            audio_spec=audio_spec, cue_gaps=cue_gaps, piece_end_s=_piece_end_s,
+            source=_audio_plan_source)
         audio_spec = stage_audio_assets(audio_spec, video_dir, media_len_s=vo_s)
     spec["audioSpec"] = audio_spec
     spec["breathGaps"] = gaps   # carried for the post-render splice-continuity gate (audio_checker)
@@ -635,7 +645,8 @@ def build_piece_spec(piece, shots, res, is_short, video_dir, vo_manifest, args, 
             "music_segments": len(audio_spec.get("music_states", [])),
             "music_missing": audio_spec.get("music_missing", 0),
             "sfx_count": len(audio_spec.get("events", [])),
-            "cues_unresolved": cues_unresolved,   # authored anchors that failed to resolve (loudly warned)
+            "cues_unresolved": sum(audio_spec["qa"]["unresolved_by_kind"].values()),
+            "qa": audio_spec["qa"],
             "sfx_tail_overshoots": len(audio_spec.get("sfx_tail_warnings", [])),   # M20 tail audit (WARN-only)
             "dip_count": len(audio_spec.get("dips", [])),
             "thin_count": len(audio_spec.get("thin_spans", []))}),

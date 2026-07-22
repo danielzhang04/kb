@@ -101,14 +101,27 @@ carves silence. An SFX file that rings past the next cut is WARNed at realize (t
 Present level, default mood, `dip_in_pause`, fade + gap lengths, and mood→track all live in
 `audio-tokens.json`. The director authors WHERE + WHICH; the realizer owns HOW.
 
+## Derived authored-versus-resolved QA
+
+`build_motion` derives a small `audioSpec.qa` block; the director never authors it. It records:
+
+- source (`unified`, `legacy`, or `default`);
+- authored, anchor-resolved, and unresolved counts for `sfx`, `pause`, `music`, and `dry`;
+- resolved authored-pause seconds, resolved dry-span seconds, and final music-presence seconds;
+- silently dropped SFX/music assets and SFX-tail overshoots.
+
+The automatic default bed contributes to music-presence seconds but is excluded from authored/resolved
+cue counts. `audio_checker` carries this block into its measured report and warns on unresolved anchors or
+missing assets. The QA is diagnostic: it never adds a cue or turns a reference rate into a target.
+
 ## Example
 ```json
 { "cues": [
   { "kind": "music", "from_anchor": "In eighteen twenty two", "mood": "sneaky" },
   { "kind": "pause", "anchor": "eight million dollars", "pause_s": 0.6 },
   { "kind": "sfx",   "anchor": "eight million dollars", "role": "cash", "sync": "element" },
-  { "kind": "dry",   "from_anchor": "never came home",   "to_anchor": "buried far from" }
+  { "kind": "dry",   "from_anchor": "But the bank account", "to_anchor": "was completely empty" }
 ] }
 ```
 → a wry `sneaky` bed opens; a 0.6s stop (bed dips, other SFX drop) then `cash` lands on "eight" as the
-number arrives; the bed pulls fully DRY across the human-cost span.
+number arrives; the bed pulls fully DRY only across the line-specific empty-account reveal.
