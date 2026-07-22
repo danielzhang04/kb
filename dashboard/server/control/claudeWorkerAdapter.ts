@@ -184,6 +184,13 @@ export interface ClaudeWorkerAdapterOptions {
    * companion to `registerCancellation`; a call for an already-dropped/unknown key must be a no-op.
    */
   deregisterCancellation?: (operationKey: string) => void;
+  /**
+   * The canonical repo root (C3). When provided, `buildReadScopeSettings` additionally emits the
+   * `//`-absolute deny companion anchored here, bounding absolute-path reads of the real repo checkout
+   * for a no-Bash profile. Absent => relative-only deny rules (worktree-anchored), byte-identical to the
+   * pre-upgrade C3 argv. Threaded from activation.ts (`createWorkers({ repoRoot })`).
+   */
+  repoRoot?: string;
   /** The parent env the allowlist filters. Defaults to process.env. */
   parentEnv?: Record<string, string | undefined>;
   /** The env-name allowlist. Defaults to the PTY host's DEFAULT_ENV_ALLOWLIST (denylist always applies). */
@@ -285,32 +292,54 @@ function topLevelSegments(paths: readonly string[]): Set<string> {
 }
 
 /**
+ * Anchor a denied root as a filesystem-ABSOLUTE Claude Code read rule at the real repo root. Per the
+ * permission-rules docs a leading `//` marks a rule pathspec as filesystem-absolute (as opposed to a
+ * single leading `/`, which anchors at the settings source / worker cwd). Windows backslashes are
+ * converted to forward slashes and the drive letter is preserved (NOT stripped), so a repoRoot of
+ * `C:\Users\danie\kb-worktrees\dashboard-ops` yields `Read(//C:/Users/danie/kb-worktrees/dashboard-ops/<root>/**)`.
+ */
+function absoluteReadDenyRule(repoRoot: string, root: string): string {
+  const forwardSlashed = repoRoot.replace(/\\/g, '/').replace(/\/+$/, '');
+  return `Read(//${forwardSlashed}/${root}/**)`;
+}
+
+/**
  * Build the per-invocation `--settings` JSON value for a no-Bash worker, or `undefined` when none applies
  * (the profile grants Bash, or nothing sensitive is left to deny). Passed inline to `--settings` (the CLI
  * accepts a JSON string, so no temp file is written and `~/.claude/settings.json` is never mutated).
  *
- * HONEST SCOPE OF PROTECTION (review 2026-07-22, MAJOR-1): a single-leading-slash rule like
- * `Read(/dashboard/**)` anchors at the settings source / worker cwd — the WORKTREE — not the
- * filesystem root. So these rules bound worktree-relative reads only: belt-and-suspenders that is
- * largely redundant with C2 sparse checkout (which simply does not materialize those dirs). They do
- * NOT bound absolute-path reads of the real repo root, sibling worktrees, or anything outside the
- * worktree. Closing that requires `//`-absolute rules anchored at the canonical repoRoot, which
- * needs repoRoot threaded through the adapter options (an activation.ts hunk deliberately deferred
- * to the C2/C3 PRE-ACTIVATION pass — the same pass that must live-verify inline `--settings` JSON
- * acceptance and Windows sparse-checkout behavior before any scanner worker runs). Until then C3's
- * incremental protection over C2 is honestly ~zero; it ships because it is inert, harmless, and the
- * emission seam is where the absolute rules will land. Pure — no filesystem, no process env.
+ * HONEST SCOPE OF PROTECTION (live-verified 2026-07-22 against the installed claude CLI 2.1.217, -p mode):
+ *   - Read deny rules are NON-FUNCTIONAL on CLI 2.1.217 in -p mode. Verified exhaustively: inline AND
+ *     file-based settings, relative single-slash, `//`-absolute Windows path, and even a blanket
+ *     `deny: ["Read"]` — the target file was read every time. So C3 delivers ZERO read protection today.
+ *     Read-bounding is carried ENTIRELY by C1 (the no-Bash scanner profile) + C2 (sparse materialization).
+ *   - The channel itself works: inline `--settings` JSON is parsed (valid JSON parses silently; invalid
+ *     errors), and a `deny: ["Bash"]` rule IS honored (tool refused). C3 ships as DORMANT future-proofing:
+ *     the emission seam is correct and a future CLI that honors Read denies would light it up for free.
+ * This function still emits BOTH the worktree-relative rule (`Read(/dashboard/**)`) and, when `repoRoot`
+ * is provided, the `//`-absolute companion anchored at the real canonical repo root
+ * (`Read(//<repoRoot>/dashboard/**)`, relative then absolute per root) exactly as specified — building the
+ * rules is right even while the CLI ignores them. `repoRoot` is threaded from activation.ts
+ * (`createWorkers({ repoRoot })`). NOT OS containment regardless: git plumbing (`git show`/`git cat-file`)
+ * is why C3 is emitted ONLY for a no-Bash profile. Pure — no filesystem, no process env.
  */
 export function buildReadScopeSettings(input: {
   allowedTools: readonly string[];
   readScope: readonly string[];
   writeScope: readonly string[];
+  repoRoot?: string;
 }): string | undefined {
   if (input.allowedTools.includes('Bash')) return undefined;
   const allowed = topLevelSegments([...input.readScope, ...input.writeScope]);
   const denyRoots = READ_SCOPE_SENSITIVE_ROOTS.filter((root) => !allowed.has(root));
   if (denyRoots.length === 0) return undefined;
-  return JSON.stringify({ permissions: { deny: denyRoots.map((root) => `Read(/${root}/**)`) } });
+  const repoRoot = input.repoRoot?.trim();
+  const deny: string[] = [];
+  for (const root of denyRoots) {
+    deny.push(`Read(/${root}/**)`);
+    if (repoRoot) deny.push(absoluteReadDenyRule(repoRoot, root));
+  }
+  return JSON.stringify({ permissions: { deny } });
 }
 
 /**
@@ -506,6 +535,7 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
         allowedTools: toolPolicy.allowedTools,
         readScope: input.readScope,
         writeScope: input.writeScope,
+        repoRoot: options.repoRoot,
       });
       const args = buildClaudeArgs({ model: input.profile.model, toolPolicy, settings });
       const env = buildWorkerEnv(options.parentEnv, options.envAllowlist);

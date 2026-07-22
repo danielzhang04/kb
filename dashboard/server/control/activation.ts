@@ -234,7 +234,28 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
     deps.createBrokerPersistence(options.controlStore, subject),
   );
 
-  const worktrees = deps.createWorktrees({ repoRoot, worktreeRoot, baseCommit });
+  // C2 production on-switch (env-gated, default OFF). `DASHBOARD_SPARSE_READSCOPE === '1'` turns the git
+  // worktree adapter's sparse-checkout provisioning on; any other value (incl. unset) keeps the full
+  // checkout that is byte-identical to the pre-C2 adapter. Reads the SAME env source as the activation gate.
+  const sparseReadScope = env.DASHBOARD_SPARSE_READSCOPE === '1';
+  // The engine's `worktrees.ensure` call (execution.ts) passes NO `sparsePaths`, and execution.ts must not
+  // be edited (it is the hottest, most-contended file — the read-scope design §10 keeps this wave out of
+  // it). So instead of threading sparsePaths at the call site, we register each run's approved sparse set
+  // (effectiveRead ∪ writeScope, taken verbatim from the hash-covered PlanProposal.scope) keyed by runRef,
+  // and hand the adapter a `resolveSparsePaths` callback that looks it up at provisioning time. The value
+  // is the SAME approved scope the compiler produced and the human approved; the adapter root-anchors and
+  // validates it. Harmless when `sparseReadScope` is off (the callback is never consulted).
+  // Value carries the registering call's identity so a duplicate-launch failure path can never
+  // delete the LIVE run's entry (review finding: run B's synchronous "already active" throw would
+  // otherwise drop run A's key mid-provision, silently degrading A to a full checkout).
+  const runSparsePaths = new Map<string, { owner: object; paths: readonly string[] }>();
+  const worktrees = deps.createWorktrees({
+    repoRoot,
+    worktreeRoot,
+    baseCommit,
+    sparseReadScope,
+    resolveSparsePaths: (ensureInput) => runSparsePaths.get(ensureInput.runRef)?.paths,
+  });
   const skills = deps.createSkills(policy.curatedSkills);
   const accounting = deps.createAccounting({
     stateRoot,
@@ -256,6 +277,10 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
     resolveToolPolicy: deps.createToolPolicyResolver(),
     registerCancellation: registry.register,
     deregisterCancellation: registry.clear,
+    // C3: the canonical repo root, so `buildReadScopeSettings` emits the `//`-absolute deny companion.
+    // (Read denies are non-functional on CLI 2.1.217 in -p mode — see claudeWorkerAdapter.ts — so this is
+    // dormant future-proofing; the seam is wired for a CLI that honors them.)
+    repoRoot,
   });
   const managers = deps.createManagers({ broker });
   const cancellation = deps.createCancellation({ broker, registry });
@@ -283,16 +308,34 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
   const settleLedgerForRun = deps.settleLedgerForRun;
   const readUsageMicros = options.readUsageMicros;
   const runAutomatic = async (input: ExecuteRunInput): Promise<ExecutionOutcome> => {
-    const outcome = await engine.runToBoundary(input);
-    try {
-      settleLedgerForRun(
-        { controlStore: options.controlStore, repoRoot },
-        { subject: input.subject, runRef: input.runRef, readUsageMicros },
-      );
-    } catch {
-      /* fleet-ledger settlement is best-effort; never let it mask the executor outcome */
+    // C2: register this run's sparse materialization set (effectiveRead ∪ writeScope) BEFORE the engine
+    // provisions any worktree, so `resolveSparsePaths` (above) can find it at `ensure` time. Read from the
+    // approved, hash-covered proposal scope. Guarded: a proposal without a `scope` (e.g. a test double)
+    // simply registers nothing → the adapter falls back to a full checkout. Dropped in `finally` so the
+    // registry never outlives the run.
+    const scope = input.proposal?.scope;
+    const owner = {};
+    // First registration wins: a duplicate call for the SAME runRef must neither overwrite nor
+    // (via its finally) drop the live entry. Same runRef binds an immutable proposal, so the
+    // paths are identical anyway; the live call's ownership stays intact and only IT deletes.
+    if (scope && !runSparsePaths.has(input.runRef)) {
+      runSparsePaths.set(input.runRef, { owner, paths: [...(scope.read ?? []), ...(scope.write ?? [])] });
     }
-    return outcome;
+    try {
+      const outcome = await engine.runToBoundary(input);
+      try {
+        settleLedgerForRun(
+          { controlStore: options.controlStore, repoRoot },
+          { subject: input.subject, runRef: input.runRef, readUsageMicros },
+        );
+      } catch {
+        /* fleet-ledger settlement is best-effort; never let it mask the executor outcome */
+      }
+      return outcome;
+    } finally {
+      // Ownership-aware drop: only the call that registered this entry may remove it.
+      if (runSparsePaths.get(input.runRef)?.owner === owner) runSparsePaths.delete(input.runRef);
+    }
   };
 
   return {

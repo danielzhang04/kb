@@ -156,11 +156,16 @@ describe('Git worktree adapter', () => {
     expect(init.args.slice(-2)).toEqual(['init', '--no-cone']);
     expect(init.cwd).toBe(path);
     const set = fake.calls.find((call) => call.args.includes('sparse-checkout') && call.args.includes('set'))!;
-    // The set list is EXACTLY effectiveRead ∪ writeScope, in order, deduped.
-    expect(set.args.slice(set.args.indexOf('set'))).toEqual(['set', 'queue', 'dashboards', 'orgs/kb-ops', 'orgs/kb-ops/output']);
+    // The set list is EXACTLY effectiveRead ∪ writeScope, in order, deduped, and ROOT-ANCHORED (leading
+    // '/'). Anchoring is load-bearing: unanchored no-cone patterns match a name at any depth (a `_index.md`
+    // or `dashboards` would leak other orgs / nested fixtures — live-verified 2026-07-22).
+    expect(set.args.slice(set.args.indexOf('set'))).toEqual(['set', '/queue', '/dashboards', '/orgs/kb-ops', '/orgs/kb-ops/output']);
     expect(set.cwd).toBe(path);
+    // Every emitted pattern is root-anchored.
+    for (const pattern of set.args.slice(set.args.indexOf('set') + 1)) expect(pattern.startsWith('/')).toBe(true);
     // A path outside the sparse set (e.g. dashboard/server) is never named to git → never materialized.
     expect(set.args).not.toContain('dashboard/server');
+    expect(set.args).not.toContain('/dashboard/server');
     // The deferred bare checkout populates the sparse working tree.
     expect(fake.calls.some((call) => call.args.at(-1) === 'checkout' && call.cwd === path)).toBe(true);
   });
@@ -196,6 +201,58 @@ describe('Git worktree adapter', () => {
     const path = join(worktreeRoot, 'run-1', 'attempt-1');
     await expect(adapter.ensure({ operationKey: 'worktree:attempt-1', runRef: 'run-1', path, sparsePaths: ['../../etc'] }))
       .rejects.toThrow('sparse read-scope path');
+  });
+
+  it('C2 wiring: when the engine passes no sparsePaths, the construction resolveSparsePaths callback supplies them (keyed on runRef)', async () => {
+    const root = temporaryRoot();
+    const repoRoot = join(root, 'repo');
+    const commonDir = join(repoRoot, '.git');
+    const worktreeRoot = join(root, 'worktrees');
+    mkdirSync(commonDir, { recursive: true });
+    const fake = fakeGit(repoRoot, commonDir);
+    const seen: string[] = [];
+    const adapter = createGitWorktreeAdapter({
+      repoRoot,
+      worktreeRoot,
+      baseCommit: 'a'.repeat(40),
+      runner: fake.runner,
+      sparseReadScope: true,
+      // The live engine call site (execution.ts) passes NO sparsePaths — this callback is the only source.
+      resolveSparsePaths: (input) => { seen.push(input.runRef); return input.runRef === 'run-1' ? ['queue', 'orgs/kb-ops'] : undefined; },
+    });
+    const path = join(worktreeRoot, 'run-1', 'attempt-1');
+
+    await adapter.ensure({ operationKey: 'worktree:attempt-1', runRef: 'run-1', path });
+
+    expect(seen).toEqual(['run-1']);
+    const set = fake.calls.find((call) => call.args.includes('sparse-checkout') && call.args.includes('set'))!;
+    expect(set.args.slice(set.args.indexOf('set'))).toEqual(['set', '/queue', '/orgs/kb-ops']);
+  });
+
+  it('C2 wiring: resolveSparsePaths is NOT consulted when sparseReadScope is off (byte-identical full checkout)', async () => {
+    const root = temporaryRoot();
+    const repoRoot = join(root, 'repo');
+    const commonDir = join(repoRoot, '.git');
+    const worktreeRoot = join(root, 'worktrees');
+    mkdirSync(commonDir, { recursive: true });
+    const fake = fakeGit(repoRoot, commonDir);
+    let consulted = false;
+    const adapter = createGitWorktreeAdapter({
+      repoRoot,
+      worktreeRoot,
+      baseCommit: 'a'.repeat(40),
+      runner: fake.runner,
+      // Flag OFF (default). The callback must never be consulted and no sparse machinery may run.
+      resolveSparsePaths: () => { consulted = true; return ['queue']; },
+    });
+    const path = join(worktreeRoot, 'run-1', 'attempt-1');
+
+    await adapter.ensure({ operationKey: 'worktree:attempt-1', runRef: 'run-1', path });
+
+    expect(consulted).toBe(false);
+    const additions = fake.calls.filter((call) => call.args.includes('worktree') && call.args.includes('add'));
+    expect(additions[0].args.slice(-3)).toEqual(['--detach', path, 'a'.repeat(40)]);
+    expect(fake.calls.some((call) => call.args.includes('sparse-checkout'))).toBe(false);
   });
 
   it('rejects unplanned paths and mutable refs before invoking Git', () => {
