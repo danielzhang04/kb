@@ -1,0 +1,11 @@
+{"t": "2026-07-22T00:01:46.288413+00:00", "role": "atlas", "text": "Hey boss. What can I do for you?"}
+{"t": "2026-07-22T00:02:03.662223+00:00", "role": "user", "text": "What's going on?"}
+{"t": "2026-07-22T00:02:05.842101+00:00", "role": "atlas", "text": "Let me check."}
+{"t": "2026-07-22T00:02:20.447315+00:00", "role": "atlas", "text": "Eight cards in the inbox. Four oauth approvals waiting, one delivery-gate flip, one budget-gate decision, and two nightly reviews. Nothing working. Fifty-nine done. You're flat on spend today, two bits of activity."}
+{"t": "2026-07-22T00:02:23.896263+00:00", "role": "user", "text": "It's okay?"}
+{"t": "2026-07-22T00:02:28.532098+00:00", "role": "atlas", "text": "Yeah. Quiet queue, things are flowing. No blockers."}
+{"t": "2026-07-22T00:02:34.255236+00:00", "role": "user", "text": "Check again."}
+{"t": "2026-07-22T00:02:36.536086+00:00", "role": "atlas", "text": "Let me check."}
+{"t": "2026-07-22T00:02:41.734072+00:00", "role": "atlas", "text": "Same. Eight in inbox, nothing working, fifty-nine done."}
+{"t": "2026-07-22T00:03:08.055922+00:00", "role": "user", "text": "go to sleep."}
+{"t": "2026-07-22T00:03:08.057083+00:00", "role": "atlas", "text": "Okay, sleeping. Wake me when you need something."}
