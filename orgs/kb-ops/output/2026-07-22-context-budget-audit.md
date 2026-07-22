@@ -213,8 +213,9 @@ conversation and previous tool output from being copied into them.
 - **Claude `/context`, `/memory`, `/mcp`: recommended.** Native and closest to actual loaded context.
 - **Codex `debug prompt-input`: recommended.** Safe no-model-call startup manifest; not a billed-token
   meter and does not expose every provider-hidden/tool-schema token.
-- **Local JSONL usage summarizer: recommended to build.** Numeric-only output, de-duplicated, with
-  per-agent first-turn/average/max and cache ratios.
+- **Local JSONL/context auditor: built in Phase 1.** `scripts/context_audit.py` emits numeric-only,
+  bounded usage and context-surface totals; richer per-agent first-turn/average/max and cache-ratio
+  breakdowns remain a possible follow-up.
 - **MCP Inspector: optional.** Useful for listing/testing tool schemas, not for measuring actual model
   context. Keep its authenticated proxy bound to localhost because it can spawn local processes.
 - **Serena: optional for very large symbol-heavy code audits.** It can reduce full-file reads, but it
@@ -264,13 +265,31 @@ Suggested success targets:
   Subagents, Best practices, AGENTS.md, and Skills sections
 - Model Context Protocol, [MCP Inspector](https://github.com/modelcontextprotocol/inspector)
 
-## Decision requested
+## Phase 1 implementation result
 
-Approve a Phase 1 implementation branch containing only:
+Implemented on `codex/context-budget-audit` without changing Faceless YouTube or Composer:
 
-1. the exact duplicate plugin removal/profile change;
-2. the lean kb plugin profile;
-3. a numeric-only context audit script and baseline fixtures;
-4. default no-history prompts for bounded Codex workers.
+1. Disabled, but did not uninstall, user-scope `ecc@ecc` and the duplicate
+   `example-skills@anthropic-agent-skills` plugin. `document-skills@anthropic-agent-skills` and
+   `claude-context-optimizer@cco` remain enabled.
+2. Reduced the measured enabled Claude plugin discovery surface from 373 to 77 skills (-296,
+   79.4%) and from 93,659 to 23,425 description characters (-70,234, 75.0%).
+3. Replaced the kb test's runtime dependency on the external ECC cache with a pinned, provenance-
+   hashed fixture for ECC 2.0.0's 29 hook ids. The kb compatibility suppression remains defensive
+   for machines where ECC is enabled.
+4. Added `scripts/context_audit.py`, a standard-library, read-only, numeric-only audit. It reports
+   instruction, skill-description, auto-memory, and bounded recent session-usage counts without
+   emitting prompt bodies, command arguments, credentials, or local paths.
+5. Used no-history, self-contained bounded Codex workers for Phase 1 and retained that as the
+   boss-terminal operating default. The runtime has no repository setting that can force
+   `fork_turns="none"`; each orchestrator must select it when dispatching a bounded worker.
 
-Composer/FYT declaration changes should be a separate Phase 2 branch with routing and recovery evals.
+Rollback is reversible with:
+
+```powershell
+claude plugin enable ecc@ecc --scope user
+claude plugin enable example-skills@anthropic-agent-skills --scope user
+```
+
+Composer/FYT declaration, skill-description, operating-law, and project-boundary changes remain
+deferred to a separate phase with routing and recovery evaluations.
