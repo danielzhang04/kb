@@ -45,7 +45,9 @@ own `orgs/kb-ops` tree (unioned in automatically).
 
 ## Output
 
-Write the report to `orgs/kb-ops/output/self-lint-report-YYYY-MM-DD.md` (today's date). It MUST contain:
+Write the report to `orgs/kb-ops/output/self-lint-report-YYYY-MM-DD.md` (today's date). First Glob that
+path; if it already exists, add the smallest unused numeric suffix — `...-YYYY-MM-DD-2.md`, then `-3`, and
+so on — so a same-day rerun writes a new file. Never overwrite an existing report. It MUST contain:
 
 - A one-paragraph summary (overall health: green / attention-needed).
 - A findings list: each finding is a file/area, a one-line description, and a suggested follow-up. If there
