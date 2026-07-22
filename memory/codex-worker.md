@@ -161,3 +161,17 @@ Have a human review and merge PR #72 into `ops`. In the owner session, pull `ori
 
 Open and merge the `codex/dashboard-alignment-final-handoff` coordination PR into `ops`; no dashboard-alignment work remains after that. Before any live FYT run, the human must next approve the assignment/review/completion-gate semantics and runner bindings, resolve the durable-save branch/identity policy, and separately authorize any paid stages. Publishing remains its own T3/G3 decision.
 
+## Session lesson 2026-07-22 (OAuth gate retirement and branch pruning)
+
+- High-level operational evidence is enough to retire a credential gate without reading credential
+  stores: the protected-main Poyais publish record plus MCP health proved the uploader gate.
+- Do not overstate auth completion. The legacy Google Workspace MCP failed its health probe and the
+  analytics bootstrap lacked a durable completion record, so their cards were retired at the
+  operator's direction with explicit non-attestation notes.
+- Coordination branches may lag card-state infrastructure on `main`; validate moved cards against
+  the target branch's own `scripts/cards.py`. `ops` did not yet accept `archived`, so `done` was the
+  compatible terminal state.
+- `git branch -d` compares against current HEAD. For branches integrated into a different base,
+  first prove `git merge-base --is-ancestor <branch> <intended-base>`, then delete only that exact
+  proven ref. Every Poyais worktree/ref was excluded from cleanup.
+
