@@ -144,8 +144,57 @@ describe('buildActivatedExecution — gate ON', () => {
     expect(deps.createWorkers).toHaveBeenCalledWith(expect.objectContaining({
       registerCancellation: registry.register,
       deregisterCancellation: registry.clear,
+      // C3: the canonical repo root is threaded so the worker adapter can emit the //-absolute deny companion.
+      repoRoot: '/repo',
     }));
     expect(deps.createCancellation).toHaveBeenCalledWith(expect.objectContaining({ registry }));
+  });
+
+  it('C2: the worktree adapter is built with sparseReadScope OFF by default (no DASHBOARD_SPARSE_READSCOPE) and a resolveSparsePaths callback', () => {
+    const deps = spyDeps();
+    buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
+    expect(deps.createWorktrees).toHaveBeenCalledWith(expect.objectContaining({
+      sparseReadScope: false,
+      resolveSparsePaths: expect.any(Function),
+    }));
+  });
+
+  it('C2: DASHBOARD_SPARSE_READSCOPE="1" flips sparseReadScope ON (same env source as the activation gate)', () => {
+    const deps = spyDeps();
+    buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1', DASHBOARD_SPARSE_READSCOPE: '1' }));
+    expect(deps.createWorktrees).toHaveBeenCalledWith(expect.objectContaining({ sparseReadScope: true }));
+  });
+
+  it.each([['empty', ''], ['zero', '0'], ['true-ish', 'true'], ['padded', ' 1 ']])(
+    'C2: DASHBOARD_SPARSE_READSCOPE=%s keeps sparseReadScope OFF (only the exact literal "1" enables it)',
+    (_label, value) => {
+      const deps = spyDeps();
+      buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1', DASHBOARD_SPARSE_READSCOPE: value }));
+      expect(deps.createWorktrees).toHaveBeenCalledWith(expect.objectContaining({ sparseReadScope: false }));
+    },
+  );
+
+  it('C2: resolveSparsePaths returns the run\'s approved effectiveRead ∪ writeScope (proposal.scope), keyed on runRef, without touching execution.ts', async () => {
+    const deps = spyDeps();
+    // A single build: runAutomatic and the captured resolveSparsePaths share ONE per-run registry map.
+    const engine = { cancelRun: vi.fn().mockResolvedValue({ state: 'stopped' }), runToBoundary: vi.fn() };
+    (deps.createEngine as ReturnType<typeof vi.fn>).mockReturnValue(engine);
+    const built = buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
+    const resolveSparsePaths = (deps.createWorktrees as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0].resolveSparsePaths as (input: { runRef: string }) => readonly string[] | undefined;
+    // Invoke the callback DURING runToBoundary — the window in which the engine would provision the worktree.
+    let observed: readonly string[] | undefined = ['unset'];
+    engine.runToBoundary.mockImplementation(async (input: { runRef: string }) => {
+      observed = resolveSparsePaths({ runRef: input.runRef });
+      return { state: 'succeeded' };
+    });
+    await built?.runAutomatic({
+      subject: 'dashboard-engine',
+      runRef: 'run-42',
+      proposal: { scope: { read: ['queue', 'orgs/kb-ops'], write: ['orgs/kb-ops/output'] } },
+    } as never);
+    expect(observed).toEqual(['queue', 'orgs/kb-ops', 'orgs/kb-ops/output']);
+    // The registry is dropped after the run: the same lookup now returns undefined (falls back to full checkout).
+    expect(resolveSparsePaths({ runRef: 'run-42' })).toBeUndefined();
   });
 
   it('resolves the immutable baseCommit from the ops repo root when none is supplied', () => {
