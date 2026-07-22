@@ -123,6 +123,16 @@ export interface GitWorktreeAdapterOptions {
    * scanner profile (C1). See docs/specs/2026-07-21-worker-read-scope-design.md §5.1.
    */
   sparseReadScope?: boolean;
+  /**
+   * C2 wiring (2026-07-21) — the per-attempt sparse path source used when the engine's `ensure` call does
+   * NOT itself carry `sparsePaths`. The live engine call site (execution.ts) passes no `sparsePaths` and
+   * MUST NOT be edited, so activation.ts supplies this callback (keyed on `input.runRef`) to hand the
+   * approved run scope (effectiveRead ∪ writeScope) to the adapter at provisioning time. Only consulted
+   * when `sparseReadScope` is on AND `input.sparsePaths` is absent; returning `undefined` means "nothing
+   * to materialize sparsely" and the adapter falls back to a full checkout. Pure of any acceptance role —
+   * §6 write acceptance stays anchored on scope.write in execution.ts.
+   */
+  resolveSparsePaths?: (input: GitWorktreeEnsureInput) => readonly string[] | undefined;
 }
 
 /** The `ensure` input the git adapter accepts — the base `WorktreeAdapter` shape plus the optional C2
@@ -142,7 +152,22 @@ export interface GitWorktreeAdapter extends WorktreeAdapter {
   ensure(input: GitWorktreeEnsureInput): Promise<void>;
 }
 
-/** Validate + dedupe the C2 sparse path set (same safe-path rule the compiled scope.read passes). */
+/**
+ * Validate + dedupe the C2 sparse path set (same safe-path rule the compiled scope.read passes) and emit
+ * ROOT-ANCHORED git sparse-checkout patterns.
+ *
+ * Anchoring is load-bearing (live-verified 2026-07-22 on real git, Windows): `git sparse-checkout --no-cone`
+ * uses gitignore semantics, where an UNANCHORED pattern like `_index.md` or `dashboards` matches that name
+ * at ANY depth. Unanchored, `_index.md` materialized EVERY org's `_index.md` (a cross-org privacy leak) and
+ * `dashboards`/`ledgers` matched nested `dashboard/server/__fixtures__` dirs. A leading-slash pattern
+ * anchors to the repo root and matches the exact file OR directory (and, for a directory, everything
+ * beneath it) — materializing exactly the declared set with zero other-org files. The safe-path validator
+ * rejects a leading `/`, so we validate the raw repo-relative path THEN anchor it.
+ *
+ * NOTE for humans testing these patterns from Git Bash: prefix the git call with `MSYS_NO_PATHCONV=1` or
+ * MSYS rewrites a leading-slash pattern into the Git install path. The daemon's direct (non-shell) spawn
+ * via `createLocalGitCommandRunner` is unaffected.
+ */
 function normalizeSparsePaths(paths: readonly string[] | undefined): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
@@ -150,7 +175,7 @@ function normalizeSparsePaths(paths: readonly string[] | undefined): string[] {
     if (!isSafeRepoRelativePath(path)) throw new ExecutionAdapterError('sparse read-scope path is not a canonical safe repo-relative path');
     if (seen.has(path)) continue;
     seen.add(path);
-    out.push(path);
+    out.push(`/${path}`);
   }
   return out;
 }
@@ -281,7 +306,16 @@ export function createGitWorktreeAdapter(options: GitWorktreeAdapterOptions): Gi
       // (effectiveRead ∪ writeScope). The write-scope paths MUST be included so the worker can write and
       // `inspect` can see the change — sparse checkout bounds READS only; §6 acceptance stays anchored on
       // scope.write. With the flag off (default) this is the exact pre-change `worktree add --detach`.
-      const sparsePaths = options.sparseReadScope ? normalizeSparsePaths(input.sparsePaths) : [];
+      // Live-verified 2026-07-22 (real git, Windows): `git status --porcelain=v1 -z --untracked-files=all`
+      // still reports untracked writes in NON-materialized dirs (e.g. `?? scripts/evil.txt`), so write-scope
+      // enforcement is NOT blinded by sparse checkout — out-of-scope writes are still detected and rejected.
+      // The engine call site (execution.ts) is not edited and passes no `sparsePaths`, so fall back to the
+      // construction-time `resolveSparsePaths` callback (activation.ts, keyed on runRef). The callback is
+      // consulted ONLY when the flag is on; with the flag off this is the exact pre-change full checkout and
+      // `resolveSparsePaths` is never evaluated.
+      const sparsePaths = options.sparseReadScope
+        ? normalizeSparsePaths(input.sparsePaths ?? options.resolveSparsePaths?.(input))
+        : [];
       if (sparsePaths.length > 0) {
         await runGit(runner, prefix, ['worktree', 'add', '--no-checkout', '--detach', path, baseCommit], repoRoot, 'worktree creation');
         if (!existsSync(path)) throw new ExecutionAdapterError('git did not create the planned worktree');
