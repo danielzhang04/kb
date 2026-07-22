@@ -209,6 +209,18 @@ def _console_singleton():
     return AgentsConsole.get_instance()
 
 
+def _restart_worker(reason: str) -> None:
+    """Deliberate hard self-exit so pm2 revives the worker with a fresh PortAudio snapshot.
+
+    Called from the devicewatch thread when a swap cannot cleanly open its device (stale
+    snapshot after a Bluetooth topology change — live finding 2026-07-22). os._exit because
+    sys.exit from a non-main thread only kills that thread; pm2 owns the restart. Exit code
+    21 marks a device-table restart in pm2 logs, distinct from crashes."""
+    logger.critical("output-follow requested worker restart: %s — exiting for pm2 revive", reason)
+    import os
+    os._exit(21)
+
+
 def _start_output_follow(cfg: dict, publisher, *,
                          console_factory=_console_singleton,
                          watcher_cls=devicewatch.DeviceWatcher,
@@ -259,11 +271,10 @@ def _start_output_follow(cfg: dict, publisher, *,
             boot_idx = None
         follower = follower_cls(
             console,
-            wake_input_substring=cfg.get("wake_input_device"),
             resolve_output=wakeword.resolve_output_device,
-            resolve_input=wakeword.resolve_input_device,
             sd_module=sd,
-            initial_idx=boot_idx)
+            initial_idx=boot_idx,
+            request_restart=_restart_worker)
 
         def _on_change(name: str) -> None:
             publisher.set_output_device(follower.swap_to(name))

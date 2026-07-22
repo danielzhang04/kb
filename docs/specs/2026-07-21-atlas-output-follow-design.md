@@ -126,3 +126,24 @@ Same seam style as #55's `_apply_agent_state`/`_silence_decision`:
 Build + tests on `claude/atlas-voice-rules` → venv `pip install pycaw comtypes` (worker stopped by
 Daniel) → Daniel restarts worker → manual plug/unplug verification → this branch's eventual PR to
 main carries the feature with the rest of the voice-rules work.
+
+---
+
+## ADDENDUM 2026-07-22 — first live failure, revised swap policy
+
+Live logs (00:01:54 / 00:13:37 local): Bluetooth disconnect reshuffled the real MME device
+table; the index resolved from the boot-time PortAudio snapshot failed to OPEN ("device ID out
+of range") even though pre-validation passed — pre-validation reads the SAME stale snapshot and
+is useless against this class. The reopen-previous fallback then "succeeded" against the
+just-disconnected (registered-but-absent) Bluetooth endpoint, and Atlas spoke into the void
+while /state claimed success — the exact silent-wrong-device failure this design exists to kill.
+Additional finding: the rare-path in-process reinit (`sd._terminate`) would kill the wake
+listener's InputStream, and `wakeword.listen` has no retry — Atlas would be deaf until restart.
+
+**Revised policy (shipped):** a swap that cannot resolve OR cannot open its device logs CRITICAL
+and requests a deliberate worker self-restart (`os._exit(21)`; pm2 revives in seconds with a
+fresh, correct snapshot; every pin re-resolves). The in-process reinit path and the
+reopen-previous fallback are REMOVED — restart is honest and total; half-alive audio is neither.
+Pre-validation is removed with them (it could not catch the only failure it existed for).
+Also: the `comtypes` logger is capped at WARNING (its per-poll DEBUG Release lines flooded pm2
+logs and drowned the wake/swap evidence).

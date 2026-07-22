@@ -99,71 +99,55 @@ class FakeSd:
         pass
 
 
-def _follower(console, sd, resolve_out, resolve_in=lambda s, devices=None: 7):
+def _follower(console, sd, resolve_out, restarts=None):
     return devicewatch.OutputFollower(
-        console, wake_input_substring="Intel",
-        resolve_output=resolve_out, resolve_input=resolve_in, sd_module=sd)
+        console, resolve_output=resolve_out, sd_module=sd,
+        request_restart=(restarts.append if restarts is not None else None))
 
 
 def test_swap_common_path_opens_new_device():
-    console, sd = FakeConsole(), FakeSd()
-    f = _follower(console, sd, resolve_out=lambda s, devices=None: 5)
+    console, sd, restarts = FakeConsole(), FakeSd(), []
+    f = _follower(console, sd, resolve_out=lambda s, devices=None: 5, restarts=restarts)
     status = f.swap_to("Speakers (Realtek(R) Audio)")
     assert ("spk", True, 5) in console.calls
-    assert sd.reinits == 0
+    assert restarts == []
     assert status == {"configured": "follow", "resolved": "dev-5", "following": True}
 
 
-def test_swap_unmatched_name_triggers_rare_path_reinit():
-    """Name not in the PA snapshot -> full audio reinit, then resolve again and open."""
-    console, sd = FakeConsole(), FakeSd()
-    attempts = {"n": 0}
-
-    def resolve_out(s, devices=None):
-        attempts["n"] += 1
-        return None if attempts["n"] == 1 else 9   # found only after reinit
-
-    f = _follower(console, sd, resolve_out=resolve_out)
-    status = f.swap_to("Px7 S2e")
-    assert sd.reinits == 1
-    # ordering: streams closed, reinit, mic reopened on pin, speaker opened on new device
-    assert console.calls == [
-        ("mic", False, None), ("spk", False, None),
-        ("mic", True, 7), ("spk", True, 9),
-    ]
-    assert status["resolved"] == "dev-9"
-
-
-def test_swap_still_unmatched_after_reinit_keeps_previous_and_reports_null():
-    console, sd = FakeConsole(), FakeSd()
-    f = _follower(console, sd, resolve_out=lambda s, devices=None: None)
-    f._last_idx = 5                                  # a previous device is open
-    status = f.swap_to("Ghost Device")
-    assert sd.reinits == 1
-    # after failed reinit-resolve: mic re-pinned, previous speaker reopened — never deaf
-    assert ("spk", True, 5) in console.calls
-    assert status["resolved"] is None
-
-
-def test_swap_open_failure_reopens_previous_device():
-    console = FakeConsole(fail_speaker_on={4})
-    sd = FakeSd()
-    f = _follower(console, sd, resolve_out=lambda s, devices=None: 4)
+def test_swap_unresolved_name_requests_restart_not_reinit():
+    """Live finding 2026-07-22: in-process PortAudio reinit kills the retry-less wake
+    listener, so an unresolvable device now requests a worker self-restart (fresh snapshot
+    via pm2 revive) and touches NO stream."""
+    console, sd, restarts = FakeConsole(), FakeSd(), []
+    f = _follower(console, sd, resolve_out=lambda s, devices=None: None, restarts=restarts)
     f._last_idx = 5
-    status = f.swap_to("Px7 S2e")
-    assert ("spk", True, 4) in console.calls        # attempted
-    assert console.calls[-1] == ("spk", True, 5)    # recovered
-    assert status["resolved"] == "dev-5"
+    status = f.swap_to("Brand New Device")
+    assert console.calls == []                 # no stream touched, no reinit
+    assert sd.reinits == 0
+    assert len(restarts) == 1 and "Brand New Device" in restarts[0]
+    assert status["resolved"] == "dev-5"       # /state keeps the honest last-known device
 
 
-def test_swap_prevalidation_failure_keeps_current_stream_untouched():
-    console = FakeConsole()
-    sd = FakeSd(bad={4})
-    f = _follower(console, sd, resolve_out=lambda s, devices=None: 4)
-    f._last_idx = 5
-    status = f.swap_to("Px7 S2e")
-    assert console.calls == []                      # stream never touched
-    assert status["resolved"] == "dev-5"
+def test_swap_open_failure_requests_restart():
+    """Stale-snapshot open failure (BT topology change): don't guess a fallback — the
+    'reopen previous' path proved it can land on a disconnected BT endpoint and play into
+    the void. Restart for a fresh snapshot instead."""
+    console = FakeConsole(fail_speaker_on={5})
+    sd, restarts = FakeSd(), []
+    f = _follower(console, sd, resolve_out=lambda s, devices=None: 5, restarts=restarts)
+    f._last_idx = 4
+    status = f.swap_to("Speakers (Realtek(R) Audio)")
+    assert ("spk", True, 5) in console.calls   # the open was attempted
+    assert console.calls[-1] == ("spk", True, 5)  # and nothing reopened after it
+    assert len(restarts) == 1 and "stale snapshot" in restarts[0]
+    assert status["resolved"] is None          # /state tells the truth until the restart
+
+
+def test_comtypes_logger_is_silenced():
+    """The 1.5s COM poll floods pm2 logs with comtypes DEBUG Release lines (live finding
+    2026-07-22 — it drowned the wake/swap lines). Importing devicewatch must cap it."""
+    import logging
+    assert logging.getLogger("comtypes").level >= logging.WARNING
 
 
 def test_start_output_follow_not_in_follow_mode_returns_none():
@@ -250,20 +234,6 @@ def test_start_output_follow_dead_probe_degrades_loudly():
         watcher_cls=None, follower_cls=None, probe=lambda: None)
     assert got is None
     assert published and published[-1]["following"] is False
-
-
-def test_first_swap_open_failure_falls_back_to_boot_seed():
-    """Review finding #2: initial_idx seeds the reopen-previous net for the very first swap."""
-    console = FakeConsole(fail_speaker_on={4})
-    sd = FakeSd()
-    f = devicewatch.OutputFollower(
-        console, wake_input_substring="Intel",
-        resolve_output=lambda s, devices=None: 4,
-        resolve_input=lambda s, devices=None: 7,
-        sd_module=sd, initial_idx=5)
-    status = f.swap_to("Px7 S2e")
-    assert console.calls[-1] == ("spk", True, 5)   # boot device reopened
-    assert status["resolved"] == "dev-5"
 
 
 def test_watcher_initial_delay_defers_first_poll():

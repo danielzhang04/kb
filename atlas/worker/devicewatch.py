@@ -14,6 +14,10 @@ import threading
 
 logger = logging.getLogger("atlas.devicewatch")
 
+# pycaw drags comtypes in, and comtypes logs every COM Release at DEBUG — at our 1.5s poll
+# cadence that floods pm2 logs (live finding 2026-07-22, it drowned the wake/swap lines).
+logging.getLogger("comtypes").setLevel(logging.WARNING)
+
 
 def decide(prev_id: str | None, current_id: str | None) -> str:
     """'baseline' on first sighting, 'swap' on an id CHANGE after baseline, else 'none'.
@@ -113,26 +117,32 @@ class DeviceWatcher:
 
 
 class OutputFollower:
-    """Turns a new default-device NAME into a live output-stream move (design 'Swap orchestration').
+    """Turns a new default-device NAME into a live output-stream move (design 'Swap orchestration',
+    REVISED 2026-07-22 after the first live failure).
 
-    All collaborators injected: `console` is livekit's AgentsConsole (or a test fake) whose
-    set_speaker_enabled CLOSES the old stream before opening the new one — which is why we
-    pre-validate the candidate first and reopen the previous index if an open still fails:
-    a failed swap must cost a blip, never deafness. `swap_to` returns the /state-shaped
-    status so the caller can publish it without re-deriving anything."""
+    Live finding (2026-07-22 00:01/00:13 local logs): a Bluetooth disconnect reshuffles the real
+    MME device table, so indices resolved from the boot-time PortAudio snapshot can fail to OPEN
+    ("device ID out of range") even though pre-validation passed — pre-validation reads the SAME
+    stale snapshot, so it cannot catch this. Worse, "reopen previous" can succeed against a
+    registered-but-DISCONNECTED Bluetooth endpoint (Windows opens those fine), leaving Atlas
+    speaking into the void with /state claiming success — the exact silent-wrong-device failure
+    this whole feature exists to kill.
 
-    def __init__(self, console, *, wake_input_substring, resolve_output, resolve_input,
-                 sd_module, lock=None, initial_idx: int | None = None):
+    The only in-process cure (Pa_Terminate/Pa_Reinitialize) kills the wake listener's InputStream,
+    and wakeword.listen has NO retry — Atlas would be deaf until restart anyway. So the policy is:
+    a swap that cannot cleanly open its resolved device requests a WORKER SELF-RESTART via the
+    injected `request_restart` callback (pm2 revives us in seconds with a fresh, correct PortAudio
+    snapshot; every pin re-resolves). Restart is honest and total; half-alive audio is neither."""
+
+    def __init__(self, console, *, resolve_output, sd_module, lock=None,
+                 initial_idx: int | None = None, request_restart=None):
         self._console = console
-        self._wake_input = wake_input_substring
         self._resolve_output = resolve_output
-        self._resolve_input = resolve_input
         self._sd = sd_module
         self._lock = lock or threading.Lock()
-        # Review finding #2 (2026-07-21): seed with the boot device livekit opened so even
-        # the FIRST swap's open-failure can fall back to a known-good device — without a
-        # seed, a first-move failure after pre-validation leaves TTS deaf (the old stream
-        # is already closed by set_speaker_enabled's teardown-then-open shape).
+        self._request_restart = request_restart or (lambda reason: None)
+        # Seed with the boot device livekit opened (review finding #2) — still used for the
+        # /state truth when a swap is refused pre-open.
         self._last_idx: int | None = initial_idx
 
     def _status(self, idx: int | None) -> dict:
@@ -144,59 +154,35 @@ class OutputFollower:
             name = str(idx)
         return {"configured": "follow", "resolved": name, "following": True}
 
-    def _reinit_audio(self) -> None:
-        """Rare path: device absent from the boot PortAudio snapshot (first-ever pairing
-        mid-session). Close BOTH streams, cycle PortAudio so it re-enumerates, re-pin the
-        mic. Costs <1s of mic downtime — accepted in the design."""
-        self._console.set_microphone_enabled(False)
-        self._console.set_speaker_enabled(False)
-        self._sd._terminate()
-        self._sd._initialize()
-        mic_idx = self._resolve_input(self._wake_input)
-        self._console.set_microphone_enabled(True, device=mic_idx)
-
     def _open(self, idx: int) -> bool:
         try:
             self._console.set_speaker_enabled(True, device=idx)
             return True
         except Exception:
-            logger.critical(
-                "output swap: opening device %d failed after validation — reopening previous", idx,
-                exc_info=True)
+            logger.critical("output swap: opening device %d failed", idx, exc_info=True)
             return False
 
     def swap_to(self, name: str) -> dict:
         with self._lock:
             idx = self._resolve_output(name)
             if idx is None:
-                # Not in the current snapshot -> rare path: refresh the snapshot and retry.
-                self._reinit_audio()
-                idx = self._resolve_output(name)
-                if idx is None:
-                    logger.critical(
-                        "output follow: Windows default moved to %r but no PortAudio device "
-                        "matches even after re-enumeration — keeping the previous output", name)
-                    if self._last_idx is not None:
-                        self._open(self._last_idx)
-                    return self._status(None)
-                if self._open(idx):
-                    self._last_idx = idx
-                    return self._status(idx)
-                if self._last_idx is not None and self._open(self._last_idx):
-                    return self._status(self._last_idx)
-                return self._status(None)
-            # Common path: pre-validate (set_speaker_enabled tears down BEFORE opening).
-            try:
-                self._sd.query_devices(idx, kind="output")
-            except Exception:
+                # Device not in this process's (boot-time) PortAudio snapshot — either a
+                # first-ever pairing or a reshuffled table. Only a fresh snapshot can map it,
+                # and refreshing in-process kills the retry-less wake listener: restart.
                 logger.critical(
-                    "output follow: candidate device %d (%r) failed validation — keeping the "
-                    "previous output", idx, name)
+                    "output follow: Windows default moved to %r but the boot PortAudio "
+                    "snapshot has no matching device — requesting worker restart for a "
+                    "fresh snapshot", name)
+                self._request_restart(f"unresolvable output device {name!r}")
                 return self._status(self._last_idx)
             if self._open(idx):
                 self._last_idx = idx
                 return self._status(idx)
-            if self._last_idx is not None and self._open(self._last_idx):
-                return self._status(self._last_idx)
-            logger.critical("output follow: could not reopen ANY output device — TTS is deaf")
+            # Open failure with a resolved index = the snapshot is stale (live finding
+            # 2026-07-22: BT disconnect reshuffles MME; "reopen previous" can land on a
+            # disconnected endpoint and play into the void). Don't guess — restart.
+            logger.critical(
+                "output follow: device %d (%r) failed to open — stale device table; "
+                "requesting worker restart for a fresh snapshot", idx, name)
+            self._request_restart(f"stale snapshot opening device {idx} ({name!r})")
             return self._status(None)
