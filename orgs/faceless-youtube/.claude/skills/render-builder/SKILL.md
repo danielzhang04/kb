@@ -1,19 +1,13 @@
 ---
 name: render-builder
 description: >-
-  Assembles the finished video for a scripted + voiced + storyboarded + imaged video in this
-  faceless-YouTube project — turns a videos/<slug>/shots.json + the verified assets/scenes/ stills +
-  the voiceover audio into a rendered MP4 via the local Remotion motion engine — the only render
-  engine, for the long-form AND every publish-tagged short. Use this whenever the user wants
-  to render, assemble, build, or produce the actual video / final cut / MP4, "put it together",
-  "make the video", stitch the B-roll to the voiceover, or run the render step for a video or its
-  shorts — for ANY niche. Runs AFTER voiceover + visual-prompt-writer + image-generation and BEFORE
-  compliance-check / publish-queue. Reads shots.json + assets/scenes/ (the verified pre-generated
-  stills, when the channel style-locks its visuals) + assets/voiceover.manifest.json + the VO mp3s;
-  writes assets/final.mp4, assets/shorts/short-NN.mp4, and assets/render.manifest.json. Do NOT use
-  it to write the script (scriptwriter), plan visuals (visual-prompt-writer), generate the images
-  (image-generation), generate the narration (voiceover), pick titles/tags (metadata-writer), or
-  upload to YouTube (publish-queue).
+  Assembles a scripted, voiced, storyboarded, and imaged video into long-form and short MP4s with
+  the project's local Remotion engine. Use when asked to render, assemble, build, produce, make the
+  final cut/MP4, stitch B-roll to voiceover, or run the render step for any channel. Reads a video's
+  shots.json, verified scene assets, voiceover manifest, and VO audio; writes final.mp4, short MP4s,
+  motion specs, and render.manifest.json. Runs after voiceover, visual-prompt-writer, and
+  image-generation, and before compliance-check and publish-queue. Do not use it to write scripts,
+  plan or generate visuals, generate narration, write metadata, or upload to YouTube.
 ---
 
 # render-builder

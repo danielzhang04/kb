@@ -1,7 +1,7 @@
 # Engagement overhaul design
 
-**Date:** 2026-07-22  
-**Status:** PROPOSED — Checkpoint 2 human review  
+**Date:** 2026-07-22
+**Status:** APPROVED — Daniel's ruling is recorded in `knowledge/decisions.md`; Checkpoint 3 is under review
 **Branch:** `codex/fyt-engagement-design`, stacked on `codex/fyt-shorts-integration`
 
 ## Goal

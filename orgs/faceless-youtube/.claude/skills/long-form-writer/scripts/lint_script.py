@@ -114,10 +114,13 @@ def main(path):
         is_cue = stripped.startswith("[")            # [B-ROLL] / [PAUSE] / [BEAT]
         is_meta = stripped.startswith(("#", "-", "*", ">")) or stripped == "---" or stripped == ""
 
+        # The no-quotes lock applies to the whole script body, including Markdown blockquotes or
+        # list-formatted prose. Those lines are non-spoken metadata to voiceover, but allowing a quote
+        # there would let a generated story beat pass this gate and then disappear from the transcript.
+        if in_body and not is_cue and ('"' in ln or "“" in ln or "”" in ln):
+            hard.append((lineno, "quote in VO body", stripped))
+
         if in_body and not is_cue and not is_meta:
-            # quotation marks in a spoken VO line = the no-quotes lock.
-            if '"' in ln or "“" in ln or "”" in ln:
-                hard.append((lineno, "quote in VO line", stripped))
             # count spoken words (rough: split on whitespace).
             vo_words += len(stripped.split())
             for pattern, label in CREDIBILITY_ADVISORIES:

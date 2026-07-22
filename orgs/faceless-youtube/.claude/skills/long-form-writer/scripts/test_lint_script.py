@@ -56,6 +56,13 @@ class LintScriptTests(unittest.TestCase):
                 self.assertEqual(code, 1)
                 self.assertIn(name if name != "skipped" else "skipped/out-of-order", output)
 
+    def test_blockquoted_straight_and_curly_quotes_fail_before_voiceover_can_strip_them(self):
+        for quoted in ('> "He said it."', "> “He said it.”"):
+            with self.subTest(quoted=quoted):
+                code, output = self.run_lint(script(quoted))
+                self.assertEqual(code, 1)
+                self.assertIn("quote in VO body", output)
+
 
 if __name__ == "__main__":
     unittest.main()

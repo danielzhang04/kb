@@ -155,7 +155,12 @@ EXPRESSIVE_MARKER_TRANSLATIONS = {
     "[aside: dry]": "[deadpan]",
 }
 _EXPRESSIVE_CANDIDATE_RE = re.compile(r"\[(?:emote|aside)\b[^\]]*\]", re.IGNORECASE)
-_EXPRESSIVE_ADJACENCY_RE = re.compile(r"\]\s*\[(?:emote|aside)\b", re.IGNORECASE)
+_EXPRESSIVE_ADJACENCY_RE = re.compile(
+    r"\[(?:emote|aside)\b[^\]]*\]\s*\[(?:emote|aside)\b", re.IGNORECASE
+)
+_TRAILING_RHYTHM_CUES_RE = re.compile(
+    r"(?:\[(?:PAUSE(?::LONG)?|BEAT)\]\s*)+$", re.IGNORECASE
+)
 _V3_MOOD_OR_CHAPTER_RE = re.compile(
     r"^\s*(?:\[[^\]]+\]\s*)?(?:step\s+\d+\s*[:.]|\[(?:curious|knowingly|sternly|sighs|exhales|deadpan)\])",
     re.IGNORECASE,
@@ -187,9 +192,10 @@ def validate_expressive_markers(raw: str) -> list[str]:
             allowed = ", ".join(EXPRESSIVE_MARKER_TRANSLATIONS)
             raise ValueError(f"Unsupported or malformed expressive marker {marker!r}; allowed: {allowed}")
         before = text[:match.start()].rstrip()
+        spoken_before = _TRAILING_RHYTHM_CUES_RE.sub("", before).rstrip()
         after_raw = text[match.end():]
         after = after_raw.lstrip()
-        if before and before[-1] not in ".!?":
+        if spoken_before and spoken_before[-1] not in ".!?":
             raise ValueError(f"Expressive marker {marker!r} must appear before a sentence.")
         if not re.match(r"(?:[\"\u201c\u2018(]*[A-Za-z0-9])", after):
             raise ValueError(f"Expressive marker {marker!r} must be followed by a sentence.")
@@ -279,7 +285,8 @@ def clean_markers(raw: str, pause_seconds: float, is_v3: bool = False) -> str:
     return text
 
 
-def extract_long_form(script_text: str, pause_seconds: float, is_v3: bool = False) -> str:
+def _long_form_region(script_text: str) -> str:
+    """Return only the long-form region that can become spoken audio."""
     region = _region(script_text, r"^##\s+LONG-?FORM VOICEOVER")
     if region is None:
         # Fallback: drop the leading metadata block (up to first '---'), voice the rest —
@@ -290,14 +297,23 @@ def extract_long_form(script_text: str, pause_seconds: float, is_v3: bool = Fals
         nxt = re.search(r"^##\s", region, re.MULTILINE)
         if nxt:
             region = region[: nxt.start()]
-    return clean_markers(region, pause_seconds, is_v3)
+    return region
 
 
-def extract_short(short_text: str, pause_seconds: float, is_v3: bool = False) -> str:
+def extract_long_form(script_text: str, pause_seconds: float, is_v3: bool = False) -> str:
+    return clean_markers(_long_form_region(script_text), pause_seconds, is_v3)
+
+
+def _short_region(short_text: str) -> str:
+    """Return only the short region that can become spoken audio."""
     region = _region(short_text, r"^##\s+VO")
     if region is None:
         region = short_text
-    return clean_markers(region, pause_seconds, is_v3)
+    return region
+
+
+def extract_short(short_text: str, pause_seconds: float, is_v3: bool = False) -> str:
+    return clean_markers(_short_region(short_text), pause_seconds, is_v3)
 
 
 def short_status(short_text: str) -> str:
@@ -615,12 +631,13 @@ def main():
     want_long = not only or "long-form" in only
     if want_long and (video_dir / "script.md").exists():
         raw = (video_dir / "script.md").read_text(encoding="utf-8")
-        txt = extract_long_form(raw, args.pause_seconds, is_v3)
+        raw_voice = _long_form_region(raw)
+        txt = clean_markers(raw_voice, args.pause_seconds, is_v3)
         if args.dry_run:
             dry_plans["long-form"] = (
-                extract_long_form(raw, args.pause_seconds, True),
-                extract_long_form(raw, args.pause_seconds, False),
-                expressive_cleanup_summary(raw),
+                clean_markers(raw_voice, args.pause_seconds, True),
+                clean_markers(raw_voice, args.pause_seconds, False),
+                expressive_cleanup_summary(raw_voice),
             )
         work.append(("long-form", "script.md", txt, "assets/vo.mp3", "-"))
 
@@ -636,12 +653,13 @@ def main():
                 print(f"  skip {name} (status={status}; use --all-shorts to force)")
                 continue
             raw = sp.read_text(encoding="utf-8")
-            txt = extract_short(raw, args.pause_seconds, is_v3)
+            raw_voice = _short_region(raw)
+            txt = clean_markers(raw_voice, args.pause_seconds, is_v3)
             if args.dry_run:
                 dry_plans[name] = (
-                    extract_short(raw, args.pause_seconds, True),
-                    extract_short(raw, args.pause_seconds, False),
-                    expressive_cleanup_summary(raw),
+                    clean_markers(raw_voice, args.pause_seconds, True),
+                    clean_markers(raw_voice, args.pause_seconds, False),
+                    expressive_cleanup_summary(raw_voice),
                 )
             work.append((name, f"shorts/{name}.md", txt, f"assets/shorts/{name}.mp3", status))
 

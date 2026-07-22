@@ -170,6 +170,16 @@ def test_expressive_marker_rejects_adjacency_and_mid_sentence_placement():
         vo.clean_markers("This is [aside: dry] not normal.", 0.6, is_v3=True)
 
 
+@pytest.mark.parametrize("cue", ["[BEAT]", "[PAUSE]", "[PAUSE:LONG]"])
+def test_rhythm_cue_may_precede_one_expressive_marker(cue):
+    raw = f"The reveal lands. {cue}\n\n[emote: curious] What happened next?"
+    v3 = vo.clean_markers(raw, 0.6, is_v3=True)
+    v2 = vo.clean_markers(raw, 0.6, is_v3=False)
+    assert "[curious] What happened next?" in v3
+    assert "What happened next?" in v2
+    assert "[emote:" not in v2
+
+
 def test_v3_chunking_prefers_a_substantial_mood_turn_paragraph():
     lead = "A" * 300 + "."
     turn = "[curious] " + "B" * 300 + "."
@@ -208,3 +218,31 @@ def test_dry_run_reports_v3_v2_plan_and_never_opens_network(tmp_path, monkeypatc
     assert "v2 strips 1 expressive marker" in output
     assert (video / "assets" / "vo.txt").read_text(encoding="utf-8") == "[knowingly] This sentence has a delivery turn."
     assert (video / "assets" / "voiceover.manifest.json").exists()
+
+
+def test_dry_run_ignores_expressive_examples_in_unspoken_tail(tmp_path, monkeypatch, capsys):
+    (tmp_path / ".env").write_text("", encoding="utf-8")
+    channel = tmp_path / "channels" / "test"
+    video = channel / "videos" / "marker-tail"
+    video.mkdir(parents=True)
+    (channel / "dna.md").write_text(
+        "```yaml\nvoice_id: testVoice\nmodel_id: eleven_v3\nstability: 0.25\n```\n",
+        encoding="utf-8",
+    )
+    (video / "script.md").write_text(
+        "## LONG-FORM VOICEOVER\n\nThe story lands.\n\n"
+        "## SOURCES / ACCURACY NOTE\n\nDo not use [emote: excited] in narration.\n",
+        encoding="utf-8",
+    )
+
+    def no_network(*args, **kwargs):
+        raise AssertionError("dry-run must not open a network request")
+
+    monkeypatch.setattr(vo.urllib.request, "urlopen", no_network)
+    monkeypatch.setattr(sys, "argv", ["voiceover.py", str(video), "--dry-run"])
+    vo.main()
+
+    output = capsys.readouterr().out
+    assert "no ElevenLabs request" in output
+    assert "no expressive markers" in output
+    assert (video / "assets" / "vo.txt").read_text(encoding="utf-8") == "The story lands."

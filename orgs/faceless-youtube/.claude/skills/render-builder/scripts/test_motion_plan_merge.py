@@ -125,6 +125,23 @@ def test_card_without_pause_gap_hard_fails():
         raise AssertionError("normal card without a pause gap did not fail")
 
 
+def test_card_with_only_automatic_sentence_gap_hard_fails():
+    # The universal sentence law is not audio-director intent. A same-anchor automatic gap must not
+    # authorize an opaque card; only an authored cue (or merged cue+sentence gap, source="cue") may.
+    from breath import shift_timings
+    orig = [["home.", 9.0], ["So", 10.0], ["what", 10.3], ["happened", 10.6]]
+    gaps = [{"at_s": 10.0, "dur_s": 0.5, "source": "sentence"}]
+    shifted = shift_timings(orig, gaps)
+    shots = [{"id": "L12", "start_s": 5.0, "duration_s": 10.0, "overlays": []}]
+    plan = {"cards": [{"text": "X", "anchor": "So what happened", "fade_s": 0.15}]}
+    try:
+        apply_cards(shots, plan, shifted, gaps=gaps, orig_word_timings=orig)
+    except SystemExit as e:
+        assert "co-located pause gap" in str(e), e
+    else:
+        raise AssertionError("normal card accepted an automatic sentence gap as its authored pause")
+
+
 def test_cards_skipped_on_short():
     shots = [{"id": "L13", "start_s": 0.0, "duration_s": 6.0, "overlays": []}]
     plan = {"post_vo_hold_s": 4.0, "cards": [{"text": "x", "anchor": "whatever", "hold_s": 2.0}]}
@@ -150,6 +167,7 @@ if __name__ == "__main__":
     test_p01_plate_only_held_reuse_falls_back_to_plate()
     test_cards_align_to_pause_gap_and_post_vo_hold()
     test_card_without_pause_gap_hard_fails()
+    test_card_with_only_automatic_sentence_gap_hard_fails()
     test_cards_skipped_on_short()
     test_end_card_unresolved_anchor_falls_back_to_last_shot()
     print("OK")

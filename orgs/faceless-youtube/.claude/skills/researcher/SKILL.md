@@ -156,7 +156,10 @@ apparatus just to nail down two numbers.
 
 Restructure what came back into the fixed shape below. You are **compressing and sourcing**, not
 retelling — the scriptwriter reads this, so signal-per-line matters. Use this template exactly (it's the
-contract `long-form-writer` and, later, `compliance-check` parse):
+contract `long-form-writer` and, later, `compliance-check` parse). On the deep path, **Viability
+verification is the canonical post-research story and packaging handoff**: its supported/revised stake,
+mechanism, payload, cold open, and title promises supersede provisional versions in the picked brief.
+Name every unsupported promise so downstream skills do not resurrect it:
 
 ```markdown
 # Research dossier — <video title / working title>
@@ -208,9 +211,9 @@ contract `long-form-writer` and, later, `compliance-check` parse):
 - <what could NOT be verified / conflicting sources / what to hedge or date>. If a key question came
   back thin, say so plainly — the writer must not paper over a gap with confident prose.
 
-## Viability verification
+## Viability verification  ← canonical story/packaging contract after research
 - **Accountable stake and question:** <verified or revised version, with [F-NN] support>
-- **Cold open and title promises:** <each promise: supported / revised / unsupported, with reason>
+- **Cold open and title promises:** <the permitted supported/revised promises, each with [F-NN] support>
 - **Mechanism, escalation, relevance:** <verified or revised version, with [F-NN] support>
 - **Unsupported promises:** <title or angle promises the evidence cannot support; do not force into script>
 
@@ -232,7 +235,8 @@ contract `long-form-writer` and, later, `compliance-check` parse):
 - **Don't launder speculation into the ledger.** If it isn't sourced, it goes in *Open questions*, not
   *Fact ledger*. The ledger's authority is the whole point.
 - **Do not force the brief's promise to survive.** A failed viability promise belongs in `Viability
-  verification` as unsupported or revised; the writer follows the evidence, not the original pitch.
+  verification` as unsupported or revised. That block is the downstream source of truth for story and
+  packaging on the deep path; the writer and metadata skill follow it, not the original pitch.
 
 ## Step 6 — Handoff
 

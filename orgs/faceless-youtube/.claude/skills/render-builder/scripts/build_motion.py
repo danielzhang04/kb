@@ -288,13 +288,19 @@ def apply_cards(shots, plan, word_timings, gaps=None, orig_word_timings=None, is
         return shots[-1]
 
     def _colocated_gap(anchor):
-        """The spliced-silence dur co-located with this card's anchor, or None. Matched on the PRE-SHIFT
-        timeline (the pause cue's frame of reference) so the card + its pause find the same boundary."""
+        """The authored spliced-pause duration co-located with this card's anchor, or None.
+
+        A pure ``source:sentence`` gap is automatic breathing room, not audio-director intent. Merged
+        cue+sentence gaps retain ``source:cue`` in ``merge_gaps``, so requiring that source preserves
+        stacked duration while preventing an automatic sentence gap from authorizing an opaque card.
+        Matching stays on the PRE-SHIFT timeline (the pause cue's frame of reference).
+        """
         orig_at = anchor_time(anchor, orig_word_timings)
         if orig_at is None or not gaps:
             return None
         g = min(gaps, key=lambda g: abs(g["at_s"] - orig_at))
-        return g["dur_s"] if abs(g["at_s"] - orig_at) <= _CARD_GAP_TOL_S else None
+        return (g["dur_s"] if abs(g["at_s"] - orig_at) <= _CARD_GAP_TOL_S
+                and g.get("source", "cue") == "cue" else None)
 
     for c in cards:
         text = (c.get("text") or "").strip()

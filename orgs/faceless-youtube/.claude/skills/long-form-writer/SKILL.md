@@ -63,13 +63,17 @@ skill-only execution (leash, markup, retention, length, handoff).
 
 ## Step 1 — Read
 
-- **The idea brief** in `idea-backlog.md` — format, angle/POV, payload, title options, why-original.
+- **The idea brief** in `idea-backlog.md` — format, provisional angle/POV, payload, title options,
+  why-original. On the deep path these promises are hypotheses until research verifies them.
 - **`videos/<slug>/research.md`** (if present) — **your source of truth for facts, and a POOL to draw from,
   not a checklist to cover.** The `[F-NN]` ledger is a **ceiling, not a floor**: state only what it sources,
   but use only what serves the story (a great script uses maybe half of it; discarding inert facts is
   expected and good). It also hands you the story material — cast, motive, the claim↔reality pairs, the light
   human cost, myths to bust — and flags what to hedge. **You design the story yourself** (Step 3a); the
-  research supplies facts, not a plan. Treat a gap in the ledger as a wall, not a suggestion.
+  research supplies facts, not a plan. Treat a gap in the ledger as a wall, not a suggestion. Its
+  **Viability verification** block is also the canonical post-research story/packaging contract: use its
+  supported or revised stake, mechanism, payload, cold open, and title promises instead of conflicting
+  brief text, and never reuse anything named under **Unsupported promises**.
 - **`channels/<name>/storytelling-grammar.md`** (if present) — **the craft law and its reference facets.
   Read every run**, plus `long-form-writer/references/personable-calibration.md` when the channel routes to
   it. It governs voice, story shape, and staging; where it conflicts with generic doctrine, it wins. (A
