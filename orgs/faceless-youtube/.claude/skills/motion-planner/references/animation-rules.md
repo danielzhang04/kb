@@ -4,8 +4,8 @@ BAKED ONLY WHEN NOTHING MOVES: a shot stays baked (`layers: []`) only when nothi
 accretes in it. The moment a beat has a MOTIVATED element — a character entering, an object travelling,
 a stamp landing, a discrete prop added to a held set, a chain accreting — that element gets its layer.
 Add slides / paths / hybrids / appears wherever the logic below supports one; do not hold back out of
-habit. This posture is about ELEMENT LAYERS only — the CAMERA stays LOCKED (camera restraint is
-deliberate and unchanged; no rule here derives a camera move).
+habit. This posture is about ELEMENT LAYERS first — the camera remains restrained and is only an optional
+stage-start `push`/`pull` punctuation; no rule here creates a camera quota.
 
 ## When to add a cutout layer (Family A)
 
@@ -109,7 +109,7 @@ short path — the dots overlap into a bead. For a clearly DOTTED read set **`do
 **`dot_r`** smaller on the `path` animation (both require `draw_line:true`; defaults preserve the old
 look). These are per-layer, so one route can be dotted without touching the ship/campaign trails.
 
-## All in-video text is DIEGETIC (no cards, no engine text)
+## All in-video text is DIEGETIC (no device cards or engine text)
 ALL in-video text is diegetic — designed into the scene and baked into the generated image. There are
 **no device cards and no engine-drawn text.** The engine draws exactly one thing: the **route line**
 (`draw_line` on a cutout `path`). So a payoff number, a headline sum, a section title, a defined term, a
@@ -147,7 +147,9 @@ delta-chains.
   `delta-chain`. It cannot be cut as a clean independent layer. (A *discrete overlay* added to a chain is
   the hybrid above — that one DOES layer.)
 - All in-video text — payoff figures, titles, defined terms, debunk-lists, ratios → **baked diegetic**
-  into the still (no cards, no engine text; the route line is the engine's only drawn element).
+into the still (no device cards or engine text; the route line is the engine's only drawn element).
+Optional plan-level opaque chapter cards are separate full-screen pauses, not in-scene text or layers:
+they remain static and require their co-located audio pause.
 - A shot with no motivated motion → baked passthrough.
 
 ## Decomposition (by subtraction)

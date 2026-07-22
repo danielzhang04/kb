@@ -64,10 +64,10 @@ planned by the `motion-planner` skill, materialized by `image-generation`).
 }
 ```
 
-The example shows the camera **locked** (`move: none`, intensity `0.0`) — which is now ALWAYS the case.
-The camera is always locked (2026-07-12): build_motion never derives a move. The engine keeps its
-`CameraStage` primitive for a future explicit/authored move, but nothing emits one today. The camera is
-furniture; life comes from cuts and element-layer (cutout) motion.
+The example shows the default locked camera (`move: none`, intensity `0.0`). A motion plan may now author
+restrained `camera.move: "push"|"pull"` only on a stage-start/base shot; build_motion maps those to engine
+`push-in`/`pull-back` and rejects a later delta whose stage camera would ignore it. The camera remains
+punctuation, not a per-shot requirement; life still comes chiefly from cuts and cutout motion.
 
 ## 2. Field derivations (build_motion.py; all paths relative to `videos/<slug>/assets/`)
 
@@ -78,11 +78,11 @@ furniture; life comes from cuts and element-layer (cutout) motion.
 | `start_s`/`duration_s` | `retime_by_timings` / `retime` (imported from `render.py`, the shared timing/scene helpers) | cuts land on `vo_ref` words, proportional fallback |
 | `image` | scenes-mode resolution (imported `resolve_scene_files`) | verified `scenes/<id>.png` (shorts: `<short-stem>-<id>.png`, where **short-stem** = `Path(shorts[].file).stem` — the same prefix render.py + the SKILL use). **Missing ai-gen/hybrid scene = HARD ERROR**; `--allow-missing` renders a placeholder + records it |
 | `placeholder` | `source` ∈ chart/screencap/stock/archival, or allowed-missing | `{kind, label}` — the engine renders a styled placeholder card (the live `PlaceholderCard` component, distinct from the retired device cards) instead of an image; counted in the manifest |
-| `stage`/`stage_role` | shots.json (intent fields, when present) | passed through; used to group a held set. Every shot is locked + hard-cuts (the held-set camera arc + non-cut entrance were retired 2026-07-12) |
-| `camera.move`/`pan` | — (constant) | **Always locked** (`none`/`null`) — build_motion never derives a move (2026-07-12). `CameraStage` remains in the engine for a future explicit/authored move; nothing emits one today |
-| `camera.intensity` | — (constant) | **Always `0.0`** |
+| `stage`/`stage_role` | shots.json (intent fields, when present) | passed through; used to group a held set. Hard cuts remain universal; a stage shares its first camera arc |
+| `camera.move`/`pan` | `--motion-plan` stage-start `camera` | locked `none`/`null` unless authored as `push`/`pull` + optional cardinal pan; maps to engine `push-in`/`pull-back`; later deltas hard-fail |
+| `camera.intensity` | `--motion-plan` stage-start `camera` | `0.0` when locked; authored value in `(0,1]` |
 | `entrance` | — (constant) | **Always `cut`** — the whip entrance was retired with the camera decouple (2026-07-12) |
-| `idle` | tokens default | `bob`, amplitude from `tokens.idle.bob_px` — **`bob_px: 0` holds the frame dead-still** (The Second Take's setting; life comes from cuts + cutout layers) |
+| `idle` | tokens default or plan opt-in | legacy `tokens.idle` behavior is unchanged unless `shots.motion.json` has `baseline_life:true`; then the separate `tokens.baseline_life` block overrides idle for real scene and layered tableaux, never placeholders/cards |
 | `overlays` | `--motion-plan` (`apply_cards`), else `[]` | **chapter CARDS only** (re-enabled 2026-07-17). `apply_cards` resolves the plan-level `cards[]` (`text` + verbatim VO `anchor` + `hold_s`/`fade_s`) to `chapter-card` overlays and attaches each to the shot whose span holds the resolved time; the end card (`end_card:true`) + plan-level `post_vo_hold_s` extend the last shot past the final word. The OTHER overlay types (`on_screen_text`→text, engine device-cards) stay retired — in-video text is baked into the images. Shots with no card keep `overlays: []` (see shots-motion-schema.md §Chapter cards, §3 below) |
 | `plate` / `layers` | `--motion-plan` (`apply_motion_plan`) | **present only on a layered shot** (T3). `apply_motion_plan` merges a `shots.motion.json` (from the `motion-planner` skill) by id: `plate` = `plates/<id>.png` (the baked background), `layers[]` = `{id, src: cutouts/<id>-<layer>.png, animation}` (the menu animation). Absent = a plain baked shot (`image` path). The engine `LayerView` renders each layer; a shot with `layers` uses `plate` as its base instead of `image` |
 | `audioSpec` | `build_audio.py` (reads `visual-kit/audio-tokens.json` + the resolved `audio-plan.json` cues) | Audio is AUTHORED by the `audio-director` skill as `audio-plan.json` (SFX · pause · music · dry); `build_motion` splits it (`audio_plan.split_plan`) and `build_audio` realizes it deterministically: a **placed music lane** (`music_states` — non-overlapping mood segments at a constant present level, NOT a wall-to-wall bed; authored `dry` spans + different-mood track-switch gaps carve silence, same-mood neighbours coalesce; `music_missing` counts an unsourced mood), **SFX `events`** (authored `sfx` cues → roles; an item-appearance sound with `sync:"element"` snaps to the cut/cutout-layer it punctuates; per-element chatter density-capped by `sfx_per_min_story_max`; a role with no sourced file is dropped + counted in `sfx_missing`), and **`dips` (the synchronized full-stop):** every `pause` gap cuts the bed to near-silence AND withholds SFX inside it, the intended hit landing at the gap end. A `pause` cue inserts its silence by splicing a derived `vo.breath.mp3` (VO untouched) + shifting the word-timings ONCE — the frame holds across it, separate from the writer's `[PAUSE]` prosody. Register pull-backs on human-cost are authored `dry` spans. **No overlay-driven SFX fire** (2026-07-15): the `text`→`tick` consumer went away with text overlays, and the device-card SFX roles (stat/counter/meter → pop/riser/pluck) are RETIRED, not dormant-pending — device cards never ship, so those roles have no producer. A deliberate, accepted behavior change. See `audio-plan-schema.md`. Kit files staged into `assets/audio/`; `--no-audio` skips it |
@@ -110,7 +110,7 @@ Captions are a **separate** track, not an overlay: they flow through the top-lev
 
 - Cuts land on `vo_ref` words (same matcher semantics); Σ durations = VO length.
 - Hard cuts only; no fades exist in the component set.
-- Every shot moves: spring camera + idle baseline; a static dead frame is unrepresentable.
+- Legacy motion remains unchanged unless opted in; baseline life never moves placeholders or opaque cards.
 - One movie-level VO track; word-highlight captions from `captions.words` (no transcription);
   `--no-captions` supported.
 - Output + `render.manifest.json` in the standard schema
@@ -156,8 +156,9 @@ not read by the engine.
 | `palette` | `ink`, `accent`, `card_bg`, `bg_default` | text ink, the shared red accent (= in-image red, see style-bible §4), the placeholder-card ground (`card_bg`/card ink now feed only the parked device cards) |
 | `caption` | `enabled_long_form`, `size_frac_long`, `size_frac_short`, `color`, `highlight`, `outline`, `y_frac_long`, `y_frac_short`, `words_per_page_long`, `words_per_page_short`, `all_caps_short` | the word-highlight caption track (size/color/highlight/outline/vertical-position/words-per-page per aspect; `enabled_long_form:false` = the measured 16:9 grade burns no captions) |
 | `card` | `border_px`, `radius_px`, `shadow`, `tilt_deg` | **parked** — the frame of the dormant device-card components (§3); no live consumer |
-| `idle` | `bob_px`, `period_s`, `breathe_scale` | the idle baseline — figure bob amplitude/period + subtle breathe scale. **`bob_px: 0` = frames hold dead-still** (The Second Take's setting) |
-| `camera` | `push_scale`, `pull_from`, `whip_frames`, `pan_frac` | **all dormant** — the camera is always locked (2026-07-12) and the whip entrance was retired, so build_motion emits no move; the engine `CameraStage`/whip read them only if a future explicit move is authored |
+| `idle` | `bob_px`, `period_s`, `breathe_scale` | legacy idle baseline. **`bob_px: 0` = frames hold dead-still** (The Second Take's setting) unless a plan opts into `baseline_life` |
+| `baseline_life` | `bob_px`, `period_s`, `breathe_scale` | Daniel-calibration block applied only for plan-level `baseline_life:true`; scene-backed and layered tableaux only, never placeholders/cards |
+| `camera` | `push_scale`, `pull_from`, `whip_frames`, `pan_frac` | camera response for the rare authored stage-start `push`/`pull`; whip remains retired |
 | `type_on` | `story_chars_per_s`, `card_chars_per_s` | **parked** — text type-on speed for the dormant overlay/device-card components (§3); no live consumer |
 | `entrance` | `pop_settle_s`, `slide_s` | element-entrance timing (pop/settle spring vs slide ease-out) — used by the live cutout `LayerView` |
 | `audio_layer` | *(legacy — superseded)* | The audio layer no longer reads `motion-tokens.json`. `build_audio.py` consumes a **separate** `visual-kit/audio-tokens.json` (`music_pools`, `music_present_db`, `music_default_mood`, `track_switch_gap_s`, `music_fade_s`, `sfx_pools`/`sfx_gain_db`, `sfx_per_min_story_max`, `thin_extra_db`, `dip_db`) for the `audioSpec` block + the engine `MusicLane`/`SfxTrack`. Any `audio_layer` block still present here is stale and ignored |

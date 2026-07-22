@@ -71,6 +71,11 @@ One subagent, fresh context (nothing from the authoring run). Give it:
 >    *needs* in-frame element motion must be restaged (as a delta chain, a tableau that implies the
 >    motion, or an overlay-carried reveal).
 >
+> Also judge cadence as a plan-level taste check: flag a slow static hold that has no earned progressive
+> reveal/legibility/gravity reason, a run of conspicuously equal-duration holds, or cuts so rapid that the
+> visual payload cannot be read. Do not impose a bucket, cadence profile, or numerical quota; lint owns
+> the runtime ÷ 5 floor and the presence of `hold_reason`, while you judge whether the reason earns it.
+>
 > Also check the plan-level checks. **Delta decisiveness** (a world-flip delta must flip the frame —
 > flag timid partial changes, e.g. a "paradise peels away" where paradise visibly remains). **Stage
 > grouping** — here your job is the **SEMANTIC call only**: *are these really one held set?*

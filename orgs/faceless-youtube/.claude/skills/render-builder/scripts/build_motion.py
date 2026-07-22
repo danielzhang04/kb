@@ -38,7 +38,7 @@ from render import (  # noqa: E402  (shared semantics — see docstring)
     vo_seconds_for,
     word_timings_for,
 )
-from motion_plan import cutout_layer_ids  # noqa: E402  (scene-gate exemption for layered shots)
+from motion_plan import camera_stage_errors, cutout_layer_ids  # noqa: E402  (scene-gate exemption for layered shots)
 from build_audio import build_audio_spec, load_audio_tokens  # noqa: E402  (deterministic audio realizer)
 from breath import (shift_timings, splice_silence, sentence_gap_analysis, apply_onset_corrections,
                     merge_gaps, sentence_boundaries)  # noqa: E402  (pause splicing + universal sentence law + R12 onset correction)
@@ -77,13 +77,14 @@ def locked_camera(is_card: bool = False) -> dict:
 # The per-shot camera is LOCKED by default. The motion plan MAY author a camera EXCEPTION on a shot —
 # each one a specific human authorization (see that shot's camera._note). The plan's move vocabulary
 # maps to the engine's camera.move token; the engine reads pull_from from motion-tokens.json + `intensity`.
-_PLAN_CAMERA_MOVES = {"pull": "pull-back"}
+_PLAN_CAMERA_MOVES = {"push": "push-in", "pull": "pull-back"}
+_DEFAULT_BASELINE_LIFE = {"bob_px": 2.0, "period_s": 6.0, "breathe_scale": 0.002}
 
 
 def resolve_plan_camera(cam: dict, sid: str) -> dict:
-    """Translate a plan-authored per-shot `camera` into an engine camera token. `move:"pull"` -> the
-    engine's pull-back zoom-out carrying `intensity` (default 1.0) and any `pan`. An unknown move is a
-    HARD ERROR naming the shot — an authored move must never be silently locked over."""
+    """Translate a stage-start camera exception into engine tokens: `push` -> `push-in`, and legacy
+    `pull` -> `pull-back`. An unknown move is a HARD ERROR naming the shot — an authored move must
+    never be silently locked over."""
     move = (cam or {}).get("move")
     engine_move = _PLAN_CAMERA_MOVES.get(move)
     if engine_move is None:
@@ -97,6 +98,20 @@ def authored_camera_ids(plan) -> set:
     """Shot ids whose plan entry explicitly authors a per-shot `camera` (the locked-camera exceptions).
     Empty when there is no plan."""
     return {s.get("id") for s in (plan or {}).get("shots", []) if s.get("camera")}
+
+
+def baseline_life_tokens(tokens, plan):
+    """Return the opt-in baseline token override. A missing/false flag returns the original token
+    object exactly, preserving legacy derived motion JSON and frames. The separate channel block is
+    deliberately ignored unless the plan opts in."""
+    if not (plan or {}).get("baseline_life"):
+        return tokens
+    original = tokens or {}
+    configured = original.get("baseline_life") or {}
+    life = {k: configured.get(k, v) for k, v in _DEFAULT_BASELINE_LIFE.items()}
+    out = dict(original)
+    out["idle"] = life
+    return out
 
 
 def derive_shots(shots, scene_files, durations_s, starts_s, assets_dir, tokens=None):
@@ -194,6 +209,10 @@ def apply_motion_plan(shots, plan, assets_dir=None, allow_missing=False, word_ti
                                    "animation": _resolve_cutout_anim(
                                        l.get("animation"), start_s, word_timings)}
                                   for l, rel in cut_rels]
+                if (plan or {}).get("baseline_life"):
+                    # Layered tableaux need the same opted-in life as scene-backed shots. Placeholder
+                    # fallbacks stay untouched above, and screen-space cards are never wrapped here.
+                    shot["idle"] = "bob"
         elif not layers and (((entry.get("background") or {}).get("plate"))
                              or ((entry.get("background") or {}).get("plate_prompt"))):
             # Plate-only passthrough (zero cutout layers): the plan's background IS the shot's
@@ -237,7 +256,7 @@ def apply_cards(shots, plan, word_timings, gaps=None, orig_word_timings=None, is
     is up only while nothing is spoken. Matching: resolve the card anchor on the PRE-SHIFT timings
     (`orig_word_timings`) to the same word the pause cue used, find the co-located `gaps` entry (at_s ~=
     that word), and set the card window from the SHIFTED anchor time minus that gap's dur. No co-located
-    gap (EB4's pause missing) -> fall back to a fixed `hold_s` ending at the anchor, with a LOUD warning.
+    gap is a HARD failure: an opaque normal card is never allowed to cover narration.
 
     The END card (`end_card:true`) is EXEMPT -- it is opaque over the post_vo_hold tail (and covers the
     closing VO line, by design): it runs from its anchor to the last shot's end. `post_vo_hold_s`
@@ -300,14 +319,9 @@ def apply_cards(shots, plan, word_timings, gaps=None, orig_word_timings=None, is
                 ov["at_s"] = round(max(0.0, render_at - gap_dur), 3)   # fill the silence, end on the anchor word
                 ov["dur_s"] = round(gap_dur, 3)
             else:
-                # No spliced pause to hide inside -- an OPAQUE card here WOULD cover VO. Least-bad: end it
-                # at the anchor so the new chapter's first word is clean; warn loudly (EB4 pause missing).
-                hold_s = float(c.get("hold_s", 2.0))
-                ov["at_s"] = round(max(0.0, render_at - hold_s), 3)
-                ov["dur_s"] = round(hold_s, 3)
-                print(f"  ! chapter card '{text}': no co-located pause gap at anchor "
-                      f"{c.get('anchor')!r} -- an OPAQUE card will cover VO. Author a ~2s pause cue on "
-                      f"this anchor (audio-plan), or accept the fixed {hold_s:.1f}s hold before the beat.")
+                raise SystemExit(
+                    f"chapter card '{text}': no co-located pause gap at anchor {c.get('anchor')!r} — "
+                    "opaque normal cards require an audio-plan pause on the same verbatim anchor")
         _target(ov["at_s"], end_card).setdefault("overlays", []).append(ov)
 
 
@@ -435,7 +449,7 @@ def build_piece_spec(piece, shots, res, is_short, video_dir, vo_manifest, args, 
     layered_ids = cutout_layer_ids(motion_plan)   # {} when no plan → no exemption
     scene_files, missing = resolve_scene_files(scenes_dir, piece, shots, is_short, allow_missing,
                                                layered_ids=layered_ids)
-    tokens = load_tokens(video_dir)
+    tokens = baseline_life_tokens(load_tokens(video_dir), motion_plan)
     # Channel caption dial (measured law: the studied 16:9 grade burns zero word-captions;
     # shorts keep them). Data in motion-tokens.json; absent key = enabled (other channels).
     captions_on = not args.no_captions and (
@@ -551,6 +565,9 @@ def build_piece_spec(piece, shots, res, is_short, video_dir, vo_manifest, args, 
         "shots": derive_shots(shots, scene_files, scaled, starts, assets_dir, tokens),
     }
     if motion_plan is not None:
+        _camera_stage_errors = camera_stage_errors(motion_plan, spec["shots"])
+        if _camera_stage_errors:
+            raise SystemExit("motion-plan camera stage error(s): " + "; ".join(_camera_stage_errors))
         apply_motion_plan(spec["shots"], motion_plan,
                           assets_dir=assets_dir, allow_missing=args.allow_missing,
                           word_timings=word_timings)

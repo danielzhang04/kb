@@ -24,5 +24,8 @@ per layered shot:
    frame (it seeds a fresh canonical, or a different prior stage) → flag. A re-base must seed the prior
    stage's base frame or the held set drifts (chunk-1 evidence: a dropped base produced two different
    swamps).
+6. **Missed motivated layer** — flag a clearly separable object that enters, travels, accumulates, or
+   reveals on the spoken beat but was baked static without a stated practical or visual reason. Do not
+   demand layers for ordinary held tableaux, integrative changes, or to hit a coverage quota.
 
 Output: a ranked list of concrete fixes. The planner applies them (one revise pass), then the human gate.

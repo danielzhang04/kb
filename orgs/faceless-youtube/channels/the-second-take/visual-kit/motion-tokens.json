@@ -34,6 +34,12 @@
     "breathe_scale": 0,
     "_note": "OFF (user-directed 2026-07-10): fully-locked look. The camera is furniture AND frames hold dead-still; life comes from hard cuts + element/overlay animations + the rare motivated push (gravity/escalation). Set bob_px/breathe_scale back to 5/0.005 to restore the float."
   },
+  "baseline_life": {
+    "bob_px": 2,
+    "period_s": 6,
+    "breathe_scale": 0.002,
+    "_note": "Daniel-calibration candidate defaults. build_motion uses this block ONLY when shots.motion.json sets baseline_life:true; it applies to scene-backed and layered tableaux, never placeholders or opaque cards. Daniel eye-gates these nonzero values before they become the new-video default."
+  },
   "camera": {
     "_note": "Camera is ALWAYS LOCKED (build_motion.py::locked_camera): no move is derived. These scale/whip/pan dials remain only for the engine spring if a future explicit/authored move is ever added (§13a-iii.1).",
     "push_scale": 0.14,

@@ -112,15 +112,17 @@ def test_cards_align_to_pause_gap_and_post_vo_hold():
     assert shots[1]["duration_s"] == 9.0, shots[1]
 
 
-def test_card_without_pause_gap_falls_back_ending_on_anchor():
-    # No co-located pause → fixed hold ending on the anchor word (warns loudly; opaque card covers the
-    # prior sentence tail — the least-bad fallback).
+def test_card_without_pause_gap_hard_fails():
+    # A normal opaque card may never cover VO: a missing same-anchor pause is a hard failure.
     orig = [["So", 10.0], ["what", 10.3], ["happened", 10.6]]
     shots = [{"id": "L12", "start_s": 5.0, "duration_s": 10.0, "overlays": []}]
     plan = {"cards": [{"text": "X", "anchor": "So what happened", "hold_s": 2.0, "fade_s": 0.15}]}
-    apply_cards(shots, plan, orig, gaps=[], orig_word_timings=orig)
-    c = shots[0]["overlays"][0]
-    assert c["at_s"] == 8.0 and c["dur_s"] == 2.0, c   # 10.0 anchor - 2.0 hold
+    try:
+        apply_cards(shots, plan, orig, gaps=[], orig_word_timings=orig)
+    except SystemExit as e:
+        assert "co-located pause gap" in str(e), e
+    else:
+        raise AssertionError("normal card without a pause gap did not fail")
 
 
 def test_cards_skipped_on_short():
@@ -147,7 +149,7 @@ if __name__ == "__main__":
     test_p01_plate_only_keeps_own_scene_image()
     test_p01_plate_only_held_reuse_falls_back_to_plate()
     test_cards_align_to_pause_gap_and_post_vo_hold()
-    test_card_without_pause_gap_falls_back_ending_on_anchor()
+    test_card_without_pause_gap_hard_fails()
     test_cards_skipped_on_short()
     test_end_card_unresolved_anchor_falls_back_to_last_shot()
     print("OK")

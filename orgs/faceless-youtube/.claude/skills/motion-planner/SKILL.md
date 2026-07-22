@@ -8,7 +8,8 @@ description: Plans the element-layer motion for a storyboarded video in this pro
 Turns VPW's `shots.json` (the VISUAL truth) into `videos/<slug>/shots.motion.json` (the derived
 production spec image-generation + build_motion consume). **Baked only when nothing moves** — a shot
 stays baked when nothing enters/moves/accretes, but a motivated element (entrance, travel, stamp, added
-prop, chain) gets its layer. ELEMENT motion only; the camera stays locked. Authors PLACEMENT; the human
+prop, chain) gets its layer. ELEMENT motion first; the camera stays locked except for a restrained,
+stage-start `camera.move: "push"|"pull"` punctuation. Authors PLACEMENT; the human
 gates FEEL.
 
 Contract: `render-builder/references/shots-motion-schema.md`. Vocabulary: `render-builder/references/
@@ -39,6 +40,17 @@ animation-menu.md` (author ONLY menu animations). Rules: `references/animation-r
    - discrete object travels a route (incl. a mover on a `map-plan-view`) → cutout `path` (+ `draw_line`)
    - live prop vibe → cutout `bob` (sparing) · a discrete overlay lands on a held scene → cutout `appear`
      (`style:"slam"` for a stamp) as a hybrid
+   When a separable object genuinely enters, travels, accumulates, or reveals on the spoken beat, use this
+   existing layer machinery unless a concrete practical/visual reason makes a baked delta the better read.
+   Do not chase a layer quota.
+
+   A new video may opt into gentle baseline life with top-level `"baseline_life": true`. The renderer then
+   reads only the channel's separate `baseline_life` token block and applies it to scene-backed and layered
+   tableaux, never placeholders or opaque cards. Omit the flag (or use `false`) to preserve legacy output.
+   A camera exception is optional punctuation: author it only on a standalone shot or the first/base shot of
+   a stage, as `{ "move": "push" | "pull", "pan": null|"left"|"right"|"top"|"bottom", "intensity": 0..1 }`.
+   `push` maps to engine `push-in`; legacy `pull` maps to `pull-back`. Never put one on a later delta: the
+   stage camera would ignore it and lint rejects it.
 3. **Decompose layered shots BY SUBTRACTION** (never re-author from scratch): `plate_prompt` = the shot's
    `still_prompt` minus the cutout elements (in-video text is NOT subtracted — it stays baked diegetic;
    state what fills the region so no blank slot is left); `cutout_prompt` = the single element alone on a
@@ -70,6 +82,8 @@ animation-menu.md` (author ONLY menu animations). Rules: `references/animation-r
    `0 error(s)` (schema + menu + shot-id + cutout-prompt checks, plus the delta-vs-layer lineage
    backstops: a passthrough delta-chain needs a stage + an earlier in-stage frame; a `scenes/<id>.png`
    plate reuse must be an earlier same-stage shot — no chaining across stages or forward in time).
+   It also validates `baseline_life`, camera move/pan/intensity, and rejects a camera declaration on a
+   later stage delta.
 7. **Human gate:** present a short summary — which shots got Family-A motion and the animation each — for
    the human to approve BEFORE image-generation spends tokens. The human authors the ruleset's taste; the
    planner applies it.

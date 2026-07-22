@@ -70,12 +70,23 @@ export const Video: React.FC<{spec: MotionSpec}> = ({spec}) => {
                 return (
                   <Sequence key={shot.id} from={fromF} durationInFrames={durF}>
                     {shot.layers && shot.layers.length ? (
-                      <AbsoluteFill>
-                        {shot.plate ? <SceneImage tokens={tokens} src={shot.plate} /> : null}
-                        {shot.layers.map((ly) => (
-                          <LayerView key={ly.id} layer={ly} tokens={tokens} />
-                        ))}
-                      </AbsoluteFill>
+                      shot.idle === 'bob' ? (
+                        <Idle tokens={tokens}>
+                          <AbsoluteFill>
+                            {shot.plate ? <SceneImage tokens={tokens} src={shot.plate} /> : null}
+                            {shot.layers.map((ly) => (
+                              <LayerView key={ly.id} layer={ly} tokens={tokens} />
+                            ))}
+                          </AbsoluteFill>
+                        </Idle>
+                      ) : (
+                        <AbsoluteFill>
+                          {shot.plate ? <SceneImage tokens={tokens} src={shot.plate} /> : null}
+                          {shot.layers.map((ly) => (
+                            <LayerView key={ly.id} layer={ly} tokens={tokens} />
+                          ))}
+                        </AbsoluteFill>
+                      )
                     ) : shot.image ? (
                       shot.idle === 'bob' ? (
                         <Idle tokens={tokens}>

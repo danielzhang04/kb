@@ -36,6 +36,26 @@ def test_engine_source_is_now_invalid():
     assert any("source must be cutout" in e for e in errs), errs
 
 
+def test_baseline_life_is_optional_boolean():
+    plan = _passthrough()
+    plan["baseline_life"] = True
+    assert validate_plan(plan, load_menu()) == []
+    plan["baseline_life"] = "yes"
+    errs = validate_plan(plan, load_menu())
+    assert any("baseline_life" in e for e in errs), errs
+
+
+def test_camera_move_pan_and_intensity_are_validated():
+    plan = _passthrough()
+    plan["shots"][0]["camera"] = {"move": "push", "pan": "left", "intensity": 0.5}
+    assert validate_plan(plan, load_menu()) == []
+    plan["shots"][0]["camera"] = {"move": "zoom", "pan": "diagonal", "intensity": 2}
+    errs = validate_plan(plan, load_menu())
+    assert any("camera.move" in e for e in errs), errs
+    assert any("camera.pan" in e for e in errs), errs
+    assert any("camera.intensity" in e for e in errs), errs
+
+
 def test_slide_to_must_be_coord():
     plan = {"shots": [{"id": "L01", "background": {"mode": "plate", "plate_prompt": "x"},
             "layers": [{"id": "c", "source": "cutout", "cutout_prompt": "x",
@@ -146,7 +166,8 @@ def test_end_card_may_omit_anchor():
 
 def main():
     for fn in [test_passthrough_is_valid, test_layer_with_offmenu_animation_errors, test_missing_background_errors,
-               test_engine_source_is_now_invalid,
+               test_engine_source_is_now_invalid, test_baseline_life_is_optional_boolean,
+               test_camera_move_pan_and_intensity_are_validated,
                test_slide_to_must_be_coord, test_slide_needs_positive_dur, test_path_needs_exactly_three_points,
                test_appear_style_enum_and_anchor_type, test_valid_cutout_params_ok,
                test_anchor_origin_valid_on_every_type, test_anchor_origin_bad_value_errors,

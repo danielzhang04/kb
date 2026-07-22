@@ -45,6 +45,7 @@ exactly so `render-builder` maps onto its render call with **no interpretation**
         "beat": "hook",
         "start_hint": "0:00",
         "duration_s": 4,
+        "hold_reason": "required only when duration_s exceeds roughly 6 seconds; state the real progressive reveal, legibility, or gravity reason — never a generic cadence exemption",
         "vo_ref": "VERBATIM opening words (≥4) of the VO line, copied exactly from script.md — never paraphrased/reordered",
         "vo_text": "DERIVED by lint_shots.py --write: the verbatim script span this shot covers (its anchor → the next shot's). Do NOT hand-author; not a depiction brief.",
         "from_cue": true,
@@ -125,7 +126,7 @@ Notes:
   `within_shot_motion`, `motion_prompt`, `asset_type`, the beat-type treatment enum, and (on the
   `motion.json` side) `transform_note` / sprite-walk / `at_scene` are all retired. Old files carrying any
   of them still parse (consumers ignore unknown keys). The Remotion engine is the only render path; the
-  camera is **always locked**, every shot hard-cuts (no transition field), **all in-video text is diegetic
+  VPW does not author camera (motion-planner may make a rare stage-start exception), every shot hard-cuts (no transition field), **all in-video text is diegetic
   and baked into the generated image** (no engine text overlay, no device kit), and audio is authored
   separately by the `audio-director` skill (VPW authors no audio/treatment field).
 - **`stage` / `stage_role` / `changed_elements` — held evolving stages (INTENT ONLY).** Consecutive shots
@@ -156,7 +157,8 @@ Notes:
 - `beat` uses a **fixed vocabulary** (narrative POSITION):
   `hook` · `second-gate` · `premise` · `body` · `mid-arm` · `climax` · `withheld-peak` · `close`.
   Free-text beats are a contract break. **`beat` is authoring/review metadata** (narrative structure;
-  potential future mid-roll grouping) — it does not drive the camera (always locked).
+  potential future mid-roll grouping) — the motion planner may use only its first/base frame for a rare
+  stage-camera exception.
 - **`vo_ref` is load-bearing for timing.** `render-builder` matches its **first 4 normalized words**
   against the real VO word-stream (`render.py::retime_by_timings`) to place the cut, so it MUST be a
   verbatim copy of the script's wording, and shots MUST be in **narration order** (each anchor at/after
@@ -363,15 +365,18 @@ real rival channel or instruct "recreate X's thumbnail" — original composition
 
 ## 5. Limits, defaults, timing
 
-- **Long-form density:** new cut every 3–8s, new stimulus every 30–45s (§10); heaviest in the first
+- **Long-form density:** new plans start at 2–5s per cut, new stimulus every 30–45s (§10); heaviest in the first
   60s. Expect several inserts per cue in the hook zone.
 - **Duration coverage:** Σ `duration_s` across `long_form.shots[]` must ≈ the runtime declared in the
   script header's `Estimated runtime` (words ÷ **150** wpm, the project constant; compute it yourself
-  if the header is absent). render-builder re-times to the VO track, so a list that sums *short* gets
-  stretched — breaking the 3–8s cadence. Minimum shot count ≈ `runtime ÷ 8`; hook zone ≈ `÷ 4`.
+  if the header is absent). Plan at least `runtime ÷ 5s` shots. render-builder re-times to the VO track, so a list that sums *short* gets
+  stretched — breaking the 2–5s new-video cadence. Minimum shot count ≈ `runtime ÷ 5`; a hold over ~6s
+  needs `hold_reason` for its earned progressive reveal, legibility, or gravity.
 - **Diagram-first exception:** annotated-schematic shots that progressively reveal (arrows/labels/
   callouts animating in) may hold 10–14s — the in-shot annotation is the 30–45s stimulus, so the cut
-  need not be. Event/reveal/silence shots stay 3–6s. Not a license for sparse static holds.
+  need not be. Any hold over roughly 6s needs `hold_reason` recording the progressive reveal, legibility,
+  or gravity justification; the critic decides whether it is earned. Event/reveal/silence shots stay 2–5s.
+  Not a license for sparse static holds.
 - **Shorts density:** a cut every 2–4s (§11c); `first_frame` mid-action.
 - `duration_s` is an estimate; `timing_status` flags re-timing after render.
 - `synthetic` drives AI disclosure — set `true` on any photoreal AI shot/thumbnail so the flag in
