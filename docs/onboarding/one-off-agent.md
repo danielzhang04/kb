@@ -11,8 +11,8 @@ invariant (top of that doc, re-audited at Wave 5.8/5.9).
 ## 0. Prerequisites
 - Wave-1 approval hardening (I1 + I3 + T10) merged to `main`. Any new worker's ops-push access
   is **hard-gated behind that exit**; Phase A below is read + own-branch push only.
-- Worker CLI installed on the desktop box; its skill-catalog adapter (`sync_skills.py`
-  `render_<worker>()`) built and drift-guarded.
+- Worker CLI installed on the desktop box; its native curated-skill discovery mirror is generated
+  and drift-guarded by `sync_skills.py` (Codex discovers the `.agents/skills/` mirror).
 - Shared preamble (`scripts/preamble.py`) and the `STOP`-file convention understood.
 
 ## 1. Identity (git author)

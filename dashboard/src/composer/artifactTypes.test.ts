@@ -92,14 +92,18 @@ describe('composer/artifactTypes — draft schemas', () => {
   });
 
   it('skill_draft_requires_name_and_description_frontmatter', () => {
-    const ok: SkillDraft = { name: 'Queue Watcher', description: 'pings on new inbox cards', body: '# body' };
+    const ok: SkillDraft = { name: 'Queue Watcher', description: 'pings on new inbox cards', body: '# body', date: '2026-07-22' };
     expect(validateDraft('skill', ok)).toEqual([]);
 
-    const missing: SkillDraft = { name: '', description: '', body: '' };
+    const missing: SkillDraft = { name: '', description: '', body: '', date: '' };
     const fields = validateDraft('skill', missing).map((p) => p.field);
     // registry/skills.ts reads exactly `name` + `description` frontmatter — both are required.
     expect(fields).toContain('name');
     expect(fields).toContain('description');
+    expect(fields).toContain('date');
+
+    const malformed = validateDraft('skill', { ...ok, date: '07/22/2026' });
+    expect(malformed.map((p) => p.field)).toContain('date');
   });
 
   it('workflow_draft_requires_canonical_filename_and_profile', () => {
@@ -145,7 +149,7 @@ describe('composer/artifactTypes — draft schemas', () => {
   });
 
   it('invalid_draft_reports_problems_and_blocks_deploy', () => {
-    const bad: SkillDraft = { name: '', description: '', body: '' };
+    const bad: SkillDraft = { name: '', description: '', body: '', date: '' };
     const problems = validateDraft('skill', bad);
     expect(problems.length).toBeGreaterThan(0);
     // Deploy is blocked at the registry level: toDeploy refuses an invalid draft rather than emitting a
@@ -170,7 +174,7 @@ describe('composer/artifactTypes — deploy mapping', () => {
     expect(task.relpath.startsWith('queue/')).toBe(true);
 
     const durable: Array<[ArtifactKind, unknown]> = [
-      ['skill', { name: 'n', description: 'd', body: 'b' } satisfies SkillDraft],
+      ['skill', { name: 'n', description: 'd', body: 'b', date: '2026-07-22' } satisfies SkillDraft],
       ['workflow', workflow({ filename: 'x.md', body: 'b' })],
       ['project', { name: 'proj', date: '2026-07-17' } satisfies ProjectDraft],
     ];
@@ -186,7 +190,7 @@ describe('composer/artifactTypes — deploy mapping', () => {
   });
 
   it('skill_targets_learned_tier_never_curated', () => {
-    const plan = toDeploy('skill', { name: 'Queue Watcher', description: 'd', body: 'b' });
+    const plan = toDeploy('skill', { name: 'Queue Watcher', description: 'd', body: 'b', date: '2026-07-22' });
     // Daniel's binding decision: Composer skills land in the LEARNED tier (never mirrored/synced by the
     // sync_skills hook); a human promotes to curated later. The path must be skills/learned/<slug>/SKILL.md.
     expect(plan.relpath).toMatch(/^skills\/learned\/[a-z0-9-]+\/SKILL\.md$/);
@@ -195,7 +199,7 @@ describe('composer/artifactTypes — deploy mapping', () => {
     expect(plan.content).toContain('name: Queue Watcher');
     expect(plan.content).toContain('description: d');
     expect(plan.content).toContain('source: dashboard-composer');
-    expect(plan.content).toMatch(/imported: \d{4}-\d{2}-\d{2}/);
+    expect(plan.content).toContain('imported: 2026-07-22');
     expect(plan.content).toContain('provenance-tier: learned');
   });
 
@@ -303,9 +307,10 @@ describe('composer/artifactTypes — F4 client-side path-traversal rejection', (
 
   it('rejects a skill name that would escape/empty its learned/<slug> segment', () => {
     for (const name of ['..', '../../etc', 'a/b']) {
-      const problems = validateDraft('skill', { name, description: 'd', body: 'b' });
+      const draft: SkillDraft = { name, description: 'd', body: 'b', date: '2026-07-22' };
+      const problems = validateDraft('skill', draft);
       expect(problems.map((p) => p.field)).toContain('name');
-      expect(() => toDeploy('skill', { name, description: 'd', body: 'b' })).toThrow();
+      expect(() => toDeploy('skill', draft)).toThrow();
     }
   });
 
