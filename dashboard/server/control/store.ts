@@ -392,6 +392,28 @@ export interface AdvanceReviewGenerationInput {
   idempotencyKey: string;
 }
 
+export interface ParkExhaustedReviewInput {
+  expectedSubjectStageVersion: number;
+  expectedReviewStageVersion: number;
+  expectedLoopVersion: number;
+  expectedReceiptVersion: number;
+  expectedSubjectAttemptRef: string;
+  expectedSubjectAttemptVersion: number;
+  expectedCheckerAttemptRef: string;
+  expectedCheckerAttemptVersion: number;
+  expectedGenerationRef: string;
+  expectedFailedReceiptRef: string;
+  idempotencyKey: string;
+}
+
+export interface ParkExhaustedReviewResult {
+  receipt: ReviewReceipt;
+  loop: ReviewLoop;
+  interventionRequest: HumanRequest;
+  subjectStage: Stage;
+  reviewStage: Stage;
+}
+
 export interface AttachReviewCompletionGateInput {
   expectedReceiptVersion: number;
   expectedLoopVersion: number;
@@ -581,6 +603,7 @@ export interface ControlPlaneStore extends BrokerStoreBackend {
   attachReviewCompletionGate(subject: string, reviewReceiptRef: string, input: AttachReviewCompletionGateInput): ControlResult<ReviewCompletionGateResult>;
   resolveReviewCompletionGate(subject: string, requestRef: string, input: ResolveReviewCompletionGateInput): ControlResult<ReviewCompletionGateResult>;
   advanceReviewGeneration(subject: string, runRef: string, input: AdvanceReviewGenerationInput): ControlResult<StageGeneration>;
+  parkExhaustedReview(subject: string, runRef: string, input: ParkExhaustedReviewInput): ControlResult<ParkExhaustedReviewResult>;
   linkStageCard(subject: string, stageRef: string, expectedVersion: number, canonicalCardRef: string): ControlResult<Stage>;
   createAttempt(subject: string, stageRef: string, input: CreateAttemptInput): ControlResult<Attempt>;
   /** Atomically supersedes one never-started queued attempt without rewriting its historical routing. */
@@ -814,12 +837,20 @@ function reviewInterventionOperationKey(runRef: string, reviewStageId: string, g
   return `review-intervention:${runRef}:${reviewStageId}:g${generation}`;
 }
 
+function reviewExhaustedOperationKey(runRef: string, reviewStageId: string, generation: number): string {
+  return `review-exhausted:${runRef}:${reviewStageId}:g${generation}`;
+}
+
 function reviewGateAttachFingerprint(reviewReceiptRef: string, input: AttachReviewCompletionGateInput): string {
   return sha256(JSON.stringify({ reviewReceiptRef, input }));
 }
 
 function reviewGateResolutionFingerprint(requestRef: string, input: ResolveReviewCompletionGateInput, response: string | null): string {
   return sha256(JSON.stringify({ requestRef, input: { ...input, response } }));
+}
+
+function exhaustedReviewFingerprint(subject: string, runRef: string, input: ParkExhaustedReviewInput): string {
+  return sha256(JSON.stringify({ subject, runRef, input }));
 }
 
 function sameStringArray(left: readonly string[], right: unknown): boolean {
@@ -1292,6 +1323,7 @@ function migrateReviewCollections(document: StoreDocument): boolean {
 function validateReviewDurability(
   stages: readonly StoredStage[],
   attempts: readonly StoredAttempt[],
+  sessions: readonly StoredSession[],
   generations: readonly StoredStageGeneration[],
   supersessions: readonly StoredGenerationSupersession[],
   loops: readonly StoredReviewLoop[],
@@ -1300,6 +1332,7 @@ function validateReviewDurability(
 ): void {
   const stageByRef = new Map(stages.map((stage) => [stage.stageRef, stage]));
   const attemptByRef = new Map(attempts.map((attempt) => [attempt.attemptRef, attempt]));
+  const sessionByRef = new Map(sessions.map((session) => [session.sessionRef, session]));
   const generationByRef = new Map<string, StoredStageGeneration>();
   const generationByLogicalStage = new Set<string>();
   const generationOperationKeys = new Set<string>();
@@ -1492,7 +1525,9 @@ function validateReviewDurability(
     if (!SAFE_REF_RE.test(request.requestRef) || requestByRef.has(request.requestRef)) {
       throw new Error('invalid control-plane review request reference');
     }
-    const reserved = request.operationKey?.startsWith('review-gate:') || request.operationKey?.startsWith('review-intervention:');
+    const reserved = request.operationKey?.startsWith('review-gate:')
+      || request.operationKey?.startsWith('review-intervention:')
+      || request.operationKey?.startsWith('review-exhausted:');
     if (reserved && (!request.operationKey || !HASH_RE.test(request.operationFingerprint ?? '') || reservedRequestOperations.has(request.operationKey))) {
       throw new Error('invalid control-plane review request operation');
     }
@@ -1516,6 +1551,7 @@ function validateReviewDurability(
     const intervention = receipt.interventionRequestRef === null ? null : requestByRef.get(receipt.interventionRequestRef) ?? null;
     const gateOperation = reviewGateOperationKey(receipt.runRef, reviewStage.stageId, generation.generation);
     const interventionOperation = reviewInterventionOperationKey(receipt.runRef, reviewStage.stageId, generation.generation);
+    const exhaustedOperation = reviewExhaustedOperationKey(receipt.runRef, reviewStage.stageId, generation.generation);
     const linked = [receipt.completionRequestRef, receipt.interventionRequestRef].filter((value): value is string => value !== null);
     if (linked.some((ref) => linkedRequestRefs.has(ref))) throw new Error('invalid control-plane duplicate review request link');
     for (const ref of linked) linkedRequestRefs.add(ref);
@@ -1557,27 +1593,69 @@ function validateReviewDurability(
         );
     }
     const parserParked = receipt.outcome.decision === 'parked';
-    const expectedInterventionFingerprint = parserParked
-      ? sha256(`${receipt.outcomeHash}\0${interventionOperation}`)
-      : completion?.response ? sha256(`${completion.requestRef}\0${completion.response.idempotencyKey}`) : null;
-    const expectedInterventionPrompt = parserParked
-      ? `Review parked: ${receipt.outcome.summary}`
-      : completion?.response ? `Review gate ${completion.response.decision}: ${receipt.outcome.summary}` : '';
+    const exhaustedParking = receipt.state === 'failed' && loop.state === 'parked'
+      && loop.activeReceiptRef === receipt.reviewReceiptRef && loop.activeGenerationRef === generation.generationRef;
+    const exhaustedInput: ParkExhaustedReviewInput = {
+      expectedSubjectStageVersion: stageByRef.get(receipt.subjectStageRef)?.version ?? 0,
+      expectedReviewStageVersion: reviewStage.version,
+      expectedLoopVersion: loop.version - 1,
+      expectedReceiptVersion: receipt.version - 1,
+      expectedSubjectAttemptRef: generation.attemptRef,
+      expectedSubjectAttemptVersion: attemptByRef.get(generation.attemptRef)?.version ?? 0,
+      expectedCheckerAttemptRef: receipt.checkerAttemptRef,
+      expectedCheckerAttemptVersion: attemptByRef.get(receipt.checkerAttemptRef)?.version ?? 0,
+      expectedGenerationRef: generation.generationRef,
+      expectedFailedReceiptRef: receipt.reviewReceiptRef,
+      idempotencyKey: exhaustedOperation,
+    };
+    const expectedInterventionFingerprint = exhaustedParking
+      ? exhaustedReviewFingerprint(receipt.subject, receipt.runRef, exhaustedInput)
+      : parserParked
+        ? sha256(`${receipt.outcomeHash}\0${interventionOperation}`)
+        : completion?.response ? sha256(`${completion.requestRef}\0${completion.response.idempotencyKey}`) : null;
+    const expectedInterventionOperation = exhaustedParking ? exhaustedOperation : interventionOperation;
+    const expectedInterventionPrompt = exhaustedParking
+      ? `Creator rework bound exhausted: ${receipt.outcome.summary}`
+      : parserParked
+        ? `Review parked: ${receipt.outcome.summary}`
+        : completion?.response ? `Review gate ${completion.response.decision}: ${receipt.outcome.summary}` : '';
     const validIntervention = intervention !== null && intervention.subject === receipt.subject && intervention.runRef === receipt.runRef
-      && intervention.stageRef === receipt.reviewStageRef && intervention.kind === 'intervention' && intervention.operationKey === interventionOperation
+      && intervention.stageRef === receipt.reviewStageRef && intervention.kind === 'intervention' && intervention.operationKey === expectedInterventionOperation
       && intervention.operationFingerprint === expectedInterventionFingerprint && intervention.revision === 1
       && intervention.title === cleanText(`Review intervention: ${reviewStage.title}`, MAX_TITLE)
       && intervention.prompt === cleanText(expectedInterventionPrompt, MAX_LONG_TEXT)
       && intervention.state === 'open' && intervention.response === null && intervention.resolutionOperationFingerprint === null;
+    const subjectStage = stageByRef.get(receipt.subjectStageRef);
+    const completedWorkerSession = (attempt: StoredAttempt) => attempt.managedSessionRef === null || (() => {
+      const session = sessionByRef.get(attempt.managedSessionRef);
+      return !!session && session.subject === attempt.subject && session.runRef === attempt.runRef
+        && session.stageRef === attempt.stageRef && session.attemptRef === attempt.attemptRef
+        && session.role === 'worker' && session.state === 'completed';
+    })();
+    const validExhaustedParking = !exhaustedParking || (receipt.outcome.decision === 'fail'
+      && receipt.completionRequestRef === null && loop.reworksUsed === loop.maxCreatorReworks
+      && subjectStage?.state === 'succeeded' && subjectStage.currentGenerationRef === generation.generationRef
+      && subjectStage.acceptedGenerationRef === null && subjectStage.currentAttemptRef === generation.attemptRef
+      && reviewStage.state === 'succeeded' && reviewStage.currentAttemptRef === receipt.checkerAttemptRef
+      && loop.activeGenerationRef === generation.generationRef && loop.activeReceiptRef === receipt.reviewReceiptRef
+      && loop.acceptedGenerationRef === null && attemptByRef.get(generation.attemptRef)?.state === 'succeeded'
+      && attemptByRef.get(receipt.checkerAttemptRef)?.state === 'succeeded'
+      && completedWorkerSession(attemptByRef.get(generation.attemptRef) as StoredAttempt)
+      && completedWorkerSession(attemptByRef.get(receipt.checkerAttemptRef) as StoredAttempt)
+      && validIntervention);
     if ((receipt.completionRequestRef !== null && !validCompletion) || (receipt.interventionRequestRef !== null && !validIntervention)
-      || !validResolution || loop.interventionRequestRef !== receipt.interventionRequestRef) {
+      || !validResolution || !validExhaustedParking
+      || ((receipt.interventionRequestRef !== null || loop.activeReceiptRef === receipt.reviewReceiptRef)
+        && loop.interventionRequestRef !== receipt.interventionRequestRef)) {
       throw new Error('invalid control-plane review request cross-reference');
     }
     const gateAuthored = reviewStage.completionGate !== null;
     const completionDecision = completion?.response?.decision;
     if ((receipt.state === 'awaiting-completion-gate' && (!gateAuthored || (completion !== null && (completion.state !== 'open' || completion.response !== null))))
       || (receipt.state === 'passed' && (receipt.interventionRequestRef !== null || (gateAuthored && (!completion || completion.state !== 'resolved' || completionDecision !== 'approved'))))
-      || (receipt.state === 'failed' && (receipt.completionRequestRef !== null || receipt.interventionRequestRef !== null))
+      || (receipt.state === 'failed' && (exhaustedParking
+        ? receipt.completionRequestRef !== null || !intervention
+        : receipt.completionRequestRef !== null || receipt.interventionRequestRef !== null))
       || (receipt.state === 'parked' && (!intervention || (receipt.outcome.decision === 'parked'
         ? receipt.completionRequestRef !== null
         : !completion || completion.state !== 'resolved' || !['rejected', 'changes-requested'].includes(completionDecision ?? ''))))) {
@@ -1585,7 +1663,9 @@ function validateReviewDurability(
     }
   }
   for (const request of humanRequests) {
-    const reserved = request.operationKey?.startsWith('review-gate:') || request.operationKey?.startsWith('review-intervention:');
+    const reserved = request.operationKey?.startsWith('review-gate:')
+      || request.operationKey?.startsWith('review-intervention:')
+      || request.operationKey?.startsWith('review-exhausted:');
     if (reserved && !linkedRequestRefs.has(request.requestRef)) throw new Error('invalid control-plane orphan review request');
   }
   for (const supersession of supersessions) {
@@ -1612,7 +1692,8 @@ function validateReviewDurability(
         && (!activeGeneration || !activeReceipt || activeReceipt.reviewStageRef !== loop.reviewStageRef
           || activeReceipt.subjectGenerationRef !== activeGeneration.generationRef))
       || (loop.state === 'failed' && activeReceipt?.state !== 'failed')
-      || (loop.state === 'parked' && activeReceipt?.state !== 'parked')
+      || (loop.state === 'parked' && activeReceipt?.state !== 'parked'
+        && !(activeReceipt?.state === 'failed' && loop.interventionRequestRef !== null && loop.reworksUsed === loop.maxCreatorReworks))
       || (loop.state === 'awaiting-gate' && activeReceipt?.state !== 'awaiting-completion-gate')
       || (loop.state === 'passed' && activeReceipt?.state !== 'passed')
       || (loop.state === 'passed' && (!acceptedGeneration || acceptedGeneration.generationRef !== activeGeneration?.generationRef))
@@ -1790,10 +1871,10 @@ function normalizeCrash(document: StoreDocument, stamp: string): boolean {
       if (normalizeStoredAttemptReviewProvenance(attempt)) changed = true;
     }
     if (materializeLegacyReviewLoops(bundle.stages, bundle.attempts, bundle.reviewLoops, stamp)) changed = true;
-    validateReviewDurability(bundle.stages, bundle.attempts, bundle.stageGenerations, bundle.generationSupersessions, bundle.reviewLoops, bundle.reviewReceipts, bundle.humanRequests);
+    validateReviewDurability(bundle.stages, bundle.attempts, bundle.sessions, bundle.stageGenerations, bundle.generationSupersessions, bundle.reviewLoops, bundle.reviewReceipts, bundle.humanRequests);
   }
   if (materializeLegacyReviewLoops(document.stages, document.attempts, document.reviewLoops, stamp)) changed = true;
-  validateReviewDurability(document.stages, document.attempts, document.stageGenerations, document.generationSupersessions, document.reviewLoops, document.reviewReceipts, document.humanRequests);
+  validateReviewDurability(document.stages, document.attempts, document.sessions, document.stageGenerations, document.generationSupersessions, document.reviewLoops, document.reviewReceipts, document.humanRequests);
   return changed;
 }
 
@@ -2838,6 +2919,95 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       return ok(publicStageGeneration(successor));
     },
 
+    parkExhaustedReview(subject, runRef, input) {
+      if (!validNonEmpty(input.idempotencyKey, MAX_SHORT_TEXT) || !SAFE_REF_RE.test(input.expectedGenerationRef)
+        || !SAFE_REF_RE.test(input.expectedFailedReceiptRef) || !SAFE_REF_RE.test(input.expectedSubjectAttemptRef)
+        || !SAFE_REF_RE.test(input.expectedCheckerAttemptRef)) return fail('invalid', 'exhausted review identity is invalid');
+      const document = load();
+      const receipt = document.reviewReceipts.find((item) => item.subject === subject && item.runRef === runRef
+        && item.reviewReceiptRef === input.expectedFailedReceiptRef);
+      if (!receipt) return fail('not-found', 'failed review receipt was not found');
+      const reviewStage = document.stages.find((item) => item.subject === subject && item.runRef === runRef
+        && item.stageRef === receipt.reviewStageRef);
+      const subjectStage = document.stages.find((item) => item.subject === subject && item.runRef === runRef
+        && item.stageRef === receipt.subjectStageRef);
+      const receiptGeneration = document.stageGenerations.find((item) => item.subject === subject && item.runRef === runRef
+        && item.generationRef === receipt.subjectGenerationRef);
+      if (!reviewStage || !subjectStage || !receiptGeneration) return fail('conflict', 'exhausted review lineage is incomplete');
+      const operationKey = reviewExhaustedOperationKey(runRef, reviewStage.stageId, receiptGeneration.generation);
+      if (input.idempotencyKey !== operationKey) return fail('invalid', 'exhausted review idempotencyKey is not canonical');
+      const fingerprint = exhaustedReviewFingerprint(subject, runRef, input);
+      const replay = document.humanRequests.find((item) => item.subject === subject && item.runRef === runRef
+        && item.operationKey === operationKey);
+      if (replay) {
+        if (replay.operationFingerprint !== fingerprint) return fail('idempotency-conflict', 'exhausted review idempotencyKey was reused with different content');
+        const loop = document.reviewLoops.find((item) => item.subject === subject && item.runRef === runRef
+          && item.reviewStageRef === reviewStage.stageRef);
+        if (receipt.interventionRequestRef !== replay.requestRef || loop?.interventionRequestRef !== replay.requestRef
+          || receipt.state !== 'failed' || loop.state !== 'parked') {
+          return fail('conflict', 'exhausted review replay linkage is incomplete');
+        }
+        return ok({ receipt: publicReviewReceipt(receipt), loop: publicReviewLoop(loop), interventionRequest: publicRequest(replay),
+          subjectStage: publicStage(subjectStage), reviewStage: publicStage(reviewStage) }, true);
+      }
+      const generation = document.stageGenerations.find((item) => item.subject === subject && item.runRef === runRef
+        && item.generationRef === input.expectedGenerationRef);
+      const loop = document.reviewLoops.find((item) => item.subject === subject && item.runRef === runRef
+        && item.reviewStageRef === receipt.reviewStageRef && item.subjectStageRef === receipt.subjectStageRef);
+      const subjectAttempt = document.attempts.find((item) => item.subject === subject && item.runRef === runRef
+        && item.attemptRef === receiptGeneration.attemptRef);
+      const checkerAttempt = document.attempts.find((item) => item.subject === subject && item.runRef === runRef
+        && item.attemptRef === receipt.checkerAttemptRef);
+      const completedWorkerSession = (attempt: StoredAttempt) => attempt.managedSessionRef === null || document.sessions.some((session) =>
+        session.subject === subject && session.runRef === runRef && session.sessionRef === attempt.managedSessionRef
+        && session.stageRef === attempt.stageRef && session.attemptRef === attempt.attemptRef
+        && session.role === 'worker' && session.state === 'completed',
+      );
+      if (!generation || !loop || !subjectAttempt || !checkerAttempt
+        || subjectStage.version !== input.expectedSubjectStageVersion || reviewStage.version !== input.expectedReviewStageVersion
+        || loop.version !== input.expectedLoopVersion || receipt.version !== input.expectedReceiptVersion
+        || subjectAttempt.attemptRef !== input.expectedSubjectAttemptRef || subjectAttempt.version !== input.expectedSubjectAttemptVersion
+        || checkerAttempt.attemptRef !== input.expectedCheckerAttemptRef || checkerAttempt.version !== input.expectedCheckerAttemptVersion
+        || loop.state !== 'failed' || receipt.state !== 'failed' || generation.state !== 'committed'
+        || generation.logicalStageRef !== subjectStage.stageRef || generation.generationRef !== receipt.subjectGenerationRef
+        || generation.resultHash !== receipt.subjectResultHash || generation.attemptRef !== subjectAttempt.attemptRef
+        || subjectStage.currentGenerationRef !== generation.generationRef || subjectStage.currentAttemptRef !== subjectAttempt.attemptRef
+        || subjectAttempt.stageRef !== subjectStage.stageRef || subjectAttempt.state !== 'succeeded'
+        || subjectStage.state !== 'succeeded' || subjectStage.acceptedGenerationRef !== null
+        || reviewStage.currentAttemptRef !== checkerAttempt.attemptRef || reviewStage.state !== 'succeeded' || reviewStage.acceptedGenerationRef !== null
+        || checkerAttempt.stageRef !== reviewStage.stageRef || checkerAttempt.state !== 'succeeded'
+        || checkerAttempt.reviewSubjectGenerationRef !== generation.generationRef
+        || checkerAttempt.reviewSubjectResultHash !== generation.resultHash || checkerAttempt.reviewSubjectCanonicalCommit !== generation.canonicalCommit
+        || !completedWorkerSession(subjectAttempt) || !completedWorkerSession(checkerAttempt)
+        || receipt.reviewStageRef !== reviewStage.stageRef || receipt.subjectStageRef !== subjectStage.stageRef
+        || receipt.completionRequestRef !== null || receipt.interventionRequestRef !== null
+        || loop.activeGenerationRef !== generation.generationRef || loop.activeReceiptRef !== receipt.reviewReceiptRef
+        || loop.acceptedGenerationRef !== null || loop.interventionRequestRef !== null) {
+        return fail('conflict', 'exhausted review lineage or version changed');
+      }
+      if (loop.reworksUsed > loop.maxCreatorReworks) return fail('conflict', 'creator rework count exceeds its bound');
+      if (loop.reworksUsed < loop.maxCreatorReworks) return fail('ineligible', 'creator rework bound is not exhausted');
+      if (document.humanRequests.filter((item) => item.subject === subject && item.runRef === runRef).length >= MAX_HUMAN_REQUESTS_PER_RUN) {
+        return fail('limit', 'run has reached the Human Request limit');
+      }
+      if (document.humanRequests.some((item) => item.operationKey === operationKey)) {
+        return fail('conflict', 'exhausted review operationKey is already reserved');
+      }
+      const createdAt = stamp();
+      const intervention: StoredHumanRequest = {
+        subject, operationKey, operationFingerprint: fingerprint, requestRef: ref('request'), runRef, stageRef: reviewStage.stageRef,
+        kind: 'intervention', revision: 1, state: 'open', title: cleanText(`Review intervention: ${reviewStage.title}`, MAX_TITLE),
+        prompt: cleanText(`Creator rework bound exhausted: ${receipt.outcome.summary}`, MAX_LONG_TEXT), response: null,
+        resolutionOperationFingerprint: null, createdAt, updatedAt: createdAt,
+      };
+      receipt.interventionRequestRef = intervention.requestRef; receipt.version += 1;
+      loop.state = 'parked'; loop.interventionRequestRef = intervention.requestRef; loop.version += 1; loop.updatedAt = createdAt;
+      document.humanRequests.push(intervention);
+      commit(document);
+      return ok({ receipt: publicReviewReceipt(receipt), loop: publicReviewLoop(loop), interventionRequest: publicRequest(intervention),
+        subjectStage: publicStage(subjectStage), reviewStage: publicStage(reviewStage) });
+    },
+
     linkStageCard(subject, stageRef, expectedVersion, canonicalCardRef) {
       const document = load();
       const stage = document.stages.find((item) => item.subject === subject && item.stageRef === stageRef);
@@ -3059,6 +3229,7 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       const attempt = document.attempts.find((item) => item.subject === subject && item.attemptRef === attemptRef);
       if (!attempt) return fail('not-found', 'attempt was not found');
       if (attempt.version !== input.expectedAttemptVersion) return fail('conflict', 'attempt version changed');
+      if (attempt.state !== 'queued') return fail('invalid', 'only a queued attempt can create a managed session');
       if (attempt.managedSessionRef) return fail('conflict', 'attempt already has a managed session');
       const createdAt = stamp();
       const session: StoredSession = {
@@ -3624,7 +3795,8 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       if (!validNonEmpty(input.idempotencyKey, MAX_SHORT_TEXT) || !Array.isArray(input.requests) || input.requests.length === 0) {
         return fail('invalid', 'idempotencyKey and a non-empty Human Request batch are required');
       }
-      if (input.idempotencyKey.startsWith('review-gate:') || input.idempotencyKey.startsWith('review-intervention:')) {
+      if (input.idempotencyKey.startsWith('review-gate:') || input.idempotencyKey.startsWith('review-intervention:')
+        || input.idempotencyKey.startsWith('review-exhausted:')) {
         return fail('invalid', 'review request operation namespaces are reserved');
       }
       const fingerprint = sha256(JSON.stringify(input.requests));

@@ -153,7 +153,17 @@ function createCheckerRun(store: ControlPlaneStore, subject = 'alice', maxCreato
   return created.value;
 }
 
-function commitCheckerSubject(store: ControlPlaneStore, created = createCheckerRun(store)) {
+function completeWorkerSession(store: ControlPlaneStore, sessionRef: string, version: number) {
+  const starting = store.transitionSession('alice', sessionRef, version, 'starting');
+  if (!starting.ok) throw new Error(starting.detail);
+  const running = store.transitionSession('alice', sessionRef, starting.value.version, 'running');
+  if (!running.ok) throw new Error(running.detail);
+  const completed = store.transitionSession('alice', sessionRef, running.value.version, 'completed');
+  if (!completed.ok) throw new Error(completed.detail);
+  return completed.value;
+}
+
+function commitCheckerSubject(store: ControlPlaneStore, created = createCheckerRun(store), withCompletedWorkerSession = false) {
   const current = store.getRun('alice', created.run.runRef);
   if (!current.ok) throw new Error(current.detail);
   const subject = current.value.stages.find((stage) => stage.stageId === 'build');
@@ -170,7 +180,14 @@ function commitCheckerSubject(store: ControlPlaneStore, created = createCheckerR
     expectedStageVersion: cardedSubject.version, runtime: 'codex', model: 'fixed',
   });
   if (!attempt.ok) throw new Error(attempt.detail);
-  const starting = store.transitionAttempt('alice', attempt.value.attemptRef, attempt.value.version, 'starting');
+  let attemptVersion = attempt.value.version;
+  if (withCompletedWorkerSession) {
+    const session = store.createWorkerSession('alice', attempt.value.attemptRef, { expectedAttemptVersion: attemptVersion });
+    if (!session.ok) throw new Error(session.detail);
+    completeWorkerSession(store, session.value.sessionRef, session.value.version);
+    attemptVersion += 1;
+  }
+  const starting = store.transitionAttempt('alice', attempt.value.attemptRef, attemptVersion, 'starting');
   if (!starting.ok) throw new Error(starting.detail);
   const running = store.transitionAttempt('alice', starting.value.attemptRef, starting.value.version, 'running');
   if (!running.ok) throw new Error(running.detail);
@@ -215,7 +232,7 @@ function checkerParkedOutcome() {
 function prepareCheckerReview(
   store: ControlPlaneStore,
   committed: ReturnType<typeof commitCheckerSubject>,
-  checkerSessionTerminalState?: 'failed' | 'stopped',
+  checkerSessionTerminalState?: 'completed' | 'failed' | 'stopped',
   outcome = checkerFailOutcome(),
 ) {
   const before = store.getRun('alice', committed.created.run.runRef);
@@ -231,7 +248,9 @@ function prepareCheckerReview(
   }
   const checkerAttempt = store.createAttempt('alice', review.stageRef, {
     expectedStageVersion: review.version, runtime: VERIFY_ASSIGNMENT.runtime, model: VERIFY_ASSIGNMENT.model,
-    reviewSubjectGenerationRef: committed.generation.generationRef, reviewSubjectResultHash: 'd'.repeat(64), reviewSubjectCanonicalCommit: 'a'.repeat(40),
+    reviewSubjectGenerationRef: committed.generation.generationRef,
+    reviewSubjectResultHash: committed.generation.resultHash as string,
+    reviewSubjectCanonicalCommit: committed.generation.canonicalCommit as string,
   });
   if (!checkerAttempt.ok) throw new Error(checkerAttempt.detail);
   let checkerAttemptVersion = checkerAttempt.value.version;
@@ -239,8 +258,11 @@ function prepareCheckerReview(
     const session = store.createWorkerSession('alice', checkerAttempt.value.attemptRef, { expectedAttemptVersion: checkerAttemptVersion });
     if (!session.ok) throw new Error(session.detail);
     checkerAttemptVersion += 1;
-    const terminal = store.transitionSession('alice', session.value.sessionRef, session.value.version, checkerSessionTerminalState);
-    if (!terminal.ok) throw new Error(terminal.detail);
+    if (checkerSessionTerminalState === 'completed') completeWorkerSession(store, session.value.sessionRef, session.value.version);
+    else {
+      const terminal = store.transitionSession('alice', session.value.sessionRef, session.value.version, checkerSessionTerminalState);
+      if (!terminal.ok) throw new Error(terminal.detail);
+    }
   }
   const starting = store.transitionAttempt('alice', checkerAttempt.value.attemptRef, checkerAttemptVersion, 'starting');
   if (!starting.ok) throw new Error(starting.detail);
@@ -264,8 +286,8 @@ function prepareCheckerReview(
     checkerAttempt: succeeded.value,
     receiptInput: {
     expectedReviewStageVersion: receiptReview.version, expectedCheckerAttemptVersion: succeeded.value.version, expectedLoopVersion: receiptLoop.version,
-    subjectGenerationRef: committed.generation.generationRef, subjectResultHash: 'd'.repeat(64), checkerAttemptRef: succeeded.value.attemptRef,
-    outcome, operationKey: `review-outcome:${committed.created.run.runRef}:check:g1`,
+    subjectGenerationRef: committed.generation.generationRef, subjectResultHash: committed.generation.resultHash as string, checkerAttemptRef: succeeded.value.attemptRef,
+    outcome, operationKey: `review-outcome:${committed.created.run.runRef}:check:g${committed.generation.generation}`,
     },
   };
 }
@@ -273,7 +295,7 @@ function prepareCheckerReview(
 function failCheckerReview(
   store: ControlPlaneStore,
   committed: ReturnType<typeof commitCheckerSubject>,
-  checkerSessionTerminalState?: 'failed' | 'stopped',
+  checkerSessionTerminalState?: 'completed' | 'failed' | 'stopped',
   outcome = checkerFailOutcome(),
 ) {
   const prepared = prepareCheckerReview(store, committed, checkerSessionTerminalState, outcome);
@@ -293,6 +315,35 @@ function failCheckerReview(
       expectedCheckerAttemptRef: prepared.checkerAttempt.attemptRef, expectedCheckerAttemptVersion: prepared.checkerAttempt.version,
       expectedFailedReceiptRef: receipt.value.reviewReceiptRef, expectedGenerationRef: committed.generation.generationRef,
       idempotencyKey: `rework:${committed.created.run.runRef}:build:g2`,
+    },
+  };
+}
+
+function exhaustedReviewInput(
+  store: ControlPlaneStore,
+  committed: ReturnType<typeof commitCheckerSubject>,
+  checkerSessionState?: 'completed' | 'failed' | 'stopped',
+) {
+  const failed = failCheckerReview(store, committed, checkerSessionState);
+  const { receipt } = failed;
+  const detail = store.getRun('alice', committed.created.run.runRef);
+  if (!detail.ok) throw new Error(detail.detail);
+  const subjectStage = detail.value.stages.find((stage) => stage.stageId === 'build');
+  const reviewStage = detail.value.stages.find((stage) => stage.stageId === 'check');
+  const loop = detail.value.reviewLoops[0];
+  if (!subjectStage || !reviewStage || !loop) throw new Error('exhausted review graph missing');
+  return {
+    receipt,
+    reworkInput: failed.input,
+    input: {
+      expectedSubjectStageVersion: subjectStage.version, expectedReviewStageVersion: reviewStage.version,
+      expectedLoopVersion: loop.version, expectedReceiptVersion: receipt.version,
+      expectedSubjectAttemptRef: subjectStage.currentAttemptRef ?? 'attempt-missing',
+      expectedSubjectAttemptVersion: failed.input.expectedSubjectAttemptVersion,
+      expectedCheckerAttemptRef: failed.input.expectedCheckerAttemptRef,
+      expectedCheckerAttemptVersion: failed.input.expectedCheckerAttemptVersion,
+      expectedGenerationRef: committed.generation.generationRef, expectedFailedReceiptRef: receipt.reviewReceiptRef,
+      idempotencyKey: `review-exhausted:${committed.created.run.runRef}:check:g1`,
     },
   };
 }
@@ -882,6 +933,166 @@ describe('run graph, attempts, and managed sessions', () => {
     expect(store.getRun('alice', committed.created.run.runRef)).toEqual(before);
   });
 
+  it('parks an exhausted failed review with one server-derived intervention and exact replay', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const committed = commitCheckerSubject(store, createCheckerRun(store, 'alice', 0));
+    const { input, reworkInput } = exhaustedReviewInput(store, committed);
+    expect(store.advanceReviewGeneration('alice', committed.created.run.runRef, reworkInput)).toMatchObject({
+      ok: false, reason: 'ineligible', detail: expect.stringContaining('bound is exhausted'),
+    });
+    expect(store.getRun('alice', committed.created.run.runRef)).toMatchObject({
+      ok: true, value: { humanRequests: [], reviewLoops: [expect.objectContaining({ state: 'failed' })] },
+    });
+    const parked = store.parkExhaustedReview('alice', committed.created.run.runRef, input);
+    expect(parked).toMatchObject({
+      ok: true,
+      value: {
+        receipt: { state: 'failed', interventionRequestRef: expect.any(String), version: input.expectedReceiptVersion + 1 },
+        loop: { state: 'parked', interventionRequestRef: expect.any(String), version: input.expectedLoopVersion + 1 },
+        interventionRequest: {
+          kind: 'intervention', state: 'open', stageRef: expect.any(String), response: null,
+          title: 'Review intervention: Check', prompt: 'Creator rework bound exhausted: Grounding failed.',
+        },
+      },
+    });
+    expect(store.parkExhaustedReview('alice', committed.created.run.runRef, input)).toMatchObject({ ok: true, replayed: true });
+    expect(store.parkExhaustedReview('alice', committed.created.run.runRef, {
+      ...input, expectedReceiptVersion: input.expectedReceiptVersion + 1,
+    })).toMatchObject({ ok: false, reason: 'idempotency-conflict' });
+    expect(store.parkExhaustedReview('alice', committed.created.run.runRef, {
+      ...input, expectedGenerationRef: 'generation-wrong',
+    })).toMatchObject({ ok: false, reason: 'idempotency-conflict' });
+    expect(store.parkExhaustedReview('alice', committed.created.run.runRef, {
+      ...input, expectedSubjectAttemptRef: 'attempt-wrong',
+    })).toMatchObject({ ok: false, reason: 'idempotency-conflict' });
+    expect(store.parkExhaustedReview('alice', committed.created.run.runRef, {
+      ...input, expectedCheckerAttemptVersion: input.expectedCheckerAttemptVersion + 1,
+    })).toMatchObject({ ok: false, reason: 'idempotency-conflict' });
+    const detail = store.getRun('alice', committed.created.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    expect(detail.value.humanRequests.filter((request) => request.kind === 'intervention')).toHaveLength(1);
+  });
+
+  it('requires exact exhausted-review lineage, versions, and bound eligibility', () => {
+    const below = createInMemoryControlPlaneStore(deterministicOptions());
+    const belowCommitted = commitCheckerSubject(below, createCheckerRun(below, 'alice', 1));
+    const belowExhausted = exhaustedReviewInput(below, belowCommitted);
+    expect(below.parkExhaustedReview('alice', belowCommitted.created.run.runRef, belowExhausted.input)).toMatchObject({
+      ok: false, reason: 'ineligible', detail: expect.stringContaining('not exhausted'),
+    });
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const committed = commitCheckerSubject(store, createCheckerRun(store, 'alice', 0));
+    const { input } = exhaustedReviewInput(store, committed);
+    expect(store.parkExhaustedReview('alice', committed.created.run.runRef, {
+      ...input, expectedSubjectStageVersion: input.expectedSubjectStageVersion + 1,
+    })).toMatchObject({ ok: false, reason: 'conflict' });
+    expect(store.parkExhaustedReview('alice', committed.created.run.runRef, {
+      ...input, expectedGenerationRef: 'generation-wrong',
+    })).toMatchObject({ ok: false, reason: 'conflict' });
+  });
+
+  it.each(['failed', 'stopped'] as const)('rejects exhausted parking when the checker worker session is %s', (state) => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const committed = commitCheckerSubject(store, createCheckerRun(store, 'alice', 0));
+    const { input } = exhaustedReviewInput(store, committed, state);
+    expect(store.parkExhaustedReview('alice', committed.created.run.runRef, input)).toMatchObject({
+      ok: false, reason: 'conflict', detail: expect.stringContaining('lineage'),
+    });
+  });
+
+  it('does not mutate an exhausted review when the Human Request cap is reached or its operation is reserved', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const committed = commitCheckerSubject(store, createCheckerRun(store, 'alice', 0));
+    const { input } = exhaustedReviewInput(store, committed);
+    fillHumanRequestCap(store, committed.created.run.runRef);
+    const before = store.getRun('alice', committed.created.run.runRef);
+    expect(store.parkExhaustedReview('alice', committed.created.run.runRef, input)).toMatchObject({ ok: false, reason: 'limit' });
+    expect(store.getRun('alice', committed.created.run.runRef)).toEqual(before);
+    expect(store.createHumanRequests('alice', committed.created.run.runRef, {
+      idempotencyKey: input.idempotencyKey, requests: [{ kind: 'intervention', title: 'No', prompt: 'No.' }],
+    })).toMatchObject({ ok: false, reason: 'invalid' });
+  });
+
+  it('leaves a capped exhausted-review file byte-identical', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-'));
+    roots.push(root);
+    const store = createFileControlPlaneStore(root, deterministicOptions());
+    const committed = commitCheckerSubject(store, createCheckerRun(store, 'alice', 0));
+    const { input } = exhaustedReviewInput(store, committed);
+    fillHumanRequestCap(store, committed.created.run.runRef);
+    const path = join(root, 'control', 'control-plane.json');
+    const before = readFileSync(path, 'utf8');
+    expect(store.parkExhaustedReview('alice', committed.created.run.runRef, input)).toMatchObject({ ok: false, reason: 'limit' });
+    expect(readFileSync(path, 'utf8')).toBe(before);
+  });
+
+  it('parks when exactly one Human Request slot remains', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const committed = commitCheckerSubject(store, createCheckerRun(store, 'alice', 0));
+    const { input } = exhaustedReviewInput(store, committed);
+    const filled = store.createHumanRequests('alice', committed.created.run.runRef, {
+      idempotencyKey: 'fill-human-request-cap-minus-one',
+      requests: Array.from({ length: MAX_HUMAN_REQUESTS_PER_RUN - 1 }, (_, index) => ({
+        kind: 'input' as const, title: `Input ${index}`, prompt: 'Supply a bounded input.',
+      })),
+    });
+    if (!filled.ok) throw new Error(filled.detail);
+    expect(store.parkExhaustedReview('alice', committed.created.run.runRef, input)).toMatchObject({ ok: true });
+  });
+
+  it('parks the exhausted second generation exactly once and survives replay and restart', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-'));
+    roots.push(root);
+    const store = createFileControlPlaneStore(root, deterministicOptions());
+    const committed = commitCheckerSubject(store, createCheckerRun(store, 'alice', 1));
+    const firstFailure = failCheckerReview(store, committed);
+    const advanced = store.advanceReviewGeneration('alice', committed.created.run.runRef, firstFailure.input);
+    if (!advanced.ok) throw new Error(advanced.detail);
+    const successor = succeedQueuedCreatorAttempt(store, committed.created.run.runRef);
+    const secondGeneration = store.recordStageGeneration('alice', successor.stage.stageRef, {
+      expectedStageVersion: successor.stage.version, expectedAttemptVersion: successor.attempt.version, expectedGeneration: 2,
+      operationKey: `result:${committed.created.run.runRef}:build:g2`, resultHash: 'e'.repeat(64), resultCardRef: null,
+      baseCommit: committed.generation.canonicalCommit as string, canonicalCommit: 'c'.repeat(40),
+    });
+    if (!secondGeneration.ok) throw new Error(secondGeneration.detail);
+    const second = { ...committed, attempt: successor.attempt, generation: secondGeneration.value };
+    const secondFailure = failCheckerReview(store, second);
+    const current = store.getRun('alice', committed.created.run.runRef);
+    if (!current.ok) throw new Error(current.detail);
+    const subjectStage = current.value.stages.find((stage) => stage.stageId === 'build');
+    const reviewStage = current.value.stages.find((stage) => stage.stageId === 'check');
+    const loop = current.value.reviewLoops[0];
+    if (!subjectStage || !reviewStage || !loop) throw new Error('second failed review graph missing');
+    const input = {
+      expectedSubjectStageVersion: subjectStage.version, expectedReviewStageVersion: reviewStage.version,
+      expectedLoopVersion: loop.version, expectedReceiptVersion: secondFailure.receipt.version,
+      expectedSubjectAttemptRef: secondFailure.input.expectedSubjectAttemptRef,
+      expectedSubjectAttemptVersion: secondFailure.input.expectedSubjectAttemptVersion,
+      expectedCheckerAttemptRef: secondFailure.input.expectedCheckerAttemptRef,
+      expectedCheckerAttemptVersion: secondFailure.input.expectedCheckerAttemptVersion,
+      expectedGenerationRef: secondGeneration.value.generationRef, expectedFailedReceiptRef: secondFailure.receipt.reviewReceiptRef,
+      idempotencyKey: `review-exhausted:${committed.created.run.runRef}:check:g2`,
+    };
+    expect(store.advanceReviewGeneration('alice', committed.created.run.runRef, {
+      ...secondFailure.input, idempotencyKey: `rework:${committed.created.run.runRef}:build:g3`,
+    })).toMatchObject({
+      ok: false, reason: 'ineligible', detail: expect.stringContaining('bound is exhausted'),
+    });
+    const parked = store.parkExhaustedReview('alice', committed.created.run.runRef, input);
+    expect(parked).toMatchObject({ ok: true, value: { receipt: { state: 'failed' }, loop: { state: 'parked' } } });
+    expect(store.parkExhaustedReview('alice', committed.created.run.runRef, input)).toMatchObject({ ok: true, replayed: true });
+    expect(store.parkExhaustedReview('alice', committed.created.run.runRef, {
+      ...input, expectedSubjectAttemptVersion: input.expectedSubjectAttemptVersion + 1,
+    })).toMatchObject({ ok: false, reason: 'idempotency-conflict' });
+    const restarted = createFileControlPlaneStore(root, deterministicOptions());
+    expect(restarted.parkExhaustedReview('alice', committed.created.run.runRef, input)).toMatchObject({ ok: true, replayed: true });
+    const detail = restarted.getRun('alice', committed.created.run.runRef);
+    expect(detail).toMatchObject({ ok: true, value: {
+      stageGenerations: [expect.anything(), expect.anything()],
+      reviewLoops: [expect.objectContaining({ reworksUsed: 1, state: 'parked' })],
+    } });
+  });
+
   it('attaches and resolves a review completion gate atomically, blocking generic request mutation', () => {
     const store = createInMemoryControlPlaneStore(deterministicOptions());
     const committed = commitCheckerSubject(store);
@@ -1265,6 +1476,53 @@ describe('run graph, attempts, and managed sessions', () => {
       runtime: 'codex', model: 'gpt-5.6-sol',
     });
     expect(successor.ok && successor.value).toMatchObject({ generation: 2, predecessorAttemptRef: first.value.attemptRef });
+  });
+
+  it('creates a worker session only for a queued attempt and rejects every other lifecycle state without mutation', () => {
+    const queuedStore = createInMemoryControlPlaneStore(deterministicOptions());
+    const queuedRun = createRun(queuedStore);
+    const queuedAttempt = queuedStore.createAttempt('alice', queuedRun.stages[0].stageRef, {
+      expectedStageVersion: queuedRun.stages[0].version, runtime: 'codex', model: 'gpt-5.6-sol',
+    });
+    if (!queuedAttempt.ok) throw new Error(queuedAttempt.detail);
+    expect(queuedStore.createWorkerSession('alice', queuedAttempt.value.attemptRef, {
+      expectedAttemptVersion: queuedAttempt.value.version,
+    })).toMatchObject({ ok: true, value: { role: 'worker', state: 'pending' } });
+
+    for (const target of ['starting', 'running', 'succeeded', 'failed', 'stopped', 'interrupted'] as const) {
+      const store = createInMemoryControlPlaneStore(deterministicOptions());
+      const run = createRun(store);
+      const created = store.createAttempt('alice', run.stages[0].stageRef, {
+        expectedStageVersion: run.stages[0].version, runtime: 'codex', model: 'gpt-5.6-sol',
+      });
+      if (!created.ok) throw new Error(created.detail);
+      let attempt = created.value;
+      if (target === 'starting' || target === 'running' || target === 'succeeded') {
+        const starting = store.transitionAttempt('alice', attempt.attemptRef, attempt.version, 'starting');
+        if (!starting.ok) throw new Error(starting.detail);
+        attempt = starting.value;
+      }
+      if (target === 'running' || target === 'succeeded') {
+        const running = store.transitionAttempt('alice', attempt.attemptRef, attempt.version, 'running');
+        if (!running.ok) throw new Error(running.detail);
+        attempt = running.value;
+      }
+      if (target === 'succeeded') {
+        const succeeded = store.transitionAttempt('alice', attempt.attemptRef, attempt.version, 'succeeded');
+        if (!succeeded.ok) throw new Error(succeeded.detail);
+        attempt = succeeded.value;
+      }
+      if (target === 'failed' || target === 'stopped' || target === 'interrupted') {
+        const terminal = store.transitionAttempt('alice', attempt.attemptRef, attempt.version, target);
+        if (!terminal.ok) throw new Error(terminal.detail);
+        attempt = terminal.value;
+      }
+      const before = store.getRun('alice', run.run.runRef);
+      expect(store.createWorkerSession('alice', attempt.attemptRef, { expectedAttemptVersion: attempt.version })).toMatchObject({
+        ok: false, reason: 'invalid', detail: expect.stringContaining('queued'),
+      });
+      expect(store.getRun('alice', run.run.runRef)).toEqual(before);
+    }
   });
 
   it('atomically reroutes a never-started attempt and settles its superseded lineage', () => {
@@ -1727,10 +1985,25 @@ describe('durability, crash recovery, and retention', () => {
     expect(detail.value.reviewLoops[0]).toMatchObject({ state: 'parked', interventionRequestRef: interventions[0]?.requestRef });
   });
 
+  it('preserves an exhausted failed receipt and its one linked intervention across restart', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-'));
+    roots.push(root);
+    const first = createFileControlPlaneStore(root, deterministicOptions());
+    const committed = commitCheckerSubject(first, createCheckerRun(first, 'alice', 0));
+    const exhausted = exhaustedReviewInput(first, committed);
+    const parked = first.parkExhaustedReview('alice', committed.created.run.runRef, exhausted.input);
+    if (!parked.ok) throw new Error(parked.detail);
+    const restarted = createFileControlPlaneStore(root, deterministicOptions());
+    expect(restarted.parkExhaustedReview('alice', committed.created.run.runRef, exhausted.input)).toMatchObject({
+      ok: true, replayed: true,
+      value: { receipt: { state: 'failed' }, loop: { state: 'parked' }, interventionRequest: { requestRef: parked.value.interventionRequest.requestRef } },
+    });
+  });
+
   it.each(['active', 'quarantine'] as const)('fails closed on %s persisted review-request tampering', (location) => {
     const cases: Array<{
       name: string;
-      graph: 'attached' | 'resolved' | 'parked';
+      graph: 'attached' | 'resolved' | 'parked' | 'exhausted' | 'exhausted-sessions';
       mutate: (bundle: PersistedReviewBundle) => void;
     }> = [
       { name: 'missing linked request', graph: 'attached', mutate: (bundle) => { bundle.humanRequests = []; } },
@@ -1780,6 +2053,62 @@ describe('durability, crash recovery, and retention', () => {
         bundle.humanRequests.push(orphan);
       } },
       { name: 'outcome state mismatch', graph: 'parked', mutate: (bundle) => { requiredPersistedRow(bundle.reviewReceipts, 'receipt').state = 'failed'; } },
+      { name: 'exhausted request operation', graph: 'exhausted', mutate: (bundle) => { requiredPersistedRow(bundle.humanRequests, 'intervention').operationKey = 'review-exhausted:run-wrong:check:g1'; } },
+      { name: 'exhausted request fingerprint', graph: 'exhausted', mutate: (bundle) => { requiredPersistedRow(bundle.humanRequests, 'intervention').operationFingerprint = 'f'.repeat(64); } },
+      { name: 'exhausted request title', graph: 'exhausted', mutate: (bundle) => { requiredPersistedRow(bundle.humanRequests, 'intervention').title = 'Caller prose'; } },
+      { name: 'exhausted request prompt', graph: 'exhausted', mutate: (bundle) => { requiredPersistedRow(bundle.humanRequests, 'intervention').prompt = 'Caller prose'; } },
+      { name: 'exhausted receipt link', graph: 'exhausted', mutate: (bundle) => { requiredPersistedRow(bundle.reviewReceipts, 'receipt').interventionRequestRef = null; } },
+      { name: 'exhausted loop state', graph: 'exhausted', mutate: (bundle) => { requiredPersistedRow(bundle.reviewLoops, 'loop').state = 'failed'; } },
+      { name: 'exhausted receipt state', graph: 'exhausted', mutate: (bundle) => { requiredPersistedRow(bundle.reviewReceipts, 'receipt').state = 'parked'; } },
+      { name: 'exhausted creator attempt state', graph: 'exhausted-sessions', mutate: (bundle) => { requiredPersistedRow(bundle.attempts, 'creator').state = 'failed'; } },
+      { name: 'exhausted checker attempt state', graph: 'exhausted-sessions', mutate: (bundle) => {
+        const receipt = requiredPersistedRow(bundle.reviewReceipts, 'receipt');
+        const attempt = bundle.attempts.find((item) => item.attemptRef === receipt.checkerAttemptRef);
+        if (!attempt) throw new Error('checker attempt missing');
+        attempt.state = 'failed';
+      } },
+      { name: 'exhausted checker attempt provenance', graph: 'exhausted-sessions', mutate: (bundle) => {
+        const receipt = requiredPersistedRow(bundle.reviewReceipts, 'receipt');
+        const attempt = bundle.attempts.find((item) => item.attemptRef === receipt.checkerAttemptRef);
+        if (!attempt) throw new Error('checker attempt missing');
+        attempt.reviewSubjectGenerationRef = 'generation-wrong';
+      } },
+      { name: 'exhausted creator generation provenance', graph: 'exhausted-sessions', mutate: (bundle) => { requiredPersistedRow(bundle.stageGenerations, 'generation').attemptRef = 'attempt-wrong'; } },
+      { name: 'exhausted creator stage attempt ref', graph: 'exhausted-sessions', mutate: (bundle) => { requiredPersistedRow(bundle.stages, 'subject').currentAttemptRef = 'attempt-wrong'; } },
+      { name: 'exhausted checker receipt ref', graph: 'exhausted-sessions', mutate: (bundle) => { requiredPersistedRow(bundle.reviewReceipts, 'receipt').checkerAttemptRef = 'attempt-wrong'; } },
+      { name: 'exhausted worker session missing', graph: 'exhausted-sessions', mutate: (bundle) => {
+        const session = bundle.sessions.find((item) => item.role === 'worker' && item.stageRef === requiredPersistedRow(bundle.stages, 'subject').stageRef);
+        if (!session) throw new Error('creator worker session missing');
+        bundle.sessions = bundle.sessions.filter((item) => item.sessionRef !== session.sessionRef);
+      } },
+      { name: 'exhausted worker session mismatch', graph: 'exhausted-sessions', mutate: (bundle) => {
+        const session = bundle.sessions.find((item) => item.role === 'worker' && item.stageRef === requiredPersistedRow(bundle.stages, 'subject').stageRef);
+        if (!session) throw new Error('creator worker session missing');
+        session.attemptRef = 'attempt-wrong';
+      } },
+      { name: 'exhausted worker session not completed', graph: 'exhausted-sessions', mutate: (bundle) => {
+        const session = bundle.sessions.find((item) => item.role === 'worker' && item.stageRef === requiredPersistedRow(bundle.stages, 'subject').stageRef);
+        if (!session) throw new Error('creator worker session missing');
+        session.state = 'failed';
+      } },
+      { name: 'exhausted checker worker session missing', graph: 'exhausted-sessions', mutate: (bundle) => {
+        const receipt = requiredPersistedRow(bundle.reviewReceipts, 'receipt');
+        const session = bundle.sessions.find((item) => item.role === 'worker' && item.attemptRef === receipt.checkerAttemptRef);
+        if (!session) throw new Error('checker worker session missing');
+        bundle.sessions = bundle.sessions.filter((item) => item.sessionRef !== session.sessionRef);
+      } },
+      { name: 'exhausted checker worker session mismatch', graph: 'exhausted-sessions', mutate: (bundle) => {
+        const receipt = requiredPersistedRow(bundle.reviewReceipts, 'receipt');
+        const session = bundle.sessions.find((item) => item.role === 'worker' && item.attemptRef === receipt.checkerAttemptRef);
+        if (!session) throw new Error('checker worker session missing');
+        session.attemptRef = 'attempt-wrong';
+      } },
+      { name: 'exhausted checker worker session not completed', graph: 'exhausted-sessions', mutate: (bundle) => {
+        const receipt = requiredPersistedRow(bundle.reviewReceipts, 'receipt');
+        const session = bundle.sessions.find((item) => item.role === 'worker' && item.attemptRef === receipt.checkerAttemptRef);
+        if (!session) throw new Error('checker worker session missing');
+        session.state = 'failed';
+      } },
       { name: 'over-cap request count', graph: 'attached', mutate: (bundle) => {
         const linked = requiredPersistedRow(bundle.humanRequests, 'request');
         for (let index = 0; index < MAX_HUMAN_REQUESTS_PER_RUN; index += 1) {
@@ -1798,6 +2127,16 @@ describe('durability, crash recovery, and retention', () => {
       if (testCase.graph === 'parked') {
         const committed = commitCheckerSubject(first);
         failCheckerReview(first, committed, undefined, checkerParkedOutcome());
+      } else if (testCase.graph === 'exhausted') {
+        const committed = commitCheckerSubject(first, createCheckerRun(first, 'alice', 0));
+        const exhausted = exhaustedReviewInput(first, committed);
+        const parked = first.parkExhaustedReview('alice', committed.created.run.runRef, exhausted.input);
+        if (!parked.ok) throw new Error(parked.detail);
+      } else if (testCase.graph === 'exhausted-sessions') {
+        const committed = commitCheckerSubject(first, createCheckerRun(first, 'alice', 0), true);
+        const exhausted = exhaustedReviewInput(first, committed, 'completed');
+        const parked = first.parkExhaustedReview('alice', committed.created.run.runRef, exhausted.input);
+        if (!parked.ok) throw new Error(parked.detail);
       } else {
         const gate = attachCheckerGate(first);
         if (testCase.graph === 'resolved') {
