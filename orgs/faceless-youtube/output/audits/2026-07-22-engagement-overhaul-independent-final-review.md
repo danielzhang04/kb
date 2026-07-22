@@ -1,7 +1,7 @@
 # Independent final review — engagement overhaul clean integration candidate
 
-**Status:** complete — READY  
-**Review target:** `origin/main...HEAD` on `codex/poyais-engagement-overhaul-final`  
+**Status:** complete — READY
+**Review target:** `origin/main...HEAD` on `codex/poyais-engagement-overhaul-final`
 **Reviewer:** independent Codex re-review
 
 ## Review record
