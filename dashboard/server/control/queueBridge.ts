@@ -31,7 +31,7 @@ import { executeApprovedLaunch, type LaunchOutcome } from './launch.ts';
 import type { JsonObject, RunDetail } from './types.ts';
 import { auditFn, type SurfaceContext } from '../http/context.ts';
 import { withOpsTransaction } from '../write/asyncGit.ts';
-import { commitPreparedCoordination, defaultGitRunner, prepareCoordination } from '../write/branch.ts';
+import { commitPreparedCoordination, defaultGitRunner, prepareCoordination, type GitRunner } from '../write/branch.ts';
 
 export class QueueBridgeError extends Error {}
 
@@ -635,17 +635,31 @@ export interface FleetCostRow {
 }
 
 /**
- * Emit one fleet `ledgers/cost/<subject>-<date>.tsv` row via scripts/ledger.py. `billing` is always
+ * Emit one fleet `ledgers/cost/<subject>-<date>.tsv` row via scripts/ledger.py and RETURN the repo-relative
+ * shard path the script appended to (backslashes normalized to forward slashes). `billing` is always
  * `subscription` (the fleet never spends metered dollars); `usd` is derived, never invented. Fail-closed:
- * a non-zero exit throws so a missed cost row is loud, never silent.
+ * a non-zero exit throws (a missed cost row is loud), and unparseable/path-less stdout throws too — an
+ * appended row whose path the caller cannot recover would stay UNCOMMITTED and poison the next run's
+ * canonical-integrator guard.
  */
-export function emitFleetCostRow(deps: { repoRoot: string; runPy?: PyRunner }, row: FleetCostRow): void {
+export function emitFleetCostRow(deps: { repoRoot: string; runPy?: PyRunner }, row: FleetCostRow): string {
   const runPy = deps.runPy ?? defaultPyRunner;
   const record = { usd: row.usd, billing: 'subscription', model: row.model, card_id: row.cardId };
   const res = runPy(deps.repoRoot, QUEUE_BRIDGE_LEDGER_COST_SCRIPT, JSON.stringify({ agent: row.subject, record }));
   if (res.exitCode !== 0) {
     throw new QueueBridgeError(`fleet cost-ledger append failed: ${res.stderr.trim() || res.stdout.trim() || '(no output)'}`);
   }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(res.stdout.trim());
+  } catch {
+    throw new QueueBridgeError(`fleet cost-ledger append returned unparseable stdout: ${res.stdout.trim() || '(empty)'}`);
+  }
+  const path = (parsed as { path?: unknown }).path;
+  if (typeof path !== 'string' || path.length === 0) {
+    throw new QueueBridgeError(`fleet cost-ledger append returned no path: ${res.stdout.trim() || '(empty)'}`);
+  }
+  return path.replace(/\\/g, '/');
 }
 
 const TERMINAL_STAGE_STATES: readonly string[] = ['succeeded', 'failed', 'stopped', 'interrupted'];
@@ -686,6 +700,8 @@ export interface SettleFleetLedgerDeps {
   repoRoot: string;
   runPy?: PyRunner;
   runPreamble?: PreambleRunner;
+  /** Ops-checkout git seam (D2.5). Injected for hermetic tests; defaults to the shared async runner. */
+  opsGit?: GitRunner;
 }
 
 export interface SettleFleetLedgerInput {
@@ -700,23 +716,43 @@ export interface SettleFleetLedgerResult {
 }
 
 /**
- * The bridge post-run seam: emit one fleet cost row per terminal stage of a completed run. Gated on the
- * shared preamble (D7) — a present STOP file or blown budget suppresses emission entirely (`blocked`),
- * exactly like every other governed writer. `usd` is derived from usage micros (0.0 for subscription).
+ * The bridge post-run seam: emit one fleet cost row per terminal stage of a completed run, then COMMIT+PUSH
+ * the appended shard(s) to `ops`. Gated on the shared preamble (D7) — a present STOP file or blown budget
+ * suppresses emission entirely (`blocked`, no git), exactly like every other governed writer. `usd` is
+ * derived from usage micros (0.0 for subscription).
+ *
+ * The rows are appended as UNTRACKED files; leaving them uncommitted trips the canonical integrator's
+ * unrelated-change guard on the NEXT run (its allowlist rightly excludes ledgers/). So each run settles its
+ * own rows through the governed coordination-commit discipline (never hand-rolled git): the checkout must be
+ * `ops` (else it throws), the exact shard paths are staged and committed `--only`, and the push reconciles a
+ * rejection once via `pull --rebase`. A final push failure LEAVES the local commit in place (the poison is
+ * already cured — the integrator guard checks staged/dirty/untracked only, and a committed row is none) and
+ * rethrows only to surface the unpushed row.
  */
-export function settleFleetCostLedger(deps: SettleFleetLedgerDeps, input: SettleFleetLedgerInput): SettleFleetLedgerResult {
+export async function settleFleetCostLedger(deps: SettleFleetLedgerDeps, input: SettleFleetLedgerInput): Promise<SettleFleetLedgerResult> {
   const preamble = assertFleetRunnable(deps.repoRoot, deps.runPreamble);
   if (!preamble.ok) return { emitted: 0, blocked: true };
   const subject = input.subject ?? DASHBOARD_EXECUTOR_SUBJECT;
+  const paths: string[] = []; // unique appended shards, first-seen order, committed atomically below
   let emitted = 0;
   for (const stage of input.stages) {
-    emitFleetCostRow({ repoRoot: deps.repoRoot, runPy: deps.runPy }, {
+    const path = emitFleetCostRow({ repoRoot: deps.repoRoot, runPy: deps.runPy }, {
       subject,
       model: stage.model,
       cardId: stage.cardId,
       usd: stage.costUsdMicros / 1_000_000,
     });
+    if (!paths.includes(path)) paths.push(path);
     emitted += 1;
+  }
+  if (paths.length > 0) {
+    const [first, ...rest] = paths;
+    await commitPreparedCoordination(deps.repoRoot, first, {
+      runGit: deps.opsGit,
+      alsoStage: rest,
+      message: `chore(ledgers): settle fleet cost rows for ${input.runRef}`,
+      maxRetryPushes: 1,
+    });
   }
   return { emitted, blocked: false };
 }
@@ -743,6 +779,8 @@ export interface SettleRunLedgerDeps {
   repoRoot: string;
   runPy?: PyRunner;
   runPreamble?: PreambleRunner;
+  /** Ops-checkout git seam (D2.5). Injected for hermetic tests; defaults to the shared async runner. */
+  opsGit?: GitRunner;
 }
 
 export interface SettleRunLedgerInput {
@@ -774,14 +812,14 @@ const ZERO_USAGE_MICROS = (): number => 0;
  * `settleFleetCostLedger`. A non-terminal or unknown run is a no-op (`settled: false`), never an error, so
  * the wrapper can call it unconditionally after every boundary return.
  */
-export function settleFleetLedgerForRun(deps: SettleRunLedgerDeps, input: SettleRunLedgerInput): SettleRunLedgerResult {
+export async function settleFleetLedgerForRun(deps: SettleRunLedgerDeps, input: SettleRunLedgerInput): Promise<SettleRunLedgerResult> {
   const subject = input.subject ?? DASHBOARD_EXECUTOR_SUBJECT;
   const got = deps.controlStore.getRun(subject, input.runRef);
   if (!got.ok) return { settled: false, emitted: 0, blocked: false };
   if (!TERMINAL_RUN_STATES.includes(got.value.run.state)) return { settled: false, emitted: 0, blocked: false };
   const stages = collectTerminalStageCosts(got.value, input.readUsageMicros ?? ZERO_USAGE_MICROS);
-  const res = settleFleetCostLedger(
-    { repoRoot: deps.repoRoot, runPy: deps.runPy, runPreamble: deps.runPreamble },
+  const res = await settleFleetCostLedger(
+    { repoRoot: deps.repoRoot, runPy: deps.runPy, runPreamble: deps.runPreamble, opsGit: deps.opsGit },
     { subject, runRef: input.runRef, stages },
   );
   return { settled: !res.blocked, emitted: res.emitted, blocked: res.blocked };

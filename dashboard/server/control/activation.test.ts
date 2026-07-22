@@ -117,11 +117,15 @@ describe('buildActivatedExecution — gate ON', () => {
     expect(engine.runToBoundary.mock.invocationCallOrder[0]).toBeLessThan(settle.mock.invocationCallOrder[0]);
   });
 
-  it('a fleet-ledger settlement throw never masks the executor outcome', async () => {
+  it('a fleet-ledger settlement throw is swallowed AND logged, never masking the executor outcome', async () => {
     const deps = spyDeps();
     (deps.settleLedgerForRun as ReturnType<typeof vi.fn>).mockImplementation(() => { throw new Error('ledger blew up'); });
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const result = buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
     await expect(result?.runAutomatic({ subject: 's', runRef: 'r', proposal: {} } as never)).resolves.toEqual({ state: 'succeeded' });
+    // Swallowed for control flow, but surfaced for operator follow-up (an unpushed ledger row must not vanish).
+    expect(errSpy).toHaveBeenCalledWith('fleet-ledger settlement failed', expect.any(Error));
+    errSpy.mockRestore();
   });
 
   it('constructs under the single dashboard-engine subject (D1) and the CANONICAL result integrator (D4)', () => {

@@ -71,14 +71,15 @@ describe('T6 gated boot smoke', () => {
     expect(ctx.cancelAutomatic).toBeUndefined();
   });
 
-  it('GATE OFF: the un-wired bridge/observer modules construct nothing merely by being present', () => {
+  it('GATE OFF: the un-wired bridge/observer modules construct nothing merely by being present', async () => {
     // createQueueBridge without .start() installs no timer and dispatches nothing.
     const bridge = createQueueBridge({ repoRoot: tempStateRoot, runPreamble: () => ({ exitCode: 0, stdout: 'OK', stderr: '' }) });
     expect(typeof bridge.tick).toBe('function');
     bridge.stop(); // idempotent no-op when never started
 
-    // The post-run observer on a store that has no such run is a pure no-op — never throws, settles nothing.
-    const result = settleFleetLedgerForRun({ controlStore: missingRunStore, repoRoot: tempStateRoot }, { runRef: 'run-absent' });
+    // The post-run observer on a store that has no such run is a pure no-op — never throws, settles nothing
+    // (and never reaches the ops-commit path, so it needs no git).
+    const result = await settleFleetLedgerForRun({ controlStore: missingRunStore, repoRoot: tempStateRoot }, { runRef: 'run-absent' });
     expect(result).toEqual({ settled: false, emitted: 0, blocked: false });
   });
 
