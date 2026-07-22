@@ -3,6 +3,12 @@ id: self-lint-report
 project: kb-ops
 title: Self-lint report (read-only health scan)
 profile: producer
+readScope:
+  - queue
+  - dashboards
+  - ledgers
+  - _index.md
+  - orgs/kb-ops/_index.md
 stages:
   - id: report
     title: Scan the repo for hygiene issues and write a read-only report

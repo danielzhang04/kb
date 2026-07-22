@@ -111,4 +111,52 @@ describe('compileWorkflowDef', () => {
     const compiled = compileWorkflowDef(SINGLE, { registry: { runtimes: { codex: ['gpt-5.6-sol'] }, skills: [] } });
     expect(compiled.ok).toBe(false);
   });
+
+  describe('effective read scope (Layer A)', () => {
+    const withReadScope = (roots: string[]): WorkflowDef => def([
+      'id: scan', 'project: kb-ops', 'title: Scan', 'profile: research',
+      'readScope:', ...roots.map((r) => `  - ${r}`),
+      'stages:',
+      '  - id: brief', '    title: Brief', '    action: research:web-brief', '    target: orgs/kb-ops/output', '    riskTier: T2',
+    ].join('\n'));
+
+    it('a def WITHOUT readScope compiles to scope.read === [orgs/<project>] (default-preservation lock)', () => {
+      const compiled = compileWorkflowDef(SINGLE, { registry: REGISTRY });
+      expect(compiled.ok).toBe(true);
+      if (!compiled.ok) return;
+      expect(compiled.value.scope.read).toEqual(['orgs/kb-ops']);
+      // …mirrored identically into every stage (the pre-change plumbing shape, unchanged).
+      for (const stage of compiled.value.stages) expect(stage.scope.read).toEqual(['orgs/kb-ops']);
+    });
+
+    it('unions declared roots with the own-org tree into proposal AND every stage scope.read', () => {
+      const compiled = compileWorkflowDef(withReadScope(['queue', 'dashboards']), { registry: REGISTRY });
+      expect(compiled.ok).toBe(true);
+      if (!compiled.ok) return;
+      expect(compiled.value.scope.read).toEqual(['queue', 'dashboards', 'orgs/kb-ops']);
+      for (const stage of compiled.value.stages) {
+        expect(stage.scope.read).toEqual(compiled.value.scope.read);
+      }
+      // The compiler's widening refusal (compiler.ts:60) holds trivially: stage.read == proposal.read.
+      expect(validatePlanProposal(compiled.value as unknown, REGISTRY).ok).toBe(true);
+    });
+
+    it('does not duplicate the own-org tree when it is also declared explicitly', () => {
+      const compiled = compileWorkflowDef(withReadScope(['orgs/kb-ops', 'queue']), { registry: REGISTRY });
+      expect(compiled.ok).toBe(true);
+      if (!compiled.ok) return;
+      expect(compiled.value.scope.read).toEqual(['orgs/kb-ops', 'queue']);
+    });
+
+    it('covers the effective read scope in the proposal id hash: a scope change forces re-approval', () => {
+      const a = compileWorkflowDef(withReadScope(['queue']), { registry: REGISTRY });
+      const b = compileWorkflowDef(withReadScope(['queue']), { registry: REGISTRY });
+      const c = compileWorkflowDef(withReadScope(['queue', 'dashboards']), { registry: REGISTRY });
+      expect(a.ok && b.ok && c.ok).toBe(true);
+      if (!a.ok || !b.ok || !c.ok) return;
+      // Stable for identical scope, different when the read scope changes.
+      expect(a.value.proposalId).toBe(b.value.proposalId);
+      expect(a.value.proposalId).not.toBe(c.value.proposalId);
+    });
+  });
 });
