@@ -287,9 +287,19 @@ function topLevelSegments(paths: readonly string[]): Set<string> {
 /**
  * Build the per-invocation `--settings` JSON value for a no-Bash worker, or `undefined` when none applies
  * (the profile grants Bash, or nothing sensitive is left to deny). Passed inline to `--settings` (the CLI
- * accepts a JSON string, so no temp file is written and `~/.claude/settings.json` is never mutated). Deny
- * rules are project-root-relative (`Read(/dashboard/**)`) and resolve against the worker cwd (its
- * worktree). Pure — no filesystem, no process env.
+ * accepts a JSON string, so no temp file is written and `~/.claude/settings.json` is never mutated).
+ *
+ * HONEST SCOPE OF PROTECTION (review 2026-07-22, MAJOR-1): a single-leading-slash rule like
+ * `Read(/dashboard/**)` anchors at the settings source / worker cwd — the WORKTREE — not the
+ * filesystem root. So these rules bound worktree-relative reads only: belt-and-suspenders that is
+ * largely redundant with C2 sparse checkout (which simply does not materialize those dirs). They do
+ * NOT bound absolute-path reads of the real repo root, sibling worktrees, or anything outside the
+ * worktree. Closing that requires `//`-absolute rules anchored at the canonical repoRoot, which
+ * needs repoRoot threaded through the adapter options (an activation.ts hunk deliberately deferred
+ * to the C2/C3 PRE-ACTIVATION pass — the same pass that must live-verify inline `--settings` JSON
+ * acceptance and Windows sparse-checkout behavior before any scanner worker runs). Until then C3's
+ * incremental protection over C2 is honestly ~zero; it ships because it is inert, harmless, and the
+ * emission seam is where the absolute rules will land. Pure — no filesystem, no process env.
  */
 export function buildReadScopeSettings(input: {
   allowedTools: readonly string[];

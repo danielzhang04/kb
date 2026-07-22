@@ -339,3 +339,24 @@ profile: scanner            # was: producer  (C1)
 2. **Allowlist contents — one item.** Confirm `SHAREABLE_READ_ROOTS = {queue/, dashboards/, ledgers/, _index.md, governance/, CLAUDE.md, AGENTS.md, GEMINI.md}`, and specifically that **`dashboard/` (control-plane source) is NOT declarable**. Everything else can be settled in code review. **Recommendation: as listed; `dashboard/` excluded.**
 
 Everything else (field placement, union semantics, staging, flags, test plan) is a design call made in this doc and needs no gate.
+
+---
+
+## ADDENDUM 2026-07-22 — build deviations + adversarial-review corrections (as-built truth)
+
+1. **C3 protection claim corrected (review MAJOR-1).** As built, C3's deny rules are
+   single-leading-slash (`Read(/dashboard/**)`) which anchor at the WORKTREE, not the filesystem —
+   worktree-relative belt-and-suspenders, largely redundant with C2 sparse checkout, delivering
+   ~zero of §5.2's claimed absolute-path bounding. The real fix (`//`-absolute rules anchored at
+   the canonical repoRoot, threaded via adapter options + activation.ts) is deferred to the
+   **pre-activation pass**, which must in any case live-verify: (a) inline `--settings` JSON
+   acceptance by the CLI, (b) real `git sparse-checkout --no-cone` + Windows longpaths, (c)
+   out-of-scope-write detection under sparse. None of C2/C3 may be activated before that pass.
+2. **C3 gating (review MINOR-2, decision recorded):** profile-driven (emitted for any no-Bash
+   profile), NOT behind the C2 flag as §9 proposed — it only adds deny rules to an inert adapter,
+   so it carries no rollback risk needing a gate.
+3. **Proposal identity re-anchor (review MINOR-1):** "byte-identical" holds for every existing
+   def's *effective read scope*; `deriveProposalId`/`contentHash` intentionally re-anchor ONCE at
+   merge (readScope joined the hash preimage so scope changes force re-approval). Blast radius
+   zero today: the execution plane is inert with no approved production proposals; any pre-merge
+   approval simply requires one fresh import + re-approval.
