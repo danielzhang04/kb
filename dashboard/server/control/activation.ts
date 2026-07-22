@@ -245,13 +245,16 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
   // and hand the adapter a `resolveSparsePaths` callback that looks it up at provisioning time. The value
   // is the SAME approved scope the compiler produced and the human approved; the adapter root-anchors and
   // validates it. Harmless when `sparseReadScope` is off (the callback is never consulted).
-  const runSparsePaths = new Map<string, readonly string[]>();
+  // Value carries the registering call's identity so a duplicate-launch failure path can never
+  // delete the LIVE run's entry (review finding: run B's synchronous "already active" throw would
+  // otherwise drop run A's key mid-provision, silently degrading A to a full checkout).
+  const runSparsePaths = new Map<string, { owner: object; paths: readonly string[] }>();
   const worktrees = deps.createWorktrees({
     repoRoot,
     worktreeRoot,
     baseCommit,
     sparseReadScope,
-    resolveSparsePaths: (ensureInput) => runSparsePaths.get(ensureInput.runRef),
+    resolveSparsePaths: (ensureInput) => runSparsePaths.get(ensureInput.runRef)?.paths,
   });
   const skills = deps.createSkills(policy.curatedSkills);
   const accounting = deps.createAccounting({
@@ -311,7 +314,13 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
     // simply registers nothing → the adapter falls back to a full checkout. Dropped in `finally` so the
     // registry never outlives the run.
     const scope = input.proposal?.scope;
-    if (scope) runSparsePaths.set(input.runRef, [...(scope.read ?? []), ...(scope.write ?? [])]);
+    const owner = {};
+    // First registration wins: a duplicate call for the SAME runRef must neither overwrite nor
+    // (via its finally) drop the live entry. Same runRef binds an immutable proposal, so the
+    // paths are identical anyway; the live call's ownership stays intact and only IT deletes.
+    if (scope && !runSparsePaths.has(input.runRef)) {
+      runSparsePaths.set(input.runRef, { owner, paths: [...(scope.read ?? []), ...(scope.write ?? [])] });
+    }
     try {
       const outcome = await engine.runToBoundary(input);
       try {
@@ -324,7 +333,8 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
       }
       return outcome;
     } finally {
-      runSparsePaths.delete(input.runRef);
+      // Ownership-aware drop: only the call that registered this entry may remove it.
+      if (runSparsePaths.get(input.runRef)?.owner === owner) runSparsePaths.delete(input.runRef);
     }
   };
 

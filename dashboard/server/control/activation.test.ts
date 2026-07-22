@@ -197,6 +197,33 @@ describe('buildActivatedExecution — gate ON', () => {
     expect(resolveSparsePaths({ runRef: 'run-42' })).toBeUndefined();
   });
 
+  it('C2: a duplicate-launch failure cannot drop the live run sparse registry entry (ownership-aware delete)', async () => {
+    // Review race: run A registers and suspends inside runToBoundary; a duplicate call B for the
+    // SAME runRef registers over it, throws synchronously ("already active"), and B's finally must
+    // NOT delete the entry A (well, the current owner) still needs mid-provision.
+    const deps = spyDeps();
+    const engine = { cancelRun: vi.fn().mockResolvedValue({ state: 'stopped' }), runToBoundary: vi.fn() };
+    (deps.createEngine as ReturnType<typeof vi.fn>).mockReturnValue(engine);
+    const built = buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
+    const resolveSparsePaths = (deps.createWorktrees as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0].resolveSparsePaths as (input: { runRef: string }) => readonly string[] | undefined;
+    let releaseA!: () => void;
+    const gate = new Promise<void>((resolve) => { releaseA = resolve; });
+    engine.runToBoundary
+      .mockImplementationOnce(async () => { await gate; return { state: 'succeeded' }; })
+      .mockImplementationOnce(() => { throw new Error('run reconciliation is already active'); });
+    const input = {
+      subject: 'dashboard-engine', runRef: 'run-dup',
+      proposal: { scope: { read: ['queue'], write: ['orgs/kb-ops/output'] } },
+    } as never;
+    const runA = built!.runAutomatic(input);
+    await expect(built!.runAutomatic(input)).rejects.toThrow('already active');
+    // B's finally has run — the entry must survive for the still-provisioning current owner.
+    expect(resolveSparsePaths({ runRef: 'run-dup' })).toEqual(['queue', 'orgs/kb-ops/output']);
+    releaseA();
+    await runA;
+    expect(resolveSparsePaths({ runRef: 'run-dup' })).toBeUndefined();
+  });
+
   it('resolves the immutable baseCommit from the ops repo root when none is supplied', () => {
     const deps = spyDeps();
     buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
