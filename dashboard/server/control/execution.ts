@@ -5,6 +5,7 @@ import type { Attempt, ManagedSession, RunDetail, Stage } from './types.ts';
 import { classifyActionRisk, evaluateExecutionPolicy, type ExecutionProfile, type PolicyEnvironment } from './policy.ts';
 import { isSafeRepoRelativePath, proposalContentHash, type PlanProposal, type ProposalStage, type ResolvedAgentAssignment } from './proposal.ts';
 import type { AssignedAgentResolver, ResolvedAssignedAgent } from './agentAssignmentResolver.ts';
+import type { ReviewContract, ReviewOutcome } from './reviewOutcome.ts';
 
 const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const SAFE_PROJECT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
@@ -105,6 +106,8 @@ export interface WorkerExecutionResult {
   usage: ExecutionUsage;
   artifacts: WorkerArtifactResult[];
   checkpoints: string[];
+  /** Present only when a directly invoked checker satisfied its server-owned review contract. */
+  reviewOutcome?: ReviewOutcome;
 }
 
 export interface WorkerAdapter {
@@ -131,6 +134,8 @@ export interface WorkerAdapter {
     readScope: readonly string[];
     writeScope: readonly string[];
     checkpoints: readonly string[];
+    /** Optional immutable checker contract. Execution does not supply one until durable loop state exists. */
+    reviewContract?: ReviewContract;
     /** Present only after a server-owned assignment resolver verifies the current declaration. */
     assignment?: ResolvedAgentAssignment;
     /** Exact bounded declaration Markdown, never browser/prompt input. */
@@ -476,6 +481,10 @@ export class AutomaticExecutionEngine {
     const waitingStageIds: string[] = [];
     try {
       this.assertRunBinding(input);
+      const reviewPreflight = this.preflightReviewRuntime(input);
+      if (reviewPreflight.length > 0) {
+        return { state: this.detail(input).run.state, startedStageIds, completedStageIds, waitingStageIds: reviewPreflight };
+      }
       // Resolve only after the immutable run/proposal binding is proven. In particular, an arbitrary
       // browser-supplied proposal must never select a project policy loader before it is known to be the
       // exact approved graph attached to this run.
@@ -813,6 +822,30 @@ export class AutomaticExecutionEngine {
     }
   }
 
+  /**
+   * Review execution has no durable generation/receipt loop yet. Refuse the entire bound run before
+   * resolving policy or assignments, starting the manager, or touching any injected execution adapter.
+   */
+  private preflightReviewRuntime(input: ExecuteRunInput): string[] {
+    const reviewStages = input.proposal.stages.filter((proposalStage) => proposalStage.review !== undefined);
+    if (reviewStages.length === 0) return [];
+    const waitingStageIds: string[] = [];
+    for (const proposalStage of reviewStages) {
+      const detail = this.detail(input);
+      const stage = detail.stages.find((candidate) => candidate.stageId === proposalStage.id);
+      if (!stage) throw new AutomaticExecutionError(`review stage '${proposalStage.id}' disappeared from immutable run`);
+      const reason = 'review-loop-durable-state-not-yet-available';
+      const title = stableHumanTitle('policy', stage.stageId, reason);
+      if (!detail.humanRequests.some((request) => request.stageRef === stage.stageRef && request.title === title)) {
+        this.createBoundary(input, stage, 'governance-refusal', title, reason);
+      } else {
+        this.ensureStageWaiting(input, stage.stageRef);
+      }
+      waitingStageIds.push(stage.stageId);
+    }
+    return waitingStageIds;
+  }
+
   private stageBoundary(
     input: ExecuteRunInput,
     detail: RunDetail,
@@ -823,6 +856,18 @@ export class AutomaticExecutionEngine {
     if (detail.humanRequests.some((request) => request.stageRef === stage.stageRef && request.state === 'open')) {
       this.ensureStageWaiting(input, stage.stageRef);
       return 'waiting';
+    }
+    // Review outcomes need append-only generation/receipt state before they can release any dependent.
+    // Do not spawn a checker on a transient result or let an ordinary succeeded Stage bypass that loop.
+    if (proposalStage.review) {
+      const reason = 'review-loop-durable-state-not-yet-available';
+      const title = stableHumanTitle('policy', stage.stageId, reason);
+      if (!detail.humanRequests.some((request) => request.stageRef === stage.stageRef && request.title === title)) {
+        this.createBoundary(input, stage, 'governance-refusal', title, reason);
+      } else {
+        this.ensureStageWaiting(input, stage.stageRef);
+      }
+      return 'refused';
     }
     for (const gate of proposalStage.humanGates) {
       const title = stableHumanTitle('gate', stage.stageId, gate.id);
@@ -1170,7 +1215,7 @@ export class AutomaticExecutionEngine {
         sessionRef: session.sessionRef,
         worktreePath,
         profile,
-        workflowProfile: input.proposal.profile ?? null,
+        workflowProfile: proposalStage.workflowProfile ?? input.proposal.profile ?? null,
         skills: skills.skills,
         action: proposalStage.action,
         target: proposalStage.target,

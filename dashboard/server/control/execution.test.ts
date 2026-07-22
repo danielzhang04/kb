@@ -105,7 +105,13 @@ function createApprovedRun(store: ControlPlaneStore, plan: PlanProposal): { runR
     managerAssignment: plan.manager.assignment,
     idempotencyKey: `launch-${createdProposal.value.proposalRef}`,
     stages: plan.stages.map((item) => ({
-      stageId: item.id, title: item.title, dependsOn: item.dependsOn, assignment: item.assignment,
+      stageId: item.id,
+      title: item.title,
+      dependsOn: item.dependsOn,
+      assignment: item.assignment,
+      workflowProfile: item.workflowProfile,
+      review: item.review,
+      completionGate: item.completionGate,
     })),
   });
   expect(run.ok).toBe(true);
@@ -587,7 +593,7 @@ describe('AutomaticExecutionEngine', () => {
   });
 
   // ---------------------------------------------------------------------------------------------
-  // The fail-closed workflow-profile token. `execution.ts` forwards `input.proposal.profile ?? null`
+  // The fail-closed workflow-profile token. `execution.ts` forwards `stage.workflowProfile ?? input.proposal.profile ?? null`
   // to the worker adapter, and that `?? null` is the WHOLE engine-side guarantee: the adapter refuses
   // to spawn on a null or unknown profile (claudeWorkerAdapter.ts), so a null is what makes a
   // profile-less legacy proposal refuse instead of running uncapped. Nothing asserted on it before —
@@ -650,6 +656,113 @@ describe('AutomaticExecutionEngine', () => {
 
     // Verbatim: the engine must neither substitute nor widen the declared profile.
     expect(seen).toEqual(['research']);
+  });
+
+  it('prefers a server-compiled per-stage workflow profile over the proposal profile', async () => {
+    const store = createStore();
+    const capped = stage('checker-cap');
+    capped.workflowProfile = 'checker-readonly';
+    const plan: PlanProposal = { ...proposal([capped]), profile: 'research' };
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const seen: (string | null)[] = [];
+    fake.workers = {
+      async execute(input) {
+        seen.push(input.workflowProfile);
+        fake.executionOrder.push('checker-cap');
+        return {
+          state: 'succeeded', summary: 'ok', usage: { inputTokens: 1, outputTokens: 1, costUsdMicros: 1 },
+          artifacts: [{ path: 'dashboard/server/checker-cap.txt', digest: 'b'.repeat(64) }], checkpoints: ['checker-cap-checked'],
+        };
+      },
+    };
+
+    await new AutomaticExecutionEngine(engineOptions(store, fake)).runToBoundary({
+      subject: 'operator', runRef: run.runRef, proposal: plan,
+    });
+
+    expect(seen).toEqual(['checker-readonly']);
+  });
+
+  it('refuses review stages before worker spawn until durable review-loop state exists', async () => {
+    const store = createStore();
+    const subject = stage('subject');
+    const checker = stage('checker', ['subject']);
+    checker.action = 'review:subject';
+    checker.workflowProfile = 'checker-readonly';
+    checker.scope = { read: ['dashboard'], write: [] };
+    checker.artifacts = [];
+    checker.checkpoints = [];
+    checker.review = {
+      subjectStageId: 'subject', maxCreatorReworks: 1,
+      criteria: [{ id: 'safety', description: 'No unsafe changes.' }],
+    };
+    checker.assignment = {
+      agentId: 'fyt-checker', declarationPath: 'agents/fyt-checker.md', declarationHash: 'c'.repeat(64),
+      profileId: 'worker:codex:codex-safe', runtime: 'codex', model: 'codex-safe',
+    };
+    const downstream = stage('release', ['checker']);
+    const plan = proposal([subject, checker, downstream]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const execute = vi.fn(fake.workers.execute);
+    fake.workers.execute = execute;
+    const managerEnsure = vi.fn(fake.managers.ensure);
+    const worktreeEnsure = vi.fn(fake.worktrees.ensure);
+    const worktreeInspect = vi.fn(fake.worktrees.inspect);
+    const worktreeRemove = vi.fn(fake.worktrees.remove);
+    const reserve = vi.fn(fake.accounting.reserve);
+    const settle = vi.fn(fake.accounting.settle);
+    const resultLookup = vi.fn(fake.results.lookup);
+    const resultBase = vi.fn(fake.results.resolveBase!);
+    const resultIntegrate = vi.fn(fake.results.integrate);
+    fake.managers.ensure = managerEnsure;
+    fake.worktrees.ensure = worktreeEnsure;
+    fake.worktrees.inspect = worktreeInspect;
+    fake.worktrees.remove = worktreeRemove;
+    fake.accounting.reserve = reserve;
+    fake.accounting.settle = settle;
+    fake.results.lookup = resultLookup;
+    fake.results.resolveBase = resultBase;
+    fake.results.integrate = resultIntegrate;
+    const options = engineOptions(store, fake);
+    const resolvePolicy = vi.fn(() => policy);
+    const resolveAssignedAgent = vi.fn();
+    const resolveSkills = vi.fn(options.skills.resolve);
+    options.resolvePolicy = resolvePolicy;
+    options.assignedAgents = { resolve: resolveAssignedAgent };
+    options.skills = { resolve: resolveSkills };
+
+    const engine = new AutomaticExecutionEngine(options);
+    const outcome = await engine.runToBoundary({
+      subject: 'operator', runRef: run.runRef, proposal: plan,
+    });
+
+    expect(outcome.state).toBe('waiting-human');
+    expect(outcome.waitingStageIds).toEqual(['checker']);
+    expect(resolvePolicy).not.toHaveBeenCalled();
+    expect(resolveAssignedAgent).not.toHaveBeenCalled();
+    expect(managerEnsure).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
+    expect(worktreeEnsure).not.toHaveBeenCalled();
+    expect(worktreeInspect).not.toHaveBeenCalled();
+    expect(worktreeRemove).not.toHaveBeenCalled();
+    expect(reserve).not.toHaveBeenCalled();
+    expect(settle).not.toHaveBeenCalled();
+    expect(resultLookup).not.toHaveBeenCalled();
+    expect(resultBase).not.toHaveBeenCalled();
+    expect(resultIntegrate).not.toHaveBeenCalled();
+    expect(resolveSkills).not.toHaveBeenCalled();
+    expect(fake.executionOrder).toEqual([]);
+    const detail = store.getRun('operator', run.runRef);
+    expect(detail).toMatchObject({ ok: true, value: {
+      stages: [{ stageId: 'subject', state: 'ready' }, { stageId: 'checker', state: 'waiting-human' }, { stageId: 'release', state: 'blocked' }],
+      humanRequests: [{ kind: 'governance-refusal', prompt: 'review-loop-durable-state-not-yet-available', state: 'open' }],
+    } });
+    await engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
+    const replay = store.getRun('operator', run.runRef);
+    expect(replay).toMatchObject({ ok: true, value: { humanRequests: [{ title: 'automatic:policy:checker:review-loop-durable-state-not-yet-available' }] } });
+    expect(replay.ok && replay.value.humanRequests).toHaveLength(1);
   });
 
   it('releases equal-priority roots deterministically while honoring bounded concurrency', async () => {
