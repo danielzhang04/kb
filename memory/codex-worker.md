@@ -13,3 +13,13 @@
 - Final integration: merged current `origin/main` into the feature branch after PR conflict detection. Six textual conflicts were split across three independent agents; the resolution preserved both main's read-scope/no-Bash work and this branch's assignments/reviews/completion gates. Post-merge dashboard verification passed 2,055 tests with 2 skipped plus typecheck.
 - Review gates opened: work product PR #69 targets `main`; coordination PR #68 targets `ops`. Neither was merged by Codex.
 
+## 2026-07-22 — Automated income project portfolio deep dive
+
+- Worked: recovered two unmerged 2026-07-21 portfolio research branches, preserved both DRAFT inputs, and synthesized the requested top-eight commercial analysis on `codex/new-projects-deep-dive` without moving or modifying `main`.
+- Worked: delegated models 1–3, 4–6, and 7–8 to three `gpt-5.6-terra` research agents, then used a separate adversarial review and re-review before committing the report.
+- Key lesson: the ranked list was not eight independent projects. Models 1/2/4/6 form one decision-data property; model 7 is its retention channel; model 5 is a gated surface; model 8 is a capital-entry strategy. Revenue ranges must be explicitly non-additive.
+- Key recommendation: validate one calculator-led decision property and one commercially specific media-licensing catalog under a combined 120-hour/$2.3k first-90-day cap; defer app work and acquisition diligence until the day-90 gates.
+- Verification: preamble passed; local Markdown links resolved; no placeholders or trailing whitespace; Git diff check passed; adversarial re-review returned SHIP; work branch pushed at `43f1660`.
+- Preserved: user-owned `.tmp/` contents and `orgs/faceless-youtube/.claude/settings.local.json` were never staged or modified.
+- Remains human-gated: review/merge the work-product branch and this coordination branch; select the decision niche before any implementation or spend.
+
