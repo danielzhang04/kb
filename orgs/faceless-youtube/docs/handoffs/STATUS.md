@@ -22,6 +22,11 @@ defect that will recur until fixed.
   Payload /20 (top weight), emotion /10.
 - **Autonomy: Stage 0** — full human gate; a human approves every publish. (Ramp + gate criteria in
   CLAUDE.md → *Autonomy*.)
+- **Engagement overhaul — TECHNICALLY READY, HUMAN-GATED (2026-07-22):** the six-axis production-logic
+  candidate is isolated on `codex/poyais-engagement-overhaul-final`, based on current main, and independently
+  reviewed READY (411 broad local tests plus renderer-level camera coverage). Human review of the complete
+  diff comes next, followed by the zero-spend Poyais calibration; paid voice/image work, full render,
+  publication, and queue transitions remain separately gated.
 
 ## Channel & infrastructure
 
