@@ -1,4 +1,5 @@
 import { isSafeRepoRelativePath, type ProposalReview } from './proposal.ts';
+import { redactSensitiveText } from '../composer/publicTimeline.ts';
 
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const MAX_SUMMARY_CHARS = 4_000;
@@ -7,7 +8,7 @@ const MAX_CRITERIA = 16;
 const MAX_FINDINGS = 256;
 const MAX_FINDINGS_PER_CRITERION = 32;
 const MAX_EVIDENCE_PATHS = 16;
-const MAX_REVIEW_OUTCOME_CHARS = 5_000_000;
+export const MAX_REVIEW_OUTCOME_CHARS = 5_000_000;
 const MAX_JSON_NESTING = 64;
 const MAX_CONTAINER_ITEMS = 4_096;
 
@@ -59,7 +60,8 @@ function safeText(value: unknown, maxChars: number): value is string {
     && !value.includes('\0')
     // A decoded replacement character proves the stream was not valid UTF-8. Reject it rather than
     // canonicalizing a lossy payload into an auditable outcome.
-    && !value.includes('\uFFFD');
+    && !value.includes('\uFFFD')
+    && redactSensitiveText(value) === value;
 }
 
 function safeId(value: unknown): value is string {
@@ -274,7 +276,9 @@ export function parseReviewOutcome(text: string, contract: ReviewContract): Revi
     if (!safeId(item.criterionId) || !criterionById.has(item.criterionId)) return invalid(`findings[${index}].criterionId is unknown`);
     if (item.severity !== 'blocking' && item.severity !== 'advisory') return invalid(`findings[${index}].severity is invalid`);
     if (!safeText(item.summary, MAX_FINDING_SUMMARY_CHARS)) return invalid(`findings[${index}].summary is unsafe or out of bounds`);
-    if (!Array.isArray(item.evidencePaths) || item.evidencePaths.length > MAX_EVIDENCE_PATHS || !item.evidencePaths.every(isSafeRepoRelativePath)) {
+    if (!Array.isArray(item.evidencePaths) || item.evidencePaths.length > MAX_EVIDENCE_PATHS
+      || !item.evidencePaths.every((path) => isSafeRepoRelativePath(path)
+        && redactSensitiveText(path) === path)) {
       return invalid(`findings[${index}].evidencePaths are invalid`);
     }
     const evidencePaths = [...item.evidencePaths] as string[];

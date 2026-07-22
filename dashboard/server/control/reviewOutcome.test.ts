@@ -43,6 +43,22 @@ describe('parseReviewOutcome', () => {
     expect(parseReviewOutcome(JSON.stringify(missing), contract)).toMatchObject({ ok: false, detail: expect.stringMatching(/top-level shape/) });
   });
 
+  it('rejects recognized secret shapes before they can enter durable review receipts', () => {
+    expect(parseReviewOutcome(outcome({ summary: 'Leaked sk-ant-api03-abcdefghijklmnopqrstuvwxyz123456' }), contract))
+      .toMatchObject({ ok: false, detail: expect.stringMatching(/summary is unsafe/) });
+    expect(parseReviewOutcome(outcome({
+      decision: 'fail',
+      criteria: [
+        { criterionId: 'safety', verdict: 'fail', findingIds: ['leak'] },
+        { criterionId: 'evidence', verdict: 'pass', findingIds: [] },
+      ],
+      findings: [{
+        id: 'leak', criterionId: 'safety', severity: 'blocking',
+        summary: 'Token ghp_abcdefghijklmnopqrstuvwxyz1234567890AB was exposed.', evidencePaths: [],
+      }],
+    }), contract)).toMatchObject({ ok: false, detail: expect.stringMatching(/summary is unsafe/) });
+  });
+
   it('rejects duplicate decoded JSON object keys at top-level, criterion, and finding nesting', () => {
     const topLevel = outcome().replace('"decision":"pass"', '"decision":"pass","decision":"pass"');
     expect(parseReviewOutcome(topLevel, contract)).toMatchObject({ ok: false, detail: expect.stringMatching(/duplicate JSON object key 'decision'/) });
@@ -88,6 +104,23 @@ describe('parseReviewOutcome', () => {
       .toMatchObject({ ok: false, detail: expect.stringMatching(/evidencePaths/) });
     const unlinked = failed.replace('"findingIds":["unsafe-change"]', '"findingIds":[]');
     expect(parseReviewOutcome(unlinked, contract)).toMatchObject({ ok: false, detail: expect.stringMatching(/linked/) });
+  });
+
+  it('rejects recognized secrets embedded in otherwise safe evidence paths', () => {
+    const failed = outcome({
+      decision: 'fail',
+      criteria: [
+        { criterionId: 'safety', verdict: 'fail', findingIds: ['secret-path'] },
+        { criterionId: 'evidence', verdict: 'pass', findingIds: [] },
+      ],
+      findings: [{
+        id: 'secret-path', criterionId: 'safety', severity: 'blocking', summary: 'Unsafe evidence path.',
+        evidencePaths: ['artifacts/ghp_abcdefghijklmnopqrstuvwxyz1234567890AB.txt'],
+      }],
+    });
+    expect(parseReviewOutcome(failed, contract)).toMatchObject({ ok: false, detail: expect.stringMatching(/evidencePaths/) });
+    expect(parseReviewOutcome(failed.replace('ghp_abcdefghijklmnopqrstuvwxyz1234567890AB', 'sk-ant-api03-abcdefghijklmnopqrstuvwxyz123456'), contract))
+      .toMatchObject({ ok: false, detail: expect.stringMatching(/evidencePaths/) });
   });
 
   it('enforces pass, fail, and parked truth rules', () => {
