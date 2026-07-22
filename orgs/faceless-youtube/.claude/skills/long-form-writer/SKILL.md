@@ -2,17 +2,15 @@
 name: long-form-writer
 description: >-
   Writes the LONG-FORM voiceover script for a picked (and, on research channels, researched) video in
-  this project — the earner, 8–45 min depending on niche. Use whenever the user wants to script/write/
-  draft the long-form video, "write the script", "script this idea", turn a research dossier + brief
-  into the long-form VO, or run the long-form scripting step — for ANY niche. Reads the picked brief +
-  (if present) videos/<slug>/research.md + dna.md + the channel's storytelling-grammar + the universal &
-  niche playbooks, and writes videos/<slug>/script.md with [B-ROLL]/[PAUSE] cues. Runs a staged
+  this project. Use whenever the user wants to script/write/draft a long-form video, turn a research dossier +
+  brief into long-form VO, or run the long-form scripting step — for ANY niche. Reads the picked brief +
+  (if present) the selected video's research.md + dna.md + the channel's storytelling-grammar + the universal &
+  niche playbooks, and writes the selected video's script.md with [B-ROLL]/[PAUSE] cues. Runs a staged
   writers-room (spine → casual story pass → leash pass → editor → humanize) on `long_form: staged`
   channels, and a single strong pass on `long_form: single`. On research channels it is LEASHED to the
-  fact-ledger — it states only what research.md sourced. Runs AFTER `researcher` (deep path) or the idea
-  gate (plain path) and BEFORE `shorts-writer` / metadata-writer / visual-prompt-writer / voiceover. Do
-  NOT use it to write the shorts (that's `shorts-writer`), generate ideas (`idea-generator`), do the
-  research (`researcher`), or pick titles/tags (`metadata-writer`).
+  fact-ledger — it states only what research.md sourced. Runs after `researcher` (deep path) or the idea
+  gate (plain path), before shorts, metadata, visuals, and voiceover. Do not use it for shorts, ideas,
+  research, or metadata.
 ---
 
 # long-form-writer
@@ -46,10 +44,11 @@ So the order is deliberate:
 3. **Then bring the ledger back and check every claim.** Accuracy is enforced *after* the story exists, so
    the story is never bent to fact-coverage.
 
-**On a channel with a `storytelling-grammar.md`, that doc's §0 is a finished gold script. That is your bar.
-Read it, internalize its rhythm, and write to match it.** This skill does **not** restate the craft — the
-grammar doc is the law; here you'll find the *process* and the skill-only execution (leash, markup, retention,
-length, handoff).
+**On a channel with a `storytelling-grammar.md`, read its reference facets and the approved personable
+calibration excerpt.** Poyais is a reference only for fact leash, causality, concise consequence, and close;
+the approved excerpt is the voice reference for narrator presence, analogy use, chaptering, and delivery.
+This skill does **not** restate the craft — the grammar doc is the law; here you'll find the *process* and the
+skill-only execution (leash, markup, retention, length, handoff).
 
 ## Step 0 — Identify channel + idea + mode
 
@@ -71,9 +70,10 @@ length, handoff).
   expected and good). It also hands you the story material — cast, motive, the claim↔reality pairs, the light
   human cost, myths to bust — and flags what to hedge. **You design the story yourself** (Step 3a); the
   research supplies facts, not a plan. Treat a gap in the ledger as a wall, not a suggestion.
-- **`channels/<name>/storytelling-grammar.md`** (if present) — **the craft law + the gold exemplar (§0).
-  Read every run.** It governs voice, story shape, and staging; where it conflicts with generic doctrine, it
-  wins. (A channel without one falls back to `universal.md` §5b/§5d/§1d-V.)
+- **`channels/<name>/storytelling-grammar.md`** (if present) — **the craft law and its reference facets.
+  Read every run**, plus `long-form-writer/references/personable-calibration.md` when the channel routes to
+  it. It governs voice, story shape, and staging; where it conflicts with generic doctrine, it wins. (A
+  channel without one falls back to `universal.md` §5b/§5d/§1d-V.)
 - **`channels/<name>/dna.md`** — length band, the locked lever, the narrator persona and default humor band,
   and any recurring structure.
 - **`channels/<name>/watchability-rubric.md`** (if present) — the scored bar the draft is measured against;
@@ -111,7 +111,11 @@ research in order is the flat-explainer failure.
    **followable** (grammar §3.8): read it back cold, as someone who knows nothing going in, and confirm they
    could track what happened and how each piece connects, jumps and cross-cuts included. If a connection only
    works because *you* already know it, fix the spine now by resequencing or introducing it earlier, never with
-   a patch bolted on later. Lock it before drafting.
+   a patch bolted on later. Lock it before drafting. For each major scheme sequence, first make a compact
+   planning card: `question -> sourced action/mechanism -> narrator angle -> what it enables -> next question`.
+   Use two to four sourced turns or claim-versus-reality pairs. When the research supports genuine peer
+   levers, an optional spoken `Step N: <causal move>` is allowed; it must expose the mechanism and run in a
+   complete sequential set, never label bare chronology.
 
 ### 3b — Story pass: write it casual, ledger set aside
 
@@ -125,15 +129,17 @@ mid-draft is what flattens the voice.
 
 Go back over the draft and trace every factual claim to its `[F-NN]`. Cut or hedge anything unsourced; a
 `Conf: low` fact gets a hedge or goes. The leash is a **ceiling** (state only sourced facts), **not a floor**
-(you need not use them all). Correct anything the draft got wrong against the ledger; where the research is
-thin, keep the beat general rather than invent (grammar §4). You may leave a light inline `<!--F-07-->` trace
-on a hard claim for the editor/compliance, but **strip every trace before final output.**
+(you need not use them all). The casual draft remains the voice source of truth: make the smallest local
+factual correction possible and preserve sentence order, conversational joints, repetitions, slang, comic
+rhythm, and narrator presence. If a claim cannot be corrected locally, flag the beat for the writer instead
+of laundering it into documentary exposition. You may leave a light inline `<!--F-07-->` trace on a hard claim
+for the editor/compliance, but **strip every trace before final output.**
 
 ### 3d — The critic layer: fresh eyes that edit  (`references/critics.md`)
 
 The writer cannot reliably catch its own taste flaws — it already made the call when it wrote the line, so
 grandeur buttons and dwell sail straight through a self-edit. So this pass is done by **fresh, single-mandate
-agents with no attachment to the draft.** It is thin by design: a mechanical lint, three parallel critics that
+agents with no attachment to the draft.** It is thin by design: a mechanical lint, four parallel critics that
 *flag only*, an editor that *applies* line-level fixes in-voice, and a single capped writer pass for structural
 coherence. **Read `references/critics.md` — it holds the exact prompts and the orchestration; run them, don't
 paraphrase them.** In one cycle:
@@ -141,14 +147,15 @@ paraphrase them.** In one cycle:
 1. **Mechanical lint** — run `scripts/lint_script.py <script.md>`. It deterministically flags em/en dashes,
    VO quotes, leftover `<!--F-NN-->` traces, and the word count. (Second person is *not* linted — whether a
    "you" casts the viewer or is the generic impersonal "you" is a judgment call for the taste critic.)
-2. **Three critics, in parallel** (dispatch as subagents): the **taste critic** (voice/buttons/dwell/analogy/
+2. **Four critics, in parallel** (dispatch as subagents): the **taste critic** (voice/buttons/dwell/analogy/
    register/viewer-casting), the **leash critic** (every claim traces to an `[F-NN]`, hedges, no invented
    color), and the **coherence critic** (a first-time viewer: unearned confusion, unestablished connections,
-   used-before-introduced, never flagging non-linearity or designed suspense). Each returns a findings list,
-   the coherence one tagged **[LOCAL]** or **[STRUCTURAL]**, and **edits nothing**.
+   used-before-introduced, never flagging non-linearity or designed suspense), and the **raw-versus-leashed
+   critic** (whether a local fact correction also changed unrelated rhythm, wording, or narrator presence).
+   Each returns a findings list, the coherence one tagged **[LOCAL]** or **[STRUCTURAL]**, and **edits nothing**.
 3. **Route on severity (details in `critics.md`).** Line-level findings (taste + leash + [LOCAL] coherence) →
    **the editor** (one subagent) applies them in voice → revised `script.md` + changelog. Any **[STRUCTURAL]**
-   coherence finding → **one** writer structural-revision pass (reworks sequence/framing from all three
+   coherence finding → **one** writer structural-revision pass (reworks sequence/framing from all four
    findings lists, leashed) → a single re-verify. At most one structural bounce; if it's still confusing,
    surface to the human.
 4. **Re-lint** the output to confirm no new dash/quote/trace crept in.
@@ -156,7 +163,7 @@ paraphrase them.** In one cycle:
 Taste and leash are **subtractive** — if they flatten the voice, the taste critic is over-triggering (loosen
 its "never flag" list). Coherence is the one **additive/structural** lane, capped at a single writer bounce,
 and it over-triggers the same way (flagging non-linearity or suspense as confusion) — tighten its never-flag
-list if so. If subagents aren't available, run the three critic prompts as separate deliberate re-reads, then
+list if so. If subagents aren't available, run the four critic prompts as separate deliberate re-reads, then
 edit — but prefer real subagents; the fresh context is the whole point.
 
 ### 3e — Accept

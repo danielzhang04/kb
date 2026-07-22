@@ -2,13 +2,13 @@
 name: researcher
 description: >-
   Runs the deep-research stage of this project's video pipeline — turns a PICKED idea brief into a
-  sourced, verified research dossier (videos/<slug>/research.md) that the long-form scriptwriter writes
-  from. Use this whenever a picked idea on a `research: deep` channel needs its real research done before
-  scripting: "do the research for <video>", "research this topic", "run deep research on the picked
-  idea", "gather the facts/sources for <slug>", or any time an idea has been picked on a research-driven
+  sourced, verified research dossier (the selected video's `research.md`). Use this whenever a picked idea on a
+  `research: deep` channel needs research before
+  scripting: "do the research for this video", "research this topic", "run deep research on the picked
+  idea", "gather the facts and sources for this video", or any time an idea has been picked on a research-driven
   channel (e.g. The Second Take / finance) and the next step is grounding it in real material. Reads the
   picked brief + dna.md + the niche playbooks, DIRECTS the native `deep-research` skill with a focused
-  plan, and writes a fact-ledger + outline the scriptwriter is leashed to. Runs AFTER the human idea
+  plan, and writes a fact-ledger + story material the scriptwriter is leashed to. Runs AFTER the human idea
   gate and BEFORE `long-form-writer`. Do NOT use it to generate ideas (`idea-generator`), write the
   script (`long-form-writer`/`scriptwriter`), or for channels flagged `research: none` (those skip
   straight to the scriptwriter).
@@ -73,8 +73,10 @@ made-up number. Take it seriously.
 ## Step 1 — Read the inputs
 
 - **The picked brief** in `idea-backlog.md` — especially the **provisional angle**, the **payload
-  promise**, and the **key questions the video must answer** (idea-generator Step 3a wrote these *for
-  you* — they are your research seed). Also note the title options and the "why original" line.
+  promise**, four named **viability** fields, and the **key questions the video must answer**
+  (idea-generator Step 3a wrote these *for you* — they are your research seed). Also note the title
+  options and the "why original" line. The first three viability fields are provisional claims to
+  verify or revise; `differentiated against` is a named comparison set, not a research claim.
 - `channels/<name>/dna.md` — the locked **lever**, **register**, **persona**, and the channel's
   **accuracy guardrails** (for The Second Take: YMYL — education-not-advice, two reputable sources on
   any hard claim, dated mechanics, no defamation).
@@ -108,6 +110,9 @@ part of the dossier — it shows the human and the scriptwriter what was and was
 - **Source-quality bar** — for YMYL, primary + reputable secondary sources (filings, regulator/official
   data, court documents, primary reporting) beat blogs and each other's summaries; **date everything**
   (mechanics change by year/jurisdiction). Details in `references/research-contract.md`.
+- **Viability check** — test the accountable stake/question, cold open/title promises, and
+  mechanism/escalation/relevance against the evidence. Keep a promise only when the ledger can support
+  it; revise it when the evidence points to a truer angle; record every unsupported promise explicitly.
 
 ## Step 2.5 — Pick the research intensity (match the machinery to the stakes — COST DISCIPLINE)
 
@@ -203,6 +208,12 @@ contract `long-form-writer` and, later, `compliance-check` parse):
 - <what could NOT be verified / conflicting sources / what to hedge or date>. If a key question came
   back thin, say so plainly — the writer must not paper over a gap with confident prose.
 
+## Viability verification
+- **Accountable stake and question:** <verified or revised version, with [F-NN] support>
+- **Cold open and title promises:** <each promise: supported / revised / unsupported, with reason>
+- **Mechanism, escalation, relevance:** <verified or revised version, with [F-NN] support>
+- **Unsupported promises:** <title or angle promises the evidence cannot support; do not force into script>
+
 ## Sources
 - [S1] <full citation — outlet/author/document, date, URL> — backs [F-01],[F-04]
 - [S2] …
@@ -220,6 +231,8 @@ contract `long-form-writer` and, later, `compliance-check` parse):
   `business-money.md` Coffeezilla counter-lesson — an opinion disclaimer is not a defense).
 - **Don't launder speculation into the ledger.** If it isn't sourced, it goes in *Open questions*, not
   *Fact ledger*. The ledger's authority is the whole point.
+- **Do not force the brief's promise to survive.** A failed viability promise belongs in `Viability
+  verification` as unsupported or revised; the writer follows the evidence, not the original pitch.
 
 ## Step 6 — Handoff
 

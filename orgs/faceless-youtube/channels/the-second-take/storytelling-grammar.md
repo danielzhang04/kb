@@ -13,9 +13,9 @@ true story, not a writer crafting prose and not a finance teacher. Storytelling 
 More comedic than any pure finance-or-history channel, without becoming a comedy channel.
 
 **Two hard locks (they override any device below):**
-1. **No second person — meaning: never *cast the viewer into the story*.** The ban is on staging the viewer
+1. **No viewer role-casting — never *cast the viewer into the story*.** The ban is on staging the viewer
    as a participant ("imagine *you're* a settler," "*your* life savings," "*you*, the king") — the immersive
-   address that breaks the observed, third-person frame. It is **not** a ban on the everyday impersonal "you"
+   address that breaks the observed narrator frame. It is **not** a ban on the everyday impersonal "you"
    that just means "anyone" in a description ("gold *you* could wash out of the sand," "the kind of place
    *you'd* never want to end up"); that is a normal casual figure of speech and it's fine. The test is
    function: casting the viewer as a character (banned) vs. a generic stand-in for "anyone" (fine). (A
@@ -29,11 +29,13 @@ hear. Breath is carried by periods, commas, colons, and the `[BEAT]`/`[PAUSE]` c
 
 ---
 
-## 0. The gold standard — read this first
+## 0. Reference facets — read this first
 
-The finished, human-locked script **`videos/2026-07-04-poyais/script.md`** is the exemplar. It was built
-line by line to *be* this voice; it is the bar every long-form is written to. Do not just skim it — internalize
-its rhythm. Three fragments to show what "the voice" means:
+No one script is universal gold. The finished, human-locked **Poyais** script governs only **fact leash,
+causality, concise consequence, and close**. The approved personable calibration excerpt at
+`long-form-writer/references/personable-calibration.md` governs **narrator presence, analogy use,
+chaptering, and delivery**. Read that excerpt for a fresh or blind writer/critic bundle; do not substitute the
+full Poyais script or a legacy candidate. The Poyais fragments below illustrate only its named facets.
 
 **The hook (get them in the door, do not tell the story yet):**
 > In 1822, a few hundred people sold everything they owned, packed up their families, and sailed across the
@@ -42,7 +44,7 @@ its rhythm. Three fragments to show what "the voice" means:
 > just one problem. The whole thing was made up. And more than half of the people who sailed for Poyais never
 > came home.
 
-**Compression + a plain, vivid analogy carrying the explanation (not a lecture):**
+**Causality with one clear explanatory comparison:**
 > It was the dot-com bubble of the 1820s, with everyone throwing cash at the shiny new thing with a good
 > story, and nobody reading the fine print. MacGregor didn't have to outsmart anyone. He just had to look
 > like one more exciting new country in a year that was filled with them.
@@ -89,11 +91,10 @@ cut the mechanics tutorial.
 > ✓ "He issued official government bonds and sold them through a respectable bank, exactly how a real country
 >   would raise money."
 
-**1.6 — One vivid modern analogy per idea, woven in — never double-loaded.** In the hot acts a comparison the
-viewer *instantly and universally* pictures should carry the explanation (the 1820s bond boom *was* the
-dot-com bubble). One is plenty; do not stack two (the "tech founder with no product" line got cut for
-doubling up). The analogy is the sentence that explains, not a bow tied on after. And the promise-vs-reality
-metaphor lands at the **payoff** (the swamp), never the setup (the guidebook).
+**1.6 — Use modern analogies as explanatory tools, not a quota.** In hot acts, a comparison the viewer can
+picture may carry the explanation. Let them recur across distinct beats when they stay useful. Remove only a
+comparison that repeats the same point, derails the story, or makes the fact harder to understand. The analogy
+is the sentence that explains, not a bow tied on after; there is no density target or cap.
 
 **1.7 — Get into the character's head as narration.** Voice the reasoning casually, in third person.
 > "MacGregor probably took one look at that worthless swamp and figured no one in London was ever going to
@@ -171,11 +172,11 @@ question-answered-casually move; never a literary or announced transition.
 end it for a friend. **Banned:** the essay conclusion ("here's what it means," "it repeats every
 generation," "and that's why"). The insight is woven into the body, never a closing lecture.
 
-**3.6 — For a "how it worked" payload, let the machine build in sequence — but don't *announce* the parts.**
-Tell each move in order so the viewer watches the trick assemble (he printed the money, then sold the land,
-then floated a government bond). The build comes from the *order*, not from labelling it: never "first the
-land, then the money, and then the big one," never "piece one, piece two." Just tell the next move plainly and
-let the accumulation do the work (see the gold's money → land → bond run).
+**3.6 — For a "how it worked" payload, let the machine build in causal sequence.** Tell each move so the
+viewer can answer what it bought him and why the next move can happen now. Where research supports genuine
+peer levers, an optional spoken `Step N: <causal move>` may make the assembly legible, with a mini-payoff
+before the next step and a later callback. If used, the sequence is complete and consecutive; it exposes a
+mechanism, never bare chronology. Generic labels and listicle cards still fail.
 
 **3.7 — Our stories are usually pre-spoiled (the title gives away the ending), so carry tension on something
 other than the outcome.** Dramatic irony, comic dread (make them wait for the doom you can both see coming),
@@ -196,8 +197,8 @@ it in a sequence that makes sense, not a lone explaining sentence pasted onto th
 ## 4. Staging & the locks
 
 - **Reported speech (the constraint re-routing).** Every scene from the reference channels survives our locks
-  by laundering into narrator-reported speech: keep the scene and the irony, drop the performance. Second
-  person becomes a third-person tableau; a quote becomes the narrator *characterizing* what was said. A
+  by laundering into narrator-reported speech: keep the scene and the irony, drop the performance. Viewer
+  role-casting becomes an observed tableau; a quote becomes the narrator *characterizing* what was said. A
   paraphrase may not add a detail the source doesn't support (the leash and defamation discipline hold).
 - **Human cost: comedy off, concrete, brief.** On death and ruin the jokes stop and the prose goes plain and
   short; the tonal drop is where the feeling lands. But this is an entertaining story, not a tragedy: name
@@ -227,7 +228,7 @@ prohibitions never caught — learn them as transformations.
 | Outline-then-retell fluff ("MacGregor was not some nobody") | Cut it; just tell what he was |
 | Finance jargon ("underwritten… notes of a hundred… 6% yield") | "he issued government bonds and sold them through a bank, exactly how a real country raises money" |
 | Educational-concept metaphor ("not speculators flipping a bond") | Cultural touchstone the viewer pictures instantly (dot-com bubble, five-star resort vs. swamp) |
-| Two analogies stacked on one idea | One, woven in, carrying the explanation |
+| An analogy that repeats, derails, or obscures the mechanism | Keep the comparison that carries the explanation; a useful run of comparisons is allowed |
 | Announced/literary transition ("leave them out on the Atlantic for a moment") | Casual signpost ("in the meantime, back in London") or a rhetorical-question turn |
 | Cramming every sourced fact in (3 paragraphs on the guidebook) | Select and compress to one vivid beat |
 | Essay/moral close ("the tell repeats every generation") | One earned ironic image ("a beautiful country that never existed") |
@@ -235,7 +236,7 @@ prohibitions never caught — learn them as transformations.
 | Dwell — restating a point already landed for emphasis ("None of it was there. Not the opera house, not the cathedral…") | Say it once, on the sharpest image, then move |
 | Writerly triple-build of one idea ("what it could be… something even better… a place already finished") | One clean line |
 | Too terse — compressing away the vivid concrete detail (a one-line guidebook) | Keep the specific color: the name (St Joseph), the number (20,000), the gold-in-the-rivers |
-| Self-insisting intensifier — "genuinely/actually/really/truly/legitimately + adjective" ("genuinely ahead of its time," "actually brilliant") | Cut the intensifier; let the plain claim or the facts carry it ("a theory that was way ahead of its time"). The word is the writer reaching in to reassure the viewer — usually a sign the beat hasn't *shown* the thing |
+| Credibility-padding phrase — "that part is real," "he actually did," "he really did," or "seriously" | State the interesting fact directly. `Real` may still contrast real money, land, or a real name with the fake; contextual `actually`/`really` is a taste call, not a word ban |
 
 ---
 
