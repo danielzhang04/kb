@@ -3,10 +3,12 @@ import { SESSION_INVALIDATED_EVENT } from '../lib/authClient';
 import {
   getRun,
   listRuns,
+  resolveReviewCompletionGate,
   respondToHumanRequest,
   resumeRunAfterHumanResponse,
   type HumanRequestDecision,
   type HumanRequestDto,
+  type RunDetailDto,
   type RunMetadataDto,
 } from './controlClient';
 import type { FetchLike } from './controlClient';
@@ -15,6 +17,8 @@ import { decisionsForHumanRequest } from './humanBoundaries';
 function requestKey(request: HumanRequestDto, decision: HumanRequestDecision): string {
   return `human:${request.requestRef}:${request.revision}:${decision}`;
 }
+
+type OpenRequest = { request: HumanRequestDto; completionGate: boolean };
 
 export function HumanRequestsPanel({
   sessionToken,
@@ -26,7 +30,7 @@ export function HumanRequestsPanel({
   fetchImpl?: FetchLike;
 }): React.JSX.Element {
   const [localToken, setLocalToken] = useState(sessionToken);
-  const [requests, setRequests] = useState<HumanRequestDto[]>([]);
+  const [requests, setRequests] = useState<OpenRequest[]>([]);
   // Runs stuck `waiting-human` with NO open request — otherwise unreachable from the UI, so surface them
   // as a distinct, non-actionable "inspect run" row rather than letting them hang invisibly (audit gap #3).
   const [strandedRuns, setStrandedRuns] = useState<RunMetadataDto[]>([]);
@@ -47,7 +51,9 @@ export function HumanRequestsPanel({
     // human with zero open requests, a state otherwise invisible in both feeds.
     const active = runs.filter((run) => run.openHumanRequestCount > 0 || run.state === 'waiting-human');
     const details = await Promise.all(active.map((run) => getRun(run.runRef, activeToken, fetchImpl)));
-    setRequests(details.flatMap((detail) => detail.humanRequests).filter((request) => request.state === 'open'));
+    setRequests(details.flatMap((detail: RunDetailDto) => detail.humanRequests
+      .filter((request) => request.state === 'open')
+      .map((request) => ({ request, completionGate: detail.reviewReceipts?.some((receipt) => receipt.completionRequestRef === request.requestRef) ?? false }))));
     setStrandedRuns(runs.filter((run) => run.state === 'waiting-human' && run.openHumanRequestCount === 0));
   }, [fetchImpl]);
 
@@ -64,18 +70,23 @@ export function HumanRequestsPanel({
     void onRequestSession?.().then((session) => { if (session) setLocalToken(session.token); });
   };
 
-  const respond = (request: HumanRequestDto, decision: HumanRequestDecision): void => {
+  const respond = ({ request, completionGate }: OpenRequest, decision: HumanRequestDecision): void => {
     if (!token || busy) return;
     setBusy(true);
     setError(null);
-    void respondToHumanRequest(request.requestRef, {
-      expectedRevision: request.revision,
-      decision,
-      idempotencyKey: requestKey(request, decision),
-      response: responses[request.requestRef]?.trim() || null,
-    }, token, fetchImpl)
+    const mutation = completionGate
+      ? resolveReviewCompletionGate(request.requestRef, {
+          expectedRequestRevision: request.revision,
+          decision: decision as Extract<HumanRequestDecision, 'approved' | 'rejected' | 'changes-requested'>,
+          idempotencyKey: requestKey(request, decision), response: responses[request.requestRef]?.trim() || null,
+        }, token, fetchImpl)
+      : respondToHumanRequest(request.requestRef, {
+          expectedRevision: request.revision, decision, idempotencyKey: requestKey(request, decision),
+          response: responses[request.requestRef]?.trim() || null,
+        }, token, fetchImpl);
+    void mutation
       .then(async () => {
-        if (decision === 'approved' || decision === 'responded') {
+        if ((!completionGate && (decision === 'approved' || decision === 'responded')) || (completionGate && decision === 'approved')) {
           await resumeRunAfterHumanResponse(request.runRef, token, fetchImpl);
         }
         await refresh(token);
@@ -104,10 +115,10 @@ export function HumanRequestsPanel({
           <p className="control-help mc-mono" data-testid={`inspect-run-${run.runRef}`}>run {run.runRef}</p>
         </article>
       ))}
-      {requests.map((request) => (
-        <article key={request.requestRef} className="control-request">
+      {requests.map(({ request, completionGate }) => (
+        <article key={request.requestRef} className="control-request" data-review-completion-gate={completionGate || undefined}>
           <p className="control-eyebrow">{request.kind} · revision {request.revision} · run {request.runRef}</p>
-          <h3>{request.title}</h3>
+          <h3>{completionGate ? `Review completion gate: ${request.title}` : request.title}</h3>
           <p>{request.prompt}</p>
           <label htmlFor={`inbox-response-${request.requestRef}`}>Response</label>
           <textarea
@@ -118,7 +129,7 @@ export function HumanRequestsPanel({
           />
           <div className="control-actions">
             {decisionsForHumanRequest(request.kind).map((decision) => (
-              <button key={decision} type="button" className={decision === 'approved' ? 'mc-btn mc-btn--primary' : 'mc-btn'} disabled={busy} onClick={() => respond(request, decision)}>
+              <button key={decision} type="button" className={decision === 'approved' ? 'mc-btn mc-btn--primary' : 'mc-btn'} disabled={busy} onClick={() => respond({ request, completionGate }, decision)}>
                 {decision === 'changes-requested' ? 'Request changes' : decision[0].toUpperCase() + decision.slice(1)}
               </button>
             ))}

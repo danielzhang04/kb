@@ -426,6 +426,9 @@ export function RunCockpit({
   })();
   const openRequests = detail.humanRequests.filter((request) => request.state === 'open');
   const resolvedRequests = detail.humanRequests.filter((request) => request.state !== 'open');
+  const completionRequestRefs = new Set((detail.reviewReceipts ?? [])
+    .map((receipt) => receipt.completionRequestRef)
+    .filter((ref): ref is string => ref !== null));
 
   const submitMessage = (event: FormEvent): void => {
     event.preventDefault();
@@ -503,7 +506,7 @@ export function RunCockpit({
           {openRequests.map((request) => (
             <article key={request.requestRef} className="control-request">
               <p className="control-eyebrow">{request.kind} · revision {request.revision}</p>
-              <h4>{request.title}</h4>
+              <h4>{completionRequestRefs.has(request.requestRef) ? `Review completion gate: ${request.title}` : request.title}</h4>
               <p>{request.prompt}</p>
               <label htmlFor={`response-${request.requestRef}`}>Response</label>
               <textarea

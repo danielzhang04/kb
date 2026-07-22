@@ -41,6 +41,8 @@ const detail: RunDetailDto = {
     state: 'open', title: 'Review the diff', prompt: 'Is this change inside the approved scope?', response: null,
     createdAt: '2026-07-18T10:00:00.000Z', updatedAt: '2026-07-18T10:01:00.000Z',
   }],
+  reviewLoops: [],
+  reviewReceipts: [],
 };
 
 const events: OperationalEventDto[] = [{

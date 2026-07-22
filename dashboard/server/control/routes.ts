@@ -761,6 +761,13 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     const found = ctx.controlStore.getHumanRequest(sub, requestRef);
     if (!found.ok) return sendResult(reply, found);
     const existing = found.value;
+    // A completion gate has review-lineage CAS requirements. It may only be resolved by the
+    // dedicated route below, never by this generic Human Request mutation.
+    const requestRun = ctx.controlStore.getRun(sub, existing.runRef);
+    if (!requestRun.ok) return sendResult(reply, requestRun);
+    if (requestRun.value.reviewReceipts.some((receipt) => receipt.completionRequestRef === requestRef)) {
+      return reply.code(409).send({ error: 'review-completion-gate-reserved' });
+    }
     if (existing.state === 'open') {
       if (existing.revision !== integer(body.expectedRevision)) return reply.code(409).send({ error: 'request-revision-changed' });
       try {
@@ -789,6 +796,84 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       });
     }
     return sendResult(reply, responded);
+  });
+
+  /** Resolve a completion gate with server-bound review lineage; callers never supply internal refs. */
+  scope.post('/api/control/review-completion-gates/:requestRef/resolve', { preHandler }, async (req, reply) => {
+    const sub = subject(req);
+    if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
+    const body = record(req.body);
+    const requestRef = (req.params as { requestRef: string }).requestRef;
+    const request = ctx.controlStore.getHumanRequest(sub, requestRef);
+    if (!request.ok) return sendResult(reply, request);
+    const run = ctx.controlStore.getRun(sub, request.value.runRef);
+    if (!run.ok) return sendResult(reply, run);
+    const receipts = run.value.reviewReceipts.filter((receipt) => receipt.completionRequestRef === requestRef);
+    if (receipts.length !== 1) return reply.code(409).send({ error: 'review-completion-gate-linkage-ambiguous' });
+    const receipt = receipts[0];
+    const loops = run.value.reviewLoops.filter((loop) => loop.reviewStageRef === receipt.reviewStageRef
+      && loop.subjectStageRef === receipt.subjectStageRef && loop.activeReceiptRef === receipt.reviewReceiptRef);
+    const reviewStages = run.value.stages.filter((stage) => stage.stageRef === receipt.reviewStageRef);
+    const subjectStages = run.value.stages.filter((stage) => stage.stageRef === receipt.subjectStageRef);
+    if (loops.length !== 1 || reviewStages.length !== 1 || subjectStages.length !== 1
+      || request.value.stageRef !== reviewStages[0].stageRef || request.value.runRef !== receipt.runRef) {
+      return reply.code(409).send({ error: 'review-completion-gate-linkage-ambiguous' });
+    }
+    const decision = string(body.decision) as 'approved' | 'rejected' | 'changes-requested';
+    if (!['approved', 'rejected', 'changes-requested'].includes(decision)) {
+      return reply.code(400).send({ error: 'invalid-review-completion-gate-decision' });
+    }
+    if (request.value.state === 'open') {
+      if (request.value.revision !== integer(body.expectedRequestRevision)) {
+        return reply.code(409).send({ error: 'request-revision-changed' });
+      }
+      try {
+        await auditFn(ctx)(ctx.repoRoot, {
+          action: 'control-review-completion-gate-authorize', owner: sub, target: requestRef, riskTier: 'T3',
+          result: `authorized:${decision}`,
+          detail: {
+            requestRef, runRef: request.value.runRef, requestRevision: request.value.revision,
+            reviewReceiptRef: receipt.reviewReceiptRef, receiptVersion: receipt.version,
+            reviewLoopRef: loops[0].reviewLoopRef, loopVersion: loops[0].version,
+            reviewStageRef: reviewStages[0].stageRef, reviewStageVersion: reviewStages[0].version,
+            subjectStageRef: subjectStages[0].stageRef, subjectStageVersion: subjectStages[0].version, decision,
+          },
+        }, { runGit: ctx.opsGit, now: ctx.now });
+      } catch {
+        return reply.code(500).send({ error: 'review-completion-gate-audit-required' });
+      }
+    }
+    // A replay sees the post-transition versions. The store fingerprints the pre-transition CAS
+    // tuple, so recover that exact immutable predecessor only from a recorded resolution. Fresh
+    // requests always use the current tuple above and therefore retain normal CAS protection.
+    const replay = request.value.state === 'resolved' && request.value.response !== null;
+    if (replay && integer(body.expectedRequestRevision) !== request.value.response!.requestRevision) {
+      return reply.code(409).send({ error: 'request-revision-changed' });
+    }
+    if (replay && (receipt.version < 2 || loops[0].version < 2 || subjectStages[0].version < 2)) {
+      return reply.code(409).send({ error: 'review-completion-gate-replay-lineage-invalid' });
+    }
+    const resolved = ctx.controlStore.resolveReviewCompletionGate(sub, requestRef, {
+      expectedRequestRevision: replay ? request.value.response!.requestRevision : integer(body.expectedRequestRevision),
+      expectedReceiptVersion: replay ? receipt.version - 1 : receipt.version,
+      expectedLoopVersion: replay ? loops[0].version - 1 : loops[0].version,
+      expectedReviewStageVersion: reviewStages[0].version,
+      expectedSubjectStageVersion: replay ? subjectStages[0].version - 1 : subjectStages[0].version,
+      decision,
+      idempotencyKey: string(body.idempotencyKey),
+      response: body.response == null ? null : string(body.response),
+    });
+    if (!resolved.ok) return sendResult(reply, resolved);
+    if (!resolved.replayed) {
+      ctx.controlStore.appendEvent(sub, resolved.value.request.runRef, {
+        kind: 'governance', source: 'human', stageRef: resolved.value.reviewStage.stageRef,
+        status: decision === 'approved' ? 'success' : 'waiting',
+        summary: decision === 'approved'
+          ? `Review completion gate approved at revision ${resolved.value.request.revision}`
+          : `Review completion gate ${decision}; run parked with intervention`,
+      });
+    }
+    return sendResult(reply, resolved);
   });
 
   scope.get('/api/control/retention/inventory', { preHandler }, async (req, reply) => {

@@ -7,6 +7,7 @@ import {
   getRun,
   listRuns,
   launchProposalRevision,
+  resolveReviewCompletionGate,
   respondToHumanRequest,
   rerouteManagedStage,
   resumeRunAfterHumanResponse,
@@ -33,6 +34,10 @@ import type { NavTarget } from '../nav/stack';
 
 function idempotencyKey(request: HumanRequestDto, decision: HumanRequestDecision): string {
   return `human:${request.requestRef}:${request.revision}:${decision}`;
+}
+
+function isReviewCompletionGate(detail: RunDetailDto | null, request: HumanRequestDto): boolean {
+  return detail?.reviewReceipts?.some((receipt) => receipt.completionRequestRef === request.requestRef) ?? false;
 }
 
 function operationKey(prefix: string): string {
@@ -241,14 +246,21 @@ export function ManagedRuns({
     if (!token || busy) return;
     setBusy(true);
     setError(null);
-    void respondToHumanRequest(request.requestRef, {
-      expectedRevision: request.revision,
-      decision,
-      idempotencyKey: idempotencyKey(request, decision),
-      response: response || null,
-    }, token)
+    const completionGate = isReviewCompletionGate(detail, request);
+    const mutation = completionGate
+      ? resolveReviewCompletionGate(request.requestRef, {
+          expectedRequestRevision: request.revision,
+          decision: decision as Extract<HumanRequestDecision, 'approved' | 'rejected' | 'changes-requested'>,
+          idempotencyKey: idempotencyKey(request, decision), response: response || null,
+        }, token)
+      : respondToHumanRequest(request.requestRef, {
+          expectedRevision: request.revision, decision, idempotencyKey: idempotencyKey(request, decision), response: response || null,
+        }, token);
+    void mutation
       .then(async () => {
-        if (decision === 'approved' || decision === 'responded') await resumeRunAfterHumanResponse(request.runRef, token);
+        if ((!completionGate && (decision === 'approved' || decision === 'responded')) || (completionGate && decision === 'approved')) {
+          await resumeRunAfterHumanResponse(request.runRef, token);
+        }
         await loadRun(request.runRef, token);
       })
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Human response was refused.'))

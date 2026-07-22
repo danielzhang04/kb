@@ -8,6 +8,7 @@ import {
   listRunEvents,
   quarantineRuns,
   rerouteManagedStage,
+  resolveReviewCompletionGate,
   respondToHumanRequest,
   resumeRunAfterHumanResponse,
   steerManagerAtCheckpoint,
@@ -85,6 +86,19 @@ describe('control client proposal CAS', () => {
 });
 
 describe('control client run and retention writes', () => {
+  it('resolves a review completion gate through its dedicated endpoint with no internal lineage refs', async () => {
+    const fetchImpl = recordedFetch({ ok: true, value: { request: { requestRef: 'request-1' } } });
+    await resolveReviewCompletionGate('request/1', {
+      expectedRequestRevision: 3, decision: 'changes-requested', idempotencyKey: 'human:request-1:3:changes-requested', response: 'Rework sources.',
+    }, 'bearer', fetchImpl);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      '/api/control/review-completion-gates/request%2F1/resolve', expect.objectContaining({ method: 'POST' }),
+    );
+    expect(requestBody(fetchImpl as unknown as ReturnType<typeof vi.fn>)).toEqual({
+      expectedRequestRevision: 3, decision: 'changes-requested', idempotencyKey: 'human:request-1:3:changes-requested', response: 'Rework sources.',
+    });
+  });
+
   it('requests cursor replay without spawning a session', async () => {
     const fetchImpl = recordedFetch({ ok: true, value: [] });
     await listRunEvents('run/ref', 41, 50, 'bearer', fetchImpl);

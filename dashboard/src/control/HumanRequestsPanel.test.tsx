@@ -44,6 +44,34 @@ describe('HumanRequestsPanel', () => {
     });
   });
 
+  it('routes a reserved review completion gate only to its dedicated resolver', async () => {
+    let resolved = false;
+    const calls: string[] = [];
+    const request = {
+      requestRef: 'gate-1', runRef: 'run-gate', stageRef: 'check-1', kind: 'approval', revision: 1, state: 'open',
+      title: 'Review gate', prompt: 'Approve the reviewed artifact?', response: null,
+      createdAt: '2026-07-18T10:00:00.000Z', updatedAt: '2026-07-18T10:00:00.000Z',
+    };
+    const fetchImpl = vi.fn(async (url: string) => {
+      calls.push(url);
+      if (url === '/api/control/runs') return response({ runs: resolved ? [] : [{ runRef: 'run-gate', openHumanRequestCount: 1 }] });
+      if (url === '/api/control/runs/run-gate') return response({ ok: true, value: {
+        run: {}, stages: [], attempts: [], sessions: [], humanRequests: [request], reviewLoops: [],
+        reviewReceipts: [{ reviewReceiptRef: 'receipt-1', runRef: 'run-gate', reviewStageRef: 'check-1', subjectStageRef: 'build-1', state: 'awaiting-completion-gate', completionRequestRef: 'gate-1', interventionRequestRef: null, version: 2 }],
+      } });
+      if (url === '/api/control/review-completion-gates/gate-1/resolve') {
+        resolved = true;
+        return response({ ok: true, value: { request: { ...request, state: 'resolved' } } });
+      }
+      throw new Error(`unexpected ${url}`);
+    });
+    render(<HumanRequestsPanel sessionToken="token" fetchImpl={fetchImpl as unknown as typeof fetch} />);
+    expect(await screen.findByRole('heading', { name: /Review completion gate/i })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Approved' }));
+    await waitFor(() => expect(calls).toContain('/api/control/review-completion-gates/gate-1/resolve'));
+    expect(calls).not.toContain('/api/control/human-requests/gate-1/respond');
+  });
+
   it('surfaces a waiting-human run with NO open request as a distinct, non-actionable inspect row', async () => {
     const fetchImpl = vi.fn(async (url: string) => {
       if (url === '/api/control/runs') {
