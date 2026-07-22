@@ -203,8 +203,10 @@ not a hash-bound token; Omnara's default relay is SaaS).
 **Decision:** Onboard **Codex CLI** (ChatGPT-subscription `codex login --device-auth`,
 `codex exec`) and **Gemini CLI** (**free-tier API key**, NOT the retired Google login) as
 **desktop-tier workers** driven by **preamble-gated Task-Scheduler runner scripts** mirroring
-`desktop_dispatch.ps1`. Extend `sync_skills.py` with deterministic `render_codex()` /
-`render_gemini()` adapters under the same authoritative-sync + SHA-256 drift-guard model. Route
+`desktop_dispatch.ps1`. Keep `skills/curated/` authoritative and use `sync_skills.py` to generate
+byte-identical native discovery mirrors for each active runtime (`.claude/skills/` and
+`.agents/skills/`) under one SHA-256 manifest/drift contract. Future runtimes add their native
+discovery mirror rather than a bespoke catalog renderer. Route
 work via a new **`agent:` field in HEARTBEAT cadences** that `dispatch.py` writes into card
 `owner`.
 - **Tool-behavior verification gate (from review #6).** Several load-bearing claims here are
@@ -520,7 +522,7 @@ for a non-Claude agent.*
 | # | Artifact | Tag |
 |---|---|---|
 | 5.0 | **Verify tool behavior (gate, from review #6):** confirm against current tool docs — esp. **`codex exec` runs headless honoring ChatGPT-subscription auth in `~/.codex/auth.json` non-interactively** (whole Codex leg depends on it); also `codex login --device-auth`, Gemini login-retired / free-key ~1,500 req/day, Antigravity ~20 req/day | HUMAN-ACTION (doc check) |
-| 5.1 | `sync_skills.py`: `render_codex()`/`render_gemini()` adapters → `.codex/skills-catalog.md`, `.gemini/skills-catalog.md` + SHA-256 into `MANIFEST.json` (drift-guarded) | AGENT-BUILDABLE |
+| 5.1 | `sync_skills.py`: canonical `skills/curated/` → byte-identical `.claude/skills/` + `.agents/skills/` native discovery mirrors with one SHA-256 manifest/drift contract. `.codex/skills-catalog.md` and `.codex/MANIFEST.json` are obsolete generated outputs removed during sync; `.codex/config.toml` remains runtime configuration. | AGENT-BUILDABLE |
 | 5.2 | `dispatch.py`: optional `agent:` cadence key → `cards.claim(card, agent)` (backward-compatible) | AGENT-BUILDABLE |
 | 5.3 | `scripts/agent_runner.ps1` (param `-Agent codex-worker|gemini-worker`): pin interpreter → checkout/pull ops → preamble → runner billing guards (**Codex: assert `OPENAI_API_KEY`/`CODEX_API_KEY` unset — enforceable; Gemini: no mechanical guard, human-maintained billing-off invariant + note, O5**) → scan owned cards → `codex exec -` / `gemini -p @<card>` → write `## Result` on `codex/*`/`gemini/*` branch → log model id from `--json` to `ledgers/cost/` → re-check STOP between cards | AGENT-BUILDABLE |
 | 5.4 | `.codex/config.toml` + `.gemini/settings` (workspace-write, conservative approval, network off, secret-path deny-rules) | AGENT-BUILDABLE |

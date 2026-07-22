@@ -1,0 +1,39 @@
+{
+  "fixture_version": 1,
+  "provenance": {
+    "ecc_version": "2.0.0",
+    "source": "hooks/hooks.json",
+    "hooks_sha256": "a00e4c71051b067f0ee12613b3f575a06517b857808a22ffb7be4f981f0d82c4"
+  },
+  "hook_ids": [
+    "post:bash:dispatcher",
+    "post:ecc-context-monitor",
+    "post:ecc-metrics-bridge",
+    "post:edit:accumulator",
+    "post:edit:console-warn",
+    "post:edit:design-quality-check",
+    "post:governance-capture",
+    "post:mcp-health-check",
+    "post:observe:continuous-learning",
+    "post:quality-gate",
+    "post:session-activity-tracker",
+    "pre:bash:dispatcher",
+    "pre:compact",
+    "pre:config-protection",
+    "pre:edit-write:gateguard-fact-force",
+    "pre:edit-write:suggest-compact",
+    "pre:governance-capture",
+    "pre:mcp-health-check",
+    "pre:observe:continuous-learning",
+    "pre:write:doc-file-warning",
+    "session-start:plan-canvas-sessions",
+    "session:end:marker",
+    "session:start",
+    "stop:check-console-log",
+    "stop:cost-tracker",
+    "stop:desktop-notify",
+    "stop:evaluate-session",
+    "stop:format-typecheck",
+    "stop:session-end"
+  ]
+}

@@ -1,9 +1,10 @@
-# The curated skills source and its generated .claude/skills mirror are hashed
-# byte-for-byte by scripts/sync_skills.py (the drift/tamper detector). Pin them
+# The curated skills source and generated runtime mirrors are hashed byte-for-byte
+# by scripts/sync_skills.py (the drift/tamper detector). Pin them
 # to LF so the sha256 manifest is identical on Windows and the Linux cloud VM;
 # otherwise autocrlf smudging produces false drift on checkout.
 /skills/curated/** text=auto eol=lf
 /.claude/skills/** text=auto eol=lf
+/.agents/skills/** text=auto eol=lf
 
 # The golden canary suite is hashed byte-for-byte by scripts/canary.py
 # (evals/MANIFEST.sha256 — the immutability/tamper guard). Pin the canary cards
