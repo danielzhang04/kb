@@ -1,8 +1,8 @@
 # DRAFT — kb context-budget audit
 
-Date: 2026-07-22  
-Owner: codex-worker  
-Scope: Claude Code, Codex CLI, dashboard Composer/workers, native subagents, repository routing  
+Date: 2026-07-22
+Owner: codex-worker
+Scope: Claude Code, Codex CLI, dashboard Composer/workers, native subagents, repository routing
 Branch: `codex/context-budget-audit`
 
 ## Executive verdict
