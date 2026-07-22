@@ -246,3 +246,18 @@ restrictedIntent false-positive footgun (prohibition mentions read as intent —
 action/target-only scan, deliberate session); worker read-scope was bounded to orgs/kb-ops (narrower than
 def's scan list — worker honestly marked categories not-scanned; scope derivation worth a look);
 report's real finding: orgs/kb-ops/STATE.md stale since 2026-07-16. Atlas #55 restart+verify still pending.
+
+## 2026-07-22 (past midnight) — Atlas arc: rebase + output-follow SHIPPED + VERIFIED
+
+claude/atlas-voice-rules rebased onto main (one orthogonal conflict; both #55 seams and the
+desk session's addressing-gate/[quiet] pipeline verified composed; 165 tests) — the live worker
+now runs voice rules + #55 + #60 combined. Then full skill-driven arc (brainstorm→spec→plan→
+build→adversarial review→fixes) shipped OUTPUT-FOLLOW: tts_output_device:'follow' sentinel,
+devicewatch.py (pycaw endpoint-ID poll, 1.5s, 10s startup grace), OutputFollower hot-swap via
+AgentsConsole singleton set_speaker_enabled (pre-validate + boot-index-seeded reopen-previous),
+/state following field. 185 tests. Daniel VERIFIED live: TTS follows Px7 connect/disconnect.
+Branch head 930c07d. pycaw API note: modern pycaw GetSpeakers() returns wrapped AudioDevice.
+
+STILL OWED: claude/atlas-voice-rules is unmerged production code (no PR) — needs the review+PR
+treatment. Read-scope build queued behind codex/fyt-autonomous-runner merge. Daniel's #55 sleep
+verify steps (noisy-room, mid-turn) still unexercised by ear.
