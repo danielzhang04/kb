@@ -212,7 +212,10 @@ def apply_motion_plan(shots, plan, assets_dir=None, allow_missing=False, word_ti
                 if (plan or {}).get("baseline_life"):
                     # Layered tableaux need the same opted-in life as scene-backed shots. Placeholder
                     # fallbacks stay untouched above, and screen-space cards are never wrapped here.
+                    # This explicit marker is essential: legacy derived scene-backed shots already carry
+                    # idle:"bob", so `idle` alone cannot mean the newly-enabled layered baseline.
                     shot["idle"] = "bob"
+                    shot["baseline_life"] = True
         elif not layers and (((entry.get("background") or {}).get("plate"))
                              or ((entry.get("background") or {}).get("plate_prompt"))):
             # Plate-only passthrough (zero cutout layers): the plan's background IS the shot's

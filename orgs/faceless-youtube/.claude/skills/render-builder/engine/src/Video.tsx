@@ -70,7 +70,7 @@ export const Video: React.FC<{spec: MotionSpec}> = ({spec}) => {
                 return (
                   <Sequence key={shot.id} from={fromF} durationInFrames={durF}>
                     {shot.layers && shot.layers.length ? (
-                      shot.idle === 'bob' ? (
+                      shot.baseline_life === true ? (
                         <Idle tokens={tokens}>
                           <AbsoluteFill>
                             {shot.plate ? <SceneImage tokens={tokens} src={shot.plate} /> : null}

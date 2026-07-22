@@ -90,7 +90,22 @@ def test_baseline_life_marks_layered_tableau_live():
                                    "animation": {"type": "appear"}}]}]}
     shot = {"id": "L02", "idle": "none"}
     apply_motion_plan([shot], plan)
-    assert shot["idle"] == "bob" and shot["layers"], shot
+    assert shot["idle"] == "bob" and shot["baseline_life"] is True and shot["layers"], shot
+
+
+def test_legacy_layered_bob_does_not_request_new_baseline_wrapper():
+    # derive_shots gives any resolved scene `idle:"bob"`. A legacy layered plan may therefore begin
+    # image-backed with that value, but it has no opt-in marker and Video.tsx must leave its old layered
+    # rendering path alone (its wrapper keys exclusively off `baseline_life === true`).
+    for flag in (None, False):
+        plan = {"shots": [{"id": "L02", "background": {"mode": "plate", "plate": "plates/L02.png"},
+                           "layers": [{"id": "ship", "source": "cutout", "cutout_prompt": "ship",
+                                       "animation": {"type": "appear"}}]}]}
+        if flag is not None:
+            plan["baseline_life"] = flag
+        shot = {"id": "L02", "image": "scenes/L02.png", "idle": "bob"}
+        apply_motion_plan([shot], plan)
+        assert shot["idle"] == "bob" and "baseline_life" not in shot and shot["layers"], (flag, shot)
 
 
 if __name__ == "__main__":
@@ -103,4 +118,5 @@ if __name__ == "__main__":
     test_unknown_move_hard_errors_naming_shot()
     test_baseline_life_is_opt_in_and_legacy_tokens_stay_identical()
     test_baseline_life_marks_layered_tableau_live()
+    test_legacy_layered_bob_does_not_request_new_baseline_wrapper()
     print("PASS")
