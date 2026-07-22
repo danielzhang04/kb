@@ -93,6 +93,8 @@ export interface WorkflowDef {
   profile: string;
   /** Optional manager declaration. Omitted for legacy workflow definitions. */
   manager?: WorkflowManagerAssignment;
+  /** Explicit launch-time path-segment inputs. Only these placeholders are substituted. */
+  parameters?: string[];
   /** The Markdown body after the frontmatter (also the fallback work order for a stage). */
   description: string;
   stages: WorkflowStageDef[];
@@ -346,7 +348,7 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
     return { ok: false, detail: 'definition frontmatter is not valid YAML' };
   }
   if (!isRecord(frontmatter)) return { ok: false, detail: 'definition frontmatter must be a mapping' };
-  const allowed = new Set(['id', 'project', 'title', 'profile', 'manager', 'stages']);
+  const allowed = new Set(['id', 'project', 'title', 'profile', 'manager', 'parameters', 'stages']);
   const unknownKey = Object.keys(frontmatter).find((key) => !allowed.has(key));
   if (unknownKey) return { ok: false, detail: `frontmatter has unknown field '${unknownKey}'` };
 
@@ -397,6 +399,11 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
       if (dep === stage.id) return { ok: false, detail: `stage '${stage.id}' cannot depend on itself` };
     }
   }
+  const parameters = frontmatter.parameters === undefined ? [] : frontmatter.parameters;
+  if (!Array.isArray(parameters) || parameters.some((value) => typeof value !== 'string' || !SAFE_ID_RE.test(value))) {
+    return { ok: false, detail: 'parameters must be an array of safe identifiers' };
+  }
+  if (new Set(parameters).size !== parameters.length) return { ok: false, detail: 'parameters must not contain duplicates' };
   const reviewStageIds = new Set(stages.filter((stage) => stage.review !== undefined).map((stage) => stage.id));
   const reviewSubjects = new Set<string>();
   for (const stage of stages) {
@@ -425,5 +432,24 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
   }
   if (visited !== stages.length) return { ok: false, detail: 'stage dependency graph contains a cycle' };
 
-  return { ok: true, value: { id, project, title, profile, ...(manager ? { manager } : {}), description, stages } };
+  return { ok: true, value: { id, project, title, profile, parameters: [...parameters], ...(manager ? { manager } : {}), description, stages } };
+}
+
+/** Substitute only declared launch parameters; unrelated placeholders such as `<shot-id>` remain literal. */
+export function instantiateWorkflowDef(def: WorkflowDef, input: Record<string, string>): WorkflowDefResult {
+  const keys = Object.keys(input).sort();
+  const expected = [...(def.parameters ?? [])].sort();
+  if (keys.length !== expected.length || keys.some((key, index) => key !== expected[index])) return { ok: false, detail: 'launch parameters must provide exactly the declared keys' };
+  const isSafeSegment = (value: unknown): value is string => {
+    if (typeof value !== 'string') return false;
+    const deviceBase = value.split('.', 1)[0];
+    return /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(value)
+      && !/[. ]$/.test(value) && value !== '.' && value !== '..'
+      && !/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(deviceBase);
+  };
+  for (const key of expected) if (!isSafeSegment(input[key])) return { ok: false, detail: `parameter '${key}' must be a safe path segment` };
+  const sourceFields = [def.description, ...def.stages.flatMap((stage) => [stage.workOrder, stage.target])];
+  for (const key of expected) if (!sourceFields.some((value) => value.includes(`<${key}>`))) return { ok: false, detail: `parameter '${key}' is declared but not used by the workflow` };
+  const replace = (value: string) => expected.reduce((next, key) => next.replaceAll(`<${key}>`, input[key]), value);
+  return { ok: true, value: { ...def, description: replace(def.description), stages: def.stages.map((stage) => ({ ...stage, workOrder: replace(stage.workOrder), target: replace(stage.target) })) } };
 }

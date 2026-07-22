@@ -18,6 +18,7 @@ export interface ComposerAgentTarget {
   id: string;
   path: string;
   sourceHash: string;
+  projects?: string[];
 }
 
 export interface ComposerSession {

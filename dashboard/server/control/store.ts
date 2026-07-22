@@ -27,6 +27,7 @@ import type { PublicOperationalEvent } from './publicEvents.ts';
 import type {
   Attempt,
   AttemptState,
+  AgentWorkspaceLaunchProvenance,
   ControlResult,
   GenerationSupersession,
   HumanRequest,
@@ -344,6 +345,8 @@ export interface CreateRunInput {
   idempotencyKey: string;
   predecessorRunRef?: string | null;
   expectedPredecessorVersion?: number;
+  /** Internal, server-derived Composer origin; HTTP clients never choose declaration identity. */
+  agentWorkspaceLaunch?: AgentWorkspaceLaunchProvenance | null;
   stages: CreateRunStageInput[];
 }
 
@@ -740,6 +743,20 @@ function sameAssignment(left: ResolvedAgentAssignment | null, right: ResolvedAge
     && left.profileId === right.profileId
     && left.runtime === right.runtime
     && left.model === right.model);
+}
+
+function normalizeAgentWorkspaceLaunch(value: unknown): AgentWorkspaceLaunchProvenance | null | undefined {
+  if (value === undefined || value === null) return null;
+  if (!isPlainRecord(value)) return undefined;
+  const keys = Object.keys(value).sort();
+  const expected = ['agentId', 'composerRef', 'declarationHash', 'declarationPath'];
+  if (keys.length !== expected.length || keys.some((key, index) => key !== expected[index])) return undefined;
+  const { composerRef, agentId, declarationPath, declarationHash } = value;
+  if (typeof composerRef !== 'string' || !SAFE_REF_RE.test(composerRef)
+    || typeof agentId !== 'string' || !AGENT_ID_RE.test(agentId)
+    || declarationPath !== `agents/${agentId}.md`
+    || typeof declarationHash !== 'string' || !HASH_RE.test(declarationHash)) return undefined;
+  return { composerRef, agentId, declarationPath, declarationHash };
 }
 
 interface CheckerContractProvenance {
@@ -1805,6 +1822,12 @@ function normalizeCrash(document: StoreDocument, stamp: string): boolean {
       run.managerAssignment = null;
       changed = true;
     }
+    const agentWorkspaceLaunch = normalizeAgentWorkspaceLaunch(run.agentWorkspaceLaunch);
+    if (agentWorkspaceLaunch === undefined) throw new Error('invalid control-plane agent workspace launch provenance');
+    if (run.agentWorkspaceLaunch === undefined) {
+      run.agentWorkspaceLaunch = null;
+      changed = true;
+    }
     if (run.state === 'running' || run.state === 'recovering' || run.state === 'stopping') {
       run.state = 'interrupted';
       run.version += 1;
@@ -1866,6 +1889,12 @@ function normalizeCrash(document: StoreDocument, stamp: string): boolean {
       }
       if (normalizeStoredStageCheckerContract(stage)) changed = true;
       if (normalizeStoredStageGenerationProjection(stage)) changed = true;
+    }
+    const agentWorkspaceLaunch = normalizeAgentWorkspaceLaunch(bundle.run.agentWorkspaceLaunch);
+    if (agentWorkspaceLaunch === undefined) throw new Error('invalid control-plane agent workspace launch provenance');
+    if (bundle.run.agentWorkspaceLaunch === undefined) {
+      bundle.run.agentWorkspaceLaunch = null;
+      changed = true;
     }
     for (const attempt of bundle.attempts) {
       if (normalizeStoredAttemptReviewProvenance(attempt)) changed = true;
@@ -2135,6 +2164,8 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       if (!validNonEmpty(input.idempotencyKey, MAX_SHORT_TEXT)) return fail('invalid', 'idempotencyKey is required');
       const managerAssignment = normalizeAssignment(input.managerAssignment);
       if (managerAssignment === undefined) return fail('invalid', 'manager assignment provenance is invalid');
+      const agentWorkspaceLaunch = normalizeAgentWorkspaceLaunch(input.agentWorkspaceLaunch);
+      if (agentWorkspaceLaunch === undefined) return fail('invalid', 'agent workspace launch provenance is invalid');
       if (!Array.isArray(input.stages) || input.stages.length === 0 || input.stages.length > MAX_STAGES_PER_RUN) {
         return fail('limit', `run must contain 1-${MAX_STAGES_PER_RUN} stages`);
       }
@@ -2188,6 +2219,7 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
         managerRuntime: input.managerRuntime,
         managerModel: input.managerModel,
         managerAssignment,
+        agentWorkspaceLaunch,
         predecessorRunRef: input.predecessorRunRef ?? null,
         expectedPredecessorVersion: input.expectedPredecessorVersion ?? null,
         stages: fingerprintStages,
@@ -2264,6 +2296,7 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
         managerSessionRef,
         managerGeneration: 1,
         managerAssignment: clone(managerAssignment),
+        agentWorkspaceLaunch: clone(agentWorkspaceLaunch),
         createdAt,
         updatedAt: createdAt,
       };

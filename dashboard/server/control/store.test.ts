@@ -71,7 +71,7 @@ function createApprovedProposal(
   return approved.value;
 }
 
-function createRun(store: ControlPlaneStore, subject = 'alice') {
+function createRun(store: ControlPlaneStore, subject = 'alice', agentWorkspaceLaunch?: { composerRef: string; agentId: string; declarationPath: string; declarationHash: string }) {
   const proposal = createApprovedProposal(store, subject);
   const created = store.createRun(subject, {
     title: 'Synthetic run',
@@ -81,6 +81,7 @@ function createRun(store: ControlPlaneStore, subject = 'alice') {
     managerRuntime: 'claude',
     managerModel: 'claude-sonnet-5',
     idempotencyKey: 'launch-synthetic',
+    agentWorkspaceLaunch,
     stages: [
       { stageId: 'build', title: 'Build', dependsOn: [] },
       { stageId: 'verify', title: 'Verify', dependsOn: ['build'] },
@@ -1845,6 +1846,21 @@ describe('Human Requests and operational events', () => {
 });
 
 describe('durability, crash recovery, and retention', () => {
+  it('persists agent-workspace launch provenance and migrates missing legacy provenance to null', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-'));
+    roots.push(root);
+    const first = createFileControlPlaneStore(root, deterministicOptions());
+    const provenance = { composerRef: 'workspace-123', agentId: 'fyt-runner', declarationPath: 'agents/fyt-runner.md', declarationHash: 'd'.repeat(64) };
+    const created = createRun(first, 'alice', provenance);
+    const restarted = createFileControlPlaneStore(root, deterministicOptions());
+    expect(restarted.getRun('alice', created.run.runRef)).toMatchObject({ ok: true, value: { run: { agentWorkspaceLaunch: provenance } } });
+    const path = join(root, 'control', 'control-plane.json');
+    const legacy = JSON.parse(readFileSync(path, 'utf8')) as { runs: Array<Record<string, unknown>> };
+    delete legacy.runs[0].agentWorkspaceLaunch;
+    writeFileSync(path, `${JSON.stringify(legacy)}\n`, 'utf8');
+    expect(createFileControlPlaneStore(root, deterministicOptions()).getRun('alice', created.run.runRef)).toMatchObject({ ok: true, value: { run: { agentWorkspaceLaunch: null } } });
+  });
+
   it('migrates legacy persisted runs and stages without assignment fields to null', () => {
     const root = mkdtempSync(join(tmpdir(), 'control-store-'));
     roots.push(root);

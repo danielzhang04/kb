@@ -5,6 +5,7 @@ import type { Session } from '../lib/authClient';
 import { Timeline } from '../views/Timeline';
 import { defaultComposerStream, getComposerSession } from './workspaceClient';
 import type { ComposerSession, ComposerStreamFn } from './workspaceClient';
+import { listRuns, type RunMetadataDto } from '../control/controlClient';
 
 export interface ComposerChatProps {
   composerSession?: ComposerSession;
@@ -13,6 +14,20 @@ export interface ComposerChatProps {
   onSessionChange?: (session: ComposerSession) => void;
   onRunningChange?: (running: boolean) => void;
   stream?: ComposerStreamFn;
+  /** Opens the governed Run Cockpit after an agent-workspace workflow launch. */
+  onOpenRun?: (runRef: string) => void;
+  fetchImpl?: typeof fetch;
+}
+
+interface WorkflowChoice {
+  ref: string;
+  project: string;
+  title: string | null;
+  profile: string | null;
+  valid: boolean;
+  stageCount: number;
+  parameters?: string[];
+  stages: Array<{ id: string; riskTier: string; review?: { subjectStageId: string; maxCreatorReworks: number } | null; completionGate?: { id: string; kind: string; requiresReview: string } | null }>;
 }
 
 type Status = 'idle' | 'running' | 'stopped' | 'error';
@@ -55,6 +70,8 @@ export function ComposerChat({
   onSessionChange,
   onRunningChange,
   stream = defaultComposerStream,
+  onOpenRun,
+  fetchImpl = fetch,
 }: ComposerChatProps): React.JSX.Element {
   const [prompt, setPrompt] = useState('');
   const [status, setStatus] = useState<Status>('idle');
@@ -65,6 +82,13 @@ export function ComposerChat({
   const [liveModel, setLiveModel] = useState<TimelineModel | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const runningObserverRef = useRef(onRunningChange);
+  const launchKeys = useRef(new Map<string, string>());
+  const [workflows, setWorkflows] = useState<WorkflowChoice[] | null>(null);
+  const [workflowRef, setWorkflowRef] = useState('');
+  const [launching, setLaunching] = useState(false);
+  const [launchStatus, setLaunchStatus] = useState<string | null>(null);
+  const [parameterValues, setParameterValues] = useState<Record<string, string>>({});
+  const [linkedRuns, setLinkedRuns] = useState<RunMetadataDto[] | null>(null);
 
   useEffect(() => {
     if (sessionToken) setLocalToken(sessionToken);
@@ -82,8 +106,33 @@ export function ComposerChat({
   // active turns continue. An actual unmount still releases the request instead of orphaning it.
   useEffect(() => () => abortRef.current?.abort(), []);
 
+  useEffect(() => {
+    if (!composerSession.agent) return;
+    let alive = true;
+    void fetchImpl('/api/workflows').then(async (response) => {
+      if (!response.ok) throw new Error('workflow registry unavailable');
+      return await response.json() as { items?: WorkflowChoice[] };
+    }).then((body) => {
+      const projects = new Set(composerSession.agent!.projects ?? []);
+      const choices = Array.isArray(body.items) ? body.items.filter((item) => item.valid && projects.has(item.project)) : [];
+      if (!alive) return;
+      setWorkflows(choices);
+      setWorkflowRef((current) => choices.some((item) => item.ref === current) ? current : (choices[0]?.ref ?? ''));
+    }).catch(() => { if (alive) setWorkflows([]); });
+    return () => { alive = false; };
+  }, [composerSession.agent, fetchImpl]);
+
   const token = sessionToken ?? localToken;
   const historicalTurns = useMemo(() => composerSession.turns, [composerSession.turns]);
+
+  useEffect(() => {
+    if (!composerSession.agent || !token) return;
+    let alive = true;
+    void listRuns(token, fetchImpl).then((runs) => {
+      if (alive) setLinkedRuns(runs.filter((run) => run.agentWorkspaceLaunch?.composerRef === composerSession.composerRef));
+    }).catch(() => { if (alive) setLinkedRuns([]); });
+    return () => { alive = false; };
+  }, [composerSession.agent, composerSession.composerRef, fetchImpl, token]);
 
   const resolveToken = useCallback(async (): Promise<string | undefined> => {
     if (token) return token;
@@ -158,8 +207,63 @@ export function ComposerChat({
     setStatus('stopped');
   }, []);
 
+  const launchWorkflow = useCallback(async () => {
+    if (!composerSession.agent || !workflowRef || launching) return;
+    const activeToken = await resolveToken();
+    if (!activeToken) return;
+    const selected = workflows?.find((workflow) => workflow.ref === workflowRef);
+    const parameters = Object.fromEntries((selected?.parameters ?? []).map((parameter) => [parameter, parameterValues[parameter] ?? '']));
+    const operation = `${workflowRef}:${JSON.stringify(parameters)}`;
+    const key = launchKeys.current.get(operation)
+      ?? `agent-workspace-launch:${composerSession.composerRef}:${workflowRef}:${typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : Date.now().toString(36)}`;
+    launchKeys.current.set(operation, key);
+    setLaunching(true);
+    setLaunchStatus(null);
+    try {
+      const response = await fetchImpl(`/api/workflows/${encodeURIComponent(workflowRef)}/launch`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${activeToken}` },
+        body: JSON.stringify({ idempotencyKey: key, composerRef: composerSession.composerRef, parameters }),
+      });
+      const body = await response.json() as { runRef?: string; waitingHuman?: boolean; activationGated?: boolean; error?: string };
+      if (!response.ok || !body.runRef) throw new Error(body.error ?? `launch refused (${response.status})`);
+      const outcome = [
+        body.activationGated ? 'execution activation is off' : null,
+        body.waitingHuman ? 'waiting for the required human requests' : null,
+      ].filter((value): value is string => value !== null);
+      setLaunchStatus(outcome.length ? `Run ${body.runRef} is ${outcome.join(' and ')}.` : `Run ${body.runRef} launched through the governed workflow.`);
+      onOpenRun?.(body.runRef);
+    } catch (error) {
+      setLaunchStatus(error instanceof Error ? error.message : 'workflow launch failed');
+    } finally { setLaunching(false); }
+  }, [composerSession, fetchImpl, launching, onOpenRun, parameterValues, resolveToken, workflowRef, workflows]);
+
   return (
     <section className="composer-chat" aria-label="Composer chat">
+      {composerSession.agent ? (
+        <section className="composer-chat__workflow-launch" aria-label="Launch workflow">
+          <h3>Launch workflow</h3>
+          <p>Uses this workspace’s recorded declaration revision. It does not run {composerSession.agent.id} directly.</p>
+          {workflows === null ? <p>Loading canonical workflows…</p> : workflows.length === 0 ? <p>No valid workflow is declared for this agent’s projects.</p> : (
+            <>
+              <label>Workflow
+                <select value={workflowRef} onChange={(event) => setWorkflowRef(event.target.value)} disabled={launching}>
+                  {workflows.map((workflow) => <option key={workflow.ref} value={workflow.ref}>{workflow.title ?? workflow.ref} · {workflow.profile ?? 'no profile'} · {workflow.stageCount} stages</option>)}
+                </select>
+              </label>
+              {workflows.find((workflow) => workflow.ref === workflowRef) ? (
+                <p>Profile <code>{workflows.find((workflow) => workflow.ref === workflowRef)!.profile}</code>; stages {workflows.find((workflow) => workflow.ref === workflowRef)!.stages.map((stage) => `${stage.id} (${stage.riskTier})${stage.review ? ` reviews ${stage.review.subjectStageId}, max ${stage.review.maxCreatorReworks} reworks` : ''}${stage.completionGate ? `; completion gate ${stage.completionGate.id}` : ''}`).join(', ')}. Activation gates remain enforced by the canonical launch.</p>
+              ) : null}
+              {(workflows.find((workflow) => workflow.ref === workflowRef)?.parameters ?? []).map((parameter) => (
+                <label key={parameter}>{parameter}<input aria-label={`Workflow parameter ${parameter}`} value={parameterValues[parameter] ?? ''} onChange={(event) => setParameterValues((current) => ({ ...current, [parameter]: event.target.value }))} /></label>
+              ))}
+              <button type="button" className="mc-btn mc-btn--primary" onClick={() => void launchWorkflow()} disabled={launching || !workflowRef || (workflows.find((workflow) => workflow.ref === workflowRef)?.parameters ?? []).some((parameter) => !(parameterValues[parameter] ?? '').trim())}>{launching ? 'Launching…' : 'Launch workflow'}</button>
+            </>
+          )}
+          {launchStatus ? <p data-testid="agent-workspace-launch-status">{launchStatus}</p> : <p>Registered workflows may still wait for human approval or disabled execution activation.</p>}
+          {linkedRuns?.length ? <ol data-testid="agent-workspace-linked-runs">{linkedRuns.map((run) => <li key={run.runRef}><button type="button" onClick={() => onOpenRun?.(run.runRef)}>Open run {run.runRef}</button> <span>{run.state}</span></li>)}</ol> : null}
+        </section>
+      ) : null}
       <div className="composer-chat__timeline" aria-label="Conversation history">
         {historicalTurns.length === 0 && !livePrompt ? (
           <div className="composer-chat__empty">

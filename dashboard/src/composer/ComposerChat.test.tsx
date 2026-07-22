@@ -17,6 +17,36 @@ const SESSION: ComposerSession = {
 };
 
 describe('ComposerChat workspace', () => {
+  it('filters agent workflows, sends exact declared parameters, restores linked runs, and opens the cockpit', async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      if (input === '/api/workflows') return { ok: true, json: async () => ({ items: [
+        { ref: 'video-run', project: 'faceless-youtube', title: 'Video', profile: 'producer', valid: true, stageCount: 2, parameters: ['channel', 'slug'], stages: [] },
+        { ref: 'other', project: 'other', title: 'Other', profile: 'research', valid: true, stageCount: 1, parameters: [], stages: [] },
+      ] }) } as Response;
+      if (input === '/api/control/runs') return { ok: true, json: async () => ({ runs: [{ runRef: 'run-linked', state: 'waiting-human', agentWorkspaceLaunch: { composerRef: 'cw_agent', agentId: 'fyt-runner', declarationPath: 'agents/fyt-runner.md', declarationHash: 'a'.repeat(64) } }] }) } as Response;
+      if (String(input) === '/api/workflows/video-run/launch') return { ok: true, json: async () => ({ runRef: 'run-new', waitingHuman: true, activationGated: true }) } as Response;
+      throw new Error(`unexpected ${String(input)}`);
+    });
+    const onOpenRun = vi.fn();
+    render(<ComposerChat composerSession={{ ...SESSION, composerRef: 'cw_agent', agent: { id: 'fyt-runner', path: 'agents/fyt-runner.md', sourceHash: 'a'.repeat(64), projects: ['faceless-youtube'] } }} sessionToken="tok" fetchImpl={fetchImpl} onOpenRun={onOpenRun} />);
+    expect(await screen.findByRole('option', { name: /Video/ })).toBeTruthy();
+    expect(screen.queryByText('Other')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Workflow parameter channel'), { target: { value: 'the-second-take' } });
+    fireEvent.change(screen.getByLabelText('Workflow parameter slug'), { target: { value: '2026-07-19-wells-fargo' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Launch workflow' }));
+    expect((await screen.findByText(/run-new.*activation is off.*waiting/i)).textContent).toMatch(/human requests/i);
+    const launch = (fetchImpl.mock.calls as unknown as Array<[RequestInfo | URL, RequestInit]>).find(([url]) => String(url).includes('/launch'))?.[1];
+    expect(launch).toBeTruthy();
+    if (!launch) return;
+    expect(JSON.parse(launch.body as string)).toEqual({ idempotencyKey: expect.any(String), composerRef: 'cw_agent', parameters: { channel: 'the-second-take', slug: '2026-07-19-wells-fargo' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Open run run-linked' }));
+    expect(onOpenRun).toHaveBeenCalledWith('run-linked');
+  });
+
+  it('does not render a workflow launcher for unbound Composer workspaces', () => {
+    render(<ComposerChat composerSession={SESSION} sessionToken="tok" />);
+    expect(screen.queryByRole('button', { name: 'Launch workflow' })).toBeNull();
+  });
   it('shows server history including user prompts and no provider identifiers', () => {
     render(<ComposerChat composerSession={SESSION} sessionToken="tok" />);
     expect(screen.getByText('Earlier question')).toBeTruthy();

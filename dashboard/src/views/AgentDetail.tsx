@@ -446,11 +446,10 @@ export function AgentDetail({
         </ol>
       )}
       <p className="entity-note">
-        Derived via queue cards: a run counts when it has a stage whose canonical card this agent owns.
-        No session or attempt DTO carries an agent id, so this is the only honest join available in the
-        browser.
+        Agent-workspace launches are joined by their immutable recorded declaration provenance. Older
+        runs are derived via queue cards through canonical queue-card ownership.
         {runs !== undefined && runScanLimit ? (
-          <> Scanned the {runScanLimit} most recent runs.</>
+          <> Scanned the {runScanLimit} most recent runs only for that legacy queue-card inference.</>
         ) : null}
       </p>
     </section>

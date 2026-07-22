@@ -30,8 +30,8 @@ import {
 } from '../control/proposal.ts';
 import { executeApprovedLaunch, type LaunchOutcome } from '../control/launch.ts';
 import { proposalSnapshotHash } from '../control/store.ts';
-import type { JsonObject } from '../control/types.ts';
-import { parseWorkflowDef, type WorkflowDef } from './defs.ts';
+import type { AgentWorkspaceLaunchProvenance, JsonObject } from '../control/types.ts';
+import { instantiateWorkflowDef, parseWorkflowDef, type WorkflowDef } from './defs.ts';
 import { compileWorkflowDef } from './compile.ts';
 
 interface WorkflowStagePreview {
@@ -39,6 +39,8 @@ interface WorkflowStagePreview {
   action: string;
   target: string;
   riskTier: 'T1' | 'T2' | 'T3';
+  review: { subjectStageId: string; maxCreatorReworks: number } | null;
+  completionGate: { id: string; kind: 'approval'; requiresReview: 'pass' } | null;
 }
 
 export interface WorkflowDefEntry {
@@ -50,6 +52,7 @@ export interface WorkflowDefEntry {
   title: string | null;
   profile: string | null;
   stageCount: number;
+  parameters: string[];
   riskTier: 'T1' | 'T2' | 'T3' | null;
   /** Per-stage preview (action → target, tier) for a compiled-preview list; empty for invalid defs. */
   stages: WorkflowStagePreview[];
@@ -76,6 +79,7 @@ function invalidEntry(project: string, basename: string, path: string, detail: s
       title: null,
       profile: null,
       stageCount: 0,
+      parameters: [],
       riskTier: null,
       stages: [],
       detail,
@@ -165,9 +169,12 @@ export function scanWorkflowDefs(repoRoot: string): ScannedDef[] {
             title: parsed.value.title,
             profile: parsed.value.profile,
             stageCount: parsed.value.stages.length,
+            parameters: [...(parsed.value.parameters ?? [])],
             riskTier: highestTier(parsed.value),
             stages: parsed.value.stages.map((stage) => ({
               id: stage.id, action: stage.action, target: stage.target, riskTier: stage.riskTier,
+              review: stage.review ? { subjectStageId: stage.review.subjectStageId, maxCreatorReworks: stage.review.maxCreatorReworks } : null,
+              completionGate: stage.completionGate ? { id: stage.completionGate.id, kind: stage.completionGate.kind, requiresReview: stage.completionGate.requiresReview } : null,
             })),
             detail: null,
           },
@@ -197,6 +204,7 @@ export function scanWorkflowDefs(repoRoot: string): ScannedDef[] {
         title: null,
         profile: null,
         stageCount: 0,
+        parameters: [],
         riskTier: null,
         stages: [],
         detail: `workflow id '${id}' is duplicated; ids must be globally unique`,
@@ -229,6 +237,7 @@ async function launchDefinition(
   sessionToken: string | undefined,
   def: WorkflowDef,
   idempotencyKey: string,
+  agentWorkspaceLaunch: AgentWorkspaceLaunchProvenance | null,
 ): Promise<LaunchOutcome> {
   // The one-step launch is the sanctioned UI release path for workflow definitions in BOTH daemon
   // postures: it always flows through the canonical `executeApprovedLaunch`, which parks the run
@@ -294,6 +303,7 @@ async function launchDefinition(
     predecessorRunRef: null,
     expectedPredecessorVersion: -1,
     source: `workflow:${def.id}`,
+    agentWorkspaceLaunch,
   });
 }
 
@@ -343,6 +353,9 @@ export function registerWorkflows(app: FastifyInstance, ctx: SurfaceContext): vo
       // retry a fresh run with duplicate canonical cards, so an absent key is refused, never invented.
       const body = req.body !== null && typeof req.body === 'object' && !Array.isArray(req.body)
         ? req.body as Record<string, unknown> : {};
+      if (Object.keys(body).some((key) => key !== 'idempotencyKey' && key !== 'composerRef' && key !== 'parameters')) {
+        return reply.code(400).send({ error: 'invalid-launch-body' });
+      }
       const idempotencyKey = typeof body.idempotencyKey === 'string' ? body.idempotencyKey : '';
       if (idempotencyKey.trim() === '' || idempotencyKey.length > 512) {
         return reply.code(400).send({
@@ -353,7 +366,36 @@ export function registerWorkflows(app: FastifyInstance, ctx: SurfaceContext): vo
       const scanned = findScannedDef(repoRoot, id);
       if (!scanned) return reply.code(404).send({ error: 'not-found' });
       if (!scanned.def) return reply.code(409).send({ error: 'definition-invalid', detail: scanned.entry.detail });
-      const result = await launchDefinition(ctx, sub, verifiedSession(req)?.token, scanned.def, idempotencyKey);
+      const rawParameters = body.parameters;
+      if (rawParameters === undefined ? (scanned.def.parameters ?? []).length > 0 : !rawParameters || typeof rawParameters !== 'object' || Array.isArray(rawParameters)) {
+        return reply.code(400).send({ error: 'invalid-launch-parameters' });
+      }
+      const parameters = rawParameters === undefined ? {} : rawParameters as Record<string, unknown>;
+      if (Object.values(parameters).some((value) => typeof value !== 'string')) return reply.code(400).send({ error: 'invalid-launch-parameters' });
+      const instantiated = instantiateWorkflowDef(scanned.def, parameters as Record<string, string>);
+      if (!instantiated.ok) return reply.code(400).send({ error: 'invalid-launch-parameters', detail: instantiated.detail });
+      let agentWorkspaceLaunch: AgentWorkspaceLaunchProvenance | null = null;
+      if (body.composerRef !== undefined) {
+        if (typeof body.composerRef !== 'string' || body.composerRef.trim() === '') {
+          return reply.code(400).send({ error: 'invalid-agent-workspace-ref' });
+        }
+        // Ownership and declaration identity come only from the durable Composer store.  The browser
+        // supplies a ref to select its own workspace, never an agent id/path/hash or provider handle.
+        const workspace = ctx.composerStore.get(sub, body.composerRef);
+        if (!workspace.ok) return reply.code(404).send({ error: 'agent-workspace-not-found' });
+        const agent = workspace.workspace.agent;
+        if (!agent) return reply.code(409).send({ error: 'agent-workspace-unbound' });
+        if (!(agent.projects ?? []).includes(instantiated.value.project)) {
+          return reply.code(403).send({ error: 'agent-workspace-project-refused' });
+        }
+        agentWorkspaceLaunch = {
+          composerRef: workspace.workspace.composerRef,
+          agentId: agent.id,
+          declarationPath: agent.path,
+          declarationHash: agent.sourceHash,
+        };
+      }
+      const result = await launchDefinition(ctx, sub, verifiedSession(req)?.token, instantiated.value, idempotencyKey, agentWorkspaceLaunch);
       return reply.code(result.status).send(result.body);
     });
   });

@@ -22,7 +22,7 @@ import { validatePlanProposal } from './proposal.ts';
 import { compileApprovedProposal } from './compiler.ts';
 import { loadPolicyEnvironment, loadRuntimeSkillRegistry } from './environment.ts';
 import { reconcileCanonicalPublication } from './publication.ts';
-import type { ControlResult, HumanRequest, JsonObject } from './types.ts';
+import type { AgentWorkspaceLaunchProvenance, ControlResult, HumanRequest, JsonObject } from './types.ts';
 import type { CreateHumanRequestInput } from './store.ts';
 import type { InternalServiceCaller } from '../auth/session.ts';
 
@@ -52,6 +52,8 @@ export interface ApprovedLaunchInput {
   expectedPredecessorVersion: number;
   /** Optional provenance discriminator recorded in the launch audit detail (e.g. `workflow:<id>`). */
   source?: string;
+  /** Optional, trusted origin resolved by the HTTP workflow route from an owned Composer workspace. */
+  agentWorkspaceLaunch?: AgentWorkspaceLaunchProvenance | null;
 }
 
 export function statusOf(result: Extract<ControlResult<unknown>, { ok: false }>): number {
@@ -142,6 +144,7 @@ export async function executeApprovedLaunch(
       idempotencyKey,
       predecessorRunRef,
       expectedPredecessorVersion: predecessorRunRef === null ? undefined : input.expectedPredecessorVersion,
+      agentWorkspaceLaunch: input.agentWorkspaceLaunch ?? null,
       stages: parsed.value.stages.map((stage) => ({ stageId: stage.id, title: stage.title, dependsOn: [...stage.dependsOn] })),
     });
     if (!created.ok) return failure(created);

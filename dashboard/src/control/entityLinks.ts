@@ -149,7 +149,7 @@ export interface RunWithStages {
  */
 export function runsForAgent(agentId: string, loaded: RunWithStages[], owners: Map<string, string>): RunMetadataDto[] {
   return loaded
-    .filter(({ stages }) => agentIdsForRun(stages, owners).includes(agentId))
+    .filter(({ run, stages }) => run.agentWorkspaceLaunch?.agentId === agentId || agentIdsForRun(stages, owners).includes(agentId))
     .map(({ run }) => run)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }

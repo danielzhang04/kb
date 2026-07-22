@@ -28,6 +28,7 @@ export interface DeployOutcomeProps {
   composerSession?: ComposerSession;
   onComposerSessionChange?: (session: ComposerSession) => void;
   onRunningChange?: (running: boolean) => void;
+  onOpenRun?: (runRef: string) => void;
   /** WebAuthn session token — forwarded to Composer/ComposerChat and to every deploy() call. */
   sessionToken?: string;
   /** Point-of-action passkey mint used by both chat and deploy. The returned token is consumed directly
@@ -62,6 +63,7 @@ export function DeployOutcome({
   composerSession,
   onComposerSessionChange,
   onRunningChange,
+  onOpenRun,
   sessionToken,
   onRequestSession,
   initialKind = 'idea',
@@ -152,6 +154,7 @@ export function DeployOutcome({
       composerSession={composerSession}
       onComposerSessionChange={onComposerSessionChange}
       onRunningChange={onRunningChange}
+      onOpenRun={onOpenRun}
       sessionToken={sessionToken}
       onRequestSession={onRequestSession}
       initialKind={initialKind}

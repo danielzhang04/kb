@@ -29,6 +29,13 @@ export interface ResolvedAgentAssignmentDto {
   model: string;
 }
 
+export interface AgentWorkspaceLaunchProvenanceDto {
+  composerRef: string;
+  agentId: string;
+  declarationPath: string;
+  declarationHash: string;
+}
+
 export interface ProposalScopeDto {
   read: string[];
   write: string[];
@@ -133,6 +140,7 @@ export interface RunDto {
   managerGeneration: number;
   /** Immutable logical-manager provenance, or null for a legacy/unassigned run. */
   managerAssignment: ResolvedAgentAssignmentDto | null;
+  agentWorkspaceLaunch?: AgentWorkspaceLaunchProvenanceDto | null;
   createdAt: string;
   updatedAt: string;
 }

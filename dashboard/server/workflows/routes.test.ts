@@ -7,6 +7,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mintSession, type SessionConfig } from '../auth/session.ts';
 import { makeSurfaceContext } from '../http/surface.ts';
 import { createInMemoryControlPlaneStore } from '../control/store.ts';
+import { createInMemoryComposerStore } from '../composer/store.ts';
+import { createProviderIdProtector } from '../composer/protector.ts';
 import type { AuditEvent } from '../audit/log.ts';
 import { workflowCardId } from '../write/workflowRun.ts';
 import { parseWorkflowDef } from './defs.ts';
@@ -48,6 +50,7 @@ function runners() {
 describe('workflow definition routes', () => {
   let app: ReturnType<typeof Fastify>;
   let controlStore: ReturnType<typeof createInMemoryControlPlaneStore>;
+  let composerStore: ReturnType<typeof createInMemoryComposerStore>;
   let token: string;
   let auditRows: Array<Record<string, unknown>>;
 
@@ -55,6 +58,7 @@ describe('workflow definition routes', () => {
     let id = 0;
     auditRows = [];
     controlStore = createInMemoryControlPlaneStore({ newId: () => `ref-${++id}` });
+    composerStore = createInMemoryComposerStore({ protector: createProviderIdProtector(SESSION.secret) });
     token = mintSession('operator', SESSION).token;
     app = Fastify();
     const injected = runners();
@@ -64,6 +68,7 @@ describe('workflow definition routes', () => {
       allowedOrigins: [ORIGIN],
       credentials: () => [],
       controlStore,
+      composerStore,
       ...injected,
       appendAudit: (repoRoot, event) => {
         auditRows.push(event as unknown as Record<string, unknown>);
@@ -92,7 +97,7 @@ describe('workflow definition routes', () => {
   it('lists server-owned execution profiles in stable order', async () => {
     const response = await app.inject({ method: 'GET', url: '/api/workflows/profiles' });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ profiles: ['drive-author', 'gmail-triage', 'producer', 'research'] });
+    expect(response.json()).toEqual({ profiles: ['checker-readonly', 'drive-author', 'gmail-triage', 'producer', 'research'] });
   });
 
   it('returns a definition with its compiled proposal preview and content hash', async () => {
@@ -219,6 +224,35 @@ describe('workflow definition routes', () => {
     // Exactly one run, one proposal, and one set of canonical cards — no duplicate queue publication.
     expect(controlStore.listRuns('operator')).toHaveLength(1);
     expect(controlStore.listProposalRevisions('operator')).toHaveLength(1);
+  });
+
+  it('derives durable agent-workspace provenance, replays only the same workspace, and refuses a cross-workspace key reuse', async () => {
+    const agent = {
+      id: 'fyt-runner', path: 'agents/fyt-runner.md', sourceHash: 'b'.repeat(64), projects: ['faceless-youtube'],
+      instructionMarkdown: 'Recorded server declaration context.',
+    };
+    const firstWorkspace = composerStore.create('operator', 'FYT planning', agent);
+    const secondWorkspace = composerStore.create('operator', 'FYT planning fork', agent);
+    const first = await app.inject({ method: 'POST', url: '/api/workflows/video-run/launch', headers: headers(token),
+      payload: { idempotencyKey: 'workspace-key', composerRef: firstWorkspace.composerRef, parameters: { channel: 'the-second-take', slug: '2026-07-19-wells-fargo' } } });
+    expect(first.statusCode).toBe(202);
+    const replay = await app.inject({ method: 'POST', url: '/api/workflows/video-run/launch', headers: headers(token),
+      payload: { idempotencyKey: 'workspace-key', composerRef: firstWorkspace.composerRef, parameters: { channel: 'the-second-take', slug: '2026-07-19-wells-fargo' } } });
+    expect(replay.statusCode).toBe(200);
+    expect(replay.json().runRef).toBe(first.json().runRef);
+    const changedParameters = await app.inject({ method: 'POST', url: '/api/workflows/video-run/launch', headers: headers(token),
+      payload: { idempotencyKey: 'workspace-key', composerRef: firstWorkspace.composerRef, parameters: { channel: 'the-second-take', slug: '2026-07-20-other' } } });
+    expect(changedParameters.statusCode).toBe(409);
+    const run = controlStore.getRun('operator', first.json().runRef);
+    expect(run.ok && run.value.run.agentWorkspaceLaunch).toEqual({
+      composerRef: firstWorkspace.composerRef, agentId: 'fyt-runner', declarationPath: 'agents/fyt-runner.md', declarationHash: 'b'.repeat(64),
+    });
+    const conflict = await app.inject({ method: 'POST', url: '/api/workflows/video-run/launch', headers: headers(token),
+      payload: { idempotencyKey: 'workspace-key', composerRef: secondWorkspace.composerRef, parameters: { channel: 'the-second-take', slug: '2026-07-19-wells-fargo' } } });
+    expect(conflict.statusCode).toBe(409);
+    const crossOwner = await app.inject({ method: 'POST', url: '/api/workflows/video-run/launch', headers: headers(token),
+      payload: { idempotencyKey: 'other-key', composerRef: composerStore.create('mallory', 'Foreign', agent).composerRef, parameters: { channel: 'the-second-take', slug: '2026-07-19-wells-fargo' } } });
+    expect(crossOwner.statusCode).toBe(404);
   });
 
 });

@@ -59,6 +59,14 @@ export type StageState = 'blocked' | 'ready' | 'running' | 'waiting-human' | 'su
 export type AttemptState = 'queued' | 'starting' | 'running' | 'waiting-human' | 'succeeded' | 'failed' | 'stopped' | 'interrupted';
 export type ManagedSessionState = 'pending' | 'starting' | 'running' | 'waiting' | 'completed' | 'failed' | 'stopped' | 'interrupted';
 
+/** Immutable server-derived origin for a workflow launched from an agent Composer workspace. */
+export interface AgentWorkspaceLaunchProvenance {
+  composerRef: string;
+  agentId: string;
+  declarationPath: string;
+  declarationHash: string;
+}
+
 export interface Run {
   runRef: string;
   predecessorRunRef: string | null;
@@ -73,6 +81,8 @@ export interface Run {
   managerGeneration: number;
   /** Compiler-resolved declaration/profile provenance; never an executor identity. */
   managerAssignment: ResolvedAgentAssignment | null;
+  /** Null for ordinary launches; never contains a provider session id. */
+  agentWorkspaceLaunch: AgentWorkspaceLaunchProvenance | null;
   createdAt: string;
   updatedAt: string;
 }

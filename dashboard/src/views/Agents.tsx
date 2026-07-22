@@ -375,7 +375,9 @@ export function Agents({
     void (async () => {
       try {
         const all = await listRuns(sessionToken);
-        const recent = [...all]
+        const explicit = all.filter((run) => run.agentWorkspaceLaunch?.agentId === openAgentId)
+          .map((run) => ({ run, stages: [] }));
+        const recent = all.filter((run) => run.agentWorkspaceLaunch?.agentId !== openAgentId)
           .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
           .slice(0, AGENT_RUN_SCAN_LIMIT);
         const details = await Promise.all(
@@ -388,7 +390,7 @@ export function Agents({
             }
           }),
         );
-        if (!cancelled) setScannedRuns(details.filter((d): d is RunWithStages => d !== null));
+        if (!cancelled) setScannedRuns([...explicit, ...details.filter((d): d is RunWithStages => d !== null)]);
       } catch {
         /* leaves the section at "not loaded" — never a false "works no runs" */
       }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseWorkflowDef } from './defs.ts';
+import { instantiateWorkflowDef, parseWorkflowDef } from './defs.ts';
 
 const KNOWN = new Set(['research', 'gmail-triage', 'drive-author', 'producer', 'checker-readonly']);
 
@@ -262,5 +262,21 @@ describe('parseWorkflowDef', () => {
     const fm = SINGLE.replace('target: orgs/kb-ops/output', 'target: ../../etc/passwd');
     const result = parseWorkflowDef(md(fm), { knownProfiles: KNOWN });
     expect(result.ok).toBe(false);
+  });
+
+  it('enforces declared launch parameters and substitutes only their exact tokens', () => {
+    const source = SINGLE.replace('profile: research', 'profile: research\nparameters: [channel, slug]')
+      .replace('riskTier: T2', 'riskTier: T2\n    workOrder: Write <channel>/<slug> and preserve <shot-id>.');
+    const parsed = parseWorkflowDef(md(source), { knownProfiles: KNOWN });
+    if (!parsed.ok) throw new Error(parsed.detail);
+    for (const parameters of [{ channel: 'a' }, { channel: 'a', slug: 'b', extra: 'x' }, { channel: 1, slug: 'b' }] as Array<Record<string, unknown>>) {
+      expect(instantiateWorkflowDef(parsed.value, parameters as Record<string, string>).ok).toBe(false);
+    }
+    for (const slug of ['.', 'bad.', 'CON.txt', 'LPT1.log']) expect(instantiateWorkflowDef(parsed.value, { channel: 'the-second-take', slug }).ok).toBe(false);
+    const valid = instantiateWorkflowDef(parsed.value, { channel: 'the-second-take', slug: '2026.07-19.wells-fargo' });
+    expect(valid).toMatchObject({ ok: true, value: { stages: [{ target: 'orgs/kb-ops/output', workOrder: expect.stringContaining('<shot-id>') }] } });
+    const unused = parseWorkflowDef(md(source.replace('[channel, slug]', '[channel, unused]')), { knownProfiles: KNOWN });
+    if (!unused.ok) throw new Error(unused.detail);
+    expect(instantiateWorkflowDef(unused.value, { channel: 'a', unused: 'b' })).toMatchObject({ ok: false, detail: expect.stringMatching(/not used/) });
   });
 });

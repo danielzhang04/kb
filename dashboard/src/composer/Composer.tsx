@@ -65,6 +65,7 @@ export interface ComposerProps {
   composerSession?: ComposerSession;
   onComposerSessionChange?: (session: ComposerSession) => void;
   onRunningChange?: (running: boolean) => void;
+  onOpenRun?: (runRef: string) => void;
   /** WebAuthn session token — forwarded to ComposerChat, which gates every turn on it (no token, no send). */
   sessionToken?: string;
   /** Point-of-action passkey mint for signed-out Composer chat. DeployOutcome uses the same callback for
@@ -277,6 +278,7 @@ export function Composer({
   composerSession,
   onComposerSessionChange,
   onRunningChange,
+  onOpenRun,
   sessionToken,
   onRequestSession,
   initialKind = 'idea',
@@ -409,6 +411,7 @@ export function Composer({
           onRequestSession={onRequestSession}
           onSessionChange={onComposerSessionChange}
           onRunningChange={onRunningChange}
+          onOpenRun={onOpenRun}
           stream={seedingStream}
         />
       </div>
