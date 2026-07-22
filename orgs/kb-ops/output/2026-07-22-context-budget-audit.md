@@ -278,7 +278,8 @@ Implemented on `codex/context-budget-audit` without changing Faceless YouTube or
    hashed fixture for ECC 2.0.0's 29 hook ids. The kb compatibility suppression remains defensive
    for machines where ECC is enabled.
 4. Added `scripts/context_audit.py`, a standard-library, read-only, numeric-only audit. It reports
-   instruction, skill-description, auto-memory, and bounded recent session-usage counts without
+   instruction, skill-description, and auto-memory counts without reading session logs by default.
+   Optional `--include-sessions` telemetry is bounded and reports discovery completeness without
    emitting prompt bodies, command arguments, credentials, or local paths.
 5. Used no-history, self-contained bounded Codex workers for Phase 1 and retained that as the
    boss-terminal operating default. The runtime has no repository setting that can force
