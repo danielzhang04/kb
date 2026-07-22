@@ -3,6 +3,7 @@ import type {
   ProposalReview,
   ResolvedAgentAssignment,
 } from './proposal.ts';
+import type { ReviewOutcome } from './reviewOutcome.ts';
 
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
@@ -102,8 +103,62 @@ export interface Stage {
   review: ProposalReview | null;
   /** Compiler-owned completion gate; immutable after launch. */
   completionGate: ProposalCompletionGate | null;
+  /** Current logical creator projection; immutable history lives in StageGeneration. */
+  currentGeneration: number;
+  currentGenerationRef: string | null;
+  acceptedGenerationRef: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface StageGeneration {
+  generationRef: string;
+  runRef: string;
+  logicalStageRef: string;
+  logicalStageId: string;
+  generation: number;
+  predecessorGenerationRef: string | null;
+  attemptRef: string;
+  canonicalResultOperationKey: string;
+  resultHash: string;
+  canonicalCommit: string;
+  state: 'committed';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReviewLoop {
+  reviewLoopRef: string;
+  runRef: string;
+  reviewStageRef: string;
+  subjectStageRef: string;
+  maxCreatorReworks: number;
+  reviewDefinitionHash: string;
+  reworksUsed: number;
+  state: 'awaiting-subject' | 'checking' | 'failed' | 'parked' | 'awaiting-gate' | 'passed';
+  activeGenerationRef: string | null;
+  acceptedGenerationRef: string | null;
+  activeReceiptRef: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReviewReceipt {
+  reviewReceiptRef: string;
+  runRef: string;
+  reviewStageRef: string;
+  subjectStageRef: string;
+  subjectGenerationRef: string;
+  subjectResultHash: string;
+  checkerAttemptRef: string;
+  outcome: ReviewOutcome;
+  outcomeHash: string;
+  operationKey: string;
+  state: 'passed' | 'awaiting-completion-gate' | 'failed' | 'parked';
+  completionRequestRef: string | null;
+  createdAt: string;
+  finalizedAt: string | null;
 }
 
 export interface Attempt {
@@ -117,6 +172,10 @@ export interface Attempt {
   state: AttemptState;
   version: number;
   managedSessionRef: string | null;
+  /** Immutable checker base; null for ordinary and legacy attempts. */
+  reviewSubjectGenerationRef: string | null;
+  reviewSubjectResultHash: string | null;
+  reviewSubjectCanonicalCommit: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -218,6 +277,9 @@ export interface RunDetail {
   attempts: Attempt[];
   sessions: ManagedSession[];
   humanRequests: HumanRequest[];
+  stageGenerations: StageGeneration[];
+  reviewLoops: ReviewLoop[];
+  reviewReceipts: ReviewReceipt[];
 }
 
 export interface StorageInventoryItem {

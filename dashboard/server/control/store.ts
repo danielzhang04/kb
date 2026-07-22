@@ -12,6 +12,7 @@ import {
 import { createHash, randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { redactSensitiveText } from '../composer/publicTimeline.ts';
+import { MAX_REVIEW_OUTCOME_CHARS, parseReviewOutcome } from './reviewOutcome.ts';
 import type {
   ProposalCompletionGate,
   ProposalReview,
@@ -44,7 +45,10 @@ import type {
   RunDetail,
   RunMetadata,
   RunState,
+  ReviewLoop,
+  ReviewReceipt,
   Stage,
+  StageGeneration,
   StageState,
   StorageInventory,
   StorageInventoryItem,
@@ -67,6 +71,7 @@ const MAX_REVIEW_REWORKS = 2;
 const MAX_REVIEW_CRITERION_DESCRIPTION = 200;
 const MAX_COMPLETION_GATE_PROMPT = 2_000;
 const HASH_RE = /^[a-f0-9]{64}$/;
+const CANONICAL_COMMIT_RE = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/;
 const SAFE_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const SAFE_STAGE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const AGENT_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
@@ -161,6 +166,20 @@ interface StoredStage extends Stage {
   subject: string;
 }
 
+interface StoredStageGeneration extends StageGeneration {
+  subject: string;
+  operationFingerprint: string;
+}
+
+interface StoredReviewLoop extends ReviewLoop {
+  subject: string;
+}
+
+interface StoredReviewReceipt extends ReviewReceipt {
+  subject: string;
+  operationFingerprint: string;
+}
+
 interface StoredAttempt extends Attempt {
   subject: string;
   rerouteOperationKey?: string | null;
@@ -218,6 +237,9 @@ interface QuarantinedRunBundle {
   sessions: StoredSession[];
   humanRequests: StoredHumanRequest[];
   events: StoredEvent[];
+  stageGenerations: StoredStageGeneration[];
+  reviewLoops: StoredReviewLoop[];
+  reviewReceipts: StoredReviewReceipt[];
 }
 
 interface StoreDocument {
@@ -230,6 +252,9 @@ interface StoreDocument {
   sessions: StoredSession[];
   humanRequests: StoredHumanRequest[];
   events: StoredEvent[];
+  stageGenerations: StoredStageGeneration[];
+  reviewLoops: StoredReviewLoop[];
+  reviewReceipts: StoredReviewReceipt[];
   quarantine: QuarantinedRunBundle[];
 }
 
@@ -317,6 +342,30 @@ export interface CreateAttemptInput {
   expectedStageVersion: number;
   runtime: string;
   model: string;
+  /** Required only for checker attempts and bound to the active subject generation. */
+  reviewSubjectGenerationRef?: string | null;
+  reviewSubjectResultHash?: string | null;
+  reviewSubjectCanonicalCommit?: string | null;
+}
+
+export interface RecordStageGenerationInput {
+  expectedStageVersion: number;
+  expectedAttemptVersion: number;
+  expectedGeneration: number;
+  operationKey: string;
+  resultHash: string;
+  canonicalCommit: string;
+}
+
+export interface RecordReviewReceiptInput {
+  expectedReviewStageVersion: number;
+  expectedCheckerAttemptVersion: number;
+  expectedLoopVersion: number;
+  subjectGenerationRef: string;
+  subjectResultHash: string;
+  checkerAttemptRef: string;
+  outcome: string;
+  operationKey: string;
 }
 
 export interface CreateWorkerSessionInput {
@@ -476,6 +525,8 @@ export interface ControlPlaneStore extends BrokerStoreBackend {
     input: ReconcileCanonicalProjectionInput,
   ): ControlResult<RunDetail>;
   transitionStage(subject: string, stageRef: string, expectedVersion: number, state: StageState): ControlResult<Stage>;
+  recordStageGeneration(subject: string, stageRef: string, input: RecordStageGenerationInput): ControlResult<StageGeneration>;
+  recordReviewReceipt(subject: string, reviewStageRef: string, input: RecordReviewReceiptInput): ControlResult<ReviewReceipt>;
   linkStageCard(subject: string, stageRef: string, expectedVersion: number, canonicalCardRef: string): ControlResult<Stage>;
   createAttempt(subject: string, stageRef: string, input: CreateAttemptInput): ControlResult<Attempt>;
   /** Atomically supersedes one never-started queued attempt without rewriting its historical routing. */
@@ -520,6 +571,9 @@ function emptyDocument(): StoreDocument {
     sessions: [],
     humanRequests: [],
     events: [],
+    stageGenerations: [],
+    reviewLoops: [],
+    reviewReceipts: [],
     quarantine: [],
   };
 }
@@ -680,6 +734,23 @@ function sameCheckerContract(left: CheckerContractProvenance, right: CheckerCont
   return canonicalJson(left as unknown as JsonValue) === canonicalJson(right as unknown as JsonValue);
 }
 
+function reviewLoopDefinitionHash(stage: Pick<StoredStage, 'workflowProfile' | 'assignment' | 'review' | 'completionGate'>): string {
+  return sha256(canonicalJson({
+    workflowProfile: stage.workflowProfile,
+    assignment: stage.assignment,
+    review: stage.review,
+    completionGate: stage.completionGate,
+  } as unknown as JsonValue));
+}
+
+function generationOperationKey(runRef: string, stageId: string, generation: number): string {
+  return generation === 1 ? `result:${runRef}:${stageId}` : `result:${runRef}:${stageId}:g${generation}`;
+}
+
+function reviewReceiptOperationKey(runRef: string, reviewStageId: string, generation: number): string {
+  return `review-outcome:${runRef}:${reviewStageId}:g${generation}`;
+}
+
 function sameStringArray(left: readonly string[], right: unknown): boolean {
   return Array.isArray(right) && left.length === right.length
     && right.every((item, index) => typeof item === 'string' && item === left[index]);
@@ -818,6 +889,21 @@ function publicEvent(value: StoredEvent): OperationalEvent {
   return clone(event);
 }
 
+function publicStageGeneration(value: StoredStageGeneration): StageGeneration {
+  const { subject: _subject, operationFingerprint: _operationFingerprint, ...generation } = value;
+  return clone(generation);
+}
+
+function publicReviewLoop(value: StoredReviewLoop): ReviewLoop {
+  const { subject: _subject, ...loop } = value;
+  return clone(loop);
+}
+
+function publicReviewReceipt(value: StoredReviewReceipt): ReviewReceipt {
+  const { subject: _subject, operationFingerprint: _operationFingerprint, ...receipt } = value;
+  return clone(receipt);
+}
+
 function detail(document: StoreDocument, subject: string, run: StoredRun): RunDetail {
   return {
     run: publicRun(run),
@@ -825,6 +911,9 @@ function detail(document: StoreDocument, subject: string, run: StoredRun): RunDe
     attempts: document.attempts.filter((item) => item.subject === subject && item.runRef === run.runRef).map(publicAttempt),
     sessions: document.sessions.filter((item) => item.subject === subject && item.runRef === run.runRef).map(publicSession),
     humanRequests: document.humanRequests.filter((item) => item.subject === subject && item.runRef === run.runRef).map(publicRequest),
+    stageGenerations: document.stageGenerations.filter((item) => item.subject === subject && item.runRef === run.runRef).map(publicStageGeneration),
+    reviewLoops: document.reviewLoops.filter((item) => item.subject === subject && item.runRef === run.runRef).map(publicReviewLoop),
+    reviewReceipts: document.reviewReceipts.filter((item) => item.subject === subject && item.runRef === run.runRef).map(publicReviewReceipt),
   };
 }
 
@@ -852,6 +941,9 @@ function activeBundle(document: StoreDocument, subject: string, run: StoredRun):
     sessions: document.sessions.filter((item) => item.subject === subject && item.runRef === run.runRef),
     humanRequests: document.humanRequests.filter((item) => item.subject === subject && item.runRef === run.runRef),
     events: document.events.filter((item) => item.subject === subject && item.runRef === run.runRef),
+    stageGenerations: document.stageGenerations.filter((item) => item.subject === subject && item.runRef === run.runRef),
+    reviewLoops: document.reviewLoops.filter((item) => item.subject === subject && item.runRef === run.runRef),
+    reviewReceipts: document.reviewReceipts.filter((item) => item.subject === subject && item.runRef === run.runRef),
   };
 }
 
@@ -872,7 +964,8 @@ function bundleIsQuarantineEligible(bundle: Omit<QuarantinedRunBundle, 'quaranti
     && bundle.stages.every((stage) => QUARANTINE_SETTLED_STAGE.has(stage.state))
     && bundle.attempts.every((attempt) => QUARANTINE_SETTLED_ATTEMPT.has(attempt.state))
     && bundle.sessions.every((session) => QUARANTINE_SETTLED_SESSION.has(session.state))
-    && bundle.humanRequests.every((request) => request.state === 'resolved' && request.response !== null);
+    && bundle.humanRequests.every((request) => request.state === 'resolved' && request.response !== null)
+    && bundle.reviewLoops.every((loop) => loop.state === 'passed');
 }
 
 function quarantineBundleHash(bundle: Omit<QuarantinedRunBundle, 'quarantinedAt'>): string {
@@ -894,17 +987,61 @@ function boundariesAccepted(document: StoreDocument, subject: string, runRef: st
     .every(boundaryAccepted);
 }
 
+function loopForReviewStage(document: StoreDocument, stage: StoredStage): StoredReviewLoop | undefined {
+  return document.reviewLoops.find((loop) => loop.subject === stage.subject && loop.runRef === stage.runRef && loop.reviewStageRef === stage.stageRef);
+}
+
+function loopForSubjectStage(document: StoreDocument, stage: StoredStage): StoredReviewLoop | undefined {
+  return document.reviewLoops.find((loop) => loop.subject === stage.subject && loop.runRef === stage.runRef && loop.subjectStageRef === stage.stageRef);
+}
+
+function stageMaySucceed(document: StoreDocument, stage: StoredStage): boolean {
+  const subjectLoop = loopForSubjectStage(document, stage);
+  if (subjectLoop) {
+    return stage.currentGenerationRef !== null && subjectLoop.activeGenerationRef === stage.currentGenerationRef;
+  }
+  const reviewLoop = loopForReviewStage(document, stage);
+  return !reviewLoop || reviewLoop.state === 'passed';
+}
+
 function dependenciesSucceeded(document: StoreDocument, stage: StoredStage): boolean {
   const stages = new Map(document.stages
     .filter((candidate) => candidate.subject === stage.subject && candidate.runRef === stage.runRef)
     .map((candidate) => [candidate.stageId, candidate]));
-  return stage.dependsOn.every((dependency) => stages.get(dependency)?.state === 'succeeded');
+  return stage.dependsOn.every((dependency) => {
+    const dependencyStage = stages.get(dependency);
+    if (!dependencyStage || dependencyStage.state !== 'succeeded') return false;
+    const loop = loopForSubjectStage(document, dependencyStage);
+    if (!loop) return true;
+    // The checker reads the committed active generation; every other dependent waits for acceptance.
+    if (loop.reviewStageRef === stage.stageRef) {
+      return loop.state === 'checking' && loop.activeGenerationRef === dependencyStage.currentGenerationRef;
+    }
+    return loop.state === 'passed' && loop.acceptedGenerationRef !== null
+      && loop.acceptedGenerationRef === dependencyStage.acceptedGenerationRef;
+  });
+}
+
+function reviewDependenciesAccepted(document: StoreDocument, stage: StoredStage): boolean {
+  const stages = new Map(document.stages
+    .filter((candidate) => candidate.subject === stage.subject && candidate.runRef === stage.runRef)
+    .map((candidate) => [candidate.stageId, candidate]));
+  return stage.dependsOn.every((dependency) => {
+    const dependencyStage = stages.get(dependency);
+    if (!dependencyStage) return false;
+    const loop = loopForSubjectStage(document, dependencyStage);
+    if (!loop) return true;
+    return loop.reviewStageRef === stage.stageRef
+      ? loop.state === 'checking' && loop.activeGenerationRef === dependencyStage.currentGenerationRef
+      : loop.state === 'passed' && loop.acceptedGenerationRef === dependencyStage.acceptedGenerationRef;
+  });
 }
 
 function runCanSucceed(document: StoreDocument, run: StoredRun): boolean {
   const matches = <T extends { subject: string; runRef: string }>(value: T): boolean =>
     value.subject === run.subject && value.runRef === run.runRef;
   return document.stages.filter(matches).every((stage) => stage.state === 'succeeded')
+    && document.reviewLoops.filter(matches).every((loop) => loop.state === 'passed')
     && document.attempts.filter(matches).every((attempt) => TERMINAL_ATTEMPT.has(attempt.state) || attempt.state === 'interrupted')
     && document.sessions.filter(matches).every((session) => TERMINAL_SESSION.has(session.state) || session.state === 'interrupted');
 }
@@ -967,8 +1104,303 @@ function normalizeStoredStageCheckerContract(stage: StoredStage): boolean {
   return changed;
 }
 
-function normalizeCrash(document: StoreDocument, stamp: string): boolean {
+function normalizeStoredStageGenerationProjection(stage: StoredStage): boolean {
   let changed = false;
+  if (stage.currentGeneration === undefined) {
+    stage.currentGeneration = 1;
+    changed = true;
+  }
+  if (stage.currentGenerationRef === undefined) {
+    stage.currentGenerationRef = null;
+    changed = true;
+  }
+  if (stage.acceptedGenerationRef === undefined) {
+    stage.acceptedGenerationRef = null;
+    changed = true;
+  }
+  if (!Number.isSafeInteger(stage.currentGeneration) || stage.currentGeneration < 1
+    || (stage.currentGenerationRef !== null && (typeof stage.currentGenerationRef !== 'string' || !SAFE_REF_RE.test(stage.currentGenerationRef)))
+    || (stage.acceptedGenerationRef !== null && (typeof stage.acceptedGenerationRef !== 'string' || !SAFE_REF_RE.test(stage.acceptedGenerationRef)))) {
+    throw new Error('invalid control-plane stage generation projection');
+  }
+  return changed;
+}
+
+function normalizeStoredAttemptReviewProvenance(attempt: StoredAttempt): boolean {
+  let changed = false;
+  for (const field of ['reviewSubjectGenerationRef', 'reviewSubjectResultHash', 'reviewSubjectCanonicalCommit'] as const) {
+    if (attempt[field] === undefined) {
+      attempt[field] = null;
+      changed = true;
+    }
+  }
+  const values = [attempt.reviewSubjectGenerationRef, attempt.reviewSubjectResultHash, attempt.reviewSubjectCanonicalCommit];
+  if (values.every((value) => value === null)) return changed;
+  if (typeof attempt.reviewSubjectGenerationRef !== 'string' || !SAFE_REF_RE.test(attempt.reviewSubjectGenerationRef)
+    || typeof attempt.reviewSubjectResultHash !== 'string' || !HASH_RE.test(attempt.reviewSubjectResultHash)
+    || typeof attempt.reviewSubjectCanonicalCommit !== 'string' || !CANONICAL_COMMIT_RE.test(attempt.reviewSubjectCanonicalCommit)) {
+    throw new Error('invalid control-plane checker attempt provenance');
+  }
+  return changed;
+}
+
+function migrateReviewCollections(document: StoreDocument): boolean {
+  const raw = document as StoreDocument & Partial<StoreDocument>;
+  let changed = false;
+  for (const field of ['stageGenerations', 'reviewLoops', 'reviewReceipts'] as const) {
+    if (raw[field] === undefined) {
+      raw[field] = [] as never;
+      changed = true;
+    } else if (!Array.isArray(raw[field])) {
+      throw new Error('invalid control-plane review collections');
+    }
+  }
+  for (const bundle of document.quarantine) {
+    const rawBundle = bundle as QuarantinedRunBundle & Partial<QuarantinedRunBundle>;
+    for (const field of ['stageGenerations', 'reviewLoops', 'reviewReceipts'] as const) {
+      if (rawBundle[field] === undefined) {
+        rawBundle[field] = [] as never;
+        changed = true;
+      } else if (!Array.isArray(rawBundle[field])) {
+        throw new Error('invalid control-plane review collections');
+      }
+    }
+  }
+  return changed;
+}
+
+function validateReviewDurability(
+  stages: readonly StoredStage[],
+  attempts: readonly StoredAttempt[],
+  generations: readonly StoredStageGeneration[],
+  loops: readonly StoredReviewLoop[],
+  receipts: readonly StoredReviewReceipt[],
+): void {
+  const stageByRef = new Map(stages.map((stage) => [stage.stageRef, stage]));
+  const attemptByRef = new Map(attempts.map((attempt) => [attempt.attemptRef, attempt]));
+  const generationByRef = new Map<string, StoredStageGeneration>();
+  const generationByLogicalStage = new Set<string>();
+  const generationOperationKeys = new Set<string>();
+  const loopByReviewStage = new Map<string, StoredReviewLoop>();
+  const loopBySubjectStage = new Map<string, StoredReviewLoop>();
+  const reviewLoopRefs = new Set<string>();
+  const receiptPairs = new Set<string>();
+  const receiptOperationKeys = new Set<string>();
+  const reviewReceiptRefs = new Set<string>();
+  for (const generation of generations) {
+    const stage = stageByRef.get(generation.logicalStageRef);
+    const attempt = attemptByRef.get(generation.attemptRef);
+    if (!stage || !attempt || generation.subject !== stage.subject || generation.subject !== attempt.subject
+      || generation.runRef !== stage.runRef || generation.runRef !== attempt.runRef || attempt.stageRef !== stage.stageRef
+      || generation.logicalStageId !== stage.stageId
+      || !Number.isSafeInteger(generation.generation) || generation.generation < 1
+      || !SAFE_REF_RE.test(generation.generationRef) || !SAFE_REF_RE.test(generation.attemptRef)
+      || generation.canonicalResultOperationKey !== generationOperationKey(generation.runRef, generation.logicalStageId, generation.generation)
+      || !HASH_RE.test(generation.resultHash)
+      || !CANONICAL_COMMIT_RE.test(generation.canonicalCommit) || generation.state !== 'committed'
+      || generationByRef.has(generation.generationRef)
+      || generationByLogicalStage.has(`${generation.logicalStageRef}:${generation.generation}`)
+      || generationOperationKeys.has(generation.canonicalResultOperationKey)) {
+      throw new Error('invalid control-plane stage generation');
+    }
+    generationByRef.set(generation.generationRef, generation);
+    generationByLogicalStage.add(`${generation.logicalStageRef}:${generation.generation}`);
+    generationOperationKeys.add(generation.canonicalResultOperationKey);
+  }
+  for (const generation of generations) {
+    const predecessor = generation.predecessorGenerationRef === null ? null : generationByRef.get(generation.predecessorGenerationRef);
+    if ((generation.generation === 1 && predecessor !== null)
+      || (generation.generation > 1 && (!predecessor || predecessor.logicalStageRef !== generation.logicalStageRef
+        || predecessor.generation !== generation.generation - 1))) {
+      throw new Error('invalid control-plane stage generation predecessor');
+    }
+  }
+  for (const loop of loops) {
+    const reviewStage = stageByRef.get(loop.reviewStageRef);
+    const subjectStage = stageByRef.get(loop.subjectStageRef);
+    if (!reviewStage || !subjectStage || loop.subject !== reviewStage.subject || loop.subject !== subjectStage.subject
+      || loop.runRef !== reviewStage.runRef || loop.runRef !== subjectStage.runRef
+      || reviewStage.review === null || reviewStage.review.subjectStageId !== subjectStage.stageId
+      || reviewStage.workflowProfile !== 'checker-readonly' || reviewStage.dependsOn.length !== 1 || reviewStage.dependsOn[0] !== subjectStage.stageId
+      || loop.maxCreatorReworks !== reviewStage.review.maxCreatorReworks
+      || loop.reviewDefinitionHash !== reviewLoopDefinitionHash(reviewStage)
+      || !Number.isSafeInteger(loop.reworksUsed) || loop.reworksUsed !== 0
+      || !['awaiting-subject', 'checking', 'failed', 'parked', 'awaiting-gate', 'passed'].includes(loop.state)
+      || !Number.isSafeInteger(loop.version) || loop.version < 1 || !SAFE_REF_RE.test(loop.reviewLoopRef)
+      || loopByReviewStage.has(loop.reviewStageRef) || loopBySubjectStage.has(loop.subjectStageRef)
+      || reviewLoopRefs.has(loop.reviewLoopRef)) {
+      throw new Error('invalid control-plane review loop');
+    }
+    for (const ref of [loop.activeGenerationRef, loop.acceptedGenerationRef, loop.activeReceiptRef]) {
+      if (ref !== null && (typeof ref !== 'string' || !SAFE_REF_RE.test(ref))) throw new Error('invalid control-plane review loop reference');
+    }
+    if (loop.activeGenerationRef !== null && generationByRef.get(loop.activeGenerationRef)?.logicalStageRef !== subjectStage.stageRef) {
+      throw new Error('invalid control-plane review loop generation reference');
+    }
+    if (loop.acceptedGenerationRef !== null && generationByRef.get(loop.acceptedGenerationRef)?.logicalStageRef !== subjectStage.stageRef) {
+      throw new Error('invalid control-plane review loop accepted generation reference');
+    }
+    const activeGeneration = loop.activeGenerationRef === null ? null : generationByRef.get(loop.activeGenerationRef);
+    if (activeGeneration && (subjectStage.currentGenerationRef !== activeGeneration.generationRef
+      || subjectStage.currentGeneration !== activeGeneration.generation)) {
+      throw new Error('invalid control-plane review loop active projection');
+    }
+    loopByReviewStage.set(loop.reviewStageRef, loop);
+    loopBySubjectStage.set(loop.subjectStageRef, loop);
+    reviewLoopRefs.add(loop.reviewLoopRef);
+  }
+  for (const stage of stages) {
+    const loop = loopByReviewStage.get(stage.stageRef);
+    if ((stage.review !== null && !loop) || (stage.review === null && loop)) {
+      throw new Error('invalid control-plane review loop completeness');
+    }
+  }
+  for (const attempt of attempts) {
+    const loop = loopByReviewStage.get(attempt.stageRef);
+    const values = [attempt.reviewSubjectGenerationRef, attempt.reviewSubjectResultHash, attempt.reviewSubjectCanonicalCommit];
+    if (!loop) {
+      if (values.some((value) => value !== null)) throw new Error('invalid control-plane ordinary attempt review provenance');
+      continue;
+    }
+    if (values.every((value) => value === null)) {
+      const referenced = receipts.some((receipt) => receipt.checkerAttemptRef === attempt.attemptRef);
+      if (referenced || (!TERMINAL_ATTEMPT.has(attempt.state) && attempt.state !== 'interrupted')) {
+        throw new Error('invalid control-plane unbound legacy checker attempt');
+      }
+      continue;
+    }
+    const generation = attempt.reviewSubjectGenerationRef === null ? undefined : generationByRef.get(attempt.reviewSubjectGenerationRef);
+    if (!generation || attempt.reviewSubjectResultHash !== generation.resultHash
+      || attempt.reviewSubjectCanonicalCommit !== generation.canonicalCommit || generation.logicalStageRef !== loop.subjectStageRef
+      || generation.runRef !== attempt.runRef || generation.subject !== attempt.subject) {
+      throw new Error('invalid control-plane checker attempt generation provenance');
+    }
+  }
+  for (const receipt of receipts) {
+    const loop = loopByReviewStage.get(receipt.reviewStageRef);
+    const generation = generationByRef.get(receipt.subjectGenerationRef);
+    const checkerAttempt = attemptByRef.get(receipt.checkerAttemptRef);
+    if (!loop || !generation || !checkerAttempt || receipt.subject !== loop.subject || receipt.subject !== generation.subject
+      || receipt.subject !== checkerAttempt.subject || receipt.runRef !== loop.runRef || receipt.runRef !== generation.runRef
+      || receipt.runRef !== checkerAttempt.runRef || checkerAttempt.stageRef !== receipt.reviewStageRef
+      || checkerAttempt.reviewSubjectGenerationRef !== generation.generationRef
+      || checkerAttempt.reviewSubjectResultHash !== generation.resultHash || checkerAttempt.reviewSubjectCanonicalCommit !== generation.canonicalCommit
+      || receipt.subjectStageRef !== loop.subjectStageRef
+      || generation.logicalStageRef !== receipt.subjectStageRef || generation.resultHash !== receipt.subjectResultHash
+      || !SAFE_REF_RE.test(receipt.reviewReceiptRef) || !SAFE_REF_RE.test(receipt.checkerAttemptRef)
+      || receipt.operationKey !== reviewReceiptOperationKey(receipt.runRef, stageByRef.get(receipt.reviewStageRef)?.stageId ?? '', generation.generation)
+      || !['passed', 'awaiting-completion-gate', 'failed', 'parked'].includes(receipt.state)
+      || receipt.completionRequestRef !== null
+      || (receipt.state === 'awaiting-completion-gate' ? receipt.finalizedAt !== null : receipt.finalizedAt === null)
+      || sha256(canonicalJson(receipt.outcome as unknown as JsonValue)) !== receipt.outcomeHash
+      || !parseReviewOutcome(JSON.stringify(receipt.outcome), { review: stageByRef.get(receipt.reviewStageRef)?.review as ProposalReview }).ok
+      || receiptPairs.has(`${receipt.reviewStageRef}:${receipt.subjectGenerationRef}`) || receiptOperationKeys.has(receipt.operationKey)
+      || reviewReceiptRefs.has(receipt.reviewReceiptRef)) {
+      throw new Error('invalid control-plane review receipt');
+    }
+    receiptPairs.add(`${receipt.reviewStageRef}:${receipt.subjectGenerationRef}`);
+    receiptOperationKeys.add(receipt.operationKey);
+    reviewReceiptRefs.add(receipt.reviewReceiptRef);
+  }
+  const receiptByRef = new Map(receipts.map((receipt) => [receipt.reviewReceiptRef, receipt]));
+  for (const loop of loops) {
+    const activeGeneration = loop.activeGenerationRef === null ? null : generationByRef.get(loop.activeGenerationRef);
+    const activeReceipt = loop.activeReceiptRef === null ? null : receiptByRef.get(loop.activeReceiptRef);
+    const acceptedGeneration = loop.acceptedGenerationRef === null ? null : generationByRef.get(loop.acceptedGenerationRef);
+    if ((loop.state === 'awaiting-subject' && (activeGeneration !== null || activeReceipt !== null || acceptedGeneration !== null))
+      || (loop.state === 'checking' && (activeGeneration === null || activeReceipt !== null || acceptedGeneration !== null))
+      || (['failed', 'parked', 'awaiting-gate', 'passed'].includes(loop.state)
+        && (!activeGeneration || !activeReceipt || activeReceipt.reviewStageRef !== loop.reviewStageRef
+          || activeReceipt.subjectGenerationRef !== activeGeneration.generationRef))
+      || (loop.state === 'failed' && activeReceipt?.state !== 'failed')
+      || (loop.state === 'parked' && activeReceipt?.state !== 'parked')
+      || (loop.state === 'awaiting-gate' && activeReceipt?.state !== 'awaiting-completion-gate')
+      || (loop.state === 'passed' && activeReceipt?.state !== 'passed')
+      || (loop.state === 'passed' && (!acceptedGeneration || acceptedGeneration.generationRef !== activeGeneration?.generationRef))
+      || (loop.state !== 'passed' && acceptedGeneration !== null)) {
+      throw new Error('invalid control-plane review loop state references');
+    }
+  }
+  for (const stage of stages) {
+    const currentGeneration = stage.currentGenerationRef === null ? null : generationByRef.get(stage.currentGenerationRef);
+    if (stage.currentGenerationRef !== null && (!currentGeneration || currentGeneration.logicalStageRef !== stage.stageRef
+      || currentGeneration.generation !== stage.currentGeneration)) {
+      throw new Error('invalid control-plane stage current generation reference');
+    }
+    if (stage.acceptedGenerationRef !== null && generationByRef.get(stage.acceptedGenerationRef)?.logicalStageRef !== stage.stageRef) {
+      throw new Error('invalid control-plane stage accepted generation reference');
+    }
+    const loop = loopBySubjectStage.get(stage.stageRef);
+    if (loop && stage.acceptedGenerationRef !== loop.acceptedGenerationRef) {
+      throw new Error('invalid control-plane stage accepted generation projection');
+    }
+  }
+}
+
+function legacyReviewLoopRef(stage: StoredStage): string {
+  return `review-loop-${sha256(`${stage.runRef}\0${stage.stageRef}`)}`;
+}
+
+/**
+ * Pre-foundation review contracts are durable compiler provenance, but their checker attempts have
+ * no subject-generation binding.  We preserve those attempts as unbound history and interrupt any
+ * live one; only a fresh, explicitly bound checker attempt may ever produce a receipt.
+ */
+function materializeLegacyReviewLoops(
+  stages: readonly StoredStage[],
+  attempts: readonly StoredAttempt[],
+  loops: StoredReviewLoop[],
+  stamp: string,
+): boolean {
+  let changed = false;
+  for (const reviewStage of stages) {
+    if (reviewStage.review === null || loops.some((loop) => loop.reviewStageRef === reviewStage.stageRef)) continue;
+    const subjectStage = stages.find((stage) => stage.subject === reviewStage.subject && stage.runRef === reviewStage.runRef
+      && stage.stageId === reviewStage.review?.subjectStageId);
+    if (!subjectStage || reviewStage.dependsOn.length !== 1 || reviewStage.dependsOn[0] !== subjectStage.stageId
+      || reviewStage.workflowProfile !== 'checker-readonly') {
+      throw new Error('invalid control-plane legacy review contract');
+    }
+    loops.push({
+      subject: reviewStage.subject,
+      reviewLoopRef: legacyReviewLoopRef(reviewStage),
+      runRef: reviewStage.runRef,
+      reviewStageRef: reviewStage.stageRef,
+      subjectStageRef: subjectStage.stageRef,
+      maxCreatorReworks: reviewStage.review.maxCreatorReworks,
+      reviewDefinitionHash: reviewLoopDefinitionHash(reviewStage),
+      reworksUsed: 0,
+      state: 'awaiting-subject',
+      activeGenerationRef: null,
+      acceptedGenerationRef: null,
+      activeReceiptRef: null,
+      version: 1,
+      createdAt: reviewStage.createdAt,
+      updatedAt: stamp,
+    });
+    changed = true;
+  }
+  for (const reviewStage of stages.filter((stage) => stage.review !== null)) {
+    for (const attempt of attempts.filter((candidate) => candidate.stageRef === reviewStage.stageRef)) {
+      const unbound = attempt.reviewSubjectGenerationRef === null && attempt.reviewSubjectResultHash === null
+        && attempt.reviewSubjectCanonicalCommit === null;
+      if (!unbound || TERMINAL_ATTEMPT.has(attempt.state) || attempt.state === 'interrupted') continue;
+      attempt.state = 'interrupted';
+      attempt.version += 1;
+      attempt.updatedAt = stamp;
+      if (reviewStage.currentAttemptRef === attempt.attemptRef) {
+        reviewStage.currentAttemptRef = null;
+        reviewStage.version += 1;
+        reviewStage.updatedAt = stamp;
+      }
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+function normalizeCrash(document: StoreDocument, stamp: string): boolean {
+  let changed = migrateReviewCollections(document);
   for (const run of document.runs) {
     let runChanged = false;
     const managerAssignment = normalizeAssignment(run.managerAssignment);
@@ -991,6 +1423,7 @@ function normalizeCrash(document: StoreDocument, stamp: string): boolean {
         changed = true;
       }
       if (normalizeStoredStageCheckerContract(stage)) changed = true;
+      if (normalizeStoredStageGenerationProjection(stage)) changed = true;
       if (stage.state !== 'running') continue;
       stage.state = 'interrupted';
       stage.version += 1;
@@ -998,6 +1431,7 @@ function normalizeCrash(document: StoreDocument, stamp: string): boolean {
       runChanged = true;
     }
     for (const attempt of document.attempts.filter((item) => item.subject === run.subject && item.runRef === run.runRef)) {
+      if (normalizeStoredAttemptReviewProvenance(attempt)) changed = true;
       if (attempt.state !== 'starting' && attempt.state !== 'running') continue;
       attempt.state = 'interrupted';
       attempt.version += 1;
@@ -1035,8 +1469,16 @@ function normalizeCrash(document: StoreDocument, stamp: string): boolean {
         changed = true;
       }
       if (normalizeStoredStageCheckerContract(stage)) changed = true;
+      if (normalizeStoredStageGenerationProjection(stage)) changed = true;
     }
+    for (const attempt of bundle.attempts) {
+      if (normalizeStoredAttemptReviewProvenance(attempt)) changed = true;
+    }
+    if (materializeLegacyReviewLoops(bundle.stages, bundle.attempts, bundle.reviewLoops, stamp)) changed = true;
+    validateReviewDurability(bundle.stages, bundle.attempts, bundle.stageGenerations, bundle.reviewLoops, bundle.reviewReceipts);
   }
+  if (materializeLegacyReviewLoops(document.stages, document.attempts, document.reviewLoops, stamp)) changed = true;
+  validateReviewDurability(document.stages, document.attempts, document.stageGenerations, document.reviewLoops, document.reviewReceipts);
   return changed;
 }
 
@@ -1444,9 +1886,40 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
         workflowProfile: stageCheckerContracts.get(inputStage.stageId)?.workflowProfile ?? null,
         review: clone(stageCheckerContracts.get(inputStage.stageId)?.review ?? null),
         completionGate: clone(stageCheckerContracts.get(inputStage.stageId)?.completionGate ?? null),
+        currentGeneration: 1,
+        currentGenerationRef: null,
+        acceptedGenerationRef: null,
         createdAt,
         updatedAt: createdAt,
       }));
+      const stagesById = new Map(stages.map((stage) => [stage.stageId, stage]));
+      const reviewedSubjects = new Set<string>();
+      const reviewLoops: StoredReviewLoop[] = [];
+      for (const reviewStage of stages) {
+        if (reviewStage.review === null) continue;
+        const subjectStage = stagesById.get(reviewStage.review.subjectStageId);
+        if (!subjectStage || reviewedSubjects.has(subjectStage.stageRef)) {
+          return fail('invalid', 'review stages must bind exactly one distinct subject stage');
+        }
+        reviewedSubjects.add(subjectStage.stageRef);
+        reviewLoops.push({
+          subject,
+          reviewLoopRef: ref('review-loop'),
+          runRef,
+          reviewStageRef: reviewStage.stageRef,
+          subjectStageRef: subjectStage.stageRef,
+          maxCreatorReworks: reviewStage.review.maxCreatorReworks,
+          reviewDefinitionHash: reviewLoopDefinitionHash(reviewStage),
+          reworksUsed: 0,
+          state: 'awaiting-subject',
+          activeGenerationRef: null,
+          acceptedGenerationRef: null,
+          activeReceiptRef: null,
+          version: 1,
+          createdAt,
+          updatedAt: createdAt,
+        });
+      }
       const manager: StoredSession = {
         subject,
         operationKey: null,
@@ -1468,6 +1941,7 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       document.runs.push(run);
       document.stages.push(...stages);
       document.sessions.push(manager);
+      document.reviewLoops.push(...reviewLoops);
       commit(document);
       return ok(detail(document, subject, run));
     },
@@ -1573,6 +2047,12 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
           && !stage.dependsOn.every((dependency) => projectedById.get(dependency)?.state === 'succeeded')) {
           return fail('invalid', 'canonical projection releases a stage before its dependencies succeed');
         }
+        if (projection.state === 'succeeded' && !stageMaySucceed(document, stage)) {
+          return fail('invalid', 'canonical projection bypasses review lineage');
+        }
+        if (['ready', 'running', 'succeeded'].includes(projection.state) && !reviewDependenciesAccepted(document, stage)) {
+          return fail('invalid', 'canonical projection bypasses accepted review dependencies');
+        }
       }
       const states = input.stages.map((stage) => stage.state);
       const runState: RunState = states.every((state) => state === 'succeeded') ? 'succeeded'
@@ -1634,6 +2114,9 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       if (['ready', 'running', 'succeeded'].includes(state) && !dependenciesSucceeded(document, stage)) {
         return fail('invalid', 'stage dependencies are not succeeded');
       }
+      if (state === 'succeeded' && !stageMaySucceed(document, stage)) {
+        return fail('invalid', 'stage review lineage is not committed or accepted');
+      }
       if (stage.state === 'waiting-human' && state === 'ready'
         && !boundariesAccepted(document, subject, stage.runRef, stage.stageRef)) {
         return fail('invalid', 'waiting-human stage boundaries are unresolved or not accepted');
@@ -1643,6 +2126,156 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       stage.updatedAt = stamp();
       commit(document);
       return ok(publicStage(stage));
+    },
+
+    recordStageGeneration(subject, stageRef, input) {
+      if (!validNonEmpty(input.operationKey, MAX_SHORT_TEXT) || typeof input.resultHash !== 'string' || !HASH_RE.test(input.resultHash)
+        || typeof input.canonicalCommit !== 'string' || !CANONICAL_COMMIT_RE.test(input.canonicalCommit)
+        || !Number.isSafeInteger(input.expectedGeneration) || input.expectedGeneration < 1) {
+        return fail('invalid', 'stage generation lineage is invalid');
+      }
+      const document = load();
+      const stage = document.stages.find((item) => item.subject === subject && item.stageRef === stageRef);
+      if (!stage) return fail('not-found', 'stage was not found');
+      if (input.operationKey !== generationOperationKey(stage.runRef, stage.stageId, input.expectedGeneration)) {
+        return fail('invalid', 'stage generation operationKey is not canonical');
+      }
+      const fingerprint = sha256(JSON.stringify({ stageRef, ...input }));
+      const replay = document.stageGenerations.find((item) => item.subject === subject && item.runRef === stage.runRef
+        && item.canonicalResultOperationKey === input.operationKey);
+      if (replay) {
+        if (replay.operationFingerprint !== fingerprint) return fail('idempotency-conflict', 'operationKey was reused with different generation content');
+        return ok(publicStageGeneration(replay), true);
+      }
+      if (stage.version !== input.expectedStageVersion) return fail('conflict', 'stage version changed');
+      if (stage.currentGeneration !== input.expectedGeneration || stage.currentGenerationRef !== null) {
+        return fail('conflict', 'stage generation projection changed');
+      }
+      if (!stage.currentAttemptRef) return fail('invalid', 'stage has no current attempt');
+      const attempt = document.attempts.find((item) => item.subject === subject && item.attemptRef === stage.currentAttemptRef);
+      if (!attempt || attempt.stageRef !== stage.stageRef
+        || attempt.version !== input.expectedAttemptVersion || attempt.state !== 'succeeded') {
+        return fail('conflict', 'current attempt does not match the committed generation');
+      }
+      const loops = document.reviewLoops.filter((loop) => loop.subject === subject && loop.runRef === stage.runRef && loop.subjectStageRef === stage.stageRef);
+      if (loops.length === 0) return fail('invalid', 'stage has no review loop');
+      const predecessor = stage.currentGeneration === 1 ? null : document.stageGenerations.find((item) =>
+        item.subject === subject && item.runRef === stage.runRef && item.logicalStageRef === stage.stageRef
+          && item.generation === stage.currentGeneration - 1);
+      if (stage.currentGeneration > 1 && !predecessor) return fail('conflict', 'prior generation is missing');
+      const createdAt = stamp();
+      const generation: StoredStageGeneration = {
+        subject,
+        operationFingerprint: fingerprint,
+        generationRef: ref('generation'),
+        runRef: stage.runRef,
+        logicalStageRef: stage.stageRef,
+        logicalStageId: stage.stageId,
+        generation: stage.currentGeneration,
+        predecessorGenerationRef: predecessor?.generationRef ?? null,
+        attemptRef: attempt.attemptRef,
+        canonicalResultOperationKey: input.operationKey,
+        resultHash: input.resultHash,
+        canonicalCommit: input.canonicalCommit,
+        state: 'committed',
+        createdAt,
+        updatedAt: createdAt,
+      };
+      stage.currentGenerationRef = generation.generationRef;
+      stage.version += 1;
+      stage.updatedAt = createdAt;
+      for (const loop of loops) {
+        loop.activeGenerationRef = generation.generationRef;
+        loop.state = 'checking';
+        loop.version += 1;
+        loop.updatedAt = createdAt;
+      }
+      document.stageGenerations.push(generation);
+      commit(document);
+      return ok(publicStageGeneration(generation));
+    },
+
+    recordReviewReceipt(subject, reviewStageRef, input) {
+      if (!validNonEmpty(input.operationKey, MAX_SHORT_TEXT) || !validNonEmpty(input.subjectGenerationRef, MAX_SHORT_TEXT)
+        || typeof input.subjectResultHash !== 'string' || !HASH_RE.test(input.subjectResultHash)
+        || !validNonEmpty(input.checkerAttemptRef, MAX_SHORT_TEXT) || !validNonEmpty(input.outcome, MAX_REVIEW_OUTCOME_CHARS)) {
+        return fail('invalid', 'review receipt content is invalid');
+      }
+      const document = load();
+      const reviewStage = document.stages.find((item) => item.subject === subject && item.stageRef === reviewStageRef);
+      if (!reviewStage) return fail('not-found', 'review stage was not found');
+      if (reviewStage.review === null) return fail('invalid', 'stage has no review contract');
+      const parsed = parseReviewOutcome(input.outcome, { review: reviewStage.review });
+      if (!parsed.ok) return fail('invalid', parsed.detail);
+      const outcomeHash = sha256(canonicalJson(parsed.value as unknown as JsonValue));
+      const fingerprint = sha256(JSON.stringify({ reviewStageRef, ...input, outcomeHash }));
+      const replay = document.reviewReceipts.find((item) => item.subject === subject && item.runRef === reviewStage.runRef && item.operationKey === input.operationKey);
+      if (replay) {
+        if (replay.operationFingerprint !== fingerprint) return fail('idempotency-conflict', 'operationKey was reused with different review receipt content');
+        return ok(publicReviewReceipt(replay), true);
+      }
+      const loop = document.reviewLoops.find((item) => item.subject === subject && item.runRef === reviewStage.runRef && item.reviewStageRef === reviewStageRef);
+      if (!loop) return fail('invalid', 'review loop was not found');
+      if (reviewStage.version !== input.expectedReviewStageVersion || loop.version !== input.expectedLoopVersion) {
+        return fail('conflict', 'review projection changed');
+      }
+      const subjectStage = document.stages.find((item) => item.subject === subject && item.runRef === reviewStage.runRef && item.stageRef === loop.subjectStageRef);
+      const generation = document.stageGenerations.find((item) => item.subject === subject && item.runRef === reviewStage.runRef
+        && item.generationRef === input.subjectGenerationRef);
+      const checkerAttempt = document.attempts.find((item) => item.subject === subject && item.attemptRef === input.checkerAttemptRef);
+      if (!subjectStage || !generation || generation.logicalStageRef !== loop.subjectStageRef || generation.state !== 'committed'
+        || generation.resultHash !== input.subjectResultHash || loop.activeGenerationRef !== generation.generationRef
+        || subjectStage.currentGenerationRef !== generation.generationRef
+        || reviewStage.currentAttemptRef !== input.checkerAttemptRef
+        || !checkerAttempt || checkerAttempt.stageRef !== reviewStageRef || checkerAttempt.version !== input.expectedCheckerAttemptVersion
+        || checkerAttempt.state !== 'succeeded' || checkerAttempt.reviewSubjectGenerationRef !== generation.generationRef
+        || checkerAttempt.reviewSubjectResultHash !== generation.resultHash || checkerAttempt.reviewSubjectCanonicalCommit !== generation.canonicalCommit) {
+        return fail('conflict', 'review receipt lineage does not match current committed work');
+      }
+      if (input.operationKey !== reviewReceiptOperationKey(reviewStage.runRef, reviewStage.stageId, generation.generation)) {
+        return fail('invalid', 'review receipt operationKey is not canonical');
+      }
+      if (document.reviewReceipts.some((item) => item.subject === subject && item.runRef === reviewStage.runRef
+        && item.reviewStageRef === reviewStageRef && item.subjectGenerationRef === generation.generationRef)) {
+        return fail('conflict', 'a review receipt already exists for this generation');
+      }
+      const createdAt = stamp();
+      const state: ReviewReceipt['state'] = parsed.value.decision === 'fail'
+        ? 'failed'
+        : parsed.value.decision === 'parked'
+          ? 'parked'
+          : reviewStage.completionGate === null ? 'passed' : 'awaiting-completion-gate';
+      const receipt: StoredReviewReceipt = {
+        subject,
+        operationFingerprint: fingerprint,
+        reviewReceiptRef: ref('review-receipt'),
+        runRef: reviewStage.runRef,
+        reviewStageRef,
+        subjectStageRef: subjectStage.stageRef,
+        subjectGenerationRef: generation.generationRef,
+        subjectResultHash: generation.resultHash,
+        checkerAttemptRef: checkerAttempt.attemptRef,
+        outcome: clone(parsed.value),
+        outcomeHash,
+        operationKey: input.operationKey,
+        state,
+        completionRequestRef: null,
+        createdAt,
+        finalizedAt: state === 'awaiting-completion-gate' ? null : createdAt,
+      };
+      loop.activeReceiptRef = receipt.reviewReceiptRef;
+      loop.state = state === 'awaiting-completion-gate' ? 'awaiting-gate' : state;
+      if (state === 'passed') {
+        loop.acceptedGenerationRef = generation.generationRef;
+        subjectStage.acceptedGenerationRef = generation.generationRef;
+        subjectStage.version += 1;
+        subjectStage.updatedAt = createdAt;
+      }
+      loop.version += 1;
+      loop.updatedAt = createdAt;
+      document.reviewReceipts.push(receipt);
+      commit(document);
+      return ok(publicReviewReceipt(receipt));
     },
 
     linkStageCard(subject, stageRef, expectedVersion, canonicalCardRef) {
@@ -1671,6 +2304,22 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
         && (input.runtime !== stage.assignment.runtime || input.model !== stage.assignment.model)) {
         return fail('invalid', 'attempt routing does not match assigned stage provenance');
       }
+      const reviewSubjectGenerationRef = input.reviewSubjectGenerationRef ?? null;
+      const reviewSubjectResultHash = input.reviewSubjectResultHash ?? null;
+      const reviewSubjectCanonicalCommit = input.reviewSubjectCanonicalCommit ?? null;
+      const reviewLoop = loopForReviewStage(document, stage);
+      if (reviewLoop) {
+        const generation = reviewLoop.activeGenerationRef === null ? undefined : document.stageGenerations.find((item) =>
+          item.subject === subject && item.runRef === stage.runRef && item.generationRef === reviewLoop.activeGenerationRef);
+        if (reviewLoop.state !== 'checking' || !generation || reviewSubjectGenerationRef !== generation.generationRef
+          || reviewSubjectResultHash !== generation.resultHash || reviewSubjectCanonicalCommit !== generation.canonicalCommit) {
+          return fail('conflict', 'checker attempt must bind the active committed subject generation');
+        }
+      } else if (reviewSubjectGenerationRef !== null || reviewSubjectResultHash !== null || reviewSubjectCanonicalCommit !== null) {
+        return fail('invalid', 'ordinary attempts cannot carry review generation provenance');
+      } else if (!reviewDependenciesAccepted(document, stage)) {
+        return fail('invalid', 'stage review dependencies are not accepted');
+      }
       const previous = stage.currentAttemptRef
         ? document.attempts.find((item) => item.subject === subject && item.attemptRef === stage.currentAttemptRef)
         : undefined;
@@ -1688,6 +2337,9 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
         state: 'queued',
         version: 1,
         managedSessionRef: null,
+        reviewSubjectGenerationRef,
+        reviewSubjectResultHash,
+        reviewSubjectCanonicalCommit,
         createdAt,
         updatedAt: createdAt,
       };
@@ -1776,6 +2428,9 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
         state: 'queued',
         version: 1,
         managedSessionRef: null,
+        reviewSubjectGenerationRef: current.reviewSubjectGenerationRef,
+        reviewSubjectResultHash: current.reviewSubjectResultHash,
+        reviewSubjectCanonicalCommit: current.reviewSubjectCanonicalCommit,
         createdAt,
         updatedAt: createdAt,
       };
@@ -2581,6 +3236,9 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
         document.sessions = document.sessions.filter((value) => value.subject !== subject || value.runRef !== run.runRef);
         document.humanRequests = document.humanRequests.filter((value) => value.subject !== subject || value.runRef !== run.runRef);
         document.events = document.events.filter((value) => value.subject !== subject || value.runRef !== run.runRef);
+        document.stageGenerations = document.stageGenerations.filter((value) => value.subject !== subject || value.runRef !== run.runRef);
+        document.reviewLoops = document.reviewLoops.filter((value) => value.subject !== subject || value.runRef !== run.runRef);
+        document.reviewReceipts = document.reviewReceipts.filter((value) => value.subject !== subject || value.runRef !== run.runRef);
         moved.push(inventoryItem(bundle));
       }
       commit(document);
@@ -2602,6 +3260,9 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       document.sessions.push(...bundle.sessions);
       document.humanRequests.push(...bundle.humanRequests);
       document.events.push(...bundle.events);
+      document.stageGenerations.push(...bundle.stageGenerations);
+      document.reviewLoops.push(...bundle.reviewLoops);
+      document.reviewReceipts.push(...bundle.reviewReceipts);
       document.events.sort((a, b) => a.cursor - b.cursor);
       const recoveryEvent: StoredEvent = {
         subject,

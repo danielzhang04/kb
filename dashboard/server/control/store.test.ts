@@ -150,6 +150,41 @@ function createCheckerRun(store: ControlPlaneStore, subject = 'alice') {
   return created.value;
 }
 
+function commitCheckerSubject(store: ControlPlaneStore, created = createCheckerRun(store)) {
+  const current = store.getRun('alice', created.run.runRef);
+  if (!current.ok) throw new Error(current.detail);
+  const subject = current.value.stages.find((stage) => stage.stageId === 'build');
+  if (!subject) throw new Error('checker subject missing');
+  const attempt = store.createAttempt('alice', subject.stageRef, {
+    expectedStageVersion: subject.version, runtime: 'codex', model: 'fixed',
+  });
+  if (!attempt.ok) throw new Error(attempt.detail);
+  const starting = store.transitionAttempt('alice', attempt.value.attemptRef, attempt.value.version, 'starting');
+  if (!starting.ok) throw new Error(starting.detail);
+  const running = store.transitionAttempt('alice', starting.value.attemptRef, starting.value.version, 'running');
+  if (!running.ok) throw new Error(running.detail);
+  const succeeded = store.transitionAttempt('alice', running.value.attemptRef, running.value.version, 'succeeded');
+  if (!succeeded.ok) throw new Error(succeeded.detail);
+  const detail = store.getRun('alice', created.run.runRef);
+  if (!detail.ok) throw new Error(detail.detail);
+  const currentStage = detail.value.stages.find((stage) => stage.stageRef === subject.stageRef);
+  if (!currentStage) throw new Error('checker subject disappeared');
+  const input = {
+    expectedStageVersion: currentStage.version, expectedAttemptVersion: succeeded.value.version, expectedGeneration: 1,
+    operationKey: `result:${created.run.runRef}:build`, resultHash: 'd'.repeat(64), canonicalCommit: 'a'.repeat(40),
+  };
+  const generation = store.recordStageGeneration('alice', currentStage.stageRef, input);
+  if (!generation.ok) throw new Error(generation.detail);
+  return { created, subject: currentStage, attempt: succeeded.value, generation: generation.value, input };
+}
+
+function checkerPassOutcome() {
+  return JSON.stringify({
+    schema: 'kb.review-outcome/v1', decision: 'pass', summary: 'All criteria passed.',
+    criteria: [{ criterionId: 'grounded', verdict: 'pass', findingIds: [] }], findings: [],
+  });
+}
+
 function settleRetryPredecessor(
   store: ControlPlaneStore,
   subject = 'alice',
@@ -500,6 +535,91 @@ describe('run graph, attempts, and managed sessions', () => {
       ...input,
       stages: [checkerStages()[0], { ...checkerStages()[1], completionGate: { ...CHECKER_COMPLETION_GATE, prompt: 'Changed.' } }],
     })).toMatchObject({ ok: false, reason: 'idempotency-conflict' });
+  });
+
+  it('appends committed subject lineage and a replay-safe parsed checker receipt', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const committed = commitCheckerSubject(store);
+    expect(store.recordStageGeneration('alice', committed.subject.stageRef, committed.input)).toMatchObject({ ok: true, replayed: true });
+    const afterGeneration = store.getRun('alice', committed.created.run.runRef);
+    if (!afterGeneration.ok) throw new Error(afterGeneration.detail);
+    expect(afterGeneration.value).toMatchObject({
+      stageGenerations: [expect.objectContaining({ generationRef: committed.generation.generationRef, resultHash: 'd'.repeat(64), canonicalCommit: 'a'.repeat(40) })],
+      reviewLoops: [expect.objectContaining({ state: 'checking', activeGenerationRef: committed.generation.generationRef })],
+    });
+    const checker = afterGeneration.value.stages.find((stage) => stage.stageId === 'check');
+    if (!checker) throw new Error('checker stage missing');
+    const checkerAttempt = store.createAttempt('alice', checker.stageRef, {
+      expectedStageVersion: checker.version, runtime: VERIFY_ASSIGNMENT.runtime, model: VERIFY_ASSIGNMENT.model,
+      reviewSubjectGenerationRef: committed.generation.generationRef, reviewSubjectResultHash: 'd'.repeat(64), reviewSubjectCanonicalCommit: 'a'.repeat(40),
+    });
+    if (!checkerAttempt.ok) throw new Error(checkerAttempt.detail);
+    const starting = store.transitionAttempt('alice', checkerAttempt.value.attemptRef, checkerAttempt.value.version, 'starting');
+    if (!starting.ok) throw new Error(starting.detail);
+    const running = store.transitionAttempt('alice', starting.value.attemptRef, starting.value.version, 'running');
+    if (!running.ok) throw new Error(running.detail);
+    const succeeded = store.transitionAttempt('alice', running.value.attemptRef, running.value.version, 'succeeded');
+    if (!succeeded.ok) throw new Error(succeeded.detail);
+    const beforeReceipt = store.getRun('alice', committed.created.run.runRef);
+    if (!beforeReceipt.ok) throw new Error(beforeReceipt.detail);
+    const review = beforeReceipt.value.stages.find((stage) => stage.stageId === 'check');
+    const loop = beforeReceipt.value.reviewLoops[0];
+    if (!review || !loop) throw new Error('review loop missing');
+    const receiptInput = {
+      expectedReviewStageVersion: review.version, expectedCheckerAttemptVersion: succeeded.value.version, expectedLoopVersion: loop.version,
+      subjectGenerationRef: committed.generation.generationRef, subjectResultHash: 'd'.repeat(64), checkerAttemptRef: succeeded.value.attemptRef,
+      outcome: checkerPassOutcome(), operationKey: `review-outcome:${committed.created.run.runRef}:check:g1`,
+    };
+    const receipt = store.recordReviewReceipt('alice', review.stageRef, receiptInput);
+    expect(receipt).toMatchObject({ ok: true, value: { state: 'awaiting-completion-gate', subjectGenerationRef: committed.generation.generationRef, finalizedAt: null } });
+    expect(store.recordReviewReceipt('alice', review.stageRef, receiptInput)).toMatchObject({ ok: true, replayed: true });
+    const accepted = store.getRun('alice', committed.created.run.runRef);
+    if (!accepted.ok) throw new Error(accepted.detail);
+    expect(accepted.value).toMatchObject({
+      reviewLoops: [expect.objectContaining({ state: 'awaiting-gate', acceptedGenerationRef: null })],
+      reviewReceipts: [expect.objectContaining({ state: 'awaiting-completion-gate', subjectResultHash: 'd'.repeat(64) })],
+    });
+    expect(accepted.value.stages.find((stage) => stage.stageId === 'build')).toMatchObject({ acceptedGenerationRef: null });
+  });
+
+  it('fails closed for stale or mismatched generation and receipt lineage', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const committed = commitCheckerSubject(store);
+    expect(store.recordStageGeneration('alice', committed.subject.stageRef, { ...committed.input, operationKey: 'result-other', resultHash: 'e'.repeat(64) }))
+      .toMatchObject({ ok: false, reason: 'invalid' });
+    const detail = store.getRun('alice', committed.created.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const review = detail.value.stages.find((stage) => stage.stageId === 'check');
+    const loop = detail.value.reviewLoops[0];
+    if (!review || !loop) throw new Error('review loop missing');
+    expect(store.recordReviewReceipt('alice', review.stageRef, {
+      expectedReviewStageVersion: review.version, expectedCheckerAttemptVersion: 1, expectedLoopVersion: loop.version,
+      subjectGenerationRef: committed.generation.generationRef, subjectResultHash: 'e'.repeat(64), checkerAttemptRef: 'attempt-missing',
+      outcome: checkerPassOutcome(), operationKey: 'review-mismatch',
+    })).toMatchObject({ ok: false, reason: 'conflict' });
+  });
+
+  it('blocks generic stage and checker-attempt bypasses until immutable review lineage exists', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const created = createCheckerRun(store);
+    const subject = created.stages.find((stage) => stage.stageId === 'build');
+    if (!subject) throw new Error('subject missing');
+    const running = store.transitionStage('alice', subject.stageRef, subject.version, 'running');
+    if (!running.ok) throw new Error(running.detail);
+    expect(store.transitionStage('alice', subject.stageRef, running.value.version, 'succeeded')).toMatchObject({
+      ok: false, reason: 'invalid', detail: expect.stringContaining('review lineage'),
+    });
+    const committed = commitCheckerSubject(store, created);
+    const afterCommit = store.getRun('alice', committed.created.run.runRef);
+    if (!afterCommit.ok) throw new Error(afterCommit.detail);
+    const currentSubject = afterCommit.value.stages.find((stage) => stage.stageId === 'build');
+    const checker = afterCommit.value.stages.find((stage) => stage.stageId === 'check');
+    if (!currentSubject || !checker) throw new Error('checker run stages missing');
+    const subjectSucceeded = store.transitionStage('alice', currentSubject.stageRef, currentSubject.version, 'succeeded');
+    if (!subjectSucceeded.ok) throw new Error(subjectSucceeded.detail);
+    expect(store.createAttempt('alice', checker.stageRef, {
+      expectedStageVersion: checker.version, runtime: VERIFY_ASSIGNMENT.runtime, model: VERIFY_ASSIGNMENT.model,
+    })).toMatchObject({ ok: false, reason: 'conflict' });
   });
 
   it('tracks canonical publication phases with run-version CAS', () => {
@@ -1030,9 +1150,17 @@ describe('durability, crash recovery, and retention', () => {
     const first = createFileControlPlaneStore(root, deterministicOptions());
     const created = createRun(first);
     const path = join(root, 'control', 'control-plane.json');
-    const legacy = JSON.parse(readFileSync(path, 'utf8')) as { runs: Array<Record<string, unknown>>; stages: Array<Record<string, unknown>> };
+    const legacy = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown> & { runs: Array<Record<string, unknown>>; stages: Array<Record<string, unknown>> };
     delete legacy.runs[0].managerAssignment;
-    for (const stage of legacy.stages) delete stage.assignment;
+    for (const stage of legacy.stages) {
+      delete stage.assignment;
+      delete stage.currentGeneration;
+      delete stage.currentGenerationRef;
+      delete stage.acceptedGenerationRef;
+    }
+    delete legacy.stageGenerations;
+    delete legacy.reviewLoops;
+    delete legacy.reviewReceipts;
     writeFileSync(path, `${JSON.stringify(legacy)}\n`, 'utf8');
 
     const restarted = createFileControlPlaneStore(root, deterministicOptions());
@@ -1041,7 +1169,9 @@ describe('durability, crash recovery, and retention', () => {
     expect(detail.value.run.managerAssignment).toBeNull();
     expect(detail.value.stages.every((stage) => stage.assignment === null)).toBe(true);
     expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({
-      runs: [{ managerAssignment: null }], stages: [{ assignment: null }, { assignment: null }],
+      runs: [{ managerAssignment: null }],
+      stages: [{ assignment: null, currentGeneration: 1, currentGenerationRef: null, acceptedGenerationRef: null }, { assignment: null, currentGeneration: 1, currentGenerationRef: null, acceptedGenerationRef: null }],
+      stageGenerations: [], reviewLoops: [], reviewReceipts: [],
     });
   });
 
@@ -1070,11 +1200,12 @@ describe('durability, crash recovery, and retention', () => {
     createFileControlPlaneStore(root, deterministicOptions());
     const migrated = JSON.parse(readFileSync(path, 'utf8')) as {
       stages: Array<Record<string, unknown>>;
-      quarantine: Array<{ stages: Array<Record<string, unknown>> }>;
+      quarantine: Array<{ stages: Array<Record<string, unknown>>; stageGenerations: unknown[]; reviewLoops: unknown[]; reviewReceipts: unknown[] }>;
     };
     for (const stage of [...migrated.stages, ...migrated.quarantine[0].stages]) {
       expect(stage).toMatchObject({ workflowProfile: null, review: null, completionGate: null });
     }
+    expect(migrated.quarantine[0]).toMatchObject({ stageGenerations: [], reviewLoops: [], reviewReceipts: [] });
   });
 
   it('fails closed for malformed present checker contracts in active and quarantined persisted rows', () => {
@@ -1105,6 +1236,55 @@ describe('durability, crash recovery, and retention', () => {
     check('quarantine');
   });
 
+  it('preserves committed generation and checking loop records across a file-store restart', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-'));
+    roots.push(root);
+    const first = createFileControlPlaneStore(root, deterministicOptions());
+    const committed = commitCheckerSubject(first);
+    const restarted = createFileControlPlaneStore(root, deterministicOptions());
+    const detail = restarted.getRun('alice', committed.created.run.runRef);
+    expect(detail).toMatchObject({
+      ok: true,
+      value: {
+        stageGenerations: [expect.objectContaining({ generationRef: committed.generation.generationRef, state: 'committed' })],
+        reviewLoops: [expect.objectContaining({ state: 'checking', activeGenerationRef: committed.generation.generationRef })],
+      },
+    });
+  });
+
+  it('materializes legacy checker loops without inferring subject lineage and interrupts unbound queued checker attempts', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-'));
+    roots.push(root);
+    const first = createFileControlPlaneStore(root, deterministicOptions());
+    const created = createCheckerRun(first);
+    const path = join(root, 'control', 'control-plane.json');
+    const document = JSON.parse(readFileSync(path, 'utf8')) as {
+      attempts: Array<Record<string, unknown>>;
+      reviewLoops: unknown[];
+      stages: Array<Record<string, unknown>>;
+    };
+    const checker = document.stages.find((stage) => stage.stageId === 'check');
+    if (!checker) throw new Error('persisted checker stage missing');
+    document.reviewLoops = [];
+    checker.currentAttemptRef = 'attempt-legacy-checker';
+    document.attempts.push({
+      subject: 'alice', attemptRef: 'attempt-legacy-checker', runRef: created.run.runRef, stageRef: checker.stageRef,
+      generation: 1, predecessorAttemptRef: null, runtime: VERIFY_ASSIGNMENT.runtime, model: VERIFY_ASSIGNMENT.model,
+      state: 'queued', version: 1, managedSessionRef: null, createdAt: checker.createdAt, updatedAt: checker.updatedAt,
+    });
+    writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
+
+    const restarted = createFileControlPlaneStore(root, deterministicOptions());
+    const detail = restarted.getRun('alice', created.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    expect(detail.value).toMatchObject({
+      reviewLoops: [expect.objectContaining({ state: 'awaiting-subject', activeGenerationRef: null, acceptedGenerationRef: null })],
+      attempts: [expect.objectContaining({ attemptRef: 'attempt-legacy-checker', state: 'interrupted', reviewSubjectGenerationRef: null })],
+    });
+    expect(detail.value.stages.find((stage) => stage.stageId === 'check')).toMatchObject({ currentAttemptRef: null });
+    expect(detail.value.stages.find((stage) => stage.stageId === 'build')).toMatchObject({ currentGenerationRef: null, acceptedGenerationRef: null });
+  });
+
   it('fails closed when persisted assignment provenance is present but malformed', () => {
     const root = mkdtempSync(join(tmpdir(), 'control-store-'));
     roots.push(root);
@@ -1116,6 +1296,41 @@ describe('durability, crash recovery, and retention', () => {
     document.stages[0].assignment = 'not-an-assignment';
     writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
     expect(() => createFileControlPlaneStore(root, deterministicOptions())).toThrow('invalid control-plane assignment provenance');
+  });
+
+  it('fails closed when persisted review durability rows or projection refs are malformed', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-'));
+    roots.push(root);
+    const first = createFileControlPlaneStore(root, deterministicOptions());
+    createRun(first);
+    const path = join(root, 'control', 'control-plane.json');
+    const document = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown> & { stages: Array<Record<string, unknown>> };
+    document.stages[0].currentGenerationRef = 'not a safe ref';
+    document.reviewLoops = [{ reviewLoopRef: 'bad-loop' }];
+    writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
+    expect(() => createFileControlPlaneStore(root, deterministicOptions())).toThrow('invalid control-plane stage generation projection');
+    const secondRoot = mkdtempSync(join(tmpdir(), 'control-store-'));
+    roots.push(secondRoot);
+    const second = createFileControlPlaneStore(secondRoot, deterministicOptions());
+    createRun(second);
+    const secondPath = join(secondRoot, 'control', 'control-plane.json');
+    const malformed = JSON.parse(readFileSync(secondPath, 'utf8')) as Record<string, unknown>;
+    malformed.reviewLoops = [{ reviewLoopRef: 'bad-loop' }];
+    writeFileSync(secondPath, `${JSON.stringify(malformed)}\n`, 'utf8');
+    expect(() => createFileControlPlaneStore(secondRoot, deterministicOptions())).toThrow('invalid control-plane review loop');
+    const thirdRoot = mkdtempSync(join(tmpdir(), 'control-store-'));
+    roots.push(thirdRoot);
+    const third = createFileControlPlaneStore(thirdRoot, deterministicOptions());
+    const thirdCreated = createCheckerRun(third);
+    const thirdPath = join(thirdRoot, 'control', 'control-plane.json');
+    const missingLoop = JSON.parse(readFileSync(thirdPath, 'utf8')) as Record<string, unknown>;
+    missingLoop.reviewLoops = [];
+    writeFileSync(thirdPath, `${JSON.stringify(missingLoop)}\n`, 'utf8');
+    const migrated = createFileControlPlaneStore(thirdRoot, deterministicOptions());
+    expect(migrated.getRun('alice', thirdCreated.run.runRef)).toMatchObject({
+      ok: true,
+      value: { reviewLoops: [expect.objectContaining({ state: 'awaiting-subject' })] },
+    });
   });
 
   it('atomically persists, then normalizes active crash residue once on restart', () => {
