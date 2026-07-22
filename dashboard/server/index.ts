@@ -35,8 +35,12 @@ export function resolveMergeGateIntervalMs(): number {
 
 /** Stranded-archiver cadence — DEFAULT-OFF (0 = disabled). Unlike the merge-gate reconciler this daemon
  *  MOVES cards, so on-by-default is NOT fail-safe here: the v1 build defaulted ON at 5-min intervals and
- *  would have wrongly archived live cards. It ships disabled and is opt-in via env, pending Daniel's
- *  policy answers (window / recoverability / unattended operation / rollout gate). */
+ *  would have wrongly archived live cards. It ships disabled and is opt-in via env.
+ *  POLICY RATIFIED (Daniel, 2026-07-22, all 8 §3d questions): 7-day window; archived cards stay MOVED
+ *  (never deleted, `queue/archived/` retained indefinitely, reversible archived→inbox only); unattended
+ *  MOVE is authorized — but only AFTER the rollout gate below; daemon default stays off; the Human-Inbox
+ *  `stranded` surface stays until dry-run proves correct, then is removed; the four ownerActivity sources
+ *  are approved as-is; schtasks liveness stays codex-only and veto-only. */
 export const DEFAULT_STRANDED_ARCHIVE_INTERVAL_MS = 0;
 export function resolveStrandedArchiveIntervalMs(env: NodeJS.ProcessEnv = process.env): number {
   const raw = env.DASHBOARD_STRANDED_ARCHIVE_INTERVAL_MS;
@@ -45,9 +49,13 @@ export function resolveStrandedArchiveIntervalMs(env: NodeJS.ProcessEnv = proces
   return Number.isFinite(parsed) ? parsed : DEFAULT_STRANDED_ARCHIVE_INTERVAL_MS;
 }
 
-/** Compile-time policy flag guarding the LIVE MOVE path. DEFAULT-OFF, and awaiting Daniel's answers to the
- *  §3d policy questions before it may be flipped. Even with this true, a live MOVE ALSO requires the env
- *  gate below — two independent locks. While it is `false` the archiver is dry-run-only regardless of env. */
+/** Compile-time policy flag guarding the LIVE MOVE path. Even with this true, a live MOVE ALSO requires
+ *  the env gate below — two independent locks. While it is `false` the archiver is dry-run-only
+ *  regardless of env.
+ *  ROLLOUT GATE (ratified 2026-07-22, policy Q3+Q4): flip this to `true` in a reviewed PR ONLY after the
+ *  dry-run cadence (enable via DASHBOARD_STRANDED_ARCHIVE_INTERVAL_MS) has produced 7 consecutive daily
+ *  cycles with ZERO wrong would-archive picks; Daniel then also sets DASHBOARD_STRANDED_ARCHIVE_LIVE=1
+ *  on the daemon. Until both, dry-run-only. */
 export const STRANDED_ARCHIVE_LIVE_MOVE_ALLOWED = false;
 /** dryRun is TRUE (report only, move nothing) unless BOTH the compile-time flag is flipped AND the operator
  *  sets `DASHBOARD_STRANDED_ARCHIVE_LIVE=1`. This ship: always dry-run. */
