@@ -52,6 +52,7 @@ describe('control proposal routes', () => {
   let turnId: string;
   let token: string;
   let routingWrites: Array<{ cardId: string; runtime: string; model: string }>;
+  let auditRows: Array<Record<string, unknown>>;
 
   beforeEach(async () => {
     let id = 0;
@@ -73,6 +74,7 @@ describe('control proposal routes', () => {
     composerStore.releaseWriter('operator', composerRef, lease.lease);
     token = mintSession('operator', SESSION).token;
     routingWrites = [];
+    auditRows = [];
     let headReads = 0;
     app = Fastify();
     registerWriteSurface(app, makeSurfaceContext({
@@ -82,8 +84,8 @@ describe('control proposal routes', () => {
       credentials: () => [],
       composerStore,
       controlStore,
-      appendAudit: (_repoRoot, event) => ({ ts: new Date().toISOString(), ...event }),
-      appendAuditLocal: (_repoRoot, event) => ({ ts: new Date().toISOString(), ...event }),
+      appendAudit: (_repoRoot, event) => { auditRows.push(event as unknown as Record<string, unknown>); return { ts: new Date().toISOString(), ...event }; },
+      appendAuditLocal: (_repoRoot, event) => { auditRows.push(event as unknown as Record<string, unknown>); return { ts: new Date().toISOString(), ...event }; },
       runPreamble: () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }),
       opsGit: (_repoRoot, args) => {
         if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
@@ -374,6 +376,31 @@ describe('control proposal routes', () => {
     expect(controlStore.listProposalRevisions('operator')).toEqual([]);
   });
 
+  it('keeps browser-authored proposal revisions strict: compiler-only assignments cannot enter the store', async () => {
+    const stored = controlStore.createProposalRevision('operator', {
+      sourceComposerRef: 'strict-wire', sourceTurnId: 'strict-wire-turn', title: proposal.title,
+      snapshot: proposal as unknown as import('./types.ts').JsonObject,
+    });
+    if (!stored.ok) throw new Error(stored.detail);
+    const forged = {
+      ...proposal,
+      manager: {
+        ...proposal.manager,
+        assignment: {
+          agentId: 'forged-manager', declarationPath: 'agents/forged-manager.md', declarationHash: 'a'.repeat(64),
+          profileId: 'manager:claude:claude-opus-4-8', runtime: 'claude', model: 'claude-opus-4-8',
+        },
+      },
+    };
+    const response = await app.inject({
+      method: 'POST', url: `/api/control/proposals/${stored.value.proposalRef}/revisions`, headers: headers(token),
+      payload: { expectedPreviousHash: stored.value.hash, proposal: forged },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ error: 'invalid-proposal', detail: "manager: unknown field 'assignment'" });
+    expect(controlStore.listProposalRevisions('operator', stored.value.proposalRef)).toHaveLength(1);
+  });
+
   it('publishes a deterministic two-stage canonical DAG once and stops at the inactive runtime gate', async () => {
     const imported = await app.inject({
       method: 'POST', url: '/api/control/proposals/import', headers: headers(token), payload: { composerRef, turnId },
@@ -578,10 +605,23 @@ describe('control proposal routes', () => {
     } finally { await managerApp.close(); }
   });
 
-  it('reroutes only the exact never-started managed stage and creates durable successor lineage', async () => {
+  it('keeps an unassigned stage reroutable in a mixed assigned workflow and creates durable successor lineage', async () => {
+    const managerAssignment = {
+      agentId: 'assigned-manager', declarationPath: 'agents/assigned-manager.md', declarationHash: 'a'.repeat(64),
+      profileId: 'manager:claude:claude-opus-4-8', runtime: 'claude' as const, model: 'claude-opus-4-8',
+    };
+    const workerAssignment = {
+      agentId: 'assigned-worker', declarationPath: 'agents/assigned-worker.md', declarationHash: 'b'.repeat(64),
+      profileId: 'worker:codex:gpt-5.6-sol', runtime: 'codex' as const, model: 'gpt-5.6-sol',
+    };
+    const mixed = {
+      ...proposal,
+      manager: { ...proposal.manager, assignment: managerAssignment },
+      stages: [proposal.stages[0], { ...proposal.stages[1], assignment: workerAssignment }],
+    };
     const stored = controlStore.createProposalRevision('operator', {
       sourceComposerRef: 'composer-reroute', sourceTurnId: 'turn-reroute', title: proposal.title,
-      snapshot: proposal as unknown as import('./types.ts').JsonObject,
+      snapshot: mixed as unknown as import('./types.ts').JsonObject,
     });
     if (!stored.ok) throw new Error(stored.detail);
     const approved = controlStore.decideProposal('operator', stored.value.proposalRef, 1, {
@@ -591,10 +631,23 @@ describe('control proposal routes', () => {
     const created = controlStore.createRun('operator', {
       title: proposal.title, proposalRef: stored.value.proposalRef, proposalRevision: 1,
       expectedProposalHash: stored.value.hash, managerRuntime: proposal.manager.runtime, managerModel: proposal.manager.model,
-      idempotencyKey: 'launch-reroute', stages: proposal.stages.map((stage) => ({ stageId: stage.id, title: stage.title, dependsOn: stage.dependsOn })),
+      managerAssignment, idempotencyKey: 'launch-reroute',
+      stages: mixed.stages.map((stage) => ({ stageId: stage.id, title: stage.title, dependsOn: stage.dependsOn, assignment: stage.assignment ?? null })),
     });
     if (!created.ok) throw new Error(created.detail);
     const sourceStage = created.value.stages[0];
+    const assignedStage = created.value.stages[1];
+    const assignedCardRef = workflowCardId(created.value.run.runRef, assignedStage.stageId);
+    const assignedLinked = controlStore.linkStageCard('operator', assignedStage.stageRef, assignedStage.version, assignedCardRef);
+    if (!assignedLinked.ok) throw new Error(assignedLinked.detail);
+    const assignedAttempt = controlStore.createAttempt('operator', assignedStage.stageRef, {
+      expectedStageVersion: assignedLinked.value.version, runtime: 'codex', model: 'gpt-5.6-sol',
+    });
+    if (!assignedAttempt.ok) throw new Error(assignedAttempt.detail);
+    const assignedSession = controlStore.createWorkerSession('operator', assignedAttempt.value.attemptRef, {
+      expectedAttemptVersion: assignedAttempt.value.version,
+    });
+    if (!assignedSession.ok) throw new Error(assignedSession.detail);
     const cardRef = workflowCardId(created.value.run.runRef, sourceStage.stageId);
     const linked = controlStore.linkStageCard('operator', sourceStage.stageRef, sourceStage.version, cardRef);
     if (!linked.ok) throw new Error(linked.detail);
@@ -656,12 +709,45 @@ describe('control proposal routes', () => {
     expect(replay.statusCode, replay.body).toBe(200);
     expect(replay.json()).toMatchObject({ ok: true, replayed: true, value: { attempt: { generation: 2 } } });
     expect(routingWrites).toHaveLength(1);
+
+    const assignedBefore = controlStore.getRun('operator', created.value.run.runRef);
+    if (!assignedBefore.ok) throw new Error(assignedBefore.detail);
+    const immutableStage = assignedBefore.value.stages.find((item) => item.stageRef === assignedStage.stageRef);
+    const immutableAttempt = assignedBefore.value.attempts.find((item) => item.attemptRef === assignedAttempt.value.attemptRef);
+    if (!immutableStage || !immutableAttempt) throw new Error('assigned reroute source missing');
+    const auditsBefore = auditRows.length;
+    const assignedRefusal = await app.inject({
+      method: 'POST', url: `/api/control/runs/${created.value.run.runRef}/stages/${immutableStage.stageRef}/reroute`, headers: headers(token),
+      payload: {
+        expectedStageVersion: immutableStage.version, expectedAttemptRef: immutableAttempt.attemptRef, expectedAttemptVersion: immutableAttempt.version,
+        runtime: 'claude', model: 'claude-sonnet-5', idempotencyKey: 'assigned-reroute-refused',
+      },
+    });
+    expect(assignedRefusal.statusCode, assignedRefusal.body).toBe(409);
+    expect(assignedRefusal.json()).toMatchObject({
+      error: 'reroute-refused', disposition: 'immutable',
+      detail: 'assigned stage routing is immutable; create a successor run with a new approved assignment',
+    });
+    expect(routingWrites).toHaveLength(1);
+    expect(auditRows).toHaveLength(auditsBefore);
+    expect(controlStore.getRun('operator', created.value.run.runRef)).toMatchObject({
+      ok: true,
+      value: {
+        stages: expect.arrayContaining([expect.objectContaining({ stageRef: immutableStage.stageRef, canonicalCardRef: assignedCardRef, version: immutableStage.version })]),
+        attempts: expect.arrayContaining([expect.objectContaining({ attemptRef: immutableAttempt.attemptRef, generation: 1, state: 'queued', version: immutableAttempt.version })]),
+      },
+    });
   });
 
-  it('creates an audited Manager successor generation but keeps runtime activation gated', async () => {
+  it('refuses mismatched assigned Manager successors before audit/store mutation, then permits the exact immutable route', async () => {
+    const managerAssignment = {
+      agentId: 'assigned-manager', declarationPath: 'agents/assigned-manager.md', declarationHash: 'd'.repeat(64),
+      profileId: 'manager:claude:claude-opus-4-8', runtime: 'claude' as const, model: 'claude-opus-4-8',
+    };
+    const assigned = { ...proposal, manager: { ...proposal.manager, assignment: managerAssignment } };
     const stored = controlStore.createProposalRevision('operator', {
       sourceComposerRef: 'composer-successor', sourceTurnId: 'turn-successor', title: proposal.title,
-      snapshot: proposal as unknown as import('./types.ts').JsonObject,
+      snapshot: assigned as unknown as import('./types.ts').JsonObject,
     });
     if (!stored.ok) throw new Error(stored.detail);
     const approved = controlStore.decideProposal('operator', stored.value.proposalRef, 1, {
@@ -671,12 +757,30 @@ describe('control proposal routes', () => {
     const created = controlStore.createRun('operator', {
       title: proposal.title, proposalRef: stored.value.proposalRef, proposalRevision: 1,
       expectedProposalHash: stored.value.hash, managerRuntime: proposal.manager.runtime, managerModel: proposal.manager.model,
-      idempotencyKey: 'launch-successor', stages: proposal.stages.map((stage) => ({ stageId: stage.id, title: stage.title, dependsOn: stage.dependsOn })),
+      managerAssignment, idempotencyKey: 'launch-successor', stages: proposal.stages.map((stage) => ({ stageId: stage.id, title: stage.title, dependsOn: stage.dependsOn })),
     });
     if (!created.ok) throw new Error(created.detail);
     const manager = created.value.sessions[0];
     const interrupted = controlStore.transitionSession('operator', manager.sessionRef, manager.version, 'interrupted');
     if (!interrupted.ok) throw new Error(interrupted.detail);
+
+    const auditsBefore = auditRows.length;
+    const mismatch = await app.inject({
+      method: 'POST', url: `/api/control/runs/${created.value.run.runRef}/manager/successor`, headers: headers(token),
+      payload: {
+        expectedManagerGeneration: 1, runtime: 'claude', model: 'claude-sonnet-5',
+        idempotencyKey: 'manager-successor-mismatch',
+      },
+    });
+    expect(mismatch.statusCode, mismatch.body).toBe(409);
+    expect(mismatch.json()).toEqual({
+      error: 'manager-successor-routing-immutable',
+      detail: 'manager successor routing must match immutable manager assignment provenance',
+    });
+    expect(auditRows).toHaveLength(auditsBefore);
+    expect(controlStore.getRun('operator', created.value.run.runRef)).toMatchObject({
+      ok: true, value: { run: { managerGeneration: 1, managerSessionRef: manager.sessionRef, state: 'planned' } },
+    });
 
     const response = await app.inject({
       method: 'POST', url: `/api/control/runs/${created.value.run.runRef}/manager/successor`, headers: headers(token),
@@ -693,6 +797,83 @@ describe('control proposal routes', () => {
     expect(controlStore.getRun('operator', created.value.run.runRef)).toMatchObject({
       ok: true, value: { run: { managerGeneration: 2, state: 'recovering' } },
     });
+    expect(auditRows.some((event) => event.action === 'control-manager-successor-authorize')).toBe(true);
+  });
+
+  it('accepts stored assigned snapshots through publication reconciliation and activation validation', async () => {
+    const managerAssignment = {
+      agentId: 'assigned-manager', declarationPath: 'agents/assigned-manager.md', declarationHash: 'e'.repeat(64),
+      profileId: 'manager:claude:claude-opus-4-8', runtime: 'claude' as const, model: 'claude-opus-4-8',
+    };
+    const workerAssignment = {
+      agentId: 'assigned-worker', declarationPath: 'agents/assigned-worker.md', declarationHash: 'f'.repeat(64),
+      profileId: 'worker:codex:gpt-5.6-sol', runtime: 'codex' as const, model: 'gpt-5.6-sol',
+    };
+    const assigned = {
+      ...proposal,
+      manager: { ...proposal.manager, assignment: managerAssignment },
+      stages: proposal.stages.map((stage, index) => index === 0 ? { ...stage, assignment: workerAssignment } : stage),
+    };
+    const stored = controlStore.createProposalRevision('operator', {
+      sourceComposerRef: 'assigned-lifecycle', sourceTurnId: 'assigned-lifecycle-turn', title: assigned.title,
+      snapshot: assigned as unknown as import('./types.ts').JsonObject,
+    });
+    if (!stored.ok) throw new Error(stored.detail);
+    const approved = controlStore.decideProposal('operator', stored.value.proposalRef, 1, {
+      expectedHash: stored.value.hash, expectedApprovalRevision: 0, decision: 'approved', idempotencyKey: 'approve-assigned-lifecycle',
+    });
+    if (!approved.ok) throw new Error(approved.detail);
+    const create = (idempotencyKey: string) => controlStore.createRun('operator', {
+      title: assigned.title, proposalRef: stored.value.proposalRef, proposalRevision: 1, expectedProposalHash: stored.value.hash,
+      managerRuntime: assigned.manager.runtime, managerModel: assigned.manager.model, managerAssignment, idempotencyKey,
+      stages: assigned.stages.map((stage) => ({ stageId: stage.id, title: stage.title, dependsOn: stage.dependsOn, assignment: stage.assignment ?? null })),
+    });
+
+    const publishingRun = create('assigned-reconcile');
+    if (!publishingRun.ok) throw new Error(publishingRun.detail);
+    const publishing = controlStore.transitionPublication('operator', publishingRun.value.run.runRef, publishingRun.value.run.version, 'publishing');
+    if (!publishing.ok) throw new Error(publishing.detail);
+    const reconciled = await app.inject({
+      method: 'POST', url: `/api/control/runs/${publishingRun.value.run.runRef}/reconcile-publication`, headers: headers(token),
+      payload: { expectedRunVersion: publishing.value.version },
+    });
+    // The fixture deliberately has no on-disk canonical cards. Reaching that honest recovery error
+    // proves the stored compiler snapshot passed semantic validation first.
+    expect(reconciled.statusCode).toBe(409);
+    expect(reconciled.json()).toMatchObject({ error: 'missing-card' });
+    expect(reconciled.json().error).not.toBe('stored-proposal-invalid');
+
+    const activationRun = create('assigned-activate');
+    if (!activationRun.ok) throw new Error(activationRun.detail);
+    const pub1 = controlStore.transitionPublication('operator', activationRun.value.run.runRef, activationRun.value.run.version, 'publishing');
+    if (!pub1.ok) throw new Error(pub1.detail);
+    const pub2 = controlStore.transitionPublication('operator', activationRun.value.run.runRef, pub1.value.version, 'published');
+    if (!pub2.ok) throw new Error(pub2.detail);
+    const waiting = controlStore.transitionRun('operator', activationRun.value.run.runRef, pub2.value.version, 'waiting-human');
+    if (!waiting.ok) throw new Error(waiting.detail);
+    const activationApp = Fastify();
+    registerWriteSurface(activationApp, makeSurfaceContext({
+      repoRoot: fileURLToPath(new URL('../../..', import.meta.url)), sessionConfig: SESSION,
+      allowedOrigins: [ORIGIN], credentials: () => [], composerStore, controlStore,
+      controlBroker: { isRunning: () => false, drain: () => {} } as never,
+      runAutomatic: (async () => ({ ok: true })) as never,
+      appendAudit: (_root, event) => ({ ts: new Date().toISOString(), ...event }),
+      appendAuditLocal: (_root, event) => ({ ts: new Date().toISOString(), ...event }),
+      runPreamble: () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }),
+      opsGit: (_root, args) => args.join(' ') === 'rev-parse --abbrev-ref HEAD' ? 'ops\n' : args.join(' ') === 'rev-parse HEAD' ? 'a'.repeat(40) : '',
+    }));
+    await activationApp.ready();
+    try {
+      const activated = await activationApp.inject({
+        method: 'POST', url: `/api/control/runs/${activationRun.value.run.runRef}/activate`, headers: headers(token),
+        payload: { expectedRunVersion: waiting.value.version, expectedManagerGeneration: 1, idempotencyKey: 'assigned-activate' },
+      });
+      // No root card is linked in this fixture, but the route must get past its stored assignment
+      // validation before reporting that separate lifecycle boundary.
+      expect(activated.statusCode).toBe(409);
+      expect(activated.json()).toMatchObject({ error: 'managed-root-card-binding-lost' });
+      expect(activated.json().error).not.toBe('stored-proposal-invalid');
+    } finally { await activationApp.close(); }
   });
 
   it('does not commit approval or Human Request decisions when canonical audit authorization fails', async () => {

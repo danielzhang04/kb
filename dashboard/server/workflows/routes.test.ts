@@ -274,6 +274,22 @@ describe('workflow launch governance boundaries', () => {
     writeFileSync(join(dir, `${name}.md`), text, 'utf8');
   }
 
+  function writeAgent(id: string, lines: string[]): void {
+    const dir = join(repoRoot, 'agents');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, `${id}.md`), ['---', `id: ${id}`, ...lines, '---', 'Bounded declaration instructions.', ''].join('\n'), 'utf8');
+  }
+
+  function assignedDefinition(id: string, managerId = 'assigned-manager', workerId = 'assigned-worker', workerProfile = 'worker:claude:claude-sonnet-5'): string {
+    return [
+      '---', `id: ${id}`, 'project: kb-ops', 'title: Assigned research', 'profile: research',
+      'manager:', `  agentId: ${managerId}`, '  profileId: manager:claude:claude-opus-4-8',
+      'stages:', '  - id: brief', '    title: Research a topic', '    action: research:web-brief',
+      '    target: orgs/kb-ops/output', '    workOrder: research it', `    agentId: ${workerId}`, `    profileId: ${workerProfile}`,
+      '---', 'body', '',
+    ].join('\n');
+  }
+
   beforeEach(async () => {
     repoRoot = mkdtempSync(join(tmpdir(), 'kb-workflow-routes-'));
     for (const rel of ['governance', 'CLAUDE.md', join('orgs', 'kb-ops', 'contract.md')]) {
@@ -301,6 +317,61 @@ describe('workflow launch governance boundaries', () => {
   afterEach(async () => {
     await app.close();
     rmSync(repoRoot, { recursive: true, force: true });
+  });
+
+  it('previews and launches a valid immutable manager/stage assignment from server-owned bindings', async () => {
+    writeAgent('assigned-manager', [
+      'runtime: claude', 'model: claude-opus-4-8', 'default-profile: manager:claude:claude-opus-4-8',
+      'allowed-profiles: [manager:claude:claude-opus-4-8]', 'projects: [kb-ops]', 'runner-bound: true', 'description: Manager.',
+    ]);
+    writeAgent('assigned-worker', [
+      'runtime: claude', 'model: claude-sonnet-5', 'default-profile: worker:claude:claude-sonnet-5',
+      'allowed-profiles: [worker:claude:claude-sonnet-5]', 'projects: [kb-ops]', 'runner-bound: true', 'description: Worker.',
+    ]);
+    writeDefinition('assigned', assignedDefinition('assigned'));
+
+    const listed = await app.inject({ method: 'GET', url: '/api/workflows' });
+    const entry = (listed.json().items as Array<Record<string, unknown>>).find((item) => item.ref === 'assigned');
+    expect(entry).toMatchObject({ valid: true, launchable: true, manager: { agentId: 'assigned-manager' } });
+
+    const preview = await app.inject({ method: 'GET', url: '/api/workflows/assigned' });
+    expect(preview.statusCode).toBe(200);
+    expect(preview.json()).toMatchObject({
+      compiled: {
+        ok: true,
+        manager: { runtime: 'claude', model: 'claude-opus-4-8', assignment: { agentId: 'assigned-manager', declarationHash: expect.stringMatching(/^[a-f0-9]{64}$/) } },
+        stages: [{ worker: { runtime: 'claude', model: 'claude-sonnet-5' }, assignment: { agentId: 'assigned-worker' } }],
+      },
+    });
+
+    const launched = await app.inject({ method: 'POST', url: '/api/workflows/assigned/launch', headers: headers(token), payload: { idempotencyKey: 'assigned' } });
+    expect(launched.statusCode).toBe(202);
+    expect(controlStore.listRuns('operator')).toHaveLength(1);
+  });
+
+  it('keeps parser-valid assignments visible but returns the exact compiler refusal and creates no run', async () => {
+    writeAgent('assigned-manager', [
+      'runtime: claude', 'model: claude-opus-4-8', 'default-profile: manager:claude:claude-opus-4-8',
+      'allowed-profiles: [manager:claude:claude-opus-4-8]', 'projects: [kb-ops]', 'runner-bound: true', 'description: Manager.',
+    ]);
+    writeAgent('assigned-worker', [
+      'runtime: claude', 'model: claude-sonnet-5', 'default-profile: worker:claude:claude-sonnet-5',
+      'allowed-profiles: [worker:claude:claude-sonnet-5]', 'projects: [kb-ops]', 'runner-bound: false', 'description: Worker.',
+    ]);
+    writeDefinition('unbound-assigned', assignedDefinition('unbound-assigned'));
+
+    const listed = await app.inject({ method: 'GET', url: '/api/workflows' });
+    const entry = (listed.json().items as Array<Record<string, unknown>>).find((item) => item.ref === 'unbound-assigned');
+    expect(entry).toMatchObject({ valid: true, launchable: false, compileError: 'assigned-agent-not-runner-bound' });
+    expect(entry?.compileDetail).toBe("assigned agent 'assigned-worker' is not runner-bound");
+
+    const preview = await app.inject({ method: 'GET', url: '/api/workflows/unbound-assigned' });
+    expect(preview.json()).toMatchObject({ compiled: { ok: false, error: 'assigned-agent-not-runner-bound', detail: "assigned agent 'assigned-worker' is not runner-bound" } });
+
+    const launched = await app.inject({ method: 'POST', url: '/api/workflows/unbound-assigned/launch', headers: headers(token), payload: { idempotencyKey: 'unbound' } });
+    expect(launched.statusCode).toBe(400);
+    expect(launched.json()).toEqual({ error: 'assigned-agent-not-runner-bound', detail: "assigned agent 'assigned-worker' is not runner-bound" });
+    expect(controlStore.listRuns('operator')).toHaveLength(0);
   });
 
   it('rejects a definition that targets a tree outside its own org', () => {

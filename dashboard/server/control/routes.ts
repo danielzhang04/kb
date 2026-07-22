@@ -12,6 +12,7 @@ import {
   diffPlanProposals,
   parseProposalFromAssistant,
   validatePlanProposal,
+  validateServerCompiledPlanProposal,
   type PlanProposal,
 } from './proposal.ts';
 import { compileApprovedProposal } from './compiler.ts';
@@ -85,7 +86,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       if (!latest) return reply.code(404).send({ error: 'proposal-not-found' });
       const stored = ctx.controlStore.getProposalRevision(sub, proposalRef, latest.revision);
       if (!stored.ok) return sendResult(reply, stored);
-      const prior = validatePlanProposal(stored.value.snapshot, registry);
+      const prior = validateServerCompiledPlanProposal(stored.value.snapshot, registry);
       if (!prior.ok) return reply.code(409).send({ error: 'stored-proposal-invalid', detail: prior.detail });
       previous = protocolRevision(prior.value, latest.revision);
     }
@@ -231,6 +232,14 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       if (!detail.ok) return { ok: false as const, status: 404, error: 'not-found', detail: detail.detail };
       const stage = detail.value.stages.find((candidate) => candidate.stageRef === stageRef);
       if (!stage) return { ok: false as const, status: 404, error: 'not-found', detail: 'stage was not found' };
+      // Assignment provenance is immutable at every lifecycle surface. Refuse before any canonical
+      // card write/audit, even if a stale caller has otherwise-valid CAS versions.
+      if (stage.assignment !== null) {
+        return {
+          ok: false as const, status: 409, error: 'reroute-refused', disposition: 'immutable' as const,
+          detail: 'assigned stage routing is immutable; create a successor run with a new approved assignment',
+        };
+      }
       const attempt = detail.value.attempts.find((candidate) => candidate.attemptRef === stage.currentAttemptRef);
       const session = detail.value.sessions.find((candidate) => candidate.sessionRef === attempt?.managedSessionRef);
       const amendmentRequired = stage.state === 'waiting-human'
@@ -274,10 +283,16 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       if (!stored.ok || stored.value.hash !== detail.value.run.proposalHash || stored.value.approval?.decision !== 'approved') {
         return { ok: false as const, status: 409, error: 'approved-proposal-binding-lost', detail: 'approved proposal binding was lost' };
       }
-      const parsed = validatePlanProposal(stored.value.snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
+      const parsed = validateServerCompiledPlanProposal(stored.value.snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
       if (!parsed.ok) return { ok: false as const, status: 409, error: 'stored-proposal-invalid', detail: parsed.detail };
       const proposalStage = parsed.value.stages.find((candidate) => candidate.id === stage.stageId);
       if (!proposalStage) return { ok: false as const, status: 409, error: 'proposal-binding-lost', detail: 'proposal stage was not found' };
+      if (proposalStage.assignment) {
+        return {
+          ok: false as const, status: 409, error: 'reroute-refused', disposition: 'immutable' as const,
+          detail: 'assigned stage routing is immutable; create a successor run with a new approved assignment',
+        };
+      }
       if (proposalStage.riskTier === 'T3' || proposalStage.humanGates.length > 0) {
         return {
           ok: false as const, status: 409, error: 'reroute-refused', disposition: 'plan-amendment-required' as const,
@@ -403,7 +418,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     return withOpsTransaction(async () => {
     try { await prepareCoordination(ctx.repoRoot, ctx.opsGit ?? defaultGitRunner); }
     catch { return reply.code(409).send({ error: 'canonical-reconciliation-failed' }); }
-    const parsed = validatePlanProposal(stored.value.snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
+    const parsed = validateServerCompiledPlanProposal(stored.value.snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
     if (!parsed.ok) return reply.code(409).send({ error: 'stored-proposal-invalid', detail: parsed.detail });
     const reconciled = await reconcileCanonicalPublication({
       repoRoot: ctx.repoRoot, runRef, proposal: parsed.value, defaultWorkers: defaultWorkers(ctx.repoRoot),
@@ -612,8 +627,15 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (!stored.ok || stored.value.hash !== detail.value.run.proposalHash || stored.value.approval?.decision !== 'approved') {
       return reply.code(409).send({ error: 'approved-proposal-binding-lost' });
     }
-    const proposal = validatePlanProposal(stored.value.snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
+    const proposal = validateServerCompiledPlanProposal(stored.value.snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
     if (!proposal.ok) return reply.code(409).send({ error: 'stored-proposal-invalid', detail: proposal.detail });
+    if (proposal.value.manager.assignment
+      && (runtime !== proposal.value.manager.assignment.runtime || model !== proposal.value.manager.assignment.model)) {
+      return reply.code(409).send({
+        error: 'manager-successor-routing-immutable',
+        detail: 'manager successor routing must match immutable manager assignment provenance',
+      });
+    }
     try {
       auditFn(ctx)(ctx.repoRoot, {
         action: 'control-manager-successor-authorize', owner: sub, target: runRef, riskTier: 'T2',
@@ -681,7 +703,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       return reply.code(409).send({ error: 'canonical-reconciliation-failed' });
     }
     const registry = loadRuntimeSkillRegistry(ctx.repoRoot);
-    const proposal = validatePlanProposal(stored.value.snapshot, registry);
+    const proposal = validateServerCompiledPlanProposal(stored.value.snapshot, registry);
     if (!proposal.ok) return reply.code(409).send({ error: 'stored-proposal-invalid', detail: proposal.detail });
     const compiled = compileApprovedProposal(proposal.value, stored.value.hash, stored.value.hash, {
       policy: loadPolicyEnvironment(ctx.repoRoot, proposal.value.project, proposal.value.governanceRefs),
@@ -701,7 +723,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (postAuditPreamble.exitCode !== 0 || !postAuditPreamble.stdout.includes('PREAMBLE OK')) {
       return reply.code(409).send({ error: 'post-audit-preamble-refused' });
     }
-    const postAuditProposal = validatePlanProposal(stored.value.snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
+    const postAuditProposal = validateServerCompiledPlanProposal(stored.value.snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
     const postAuditCompiled = postAuditProposal.ok
       ? compileApprovedProposal(postAuditProposal.value, stored.value.hash, stored.value.hash, {
           policy: loadPolicyEnvironment(ctx.repoRoot, postAuditProposal.value.project, postAuditProposal.value.governanceRefs),
@@ -725,7 +747,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
         repoRoot: ctx.repoRoot, runRef, cardRefs: rootCards, runPy: ctx.runPy,
         runGit: ctx.opsGit ?? defaultGitRunner,
         authorizeAfterPrepare: () => {
-          const currentProposal = validatePlanProposal(stored.value.snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
+          const currentProposal = validateServerCompiledPlanProposal(stored.value.snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
           const currentCompiled = currentProposal.ok
             ? compileApprovedProposal(currentProposal.value, stored.value.hash, stored.value.hash, {
                 policy: loadPolicyEnvironment(ctx.repoRoot, currentProposal.value.project, currentProposal.value.governanceRefs),

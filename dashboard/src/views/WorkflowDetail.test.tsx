@@ -116,6 +116,20 @@ describe('reaching a workflow detail and coming back', () => {
     render(<Workflows focusWorkflowId="kb~video.md" onOpenWorkflow={vi.fn()} />);
     expect(screen.queryByTestId('workflow-not-found')).toBeNull();
   });
+
+  it('visibly disables Launch for a parser-valid definition the compiler refuses', () => {
+    render(
+      <Workflows
+        definitions={{ items: [def({
+          ref: 'kb~unavailable.md', launchable: false, compileError: 'assigned-agent-not-runner-bound',
+          compileDetail: "assigned agent 'worker-a' is not runner-bound",
+        })] }}
+      />,
+    );
+    const launch = screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement;
+    expect(launch.disabled).toBe(true);
+    expect(screen.getByTestId('workflow-def-unavailable-kb~unavailable.md').textContent).toContain("assigned agent 'worker-a' is not runner-bound");
+  });
 });
 
 /** The step-2 payoff, asserted through the real join rather than a hand-fed run list. */
@@ -245,5 +259,43 @@ describe('fields the tables never rendered', () => {
     );
     fireEvent.click(screen.getByTestId('entity-tab-compiled'));
     expect(screen.getByTestId('workflow-compile-error').textContent).toContain('requires skill "ffmpeg"');
+  });
+
+  it('renders manager and stage declared assignments separately from immutable effective routing', () => {
+    render(
+      <WorkflowDetail
+        entry={def({
+          ref: 'kb~assigned.md',
+          profile: 'research',
+          manager: { agentId: 'manager-a', profileId: 'manager:claude:claude-opus-4-8' },
+          stages: [{ id: 'write', action: 'write', target: 'script.md', riskTier: 'T1', declaredAssignment: { agentId: 'worker-a', profileId: 'worker:claude:claude-sonnet-5' } }],
+        })}
+        compiled={{
+          ok: true, proposalId: 'wf-assigned', contentHash: 'a'.repeat(64),
+          manager: { runtime: 'claude', model: 'claude-opus-4-8', requiredSkills: [], assignment: { agentId: 'manager-a', profileId: 'manager:claude:claude-opus-4-8', declarationPath: 'agents/manager-a.md', declarationHash: 'm'.repeat(64), runtime: 'claude', model: 'claude-opus-4-8' } },
+          stages: [{ id: 'write', title: 'Write', action: 'write', target: 'script.md', workOrder: 'Write.', riskTier: 'T1', dependsOn: [], worker: { runtime: 'claude', model: 'claude-sonnet-5' }, requiredSkills: [], scope: { read: [], write: ['script.md'] }, artifacts: [], checkpoints: [], humanGates: [], assignment: { agentId: 'worker-a', profileId: 'worker:claude:claude-sonnet-5', declarationPath: 'agents/worker-a.md', declarationHash: 'w'.repeat(64), runtime: 'claude', model: 'claude-sonnet-5' } }],
+        }}
+      />,
+    );
+    expect(screen.getByTestId('workflow-manager-routing').textContent).toContain('manager-a · manager:claude:claude-opus-4-8');
+    expect(screen.getByTestId('workflow-manager-routing').textContent).toContain('claude/claude-opus-4-8');
+    expect(screen.getByTestId('workflow-manager-routing').textContent).toContain('m'.repeat(64));
+    fireEvent.click(screen.getByTestId('entity-tab-stages'));
+    expect(screen.getByTestId('workflow-stage-routing-write').textContent).toContain('worker-a · worker:claude:claude-sonnet-5');
+    expect(screen.getByTestId('workflow-stage-routing-write').textContent).toContain('w'.repeat(64));
+    expect(screen.getByTestId('entity-detail-facts').textContent).toContain('Workflow tool profile');
+  });
+
+  it('renders unassigned routing and exposes an exact compiler refusal as unavailable', () => {
+    render(
+      <WorkflowDetail
+        entry={def({ ref: 'kb~unavailable.md', launchable: false, compileError: 'assigned-agent-not-runner-bound', compileDetail: "assigned agent 'worker-a' is not runner-bound" })}
+        compiled={{ ok: false, error: 'assigned-agent-not-runner-bound', detail: "assigned agent 'worker-a' is not runner-bound" }}
+      />,
+    );
+    expect(screen.getByTestId('workflow-compile-unavailable').textContent).toContain("assigned agent 'worker-a' is not runner-bound");
+    expect(screen.getByTestId('workflow-manager-routing').textContent).toContain('unassigned');
+    fireEvent.click(screen.getByTestId('entity-tab-stages'));
+    expect(screen.getByTestId('workflow-stage-routing-write').textContent).toContain('Effective routing unavailable');
   });
 });

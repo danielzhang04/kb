@@ -18,7 +18,7 @@ import { withOpsTransaction } from '../write/asyncGit.ts';
 import { activateManagedRootCards, launchWorkflowRun } from '../write/workflowRun.ts';
 import { loadPolicy } from '../routing/policy.ts';
 import type { SurfaceContext } from '../http/context.ts';
-import { validatePlanProposal } from './proposal.ts';
+import { validateServerCompiledPlanProposal } from './proposal.ts';
 import { compileApprovedProposal } from './compiler.ts';
 import { loadPolicyEnvironment, loadRuntimeSkillRegistry } from './environment.ts';
 import { reconcileCanonicalPublication } from './publication.ts';
@@ -105,7 +105,10 @@ export async function executeApprovedLaunch(
       return { status: 409, body: { error: 'canonical-policy-base-unavailable' } };
     }
     const registry = loadRuntimeSkillRegistry(ctx.repoRoot);
-    const parsed = validatePlanProposal(snapshot, registry);
+    // Stored workflow snapshots may carry compiler-only immutable agent assignments. Browser-authored
+    // proposals are still validated by `validatePlanProposal` before they can be stored; launch only
+    // accepts the server-compiled shape here.
+    const parsed = validateServerCompiledPlanProposal(snapshot, registry);
     if (!parsed.ok) return { status: 409, body: { error: 'stored-proposal-invalid', detail: parsed.detail } };
     const compiled = compileApprovedProposal(parsed.value, storedHash, storedHash, {
       policy: loadPolicyEnvironment(ctx.repoRoot, parsed.value.project, parsed.value.governanceRefs),
@@ -141,11 +144,20 @@ export async function executeApprovedLaunch(
       expectedProposalHash: storedHash,
       managerRuntime: parsed.value.manager.runtime,
       managerModel: parsed.value.manager.model,
+      managerAssignment: parsed.value.manager.assignment ?? null,
       idempotencyKey,
       predecessorRunRef,
       expectedPredecessorVersion: predecessorRunRef === null ? undefined : input.expectedPredecessorVersion,
       agentWorkspaceLaunch: input.agentWorkspaceLaunch ?? null,
-      stages: parsed.value.stages.map((stage) => ({ stageId: stage.id, title: stage.title, dependsOn: [...stage.dependsOn] })),
+      stages: parsed.value.stages.map((stage) => ({
+        stageId: stage.id,
+        title: stage.title,
+        dependsOn: [...stage.dependsOn],
+        assignment: stage.assignment ?? null,
+        workflowProfile: stage.workflowProfile ?? null,
+        review: stage.review ?? null,
+        completionGate: stage.completionGate ?? null,
+      })),
     });
     if (!created.ok) return failure(created);
     const runRef = created.value.run.runRef;
@@ -313,7 +325,7 @@ export async function executeApprovedLaunch(
         repoRoot: ctx.repoRoot, runRef, cardRefs: rootCards, runPy: ctx.runPy,
         runGit: ctx.opsGit ?? defaultGitRunner,
         authorizeAfterPrepare: () => {
-          const currentProposal = validatePlanProposal(snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
+          const currentProposal = validateServerCompiledPlanProposal(snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
           const currentCompiled = currentProposal.ok
             ? compileApprovedProposal(currentProposal.value, storedHash, storedHash, {
                 policy: loadPolicyEnvironment(ctx.repoRoot, currentProposal.value.project, currentProposal.value.governanceRefs),

@@ -119,6 +119,7 @@ export function Workflows({
   }, [openDefRef, sessionToken, injectedRuns, injectedRevisions]);
 
   const defs = definitions ?? fetchedDefs ?? EMPTY_DEFS;
+  const canLaunch = (entry: WorkflowDefEntry): boolean => entry.valid && entry.launchable !== false;
 
   async function launchDefinition(ref: string): Promise<void> {
     if (pendingLaunches.current.has(ref)) return;
@@ -220,11 +221,16 @@ export function Workflows({
                 <button
                   type="button"
                   className="mc-btn mc-btn--primary"
-                  disabled={launchingRefs.has(openDef.ref)}
+                  disabled={!canLaunch(openDef) || launchingRefs.has(openDef.ref)}
                   onClick={() => void launchDefinition(openDef.ref)}
                 >
                   Launch
                 </button>
+                {!canLaunch(openDef) ? (
+                  <span className="v-workflows__run-status" data-testid={`workflow-def-unavailable-${openDef.ref}`}>
+                    Unavailable: {openDef.compileDetail ?? openDef.compileError ?? 'compiler refused this definition'}
+                  </span>
+                ) : null}
                 {launchStatus[openDef.ref] ? (
                   <span className="v-workflows__run-status" data-testid={`workflow-def-status-${openDef.ref}`}>
                     {launchStatus[openDef.ref]}
@@ -319,11 +325,16 @@ export function Workflows({
                         <button
                           type="button"
                           className="mc-btn mc-btn--quiet"
-                          disabled={launchingRefs.has(d.ref)}
+                          disabled={!canLaunch(d) || launchingRefs.has(d.ref)}
                           onClick={() => void launchDefinition(d.ref)}
                         >
                           Launch
                         </button>
+                        {!canLaunch(d) ? (
+                          <span className="v-workflows__not-runnable" data-testid={`workflow-def-unavailable-${d.ref}`}>
+                            {d.compileDetail ?? d.compileError ?? 'Compiler refused'}
+                          </span>
+                        ) : null}
                         {launchStatus[d.ref] ? (
                           <span className="v-workflows__run-status" data-testid={`workflow-def-status-${d.ref}`}>
                             {launchStatus[d.ref]}

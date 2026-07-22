@@ -241,6 +241,43 @@ describe('compileWorkflowDef', () => {
     expect(compileWorkflowDef(ASSIGNED, badDefault)).toMatchObject({ ok: false, reason: 'assigned-default-profile-mismatch' });
   });
 
+  it('emits the exact refusal diagnostic for every feasible assignment binding failure', () => {
+    const unbound = bindingEnvironment();
+    unbound.declaredAgents.get('fyt-production')!.runnerBound = false;
+    expect(compileWorkflowDef(ASSIGNED, unbound)).toMatchObject({
+      ok: false, reason: 'assigned-agent-not-runner-bound', detail: "assigned agent 'fyt-production' is not runner-bound",
+    });
+
+    const unknown = { ...ASSIGNED, stages: [{ ...ASSIGNED.stages[0], agentId: 'missing-agent' }] };
+    expect(compileWorkflowDef(unknown, bindingEnvironment())).toMatchObject({
+      ok: false, reason: 'assigned-agent-not-declared', detail: "assigned agent 'missing-agent' is not declared",
+    });
+
+    const otherProject = bindingEnvironment();
+    otherProject.declaredAgents.get('fyt-production')!.projects = ['faceless-youtube'];
+    expect(compileWorkflowDef(ASSIGNED, otherProject)).toMatchObject({
+      ok: false, reason: 'assigned-agent-project-mismatch', detail: "assigned agent 'fyt-production' is not declared for project 'kb-ops'",
+    });
+
+    const disallowed = bindingEnvironment();
+    disallowed.declaredAgents.get('fyt-production')!.allowedProfiles = ['worker:codex:gpt-5.6-sol'];
+    expect(compileWorkflowDef(ASSIGNED, disallowed)).toMatchObject({
+      ok: false, reason: 'assigned-profile-not-allowed', detail: "assigned profile 'worker:claude:claude-sonnet-5' is not allowed for agent 'fyt-production'",
+    });
+
+    const wrongRole = { ...ASSIGNED, stages: [{ ...ASSIGNED.stages[0], profileId: 'manager:claude:claude-opus-4-8' }] };
+    const wrongRoleEnvironment = bindingEnvironment();
+    wrongRoleEnvironment.declaredAgents.get('fyt-production')!.allowedProfiles!.push('manager:claude:claude-opus-4-8');
+    expect(compileWorkflowDef(wrongRole, wrongRoleEnvironment)).toMatchObject({
+      ok: false, reason: 'assigned-profile-role-mismatch', detail: "assigned execution profile 'manager:claude:claude-opus-4-8' is not a worker profile",
+    });
+
+    const codexSelected = { ...ASSIGNED, stages: [{ ...ASSIGNED.stages[0], profileId: 'worker:codex:gpt-5.6-sol' }] };
+    expect(compileWorkflowDef(codexSelected, bindingEnvironment({ availableRuntimes: new Set<'claude' | 'codex'>(['claude']) }))).toMatchObject({
+      ok: false, reason: 'assigned-runtime-unavailable', detail: "runtime 'codex' is unavailable for assigned profile 'worker:codex:gpt-5.6-sol'",
+    });
+  });
+
   it('rejects a manager or worker whose declared default profile has the wrong logical role', () => {
     const managerDefaultWorker = bindingEnvironment();
     const manager = managerDefaultWorker.declaredAgents.get('fyt-runner')!;

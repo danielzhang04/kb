@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { indexSkills } from '../registry/skills.ts';
 import { loadPolicy } from '../routing/policy.ts';
+import { readDeclaredAgentDetails } from '../agents/roster.ts';
 import type { ExecutionProfile, PolicyEnvironment } from './policy.ts';
 
 export interface RuntimeSkillRegistry {
@@ -120,6 +121,28 @@ export function loadExecutionProfiles(repoRoot: string): ExecutionProfile[] {
     }
   }
   return profiles;
+}
+
+/**
+ * The one server-owned input snapshot for workflow-definition compilation.
+ *
+ * Definitions may name an agent and execution profile, but neither a browser nor authored workflow
+ * prose supplies the declaration, executable profile, runtime availability, model, or skill registry.
+ * Keep these four authoritative loaders together so list preview, detail preview, and launch cannot
+ * disagree about whether an assignment is currently launchable.
+ */
+export function loadWorkflowCompileEnvironment(repoRoot: string) {
+  const registry = loadRuntimeSkillRegistry(repoRoot);
+  const availableRuntimes = new Set<'claude' | 'codex'>();
+  for (const runtime of Object.keys(registry.runtimes)) {
+    if (runtime === 'claude' || runtime === 'codex') availableRuntimes.add(runtime);
+  }
+  return {
+    registry,
+    declaredAgents: readDeclaredAgentDetails(repoRoot),
+    executionProfiles: loadExecutionProfiles(repoRoot),
+    availableRuntimes,
+  };
 }
 
 function allowedGovernanceRef(project: string, ref: string): boolean {

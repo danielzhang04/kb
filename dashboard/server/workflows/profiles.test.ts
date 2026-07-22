@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { FORBIDDEN_WORKFLOW_TOOLS, loadWorkflowProfiles, workflowProfileIds } from '../control/environment.ts';
 
 describe('workflow execution profiles', () => {
-  it('exposes the four server-owned profiles the shipped definitions reference', () => {
-    expect(workflowProfileIds()).toEqual(new Set(['research', 'gmail-triage', 'drive-author', 'producer']));
+  it('exposes every server-owned profile the shipped definitions reference, including the readonly checker', () => {
+    expect(workflowProfileIds()).toEqual(new Set(['checker-readonly', 'research', 'gmail-triage', 'drive-author', 'producer']));
   });
 
   it('never grants a publish/send capability in any default profile', () => {

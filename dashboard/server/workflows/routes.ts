@@ -22,10 +22,10 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { auditFn, type SurfaceContext } from '../http/context.ts';
 import { requireSession, verifiedSession, writeRateLimitHook } from '../http/middleware.ts';
 import { originPlugin } from '../security/origin.ts';
-import { loadRuntimeSkillRegistry, workflowProfileIds } from '../control/environment.ts';
+import { loadWorkflowCompileEnvironment, workflowProfileIds } from '../control/environment.ts';
 import {
   proposalContentHash,
-  validatePlanProposal,
+  validateServerCompiledPlanProposal,
   type PlanProposal,
 } from '../control/proposal.ts';
 import { executeApprovedLaunch, type LaunchOutcome } from '../control/launch.ts';
@@ -39,8 +39,16 @@ interface WorkflowStagePreview {
   action: string;
   target: string;
   riskTier: 'T1' | 'T2' | 'T3';
+  /** Authored declaration, not effective routing. Null keeps legacy default routing. */
+  declaredAssignment: WorkflowAssignmentPreview | null;
   review: { subjectStageId: string; maxCreatorReworks: number } | null;
   completionGate: { id: string; kind: 'approval'; requiresReview: 'pass' } | null;
+}
+
+/** Declaration-side identity. Effective routing is emitted only by a successful compile. */
+export interface WorkflowAssignmentPreview {
+  agentId: string;
+  profileId: string;
 }
 
 export interface WorkflowDefEntry {
@@ -51,12 +59,17 @@ export interface WorkflowDefEntry {
   valid: boolean;
   title: string | null;
   profile: string | null;
+  manager: WorkflowAssignmentPreview | null;
   stageCount: number;
   parameters: string[];
   riskTier: 'T1' | 'T2' | 'T3' | null;
   /** Per-stage preview (action → target, tier) for a compiled-preview list; empty for invalid defs. */
   stages: WorkflowStagePreview[];
   detail: string | null;
+  /** Semantic compiler decision; intentionally separate from parser `valid`. */
+  launchable: boolean;
+  compileError: string | null;
+  compileDetail: string | null;
 }
 
 const ORGS_DIR = 'orgs';
@@ -78,11 +91,15 @@ function invalidEntry(project: string, basename: string, path: string, detail: s
       valid: false,
       title: null,
       profile: null,
+      manager: null,
       stageCount: 0,
       parameters: [],
       riskTier: null,
       stages: [],
       detail,
+      launchable: false,
+      compileError: null,
+      compileDetail: null,
     },
   };
 }
@@ -168,15 +185,21 @@ export function scanWorkflowDefs(repoRoot: string): ScannedDef[] {
             valid: true,
             title: parsed.value.title,
             profile: parsed.value.profile,
+            manager: parsed.value.manager ? { ...parsed.value.manager } : null,
             stageCount: parsed.value.stages.length,
             parameters: [...(parsed.value.parameters ?? [])],
             riskTier: highestTier(parsed.value),
             stages: parsed.value.stages.map((stage) => ({
               id: stage.id, action: stage.action, target: stage.target, riskTier: stage.riskTier,
+              declaredAssignment: stage.agentId && stage.profileId
+                ? { agentId: stage.agentId, profileId: stage.profileId } : null,
               review: stage.review ? { subjectStageId: stage.review.subjectStageId, maxCreatorReworks: stage.review.maxCreatorReworks } : null,
               completionGate: stage.completionGate ? { id: stage.completionGate.id, kind: stage.completionGate.kind, requiresReview: stage.completionGate.requiresReview } : null,
             })),
             detail: null,
+            launchable: false,
+            compileError: null,
+            compileDetail: null,
           },
         });
       } else {
@@ -203,11 +226,15 @@ export function scanWorkflowDefs(repoRoot: string): ScannedDef[] {
         valid: false,
         title: null,
         profile: null,
+        manager: null,
         stageCount: 0,
         parameters: [],
         riskTier: null,
         stages: [],
         detail: `workflow id '${id}' is duplicated; ids must be globally unique`,
+        launchable: false,
+        compileError: null,
+        compileDetail: null,
       };
     }
   }
@@ -244,10 +271,12 @@ async function launchDefinition(
   // waiting-human when the engine is absent and hands root-card activation + worker startup to the
   // automatic executor when it is present. T2+/gated stages still stop at human requests before any
   // execution. There is no separate manual proposal path for definitions to divert to, so do not refuse.
-  const registry = loadRuntimeSkillRegistry(ctx.repoRoot);
-  const compiled = compileWorkflowDef(def, { registry });
+  const compileEnvironment = loadWorkflowCompileEnvironment(ctx.repoRoot);
+  const compiled = compileWorkflowDef(def, compileEnvironment);
   if (!compiled.ok) return { status: 400, body: { error: compiled.reason, detail: compiled.detail } };
-  const validation = validatePlanProposal(compiled.value as unknown, registry);
+  // Definitions compile trusted immutable assignment snapshots. The browser proposal validator must
+  // reject those compiler-only fields, while this server-owned path validates their closed shape.
+  const validation = validateServerCompiledPlanProposal(compiled.value as unknown, compileEnvironment.registry);
   if (!validation.ok) return { status: 500, body: { error: 'compiled-proposal-invalid', detail: validation.detail } };
   const proposal = validation.value;
   const snapshot = proposal as unknown as JsonObject;
@@ -309,10 +338,21 @@ async function launchDefinition(
 
 /** A compiled-preview projection for the detail route (never exposes engine internals). */
 function compiledPreview(repoRoot: string, def: WorkflowDef): { proposalId: string; contentHash: string; proposal: PlanProposal } | { error: string; detail: string } {
-  const registry = loadRuntimeSkillRegistry(repoRoot);
-  const compiled = compileWorkflowDef(def, { registry });
+  const compiled = compileWorkflowDef(def, loadWorkflowCompileEnvironment(repoRoot));
   if (!compiled.ok) return { error: compiled.reason, detail: compiled.detail };
   return { proposalId: compiled.value.proposalId, contentHash: proposalContentHash(compiled.value), proposal: compiled.value };
+}
+
+/** Preserve parser validity while exposing the compiler's exact semantic launch decision. */
+function entryWithCompileStatus(scanned: ScannedDef, repoRoot: string): WorkflowDefEntry {
+  if (!scanned.def) return scanned.entry;
+  const preview = compiledPreview(repoRoot, scanned.def);
+  return {
+    ...scanned.entry,
+    launchable: !('error' in preview),
+    compileError: 'error' in preview ? preview.error : null,
+    compileDetail: 'error' in preview ? preview.detail : null,
+  };
 }
 
 /** Register the workflow-definition registry routes + the governed one-step launch route. */
@@ -320,7 +360,7 @@ export function registerWorkflows(app: FastifyInstance, ctx: SurfaceContext): vo
   const repoRoot = ctx.repoRoot;
 
   // Read-only, pre-auth (like registerRegistry).
-  app.get('/api/workflows', async () => ({ items: scanWorkflowDefs(repoRoot).map((scanned) => scanned.entry) }));
+  app.get('/api/workflows', async () => ({ items: scanWorkflowDefs(repoRoot).map((scanned) => entryWithCompileStatus(scanned, repoRoot)) }));
   // Profiles are server-owned execution policy. Clients must read them rather than infer a default.
   app.get('/api/workflows/profiles', async () => ({ profiles: [...workflowProfileIds()].sort() }));
 
@@ -331,10 +371,11 @@ export function registerWorkflows(app: FastifyInstance, ctx: SurfaceContext): vo
     if (!scanned.def) return reply.send({ entry: scanned.entry, definition: null, compiled: null });
     const preview = compiledPreview(repoRoot, scanned.def);
     return reply.send({
-      entry: scanned.entry,
+      entry: entryWithCompileStatus(scanned, repoRoot),
       definition: scanned.def,
       compiled: 'error' in preview ? { ok: false, error: preview.error, detail: preview.detail } : {
-        ok: true, proposalId: preview.proposalId, contentHash: preview.contentHash, stages: preview.proposal.stages,
+        ok: true, proposalId: preview.proposalId, contentHash: preview.contentHash,
+        manager: preview.proposal.manager, stages: preview.proposal.stages,
       },
     });
   });
