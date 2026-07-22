@@ -25,6 +25,13 @@ const VERIFY_ASSIGNMENT = {
   agentId: 'fyt-verifier', declarationPath: 'agents/fyt-verifier.md', declarationHash: 'c'.repeat(64),
   profileId: 'claude:worker', runtime: 'claude' as const, model: 'claude-sonnet-5',
 };
+const CHECKER_REVIEW = {
+  subjectStageId: 'build', maxCreatorReworks: 1,
+  criteria: [{ id: 'grounded', description: 'Citations are grounded in the source material.' }],
+};
+const CHECKER_COMPLETION_GATE = {
+  id: 'approve-check', kind: 'approval' as const, prompt: 'Approve the checker result.', requiresReview: 'pass' as const,
+};
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
@@ -105,6 +112,39 @@ function createAssignedRun(
       { stageId: 'build', title: 'Build', dependsOn: [], assignment: assignments.build },
       { stageId: 'verify', title: 'Verify', dependsOn: ['build'], assignment: assignments.verify },
     ],
+  });
+  if (!created.ok) throw new Error(created.detail);
+  return created.value;
+}
+
+function checkerSnapshot(): JsonObject {
+  return {
+    schema: 'kb.plan-proposal/v1', manager: {}, stages: [
+      { id: 'build', title: 'Build', dependsOn: [] },
+      {
+        id: 'check', title: 'Check', dependsOn: ['build'], action: 'review:source-grounding', assignment: VERIFY_ASSIGNMENT,
+        workflowProfile: 'checker-readonly', review: structuredClone(CHECKER_REVIEW), completionGate: structuredClone(CHECKER_COMPLETION_GATE),
+      },
+    ],
+  };
+}
+
+function checkerStages() {
+  return [
+    { stageId: 'build', title: 'Build', dependsOn: [] },
+    {
+      stageId: 'check', title: 'Check', dependsOn: ['build'], assignment: structuredClone(VERIFY_ASSIGNMENT),
+      workflowProfile: 'checker-readonly', review: structuredClone(CHECKER_REVIEW), completionGate: structuredClone(CHECKER_COMPLETION_GATE),
+    },
+  ];
+}
+
+function createCheckerRun(store: ControlPlaneStore, subject = 'alice') {
+  const proposal = createApprovedProposal(store, subject, checkerSnapshot());
+  const created = store.createRun(subject, {
+    title: 'Checker synthetic run', proposalRef: proposal.proposalRef, proposalRevision: proposal.revision,
+    expectedProposalHash: proposal.hash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
+    idempotencyKey: 'launch-checker', stages: checkerStages(),
   });
   if (!created.ok) throw new Error(created.detail);
   return created.value;
@@ -280,6 +320,73 @@ describe('run graph, attempts, and managed sessions', () => {
     expect(afterMutation.value.stages.find((stage) => stage.stageId === 'build')?.assignment).toEqual(BUILD_ASSIGNMENT);
   });
 
+  it('round-trips immutable checker contract provenance and binds it into launch replay', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const proposal = createApprovedProposal(store, 'alice', checkerSnapshot());
+    const input = {
+      title: 'Checker run', proposalRef: proposal.proposalRef, proposalRevision: proposal.revision,
+      expectedProposalHash: proposal.hash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
+      idempotencyKey: 'checker-launch-once', stages: checkerStages(),
+    };
+    const first = store.createRun('alice', input);
+    if (!first.ok) throw new Error(first.detail);
+    const checker = first.value.stages.find((stage) => stage.stageId === 'check');
+    expect(checker).toMatchObject({
+      workflowProfile: 'checker-readonly', review: CHECKER_REVIEW, completionGate: CHECKER_COMPLETION_GATE,
+    });
+    const callerReview = input.stages[1]?.review;
+    if (!callerReview) throw new Error('checker review missing');
+    callerReview.criteria[0]!.description = 'Mutated caller value.';
+    const afterMutation = store.getRun('alice', first.value.run.runRef);
+    if (!afterMutation.ok) throw new Error(afterMutation.detail);
+    expect(afterMutation.value.stages.find((stage) => stage.stageId === 'check')).toMatchObject({
+      review: CHECKER_REVIEW, completionGate: CHECKER_COMPLETION_GATE,
+    });
+    const exactReplay = store.createRun('alice', {
+      ...input,
+      stages: checkerStages(),
+    });
+    expect(exactReplay).toMatchObject({ ok: true, replayed: true });
+    expect(store.createRun('alice', {
+      ...input,
+      stages: [{ ...checkerStages()[0] }, {
+        ...checkerStages()[1], completionGate: { ...CHECKER_COMPLETION_GATE, prompt: 'Different approval prompt.' },
+      }],
+    })).toMatchObject({ ok: false, reason: 'idempotency-conflict' });
+  });
+
+  it('rejects checker contract omission, substitution, injection, and malformed combinations', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const proposal = createApprovedProposal(store, 'alice', checkerSnapshot());
+    const base = {
+      title: 'Checker provenance', proposalRef: proposal.proposalRef, proposalRevision: proposal.revision,
+      expectedProposalHash: proposal.hash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
+    };
+    expect(store.createRun('alice', {
+      ...base, idempotencyKey: 'checker-omitted', stages: [checkerStages()[0], { ...checkerStages()[1], review: null, completionGate: null, workflowProfile: null }],
+    })).toMatchObject({ ok: false, reason: 'conflict' });
+    expect(store.createRun('alice', {
+      ...base, idempotencyKey: 'checker-substituted', stages: [checkerStages()[0], {
+        ...checkerStages()[1], review: { ...CHECKER_REVIEW, maxCreatorReworks: 2 },
+      }],
+    })).toMatchObject({ ok: false, reason: 'conflict' });
+    expect(store.createRun('alice', {
+      ...base, idempotencyKey: 'checker-injected', stages: [checkerStages()[0], {
+        ...checkerStages()[1], review: { ...CHECKER_REVIEW, extra: true } as never,
+      }],
+    })).toMatchObject({ ok: false, reason: 'invalid' });
+    expect(store.createRun('alice', {
+      ...base, idempotencyKey: 'checker-wrong-profile', stages: [checkerStages()[0], {
+        ...checkerStages()[1], workflowProfile: 'writer-profile',
+      }],
+    })).toMatchObject({ ok: false, reason: 'invalid' });
+    expect(store.createRun('alice', {
+      ...base, idempotencyKey: 'checker-gate-without-review', stages: [checkerStages()[0], {
+        ...checkerStages()[1], review: null,
+      }],
+    })).toMatchObject({ ok: false, reason: 'invalid' });
+  });
+
   it('refuses tampered or malformed assignment provenance before a run is created', () => {
     const store = createInMemoryControlPlaneStore(deterministicOptions());
     const proposal = createApprovedProposal(store, 'alice', {
@@ -371,6 +478,27 @@ describe('run graph, attempts, and managed sessions', () => {
     expect(store.createRun('alice', {
       ...input,
       stages: [{ ...input.stages[0], assignment: { ...BUILD_ASSIGNMENT, declarationHash: 'd'.repeat(64) } }, input.stages[1]],
+    })).toMatchObject({ ok: false, reason: 'idempotency-conflict' });
+  });
+
+  it('preserves checker contract provenance in Retry successors', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const predecessor = settleRetryPredecessor(store, 'alice', createCheckerRun);
+    const input = {
+      title: 'Checker Retry', proposalRef: predecessor.run.proposalRef, proposalRevision: predecessor.run.proposalRevision,
+      expectedProposalHash: predecessor.run.proposalHash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
+      idempotencyKey: 'checker-retry', predecessorRunRef: predecessor.run.runRef, expectedPredecessorVersion: predecessor.run.version,
+      stages: checkerStages(),
+    };
+    const successor = store.createRun('alice', input);
+    if (!successor.ok) throw new Error(successor.detail);
+    expect(successor.value.stages.find((stage) => stage.stageId === 'check')).toMatchObject({
+      workflowProfile: 'checker-readonly', review: CHECKER_REVIEW, completionGate: CHECKER_COMPLETION_GATE,
+    });
+    expect(store.createRun('alice', input)).toMatchObject({ ok: true, replayed: true });
+    expect(store.createRun('alice', {
+      ...input,
+      stages: [checkerStages()[0], { ...checkerStages()[1], completionGate: { ...CHECKER_COMPLETION_GATE, prompt: 'Changed.' } }],
     })).toMatchObject({ ok: false, reason: 'idempotency-conflict' });
   });
 
@@ -915,6 +1043,66 @@ describe('durability, crash recovery, and retention', () => {
     expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({
       runs: [{ managerAssignment: null }], stages: [{ assignment: null }, { assignment: null }],
     });
+  });
+
+  it('migrates missing checker contract fields in active and quarantined legacy stage rows to null', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-'));
+    roots.push(root);
+    const first = createFileControlPlaneStore(root, deterministicOptions());
+    createRun(first);
+    const path = join(root, 'control', 'control-plane.json');
+    const document = JSON.parse(readFileSync(path, 'utf8')) as {
+      runs: Array<Record<string, unknown>>;
+      stages: Array<Record<string, unknown>>;
+      quarantine: Array<Record<string, unknown>>;
+    };
+    document.quarantine.push({
+      subject: 'archived', quarantinedAt: '2026-07-18T12:00:00.000Z', run: structuredClone(document.runs[0]),
+      stages: structuredClone(document.stages), attempts: [], sessions: [], humanRequests: [], events: [],
+    });
+    for (const stage of [...document.stages, ...(document.quarantine[0].stages as Array<Record<string, unknown>>)]) {
+      delete stage.workflowProfile;
+      delete stage.review;
+      delete stage.completionGate;
+    }
+    writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
+
+    createFileControlPlaneStore(root, deterministicOptions());
+    const migrated = JSON.parse(readFileSync(path, 'utf8')) as {
+      stages: Array<Record<string, unknown>>;
+      quarantine: Array<{ stages: Array<Record<string, unknown>> }>;
+    };
+    for (const stage of [...migrated.stages, ...migrated.quarantine[0].stages]) {
+      expect(stage).toMatchObject({ workflowProfile: null, review: null, completionGate: null });
+    }
+  });
+
+  it('fails closed for malformed present checker contracts in active and quarantined persisted rows', () => {
+    const check = (location: 'active' | 'quarantine') => {
+      const root = mkdtempSync(join(tmpdir(), 'control-store-'));
+      roots.push(root);
+      const first = createFileControlPlaneStore(root, deterministicOptions());
+      createRun(first);
+      const path = join(root, 'control', 'control-plane.json');
+      const document = JSON.parse(readFileSync(path, 'utf8')) as {
+        runs: Array<Record<string, unknown>>;
+        stages: Array<Record<string, unknown>>;
+        quarantine: Array<Record<string, unknown>>;
+      };
+      if (location === 'quarantine') {
+        document.quarantine.push({
+          subject: 'archived', quarantinedAt: '2026-07-18T12:00:00.000Z', run: structuredClone(document.runs[0]),
+          stages: structuredClone(document.stages), attempts: [], sessions: [], humanRequests: [], events: [],
+        });
+        (document.quarantine[0].stages as Array<Record<string, unknown>>)[0].review = { subjectStageId: 'build' };
+      } else {
+        document.stages[0].workflowProfile = { injected: true };
+      }
+      writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
+      expect(() => createFileControlPlaneStore(root, deterministicOptions())).toThrow('invalid control-plane checker contract provenance');
+    };
+    check('active');
+    check('quarantine');
   });
 
   it('fails closed when persisted assignment provenance is present but malformed', () => {

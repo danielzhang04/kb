@@ -12,7 +12,11 @@ import {
 import { createHash, randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { redactSensitiveText } from '../composer/publicTimeline.ts';
-import type { ResolvedAgentAssignment } from './proposal.ts';
+import type {
+  ProposalCompletionGate,
+  ProposalReview,
+  ResolvedAgentAssignment,
+} from './proposal.ts';
 import type {
   BrokerConsumption,
   BrokerMutation,
@@ -58,8 +62,13 @@ export const MAX_STEERING_INSTRUCTIONS_PER_SESSION = 256;
 const MAX_TITLE = 240;
 const MAX_SHORT_TEXT = 512;
 const MAX_LONG_TEXT = 64 * 1024;
+const MAX_REVIEW_CRITERIA = 16;
+const MAX_REVIEW_REWORKS = 2;
+const MAX_REVIEW_CRITERION_DESCRIPTION = 200;
+const MAX_COMPLETION_GATE_PROMPT = 2_000;
 const HASH_RE = /^[a-f0-9]{64}$/;
 const SAFE_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const SAFE_STAGE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const AGENT_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const PROFILE_ID_RE = /^[a-z0-9][a-z0-9:._-]{0,127}$/;
 const MODEL_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -281,6 +290,12 @@ export interface CreateRunStageInput {
   canonicalCardRef?: string | null;
   /** Must exactly match the approved compiler snapshot for this stage. */
   assignment?: ResolvedAgentAssignment | null;
+  /** Must exactly match the approved compiler snapshot for this stage. */
+  workflowProfile?: string | null;
+  /** Must exactly match the approved compiler snapshot for this stage. */
+  review?: ProposalReview | null;
+  /** Must exactly match the approved compiler snapshot for this stage. */
+  completionGate?: ProposalCompletionGate | null;
 }
 
 export interface CreateRunInput {
@@ -595,6 +610,76 @@ function sameAssignment(left: ResolvedAgentAssignment | null, right: ResolvedAge
     && left.model === right.model);
 }
 
+interface CheckerContractProvenance {
+  workflowProfile: string | null;
+  review: ProposalReview | null;
+  completionGate: ProposalCompletionGate | null;
+}
+
+function hasExactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
+  const keys = Object.keys(value).sort();
+  const sortedExpected = [...expected].sort();
+  return keys.length === sortedExpected.length && keys.every((key, index) => key === sortedExpected[index]);
+}
+
+function normalizeWorkflowProfile(value: unknown): string | null | undefined {
+  if (value === undefined || value === null) return null;
+  return typeof value === 'string' && SAFE_STAGE_ID_RE.test(value) ? value : undefined;
+}
+
+function normalizeReview(value: unknown, dependsOn: readonly string[]): ProposalReview | null | undefined {
+  if (value === undefined || value === null) return null;
+  if (!isPlainRecord(value) || !hasExactKeys(value, ['subjectStageId', 'maxCreatorReworks', 'criteria'])) return undefined;
+  const { subjectStageId, maxCreatorReworks, criteria } = value;
+  if (typeof subjectStageId !== 'string' || !SAFE_STAGE_ID_RE.test(subjectStageId) || !dependsOn.includes(subjectStageId)
+    || typeof maxCreatorReworks !== 'number' || !Number.isSafeInteger(maxCreatorReworks)
+    || maxCreatorReworks < 0 || maxCreatorReworks > MAX_REVIEW_REWORKS
+    || !Array.isArray(criteria) || criteria.length < 1 || criteria.length > MAX_REVIEW_CRITERIA) {
+    return undefined;
+  }
+  const normalizedCriteria: ProposalReview['criteria'] = [];
+  const ids = new Set<string>();
+  for (const criterion of criteria) {
+    if (!isPlainRecord(criterion) || !hasExactKeys(criterion, ['id', 'description'])
+      || typeof criterion.id !== 'string' || !SAFE_STAGE_ID_RE.test(criterion.id)
+      || !validNonEmpty(criterion.description, MAX_REVIEW_CRITERION_DESCRIPTION) || ids.has(criterion.id)) {
+      return undefined;
+    }
+    ids.add(criterion.id);
+    normalizedCriteria.push({ id: criterion.id, description: criterion.description });
+  }
+  return { subjectStageId, maxCreatorReworks, criteria: normalizedCriteria };
+}
+
+function normalizeCompletionGate(value: unknown): ProposalCompletionGate | null | undefined {
+  if (value === undefined || value === null) return null;
+  if (!isPlainRecord(value) || !hasExactKeys(value, ['id', 'kind', 'prompt', 'requiresReview'])) return undefined;
+  if (typeof value.id !== 'string' || !SAFE_STAGE_ID_RE.test(value.id)
+    || value.kind !== 'approval' || value.requiresReview !== 'pass'
+    || !validNonEmpty(value.prompt, MAX_COMPLETION_GATE_PROMPT)) return undefined;
+  return { id: value.id, kind: 'approval', prompt: value.prompt, requiresReview: 'pass' };
+}
+
+/**
+ * The compiler owns checker contracts.  Missing legacy fields normalize to null, but any present
+ * value must be one of the exact, bounded shapes the compiler admits.
+ */
+function normalizeCheckerContract(
+  value: { workflowProfile?: unknown; review?: unknown; completionGate?: unknown; dependsOn: readonly string[] },
+): CheckerContractProvenance | undefined {
+  const workflowProfile = normalizeWorkflowProfile(value.workflowProfile);
+  const review = normalizeReview(value.review, value.dependsOn);
+  const completionGate = normalizeCompletionGate(value.completionGate);
+  if (workflowProfile === undefined || review === undefined || completionGate === undefined) return undefined;
+  if (review !== null && workflowProfile !== 'checker-readonly') return undefined;
+  if (completionGate !== null && review === null) return undefined;
+  return { workflowProfile, review, completionGate };
+}
+
+function sameCheckerContract(left: CheckerContractProvenance, right: CheckerContractProvenance): boolean {
+  return canonicalJson(left as unknown as JsonValue) === canonicalJson(right as unknown as JsonValue);
+}
+
 function sameStringArray(left: readonly string[], right: unknown): boolean {
   return Array.isArray(right) && left.length === right.length
     && right.every((item, index) => typeof item === 'string' && item === left[index]);
@@ -608,7 +693,10 @@ function approvedAssignment(value: unknown): ResolvedAgentAssignment | null | un
 function approvedRunAssignments(
   snapshot: JsonObject,
   stages: readonly CreateRunStageInput[],
-): { manager: ResolvedAgentAssignment | null; stages: Map<string, ResolvedAgentAssignment | null> } | null {
+): {
+  manager: ResolvedAgentAssignment | null;
+  stages: Map<string, { assignment: ResolvedAgentAssignment | null; checkerContract: CheckerContractProvenance }>;
+} | null {
   if (!isPlainRecord(snapshot.manager) || !Array.isArray(snapshot.stages) || snapshot.stages.length !== stages.length) return null;
   const manager = approvedAssignment(snapshot.manager);
   if (manager === undefined) return null;
@@ -618,7 +706,7 @@ function approvedRunAssignments(
     if (!isPlainRecord(snapshotStage) || typeof snapshotStage.id !== 'string' || snapshotById.has(snapshotStage.id)) return null;
     snapshotById.set(snapshotStage.id, snapshotStage);
   }
-  const resolved = new Map<string, ResolvedAgentAssignment | null>();
+  const resolved = new Map<string, { assignment: ResolvedAgentAssignment | null; checkerContract: CheckerContractProvenance }>();
   for (const stage of stages) {
     const snapshotStage = snapshotById.get(stage.stageId);
     if (!snapshotStage) return null;
@@ -626,7 +714,18 @@ function approvedRunAssignments(
       || !sameStringArray(stage.dependsOn, snapshotStage.dependsOn)) return null;
     const assignment = approvedAssignment(snapshotStage);
     if (assignment === undefined) return null;
-    resolved.set(stage.stageId, assignment);
+    const checkerContract = normalizeCheckerContract({
+      workflowProfile: snapshotStage.workflowProfile,
+      review: snapshotStage.review,
+      completionGate: snapshotStage.completionGate,
+      dependsOn: stage.dependsOn,
+    });
+    if (!checkerContract) return null;
+    if (checkerContract.review !== null
+      && (assignment === null || typeof snapshotStage.action !== 'string' || !snapshotStage.action.startsWith('review:'))) {
+      return null;
+    }
+    resolved.set(stage.stageId, { assignment, checkerContract });
   }
   return { manager, stages: resolved };
 }
@@ -849,6 +948,25 @@ function appendRecoveryEvent(document: StoreDocument, subject: string, runRef: s
   document.nextEventCursor += 1;
 }
 
+function normalizeStoredStageCheckerContract(stage: StoredStage): boolean {
+  const checkerContract = normalizeCheckerContract(stage);
+  if (!checkerContract) throw new Error('invalid control-plane checker contract provenance');
+  let changed = false;
+  if (stage.workflowProfile === undefined) {
+    stage.workflowProfile = null;
+    changed = true;
+  }
+  if (stage.review === undefined) {
+    stage.review = null;
+    changed = true;
+  }
+  if (stage.completionGate === undefined) {
+    stage.completionGate = null;
+    changed = true;
+  }
+  return changed;
+}
+
 function normalizeCrash(document: StoreDocument, stamp: string): boolean {
   let changed = false;
   for (const run of document.runs) {
@@ -872,6 +990,7 @@ function normalizeCrash(document: StoreDocument, stamp: string): boolean {
         stage.assignment = null;
         changed = true;
       }
+      if (normalizeStoredStageCheckerContract(stage)) changed = true;
       if (stage.state !== 'running') continue;
       stage.state = 'interrupted';
       stage.version += 1;
@@ -915,6 +1034,7 @@ function normalizeCrash(document: StoreDocument, stamp: string): boolean {
         stage.assignment = null;
         changed = true;
       }
+      if (normalizeStoredStageCheckerContract(stage)) changed = true;
     }
   }
   return changed;
@@ -1182,6 +1302,7 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       }
       const ids = new Set<string>();
       const stageAssignments = new Map<string, ResolvedAgentAssignment | null>();
+      const stageCheckerContracts = new Map<string, CheckerContractProvenance>();
       for (const stage of input.stages) {
         if (!validNonEmpty(stage.stageId, MAX_SHORT_TEXT) || !validNonEmpty(stage.title, MAX_TITLE) || ids.has(stage.stageId)
           || !Array.isArray(stage.dependsOn) || stage.dependsOn.some((item) => typeof item !== 'string')
@@ -1191,8 +1312,11 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
         }
         const assignment = normalizeAssignment(stage.assignment);
         if (assignment === undefined) return fail('invalid', 'stage assignment provenance is invalid');
+        const checkerContract = normalizeCheckerContract(stage);
+        if (!checkerContract) return fail('invalid', 'stage checker contract provenance is invalid');
         ids.add(stage.stageId);
         stageAssignments.set(stage.stageId, assignment);
+        stageCheckerContracts.set(stage.stageId, checkerContract);
       }
       if (input.stages.some((stage) => stage.dependsOn.some((dependency) => !ids.has(dependency) || dependency === stage.stageId))) {
         return fail('invalid', 'stage dependencies must reference a different stage in the same run');
@@ -1216,6 +1340,7 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       const fingerprintStages = input.stages.map((stage) => ({
         ...stage,
         assignment: stageAssignments.get(stage.stageId) ?? null,
+        ...stageCheckerContracts.get(stage.stageId),
       }));
       const launchFingerprint = sha256(JSON.stringify({
         proposalRef: input.proposalRef,
@@ -1245,8 +1370,14 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       const approvedAssignments = approvedRunAssignments(proposal.snapshot, input.stages);
       if (!approvedAssignments) return fail('invalid', 'approved proposal assignment provenance is invalid');
       if (!sameAssignment(managerAssignment, approvedAssignments.manager)
-        || input.stages.some((stage) => !sameAssignment(stageAssignments.get(stage.stageId) ?? null, approvedAssignments.stages.get(stage.stageId) ?? null))) {
-        return fail('conflict', 'assignment provenance does not match the approved proposal snapshot');
+        || input.stages.some((stage) => {
+          const approved = approvedAssignments.stages.get(stage.stageId);
+          const requested = stageCheckerContracts.get(stage.stageId);
+          return !approved || !requested
+            || !sameAssignment(stageAssignments.get(stage.stageId) ?? null, approved.assignment)
+            || !sameCheckerContract(requested, approved.checkerContract);
+        })) {
+        return fail('conflict', 'stage provenance does not match the approved proposal snapshot');
       }
       if (managerAssignment !== null
         && (input.managerRuntime !== managerAssignment.runtime || input.managerModel !== managerAssignment.model)) {
@@ -1265,9 +1396,13 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
           || input.stages.some((stage) => {
             const predecessorStage = document.stages.find((item) =>
               item.subject === subject && item.runRef === predecessor.runRef && item.stageId === stage.stageId);
-            return !predecessorStage || !sameAssignment(predecessorStage.assignment, stageAssignments.get(stage.stageId) ?? null);
+            const checkerContract = stageCheckerContracts.get(stage.stageId);
+            const predecessorCheckerContract = predecessorStage ? normalizeCheckerContract(predecessorStage) : undefined;
+            return !predecessorStage || !checkerContract
+              || !sameAssignment(predecessorStage.assignment, stageAssignments.get(stage.stageId) ?? null)
+              || !predecessorCheckerContract || !sameCheckerContract(predecessorCheckerContract, checkerContract);
           })) {
-          return fail('conflict', 'Retry successor must preserve assignment provenance');
+          return fail('conflict', 'Retry successor must preserve stage provenance');
         }
         const retryRefusal = retryPredecessorRefusal(document, predecessor);
         if (retryRefusal) return fail('invalid', retryRefusal);
@@ -1306,6 +1441,9 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
         version: 1,
         currentAttemptRef: null,
         assignment: clone(stageAssignments.get(inputStage.stageId) ?? null),
+        workflowProfile: stageCheckerContracts.get(inputStage.stageId)?.workflowProfile ?? null,
+        review: clone(stageCheckerContracts.get(inputStage.stageId)?.review ?? null),
+        completionGate: clone(stageCheckerContracts.get(inputStage.stageId)?.completionGate ?? null),
         createdAt,
         updatedAt: createdAt,
       }));

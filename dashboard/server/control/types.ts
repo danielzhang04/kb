@@ -1,4 +1,8 @@
-import type { ResolvedAgentAssignment } from './proposal.ts';
+import type {
+  ProposalCompletionGate,
+  ProposalReview,
+  ResolvedAgentAssignment,
+} from './proposal.ts';
 
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
@@ -92,6 +96,12 @@ export interface Stage {
   currentAttemptRef: string | null;
   /** Compiler-resolved declaration/profile provenance; never an executor identity. */
   assignment: ResolvedAgentAssignment | null;
+  /** Compiler-owned checker contract; immutable after launch. */
+  workflowProfile: string | null;
+  /** Compiler-owned checker review contract; immutable after launch. */
+  review: ProposalReview | null;
+  /** Compiler-owned completion gate; immutable after launch. */
+  completionGate: ProposalCompletionGate | null;
   createdAt: string;
   updatedAt: string;
 }
