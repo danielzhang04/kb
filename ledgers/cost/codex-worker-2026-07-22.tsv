@@ -36,4 +36,15 @@ gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;durable-workspace
 gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;governance-verification-re-review	0.0
 gpt-5	requested=gpt-5;responding=gpt-5;growth-log-and-save-session	0.0
 gpt-5	requested=gpt-5;responding=gpt-5;post-merge-dashboard-switch-and-final-handoff	0.0
+gpt-5	requested=gpt-5;responding=gpt-5;poyais-engagement-overhaul-orchestration	0.0
+gpt-5	requested=gpt-5;responding=gpt-5;poyais-engagement-status-and-completion	0.0
+gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;engagement-story-selection-audit	0.0
+gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;engagement-voice-audit	0.0
+gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;engagement-visual-motion-audio-audit	0.0
+gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;engagement-story-selection-re-review	0.0
+gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;engagement-voice-re-review	0.0
+gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;engagement-visual-motion-audio-re-review	0.0
+gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;engagement-independent-final-review	0.0
+gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;engagement-independent-final-re-review	0.0
+gpt-5	requested=gpt-5;responding=gpt-5;engagement-growth-log-and-save-session	0.0
 
