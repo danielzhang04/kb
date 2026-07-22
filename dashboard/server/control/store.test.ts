@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   ControlStoreLimitError,
+  MAX_HUMAN_REQUESTS_PER_RUN,
   createFileControlPlaneStore,
   createInMemoryControlPlaneStore,
   proposalSnapshotHash,
@@ -203,10 +204,19 @@ function checkerFailOutcome() {
   });
 }
 
-function failCheckerReview(
+function checkerParkedOutcome() {
+  return JSON.stringify({
+    schema: 'kb.review-outcome/v1', decision: 'parked', summary: 'Human intervention is required.',
+    criteria: [{ criterionId: 'grounded', verdict: 'unverified', findingIds: ['needs-human'] }],
+    findings: [{ id: 'needs-human', criterionId: 'grounded', severity: 'blocking', summary: 'Needs a human decision.', evidencePaths: [] }],
+  });
+}
+
+function prepareCheckerReview(
   store: ControlPlaneStore,
   committed: ReturnType<typeof commitCheckerSubject>,
   checkerSessionTerminalState?: 'failed' | 'stopped',
+  outcome = checkerFailOutcome(),
 ) {
   const before = store.getRun('alice', committed.created.run.runRef);
   if (!before.ok) throw new Error(before.detail);
@@ -249,11 +259,25 @@ function failCheckerReview(
   const receiptReview = beforeReceipt.value.stages.find((stage) => stage.stageId === 'check');
   const receiptLoop = beforeReceipt.value.reviewLoops[0];
   if (!receiptReview || !receiptLoop) throw new Error('receipt review graph missing');
-  const receipt = store.recordReviewReceipt('alice', review.stageRef, {
+  return {
+    reviewStageRef: review.stageRef,
+    checkerAttempt: succeeded.value,
+    receiptInput: {
     expectedReviewStageVersion: receiptReview.version, expectedCheckerAttemptVersion: succeeded.value.version, expectedLoopVersion: receiptLoop.version,
     subjectGenerationRef: committed.generation.generationRef, subjectResultHash: 'd'.repeat(64), checkerAttemptRef: succeeded.value.attemptRef,
-    outcome: checkerFailOutcome(), operationKey: `review-outcome:${committed.created.run.runRef}:check:g1`,
-  });
+    outcome, operationKey: `review-outcome:${committed.created.run.runRef}:check:g1`,
+    },
+  };
+}
+
+function failCheckerReview(
+  store: ControlPlaneStore,
+  committed: ReturnType<typeof commitCheckerSubject>,
+  checkerSessionTerminalState?: 'failed' | 'stopped',
+  outcome = checkerFailOutcome(),
+) {
+  const prepared = prepareCheckerReview(store, committed, checkerSessionTerminalState, outcome);
+  const receipt = store.recordReviewReceipt('alice', prepared.reviewStageRef, prepared.receiptInput);
   if (!receipt.ok) throw new Error(receipt.detail);
   const current = store.getRun('alice', committed.created.run.runRef);
   if (!current.ok) throw new Error(current.detail);
@@ -262,10 +286,11 @@ function failCheckerReview(
   const loop = current.value.reviewLoops[0];
   if (!subject || !currentReview || !loop || !subject.currentAttemptRef) throw new Error('failed graph missing');
   return {
+    receipt: receipt.value,
     input: {
       expectedSubjectStageVersion: subject.version, expectedReviewStageVersion: currentReview.version, expectedLoopVersion: loop.version,
       expectedSubjectAttemptRef: subject.currentAttemptRef, expectedSubjectAttemptVersion: committed.attempt.version,
-      expectedCheckerAttemptRef: succeeded.value.attemptRef, expectedCheckerAttemptVersion: succeeded.value.version,
+      expectedCheckerAttemptRef: prepared.checkerAttempt.attemptRef, expectedCheckerAttemptVersion: prepared.checkerAttempt.version,
       expectedFailedReceiptRef: receipt.value.reviewReceiptRef, expectedGenerationRef: committed.generation.generationRef,
       idempotencyKey: `rework:${committed.created.run.runRef}:build:g2`,
     },
@@ -277,6 +302,93 @@ function queueCreatorRework(store: ControlPlaneStore, committed: ReturnType<type
   const queued = store.advanceReviewGeneration('alice', committed.created.run.runRef, input);
   if (!queued.ok) throw new Error(queued.detail);
   return queued.value;
+}
+
+function attachCheckerGate(store: ControlPlaneStore) {
+  const committed = commitCheckerSubject(store);
+  const { receipt } = failCheckerReview(store, committed, undefined, checkerPassOutcome());
+  const detail = store.getRun('alice', committed.created.run.runRef);
+  if (!detail.ok) throw new Error(detail.detail);
+  const reviewStage = detail.value.stages.find((stage) => stage.stageId === 'check');
+  const subjectStage = detail.value.stages.find((stage) => stage.stageId === 'build');
+  const loop = detail.value.reviewLoops[0];
+  if (!reviewStage || !subjectStage || !loop) throw new Error('review completion gate graph missing');
+  const attachInput = {
+    expectedReceiptVersion: receipt.version,
+    expectedLoopVersion: loop.version,
+    expectedReviewStageVersion: reviewStage.version,
+    idempotencyKey: `review-gate:${committed.created.run.runRef}:check:g1`,
+  };
+  const attached = store.attachReviewCompletionGate('alice', receipt.reviewReceiptRef, attachInput);
+  if (!attached.ok) throw new Error(attached.detail);
+  return { committed, receipt, attachInput, attached: attached.value };
+}
+
+function reviewGateResolutionInput(
+  attached: ReturnType<typeof attachCheckerGate>['attached'],
+  decision: 'approved' | 'rejected' | 'changes-requested',
+) {
+  return {
+    expectedRequestRevision: attached.request.revision,
+    expectedReceiptVersion: attached.receipt.version,
+    expectedLoopVersion: attached.loop.version,
+    expectedReviewStageVersion: attached.reviewStage.version,
+    expectedSubjectStageVersion: attached.subjectStage.version,
+    decision,
+    idempotencyKey: `resolve-${decision}`,
+    response: `human chose ${decision}`,
+  };
+}
+
+type PersistedRow = Record<string, unknown>;
+interface PersistedReviewBundle {
+  subject?: string;
+  run?: PersistedRow;
+  stages: PersistedRow[];
+  attempts: PersistedRow[];
+  sessions: PersistedRow[];
+  humanRequests: PersistedRow[];
+  events: PersistedRow[];
+  stageGenerations: PersistedRow[];
+  reviewLoops: PersistedRow[];
+  reviewReceipts: PersistedRow[];
+  generationSupersessions: PersistedRow[];
+}
+interface PersistedReviewDocument extends PersistedReviewBundle {
+  runs: PersistedRow[];
+  quarantine: Array<PersistedReviewBundle & { quarantinedAt: string }>;
+}
+
+function persistedReviewBundle(document: PersistedReviewDocument, location: 'active' | 'quarantine'): PersistedReviewBundle {
+  if (location === 'active') return document;
+  const bundle = {
+    subject: String(document.runs[0]?.subject),
+    quarantinedAt: '2026-07-18T12:00:00.000Z',
+    run: structuredClone(document.runs[0] as PersistedRow),
+    stages: structuredClone(document.stages), attempts: structuredClone(document.attempts),
+    sessions: structuredClone(document.sessions), humanRequests: structuredClone(document.humanRequests),
+    events: structuredClone(document.events), stageGenerations: structuredClone(document.stageGenerations),
+    reviewLoops: structuredClone(document.reviewLoops), reviewReceipts: structuredClone(document.reviewReceipts),
+    generationSupersessions: structuredClone(document.generationSupersessions),
+  };
+  document.quarantine.push(bundle);
+  return bundle;
+}
+
+function requiredPersistedRow(rows: PersistedRow[], label: string): PersistedRow {
+  const row = rows[0];
+  if (!row) throw new Error(`persisted ${label} missing`);
+  return row;
+}
+
+function fillHumanRequestCap(store: ControlPlaneStore, runRef: string) {
+  const filled = store.createHumanRequests('alice', runRef, {
+    idempotencyKey: 'fill-human-request-cap',
+    requests: Array.from({ length: MAX_HUMAN_REQUESTS_PER_RUN }, (_, index) => ({
+      kind: 'input' as const, title: `Input ${index}`, prompt: 'Supply a bounded input.',
+    })),
+  });
+  if (!filled.ok) throw new Error(filled.detail);
 }
 
 function succeedQueuedCreatorAttempt(store: ControlPlaneStore, runRef: string) {
@@ -768,6 +880,138 @@ describe('run graph, attempts, and managed sessions', () => {
       ok: false, reason: 'ineligible', detail: expect.stringContaining('bound is exhausted'),
     });
     expect(store.getRun('alice', committed.created.run.runRef)).toEqual(before);
+  });
+
+  it('attaches and resolves a review completion gate atomically, blocking generic request mutation', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const committed = commitCheckerSubject(store);
+    const { receipt } = failCheckerReview(store, committed, undefined, checkerPassOutcome());
+    const before = store.getRun('alice', committed.created.run.runRef);
+    if (!before.ok) throw new Error(before.detail);
+    const review = before.value.stages.find((stage) => stage.stageId === 'check');
+    const subject = before.value.stages.find((stage) => stage.stageId === 'build');
+    const loop = before.value.reviewLoops[0];
+    if (!review || !subject || !loop) throw new Error('gate graph missing');
+    const key = `review-gate:${committed.created.run.runRef}:check:g1`;
+    const attached = store.attachReviewCompletionGate('alice', receipt.reviewReceiptRef, {
+      expectedReceiptVersion: receipt.version, expectedLoopVersion: loop.version, expectedReviewStageVersion: review.version, idempotencyKey: key,
+    });
+    expect(attached).toMatchObject({ ok: true, value: { request: { kind: 'approval', stageRef: review.stageRef }, receipt: { completionRequestRef: expect.any(String) } } });
+    if (!attached.ok) throw new Error(attached.detail);
+    expect(store.attachReviewCompletionGate('alice', receipt.reviewReceiptRef, {
+      expectedReceiptVersion: receipt.version, expectedLoopVersion: loop.version, expectedReviewStageVersion: review.version, idempotencyKey: key,
+    })).toMatchObject({ ok: true, replayed: true });
+    expect(store.reviseHumanRequest('alice', attached.value.request.requestRef, attached.value.request.revision, 'no', 'no')).toMatchObject({ ok: false, reason: 'invalid' });
+    expect(store.respondHumanRequest('alice', attached.value.request.requestRef, {
+      expectedRevision: attached.value.request.revision, decision: 'approved', idempotencyKey: 'generic-blocked', response: null,
+    })).toMatchObject({ ok: false, reason: 'invalid' });
+    const resolved = store.resolveReviewCompletionGate('alice', attached.value.request.requestRef, {
+      expectedRequestRevision: attached.value.request.revision, expectedReceiptVersion: attached.value.receipt.version,
+      expectedLoopVersion: attached.value.loop.version, expectedReviewStageVersion: attached.value.reviewStage.version,
+      expectedSubjectStageVersion: attached.value.subjectStage.version, decision: 'approved', idempotencyKey: 'review-gate-approved',
+    });
+    expect(resolved).toMatchObject({ ok: true, value: { receipt: { state: 'passed' }, loop: { state: 'passed' }, subjectStage: { acceptedGenerationRef: committed.generation.generationRef } } });
+  });
+
+  it('creates exactly one linked intervention for a parser-parked review outcome', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const committed = commitCheckerSubject(store);
+    const prepared = prepareCheckerReview(store, committed, undefined, checkerParkedOutcome());
+    const receipt = store.recordReviewReceipt('alice', prepared.reviewStageRef, prepared.receiptInput);
+    if (!receipt.ok) throw new Error(receipt.detail);
+    expect(store.recordReviewReceipt('alice', prepared.reviewStageRef, prepared.receiptInput)).toMatchObject({ ok: true, replayed: true });
+    const detail = store.getRun('alice', committed.created.run.runRef);
+    expect(detail).toMatchObject({ ok: true, value: {
+      reviewReceipts: [expect.objectContaining({ reviewReceiptRef: receipt.value.reviewReceiptRef, state: 'parked', completionRequestRef: null, interventionRequestRef: expect.any(String) })],
+      reviewLoops: [expect.objectContaining({ state: 'parked', interventionRequestRef: expect.any(String) })],
+      humanRequests: [expect.objectContaining({ kind: 'intervention', state: 'open', response: null })],
+    } });
+  });
+
+  it('fails attach at the Human Request cap without mutating the run graph', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const committed = commitCheckerSubject(store);
+    const { receipt } = failCheckerReview(store, committed, undefined, checkerPassOutcome());
+    fillHumanRequestCap(store, committed.created.run.runRef);
+    const before = store.getRun('alice', committed.created.run.runRef);
+    if (!before.ok) throw new Error(before.detail);
+    const reviewStage = before.value.stages.find((stage) => stage.stageId === 'check');
+    const loop = before.value.reviewLoops[0];
+    if (!reviewStage || !loop) throw new Error('gate graph missing');
+    expect(store.attachReviewCompletionGate('alice', receipt.reviewReceiptRef, {
+      expectedReceiptVersion: receipt.version, expectedLoopVersion: loop.version,
+      expectedReviewStageVersion: reviewStage.version,
+      idempotencyKey: `review-gate:${committed.created.run.runRef}:check:g1`,
+    })).toMatchObject({ ok: false, reason: 'limit' });
+    expect(store.getRun('alice', committed.created.run.runRef)).toEqual(before);
+  });
+
+  it('fails parser parking and negative gate resolution at the Human Request cap without partial mutation', () => {
+    {
+      const store = createInMemoryControlPlaneStore(deterministicOptions());
+      const committed = commitCheckerSubject(store);
+      const prepared = prepareCheckerReview(store, committed, undefined, checkerParkedOutcome());
+      fillHumanRequestCap(store, committed.created.run.runRef);
+      const before = store.getRun('alice', committed.created.run.runRef);
+      expect(store.recordReviewReceipt('alice', prepared.reviewStageRef, prepared.receiptInput)).toMatchObject({ ok: false, reason: 'limit' });
+      expect(store.getRun('alice', committed.created.run.runRef)).toEqual(before);
+    }
+    {
+      const store = createInMemoryControlPlaneStore(deterministicOptions());
+      const gate = attachCheckerGate(store);
+      const remaining = MAX_HUMAN_REQUESTS_PER_RUN - 1;
+      const filled = store.createHumanRequests('alice', gate.committed.created.run.runRef, {
+        idempotencyKey: 'fill-negative-resolution-cap',
+        requests: Array.from({ length: remaining }, (_, index) => ({
+          kind: 'input' as const, title: `Input ${index}`, prompt: 'Supply a bounded input.',
+        })),
+      });
+      if (!filled.ok) throw new Error(filled.detail);
+      const before = store.getRun('alice', gate.committed.created.run.runRef);
+      expect(store.resolveReviewCompletionGate(
+        'alice', gate.attached.request.requestRef, reviewGateResolutionInput(gate.attached, 'rejected'),
+      )).toMatchObject({ ok: false, reason: 'limit' });
+      expect(store.getRun('alice', gate.committed.created.run.runRef)).toEqual(before);
+    }
+  });
+
+  it('replays an exact gate resolution and rejects every mutated CAS field as an idempotency conflict', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const gate = attachCheckerGate(store);
+    const input = reviewGateResolutionInput(gate.attached, 'approved');
+    expect(store.resolveReviewCompletionGate('alice', gate.attached.request.requestRef, input)).toMatchObject({ ok: true });
+    expect(store.resolveReviewCompletionGate('alice', gate.attached.request.requestRef, input)).toMatchObject({ ok: true, replayed: true });
+    for (const field of [
+      'expectedRequestRevision', 'expectedReceiptVersion', 'expectedLoopVersion',
+      'expectedReviewStageVersion', 'expectedSubjectStageVersion',
+    ] as const) {
+      expect(store.resolveReviewCompletionGate('alice', gate.attached.request.requestRef, {
+        ...input, [field]: input[field] + 1,
+      })).toMatchObject({ ok: false, reason: 'idempotency-conflict' });
+    }
+  });
+
+  it.each(['rejected', 'changes-requested'] as const)('resolves %s with exactly one linked intervention and exact replay', (decision) => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const gate = attachCheckerGate(store);
+    const input = reviewGateResolutionInput(gate.attached, decision);
+    const resolved = store.resolveReviewCompletionGate('alice', gate.attached.request.requestRef, input);
+    expect(resolved).toMatchObject({
+      ok: true,
+      value: {
+        receipt: { state: 'parked', completionRequestRef: gate.attached.request.requestRef, interventionRequestRef: expect.any(String) },
+        loop: { state: 'parked', interventionRequestRef: expect.any(String) },
+        request: { state: 'resolved', response: { decision } },
+        interventionRequest: { kind: 'intervention', state: 'open', response: null },
+      },
+    });
+    expect(store.resolveReviewCompletionGate('alice', gate.attached.request.requestRef, input)).toMatchObject({ ok: true, replayed: true });
+    const detail = store.getRun('alice', gate.committed.created.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const interventions = detail.value.humanRequests.filter((request) => request.kind === 'intervention');
+    expect(interventions).toHaveLength(1);
+    expect(detail.value.reviewReceipts[0].interventionRequestRef).toBe(interventions[0]?.requestRef);
+    expect(detail.value.reviewLoops[0].interventionRequestRef).toBe(interventions[0]?.requestRef);
   });
 
   it('rejects review rework when the bound checker worker session is failed or stopped', () => {
@@ -1449,6 +1693,127 @@ describe('durability, crash recovery, and retention', () => {
         reviewLoops: [expect.objectContaining({ state: 'checking', activeGenerationRef: committed.generation.generationRef })],
       },
     });
+  });
+
+  it('preserves an attached unresolved completion gate across restart with exact attach replay', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-'));
+    roots.push(root);
+    const first = createFileControlPlaneStore(root, deterministicOptions());
+    const gate = attachCheckerGate(first);
+    const restarted = createFileControlPlaneStore(root, deterministicOptions());
+    expect(restarted.getRun('alice', gate.committed.created.run.runRef)).toMatchObject({
+      ok: true,
+      value: {
+        reviewReceipts: [expect.objectContaining({ state: 'awaiting-completion-gate', completionRequestRef: gate.attached.request.requestRef })],
+        reviewLoops: [expect.objectContaining({ state: 'awaiting-gate' })],
+        humanRequests: [expect.objectContaining({ requestRef: gate.attached.request.requestRef, state: 'open', response: null })],
+      },
+    });
+    expect(restarted.attachReviewCompletionGate('alice', gate.receipt.reviewReceiptRef, gate.attachInput)).toMatchObject({ ok: true, replayed: true });
+  });
+
+  it('preserves a parser-parked receipt and its one linked intervention across restart', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-'));
+    roots.push(root);
+    const first = createFileControlPlaneStore(root, deterministicOptions());
+    const committed = commitCheckerSubject(first);
+    failCheckerReview(first, committed, undefined, checkerParkedOutcome());
+    const restarted = createFileControlPlaneStore(root, deterministicOptions());
+    const detail = restarted.getRun('alice', committed.created.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const interventions = detail.value.humanRequests.filter((request) => request.kind === 'intervention');
+    expect(interventions).toHaveLength(1);
+    expect(detail.value.reviewReceipts[0]).toMatchObject({ state: 'parked', completionRequestRef: null, interventionRequestRef: interventions[0]?.requestRef });
+    expect(detail.value.reviewLoops[0]).toMatchObject({ state: 'parked', interventionRequestRef: interventions[0]?.requestRef });
+  });
+
+  it.each(['active', 'quarantine'] as const)('fails closed on %s persisted review-request tampering', (location) => {
+    const cases: Array<{
+      name: string;
+      graph: 'attached' | 'resolved' | 'parked';
+      mutate: (bundle: PersistedReviewBundle) => void;
+    }> = [
+      { name: 'missing linked request', graph: 'attached', mutate: (bundle) => { bundle.humanRequests = []; } },
+      { name: 'missing request ref', graph: 'attached', mutate: (bundle) => { delete requiredPersistedRow(bundle.humanRequests, 'request').requestRef; } },
+      { name: 'missing request operation', graph: 'attached', mutate: (bundle) => { delete requiredPersistedRow(bundle.humanRequests, 'request').operationKey; } },
+      { name: 'duplicate request ref', graph: 'attached', mutate: (bundle) => { bundle.humanRequests.push(structuredClone(requiredPersistedRow(bundle.humanRequests, 'request'))); } },
+      { name: 'duplicate request operation', graph: 'attached', mutate: (bundle) => {
+        const duplicate = structuredClone(requiredPersistedRow(bundle.humanRequests, 'request'));
+        duplicate.requestRef = 'request-duplicate';
+        bundle.humanRequests.push(duplicate);
+      } },
+      { name: 'wrong request run', graph: 'attached', mutate: (bundle) => { requiredPersistedRow(bundle.humanRequests, 'request').runRef = 'run-wrong'; } },
+      { name: 'wrong request stage', graph: 'attached', mutate: (bundle) => { requiredPersistedRow(bundle.humanRequests, 'request').stageRef = 'stage-wrong'; } },
+      { name: 'wrong request kind', graph: 'attached', mutate: (bundle) => { requiredPersistedRow(bundle.humanRequests, 'request').kind = 'input'; } },
+      { name: 'wrong unresolved state', graph: 'attached', mutate: (bundle) => { requiredPersistedRow(bundle.humanRequests, 'request').state = 'resolved'; } },
+      { name: 'open request with response', graph: 'attached', mutate: (bundle) => {
+        const request = requiredPersistedRow(bundle.humanRequests, 'request');
+        request.response = {
+          requestRevision: 1, decision: 'approved', respondedBy: request.subject,
+          idempotencyKey: 'forged', response: null, respondedAt: request.updatedAt,
+        };
+      } },
+      { name: 'wrong resolved decision', graph: 'resolved', mutate: (bundle) => {
+        const response = requiredPersistedRow(bundle.humanRequests, 'request').response as PersistedRow;
+        response.decision = 'rejected';
+      } },
+      { name: 'wrong resolved response revision', graph: 'resolved', mutate: (bundle) => {
+        const response = requiredPersistedRow(bundle.humanRequests, 'request').response as PersistedRow;
+        response.requestRevision = 2;
+      } },
+      { name: 'arbitrary attach fingerprint', graph: 'attached', mutate: (bundle) => { requiredPersistedRow(bundle.humanRequests, 'request').operationFingerprint = 'f'.repeat(64); } },
+      { name: 'arbitrary resolution fingerprint', graph: 'resolved', mutate: (bundle) => { requiredPersistedRow(bundle.humanRequests, 'request').resolutionOperationFingerprint = 'f'.repeat(64); } },
+      { name: 'mismatched loop intervention', graph: 'parked', mutate: (bundle) => { requiredPersistedRow(bundle.reviewLoops, 'loop').interventionRequestRef = 'request-wrong'; } },
+      { name: 'mismatched receipt intervention', graph: 'parked', mutate: (bundle) => { requiredPersistedRow(bundle.reviewReceipts, 'receipt').interventionRequestRef = 'request-wrong'; } },
+      { name: 'resolved intervention request', graph: 'parked', mutate: (bundle) => {
+        const intervention = requiredPersistedRow(bundle.humanRequests, 'intervention');
+        intervention.state = 'resolved';
+        intervention.response = {
+          requestRevision: 1, decision: 'responded', respondedBy: intervention.subject,
+          idempotencyKey: 'forged', response: null, respondedAt: intervention.updatedAt,
+        };
+      } },
+      { name: 'reserved orphan', graph: 'attached', mutate: (bundle) => {
+        const orphan = structuredClone(requiredPersistedRow(bundle.humanRequests, 'request'));
+        orphan.requestRef = 'request-orphan';
+        orphan.operationKey = 'review-gate:run-orphan:check:g1';
+        bundle.humanRequests.push(orphan);
+      } },
+      { name: 'outcome state mismatch', graph: 'parked', mutate: (bundle) => { requiredPersistedRow(bundle.reviewReceipts, 'receipt').state = 'failed'; } },
+      { name: 'over-cap request count', graph: 'attached', mutate: (bundle) => {
+        const linked = requiredPersistedRow(bundle.humanRequests, 'request');
+        for (let index = 0; index < MAX_HUMAN_REQUESTS_PER_RUN; index += 1) {
+          bundle.humanRequests.push({
+            subject: linked.subject, requestRef: `request-cap-${index}`, runRef: linked.runRef, stageRef: null,
+            kind: 'input', revision: 1, state: 'open', title: 'Input', prompt: 'Supply input.', response: null,
+            createdAt: linked.createdAt, updatedAt: linked.updatedAt, resolutionOperationFingerprint: null,
+          });
+        }
+      } },
+    ];
+    for (const testCase of cases) {
+      const root = mkdtempSync(join(tmpdir(), `control-store-${testCase.name.replaceAll(' ', '-')}-`));
+      roots.push(root);
+      const first = createFileControlPlaneStore(root, deterministicOptions());
+      if (testCase.graph === 'parked') {
+        const committed = commitCheckerSubject(first);
+        failCheckerReview(first, committed, undefined, checkerParkedOutcome());
+      } else {
+        const gate = attachCheckerGate(first);
+        if (testCase.graph === 'resolved') {
+          const resolved = first.resolveReviewCompletionGate(
+            'alice', gate.attached.request.requestRef, reviewGateResolutionInput(gate.attached, 'approved'),
+          );
+          if (!resolved.ok) throw new Error(resolved.detail);
+        }
+      }
+      const path = join(root, 'control', 'control-plane.json');
+      const document = JSON.parse(readFileSync(path, 'utf8')) as PersistedReviewDocument;
+      const bundle = persistedReviewBundle(document, location);
+      testCase.mutate(bundle);
+      writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
+      expect(() => createFileControlPlaneStore(root, deterministicOptions()), testCase.name).toThrow(/invalid control-plane/);
+    }
   });
 
   it('fails closed on a persisted queued-generation result tamper', () => {

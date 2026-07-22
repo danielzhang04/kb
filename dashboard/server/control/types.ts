@@ -150,6 +150,7 @@ export interface ReviewLoop {
   activeGenerationRef: string | null;
   acceptedGenerationRef: string | null;
   activeReceiptRef: string | null;
+  interventionRequestRef: string | null;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -168,6 +169,8 @@ export interface ReviewReceipt {
   operationKey: string;
   state: 'passed' | 'awaiting-completion-gate' | 'failed' | 'parked';
   completionRequestRef: string | null;
+  interventionRequestRef: string | null;
+  version: number;
   createdAt: string;
   finalizedAt: string | null;
 }
