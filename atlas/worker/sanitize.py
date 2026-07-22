@@ -1,7 +1,16 @@
-"""Voice-clean text (conversation-rules design §2). Streaming-safe by construction: the marker
-characters are removed per-chunk at character level (a split "**" still dies), line-anchored
-headers, list markers, and links are best-effort within a chunk. Chunks are never .strip()ped — a
-single leading/trailing space is the word boundary between streamed segments."""
+"""Voice-clean text (conversation-rules design §2). Streaming-safe by construction for
+SINGLE-character markers: they are removed per-chunk at character level (a split "**" still dies);
+line-anchored headers, list markers, and links are best-effort within a chunk. Chunks are never
+.strip()ped — a single leading/trailing space is the word boundary between streamed segments.
+
+COUPLING NOTE (review 2026-07-22): the multi-char [quiet] marker is NOT independently
+streaming-safe — a chunk split mid-marker ("[", "quiet]") would leak audible fragments. Today
+livekit's default `filter_markdown` transform runs UPSTREAM of tts_node and buffers any unclosed
+"[" until the bracket closes, so the marker always arrives contiguous (verified against installed
+livekit-agents 1.6.6: generation.py:355 + filters.py has_incomplete_pattern). If
+`tts_text_transforms` is ever customized/emptied, or that upstream bracket-buffering changes on
+upgrade, add a bracket-span buffer to our tts_node override — test_split_quiet_marker_limitation
+documents the dependency."""
 import re
 
 # Silent-turn marker (Gate finding #1, 2026-07-21): the LLM's ONLY way to say nothing is to reply

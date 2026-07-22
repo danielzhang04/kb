@@ -12,6 +12,11 @@ Pure by contract: no I/O, no asyncio import, no locks. Subscribers are synchrono
 invoked on the event loop only (single-threaded by construction, so no locking is needed).
 Events are `("state", <new_state>)` and `("line", {"t","role","text"})`. A subscriber that
 raises is logged and skipped — it never breaks the publisher or the other subscribers.
+
+ONE cross-thread exception (output-follow, 2026-07-22): the devicewatch watcher thread calls
+`set_output_device` — safe ONLY because that setter is a lone atomic attribute assignment with
+no `_emit`, and `snapshot()` reads an atomic ref. Do NOT add subscriber emission (or any
+multi-field mutation) to `set_output_device` without adding real cross-thread handling.
 """
 import logging
 import uuid

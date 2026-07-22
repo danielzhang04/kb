@@ -11,4 +11,17 @@ const child = spawn(
   ["-m", "worker.app", "console"],
   { cwd: __dirname, stdio: "inherit", env: { ...process.env, PYTHONUTF8: "1" } },
 );
+// Review 2026-07-22: a spawn failure (e.g. wrong venv path) must log clearly and exit nonzero,
+// not throw unhandled into a silent pm2 fast-restart loop.
+child.on("error", (err) => {
+  console.error("run-worker: failed to spawn venv python:", err.message);
+  process.exit(1);
+});
+// Forward stop signals so pm2 stop/restart reaches the python worker directly rather than
+// relying solely on pm2's tree-kill.
+for (const sig of ["SIGTERM", "SIGINT"]) {
+  process.on(sig, () => {
+    try { child.kill(sig); } catch (_) { /* already gone */ }
+  });
+}
 child.on("exit", (code, signal) => process.exit(code === null ? 1 : code));

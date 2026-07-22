@@ -51,3 +51,18 @@ def test_is_quiet_turn_detection():
     assert is_quiet_turn("  [Quiet]. ")
     assert not is_quiet_turn("[quiet] I'm here")
     assert not is_quiet_turn("Quiet. Twenty-ish cards in inbox.")
+
+
+def test_split_quiet_marker_limitation():
+    """Documents the COUPLING NOTE in sanitize.py (review 2026-07-22): the multi-char [quiet]
+    marker is NOT independently streaming-safe. Applied per-chunk to a mid-marker split, the
+    fragments leak through — which is exactly why marker suppression depends on livekit's
+    upstream filter_markdown buffering unclosed '[' so the marker arrives contiguous. If this
+    test ever starts FAILING (fragments no longer leak), sanitize gained its own buffering and
+    the coupling note can be dropped; until then, never remove filter_markdown from
+    tts_text_transforms."""
+    from worker.sanitize import sanitize_for_tts
+    leaked = sanitize_for_tts("[") + sanitize_for_tts("quiet") + sanitize_for_tts("]")
+    assert leaked != ""          # the split marker leaks when sanitize runs alone
+    # the contiguous marker, by contrast, is fully suppressed
+    assert sanitize_for_tts("[quiet]") == ""
