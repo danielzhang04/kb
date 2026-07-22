@@ -1,4 +1,4 @@
-# Asset-first automated income projects
+# DRAFT — Asset-first automated income research dossier
 
 _Research date: 2026-07-21. Supersedes the earlier B2B intelligence portfolio as the recommended direction. Estimates are planning hypotheses, not forecasts._
 
@@ -279,3 +279,188 @@ The recommended next two projects are:
 The third project is **one free ad-supported utility app**, activated only after a first project demonstrates real demand.
 
 This portfolio earns through referrals, ads, royalties, licensing, and potential resale without turning the operator into a salesperson, product-support desk, or service provider.
+
+---
+
+## Follow-on research: complete opportunity landscape
+
+The initial ranking above focused on owned decision properties, commercial media licensing, and a gated utility app. Subsequent research widened the search into creator-platform payouts, game and mod ecosystems, AI-native marketplaces, machine-consumed assets, security bounties, compute rental, and emerging AI-content licensing.
+
+The consolidated category ranking below supersedes any earlier category-level ranking in this dossier. It does not supersede the individual project evidence above.
+
+### Intrinsic scoring rubric
+
+These scores evaluate the underlying business model without credit for infrastructure the operator already owns and without a diversification bonus or penalty.
+
+| Factor | Weight |
+|---|---:|
+| Risk-adjusted cash-flow potential | 30% |
+| Proven demand and distribution | 20% |
+| Automation and low support | 20% |
+| Time to useful signal or revenue | 15% |
+| Platform and revenue resilience | 15% |
+
+### Top ten categories across the complete search
+
+| Rank | Category | Score | Representative projects | Principal weakness |
+|---:|---|---:|---|---|
+| 1 | Decision and changing-data assets | **85** | Comparators, trackers, directories, calculators | Data rights, freshness, and correction burden |
+| 2 | Automated content and attention assets | **80** | YouTube, Facebook, TikTok, Spotify | Production treadmill and platform concentration |
+| 3 | Reusable creative-IP licensing | **78** | Footage, SFX, 3D assets, voices, templates | Commodity saturation |
+| 4 | Ecosystem extensions and UGC primitives | **76** | Mods, effects, bots, islands, game tools | Platform updates and community support |
+| 5 | Free utility software properties | **73** | Apps, extensions, plugins, specialized tools | Distribution and store-policy risk |
+| 6 | Digital cash-flow asset acquisition | **72** | Acquired sites, apps, channels, directories | Capital, diligence, and hidden decay |
+| 7 | Machine-consumed assets | **70** | APIs, datasets, models, crawler licensing | Buyer discovery, rights, and support |
+| 8 | Marketplace-native content catalogs | **67** | KDP, Amazon videos, printables, educational assets | Product-shaped work and saturation |
+| 9 | Outcome and bounty markets | **64** | Bug bounties, coding bounties, competitions | Irregular, skill-gated revenue |
+| 10 | Automated physical infrastructure | **55** | GPU rental, storage, sensors, DePIN | Capital, utilization, security, and token risk |
+
+### Category notes
+
+#### 1. Decision and changing-data assets
+
+An owned property helps a user decide or alerts them when something changes. Strong forms include price and availability trackers, total-cost engines, verified specialist directories, compatibility tools, and rebate or opportunity databases. Revenue can combine referrals, lead routing, sponsorship placement, advertising, data licensing, and eventual asset resale.
+
+The moat is accumulated history, normalization, saved preferences, direct traffic, and alerts—not prose volume.
+
+#### 2. Automated content and attention assets
+
+Repeatable media formats earn from platform distribution, subscriptions, advertising pools, referrals, or sponsorship infrastructure. Faceless YouTube remains approximately **78/100** as a standalone model. Facebook native publishing, TikTok serial content, Spotify video podcasts, and data-led newsletters are adjacent forms.
+
+AI can automate research collection, drafts, storyboards, narration, assembly, localization, publishing, and analytics. It does not remove the need for original editorial framing, factual review, packaging judgment, or rights control.
+
+#### 3. Reusable creative-IP licensing
+
+Assets earn repeatedly when other people license or use them. This includes commercial footage, motion elements, sound effects, functional audio, 3D/CAD files, professional templates, fonts, shaders, and verified voice clones.
+
+The strongest assets save a buyer measurable production or integration time. Generic AI output is not a durable catalog thesis.
+
+#### 4. Ecosystem extensions and UGC primitives
+
+These assets live inside platforms that already provide users, discovery, installation, measurement, and payment. The strongest newly found examples are Minecraft mods and plugins, TikTok Effect House effects, CurseForge/Modrinth add-ons, Poe bots, Fortnite islands, Roblox experiences, and creator-development tools.
+
+CurseForge reports 20 million monthly users, 1.2 billion monthly downloads, $20.4 million paid to authors, and a 70% creator allocation. [CurseForge authors](https://authors.curseforge.com/welcome/)
+
+TikTok Effect House pays for qualified public-video uses of effects. Program admission requires five published effects and three used in 1,000 qualified videos each; admitted AI-generated, game, and randomizer effects begin earning at 2,000 unique public-video uses within 30 days. [Effect Creator Rewards](https://effecthouse.tiktok.com/learn/guides/support/faq-effect-creator-rewards)
+
+Poe allows eligible creators to set a price per message and pays when a user messages a bot and it responds. [Poe monetization](https://help.poe.com/hc/en-us/articles/21921312368020-Poe-Creator-Monetization-FAQs)
+
+#### 5. Free utility software properties
+
+One substantial free application, extension, plugin, or local-first tool solves a recurring task. Monetization can come from in-app advertising, referrals, marketplace revenue, optional one-time upgrades, or acquisition. The recurring error is building cloned utilities without a distribution thesis.
+
+#### 6. Digital cash-flow asset acquisition
+
+Acquisition is an entry strategy rather than an output type, but it changes the economics enough to rank separately. Suitable targets resemble categories 1–5 and have 12–18 months of verifiable payments and analytics, transferable rights, multiple monetization rails, and low support.
+
+Do not pay for revenue derived from a decaying search archive, nontransferable account privileges, or an undocumented operator relationship.
+
+#### 7. Machine-consumed assets
+
+Software and AI systems—not human audiences—consume APIs, normalized data feeds, datasets, model packages, retrieval corpora, deployment repositories, and licensed source content.
+
+RapidAPI handles authentication, metering, and billing for providers while retaining a platform share. [RapidAPI API monetization](https://docs.rapidapi.com/do/docs/monetizing-your-api-on-rapidapicom)
+
+AWS Data Exchange provides marketplace discovery, subscriptions, billing, and payment distribution, but qualification requires a defined support and update process. [AWS provider onboarding](https://docs.aws.amazon.com/data-exchange/latest/userguide/provider-getting-started.html)
+
+Really Simple Licensing now defines machine-readable pay-per-crawl, pay-per-inference, training, subscription, and attribution terms for web content and other digital assets. This is an emerging rail, not dependable present revenue. [RSL overview](https://rslstandard.org/guide/what-is-rsl)
+
+#### 8. Marketplace-native content catalogs
+
+Finished content products are consumed through a platform transaction or subscription system. Examples include Kindle Unlimited titles, Amazon onsite videos, 3D-printable catalogs, educational resources, audiobooks, and craft-machine files.
+
+This category crosses the operator's preference against product selling more directly than licensing catalogs do. Only specialized, functional, and low-support catalogs merit testing.
+
+#### 9. Outcome and bounty markets
+
+The operator is paid for a validated result: a vulnerability, merged contribution, or competition result. AI can assist reconnaissance, code analysis, experiments, reproduction, and report preparation.
+
+Bug bounties are the strongest subcategory at approximately **71/100**. HackerOne explicitly recognizes AI-specific security findings, but requires human investigation and validation; fully autonomous hacking is not permitted. [HackerOne AI bug bounties](https://docs.hackerone.com/en/articles/12570435-ai-bug-bounty) [HackerOne AI-tool rules](https://docs.hackerone.com/en/articles/10908081-hai-security-trust)
+
+Open-source bounties and ML competitions are useful experiments or paid skill building, not dependable cash-flow assets.
+
+#### 10. Automated physical infrastructure
+
+Hardware supplies GPU compute, storage, bandwidth, mapping imagery, weather data, or wireless coverage. Operation can be automated, but economics depend on utilization, electricity, cooling, hardware depreciation, isolation, and sometimes token value.
+
+Vast.ai is a real GPU marketplace where hosts set GPU-hour, storage, and bandwidth prices. It is only attractive as an initial test on already-owned idle hardware. [Vast hosting overview](https://docs.vast.ai/host/hosting-overview)
+
+Storage, residential bandwidth, and DePIN hardware generally fail when equipment is purchased solely for the projected rewards.
+
+## Additional platform-native project findings
+
+These project models were researched after the original ranking:
+
+| Project | Provisional score | Platform mechanism | Critical gate |
+|---|---:|---|---|
+| TikTok Effect House portfolio | **74** | Qualified effect usage rewards | Three effects with 1,000 qualified uses for admission |
+| Poe specialized-bot portfolio | **71** | Creator-set price per answered message | Paid usage must exceed compute and support |
+| AI-assisted security bounty lab | **71** | Bounties for validated in-scope findings | Human validation is mandatory |
+| Faceless YouTube | **78 standalone** | Platform revenue, referrals, sponsorships | Originality, packaging, and retention |
+| Facebook original native media | **68** | Performance-based content payouts | Content Monetization remains invite-only |
+| Spotify faceless video podcast | **66** | Premium video engagement and revenue share | 1,000 audience and 2,000 hours in 30 days |
+| TikTok Creator Rewards series | **63** | Qualified-view rewards | 10,000 followers and 100,000 recent views |
+| Vast.ai GPU hosting | **59** | GPU-hour marketplace rentals | Existing hardware; positive measured margin |
+
+Facebook reported nearly $3 billion in creator payouts during 2025, but explicitly deprioritizes minimally transformed and copycat content. [Facebook creator payouts](https://about.fb.com/news/2026/03/creator-fast-track-grow-your-audience-earn-money-on-facebook/) [Facebook originality guidance](https://about.fb.com/news/2026/03/rewarding-original-creators-on-facebook/)
+
+Spotify lowered Partner Program entry requirements in January 2026 to three episodes, 1,000 audience members, and 2,000 consumption hours over 30 days in eligible markets. [Spotify 2026 update](https://creators.spotify.com/resources/news/next-era-of-monetization-on-spotify)
+
+## Newly identified low-cost asymmetric experiment
+
+ElevenLabs pays verified speakers when paid subscribers generate audio with their Professional Voice Clone. ElevenLabs reported more than 10,400 earning creators and over $22 million in cumulative creator earnings by July 2026. Only the speaker's verified voice qualifies; this is not a synthetic-character farm. [ElevenLabs voice marketplace](https://elevenlabs.io/blog/22-million-earned-by-voice-creators-on-elevenlabs)
+
+This is nearly passive after a professional recording and metadata setup, but it requires an explicit decision about licensing one's vocal likeness for novel generated speech.
+
+## Influencer-idea filter
+
+Influencer and operator reports were used for idea discovery, not as forecast evidence. Earnings screenshots commonly omit failed accounts, prior audiences, invitation status, disqualified views, editing time, tool costs, withheld payouts, and revenue from selling the method.
+
+Reject or heavily discount:
+
+- copied-clip Facebook and TikTok farms;
+- generic AI influencer portfolios;
+- fully AI-generated Medium publications;
+- AI Canva-template factories;
+- passive Snapchat Spotlight claims based on the discontinued rewards program;
+- raw text-to-3D upload farms;
+- generic prompt-wrapper bots;
+- residential bandwidth as meaningful income;
+- purchased GPU rigs modeled at optimistic utilization;
+- token-denominated DePIN projections that require appreciation;
+- prediction-market trading presented as automated income;
+- any opportunity whose operator primarily earns by teaching it.
+
+## Portfolio choices available when research resumes
+
+### Category-level portfolio
+
+The most balanced three-category portfolio is:
+
+1. **Automated content and attention** — get paid for attention.
+2. **Decision and changing-data assets** — get paid for helping people decide.
+3. **Ecosystem extensions or reusable creative IP** — get paid when other creators reuse an asset.
+
+### Concrete project-level portfolio
+
+The current strongest combination is:
+
+1. Continue faceless YouTube/content automation.
+2. Build one changing-data decision property after a niche tournament.
+3. Test a Minecraft mod portfolio or TikTok Effect House portfolio.
+
+Commercial media licensing remains the strongest fourth project. Poe bots and an ElevenLabs voice listing are suitable bounded experiments. An AI-assisted security bounty lab is attractive only if active technical research—not passive income—is acceptable.
+
+## Resume-here checklist
+
+No final selection has been made beyond faceless YouTube remaining the operator's favorite model.
+
+When this research is resumed:
+
+1. Select two categories to add beside content automation.
+2. Choose one concrete project inside each category.
+3. Run a one-week evidence tournament for niches, sources, platform eligibility, and monetization access.
+4. Write a 90-day charter with a fixed hour/capital budget and kill gates.
+5. Launch at most three concurrent production systems, including faceless YouTube.
+6. Treat platform admission, data rights, and originality compliance as pre-build gates.
+7. Preserve code, domains, source assets, schemas, metadata, analytics, and SOPs so successful assets remain transferable.
