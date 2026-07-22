@@ -119,12 +119,23 @@ export interface StageGeneration {
   generation: number;
   predecessorGenerationRef: string | null;
   attemptRef: string;
-  canonicalResultOperationKey: string;
-  resultHash: string;
-  canonicalCommit: string;
-  state: 'committed';
+  canonicalResultOperationKey: string | null;
+  resultHash: string | null;
+  resultCardRef: string | null;
+  baseCommit: string | null;
+  canonicalCommit: string | null;
+  state: 'queued' | 'committed';
   createdAt: string;
   updatedAt: string;
+}
+
+export interface GenerationSupersession {
+  runRef: string;
+  predecessorGenerationRef: string;
+  successorGenerationRef: string;
+  failedReviewReceiptRef: string;
+  operationKey: string;
+  createdAt: string;
 }
 
 export interface ReviewLoop {
@@ -135,7 +146,7 @@ export interface ReviewLoop {
   maxCreatorReworks: number;
   reviewDefinitionHash: string;
   reworksUsed: number;
-  state: 'awaiting-subject' | 'checking' | 'failed' | 'parked' | 'awaiting-gate' | 'passed';
+  state: 'awaiting-subject' | 'checking' | 'rework-queued' | 'failed' | 'parked' | 'awaiting-gate' | 'passed';
   activeGenerationRef: string | null;
   acceptedGenerationRef: string | null;
   activeReceiptRef: string | null;
@@ -176,6 +187,10 @@ export interface Attempt {
   reviewSubjectGenerationRef: string | null;
   reviewSubjectResultHash: string | null;
   reviewSubjectCanonicalCommit: string | null;
+  /** Logical creator-generation lineage; null for ordinary/legacy attempts. */
+  logicalGeneration: number | null;
+  baseGenerationRef: string | null;
+  baseCommit: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -278,6 +293,7 @@ export interface RunDetail {
   sessions: ManagedSession[];
   humanRequests: HumanRequest[];
   stageGenerations: StageGeneration[];
+  generationSupersessions: GenerationSupersession[];
   reviewLoops: ReviewLoop[];
   reviewReceipts: ReviewReceipt[];
 }

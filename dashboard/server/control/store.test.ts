@@ -117,34 +117,36 @@ function createAssignedRun(
   return created.value;
 }
 
-function checkerSnapshot(): JsonObject {
+function checkerSnapshot(maxCreatorReworks = CHECKER_REVIEW.maxCreatorReworks): JsonObject {
+  const review = { ...CHECKER_REVIEW, maxCreatorReworks };
   return {
     schema: 'kb.plan-proposal/v1', manager: {}, stages: [
       { id: 'build', title: 'Build', dependsOn: [] },
       {
         id: 'check', title: 'Check', dependsOn: ['build'], action: 'review:source-grounding', assignment: VERIFY_ASSIGNMENT,
-        workflowProfile: 'checker-readonly', review: structuredClone(CHECKER_REVIEW), completionGate: structuredClone(CHECKER_COMPLETION_GATE),
+        workflowProfile: 'checker-readonly', review: structuredClone(review), completionGate: structuredClone(CHECKER_COMPLETION_GATE),
       },
     ],
   };
 }
 
-function checkerStages() {
+function checkerStages(maxCreatorReworks = CHECKER_REVIEW.maxCreatorReworks) {
+  const review = { ...CHECKER_REVIEW, maxCreatorReworks };
   return [
     { stageId: 'build', title: 'Build', dependsOn: [] },
     {
       stageId: 'check', title: 'Check', dependsOn: ['build'], assignment: structuredClone(VERIFY_ASSIGNMENT),
-      workflowProfile: 'checker-readonly', review: structuredClone(CHECKER_REVIEW), completionGate: structuredClone(CHECKER_COMPLETION_GATE),
+      workflowProfile: 'checker-readonly', review: structuredClone(review), completionGate: structuredClone(CHECKER_COMPLETION_GATE),
     },
   ];
 }
 
-function createCheckerRun(store: ControlPlaneStore, subject = 'alice') {
-  const proposal = createApprovedProposal(store, subject, checkerSnapshot());
+function createCheckerRun(store: ControlPlaneStore, subject = 'alice', maxCreatorReworks = CHECKER_REVIEW.maxCreatorReworks) {
+  const proposal = createApprovedProposal(store, subject, checkerSnapshot(maxCreatorReworks));
   const created = store.createRun(subject, {
     title: 'Checker synthetic run', proposalRef: proposal.proposalRef, proposalRevision: proposal.revision,
     expectedProposalHash: proposal.hash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
-    idempotencyKey: 'launch-checker', stages: checkerStages(),
+    idempotencyKey: `launch-checker-${maxCreatorReworks}`, stages: checkerStages(maxCreatorReworks),
   });
   if (!created.ok) throw new Error(created.detail);
   return created.value;
@@ -155,8 +157,16 @@ function commitCheckerSubject(store: ControlPlaneStore, created = createCheckerR
   if (!current.ok) throw new Error(current.detail);
   const subject = current.value.stages.find((stage) => stage.stageId === 'build');
   if (!subject) throw new Error('checker subject missing');
-  const attempt = store.createAttempt('alice', subject.stageRef, {
-    expectedStageVersion: subject.version, runtime: 'codex', model: 'fixed',
+  if (subject.canonicalCardRef === null) {
+    const linked = store.linkStageCard('alice', subject.stageRef, subject.version, 'card-build');
+    if (!linked.ok) throw new Error(linked.detail);
+  }
+  const afterCard = store.getRun('alice', created.run.runRef);
+  if (!afterCard.ok) throw new Error(afterCard.detail);
+  const cardedSubject = afterCard.value.stages.find((stage) => stage.stageId === 'build');
+  if (!cardedSubject?.canonicalCardRef) throw new Error('checker subject card missing');
+  const attempt = store.createAttempt('alice', cardedSubject.stageRef, {
+    expectedStageVersion: cardedSubject.version, runtime: 'codex', model: 'fixed',
   });
   if (!attempt.ok) throw new Error(attempt.detail);
   const starting = store.transitionAttempt('alice', attempt.value.attemptRef, attempt.value.version, 'starting');
@@ -167,11 +177,11 @@ function commitCheckerSubject(store: ControlPlaneStore, created = createCheckerR
   if (!succeeded.ok) throw new Error(succeeded.detail);
   const detail = store.getRun('alice', created.run.runRef);
   if (!detail.ok) throw new Error(detail.detail);
-  const currentStage = detail.value.stages.find((stage) => stage.stageRef === subject.stageRef);
+  const currentStage = detail.value.stages.find((stage) => stage.stageRef === cardedSubject.stageRef);
   if (!currentStage) throw new Error('checker subject disappeared');
   const input = {
     expectedStageVersion: currentStage.version, expectedAttemptVersion: succeeded.value.version, expectedGeneration: 1,
-    operationKey: `result:${created.run.runRef}:build`, resultHash: 'd'.repeat(64), canonicalCommit: 'a'.repeat(40),
+    operationKey: `result:${created.run.runRef}:build`, resultHash: 'd'.repeat(64), resultCardRef: cardedSubject.canonicalCardRef, baseCommit: 'b'.repeat(40), canonicalCommit: 'a'.repeat(40),
   };
   const generation = store.recordStageGeneration('alice', currentStage.stageRef, input);
   if (!generation.ok) throw new Error(generation.detail);
@@ -183,6 +193,110 @@ function checkerPassOutcome() {
     schema: 'kb.review-outcome/v1', decision: 'pass', summary: 'All criteria passed.',
     criteria: [{ criterionId: 'grounded', verdict: 'pass', findingIds: [] }], findings: [],
   });
+}
+
+function checkerFailOutcome() {
+  return JSON.stringify({
+    schema: 'kb.review-outcome/v1', decision: 'fail', summary: 'Grounding failed.',
+    criteria: [{ criterionId: 'grounded', verdict: 'fail', findingIds: ['missing-source'] }],
+    findings: [{ id: 'missing-source', criterionId: 'grounded', severity: 'blocking', summary: 'Source is missing.', evidencePaths: [] }],
+  });
+}
+
+function failCheckerReview(
+  store: ControlPlaneStore,
+  committed: ReturnType<typeof commitCheckerSubject>,
+  checkerSessionTerminalState?: 'failed' | 'stopped',
+) {
+  const before = store.getRun('alice', committed.created.run.runRef);
+  if (!before.ok) throw new Error(before.detail);
+  const review = before.value.stages.find((stage) => stage.stageId === 'check');
+  const initialSubject = before.value.stages.find((stage) => stage.stageId === 'build');
+  if (!review || !initialSubject) throw new Error('review graph missing');
+  if (initialSubject.state !== 'succeeded') {
+    const subjectRunning = store.transitionStage('alice', initialSubject.stageRef, initialSubject.version, 'running');
+    if (!subjectRunning.ok) throw new Error(subjectRunning.detail);
+    const subjectSucceeded = store.transitionStage('alice', initialSubject.stageRef, subjectRunning.value.version, 'succeeded');
+    if (!subjectSucceeded.ok) throw new Error(subjectSucceeded.detail);
+  }
+  const checkerAttempt = store.createAttempt('alice', review.stageRef, {
+    expectedStageVersion: review.version, runtime: VERIFY_ASSIGNMENT.runtime, model: VERIFY_ASSIGNMENT.model,
+    reviewSubjectGenerationRef: committed.generation.generationRef, reviewSubjectResultHash: 'd'.repeat(64), reviewSubjectCanonicalCommit: 'a'.repeat(40),
+  });
+  if (!checkerAttempt.ok) throw new Error(checkerAttempt.detail);
+  let checkerAttemptVersion = checkerAttempt.value.version;
+  if (checkerSessionTerminalState) {
+    const session = store.createWorkerSession('alice', checkerAttempt.value.attemptRef, { expectedAttemptVersion: checkerAttemptVersion });
+    if (!session.ok) throw new Error(session.detail);
+    checkerAttemptVersion += 1;
+    const terminal = store.transitionSession('alice', session.value.sessionRef, session.value.version, checkerSessionTerminalState);
+    if (!terminal.ok) throw new Error(terminal.detail);
+  }
+  const starting = store.transitionAttempt('alice', checkerAttempt.value.attemptRef, checkerAttemptVersion, 'starting');
+  if (!starting.ok) throw new Error(starting.detail);
+  const running = store.transitionAttempt('alice', starting.value.attemptRef, starting.value.version, 'running');
+  if (!running.ok) throw new Error(running.detail);
+  const succeeded = store.transitionAttempt('alice', running.value.attemptRef, running.value.version, 'succeeded');
+  if (!succeeded.ok) throw new Error(succeeded.detail);
+  const reviewReady = store.transitionStage('alice', review.stageRef, review.version + 1, 'ready');
+  if (!reviewReady.ok) throw new Error(reviewReady.detail);
+  const reviewRunning = store.transitionStage('alice', review.stageRef, reviewReady.value.version, 'running');
+  if (!reviewRunning.ok) throw new Error(reviewRunning.detail);
+  const reviewSucceeded = store.transitionStage('alice', review.stageRef, reviewRunning.value.version, 'succeeded');
+  if (!reviewSucceeded.ok) throw new Error(reviewSucceeded.detail);
+  const beforeReceipt = store.getRun('alice', committed.created.run.runRef);
+  if (!beforeReceipt.ok) throw new Error(beforeReceipt.detail);
+  const receiptReview = beforeReceipt.value.stages.find((stage) => stage.stageId === 'check');
+  const receiptLoop = beforeReceipt.value.reviewLoops[0];
+  if (!receiptReview || !receiptLoop) throw new Error('receipt review graph missing');
+  const receipt = store.recordReviewReceipt('alice', review.stageRef, {
+    expectedReviewStageVersion: receiptReview.version, expectedCheckerAttemptVersion: succeeded.value.version, expectedLoopVersion: receiptLoop.version,
+    subjectGenerationRef: committed.generation.generationRef, subjectResultHash: 'd'.repeat(64), checkerAttemptRef: succeeded.value.attemptRef,
+    outcome: checkerFailOutcome(), operationKey: `review-outcome:${committed.created.run.runRef}:check:g1`,
+  });
+  if (!receipt.ok) throw new Error(receipt.detail);
+  const current = store.getRun('alice', committed.created.run.runRef);
+  if (!current.ok) throw new Error(current.detail);
+  const subject = current.value.stages.find((stage) => stage.stageId === 'build');
+  const currentReview = current.value.stages.find((stage) => stage.stageId === 'check');
+  const loop = current.value.reviewLoops[0];
+  if (!subject || !currentReview || !loop || !subject.currentAttemptRef) throw new Error('failed graph missing');
+  return {
+    input: {
+      expectedSubjectStageVersion: subject.version, expectedReviewStageVersion: currentReview.version, expectedLoopVersion: loop.version,
+      expectedSubjectAttemptRef: subject.currentAttemptRef, expectedSubjectAttemptVersion: committed.attempt.version,
+      expectedCheckerAttemptRef: succeeded.value.attemptRef, expectedCheckerAttemptVersion: succeeded.value.version,
+      expectedFailedReceiptRef: receipt.value.reviewReceiptRef, expectedGenerationRef: committed.generation.generationRef,
+      idempotencyKey: `rework:${committed.created.run.runRef}:build:g2`,
+    },
+  };
+}
+
+function queueCreatorRework(store: ControlPlaneStore, committed: ReturnType<typeof commitCheckerSubject>) {
+  const { input } = failCheckerReview(store, committed);
+  const queued = store.advanceReviewGeneration('alice', committed.created.run.runRef, input);
+  if (!queued.ok) throw new Error(queued.detail);
+  return queued.value;
+}
+
+function succeedQueuedCreatorAttempt(store: ControlPlaneStore, runRef: string) {
+  const detail = store.getRun('alice', runRef);
+  if (!detail.ok) throw new Error(detail.detail);
+  const subject = detail.value.stages.find((stage) => stage.stageId === 'build');
+  if (!subject?.currentAttemptRef) throw new Error('queued creator attempt missing');
+  const attempt = detail.value.attempts.find((item) => item.attemptRef === subject.currentAttemptRef);
+  if (!attempt) throw new Error('queued creator attempt disappeared');
+  const starting = store.transitionAttempt('alice', attempt.attemptRef, attempt.version, 'starting');
+  if (!starting.ok) throw new Error(starting.detail);
+  const running = store.transitionAttempt('alice', attempt.attemptRef, starting.value.version, 'running');
+  if (!running.ok) throw new Error(running.detail);
+  const succeeded = store.transitionAttempt('alice', attempt.attemptRef, running.value.version, 'succeeded');
+  if (!succeeded.ok) throw new Error(succeeded.detail);
+  const current = store.getRun('alice', runRef);
+  if (!current.ok) throw new Error(current.detail);
+  const currentSubject = current.value.stages.find((stage) => stage.stageId === 'build');
+  if (!currentSubject) throw new Error('creator stage disappeared');
+  return { attempt: succeeded.value, stage: currentSubject };
 }
 
 function settleRetryPredecessor(
@@ -620,6 +734,91 @@ describe('run graph, attempts, and managed sessions', () => {
     expect(store.createAttempt('alice', checker.stageRef, {
       expectedStageVersion: checker.version, runtime: VERIFY_ASSIGNMENT.runtime, model: VERIFY_ASSIGNMENT.model,
     })).toMatchObject({ ok: false, reason: 'conflict' });
+  });
+
+  it('atomically appends a bounded queued creator successor after a failed checker receipt', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const committed = commitCheckerSubject(store);
+    const { input } = failCheckerReview(store, committed);
+    expect(store.advanceReviewGeneration('alice', committed.created.run.runRef, {
+      ...input, expectedLoopVersion: input.expectedLoopVersion - 1,
+    } as never)).toMatchObject({ ok: false, reason: 'conflict' });
+    expect(store.getRun('alice', committed.created.run.runRef)).toMatchObject({
+      ok: true, value: { stageGenerations: [expect.anything()], generationSupersessions: [] },
+    });
+    const advanced = store.advanceReviewGeneration('alice', committed.created.run.runRef, input as never);
+    expect(advanced).toMatchObject({ ok: true, value: { generation: 2, state: 'queued', resultHash: null, baseCommit: null, canonicalCommit: null } });
+    expect(store.advanceReviewGeneration('alice', committed.created.run.runRef, input as never)).toMatchObject({ ok: true, replayed: true });
+    expect(store.advanceReviewGeneration('alice', committed.created.run.runRef, {
+      ...input, expectedSubjectAttemptVersion: input.expectedSubjectAttemptVersion + 1,
+    } as never)).toMatchObject({ ok: false, reason: 'idempotency-conflict' });
+    const after = store.getRun('alice', committed.created.run.runRef);
+    expect(after).toMatchObject({ ok: true, value: {
+      generationSupersessions: [expect.objectContaining({ predecessorGenerationRef: committed.generation.generationRef })],
+      reviewLoops: [expect.objectContaining({ state: 'rework-queued', reworksUsed: 1, activeReceiptRef: null })],
+    } });
+  });
+
+  it('does not mutate failed review state when the creator rework bound is exhausted', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const committed = commitCheckerSubject(store, createCheckerRun(store, 'alice', 0));
+    const { input } = failCheckerReview(store, committed);
+    const before = store.getRun('alice', committed.created.run.runRef);
+    expect(store.advanceReviewGeneration('alice', committed.created.run.runRef, input)).toMatchObject({
+      ok: false, reason: 'ineligible', detail: expect.stringContaining('bound is exhausted'),
+    });
+    expect(store.getRun('alice', committed.created.run.runRef)).toEqual(before);
+  });
+
+  it('rejects review rework when the bound checker worker session is failed or stopped', () => {
+    for (const state of ['failed', 'stopped'] as const) {
+      const store = createInMemoryControlPlaneStore(deterministicOptions());
+      const committed = commitCheckerSubject(store);
+      const { input } = failCheckerReview(store, committed, state);
+      expect(store.advanceReviewGeneration('alice', committed.created.run.runRef, input)).toMatchObject({
+        ok: false, reason: 'conflict', detail: expect.stringContaining('not completed'),
+      });
+    }
+  });
+
+  it('does not permit a loop-managed creator stage to succeed while its active generation is queued', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const committed = commitCheckerSubject(store);
+    queueCreatorRework(store, committed);
+    const detail = store.getRun('alice', committed.created.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const subject = detail.value.stages.find((stage) => stage.stageId === 'build');
+    if (!subject) throw new Error('creator stage missing');
+    const running = store.transitionStage('alice', subject.stageRef, subject.version, 'running');
+    if (!running.ok) throw new Error(running.detail);
+    expect(store.transitionStage('alice', subject.stageRef, running.value.version, 'succeeded')).toMatchObject({
+      ok: false, reason: 'invalid', detail: expect.stringContaining('review lineage'),
+    });
+    expect(store.rerouteStage('alice', subject.stageRef, {
+      expectedStageVersion: running.value.version, expectedAttemptRef: subject.currentAttemptRef ?? 'attempt-missing', expectedAttemptVersion: 1,
+      runtime: 'claude', model: 'claude-sonnet-5', idempotencyKey: 'reject-loop-creator-reroute',
+    })).toMatchObject({ ok: false, reason: 'invalid', detail: expect.stringContaining('loop-managed creator') });
+  });
+
+  it('does not permit a checker stage to succeed before its bound checker attempt succeeds', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const committed = commitCheckerSubject(store);
+    const detail = store.getRun('alice', committed.created.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const subject = detail.value.stages.find((stage) => stage.stageId === 'build');
+    const review = detail.value.stages.find((stage) => stage.stageId === 'check');
+    if (!subject || !review) throw new Error('checker graph missing');
+    const subjectRunning = store.transitionStage('alice', subject.stageRef, subject.version, 'running');
+    if (!subjectRunning.ok) throw new Error(subjectRunning.detail);
+    const subjectSucceeded = store.transitionStage('alice', subject.stageRef, subjectRunning.value.version, 'succeeded');
+    if (!subjectSucceeded.ok) throw new Error(subjectSucceeded.detail);
+    const reviewReady = store.transitionStage('alice', review.stageRef, review.version, 'ready');
+    if (!reviewReady.ok) throw new Error(reviewReady.detail);
+    const reviewRunning = store.transitionStage('alice', review.stageRef, reviewReady.value.version, 'running');
+    if (!reviewRunning.ok) throw new Error(reviewRunning.detail);
+    expect(store.transitionStage('alice', review.stageRef, reviewRunning.value.version, 'succeeded')).toMatchObject({
+      ok: false, reason: 'invalid', detail: expect.stringContaining('review lineage'),
+    });
   });
 
   it('tracks canonical publication phases with run-version CAS', () => {
@@ -1250,6 +1449,197 @@ describe('durability, crash recovery, and retention', () => {
         reviewLoops: [expect.objectContaining({ state: 'checking', activeGenerationRef: committed.generation.generationRef })],
       },
     });
+  });
+
+  it('fails closed on a persisted queued-generation result tamper', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-'));
+    roots.push(root);
+    const first = createFileControlPlaneStore(root, deterministicOptions());
+    commitCheckerSubject(first);
+    const path = join(root, 'control', 'control-plane.json');
+    const document = JSON.parse(readFileSync(path, 'utf8')) as { stageGenerations: Array<Record<string, unknown>> };
+    document.stageGenerations[0].state = 'queued';
+    // A queued generation is an immutable placeholder: it must not carry result output.
+    writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
+    expect(() => createFileControlPlaneStore(root, deterministicOptions())).toThrow('invalid control-plane stage generation');
+  });
+
+  it('persists queued rework lineage across restart and rejects supersession tampering', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-'));
+    roots.push(root);
+    const first = createFileControlPlaneStore(root, deterministicOptions());
+    const committed = commitCheckerSubject(first);
+    const { input } = failCheckerReview(first, committed);
+    expect(first.advanceReviewGeneration('alice', committed.created.run.runRef, input)).toMatchObject({ ok: true });
+    const restarted = createFileControlPlaneStore(root, deterministicOptions());
+    expect(restarted.getRun('alice', committed.created.run.runRef)).toMatchObject({
+      ok: true,
+      value: {
+        stageGenerations: expect.arrayContaining([expect.objectContaining({ generation: 2, state: 'queued', predecessorGenerationRef: committed.generation.generationRef })]),
+        reviewLoops: [expect.objectContaining({ state: 'rework-queued', reworksUsed: 1 })],
+        generationSupersessions: [expect.objectContaining({ predecessorGenerationRef: committed.generation.generationRef })],
+      },
+    });
+    const path = join(root, 'control', 'control-plane.json');
+    const document = JSON.parse(readFileSync(path, 'utf8')) as { generationSupersessions: Array<Record<string, unknown>> };
+    document.generationSupersessions[0].successorGenerationRef = committed.generation.generationRef;
+    writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
+    expect(() => createFileControlPlaneStore(root, deterministicOptions())).toThrow('invalid control-plane generation supersession');
+  });
+
+  it('fails closed on queued rework stage-pointer, review-projection, and terminal-subject tampering', () => {
+    for (const tamper of ['creator-pointer', 'review-projection', 'subject-terminal'] as const) {
+      const root = mkdtempSync(join(tmpdir(), 'control-store-'));
+      roots.push(root);
+      const first = createFileControlPlaneStore(root, deterministicOptions());
+      const committed = commitCheckerSubject(first);
+      queueCreatorRework(first, committed);
+      const path = join(root, 'control', 'control-plane.json');
+      const document = JSON.parse(readFileSync(path, 'utf8')) as { stages: Array<Record<string, unknown>> };
+      const subject = document.stages.find((stage) => stage.stageId === 'build');
+      const review = document.stages.find((stage) => stage.stageId === 'check');
+      if (!subject || !review) throw new Error('persisted queued rework stages missing');
+      if (tamper === 'creator-pointer') subject.currentAttemptRef = 'attempt-tampered';
+      if (tamper === 'review-projection') review.state = 'ready';
+      if (tamper === 'subject-terminal') subject.state = 'succeeded';
+      writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
+      expect(() => createFileControlPlaneStore(root, deterministicOptions())).toThrow('invalid control-plane queued rework stage projection');
+    }
+  });
+
+  it('normalizes a running queued rework and its active creator attempt to an interrupted crash pair', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-'));
+    roots.push(root);
+    const first = createFileControlPlaneStore(root, deterministicOptions());
+    const committed = commitCheckerSubject(first);
+    queueCreatorRework(first, committed);
+    const path = join(root, 'control', 'control-plane.json');
+    const document = JSON.parse(readFileSync(path, 'utf8')) as { stages: Array<Record<string, unknown>>; attempts: Array<Record<string, unknown>> };
+    const subject = document.stages.find((stage) => stage.stageId === 'build');
+    if (!subject || typeof subject.currentAttemptRef !== 'string') throw new Error('persisted queued creator missing');
+    const attempt = document.attempts.find((item) => item.attemptRef === subject.currentAttemptRef);
+    if (!attempt) throw new Error('persisted queued creator attempt missing');
+    subject.state = 'running';
+    attempt.state = 'running';
+    writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
+    const restarted = createFileControlPlaneStore(root, deterministicOptions());
+    expect(restarted.getRun('alice', committed.created.run.runRef)).toMatchObject({
+      ok: true,
+      value: {
+        stages: expect.arrayContaining([expect.objectContaining({ stageId: 'build', state: 'interrupted' })]),
+        attempts: expect.arrayContaining([expect.objectContaining({ attemptRef: subject.currentAttemptRef, state: 'interrupted' })]),
+      },
+    });
+  });
+
+  it('preserves a crash-interrupted stage with a successfully completed queued creator attempt for reconciliation', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-'));
+    roots.push(root);
+    const first = createFileControlPlaneStore(root, deterministicOptions());
+    const committed = commitCheckerSubject(first);
+    queueCreatorRework(first, committed);
+    const path = join(root, 'control', 'control-plane.json');
+    const document = JSON.parse(readFileSync(path, 'utf8')) as { stages: Array<Record<string, unknown>>; attempts: Array<Record<string, unknown>> };
+    const subject = document.stages.find((stage) => stage.stageId === 'build');
+    if (!subject || typeof subject.currentAttemptRef !== 'string') throw new Error('persisted queued creator missing');
+    const attempt = document.attempts.find((item) => item.attemptRef === subject.currentAttemptRef);
+    if (!attempt) throw new Error('persisted queued creator attempt missing');
+    subject.state = 'running';
+    attempt.state = 'succeeded';
+    writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
+    const restarted = createFileControlPlaneStore(root, deterministicOptions());
+    expect(restarted.getRun('alice', committed.created.run.runRef)).toMatchObject({
+      ok: true,
+      value: {
+        stages: expect.arrayContaining([expect.objectContaining({ stageId: 'build', state: 'interrupted' })]),
+        attempts: expect.arrayContaining([expect.objectContaining({ attemptRef: subject.currentAttemptRef, state: 'succeeded' })]),
+      },
+    });
+  });
+
+  it('requires the queued creator base commit, then preserves a finalized successor across restart', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-'));
+    roots.push(root);
+    const first = createFileControlPlaneStore(root, deterministicOptions());
+    const committed = commitCheckerSubject(first);
+    queueCreatorRework(first, committed);
+    const successor = succeedQueuedCreatorAttempt(first, committed.created.run.runRef);
+    const correct = {
+      expectedStageVersion: successor.stage.version, expectedAttemptVersion: successor.attempt.version, expectedGeneration: 2,
+      operationKey: `result:${committed.created.run.runRef}:build:g2`, resultHash: 'e'.repeat(64),
+      resultCardRef: null, baseCommit: 'a'.repeat(40), canonicalCommit: 'c'.repeat(40),
+    };
+    expect(first.recordStageGeneration('alice', successor.stage.stageRef, { ...correct, baseCommit: 'b'.repeat(40) })).toMatchObject({
+      ok: false, reason: 'conflict', detail: expect.stringContaining('base lineage'),
+    });
+    expect(first.recordStageGeneration('alice', successor.stage.stageRef, { ...correct, resultCardRef: 'card-rework-output' })).toMatchObject({
+      ok: false, reason: 'invalid', detail: expect.stringContaining('result card'),
+    });
+    expect(first.recordStageGeneration('alice', successor.stage.stageRef, correct)).toMatchObject({ ok: true, value: { generation: 2, state: 'committed' } });
+    const restarted = createFileControlPlaneStore(root, deterministicOptions());
+    expect(restarted.getRun('alice', committed.created.run.runRef)).toMatchObject({
+      ok: true,
+      value: {
+        stageGenerations: expect.arrayContaining([expect.objectContaining({ generation: 2, state: 'committed', baseCommit: 'a'.repeat(40) })]),
+        generationSupersessions: [expect.objectContaining({ predecessorGenerationRef: committed.generation.generationRef })],
+      },
+    });
+  });
+
+  it('fails closed when a persisted creator rework attempt has incoherent base lineage', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-'));
+    roots.push(root);
+    const first = createFileControlPlaneStore(root, deterministicOptions());
+    const committed = commitCheckerSubject(first);
+    queueCreatorRework(first, committed);
+    const path = join(root, 'control', 'control-plane.json');
+    const document = JSON.parse(readFileSync(path, 'utf8')) as { attempts: Array<Record<string, unknown>> };
+    const reworkAttempt = document.attempts.find((attempt) => attempt.logicalGeneration === 2);
+    if (!reworkAttempt) throw new Error('persisted rework attempt missing');
+    reworkAttempt.baseCommit = 'c'.repeat(40);
+    writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
+    expect(() => createFileControlPlaneStore(root, deterministicOptions())).toThrow('invalid control-plane creator attempt generation provenance');
+  });
+
+  it('fails closed when a committed generation is missing its durable base commit', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-'));
+    roots.push(root);
+    const first = createFileControlPlaneStore(root, deterministicOptions());
+    commitCheckerSubject(first);
+    const path = join(root, 'control', 'control-plane.json');
+    const document = JSON.parse(readFileSync(path, 'utf8')) as { stageGenerations: Array<Record<string, unknown>> };
+    document.stageGenerations[0].baseCommit = null;
+    writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
+    expect(() => createFileControlPlaneStore(root, deterministicOptions())).toThrow('invalid control-plane stage generation');
+  });
+
+  it('rejects advance when persisted stage projections no longer show the completed review transaction', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-'));
+    roots.push(root);
+    const first = createFileControlPlaneStore(root, deterministicOptions());
+    const committed = commitCheckerSubject(first);
+    const { input } = failCheckerReview(first, committed);
+    const path = join(root, 'control', 'control-plane.json');
+    const document = JSON.parse(readFileSync(path, 'utf8')) as { stages: Array<Record<string, unknown>> };
+    const subject = document.stages.find((stage) => stage.stageId === 'build');
+    if (!subject) throw new Error('persisted creator stage missing');
+    subject.state = 'ready';
+    writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
+    const restarted = createFileControlPlaneStore(root, deterministicOptions());
+    expect(restarted.advanceReviewGeneration('alice', committed.created.run.runRef, input)).toMatchObject({ ok: false, reason: 'conflict' });
+  });
+
+  it('fails closed when a persisted successor generation loses its supersession link', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-'));
+    roots.push(root);
+    const first = createFileControlPlaneStore(root, deterministicOptions());
+    const committed = commitCheckerSubject(first);
+    queueCreatorRework(first, committed);
+    const path = join(root, 'control', 'control-plane.json');
+    const document = JSON.parse(readFileSync(path, 'utf8')) as { generationSupersessions: unknown[] };
+    document.generationSupersessions = [];
+    writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
+    expect(() => createFileControlPlaneStore(root, deterministicOptions())).toThrow('invalid control-plane generation supersession completeness');
   });
 
   it('materializes legacy checker loops without inferring subject lineage and interrupts unbound queued checker attempts', () => {
