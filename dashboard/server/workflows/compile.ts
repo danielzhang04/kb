@@ -150,6 +150,22 @@ function highestTier(stages: readonly { riskTier: ProposalRiskTier }[]): Proposa
  * `validatePlanProposal` / the store; this function only assembles the closed shape and picks routing.
  */
 export function compileWorkflowDef(def: WorkflowDef, env: CompileWorkflowEnvironment): CompileWorkflowResult {
+  const reviewStageIds = new Set(def.stages.filter((stage) => stage.review !== undefined).map((stage) => stage.id));
+  const reviewSubjects = new Set<string>();
+  for (const stage of def.stages) {
+    if (!stage.review) continue;
+    const subjectStageId = stage.review.subjectStageId;
+    if (stage.dependsOn.length !== 1 || stage.dependsOn[0] !== subjectStageId) {
+      return { ok: false, reason: 'review-depends-on-subject-only', detail: `review stage '${stage.id}' must depend only on its subject '${subjectStageId}'` };
+    }
+    if (reviewSubjects.has(subjectStageId)) {
+      return { ok: false, reason: 'duplicate-review-subject', detail: `multiple review stages target subject '${subjectStageId}'` };
+    }
+    if (reviewStageIds.has(subjectStageId)) {
+      return { ok: false, reason: 'review-of-review-not-allowed', detail: `review stage '${stage.id}' cannot review review stage '${subjectStageId}'` };
+    }
+    reviewSubjects.add(subjectStageId);
+  }
   const claudeModels = env.registry.runtimes.claude ?? [];
   const needsDefaultManager = def.manager === undefined;
   const needsDefaultWorker = def.stages.some((stage) => stage.agentId === undefined);

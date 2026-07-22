@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseWorkflowDef, type WorkflowDef } from './defs.ts';
+import { parseWorkflowDef, type WorkflowDef, type WorkflowStageDef } from './defs.ts';
 import { compileWorkflowDef } from './compile.ts';
 import { canonicalProposal, validatePlanProposal, validateServerCompiledPlanProposal } from '../control/proposal.ts';
 import type { RuntimeSkillRegistry } from '../control/environment.ts';
@@ -91,6 +91,7 @@ const CHECKER = def([
   '    agentId: fyt-production', '    profileId: worker:claude:claude-sonnet-5', '    workflowProfile: checker-readonly',
   '    review:', '      subjectStageId: create', '      maxCreatorReworks: 1', '      criteria:', '        - id: safety', '          description: No unsafe changes',
   '    completionGate:', '      id: checker-approval', '      kind: approval', '      prompt: Approve checker result?', '      requiresReview: pass',
+  '  - id: next', '    title: Next creator', '    action: implement:next', '    target: orgs/kb-ops/output', '    workOrder: Continue', '    dependsOn: [check]',
 ].join('\n'));
 
 describe('compileWorkflowDef', () => {
@@ -173,7 +174,7 @@ describe('compileWorkflowDef', () => {
         workflowProfile: 'checker-readonly',
         review: { subjectStageId: 'create', maxCreatorReworks: 1, criteria: [{ id: 'safety' }] },
         completionGate: { id: 'checker-approval', kind: 'approval', requiresReview: 'pass' },
-      },
+      }, {},
     ] } });
     if (!compiled.ok) return;
     expect(validatePlanProposal(compiled.value, REGISTRY)).toMatchObject({ ok: false });
@@ -200,6 +201,21 @@ describe('compileWorkflowDef', () => {
     ]) {
       expect(compileWorkflowDef({ ...CHECKER, stages: [CHECKER.stages[0], invalidStage] }, bindingEnvironment()))
         .toMatchObject({ ok: false, reason: 'review-workflow-profile-required' });
+    }
+  });
+
+  it('defends programmatic definitions against non-linear or nested review graphs', () => {
+    const check = CHECKER.stages[1];
+    const next = CHECKER.stages[2];
+    const duplicate = { ...check, id: 'check-again' };
+    const reviewOfReview = { ...check, id: 'review-again', dependsOn: ['check'], review: { ...check.review!, subjectStageId: 'check' } };
+    const cases: Array<[WorkflowStageDef[], string]> = [
+      [[CHECKER.stages[0], { ...check, dependsOn: ['create', 'next'] }, next], 'review-depends-on-subject-only'],
+      [[CHECKER.stages[0], check, next, duplicate], 'duplicate-review-subject'],
+      [[CHECKER.stages[0], check, reviewOfReview], 'review-of-review-not-allowed'],
+    ];
+    for (const [stages, reason] of cases) {
+      expect(compileWorkflowDef({ ...CHECKER, stages }, bindingEnvironment())).toMatchObject({ ok: false, reason });
     }
   });
 

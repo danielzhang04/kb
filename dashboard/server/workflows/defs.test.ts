@@ -160,10 +160,11 @@ describe('parseWorkflowDef', () => {
       '    review:', '      subjectStageId: create', '      maxCreatorReworks: 1', '      criteria:',
       '        - id: safety', '          description: No unsafe changes',
       '    completionGate:', '      id: reviewer-approval', '      kind: approval', '      prompt: Approve checker result?', '      requiresReview: pass',
+      '  - id: next', '    title: Next creator', '    action: implement:next', '    target: orgs/kb-ops/output', '    workOrder: Continue', '    dependsOn: [check]',
     ].join('\n');
     const result = parseWorkflowDef(md(fm), { knownProfiles: KNOWN });
     expect(result).toMatchObject({ ok: true, value: { stages: [
-      {}, { workflowProfile: 'checker-readonly', review: { subjectStageId: 'create', maxCreatorReworks: 1 }, completionGate: { kind: 'approval', requiresReview: 'pass' } },
+      {}, { workflowProfile: 'checker-readonly', review: { subjectStageId: 'create', maxCreatorReworks: 1 }, completionGate: { kind: 'approval', requiresReview: 'pass' } }, {},
     ] } });
   });
 
@@ -199,6 +200,26 @@ describe('parseWorkflowDef', () => {
         detail: expect.stringMatching(/workflowProfile 'checker-readonly'/),
       });
     }
+  });
+
+  it('requires review graph edges to be one-to-one and never review another review stage', () => {
+    const valid = [
+      'id: checker-chain', 'project: kb-ops', 'title: Checker chain', 'profile: research', 'stages:',
+      '  - id: create', '    title: Create', '    action: implement:thing', '    target: orgs/kb-ops/output', '    workOrder: Create',
+      '  - id: check', '    title: Check', '    action: review:thing', '    target: orgs/kb-ops/output', '    workOrder: Check', '    dependsOn: [create]',
+      '    agentId: fyt-checker', '    profileId: worker:claude:claude-sonnet-5', '    workflowProfile: checker-readonly', '    review:', '      subjectStageId: create', '      maxCreatorReworks: 1',
+      '      criteria:', '        - id: safety', '          description: Safe',
+      '  - id: next', '    title: Next', '    action: implement:next', '    target: orgs/kb-ops/output', '    workOrder: Continue', '    dependsOn: [check]',
+    ].join('\n');
+    expect(parseWorkflowDef(md(valid), { knownProfiles: KNOWN })).toMatchObject({ ok: true });
+    expect(parseWorkflowDef(md(valid.replace('dependsOn: [create]', 'dependsOn: [create, next]')), { knownProfiles: KNOWN }))
+      .toMatchObject({ ok: false, detail: expect.stringMatching(/depend only on its subject/) });
+    const duplicate = `${valid}\n  - id: check-again\n    title: Check again\n    action: review:thing\n    target: orgs/kb-ops/output\n    workOrder: Check again\n    dependsOn: [create]\n    agentId: fyt-checker\n    profileId: worker:claude:claude-sonnet-5\n    workflowProfile: checker-readonly\n    review:\n      subjectStageId: create\n      maxCreatorReworks: 1\n      criteria:\n        - id: safety\n          description: Safe`;
+    expect(parseWorkflowDef(md(duplicate), { knownProfiles: KNOWN }))
+      .toMatchObject({ ok: false, detail: expect.stringMatching(/multiple review stages/) });
+    const nested = `${valid}\n  - id: check-again\n    title: Check again\n    action: review:thing\n    target: orgs/kb-ops/output\n    workOrder: Check again\n    dependsOn: [check]\n    agentId: fyt-checker\n    profileId: worker:claude:claude-sonnet-5\n    workflowProfile: checker-readonly\n    review:\n      subjectStageId: check\n      maxCreatorReworks: 1\n      criteria:\n        - id: safety\n          description: Safe`;
+    expect(parseWorkflowDef(md(nested), { knownProfiles: KNOWN }))
+      .toMatchObject({ ok: false, detail: expect.stringMatching(/cannot review review stage/) });
   });
 
   it('rejects unknown manager fields and a non-object manager', () => {

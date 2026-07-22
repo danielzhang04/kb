@@ -137,6 +137,9 @@ describe('kb.plan-proposal/v1 validation', () => {
         ...proposal.stages[1], assignment: checkerAssignment, workflowProfile: 'checker-readonly',
         review: { subjectStageId: 'compile', maxCreatorReworks: 1, criteria: [{ id: 'safety', description: 'No unsafe changes' }] },
         completionGate: { id: 'checker-approval', kind: 'approval' as const, prompt: 'Approve checker?', requiresReview: 'pass' as const },
+      }, {
+        ...proposal.stages[0], id: 'release', title: 'Release checked result', action: 'implement:release',
+        workOrder: 'Release the checked result.', dependsOn: ['review'],
       }],
     };
     const registry = { ...REGISTRY, workflowProfiles: ['checker-readonly', 'producer', 'research'] };
@@ -156,6 +159,20 @@ describe('kb.plan-proposal/v1 validation', () => {
       expect(validateServerCompiledPlanProposal({ ...compiled, stages: [compiled.stages[0], invalidStage] }, registry))
         .toMatchObject({ ok: false, detail: expect.stringMatching(/workflowProfile 'checker-readonly'/) });
     }
+    expect(validateServerCompiledPlanProposal({
+      ...compiled,
+      stages: [compiled.stages[0], { ...checkerStage, dependsOn: ['compile', 'release'] }, compiled.stages[2]],
+    }, registry)).toMatchObject({ ok: false, detail: expect.stringMatching(/depend only on its subject/) });
+    expect(validateServerCompiledPlanProposal({
+      ...compiled,
+      stages: [compiled.stages[0], checkerStage, compiled.stages[2], { ...checkerStage, id: 'review-again' }],
+    }, registry)).toMatchObject({ ok: false, detail: expect.stringMatching(/multiple review stages/) });
+    expect(validateServerCompiledPlanProposal({
+      ...compiled,
+      stages: [compiled.stages[0], checkerStage, compiled.stages[2], {
+        ...checkerStage, id: 'review-again', dependsOn: ['review'], review: { ...checkerStage.review!, subjectStageId: 'review' },
+      }],
+    }, registry)).toMatchObject({ ok: false, detail: expect.stringMatching(/cannot review review stage/) });
   });
 
   it('rejects governanceRefs missing the project contract', () => {

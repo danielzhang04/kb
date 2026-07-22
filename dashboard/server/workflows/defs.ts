@@ -397,6 +397,18 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
       if (dep === stage.id) return { ok: false, detail: `stage '${stage.id}' cannot depend on itself` };
     }
   }
+  const reviewStageIds = new Set(stages.filter((stage) => stage.review !== undefined).map((stage) => stage.id));
+  const reviewSubjects = new Set<string>();
+  for (const stage of stages) {
+    if (!stage.review) continue;
+    const subjectStageId = stage.review.subjectStageId;
+    if (stage.dependsOn.length !== 1 || stage.dependsOn[0] !== subjectStageId) {
+      return { ok: false, detail: `review stage '${stage.id}' must depend only on its subject '${subjectStageId}'` };
+    }
+    if (reviewSubjects.has(subjectStageId)) return { ok: false, detail: `multiple review stages target subject '${subjectStageId}'` };
+    if (reviewStageIds.has(subjectStageId)) return { ok: false, detail: `review stage '${stage.id}' cannot review review stage '${subjectStageId}'` };
+    reviewSubjects.add(subjectStageId);
+  }
   const indegree = new Map(stages.map((stage) => [stage.id, stage.dependsOn.length]));
   const children = new Map(stages.map((stage) => [stage.id, [] as string[]]));
   for (const stage of stages) for (const dep of stage.dependsOn) children.get(dep)?.push(stage.id);
