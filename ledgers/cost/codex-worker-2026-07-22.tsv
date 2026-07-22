@@ -1,0 +1,22 @@
+model	step	usd
+gpt-5	requested=gpt-5;responding=gpt-5;root-orchestration	0.0
+gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;checkpoint-a-review	0.0
+gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;assignment-amendment-initial-implementation	0.0
+gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;assignment-amendment-review-1	0.0
+gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;assignment-amendment-review-2	0.0
+gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;assignment-amendment-review-3	0.0
+gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;assignment-amendment-review-4	0.0
+gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;assignment-amendment-review-5	0.0
+gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;assignment-amendment-review-6	0.0
+gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;assignment-amendment-review-7	0.0
+gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;assignment-amendment-repair-1	0.0
+gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;assignment-amendment-repair-2	0.0
+gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;assignment-amendment-repair-3	0.0
+gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;static-acceptance-implementation-1	0.0
+gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;static-acceptance-implementation-2	0.0
+gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;static-acceptance-implementation-3	0.0
+gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;static-acceptance-implementation-4	0.0
+gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;static-acceptance-review-1	0.0
+gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;static-acceptance-review-2	0.0
+gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;fyt-acceptance-plan-interrupted	0.0
+
