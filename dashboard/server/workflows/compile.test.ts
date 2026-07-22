@@ -148,6 +148,26 @@ describe('compileWorkflowDef', () => {
       expect(compiled.value.scope.read).toEqual(['orgs/kb-ops', 'queue']);
     });
 
+    it('compiles a scanner-profile scan def (C1) that passes the real proposal validator', () => {
+      const registry: RuntimeSkillRegistry = { ...REGISTRY, workflowProfiles: [...REGISTRY.workflowProfiles!, 'scanner'] };
+      const scanDef = parseWorkflowDef([
+        '---',
+        'id: scan', 'project: kb-ops', 'title: Scan', 'profile: scanner',
+        'readScope:', '  - queue', '  - dashboards',
+        'stages:',
+        '  - id: report', '    title: Report', '    action: report:self-lint', '    target: orgs/kb-ops/output', '    riskTier: T1',
+        '---', '', 'Scan and report.', '',
+      ].join('\n'), { knownProfiles: new Set(registry.workflowProfiles) });
+      expect(scanDef.ok).toBe(true);
+      if (!scanDef.ok) return;
+      const compiled = compileWorkflowDef(scanDef.value, { registry });
+      expect(compiled.ok).toBe(true);
+      if (!compiled.ok) return;
+      expect(compiled.value.profile).toBe('scanner');
+      expect(compiled.value.scope.read).toEqual(['queue', 'dashboards', 'orgs/kb-ops']);
+      expect(validatePlanProposal(compiled.value as unknown, registry).ok).toBe(true);
+    });
+
     it('covers the effective read scope in the proposal id hash: a scope change forces re-approval', () => {
       const a = compileWorkflowDef(withReadScope(['queue']), { registry: REGISTRY });
       const b = compileWorkflowDef(withReadScope(['queue']), { registry: REGISTRY });
