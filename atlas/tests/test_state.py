@@ -181,3 +181,27 @@ def test_voice_is_settable_by_wiring():
     assert p.snapshot()["voice"] is None
     p.voice = "matilda"
     assert p.snapshot()["voice"] == "matilda"
+
+
+def test_output_device_status_follow_mode_reports_following():
+    from worker import app
+    status = app._output_device_status(
+        {"tts_output_device": "follow"},
+        resolve=lambda s, devices=None: (_ for _ in ()).throw(AssertionError("must not resolve in follow mode")),
+        boot_default=lambda: "Headphones (Px7 S2e)")
+    assert status == {"configured": "follow", "resolved": "Headphones (Px7 S2e)", "following": True}
+
+
+def test_output_device_status_pin_mode_reports_not_following():
+    from worker import app
+    status = app._output_device_status(
+        {"tts_output_device": "Speakers (Realtek"}, resolve=lambda s, devices=None: 5)
+    assert status["following"] is False
+    assert status["configured"] == "Speakers (Realtek"
+
+
+def test_console_output_args_follow_mode_passes_no_flag():
+    from worker import app
+    out = app._console_output_args(["worker.app", "console"], {"tts_output_device": "follow"},
+                                   resolve=lambda s, devices=None: 5)
+    assert out == []

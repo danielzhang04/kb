@@ -10,3 +10,5 @@ livekit-plugins-anthropic==1.6.5
 livekit-plugins-elevenlabs
 livekit-plugins-silero
 openwakeword==0.6.0
+comtypes>=1.4      # COM plumbing for pycaw (output-follow watcher, 2026-07-21 design)
+pycaw>=20240210    # Windows Core Audio default-endpoint probe (devicewatch.current_default_output)

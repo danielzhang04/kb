@@ -197,11 +197,13 @@ def test_no_sleep_during_long_utterance_and_full_window_after():
 
 def test_output_device_status_reports_configured_and_resolution():
     from worker.app import _output_device_status
-    # no config -> both null
-    assert _output_device_status({}, resolve=lambda s: None) == {"configured": None, "resolved": None}
+    # no config -> both null (following:false — output-follow contract, 2026-07-21)
+    assert _output_device_status({}, resolve=lambda s: None) == {
+        "configured": None, "resolved": None, "following": False}
     # configured but unresolved -> visible bad pin (resolved null)
     assert _output_device_status({"tts_output_device": "Ghost"},
-                                 resolve=lambda s: None) == {"configured": "Ghost", "resolved": None}
+                                 resolve=lambda s: None) == {
+        "configured": "Ghost", "resolved": None, "following": False}
     # configured + resolved -> configured echoed, resolved is a device name (idx 0 here)
     st = _output_device_status({"tts_output_device": "Speakers"}, resolve=lambda s: 0)
     assert st["configured"] == "Speakers" and st["resolved"] is not None

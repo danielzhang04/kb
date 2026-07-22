@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from worker import fastlane
 from worker.fastlane import answer, TOOLS
 
 def fake_client(scripted):
@@ -47,6 +48,36 @@ def test_load_persona_reads_file_and_falls_back(tmp_path):
 
 
 def test_shipped_persona_keeps_confirm_rule():
-    # The read-back-confirm rule is a Task-9 safety property — persona edits must preserve it.
+    # The spoken-yes confirm rule is a Task-9 safety property — persona edits must preserve it.
+    # persona v2 (conversation-rules design §3) drops the words "read back"; the invariant is now
+    # the structural gate ("confirmed=true") plus the explicit "spoken yes" requirement.
     from worker.fastlane import SYSTEM
-    assert "confirmed=true" in SYSTEM and "read back" in SYSTEM
+    assert "confirmed=true" in SYSTEM and "spoken yes" in SYSTEM
+
+
+def test_persona_v2_canonical_lines_and_rules():
+    text = fastlane.load_persona()
+    # session frame lines match app.py's canned constants (single source of truth check)
+    assert "Hey boss. What can I do for you?" in text
+    assert "Okay, sleeping. Wake me when you need something." in text
+    # style laws (conversation-rules design §3)
+    assert "confirmed=true" in text          # structural confirm gate still instructed
+    assert "To confirm" in text              # compressed one-line confirm
+    assert "Filed." in text
+    assert "never" in text.casefold()        # bans are stated as hard nevers
+    for banned in ("I'm standing by", "let me know if"):
+        # the banned filler phrases appear ONLY inside the Never-say list, quoted
+        assert text.count(banned) <= 1
+
+
+def test_persona_quiet_marker_rule():
+    # Gate finding #1 (2026-07-21): ambient speech must yield the silent-turn marker, not chat.
+    text = fastlane.load_persona()
+    assert "[quiet]" in text
+
+
+def test_persona_never_quiet_when_named():
+    # Gate finding #2 (2026-07-21): a named address must always get a content answer.
+    text = fastlane.load_persona()
+    assert "Loud and clear" in text
+    assert "[quiet] is forbidden" in text
