@@ -25,10 +25,15 @@ export interface WorkflowDefEntry {
   ref: string;
   project: string;
   path: string;
+  sourceHash: string | null;
+  pendingAmendment?: { workflowPath: string; baseSourceHash: string; proposedSourceHash: string; branch: string; pr: { url?: string; number?: number }; phase: string } | null;
+  pendingAmendmentError?: string | null;
   valid: boolean;
   title: string | null;
   /** Existing workflow tool capability profile; never an agent assignment profile. */
   profile: string | null;
+  /** Required string parameters declared by the immutable workflow definition. */
+  parameters?: string[];
   manager?: { agentId: string; profileId: string } | null;
   stageCount: number;
   riskTier: string | null;
@@ -70,7 +75,16 @@ export interface WorkflowDetailProps {
   backLabel?: string;
   /** The governed Launch control, passed in so this view stays presentational. */
   actions?: React.ReactNode;
+  /** Server-derived assignment choices only; this view never infers routing from declarations. */
+  assignmentOptions?: { manager: AssignmentChoices; stages: Record<string, AssignmentChoices> } | null;
+  onAssignmentAmend?: (target: { kind: 'manager' } | { kind: 'stage'; stageId: string }, assignment: { agentId: string; profileId: string } | null) => void;
+  amendmentStatus?: React.ReactNode;
+  /** Values stay in the owner view so opening detail never changes launch intent. */
+  parameterValues?: Record<string, string>;
+  onParameterChange?: (name: string, value: string) => void;
 }
+
+interface AssignmentChoices { options: Array<{ agentId: string; profileId: string }>; unavailable: string | null; }
 
 /**
  * Risk tier as a mono chip. Tier colours are a sanctioned data-encoding taxonomy, but tier is ALSO
@@ -120,6 +134,11 @@ export function WorkflowDetail({
   onBack,
   backLabel,
   actions,
+  assignmentOptions,
+  onAssignmentAmend,
+  amendmentStatus,
+  parameterValues = {},
+  onParameterChange,
 }: WorkflowDetailProps): React.JSX.Element {
   const [fetched, setFetched] = useState<WorkflowCompiled | null>(injectedCompiled ?? null);
 
@@ -204,6 +223,20 @@ export function WorkflowDetail({
           unavailableDetail={compilerFailure}
         />
       </section>
+
+      <section className="entity-block" aria-label="Assignment amendments">
+        <h3 className="entity-block__title">Pre-launch assignment amendments</h3>
+        <p className="entity-note">Active source hash: <span className="mc-mono" data-testid="workflow-source-hash">{entry.sourceHash ?? 'unavailable'}</span></p>
+        <AssignmentAmendmentRow label="Manager" target={{ kind: 'manager' }} declared={entry.manager} choices={assignmentOptions?.manager} onAmend={onAssignmentAmend} />
+        {entry.stages.map((stage) => <AssignmentAmendmentRow key={stage.id} label={`Stage ${stage.id}`} target={{ kind: 'stage', stageId: stage.id }} declared={stage.declaredAssignment} choices={assignmentOptions?.stages[stage.id]} onAmend={onAssignmentAmend} />)}
+        {amendmentStatus ? <p className="entity-note" data-testid="workflow-amendment-status">{amendmentStatus}</p> : null}
+      </section>
+
+      {(entry.parameters ?? []).length > 0 ? <section className="entity-block" aria-label="Launch parameters">
+        <h3 className="entity-block__title">Launch parameters</h3>
+        <p className="entity-note">These values are sent only in the governed launch request.</p>
+        {(entry.parameters ?? []).map((name) => <label key={name} className="entity-note">{name}<input aria-label={`Workflow parameter ${name}`} value={parameterValues[name] ?? ''} onChange={(event) => onParameterChange?.(name, event.target.value)} /></label>)}
+      </section> : null}
 
       <p className="entity-note">
         Registering a definition does not launch it. Launching compiles it to a governed proposal, which
@@ -376,4 +409,22 @@ export function WorkflowDetail({
       actions={actions}
     />
   );
+}
+
+function AssignmentAmendmentRow({ label, target, declared, choices, onAmend }: {
+  label: string;
+  target: { kind: 'manager' } | { kind: 'stage'; stageId: string };
+  declared: { agentId: string; profileId: string } | null | undefined;
+  choices: AssignmentChoices | undefined;
+  onAmend?: WorkflowDetailProps['onAssignmentAmend'];
+}): React.JSX.Element {
+  const [choice, setChoice] = useState('');
+  const assignmentKey = (option: { agentId: string; profileId: string }): string => JSON.stringify([option.agentId, option.profileId]);
+  const selected = choices?.options.find((option) => assignmentKey(option) === choice);
+  return <div className="entity-note" data-testid={`workflow-amendment-${target.kind === 'manager' ? 'manager' : target.stageId}`}>
+    <p><span className="mc-mono">{label}</span> · {declared ? `${declared.agentId} · ${declared.profileId}` : 'unassigned'}</p>
+    {choices?.unavailable ? <p>{choices.unavailable}</p> : null}
+    {choices?.options.length ? <><select aria-label={`${label} assignment`} value={choice} onChange={(event) => setChoice(event.target.value)}><option value="">Select eligible assignment</option>{choices.options.map((option) => <option key={assignmentKey(option)} value={assignmentKey(option)}>{option.agentId} · {option.profileId}</option>)}</select><button type="button" className="mc-btn mc-btn--quiet" disabled={!selected} onClick={() => selected && onAmend?.(target, selected)}>Amend</button></> : null}
+    {declared ? <button type="button" className="mc-btn mc-btn--quiet" onClick={() => onAmend?.(target, null)}>Clear assignment</button> : null}
+  </div>;
 }

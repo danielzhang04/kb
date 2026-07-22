@@ -15,11 +15,11 @@ import {
 } from './branch.ts';
 
 /** A recording git runner; each call is captured as its argv (after `git`). Never throws. */
-function recorder(): { runner: GitRunner; calls: string[][] } {
+function recorder(branch = 'ops'): { runner: GitRunner; calls: string[][] } {
   const calls: string[][] = [];
   const runner: GitRunner = (_repoRoot, args) => {
     calls.push(args);
-    if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+    if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return `${branch}\n`;
     return '';
   };
   return { runner, calls };
@@ -50,7 +50,7 @@ describe('classifyTarget', async () => {
 
 describe('routeWrite — durable content (skills/**, docs/**, KB markdown)', async () => {
   it('routes to a work branch -> PR to main; NEVER pushes to ops, NEVER pushes directly to main', async () => {
-    const { runner, calls } = recorder();
+    const { runner, calls } = recorder(DEFAULT_WORK_BRANCH);
     const { opener, requests } = prRecorder();
 
     const target = await routeWrite('/fake/repo', 'skills/curated/alpha-skill/SKILL.md', {
@@ -62,11 +62,12 @@ describe('routeWrite — durable content (skills/**, docs/**, KB markdown)', asy
     expect(target).toBe('durable');
 
     // Staged the exact relpath, committed, pushed the work branch — never `git add .`.
-    expect(calls[0]).toEqual(['diff', '--cached', '--name-only', '-z']);
-    expect(calls[1]).toEqual(['add', '--', 'skills/curated/alpha-skill/SKILL.md']);
-    expect(calls[2][0]).toBe('commit');
-    expect(calls[2]).toContain('--only');
-    expect(calls[2]).not.toContain('--no-verify');
+    expect(calls[0]).toEqual(['rev-parse', '--abbrev-ref', 'HEAD']);
+    expect(calls[1]).toEqual(['diff', '--cached', '--name-only', '-z']);
+    expect(calls[2]).toEqual(['add', '--', 'skills/curated/alpha-skill/SKILL.md']);
+    expect(calls[3][0]).toBe('commit');
+    expect(calls[3]).toContain('--only');
+    expect(calls[3]).not.toContain('--no-verify');
 
     const pushCalls = calls.filter((c) => c[0] === 'push');
     expect(pushCalls).toHaveLength(1);
@@ -86,7 +87,7 @@ describe('routeWrite — durable content (skills/**, docs/**, KB markdown)', asy
   });
 
   it('honors an explicit fresh work branch instead of the default', async () => {
-    const { runner, calls } = recorder();
+    const { runner, calls } = recorder('claude/fresh-branch');
     const { opener, requests } = prRecorder();
 
     await routeWrite('/fake/repo', 'docs/notes.md', {

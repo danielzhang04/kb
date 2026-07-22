@@ -78,8 +78,14 @@ export interface AsyncPrRequest {
   body?: string;
 }
 
+/** Honest metadata returned by a PR opener when the provider reports it. */
+export interface AsyncPrResult {
+  url?: string;
+  number?: number;
+}
+
 /** Opens a PR (a distinct capability from {@link OpsGitRunner}). Widened to allow a `Promise`. */
-export type AsyncPrOpener = (repoRoot: string, req: AsyncPrRequest) => void | Promise<void>;
+export type AsyncPrOpener = (repoRoot: string, req: AsyncPrRequest) => AsyncPrResult | void | Promise<AsyncPrResult | void>;
 
 /** An error from a failed async subprocess, shaped like the object `execFileSync` throws. */
 export class AsyncGitError extends Error {
@@ -272,6 +278,9 @@ export function createAsyncPrOpener(options: AsyncGitOptions = {}): AsyncPrOpene
     }
     const args = ['pr', 'create', '--base', req.base, '--head', req.head, '--title', req.title];
     if (req.body) args.push('--body', req.body);
-    await runTrackedProcess('gh', args, repoRoot, 'pr create', options);
+    const output = await runTrackedProcess('gh', args, repoRoot, 'pr create', options);
+    const url = output.trim().split(/\r?\n/).find((line) => /^https:\/\//.test(line.trim()))?.trim();
+    const number = url ? /\/pull\/(\d+)(?:$|[?#])/.exec(url)?.[1] : undefined;
+    return { ...(url ? { url } : {}), ...(number ? { number: Number(number) } : {}) };
   };
 }

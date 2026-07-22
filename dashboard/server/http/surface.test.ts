@@ -51,6 +51,8 @@ function recordingLocalAudit(rows: AuditRow[]): NonNullable<SurfaceContext['appe
 
 /** Git/py/preamble fakes that succeed without touching the real binaries. */
 const okGit: GitRunner = (_repo, args) =>
+  args.join(' ') === 'rev-parse --abbrev-ref HEAD' ? 'claude/m1-dashboard\n' : '';
+const okOpsGit: GitRunner = (_repo, args) =>
   args.join(' ') === 'rev-parse --abbrev-ref HEAD' ? 'ops\n' : '';
 const okPy: PyRunner = (_repo, _code, jsonArg) => {
   // Return a plausible card-op stdout so launch/rerun parse it; harmless for other ops.
@@ -253,7 +255,7 @@ describe('write surface — composition chain', () => {
       appendAuditLocal: recordingLocalAudit(audit.rows),
       runPreamble: okPreamble,
       runPy: okPy,
-      opsGit: okGit,
+      opsGit: okOpsGit,
     }));
     const res = await app.inject({
       method: 'POST',
@@ -432,7 +434,7 @@ describe('write surface — composition chain', () => {
       appendAuditLocal: recordingLocalAudit(audit.rows),
       runPreamble: okPreamble,
       runPy: recPy,
-      opsGit: okGit,
+      opsGit: okOpsGit,
     }));
 
     const res = await app.inject({
@@ -484,7 +486,7 @@ describe('write surface — FINDING 1: server owns the durable work branch (no c
     const pushCalls: string[][] = [];
     const recordingGit: GitRunner = (_r, args) => {
       pushCalls.push(args);
-      return '';
+      return args.join(' ') === 'rev-parse --abbrev-ref HEAD' ? 'claude/m1-dashboard\n' : '';
     };
     const prCalls: { head?: string }[] = [];
     ({ app } = buildApp({ repoRoot, appendAudit: recordingAudit().fn, saveGit: recordingGit, openPr: (_r, req) => { prCalls.push(req); } }));
@@ -511,9 +513,9 @@ describe('write surface — FINDING 1: server owns the durable work branch (no c
     ({ app } = buildApp({
       repoRoot: opsRoot,
       durableRepoRoot: durableRoot,
-      saveGit: (repo, _args) => {
+      saveGit: (repo, args) => {
         gitRoots.push(repo);
-        return '';
+        return args.join(' ') === 'rev-parse --abbrev-ref HEAD' ? 'claude/m1-dashboard\n' : '';
       },
       openPr: () => {},
       appendAudit: (repo, event) => {

@@ -25,6 +25,9 @@ interface WorkflowChoice {
   title: string | null;
   profile: string | null;
   valid: boolean;
+  sourceHash: string | null;
+  pendingAmendment?: { proposedSourceHash: string; branch: string; pr: { url?: string }; phase: string } | null;
+  pendingAmendmentError?: string | null;
   stageCount: number;
   parameters?: string[];
   stages: Array<{ id: string; riskTier: string; review?: { subjectStageId: string; maxCreatorReworks: number } | null; completionGate?: { id: string; kind: string; requiresReview: string } | null }>;
@@ -42,6 +45,14 @@ const FALLBACK_SESSION: ComposerSession = {
   agent: null,
   turns: [],
 };
+
+function pendingPhaseTruth(phase: string): string {
+  if (phase === 'pending-human-merge') return 'Assignment amendment is pending human merge';
+  if (phase === 'audit-pending') return 'Durable amendment exists; its required audit is pending';
+  if (phase === 'audit-failed') return 'Required amendment audit failed';
+  if (phase === 'prepared' || phase === 'committed' || phase === 'pushed') return 'Durable amendment recovery is required';
+  return 'Assignment amendment state is unresolved';
+}
 
 function LiveAssistant({ model }: { model: TimelineModel }): React.JSX.Element {
   const text = model.turns.flatMap((turn) => turn.steps)
@@ -212,6 +223,18 @@ export function ComposerChat({
     const activeToken = await resolveToken();
     if (!activeToken) return;
     const selected = workflows?.find((workflow) => workflow.ref === workflowRef);
+    if (selected?.pendingAmendmentError) {
+      setLaunchStatus('Workflow amendment state is invalid; launch remains blocked until an operator resolves it.');
+      return;
+    }
+    if (selected?.pendingAmendment) {
+      setLaunchStatus(`${pendingPhaseTruth(selected.pendingAmendment.phase)} on ${selected.pendingAmendment.branch}; launch remains blocked.`);
+      return;
+    }
+    if (!selected?.sourceHash) {
+      setLaunchStatus('Workflow source revision is unavailable; refresh before launching.');
+      return;
+    }
     const parameters = Object.fromEntries((selected?.parameters ?? []).map((parameter) => [parameter, parameterValues[parameter] ?? '']));
     const operation = `${workflowRef}:${JSON.stringify(parameters)}`;
     const key = launchKeys.current.get(operation)
@@ -223,7 +246,7 @@ export function ComposerChat({
       const response = await fetchImpl(`/api/workflows/${encodeURIComponent(workflowRef)}/launch`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${activeToken}` },
-        body: JSON.stringify({ idempotencyKey: key, composerRef: composerSession.composerRef, parameters }),
+        body: JSON.stringify({ idempotencyKey: key, composerRef: composerSession.composerRef, parameters, expectedSourceHash: selected?.sourceHash }),
       });
       const body = await response.json() as { runRef?: string; waitingHuman?: boolean; activationGated?: boolean; error?: string };
       if (!response.ok || !body.runRef) throw new Error(body.error ?? `launch refused (${response.status})`);
@@ -238,6 +261,9 @@ export function ComposerChat({
     } finally { setLaunching(false); }
   }, [composerSession, fetchImpl, launching, onOpenRun, parameterValues, resolveToken, workflowRef, workflows]);
 
+  const selectedWorkflow = workflows?.find((workflow) => workflow.ref === workflowRef);
+  const selectedWorkflowBlocked = Boolean(selectedWorkflow?.pendingAmendment || selectedWorkflow?.pendingAmendmentError);
+
   return (
     <section className="composer-chat" aria-label="Composer chat">
       {composerSession.agent ? (
@@ -251,13 +277,15 @@ export function ComposerChat({
                   {workflows.map((workflow) => <option key={workflow.ref} value={workflow.ref}>{workflow.title ?? workflow.ref} · {workflow.profile ?? 'no profile'} · {workflow.stageCount} stages</option>)}
                 </select>
               </label>
-              {workflows.find((workflow) => workflow.ref === workflowRef) ? (
-                <p>Profile <code>{workflows.find((workflow) => workflow.ref === workflowRef)!.profile}</code>; stages {workflows.find((workflow) => workflow.ref === workflowRef)!.stages.map((stage) => `${stage.id} (${stage.riskTier})${stage.review ? ` reviews ${stage.review.subjectStageId}, max ${stage.review.maxCreatorReworks} reworks` : ''}${stage.completionGate ? `; completion gate ${stage.completionGate.id}` : ''}`).join(', ')}. Activation gates remain enforced by the canonical launch.</p>
+              {selectedWorkflow ? (
+                <p>Profile <code>{selectedWorkflow.profile}</code>; stages {selectedWorkflow.stages.map((stage) => `${stage.id} (${stage.riskTier})${stage.review ? ` reviews ${stage.review.subjectStageId}, max ${stage.review.maxCreatorReworks} reworks` : ''}${stage.completionGate ? `; completion gate ${stage.completionGate.id}` : ''}`).join(', ')}. Activation gates remain enforced by the canonical launch.</p>
               ) : null}
-              {(workflows.find((workflow) => workflow.ref === workflowRef)?.parameters ?? []).map((parameter) => (
+              {selectedWorkflow?.pendingAmendment ? <p data-testid="agent-workspace-pending-amendment">{pendingPhaseTruth(selectedWorkflow.pendingAmendment.phase)} on <code>{selectedWorkflow.pendingAmendment.branch}</code>; this workspace cannot launch the old definition.</p> : null}
+              {selectedWorkflow?.pendingAmendmentError ? <p data-testid="agent-workspace-pending-amendment">Workflow amendment state is invalid; this workspace cannot launch it.</p> : null}
+              {(selectedWorkflow?.parameters ?? []).map((parameter) => (
                 <label key={parameter}>{parameter}<input aria-label={`Workflow parameter ${parameter}`} value={parameterValues[parameter] ?? ''} onChange={(event) => setParameterValues((current) => ({ ...current, [parameter]: event.target.value }))} /></label>
               ))}
-              <button type="button" className="mc-btn mc-btn--primary" onClick={() => void launchWorkflow()} disabled={launching || !workflowRef || (workflows.find((workflow) => workflow.ref === workflowRef)?.parameters ?? []).some((parameter) => !(parameterValues[parameter] ?? '').trim())}>{launching ? 'Launching…' : 'Launch workflow'}</button>
+              <button type="button" className="mc-btn mc-btn--primary" onClick={() => void launchWorkflow()} disabled={launching || !workflowRef || selectedWorkflowBlocked || (selectedWorkflow?.parameters ?? []).some((parameter) => !(parameterValues[parameter] ?? '').trim())}>{launching ? 'Launching…' : 'Launch workflow'}</button>
             </>
           )}
           {launchStatus ? <p data-testid="agent-workspace-launch-status">{launchStatus}</p> : <p>Registered workflows may still wait for human approval or disabled execution activation.</p>}

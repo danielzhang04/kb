@@ -25,10 +25,18 @@ export interface WorkflowDefsIndex {
 }
 const EMPTY_DEFS: WorkflowDefsIndex = { items: [] };
 
+function pendingPhaseTruth(phase: string): string {
+  if (phase === 'pending-human-merge') return 'Pending human merge.';
+  if (phase === 'audit-pending') return 'Durable amendment exists; its required audit is still pending.';
+  if (phase === 'audit-failed') return 'Required audit failed; launch remains blocked.';
+  if (phase === 'prepared' || phase === 'committed' || phase === 'pushed') return 'Durable amendment recovery is required; launch remains blocked.';
+  return 'Assignment amendment state is unresolved; launch remains blocked.';
+}
+
 /** One operator click gets one stable key; retries of that request cannot mint a duplicate governed run. */
-function launchIdempotencyKey(ref: string): string {
+function launchIdempotencyKey(ref: string, sourceHash: string, parameters: Record<string, string>): string {
   const entropy = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : Date.now().toString(36);
-  return `workflow-launch:${ref}:${entropy}`;
+  return `workflow-launch:${ref}:${sourceHash}:${JSON.stringify(parameters)}:${entropy}`;
 }
 
 /** Accepts canonical org definition data directly (tests) or self-fetches `/api/workflows`. */
@@ -66,6 +74,11 @@ export function Workflows({
   const [fetchedDefs, setFetchedDefs] = useState<WorkflowDefsIndex | null>(null);
   const [launchStatus, setLaunchStatus] = useState<Record<string, string>>({});
   const [launchingRefs, setLaunchingRefs] = useState<Set<string>>(() => new Set());
+  const [amendingRef, setAmendingRef] = useState<string | null>(null);
+  const [assignmentOptions, setAssignmentOptions] = useState<Record<string, NonNullable<React.ComponentProps<typeof WorkflowDetail>['assignmentOptions']>>>( {});
+  const [amendmentStatus, setAmendmentStatus] = useState<Record<string, string>>({});
+  const [pendingAmendments, setPendingAmendments] = useState<Record<string, { baseSourceHash: string; proposedSourceHash: string; branch?: string; pr?: { url?: string; number?: number }; phase: string }>>({});
+  const [parameterValues, setParameterValues] = useState<Record<string, Record<string, string>>>({});
   // State rendering is asynchronous; this ref is the synchronous double-click guard and retains the
   // same idempotency key for the full lifetime of one launch intent.
   const pendingLaunches = useRef(new Map<string, string>());
@@ -119,12 +132,53 @@ export function Workflows({
   }, [openDefRef, sessionToken, injectedRuns, injectedRevisions]);
 
   const defs = definitions ?? fetchedDefs ?? EMPTY_DEFS;
-  const canLaunch = (entry: WorkflowDefEntry): boolean => entry.valid && entry.launchable !== false;
+  const isPendingAmendment = (entry: WorkflowDefEntry): boolean => {
+    const pending = pendingAmendments[entry.ref];
+    return Boolean(entry.pendingAmendment || entry.pendingAmendmentError || (pending && entry.sourceHash !== pending.proposedSourceHash));
+  };
+  const pendingTruthFor = (entry: WorkflowDefEntry): string => {
+    if (entry.pendingAmendmentError) return 'Workflow amendment state is invalid; launch remains blocked.';
+    if (entry.pendingAmendment) return pendingPhaseTruth(entry.pendingAmendment.phase);
+    const pending = pendingAmendments[entry.ref];
+    return pending ? pendingPhaseTruth(pending.phase) : 'Workflow amendment state is unresolved; launch remains blocked.';
+  };
+  const launchParameters = (entry: WorkflowDefEntry): Record<string, string> => Object.fromEntries((entry.parameters ?? []).map((name) => [name, parameterValues[entry.ref]?.[name] ?? '']));
+  const parametersComplete = (entry: WorkflowDefEntry): boolean => (entry.parameters ?? []).every((name) => launchParameters(entry)[name].trim().length > 0);
+  const canLaunch = (entry: WorkflowDefEntry): boolean => entry.valid && entry.launchable !== false && !isPendingAmendment(entry) && parametersComplete(entry);
+
+  useEffect(() => {
+    setPendingAmendments((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const [ref, pending] of Object.entries(current)) {
+        const active = (definitions ?? fetchedDefs ?? EMPTY_DEFS).items.find((entry) => entry.ref === ref);
+        // A transient list failure/removal does not prove the PR merged.  Only a present, changed
+        // active hash can release the pending guard.
+        if (active && active.sourceHash === pending.proposedSourceHash) { delete next[ref]; changed = true; }
+      }
+      return changed ? next : current;
+    });
+  }, [definitions, fetchedDefs]);
 
   async function launchDefinition(ref: string): Promise<void> {
-    if (pendingLaunches.current.has(ref)) return;
-    const idempotencyKey = launchIdempotencyKey(ref);
-    pendingLaunches.current.set(ref, idempotencyKey);
+    const entry = defs.items.find((candidate) => candidate.ref === ref);
+    if (!entry?.sourceHash) {
+      setLaunchStatus((current) => ({ ...current, [ref]: 'Refused: definition source revision is unavailable.' }));
+      return;
+    }
+    if (isPendingAmendment(entry)) {
+      setLaunchStatus((current) => ({ ...current, [ref]: `Refused: ${pendingTruthFor(entry)} The active definition remains unchanged.` }));
+      return;
+    }
+    if (!parametersComplete(entry)) {
+      setLaunchStatus((current) => ({ ...current, [ref]: 'Refused: enter every required workflow parameter.' }));
+      return;
+    }
+    const parameters = launchParameters(entry);
+    const operation = `${ref}:${entry.sourceHash}:${JSON.stringify(parameters)}`;
+    if (pendingLaunches.current.has(operation)) return;
+    const idempotencyKey = pendingLaunches.current.get(operation) ?? launchIdempotencyKey(ref, entry.sourceHash, parameters);
+    pendingLaunches.current.set(operation, idempotencyKey);
     setLaunchingRefs((current) => new Set(current).add(ref));
     setLaunchStatus((current) => ({ ...current, [ref]: 'Launching…' }));
     try {
@@ -136,7 +190,7 @@ export function Workflows({
       const response = await fetch(`/api/workflows/${encodeURIComponent(ref)}/launch`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-        body: JSON.stringify({ idempotencyKey }),
+        body: JSON.stringify({ idempotencyKey, expectedSourceHash: entry.sourceHash, parameters }),
       });
       await invalidateSessionOnGovernedAuthFailure(response);
       const body = (await response.json()) as { runRef?: string; activationGated?: boolean; error?: string; detail?: unknown };
@@ -147,13 +201,45 @@ export function Workflows({
     } catch (error) {
       setLaunchStatus((current) => ({ ...current, [ref]: `Failed: ${error instanceof Error ? error.message : String(error)}` }));
     } finally {
-      pendingLaunches.current.delete(ref);
+      pendingLaunches.current.delete(operation);
       setLaunchingRefs((current) => {
         const next = new Set(current);
         next.delete(ref);
         return next;
       });
     }
+  }
+
+  useEffect(() => {
+    if (!openDefRef || assignmentOptions[openDefRef] || typeof fetch !== 'function') return;
+    let alive = true;
+    fetch(`/api/workflows/${encodeURIComponent(openDefRef)}`)
+      .then((response) => response.json() as Promise<{ assignmentOptions?: NonNullable<React.ComponentProps<typeof WorkflowDetail>['assignmentOptions']> }>)
+      .then((body) => { if (alive && body.assignmentOptions) setAssignmentOptions((current) => ({ ...current, [openDefRef]: body.assignmentOptions! })); })
+      .catch(() => { /* detail remains inspectable if choices cannot be read */ });
+    return () => { alive = false; };
+  }, [openDefRef, assignmentOptions]);
+
+  async function amendAssignment(ref: string, target: { kind: 'manager' } | { kind: 'stage'; stageId: string }, assignment: { agentId: string; profileId: string } | null): Promise<void> {
+    const entry = (definitions ?? fetchedDefs ?? EMPTY_DEFS).items.find((candidate) => candidate.ref === ref);
+    if (!entry?.sourceHash || amendingRef) return;
+    const token = sessionToken ?? (await onRequestSession?.())?.token;
+    if (!token) { setAmendmentStatus((current) => ({ ...current, [ref]: 'Unlock refused.' })); return; }
+    setAmendingRef(ref);
+    setAmendmentStatus((current) => ({ ...current, [ref]: 'Submitting amendment for human merge…' }));
+    try {
+      const response = await fetch(`/api/workflows/${encodeURIComponent(ref)}/assignment-amendments`, {
+        method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ expectedSourceHash: entry.sourceHash, target, assignment }),
+      });
+      await invalidateSessionOnGovernedAuthFailure(response);
+      const body = await response.json() as { ok?: boolean; status?: string; stateStatus?: string; auditStatus?: string; branch?: string; baseSourceHash?: string; proposedSourceHash?: string; pr?: { url?: string; number?: number }; error?: string; detail?: string };
+      if (body.status === 'pending-human-merge' && body.baseSourceHash === entry.sourceHash && body.proposedSourceHash) {
+        setPendingAmendments((current) => ({ ...current, [ref]: { baseSourceHash: body.baseSourceHash!, proposedSourceHash: body.proposedSourceHash!, branch: body.branch, pr: body.pr, phase: 'pending-human-merge' } }));
+        setAmendmentStatus((current) => ({ ...current, [ref]: 'Pending human merge. The active definition has not changed.' }));
+      } else setAmendmentStatus((current) => ({ ...current, [ref]: body.status === 'recovery-required' ? `Durable amendment recovery is required (${body.stateStatus ?? 'unknown state'}); launch remains blocked.` : body.auditStatus === 'failed' ? 'Required amendment audit failed; launch remains blocked.' : `Refused: ${body.detail ?? body.error ?? response.status}` }));
+    } catch (error) { setAmendmentStatus((current) => ({ ...current, [ref]: `Failed: ${error instanceof Error ? error.message : String(error)}` })); }
+    finally { setAmendingRef(null); }
   }
 
   const openWorkflow = (ref: string): void => {
@@ -221,12 +307,16 @@ export function Workflows({
                 <button
                   type="button"
                   className="mc-btn mc-btn--primary"
-                  disabled={!canLaunch(openDef) || launchingRefs.has(openDef.ref)}
+                  disabled={!canLaunch(openDef) || launchingRefs.has(openDef.ref) || amendingRef === openDef.ref}
                   onClick={() => void launchDefinition(openDef.ref)}
                 >
                   Launch
                 </button>
-                {!canLaunch(openDef) ? (
+                {isPendingAmendment(openDef) ? (
+                  <span className="v-workflows__run-status" data-testid={`workflow-def-pending-amendment-${openDef.ref}`}>{pendingTruthFor(openDef)} The active definition remains unchanged.</span>
+                ) : !parametersComplete(openDef) ? (
+                  <span className="v-workflows__run-status">Enter all required parameters before launching.</span>
+                ) : !canLaunch(openDef) ? (
                   <span className="v-workflows__run-status" data-testid={`workflow-def-unavailable-${openDef.ref}`}>
                     Unavailable: {openDef.compileDetail ?? openDef.compileError ?? 'compiler refused this definition'}
                   </span>
@@ -239,6 +329,11 @@ export function Workflows({
               </>
             ) : null
           }
+          assignmentOptions={assignmentOptions[openDef.ref]}
+          onAssignmentAmend={(target, assignment) => void amendAssignment(openDef.ref, target, assignment)}
+          amendmentStatus={openDef.pendingAmendment || openDef.pendingAmendmentError ? <span>{openDef.pendingAmendmentError ? `Required amendment state is unreadable: ${openDef.pendingAmendmentError}. Launch remains blocked.` : <>{pendingPhaseTruth(openDef.pendingAmendment!.phase)} Branch <span className="mc-mono">{openDef.pendingAmendment!.branch}</span>; proposed source hash <span className="mc-mono">{openDef.pendingAmendment!.proposedSourceHash}</span>. {openDef.pendingAmendment!.pr.url ? <a href={openDef.pendingAmendment!.pr.url}>Open pull request</a> : null} The active definition has not changed.</>}</span> : pendingAmendments[openDef.ref] ? <span>{pendingPhaseTruth(pendingAmendments[openDef.ref].phase)} Branch <span className="mc-mono">{pendingAmendments[openDef.ref].branch ?? 'workflow amendment branch'}</span>; proposed source hash <span className="mc-mono">{pendingAmendments[openDef.ref].proposedSourceHash}</span>. {pendingAmendments[openDef.ref].pr?.url ? <a href={pendingAmendments[openDef.ref].pr!.url}>Open pull request</a> : null} The active definition has not changed.</span> : amendmentStatus[openDef.ref] ?? null}
+          parameterValues={parameterValues[openDef.ref] ?? {}}
+          onParameterChange={(name, value) => setParameterValues((current) => ({ ...current, [openDef.ref]: { ...current[openDef.ref], [name]: value } }))}
         />
       </section>
     );
@@ -325,12 +420,16 @@ export function Workflows({
                         <button
                           type="button"
                           className="mc-btn mc-btn--quiet"
-                          disabled={!canLaunch(d) || launchingRefs.has(d.ref)}
+                          disabled={!canLaunch(d) || launchingRefs.has(d.ref) || amendingRef === d.ref}
                           onClick={() => void launchDefinition(d.ref)}
                         >
                           Launch
                         </button>
-                        {!canLaunch(d) ? (
+                        {(d.parameters ?? []).length > 0 ? (
+                          <span className="v-workflows__not-runnable">Open detail to enter parameters</span>
+                        ) : isPendingAmendment(d) ? (
+                          <span className="v-workflows__not-runnable">{pendingTruthFor(d)}</span>
+                        ) : !canLaunch(d) ? (
                           <span className="v-workflows__not-runnable" data-testid={`workflow-def-unavailable-${d.ref}`}>
                             {d.compileDetail ?? d.compileError ?? 'Compiler refused'}
                           </span>

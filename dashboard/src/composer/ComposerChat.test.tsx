@@ -20,7 +20,7 @@ describe('ComposerChat workspace', () => {
   it('filters agent workflows, sends exact declared parameters, restores linked runs, and opens the cockpit', async () => {
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
       if (input === '/api/workflows') return { ok: true, json: async () => ({ items: [
-        { ref: 'video-run', project: 'faceless-youtube', title: 'Video', profile: 'producer', valid: true, stageCount: 2, parameters: ['channel', 'slug'], stages: [] },
+        { ref: 'video-run', project: 'faceless-youtube', title: 'Video', profile: 'producer', sourceHash: 'b'.repeat(64), valid: true, stageCount: 2, parameters: ['channel', 'slug'], stages: [] },
         { ref: 'other', project: 'other', title: 'Other', profile: 'research', valid: true, stageCount: 1, parameters: [], stages: [] },
       ] }) } as Response;
       if (input === '/api/control/runs') return { ok: true, json: async () => ({ runs: [{ runRef: 'run-linked', state: 'waiting-human', agentWorkspaceLaunch: { composerRef: 'cw_agent', agentId: 'fyt-runner', declarationPath: 'agents/fyt-runner.md', declarationHash: 'a'.repeat(64) } }] }) } as Response;
@@ -38,7 +38,7 @@ describe('ComposerChat workspace', () => {
     const launch = (fetchImpl.mock.calls as unknown as Array<[RequestInfo | URL, RequestInit]>).find(([url]) => String(url).includes('/launch'))?.[1];
     expect(launch).toBeTruthy();
     if (!launch) return;
-    expect(JSON.parse(launch.body as string)).toEqual({ idempotencyKey: expect.any(String), composerRef: 'cw_agent', parameters: { channel: 'the-second-take', slug: '2026-07-19-wells-fargo' } });
+    expect(JSON.parse(launch.body as string)).toEqual({ idempotencyKey: expect.any(String), composerRef: 'cw_agent', expectedSourceHash: 'b'.repeat(64), parameters: { channel: 'the-second-take', slug: '2026-07-19-wells-fargo' } });
     fireEvent.click(screen.getByRole('button', { name: 'Open run run-linked' }));
     expect(onOpenRun).toHaveBeenCalledWith('run-linked');
   });
@@ -46,6 +46,18 @@ describe('ComposerChat workspace', () => {
   it('does not render a workflow launcher for unbound Composer workspaces', () => {
     render(<ComposerChat composerSession={SESSION} sessionToken="tok" />);
     expect(screen.queryByRole('button', { name: 'Launch workflow' })).toBeNull();
+  });
+
+  it('uses server pending-amendment truth to visibly disable a workflow launch', async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      if (input === '/api/workflows') return { ok: true, json: async () => ({ items: [{ ref: 'video-run', project: 'faceless-youtube', title: 'Video', profile: 'producer', sourceHash: 'b'.repeat(64), valid: true, stageCount: 2, parameters: [], stages: [], pendingAmendment: { proposedSourceHash: 'c'.repeat(64), branch: 'claude/m1-dashboard', pr: {}, phase: 'prepared' } }] }) } as Response;
+      if (input === '/api/control/runs') return { ok: true, json: async () => ({ runs: [] }) } as Response;
+      throw new Error(`unexpected ${String(input)}`);
+    });
+    render(<ComposerChat composerSession={{ ...SESSION, composerRef: 'cw_agent', agent: { id: 'fyt-runner', path: 'agents/fyt-runner.md', sourceHash: 'a'.repeat(64), projects: ['faceless-youtube'] } }} sessionToken="tok" fetchImpl={fetchImpl} />);
+    expect((await screen.findByTestId('agent-workspace-pending-amendment')).textContent).toMatch(/recovery is required/i);
+    expect((screen.getByRole('button', { name: 'Launch workflow' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((fetchImpl.mock.calls as unknown as Array<[RequestInfo | URL]>).some(([url]) => String(url).includes('/launch'))).toBe(false);
   });
   it('shows server history including user prompts and no provider identifiers', () => {
     render(<ComposerChat composerSession={SESSION} sessionToken="tok" />);

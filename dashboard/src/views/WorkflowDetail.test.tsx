@@ -18,6 +18,7 @@ afterEach(cleanup);
 const def = (over: Partial<WorkflowDefEntry> & { ref: string }): WorkflowDefEntry => ({
   project: 'kb',
   path: 'orgs/kb/workflows/video.md',
+  sourceHash: 'a'.repeat(64),
   valid: true,
   title: 'Video pipeline',
   profile: 'standard',
