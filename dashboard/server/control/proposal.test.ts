@@ -5,6 +5,7 @@ import {
   parseProposalFromAssistant,
   proposalContentHash,
   validatePlanProposal,
+  validateServerCompiledPlanProposal,
 } from './proposal.ts';
 import type { PlanProposal, ProposalRegistry } from './proposal.ts';
 
@@ -90,6 +91,88 @@ describe('kb.plan-proposal/v1 validation', () => {
       ...proposal,
       stages: [{ ...proposal.stages[0], worker: { ...proposal.stages[0].worker, flags: ['--dangerously-skip-permissions'] } }],
     }, REGISTRY)).toEqual({ ok: false, detail: "stages[0].worker: unknown field 'flags'" });
+  });
+
+  it('rejects compiler-only assignments from untrusted input but admits a valid resolved snapshot internally', () => {
+    const managerAssignment = {
+      agentId: 'fyt-runner', declarationPath: 'agents/fyt-runner.md', declarationHash: 'a'.repeat(64),
+      profileId: 'manager:claude:claude-opus-4-8', runtime: 'claude' as const, model: 'claude-opus-4-8',
+    };
+    const stageAssignment = {
+      agentId: 'fyt-production', declarationPath: 'agents/fyt-production.md', declarationHash: 'b'.repeat(64),
+      profileId: 'worker:codex:gpt-5.6-sol', runtime: 'codex' as const, model: 'gpt-5.6-sol',
+    };
+    const compiled = {
+      ...proposal,
+      manager: { ...proposal.manager, assignment: managerAssignment },
+      stages: [{ ...proposal.stages[0], assignment: stageAssignment }, proposal.stages[1]],
+    };
+    expect(validatePlanProposal(compiled, REGISTRY)).toEqual({ ok: false, detail: "manager: unknown field 'assignment'" });
+    expect(validateServerCompiledPlanProposal(compiled, REGISTRY)).toMatchObject({ ok: true });
+  });
+
+  it('rejects a resolved snapshot whose runtime/model disagrees with manager or worker routing', () => {
+    const assignment = {
+      agentId: 'fyt-production', declarationPath: 'agents/fyt-production.md', declarationHash: 'b'.repeat(64),
+      profileId: 'worker:claude:claude-sonnet-5', runtime: 'claude' as const, model: 'claude-sonnet-5',
+    };
+    const forged = {
+      ...proposal,
+      stages: [{ ...proposal.stages[0], assignment }, proposal.stages[1]],
+    };
+    expect(validateServerCompiledPlanProposal(forged, REGISTRY)).toEqual({
+      ok: false,
+      detail: 'stages[0].assignment runtime/model must match worker routing',
+    });
+  });
+
+  it('admits checker metadata only at the server-compiled boundary and validates its closed consistency', () => {
+    const checkerAssignment = {
+      agentId: 'fyt-checker', declarationPath: 'agents/fyt-checker.md', declarationHash: 'c'.repeat(64),
+      profileId: 'worker:claude:claude-sonnet-5', runtime: 'claude' as const, model: 'claude-sonnet-5',
+    };
+    const compiled = {
+      ...proposal,
+      stages: [proposal.stages[0], {
+        ...proposal.stages[1], assignment: checkerAssignment, workflowProfile: 'checker-readonly',
+        review: { subjectStageId: 'compile', maxCreatorReworks: 1, criteria: [{ id: 'safety', description: 'No unsafe changes' }] },
+        completionGate: { id: 'checker-approval', kind: 'approval' as const, prompt: 'Approve checker?', requiresReview: 'pass' as const },
+      }, {
+        ...proposal.stages[0], id: 'release', title: 'Release checked result', action: 'implement:release',
+        workOrder: 'Release the checked result.', dependsOn: ['review'],
+      }],
+    };
+    const registry = { ...REGISTRY, workflowProfiles: ['checker-readonly', 'producer', 'research'] };
+    expect(validatePlanProposal(compiled, registry)).toMatchObject({ ok: false });
+    expect(validateServerCompiledPlanProposal(compiled, registry)).toMatchObject({ ok: true });
+    expect(validateServerCompiledPlanProposal({
+      ...compiled,
+      stages: [compiled.stages[0], { ...compiled.stages[1], review: { ...compiled.stages[1].review, subjectStageId: 'missing' } }],
+    }, registry)).toMatchObject({ ok: false, detail: expect.stringMatching(/direct dependency/) });
+    const checkerStage = compiled.stages[1];
+    const { workflowProfile: _ignored, ...withoutProfile } = checkerStage;
+    for (const invalidStage of [
+      withoutProfile,
+      { ...checkerStage, workflowProfile: 'producer' },
+      { ...checkerStage, workflowProfile: 'research' },
+    ]) {
+      expect(validateServerCompiledPlanProposal({ ...compiled, stages: [compiled.stages[0], invalidStage] }, registry))
+        .toMatchObject({ ok: false, detail: expect.stringMatching(/workflowProfile 'checker-readonly'/) });
+    }
+    expect(validateServerCompiledPlanProposal({
+      ...compiled,
+      stages: [compiled.stages[0], { ...checkerStage, dependsOn: ['compile', 'release'] }, compiled.stages[2]],
+    }, registry)).toMatchObject({ ok: false, detail: expect.stringMatching(/depend only on its subject/) });
+    expect(validateServerCompiledPlanProposal({
+      ...compiled,
+      stages: [compiled.stages[0], checkerStage, compiled.stages[2], { ...checkerStage, id: 'review-again' }],
+    }, registry)).toMatchObject({ ok: false, detail: expect.stringMatching(/multiple review stages/) });
+    expect(validateServerCompiledPlanProposal({
+      ...compiled,
+      stages: [compiled.stages[0], checkerStage, compiled.stages[2], {
+        ...checkerStage, id: 'review-again', dependsOn: ['review'], review: { ...checkerStage.review!, subjectStageId: 'review' },
+      }],
+    }, registry)).toMatchObject({ ok: false, detail: expect.stringMatching(/cannot review review stage/) });
   });
 
   it('rejects governanceRefs missing the project contract', () => {

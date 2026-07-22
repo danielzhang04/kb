@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { FORBIDDEN_WORKFLOW_TOOLS, loadWorkflowProfiles, workflowProfileIds } from '../control/environment.ts';
 
 describe('workflow execution profiles', () => {
-  it('exposes the server-owned profiles the shipped definitions reference (incl. the C1 scanner)', () => {
-    expect(workflowProfileIds()).toEqual(new Set(['research', 'gmail-triage', 'drive-author', 'producer', 'scanner']));
+  it('exposes every server-owned profile the shipped definitions reference, including the readonly checker and C1 scanner', () => {
+    expect(workflowProfileIds()).toEqual(new Set(['checker-readonly', 'research', 'gmail-triage', 'drive-author', 'producer', 'scanner']));
   });
 
   it('gives the scanner profile exactly Read/Glob/Grep/Write — no Bash, no Edit (removes the git bypass)', () => {

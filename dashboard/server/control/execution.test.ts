@@ -1,7 +1,7 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createFileControlPlaneStore, createInMemoryControlPlaneStore, type ControlPlaneStore } from './store.ts';
 import type { JsonObject } from './types.ts';
 import type { PlanProposal, ProposalStage } from './proposal.ts';
@@ -10,6 +10,7 @@ import type { PolicyEnvironment } from './policy.ts';
 import {
   AutomaticExecutionEngine,
   AutomaticExecutionError,
+  canonicalStageResultHash,
   planRunWorktreePath,
   type AccountingAdapter,
   type AutomaticExecutionOptions,
@@ -102,8 +103,17 @@ function createApprovedRun(store: ControlPlaneStore, plan: PlanProposal): { runR
     expectedProposalHash: createdProposal.value.hash,
     managerRuntime: plan.manager.runtime,
     managerModel: plan.manager.model,
+    managerAssignment: plan.manager.assignment,
     idempotencyKey: `launch-${createdProposal.value.proposalRef}`,
-    stages: plan.stages.map((item) => ({ stageId: item.id, title: item.title, dependsOn: item.dependsOn })),
+    stages: plan.stages.map((item) => ({
+      stageId: item.id,
+      title: item.title,
+      dependsOn: item.dependsOn,
+      assignment: item.assignment,
+      workflowProfile: item.workflowProfile,
+      review: item.review,
+      completionGate: item.completionGate,
+    })),
   });
   expect(run.ok).toBe(true);
   if (!run.ok) throw new Error(run.detail);
@@ -169,7 +179,7 @@ function fakes(overrides: { worker?: WorkerAdapter; accounting?: AccountingAdapt
     async resolveBase() { return 'd'.repeat(40); },
     async integrate(input) {
       integrationOrder.push(input.stageId);
-      return { status: 'integrated', resultHash: input.resultHash };
+      return { status: 'integrated', resultHash: input.resultHash, durability: 'inactive' as const };
     },
   };
   const cancellation: ExecutionCancellationController = {
@@ -198,12 +208,393 @@ function engineOptions(store: ControlPlaneStore, fake: Fakes, root = join(tmpdir
   };
 }
 
+function passOutcome() {
+  return {
+    schema: 'kb.review-outcome/v1' as const, decision: 'pass' as const, summary: 'creator is safe',
+    criteria: [{ criterionId: 'safety', verdict: 'pass' as const, findingIds: [] }], findings: [],
+  };
+}
+
+function failOutcome() {
+  return {
+    schema: 'kb.review-outcome/v1' as const, decision: 'fail' as const, summary: 'creator needs changes',
+    criteria: [{ criterionId: 'safety', verdict: 'fail' as const, findingIds: ['finding-1'] }],
+    findings: [{ id: 'finding-1', criterionId: 'safety', severity: 'blocking' as const, summary: 'blocking defect', evidencePaths: [] }],
+  };
+}
+
+function parkedOutcome() {
+  return {
+    schema: 'kb.review-outcome/v1' as const, decision: 'parked' as const, summary: 'cannot verify safely',
+    criteria: [{ criterionId: 'safety', verdict: 'unverified' as const, findingIds: [] }], findings: [],
+  };
+}
+
+function reviewFixture(input: {
+  outcomes: Array<ReturnType<typeof passOutcome> | ReturnType<typeof failOutcome> | ReturnType<typeof parkedOutcome>>;
+  maxCreatorReworks?: number;
+  completionGate?: boolean;
+  crashAfterIntegrationStage?: 'subject' | 'checker';
+  checkerAttemptBaseCommit?: string;
+}) {
+  const store = createStore();
+  const subject = stage('subject');
+  const checker = stage('checker', ['subject']);
+  checker.action = 'review:subject'; checker.workflowProfile = 'checker-readonly'; checker.scope = { read: ['dashboard'], write: [] };
+  checker.artifacts = []; checker.checkpoints = [];
+  checker.review = { subjectStageId: 'subject', maxCreatorReworks: input.maxCreatorReworks ?? 1, criteria: [{ id: 'safety', description: 'No unsafe changes.' }] };
+  checker.assignment = { agentId: 'fyt-checker', declarationPath: 'agents/fyt-checker.md', declarationHash: 'c'.repeat(64),
+    profileId: 'worker:codex:codex-safe', runtime: 'codex', model: 'codex-safe' };
+  if (input.completionGate) checker.completionGate = { id: 'human-final', kind: 'approval', prompt: 'Approve reviewed creator output.', requiresReview: 'pass' };
+  const release = stage('release', ['checker']);
+  const plan = proposal([subject, checker, release]);
+  const run = createApprovedRun(store, plan);
+  const fake = fakes();
+  const results = new Map<string, Awaited<ReturnType<ResultIntegrator['lookup']>>>();
+  const integrations: Parameters<ResultIntegrator['integrate']>[0][] = [];
+  const bases: Array<{ path: string; baseCommit?: string }> = [];
+  const remaining = [...input.outcomes];
+  let crashedAfterIntegration = false;
+  fake.worktrees.ensure = async (worktree) => { bases.push({ path: worktree.path, baseCommit: worktree.baseCommit }); };
+  fake.worktrees.inspect = async () => {
+    const id = fake.executionOrder.at(-1) as string;
+    return id === 'checker' ? { changed: [] } : { changed: [{ path: `dashboard/server/${id}.txt`, digest: 'b'.repeat(64) }] };
+  };
+  fake.workers = { async execute(worker) {
+    const id = worker.action.startsWith('review:') ? 'checker' : worker.action.split(':')[1];
+    fake.executionOrder.push(id);
+    if (id === 'checker') {
+      const reviewOutcome = remaining.shift();
+      if (!reviewOutcome) throw new Error('unexpected checker invocation');
+      return { state: 'succeeded' as const, summary: reviewOutcome.summary, usage: { inputTokens: 1, outputTokens: 1, costUsdMicros: 1 },
+        artifacts: [], checkpoints: [], reviewOutcome };
+    }
+    return { state: 'succeeded' as const, summary: `${id} passed`, usage: { inputTokens: 1, outputTokens: 1, costUsdMicros: 1 },
+      artifacts: [{ path: `dashboard/server/${id}.txt`, digest: 'b'.repeat(64) }], checkpoints: [`${id}-checked`] };
+  } };
+  fake.results = {
+    async lookup(key) { return results.get(key.operationKey) ?? null; },
+    async resolveBase(value) {
+      const exact = value.dependencyResultOperationKeys?.at(-1)?.operationKey;
+      const record = exact ? results.get(exact) : null;
+      return record?.durability === 'canonical' ? record.integrationCommit : 'd'.repeat(40);
+    },
+    async integrate(value) {
+      integrations.push(value);
+      const isCreatorG2 = value.operationKey.endsWith(':subject:g2');
+      const isCheckerG1 = value.operationKey.endsWith(':checker');
+      const isCheckerG2 = value.operationKey.endsWith(':checker:g2');
+      const stored = {
+        summary: value.summary, artifacts: [...value.artifacts], changed: [...value.changed], checkpoints: [...value.checkpoints],
+        ...(value.reviewOutcome ? { reviewOutcome: value.reviewOutcome } : {}), resultHash: value.resultHash, durability: 'canonical' as const,
+        attemptBaseCommit: isCreatorG2 ? 'b'.repeat(40) : isCheckerG1 ? input.checkerAttemptBaseCommit ?? 'b'.repeat(40) : isCheckerG2 ? 'c'.repeat(40) : 'a'.repeat(40),
+        integrationCommit: isCreatorG2 ? 'c'.repeat(40) : isCheckerG2 ? 'd'.repeat(40) : 'b'.repeat(40),
+      };
+      results.set(value.operationKey, stored);
+      if (!crashedAfterIntegration && input.crashAfterIntegrationStage
+        && value.operationKey === `result:${run.runRef}:${input.crashAfterIntegrationStage}`) {
+        crashedAfterIntegration = true;
+        throw new Error('simulated crash after canonical integration');
+      }
+      return { status: 'integrated' as const, resultHash: value.resultHash, durability: 'canonical' as const,
+        attemptBaseCommit: stored.attemptBaseCommit, integrationCommit: stored.integrationCommit };
+    },
+  };
+  const options = engineOptions(store, fake);
+  options.assignedAgents = { resolve: (resolved) => ({ assignment: resolved.assignment, instructionMarkdown: 'checker instructions' }) };
+  return { store, plan, run, fake, results, integrations, bases, engine: new AutomaticExecutionEngine(options) };
+}
+
+function fytPolicy(curatedSkills: string[]): PolicyEnvironment {
+  return {
+    ...policy,
+    curatedSkills: new Set(curatedSkills),
+    contractText: 'faceless-youtube queues-for-me; publication requires human approval',
+    governanceContents: {
+      'CLAUDE.md': 'constitution',
+      'governance/agent-rules.md': 'rules',
+      'governance/risk-tiers.md': 'risk tiers',
+      'orgs/faceless-youtube/contract.md': 'fyt contract',
+    },
+  };
+}
+
+function fytProposal(requiredSkills: string[] = ['tests']): PlanProposal {
+  const fytStage: ProposalStage = {
+    ...stage('fyt'),
+    target: 'orgs/faceless-youtube/output',
+    requiredSkills,
+    scope: { read: ['orgs/faceless-youtube'], write: ['orgs/faceless-youtube'] },
+    artifacts: [{ id: 'fyt-result', path: 'orgs/faceless-youtube/output/fyt.txt', description: 'fyt output' }],
+  };
+  return {
+    ...proposal([fytStage]),
+    project: 'faceless-youtube',
+    scope: { read: ['orgs/faceless-youtube'], write: ['orgs/faceless-youtube'] },
+    governanceRefs: ['CLAUDE.md', 'governance/agent-rules.md', 'governance/risk-tiers.md', 'orgs/faceless-youtube/contract.md'],
+  };
+}
+
 const tempDirs: string[] = [];
 afterEach(() => {
   while (tempDirs.length > 0) rmSync(tempDirs.pop() as string, { recursive: true, force: true });
 });
 
 describe('AutomaticExecutionEngine', () => {
+  it('rejects a stored/proposal assignment mismatch before invoking an assigned-agent resolver', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'kb-assignment-binding-'));
+    tempDirs.push(root);
+    const store = createFileControlPlaneStore(root, { newId: () => `id-${++sequence}` });
+    const managerAssignment = {
+      agentId: 'fyt-manager', declarationPath: 'agents/fyt-manager.md', declarationHash: 'a'.repeat(64),
+      profileId: 'manager-claude', runtime: 'claude' as const, model: 'claude-opus',
+    };
+    const workerAssignment = {
+      agentId: 'fyt-worker', declarationPath: 'agents/fyt-worker.md', declarationHash: 'b'.repeat(64),
+      profileId: 'worker-codex', runtime: 'codex' as const, model: 'codex-safe',
+    };
+    const plan = {
+      ...proposal([{ ...stage('assigned-binding'), assignment: workerAssignment }]),
+      manager: { ...proposal([]).manager, assignment: managerAssignment },
+    };
+    const run = createApprovedRun(store, plan);
+    const path = join(root, 'control', 'control-plane.json');
+    const persisted = JSON.parse(readFileSync(path, 'utf8')) as { runs: Array<{ managerAssignment: { declarationHash: string } }> };
+    persisted.runs[0].managerAssignment.declarationHash = 'c'.repeat(64);
+    writeFileSync(path, `${JSON.stringify(persisted)}\n`, 'utf8');
+    const resolver = { resolve: vi.fn() };
+    const fake = fakes();
+    const options = engineOptions(createFileControlPlaneStore(root), fake);
+    options.assignedAgents = resolver;
+    await expect(new AutomaticExecutionEngine(options).runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan }))
+      .rejects.toThrow(/manager assignment differs/);
+    expect(resolver.resolve).not.toHaveBeenCalled();
+  });
+
+  it('passes only server-resolved assignment instructions to the manager and worker adapters', async () => {
+    const store = createStore();
+    const managerAssignment = {
+      agentId: 'fyt-manager', declarationPath: 'agents/fyt-manager.md', declarationHash: 'a'.repeat(64),
+      profileId: 'manager-claude', runtime: 'claude' as const, model: 'claude-opus',
+    };
+    const workerAssignment = {
+      agentId: 'fyt-worker', declarationPath: 'agents/fyt-worker.md', declarationHash: 'b'.repeat(64),
+      profileId: 'worker-codex', runtime: 'codex' as const, model: 'codex-safe',
+    };
+    const plan = {
+      ...proposal([{ ...stage('assigned-pass'), assignment: workerAssignment }]),
+      manager: { ...proposal([]).manager, assignment: managerAssignment },
+    };
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const workerExecute = vi.fn(fake.workers.execute);
+    fake.workers.execute = workerExecute;
+    const managerEnsure = vi.fn(async () => {});
+    fake.managers.ensure = managerEnsure;
+    const resolver = {
+      resolve: vi.fn((input: { assignment: typeof managerAssignment | typeof workerAssignment }) => ({
+        assignment: input.assignment, instructionMarkdown: `# ${input.assignment.agentId}\nNo publication.`,
+      })),
+    };
+    const options = engineOptions(store, fake);
+    options.assignedAgents = resolver;
+    await expect(new AutomaticExecutionEngine(options).runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan })).resolves
+      .toMatchObject({ state: 'succeeded' });
+    expect(managerEnsure).toHaveBeenCalledWith(expect.objectContaining({
+      assignment: managerAssignment, instructionMarkdown: '# fyt-manager\nNo publication.',
+    }));
+    expect(workerExecute).toHaveBeenCalledWith(expect.objectContaining({
+      assignment: workerAssignment, instructionMarkdown: '# fyt-worker\nNo publication.',
+    }));
+    expect(resolver.resolve).toHaveBeenCalledTimes(2);
+  });
+
+  it('resolves every assigned node once before a stage policy boundary can mutate the store', async () => {
+    const store = createStore();
+    const managerAssignment = {
+      agentId: 'fyt-manager', declarationPath: 'agents/fyt-manager.md', declarationHash: 'a'.repeat(64),
+      profileId: 'manager-claude', runtime: 'claude' as const, model: 'claude-opus',
+    };
+    const workerAssignment = {
+      agentId: 'fyt-worker', declarationPath: 'agents/fyt-worker.md', declarationHash: 'b'.repeat(64),
+      profileId: 'worker-codex', runtime: 'codex' as const, model: 'codex-safe',
+    };
+    const plan = {
+      ...proposal([
+        { ...stage('boundary-a'), action: 'publish:external', assignment: workerAssignment },
+        { ...stage('boundary-b', ['boundary-a']), assignment: workerAssignment },
+      ]),
+      manager: { ...proposal([]).manager, assignment: managerAssignment },
+    };
+    const run = createApprovedRun(store, plan);
+    const order: string[] = [];
+    const originalCreateRequest = store.createHumanRequest.bind(store);
+    store.createHumanRequest = ((...args: Parameters<ControlPlaneStore['createHumanRequest']>) => {
+      order.push('boundary');
+      return originalCreateRequest(...args);
+    }) as ControlPlaneStore['createHumanRequest'];
+    const resolver = {
+      resolve: vi.fn((input: { assignment: typeof managerAssignment | typeof workerAssignment }) => {
+        order.push(`resolve:${input.assignment.agentId}`);
+        return { assignment: input.assignment, instructionMarkdown: '# Bound declaration' };
+      }),
+    };
+    const fake = fakes();
+    const options = engineOptions(store, fake);
+    options.assignedAgents = resolver;
+    await expect(new AutomaticExecutionEngine(options).runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan })).resolves
+      .toMatchObject({ state: 'waiting-human' });
+    expect(resolver.resolve).toHaveBeenCalledTimes(3);
+    expect(order.slice(0, 3)).toEqual(['resolve:fyt-manager', 'resolve:fyt-worker', 'resolve:fyt-worker']);
+    expect(order.indexOf('boundary')).toBeGreaterThan(2);
+  });
+
+  it('keeps the held Wave-A kb-ops policy when no per-project resolver is supplied', async () => {
+    const store = createStore();
+    const plan = proposal([stage('held-policy')]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const options = engineOptions(store, fake);
+    const outcome = await new AutomaticExecutionEngine(options).runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
+    expect(outcome.state).toBe('succeeded');
+  });
+
+  it('proves the immutable proposal and graph binding before resolving a forged project policy', async () => {
+    const store = createStore();
+    const approved = proposal([stage('approved-kb-ops')]);
+    const run = createApprovedRun(store, approved);
+    const fake = fakes();
+    const options = engineOptions(store, fake);
+    const resolver = vi.fn(() => fytPolicy(['tests']));
+    options.resolvePolicy = resolver;
+    options.policyProject = 'kb-ops';
+
+    // The FYT proposal is individually policy-safe, but it is not the immutable proposal attached to this
+    // kb-ops run. It must not cause even a read of the FYT policy environment.
+    await expect(new AutomaticExecutionEngine(options).runToBoundary({
+      subject: 'operator', runRef: run.runRef, proposal: fytProposal(['tests']),
+    })).rejects.toThrow('proposal does not match the immutable run hash');
+    expect(resolver).not.toHaveBeenCalled();
+    expect(fake.executionOrder).toEqual([]);
+  });
+
+  it('resolves one FYT policy snapshot and refuses a stage that only the held kb-ops curated set would allow', async () => {
+    const store = createStore();
+    const plan = fytProposal(['tests']);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const options = engineOptions(store, fake);
+    const resolver = vi.fn()
+      .mockReturnValueOnce(fytPolicy([]))
+      .mockReturnValueOnce(policy);
+    options.resolvePolicy = resolver;
+    options.policyProject = 'kb-ops';
+    const outcome = await new AutomaticExecutionEngine(options).runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
+    expect(outcome.state).toBe('waiting-human');
+    expect(resolver).toHaveBeenCalledTimes(1);
+    expect(resolver).toHaveBeenCalledWith('faceless-youtube');
+    expect(fake.executionOrder).toEqual([]);
+    const detail = store.getRun('operator', run.runRef);
+    expect(detail.ok && detail.value.humanRequests.some((request) => request.prompt.includes('skill-not-curated:tests'))).toBe(true);
+  });
+
+  it('loads a fresh FYT policy for each run boundary, so a later policy change is observed', async () => {
+    const store = createStore();
+    const firstPlan = fytProposal(['tests']);
+    const secondPlan = { ...fytProposal(['tests']), proposalId: 'synthetic-fyt-second' };
+    const firstRun = createApprovedRun(store, firstPlan);
+    const secondRun = createApprovedRun(store, secondPlan);
+    const fake = fakes();
+    fake.worktrees.inspect = async () => ({
+      changed: [{ path: 'orgs/faceless-youtube/output/fyt.txt', digest: 'b'.repeat(64) }],
+    });
+    const options = engineOptions(store, fake);
+    const resolver = vi.fn()
+      .mockReturnValueOnce(fytPolicy(['tests']))
+      .mockReturnValueOnce(fytPolicy([]));
+    options.resolvePolicy = resolver;
+    options.policyProject = 'kb-ops';
+    const engine = new AutomaticExecutionEngine(options);
+
+    await expect(engine.runToBoundary({ subject: 'operator', runRef: firstRun.runRef, proposal: firstPlan }))
+      .resolves.toMatchObject({ state: 'succeeded' });
+    await expect(engine.runToBoundary({ subject: 'operator', runRef: secondRun.runRef, proposal: secondPlan }))
+      .resolves.toMatchObject({ state: 'waiting-human', waitingStageIds: ['fyt'] });
+    expect(resolver).toHaveBeenCalledTimes(2);
+    expect(resolver).toHaveBeenNthCalledWith(1, 'faceless-youtube');
+    expect(resolver).toHaveBeenNthCalledWith(2, 'faceless-youtube');
+  });
+
+  it('snapshots a resolved policy before asynchronous manager work, isolating in-flight source mutation', async () => {
+    const store = createStore();
+    const plan = fytProposal(['tests']);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    fake.worktrees.inspect = async () => ({
+      changed: [{ path: 'orgs/faceless-youtube/output/fyt.txt', digest: 'b'.repeat(64) }],
+    });
+    const source = fytPolicy(['tests']);
+    fake.managers.ensure = async () => {
+      source.curatedSkills.clear();
+    };
+    const options = engineOptions(store, fake);
+    options.resolvePolicy = () => source;
+    options.policyProject = 'kb-ops';
+
+    await expect(new AutomaticExecutionEngine(options).runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan }))
+      .resolves.toMatchObject({ state: 'succeeded', completedStageIds: ['fyt'] });
+    expect(fake.executionOrder).toEqual(['fyt']);
+  });
+
+  it('uses the FYT policy snapshot for manager profile admission before any stage can start', async () => {
+    const store = createStore();
+    const plan = fytProposal([]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const options = engineOptions(store, fake);
+    options.resolvePolicy = () => ({ ...fytPolicy([]), profiles: fytPolicy([]).profiles.filter((profile) => profile.role !== 'manager') });
+    await expect(new AutomaticExecutionEngine(options).runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan }))
+      .rejects.toThrow('manager is not a server-owned runtime profile');
+    expect(fake.executionOrder).toEqual([]);
+  });
+
+  it('fails closed when the project resolver returns missing canonical policy anchors', async () => {
+    const store = createStore();
+    const plan = fytProposal([]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const options = engineOptions(store, fake);
+    options.resolvePolicy = () => policy; // kb-ops environment, intentionally wrong for FYT
+    await expect(new AutomaticExecutionEngine(options).runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan }))
+      .rejects.toThrow('project policy environment is incomplete');
+    expect(fake.executionOrder).toEqual([]);
+  });
+
+  it('surfaces a resolver failure without starting a manager or worker', async () => {
+    const store = createStore();
+    const plan = fytProposal([]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const options = engineOptions(store, fake);
+    options.resolvePolicy = () => { throw new Error('canonical policy read failed'); };
+
+    await expect(new AutomaticExecutionEngine(options).runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan }))
+      .rejects.toThrow('project policy resolution failed: canonical policy read failed');
+    expect(fake.executionOrder).toEqual([]);
+  });
+
+  it('refuses a different project when no server-owned policy resolver is configured', async () => {
+    const store = createStore();
+    const plan = fytProposal([]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+
+    await expect(new AutomaticExecutionEngine(engineOptions(store, fake)).runToBoundary({
+      subject: 'operator', runRef: run.runRef, proposal: plan,
+    })).rejects.toThrow('project policy resolver is required for this proposal project');
+    expect(fake.executionOrder).toEqual([]);
+  });
+
   it('executes a durable validated reroute without rewriting the approved stage policy or predecessor routing', async () => {
     const store = createStore();
     const plan = proposal([stage('rerouted')]);
@@ -300,7 +691,7 @@ describe('AutomaticExecutionEngine', () => {
   });
 
   // ---------------------------------------------------------------------------------------------
-  // The fail-closed workflow-profile token. `execution.ts` forwards `input.proposal.profile ?? null`
+  // The fail-closed workflow-profile token. `execution.ts` forwards `stage.workflowProfile ?? input.proposal.profile ?? null`
   // to the worker adapter, and that `?? null` is the WHOLE engine-side guarantee: the adapter refuses
   // to spawn on a null or unknown profile (claudeWorkerAdapter.ts), so a null is what makes a
   // profile-less legacy proposal refuse instead of running uncapped. Nothing asserted on it before —
@@ -363,6 +754,339 @@ describe('AutomaticExecutionEngine', () => {
 
     // Verbatim: the engine must neither substitute nor widen the declared profile.
     expect(seen).toEqual(['research']);
+  });
+
+  it('never forwards an unvalidated direct-worker review outcome to result persistence', async () => {
+    const store = createStore();
+    const plan = proposal([stage('outcome')]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    fake.workers = {
+      async execute() {
+        fake.executionOrder.push('outcome');
+        return {
+          state: 'succeeded', summary: 'worker claimed success', usage: { inputTokens: 1, outputTokens: 1, costUsdMicros: 1 },
+          artifacts: [{ path: 'dashboard/server/outcome.txt', digest: 'b'.repeat(64) }], checkpoints: ['outcome-checked'],
+          reviewOutcome: {
+            schema: 'kb.review-outcome/v1', decision: 'pass', summary: 'sk-abcdefghijklmnopqrstuvwxyz1234567890',
+            criteria: [{ criterionId: 'forged', verdict: 'pass', findingIds: [] }], findings: [],
+          } as never,
+        };
+      },
+    };
+    const outcome = await new AutomaticExecutionEngine(engineOptions(store, fake))
+      .runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
+    expect(outcome.state).toBe('failed');
+    expect(fake.integrationOrder).toEqual([]);
+  });
+
+  it('prefers a server-compiled per-stage workflow profile over the proposal profile', async () => {
+    const store = createStore();
+    const capped = stage('checker-cap');
+    capped.workflowProfile = 'checker-readonly';
+    const plan: PlanProposal = { ...proposal([capped]), profile: 'research' };
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const seen: (string | null)[] = [];
+    fake.workers = {
+      async execute(input) {
+        seen.push(input.workflowProfile);
+        fake.executionOrder.push('checker-cap');
+        return {
+          state: 'succeeded', summary: 'ok', usage: { inputTokens: 1, outputTokens: 1, costUsdMicros: 1 },
+          artifacts: [{ path: 'dashboard/server/checker-cap.txt', digest: 'b'.repeat(64) }], checkpoints: ['checker-cap-checked'],
+        };
+      },
+    };
+
+    await new AutomaticExecutionEngine(engineOptions(store, fake)).runToBoundary({
+      subject: 'operator', runRef: run.runRef, proposal: plan,
+    });
+
+    expect(seen).toEqual(['checker-readonly']);
+  });
+
+  it('runs a checker against the committed creator generation and releases its accepted downstream', async () => {
+    const store = createStore();
+    const subject = stage('subject');
+    const checker = stage('checker', ['subject']);
+    checker.action = 'review:subject';
+    checker.workflowProfile = 'checker-readonly';
+    checker.scope = { read: ['dashboard'], write: [] };
+    checker.artifacts = [];
+    checker.checkpoints = [];
+    checker.review = {
+      subjectStageId: 'subject', maxCreatorReworks: 1,
+      criteria: [{ id: 'safety', description: 'No unsafe changes.' }],
+    };
+    checker.assignment = {
+      agentId: 'fyt-checker', declarationPath: 'agents/fyt-checker.md', declarationHash: 'c'.repeat(64),
+      profileId: 'worker:codex:codex-safe', runtime: 'codex', model: 'codex-safe',
+    };
+    const downstream = stage('release', ['checker']);
+    const plan = proposal([subject, checker, downstream]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const results = new Map<string, Awaited<ReturnType<ResultIntegrator['lookup']>>>();
+    const seenContracts: unknown[] = [];
+    fake.worktrees.inspect = async () => {
+      const id = fake.executionOrder.at(-1) as string;
+      return id === 'checker' ? { changed: [] } : { changed: [{ path: `dashboard/server/${id}.txt`, digest: 'b'.repeat(64) }] };
+    };
+    fake.workers = {
+      async execute(input) {
+        const id = input.action.startsWith('review:') ? 'checker' : input.action.split(':')[1];
+        fake.executionOrder.push(id);
+        if (id === 'checker') {
+          seenContracts.push(input.reviewContract);
+          return {
+            state: 'succeeded', summary: 'checker passed', usage: { inputTokens: 1, outputTokens: 1, costUsdMicros: 1 },
+            artifacts: [], checkpoints: [], reviewOutcome: {
+              schema: 'kb.review-outcome/v1', decision: 'pass', summary: 'creator is safe',
+              criteria: [{ criterionId: 'safety', verdict: 'pass', findingIds: [] }], findings: [],
+            },
+          };
+        }
+        return {
+          state: 'succeeded', summary: `${id} passed`, usage: { inputTokens: 1, outputTokens: 1, costUsdMicros: 1 },
+          artifacts: [{ path: `dashboard/server/${id}.txt`, digest: 'b'.repeat(64) }], checkpoints: [`${id}-checked`],
+        };
+      },
+    };
+    fake.results = {
+      async lookup(input) { return results.get(input.operationKey) ?? null; },
+      async resolveBase() { return 'd'.repeat(40); },
+      async integrate(input) {
+        const stored = {
+          summary: input.summary, artifacts: [...input.artifacts], changed: [...input.changed], checkpoints: [...input.checkpoints],
+          ...(input.reviewOutcome ? { reviewOutcome: input.reviewOutcome } : {}), resultHash: input.resultHash,
+          durability: 'canonical' as const,
+          attemptBaseCommit: input.operationKey.endsWith(':checker') || input.operationKey.endsWith(':g2') ? 'b'.repeat(40) : 'a'.repeat(40),
+          integrationCommit: input.operationKey.endsWith(':g2') ? 'c'.repeat(40) : 'b'.repeat(40),
+        };
+        results.set(input.operationKey, stored);
+        return { status: 'integrated' as const, resultHash: input.resultHash, durability: 'canonical' as const,
+          attemptBaseCommit: stored.attemptBaseCommit, integrationCommit: stored.integrationCommit };
+      },
+    };
+    const options = engineOptions(store, fake);
+    options.assignedAgents = { resolve: (input) => ({ assignment: input.assignment, instructionMarkdown: 'checker instructions' }) };
+    const engine = new AutomaticExecutionEngine(options);
+    const outcome = await engine.runToBoundary({
+      subject: 'operator', runRef: run.runRef, proposal: plan,
+    });
+
+    expect(outcome.state).toBe('succeeded');
+    expect(fake.executionOrder).toEqual(['subject', 'checker', 'release']);
+    expect(seenContracts).toEqual([{ review: checker.review }]);
+    const detail = store.getRun('operator', run.runRef);
+    expect(detail).toMatchObject({ ok: true, value: {
+      reviewLoops: [{ state: 'passed', acceptedGenerationRef: expect.any(String) }],
+      stageGenerations: [{ generation: 1, canonicalResultOperationKey: `result:${run.runRef}:subject`, resultCardRef: 'card-subject' }],
+      attempts: expect.arrayContaining([expect.objectContaining({ stageRef: expect.any(String), reviewSubjectGenerationRef: expect.any(String) })]),
+    } });
+  });
+
+  it('waits on one dedicated completion gate and releases only after its resolver accepts', async () => {
+    const item = reviewFixture({ outcomes: [passOutcome()], completionGate: true });
+    const waiting = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    expect(waiting).toMatchObject({ state: 'waiting-human', waitingStageIds: ['checker'] });
+    let detail = item.store.getRun('operator', item.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    expect(detail.value.stages.find((stage) => stage.stageId === 'release')?.state).toBe('blocked');
+    expect(detail.value.humanRequests).toHaveLength(1);
+    expect(detail.value.sessions.find((session) => session.role === 'manager')?.state).toBe('running');
+    const gate = detail.value.humanRequests[0];
+    const receipt = detail.value.reviewReceipts[0]; const loop = detail.value.reviewLoops[0];
+    const reviewStage = detail.value.stages.find((stage) => stage.stageId === 'checker') as NonNullable<typeof detail.value.stages[number]>;
+    const subjectStage = detail.value.stages.find((stage) => stage.stageId === 'subject') as NonNullable<typeof detail.value.stages[number]>;
+    expect(item.store.resolveReviewCompletionGate('operator', gate.requestRef, {
+      expectedRequestRevision: gate.revision, expectedReceiptVersion: receipt.version, expectedLoopVersion: loop.version,
+      expectedReviewStageVersion: reviewStage.version, expectedSubjectStageVersion: subjectStage.version,
+      decision: 'approved', idempotencyKey: 'dedicated-gate-approve', response: 'Approved.',
+    }).ok).toBe(true);
+    const completed = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    expect(completed.state).toBe('succeeded');
+    expect(item.fake.executionOrder).toEqual(['subject', 'checker', 'release']);
+    detail = item.store.getRun('operator', item.run.runRef);
+    expect(detail.ok && detail.value.reviewReceipts).toHaveLength(1);
+    expect(detail.ok && detail.value.humanRequests).toHaveLength(1);
+  });
+
+  it('reworks to g2 with generation-specific keys, bases, and accepted downstream release', async () => {
+    const item = reviewFixture({ outcomes: [failOutcome(), passOutcome()], maxCreatorReworks: 1 });
+    const outcome = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    expect(outcome.state).toBe('succeeded');
+    expect(item.fake.executionOrder).toEqual(['subject', 'checker', 'subject', 'checker', 'release']);
+    expect(item.integrations.map((record) => [record.operationKey, record.canonicalCardRef])).toEqual(expect.arrayContaining([
+      [`result:${item.run.runRef}:subject:g2`, null], [`result:${item.run.runRef}:checker:g2`, null],
+    ]));
+    // g1 checker and g2 creator both fork from g1's canonical integration; g2 checker forks from g2 creator.
+    expect(item.bases.filter((item) => item.baseCommit === 'b'.repeat(40))).toHaveLength(2);
+    expect(item.bases.filter((item) => item.baseCommit === 'c'.repeat(40))).toHaveLength(1);
+    const detail = item.store.getRun('operator', item.run.runRef);
+    expect(detail.ok && detail.value.stageGenerations.map((generation) => generation.generation)).toEqual([1, 2]);
+    expect(detail.ok && detail.value.reviewReceipts.map((receipt) => receipt.outcome.decision)).toEqual(['fail', 'pass']);
+  });
+
+  it('parks an exhausted review exactly once without a generic intervention', async () => {
+    const item = reviewFixture({ outcomes: [failOutcome()], maxCreatorReworks: 0 });
+    const waiting = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    expect(waiting.state).toBe('waiting-human');
+    const first = item.store.getRun('operator', item.run.runRef);
+    expect(first.ok && first.value.reviewLoops[0].state).toBe('parked');
+    expect(first.ok && first.value.humanRequests).toHaveLength(1);
+    expect(first.ok && first.value.humanRequests[0].kind).toBe('intervention');
+    expect(first.ok && first.value.sessions.find((session) => session.role === 'manager')?.state).toBe('running');
+    await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    const replay = item.store.getRun('operator', item.run.runRef);
+    expect(replay.ok && replay.value.humanRequests).toHaveLength(1);
+    expect(item.fake.executionOrder).toEqual(['subject', 'checker']);
+  });
+
+  it('retains the parser-parked intervention without creating a generic request on replay', async () => {
+    const item = reviewFixture({ outcomes: [parkedOutcome()] });
+    const waiting = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    expect(waiting.state).toBe('waiting-human');
+    const first = item.store.getRun('operator', item.run.runRef);
+    expect(first.ok && first.value.reviewReceipts[0].state).toBe('parked');
+    expect(first.ok && first.value.humanRequests).toHaveLength(1);
+    await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    const replay = item.store.getRun('operator', item.run.runRef);
+    expect(replay.ok && replay.value.humanRequests).toHaveLength(1);
+    expect(item.fake.executionOrder).toEqual(['subject', 'checker']);
+  });
+
+  it('reconciles a canonical creator result after an integration-to-generation crash without rerunning the worker', async () => {
+    const item = reviewFixture({ outcomes: [passOutcome()], crashAfterIntegrationStage: 'subject' });
+    const completed = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    expect(completed.state).toBe('succeeded');
+    expect(item.fake.executionOrder.filter((id) => id === 'subject')).toHaveLength(1);
+    const final = item.store.getRun('operator', item.run.runRef);
+    expect(final.ok && final.value.stageGenerations).toHaveLength(1);
+    expect(final.ok && final.value.reviewReceipts).toHaveLength(1);
+    expect(final.ok && final.value.humanRequests).toHaveLength(0);
+  });
+
+  it('replays a canonical checker result after the terminal-to-receipt seam without rerunning the checker', async () => {
+    const item = reviewFixture({ outcomes: [passOutcome()], crashAfterIntegrationStage: 'checker' });
+    const completed = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    expect(completed.state).toBe('succeeded');
+    expect(item.fake.executionOrder.filter((id) => id === 'checker')).toHaveLength(1);
+    const final = item.store.getRun('operator', item.run.runRef);
+    expect(final.ok && final.value.reviewReceipts).toHaveLength(1);
+    expect(final.ok && final.value.reviewLoops[0].state).toBe('passed');
+    expect(final.ok && final.value.humanRequests).toHaveLength(0);
+  });
+
+  it('rejects a checker canonical result whose attempt base differs from its bound subject generation', async () => {
+    const item = reviewFixture({ outcomes: [passOutcome()], checkerAttemptBaseCommit: 'e'.repeat(40) });
+    const outcome = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    expect(outcome.state).toBe('waiting-human');
+    const detail = item.store.getRun('operator', item.run.runRef);
+    expect(detail.ok && detail.value.reviewReceipts).toHaveLength(0);
+    expect(detail.ok && detail.value.reviewLoops[0].state).toBe('checking');
+    expect(detail.ok && detail.value.stages.find((stage) => stage.stageId === 'release')?.state).toBe('blocked');
+  });
+
+  it('records a terminal checker receipt while an unrelated open boundary keeps normal work paused', async () => {
+    const item = reviewFixture({ outcomes: [passOutcome()] });
+    let detail = item.store.getRun('operator', item.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const subject = detail.value.stages.find((stage) => stage.stageId === 'subject') as NonNullable<typeof detail.value.stages[number]>;
+    const subjectAttempt = item.store.createAttempt('operator', subject.stageRef, { expectedStageVersion: subject.version, runtime: 'codex', model: 'codex-safe' });
+    if (!subjectAttempt.ok) throw new Error(subjectAttempt.detail);
+    const subjectSession = item.store.createWorkerSession('operator', subjectAttempt.value.attemptRef, { expectedAttemptVersion: subjectAttempt.value.version });
+    if (!subjectSession.ok) throw new Error(subjectSession.detail);
+    let current = item.store.getRun('operator', item.run.runRef); if (!current.ok) throw new Error(current.detail);
+    let currentSubject = current.value.stages.find((stage) => stage.stageRef === subject.stageRef) as typeof subject;
+    expect(item.store.transitionStage('operator', currentSubject.stageRef, currentSubject.version, 'running').ok).toBe(true);
+    let currentAttempt = item.store.getRun('operator', item.run.runRef); if (!currentAttempt.ok) throw new Error(currentAttempt.detail);
+    let creator = currentAttempt.value.attempts.find((attempt) => attempt.attemptRef === subjectAttempt.value.attemptRef) as typeof subjectAttempt.value;
+    expect(item.store.transitionAttempt('operator', creator.attemptRef, creator.version, 'starting').ok).toBe(true);
+    currentAttempt = item.store.getRun('operator', item.run.runRef); if (!currentAttempt.ok) throw new Error(currentAttempt.detail);
+    creator = currentAttempt.value.attempts.find((attempt) => attempt.attemptRef === creator.attemptRef) as typeof creator;
+    expect(item.store.transitionAttempt('operator', creator.attemptRef, creator.version, 'running').ok).toBe(true);
+    let sessions = item.store.getRun('operator', item.run.runRef); if (!sessions.ok) throw new Error(sessions.detail);
+    let creatorSession = sessions.value.sessions.find((session) => session.sessionRef === subjectSession.value.sessionRef) as typeof subjectSession.value;
+    expect(item.store.transitionSession('operator', creatorSession.sessionRef, creatorSession.version, 'starting').ok).toBe(true);
+    sessions = item.store.getRun('operator', item.run.runRef); if (!sessions.ok) throw new Error(sessions.detail);
+    creatorSession = sessions.value.sessions.find((session) => session.sessionRef === creatorSession.sessionRef) as typeof creatorSession;
+    expect(item.store.transitionSession('operator', creatorSession.sessionRef, creatorSession.version, 'running').ok).toBe(true);
+    sessions = item.store.getRun('operator', item.run.runRef); if (!sessions.ok) throw new Error(sessions.detail);
+    creatorSession = sessions.value.sessions.find((session) => session.sessionRef === creatorSession.sessionRef) as typeof creatorSession;
+    expect(item.store.transitionSession('operator', creatorSession.sessionRef, creatorSession.version, 'completed').ok).toBe(true);
+    currentAttempt = item.store.getRun('operator', item.run.runRef); if (!currentAttempt.ok) throw new Error(currentAttempt.detail);
+    creator = currentAttempt.value.attempts.find((attempt) => attempt.attemptRef === creator.attemptRef) as typeof creator;
+    expect(item.store.transitionAttempt('operator', creator.attemptRef, creator.version, 'succeeded').ok).toBe(true);
+    current = item.store.getRun('operator', item.run.runRef); if (!current.ok) throw new Error(current.detail);
+    currentSubject = current.value.stages.find((stage) => stage.stageRef === subject.stageRef) as typeof subject;
+    const afterCreator = item.store.getRun('operator', item.run.runRef); if (!afterCreator.ok) throw new Error(afterCreator.detail);
+    const generation = item.store.recordStageGeneration('operator', subject.stageRef, {
+      expectedStageVersion: currentSubject.version, expectedAttemptVersion: afterCreator.value.attempts.find((attempt) => attempt.attemptRef === creator.attemptRef)!.version,
+      expectedGeneration: 1, operationKey: `result:${item.run.runRef}:subject`, resultHash: 'a'.repeat(64), resultCardRef: subject.canonicalCardRef,
+      baseCommit: 'a'.repeat(40), canonicalCommit: 'b'.repeat(40),
+    });
+    if (!generation.ok) throw new Error(generation.detail);
+    current = item.store.getRun('operator', item.run.runRef); if (!current.ok) throw new Error(current.detail);
+    currentSubject = current.value.stages.find((stage) => stage.stageRef === subject.stageRef) as typeof subject;
+    expect(item.store.transitionStage('operator', subject.stageRef, currentSubject.version, 'succeeded').ok).toBe(true);
+    current = item.store.getRun('operator', item.run.runRef); if (!current.ok) throw new Error(current.detail);
+    const checker = current.value.stages.find((stage) => stage.stageId === 'checker') as typeof subject;
+    expect(item.store.transitionStage('operator', checker.stageRef, checker.version, 'ready').ok).toBe(true);
+    current = item.store.getRun('operator', item.run.runRef); if (!current.ok) throw new Error(current.detail);
+    const readyChecker = current.value.stages.find((stage) => stage.stageRef === checker.stageRef) as typeof checker;
+    const checkerAttempt = item.store.createAttempt('operator', readyChecker.stageRef, { expectedStageVersion: readyChecker.version, runtime: 'codex', model: 'codex-safe',
+      reviewSubjectGenerationRef: generation.value.generationRef, reviewSubjectResultHash: 'a'.repeat(64), reviewSubjectCanonicalCommit: 'b'.repeat(40) });
+    if (!checkerAttempt.ok) throw new Error(checkerAttempt.detail);
+    const checkerSession = item.store.createWorkerSession('operator', checkerAttempt.value.attemptRef, { expectedAttemptVersion: checkerAttempt.value.version });
+    if (!checkerSession.ok) throw new Error(checkerSession.detail);
+    const advance = (kind: 'stage' | 'attempt' | 'session', ref: string, state: 'running' | 'starting' | 'completed' | 'succeeded') => {
+      const now = item.store.getRun('operator', item.run.runRef); if (!now.ok) throw new Error(now.detail);
+      if (kind === 'stage') return item.store.transitionStage('operator', ref, now.value.stages.find((value) => value.stageRef === ref)!.version, state as never);
+      if (kind === 'attempt') return item.store.transitionAttempt('operator', ref, now.value.attempts.find((value) => value.attemptRef === ref)!.version, state as never);
+      return item.store.transitionSession('operator', ref, now.value.sessions.find((value) => value.sessionRef === ref)!.version, state as never);
+    };
+    expect(advance('stage', readyChecker.stageRef, 'running').ok).toBe(true);
+    expect(advance('attempt', checkerAttempt.value.attemptRef, 'starting').ok).toBe(true); expect(advance('attempt', checkerAttempt.value.attemptRef, 'running').ok).toBe(true);
+    expect(advance('session', checkerSession.value.sessionRef, 'starting').ok).toBe(true); expect(advance('session', checkerSession.value.sessionRef, 'running').ok).toBe(true); expect(advance('session', checkerSession.value.sessionRef, 'completed').ok).toBe(true);
+    expect(advance('attempt', checkerAttempt.value.attemptRef, 'succeeded').ok).toBe(true); expect(advance('stage', readyChecker.stageRef, 'succeeded').ok).toBe(true);
+    const payload = { summary: 'creator is safe', artifacts: [], changed: [], checkpoints: [], reviewOutcome: passOutcome() };
+    item.results.set(`result:${item.run.runRef}:checker`, { ...payload, resultHash: canonicalStageResultHash(payload), durability: 'canonical', attemptBaseCommit: 'b'.repeat(40), integrationCommit: 'c'.repeat(40) });
+    const request = item.store.createHumanRequest('operator', item.run.runRef, { stageRef: null, kind: 'approval', title: 'unrelated boundary', prompt: 'Pause normal work.' });
+    expect(request.ok).toBe(true);
+    const runBefore = item.store.getRun('operator', item.run.runRef); if (!runBefore.ok) throw new Error(runBefore.detail);
+    expect(item.store.transitionRun('operator', item.run.runRef, runBefore.value.run.version, 'waiting-human').ok).toBe(true);
+    const outcome = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    expect(outcome.state).toBe('waiting-human');
+    const final = item.store.getRun('operator', item.run.runRef);
+    expect(final.ok && final.value.reviewReceipts).toHaveLength(1);
+    expect(final.ok && final.value.reviewLoops[0].state).toBe('passed');
+    expect(final.ok && final.value.humanRequests).toHaveLength(1);
+    expect(final.ok && final.value.humanRequests[0].requestRef).toBe(request.ok && request.value.requestRef);
+    expect(item.fake.executionOrder).toEqual([]);
+    expect(final.ok && final.value.stages.find((stage) => stage.stageId === 'release')?.state).toBe('blocked');
+  });
+
+  it('replays a persisted failed receipt through one rework route without rerunning its checker', async () => {
+    const item = reviewFixture({ outcomes: [failOutcome(), passOutcome()], maxCreatorReworks: 1 });
+    const record = item.store.recordReviewReceipt.bind(item.store);
+    let faulted = false;
+    item.store.recordReviewReceipt = ((...args: Parameters<ControlPlaneStore['recordReviewReceipt']>) => {
+      const saved = record(...args);
+      if (!faulted && saved.ok) {
+        faulted = true;
+        throw new Error('simulated crash after persisted review receipt');
+      }
+      return saved;
+    }) as ControlPlaneStore['recordReviewReceipt'];
+    const completed = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    expect(completed.state).toBe('succeeded');
+    expect(item.fake.executionOrder.filter((id) => id === 'checker')).toHaveLength(2);
+    const final = item.store.getRun('operator', item.run.runRef);
+    expect(final.ok && final.value.reviewReceipts).toHaveLength(2);
+    expect(final.ok && final.value.generationSupersessions).toHaveLength(1);
+    expect(final.ok && final.value.humanRequests).toHaveLength(0);
   });
 
   it('releases equal-priority roots deterministically while honoring bounded concurrency', async () => {
@@ -565,6 +1289,8 @@ describe('AutomaticExecutionEngine', () => {
           ? {
               resultHash: committed.resultHash, summary: committed.summary, artifacts: committed.artifacts,
               changed: committed.changed, checkpoints: committed.checkpoints,
+              durability: 'canonical' as const,
+              attemptBaseCommit: 'a'.repeat(40), integrationCommit: 'b'.repeat(40),
             }
           : null;
       },
@@ -572,7 +1298,8 @@ describe('AutomaticExecutionEngine', () => {
         keys.push(input.operationKey);
         committed = input;
         if (keys.length === 1) throw new Error('lost acknowledgement after canonical commit');
-        return { status: 'replayed', resultHash: input.resultHash };
+        return { status: 'replayed', resultHash: input.resultHash,
+          durability: 'canonical' as const, attemptBaseCommit: 'a'.repeat(40), integrationCommit: 'b'.repeat(40) };
       },
     };
     const engine = new AutomaticExecutionEngine(engineOptions(store, fake));

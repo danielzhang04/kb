@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { parseWorkflowDef, type WorkflowDef } from './defs.ts';
+import { parseWorkflowDef, type WorkflowDef, type WorkflowStageDef } from './defs.ts';
 import { compileWorkflowDef } from './compile.ts';
-import { validatePlanProposal } from '../control/proposal.ts';
+import { canonicalProposal, validatePlanProposal, validateServerCompiledPlanProposal } from '../control/proposal.ts';
 import type { RuntimeSkillRegistry } from '../control/environment.ts';
+import type { ExecutionProfile } from '../control/policy.ts';
+import type { DeclaredAgentDetail } from '../agents/roster.ts';
 
 const REGISTRY: RuntimeSkillRegistry = {
   runtimes: {
@@ -13,7 +15,7 @@ const REGISTRY: RuntimeSkillRegistry = {
   // The proposal validator fails CLOSED on `profile`: an absent or empty list admits nothing, so a
   // registry without this field refuses every compiled proposal. The fixture must publish the same
   // closed set the def parser validates against.
-  workflowProfiles: ['research', 'gmail-triage', 'drive-author', 'producer'],
+  workflowProfiles: ['research', 'gmail-triage', 'drive-author', 'producer', 'checker-readonly'],
 };
 
 // Derived, not restated — the def parser and the proposal validator must agree on the closed set,
@@ -37,6 +39,59 @@ const SINGLE = def([
   '    action: research:web-brief',
   '    target: orgs/kb-ops/output',
   '    riskTier: T2',
+].join('\n'));
+
+const PROFILES: ExecutionProfile[] = [
+  { id: 'manager:claude:claude-opus-4-8', role: 'manager', runtime: 'claude', model: 'claude-opus-4-8', capabilities: ['read', 'emit-events'] },
+  { id: 'manager:claude:claude-sonnet-5', role: 'manager', runtime: 'claude', model: 'claude-sonnet-5', capabilities: ['read', 'emit-events'] },
+  { id: 'worker:codex:gpt-5.6-sol', role: 'worker', runtime: 'codex', model: 'gpt-5.6-sol', capabilities: ['read', 'write-approved-scope', 'run-approved-commands', 'emit-events'] },
+  { id: 'worker:claude:claude-sonnet-5', role: 'worker', runtime: 'claude', model: 'claude-sonnet-5', capabilities: ['read', 'write-approved-scope', 'run-approved-commands', 'emit-events'] },
+];
+
+function declared(
+  id: string,
+  defaultProfile: string,
+  allowedProfiles: string[],
+  runtime: 'claude' | 'codex',
+  model: string,
+): DeclaredAgentDetail {
+  return {
+    id, role: null, runtime, model, defaultProfile, allowedProfiles, runnerBound: true, description: null,
+    projects: ['kb-ops'], source: `agents/${id}.md`, instructionMarkdown: '',
+    sourceHash: id === 'fyt-runner' ? 'a'.repeat(64) : 'b'.repeat(64), codebasePaths: [], workflowPaths: [],
+  };
+}
+
+function bindingEnvironment(overrides: Partial<Parameters<typeof compileWorkflowDef>[1]> = {}) {
+  return {
+    registry: REGISTRY,
+    declaredAgents: new Map<string, DeclaredAgentDetail>([
+      ['fyt-runner', declared('fyt-runner', 'manager:claude:claude-opus-4-8', ['manager:claude:claude-opus-4-8', 'manager:claude:claude-sonnet-5'], 'claude', 'claude-opus-4-8')],
+      ['fyt-production', declared('fyt-production', 'worker:codex:gpt-5.6-sol', ['worker:codex:gpt-5.6-sol', 'worker:claude:claude-sonnet-5'], 'codex', 'gpt-5.6-sol')],
+    ]),
+    executionProfiles: PROFILES,
+    availableRuntimes: new Set<'claude' | 'codex'>(['claude', 'codex']),
+    ...overrides,
+  };
+}
+
+const ASSIGNED = def([
+  'id: assigned-research', 'project: kb-ops', 'title: Assigned research', 'profile: research',
+  'manager:', '  agentId: fyt-runner', '  profileId: manager:claude:claude-opus-4-8',
+  'stages:',
+  '  - id: brief', '    title: Research a topic', '    action: research:web-brief', '    target: orgs/kb-ops/output', '    riskTier: T2',
+  '    agentId: fyt-production', '    profileId: worker:claude:claude-sonnet-5',
+].join('\n'));
+
+const CHECKER = def([
+  'id: checker', 'project: kb-ops', 'title: Checker', 'profile: research',
+  'stages:',
+  '  - id: create', '    title: Create', '    action: implement:thing', '    target: orgs/kb-ops/output', '    workOrder: Create',
+  '  - id: check', '    title: Check', '    action: review:thing', '    target: orgs/kb-ops/output', '    workOrder: Check', '    dependsOn: [create]',
+  '    agentId: fyt-production', '    profileId: worker:claude:claude-sonnet-5', '    workflowProfile: checker-readonly',
+  '    review:', '      subjectStageId: create', '      maxCreatorReworks: 1', '      criteria:', '        - id: safety', '          description: No unsafe changes',
+  '    completionGate:', '      id: checker-approval', '      kind: approval', '      prompt: Approve checker result?', '      requiresReview: pass',
+  '  - id: next', '    title: Next creator', '    action: implement:next', '    target: orgs/kb-ops/output', '    workOrder: Continue', '    dependsOn: [check]',
 ].join('\n'));
 
 describe('compileWorkflowDef', () => {
@@ -76,6 +131,186 @@ describe('compileWorkflowDef', () => {
     if (!a.ok || !b.ok) return;
     expect(a.value.proposalId).toBe(b.value.proposalId);
     expect(a.value.proposalId).toMatch(/^wf-[a-f0-9]{48}$/);
+  });
+
+  it('keeps legacy compiled values and canonical bytes unchanged when no assignment is authored', () => {
+    const compiled = compileWorkflowDef(SINGLE, { registry: REGISTRY });
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) return;
+    // `main` now includes the definition's read scope in the proposal-id preimage. Pin the merged
+    // read-scope-aware bytes here; assignment metadata must remain absent and must not perturb them.
+    expect(compiled.value.proposalId).toBe('wf-5497530df05dc94e5ba8b528c2738d84e47666f60b52a076');
+    expect(compiled.value.manager).not.toHaveProperty('assignment');
+    expect(compiled.value.stages[0]).not.toHaveProperty('assignment');
+    expect(canonicalProposal(compiled.value)).toContain('"proposalId":"wf-5497530df05dc94e5ba8b528c2738d84e47666f60b52a076"');
+  });
+
+  it('resolves manager and stage assignments into immutable snapshots and routes from the selected profiles', () => {
+    const compiled = compileWorkflowDef(ASSIGNED, bindingEnvironment());
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) return;
+    expect(compiled.value.manager).toMatchObject({ runtime: 'claude', model: 'claude-opus-4-8', assignment: {
+      agentId: 'fyt-runner', declarationPath: 'agents/fyt-runner.md', declarationHash: 'a'.repeat(64),
+      profileId: 'manager:claude:claude-opus-4-8',
+    } });
+    // fyt-production defaults to Codex, but this allowed selected worker profile deliberately switches it
+    // to Claude. The profile, not the agent id/default, supplies proposal routing.
+    expect(compiled.value.stages[0]).toMatchObject({ worker: { runtime: 'claude', model: 'claude-sonnet-5' }, assignment: {
+      agentId: 'fyt-production', profileId: 'worker:claude:claude-sonnet-5', runtime: 'claude', model: 'claude-sonnet-5',
+    } });
+    expect(validatePlanProposal(compiled.value, REGISTRY)).toMatchObject({ ok: false });
+    expect(validateServerCompiledPlanProposal(compiled.value, REGISTRY)).toMatchObject({ ok: true });
+    const differentSelectedProfile = compileWorkflowDef({
+      ...ASSIGNED,
+      stages: [{ ...ASSIGNED.stages[0], profileId: 'worker:codex:gpt-5.6-sol' }],
+    }, bindingEnvironment());
+    expect(differentSelectedProfile.ok).toBe(true);
+    if (!differentSelectedProfile.ok) return;
+    expect(differentSelectedProfile.value.proposalId).not.toBe(compiled.value.proposalId);
+  });
+
+  it('compiles checker metadata into compiler-only proposal fields and includes it in proposal identity', () => {
+    const compiled = compileWorkflowDef(CHECKER, bindingEnvironment());
+    expect(compiled).toMatchObject({ ok: true, value: { stages: [
+      {}, {
+        workflowProfile: 'checker-readonly',
+        review: { subjectStageId: 'create', maxCreatorReworks: 1, criteria: [{ id: 'safety' }] },
+        completionGate: { id: 'checker-approval', kind: 'approval', requiresReview: 'pass' },
+      }, {},
+    ] } });
+    if (!compiled.ok) return;
+    expect(validatePlanProposal(compiled.value, REGISTRY)).toMatchObject({ ok: false });
+    expect(validateServerCompiledPlanProposal(compiled.value, REGISTRY)).toMatchObject({ ok: true });
+    const changed = compileWorkflowDef({
+      ...CHECKER,
+      stages: [CHECKER.stages[0], { ...CHECKER.stages[1], review: { ...CHECKER.stages[1].review!, maxCreatorReworks: 2 } }],
+    }, bindingEnvironment());
+    expect(changed.ok && changed.value.proposalId).not.toBe(compiled.value.proposalId);
+  });
+
+  it('refuses a checker workflow profile missing from the compile registry', () => {
+    expect(compileWorkflowDef(CHECKER, bindingEnvironment({ registry: { ...REGISTRY, workflowProfiles: ['research'] } })))
+      .toMatchObject({ ok: false, reason: 'stage-workflow-profile-unavailable' });
+  });
+
+  it('defends against programmatic review stages without the checker-readonly workflow profile', () => {
+    const checkerStage = CHECKER.stages[1];
+    const { workflowProfile: _ignored, ...withoutProfile } = checkerStage;
+    for (const invalidStage of [
+      withoutProfile,
+      { ...checkerStage, workflowProfile: 'producer' },
+      { ...checkerStage, workflowProfile: 'research' },
+    ]) {
+      expect(compileWorkflowDef({ ...CHECKER, stages: [CHECKER.stages[0], invalidStage] }, bindingEnvironment()))
+        .toMatchObject({ ok: false, reason: 'review-workflow-profile-required' });
+    }
+  });
+
+  it('defends programmatic definitions against non-linear or nested review graphs', () => {
+    const check = CHECKER.stages[1];
+    const next = CHECKER.stages[2];
+    const duplicate = { ...check, id: 'check-again' };
+    const reviewOfReview = { ...check, id: 'review-again', dependsOn: ['check'], review: { ...check.review!, subjectStageId: 'check' } };
+    const cases: Array<[WorkflowStageDef[], string]> = [
+      [[CHECKER.stages[0], { ...check, dependsOn: ['create', 'next'] }, next], 'review-depends-on-subject-only'],
+      [[CHECKER.stages[0], check, next, duplicate], 'duplicate-review-subject'],
+      [[CHECKER.stages[0], check, reviewOfReview], 'review-of-review-not-allowed'],
+    ];
+    for (const [stages, reason] of cases) {
+      expect(compileWorkflowDef({ ...CHECKER, stages }, bindingEnvironment())).toMatchObject({ ok: false, reason });
+    }
+  });
+
+  it('fails closed for missing bindings, wrong roles, unknown/non-bound/project-mismatched agents, and disallowed/default-mismatched profiles', () => {
+    expect(compileWorkflowDef(ASSIGNED, { registry: REGISTRY })).toMatchObject({ ok: false, reason: 'assignment-binding-environment-missing' });
+    const wrongRole = { ...ASSIGNED, stages: [{ ...ASSIGNED.stages[0], profileId: 'manager:claude:claude-opus-4-8' }] };
+    const wrongRoleAgents = bindingEnvironment();
+    wrongRoleAgents.declaredAgents.get('fyt-production')!.allowedProfiles!.push('manager:claude:claude-opus-4-8');
+    expect(compileWorkflowDef(wrongRole, wrongRoleAgents)).toMatchObject({ ok: false, reason: 'assigned-profile-role-mismatch' });
+    const unknown = { ...ASSIGNED, stages: [{ ...ASSIGNED.stages[0], agentId: 'missing-agent' }] };
+    expect(compileWorkflowDef(unknown, bindingEnvironment())).toMatchObject({ ok: false, reason: 'assigned-agent-not-declared' });
+    const nonBound = bindingEnvironment();
+    nonBound.declaredAgents.get('fyt-production')!.runnerBound = false;
+    expect(compileWorkflowDef(ASSIGNED, nonBound)).toMatchObject({ ok: false, reason: 'assigned-agent-not-runner-bound' });
+    const otherProject = bindingEnvironment();
+    otherProject.declaredAgents.get('fyt-production')!.projects = ['faceless-youtube'];
+    expect(compileWorkflowDef(ASSIGNED, otherProject)).toMatchObject({ ok: false, reason: 'assigned-agent-project-mismatch' });
+    const disallowed = bindingEnvironment();
+    disallowed.declaredAgents.get('fyt-production')!.allowedProfiles = ['worker:codex:gpt-5.6-sol'];
+    expect(compileWorkflowDef(ASSIGNED, disallowed)).toMatchObject({ ok: false, reason: 'assigned-profile-not-allowed' });
+    const badDefault = bindingEnvironment();
+    badDefault.declaredAgents.get('fyt-production')!.defaultProfile = 'worker:claude:claude-sonnet-5';
+    expect(compileWorkflowDef(ASSIGNED, badDefault)).toMatchObject({ ok: false, reason: 'assigned-default-profile-mismatch' });
+  });
+
+  it('emits the exact refusal diagnostic for every feasible assignment binding failure', () => {
+    const unbound = bindingEnvironment();
+    unbound.declaredAgents.get('fyt-production')!.runnerBound = false;
+    expect(compileWorkflowDef(ASSIGNED, unbound)).toMatchObject({
+      ok: false, reason: 'assigned-agent-not-runner-bound', detail: "assigned agent 'fyt-production' is not runner-bound",
+    });
+
+    const unknown = { ...ASSIGNED, stages: [{ ...ASSIGNED.stages[0], agentId: 'missing-agent' }] };
+    expect(compileWorkflowDef(unknown, bindingEnvironment())).toMatchObject({
+      ok: false, reason: 'assigned-agent-not-declared', detail: "assigned agent 'missing-agent' is not declared",
+    });
+
+    const otherProject = bindingEnvironment();
+    otherProject.declaredAgents.get('fyt-production')!.projects = ['faceless-youtube'];
+    expect(compileWorkflowDef(ASSIGNED, otherProject)).toMatchObject({
+      ok: false, reason: 'assigned-agent-project-mismatch', detail: "assigned agent 'fyt-production' is not declared for project 'kb-ops'",
+    });
+
+    const disallowed = bindingEnvironment();
+    disallowed.declaredAgents.get('fyt-production')!.allowedProfiles = ['worker:codex:gpt-5.6-sol'];
+    expect(compileWorkflowDef(ASSIGNED, disallowed)).toMatchObject({
+      ok: false, reason: 'assigned-profile-not-allowed', detail: "assigned profile 'worker:claude:claude-sonnet-5' is not allowed for agent 'fyt-production'",
+    });
+
+    const wrongRole = { ...ASSIGNED, stages: [{ ...ASSIGNED.stages[0], profileId: 'manager:claude:claude-opus-4-8' }] };
+    const wrongRoleEnvironment = bindingEnvironment();
+    wrongRoleEnvironment.declaredAgents.get('fyt-production')!.allowedProfiles!.push('manager:claude:claude-opus-4-8');
+    expect(compileWorkflowDef(wrongRole, wrongRoleEnvironment)).toMatchObject({
+      ok: false, reason: 'assigned-profile-role-mismatch', detail: "assigned execution profile 'manager:claude:claude-opus-4-8' is not a worker profile",
+    });
+
+    const codexSelected = { ...ASSIGNED, stages: [{ ...ASSIGNED.stages[0], profileId: 'worker:codex:gpt-5.6-sol' }] };
+    expect(compileWorkflowDef(codexSelected, bindingEnvironment({ availableRuntimes: new Set<'claude' | 'codex'>(['claude']) }))).toMatchObject({
+      ok: false, reason: 'assigned-runtime-unavailable', detail: "runtime 'codex' is unavailable for assigned profile 'worker:codex:gpt-5.6-sol'",
+    });
+  });
+
+  it('rejects a manager or worker whose declared default profile has the wrong logical role', () => {
+    const managerDefaultWorker = bindingEnvironment();
+    const manager = managerDefaultWorker.declaredAgents.get('fyt-runner')!;
+    manager.defaultProfile = 'worker:codex:gpt-5.6-sol';
+    manager.allowedProfiles = ['manager:claude:claude-opus-4-8', 'worker:codex:gpt-5.6-sol'];
+    manager.runtime = 'codex';
+    manager.model = 'gpt-5.6-sol';
+    expect(compileWorkflowDef(ASSIGNED, managerDefaultWorker))
+      .toMatchObject({ ok: false, reason: 'assigned-default-profile-role-mismatch' });
+
+    const workerDefaultManager = bindingEnvironment();
+    const worker = workerDefaultManager.declaredAgents.get('fyt-production')!;
+    worker.defaultProfile = 'manager:claude:claude-opus-4-8';
+    worker.allowedProfiles = ['manager:claude:claude-opus-4-8', 'worker:claude:claude-sonnet-5'];
+    worker.runtime = 'claude';
+    worker.model = 'claude-opus-4-8';
+    expect(compileWorkflowDef(ASSIGNED, workerDefaultManager))
+      .toMatchObject({ ok: false, reason: 'assigned-default-profile-role-mismatch' });
+  });
+
+  it('fails when the selected assignment runtime has no available adapter and snapshots rather than retaining declaration references', () => {
+    const unavailable = bindingEnvironment({ availableRuntimes: new Set<'claude' | 'codex'>(['claude']) });
+    const codexSelected = { ...ASSIGNED, stages: [{ ...ASSIGNED.stages[0], profileId: 'worker:codex:gpt-5.6-sol' }] };
+    expect(compileWorkflowDef(codexSelected, unavailable)).toMatchObject({ ok: false, reason: 'assigned-runtime-unavailable' });
+    const env = bindingEnvironment();
+    const compiled = compileWorkflowDef(ASSIGNED, env);
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) return;
+    env.declaredAgents.get('fyt-production')!.sourceHash = 'c'.repeat(64);
+    env.executionProfiles[3].model = 'mutated-model';
+    expect(compiled.value.stages[0].assignment).toMatchObject({ declarationHash: 'b'.repeat(64), model: 'claude-sonnet-5' });
   });
 
   it('includes the four required governance refs', () => {

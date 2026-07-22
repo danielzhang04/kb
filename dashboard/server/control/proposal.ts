@@ -35,6 +35,9 @@ const SAFE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const SAFE_ACTION_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
 const RUNTIME_ID_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 const MODEL_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+const AGENT_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
+const EXECUTION_PROFILE_ID_RE = /^[a-z0-9][a-z0-9:._-]{0,127}$/;
+const DECLARATION_HASH_RE = /^[a-f0-9]{64}$/;
 const SAFE_PATH_SEGMENT_RE = /^[A-Za-z0-9._-]+$/;
 const WINDOWS_DEVICE_SEGMENT_RE = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i;
 
@@ -60,8 +63,19 @@ export interface ProposalRouting {
   model: string;
 }
 
+/** Immutable compiler-resolved declaration/profile binding. Never accepted from assistant/browser input. */
+export interface ResolvedAgentAssignment {
+  agentId: string;
+  declarationPath: string;
+  declarationHash: string;
+  profileId: string;
+  runtime: 'claude' | 'codex';
+  model: string;
+}
+
 export interface ProposalManager extends ProposalRouting {
   requiredSkills: string[];
+  assignment?: ResolvedAgentAssignment;
 }
 
 export interface ProposalScope {
@@ -86,6 +100,16 @@ export interface ProposalHumanGate {
   prompt: string;
 }
 
+/** Compiler-only checker review contract. Browser proposals cannot carry this field. */
+export interface ProposalReviewCriterion { id: string; description: string; }
+export interface ProposalReview {
+  subjectStageId: string;
+  maxCreatorReworks: number;
+  criteria: ProposalReviewCriterion[];
+}
+/** Compiler-only checker completion gate. Browser proposals cannot carry this field. */
+export interface ProposalCompletionGate { id: string; kind: 'approval'; prompt: string; requiresReview: 'pass'; }
+
 /** Each stage is one executable task node in the deterministic DAG. */
 export interface ProposalStage {
   id: string;
@@ -101,6 +125,10 @@ export interface ProposalStage {
   artifacts: ProposalArtifact[];
   checkpoints: ProposalCheckpoint[];
   humanGates: ProposalHumanGate[];
+  assignment?: ResolvedAgentAssignment;
+  workflowProfile?: string;
+  review?: ProposalReview;
+  completionGate?: ProposalCompletionGate;
 }
 
 export interface PlanProposal {
@@ -162,15 +190,21 @@ const TOP_REQUIRED_FIELDS = [
 ] as const;
 const TOP_FIELDS = new Set<string>([...TOP_REQUIRED_FIELDS, 'profile']);
 const MANAGER_FIELDS = new Set(['runtime', 'model', 'requiredSkills']);
+const COMPILED_MANAGER_FIELDS = new Set([...MANAGER_FIELDS, 'assignment']);
 const ROUTING_FIELDS = new Set(['runtime', 'model']);
 const SCOPE_FIELDS = new Set(['read', 'write']);
 const STAGE_FIELDS = new Set([
   'id', 'title', 'action', 'target', 'workOrder', 'riskTier', 'dependsOn', 'worker', 'requiredSkills',
   'scope', 'artifacts', 'checkpoints', 'humanGates',
 ]);
+const COMPILED_STAGE_FIELDS = new Set([...STAGE_FIELDS, 'assignment', 'workflowProfile', 'review', 'completionGate']);
+const ASSIGNMENT_FIELDS = new Set(['agentId', 'declarationPath', 'declarationHash', 'profileId', 'runtime', 'model']);
 const ARTIFACT_FIELDS = new Set(['id', 'path', 'description']);
 const CHECKPOINT_FIELDS = new Set(['id', 'label']);
 const HUMAN_GATE_FIELDS = new Set(['id', 'kind', 'prompt']);
+const REVIEW_FIELDS = new Set(['subjectStageId', 'maxCreatorReworks', 'criteria']);
+const REVIEW_CRITERION_FIELDS = new Set(['id', 'description']);
+const COMPLETION_GATE_FIELDS = new Set(['id', 'kind', 'prompt', 'requiresReview']);
 const SOURCE_FIELDS = new Set(['role', 'state', 'visibility', 'text']);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -308,6 +342,42 @@ function validateRouting(
   return { ok: true, value: { runtime: value.runtime, model: value.model, requiredSkills: skills.value } };
 }
 
+function validateResolvedAssignment(value: unknown, label: string): ProposalValidation<ResolvedAgentAssignment> {
+  if (!isRecord(value)) return { ok: false, detail: `${label} must be an object` };
+  const fields = exactFields(value, ASSIGNMENT_FIELDS, [...ASSIGNMENT_FIELDS]);
+  if (fields) return { ok: false, detail: `${label}: ${fields}` };
+  if (typeof value.agentId !== 'string' || !AGENT_ID_RE.test(value.agentId)) {
+    return { ok: false, detail: `${label}.agentId must be a safe declared agent id` };
+  }
+  const declarationPath = `agents/${value.agentId}.md`;
+  if (value.declarationPath !== declarationPath || !isSafeRepoRelativePath(value.declarationPath)) {
+    return { ok: false, detail: `${label}.declarationPath must be the canonical declaration path for agentId` };
+  }
+  if (typeof value.declarationHash !== 'string' || !DECLARATION_HASH_RE.test(value.declarationHash)) {
+    return { ok: false, detail: `${label}.declarationHash must be a lowercase SHA-256 hash` };
+  }
+  if (typeof value.profileId !== 'string' || !EXECUTION_PROFILE_ID_RE.test(value.profileId)) {
+    return { ok: false, detail: `${label}.profileId must be a safe execution profile id` };
+  }
+  if (value.runtime !== 'claude' && value.runtime !== 'codex') {
+    return { ok: false, detail: `${label}.runtime must be claude or codex` };
+  }
+  if (typeof value.model !== 'string' || !MODEL_ID_RE.test(value.model)) {
+    return { ok: false, detail: `${label}.model must be a valid model identifier` };
+  }
+  return {
+    ok: true,
+    value: {
+      agentId: value.agentId,
+      declarationPath,
+      declarationHash: value.declarationHash,
+      profileId: value.profileId,
+      runtime: value.runtime,
+      model: value.model,
+    },
+  };
+}
+
 function validateArtifacts(value: unknown, label: string): ProposalValidation<ProposalArtifact[]> {
   if (!Array.isArray(value) || value.length > MAX_ARTIFACTS) {
     return { ok: false, detail: `${label} must contain 0-${MAX_ARTIFACTS} items` };
@@ -383,10 +453,15 @@ function validateHumanGates(value: unknown, label: string): ProposalValidation<P
   return { ok: true, value: result };
 }
 
-function validateStage(value: unknown, index: number, registry: ProposalRegistry): ProposalValidation<ProposalStage> {
+function validateStage(
+  value: unknown,
+  index: number,
+  registry: ProposalRegistry,
+  allowResolvedAssignments: boolean,
+): ProposalValidation<ProposalStage> {
   const label = `stages[${index}]`;
   if (!isRecord(value)) return { ok: false, detail: `${label} must be an object` };
-  const fields = exactFields(value, STAGE_FIELDS, [...STAGE_FIELDS]);
+  const fields = exactFields(value, allowResolvedAssignments ? COMPILED_STAGE_FIELDS : STAGE_FIELDS, [...STAGE_FIELDS]);
   if (fields) return { ok: false, detail: `${label}: ${fields}` };
   const id = validateId(value.id, `${label}.id`);
   if (!id.ok) return id;
@@ -416,6 +491,76 @@ function validateStage(value: unknown, index: number, registry: ProposalRegistry
   if (!checkpoints.ok) return checkpoints;
   const humanGates = validateHumanGates(value.humanGates, `${label}.humanGates`);
   if (!humanGates.ok) return humanGates;
+  let assignment: ResolvedAgentAssignment | undefined;
+  if (allowResolvedAssignments && Object.prototype.hasOwnProperty.call(value, 'assignment')) {
+    const parsed = validateResolvedAssignment(value.assignment, `${label}.assignment`);
+    if (!parsed.ok) return parsed;
+    if (parsed.value.runtime !== (worker.value as ProposalRouting).runtime || parsed.value.model !== (worker.value as ProposalRouting).model) {
+      return { ok: false, detail: `${label}.assignment runtime/model must match worker routing` };
+    }
+    assignment = parsed.value;
+  }
+  let workflowProfile: string | undefined;
+  if (allowResolvedAssignments && Object.prototype.hasOwnProperty.call(value, 'workflowProfile')) {
+    const parsed = validateId(value.workflowProfile, `${label}.workflowProfile`);
+    if (!parsed.ok) return parsed;
+    if (!(registry.workflowProfiles ?? []).includes(parsed.value)) {
+      return { ok: false, detail: `${label}.workflowProfile '${parsed.value}' is not a server-owned workflow execution profile` };
+    }
+    workflowProfile = parsed.value;
+  }
+  let review: ProposalReview | undefined;
+  if (allowResolvedAssignments && Object.prototype.hasOwnProperty.call(value, 'review')) {
+    if (!assignment || !value.action.startsWith('review:') || workflowProfile !== 'checker-readonly') {
+      return { ok: false, detail: `${label}.review requires a review action, resolved assignment, and workflowProfile 'checker-readonly'` };
+    }
+    if (!isRecord(value.review)) return { ok: false, detail: `${label}.review must be an object` };
+    const reviewFields = exactFields(value.review, REVIEW_FIELDS, ['subjectStageId', 'maxCreatorReworks', 'criteria']);
+    if (reviewFields) return { ok: false, detail: `${label}.review: ${reviewFields}` };
+    const subjectStageId = validateId(value.review.subjectStageId, `${label}.review.subjectStageId`);
+    if (!subjectStageId.ok) return subjectStageId;
+    if (!(dependsOn.value as string[]).includes(subjectStageId.value)) {
+      return { ok: false, detail: `${label}.review.subjectStageId must be a direct dependency` };
+    }
+    const maxCreatorReworks = value.review.maxCreatorReworks;
+    if (typeof maxCreatorReworks !== 'number' || !Number.isSafeInteger(maxCreatorReworks) || maxCreatorReworks < 0 || maxCreatorReworks > 2) {
+      return { ok: false, detail: `${label}.review.maxCreatorReworks must be an integer from 0 to 2` };
+    }
+    if (!Array.isArray(value.review.criteria) || value.review.criteria.length < 1 || value.review.criteria.length > 16) {
+      return { ok: false, detail: `${label}.review.criteria must contain 1-16 items` };
+    }
+    const criteria: ProposalReviewCriterion[] = [];
+    const criterionIds = new Set<string>();
+    for (let criterionIndex = 0; criterionIndex < value.review.criteria.length; criterionIndex += 1) {
+      const raw = value.review.criteria[criterionIndex];
+      if (!isRecord(raw)) return { ok: false, detail: `${label}.review.criteria[${criterionIndex}] must be an object` };
+      const criterionFields = exactFields(raw, REVIEW_CRITERION_FIELDS, ['id', 'description']);
+      if (criterionFields) return { ok: false, detail: `${label}.review.criteria[${criterionIndex}]: ${criterionFields}` };
+      const criterionId = validateId(raw.id, `${label}.review.criteria[${criterionIndex}].id`);
+      if (!criterionId.ok) return criterionId;
+      const description = validateText(raw.description, `${label}.review.criteria[${criterionIndex}].description`, MAX_TITLE_CHARS);
+      if (!description.ok) return description;
+      if (criterionIds.has(criterionId.value)) return { ok: false, detail: `${label}.review.criteria ids must be unique` };
+      criterionIds.add(criterionId.value);
+      criteria.push({ id: criterionId.value, description: description.value });
+    }
+    review = { subjectStageId: subjectStageId.value, maxCreatorReworks, criteria };
+  }
+  let completionGate: ProposalCompletionGate | undefined;
+  if (allowResolvedAssignments && Object.prototype.hasOwnProperty.call(value, 'completionGate')) {
+    if (!review) return { ok: false, detail: `${label}.completionGate requires review` };
+    if (!isRecord(value.completionGate)) return { ok: false, detail: `${label}.completionGate must be an object` };
+    const gateFields = exactFields(value.completionGate, COMPLETION_GATE_FIELDS, ['id', 'kind', 'prompt', 'requiresReview']);
+    if (gateFields) return { ok: false, detail: `${label}.completionGate: ${gateFields}` };
+    const gateId = validateId(value.completionGate.id, `${label}.completionGate.id`);
+    if (!gateId.ok) return gateId;
+    if (value.completionGate.kind !== 'approval' || value.completionGate.requiresReview !== 'pass') {
+      return { ok: false, detail: `${label}.completionGate must be approval requiring review pass` };
+    }
+    const prompt = validateText(value.completionGate.prompt, `${label}.completionGate.prompt`, 2_000);
+    if (!prompt.ok) return prompt;
+    completionGate = { id: gateId.value, kind: 'approval', prompt: prompt.value, requiresReview: 'pass' };
+  }
   return {
     ok: true,
     value: {
@@ -432,12 +577,19 @@ function validateStage(value: unknown, index: number, registry: ProposalRegistry
       artifacts: artifacts.value,
       checkpoints: checkpoints.value,
       humanGates: humanGates.value,
+      ...(assignment ? { assignment } : {}),
+      ...(workflowProfile ? { workflowProfile } : {}),
+      ...(review ? { review } : {}),
+      ...(completionGate ? { completionGate } : {}),
     },
   };
 }
 
-/** Validate the complete closed v1 wire shape. There is no coercion and unknown fields fail closed. */
-export function validatePlanProposal(input: unknown, registry: ProposalRegistry): ProposalValidation<PlanProposal> {
+function validatePlanProposalInternal(
+  input: unknown,
+  registry: ProposalRegistry,
+  allowResolvedAssignments: boolean,
+): ProposalValidation<PlanProposal> {
   if (!isRecord(input)) return { ok: false, detail: 'proposal must be an object' };
   try {
     const encoded = JSON.stringify(input);
@@ -460,8 +612,29 @@ export function validatePlanProposal(input: unknown, registry: ProposalRegistry)
   if (!title.ok) return title;
   const summary = validateText(input.summary, 'summary', MAX_SUMMARY_CHARS);
   if (!summary.ok) return summary;
-  const manager = validateRouting(input.manager, 'manager', registry, true);
+  if (!isRecord(input.manager)) return { ok: false, detail: 'manager must be an object' };
+  const managerFields = exactFields(
+    input.manager,
+    allowResolvedAssignments ? COMPILED_MANAGER_FIELDS : MANAGER_FIELDS,
+    ['runtime', 'model', 'requiredSkills'],
+  );
+  if (managerFields) return { ok: false, detail: `manager: ${managerFields}` };
+  const manager = validateRouting(
+    allowResolvedAssignments
+      ? { runtime: input.manager.runtime, model: input.manager.model, requiredSkills: input.manager.requiredSkills }
+      : input.manager,
+    'manager', registry, true,
+  );
   if (!manager.ok) return manager;
+  let managerAssignment: ResolvedAgentAssignment | undefined;
+  if (allowResolvedAssignments && Object.prototype.hasOwnProperty.call(input.manager, 'assignment')) {
+    const parsed = validateResolvedAssignment(input.manager.assignment, 'manager.assignment');
+    if (!parsed.ok) return parsed;
+    if (parsed.value.runtime !== (manager.value as ProposalManager).runtime || parsed.value.model !== (manager.value as ProposalManager).model) {
+      return { ok: false, detail: 'manager.assignment runtime/model must match manager routing' };
+    }
+    managerAssignment = parsed.value;
+  }
   // Fail closed: `profile`, when declared, must name a member of the server-owned closed set. An absent
   // or empty registry list admits NOTHING — it can never be read as "profile unconstrained".
   let profile: string | undefined;
@@ -495,7 +668,7 @@ export function validatePlanProposal(input: unknown, registry: ProposalRegistry)
   const stages: ProposalStage[] = [];
   const ids = new Set<string>();
   for (let index = 0; index < input.stages.length; index += 1) {
-    const stage = validateStage(input.stages[index], index, registry);
+    const stage = validateStage(input.stages[index], index, registry, allowResolvedAssignments);
     if (!stage.ok) return stage;
     if (ids.has(stage.value.id)) return { ok: false, detail: `duplicate stage id '${stage.value.id}'` };
     ids.add(stage.value.id);
@@ -510,6 +683,18 @@ export function validatePlanProposal(input: unknown, registry: ProposalRegistry)
         return { ok: false, detail: `stage '${stage.id}' cannot depend on itself` };
       }
     }
+  }
+  const reviewStageIds = new Set(stages.filter((stage) => stage.review !== undefined).map((stage) => stage.id));
+  const reviewSubjects = new Set<string>();
+  for (const stage of stages) {
+    if (!stage.review) continue;
+    const subjectStageId = stage.review.subjectStageId;
+    if (stage.dependsOn.length !== 1 || stage.dependsOn[0] !== subjectStageId) {
+      return { ok: false, detail: `review stage '${stage.id}' must depend only on its subject '${subjectStageId}'` };
+    }
+    if (reviewSubjects.has(subjectStageId)) return { ok: false, detail: `multiple review stages target subject '${subjectStageId}'` };
+    if (reviewStageIds.has(subjectStageId)) return { ok: false, detail: `review stage '${stage.id}' cannot review review stage '${subjectStageId}'` };
+    reviewSubjects.add(subjectStageId);
   }
   const indegree = new Map(stages.map((stage) => [stage.id, stage.dependsOn.length]));
   const children = new Map(stages.map((stage) => [stage.id, [] as string[]]));
@@ -534,7 +719,10 @@ export function validatePlanProposal(input: unknown, registry: ProposalRegistry)
     project: project.value,
     title: title.value,
     summary: summary.value,
-    manager: manager.value as ProposalManager,
+    manager: {
+      ...(manager.value as ProposalManager),
+      ...(managerAssignment ? { assignment: managerAssignment } : {}),
+    },
     scope: scope.value,
     governanceRefs: governanceRefs.value,
     stages,
@@ -543,6 +731,16 @@ export function validatePlanProposal(input: unknown, registry: ProposalRegistry)
   // content hash of every pre-existing profile-less proposal.
   if (profile !== undefined) value.profile = profile;
   return { ok: true, value };
+}
+
+/** Validate untrusted/browser proposal wire input. Compiler-only resolved assignments remain forbidden. */
+export function validatePlanProposal(input: unknown, registry: ProposalRegistry): ProposalValidation<PlanProposal> {
+  return validatePlanProposalInternal(input, registry, false);
+}
+
+/** Validate a server-compiled/stored proposal which may carry immutable resolved assignment snapshots. */
+export function validateServerCompiledPlanProposal(input: unknown, registry: ProposalRegistry): ProposalValidation<PlanProposal> {
+  return validatePlanProposalInternal(input, registry, true);
 }
 
 class DuplicateJsonKeyError extends Error {

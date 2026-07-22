@@ -33,6 +33,7 @@ import { registerApprovalsRoutes } from '../approvals/routes.ts';
 import { drainVibeProcesses } from '../vibe/session.ts';
 import { drainAsyncGit } from '../write/asyncGit.ts';
 import { createFileControlPlaneStore } from '../control/store.ts';
+import { createFileAssignmentAmendmentStore } from '../workflows/amendmentStore.ts';
 import { registerControlRoutes } from '../control/routes.ts';
 import { buildActivatedExecution } from '../control/activation.ts';
 
@@ -64,7 +65,7 @@ export function makeSurfaceContext(
 ): SurfaceContext {
   const sessionConfig = overrides.sessionConfig ?? { secret: resolveSessionSecret(), ttlMs: resolveSessionTtlMs() };
   const repoRoot = overrides.repoRoot ?? resolveRepoRoot();
-  const stateRoot = resolveDashboardStateRoot();
+  const stateRoot = overrides.stateRoot ?? resolveDashboardStateRoot();
   const controlStore = overrides.controlStore ?? createFileControlPlaneStore(stateRoot);
   // Wave-A executor activation (env-gated, default OFF). When any of the three executor fields is already
   // supplied as an override (tests, or a future explicit injection), activation is skipped entirely so no
@@ -80,6 +81,8 @@ export function makeSurfaceContext(
     : build({ env: activation.env, controlStore, repoRoot, stateRoot });
   return {
     repoRoot,
+    stateRoot,
+    assignmentAmendmentStore: overrides.assignmentAmendmentStore ?? createFileAssignmentAmendmentStore(stateRoot),
     durableRepoRoot: overrides.durableRepoRoot ?? overrides.repoRoot ?? resolveDurableRepoRoot(),
     sessionConfig,
     allowedOrigins: overrides.allowedOrigins ?? resolveAllowedOrigins(),

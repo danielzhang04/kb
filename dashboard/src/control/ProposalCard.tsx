@@ -1,4 +1,4 @@
-import type { ProposalDecision, ProposalRevisionDto } from './controlClient';
+import type { ProposalDecision, ProposalRevisionDto, ResolvedAgentAssignmentDto } from './controlClient';
 import { ProposalDiff } from './ProposalDiff';
 import './control.css';
 
@@ -7,6 +7,10 @@ export interface ProposalCardProps {
   busy?: boolean;
   onDecision?: (decision: ProposalDecision) => void | Promise<void>;
   onLaunch?: () => void | Promise<void>;
+}
+
+function logicalAssignment(assignment: ResolvedAgentAssignmentDto | null | undefined): string {
+  return assignment ? `${assignment.agentId} · ${assignment.profileId}` : 'unassigned';
 }
 
 function shortHash(hash: string): string {
@@ -33,7 +37,8 @@ export function ProposalCard({ revision, busy = false, onDecision, onLaunch }: P
 
       <dl className="control-facts">
         <div><dt>Project</dt><dd className="mc-mono">{proposal.project}</dd></div>
-        <div><dt>Manager</dt><dd className="mc-mono">{proposal.manager.runtime} · {proposal.manager.model}</dd></div>
+        <div><dt>Manager executor</dt><dd className="mc-mono">{proposal.manager.runtime} · {proposal.manager.model}</dd></div>
+        <div><dt>Logical assignment</dt><dd className="mc-mono">{logicalAssignment(proposal.manager.assignment)}</dd></div>
         <div><dt>Exact hash</dt><dd><code title={revision.contentHash}>{shortHash(revision.contentHash)}</code></dd></div>
         <div><dt>Governance</dt><dd>{proposal.governanceRefs.join(', ')}</dd></div>
       </dl>
@@ -47,7 +52,8 @@ export function ProposalCard({ revision, busy = false, onDecision, onLaunch }: P
                 <strong>{stage.title}</strong>
                 <span className={`mc-badge mc-badge--${stage.riskTier.toLowerCase()}`}>{stage.riskTier}</span>
               </div>
-              <span className="mc-mono">{stage.worker.runtime} · {stage.worker.model}</span>
+              <span>Executor <span className="mc-mono">{stage.worker.runtime} · {stage.worker.model}</span></span>
+              <span>Logical assignment <span className="mc-mono">{logicalAssignment(stage.assignment)}</span></span>
               <span>{stage.action} → {stage.target}</span>
               <span>{stage.dependsOn.length ? `After ${stage.dependsOn.join(', ')}` : 'No dependencies'}</span>
               {stage.humanGates.length ? <span>{stage.humanGates.length} human gate(s)</span> : null}

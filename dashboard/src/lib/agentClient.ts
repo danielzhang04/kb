@@ -31,6 +31,10 @@ export interface AgentDetailDto {
     path: string;
     source: string | null;
     instructions: string | null;
+    /** Declared default execution profile id, or null for a legacy declaration. */
+    defaultProfile: string | null;
+    /** Declared execution profile ids this declaration permits, or null for a legacy declaration. */
+    allowedProfiles: string[] | null;
   } | null;
   codebases: AgentCodebaseFact[];
   workflows: AgentWorkflowFact[];

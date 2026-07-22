@@ -1,3 +1,10 @@
+import type {
+  ProposalCompletionGate,
+  ProposalReview,
+  ResolvedAgentAssignment,
+} from './proposal.ts';
+import type { ReviewOutcome } from './reviewOutcome.ts';
+
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 export type JsonObject = { [key: string]: JsonValue };
@@ -52,6 +59,14 @@ export type StageState = 'blocked' | 'ready' | 'running' | 'waiting-human' | 'su
 export type AttemptState = 'queued' | 'starting' | 'running' | 'waiting-human' | 'succeeded' | 'failed' | 'stopped' | 'interrupted';
 export type ManagedSessionState = 'pending' | 'starting' | 'running' | 'waiting' | 'completed' | 'failed' | 'stopped' | 'interrupted';
 
+/** Immutable server-derived origin for a workflow launched from an agent Composer workspace. */
+export interface AgentWorkspaceLaunchProvenance {
+  composerRef: string;
+  agentId: string;
+  declarationPath: string;
+  declarationHash: string;
+}
+
 export interface Run {
   runRef: string;
   predecessorRunRef: string | null;
@@ -64,6 +79,10 @@ export interface Run {
   version: number;
   managerSessionRef: string;
   managerGeneration: number;
+  /** Compiler-resolved declaration/profile provenance; never an executor identity. */
+  managerAssignment: ResolvedAgentAssignment | null;
+  /** Null for ordinary launches; never contains a provider session id. */
+  agentWorkspaceLaunch: AgentWorkspaceLaunchProvenance | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -86,8 +105,84 @@ export interface Stage {
   state: StageState;
   version: number;
   currentAttemptRef: string | null;
+  /** Compiler-resolved declaration/profile provenance; never an executor identity. */
+  assignment: ResolvedAgentAssignment | null;
+  /** Compiler-owned checker contract; immutable after launch. */
+  workflowProfile: string | null;
+  /** Compiler-owned checker review contract; immutable after launch. */
+  review: ProposalReview | null;
+  /** Compiler-owned completion gate; immutable after launch. */
+  completionGate: ProposalCompletionGate | null;
+  /** Current logical creator projection; immutable history lives in StageGeneration. */
+  currentGeneration: number;
+  currentGenerationRef: string | null;
+  acceptedGenerationRef: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface StageGeneration {
+  generationRef: string;
+  runRef: string;
+  logicalStageRef: string;
+  logicalStageId: string;
+  generation: number;
+  predecessorGenerationRef: string | null;
+  attemptRef: string;
+  canonicalResultOperationKey: string | null;
+  resultHash: string | null;
+  resultCardRef: string | null;
+  baseCommit: string | null;
+  canonicalCommit: string | null;
+  state: 'queued' | 'committed';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GenerationSupersession {
+  runRef: string;
+  predecessorGenerationRef: string;
+  successorGenerationRef: string;
+  failedReviewReceiptRef: string;
+  operationKey: string;
+  createdAt: string;
+}
+
+export interface ReviewLoop {
+  reviewLoopRef: string;
+  runRef: string;
+  reviewStageRef: string;
+  subjectStageRef: string;
+  maxCreatorReworks: number;
+  reviewDefinitionHash: string;
+  reworksUsed: number;
+  state: 'awaiting-subject' | 'checking' | 'rework-queued' | 'failed' | 'parked' | 'awaiting-gate' | 'passed';
+  activeGenerationRef: string | null;
+  acceptedGenerationRef: string | null;
+  activeReceiptRef: string | null;
+  interventionRequestRef: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReviewReceipt {
+  reviewReceiptRef: string;
+  runRef: string;
+  reviewStageRef: string;
+  subjectStageRef: string;
+  subjectGenerationRef: string;
+  subjectResultHash: string;
+  checkerAttemptRef: string;
+  outcome: ReviewOutcome;
+  outcomeHash: string;
+  operationKey: string;
+  state: 'passed' | 'awaiting-completion-gate' | 'failed' | 'parked';
+  completionRequestRef: string | null;
+  interventionRequestRef: string | null;
+  version: number;
+  createdAt: string;
+  finalizedAt: string | null;
 }
 
 export interface Attempt {
@@ -101,6 +196,14 @@ export interface Attempt {
   state: AttemptState;
   version: number;
   managedSessionRef: string | null;
+  /** Immutable checker base; null for ordinary and legacy attempts. */
+  reviewSubjectGenerationRef: string | null;
+  reviewSubjectResultHash: string | null;
+  reviewSubjectCanonicalCommit: string | null;
+  /** Logical creator-generation lineage; null for ordinary/legacy attempts. */
+  logicalGeneration: number | null;
+  baseGenerationRef: string | null;
+  baseCommit: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -202,6 +305,10 @@ export interface RunDetail {
   attempts: Attempt[];
   sessions: ManagedSession[];
   humanRequests: HumanRequest[];
+  stageGenerations: StageGeneration[];
+  generationSupersessions: GenerationSupersession[];
+  reviewLoops: ReviewLoop[];
+  reviewReceipts: ReviewReceipt[];
 }
 
 export interface StorageInventoryItem {

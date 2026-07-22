@@ -17,11 +17,11 @@ function validToken(): string {
   return mintSession('user-1', CONFIG).token;
 }
 
-function recorder(): { runner: GitRunner; calls: string[][] } {
+function recorder(branch = 'claude/m1-dashboard'): { runner: GitRunner; calls: string[][] } {
   const calls: string[][] = [];
   const runner: GitRunner = (_repoRoot, args) => {
     calls.push(args);
-    if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+    if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return `${branch}\n`;
     return '';
   };
   return { runner, calls };
@@ -183,6 +183,7 @@ describe('save — sync_skills hook awareness', () => {
     // non-zero (as it would for real when the mirror has drifted), never silently retried with
     // `--no-verify`.
     const runGit: GitRunner = (_repoRoot, args) => {
+      if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'claude/m1-dashboard\n';
       if (args[0] === 'commit') {
         throw new Error(
           'commit blocked: .claude/skills drifted from skills/curated (run: python scripts/sync_skills.py)',
@@ -236,7 +237,7 @@ describe('save — routes durable vs coordination via branch.ts', () => {
 
   it('reports the coordination classification and never opens a PR for a queue/** save', async () => {
     const repo = await scratch();
-    const { runner: runGit } = recorder();
+    const { runner: runGit } = recorder('ops');
     const prRequests: unknown[] = [];
     const openPr: PrOpener = (_repoRoot, req) => {
       prRequests.push(req);

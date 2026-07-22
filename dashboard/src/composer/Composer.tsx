@@ -36,6 +36,7 @@ import type {
   SkillDraft,
   TaskDraft,
   WorkflowDraft,
+  WorkflowManagerDraft,
   WorkflowStageDraft,
 } from './artifactTypes';
 import type { ComposerSession } from './workspaceClient';
@@ -64,6 +65,7 @@ export interface ComposerProps {
   composerSession?: ComposerSession;
   onComposerSessionChange?: (session: ComposerSession) => void;
   onRunningChange?: (running: boolean) => void;
+  onOpenRun?: (runRef: string) => void;
   /** WebAuthn session token — forwarded to ComposerChat, which gates every turn on it (no token, no send). */
   sessionToken?: string;
   /** Point-of-action passkey mint for signed-out Composer chat. DeployOutcome uses the same callback for
@@ -114,6 +116,7 @@ interface FormState {
   wfBody: string;
   wfProject: string;
   wfProfile: string;
+  wfManager: WorkflowManagerDraft;
   wfStages: WorkflowStageDraft[];
   // project
   projName: string;
@@ -143,6 +146,7 @@ function initialForm(): FormState {
     wfBody: '',
     wfProject: '',
     wfProfile: '',
+    wfManager: {},
     wfStages: [{ id: 'stage-1', action: '', target: '.', workOrder: '', riskTier: 'T2', dependsOn: [] }],
     projName: '',
     projDate: today(),
@@ -156,6 +160,75 @@ function initialForm(): FormState {
   };
 }
 
+/** Safe browser projection of the declaration metadata exposed by GET /api/agents. */
+interface WorkflowRosterAgent {
+  id: string;
+  declared: boolean;
+  projects: string[];
+  runnerBound: boolean;
+  defaultProfile: string | null;
+  allowedProfiles: string[] | null;
+}
+
+type AssignmentRole = 'manager' | 'worker';
+
+function profilePrefix(role: AssignmentRole): string {
+  return `${role}:`;
+}
+
+function asWorkflowRosterAgent(value: unknown): WorkflowRosterAgent | null {
+  if (!value || typeof value !== 'object') return null;
+  const raw = value as Record<string, unknown>;
+  if (
+    typeof raw.id !== 'string'
+    || raw.id === ''
+    || typeof raw.declared !== 'boolean'
+    || !Array.isArray(raw.projects)
+    || raw.projects.some((project) => typeof project !== 'string')
+    || typeof raw.runnerBound !== 'boolean'
+    || (raw.defaultProfile !== undefined && raw.defaultProfile !== null && typeof raw.defaultProfile !== 'string')
+    || (raw.allowedProfiles !== undefined
+      && raw.allowedProfiles !== null
+      && (!Array.isArray(raw.allowedProfiles) || raw.allowedProfiles.some((profile) => typeof profile !== 'string')))
+  ) return null;
+  return {
+    id: raw.id,
+    declared: raw.declared,
+    projects: [...raw.projects] as string[],
+    runnerBound: raw.runnerBound,
+    defaultProfile: typeof raw.defaultProfile === 'string' && raw.defaultProfile !== '' ? raw.defaultProfile : null,
+    allowedProfiles: Array.isArray(raw.allowedProfiles) ? [...raw.allowedProfiles] as string[] : null,
+  };
+}
+
+function profilesForRole(agent: WorkflowRosterAgent, role: AssignmentRole): string[] {
+  return (agent.allowedProfiles ?? []).filter((profile) => profile.startsWith(profilePrefix(role)));
+}
+
+function eligibleWorkflowAgents(
+  agents: WorkflowRosterAgent[] | null,
+  project: string,
+  role: AssignmentRole,
+): WorkflowRosterAgent[] {
+  if (!agents || project === '') return [];
+  return agents
+    .filter((agent) => (
+      agent.declared
+      && agent.projects.includes(project)
+      && agent.defaultProfile?.startsWith(profilePrefix(role))
+      && profilesForRole(agent, role).length > 0
+    ))
+    .sort((left, right) => left.id.localeCompare(right.id));
+}
+
+function assignmentForAgent(agent: WorkflowRosterAgent, role: AssignmentRole): WorkflowManagerDraft {
+  const profiles = profilesForRole(agent, role);
+  const profileId = agent.defaultProfile && profiles.includes(agent.defaultProfile)
+    ? agent.defaultProfile
+    : profiles[0];
+  return profileId ? { agentId: agent.id, profileId } : {};
+}
+
 /** Build the concrete C2 draft for `kind` from the flat form state. `idea` has no draft (type unresolved). */
 function buildDraft(
   kind: SeedKind,
@@ -167,7 +240,14 @@ function buildDraft(
     case 'skill':
       return { name: f.skillName, description: f.skillDescription, body: f.skillBody };
     case 'workflow':
-      return { filename: f.wfFilename, project: f.wfProject, profile: f.wfProfile, body: f.wfBody, stages: f.wfStages };
+      return {
+        filename: f.wfFilename,
+        project: f.wfProject,
+        profile: f.wfProfile,
+        manager: f.wfManager.agentId !== undefined || f.wfManager.profileId !== undefined ? f.wfManager : undefined,
+        body: f.wfBody,
+        stages: f.wfStages,
+      };
     case 'project':
       return { name: f.projName, date: f.projDate };
     case 'agent':
@@ -198,6 +278,7 @@ export function Composer({
   composerSession,
   onComposerSessionChange,
   onRunningChange,
+  onOpenRun,
   sessionToken,
   onRequestSession,
   initialKind = 'idea',
@@ -213,6 +294,8 @@ export function Composer({
   const [form, setForm] = useState<FormState>(initialForm);
   const [workflowProfiles, setWorkflowProfiles] = useState<string[] | null>(null);
   const [workflowProfilesError, setWorkflowProfilesError] = useState(false);
+  const [workflowAgents, setWorkflowAgents] = useState<WorkflowRosterAgent[] | null>(null);
+  const [workflowAgentsError, setWorkflowAgentsError] = useState(false);
 
   // Profiles are server-owned execution policy. Do not infer a default: a workflow remains undeployable
   // until this read-only registry has loaded and the operator explicitly selects one.
@@ -233,6 +316,26 @@ export function Composer({
       });
     return () => { cancelled = true; };
   }, [kind, workflowProfiles]);
+
+  // Agent declarations are composition metadata only: this read narrows the UI choices but cannot prove
+  // a profile is live or an adapter is available. The compiler validates both before execution exists.
+  useEffect(() => {
+    if (kind !== 'workflow' || workflowAgents !== null) return;
+    let cancelled = false;
+    void fetch('/api/agents')
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const body = await response.json() as unknown;
+        if (!Array.isArray(body)) throw new Error('invalid agent roster');
+        const agents = body.map(asWorkflowRosterAgent);
+        if (agents.some((agent) => agent === null)) throw new Error('invalid agent roster');
+        if (!cancelled) setWorkflowAgents(agents as WorkflowRosterAgent[]);
+      })
+      .catch(() => {
+        if (!cancelled) setWorkflowAgentsError(true);
+      });
+    return () => { cancelled = true; };
+  }, [kind, workflowAgents]);
 
   // Refs so the wrapped stream closure always reads the CURRENT kind and re-seed flag regardless of React
   // batching / closure staleness. The seed turn is: the first turn, and every turn right after a chip swap.
@@ -308,6 +411,7 @@ export function Composer({
           onRequestSession={onRequestSession}
           onSessionChange={onComposerSessionChange}
           onRunningChange={onRunningChange}
+          onOpenRun={onOpenRun}
           stream={seedingStream}
         />
       </div>
@@ -344,7 +448,14 @@ export function Composer({
             </p>
           ) : (
             <>
-              <DraftForm kind={kind as ArtifactKind} form={form} setField={setField} workflowProfiles={workflowProfiles} />
+              <DraftForm
+                kind={kind as ArtifactKind}
+                form={form}
+                setField={setField}
+                workflowProfiles={workflowProfiles}
+                workflowAgents={workflowAgents}
+                workflowAgentsError={workflowAgentsError}
+              />
 
               <p className="v-composer__deploy-note" data-testid="composer-deploy-note">
                 {deployNote(kind as ArtifactKind)}
@@ -398,11 +509,15 @@ function DraftForm({
   form,
   setField,
   workflowProfiles,
+  workflowAgents,
+  workflowAgentsError,
 }: {
   kind: ArtifactKind;
   form: FormState;
   setField: <K extends keyof FormState>(key: K, value: FormState[K]) => void;
   workflowProfiles: string[] | null;
+  workflowAgents: WorkflowRosterAgent[] | null;
+  workflowAgentsError: boolean;
 }): React.JSX.Element {
   switch (kind) {
     case 'task':
@@ -448,6 +563,15 @@ function DraftForm({
         </div>
       );
     case 'workflow':
+      const managerAgents = eligibleWorkflowAgents(workflowAgents, form.wfProject, 'manager');
+      const workerAgents = eligibleWorkflowAgents(workflowAgents, form.wfProject, 'worker');
+      const updateWorkflowProject = (project: string): void => {
+        // A declaration's project scope is part of the option filter. Changing it clears assignments
+        // rather than leaving a hidden cross-project logical identity in the draft.
+        setField('wfProject', project);
+        setField('wfManager', {});
+        setField('wfStages', form.wfStages.map((stage) => ({ ...stage, agentId: undefined, profileId: undefined })));
+      };
       return (
         <div className="v-composer__fields">
           <Field
@@ -456,7 +580,7 @@ function DraftForm({
             onChange={(v) => setField('wfFilename', v)}
             placeholder="<slug>.md"
           />
-          <Field label="Workflow project" value={form.wfProject} onChange={(v) => setField('wfProject', v)} />
+          <Field label="Workflow project" value={form.wfProject} onChange={updateWorkflowProject} />
           <label className="v-composer__field">
             <span className="v-composer__field-label">Execution profile</span>
             <select
@@ -469,6 +593,20 @@ function DraftForm({
               {(workflowProfiles ?? []).map((profile) => <option key={profile} value={profile}>{profile}</option>)}
             </select>
           </label>
+          <AssignmentControls
+            label="Workflow manager"
+            agentLabel="Workflow manager agent"
+            profileLabel="Workflow manager profile"
+            agents={managerAgents}
+            assignment={form.wfManager}
+            role="manager"
+            onChange={(next) => setField('wfManager', next)}
+          />
+          <p className="v-composer__deploy-note" data-testid="workflow-assignment-note">
+            Logical assignments do not choose a technical executor or prove adapter availability. Composition
+            and compile validate profile registry membership and adapter availability before execution.
+            {workflowAgentsError ? ' Agent declarations could not be loaded; assignments remain optional.' : ''}
+          </p>
           <Field label="Workflow notes" value={form.wfBody} onChange={(v) => setField('wfBody', v)} multiline />
           <div className="v-composer__stages" aria-label="Workflow stages">
             {form.wfStages.map((stage, index) => {
@@ -495,6 +633,17 @@ function DraftForm({
                       <option value="T1">T1</option><option value="T2">T2</option>
                     </select>
                   </label>
+                  <AssignmentControls
+                    label={`Stage ${index + 1} assignment`}
+                    agentLabel={`Stage ${index + 1} agent`}
+                    profileLabel={`Stage ${index + 1} profile`}
+                    agents={workerAgents}
+                    assignment={stage}
+                    role="worker"
+                    onChange={(next) => setField('wfStages', form.wfStages.map((item, i) => (
+                      i === index ? { ...item, agentId: next.agentId, profileId: next.profileId } : item
+                    )))}
+                  />
                   {form.wfStages.length > 1 ? (
                     <button type="button" className="mc-btn mc-btn--quiet" onClick={() => setField('wfStages', form.wfStages.filter((_, i) => i !== index))}>
                       Remove stage
@@ -547,6 +696,82 @@ function DraftForm({
         </div>
       );
   }
+}
+
+/** One logical assignment selector. It never exposes or changes a queue-card owner/runtime/model. */
+function AssignmentControls({
+  label,
+  agentLabel,
+  profileLabel,
+  agents,
+  assignment,
+  role,
+  onChange,
+}: {
+  label: string;
+  agentLabel: string;
+  profileLabel: string;
+  agents: WorkflowRosterAgent[];
+  assignment: Pick<WorkflowManagerDraft, 'agentId' | 'profileId'>;
+  role: AssignmentRole;
+  onChange: (assignment: WorkflowManagerDraft) => void;
+}): React.JSX.Element {
+  const selectedAgent = agents.find((agent) => agent.id === assignment.agentId);
+  const profiles = selectedAgent ? profilesForRole(selectedAgent, role) : [];
+  const selectedProfile = assignment.profileId ?? '';
+  const isOverride = Boolean(
+    selectedAgent
+    && selectedAgent.defaultProfile
+    && selectedProfile !== selectedAgent.defaultProfile,
+  );
+
+  return (
+    <fieldset className="v-composer__stage" aria-label={label}>
+      <legend>{label}</legend>
+      <label className="v-composer__field">
+        <span className="v-composer__field-label">Logical agent</span>
+        <select
+          aria-label={agentLabel}
+          value={assignment.agentId ?? ''}
+          onChange={(event) => {
+            const agent = agents.find((candidate) => candidate.id === event.target.value);
+            onChange(agent ? assignmentForAgent(agent, role) : {});
+          }}
+        >
+          <option value="">No logical assignment</option>
+          {agents.map((agent) => (
+            <option key={agent.id} value={agent.id}>
+              {agent.id} · {agent.runnerBound ? 'runner-bound' : 'declared only'}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="v-composer__field">
+        <span className="v-composer__field-label">Declared execution profile</span>
+        <select
+          aria-label={profileLabel}
+          value={selectedProfile}
+          disabled={!selectedAgent}
+          onChange={(event) => {
+            if (!selectedAgent) return;
+            onChange({ agentId: selectedAgent.id, profileId: event.target.value });
+          }}
+        >
+          {!selectedAgent ? <option value="">Choose an agent first</option> : null}
+          {profiles.map((profile) => <option key={profile} value={profile}>{profile}</option>)}
+        </select>
+      </label>
+      {selectedAgent ? (
+        <p className="v-composer__deploy-note" data-testid={`${agentLabel.replaceAll(' ', '-').toLowerCase()}-selection`}>
+          {isOverride
+            ? `Profile override — declared default: ${selectedAgent.defaultProfile}`
+            : selectedAgent.defaultProfile === selectedProfile
+              ? 'Declared default profile selected.'
+              : 'No declared default profile for this assignment role.'}
+        </p>
+      ) : null}
+    </fieldset>
+  );
 }
 
 /** Honest boundary copy: deploy creates a governed record; it never promises that a runner executes it. */

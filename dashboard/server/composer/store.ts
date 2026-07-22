@@ -25,6 +25,8 @@ export interface ComposerAgentBinding {
   path: string;
   /** SHA-256 of the exact declaration source selected by the server at creation time. */
   sourceHash: string;
+  /** Immutable declaration project hints captured when this workspace was created. */
+  projects?: string[];
 }
 
 /**
@@ -144,7 +146,7 @@ export function publicWorkspace(workspace: StoredWorkspace): PublicComposerWorks
     createdAt: workspace.createdAt,
     updatedAt: workspace.updatedAt,
     agent: workspace.agent
-      ? { id: workspace.agent.id, path: workspace.agent.path, sourceHash: workspace.agent.sourceHash }
+      ? { id: workspace.agent.id, path: workspace.agent.path, sourceHash: workspace.agent.sourceHash, projects: [...(workspace.agent.projects ?? [])] }
       : null,
     turns: workspace.turns.map(publicTurn),
   };

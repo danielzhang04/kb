@@ -1,6 +1,6 @@
 import Fastify from 'fastify';
 import { fileURLToPath } from 'node:url';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mintSession, type SessionConfig } from '../auth/session.ts';
 import { createInMemoryComposerStore } from '../composer/store.ts';
 import { makeSurfaceContext, registerWriteSurface } from '../http/surface.ts';
@@ -52,6 +52,7 @@ describe('control proposal routes', () => {
   let turnId: string;
   let token: string;
   let routingWrites: Array<{ cardId: string; runtime: string; model: string }>;
+  let auditRows: Array<Record<string, unknown>>;
 
   beforeEach(async () => {
     let id = 0;
@@ -73,6 +74,7 @@ describe('control proposal routes', () => {
     composerStore.releaseWriter('operator', composerRef, lease.lease);
     token = mintSession('operator', SESSION).token;
     routingWrites = [];
+    auditRows = [];
     let headReads = 0;
     app = Fastify();
     registerWriteSurface(app, makeSurfaceContext({
@@ -82,8 +84,8 @@ describe('control proposal routes', () => {
       credentials: () => [],
       composerStore,
       controlStore,
-      appendAudit: (_repoRoot, event) => ({ ts: new Date().toISOString(), ...event }),
-      appendAuditLocal: (_repoRoot, event) => ({ ts: new Date().toISOString(), ...event }),
+      appendAudit: (_repoRoot, event) => { auditRows.push(event as unknown as Record<string, unknown>); return { ts: new Date().toISOString(), ...event }; },
+      appendAuditLocal: (_repoRoot, event) => { auditRows.push(event as unknown as Record<string, unknown>); return { ts: new Date().toISOString(), ...event }; },
       runPreamble: () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }),
       opsGit: (_repoRoot, args) => {
         if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
@@ -105,6 +107,143 @@ describe('control proposal routes', () => {
 
   afterEach(async () => app.close());
 
+  function mockCompletionGate() {
+    const request = {
+      requestRef: 'request-gate', runRef: 'run-gate', stageRef: 'stage-review', kind: 'approval', revision: 1, state: 'open',
+      title: 'Review gate', prompt: 'Approve the review.', response: null, createdAt: '2026-07-18T12:00:00.000Z', updatedAt: '2026-07-18T12:00:00.000Z',
+    };
+    const receipt = {
+      reviewReceiptRef: 'receipt-gate', runRef: 'run-gate', reviewStageRef: 'stage-review', subjectStageRef: 'stage-subject',
+      subjectGenerationRef: 'generation-1', subjectResultHash: 'a'.repeat(64), checkerAttemptRef: 'attempt-check', outcome: {}, outcomeHash: 'b'.repeat(64), operationKey: 'review-outcome:run-gate:check:g1',
+      state: 'awaiting-completion-gate', completionRequestRef: request.requestRef, interventionRequestRef: null, version: 7,
+      createdAt: '2026-07-18T12:00:00.000Z', finalizedAt: null,
+    };
+    const loop = {
+      reviewLoopRef: 'loop-gate', runRef: 'run-gate', reviewStageRef: 'stage-review', subjectStageRef: 'stage-subject',
+      maxCreatorReworks: 1, reviewDefinitionHash: 'c'.repeat(64), reworksUsed: 0, state: 'awaiting-gate', activeGenerationRef: 'generation-1',
+      acceptedGenerationRef: null, activeReceiptRef: receipt.reviewReceiptRef, interventionRequestRef: null, version: 8,
+      createdAt: '2026-07-18T12:00:00.000Z', updatedAt: '2026-07-18T12:00:00.000Z',
+    };
+    const reviewStage = { stageRef: 'stage-review', runRef: 'run-gate', stageId: 'check', title: 'Check', version: 9 };
+    const subjectStage = { stageRef: 'stage-subject', runRef: 'run-gate', stageId: 'build', title: 'Build', version: 10 };
+    const detail = { run: { runRef: 'run-gate' }, stages: [reviewStage, subjectStage], attempts: [], sessions: [], humanRequests: [request], reviewLoops: [loop], reviewReceipts: [receipt] };
+    vi.spyOn(controlStore, 'getHumanRequest').mockReturnValue({ ok: true, value: request } as never);
+    vi.spyOn(controlStore, 'getRun').mockReturnValue({ ok: true, value: detail } as never);
+    const resolve = vi.spyOn(controlStore, 'resolveReviewCompletionGate').mockImplementation((_subject, _requestRef, input) => ({
+      ok: true,
+      value: {
+        request: { ...request, state: 'resolved', response: { decision: input.decision }, revision: 2 }, receipt, loop,
+        reviewStage, subjectStage, interventionRequest: input.decision === 'approved' ? null : { requestRef: 'intervention-1' },
+      },
+    } as never));
+    return { request, resolve };
+  }
+
+  /** A real store-backed gate, used to lock the HTTP replay fingerprint rather than a mocked resolver. */
+  function seedStatefulCompletionGate() {
+    const assignment = {
+      agentId: 'fyt-verifier', declarationPath: 'agents/fyt-verifier.md', declarationHash: 'c'.repeat(64),
+      profileId: 'claude:worker', runtime: 'claude' as const, model: 'claude-sonnet-5',
+    };
+    const review = { subjectStageId: 'build', maxCreatorReworks: 1, criteria: [{ id: 'grounded', description: 'Grounded.' }] };
+    const gate = { id: 'approve-check', kind: 'approval' as const, prompt: 'Approve the checker result.', requiresReview: 'pass' as const };
+    const proposal = controlStore.createProposalRevision('operator', {
+      sourceComposerRef: 'stateful-gate', sourceTurnId: 'stateful-gate-turn', title: 'Stateful completion gate',
+      snapshot: {
+        schema: 'kb.plan-proposal/v1', manager: {}, stages: [
+          { id: 'build', title: 'Build', dependsOn: [] },
+          { id: 'check', title: 'Check', action: 'review:source-grounding', dependsOn: ['build'], assignment, workflowProfile: 'checker-readonly', review, completionGate: gate },
+        ],
+      } as unknown as import('./types.ts').JsonObject,
+    });
+    if (!proposal.ok) throw new Error(proposal.detail);
+    const approved = controlStore.decideProposal('operator', proposal.value.proposalRef, 1, {
+      expectedHash: proposal.value.hash, expectedApprovalRevision: 0, decision: 'approved', idempotencyKey: 'approve-stateful-gate',
+    });
+    if (!approved.ok) throw new Error(approved.detail);
+    const created = controlStore.createRun('operator', {
+      title: 'Stateful completion gate', proposalRef: proposal.value.proposalRef, proposalRevision: 1, expectedProposalHash: proposal.value.hash,
+      managerRuntime: 'claude', managerModel: 'claude-sonnet-5', idempotencyKey: 'launch-stateful-gate',
+      stages: [
+        { stageId: 'build', title: 'Build', dependsOn: [] },
+        { stageId: 'check', title: 'Check', dependsOn: ['build'], assignment, workflowProfile: 'checker-readonly', review, completionGate: gate },
+      ],
+    });
+    if (!created.ok) throw new Error(created.detail);
+    let detail = controlStore.getRun('operator', created.value.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    let subject = detail.value.stages.find((stage) => stage.stageId === 'build');
+    let checker = detail.value.stages.find((stage) => stage.stageId === 'check');
+    if (!subject || !checker) throw new Error('stateful review stages missing');
+    const linked = controlStore.linkStageCard('operator', subject.stageRef, subject.version, 'card-stateful-build');
+    if (!linked.ok) throw new Error(linked.detail);
+    const creator = controlStore.createAttempt('operator', subject.stageRef, { expectedStageVersion: linked.value.version, runtime: 'codex', model: 'gpt-5.6-sol' });
+    if (!creator.ok) throw new Error(creator.detail);
+    const creatorStarting = controlStore.transitionAttempt('operator', creator.value.attemptRef, creator.value.version, 'starting');
+    if (!creatorStarting.ok) throw new Error(creatorStarting.detail);
+    const creatorRunning = controlStore.transitionAttempt('operator', creator.value.attemptRef, creatorStarting.value.version, 'running');
+    if (!creatorRunning.ok) throw new Error(creatorRunning.detail);
+    const creatorSucceeded = controlStore.transitionAttempt('operator', creator.value.attemptRef, creatorRunning.value.version, 'succeeded');
+    if (!creatorSucceeded.ok) throw new Error(creatorSucceeded.detail);
+    detail = controlStore.getRun('operator', created.value.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    subject = detail.value.stages.find((stage) => stage.stageId === 'build');
+    if (!subject) throw new Error('stateful subject disappeared');
+    const generation = controlStore.recordStageGeneration('operator', subject.stageRef, {
+      expectedStageVersion: subject.version, expectedAttemptVersion: creatorSucceeded.value.version, expectedGeneration: 1,
+      operationKey: `result:${created.value.run.runRef}:build`, resultHash: 'd'.repeat(64), resultCardRef: 'card-stateful-build', baseCommit: 'b'.repeat(40), canonicalCommit: 'a'.repeat(40),
+    });
+    if (!generation.ok) throw new Error(generation.detail);
+    detail = controlStore.getRun('operator', created.value.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    subject = detail.value.stages.find((stage) => stage.stageId === 'build'); checker = detail.value.stages.find((stage) => stage.stageId === 'check');
+    if (!subject || !checker) throw new Error('stateful post-generation stages missing');
+    const subjectRunning = controlStore.transitionStage('operator', subject.stageRef, subject.version, 'running');
+    if (!subjectRunning.ok) throw new Error(subjectRunning.detail);
+    const subjectSucceeded = controlStore.transitionStage('operator', subject.stageRef, subjectRunning.value.version, 'succeeded');
+    if (!subjectSucceeded.ok) throw new Error(subjectSucceeded.detail);
+    const checkerAttempt = controlStore.createAttempt('operator', checker.stageRef, {
+      expectedStageVersion: checker.version, runtime: assignment.runtime, model: assignment.model,
+      reviewSubjectGenerationRef: generation.value.generationRef, reviewSubjectResultHash: 'd'.repeat(64), reviewSubjectCanonicalCommit: 'a'.repeat(40),
+    });
+    if (!checkerAttempt.ok) throw new Error(checkerAttempt.detail);
+    const checkerStarting = controlStore.transitionAttempt('operator', checkerAttempt.value.attemptRef, checkerAttempt.value.version, 'starting');
+    if (!checkerStarting.ok) throw new Error(checkerStarting.detail);
+    const checkerRunning = controlStore.transitionAttempt('operator', checkerAttempt.value.attemptRef, checkerStarting.value.version, 'running');
+    if (!checkerRunning.ok) throw new Error(checkerRunning.detail);
+    const checkerSucceeded = controlStore.transitionAttempt('operator', checkerAttempt.value.attemptRef, checkerRunning.value.version, 'succeeded');
+    if (!checkerSucceeded.ok) throw new Error(checkerSucceeded.detail);
+    const checkerReady = controlStore.transitionStage('operator', checker.stageRef, checker.version + 1, 'ready');
+    if (!checkerReady.ok) throw new Error(checkerReady.detail);
+    const checkerActive = controlStore.transitionStage('operator', checker.stageRef, checkerReady.value.version, 'running');
+    if (!checkerActive.ok) throw new Error(checkerActive.detail);
+    const checkerDone = controlStore.transitionStage('operator', checker.stageRef, checkerActive.value.version, 'succeeded');
+    if (!checkerDone.ok) throw new Error(checkerDone.detail);
+    detail = controlStore.getRun('operator', created.value.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    checker = detail.value.stages.find((stage) => stage.stageId === 'check');
+    const loop = detail.value.reviewLoops[0];
+    if (!checker || !loop) throw new Error('stateful review loop missing');
+    const receipt = controlStore.recordReviewReceipt('operator', checker.stageRef, {
+      expectedReviewStageVersion: checker.version, expectedCheckerAttemptVersion: checkerSucceeded.value.version, expectedLoopVersion: loop.version,
+      subjectGenerationRef: generation.value.generationRef, subjectResultHash: 'd'.repeat(64), checkerAttemptRef: checkerSucceeded.value.attemptRef,
+      outcome: JSON.stringify({ schema: 'kb.review-outcome/v1', decision: 'pass', summary: 'Passed.', criteria: [{ criterionId: 'grounded', verdict: 'pass', findingIds: [] }], findings: [] }),
+      operationKey: `review-outcome:${created.value.run.runRef}:check:g1`,
+    });
+    if (!receipt.ok) throw new Error(receipt.detail);
+    detail = controlStore.getRun('operator', created.value.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    checker = detail.value.stages.find((stage) => stage.stageId === 'check');
+    const currentLoop = detail.value.reviewLoops[0];
+    if (!checker || !currentLoop) throw new Error('stateful gate attachment missing');
+    const attached = controlStore.attachReviewCompletionGate('operator', receipt.value.reviewReceiptRef, {
+      expectedReceiptVersion: receipt.value.version, expectedLoopVersion: currentLoop.version, expectedReviewStageVersion: checker.version,
+      idempotencyKey: `review-gate:${created.value.run.runRef}:check:g1`,
+    });
+    if (!attached.ok) throw new Error(attached.detail);
+    return attached.value.request;
+  }
+
   it('imports only a completed visible assistant proposal and returns a hash-bound diff', async () => {
     const response = await app.inject({
       method: 'POST', url: '/api/control/proposals/import', headers: headers(token), payload: { composerRef, turnId },
@@ -116,6 +255,78 @@ describe('control proposal routes', () => {
       diff: { schema: 'kb.plan-proposal-diff/v1', changed: true },
     });
     expect(response.json().value.hash).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it('resolves an approved review completion gate through the dedicated audited route', async () => {
+    const { request, resolve } = mockCompletionGate();
+    const response = await app.inject({
+      method: 'POST', url: `/api/control/review-completion-gates/${request.requestRef}/resolve`, headers: headers(token),
+      payload: { expectedRequestRevision: 1, decision: 'approved', idempotencyKey: 'human:request-gate:1:approved', response: 'Approved.' },
+    });
+    expect(response.statusCode, response.body).toBe(200);
+    expect(resolve).toHaveBeenCalledWith('operator', request.requestRef, expect.objectContaining({
+      expectedRequestRevision: 1, expectedReceiptVersion: 7, expectedLoopVersion: 8,
+      expectedReviewStageVersion: 9, expectedSubjectStageVersion: 10, decision: 'approved',
+    }));
+  });
+
+  it.each(['rejected', 'changes-requested'] as const)('parks a %s completion decision through the dedicated route', async (decision) => {
+    const { request, resolve } = mockCompletionGate();
+    const response = await app.inject({
+      method: 'POST', url: `/api/control/review-completion-gates/${request.requestRef}/resolve`, headers: headers(token),
+      payload: { expectedRequestRevision: 1, decision, idempotencyKey: `human:request-gate:1:${decision}` },
+    });
+    expect(response.statusCode, response.body).toBe(200);
+    expect(resolve).toHaveBeenCalledWith('operator', request.requestRef, expect.objectContaining({ decision }));
+  });
+
+  it('rejects a stale completion-gate request revision before audit or resolution', async () => {
+    const { request, resolve } = mockCompletionGate();
+    const response = await app.inject({
+      method: 'POST', url: `/api/control/review-completion-gates/${request.requestRef}/resolve`, headers: headers(token),
+      payload: { expectedRequestRevision: 0, decision: 'approved', idempotencyKey: 'human:request-gate:0:approved' },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ error: 'request-revision-changed' });
+    expect(resolve).not.toHaveBeenCalled();
+  });
+
+  it('never lets a reserved completion request through generic respond', async () => {
+    const { request, resolve } = mockCompletionGate();
+    const response = await app.inject({
+      method: 'POST', url: `/api/control/human-requests/${request.requestRef}/respond`, headers: headers(token),
+      payload: { expectedRevision: 1, decision: 'approved', idempotencyKey: 'generic-bypass' },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ error: 'review-completion-gate-reserved' });
+    expect(resolve).not.toHaveBeenCalled();
+  });
+
+  it.each(['approved', 'changes-requested'] as const)('replays an identical stateful completion-gate %s POST', async (decision) => {
+    const request = seedStatefulCompletionGate();
+    const payload = {
+      expectedRequestRevision: request.revision, decision,
+      idempotencyKey: `http-replay:${request.requestRef}:${decision}`, response: `same ${decision} body`,
+    };
+    const url = `/api/control/review-completion-gates/${request.requestRef}/resolve`;
+    const first = await app.inject({ method: 'POST', url, headers: headers(token), payload });
+    expect(first.statusCode, first.body).toBe(200);
+    const replay = await app.inject({ method: 'POST', url, headers: headers(token), payload });
+    expect(replay.statusCode, replay.body).toBe(200);
+    expect(replay.json()).toMatchObject({ ok: true, replayed: true });
+  });
+
+  it('rejects stateful completion-gate replay attempts with a changed key or body', async () => {
+    const request = seedStatefulCompletionGate();
+    const url = `/api/control/review-completion-gates/${request.requestRef}/resolve`;
+    const payload = { expectedRequestRevision: request.revision, decision: 'approved', idempotencyKey: 'http-replay-original', response: 'original body' };
+    expect((await app.inject({ method: 'POST', url, headers: headers(token), payload })).statusCode).toBe(200);
+    const changedKey = await app.inject({ method: 'POST', url, headers: headers(token), payload: { ...payload, idempotencyKey: 'http-replay-changed-key' } });
+    expect(changedKey.statusCode).toBe(409);
+    const changedBody = await app.inject({ method: 'POST', url, headers: headers(token), payload: { ...payload, response: 'changed body' } });
+    expect(changedBody.statusCode).toBe(409);
+    const changedRevision = await app.inject({ method: 'POST', url, headers: headers(token), payload: { ...payload, expectedRequestRevision: 99 } });
+    expect(changedRevision.statusCode).toBe(409);
   });
 
   it('binds approval to the exact stored hash and rejects stale replay', async () => {
@@ -163,6 +374,31 @@ describe('control proposal routes', () => {
     });
     expect(response.statusCode).toBe(400);
     expect(controlStore.listProposalRevisions('operator')).toEqual([]);
+  });
+
+  it('keeps browser-authored proposal revisions strict: compiler-only assignments cannot enter the store', async () => {
+    const stored = controlStore.createProposalRevision('operator', {
+      sourceComposerRef: 'strict-wire', sourceTurnId: 'strict-wire-turn', title: proposal.title,
+      snapshot: proposal as unknown as import('./types.ts').JsonObject,
+    });
+    if (!stored.ok) throw new Error(stored.detail);
+    const forged = {
+      ...proposal,
+      manager: {
+        ...proposal.manager,
+        assignment: {
+          agentId: 'forged-manager', declarationPath: 'agents/forged-manager.md', declarationHash: 'a'.repeat(64),
+          profileId: 'manager:claude:claude-opus-4-8', runtime: 'claude', model: 'claude-opus-4-8',
+        },
+      },
+    };
+    const response = await app.inject({
+      method: 'POST', url: `/api/control/proposals/${stored.value.proposalRef}/revisions`, headers: headers(token),
+      payload: { expectedPreviousHash: stored.value.hash, proposal: forged },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ error: 'invalid-proposal', detail: "manager: unknown field 'assignment'" });
+    expect(controlStore.listProposalRevisions('operator', stored.value.proposalRef)).toHaveLength(1);
   });
 
   it('publishes a deterministic two-stage canonical DAG once and stops at the inactive runtime gate', async () => {
@@ -369,10 +605,23 @@ describe('control proposal routes', () => {
     } finally { await managerApp.close(); }
   });
 
-  it('reroutes only the exact never-started managed stage and creates durable successor lineage', async () => {
+  it('keeps an unassigned stage reroutable in a mixed assigned workflow and creates durable successor lineage', async () => {
+    const managerAssignment = {
+      agentId: 'assigned-manager', declarationPath: 'agents/assigned-manager.md', declarationHash: 'a'.repeat(64),
+      profileId: 'manager:claude:claude-opus-4-8', runtime: 'claude' as const, model: 'claude-opus-4-8',
+    };
+    const workerAssignment = {
+      agentId: 'assigned-worker', declarationPath: 'agents/assigned-worker.md', declarationHash: 'b'.repeat(64),
+      profileId: 'worker:codex:gpt-5.6-sol', runtime: 'codex' as const, model: 'gpt-5.6-sol',
+    };
+    const mixed = {
+      ...proposal,
+      manager: { ...proposal.manager, assignment: managerAssignment },
+      stages: [proposal.stages[0], { ...proposal.stages[1], assignment: workerAssignment }],
+    };
     const stored = controlStore.createProposalRevision('operator', {
       sourceComposerRef: 'composer-reroute', sourceTurnId: 'turn-reroute', title: proposal.title,
-      snapshot: proposal as unknown as import('./types.ts').JsonObject,
+      snapshot: mixed as unknown as import('./types.ts').JsonObject,
     });
     if (!stored.ok) throw new Error(stored.detail);
     const approved = controlStore.decideProposal('operator', stored.value.proposalRef, 1, {
@@ -382,10 +631,23 @@ describe('control proposal routes', () => {
     const created = controlStore.createRun('operator', {
       title: proposal.title, proposalRef: stored.value.proposalRef, proposalRevision: 1,
       expectedProposalHash: stored.value.hash, managerRuntime: proposal.manager.runtime, managerModel: proposal.manager.model,
-      idempotencyKey: 'launch-reroute', stages: proposal.stages.map((stage) => ({ stageId: stage.id, title: stage.title, dependsOn: stage.dependsOn })),
+      managerAssignment, idempotencyKey: 'launch-reroute',
+      stages: mixed.stages.map((stage) => ({ stageId: stage.id, title: stage.title, dependsOn: stage.dependsOn, assignment: stage.assignment ?? null })),
     });
     if (!created.ok) throw new Error(created.detail);
     const sourceStage = created.value.stages[0];
+    const assignedStage = created.value.stages[1];
+    const assignedCardRef = workflowCardId(created.value.run.runRef, assignedStage.stageId);
+    const assignedLinked = controlStore.linkStageCard('operator', assignedStage.stageRef, assignedStage.version, assignedCardRef);
+    if (!assignedLinked.ok) throw new Error(assignedLinked.detail);
+    const assignedAttempt = controlStore.createAttempt('operator', assignedStage.stageRef, {
+      expectedStageVersion: assignedLinked.value.version, runtime: 'codex', model: 'gpt-5.6-sol',
+    });
+    if (!assignedAttempt.ok) throw new Error(assignedAttempt.detail);
+    const assignedSession = controlStore.createWorkerSession('operator', assignedAttempt.value.attemptRef, {
+      expectedAttemptVersion: assignedAttempt.value.version,
+    });
+    if (!assignedSession.ok) throw new Error(assignedSession.detail);
     const cardRef = workflowCardId(created.value.run.runRef, sourceStage.stageId);
     const linked = controlStore.linkStageCard('operator', sourceStage.stageRef, sourceStage.version, cardRef);
     if (!linked.ok) throw new Error(linked.detail);
@@ -447,12 +709,45 @@ describe('control proposal routes', () => {
     expect(replay.statusCode, replay.body).toBe(200);
     expect(replay.json()).toMatchObject({ ok: true, replayed: true, value: { attempt: { generation: 2 } } });
     expect(routingWrites).toHaveLength(1);
+
+    const assignedBefore = controlStore.getRun('operator', created.value.run.runRef);
+    if (!assignedBefore.ok) throw new Error(assignedBefore.detail);
+    const immutableStage = assignedBefore.value.stages.find((item) => item.stageRef === assignedStage.stageRef);
+    const immutableAttempt = assignedBefore.value.attempts.find((item) => item.attemptRef === assignedAttempt.value.attemptRef);
+    if (!immutableStage || !immutableAttempt) throw new Error('assigned reroute source missing');
+    const auditsBefore = auditRows.length;
+    const assignedRefusal = await app.inject({
+      method: 'POST', url: `/api/control/runs/${created.value.run.runRef}/stages/${immutableStage.stageRef}/reroute`, headers: headers(token),
+      payload: {
+        expectedStageVersion: immutableStage.version, expectedAttemptRef: immutableAttempt.attemptRef, expectedAttemptVersion: immutableAttempt.version,
+        runtime: 'claude', model: 'claude-sonnet-5', idempotencyKey: 'assigned-reroute-refused',
+      },
+    });
+    expect(assignedRefusal.statusCode, assignedRefusal.body).toBe(409);
+    expect(assignedRefusal.json()).toMatchObject({
+      error: 'reroute-refused', disposition: 'immutable',
+      detail: 'assigned stage routing is immutable; create a successor run with a new approved assignment',
+    });
+    expect(routingWrites).toHaveLength(1);
+    expect(auditRows).toHaveLength(auditsBefore);
+    expect(controlStore.getRun('operator', created.value.run.runRef)).toMatchObject({
+      ok: true,
+      value: {
+        stages: expect.arrayContaining([expect.objectContaining({ stageRef: immutableStage.stageRef, canonicalCardRef: assignedCardRef, version: immutableStage.version })]),
+        attempts: expect.arrayContaining([expect.objectContaining({ attemptRef: immutableAttempt.attemptRef, generation: 1, state: 'queued', version: immutableAttempt.version })]),
+      },
+    });
   });
 
-  it('creates an audited Manager successor generation but keeps runtime activation gated', async () => {
+  it('refuses mismatched assigned Manager successors before audit/store mutation, then permits the exact immutable route', async () => {
+    const managerAssignment = {
+      agentId: 'assigned-manager', declarationPath: 'agents/assigned-manager.md', declarationHash: 'd'.repeat(64),
+      profileId: 'manager:claude:claude-opus-4-8', runtime: 'claude' as const, model: 'claude-opus-4-8',
+    };
+    const assigned = { ...proposal, manager: { ...proposal.manager, assignment: managerAssignment } };
     const stored = controlStore.createProposalRevision('operator', {
       sourceComposerRef: 'composer-successor', sourceTurnId: 'turn-successor', title: proposal.title,
-      snapshot: proposal as unknown as import('./types.ts').JsonObject,
+      snapshot: assigned as unknown as import('./types.ts').JsonObject,
     });
     if (!stored.ok) throw new Error(stored.detail);
     const approved = controlStore.decideProposal('operator', stored.value.proposalRef, 1, {
@@ -462,12 +757,30 @@ describe('control proposal routes', () => {
     const created = controlStore.createRun('operator', {
       title: proposal.title, proposalRef: stored.value.proposalRef, proposalRevision: 1,
       expectedProposalHash: stored.value.hash, managerRuntime: proposal.manager.runtime, managerModel: proposal.manager.model,
-      idempotencyKey: 'launch-successor', stages: proposal.stages.map((stage) => ({ stageId: stage.id, title: stage.title, dependsOn: stage.dependsOn })),
+      managerAssignment, idempotencyKey: 'launch-successor', stages: proposal.stages.map((stage) => ({ stageId: stage.id, title: stage.title, dependsOn: stage.dependsOn })),
     });
     if (!created.ok) throw new Error(created.detail);
     const manager = created.value.sessions[0];
     const interrupted = controlStore.transitionSession('operator', manager.sessionRef, manager.version, 'interrupted');
     if (!interrupted.ok) throw new Error(interrupted.detail);
+
+    const auditsBefore = auditRows.length;
+    const mismatch = await app.inject({
+      method: 'POST', url: `/api/control/runs/${created.value.run.runRef}/manager/successor`, headers: headers(token),
+      payload: {
+        expectedManagerGeneration: 1, runtime: 'claude', model: 'claude-sonnet-5',
+        idempotencyKey: 'manager-successor-mismatch',
+      },
+    });
+    expect(mismatch.statusCode, mismatch.body).toBe(409);
+    expect(mismatch.json()).toEqual({
+      error: 'manager-successor-routing-immutable',
+      detail: 'manager successor routing must match immutable manager assignment provenance',
+    });
+    expect(auditRows).toHaveLength(auditsBefore);
+    expect(controlStore.getRun('operator', created.value.run.runRef)).toMatchObject({
+      ok: true, value: { run: { managerGeneration: 1, managerSessionRef: manager.sessionRef, state: 'planned' } },
+    });
 
     const response = await app.inject({
       method: 'POST', url: `/api/control/runs/${created.value.run.runRef}/manager/successor`, headers: headers(token),
@@ -484,6 +797,83 @@ describe('control proposal routes', () => {
     expect(controlStore.getRun('operator', created.value.run.runRef)).toMatchObject({
       ok: true, value: { run: { managerGeneration: 2, state: 'recovering' } },
     });
+    expect(auditRows.some((event) => event.action === 'control-manager-successor-authorize')).toBe(true);
+  });
+
+  it('accepts stored assigned snapshots through publication reconciliation and activation validation', async () => {
+    const managerAssignment = {
+      agentId: 'assigned-manager', declarationPath: 'agents/assigned-manager.md', declarationHash: 'e'.repeat(64),
+      profileId: 'manager:claude:claude-opus-4-8', runtime: 'claude' as const, model: 'claude-opus-4-8',
+    };
+    const workerAssignment = {
+      agentId: 'assigned-worker', declarationPath: 'agents/assigned-worker.md', declarationHash: 'f'.repeat(64),
+      profileId: 'worker:codex:gpt-5.6-sol', runtime: 'codex' as const, model: 'gpt-5.6-sol',
+    };
+    const assigned = {
+      ...proposal,
+      manager: { ...proposal.manager, assignment: managerAssignment },
+      stages: proposal.stages.map((stage, index) => index === 0 ? { ...stage, assignment: workerAssignment } : stage),
+    };
+    const stored = controlStore.createProposalRevision('operator', {
+      sourceComposerRef: 'assigned-lifecycle', sourceTurnId: 'assigned-lifecycle-turn', title: assigned.title,
+      snapshot: assigned as unknown as import('./types.ts').JsonObject,
+    });
+    if (!stored.ok) throw new Error(stored.detail);
+    const approved = controlStore.decideProposal('operator', stored.value.proposalRef, 1, {
+      expectedHash: stored.value.hash, expectedApprovalRevision: 0, decision: 'approved', idempotencyKey: 'approve-assigned-lifecycle',
+    });
+    if (!approved.ok) throw new Error(approved.detail);
+    const create = (idempotencyKey: string) => controlStore.createRun('operator', {
+      title: assigned.title, proposalRef: stored.value.proposalRef, proposalRevision: 1, expectedProposalHash: stored.value.hash,
+      managerRuntime: assigned.manager.runtime, managerModel: assigned.manager.model, managerAssignment, idempotencyKey,
+      stages: assigned.stages.map((stage) => ({ stageId: stage.id, title: stage.title, dependsOn: stage.dependsOn, assignment: stage.assignment ?? null })),
+    });
+
+    const publishingRun = create('assigned-reconcile');
+    if (!publishingRun.ok) throw new Error(publishingRun.detail);
+    const publishing = controlStore.transitionPublication('operator', publishingRun.value.run.runRef, publishingRun.value.run.version, 'publishing');
+    if (!publishing.ok) throw new Error(publishing.detail);
+    const reconciled = await app.inject({
+      method: 'POST', url: `/api/control/runs/${publishingRun.value.run.runRef}/reconcile-publication`, headers: headers(token),
+      payload: { expectedRunVersion: publishing.value.version },
+    });
+    // The fixture deliberately has no on-disk canonical cards. Reaching that honest recovery error
+    // proves the stored compiler snapshot passed semantic validation first.
+    expect(reconciled.statusCode).toBe(409);
+    expect(reconciled.json()).toMatchObject({ error: 'missing-card' });
+    expect(reconciled.json().error).not.toBe('stored-proposal-invalid');
+
+    const activationRun = create('assigned-activate');
+    if (!activationRun.ok) throw new Error(activationRun.detail);
+    const pub1 = controlStore.transitionPublication('operator', activationRun.value.run.runRef, activationRun.value.run.version, 'publishing');
+    if (!pub1.ok) throw new Error(pub1.detail);
+    const pub2 = controlStore.transitionPublication('operator', activationRun.value.run.runRef, pub1.value.version, 'published');
+    if (!pub2.ok) throw new Error(pub2.detail);
+    const waiting = controlStore.transitionRun('operator', activationRun.value.run.runRef, pub2.value.version, 'waiting-human');
+    if (!waiting.ok) throw new Error(waiting.detail);
+    const activationApp = Fastify();
+    registerWriteSurface(activationApp, makeSurfaceContext({
+      repoRoot: fileURLToPath(new URL('../../..', import.meta.url)), sessionConfig: SESSION,
+      allowedOrigins: [ORIGIN], credentials: () => [], composerStore, controlStore,
+      controlBroker: { isRunning: () => false, drain: () => {} } as never,
+      runAutomatic: (async () => ({ ok: true })) as never,
+      appendAudit: (_root, event) => ({ ts: new Date().toISOString(), ...event }),
+      appendAuditLocal: (_root, event) => ({ ts: new Date().toISOString(), ...event }),
+      runPreamble: () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }),
+      opsGit: (_root, args) => args.join(' ') === 'rev-parse --abbrev-ref HEAD' ? 'ops\n' : args.join(' ') === 'rev-parse HEAD' ? 'a'.repeat(40) : '',
+    }));
+    await activationApp.ready();
+    try {
+      const activated = await activationApp.inject({
+        method: 'POST', url: `/api/control/runs/${activationRun.value.run.runRef}/activate`, headers: headers(token),
+        payload: { expectedRunVersion: waiting.value.version, expectedManagerGeneration: 1, idempotencyKey: 'assigned-activate' },
+      });
+      // No root card is linked in this fixture, but the route must get past its stored assignment
+      // validation before reporting that separate lifecycle boundary.
+      expect(activated.statusCode).toBe(409);
+      expect(activated.json()).toMatchObject({ error: 'managed-root-card-binding-lost' });
+      expect(activated.json().error).not.toBe('stored-proposal-invalid');
+    } finally { await activationApp.close(); }
   });
 
   it('does not commit approval or Human Request decisions when canonical audit authorization fails', async () => {

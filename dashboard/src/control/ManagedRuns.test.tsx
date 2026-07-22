@@ -18,14 +18,14 @@ const runs: RunMetadataDto[] = [
   {
     runRef: 'run-1', predecessorRunRef: null, title: LONG_TITLE, proposalRef: 'proposal-1',
     proposalRevision: 2, proposalHash: 'a'.repeat(64), publicationState: 'published', state: 'running',
-    version: 4, managerSessionRef: 'session-manager', managerGeneration: 1,
+    version: 4, managerSessionRef: 'session-manager', managerGeneration: 1, managerAssignment: null,
     createdAt: '2026-07-18T10:00:00.000Z', updatedAt: '2026-07-18T11:56:00.000Z',
     stageCount: 6, attemptCount: 11, sessionCount: 3, openHumanRequestCount: 0, eventCount: 340,
   },
   {
     runRef: 'run-2', predecessorRunRef: null, title: 'A second run', proposalRef: 'proposal-2',
     proposalRevision: 1, proposalHash: 'b'.repeat(64), publicationState: 'published', state: 'succeeded',
-    version: 2, managerSessionRef: 'session-manager-2', managerGeneration: 1,
+    version: 2, managerSessionRef: 'session-manager-2', managerGeneration: 1, managerAssignment: null,
     createdAt: '2026-07-18T09:00:00.000Z', updatedAt: '2026-07-18T09:30:00.000Z',
     stageCount: 2, attemptCount: 2, sessionCount: 1, openHumanRequestCount: 0, eventCount: 12,
   },
@@ -38,6 +38,7 @@ const detailFor = (runRef: string) => ({
     stages: [{
       stageRef: 'stage-1', runRef, stageId: 'compile', title: 'Compile proposal', dependsOn: [],
       canonicalCardRef: 'card-1', state: 'running', version: 2, currentAttemptRef: 'attempt-1',
+      assignment: null,
       createdAt: '2026-07-18T10:00:00.000Z', updatedAt: '2026-07-18T10:01:00.000Z',
     }],
     attempts: [{
@@ -88,6 +89,31 @@ function Harness(): React.JSX.Element {
 }
 
 describe('ManagedRuns', () => {
+  it('routes a focused reserved completion request to the dedicated resolver, never generic respond', async () => {
+    const gate = {
+      requestRef: 'gate-1', runRef: 'run-1', stageRef: 'stage-1', kind: 'approval', revision: 1, state: 'open',
+      title: 'Review gate', prompt: 'Approve the checker result.', response: null,
+      createdAt: '2026-07-18T10:00:00.000Z', updatedAt: '2026-07-18T10:00:00.000Z',
+    };
+    const calls: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input); calls.push(url);
+      if (url.includes('/events')) return { ok: true, status: 200, json: async () => ({ ok: true, value: [] }) } as Response;
+      if (url.includes('/revisions/')) return { ok: true, status: 200, json: async () => ({ ok: true, value: { proposalRef: 'proposal-1', revision: 2, hash: 'a'.repeat(64), previousHash: null, title: 't', createdAt: '2026-07-18T10:00:00.000Z', approval: null, sourceComposerRef: 'c', sourceTurnId: 't', snapshot: { stages: [] } } }) } as Response;
+      if (url === '/api/control/review-completion-gates/gate-1/resolve') return { ok: true, status: 200, json: async () => ({ ok: true, value: { request: { ...gate, state: 'resolved' } } }) } as Response;
+      if (url.includes('/api/control/runs/run-1')) return { ok: true, status: 200, json: async () => ({ ok: true, value: {
+        ...detailFor('run-1').value, humanRequests: [gate], reviewLoops: [],
+        reviewReceipts: [{ reviewReceiptRef: 'receipt-1', runRef: 'run-1', reviewStageRef: 'stage-1', subjectStageRef: 'subject-1', state: 'awaiting-completion-gate', completionRequestRef: 'gate-1', interventionRequestRef: null, version: 2 }],
+      } }) } as Response;
+      return { ok: true, status: 200, json: async () => ({ runs }) } as Response;
+    }));
+    render(<ManagedRuns sessionToken="token-1" runs={runs} focusRunRef="run-1" onOpenRun={vi.fn()} />);
+    await screen.findByTestId('entity-detail-run');
+    fireEvent.click(screen.getByRole('button', { name: 'Approved' }));
+    await waitFor(() => expect(calls).toContain('/api/control/review-completion-gates/gate-1/resolve'));
+    expect(calls).not.toContain('/api/control/human-requests/gate-1/respond');
+  });
+
   it('lands on the grid and shows every run title in full', () => {
     stubFetch();
     render(<Harness />);

@@ -114,6 +114,10 @@ export interface AgentRosterEntry {
   declaredRuntime: string | null;
   /** The declared DEFAULT model from the agent file (advisory metadata), or null. */
   declaredModel: string | null;
+  /** The declaration's default server-owned execution profile id, or null for a legacy declaration. */
+  defaultProfile?: string | null;
+  /** The declaration's permitted execution profile ids, or null for a legacy declaration. */
+  allowedProfiles?: string[] | null;
   /** One-line human description from the agent file, or null. */
   description: string | null;
   /** A declaration file was found for this id but could not safely be used. */
@@ -126,6 +130,9 @@ export interface DeclaredAgent {
   role: string | null;
   runtime: string | null;
   model: string | null;
+  /** Optional complete execution-profile contract. Legacy declarations carry null for both fields. */
+  defaultProfile: string | null;
+  allowedProfiles: string[] | null;
   runnerBound: boolean;
   description: string | null;
   /** Declared project relationships are display metadata, never routing authority. */
@@ -161,7 +168,8 @@ export interface AgentDeclarationProblem {
     | 'unreadable'
     | 'unsafe-id'
     | 'id-mismatch'
-    | 'duplicate-id';
+    | 'duplicate-id'
+    | 'invalid-profile-config';
 }
 
 const EMPTY_ACTIVITY: AgentLedgerActivity = { dispatches: 0, steps: 0, days: 0, lastActive: null };
@@ -258,6 +266,7 @@ export function isContainedRepoPath(repoRoot: string, path: string): boolean {
 
 const SAFE_PROJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const SAFE_AGENT_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
+const SAFE_PROFILE_ID = /^[a-z0-9][a-z0-9:._-]{0,127}$/;
 
 interface AgentDeclarationDirectory {
   repoRoot: string;
@@ -302,6 +311,29 @@ interface ParsedAgentCandidate {
 interface AgentDeclarationScan {
   details: Map<string, DeclaredAgentDetail>;
   problems: Map<string, AgentDeclarationProblem>;
+}
+
+interface DeclaredProfileConfig {
+  defaultProfile: string | null;
+  allowedProfiles: string[] | null;
+}
+
+/**
+ * Execution-profile contracts are all-or-nothing advisory declaration metadata. This scanner does not
+ * resolve them against live routing policy; it only accepts a bounded, unambiguous declaration shape so
+ * a later binding layer can make that policy decision from canonical state.
+ */
+function declaredProfileConfig(meta: Record<string, unknown>): DeclaredProfileConfig | null {
+  const rawDefault = meta['default-profile'];
+  const rawAllowed = meta['allowed-profiles'];
+  if (rawDefault === undefined && rawAllowed === undefined) return { defaultProfile: null, allowedProfiles: null };
+  if (typeof rawDefault !== 'string' || !SAFE_PROFILE_ID.test(rawDefault) || !Array.isArray(rawAllowed) || rawAllowed.length === 0) {
+    return null;
+  }
+  if (!rawAllowed.every((profile): profile is string => typeof profile === 'string' && SAFE_PROFILE_ID.test(profile))) return null;
+  const allowedProfiles = [...rawAllowed];
+  if (new Set(allowedProfiles).size !== allowedProfiles.length || !allowedProfiles.includes(rawDefault)) return null;
+  return { defaultProfile: rawDefault, allowedProfiles };
 }
 
 /** Frontmatter supports the established `projects: [project-a, project-b]` declaration shape. */
@@ -403,6 +435,11 @@ function scanAgentDeclarations(repoRoot: string): AgentDeclarationScan {
       continue;
     }
     const meta = candidate.parsed.meta as Record<string, unknown>;
+    const profileConfig = declaredProfileConfig(meta);
+    if (!profileConfig) {
+      problems.set(candidate.stem, { id: candidate.stem, source: candidate.source, problem: 'invalid-profile-config' });
+      continue;
+    }
     const codebasePaths = declaredCodebasePaths(directory.repoRoot, candidate.parsed.body);
     const inferredProjects = [...new Set(codebasePaths
       .map((path) => /^orgs\/([^/]+)/.exec(path)?.[1])
@@ -413,6 +450,8 @@ function scanAgentDeclarations(repoRoot: string): AgentDeclarationScan {
       role: strFieldOrNull(meta.role),
       runtime: strFieldOrNull(meta.runtime),
       model: strFieldOrNull(meta.model),
+      defaultProfile: profileConfig.defaultProfile,
+      allowedProfiles: profileConfig.allowedProfiles,
       runnerBound: meta['runner-bound'] === true,
       description: strFieldOrNull(meta.description),
       source: candidate.source,
@@ -452,6 +491,8 @@ export function readDeclaredAgents(repoRoot: string): Map<string, DeclaredAgent>
       role: detail.role,
       runtime: detail.runtime,
       model: detail.model,
+      defaultProfile: detail.defaultProfile,
+      allowedProfiles: detail.allowedProfiles === null ? null : [...detail.allowedProfiles],
       runnerBound: detail.runnerBound,
       description: detail.description,
       projects: detail.projects,
@@ -517,6 +558,8 @@ export function buildRoster(
       runnerBound: dec?.runnerBound ?? false,
       declaredRuntime: dec?.runtime ?? null,
       declaredModel: dec?.model ?? null,
+      defaultProfile: dec?.defaultProfile ?? null,
+      allowedProfiles: dec?.allowedProfiles ? [...dec.allowedProfiles] : null,
       description: dec?.description ?? null,
       declarationProblem,
     });

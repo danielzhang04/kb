@@ -22,6 +22,7 @@
  */
 
 import { createAsyncGitRunner, createAsyncPrOpener, withOpsTransaction } from './asyncGit.ts';
+import type { AsyncPrResult } from './asyncGit.ts';
 import type { OpsGitRunner } from './asyncGit.ts';
 
 export type Target = 'durable' | 'coordination';
@@ -65,7 +66,7 @@ export interface PrRequest {
 
 /** Opens a PR — a distinct capability from `GitRunner` (no git push targets `main` directly; a PR is
  *  how durable content reaches it). Injected for hermetic tests. Widened to allow a `Promise`. */
-export type PrOpener = (repoRoot: string, req: PrRequest) => void | Promise<void>;
+export type PrOpener = (repoRoot: string, req: PrRequest) => AsyncPrResult | void | Promise<AsyncPrResult | void>;
 
 /** Default opener: the shared async `gh pr create` runner (spawn, off the event loop, 60s kill-timeout).
  *  Never invoked for coordination writes. */
@@ -174,7 +175,7 @@ function defaultMessage(relpath: string): string {
  * Durable-content route: stage the exact relpath, commit locally (hooks active), push the current
  * HEAD to the work branch ref on `origin` — NEVER `ops`, NEVER `main` — then open a PR to `main`.
  */
-export async function routeDurable(repoRoot: string, relpath: string, options: RouteOptions = {}): Promise<void> {
+export async function routeDurable(repoRoot: string, relpath: string, options: RouteOptions = {}): Promise<{ branch: string; pr: AsyncPrResult }> {
   const runGit = options.runGit ?? defaultGitRunner;
   const openPr = options.openPr ?? defaultPrOpener;
   const branch = options.workBranch ?? DEFAULT_WORK_BRANCH;
@@ -189,14 +190,42 @@ export async function routeDurable(repoRoot: string, relpath: string, options: R
 
   // Same checkout as the coordination writers — its stage/commit must not interleave with theirs.
   return withOpsTransaction(async () => {
-    await assertCleanIndex(repoRoot, runGit);
-    await runGit(repoRoot, ['add', '--', relpath]);
-    await runGit(repoRoot, ['commit', '-m', message, '--only', '--', relpath]);
+    let staged = false;
+    let committed = false;
+    let pushed = false;
+    try {
+      const checkedOut = (await runGit(repoRoot, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim();
+      if (checkedOut !== branch) throw new Error(`refusing durable write: checked-out branch is '${checkedOut || '(detached)'}', expected '${branch}'`);
+      await assertCleanIndex(repoRoot, runGit);
+      await runGit(repoRoot, ['add', '--', relpath]);
+      staged = true;
+      await runGit(repoRoot, ['commit', '-m', message, '--only', '--', relpath]);
+      committed = true;
     // Push local HEAD onto the work-branch ref, regardless of the locally checked-out branch name —
     // never a bare `push origin main`/`push origin ops`.
     await runGit(repoRoot, ['push', 'origin', `HEAD:refs/heads/${branch}`]);
-    await openPr(repoRoot, { base: 'main', head: branch, title: message });
+    pushed = true;
+    const pr = await openPr(repoRoot, { base: 'main', head: branch, title: message });
+    return { branch, pr: pr ?? {} };
+    } catch (error) {
+      if (staged && !committed) {
+        try { await runGit(repoRoot, ['reset', 'HEAD', '--', relpath]); } catch { /* preserve original failure */ }
+      }
+      throw new DurableRouteError(error, { committed, pushed });
+    }
   });
+}
+
+/** Reports whether a durable route crossed its commit or remote-push boundary before failing. */
+export class DurableRouteError extends Error {
+  readonly committed: boolean;
+  readonly pushed: boolean;
+  constructor(cause: unknown, state: { committed: boolean; pushed: boolean }) {
+    super(cause instanceof Error ? cause.message : String(cause));
+    this.name = 'DurableRouteError';
+    this.committed = state.committed;
+    this.pushed = state.pushed;
+  }
 }
 
 /**

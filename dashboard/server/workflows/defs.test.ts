@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { parseWorkflowDef } from './defs.ts';
+import { instantiateWorkflowDef, parseWorkflowDef } from './defs.ts';
 
-const KNOWN = new Set(['research', 'gmail-triage', 'drive-author', 'producer']);
+const KNOWN = new Set(['research', 'gmail-triage', 'drive-author', 'producer', 'checker-readonly']);
 
 function md(frontmatter: string, body = 'The full work order lives in the body.'): string {
   return `---\n${frontmatter}\n---\n\n${body}\n`;
@@ -27,7 +27,10 @@ describe('parseWorkflowDef', () => {
     if (!result.ok) return;
     expect(result.value.id).toBe('research-brief');
     expect(result.value.profile).toBe('research');
+    expect(result.value).not.toHaveProperty('manager');
     expect(result.value.stages).toHaveLength(1);
+    expect(result.value.stages[0]).not.toHaveProperty('agentId');
+    expect(result.value.stages[0]).not.toHaveProperty('profileId');
     expect(result.value.stages[0].workOrder).toContain('work order lives in the body');
     expect(result.value.stages[0].riskTier).toBe('T2');
   });
@@ -126,6 +129,130 @@ describe('parseWorkflowDef', () => {
     expect(result.detail).toMatch(/unknown field/);
   });
 
+  it('parses complete optional manager and stage agent-profile assignments without resolving them', () => {
+    const fm = SINGLE.replace('profile: research', [
+      'profile: research',
+      'manager:',
+      '  agentId: fyt-runner',
+      '  profileId: manager:claude:claude-opus-4-8',
+    ].join('\n')).replace('    riskTier: T2', [
+      '    riskTier: T2',
+      '    agentId: fyt-preproduction',
+      '    profileId: worker:codex:gpt-5.6-sol',
+    ].join('\n'));
+    const result = parseWorkflowDef(md(fm), { knownProfiles: KNOWN });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.manager).toEqual({
+      agentId: 'fyt-runner', profileId: 'manager:claude:claude-opus-4-8',
+    });
+    expect(result.value.stages[0]).toMatchObject({
+      agentId: 'fyt-preproduction', profileId: 'worker:codex:gpt-5.6-sol',
+    });
+  });
+
+  it('parses a closed assigned review checker with readonly override and completion gate', () => {
+    const fm = [
+      'id: checker', 'project: kb-ops', 'title: Checker', 'profile: research', 'stages:',
+      '  - id: create', '    title: Create', '    action: implement:thing', '    target: orgs/kb-ops/output', '    workOrder: Create',
+      '  - id: check', '    title: Check', '    action: review:thing', '    target: orgs/kb-ops/output', '    workOrder: Check', '    dependsOn: [create]',
+      '    agentId: fyt-checker', '    profileId: worker:claude:claude-sonnet-5', '    workflowProfile: checker-readonly',
+      '    review:', '      subjectStageId: create', '      maxCreatorReworks: 1', '      criteria:',
+      '        - id: safety', '          description: No unsafe changes',
+      '    completionGate:', '      id: reviewer-approval', '      kind: approval', '      prompt: Approve checker result?', '      requiresReview: pass',
+      '  - id: next', '    title: Next creator', '    action: implement:next', '    target: orgs/kb-ops/output', '    workOrder: Continue', '    dependsOn: [check]',
+    ].join('\n');
+    const result = parseWorkflowDef(md(fm), { knownProfiles: KNOWN });
+    expect(result).toMatchObject({ ok: true, value: { stages: [
+      {}, { workflowProfile: 'checker-readonly', review: { subjectStageId: 'create', maxCreatorReworks: 1 }, completionGate: { kind: 'approval', requiresReview: 'pass' } }, {},
+    ] } });
+  });
+
+  it('refuses unknown checker fields, non-direct review subjects, and review without an assigned review action', () => {
+    const base = [
+      'id: checker', 'project: kb-ops', 'title: Checker', 'profile: research', 'stages:',
+      '  - id: create', '    title: Create', '    action: implement:thing', '    target: orgs/kb-ops/output', '    workOrder: Create',
+      '  - id: check', '    title: Check', '    action: review:thing', '    target: orgs/kb-ops/output', '    workOrder: Check', '    dependsOn: [create]',
+      '    agentId: fyt-checker', '    profileId: worker:claude:claude-sonnet-5', '    workflowProfile: checker-readonly', '    review:', '      subjectStageId: missing', '      maxCreatorReworks: 1',
+      '      criteria:', '        - id: safety', '          description: Safe',
+    ].join('\n');
+    expect(parseWorkflowDef(md(base), { knownProfiles: KNOWN })).toMatchObject({ ok: false, detail: expect.stringMatching(/direct dependsOn/) });
+    expect(parseWorkflowDef(md(base.replace('      maxCreatorReworks: 1', '      maxCreatorReworks: 3')), { knownProfiles: KNOWN })).toMatchObject({ ok: false });
+    expect(parseWorkflowDef(md(base.replace('    action: review:thing', '    action: implement:check')), { knownProfiles: KNOWN })).toMatchObject({ ok: false, detail: expect.stringMatching(/review requires/) });
+    expect(parseWorkflowDef(md(base.replace('    review:', '    unexpected: nope\n    review:')), { knownProfiles: KNOWN })).toMatchObject({ ok: false, detail: expect.stringMatching(/unknown field/) });
+  });
+
+  it('requires every review stage to use the checker-readonly workflow profile', () => {
+    const valid = [
+      'id: checker', 'project: kb-ops', 'title: Checker', 'profile: research', 'stages:',
+      '  - id: create', '    title: Create', '    action: implement:thing', '    target: orgs/kb-ops/output', '    workOrder: Create',
+      '  - id: check', '    title: Check', '    action: review:thing', '    target: orgs/kb-ops/output', '    workOrder: Check', '    dependsOn: [create]',
+      '    agentId: fyt-checker', '    profileId: worker:claude:claude-sonnet-5', '    workflowProfile: checker-readonly', '    review:', '      subjectStageId: create', '      maxCreatorReworks: 1',
+      '      criteria:', '        - id: safety', '          description: Safe',
+    ].join('\n');
+    for (const invalid of [
+      valid.replace('    workflowProfile: checker-readonly\n', ''),
+      valid.replace('workflowProfile: checker-readonly', 'workflowProfile: producer'),
+      valid.replace('workflowProfile: checker-readonly', 'workflowProfile: research'),
+    ]) {
+      expect(parseWorkflowDef(md(invalid), { knownProfiles: KNOWN })).toMatchObject({
+        ok: false,
+        detail: expect.stringMatching(/workflowProfile 'checker-readonly'/),
+      });
+    }
+  });
+
+  it('requires review graph edges to be one-to-one and never review another review stage', () => {
+    const valid = [
+      'id: checker-chain', 'project: kb-ops', 'title: Checker chain', 'profile: research', 'stages:',
+      '  - id: create', '    title: Create', '    action: implement:thing', '    target: orgs/kb-ops/output', '    workOrder: Create',
+      '  - id: check', '    title: Check', '    action: review:thing', '    target: orgs/kb-ops/output', '    workOrder: Check', '    dependsOn: [create]',
+      '    agentId: fyt-checker', '    profileId: worker:claude:claude-sonnet-5', '    workflowProfile: checker-readonly', '    review:', '      subjectStageId: create', '      maxCreatorReworks: 1',
+      '      criteria:', '        - id: safety', '          description: Safe',
+      '  - id: next', '    title: Next', '    action: implement:next', '    target: orgs/kb-ops/output', '    workOrder: Continue', '    dependsOn: [check]',
+    ].join('\n');
+    expect(parseWorkflowDef(md(valid), { knownProfiles: KNOWN })).toMatchObject({ ok: true });
+    expect(parseWorkflowDef(md(valid.replace('dependsOn: [create]', 'dependsOn: [create, next]')), { knownProfiles: KNOWN }))
+      .toMatchObject({ ok: false, detail: expect.stringMatching(/depend only on its subject/) });
+    const duplicate = `${valid}\n  - id: check-again\n    title: Check again\n    action: review:thing\n    target: orgs/kb-ops/output\n    workOrder: Check again\n    dependsOn: [create]\n    agentId: fyt-checker\n    profileId: worker:claude:claude-sonnet-5\n    workflowProfile: checker-readonly\n    review:\n      subjectStageId: create\n      maxCreatorReworks: 1\n      criteria:\n        - id: safety\n          description: Safe`;
+    expect(parseWorkflowDef(md(duplicate), { knownProfiles: KNOWN }))
+      .toMatchObject({ ok: false, detail: expect.stringMatching(/multiple review stages/) });
+    const nested = `${valid}\n  - id: check-again\n    title: Check again\n    action: review:thing\n    target: orgs/kb-ops/output\n    workOrder: Check again\n    dependsOn: [check]\n    agentId: fyt-checker\n    profileId: worker:claude:claude-sonnet-5\n    workflowProfile: checker-readonly\n    review:\n      subjectStageId: check\n      maxCreatorReworks: 1\n      criteria:\n        - id: safety\n          description: Safe`;
+    expect(parseWorkflowDef(md(nested), { knownProfiles: KNOWN }))
+      .toMatchObject({ ok: false, detail: expect.stringMatching(/cannot review review stage/) });
+  });
+
+  it('rejects unknown manager fields and a non-object manager', () => {
+    const unknown = SINGLE.replace('profile: research', [
+      'profile: research', 'manager:', '  agentId: fyt-runner',
+      '  profileId: manager:claude:claude-opus-4-8', '  runnerBound: true',
+    ].join('\n'));
+    const unknownResult = parseWorkflowDef(md(unknown), { knownProfiles: KNOWN });
+    expect(unknownResult).toMatchObject({ ok: false, detail: expect.stringMatching(/manager.*unknown field/) });
+    const scalar = SINGLE.replace('profile: research', 'profile: research\nmanager: fyt-runner');
+    const scalarResult = parseWorkflowDef(md(scalar), { knownProfiles: KNOWN });
+    expect(scalarResult).toMatchObject({ ok: false, detail: expect.stringMatching(/manager must be a mapping/) });
+  });
+
+  it('rejects unsafe manager/stage ids and one-sided agent-profile assignments', () => {
+    const unsafeManager = SINGLE.replace('profile: research', [
+      'profile: research', 'manager:', '  agentId: ../fyt-runner', '  profileId: manager:claude:claude-opus-4-8',
+    ].join('\n'));
+    expect(parseWorkflowDef(md(unsafeManager), { knownProfiles: KNOWN }))
+      .toMatchObject({ ok: false, detail: expect.stringMatching(/manager\.agentId/) });
+    const oneSidedManager = SINGLE.replace('profile: research', 'profile: research\nmanager:\n  agentId: fyt-runner');
+    expect(parseWorkflowDef(md(oneSidedManager), { knownProfiles: KNOWN }))
+      .toMatchObject({ ok: false, detail: expect.stringMatching(/manager\.profileId/) });
+    const oneSidedStage = SINGLE.replace('    riskTier: T2', '    riskTier: T2\n    agentId: fyt-preproduction');
+    expect(parseWorkflowDef(md(oneSidedStage), { knownProfiles: KNOWN }))
+      .toMatchObject({ ok: false, detail: expect.stringMatching(/agentId and profileId/) });
+    const unsafeStage = SINGLE.replace('    riskTier: T2', [
+      '    riskTier: T2', '    agentId: fyt-preproduction', '    profileId: ../worker',
+    ].join('\n'));
+    expect(parseWorkflowDef(md(unsafeStage), { knownProfiles: KNOWN }))
+      .toMatchObject({ ok: false, detail: expect.stringMatching(/profileId/) });
+  });
+
   it('rejects a file with no frontmatter', () => {
     const result = parseWorkflowDef('# just a heading\n', { knownProfiles: KNOWN });
     expect(result.ok).toBe(false);
@@ -135,6 +262,22 @@ describe('parseWorkflowDef', () => {
     const fm = SINGLE.replace('target: orgs/kb-ops/output', 'target: ../../etc/passwd');
     const result = parseWorkflowDef(md(fm), { knownProfiles: KNOWN });
     expect(result.ok).toBe(false);
+  });
+
+  it('enforces declared launch parameters and substitutes only their exact tokens', () => {
+    const source = SINGLE.replace('profile: research', 'profile: research\nparameters: [channel, slug]')
+      .replace('riskTier: T2', 'riskTier: T2\n    workOrder: Write <channel>/<slug> and preserve <shot-id>.');
+    const parsed = parseWorkflowDef(md(source), { knownProfiles: KNOWN });
+    if (!parsed.ok) throw new Error(parsed.detail);
+    for (const parameters of [{ channel: 'a' }, { channel: 'a', slug: 'b', extra: 'x' }, { channel: 1, slug: 'b' }] as Array<Record<string, unknown>>) {
+      expect(instantiateWorkflowDef(parsed.value, parameters as Record<string, string>).ok).toBe(false);
+    }
+    for (const slug of ['.', 'bad.', 'CON.txt', 'LPT1.log']) expect(instantiateWorkflowDef(parsed.value, { channel: 'the-second-take', slug }).ok).toBe(false);
+    const valid = instantiateWorkflowDef(parsed.value, { channel: 'the-second-take', slug: '2026.07-19.wells-fargo' });
+    expect(valid).toMatchObject({ ok: true, value: { stages: [{ target: 'orgs/kb-ops/output', workOrder: expect.stringContaining('<shot-id>') }] } });
+    const unused = parseWorkflowDef(md(source.replace('[channel, slug]', '[channel, unused]')), { knownProfiles: KNOWN });
+    if (!unused.ok) throw new Error(unused.detail);
+    expect(instantiateWorkflowDef(unused.value, { channel: 'a', unused: 'b' })).toMatchObject({ ok: false, detail: expect.stringMatching(/not used/) });
   });
 
   describe('readScope declaration (Layer A)', () => {

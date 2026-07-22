@@ -72,6 +72,16 @@ export interface WorkflowStageDraft {
   workOrder: string;
   riskTier: 'T1' | 'T2';
   dependsOn: string[];
+  /** Optional logical agent assignment. Must be authored with profileId. */
+  agentId?: string;
+  /** Optional declared execution profile assignment. Must be authored with agentId. */
+  profileId?: string;
+}
+
+/** Optional workflow manager assignment. Its two declared ids are authored together or omitted. */
+export interface WorkflowManagerDraft {
+  agentId?: string;
+  profileId?: string;
 }
 
 export interface WorkflowDraft {
@@ -79,6 +89,8 @@ export interface WorkflowDraft {
   project: string;
   /** Server-owned execution profile. Never default this client-side. */
   profile: string;
+  /** Optional logical manager assignment. Execution identity remains compiler-owned. */
+  manager?: WorkflowManagerDraft;
   body: string;
   stages: WorkflowStageDraft[];
 }
@@ -424,6 +436,7 @@ function validateWorkflow(draft: WorkflowDraft): Problem[] {
   const projectProblem = nameSegmentProblem('project', draft.project);
   if (projectProblem) problems.push(projectProblem);
   requireNonEmpty(problems, 'profile', draft.profile, 'a server-owned execution profile is required');
+  validateWorkflowAssignment(problems, 'manager', draft.manager);
   if (!Array.isArray(draft.stages) || draft.stages.length === 0) {
     problems.push({ field: 'stages', message: 'at least one executable stage is required' });
     return problems;
@@ -443,6 +456,7 @@ function validateWorkflow(draft: WorkflowDraft): Problem[] {
     if (!['T1', 'T2'].includes(stage.riskTier)) {
       problems.push({ field: `${prefix}.riskTier`, message: 'Run now v1 accepts T1 or T2 only' });
     }
+    validateWorkflowAssignment(problems, prefix, stage);
   }
   for (const [index, stage] of draft.stages.entries()) {
     for (const dep of stage.dependsOn) {
@@ -451,6 +465,25 @@ function validateWorkflow(draft: WorkflowDraft): Problem[] {
     }
   }
   return problems;
+}
+
+/** Client-only shape check. Composition/compiler owns live registry and adapter validation. */
+function validateWorkflowAssignment(
+  problems: Problem[],
+  prefix: string,
+  assignment: WorkflowManagerDraft | Pick<WorkflowStageDraft, 'agentId' | 'profileId'> | undefined,
+): void {
+  if (assignment === undefined) return;
+  const hasAgentId = assignment.agentId !== undefined;
+  const hasProfileId = assignment.profileId !== undefined;
+  if (hasAgentId !== hasProfileId) {
+    problems.push({ field: `${prefix}.assignment`, message: 'agentId and profileId must be authored together' });
+  } else if (hasAgentId) {
+    // These are declared ids only. Workflow composition/compiler validates their live registry
+    // membership and adapter availability before an executable proposal can exist.
+    requireNonEmpty(problems, `${prefix}.agentId`, assignment.agentId, 'agentId must be non-empty');
+    requireNonEmpty(problems, `${prefix}.profileId`, assignment.profileId, 'profileId must be non-empty');
+  }
 }
 
 function validateProject(draft: ProjectDraft): Problem[] {
@@ -571,6 +604,13 @@ function workflowPlan(draft: WorkflowDraft): DeployPlan {
     // until the canonical authoring form adds one.
     `title: ${JSON.stringify(id)}`,
     `profile: ${JSON.stringify(draft.profile)}`,
+    ...(draft.manager?.agentId !== undefined && draft.manager.profileId !== undefined
+      ? [
+          'manager:',
+          `  agentId: ${JSON.stringify(draft.manager.agentId)}`,
+          `  profileId: ${JSON.stringify(draft.manager.profileId)}`,
+        ]
+      : []),
     'stages:',
     ...draft.stages.flatMap((stage) => [
       `  - id: ${JSON.stringify(stage.id)}`,
@@ -580,6 +620,12 @@ function workflowPlan(draft: WorkflowDraft): DeployPlan {
       `    workOrder: ${JSON.stringify(stage.workOrder)}`,
       `    riskTier: ${JSON.stringify(stage.riskTier)}`,
       `    dependsOn: ${JSON.stringify(stage.dependsOn)}`,
+      ...(stage.agentId !== undefined && stage.profileId !== undefined
+        ? [
+            `    agentId: ${JSON.stringify(stage.agentId)}`,
+            `    profileId: ${JSON.stringify(stage.profileId)}`,
+          ]
+        : []),
     ]),
     '---',
     '',

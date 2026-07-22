@@ -1,0 +1,88 @@
+import { describe, expect, it } from 'vitest';
+import { isExactAssignmentAmendment, patchWorkflowAssignment } from './amendments.ts';
+import { parseWorkflowDef } from './defs.ts';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+const VIDEO_RUN = [
+  '---',
+  'id: video-run',
+  'project: faceless-youtube',
+  'title: Video run',
+  'profile: producer',
+  'stages:',
+  '  - id: research',
+  '    title: Research',
+  '    action: research:brief',
+  '    target: orgs/faceless-youtube/output',
+  '    workOrder: research the video',
+  '    dependsOn: []',
+  '  - id: script',
+  '    title: Script',
+  '    action: write:script',
+  '    target: orgs/faceless-youtube/output',
+  '    workOrder: write it',
+  '    dependsOn: [research]',
+  '---',
+  '# body comment stays byte-for-byte',
+  'body',
+  '',
+].join('\n');
+
+describe('patchWorkflowAssignment', () => {
+  it('adds and clears a stage assignment without touching real inline dependsOn arrays or body bytes', () => {
+    const set = patchWorkflowAssignment(VIDEO_RUN, { kind: 'stage', stageId: 'script' }, { agentId: 'writer', profileId: 'worker:claude:claude-sonnet-5' });
+    expect(set).not.toBeNull();
+    expect(set?.source).toContain('    dependsOn: [research]\n    agentId: writer\n    profileId: worker:claude:claude-sonnet-5\n');
+    expect(set?.source.endsWith('---\n# body comment stays byte-for-byte\nbody\n')).toBe(true);
+    const cleared = patchWorkflowAssignment(set!.source, { kind: 'stage', stageId: 'script' }, null);
+    expect(cleared?.source).toBe(VIDEO_RUN);
+  });
+
+  it('preserves CRLF and unrelated comments while narrowly replacing a manager mapping', () => {
+    const source = ['---', 'id: example', 'project: faceless-youtube', 'title: Example', 'profile: producer', '# keep this comment', 'manager:', '  agentId: old-manager', '  profileId: manager:claude:claude-opus-4-8', 'stages:', '  - id: work', '    title: Work', '    action: research:brief', '    target: orgs/faceless-youtube/output', '    workOrder: work', '---', 'body', ''].join('\r\n');
+    const patched = patchWorkflowAssignment(source, { kind: 'manager' }, { agentId: 'new-manager', profileId: 'manager:claude:claude-opus-4-8' });
+    expect(patched?.source).toContain('# keep this comment\r\nmanager:\r\n  agentId: new-manager\r\n  profileId: manager:claude:claude-opus-4-8\r\nstages:');
+    expect(patched?.source.includes('\n') && !patched?.source.includes('\r\n')).toBe(false);
+    expect(patched?.oldAssignment).toEqual({ agentId: 'old-manager', profileId: 'manager:claude:claude-opus-4-8' });
+    expect(patchWorkflowAssignment(patched!.source, { kind: 'manager' }, null)?.source).toBe(source.replace('manager:\r\n  agentId: old-manager\r\n  profileId: manager:claude:claude-opus-4-8\r\n', ''));
+  });
+
+  it('refuses to replace assignment lines carrying comments, rather than rewriting authored meaning', () => {
+    const source = VIDEO_RUN.replace('    dependsOn: [research]', '    agentId: old # deliberate\n    profileId: worker:claude:claude-sonnet-5\n    dependsOn: [research]');
+    expect(patchWorkflowAssignment(source, { kind: 'stage', stageId: 'script' }, { agentId: 'next', profileId: 'worker:claude:claude-sonnet-5' })).toBeNull();
+  });
+
+  it('refuses unknown stages and a true no-op rather than manufacturing a durable proposal', () => {
+    expect(patchWorkflowAssignment(VIDEO_RUN, { kind: 'stage', stageId: 'nope' }, { agentId: 'writer', profileId: 'worker:claude:claude-sonnet-5' })).toBeNull();
+    expect(patchWorkflowAssignment(VIDEO_RUN, { kind: 'manager' }, null)?.source).toBe(VIDEO_RUN);
+  });
+
+  it('refuses block scalars, commented assignment declarations, and scalar injection', () => {
+    const blockScalar = VIDEO_RUN.replace('    workOrder: write it', '    workOrder: |\n      agentId: prose only\n      profileId: prose only');
+    expect(patchWorkflowAssignment(blockScalar, { kind: 'stage', stageId: 'script' }, null)).toBeNull();
+    const commented = VIDEO_RUN.replace('    dependsOn: [research]', '    # agentId: preserve this authored comment\n    dependsOn: [research]');
+    expect(patchWorkflowAssignment(commented, { kind: 'stage', stageId: 'script' }, { agentId: 'writer', profileId: 'worker:claude:claude-sonnet-5' })).toBeNull();
+    expect(patchWorkflowAssignment(VIDEO_RUN, { kind: 'stage', stageId: 'script' }, { agentId: 'writer\n    riskTier: T3', profileId: 'worker:claude:claude-sonnet-5' })).toBeNull();
+  });
+
+  it('proves the parsed target values as well as every non-target semantic field', () => {
+    const semanticSource = VIDEO_RUN.replace('    action: write:script', '    action: research:brief');
+    const patched = patchWorkflowAssignment(semanticSource, { kind: 'stage', stageId: 'script' }, { agentId: 'writer', profileId: 'worker:claude:claude-sonnet-5' });
+    const before = parseWorkflowDef(semanticSource); const after = parseWorkflowDef(patched!.source);
+    expect(before.ok && after.ok).toBe(true);
+    if (!before.ok || !after.ok) return;
+    expect(isExactAssignmentAmendment(before.value, after.value, { kind: 'stage', stageId: 'script' }, { agentId: 'writer', profileId: 'worker:claude:claude-sonnet-5' }, patched!.oldAssignment)).toBe(true);
+    const wrongTarget = { ...after.value, stages: after.value.stages.map((stage) => stage.id === 'script' ? { ...stage, agentId: 'other' } : stage) };
+    expect(isExactAssignmentAmendment(before.value, wrongTarget, { kind: 'stage', stageId: 'script' }, { agentId: 'writer', profileId: 'worker:claude:claude-sonnet-5' }, patched!.oldAssignment)).toBe(false);
+    expect(isExactAssignmentAmendment(before.value, after.value, { kind: 'stage', stageId: 'script' }, { agentId: 'writer', profileId: 'worker:claude:claude-sonnet-5' }, { agentId: 'wrong-old', profileId: 'worker:claude:claude-sonnet-5' })).toBe(false);
+  });
+
+  it('handles the committed faceless-youtube video-run definition without altering non-target bytes', () => {
+    const path = fileURLToPath(new URL('../../../orgs/faceless-youtube/workflows/video-run.md', import.meta.url));
+    const actual = readFileSync(path, 'utf8');
+    const patched = patchWorkflowAssignment(actual, { kind: 'stage', stageId: 'research' }, { agentId: 'writer', profileId: 'worker:claude:claude-sonnet-5' });
+    expect(patched).not.toBeNull();
+    expect(patched!.source.replace(/    agentId: writer\r?\n    profileId: worker:claude:claude-sonnet-5\r?\n/, '')).toBe(actual);
+  });
+});

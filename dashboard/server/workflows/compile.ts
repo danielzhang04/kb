@@ -15,15 +15,26 @@ import {
   type PlanProposal,
   type ProposalRiskTier,
   type ProposalStage,
+  type ResolvedAgentAssignment,
 } from '../control/proposal.ts';
-import type { WorkflowDef } from './defs.ts';
+import type { ExecutionProfile } from '../control/policy.ts';
+import type { DeclaredAgentDetail } from '../agents/roster.ts';
+import type { WorkflowDef, WorkflowManagerAssignment } from './defs.ts';
 
 export interface CompileWorkflowEnvironment {
   registry: RuntimeSkillRegistry;
+  /** Optional until a definition authors an assignment; then all three binding inputs are required. */
+  declaredAgents?: ReadonlyMap<string, DeclaredAgentDetail>;
+  executionProfiles?: readonly ExecutionProfile[];
+  availableRuntimes?: ReadonlySet<'claude' | 'codex'>;
 }
 
 export type CompileWorkflowResult =
   | { ok: true; value: PlanProposal }
+  | { ok: false; reason: string; detail: string };
+
+type ResolvedAssignmentResult =
+  | { ok: true; value: ResolvedAgentAssignment }
   | { ok: false; reason: string; detail: string };
 
 const REQUIRED_GLOBAL_REFS = ['CLAUDE.md', 'governance/agent-rules.md', 'governance/risk-tiers.md'] as const;
@@ -64,10 +75,77 @@ function deriveProposalId(def: WorkflowDef, effectiveRead: readonly string[]): s
       workOrder: stage.workOrder,
       dependsOn: [...stage.dependsOn].sort(),
       riskTier: stage.riskTier,
+      ...(stage.agentId && stage.profileId ? { agentId: stage.agentId, profileId: stage.profileId } : {}),
+      ...(stage.workflowProfile ? { workflowProfile: stage.workflowProfile } : {}),
+      ...(stage.review ? { review: stage.review } : {}),
+      ...(stage.completionGate ? { completionGate: stage.completionGate } : {}),
     })),
+    ...(def.manager ? { manager: { agentId: def.manager.agentId, profileId: def.manager.profileId } } : {}),
   });
   const hash = createHash('sha256').update(preimage, 'utf8').digest('hex');
   return `wf-${hash.slice(0, 48)}`;
+}
+
+function resolveAssignment(
+  assignment: WorkflowManagerAssignment,
+  role: 'manager' | 'worker',
+  project: string,
+  env: CompileWorkflowEnvironment,
+): ResolvedAssignmentResult {
+  if (!env.declaredAgents || !env.executionProfiles || !env.availableRuntimes) {
+    return { ok: false, reason: 'assignment-binding-environment-missing', detail: 'authored agent assignments require declared agents, execution profiles, and available runtimes' };
+  }
+  const declaration = env.declaredAgents.get(assignment.agentId);
+  if (!declaration || declaration.id !== assignment.agentId) {
+    return { ok: false, reason: 'assigned-agent-not-declared', detail: `assigned agent '${assignment.agentId}' is not declared` };
+  }
+  if (!declaration.projects.includes(project)) {
+    return { ok: false, reason: 'assigned-agent-project-mismatch', detail: `assigned agent '${assignment.agentId}' is not declared for project '${project}'` };
+  }
+  if (!declaration.runnerBound) {
+    return { ok: false, reason: 'assigned-agent-not-runner-bound', detail: `assigned agent '${assignment.agentId}' is not runner-bound` };
+  }
+  if (!declaration.defaultProfile || !declaration.allowedProfiles
+    || !declaration.allowedProfiles.includes(declaration.defaultProfile)
+    || !declaration.allowedProfiles.includes(assignment.profileId)) {
+    return { ok: false, reason: 'assigned-profile-not-allowed', detail: `assigned profile '${assignment.profileId}' is not allowed for agent '${assignment.agentId}'` };
+  }
+  const selected = env.executionProfiles.find((profile) => profile.id === assignment.profileId);
+  if (!selected) {
+    return { ok: false, reason: 'assigned-profile-not-found', detail: `assigned execution profile '${assignment.profileId}' is unavailable` };
+  }
+  if (selected.role !== role) {
+    return { ok: false, reason: 'assigned-profile-role-mismatch', detail: `assigned execution profile '${assignment.profileId}' is not a ${role} profile` };
+  }
+  const declaredDefault = env.executionProfiles.find((profile) => profile.id === declaration.defaultProfile);
+  if (!declaredDefault || declaration.runtime === null || declaration.model === null
+    || declaredDefault.runtime !== declaration.runtime || declaredDefault.model !== declaration.model) {
+    return { ok: false, reason: 'assigned-default-profile-mismatch', detail: `declared default profile for agent '${assignment.agentId}' does not match its declared runtime/model` };
+  }
+  if (declaredDefault.role !== role) {
+    return { ok: false, reason: 'assigned-default-profile-role-mismatch', detail: `declared default profile for agent '${assignment.agentId}' is not a ${role} profile` };
+  }
+  if (!env.availableRuntimes.has(selected.runtime)) {
+    return { ok: false, reason: 'assigned-runtime-unavailable', detail: `runtime '${selected.runtime}' is unavailable for assigned profile '${assignment.profileId}'` };
+  }
+  if (!(env.registry.runtimes[selected.runtime] ?? []).includes(selected.model)) {
+    return { ok: false, reason: 'assigned-profile-routing-unregistered', detail: `assigned profile '${assignment.profileId}' routing is not registered` };
+  }
+  const declarationPath = `agents/${assignment.agentId}.md`;
+  if (declaration.source !== declarationPath || !/^[a-f0-9]{64}$/.test(declaration.sourceHash)) {
+    return { ok: false, reason: 'assigned-declaration-invalid', detail: `declaration for agent '${assignment.agentId}' has an invalid canonical source` };
+  }
+  return {
+    ok: true,
+    value: {
+      agentId: assignment.agentId,
+      declarationPath,
+      declarationHash: declaration.sourceHash,
+      profileId: selected.id,
+      runtime: selected.runtime,
+      model: selected.model,
+    },
+  };
 }
 
 function firstLine(text: string, fallback: string): string {
@@ -86,33 +164,77 @@ function highestTier(stages: readonly { riskTier: ProposalRiskTier }[]): Proposa
  * `validatePlanProposal` / the store; this function only assembles the closed shape and picks routing.
  */
 export function compileWorkflowDef(def: WorkflowDef, env: CompileWorkflowEnvironment): CompileWorkflowResult {
+  const reviewStageIds = new Set(def.stages.filter((stage) => stage.review !== undefined).map((stage) => stage.id));
+  const reviewSubjects = new Set<string>();
+  for (const stage of def.stages) {
+    if (!stage.review) continue;
+    const subjectStageId = stage.review.subjectStageId;
+    if (stage.dependsOn.length !== 1 || stage.dependsOn[0] !== subjectStageId) {
+      return { ok: false, reason: 'review-depends-on-subject-only', detail: `review stage '${stage.id}' must depend only on its subject '${subjectStageId}'` };
+    }
+    if (reviewSubjects.has(subjectStageId)) {
+      return { ok: false, reason: 'duplicate-review-subject', detail: `multiple review stages target subject '${subjectStageId}'` };
+    }
+    if (reviewStageIds.has(subjectStageId)) {
+      return { ok: false, reason: 'review-of-review-not-allowed', detail: `review stage '${stage.id}' cannot review review stage '${subjectStageId}'` };
+    }
+    reviewSubjects.add(subjectStageId);
+  }
   const claudeModels = env.registry.runtimes.claude ?? [];
-  const managerModel = pickModel(claudeModels, 'opus');
-  const workerModel = pickModel(claudeModels, 'sonnet');
-  if (!managerModel || !workerModel) {
+  const needsDefaultManager = def.manager === undefined;
+  const needsDefaultWorker = def.stages.some((stage) => stage.agentId === undefined);
+  const managerModel = needsDefaultManager ? pickModel(claudeModels, 'opus') : null;
+  const workerModel = needsDefaultWorker ? pickModel(claudeModels, 'sonnet') : null;
+  if ((needsDefaultManager && !managerModel) || (needsDefaultWorker && !workerModel)) {
     return { ok: false, reason: 'no-registered-claude-models', detail: 'the runtime registry has no registered claude models to route the manager and workers' };
+  }
+
+  let managerAssignment: ResolvedAgentAssignment | undefined;
+  if (def.manager) {
+    const resolved = resolveAssignment(def.manager, 'manager', def.project, env);
+    if (!resolved.ok) return resolved;
+    managerAssignment = resolved.value;
   }
 
   const writeTargets = [...new Set(def.stages.map((stage) => stage.target))];
   const readScope = effectiveReadScope(def);
   const proposalScope = { read: readScope, write: writeTargets };
 
-  const stages: ProposalStage[] = def.stages.map((stage) => ({
-    id: stage.id,
-    title: stage.title,
-    action: stage.action,
-    target: stage.target,
-    workOrder: stage.workOrder,
-    riskTier: stage.riskTier,
-    dependsOn: [...stage.dependsOn],
-    worker: { runtime: 'claude', model: workerModel },
-    requiredSkills: [],
-    // Minimal-valid stage envelope: the stage reads its org and writes only its own declared target.
-    scope: { read: readScope, write: [stage.target] },
-    artifacts: [],
-    checkpoints: [],
-    humanGates: [],
-  }));
+  const stages: ProposalStage[] = [];
+  for (const stage of def.stages) {
+    let assignment: ResolvedAgentAssignment | undefined;
+    if (stage.agentId !== undefined && stage.profileId !== undefined) {
+      const resolved = resolveAssignment({ agentId: stage.agentId, profileId: stage.profileId }, 'worker', def.project, env);
+      if (!resolved.ok) return resolved;
+      assignment = resolved.value;
+    }
+    if (stage.review && stage.workflowProfile !== 'checker-readonly') {
+      return { ok: false, reason: 'review-workflow-profile-required', detail: `review stage '${stage.id}' requires workflowProfile 'checker-readonly'` };
+    }
+    if (stage.workflowProfile !== undefined && !(env.registry.workflowProfiles ?? []).includes(stage.workflowProfile)) {
+      return { ok: false, reason: 'stage-workflow-profile-unavailable', detail: `stage '${stage.id}' workflow profile '${stage.workflowProfile}' is not server-owned` };
+    }
+    stages.push({
+      id: stage.id,
+      title: stage.title,
+      action: stage.action,
+      target: stage.target,
+      workOrder: stage.workOrder,
+      riskTier: stage.riskTier,
+      dependsOn: [...stage.dependsOn],
+      worker: assignment ? { runtime: assignment.runtime, model: assignment.model } : { runtime: 'claude', model: workerModel as string },
+      requiredSkills: [],
+      // Minimal-valid stage envelope: the stage reads its org and writes only its own declared target.
+      scope: { read: readScope, write: [stage.target] },
+      artifacts: [],
+      checkpoints: [],
+      humanGates: [],
+      ...(assignment ? { assignment } : {}),
+      ...(stage.workflowProfile ? { workflowProfile: stage.workflowProfile } : {}),
+      ...(stage.review ? { review: structuredClone(stage.review) } : {}),
+      ...(stage.completionGate ? { completionGate: { ...stage.completionGate } } : {}),
+    });
+  }
 
   const governanceRefs = [...REQUIRED_GLOBAL_REFS, `orgs/${def.project}/contract.md`];
   const summary = firstLine(def.description, `Workflow ${def.id} (${highestTier(stages)}, ${def.stages.length} stage${def.stages.length === 1 ? '' : 's'}).`);
@@ -123,7 +245,12 @@ export function compileWorkflowDef(def: WorkflowDef, env: CompileWorkflowEnviron
     project: def.project,
     title: def.title,
     summary,
-    manager: { runtime: 'claude', model: managerModel, requiredSkills: [] },
+    manager: {
+      runtime: managerAssignment?.runtime ?? 'claude',
+      model: managerAssignment?.model ?? managerModel as string,
+      requiredSkills: [],
+      ...(managerAssignment ? { assignment: managerAssignment } : {}),
+    },
     scope: proposalScope,
     governanceRefs,
     stages,

@@ -29,6 +29,7 @@ import { createSubjectBrokerPersistence } from './brokerStore.ts';
 import { createGitWorktreeAdapter, createCuratedSkillResolver, createFileAccountingAdapter } from './adapters.ts';
 import { createCanonicalGitResultIntegrator } from './canonicalResultIntegrator.ts';
 import { createClaudeWorkerAdapter, createWorkflowToolPolicyResolver } from './claudeWorkerAdapter.ts';
+import { createAssignedAgentResolver } from './agentAssignmentResolver.ts';
 import {
   AutomaticExecutionEngine,
   type AutomaticExecutionOptions,
@@ -85,6 +86,7 @@ const DEFAULT_GOVERNANCE_REFS: readonly string[] = [
   'governance/agent-rules.md',
   'governance/risk-tiers.md',
 ];
+const SAFE_PROJECT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 /**
  * Conservative execution caps for single-stage Wave-A runs. Subscription runs report 0 cost; the micro-
@@ -130,6 +132,7 @@ export interface ActivationDeps {
   createAccounting: typeof createFileAccountingAdapter;
   createResults: typeof createCanonicalGitResultIntegrator;
   createToolPolicyResolver: typeof createWorkflowToolPolicyResolver;
+  createAssignedAgentResolver: typeof createAssignedAgentResolver;
   createWorkers: typeof createClaudeWorkerAdapter;
   createRegistry: typeof createWorkerCancellationRegistry;
   createManagers: typeof createBrokerManagerAdapter;
@@ -197,12 +200,34 @@ function defaultDeps(): ActivationDeps {
     createAccounting: createFileAccountingAdapter,
     createResults: createCanonicalGitResultIntegrator,
     createToolPolicyResolver: createWorkflowToolPolicyResolver,
+    createAssignedAgentResolver: createAssignedAgentResolver,
     createWorkers: createClaudeWorkerAdapter,
     createRegistry: createWorkerCancellationRegistry,
     createManagers: createBrokerManagerAdapter,
     createCancellation: createBrokerCancellationController,
     createEngine: (options) => new AutomaticExecutionEngine(options),
     settleLedgerForRun: settleFleetLedgerForRun,
+  };
+}
+
+/**
+ * Server-owned project policy resolver. Wave A keeps its already-loaded default environment, while a
+ * later project is loaded fresh for each engine boundary invocation with the canonical global anchors plus
+ * that project's contract. The engine snapshots that one result for the invocation; this resolver never
+ * has process-lifetime cache state that could retain a stale project policy. Browser/proposal text never
+ * selects files or adds governance references.
+ */
+export function createProjectPolicyResolver(
+  repoRoot: string,
+  loadPolicy: ActivationDeps['loadPolicy'],
+  heldProject: string,
+  heldPolicy: PolicyEnvironment,
+): (project: string) => PolicyEnvironment {
+  if (!SAFE_PROJECT.test(heldProject)) throw new ActivationError('held policy project is unsafe');
+  return (project: string): PolicyEnvironment => {
+    if (!SAFE_PROJECT.test(project)) throw new ActivationError('project is unsafe for policy resolution');
+    if (project === heldProject) return heldPolicy;
+    return loadPolicy(repoRoot, project, [...DEFAULT_GOVERNANCE_REFS, `orgs/${project}/contract.md`]);
   };
 }
 
@@ -228,6 +253,8 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
   const resolveLaunch = options.resolveLaunch ?? dormantResolveLaunch;
 
   const policy = deps.loadPolicy(repoRoot, project, [...refs]);
+  const resolvePolicy = createProjectPolicyResolver(repoRoot, deps.loadPolicy, project, policy);
+  const assignedAgents = deps.createAssignedAgentResolver(repoRoot);
 
   const broker = deps.createBroker(
     deps.createSessionAdapter({ resolveLaunch }),
@@ -288,6 +315,9 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
   const engine = deps.createEngine({
     store: options.controlStore,
     policy,
+    policyProject: project,
+    resolvePolicy,
+    assignedAgents,
     worktreeRoot,
     maxConcurrency,
     budget,

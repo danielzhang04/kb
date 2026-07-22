@@ -12,6 +12,7 @@ import {
   diffPlanProposals,
   parseProposalFromAssistant,
   validatePlanProposal,
+  validateServerCompiledPlanProposal,
   type PlanProposal,
 } from './proposal.ts';
 import { compileApprovedProposal } from './compiler.ts';
@@ -85,7 +86,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       if (!latest) return reply.code(404).send({ error: 'proposal-not-found' });
       const stored = ctx.controlStore.getProposalRevision(sub, proposalRef, latest.revision);
       if (!stored.ok) return sendResult(reply, stored);
-      const prior = validatePlanProposal(stored.value.snapshot, registry);
+      const prior = validateServerCompiledPlanProposal(stored.value.snapshot, registry);
       if (!prior.ok) return reply.code(409).send({ error: 'stored-proposal-invalid', detail: prior.detail });
       previous = protocolRevision(prior.value, latest.revision);
     }
@@ -231,6 +232,14 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       if (!detail.ok) return { ok: false as const, status: 404, error: 'not-found', detail: detail.detail };
       const stage = detail.value.stages.find((candidate) => candidate.stageRef === stageRef);
       if (!stage) return { ok: false as const, status: 404, error: 'not-found', detail: 'stage was not found' };
+      // Assignment provenance is immutable at every lifecycle surface. Refuse before any canonical
+      // card write/audit, even if a stale caller has otherwise-valid CAS versions.
+      if (stage.assignment !== null) {
+        return {
+          ok: false as const, status: 409, error: 'reroute-refused', disposition: 'immutable' as const,
+          detail: 'assigned stage routing is immutable; create a successor run with a new approved assignment',
+        };
+      }
       const attempt = detail.value.attempts.find((candidate) => candidate.attemptRef === stage.currentAttemptRef);
       const session = detail.value.sessions.find((candidate) => candidate.sessionRef === attempt?.managedSessionRef);
       const amendmentRequired = stage.state === 'waiting-human'
@@ -274,10 +283,16 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       if (!stored.ok || stored.value.hash !== detail.value.run.proposalHash || stored.value.approval?.decision !== 'approved') {
         return { ok: false as const, status: 409, error: 'approved-proposal-binding-lost', detail: 'approved proposal binding was lost' };
       }
-      const parsed = validatePlanProposal(stored.value.snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
+      const parsed = validateServerCompiledPlanProposal(stored.value.snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
       if (!parsed.ok) return { ok: false as const, status: 409, error: 'stored-proposal-invalid', detail: parsed.detail };
       const proposalStage = parsed.value.stages.find((candidate) => candidate.id === stage.stageId);
       if (!proposalStage) return { ok: false as const, status: 409, error: 'proposal-binding-lost', detail: 'proposal stage was not found' };
+      if (proposalStage.assignment) {
+        return {
+          ok: false as const, status: 409, error: 'reroute-refused', disposition: 'immutable' as const,
+          detail: 'assigned stage routing is immutable; create a successor run with a new approved assignment',
+        };
+      }
       if (proposalStage.riskTier === 'T3' || proposalStage.humanGates.length > 0) {
         return {
           ok: false as const, status: 409, error: 'reroute-refused', disposition: 'plan-amendment-required' as const,
@@ -403,7 +418,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     return withOpsTransaction(async () => {
     try { await prepareCoordination(ctx.repoRoot, ctx.opsGit ?? defaultGitRunner); }
     catch { return reply.code(409).send({ error: 'canonical-reconciliation-failed' }); }
-    const parsed = validatePlanProposal(stored.value.snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
+    const parsed = validateServerCompiledPlanProposal(stored.value.snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
     if (!parsed.ok) return reply.code(409).send({ error: 'stored-proposal-invalid', detail: parsed.detail });
     const reconciled = await reconcileCanonicalPublication({
       repoRoot: ctx.repoRoot, runRef, proposal: parsed.value, defaultWorkers: defaultWorkers(ctx.repoRoot),
@@ -612,8 +627,15 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (!stored.ok || stored.value.hash !== detail.value.run.proposalHash || stored.value.approval?.decision !== 'approved') {
       return reply.code(409).send({ error: 'approved-proposal-binding-lost' });
     }
-    const proposal = validatePlanProposal(stored.value.snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
+    const proposal = validateServerCompiledPlanProposal(stored.value.snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
     if (!proposal.ok) return reply.code(409).send({ error: 'stored-proposal-invalid', detail: proposal.detail });
+    if (proposal.value.manager.assignment
+      && (runtime !== proposal.value.manager.assignment.runtime || model !== proposal.value.manager.assignment.model)) {
+      return reply.code(409).send({
+        error: 'manager-successor-routing-immutable',
+        detail: 'manager successor routing must match immutable manager assignment provenance',
+      });
+    }
     try {
       auditFn(ctx)(ctx.repoRoot, {
         action: 'control-manager-successor-authorize', owner: sub, target: runRef, riskTier: 'T2',
@@ -681,7 +703,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       return reply.code(409).send({ error: 'canonical-reconciliation-failed' });
     }
     const registry = loadRuntimeSkillRegistry(ctx.repoRoot);
-    const proposal = validatePlanProposal(stored.value.snapshot, registry);
+    const proposal = validateServerCompiledPlanProposal(stored.value.snapshot, registry);
     if (!proposal.ok) return reply.code(409).send({ error: 'stored-proposal-invalid', detail: proposal.detail });
     const compiled = compileApprovedProposal(proposal.value, stored.value.hash, stored.value.hash, {
       policy: loadPolicyEnvironment(ctx.repoRoot, proposal.value.project, proposal.value.governanceRefs),
@@ -701,7 +723,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (postAuditPreamble.exitCode !== 0 || !postAuditPreamble.stdout.includes('PREAMBLE OK')) {
       return reply.code(409).send({ error: 'post-audit-preamble-refused' });
     }
-    const postAuditProposal = validatePlanProposal(stored.value.snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
+    const postAuditProposal = validateServerCompiledPlanProposal(stored.value.snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
     const postAuditCompiled = postAuditProposal.ok
       ? compileApprovedProposal(postAuditProposal.value, stored.value.hash, stored.value.hash, {
           policy: loadPolicyEnvironment(ctx.repoRoot, postAuditProposal.value.project, postAuditProposal.value.governanceRefs),
@@ -725,7 +747,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
         repoRoot: ctx.repoRoot, runRef, cardRefs: rootCards, runPy: ctx.runPy,
         runGit: ctx.opsGit ?? defaultGitRunner,
         authorizeAfterPrepare: () => {
-          const currentProposal = validatePlanProposal(stored.value.snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
+          const currentProposal = validateServerCompiledPlanProposal(stored.value.snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
           const currentCompiled = currentProposal.ok
             ? compileApprovedProposal(currentProposal.value, stored.value.hash, stored.value.hash, {
                 policy: loadPolicyEnvironment(ctx.repoRoot, currentProposal.value.project, currentProposal.value.governanceRefs),
@@ -761,6 +783,13 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     const found = ctx.controlStore.getHumanRequest(sub, requestRef);
     if (!found.ok) return sendResult(reply, found);
     const existing = found.value;
+    // A completion gate has review-lineage CAS requirements. It may only be resolved by the
+    // dedicated route below, never by this generic Human Request mutation.
+    const requestRun = ctx.controlStore.getRun(sub, existing.runRef);
+    if (!requestRun.ok) return sendResult(reply, requestRun);
+    if (requestRun.value.reviewReceipts.some((receipt) => receipt.completionRequestRef === requestRef)) {
+      return reply.code(409).send({ error: 'review-completion-gate-reserved' });
+    }
     if (existing.state === 'open') {
       if (existing.revision !== integer(body.expectedRevision)) return reply.code(409).send({ error: 'request-revision-changed' });
       try {
@@ -789,6 +818,84 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       });
     }
     return sendResult(reply, responded);
+  });
+
+  /** Resolve a completion gate with server-bound review lineage; callers never supply internal refs. */
+  scope.post('/api/control/review-completion-gates/:requestRef/resolve', { preHandler }, async (req, reply) => {
+    const sub = subject(req);
+    if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
+    const body = record(req.body);
+    const requestRef = (req.params as { requestRef: string }).requestRef;
+    const request = ctx.controlStore.getHumanRequest(sub, requestRef);
+    if (!request.ok) return sendResult(reply, request);
+    const run = ctx.controlStore.getRun(sub, request.value.runRef);
+    if (!run.ok) return sendResult(reply, run);
+    const receipts = run.value.reviewReceipts.filter((receipt) => receipt.completionRequestRef === requestRef);
+    if (receipts.length !== 1) return reply.code(409).send({ error: 'review-completion-gate-linkage-ambiguous' });
+    const receipt = receipts[0];
+    const loops = run.value.reviewLoops.filter((loop) => loop.reviewStageRef === receipt.reviewStageRef
+      && loop.subjectStageRef === receipt.subjectStageRef && loop.activeReceiptRef === receipt.reviewReceiptRef);
+    const reviewStages = run.value.stages.filter((stage) => stage.stageRef === receipt.reviewStageRef);
+    const subjectStages = run.value.stages.filter((stage) => stage.stageRef === receipt.subjectStageRef);
+    if (loops.length !== 1 || reviewStages.length !== 1 || subjectStages.length !== 1
+      || request.value.stageRef !== reviewStages[0].stageRef || request.value.runRef !== receipt.runRef) {
+      return reply.code(409).send({ error: 'review-completion-gate-linkage-ambiguous' });
+    }
+    const decision = string(body.decision) as 'approved' | 'rejected' | 'changes-requested';
+    if (!['approved', 'rejected', 'changes-requested'].includes(decision)) {
+      return reply.code(400).send({ error: 'invalid-review-completion-gate-decision' });
+    }
+    if (request.value.state === 'open') {
+      if (request.value.revision !== integer(body.expectedRequestRevision)) {
+        return reply.code(409).send({ error: 'request-revision-changed' });
+      }
+      try {
+        await auditFn(ctx)(ctx.repoRoot, {
+          action: 'control-review-completion-gate-authorize', owner: sub, target: requestRef, riskTier: 'T3',
+          result: `authorized:${decision}`,
+          detail: {
+            requestRef, runRef: request.value.runRef, requestRevision: request.value.revision,
+            reviewReceiptRef: receipt.reviewReceiptRef, receiptVersion: receipt.version,
+            reviewLoopRef: loops[0].reviewLoopRef, loopVersion: loops[0].version,
+            reviewStageRef: reviewStages[0].stageRef, reviewStageVersion: reviewStages[0].version,
+            subjectStageRef: subjectStages[0].stageRef, subjectStageVersion: subjectStages[0].version, decision,
+          },
+        }, { runGit: ctx.opsGit, now: ctx.now });
+      } catch {
+        return reply.code(500).send({ error: 'review-completion-gate-audit-required' });
+      }
+    }
+    // A replay sees the post-transition versions. The store fingerprints the pre-transition CAS
+    // tuple, so recover that exact immutable predecessor only from a recorded resolution. Fresh
+    // requests always use the current tuple above and therefore retain normal CAS protection.
+    const replay = request.value.state === 'resolved' && request.value.response !== null;
+    if (replay && integer(body.expectedRequestRevision) !== request.value.response!.requestRevision) {
+      return reply.code(409).send({ error: 'request-revision-changed' });
+    }
+    if (replay && (receipt.version < 2 || loops[0].version < 2 || subjectStages[0].version < 2)) {
+      return reply.code(409).send({ error: 'review-completion-gate-replay-lineage-invalid' });
+    }
+    const resolved = ctx.controlStore.resolveReviewCompletionGate(sub, requestRef, {
+      expectedRequestRevision: replay ? request.value.response!.requestRevision : integer(body.expectedRequestRevision),
+      expectedReceiptVersion: replay ? receipt.version - 1 : receipt.version,
+      expectedLoopVersion: replay ? loops[0].version - 1 : loops[0].version,
+      expectedReviewStageVersion: reviewStages[0].version,
+      expectedSubjectStageVersion: replay ? subjectStages[0].version - 1 : subjectStages[0].version,
+      decision,
+      idempotencyKey: string(body.idempotencyKey),
+      response: body.response == null ? null : string(body.response),
+    });
+    if (!resolved.ok) return sendResult(reply, resolved);
+    if (!resolved.replayed) {
+      ctx.controlStore.appendEvent(sub, resolved.value.request.runRef, {
+        kind: 'governance', source: 'human', stageRef: resolved.value.reviewStage.stageRef,
+        status: decision === 'approved' ? 'success' : 'waiting',
+        summary: decision === 'approved'
+          ? `Review completion gate approved at revision ${resolved.value.request.revision}`
+          : `Review completion gate ${decision}; run parked with intervention`,
+      });
+    }
+    return sendResult(reply, resolved);
   });
 
   scope.get('/api/control/retention/inventory', { preHandler }, async (req, reply) => {

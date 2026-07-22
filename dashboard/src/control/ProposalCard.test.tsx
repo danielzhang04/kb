@@ -23,7 +23,13 @@ function revision(decision: ProposalRevisionDto['approval'] = null): ProposalRev
       project: 'kb-ops',
       title: 'Managed control plane',
       summary: 'Compile and run a governed synthetic workflow.',
-      manager: { runtime: 'claude', model: 'claude-sonnet-5', requiredSkills: ['tests'] },
+      manager: {
+        runtime: 'claude', model: 'claude-sonnet-5', requiredSkills: ['tests'],
+        assignment: {
+          agentId: 'fyt-manager', declarationPath: 'agents/fyt-manager.md', declarationHash: 'm'.repeat(64),
+          profileId: 'manager:claude:claude-sonnet-5', runtime: 'claude', model: 'claude-sonnet-5',
+        },
+      },
       scope: { read: ['dashboard'], write: ['dashboard/src/control'] },
       governanceRefs: ['CLAUDE.md', 'orgs/kb-ops/contract.md'],
       stages: [{
@@ -32,6 +38,10 @@ function revision(decision: ProposalRevisionDto['approval'] = null): ProposalRev
         worker: { runtime: 'codex', model: 'gpt-5.6-sol' }, requiredSkills: ['tests'],
         scope: { read: ['dashboard'], write: ['dashboard/src/control'] }, artifacts: [], checkpoints: [],
         humanGates: [{ id: 'review', kind: 'review', prompt: 'Review the exact revision.' }],
+        assignment: {
+          agentId: 'fyt-worker', declarationPath: 'agents/fyt-worker.md', declarationHash: 'w'.repeat(64),
+          profileId: 'worker:codex:gpt-5.6-sol', runtime: 'codex', model: 'gpt-5.6-sol',
+        },
       }],
     },
     diff: {
@@ -47,10 +57,22 @@ describe('ProposalCard', () => {
     expect(screen.getByRole('heading', { name: 'Managed control plane' })).toBeTruthy();
     expect(screen.getByText('Compile proposal')).toBeTruthy();
     expect(screen.getByText('claude · claude-sonnet-5')).toBeTruthy();
+    expect(screen.getAllByText(/Logical assignment/)).toHaveLength(2);
+    expect(screen.getByText('fyt-manager · manager:claude:claude-sonnet-5')).toBeTruthy();
+    expect(screen.getByText('fyt-worker · worker:codex:gpt-5.6-sol')).toBeTruthy();
     const changes = screen.getByLabelText('Proposal changes');
     expect(within(changes).getByText('/title')).toBeTruthy();
     expect(screen.getByText(/Continue planning in Composer/i)).toBeTruthy();
     expect(screen.queryByRole('textbox')).toBeNull();
+  });
+
+  it('labels an absent proposal assignment as unassigned without inventing an owner', () => {
+    const legacy = revision();
+    delete legacy.proposal.manager.assignment;
+    delete legacy.proposal.stages[0].assignment;
+    render(<ProposalCard revision={legacy} />);
+    expect(screen.getAllByText('unassigned')).toHaveLength(2);
+    expect(screen.queryByText(/owner/i)).toBeNull();
   });
 
   it('offers one exact-revision decision and withholds launch before approval', () => {

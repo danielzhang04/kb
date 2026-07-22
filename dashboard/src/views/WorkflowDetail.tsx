@@ -15,7 +15,7 @@
  *     inert string, via the un-dropped `sourceTurnId` (see `control/entityLinks.ts`).
  */
 import { useEffect, useState } from 'react';
-import type { ProposalStageDto, RunMetadataDto } from '../control/controlClient';
+import type { ProposalRoutingDto, ProposalStageDto, ResolvedAgentAssignmentDto, RunMetadataDto } from '../control/controlClient';
 import { EntityDetail, type DetailSection } from '../entity/EntityDetail';
 import type { NavTarget } from '../nav/stack';
 import '../styles/views/entity.css';
@@ -25,13 +25,27 @@ export interface WorkflowDefEntry {
   ref: string;
   project: string;
   path: string;
+  sourceHash: string | null;
+  pendingAmendment?: { workflowPath: string; baseSourceHash: string; proposedSourceHash: string; branch: string; pr: { url?: string; number?: number }; phase: string } | null;
+  pendingAmendmentError?: string | null;
   valid: boolean;
   title: string | null;
+  /** Existing workflow tool capability profile; never an agent assignment profile. */
   profile: string | null;
+  /** Required string parameters declared by the immutable workflow definition. */
+  parameters?: string[];
+  manager?: { agentId: string; profileId: string } | null;
   stageCount: number;
   riskTier: string | null;
-  stages: Array<{ id: string; action: string; target: string; riskTier: string }>;
+  stages: Array<{
+    id: string; action: string; target: string; riskTier: string;
+    declaredAssignment?: { agentId: string; profileId: string } | null;
+  }>;
   detail: string | null;
+  /** Semantic compiler status, deliberately independent from syntax `valid`. */
+  launchable?: boolean;
+  compileError?: string | null;
+  compileDetail?: string | null;
 }
 
 /** The compiled projection from `GET /api/workflows/:ref` — read-only, pre-auth, no engine internals. */
@@ -39,6 +53,7 @@ export interface WorkflowCompiled {
   ok: boolean;
   proposalId?: string;
   contentHash?: string;
+  manager?: ProposalRoutingDto & { requiredSkills: string[]; assignment?: ResolvedAgentAssignmentDto };
   stages?: ProposalStageDto[];
   error?: string;
   detail?: string;
@@ -60,7 +75,16 @@ export interface WorkflowDetailProps {
   backLabel?: string;
   /** The governed Launch control, passed in so this view stays presentational. */
   actions?: React.ReactNode;
+  /** Server-derived assignment choices only; this view never infers routing from declarations. */
+  assignmentOptions?: { manager: AssignmentChoices; stages: Record<string, AssignmentChoices> } | null;
+  onAssignmentAmend?: (target: { kind: 'manager' } | { kind: 'stage'; stageId: string }, assignment: { agentId: string; profileId: string } | null) => void;
+  amendmentStatus?: React.ReactNode;
+  /** Values stay in the owner view so opening detail never changes launch intent. */
+  parameterValues?: Record<string, string>;
+  onParameterChange?: (name: string, value: string) => void;
 }
+
+interface AssignmentChoices { options: Array<{ agentId: string; profileId: string }>; unavailable: string | null; }
 
 /**
  * Risk tier as a mono chip. Tier colours are a sanctioned data-encoding taxonomy, but tier is ALSO
@@ -68,6 +92,36 @@ export interface WorkflowDetailProps {
  */
 function TierChip({ tier }: { tier: string }): React.JSX.Element {
   return <span className={`entity-tier entity-tier--${tier.toLowerCase()} mc-mono`}>{tier}</span>;
+}
+
+function AssignmentRouting({
+  declared,
+  effective,
+  unavailableDetail,
+  testId,
+}: {
+  declared: { agentId: string; profileId: string } | null | undefined;
+  effective: (ProposalRoutingDto & { assignment?: ResolvedAgentAssignmentDto }) | undefined;
+  unavailableDetail?: string | null;
+  testId: string;
+}): React.JSX.Element {
+  return (
+    <div className="entity-note" data-testid={testId}>
+      <p>
+        Declared assignment: <span className="mc-mono">{declared ? `${declared.agentId} · ${declared.profileId}` : 'unassigned'}</span>
+      </p>
+      {effective ? (
+        <p>
+          Effective immutable routing: <span className="mc-mono">{effective.runtime}/{effective.model}</span>
+          {effective.assignment ? <> · declaration <span className="mc-mono">{effective.assignment.declarationHash}</span></> : null}
+        </p>
+      ) : unavailableDetail ? (
+        <p>Effective routing unavailable: {unavailableDetail}</p>
+      ) : (
+        <p>Effective routing has not been compiled.</p>
+      )}
+    </div>
+  );
 }
 
 export function WorkflowDetail({
@@ -80,6 +134,11 @@ export function WorkflowDetail({
   onBack,
   backLabel,
   actions,
+  assignmentOptions,
+  onAssignmentAmend,
+  amendmentStatus,
+  parameterValues = {},
+  onParameterChange,
 }: WorkflowDetailProps): React.JSX.Element {
   const [fetched, setFetched] = useState<WorkflowCompiled | null>(injectedCompiled ?? null);
 
@@ -100,6 +159,7 @@ export function WorkflowDetail({
   const compiled = injectedCompiled !== undefined ? injectedCompiled : fetched;
   // Prefer the compiled stages (dependsOn, workOrder, scope); fall back to the list's four-field preview.
   const compiledStages = compiled?.ok ? compiled.stages ?? [] : [];
+  const compilerFailure = !entry.valid ? null : (entry.launchable === false ? entry.compileDetail : compiled?.ok === false ? compiled.detail : null);
 
   const overview = (
     <>
@@ -117,6 +177,16 @@ export function WorkflowDetail({
         </section>
       )}
 
+      {compilerFailure ? (
+        <section className="entity-undeclared" data-testid="workflow-compile-unavailable" aria-label="Workflow cannot launch">
+          <p className="entity-undeclared__head">
+            <span className="entity-undeclared__tag mc-mono">unavailable</span>
+            This syntactically valid definition cannot be launched.
+          </p>
+          <p className="entity-undeclared__body">{compilerFailure}</p>
+        </section>
+      ) : null}
+
       <section className="entity-block" aria-label="Definition">
         <h3 className="entity-block__title">Definition</h3>
         <dl className="entity-kv" data-testid="workflow-facts">
@@ -129,7 +199,7 @@ export function WorkflowDetail({
             <dd className="mc-mono">{entry.path}</dd>
           </div>
           <div className="entity-kv__row">
-            <dt>Profile</dt>
+            <dt>Workflow tool profile</dt>
             <dd className="mc-mono">{entry.profile ?? <span className="entity-empty-value">—</span>}</dd>
           </div>
           <div className="entity-kv__row">
@@ -143,6 +213,30 @@ export function WorkflowDetail({
           </div>
         </dl>
       </section>
+
+      <section className="entity-block" aria-label="Manager assignment">
+        <h3 className="entity-block__title">Manager assignment</h3>
+        <AssignmentRouting
+          testId="workflow-manager-routing"
+          declared={entry.manager}
+          effective={compiled?.ok ? compiled.manager : undefined}
+          unavailableDetail={compilerFailure}
+        />
+      </section>
+
+      <section className="entity-block" aria-label="Assignment amendments">
+        <h3 className="entity-block__title">Pre-launch assignment amendments</h3>
+        <p className="entity-note">Active source hash: <span className="mc-mono" data-testid="workflow-source-hash">{entry.sourceHash ?? 'unavailable'}</span></p>
+        <AssignmentAmendmentRow label="Manager" target={{ kind: 'manager' }} declared={entry.manager} choices={assignmentOptions?.manager} onAmend={onAssignmentAmend} />
+        {entry.stages.map((stage) => <AssignmentAmendmentRow key={stage.id} label={`Stage ${stage.id}`} target={{ kind: 'stage', stageId: stage.id }} declared={stage.declaredAssignment} choices={assignmentOptions?.stages[stage.id]} onAmend={onAssignmentAmend} />)}
+        {amendmentStatus ? <p className="entity-note" data-testid="workflow-amendment-status">{amendmentStatus}</p> : null}
+      </section>
+
+      {(entry.parameters ?? []).length > 0 ? <section className="entity-block" aria-label="Launch parameters">
+        <h3 className="entity-block__title">Launch parameters</h3>
+        <p className="entity-note">These values are sent only in the governed launch request.</p>
+        {(entry.parameters ?? []).map((name) => <label key={name} className="entity-note">{name}<input aria-label={`Workflow parameter ${name}`} value={parameterValues[name] ?? ''} onChange={(event) => onParameterChange?.(name, event.target.value)} /></label>)}
+      </section> : null}
 
       <p className="entity-note">
         Registering a definition does not launch it. Launching compiles it to a governed proposal, which
@@ -173,6 +267,12 @@ export function WorkflowDetail({
                 <span className="mc-mono">read</span> {stage.scope.read.join(', ') || '—'} ·{' '}
                 <span className="mc-mono">write</span> {stage.scope.write.join(', ') || '—'}
               </p>
+              <AssignmentRouting
+                testId={`workflow-stage-routing-${stage.id}`}
+                declared={entry.stages.find((preview) => preview.id === stage.id)?.declaredAssignment}
+                effective={{ ...stage.worker, ...(stage.assignment ? { assignment: stage.assignment } : {}) }}
+                unavailableDetail={compilerFailure}
+              />
             </li>
           ))}
         </ol>
@@ -189,6 +289,12 @@ export function WorkflowDetail({
                   </span>
                   <TierChip tier={stage.riskTier} />
                 </div>
+                <AssignmentRouting
+                  testId={`workflow-stage-routing-${stage.id}`}
+                  declared={stage.declaredAssignment}
+                  effective={undefined}
+                  unavailableDetail={compilerFailure}
+                />
               </li>
             ))}
           </ol>
@@ -290,7 +396,7 @@ export function WorkflowDetail({
       status={{ label: entry.valid ? 'valid' : 'invalid', tone: entry.valid ? 'ok' : 'error' }}
       facts={[
         { label: 'Project', value: entry.project, mono: true },
-        { label: 'Profile', value: entry.profile ?? '—', mono: true },
+        { label: 'Workflow tool profile', value: entry.profile ?? '—', mono: true },
         { label: 'Stages', value: entry.stageCount, mono: true },
         { label: 'Highest tier', value: entry.riskTier ?? '—', mono: true },
       ]}
@@ -303,4 +409,22 @@ export function WorkflowDetail({
       actions={actions}
     />
   );
+}
+
+function AssignmentAmendmentRow({ label, target, declared, choices, onAmend }: {
+  label: string;
+  target: { kind: 'manager' } | { kind: 'stage'; stageId: string };
+  declared: { agentId: string; profileId: string } | null | undefined;
+  choices: AssignmentChoices | undefined;
+  onAmend?: WorkflowDetailProps['onAssignmentAmend'];
+}): React.JSX.Element {
+  const [choice, setChoice] = useState('');
+  const assignmentKey = (option: { agentId: string; profileId: string }): string => JSON.stringify([option.agentId, option.profileId]);
+  const selected = choices?.options.find((option) => assignmentKey(option) === choice);
+  return <div className="entity-note" data-testid={`workflow-amendment-${target.kind === 'manager' ? 'manager' : target.stageId}`}>
+    <p><span className="mc-mono">{label}</span> · {declared ? `${declared.agentId} · ${declared.profileId}` : 'unassigned'}</p>
+    {choices?.unavailable ? <p>{choices.unavailable}</p> : null}
+    {choices?.options.length ? <><select aria-label={`${label} assignment`} value={choice} onChange={(event) => setChoice(event.target.value)}><option value="">Select eligible assignment</option>{choices.options.map((option) => <option key={assignmentKey(option)} value={assignmentKey(option)}>{option.agentId} · {option.profileId}</option>)}</select><button type="button" className="mc-btn mc-btn--quiet" disabled={!selected} onClick={() => selected && onAmend?.(target, selected)}>Amend</button></> : null}
+    {declared ? <button type="button" className="mc-btn mc-btn--quiet" onClick={() => onAmend?.(target, null)}>Clear assignment</button> : null}
+  </div>;
 }

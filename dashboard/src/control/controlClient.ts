@@ -19,6 +19,23 @@ export interface ProposalRoutingDto {
   model: string;
 }
 
+/** Immutable compiler-resolved logical identity. This is provenance, never a queue-card owner. */
+export interface ResolvedAgentAssignmentDto {
+  agentId: string;
+  declarationPath: string;
+  declarationHash: string;
+  profileId: string;
+  runtime: string;
+  model: string;
+}
+
+export interface AgentWorkspaceLaunchProvenanceDto {
+  composerRef: string;
+  agentId: string;
+  declarationPath: string;
+  declarationHash: string;
+}
+
 export interface ProposalScopeDto {
   read: string[];
   write: string[];
@@ -42,6 +59,8 @@ export interface ProposalStageDto {
     kind: 'input' | 'approval' | 'review' | 'intervention' | 'governance-refusal';
     prompt: string;
   }>;
+  /** Present only for an immutable compiler-resolved logical assignment. */
+  assignment?: ResolvedAgentAssignmentDto;
 }
 
 export interface PlanProposalDto {
@@ -50,7 +69,7 @@ export interface PlanProposalDto {
   project: string;
   title: string;
   summary: string;
-  manager: ProposalRoutingDto & { requiredSkills: string[] };
+  manager: ProposalRoutingDto & { requiredSkills: string[]; assignment?: ResolvedAgentAssignmentDto };
   scope: ProposalScopeDto;
   governanceRefs: string[];
   stages: ProposalStageDto[];
@@ -119,6 +138,9 @@ export interface RunDto {
   version: number;
   managerSessionRef: string;
   managerGeneration: number;
+  /** Immutable logical-manager provenance, or null for a legacy/unassigned run. */
+  managerAssignment: ResolvedAgentAssignmentDto | null;
+  agentWorkspaceLaunch?: AgentWorkspaceLaunchProvenanceDto | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -141,6 +163,8 @@ export interface StageDto {
   state: StageState;
   version: number;
   currentAttemptRef: string | null;
+  /** Immutable logical-worker provenance, or null for a legacy/unassigned stage. */
+  assignment: ResolvedAgentAssignmentDto | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -195,12 +219,35 @@ export interface HumanRequestDto {
   updatedAt: string;
 }
 
+/** Enough review lineage for clients to recognize a reserved completion-gate request. */
+export interface ReviewLoopDto {
+  reviewLoopRef: string;
+  runRef: string;
+  reviewStageRef: string;
+  subjectStageRef: string;
+  state: 'awaiting-subject' | 'checking' | 'rework-queued' | 'failed' | 'parked' | 'awaiting-gate' | 'passed';
+  version: number;
+}
+
+export interface ReviewReceiptDto {
+  reviewReceiptRef: string;
+  runRef: string;
+  reviewStageRef: string;
+  subjectStageRef: string;
+  state: 'passed' | 'awaiting-completion-gate' | 'failed' | 'parked';
+  completionRequestRef: string | null;
+  interventionRequestRef: string | null;
+  version: number;
+}
+
 export interface RunDetailDto {
   run: RunDto;
   stages: StageDto[];
   attempts: AttemptDto[];
   sessions: ManagedSessionDto[];
   humanRequests: HumanRequestDto[];
+  reviewLoops: ReviewLoopDto[];
+  reviewReceipts: ReviewReceiptDto[];
 }
 
 export interface OperationalEventDto {
@@ -553,6 +600,23 @@ export function respondToHumanRequest(
   return write<{ ok: true; value: HumanRequestDto }>(
     `/api/control/human-requests/${segment(requestRef)}/respond`, input, token, fetchImpl,
   ).then((body) => body.value);
+}
+
+/** Resolve a server-bound review completion gate; never use the generic request endpoint for it. */
+export function resolveReviewCompletionGate(
+  requestRef: string,
+  input: {
+    expectedRequestRevision: number;
+    decision: Extract<HumanRequestDecision, 'approved' | 'rejected' | 'changes-requested'>;
+    idempotencyKey: string;
+    response?: string | null;
+  },
+  token: string,
+  fetchImpl?: FetchLike,
+): Promise<HumanRequestDto> {
+  return write<{ ok: true; value: { request: HumanRequestDto } }>(
+    `/api/control/review-completion-gates/${segment(requestRef)}/resolve`, input, token, fetchImpl,
+  ).then((body) => body.value.request);
 }
 
 export async function getRetentionInventory(token: string, fetchImpl?: FetchLike): Promise<StorageInventoryDto> {

@@ -70,6 +70,10 @@ interface AgentRow {
   declaredRuntime: string | null;
   /** arc-3 step 3 — fetched by the roster on every load, previously rendered nowhere. */
   declaredModel: string | null;
+  /** Declared default execution profile id, or null for a legacy declaration. */
+  defaultProfile: string | null;
+  /** Declared execution profile ids this declaration permits, or null for a legacy declaration. */
+  allowedProfiles: string[] | null;
   description: string | null;
   ledger: { dispatches: number; steps: number; days: number };
   sources: Array<'queue' | 'ledger'>;
@@ -117,6 +121,8 @@ export function deriveRoster(index: PlaneAIndex): AgentRow[] {
       // Snapshot-derived rows know nothing about declarations or ledgers — say zero/null honestly
       // rather than inventing values the snapshot cannot support.
       declaredModel: null,
+      defaultProfile: null,
+      allowedProfiles: null,
       description: null,
       ledger: { dispatches: 0, steps: 0, days: 0 },
       sources: ['queue'],
@@ -143,6 +149,8 @@ function rowFromEntry(e: AgentRosterEntry): AgentRow {
     runnerBound: e.runnerBound,
     declaredRuntime: e.declaredRuntime,
     declaredModel: e.declaredModel,
+    defaultProfile: e.defaultProfile ?? null,
+    allowedProfiles: e.allowedProfiles === null || e.allowedProfiles === undefined ? null : [...e.allowedProfiles],
     description: e.description,
     ledger: { dispatches: e.ledger.dispatches, steps: e.ledger.steps, days: e.ledger.days },
     sources: e.sources,
@@ -367,7 +375,9 @@ export function Agents({
     void (async () => {
       try {
         const all = await listRuns(sessionToken);
-        const recent = [...all]
+        const explicit = all.filter((run) => run.agentWorkspaceLaunch?.agentId === openAgentId)
+          .map((run) => ({ run, stages: [] }));
+        const recent = all.filter((run) => run.agentWorkspaceLaunch?.agentId !== openAgentId)
           .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
           .slice(0, AGENT_RUN_SCAN_LIMIT);
         const details = await Promise.all(
@@ -380,7 +390,7 @@ export function Agents({
             }
           }),
         );
-        if (!cancelled) setScannedRuns(details.filter((d): d is RunWithStages => d !== null));
+        if (!cancelled) setScannedRuns([...explicit, ...details.filter((d): d is RunWithStages => d !== null)]);
       } catch {
         /* leaves the section at "not loaded" — never a false "works no runs" */
       }

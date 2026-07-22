@@ -29,7 +29,13 @@ function createRun(store: ControlPlaneStore, subject = 'alice') {
     sourceComposerRef: `composer-${subject}`,
     sourceTurnId: `turn-${subject}`,
     title: 'Broker durability',
-    snapshot: { schema: 'kb.plan-proposal/v1', stages: [{ id: 'build' }] },
+    // `createRun` proves its immutable provenance against the approved snapshot. This broker fixture
+    // does not exercise compiler assignments, but it must still provide the minimal matching manager
+    // and stage identity the store verifies.
+    snapshot: {
+      schema: 'kb.plan-proposal/v1', manager: {},
+      stages: [{ id: 'build', title: 'Build', dependsOn: [] }],
+    },
   });
   if (!proposal.ok) throw new Error(proposal.detail);
   const approved = store.decideProposal(subject, proposal.value.proposalRef, proposal.value.revision, {

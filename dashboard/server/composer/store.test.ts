@@ -105,7 +105,7 @@ describe('ComposerWorkspaceStore authorization and lifecycle', () => {
     if (!fork.ok) return;
     expect(fork.workspace.composerRef).not.toBe(source.composerRef);
     expect(fork.workspace.sourceComposerRef).toBe(source.composerRef);
-    expect(fork.workspace.agent).toEqual({ id: agent.id, path: agent.path, sourceHash: agent.sourceHash });
+    expect(fork.workspace.agent).toEqual({ id: agent.id, path: agent.path, sourceHash: agent.sourceHash, projects: [] });
     expect(JSON.stringify(fork.workspace)).not.toContain(agent.instructionMarkdown);
     const forkLease = store.acquireWriter('alice', fork.workspace.composerRef);
     expect(forkLease.ok && forkLease.providerId).toBeNull();

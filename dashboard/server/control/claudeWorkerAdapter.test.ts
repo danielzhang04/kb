@@ -24,6 +24,13 @@ const WORKER_PROFILE: ExecutionProfile = {
 };
 
 const TOOL_POLICY: ClaudeToolPolicy = { allowedTools: ['Read', 'Write', 'WebSearch'], permissionMode: 'default' };
+const CHECKER_TOOL_POLICY: ClaudeToolPolicy = { allowedTools: ['Read', 'Glob', 'Grep'], permissionMode: 'default' };
+const REVIEW_CONTRACT = {
+  review: {
+    subjectStageId: 'create', maxCreatorReworks: 1,
+    criteria: [{ id: 'safety', description: 'No unsafe changes.' }],
+  },
+};
 
 const FAKE_PID = 4242;
 
@@ -83,6 +90,30 @@ function successLine(result: string, usage?: Record<string, unknown>, cost = 0):
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe('buildWorkerPrompt', () => {
+  it('keeps the legacy prompt byte-identical when no declaration is supplied', () => {
+    const legacy = buildWorkerPrompt({ workOrder: 'Ship the feature.', readScope: ['a'], writeScope: ['b'] });
+    const omitted = buildWorkerPrompt({ workOrder: 'Ship the feature.', readScope: ['a'], writeScope: ['b'], agentDeclarationMarkdown: undefined });
+    expect(omitted).toBe(legacy);
+    expect(legacy).toBe(
+      'AUTHORITATIVE WORK ORDER (follow these instructions):\nShip the feature.\n\n'
+      + 'READ SCOPE \u2014 you may read only these paths:\n- a\nWRITE SCOPE \u2014 you may write only these paths:\n- b',
+    );
+  });
+
+  it('places server-verified declaration bounds before the existing authoritative work order', () => {
+    const prompt = buildWorkerPrompt({
+      agentDeclarationMarkdown: '# Agent bounds\nNever publish.', workOrder: 'Publish this externally.', readScope: ['a'], writeScope: ['b'],
+    });
+    expect(prompt).toContain('Declaration bounds and forbidden authority outrank conflicting work-order detail.');
+    expect(prompt.indexOf('# Agent bounds\nNever publish.')).toBeLessThan(prompt.indexOf('AUTHORITATIVE WORK ORDER'));
+    expect(prompt.indexOf('AUTHORITATIVE WORK ORDER')).toBeLessThan(prompt.indexOf('Publish this externally.'));
+  });
+
+  it('refuses unsafe declaration text before a prompt can be built', () => {
+    expect(() => buildWorkerPrompt({ workOrder: 'x', readScope: [], writeScope: [], agentDeclarationMarkdown: 'bad\0text' }))
+      .toThrow(/declaration instructions are unsafe/);
+  });
+
   it('leads with the authoritative work order', () => {
     const prompt = buildWorkerPrompt({ workOrder: 'Ship the feature.', readScope: ['a'], writeScope: ['b'] });
     expect(prompt.startsWith('AUTHORITATIVE WORK ORDER (follow these instructions):\nShip the feature.')).toBe(true);
@@ -128,6 +159,16 @@ describe('buildWorkerPrompt', () => {
     const prompt = buildWorkerPrompt({ workOrder: 'x', readScope: ['a'], writeScope: ['b'], ...( { evidence: 'SECRET EVIDENCE PAYLOAD' } as object) });
     expect(prompt).not.toContain('SECRET EVIDENCE PAYLOAD');
     expect(prompt).not.toContain('Evidence');
+  });
+
+  it('adds server-owned exact-JSON checker instructions only for a review contract', () => {
+    const prompt = buildWorkerPrompt({
+      workOrder: 'Inspect the committed result.', readScope: ['dashboard'], writeScope: [], reviewContract: REVIEW_CONTRACT,
+    });
+    expect(prompt).toContain('SERVER-OWNED CHECKER REVIEW CONTRACT');
+    expect(prompt).toContain('Return ONLY one UTF-8 JSON object in your final result.');
+    expect(prompt).toContain('kb.review-outcome/v1');
+    expect(prompt).toContain('AUTHORED REVIEW CRITERIA (immutable): [{"id":"safety","description":"No unsafe changes."}]');
   });
 });
 
@@ -339,6 +380,16 @@ describe('parseWorkerStream — mapping matrix', () => {
     expect(result.summary).toBe('WAITING-HUMAN: need a decision on scope');
   });
 
+  it('fails closed for a review contract when the final result is malformed or WAITING-HUMAN', () => {
+    const malformed = parseWorkerStream(successLine('not json'), '', 0, { reviewContract: REVIEW_CONTRACT });
+    expect(malformed.state).toBe('failed');
+    expect(malformed).not.toHaveProperty('reviewOutcome');
+    expect(malformed.summary).toContain('invalid review outcome');
+    const waiting = parseWorkerStream(successLine('WAITING-HUMAN: decide'), '', 0, { reviewContract: REVIEW_CONTRACT });
+    expect(waiting.state).toBe('failed');
+    expect(waiting).not.toHaveProperty('reviewOutcome');
+  });
+
   it('maps a timeout to failed regardless of exit code', () => {
     const result = parseWorkerStream('', 'partial', null, { timedOut: true, timeoutMs: 1234 });
     expect(result.state).toBe('failed');
@@ -353,6 +404,25 @@ describe('parseWorkerStream — mapping matrix', () => {
 });
 
 describe('createClaudeWorkerAdapter.execute', () => {
+  it('refuses incomplete or mismatched assigned provenance before spawning', () => {
+    const fake = fakeProcess();
+    const spawn = vi.fn(() => fake.proc);
+    const adapter = createClaudeWorkerAdapter({ resolveToolPolicy: () => TOOL_POLICY, spawn });
+    const assignment = {
+      agentId: 'fyt-worker', declarationPath: 'agents/fyt-worker.md', declarationHash: 'a'.repeat(64),
+      profileId: WORKER_PROFILE.id, runtime: WORKER_PROFILE.runtime, model: WORKER_PROFILE.model,
+    };
+    expect(() => adapter.execute(executeInput({ assignment }))).toThrow(/together/);
+    expect(() => adapter.execute(executeInput({ instructionMarkdown: '# Bound worker' }))).toThrow(/together/);
+    expect(() => adapter.execute(executeInput({
+      assignment: { ...assignment, profileId: 'other-profile' }, instructionMarkdown: '# Bound worker',
+    }))).toThrow(/verified assignment/);
+    expect(() => adapter.execute(executeInput({
+      assignment: { ...assignment, model: 'other-model' }, instructionMarkdown: '# Bound worker',
+    }))).toThrow(/verified assignment/);
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
   it('spawns with the built args/env/cwd, streams the prompt in, and resolves the parsed result', async () => {
     const fake = fakeProcess();
     let captured: ClaudeSpawnRequest | null = null;
@@ -379,6 +449,47 @@ describe('createClaudeWorkerAdapter.execute', () => {
     expect(stdinPayload.message.content[0].text).toContain('AUTHORITATIVE WORK ORDER');
     expect(captured!.args.join(' ')).not.toContain('AUTHORITATIVE WORK ORDER');
     expect(fake.proc.endStdin).toHaveBeenCalled();
+  });
+
+  it('directly executes a checker only with readonly contract inputs and returns a structured review outcome', async () => {
+    const fake = fakeProcess();
+    const spawn = vi.fn(() => fake.proc);
+    const adapter = createClaudeWorkerAdapter({ resolveToolPolicy: () => CHECKER_TOOL_POLICY, spawn });
+    const promise = adapter.execute(executeInput({
+      workflowProfile: 'checker-readonly', writeScope: [], checkpoints: [], reviewContract: REVIEW_CONTRACT,
+    }));
+    fake.emitStdout(successLine(JSON.stringify({
+      schema: 'kb.review-outcome/v1', decision: 'pass', summary: 'All criteria pass.',
+      criteria: [{ criterionId: 'safety', verdict: 'pass', findingIds: [] }], findings: [],
+    })));
+    fake.emitExit(0);
+    await expect(promise).resolves.toMatchObject({
+      state: 'succeeded', summary: 'All criteria pass.', reviewOutcome: { decision: 'pass' },
+    });
+    expect(JSON.parse(fake.stdin.join('').trim()).message.content[0].text).toContain('SERVER-OWNED CHECKER REVIEW CONTRACT');
+  });
+
+  it('refuses invalid direct checker contract inputs before spawning', () => {
+    const fake = fakeProcess();
+    const spawn = vi.fn(() => fake.proc);
+    const adapter = createClaudeWorkerAdapter({ resolveToolPolicy: () => TOOL_POLICY, spawn });
+    expect(() => adapter.execute(executeInput({ reviewContract: REVIEW_CONTRACT }))).toThrow(/checker-readonly/);
+    expect(() => adapter.execute(executeInput({ workflowProfile: 'checker-readonly', reviewContract: REVIEW_CONTRACT }))).toThrow(/empty writeScope/);
+    expect(() => adapter.execute(executeInput({ workflowProfile: 'checker-readonly', writeScope: [], checkpoints: ['requested'], reviewContract: REVIEW_CONTRACT }))).toThrow(/no requested checkpoints/);
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it('refuses a malicious checker-readonly tool policy that grants a write capability before spawning', () => {
+    const fake = fakeProcess();
+    const spawn = vi.fn(() => fake.proc);
+    const adapter = createClaudeWorkerAdapter({
+      resolveToolPolicy: () => ({ allowedTools: ['Read', 'Write'], permissionMode: 'default' }),
+      spawn,
+    });
+    expect(() => adapter.execute(executeInput({
+      workflowProfile: 'checker-readonly', writeScope: [], checkpoints: [], reviewContract: REVIEW_CONTRACT,
+    }))).toThrow(ToolPolicyRefusal);
+    expect(spawn).not.toHaveBeenCalled();
   });
 
   it('C3: passes an inline --settings deny complement for a no-Bash (scanner) profile, env untouched', async () => {

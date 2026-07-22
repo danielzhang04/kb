@@ -41,6 +41,10 @@ export interface AgentDetailRow {
   declaredRuntime: string | null;
   /** Fetched by the roster on every load and, until now, rendered nowhere. */
   declaredModel: string | null;
+  /** Declared default execution profile id, or null for a legacy declaration. */
+  defaultProfile: string | null;
+  /** Declared execution profile ids this declaration permits, or null for a legacy declaration. */
+  allowedProfiles: string[] | null;
   description: string | null;
   ledger: { dispatches: number; steps: number; days: number };
   /** Which roster sources produced this row: `queue` (owns cards) and/or `ledger` (wrote ledgers). */
@@ -79,6 +83,23 @@ export interface AgentDetailProps {
 /** A value that exists, or an explicit dash — never an empty cell that reads as a load failure. */
 function orDash(value: string | null): React.ReactNode {
   return value ?? <span className="entity-empty-value">—</span>;
+}
+
+/** Profile declarations are distinct from legacy runtime/model defaults and must not render as blanks. */
+function profileContract(value: string | null): React.ReactNode {
+  return value ?? <span className="entity-empty-value">not declared (legacy)</span>;
+}
+
+/** Keep an empty array distinct from a legacy null even though valid declarations normally have profiles. */
+function allowedProfileContract(value: string[] | null): React.ReactNode {
+  if (value === null) return <span className="entity-empty-value">not declared (legacy)</span>;
+  if (value.length === 0) return <span className="entity-empty-value">none declared</span>;
+  return value.map((profile, index) => (
+    <span key={profile}>
+      {index > 0 ? ', ' : null}
+      <span className="mc-mono">{profile}</span>
+    </span>
+  ));
 }
 
 /**
@@ -125,6 +146,11 @@ export function AgentDetail({
   backLabel,
 }: AgentDetailProps): React.JSX.Element {
   const cards = index ? cardsForAgent(agent.id, index) : [];
+  // The compact roster provides these facts before the declaration read completes. When the detail
+  // projection arrives, prefer its exact declaration-backed values without changing legacy nulls.
+  const declarationProfiles = detail?.declaration ?? null;
+  const defaultProfile = declarationProfiles ? declarationProfiles.defaultProfile : agent.defaultProfile;
+  const allowedProfiles = declarationProfiles ? declarationProfiles.allowedProfiles : agent.allowedProfiles;
 
   /**
    * Provenance chips — which of the roster's sources produced this row. Distinguished by LABEL and
@@ -164,14 +190,23 @@ export function AgentDetail({
             <dd className="mc-mono">{orDash(agent.declaredModel)}</dd>
           </div>
           <div className="entity-kv__row">
+            <dt>Default profile</dt>
+            <dd className="mc-mono" data-testid="agent-default-profile">{profileContract(defaultProfile)}</dd>
+          </div>
+          <div className="entity-kv__row">
+            <dt>Allowed profiles</dt>
+            <dd data-testid="agent-allowed-profiles">{allowedProfileContract(allowedProfiles)}</dd>
+          </div>
+          <div className="entity-kv__row">
             <dt>Runner bound</dt>
             {/* The honest flag: declared but inert is a real and common state, so it is stated plainly. */}
             <dd className="mc-mono">{agent.runnerBound ? 'yes' : 'no'}</dd>
           </div>
         </dl>
         <p className="entity-note">
-          Declared defaults are advisory metadata from the agent file. Live routing is resolved
-          separately and is shown — and changed — under Routing.
+          Execution profile IDs are declared metadata from the agent file. Composition validates
+          their availability against the server registry. Legacy declarations have no profile
+          contract. Live routing is resolved separately and is shown — and changed — under Routing.
         </p>
       </section>
 
@@ -411,11 +446,10 @@ export function AgentDetail({
         </ol>
       )}
       <p className="entity-note">
-        Derived via queue cards: a run counts when it has a stage whose canonical card this agent owns.
-        No session or attempt DTO carries an agent id, so this is the only honest join available in the
-        browser.
+        Agent-workspace launches are joined by their immutable recorded declaration provenance. Older
+        runs are derived via queue cards through canonical queue-card ownership.
         {runs !== undefined && runScanLimit ? (
-          <> Scanned the {runScanLimit} most recent runs.</>
+          <> Scanned the {runScanLimit} most recent runs only for that legacy queue-card inference.</>
         ) : null}
       </p>
     </section>

@@ -5,10 +5,11 @@ import { redactSensitiveText } from '../composer/publicTimeline.ts';
 import { defaultGitRunner, prepareCoordination, type GitRunner } from '../write/branch.ts';
 import { defaultPyRunner, type PyRunner } from '../write/launch.ts';
 import { workflowCardId } from '../write/workflowRun.ts';
-import type { CanonicalStageResult, ResultIntegrator, WorkerArtifactResult } from './execution.ts';
-import { canonicalStageResultHash, planAttemptWorktreePath } from './execution.ts';
+import type { CanonicalStageResult, CanonicalStageResultPayload, ResultIntegrator, WorkerArtifactResult } from './execution.ts';
+import { canonicalResultOperationKey, canonicalStageResultHash, planAttemptWorktreePath } from './execution.ts';
 import { createLocalGitCommandRunner, type GitCommandRunner } from './adapters.ts';
 import { isSafeRepoRelativePath } from './proposal.ts';
+import { parseReviewOutcome, type ReviewContract, type ReviewOutcome } from './reviewOutcome.ts';
 
 const SHA = /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/;
 const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -24,13 +25,14 @@ interface IntegrationRecord {
   runRef: string;
   stageId: string;
   attemptRef: string;
-  cardRef: string;
+  cardRef: string | null;
+  reviewContract: ReviewContract | null;
   integrationBranch: string;
   attemptBaseCommit: string;
   attemptCommit: string | null;
   integrationBaseCommit: string;
   integrationCommit: string | null;
-  result: CanonicalStageResult;
+  result: CanonicalStageResultPayload & { resultHash: string };
   state: 'intent' | 'attempt-committed' | 'lineage-local' | 'lineage-committed' | 'canonical-intent' | 'canonical-committed';
 }
 
@@ -178,6 +180,44 @@ function hash(value: unknown): string {
   return createHash('sha256').update(canonical(value), 'utf8').digest('hex');
 }
 
+/** g1 owns the immutable stage card; later review generations remain durable in the journal/lineage only. */
+function expectedCardRef(operationKey: string, runRef: string, stageId: string): string | null {
+  const firstGeneration = canonicalResultOperationKey(runRef, stageId);
+  if (operationKey === firstGeneration) return workflowCardId(runRef, stageId);
+  const suffix = operationKey.slice(firstGeneration.length);
+  const match = /^:g([1-9]\d*)$/.exec(suffix);
+  if (!match || Number(match[1]) < 2) throw new CanonicalResultIntegrationError('canonical result operation identity is invalid');
+  return null;
+}
+
+function publicResult(record: IntegrationRecord): CanonicalStageResult {
+  if (!record.integrationCommit) throw new CanonicalResultIntegrationError('canonical integration commit is unavailable');
+  return structuredClone({
+    ...record.result,
+    durability: 'canonical',
+    attemptBaseCommit: record.attemptBaseCommit,
+    integrationCommit: record.integrationCommit,
+  });
+}
+
+function validatedReviewOutcome(value: unknown, contract: unknown): ReviewOutcome | undefined {
+  if (value === undefined) {
+    if (contract !== null && contract !== undefined) throw new CanonicalResultIntegrationError('canonical result has a review contract without an outcome');
+    return undefined;
+  }
+  if (!contract || typeof contract !== 'object' || Array.isArray(contract)) {
+    throw new CanonicalResultIntegrationError('canonical review outcome lacks an immutable review contract');
+  }
+  try {
+    const parsed = parseReviewOutcome(JSON.stringify(value), contract as ReviewContract);
+    if (!parsed.ok) throw new CanonicalResultIntegrationError(parsed.detail);
+    return parsed.value;
+  } catch (error) {
+    if (error instanceof CanonicalResultIntegrationError) throw error;
+    throw new CanonicalResultIntegrationError('canonical review outcome is invalid');
+  }
+}
+
 function normalizeArtifacts(items: readonly WorkerArtifactResult[]): WorkerArtifactResult[] {
   const paths = new Set<string>();
   return [...items].map((item) => {
@@ -210,15 +250,16 @@ function readState(path: string): IntegrationState {
     throw new CanonicalResultIntegrationError('canonical integration state is invalid');
   }
   const operations = new Set<string>();
-  const stages = new Set<string>();
   for (const record of value.records) {
-    const stageKey = `${record.subject}\0${record.runRef}\0${record.stageId}`;
+    if (!Object.prototype.hasOwnProperty.call(record, 'reviewContract')) {
+      throw new CanonicalResultIntegrationError('canonical integration review contract is absent');
+    }
     const branch = `codex/managed-${createHash('sha256').update(record.runRef ?? '').digest('hex').slice(0, 24)}`;
     if (typeof record.operationKey !== 'string' || record.operationKey.length === 0 || record.operationKey.length > 512
       || typeof record.fingerprint !== 'string' || !/^[a-f0-9]{64}$/.test(record.fingerprint)
       || typeof record.subject !== 'string' || record.subject.length === 0 || record.subject.length > 256
       || !SAFE_REF.test(record.runRef) || !SAFE_REF.test(record.stageId) || !SAFE_REF.test(record.attemptRef)
-      || record.cardRef !== workflowCardId(record.runRef, record.stageId) || record.integrationBranch !== branch
+      || record.cardRef !== expectedCardRef(record.operationKey, record.runRef, record.stageId) || record.integrationBranch !== branch
       || !SHA.test(record.attemptBaseCommit) || (record.attemptCommit !== null && !SHA.test(record.attemptCommit))
       || !SHA.test(record.integrationBaseCommit) || (record.integrationCommit !== null && !SHA.test(record.integrationCommit))
       || !['intent', 'attempt-committed', 'lineage-local', 'lineage-committed', 'canonical-intent', 'canonical-committed'].includes(record.state)
@@ -228,14 +269,14 @@ function readState(path: string): IntegrationState {
       || !Array.isArray(record.result.changed) || !Array.isArray(record.result.checkpoints)
       || !/^[a-f0-9]{64}$/.test(record.result.resultHash)
       || canonicalStageResultHash(record.result) !== record.result.resultHash
-      || operations.has(record.operationKey) || stages.has(stageKey)) {
+      || operations.has(record.operationKey)) {
       throw new CanonicalResultIntegrationError('canonical integration state is invalid');
     }
+    validatedReviewOutcome(record.result.reviewOutcome, record.reviewContract);
     normalizeArtifacts(record.result.artifacts);
     normalizeArtifacts(record.result.changed);
     normalizeCheckpoints(record.result.checkpoints);
     operations.add(record.operationKey);
-    stages.add(stageKey);
   }
   return value;
 }
@@ -346,6 +387,21 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
   };
   const verifyCanonical = async (record: IntegrationRecord): Promise<void> => {
     if (!record.integrationCommit) throw new CanonicalResultIntegrationError('canonical integration commit is unavailable');
+    if (record.cardRef === null) {
+      const lineage = await ensureLineage(record.runRef);
+      if (lineage.branch !== record.integrationBranch) throw new CanonicalResultIntegrationError('lineage branch identity differs');
+      const localCommit = await gitRun(['rev-parse', 'HEAD'], lineage.path, 'generation lineage verification');
+      if (localCommit !== record.integrationCommit) throw new CanonicalResultIntegrationError('generation lineage commit differs');
+      await gitRun([
+        'fetch', '--no-tags', 'origin',
+        `refs/heads/${record.integrationBranch}:refs/remotes/origin/${record.integrationBranch}`,
+      ], lineage.path, 'generation lineage refresh');
+      const remoteCommit = await gitRun(
+        ['rev-parse', `refs/remotes/origin/${record.integrationBranch}`], lineage.path, 'generation lineage remote verification',
+      );
+      if (remoteCommit !== record.integrationCommit) throw new CanonicalResultIntegrationError('generation lineage is not remotely durable');
+      return;
+    }
     await prepareCoordination(coordinationRoot, opsGit);
     const path = `queue/done/${record.cardRef}.md`;
     const current = readFileSync(join(coordinationRoot, ...path.split('/')), 'utf8').replace(/\r\n?/g, '\n');
@@ -354,7 +410,7 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
       throw new CanonicalResultIntegrationError('committed canonical card no longer matches the integrated result');
     }
     const wire = {
-      ...record.result, integrationCommit: record.integrationCommit, runRef: record.runRef,
+      ...record.result, attemptBaseCommit: record.attemptBaseCommit, integrationCommit: record.integrationCommit, runRef: record.runRef,
       stageId: record.stageId, attemptRef: record.attemptRef,
     };
     const verified = runPy(coordinationRoot, CANONICAL_RESULT_VERIFY_SCRIPT, JSON.stringify({
@@ -373,23 +429,27 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
   return {
     async lookup(input) {
       const state = readState(statePath);
-      const record = state.records.find((item) => item.operationKey === input.operationKey
-        || (item.subject === input.subject && item.runRef === input.runRef && item.stageId === input.stageId));
+      const record = state.records.find((item) => item.operationKey === input.operationKey);
       if (!record) return null;
       if (record.operationKey !== input.operationKey || record.subject !== input.subject || record.runRef !== input.runRef
         || record.stageId !== input.stageId || record.state !== 'canonical-committed') {
         throw new CanonicalResultIntegrationError('canonical result lookup identity differs');
       }
       await verifyCanonical(record);
-      return structuredClone(record.result);
+      return publicResult(record);
     },
 
     async resolveBase(input) {
       if (input.dependencyStageIds.length === 0) return null;
       const state = readState(statePath);
+      const exact = input.dependencyResultOperationKeys === undefined ? null : new Map(input.dependencyResultOperationKeys.map((item) => [item.stageId, item.operationKey]));
+      if (exact && (exact.size !== input.dependencyStageIds.length || input.dependencyStageIds.some((stageId) => !exact.has(stageId)))) {
+        throw new CanonicalResultIntegrationError('dependency result identities do not match the dependency graph');
+      }
       for (const dependency of input.dependencyStageIds) {
         const record = state.records.find((item) => item.subject === input.subject && item.runRef === input.runRef
-          && item.stageId === dependency && item.state === 'canonical-committed');
+          && item.stageId === dependency && item.state === 'canonical-committed'
+          && (exact === null || item.operationKey === exact.get(dependency)));
         if (!record) throw new CanonicalResultIntegrationError(`dependency '${dependency}' lacks a committed canonical result`);
         await verifyCanonical(record);
       }
@@ -406,29 +466,33 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
           || !SAFE_REF.test(input.stageRef) || !SAFE_REF.test(input.attemptRef)
           || !input.summary || input.summary.includes('\0') || redactSensitiveText(input.summary) !== input.summary
           || Buffer.byteLength(input.summary) > 64 * 1024 || !SAFE_REF.test(input.runRef)
-          || !SAFE_REF.test(input.stageId) || input.canonicalCardRef !== workflowCardId(input.runRef, input.stageId)) {
+          || !SAFE_REF.test(input.stageId) || input.canonicalCardRef !== expectedCardRef(input.operationKey, input.runRef, input.stageId)) {
           throw new CanonicalResultIntegrationError('canonical result input is invalid');
         }
-        const result: CanonicalStageResult = {
+        const reviewOutcome = validatedReviewOutcome(input.reviewOutcome, input.reviewContract);
+        const result: CanonicalStageResultPayload & { resultHash: string } = {
           summary: input.summary,
           artifacts: normalizeArtifacts(input.artifacts),
           changed: normalizeArtifacts(input.changed),
           checkpoints: normalizeCheckpoints(input.checkpoints),
+          ...(reviewOutcome ? { reviewOutcome } : {}),
           resultHash: input.resultHash,
         };
         if (canonicalStageResultHash(result) !== input.resultHash) throw new CanonicalResultIntegrationError('result hash differs');
         const fingerprint = hash({
           operationKey: input.operationKey, subject: input.subject, runRef: input.runRef,
           stageRef: input.stageRef, stageId: input.stageId, attemptRef: input.attemptRef,
-          canonicalCardRef: input.canonicalCardRef, result,
+          canonicalCardRef: input.canonicalCardRef,
+          reviewContract: reviewOutcome ? structuredClone(input.reviewContract as ReviewContract) : null,
+          result,
         });
         const state = readState(statePath);
-        let record = state.records.find((item) => item.operationKey === input.operationKey
-          || (item.subject === input.subject && item.runRef === input.runRef && item.stageId === input.stageId));
+        let record = state.records.find((item) => item.operationKey === input.operationKey);
         if (record && record.fingerprint !== fingerprint) throw new CanonicalResultIntegrationError('result replay payload differs');
         if (record?.state === 'canonical-committed') {
           await verifyCanonical(record);
-          return { status: 'replayed' as const, resultHash: record.result.resultHash };
+          return { status: 'replayed' as const, resultHash: record.result.resultHash,
+            durability: 'canonical' as const, attemptBaseCommit: record.attemptBaseCommit, integrationCommit: record.integrationCommit as string };
         }
         if (!record) {
           const attemptPath = absolute(input.worktreePath, 'worktreePath');
@@ -460,6 +524,7 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
           record = {
             operationKey: input.operationKey, fingerprint, subject: input.subject, runRef: input.runRef,
             stageId: input.stageId, attemptRef: input.attemptRef, cardRef: input.canonicalCardRef, integrationBranch: lineage.branch,
+            reviewContract: reviewOutcome ? structuredClone(input.reviewContract as ReviewContract) : null,
             attemptBaseCommit, attemptCommit: null, integrationBaseCommit, integrationCommit: null, result, state: 'intent',
           };
           state.records.push(record);
@@ -582,6 +647,12 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
         }
 
         if (record.state === 'lineage-committed') {
+          if (record.cardRef === null) {
+            record.state = 'canonical-committed';
+            saveState(statePath, state);
+            return { status: 'integrated' as const, resultHash: record.result.resultHash,
+              durability: 'canonical' as const, attemptBaseCommit: record.attemptBaseCommit, integrationCommit: record.integrationCommit as string };
+          }
           await prepareCoordination(coordinationRoot, opsGit);
           const dirty = await opsGit(coordinationRoot, ['diff', '--cached', '--name-only', '-z']);
           if (dirty) throw new CanonicalResultIntegrationError('coordination index is dirty');
@@ -594,7 +665,14 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
         const branch = (await opsGit(coordinationRoot, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim();
         if (branch !== 'ops') throw new CanonicalResultIntegrationError('canonical coordination checkout differs');
         if (!record.integrationCommit) throw new CanonicalResultIntegrationError('integration commit is unavailable');
-        const wire = { ...record.result, integrationCommit: record.integrationCommit, runRef: input.runRef, stageId: input.stageId, attemptRef: input.attemptRef };
+        const wire = {
+          ...record.result,
+          attemptBaseCommit: record.attemptBaseCommit,
+          integrationCommit: record.integrationCommit,
+          runRef: input.runRef,
+          stageId: input.stageId,
+          attemptRef: input.attemptRef,
+        };
         const encoded = JSON.stringify({ runRef: input.runRef, cardRef: input.canonicalCardRef, result: wire });
         if (Buffer.byteLength(encoded) > MAX_RESULT_BYTES) throw new CanonicalResultIntegrationError('canonical card result exceeds its bound');
         const card = runPy(coordinationRoot, CANONICAL_RESULT_CARD_SCRIPT, encoded);
@@ -651,7 +729,8 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
         await verifyCanonical(record);
         record.state = 'canonical-committed';
         saveState(statePath, state);
-        return { status: 'integrated' as const, resultHash: input.resultHash };
+        return { status: 'integrated' as const, resultHash: input.resultHash,
+          durability: 'canonical' as const, attemptBaseCommit: record.attemptBaseCommit, integrationCommit: record.integrationCommit };
       });
     },
   };

@@ -357,6 +357,7 @@ function ComposerView({
   sessionToken,
   onRequestSession,
   onRunningChange,
+  onOpenRun,
   onBack,
 }: {
   composerSession: ComposerSession;
@@ -364,6 +365,7 @@ function ComposerView({
   sessionToken?: string;
   onRequestSession: () => Promise<Session | null>;
   onRunningChange: (running: boolean) => void;
+  onOpenRun?: (runRef: string) => void;
   onBack?: () => void;
 }): React.JSX.Element {
   const ideaText = composerSession.agent
@@ -376,6 +378,7 @@ function ComposerView({
       sessionToken={sessionToken}
       onRequestSession={onRequestSession}
       onRunningChange={onRunningChange}
+      onOpenRun={onOpenRun}
       ideaText={ideaText}
       onBack={onBack}
     />
@@ -917,6 +920,7 @@ export function App(): React.JSX.Element {
               sessionToken={session?.token}
               onRequestSession={requestSession}
               onRunningChange={(running) => setComposerRunning(workspace.composerRef, running)}
+              onOpenRun={(runRef) => push({ view: 'pipeline', focus: { kind: 'run', id: runRef } })}
               onBack={workspace.agent ? () => setActiveComposerRef(null) : undefined}
             />
           </div>

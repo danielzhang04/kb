@@ -142,6 +142,7 @@ export function registerComposerRoutes(scope: FastifyInstance, ctx: SurfaceConte
         id: declaration.id,
         path: declaration.source,
         sourceHash: declaration.sourceHash,
+        projects: [...declaration.projects],
         instructionMarkdown: declaration.instructionMarkdown,
       };
     }

@@ -28,6 +28,8 @@ const MAX_PROFILE_CHARS = 64;
 const MAX_ACTION_CHARS = 256;
 const MAX_WORK_ORDER_CHARS = 64 * 1024;
 const MAX_DESCRIPTION_CHARS = 64 * 1024;
+const MAX_GATE_PROMPT_CHARS = 2_000;
+const MAX_REVIEW_CRITERIA = 16;
 /** Read-scope list bound — mirrors proposal.ts MAX_LIST_ITEMS (64) so a def can never compile to an
  * over-budget `scope.read` the proposal validator would reject. */
 const MAX_READ_SCOPE_ITEMS = 64;
@@ -104,6 +106,10 @@ function validateReadScope(
 
 const SAFE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const SAFE_ACTION_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
+/** Matches the declared-agent catalog grammar; these ids are syntax only until compiler binding. */
+const SAFE_AGENT_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
+/** Matches the declared-agent profile grammar; these ids are syntax only until compiler binding. */
+const SAFE_EXECUTION_PROFILE_ID_RE = /^[a-z0-9][a-z0-9:._-]{0,127}$/;
 
 const RISK_RANK: Record<ProposalRiskTier, number> = { T1: 1, T2: 2, T3: 3 };
 
@@ -120,13 +126,45 @@ export interface WorkflowStageDef {
   declaredRiskTier: ProposalRiskTier | null;
   /** The floor derived from the action namespace registry. */
   classifiedFloor: ProposalRiskTier;
+  /** Optional declared worker identity; present only with `profileId`. */
+  agentId?: string;
+  /** Optional declared execution profile identity; present only with `agentId`. */
+  profileId?: string;
+  /** Optional per-stage server-owned tool allowlist override. */
+  workflowProfile?: string;
+  review?: WorkflowReviewDef;
+  completionGate?: WorkflowCompletionGateDef;
+}
+
+export interface WorkflowReviewCriterionDef { id: string; description: string; }
+export interface WorkflowReviewDef {
+  subjectStageId: string;
+  maxCreatorReworks: number;
+  criteria: WorkflowReviewCriterionDef[];
+}
+export interface WorkflowCompletionGateDef {
+  id: string;
+  kind: 'approval';
+  prompt: string;
+  requiresReview: 'pass';
+}
+
+/** A closed declaration-side manager assignment. It is syntax only; compiler resolves authority later. */
+export interface WorkflowManagerAssignment {
+  agentId: string;
+  profileId: string;
 }
 
 export interface WorkflowDef {
   id: string;
   project: string;
   title: string;
+  /** Existing workflow tool profile; distinct from the optional execution-profile assignment below. */
   profile: string;
+  /** Optional manager declaration. Omitted for legacy workflow definitions. */
+  manager?: WorkflowManagerAssignment;
+  /** Explicit launch-time path-segment inputs. Only these placeholders are substituted. */
+  parameters?: string[];
   /**
    * Optional declared read roots beyond the def's own `orgs/<project>` tree. Validated against the
    * closed `SHAREABLE_READ_ROOTS` allowlist. Empty when the frontmatter omits `readScope`, which
@@ -171,15 +209,40 @@ function effectiveTier(declared: ProposalRiskTier | null, floor: ProposalRiskTie
   return RISK_RANK[declared] >= RISK_RANK[floor] ? declared : floor;
 }
 
+function hasOwn(record: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(record, key);
+}
+
+/** Validate a closed, syntactic agent/profile pair without consulting live declarations or runner state. */
+function validateAgentProfileAssignment(
+  raw: unknown,
+  label: string,
+): { ok: true; value: WorkflowManagerAssignment } | { ok: false; detail: string } {
+  if (!isRecord(raw)) return { ok: false, detail: `${label} must be a mapping` };
+  const allowed = new Set(['agentId', 'profileId']);
+  const unknownKey = Object.keys(raw).find((key) => !allowed.has(key));
+  if (unknownKey) return { ok: false, detail: `${label} has unknown field '${unknownKey}'` };
+  const agentId = asString(raw.agentId);
+  if (agentId === null || !SAFE_AGENT_ID_RE.test(agentId)) {
+    return { ok: false, detail: `${label}.agentId must be a safe identifier of 1-64 characters` };
+  }
+  const profileId = asString(raw.profileId);
+  if (profileId === null || !SAFE_EXECUTION_PROFILE_ID_RE.test(profileId)) {
+    return { ok: false, detail: `${label}.profileId must be a safe execution profile identifier of 1-128 characters` };
+  }
+  return { ok: true, value: { agentId, profileId } };
+}
+
 function validateStage(
   raw: unknown,
   index: number,
   body: string,
   project: string,
+  knownProfiles?: ReadonlySet<string>,
 ): { ok: true; value: WorkflowStageDef } | { ok: false; detail: string } {
   const label = `stages[${index}]`;
   if (!isRecord(raw)) return { ok: false, detail: `${label} must be a mapping` };
-  const allowed = new Set(['id', 'title', 'action', 'target', 'workOrder', 'dependsOn', 'riskTier']);
+  const allowed = new Set(['id', 'title', 'action', 'target', 'workOrder', 'dependsOn', 'riskTier', 'agentId', 'profileId', 'workflowProfile', 'review', 'completionGate']);
   const unknownKey = Object.keys(raw).find((key) => !allowed.has(key));
   if (unknownKey) return { ok: false, detail: `${label} has unknown field '${unknownKey}'` };
 
@@ -251,6 +314,79 @@ function validateStage(
     declaredRiskTier = raw.riskTier;
   }
   const floor = classified.minimumTier;
+  const hasAgentId = hasOwn(raw, 'agentId');
+  const hasProfileId = hasOwn(raw, 'profileId');
+  if (hasAgentId !== hasProfileId) return { ok: false, detail: `${label}.agentId and profileId must appear together` };
+  let assignment: WorkflowManagerAssignment | undefined;
+  if (hasAgentId && hasProfileId) {
+    const validated = validateAgentProfileAssignment({ agentId: raw.agentId, profileId: raw.profileId }, label);
+    if (!validated.ok) return validated;
+    assignment = validated.value;
+  }
+  let workflowProfile: string | undefined;
+  if (hasOwn(raw, 'workflowProfile')) {
+    const profile = asString(raw.workflowProfile);
+    if (profile === null || !SAFE_EXECUTION_PROFILE_ID_RE.test(profile)) {
+      return { ok: false, detail: `${label}.workflowProfile must be a safe execution profile identifier` };
+    }
+    if (knownProfiles && !knownProfiles.has(profile)) {
+      return { ok: false, detail: `${label}.workflowProfile '${profile}' is not a server-owned execution profile` };
+    }
+    workflowProfile = profile;
+  }
+  let review: WorkflowReviewDef | undefined;
+  if (hasOwn(raw, 'review')) {
+    if (!action.startsWith('review:')) return { ok: false, detail: `${label}.review requires an action beginning 'review:'` };
+    if (!assignment) return { ok: false, detail: `${label}.review requires agentId and profileId assignment` };
+    if (workflowProfile !== 'checker-readonly') return { ok: false, detail: `${label}.review requires workflowProfile 'checker-readonly'` };
+    if (!isRecord(raw.review)) return { ok: false, detail: `${label}.review must be a mapping` };
+    const reviewAllowed = new Set(['subjectStageId', 'maxCreatorReworks', 'criteria']);
+    const reviewUnknown = Object.keys(raw.review).find((key) => !reviewAllowed.has(key));
+    if (reviewUnknown) return { ok: false, detail: `${label}.review has unknown field '${reviewUnknown}'` };
+    const subjectStageId = asString(raw.review.subjectStageId);
+    if (subjectStageId === null || !SAFE_ID_RE.test(subjectStageId) || !dependsOn.includes(subjectStageId)) {
+      return { ok: false, detail: `${label}.review.subjectStageId must be a direct dependsOn stage id` };
+    }
+    const maxCreatorReworks = raw.review.maxCreatorReworks;
+    if (typeof maxCreatorReworks !== 'number' || !Number.isSafeInteger(maxCreatorReworks) || maxCreatorReworks < 0 || maxCreatorReworks > 2) {
+      return { ok: false, detail: `${label}.review.maxCreatorReworks must be an integer from 0 to 2` };
+    }
+    if (!Array.isArray(raw.review.criteria) || raw.review.criteria.length < 1 || raw.review.criteria.length > MAX_REVIEW_CRITERIA) {
+      return { ok: false, detail: `${label}.review.criteria must contain 1-${MAX_REVIEW_CRITERIA} items` };
+    }
+    const criteria: WorkflowReviewCriterionDef[] = [];
+    const criterionIds = new Set<string>();
+    for (let criterionIndex = 0; criterionIndex < raw.review.criteria.length; criterionIndex += 1) {
+      const criterion = raw.review.criteria[criterionIndex];
+      if (!isRecord(criterion) || Object.keys(criterion).some((key) => key !== 'id' && key !== 'description')) {
+        return { ok: false, detail: `${label}.review.criteria[${criterionIndex}] must be a closed mapping` };
+      }
+      const criterionId = asString(criterion.id);
+      const description = asString(criterion.description);
+      if (criterionId === null || !SAFE_ID_RE.test(criterionId) || criterionIds.has(criterionId)
+        || description === null || description.trim() === '' || description.length > MAX_TITLE_CHARS || description.includes('\0')) {
+        return { ok: false, detail: `${label}.review.criteria must have unique safe ids and bounded descriptions` };
+      }
+      criterionIds.add(criterionId);
+      criteria.push({ id: criterionId, description });
+    }
+    review = { subjectStageId, maxCreatorReworks, criteria };
+  }
+  let completionGate: WorkflowCompletionGateDef | undefined;
+  if (hasOwn(raw, 'completionGate')) {
+    if (!review) return { ok: false, detail: `${label}.completionGate requires review` };
+    if (!isRecord(raw.completionGate)) return { ok: false, detail: `${label}.completionGate must be a mapping` };
+    const gateAllowed = new Set(['id', 'kind', 'prompt', 'requiresReview']);
+    const gateUnknown = Object.keys(raw.completionGate).find((key) => !gateAllowed.has(key));
+    if (gateUnknown) return { ok: false, detail: `${label}.completionGate has unknown field '${gateUnknown}'` };
+    const gateId = asString(raw.completionGate.id);
+    const prompt = asString(raw.completionGate.prompt);
+    if (gateId === null || !SAFE_ID_RE.test(gateId) || raw.completionGate.kind !== 'approval' || raw.completionGate.requiresReview !== 'pass'
+      || prompt === null || prompt.trim() === '' || prompt.length > MAX_GATE_PROMPT_CHARS || prompt.includes('\0')) {
+      return { ok: false, detail: `${label}.completionGate must be an approval requiring review pass with a bounded prompt` };
+    }
+    completionGate = { id: gateId, kind: 'approval', prompt, requiresReview: 'pass' };
+  }
   return {
     ok: true,
     value: {
@@ -263,6 +399,10 @@ function validateStage(
       riskTier: effectiveTier(declaredRiskTier, floor),
       declaredRiskTier,
       classifiedFloor: floor,
+      ...(assignment ?? {}),
+      ...(workflowProfile ? { workflowProfile } : {}),
+      ...(review ? { review } : {}),
+      ...(completionGate ? { completionGate } : {}),
     },
   };
 }
@@ -284,7 +424,7 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
     return { ok: false, detail: 'definition frontmatter is not valid YAML' };
   }
   if (!isRecord(frontmatter)) return { ok: false, detail: 'definition frontmatter must be a mapping' };
-  const allowed = new Set(['id', 'project', 'title', 'profile', 'readScope', 'stages']);
+  const allowed = new Set(['id', 'project', 'title', 'profile', 'manager', 'parameters', 'readScope', 'stages']);
   const unknownKey = Object.keys(frontmatter).find((key) => !allowed.has(key));
   if (unknownKey) return { ok: false, detail: `frontmatter has unknown field '${unknownKey}'` };
 
@@ -304,6 +444,12 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
     return { ok: false, detail: `profile '${profile}' is not a server-owned execution profile` };
   }
 
+  let manager: WorkflowManagerAssignment | undefined;
+  if (hasOwn(frontmatter, 'manager')) {
+    const validated = validateAgentProfileAssignment(frontmatter.manager, 'manager');
+    if (!validated.ok) return validated;
+    manager = validated.value;
+  }
   const readScope = validateReadScope(frontmatter.readScope, project);
   if (!readScope.ok) return readScope;
 
@@ -317,7 +463,7 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
   const stages: WorkflowStageDef[] = [];
   const ids = new Set<string>();
   for (let index = 0; index < rawStages.length; index += 1) {
-    const stage = validateStage(rawStages[index], index, description, project);
+    const stage = validateStage(rawStages[index], index, description, project, options.knownProfiles);
     if (!stage.ok) return stage;
     if (ids.has(stage.value.id)) return { ok: false, detail: `duplicate stage id '${stage.value.id}'` };
     ids.add(stage.value.id);
@@ -330,6 +476,23 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
       if (!ids.has(dep)) return { ok: false, detail: `stage '${stage.id}' depends on missing stage '${dep}'` };
       if (dep === stage.id) return { ok: false, detail: `stage '${stage.id}' cannot depend on itself` };
     }
+  }
+  const parameters = frontmatter.parameters === undefined ? [] : frontmatter.parameters;
+  if (!Array.isArray(parameters) || parameters.some((value) => typeof value !== 'string' || !SAFE_ID_RE.test(value))) {
+    return { ok: false, detail: 'parameters must be an array of safe identifiers' };
+  }
+  if (new Set(parameters).size !== parameters.length) return { ok: false, detail: 'parameters must not contain duplicates' };
+  const reviewStageIds = new Set(stages.filter((stage) => stage.review !== undefined).map((stage) => stage.id));
+  const reviewSubjects = new Set<string>();
+  for (const stage of stages) {
+    if (!stage.review) continue;
+    const subjectStageId = stage.review.subjectStageId;
+    if (stage.dependsOn.length !== 1 || stage.dependsOn[0] !== subjectStageId) {
+      return { ok: false, detail: `review stage '${stage.id}' must depend only on its subject '${subjectStageId}'` };
+    }
+    if (reviewSubjects.has(subjectStageId)) return { ok: false, detail: `multiple review stages target subject '${subjectStageId}'` };
+    if (reviewStageIds.has(subjectStageId)) return { ok: false, detail: `review stage '${stage.id}' cannot review review stage '${subjectStageId}'` };
+    reviewSubjects.add(subjectStageId);
   }
   const indegree = new Map(stages.map((stage) => [stage.id, stage.dependsOn.length]));
   const children = new Map(stages.map((stage) => [stage.id, [] as string[]]));
@@ -347,5 +510,30 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
   }
   if (visited !== stages.length) return { ok: false, detail: 'stage dependency graph contains a cycle' };
 
-  return { ok: true, value: { id, project, title, profile, readScope: readScope.value, description, stages } };
+  return {
+    ok: true,
+    value: {
+      id, project, title, profile, readScope: readScope.value, parameters: [...parameters],
+      ...(manager ? { manager } : {}), description, stages,
+    },
+  };
+}
+
+/** Substitute only declared launch parameters; unrelated placeholders such as `<shot-id>` remain literal. */
+export function instantiateWorkflowDef(def: WorkflowDef, input: Record<string, string>): WorkflowDefResult {
+  const keys = Object.keys(input).sort();
+  const expected = [...(def.parameters ?? [])].sort();
+  if (keys.length !== expected.length || keys.some((key, index) => key !== expected[index])) return { ok: false, detail: 'launch parameters must provide exactly the declared keys' };
+  const isSafeSegment = (value: unknown): value is string => {
+    if (typeof value !== 'string') return false;
+    const deviceBase = value.split('.', 1)[0];
+    return /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(value)
+      && !/[. ]$/.test(value) && value !== '.' && value !== '..'
+      && !/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(deviceBase);
+  };
+  for (const key of expected) if (!isSafeSegment(input[key])) return { ok: false, detail: `parameter '${key}' must be a safe path segment` };
+  const sourceFields = [def.description, ...def.stages.flatMap((stage) => [stage.workOrder, stage.target])];
+  for (const key of expected) if (!sourceFields.some((value) => value.includes(`<${key}>`))) return { ok: false, detail: `parameter '${key}' is declared but not used by the workflow` };
+  const replace = (value: string) => expected.reduce((next, key) => next.replaceAll(`<${key}>`, input[key]), value);
+  return { ok: true, value: { ...def, description: replace(def.description), stages: def.stages.map((stage) => ({ ...stage, workOrder: replace(stage.workOrder), target: replace(stage.target) })) } };
 }
