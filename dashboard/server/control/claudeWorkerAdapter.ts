@@ -265,13 +265,55 @@ export function buildWorkerPrompt(input: WorkerPromptInput): string {
 }
 
 /**
+ * C3 (2026-07-21) — the top-level repo roots a no-Bash scan worker has no business reading. Emitted as a
+ * `permissions.deny` COMPLEMENT because Claude Code permission rules cannot express "deny all except X":
+ * evaluation is deny -> ask -> allow and a deny rule carries no allow-exceptions (verified against
+ * code.claude.com/docs/en/permissions.md). Read denies gate Read/Edit/Glob/Grep and the recognized Bash
+ * read commands (cat/head/tail/sed) — NOT git plumbing (`git show`/`git cat-file`), which is exactly why
+ * C3 is emitted ONLY for a no-Bash profile (a Bash worker would bypass it through the shared object store).
+ * Leaky-by-omission by construction: a NEW sensitive top-level dir is not denied until it is added here.
+ * Defense-in-depth against honest drift + prompt-injected TOOL-mediated reads, NOT OS containment. The
+ * on-disk subscription credential store (~/.claude) is deliberately NOT denied — the worker needs it to
+ * authenticate — and cross-org reads are not expressible here (a blanket `Read(/orgs/**)` deny would also
+ * block the worker's own org). See docs/specs/2026-07-21-worker-read-scope-design.md §5.2.
+ */
+export const READ_SCOPE_SENSITIVE_ROOTS: readonly string[] = ['dashboard', 'memory', 'scripts'];
+
+/** The distinct top-level path segments of a repo-relative path list. */
+function topLevelSegments(paths: readonly string[]): Set<string> {
+  return new Set(paths.map((path) => path.split('/')[0]).filter((segment) => segment.length > 0));
+}
+
+/**
+ * Build the per-invocation `--settings` JSON value for a no-Bash worker, or `undefined` when none applies
+ * (the profile grants Bash, or nothing sensitive is left to deny). Passed inline to `--settings` (the CLI
+ * accepts a JSON string, so no temp file is written and `~/.claude/settings.json` is never mutated). Deny
+ * rules are project-root-relative (`Read(/dashboard/**)`) and resolve against the worker cwd (its
+ * worktree). Pure — no filesystem, no process env.
+ */
+export function buildReadScopeSettings(input: {
+  allowedTools: readonly string[];
+  readScope: readonly string[];
+  writeScope: readonly string[];
+}): string | undefined {
+  if (input.allowedTools.includes('Bash')) return undefined;
+  const allowed = topLevelSegments([...input.readScope, ...input.writeScope]);
+  const denyRoots = READ_SCOPE_SENSITIVE_ROOTS.filter((root) => !allowed.has(root));
+  if (denyRoots.length === 0) return undefined;
+  return JSON.stringify({ permissions: { deny: denyRoots.map((root) => `Read(/${root}/**)`) } });
+}
+
+/**
  * Build the argv after `claude`. Pinned flags first, then routing and the profile's tool cap.
  *
  * `--allowedTools` is UNCONDITIONAL. The pre-fix builder omitted the flag when the list was empty,
  * which silently promoted "this profile grants nothing" into "fall back to the CLI's permission-mode
  * defaults" — i.e. an uncapped worker. An empty list is now a refusal, so that reading cannot recur.
+ *
+ * `settings` (optional, C3) is passed as inline `--settings` JSON BEFORE routing so `--allowedTools` and
+ * the trailing `--permission-mode` positions are unchanged. Absent => byte-identical to the pre-C3 argv.
  */
-export function buildClaudeArgs(routing: { model: string; toolPolicy: ClaudeToolPolicy }): string[] {
+export function buildClaudeArgs(routing: { model: string; toolPolicy: ClaudeToolPolicy; settings?: string }): string[] {
   const model = routing.model.trim();
   if (!model) throw new Error('claude worker routing has no model');
   const allowedTools = routing.toolPolicy.allowedTools;
@@ -287,6 +329,7 @@ export function buildClaudeArgs(routing: { model: string; toolPolicy: ClaudeTool
     '--output-format', 'stream-json',
     '--input-format', 'stream-json',
     '--verbose',
+    ...(routing.settings ? ['--settings', routing.settings] : []),
     '--model', model,
     '--allowedTools', allowedTools.join(','),
     '--permission-mode', routing.toolPolicy.permissionMode,
@@ -447,7 +490,14 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
       // Resolve the cap BEFORE anything is spawned. A ToolPolicyRefusal propagates out of `execute`
       // synchronously, so the engine records a failed attempt and no `claude` child ever exists.
       const toolPolicy = options.resolveToolPolicy(input.workflowProfile);
-      const args = buildClaudeArgs({ model: input.profile.model, toolPolicy });
+      // C3: for a no-Bash profile, pass an inline `--settings` deny complement bounding tool-mediated
+      // reads to the effectiveRead ∪ write roots. `undefined` (any Bash profile) => pre-C3 argv unchanged.
+      const settings = buildReadScopeSettings({
+        allowedTools: toolPolicy.allowedTools,
+        readScope: input.readScope,
+        writeScope: input.writeScope,
+      });
+      const args = buildClaudeArgs({ model: input.profile.model, toolPolicy, settings });
       const env = buildWorkerEnv(options.parentEnv, options.envAllowlist);
       const prompt = buildWorkerPrompt({
         workOrder: input.workOrder,
