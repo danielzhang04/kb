@@ -34,13 +34,27 @@ function pickModel(models: readonly string[], hint: string): string | null {
   return models.find((model) => model.toLowerCase().includes(hint)) ?? models[0];
 }
 
+/**
+ * Compute the effective read scope: the declared roots unioned with the def's own `orgs/<project>`
+ * tree, order-stable and duplicate-free. A def WITHOUT `readScope` yields exactly `[orgs/<project>]` —
+ * byte-identical to the pre-change hardcode, the migration guarantee. The own-org tree is ALWAYS
+ * present (the worker must read the tree it writes into), so a def can only ADD read roots, never
+ * narrow below its own tree. See docs/specs/2026-07-21-worker-read-scope-design.md §4.2.
+ */
+function effectiveReadScope(def: WorkflowDef): string[] {
+  return [...new Set([...def.readScope, `orgs/${def.project}`])];
+}
+
 /** A stable, safe-id proposal identity derived only from the definition content. */
-function deriveProposalId(def: WorkflowDef): string {
+function deriveProposalId(def: WorkflowDef, effectiveRead: readonly string[]): string {
   const preimage = JSON.stringify({
     id: def.id,
     project: def.project,
     title: def.title,
     profile: def.profile,
+    // The effective read scope is part of the approved proposal identity: a changed read scope changes
+    // the proposalId, forcing re-approval. Without this the scan roots would be tamper-silent. (§4.2)
+    readScope: [...effectiveRead],
     description: def.description,
     stages: def.stages.map((stage) => ({
       id: stage.id,
@@ -80,7 +94,7 @@ export function compileWorkflowDef(def: WorkflowDef, env: CompileWorkflowEnviron
   }
 
   const writeTargets = [...new Set(def.stages.map((stage) => stage.target))];
-  const readScope = [`orgs/${def.project}`];
+  const readScope = effectiveReadScope(def);
   const proposalScope = { read: readScope, write: writeTargets };
 
   const stages: ProposalStage[] = def.stages.map((stage) => ({
@@ -105,7 +119,7 @@ export function compileWorkflowDef(def: WorkflowDef, env: CompileWorkflowEnviron
 
   const proposal: PlanProposal = {
     schema: PLAN_PROPOSAL_SCHEMA,
-    proposalId: deriveProposalId(def),
+    proposalId: deriveProposalId(def, readScope),
     project: def.project,
     title: def.title,
     summary,

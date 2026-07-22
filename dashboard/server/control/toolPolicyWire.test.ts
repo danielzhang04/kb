@@ -129,6 +129,8 @@ describe('proposal identity and hashing are unchanged by the new field', () => {
     project: 'kb-ops',
     title: 'Email triage',
     profile: 'gmail-triage',
+    // No declared readScope: the effective scope is exactly [orgs/kb-ops], the pre-Layer-A behaviour.
+    readScope: [],
     description: 'Triage the inbox into four tiers.',
     stages: [{
       id: 'triage',
@@ -144,12 +146,15 @@ describe('proposal identity and hashing are unchanged by the new field', () => {
     }],
   };
 
-  it('deriveProposalId output is byte-identical to the pre-change value', () => {
+  it('deriveProposalId is stable and covers the effective read scope (Layer A re-anchor)', () => {
     const compiled = compileWorkflowDef(DEF, { registry: { runtimes: { claude: ['claude-opus', 'claude-sonnet'] }, skills: [] } });
     expect(compiled.ok).toBe(true);
-    // Recorded from the pre-change implementation; the preimage is definition-only and untouched here.
+    // Layer A (2026-07-21) deliberately added the effective read scope to deriveProposalId's preimage so
+    // a changed read scope forces re-approval (docs/specs/2026-07-21-worker-read-scope-design.md §4.2).
+    // That is a ONE-TIME identity re-anchor of every proposal; the value below is the new stable id for
+    // this fixture (effective read scope = [orgs/kb-ops]). It must stay byte-pinned from here on.
     expect((compiled as { ok: true; value: PlanProposal }).value.proposalId)
-      .toBe('wf-a3f800940e4e91d340f42dbc088402e418c2b2f21f305220');
+      .toBe('wf-b3e84d195edda5aa7aa5fcb94381c5ef4e6a462dfc74e840');
   });
 
   it('the content hash of a profile-less proposal is unchanged', () => {

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildWorkerPrompt,
   buildClaudeArgs,
+  buildReadScopeSettings,
   buildWorkerEnv,
   encodeStreamJsonUserMessage,
   parseWorkerStream,
@@ -158,6 +159,48 @@ describe('buildClaudeArgs', () => {
   it('refuses to build args without a model', () => {
     expect(() => buildClaudeArgs({ model: '   ', toolPolicy: TOOL_POLICY })).toThrow(/model/);
   });
+
+  it('inserts an inline --settings before routing while keeping --permission-mode trailing (C3)', () => {
+    const args = buildClaudeArgs({ model: 'claude-opus', toolPolicy: TOOL_POLICY, settings: '{"permissions":{"deny":[]}}' });
+    const idx = args.indexOf('--settings');
+    expect(idx).toBeGreaterThan(-1);
+    expect(args[idx + 1]).toBe('{"permissions":{"deny":[]}}');
+    // Routing positions are unchanged: --settings precedes --allowedTools, and --permission-mode is last.
+    expect(idx).toBeLessThan(args.indexOf('--allowedTools'));
+    expect(args.slice(-2)).toEqual(['--permission-mode', 'default']);
+  });
+});
+
+describe('buildReadScopeSettings (C3 — deny complement for no-Bash profiles)', () => {
+  it('emits a Read deny complement for a no-Bash scanner profile', () => {
+    const settings = buildReadScopeSettings({
+      allowedTools: ['Read', 'Glob', 'Grep', 'Write'],
+      readScope: ['queue', 'dashboards', 'orgs/kb-ops'],
+      writeScope: ['orgs/kb-ops/output'],
+    });
+    expect(settings).toBeDefined();
+    expect(JSON.parse(settings!)).toEqual({
+      permissions: { deny: ['Read(/dashboard/**)', 'Read(/memory/**)', 'Read(/scripts/**)'] },
+    });
+  });
+
+  it('emits NOTHING for a Bash profile (producer) — git plumbing would bypass it anyway', () => {
+    expect(buildReadScopeSettings({
+      allowedTools: ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep'],
+      readScope: ['orgs/kb-ops'],
+      writeScope: ['orgs/kb-ops/output'],
+    })).toBeUndefined();
+  });
+
+  it('never denies a sensitive root the stage legitimately declared in scope', () => {
+    const settings = buildReadScopeSettings({
+      allowedTools: ['Read', 'Glob', 'Grep', 'Write'],
+      readScope: ['scripts'], // hypothetical: a scope that includes a normally-sensitive root
+      writeScope: ['orgs/kb-ops/output'],
+    });
+    expect(JSON.parse(settings!).permissions.deny).not.toContain('Read(/scripts/**)');
+    expect(JSON.parse(settings!).permissions.deny).toContain('Read(/dashboard/**)');
+  });
 });
 
 describe('encodeStreamJsonUserMessage', () => {
@@ -292,6 +335,44 @@ describe('createClaudeWorkerAdapter.execute', () => {
     expect(stdinPayload.message.content[0].text).toContain('AUTHORITATIVE WORK ORDER');
     expect(captured!.args.join(' ')).not.toContain('AUTHORITATIVE WORK ORDER');
     expect(fake.proc.endStdin).toHaveBeenCalled();
+  });
+
+  it('C3: passes an inline --settings deny complement for a no-Bash (scanner) profile, env untouched', async () => {
+    const fake = fakeProcess();
+    let captured: ClaudeSpawnRequest | null = null;
+    const adapter = createClaudeWorkerAdapter({
+      resolveToolPolicy: () => ({ allowedTools: ['Read', 'Glob', 'Grep', 'Write'], permissionMode: 'default' }),
+      parentEnv: { PATH: '/usr/bin', ANTHROPIC_API_KEY: 'nope' },
+      spawn: (req) => { captured = req; return fake.proc; },
+    });
+    const promise = adapter.execute(executeInput({ workflowProfile: 'scanner', readScope: ['queue', 'orgs/kb-ops'], writeScope: ['orgs/kb-ops/output'] }));
+    fake.emitStdout(successLine('done'));
+    fake.emitExit(0);
+    await promise;
+
+    const args = captured!.args;
+    const idx = args.indexOf('--settings');
+    expect(idx).toBeGreaterThan(-1);
+    expect(JSON.parse(args[idx + 1])).toEqual({
+      permissions: { deny: ['Read(/dashboard/**)', 'Read(/memory/**)', 'Read(/scripts/**)'] },
+    });
+    // The env-strip invariant is unchanged — --settings does not reintroduce any credential var.
+    expect(captured!.env.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(captured!.env.PATH).toBe('/usr/bin');
+  });
+
+  it('C3: passes NO --settings for a Bash (producer) profile', async () => {
+    const fake = fakeProcess();
+    let captured: ClaudeSpawnRequest | null = null;
+    const adapter = createClaudeWorkerAdapter({
+      resolveToolPolicy: () => ({ allowedTools: ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep'], permissionMode: 'default' }),
+      spawn: (req) => { captured = req; return fake.proc; },
+    });
+    const promise = adapter.execute(executeInput({ workflowProfile: 'producer' }));
+    fake.emitStdout(successLine('done'));
+    fake.emitExit(0);
+    await promise;
+    expect(captured!.args).not.toContain('--settings');
   });
 
   it('tree-kills the child and resolves failed when the kill-timeout fires (fake timers)', async () => {

@@ -113,6 +113,46 @@ export interface GitWorktreeAdapterOptions {
   runner?: GitCommandRunner;
   maxChangedFiles?: number;
   maxChangedFileBytes?: number;
+  /**
+   * C2 (2026-07-21) — when true, `ensure` materializes only the attempt's `sparsePaths`
+   * (effectiveRead ∪ writeScope) via `git sparse-checkout` instead of the full tree. DEFAULT FALSE:
+   * the full-checkout path is byte-identical to the pre-change adapter, so this flag is the deliberate
+   * opt-in that keeps full checkout the default until the sparse path is reviewed on Windows. This is a
+   * DRIFT + non-git read control, NOT adversary containment: a Bash worker can still reach the whole repo
+   * through the shared `.git` object store (`git show`), which is why sparse pairs with the no-Bash
+   * scanner profile (C1). See docs/specs/2026-07-21-worker-read-scope-design.md §5.1.
+   */
+  sparseReadScope?: boolean;
+}
+
+/** The `ensure` input the git adapter accepts — the base `WorktreeAdapter` shape plus the optional C2
+ *  sparse path list. The extra field is optional, so this stays assignable to `WorktreeAdapter.ensure`
+ *  and the live execution call site (which passes no `sparsePaths`) keeps full checkout unchanged. */
+export interface GitWorktreeEnsureInput {
+  operationKey: string;
+  runRef: string;
+  path: string;
+  baseCommit?: string;
+  /** Repo-relative paths to materialize when the adapter is built with `sparseReadScope: true`. */
+  sparsePaths?: readonly string[];
+}
+
+/** The git worktree adapter: a `WorktreeAdapter` whose `ensure` additionally accepts C2 sparse paths. */
+export interface GitWorktreeAdapter extends WorktreeAdapter {
+  ensure(input: GitWorktreeEnsureInput): Promise<void>;
+}
+
+/** Validate + dedupe the C2 sparse path set (same safe-path rule the compiled scope.read passes). */
+function normalizeSparsePaths(paths: readonly string[] | undefined): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const path of paths ?? []) {
+    if (!isSafeRepoRelativePath(path)) throw new ExecutionAdapterError('sparse read-scope path is not a canonical safe repo-relative path');
+    if (seen.has(path)) continue;
+    seen.add(path);
+    out.push(path);
+  }
+  return out;
 }
 
 function requireAbsolute(path: string, name: string): string {
@@ -188,7 +228,7 @@ async function runGit(
 }
 
 /** Git-backed, non-destructive worktree provisioning and server-side content inspection. */
-export function createGitWorktreeAdapter(options: GitWorktreeAdapterOptions): WorktreeAdapter {
+export function createGitWorktreeAdapter(options: GitWorktreeAdapterOptions): GitWorktreeAdapter {
   const repoRoot = requireAbsolute(options.repoRoot, 'repoRoot');
   const worktreeRoot = requireAbsolute(options.worktreeRoot, 'worktreeRoot');
   if (!existsSync(repoRoot) || !lstatSync(repoRoot).isDirectory()) throw new ExecutionAdapterError('repoRoot is unavailable');
@@ -237,8 +277,22 @@ export function createGitWorktreeAdapter(options: GitWorktreeAdapterOptions): Wo
         return;
       }
       mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-      await runGit(runner, prefix, ['worktree', 'add', '--detach', path, baseCommit], repoRoot, 'worktree creation');
-      if (!existsSync(path)) throw new ExecutionAdapterError('git did not create the planned worktree');
+      // C2: with sparseReadScope AND a non-empty sparse set, materialize only those repo-relative paths
+      // (effectiveRead ∪ writeScope). The write-scope paths MUST be included so the worker can write and
+      // `inspect` can see the change — sparse checkout bounds READS only; §6 acceptance stays anchored on
+      // scope.write. With the flag off (default) this is the exact pre-change `worktree add --detach`.
+      const sparsePaths = options.sparseReadScope ? normalizeSparsePaths(input.sparsePaths) : [];
+      if (sparsePaths.length > 0) {
+        await runGit(runner, prefix, ['worktree', 'add', '--no-checkout', '--detach', path, baseCommit], repoRoot, 'worktree creation');
+        if (!existsSync(path)) throw new ExecutionAdapterError('git did not create the planned worktree');
+        // `init --no-cone` takes a literal path list (not cone patterns), matching arbitrary repo roots.
+        await runGit(runner, prefix, ['sparse-checkout', 'init', '--no-cone'], path, 'sparse-checkout init');
+        await runGit(runner, prefix, ['sparse-checkout', 'set', ...sparsePaths], path, 'sparse-checkout set');
+        await runGit(runner, prefix, ['checkout'], path, 'sparse worktree checkout');
+      } else {
+        await runGit(runner, prefix, ['worktree', 'add', '--detach', path, baseCommit], repoRoot, 'worktree creation');
+        if (!existsSync(path)) throw new ExecutionAdapterError('git did not create the planned worktree');
+      }
       await verify(path);
     },
 
