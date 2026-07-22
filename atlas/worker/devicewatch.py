@@ -60,10 +60,16 @@ class DeviceWatcher:
     COM must be initialized per-thread, so the thread body CoInitializes when comtypes is
     present (tests inject pure-python probes and never touch COM)."""
 
-    def __init__(self, probe, on_change, period_s: float = 1.5):
+    def __init__(self, probe, on_change, period_s: float = 1.5, initial_delay_s: float = 0.0):
         self._probe = probe
         self._on_change = on_change
         self._period_s = period_s
+        # Review finding #1 (2026-07-21): livekit's own set_speaker_enabled call happens at
+        # console-audio-mode entry, within seconds of boot — the one window where a watcher
+        # swap could race it into an uncaught stream error that kills the console thread.
+        # Holding the first poll past that window closes the race; in steady state the
+        # watcher is the sole caller and the follower's lock suffices.
+        self._initial_delay_s = initial_delay_s
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -82,6 +88,8 @@ class DeviceWatcher:
             comtypes.CoInitialize()
         except Exception:
             pass  # pure-python probes (tests) need no COM
+        if self._initial_delay_s:
+            self._stop.wait(self._initial_delay_s)
         prev_id: str | None = None
         while not self._stop.is_set():
             current = None
@@ -114,14 +122,18 @@ class OutputFollower:
     status so the caller can publish it without re-deriving anything."""
 
     def __init__(self, console, *, wake_input_substring, resolve_output, resolve_input,
-                 sd_module, lock=None):
+                 sd_module, lock=None, initial_idx: int | None = None):
         self._console = console
         self._wake_input = wake_input_substring
         self._resolve_output = resolve_output
         self._resolve_input = resolve_input
         self._sd = sd_module
         self._lock = lock or threading.Lock()
-        self._last_idx: int | None = None
+        # Review finding #2 (2026-07-21): seed with the boot device livekit opened so even
+        # the FIRST swap's open-failure can fall back to a known-good device — without a
+        # seed, a first-move failure after pre-validation leaves TTS deaf (the old stream
+        # is already closed by set_speaker_enabled's teardown-then-open shape).
+        self._last_idx: int | None = initial_idx
 
     def _status(self, idx: int | None) -> dict:
         if idx is None:

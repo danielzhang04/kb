@@ -190,8 +190,9 @@ def test_start_output_follow_wires_swap_to_publisher():
             published.append(s)
 
     class FakeWatcher:
-        def __init__(self, probe, on_change, period_s):
+        def __init__(self, probe, on_change, period_s, initial_delay_s=0.0):
             self.on_change = on_change
+            self.initial_delay_s = initial_delay_s
             self.started = False
 
         def start(self):
@@ -249,3 +250,32 @@ def test_start_output_follow_dead_probe_degrades_loudly():
         watcher_cls=None, follower_cls=None, probe=lambda: None)
     assert got is None
     assert published and published[-1]["following"] is False
+
+
+def test_first_swap_open_failure_falls_back_to_boot_seed():
+    """Review finding #2: initial_idx seeds the reopen-previous net for the very first swap."""
+    console = FakeConsole(fail_speaker_on={4})
+    sd = FakeSd()
+    f = devicewatch.OutputFollower(
+        console, wake_input_substring="Intel",
+        resolve_output=lambda s, devices=None: 4,
+        resolve_input=lambda s, devices=None: 7,
+        sd_module=sd, initial_idx=5)
+    status = f.swap_to("Px7 S2e")
+    assert console.calls[-1] == ("spk", True, 5)   # boot device reopened
+    assert status["resolved"] == "dev-5"
+
+
+def test_watcher_initial_delay_defers_first_poll():
+    """Review finding #1: no poll (hence no swap) before initial_delay_s elapses."""
+    polls = []
+    w = devicewatch.DeviceWatcher(
+        probe=lambda: (polls.append(1), ("id-A", "Realtek"))[1],
+        on_change=lambda n: None, period_s=0.01, initial_delay_s=0.2)
+    w.start()
+    time.sleep(0.05)
+    early = len(polls)
+    time.sleep(0.4)
+    w.stop()
+    assert early == 0          # nothing polled inside the grace window
+    assert len(polls) > 0      # polling began after it

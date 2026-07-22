@@ -247,21 +247,43 @@ def _start_output_follow(cfg: dict, publisher, *,
             {"configured": FOLLOW_SENTINEL, "resolved": _boot_default_output_name(),
              "following": False})
         return None
-    import sounddevice as sd
-    follower = follower_cls(
-        console,
-        wake_input_substring=cfg.get("wake_input_device"),
-        resolve_output=wakeword.resolve_output_device,
-        resolve_input=wakeword.resolve_input_device,
-        sd_module=sd)
+    # Review finding #4 (2026-07-21): everything past the two guards must ALSO degrade
+    # loudly rather than fail the whole voice job — same "fail loud, run anyway" envelope.
+    try:
+        import sounddevice as sd
+        try:
+            # Review finding #2: seed the follower with the boot output index livekit opened,
+            # so even the first swap's open-failure has a known-good device to fall back to.
+            boot_idx = sd.default.device[1]
+        except Exception:
+            boot_idx = None
+        follower = follower_cls(
+            console,
+            wake_input_substring=cfg.get("wake_input_device"),
+            resolve_output=wakeword.resolve_output_device,
+            resolve_input=wakeword.resolve_input_device,
+            sd_module=sd,
+            initial_idx=boot_idx)
 
-    def _on_change(name: str) -> None:
-        publisher.set_output_device(follower.swap_to(name))
+        def _on_change(name: str) -> None:
+            publisher.set_output_device(follower.swap_to(name))
 
-    watcher = watcher_cls(probe=probe, on_change=_on_change, period_s=1.5)
-    watcher.start()
-    logger.info("TTS output-follow active: tracking the Windows default output device")
-    return watcher
+        # Review finding #1: hold the first poll 10s past boot — livekit's own
+        # set_speaker_enabled call at console-audio-mode entry is the only concurrent
+        # caller, and it happens within seconds of startup.
+        watcher = watcher_cls(probe=probe, on_change=_on_change, period_s=1.5,
+                              initial_delay_s=10.0)
+        watcher.start()
+        logger.info("TTS output-follow active: tracking the Windows default output device")
+        return watcher
+    except Exception:
+        logger.critical(
+            "output-follow wiring failed — TTS stays on the boot default and will NOT follow "
+            "device changes", exc_info=True)
+        publisher.set_output_device(
+            {"configured": FOLLOW_SENTINEL, "resolved": _boot_default_output_name(),
+             "following": False})
+        return None
 
 
 class AtlasAgent(Agent):
