@@ -201,6 +201,50 @@ describe('buildReadScopeSettings (C3 — deny complement for no-Bash profiles)',
     expect(JSON.parse(settings!).permissions.deny).not.toContain('Read(/scripts/**)');
     expect(JSON.parse(settings!).permissions.deny).toContain('Read(/dashboard/**)');
   });
+
+  it('with repoRoot, emits BOTH the worktree-relative rule and the //-absolute companion per denied root (relative then absolute)', () => {
+    const settings = buildReadScopeSettings({
+      allowedTools: ['Read', 'Glob', 'Grep', 'Write'],
+      readScope: ['queue', 'orgs/kb-ops'],
+      writeScope: ['orgs/kb-ops/output'],
+      repoRoot: 'C:\\Users\\danie\\kb-worktrees\\dashboard-ops',
+    });
+    // Backslashes are converted to forward slashes; the drive letter is preserved; relative precedes absolute.
+    expect(JSON.parse(settings!)).toEqual({
+      permissions: {
+        deny: [
+          'Read(/dashboard/**)',
+          'Read(//C:/Users/danie/kb-worktrees/dashboard-ops/dashboard/**)',
+          'Read(/memory/**)',
+          'Read(//C:/Users/danie/kb-worktrees/dashboard-ops/memory/**)',
+          'Read(/scripts/**)',
+          'Read(//C:/Users/danie/kb-worktrees/dashboard-ops/scripts/**)',
+        ],
+      },
+    });
+  });
+
+  it('without repoRoot, emits ONLY the worktree-relative rules (byte-identical to the pre-upgrade shape)', () => {
+    const settings = buildReadScopeSettings({
+      allowedTools: ['Read', 'Glob', 'Grep', 'Write'],
+      readScope: ['queue', 'orgs/kb-ops'],
+      writeScope: ['orgs/kb-ops/output'],
+    });
+    expect(JSON.parse(settings!)).toEqual({
+      permissions: { deny: ['Read(/dashboard/**)', 'Read(/memory/**)', 'Read(/scripts/**)'] },
+    });
+  });
+
+  it('a forward-slash repoRoot (POSIX) needs no conversion and keeps the drive letter', () => {
+    const settings = buildReadScopeSettings({
+      allowedTools: ['Read', 'Glob', 'Grep', 'Write'],
+      readScope: ['queue'],
+      writeScope: ['orgs/kb-ops/output'],
+      repoRoot: 'C:/Users/danie/kb/', // trailing slash trimmed, no double-slash before the root
+    });
+    expect(JSON.parse(settings!).permissions.deny).toContain('Read(//C:/Users/danie/kb/dashboard/**)');
+    expect(JSON.parse(settings!).permissions.deny).not.toContain('Read(//C:/Users/danie/kb//dashboard/**)');
+  });
 });
 
 describe('encodeStreamJsonUserMessage', () => {
@@ -357,6 +401,29 @@ describe('createClaudeWorkerAdapter.execute', () => {
       permissions: { deny: ['Read(/dashboard/**)', 'Read(/memory/**)', 'Read(/scripts/**)'] },
     });
     // The env-strip invariant is unchanged — --settings does not reintroduce any credential var.
+    expect(captured!.env.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(captured!.env.PATH).toBe('/usr/bin');
+  });
+
+  it('C3: threads the adapter repoRoot into the --settings deny complement (adds the //-absolute companion)', async () => {
+    const fake = fakeProcess();
+    let captured: ClaudeSpawnRequest | null = null;
+    const adapter = createClaudeWorkerAdapter({
+      resolveToolPolicy: () => ({ allowedTools: ['Read', 'Glob', 'Grep', 'Write'], permissionMode: 'default' }),
+      parentEnv: { PATH: '/usr/bin', ANTHROPIC_API_KEY: 'nope' },
+      repoRoot: 'C:\\Users\\danie\\kb-worktrees\\dashboard-ops',
+      spawn: (req) => { captured = req; return fake.proc; },
+    });
+    const promise = adapter.execute(executeInput({ workflowProfile: 'scanner', readScope: ['queue', 'orgs/kb-ops'], writeScope: ['orgs/kb-ops/output'] }));
+    fake.emitStdout(successLine('done'));
+    fake.emitExit(0);
+    await promise;
+
+    const args = captured!.args;
+    const deny = JSON.parse(args[args.indexOf('--settings') + 1]).permissions.deny as string[];
+    expect(deny).toContain('Read(/dashboard/**)');
+    expect(deny).toContain('Read(//C:/Users/danie/kb-worktrees/dashboard-ops/dashboard/**)');
+    // Env-strip invariant unweakened.
     expect(captured!.env.ANTHROPIC_API_KEY).toBeUndefined();
     expect(captured!.env.PATH).toBe('/usr/bin');
   });
