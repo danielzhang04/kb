@@ -122,3 +122,42 @@ After restart, run `python scripts/preamble.py` from `C:/Users/danie/kb`; read `
 
 Have a human review and merge PR #72 into `ops`. In the owner session, pull `origin/ops` into `C:/Users/danie/kb-worktrees/dashboard-ops` and run the main-copy `scripts/sync_daemon_dirs.py --check` against that worktree. Only if it is clean, verify `DASHBOARD_EXECUTION_ACTIVATED` is not `1`, run `pm2.cmd delete kb-dashboard`, then `pm2.cmd start C:/Users/danie/kb/_private/codex-worktrees/fyt-dashboard-alignment/dashboard/pm2.config.cjs --only kb-dashboard`; confirm PM2's stored script path/cwd and the HTTP/API probes before `pm2.cmd save`. Do not exercise a durable save or live FYT run during this alignment.
 
+## Session handoff 2026-07-22 (dashboard alignment completed)
+
+**Topic:** Complete the post-merge ops synchronization, move PM2 to the reviewed dashboard build, and persist the verified process.
+
+### What WORKED (with evidence)
+
+- **Coordination merge** - `dashboard-ops` fast-forwarded to `467b86a38c76009770b93d46c1f23005cdd41227`, which contains PR #72 commit `2208aef`; its tracked worktree remained clean.
+- **Code/data parity** - the reviewed main-copy `sync_daemon_dirs.py --check` reported `clean - ops matches main for all daemon-read dirs` against `C:/Users/danie/kb-worktrees/dashboard-ops`.
+- **PM2 retarget** - delete-plus-start moved `kb-dashboard` to `C:/Users/danie/kb/_private/codex-worktrees/fyt-dashboard-alignment/dashboard/server/pm2Entry.ts` with the matching dashboard cwd; PM2 reported online with zero restarts.
+- **Safety and API state** - `DASHBOARD_EXECUTION_ACTIVATED` was absent before and after the switch; `/healthz`, `/api/index`, `/api/workflows`, `/api/agents`, and `/` returned 200, while unauthenticated `/api/control/runs` returned the expected 401.
+- **FYT projection** - the live API exposed valid, launchable `video-run` with 14 stages and `channel`/`slug`; `fyt-runner`, `fyt-preproduction`, `fyt-production`, and `fyt-checker` were all declared with no declaration problem and `runnerBound=false`.
+- **Persistence** - `pm2 save` completed successfully and wrote the current one-process resurrection list to `C:/Users/danie/.pm2/dump.pm2`.
+
+### What Did NOT Work (and why)
+
+- **PM2 JSON through PowerShell** - `pm2 jlist | ConvertFrom-Json` failed because PM2 includes both `username` and `USERNAME`, which PowerShell treats as duplicate case-insensitive dictionary keys. A filtered `pm2 env 0` capture verified only the activation field without exposing the environment.
+- **First semantic assertion** - it assumed workflow parameters were objects with `.name` and `/api/agents` returned `{items: [...]}`. The actual public schemas are string parameters and a top-level agent array; after inspecting keys, corrected assertions passed.
+- **Visual browser smoke** - the browser runtime reported no available browser backends. No unrelated automation substitute was used; the built SPA and semantic HTTP/API checks remain the available evidence.
+
+### What Has NOT Been Tried Yet
+
+- An authenticated, visual click-through of the Agents and Workflows pages in a connected browser.
+- Any authenticated durable save or assignment amendment; the `codex-worker` identity versus hard-coded `claude/m1-dashboard` durable route still needs a reviewed policy/design decision first.
+- Any FYT binding, live execution, paid API stage, or publish. All prior human gates remain intact.
+
+### Current State of Files
+
+| File / path | Status | Notes |
+| ---- | ------ | ----- |
+| `C:/Users/danie/kb-worktrees/dashboard-ops` | DONE | Clean at merged ops `467b86a`; daemon-read parity passed. |
+| `C:/Users/danie/kb/_private/codex-worktrees/fyt-dashboard-alignment` | LIVE / VERIFIED | Reviewed `e07ea841` source and build now serve port 5317. |
+| `C:/Users/danie/kb-worktrees/dashboard-durable` | READY / INSPECTION-ONLY | Clean at `e07ea841`; no durable write attempted. |
+| PM2 `kb-dashboard` | DONE | Online at reviewed path, zero restarts, activation absent, resurrection list saved. |
+| `codex/dashboard-alignment-final-handoff` | WIP / COORDINATION PR | Contains only this memory addition and the final zero-cost ledger row. |
+
+### Exact Next Step
+
+Open and merge the `codex/dashboard-alignment-final-handoff` coordination PR into `ops`; no dashboard-alignment work remains after that. Before any live FYT run, the human must next approve the assignment/review/completion-gate semantics and runner bindings, resolve the durable-save branch/identity policy, and separately authorize any paid stages. Publishing remains its own T3/G3 decision.
+
