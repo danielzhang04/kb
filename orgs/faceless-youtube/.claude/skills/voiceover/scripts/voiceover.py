@@ -146,6 +146,68 @@ def parse_voice_config(dna_text: str) -> dict:
 # --------------------------------------------------------------------------- #
 # Marker stripping — turn script markup into clean spoken text
 # --------------------------------------------------------------------------- #
+EXPRESSIVE_MARKER_TRANSLATIONS = {
+    "[emote: curious]": "[curious]",
+    "[emote: knowingly]": "[knowingly]",
+    "[emote: sternly]": "[sternly]",
+    "[emote: sighs]": "[sighs]",
+    "[emote: exhales]": "[exhales]",
+    "[aside: dry]": "[deadpan]",
+}
+_EXPRESSIVE_CANDIDATE_RE = re.compile(r"\[(?:emote|aside)\b[^\]]*\]", re.IGNORECASE)
+_EXPRESSIVE_ADJACENCY_RE = re.compile(r"\]\s*\[(?:emote|aside)\b", re.IGNORECASE)
+_V3_MOOD_OR_CHAPTER_RE = re.compile(
+    r"^\s*(?:\[[^\]]+\]\s*)?(?:step\s+\d+\s*[:.]|\[(?:curious|knowingly|sternly|sighs|exhales|deadpan)\])",
+    re.IGNORECASE,
+)
+_MIN_V3_CHUNK_CHARS = 250
+
+
+def _without_nonspoken_cues(text: str) -> str:
+    """Remove visual-only cues before checking spoken expressive markers."""
+    text = re.sub(r"\[B-ROLL[^\]]*\]", "", text)
+    text = re.sub(r"\{[^}]*\}", "", text)
+    return "\n".join(
+        "" if line.strip().startswith(("#", ">", "---")) else line
+        for line in text.splitlines()
+    )
+
+
+def validate_expressive_markers(raw: str) -> list[str]:
+    """Reject unsupported or badly placed delivery markers before any TTS request."""
+    text = _without_nonspoken_cues(raw)
+    if re.search(r"\[(?:emote|aside)\b[^\]\n]*(?:\n|$)", text, re.IGNORECASE):
+        raise ValueError("Unsupported or malformed expressive marker (missing closing bracket).")
+    if _EXPRESSIVE_ADJACENCY_RE.search(text):
+        raise ValueError("Expressive delivery markers may not be adjacent.")
+    markers = []
+    for match in _EXPRESSIVE_CANDIDATE_RE.finditer(text):
+        marker = match.group(0)
+        if marker not in EXPRESSIVE_MARKER_TRANSLATIONS:
+            allowed = ", ".join(EXPRESSIVE_MARKER_TRANSLATIONS)
+            raise ValueError(f"Unsupported or malformed expressive marker {marker!r}; allowed: {allowed}")
+        before = text[:match.start()].rstrip()
+        after_raw = text[match.end():]
+        after = after_raw.lstrip()
+        if before and before[-1] not in ".!?":
+            raise ValueError(f"Expressive marker {marker!r} must appear before a sentence.")
+        if not re.match(r"(?:[\"\u201c\u2018(]*[A-Za-z0-9])", after):
+            raise ValueError(f"Expressive marker {marker!r} must be followed by a sentence.")
+        if after_raw and not after_raw[0].isspace():
+            raise ValueError(f"Expressive marker {marker!r} must be separated from its sentence.")
+        markers.append(marker)
+    return markers
+
+
+def expressive_cleanup_summary(raw: str) -> str:
+    """Return a compact dry-run report after validation has made markers safe."""
+    markers = validate_expressive_markers(raw)
+    if not markers:
+        return "no expressive markers"
+    translations = ", ".join(f"{marker}->{EXPRESSIVE_MARKER_TRANSLATIONS[marker]}" for marker in markers)
+    return f"v3 {translations}; v2 strips {len(markers)} expressive marker(s)"
+
+
 def _region(text: str, start_pat: str) -> str | None:
     """Return the text under the heading matching start_pat, up to the next `## ` heading."""
     m = re.search(start_pat, text, re.IGNORECASE | re.MULTILINE)
@@ -171,12 +233,15 @@ def clean_markers(raw: str, pause_seconds: float, is_v3: bool = False) -> str:
           [PAUSE] (topic shift) -> a SHORT pause
           [PAUSE:LONG] (reveal) -> a normal pause (was a "long pause" — dialled down)
         Most cadence should come from punctuation (…, —, commas) which passes through untouched.
-      - v3-only expressive tags [emote: sigh] / [aside: dry] -> translated on v3, stripped on v2
-        (so they never get read aloud on the default model).
+      - Exact expressive markers are translated to v3 audio tags or stripped on v2, so they never
+        become spoken words.
       - ### beat headers, > blockquote notes, --- rules -> removed
       - markdown emphasis / inline code / stray heading marks -> unwrapped
     Paragraph breaks (blank lines) are preserved so we can chunk on them.
     """
+    # Validate before cleanup can hide a bad marker. All selected pieces are parsed
+    # before synthesis starts, so a malformed later piece cannot spend earlier quota.
+    validate_expressive_markers(raw)
     t = raw
     # B-ROLL cue blocks: '[B-ROLL' ... first ']'. [^\]] also spans newlines.
     t = re.sub(r"\[B-ROLL[^\]]*\]", "", t)
@@ -191,15 +256,10 @@ def clean_markers(raw: str, pause_seconds: float, is_v3: bool = False) -> str:
     t = re.sub(r"\[PAUSE\]", _pause(min(pause_seconds, 0.45), "short pause"), t, flags=re.IGNORECASE)
     t = re.sub(r"\[BEAT\]", (" " if is_v3 else ' <break time="0.2s" /> '), t, flags=re.IGNORECASE)
 
-    # Expressive tags: [emote: sigh] -> [sighs]-style (v3); [aside: dry] -> [deadpan] (v3). Stripped on v2.
+    # Validated expressive tags translate to Eleven v3 audio tags; v2 strips them.
     def _tag(m):
-        kind, val = m.group(1).lower(), m.group(2).strip().lower()
-        if not is_v3:
-            return ""
-        if kind == "emote":
-            return f" [{val}] "
-        return " [deadpan] "  # aside
-    t = re.sub(r"\[(emote|aside):\s*([^\]]+)\]", _tag, t, flags=re.IGNORECASE)
+        return EXPRESSIVE_MARKER_TRANSLATIONS[m.group(0)] if is_v3 else ""
+    t = _EXPRESSIVE_CANDIDATE_RE.sub(_tag, t)
 
     out = []
     for line in t.splitlines():
@@ -248,8 +308,8 @@ def short_status(short_text: str) -> str:
 # --------------------------------------------------------------------------- #
 # Chunking + duration
 # --------------------------------------------------------------------------- #
-def chunk_text(text: str, max_chars: int) -> list[str]:
-    """Split into <=max_chars chunks on paragraph, then sentence, boundaries."""
+def chunk_text(text: str, max_chars: int, is_v3: bool = False) -> list[str]:
+    """Split on paragraph/sentence boundaries, favouring v3 mood/chapter seams."""
     paras = [p.strip() for p in text.split("\n\n") if p.strip()]
     chunks, cur = [], ""
     for p in paras:
@@ -261,12 +321,38 @@ def chunk_text(text: str, max_chars: int) -> list[str]:
                 cur = f"{cur} {sent}".strip()
             continue
         if len(cur) + len(p) + 2 > max_chars and cur:
+            if is_v3:
+                # v3 cannot carry context across requests. Reset before a real
+                # chapter or delivery turn when both chunks remain substantial.
+                cur_paras = cur.split("\n\n")
+                preferred = [
+                    i for i in range(1, len(cur_paras))
+                    if _V3_MOOD_OR_CHAPTER_RE.match(cur_paras[i])
+                    and len("\n\n".join(cur_paras[:i])) >= _MIN_V3_CHUNK_CHARS
+                    and len("\n\n".join(cur_paras[i:])) >= _MIN_V3_CHUNK_CHARS
+                ]
+                if preferred:
+                    seam = preferred[-1]
+                    chunks.append("\n\n".join(cur_paras[:seam]).strip())
+                    cur = "\n\n".join(cur_paras[seam:]).strip()
+                    if len(cur) + len(p) + 2 <= max_chars:
+                        cur = f"{cur}\n\n{p}".strip()
+                        continue
             chunks.append(cur.strip())
             cur = ""
         cur = f"{cur}\n\n{p}".strip()
     if cur.strip():
         chunks.append(cur.strip())
     return chunks or [""]
+
+
+def report_chunk_plan(label: str, chunks: list[str]) -> None:
+    """Emit zero-spend seam locations for the human ear review."""
+    sizes = ", ".join(str(len(chunk)) for chunk in chunks)
+    print(f"    {label}: {len(chunks)} planned request chunk(s) ({sizes} chars)")
+    for i, chunk in enumerate(chunks[:-1], start=1):
+        next_start = chunks[i].replace("\n", " ")[:72]
+        print(f"      seam {i}: after {len(chunk)} chars; next starts {next_start!r}; ear-review required")
 
 
 def bitrate_kbps(output_format: str) -> int:
@@ -449,7 +535,7 @@ def stitch_chunks(chunk_results, duration_probe=measure_chunk_duration_s):
     return audio, words, offset
 
 
-def synthesize(text, cfg, api_key, out_path, args, budget):
+def synthesize(text, cfg, api_key, out_path, args, budget, is_v3=False):
     """Synthesize one piece; return (audio_written, char_count, est_duration_s,
     chunk_count, word_timings). word_timings is [[word, start_s], ...] on the global
     (stitched) timeline — the ground truth render-builder syncs shots to.
@@ -466,7 +552,7 @@ def synthesize(text, cfg, api_key, out_path, args, budget):
     if args.dry_run:
         return False, char_count, est_duration_from_words(text), 0, []
 
-    chunks = chunk_text(text, args.max_chunk_chars)
+    chunks = chunk_text(text, args.max_chunk_chars, is_v3=is_v3)
 
     def chunk_results():
         for i, ch in enumerate(chunks):
@@ -525,9 +611,17 @@ def main():
 
     # Build the work list: (piece_name, source_rel, clean_text, out_rel, status)
     work = []
+    dry_plans = {}
     want_long = not only or "long-form" in only
     if want_long and (video_dir / "script.md").exists():
-        txt = extract_long_form((video_dir / "script.md").read_text(encoding="utf-8"), args.pause_seconds, is_v3)
+        raw = (video_dir / "script.md").read_text(encoding="utf-8")
+        txt = extract_long_form(raw, args.pause_seconds, is_v3)
+        if args.dry_run:
+            dry_plans["long-form"] = (
+                extract_long_form(raw, args.pause_seconds, True),
+                extract_long_form(raw, args.pause_seconds, False),
+                expressive_cleanup_summary(raw),
+            )
         work.append(("long-form", "script.md", txt, "assets/vo.mp3", "-"))
 
     shorts_dir = video_dir / "shorts"
@@ -541,11 +635,29 @@ def main():
             if not args.all_shorts and status != "publish":
                 print(f"  skip {name} (status={status}; use --all-shorts to force)")
                 continue
-            txt = extract_short(sp.read_text(encoding="utf-8"), args.pause_seconds, is_v3)
+            raw = sp.read_text(encoding="utf-8")
+            txt = extract_short(raw, args.pause_seconds, is_v3)
+            if args.dry_run:
+                dry_plans[name] = (
+                    extract_short(raw, args.pause_seconds, True),
+                    extract_short(raw, args.pause_seconds, False),
+                    expressive_cleanup_summary(raw),
+                )
             work.append((name, f"shorts/{name}.md", txt, f"assets/shorts/{name}.mp3", status))
 
     if not work:
         raise SystemExit("No pieces to voice (check --only / short statuses).")
+
+    if args.dry_run:
+        print("DRY-RUN: no ElevenLabs request will be made.")
+        settings = {k: cfg[k] for k in ("model_id", "voice_id", "stability", "similarity_boost", "style", "use_speaker_boost", "speed", "output_format")}
+        print("  effective configured settings: " + json.dumps(settings, sort_keys=True))
+        print("  v2 fallback retains those configured delivery settings; only expressive markup is stripped.")
+        for name, _, _, _, _ in work:
+            v3_text, v2_text, cleanup = dry_plans[name]
+            print(f"  {name} cleanup: {cleanup}")
+            report_chunk_plan("v3", chunk_text(v3_text, args.max_chunk_chars, is_v3=True))
+            report_chunk_plan("v2", chunk_text(v2_text, args.max_chunk_chars, is_v3=False))
 
     pieces_out = []
     for name, source, text, out_rel, status in work:
@@ -555,11 +667,15 @@ def main():
         txt_path.write_text(text, encoding="utf-8")
 
         written, chars, dur, chunks, word_timings = synthesize(
-            text, cfg, api_key, video_dir / out_rel, args, budget
+            text, cfg, api_key, video_dir / out_rel, args, budget, is_v3=is_v3
         )
         state = "synthesized" if written else ("dry-run" if args.dry_run else "skipped-budget")
-        print(f"  {name}: {chars} chars, ~{dur:.1f}s, {chunks} chunk(s), "
-              f"{len(word_timings)} timed words -> {state}")
+        if args.dry_run:
+            print(f"  {name}: {chars} chars, ~{dur:.1f}s, planned chunks reported above, "
+                  f"0 timed words -> {state}")
+        else:
+            print(f"  {name}: {chars} chars, ~{dur:.1f}s, {chunks} chunk(s), "
+                  f"{len(word_timings)} timed words -> {state}")
         pieces_out.append({
             "piece": name,
             "source": source,

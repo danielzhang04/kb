@@ -2,11 +2,11 @@
 name: voiceover
 description: >-
   Generates the narration audio for a scripted video in this faceless-YouTube project — turns a
-  videos/<slug>/script.md (and every publish-tagged short) into ElevenLabs TTS mp3s plus a manifest
+  videos/SLUG/script.md (and every publish-tagged short) into ElevenLabs TTS mp3s plus a manifest
   that render-builder syncs visuals to. Use this whenever the user wants to voice a script, generate
   the voiceover / narration / audio / VO, "do the TTS", "record the audio", make the mp3, or run the
   voiceover step for a video or its shorts — for ANY niche. Runs AFTER long-form-writer + shorts-writer (and alongside
-  visual-prompt-writer) and BEFORE render-builder. Reads script.md + shorts/*.md + the channel's
+  visual-prompt-writer) and BEFORE render-builder. Reads a video script + shorts and the channel's
   dna.md voice config; writes assets/vo.mp3, assets/shorts/short-NN.mp3, and
   assets/voiceover.manifest.json. Do NOT use it to write the script (scriptwriter), pick titles/tags
   (metadata-writer), plan visuals (visual-prompt-writer), or assemble the final video (render-builder).
@@ -41,7 +41,8 @@ so every run is identical and resumable.
 
 ```bash
 # 1. ALWAYS dry-run first — parses + strips markers + writes the .txt transcripts + manifest,
-#    but makes NO API call (zero TTS quota). Read the transcripts to confirm the spoken text is clean.
+#    and reports the planned v3/v2 chunks, configured settings, cleanup, and seam-review locations.
+#    It makes NO API call (zero TTS quota). Read the transcript and plan before any paid audition.
 py -3 .claude/skills/voiceover/scripts/voiceover.py channels/<name>/videos/<slug> --dry-run
 
 # 2. Full synthesis — long-form + every publish-tagged short.
@@ -64,13 +65,21 @@ wastes real quota and money.
 - **Only spoken words survive.** `[B-ROLL: …]` cue blocks (even multi-line), `### beat headers`,
   `> note blockquotes`, the `## SOURCES / ACCURACY NOTE` tail, and markdown emphasis are all stripped.
   `[PAUSE]` becomes a real TTS break tag, not the literal word "pause".
+- **Expressive delivery is precise and model-conditional.** Before a sentence, use only
+  `[emote: curious]`, `[emote: knowingly]`, `[emote: sternly]`, `[emote: sighs]`,
+  `[emote: exhales]`, or `[aside: dry]`. Never place two delivery markers together. The engine
+  rejects unknown, malformed, adjacent, or mid-sentence markers before it can call ElevenLabs.
+  On `eleven_v3`, they become `[curious]`, `[knowingly]`, `[sternly]`, `[sighs]`, `[exhales]`,
+  and `[deadpan]`; v2 strips them cleanly. Keep them sparse at genuine chapter, reveal, or mood
+  turns. A consequence beat permits only optional restrained `sternly`.
 - **Long-form and shorts read from the right region.** Long-form = the `## LONG-FORM VOICEOVER`
   section only (so the header metadata and Sources note are never voiced). Shorts = the `## VO + cues`
   section only (so the burned-in Caption block is never voiced).
 - **Publish gating.** Only shorts marked `**Status:** publish` are voiced by default — bench shorts are
   the deep bench and don't get spent quota until promoted. `--all-shorts` overrides.
 - **Long scripts don't fail.** Text is chunked at paragraph boundaries under a safe per-request cap and
-  stitched, with `previous_text`/`next_text` passed so prosody carries across chunk seams.
+  stitched. v2 keeps its existing continuity context; v3 has no context fields, so its planner prefers
+  a substantial chapter/mood paragraph seam and flags every forced seam for the human ear gate.
 - **Durations + per-word timings for the next step.** Synthesis uses ElevenLabs' `/with-timestamps`
   endpoint, so the manifest records each piece's exact `est_duration_s` (alignment-derived, not a
   word-count guess) **and** a `word_timings` list (`[[word, start_s], …]` on the stitched timeline).
