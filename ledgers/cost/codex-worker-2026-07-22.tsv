@@ -35,4 +35,5 @@ gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;runtime-alignment
 gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;durable-workspace-re-review	0.0
 gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;governance-verification-re-review	0.0
 gpt-5	requested=gpt-5;responding=gpt-5;growth-log-and-save-session	0.0
+gpt-5	requested=gpt-5;responding=gpt-5;post-merge-dashboard-switch-and-final-handoff	0.0
 
