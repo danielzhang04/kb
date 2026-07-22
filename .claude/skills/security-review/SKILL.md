@@ -5,7 +5,8 @@ source: ecc@2.0.0/skills/security-review/SKILL.md + agents/security-reviewer.md
 source-author: ECC contributors
 source-hash: fe6f9151fb15c1dffd47a55080c3ad147af7c95dd0ad3714735dec6824b060b7 + c946d79ddd3e453400a2a858528c5510307912503e998b67fc114e73ee0dd144
 imported: 2026-07-22
-provenance-tier: imported
+provenance-tier: curated
+promoted: 2026-07-22 (Daniel full read-through approval)
 ---
 
 # Security Review

@@ -5,7 +5,8 @@ source: ecc@2.0.0/commands/code-review.md + agents/code-reviewer.md
 source-author: ECC contributors
 source-hash: 20f4b8fcf132d6563ae0afb3d6d695ac8d4d85f3d36b15da83de30b041cce107 + 07447dbe8733fb9e24b1016d52b62468748b27547b5cff7af3021f3436624ee5
 imported: 2026-07-22
-provenance-tier: imported
+provenance-tier: curated
+promoted: 2026-07-22 (Daniel full read-through approval)
 ---
 
 # Code Review

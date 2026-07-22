@@ -2,14 +2,14 @@ from pathlib import Path
 
 
 REPO = Path(__file__).resolve().parents[1]
-IMPORTED = REPO / "skills" / "imported"
+CURATED = REPO / "skills" / "curated"
 
 
 def skill_text(name):
-    return (IMPORTED / name / "SKILL.md").read_text(encoding="utf-8")
+    return (CURATED / name / "SKILL.md").read_text(encoding="utf-8")
 
 
-def test_selective_ecc_skills_are_provenanced_and_inert_by_default():
+def test_selective_ecc_skills_are_promoted_and_inert_by_default():
     for name in ("code-review", "security-review"):
         text = skill_text(name)
         assert f"name: {name}" in text
@@ -17,7 +17,9 @@ def test_selective_ecc_skills_are_provenanced_and_inert_by_default():
         assert "source-author: ECC contributors" in text
         assert "source-hash:" in text
         assert "imported: 2026-07-22" in text
-        assert "provenance-tier: imported" in text
+        assert "provenance-tier: curated" in text
+        assert "promoted: 2026-07-22 (Daniel full read-through approval)" in text
+        assert not (REPO / "skills" / "imported" / name).exists()
 
     combined = skill_text("code-review") + skill_text("security-review")
     for unsafe_default in (

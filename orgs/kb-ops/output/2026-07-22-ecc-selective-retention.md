@@ -69,11 +69,11 @@ invocation evidence and does not justify another discovery entry.
 - Generic `git-workflow` and worktree orchestration: conflict with kb's stricter branch/ops/main
   rules and duplicate existing orchestration.
 
-## Promotion gate
+## Promotion result
 
-Both new skills remain under `skills/imported/` until all gates pass and Daniel completes the full
-human read-through required by `governance/security-rules.md`. Promotion must move them to
-`skills/curated/`, stamp the promotion, and regenerate the authoritative Claude/Codex skill mirrors.
+Daniel approved both skills after the required full read-through on 2026-07-22. `code-review` and
+`security-review` are promoted to `skills/curated/` with the approval stamp, and the authoritative
+Claude/Codex skill mirrors are regenerated and verified as part of the promotion commit.
 
 ## Forward-test result
 
@@ -84,3 +84,17 @@ requires `--include-sessions` for telemetry, bounds candidate/file/record reads,
 and discovery completeness numerically, caps traversed directories/entries, excludes
 symlinked/out-of-repo instruction files, and handles an explicit false-only plugin map correctly.
 These findings validate the retained review behavior on a real branch.
+
+## Promotion validation
+
+- Repo-native skill validation, mirror drift checks, Unicode safety, and supply-chain IOC scans
+  pass for both promoted skills and their Claude mirrors.
+- Focused promotion/context/governance tests: 24 passed.
+- Core repository suite: 628 passed, 9 skipped.
+- Canary suite: 20/20 passed; the `origin/main...HEAD` diff guard is clean.
+- A fresh bounded reviewer confirmed byte-identical mirrors, consistent manifests/catalogs, inert
+  defaults, and no forbidden-path spillover.
+
+The generic Codex skill-creator validator rejects kb's additional provenance keys because its
+frontmatter allow-list does not implement kb's schema. The repository-native
+`scripts/ci/validate_skills.js` validator is authoritative here and accepts the required metadata.
