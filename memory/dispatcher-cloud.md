@@ -116,3 +116,16 @@
   decide:budget-gate-measures-nothing T3 + the T2 delivery-gate flip), reaffirming last night's
   lesson that "Action required" != only queue/approvals/.
 - Notable: Atlas V1 "Hands" wave COMPLETE + prod rollout (PR #44 merged, view live on :5317).
+
+## 2026-07-22 nightly-dispatcher run
+- WORKED: full nightly cycle green — preamble OK, sync_skills clean, dashboards regenerated,
+  card 6a605e40 lifecycle inbox→working→done, cost step logged.
+- FAILED/GOTCHA: routine step 2b `python scripts/sync_daemon_dirs.py --check` fails on the
+  ops branch because that script lives only on origin/main, not ops (ops has only
+  sync_skills.py). Workaround: `git show origin/main:scripts/sync_daemon_dirs.py` to a temp
+  file and run that. Real drift also present (self-lint-report.md main vs ops). Filed wake-me
+  card 6a605ebb-d86dff79 covering both; desktop `--sync` + a decision to mirror the script
+  onto ops (or amend the routine) is owed.
+- REMAINS: stale done-in-inbox cards 6a5dbb3e-295a9d2b, 6a5f0cef-53d31df4 (and now this run's
+  6a605e40) sit at state:done in queue/inbox/, never swept to queue/done/. Recurring — worth a
+  janitor step, but outside the nightly work order so left untouched.

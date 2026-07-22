@@ -1,8 +1,28 @@
 # System Handover
-_Generated: 2026-07-21 06:09 UTC_
+_Generated: 2026-07-22 06:08 UTC_
 
-**What happened.** The nightly cadence ran cleanly — preamble green, skills registry no drift. Tonight's `nightly-review` (`6a5f0cef-53d31df4`) dispatched and executed. The headline since you left: **Atlas V1 "Hands" wave is COMPLETE and live in prod.** All three human gates passed at the desk, PR #44 merged (aa35b00), and the Atlas view is running on 127.0.0.1:5317 with live worker passthrough verified; inspector graded the wave's cards 95–97, and suites are green (atlas 132, fleet 530, dashboard 1551). Spend today is $0.94 of the $5.00 cap (Poyais thumbnail regen, which you ordered).
+Quiet night. The nightly-review cadence ran and passed its health checks: preamble OK,
+skills in sync, budget untouched ($0.00 of the $5.00/day cap spent). No fleet work ran
+unattended — the daily self-lint cadence stays dormant because no scheduler is enabled;
+it only launches manually from the dashboard while you're watching.
 
-**What is waiting on you.** A T3 **decision** card says the daily budget gate is structurally broken — it only ever sees $0.00 subscription rows, so image spend (a single video is 3–5× the daily cap) never registers; since `governance/` is human-edited, this is yours to decide. Four T3 OAuth-gate approvals (Google Workspace MCP setup) and a T2 delivery-gate flip (blocked on your ecc-import wave-1 checkpoint) also wait. On faceless-youtube, **PR #41** (post-render tail + fyt-runner) is ready to merge — land it with its fyt-video-run-test companion — and the Poyais video is parked at GATE 3 needing your thumbnail authorization, an L17 call, and publish approval. Atlas V2 "Trust" planning awaits your go/no-go.
+What's waiting on you: six cards, all in `queue/inbox/`. Four ask you to approve the
+OAuth gates g1–g4 (workflow `ws2-oauth-gates`, all T3). One asks you to decide the
+"budget-gate-measures-nothing" question (workflow `fleet-arc-wave-a`, T3). The sixth is
+the delivery-gate warn→block flip, which is blocked until you sign off the ECC import
+wave-1 checkpoint. None of these can move without you.
 
-**What the system will do next unattended.** The nightly cadence keeps running and regenerates these two dashboards each pass. The dispatcher keeps assigning cards to their owners, but every item above is human-owned and will not move without you. Four atlas conversation-rules cards are in `working/` (opened early today, well under the 48h staleness line). If any health check or preamble fails, the routine stops and drops a wake-me card rather than pressing on. One cosmetic nit: yesterday's nightly card is sitting `done` in the inbox folder — harmless.
+Two housekeeping items I could not fix from here (both need a desktop run and are noted
+in a wake-me card): the daemon-dir mirror check shows `orgs/kb-ops/workflows/
+self-lint-report.md` differs between main and ops, so a `python scripts/sync_daemon_dirs.py
+--sync` from the dashboard-ops worktree is owed; and the `sync_daemon_dirs.py` script
+itself is missing from the ops branch (it lives on main), so tonight I had to run it from
+a main copy. Neither blocks anything, but both should be reconciled next time you're at
+the desk.
+
+Project status is steady: Atlas V1 shipped and is live (PR #44 merged, V2 planning awaits
+your go/no-go); faceless-youtube PR #41 is reviewed and ready to merge (paired with the
+dashboard test branch), with Poyais parked at GATE 3 for your thumbnail/publish decisions.
+
+Next unattended: the nightly-review cadence fires again tomorrow. Nothing else will run on
+its own.
