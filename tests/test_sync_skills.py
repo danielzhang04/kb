@@ -44,6 +44,21 @@ def test_sync_removes_stale_runtime_skill(tmp_path, mirror):
     assert not stale.exists()
 
 
+def test_sync_propagates_source_update_and_deletion(tmp_path):
+    make_skill(tmp_path, "alpha", "version one")
+    make_skill(tmp_path, "beta")
+    sync_skills.sync(tmp_path)
+
+    source = tmp_path / "skills/curated/alpha/SKILL.md"
+    source.write_text(source.read_text(encoding="utf-8") + "\nversion two", encoding="utf-8")
+    shutil.rmtree(tmp_path / "skills/curated/beta")
+    sync_skills.sync(tmp_path)
+
+    for mirror in MIRRORS:
+        assert (tmp_path / mirror / "alpha/SKILL.md").read_bytes() == source.read_bytes()
+        assert not (tmp_path / mirror / "beta").exists()
+
+
 def test_hash_dir_sort_is_case_stable(tmp_path):
     directory = tmp_path / "skills/curated/casey"
     directory.mkdir(parents=True)

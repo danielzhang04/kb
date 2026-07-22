@@ -13,6 +13,6 @@ case "$(git diff --cached --name-only)" in
   ;;
 esac
 python scripts/sync_skills.py --check || {
-  echo "commit blocked: runtime skill mirrors drifted from skills/curated (run: python scripts/sync_skills.py)";
+  echo "commit blocked: edit skills/curated, never generated mirrors; then run: python scripts/sync_skills.py";
   exit 1;
 }
