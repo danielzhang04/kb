@@ -81,6 +81,19 @@ function fixture(options: {
     artifacts: [{ path: changedPath, digest }],
     changed: [{ path: changedPath, digest }],
     checkpoints: ['verified'],
+    reviewOutcome: {
+      schema: 'kb.review-outcome/v1' as const,
+      decision: 'pass' as const,
+      summary: 'checker passed',
+      criteria: [{ criterionId: 'criterion-1', verdict: 'pass' as const, findingIds: [] }],
+      findings: [],
+    },
+  };
+  const reviewContract = {
+    review: {
+      subjectStageId: 'subject', maxCreatorReworks: 1,
+      criteria: [{ id: 'criterion-1', description: 'must pass' }],
+    },
   };
   const input = {
     operationKey: `result:${runRef}:${stageId}`,
@@ -92,6 +105,7 @@ function fixture(options: {
     canonicalCardRef: cardRef,
     worktreePath: attemptPath,
     ...canonical,
+    reviewContract,
     resultHash: canonicalStageResultHash(canonical),
   };
 
@@ -232,7 +246,16 @@ function fixture(options: {
     if (code === CANONICAL_RESULT_VERIFY_SCRIPT) {
       if (verifyFails) return { exitCode: 1, stdout: '', stderr: 'committed canonical Result payload differs' };
       const verify = JSON.parse(jsonArg) as { cardRef: string; runRef: string; result: Record<string, unknown> };
-      expect(verify).toMatchObject({ cardRef, runRef, result: { resultHash: input.resultHash, integrationCommit } });
+      expect(verify).toMatchObject({
+        cardRef,
+        runRef,
+        result: {
+          resultHash: input.resultHash,
+          reviewOutcome: input.reviewOutcome,
+          attemptBaseCommit: attemptBase,
+          integrationCommit,
+        },
+      });
       return { exitCode: 0, stdout: JSON.stringify({ path: doneRel }), stderr: '' };
     }
     expect(code).toBe(CANONICAL_RESULT_CARD_SCRIPT);
@@ -271,9 +294,21 @@ describe('canonical Git result integrator', () => {
   it('commits bounded attempt changes into lineage before the exact canonical card commit and replay', async () => {
     const item = fixture();
     expect(await item.integrator.lookup(item.input)).toBeNull();
-    expect(await item.integrator.integrate(item.input)).toEqual({ status: 'integrated', resultHash: item.input.resultHash });
-    expect(await item.integrator.lookup(item.input)).toMatchObject({ resultHash: item.input.resultHash, summary: 'stage complete' });
-    expect(await item.integrator.integrate(item.input)).toEqual({ status: 'replayed', resultHash: item.input.resultHash });
+    expect(await item.integrator.integrate(item.input)).toMatchObject({
+      status: 'integrated', resultHash: item.input.resultHash,
+      attemptBaseCommit: 'a'.repeat(40), integrationCommit: 'd'.repeat(40),
+    });
+    expect(await item.integrator.lookup(item.input)).toMatchObject({
+      resultHash: item.input.resultHash,
+      summary: 'stage complete',
+      reviewOutcome: item.input.reviewOutcome,
+      attemptBaseCommit: 'a'.repeat(40),
+      integrationCommit: 'd'.repeat(40),
+    });
+    expect(await item.integrator.integrate(item.input)).toMatchObject({
+      status: 'replayed', resultHash: item.input.resultHash,
+      attemptBaseCommit: 'a'.repeat(40), integrationCommit: 'd'.repeat(40),
+    });
     expect(item.cardMutations()).toBe(1);
 
     // Regression (Windows MAX_PATH): the integration worktree is created under the same deep state-root
@@ -304,6 +339,7 @@ describe('canonical Git result integrator', () => {
         artifacts: item.input.artifacts,
         changed: [{ ...item.input.changed[0], digest: 'd'.repeat(64) }],
         checkpoints: item.input.checkpoints,
+        reviewOutcome: item.input.reviewOutcome,
       }),
     })).rejects.toThrow('artifact digest changed');
     expect(item.gitCalls.some((call) => call.args[0] === 'cherry-pick')).toBe(false);
@@ -401,6 +437,43 @@ describe('canonical Git result integrator', () => {
       .toBe('canonical-intent');
     await expect(item.integrator.integrate(item.input)).resolves.toMatchObject({ status: 'integrated' });
     expect(item.coordinationCalls.filter((args) => args[0] === 'commit')).toHaveLength(1);
+  });
+
+  it('rejects a direct caller that supplies a malformed review outcome before journaling', async () => {
+    const item = fixture();
+    await expect(item.integrator.integrate({
+      ...item.input,
+      reviewOutcome: { ...item.input.reviewOutcome, summary: 'sk-abcdefghijklmnopqrstuvwxyz1234567890' },
+    })).rejects.toThrow('invalid review outcome');
+    expect(item.gitCalls).toHaveLength(0);
+    expect(item.cardMutations()).toBe(0);
+  });
+
+  it('fails closed when a persisted review outcome no longer validates against its journaled contract', async () => {
+    const item = fixture();
+    await item.integrator.integrate(item.input);
+    const path = join(item.stateRoot, 'control/canonical-integration.json');
+    const stored = JSON.parse(readFileSync(path, 'utf8')) as { records: Array<{ result: { reviewOutcome: { summary: string } } }> };
+    stored.records[0].result.reviewOutcome.summary = 'sk-abcdefghijklmnopqrstuvwxyz1234567890';
+    writeFileSync(path, JSON.stringify(stored), 'utf8');
+    await expect(item.integrator.lookup(item.input)).rejects.toThrow('canonical integration state is invalid');
+  });
+
+  it('keeps a later generation distinct from g1 without rewriting the immutable stage card', async () => {
+    const item = fixture();
+    const input = {
+      ...item.input,
+      operationKey: 'result:run-1:stage-1:g2',
+      canonicalCardRef: null,
+    };
+    const result = await item.integrator.integrate(input);
+    expect(result).toMatchObject({
+      status: 'integrated', resultHash: input.resultHash,
+      attemptBaseCommit: 'a'.repeat(40), integrationCommit: 'd'.repeat(40),
+    });
+    expect(await item.integrator.lookup(input)).toMatchObject({ reviewOutcome: input.reviewOutcome });
+    expect(item.cardMutations()).toBe(0);
+    expect(item.gitCalls.some((call) => call.args[0] === 'fetch')).toBe(true);
   });
 
   it('rebases and re-verifies a journaled canonical commit after one concurrent ops advance', async () => {

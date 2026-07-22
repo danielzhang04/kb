@@ -178,7 +178,7 @@ function fakes(overrides: { worker?: WorkerAdapter; accounting?: AccountingAdapt
     async resolveBase() { return 'd'.repeat(40); },
     async integrate(input) {
       integrationOrder.push(input.stageId);
-      return { status: 'integrated', resultHash: input.resultHash };
+      return { status: 'integrated', resultHash: input.resultHash, durability: 'inactive' as const };
     },
   };
   const cancellation: ExecutionCancellationController = {
@@ -658,6 +658,30 @@ describe('AutomaticExecutionEngine', () => {
     expect(seen).toEqual(['research']);
   });
 
+  it('never forwards an unvalidated direct-worker review outcome to result persistence', async () => {
+    const store = createStore();
+    const plan = proposal([stage('outcome')]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    fake.workers = {
+      async execute() {
+        fake.executionOrder.push('outcome');
+        return {
+          state: 'succeeded', summary: 'worker claimed success', usage: { inputTokens: 1, outputTokens: 1, costUsdMicros: 1 },
+          artifacts: [{ path: 'dashboard/server/outcome.txt', digest: 'b'.repeat(64) }], checkpoints: ['outcome-checked'],
+          reviewOutcome: {
+            schema: 'kb.review-outcome/v1', decision: 'pass', summary: 'sk-abcdefghijklmnopqrstuvwxyz1234567890',
+            criteria: [{ criterionId: 'forged', verdict: 'pass', findingIds: [] }], findings: [],
+          } as never,
+        };
+      },
+    };
+    const outcome = await new AutomaticExecutionEngine(engineOptions(store, fake))
+      .runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
+    expect(outcome.state).toBe('failed');
+    expect(fake.integrationOrder).toEqual([]);
+  });
+
   it('prefers a server-compiled per-stage workflow profile over the proposal profile', async () => {
     const store = createStore();
     const capped = stage('checker-cap');
@@ -965,6 +989,8 @@ describe('AutomaticExecutionEngine', () => {
           ? {
               resultHash: committed.resultHash, summary: committed.summary, artifacts: committed.artifacts,
               changed: committed.changed, checkpoints: committed.checkpoints,
+              durability: 'canonical' as const,
+              attemptBaseCommit: 'a'.repeat(40), integrationCommit: 'b'.repeat(40),
             }
           : null;
       },
@@ -972,7 +998,8 @@ describe('AutomaticExecutionEngine', () => {
         keys.push(input.operationKey);
         committed = input;
         if (keys.length === 1) throw new Error('lost acknowledgement after canonical commit');
-        return { status: 'replayed', resultHash: input.resultHash };
+        return { status: 'replayed', resultHash: input.resultHash,
+          durability: 'canonical' as const, attemptBaseCommit: 'a'.repeat(40), integrationCommit: 'b'.repeat(40) };
       },
     };
     const engine = new AutomaticExecutionEngine(engineOptions(store, fake));

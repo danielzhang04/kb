@@ -5,7 +5,7 @@ import type { Attempt, ManagedSession, RunDetail, Stage } from './types.ts';
 import { classifyActionRisk, evaluateExecutionPolicy, type ExecutionProfile, type PolicyEnvironment } from './policy.ts';
 import { isSafeRepoRelativePath, proposalContentHash, type PlanProposal, type ProposalStage, type ResolvedAgentAssignment } from './proposal.ts';
 import type { AssignedAgentResolver, ResolvedAssignedAgent } from './agentAssignmentResolver.ts';
-import type { ReviewContract, ReviewOutcome } from './reviewOutcome.ts';
+import { parseReviewOutcome, type ReviewContract, type ReviewOutcome } from './reviewOutcome.ts';
 
 const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const SAFE_PROJECT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
@@ -177,23 +177,52 @@ export interface ResultIntegrator {
     stageRef: string;
     stageId: string;
     attemptRef: string;
-    canonicalCardRef: string;
+    /** g1 writes the stage card; later review generations have no mutable stage card. */
+    canonicalCardRef: string | null;
     summary: string;
     artifacts: readonly WorkerArtifactResult[];
     changed: readonly WorkerArtifactResult[];
     checkpoints: readonly string[];
+    /** A checker outcome that was already validated against its server-owned review contract. */
+    reviewOutcome?: ReviewOutcome;
+    /** Required with reviewOutcome; supplied only from the immutable approved proposal stage. */
+    reviewContract?: ReviewContract;
     resultHash: string;
     worktreePath: string;
-  }): Promise<{ status: 'integrated' | 'replayed'; resultHash: string }>;
+  }): Promise<ResultIntegrationReceipt>;
 }
 
-export interface CanonicalStageResult {
-  resultHash: string;
+export interface CanonicalStageResultPayload {
   summary: string;
   artifacts: readonly WorkerArtifactResult[];
   changed: readonly WorkerArtifactResult[];
   checkpoints: readonly string[];
+  /** Validated checker output, when this canonical result belongs to a checker. */
+  reviewOutcome?: ReviewOutcome;
 }
+
+export type CanonicalStageResult = CanonicalStageResultPayload & { resultHash: string } & (
+  | {
+      durability: 'canonical';
+      /** Immutable attempt parent and canonical lineage commit. */
+      attemptBaseCommit: string;
+      integrationCommit: string;
+    }
+  | {
+      /** Inactive adapters retain only app-local receipts and can never satisfy reviewed lineage. */
+      durability: 'inactive';
+      attemptBaseCommit: null;
+      integrationCommit: null;
+    }
+);
+
+export type ResultIntegrationReceipt = (
+  | { durability: 'canonical'; attemptBaseCommit: string; integrationCommit: string }
+  | { durability: 'inactive' }
+) & {
+  status: 'integrated' | 'replayed';
+  resultHash: string;
+};
 
 export interface AutomaticExecutionOptions {
   store: ControlPlaneStore;
@@ -286,11 +315,55 @@ export function planAttemptWorktreePath(worktreeRoot: string, runRef: string, at
   return planned;
 }
 
-export function canonicalStageResultHash(result: Omit<CanonicalStageResult, 'resultHash'>): string {
+export function canonicalResultOperationKey(runRef: string, stageId: string, generation: number = 1): string {
+  if (!SAFE_REF.test(runRef) || runRef.includes('..') || !SAFE_REF.test(stageId) || stageId.includes('..')) {
+    throw new AutomaticExecutionError('canonical result identity is unsafe');
+  }
+  if (!Number.isSafeInteger(generation) || generation < 1) throw new AutomaticExecutionError('canonical result generation is invalid');
+  const base = `result:${runRef}:${stageId}`;
+  return generation === 1 ? base : `${base}:g${generation}`;
+}
+
+export function canonicalStageResultHash(result: CanonicalStageResultPayload): string {
   const artifacts = [...result.artifacts].map((item) => ({ path: item.path, digest: item.digest })).sort((a, b) => a.path.localeCompare(b.path));
   const changed = [...result.changed].map((item) => ({ path: item.path, digest: item.digest })).sort((a, b) => a.path.localeCompare(b.path));
   const checkpoints = [...result.checkpoints].sort();
-  return createHash('sha256').update(JSON.stringify({ summary: result.summary, artifacts, changed, checkpoints }), 'utf8').digest('hex');
+  const reviewOutcome = result.reviewOutcome
+    ? {
+        schema: result.reviewOutcome.schema,
+        decision: result.reviewOutcome.decision,
+        summary: result.reviewOutcome.summary,
+        criteria: result.reviewOutcome.criteria.map((criterion) => ({
+          criterionId: criterion.criterionId,
+          verdict: criterion.verdict,
+          findingIds: [...criterion.findingIds],
+        })),
+        findings: result.reviewOutcome.findings.map((finding) => ({
+          id: finding.id,
+          criterionId: finding.criterionId,
+          severity: finding.severity,
+          summary: finding.summary,
+          evidencePaths: [...finding.evidencePaths],
+        })),
+      }
+    : null;
+  return createHash('sha256').update(JSON.stringify({ summary: result.summary, artifacts, changed, checkpoints, reviewOutcome }), 'utf8').digest('hex');
+}
+
+function validatedReviewOutcome(stage: ProposalStage, outcome: ReviewOutcome): ReviewOutcome | null {
+  if (!stage.review) return null;
+  try {
+    const parsed = parseReviewOutcome(JSON.stringify(outcome), { review: stage.review });
+    return parsed.ok ? parsed.value : null;
+  } catch {
+    return null;
+  }
+}
+
+function hasImmutableLineage(result: CanonicalStageResult | ResultIntegrationReceipt): boolean {
+  return result.durability === 'canonical'
+    && /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/.test(result.attemptBaseCommit)
+    && /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/.test(result.integrationCommit);
 }
 
 function stageById(proposal: PlanProposal, stageId: string): ProposalStage {
@@ -319,7 +392,8 @@ function resultIsSafe(
       && contains(artifact.path, stage.scope.write)
       && /^[a-f0-9]{64}$/.test(artifact.digest))
     && result.artifacts.every((artifact) => inspected.get(artifact.path) === artifact.digest)
-    && result.checkpoints.every((checkpoint) => allowedCheckpoints.has(checkpoint));
+    && result.checkpoints.every((checkpoint) => allowedCheckpoints.has(checkpoint))
+    && (result.reviewOutcome === undefined || validatedReviewOutcome(stage, result.reviewOutcome) !== null);
 }
 
 function stableHumanTitle(kind: 'gate' | 'policy' | 'budget' | 'execution', stageId: string, detail: string): string {
@@ -1127,8 +1201,10 @@ export class AutomaticExecutionEngine {
   ): Promise<({ state: 'succeeded' | 'waiting-human' | 'stopped'; stageId: string })> {
     const { stage, proposalStage, attempt, session, profile, assignedAgent } = prepared;
     const operationKey = `automatic-attempt:${attempt.attemptRef}`;
-    const resultOperationKey = `result:${input.runRef}:${stage.stageId}`;
+    const resultOperationKey = canonicalResultOperationKey(input.runRef, stage.stageId);
     const worktreePath = planAttemptWorktreePath(this.options.worktreeRoot, input.runRef, attempt.attemptRef);
+    const reviewedGeneration = proposalStage.review !== undefined
+      || this.detail(input).reviewLoops.some((loop) => loop.subjectStageRef === stage.stageRef);
     const integrated = await this.options.results.lookup({
       operationKey: resultOperationKey,
       subject: input.subject,
@@ -1140,9 +1216,13 @@ export class AutomaticExecutionEngine {
       const expectedHash = canonicalStageResultHash(integrated);
       if (integrated.resultHash !== expectedHash || !resultIsSafe(
         proposalStage,
-        { state: 'succeeded', summary: integrated.summary, usage: { inputTokens: 0, outputTokens: 0, costUsdMicros: 0 }, artifacts: [...integrated.artifacts], checkpoints: [...integrated.checkpoints] },
+        {
+          state: 'succeeded', summary: integrated.summary, usage: { inputTokens: 0, outputTokens: 0, costUsdMicros: 0 },
+          artifacts: [...integrated.artifacts], checkpoints: [...integrated.checkpoints],
+          ...(integrated.reviewOutcome ? { reviewOutcome: integrated.reviewOutcome } : {}),
+        },
         { changed: integrated.changed },
-      )) {
+      ) || ((integrated.reviewOutcome !== undefined || reviewedGeneration) && !hasImmutableLineage(integrated))) {
         throw new AutomaticExecutionError('persisted canonical result failed reconciliation');
       }
       this.options.store.appendEvent(input.subject, input.runRef, {
@@ -1245,13 +1325,30 @@ export class AutomaticExecutionEngine {
     if (!resultIsSafe(proposalStage, result, inspection)) {
       result = { ...result, state: 'failed', summary: 'worker result exceeded the approved canonical result envelope', artifacts: [], checkpoints: [] };
     }
+    if (result.state === 'succeeded' && proposalStage.review && result.reviewOutcome === undefined) {
+      result = { ...result, state: 'failed', summary: 'checker succeeded without a validated review outcome', artifacts: [], checkpoints: [] };
+    }
+    if (result.state === 'succeeded' && result.reviewOutcome) {
+      const validated = validatedReviewOutcome(proposalStage, result.reviewOutcome);
+      if (!validated) {
+        result = { ...result, state: 'failed', summary: 'checker review outcome failed validation', artifacts: [], checkpoints: [] };
+      } else {
+        result = { ...result, reviewOutcome: validated };
+      }
+    }
     this.options.store.appendEvent(input.subject, input.runRef, {
       kind: 'lifecycle', source: 'worker', stageRef: stage.stageRef, attemptRef: attempt.attemptRef,
       sessionRef: session.sessionRef, status: result.state === 'succeeded' ? 'success' : result.state === 'failed' ? 'failure' : 'waiting',
       summary: result.summary,
     });
     if (result.state === 'succeeded') {
-      const canonical = { summary: result.summary, artifacts: result.artifacts, changed: inspection.changed, checkpoints: result.checkpoints };
+      const canonical = {
+        summary: result.summary,
+        artifacts: result.artifacts,
+        changed: inspection.changed,
+        checkpoints: result.checkpoints,
+        ...(result.reviewOutcome ? { reviewOutcome: result.reviewOutcome } : {}),
+      };
       const resultHash = canonicalStageResultHash(canonical);
       const integratedResult = await this.options.results.integrate({
         operationKey: resultOperationKey,
@@ -1265,11 +1362,16 @@ export class AutomaticExecutionEngine {
         artifacts: result.artifacts,
         changed: inspection.changed,
         checkpoints: result.checkpoints,
+        ...(result.reviewOutcome ? { reviewOutcome: result.reviewOutcome } : {}),
+        ...(result.reviewOutcome ? { reviewContract: { review: proposalStage.review as NonNullable<typeof proposalStage.review> } } : {}),
         resultHash,
         worktreePath,
       });
       if (this.cancellationObserved(input)) return { state: 'stopped', stageId: stage.stageId };
       if (integratedResult.resultHash !== resultHash) throw new AutomaticExecutionError('canonical result replay hash differs');
+      if ((result.reviewOutcome || reviewedGeneration) && !hasImmutableLineage(integratedResult)) {
+        throw new AutomaticExecutionError('reviewed canonical result lacks immutable lineage');
+      }
       this.transitionSession(input, session.sessionRef, 'completed');
       this.transitionAttempt(input, attempt.attemptRef, 'succeeded');
       this.transitionStageByRef(input, stage.stageRef, 'succeeded');

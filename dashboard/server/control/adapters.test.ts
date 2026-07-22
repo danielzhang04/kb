@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -311,6 +311,19 @@ function canonicalInput() {
     artifacts: [{ path: 'dashboard/server/result.txt', digest: 'a'.repeat(64) }],
     changed: [{ path: 'dashboard/server/result.txt', digest: 'a'.repeat(64) }],
     checkpoints: ['verified'],
+    reviewOutcome: {
+      schema: 'kb.review-outcome/v1' as const,
+      decision: 'pass' as const,
+      summary: 'checker passed',
+      criteria: [{ criterionId: 'criterion-1', verdict: 'pass' as const, findingIds: [] }],
+      findings: [],
+    },
+  };
+  const reviewContract = {
+    review: {
+      subjectStageId: 'subject', maxCreatorReworks: 1,
+      criteria: [{ id: 'criterion-1', description: 'must pass' }],
+    },
   };
   return {
     operationKey: 'result:run-1:stage-1',
@@ -322,6 +335,7 @@ function canonicalInput() {
     canonicalCardRef: 'card-1',
     worktreePath: 'C:\\managed-worktrees\\attempt-1',
     ...canonical,
+    reviewContract,
     resultHash: canonicalStageResultHash(canonical),
   };
 }
@@ -332,7 +346,7 @@ describe('file result integrator', () => {
     const first = createFileResultIntegrator({ stateRoot, now: () => new Date('2026-07-18T12:00:00.000Z') });
     const input = canonicalInput();
     expect(await first.lookup(input)).toBeNull();
-    expect(await first.integrate(input)).toEqual({ status: 'integrated', resultHash: input.resultHash });
+    expect(await first.integrate(input)).toEqual({ status: 'integrated', resultHash: input.resultHash, durability: 'inactive' });
 
     const restarted = createFileResultIntegrator({ stateRoot });
     expect(await restarted.lookup(input)).toEqual({
@@ -341,8 +355,12 @@ describe('file result integrator', () => {
       artifacts: input.artifacts,
       changed: input.changed,
       checkpoints: input.checkpoints,
+      reviewOutcome: input.reviewOutcome,
+      durability: 'inactive',
+      attemptBaseCommit: null,
+      integrationCommit: null,
     });
-    expect(await restarted.integrate(input)).toEqual({ status: 'replayed', resultHash: input.resultHash });
+    expect(await restarted.integrate(input)).toEqual({ status: 'replayed', resultHash: input.resultHash, durability: 'inactive' });
   });
 
   it('refuses a mismatched hash, payload replay, and lookup identity', async () => {
@@ -353,6 +371,58 @@ describe('file result integrator', () => {
     await integrator.integrate(input);
     await expect(integrator.integrate({ ...input, summary: 'different' })).rejects.toThrow('hash does not match');
     await expect(integrator.lookup({ ...input, stageId: 'other-stage' })).rejects.toThrow('lookup identity differs');
+  });
+
+  it('rejects malformed or secret-bearing review outcomes before persisting and while replaying', async () => {
+    const stateRoot = temporaryRoot();
+    const integrator = createFileResultIntegrator({ stateRoot });
+    const input = canonicalInput();
+    await expect(integrator.integrate({
+      ...input,
+      reviewOutcome: { ...input.reviewOutcome, criteria: [] },
+    })).rejects.toThrow('invalid review outcome');
+    await expect(integrator.integrate({
+      ...input,
+      reviewOutcome: { ...input.reviewOutcome, summary: 'sk-abcdefghijklmnopqrstuvwxyz1234567890' },
+    })).rejects.toThrow('invalid review outcome');
+
+    await integrator.integrate(input);
+    const path = join(stateRoot, 'control', 'execution-results.json');
+    const stored = JSON.parse(readFileSync(path, 'utf8')) as { results: Array<{ result: { reviewOutcome: { summary: string } } }> };
+    stored.results[0].result.reviewOutcome.summary = 'sk-abcdefghijklmnopqrstuvwxyz1234567890';
+    writeFileSync(path, JSON.stringify(stored), 'utf8');
+    await expect(createFileResultIntegrator({ stateRoot }).lookup(input)).rejects.toThrow('invalid review outcome');
+  });
+
+  it('persists a later generation separately without reusing the g1 card identity', async () => {
+    const stateRoot = temporaryRoot();
+    const integrator = createFileResultIntegrator({ stateRoot });
+    const first = canonicalInput();
+    const second = {
+      ...first,
+      operationKey: 'result:run-1:stage-1:g2',
+      canonicalCardRef: null,
+      reviewOutcome: {
+        schema: 'kb.review-outcome/v1' as const,
+        decision: 'fail' as const,
+        summary: 'checker found a defect',
+        criteria: [{ criterionId: 'criterion-1', verdict: 'fail' as const, findingIds: ['finding-1'] }],
+        findings: [{
+          id: 'finding-1', criterionId: 'criterion-1', severity: 'blocking' as const,
+          summary: 'defect', evidencePaths: ['dashboard/server/result.txt'],
+        }],
+      },
+    };
+    second.resultHash = canonicalStageResultHash({
+      summary: second.summary,
+      artifacts: second.artifacts,
+      changed: second.changed,
+      checkpoints: second.checkpoints,
+      reviewOutcome: second.reviewOutcome,
+    });
+    expect(await integrator.integrate(first)).toMatchObject({ status: 'integrated' });
+    expect(await integrator.integrate(second)).toMatchObject({ status: 'integrated', resultHash: second.resultHash });
+    expect(await integrator.lookup(second)).toMatchObject({ reviewOutcome: second.reviewOutcome });
   });
 });
 
