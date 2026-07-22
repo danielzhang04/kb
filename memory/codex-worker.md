@@ -13,3 +13,112 @@
 - Final integration: merged current `origin/main` into the feature branch after PR conflict detection. Six textual conflicts were split across three independent agents; the resolution preserved both main's read-scope/no-Bash work and this branch's assignments/reviews/completion gates. Post-merge dashboard verification passed 2,055 tests with 2 skipped plus typecheck.
 - Review gates opened: work product PR #69 targets `main`; coordination PR #68 targets `ops`. Neither was merged by Codex.
 
+## Session handoff 2026-07-22
+
+**Topic:** Recover the FYT autonomous-runner terminal, verify the completed control plane, and start the local dashboard before a Windows sandbox restart.
+
+### What WORKED (with evidence)
+
+- **Recovered plan status** - branch history confirms canonical generation durability, durable review-loop execution, completion-gate resolution, Composer-backed agent workspaces, immutable workflow assignments, governed assignment amendments, and no-spend FYT registration were already committed.
+- **Merge status** - GitHub CLI confirmed PR #69 merged to `main` at `2026-07-22T18:17:45Z`, merge commit `e07ea841249353c0ef8de2e91d1724d3ef0c39d7`.
+- **Focused verification** - the 18-file runner/workspace/workflow suite passed 350 tests with 1 skipped.
+- **Full verification** - the dashboard suite passed 2,055 tests with 2 skipped; TypeScript typecheck and `git diff --check` passed.
+- **Preservation** - the FYT runner worktree still showed only the four pre-existing user-owned untracked paths named in the pickup; none were modified or staged.
+- **Dashboard startup** - PM2 launched `kb-dashboard` with zero restarts. `http://localhost:5317/` and `/api/workflows` both returned HTTP 200; the API listed one workflow.
+
+### What Did NOT Work (and why)
+
+- **Three lower-model audit agents** - each stopped before inspection because mandatory preamble execution hit `windows sandbox: helper_unknown_error: apply deny-read ACLs`; escalation was denied or timed out. They made no repository changes.
+- **Built-in `apply_patch`** - failed on the same Windows ACL helper while applying deny-read ACLs. This was not a repository permission failure.
+- **First coordination attempt** - its temporary worktree was clean and removed after the built-in patch failed; no debris or unique commit remained.
+- **Dashboard source alignment** - PM2 started `C:/Users/danie/kb/dashboard/server/pm2Entry.ts`; that checkout is `codex/new-projects-deep-dive`, not merged `main`. HTTP 200 proves availability, not that the served UI contains PR #69.
+- **Durable Composer root** - `C:/Users/danie/kb-worktrees/dashboard-durable` was absent. The server came online, but durable-save behavior was not tested.
+
+### What Has NOT Been Tried Yet
+
+- Restarting the sandbox and confirming normal sandboxed reads and built-in `apply_patch` work again.
+- Opening the dashboard manually and checking the FYT Agent/Workflow surfaces.
+- Launching the dashboard from a reviewed checkout containing merge commit `e07ea841...`, with a matching `dashboard/dist` build.
+- Provisioning and verifying the distinct `dashboard-durable` worktree.
+- Any live FYT acceptance. It remains gated by `runner-bound: false`, watched `DASHBOARD_EXECUTION_ACTIVATED=1`, approved assignment/review/gate semantics, Daniel's G1 decision, and per-run paid-stage authorization. Upload remains a separate T3/G3 leg.
+- `pm2 save`; the process is running now, but its resurrection list was not persisted this session.
+
+### Current State of Files
+
+| File | Status | Notes |
+| ---- | ------ | ----- |
+| `orgs/faceless-youtube/docs/handoffs/2026-07-21-fyt-autonomous-runner-pickup.md` | DONE / STALE NEXT STEP | Its engine checkpoints were subsequently completed. Keep as history. |
+| `orgs/faceless-youtube/docs/handoffs/2026-07-22-dashboard-registration-acceptance.md` | DONE | Current no-spend evidence and authoritative human blockers. |
+| `memory/codex-worker.md` | DONE | This appended section is the current resume record. |
+| FYT runner implementation files | DONE | Merged through PR #69; unchanged in this recovery session. |
+| `dashboard/dist/` in the primary checkout | UNVERIFIED REVISION | It served HTTP 200, but its source revision was not tied to PR #69. |
+
+### Exact Next Step
+
+After restart, run `python scripts/preamble.py` from `C:/Users/danie/kb`; read `CLAUDE.md`, `governance/agent-rules.md`, this memory section, the FYT contract/router/operating law, and the 2026-07-22 acceptance handoff. Confirm normal sandboxed `Get-Content` and built-in `apply_patch` work. Before reviewing new dashboard functionality, run `pm2.cmd show kb-dashboard`, verify its serving checkout contains PR #69, and deliberately restart from a reviewed checkout/build if it does not. Do not enable live execution or paid stages during alignment.
+
+## Runtime identity is more than an environment refresh
+
+### Context
+- The dashboard process needed to move from a primary checkout to an isolated reviewed checkout, and the first audit proposed `pm2 startOrRestart <config>`.
+
+### Root Cause / Core Insight
+- PM2's `startOrRestart` restarts an existing same-named application and refreshes environment, but it does not replace the stored `pm_exec_path` or `cwd`; HTTP 200 and even correct feature behavior therefore do not prove which checkout is serving.
+
+### The Pattern (transferable)
+- Next time a supervised process must move between source checkouts, I will inspect the supervisor's stored script path/cwd and use a delete-plus-start transition when identity must change, followed by path/cwd and endpoint verification.
+- Signal to recognize: a restart command accepts a new config path while the process name already exists.
+
+## Code/data alignment is a deployment invariant
+
+### Context
+- Reviewed dashboard source and `dist` were ready, but the configured `ops` worktree still lacked six main-authored daemon-read files, including the four FYT declarations and `video-run` parameters.
+
+### Root Cause / Core Insight
+- The daemon loads code from one checkout and canonical workflow/agent data from another; validating either revision alone misses byte-CAS failures and stale registry projections at their boundary.
+
+### The Pattern (transferable)
+- Next time a daemon projects Git data from a separate branch/worktree, I will verify the complete source-plus-data revision pair before restart and use the generic mirror mechanism rather than patching one observed file.
+- Signal to recognize: runtime configuration names a repo/data root different from the checkout containing the server code.
+
+## Session handoff 2026-07-22 (post-restart alignment)
+
+**Topic:** Align the FYT dashboard to reviewed PR #69, provision its durable workspace, and determine the safe restart boundary.
+
+### What WORKED (with evidence)
+
+- **Sandbox recovery** - `python scripts/preamble.py`, ordinary `Get-Content`, and a create/delete `apply_patch` probe all succeeded after restart.
+- **Reviewed checkout/build** - `C:/Users/danie/kb/_private/codex-worktrees/fyt-dashboard-alignment` is exactly `e07ea841249353c0ef8de2e91d1724d3ef0c39d7`; TypeScript typecheck and Vite production build passed. Its dependency lock is byte-identical to the primary checkout's lock, and its ignored `node_modules` junction points to that matching installation.
+- **Verification** - focused FYT registration/segment/activation tests passed 37/37; environment and assignment-resolver tests passed 15/15; `tests/test_sync_daemon_dirs.py` passed 23/23 with a workspace-local pytest base temp; the full dashboard suite passed 2,055 tests with 2 skipped across 200 files, serially.
+- **Durable root** - provisioned `C:/Users/danie/kb-worktrees/dashboard-durable` as a clean, distinct Git worktree on `claude/m1-dashboard`, exactly at `e07ea841`; it does not alias `dashboard-ops` or `DASHBOARD_STATE_ROOT`.
+- **Generic ops reconciliation prepared** - PR #72's branch now contains a six-file `agents/**` + `orgs/*/workflows/**` mirror from `origin/main`. Every staged/committed blob was proven identical to `origin/main`; this resolves all current daemon-read drift once merged.
+- **Independent iteration** - three lower-model audits were rerun after the ops drift was found. They converged on NO-GO for restart before the mirror merges and corrected the PM2 transition from `startOrRestart` to delete-plus-start.
+
+### What Did NOT Work (and why)
+
+- **Initial dependency junction command** - it was run from inside `dashboard/` with a redundant `dashboard/node_modules` path, creating a scratch nested junction and leaving tools undiscoverable. The exact junction and empty parent were removed, then the link was recreated correctly as `dashboard/node_modules`.
+- **First mirror pytest run** - 22 fixtures failed before test bodies because pytest selected owner-only `C:/Users/danie/AppData/Local/Temp/pytest-of-danie`. Re-running with `--basetemp .pytest-tmp-sync` passed all 23 tests.
+- **Immediate PM2 restart** - deliberately not performed: `origin/ops` is stale for six dynamically read declarations/workflows, and deploying reviewed code against that state would be a mismatched code/data pair. Also, PM2 `startOrRestart` cannot retarget the stored script path/cwd.
+- **GitHub PR query** - `gh pr view 72` returned HTTP 401 in this session; PR existence/state is inferred from the supplied URL plus the still-unmerged remote branch and `origin/ops` ancestry.
+
+### What Has NOT Been Tried Yet
+
+- Human review/merge of updated PR #72, then pulling `origin/ops` into `dashboard-ops` and running `python scripts/sync_daemon_dirs.py --check` without `--prune`.
+- Deleting the existing PM2 app and starting the absolute `fyt-dashboard-alignment/dashboard/pm2.config.cjs`, followed by script-path/cwd, `/healthz`, `/api/index`, `/api/workflows`, `/api/agents`, and SPA verification, then `pm2 save`.
+- Any authenticated durable save or assignment amendment. Before such a test, resolve or explicitly approve the daemon identity/work-branch mismatch: the durable route is hard-coded to `claude/m1-dashboard`, while the current Git identity is `codex-worker` and worker rules require Codex work on `codex/*` branches.
+- Any live FYT execution, binding, paid stage, or publish. The four declarations remain `runner-bound: false`; activation, G1/G2, a paid-stage queue card with spend ceiling, and G3/T3 publish approval remain human gates.
+
+### Current State of Files
+
+| File / path | Status | Notes |
+| ---- | ------ | ----- |
+| `codex/session-handoff-2026-07-22` / PR #72 | WIP / HUMAN GATE | Contains prior handoff plus commit `da3d31a`, the exact generic daemon mirror; final memory/ledger commit follows. |
+| `C:/Users/danie/kb/_private/codex-worktrees/fyt-dashboard-alignment` | DONE / READY | Reviewed source, built `dist`, matching dependency junction, full suite green; scratch audit notes were consolidated here and removed. |
+| `C:/Users/danie/kb-worktrees/dashboard-durable` | DONE / INSPECTION-ONLY | Clean worktree on `claude/m1-dashboard` at `e07ea841`; no save exercised. |
+| PM2 `kb-dashboard` | ONLINE / OLD PATH | Still serves `C:/Users/danie/kb/dashboard/server/pm2Entry.ts`, zero restarts at last inspection. Intentionally not changed before ops alignment. |
+| `C:/Users/danie/kb-worktrees/dashboard-ops` | TODO AFTER MERGE | Pull PR #72 after human merge, then prove daemon-directory parity. |
+
+### Exact Next Step
+
+Have a human review and merge PR #72 into `ops`. In the owner session, pull `origin/ops` into `C:/Users/danie/kb-worktrees/dashboard-ops` and run the main-copy `scripts/sync_daemon_dirs.py --check` against that worktree. Only if it is clean, verify `DASHBOARD_EXECUTION_ACTIVATED` is not `1`, run `pm2.cmd delete kb-dashboard`, then `pm2.cmd start C:/Users/danie/kb/_private/codex-worktrees/fyt-dashboard-alignment/dashboard/pm2.config.cjs --only kb-dashboard`; confirm PM2's stored script path/cwd and the HTTP/API probes before `pm2.cmd save`. Do not exercise a durable save or live FYT run during this alignment.
+

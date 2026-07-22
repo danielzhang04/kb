@@ -22,4 +22,17 @@ gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;fyt-acceptance-pl
 gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;merge-conflict-adapter-resolution	0.0
 gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;merge-conflict-definition-resolution	0.0
 gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;merge-conflict-profile-route-resolution	0.0
+gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;roadmap-audit-preflight-blocked	0.0
+gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;architecture-audit-preflight-blocked	0.0
+gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;verification-audit-preflight-blocked	0.0
+gpt-5	requested=gpt-5;responding=gpt-5;fyt-runner-recovery-and-dashboard-start	0.0
+gpt-5	requested=gpt-5;responding=gpt-5;save-session-handoff	0.0
+gpt-5	requested=gpt-5;responding=gpt-5;post-restart-dashboard-alignment-orchestration	0.0
+gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;runtime-alignment-audit	0.0
+gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;durable-workspace-audit	0.0
+gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;governance-verification-audit	0.0
+gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;runtime-alignment-re-review	0.0
+gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;durable-workspace-re-review	0.0
+gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;governance-verification-re-review	0.0
+gpt-5	requested=gpt-5;responding=gpt-5;growth-log-and-save-session	0.0
 

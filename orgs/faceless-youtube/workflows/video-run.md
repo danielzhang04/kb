@@ -3,6 +3,7 @@ id: video-run
 project: faceless-youtube
 title: Produce one video (faceless pipeline)
 profile: producer
+parameters: [channel, slug]
 stages:
   - id: idea
     title: Pick and brief one video idea
