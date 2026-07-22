@@ -63,7 +63,7 @@ function main() {
 
   process.stderr.write(
     `[delivery-gate WARN] memory/${agentId}.md was not updated this session — ` +
-      `capture what you learned (see skills/imported/growth-log/SKILL.md) ` +
+      `capture what you learned (see skills/curated/growth-log/SKILL.md) ` +
       `before finishing. (warn-only; not blocking)\n`
   );
   process.exit(0);
