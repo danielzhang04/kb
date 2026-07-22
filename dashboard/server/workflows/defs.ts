@@ -30,9 +30,79 @@ const MAX_WORK_ORDER_CHARS = 64 * 1024;
 const MAX_DESCRIPTION_CHARS = 64 * 1024;
 const MAX_GATE_PROMPT_CHARS = 2_000;
 const MAX_REVIEW_CRITERIA = 16;
+/** Read-scope list bound — mirrors proposal.ts MAX_LIST_ITEMS (64) so a def can never compile to an
+ * over-budget `scope.read` the proposal validator would reject. */
+const MAX_READ_SCOPE_ITEMS = 64;
 
 /** Every workflow target must live under `orgs/<project>/` — see the containment note in validateStage. */
 const ORGS_DIR = 'orgs';
+
+/**
+ * The CLOSED, server-owned set of shareable repo roots a definition may declare in `readScope`, in
+ * addition to its own `orgs/<project>` tree (always allowed, unioned in by compile.ts). A frozen code
+ * table exactly like `WORKFLOW_EXECUTION_PROFILES` and the action-tier registry: a def can only NAME a
+ * root here, never invent one. This is an ALLOWLIST, not a denylist — an unanticipated root fails safe
+ * (refused), never admitted. See docs/specs/2026-07-21-worker-read-scope-design.md §4.4.
+ *
+ * Deliberately EXCLUDED (refused unless a code-reviewed change adds them): `orgs/<other-project>`
+ * (cross-org privacy — mirrors the write-containment rule), `memory/` (private agent notes),
+ * `dashboard/` (the control-plane source, incl. this policy code), `scripts/`, and the repo root.
+ * Note the asymmetry with writes: `governance/`, `CLAUDE.md`, `AGENTS.md`, `GEMINI.md` are human-owned
+ * for WRITES (policy.ts HUMAN_OWNED_PREFIXES) but are readable policy text — declaring them for read is
+ * safe; policy.ts keeps refusing any write TARGET under them, unchanged.
+ */
+export const SHAREABLE_READ_ROOTS: readonly string[] = Object.freeze([
+  'queue',
+  'dashboards',
+  'ledgers',
+  '_index.md',
+  'governance',
+  'CLAUDE.md',
+  'AGENTS.md',
+  'GEMINI.md',
+]);
+
+/** True when `path` is the def's own org tree or is covered by a `SHAREABLE_READ_ROOTS` entry. A root
+ *  covers `root` exactly and any `root/...` descendant; a file root (`_index.md`) covers only itself. */
+function isDeclarableReadRoot(path: string, project: string): boolean {
+  const orgTree = `${ORGS_DIR}/${project}`;
+  if (path === orgTree || path.startsWith(`${orgTree}/`)) return true;
+  return SHAREABLE_READ_ROOTS.some((root) => path === root || path.startsWith(`${root}/`));
+}
+
+/**
+ * Validate an optional def-level `readScope` list. Each entry is a canonical, repo-relative, `..`-free
+ * path (`isSafeRepoRelativePath` — the SAME validator the compiled `scope.read` passes through), bounded
+ * and duplicate-free, and covered by the closed allowlist (own org ∪ SHAREABLE_READ_ROOTS). The repo root
+ * (`.` / `""`) is not expressible: it already fails `isSafeRepoRelativePath`, asserted here for legibility.
+ */
+function validateReadScope(
+  raw: unknown,
+  project: string,
+): { ok: true; value: string[] } | { ok: false; detail: string } {
+  if (raw === undefined || raw === null) return { ok: true, value: [] };
+  if (!Array.isArray(raw)) return { ok: false, detail: 'readScope must be a list of repo-relative paths' };
+  if (raw.length > MAX_READ_SCOPE_ITEMS) {
+    return { ok: false, detail: `readScope must contain at most ${MAX_READ_SCOPE_ITEMS} paths` };
+  }
+  const seen = new Set<string>();
+  const value: string[] = [];
+  for (const entry of raw) {
+    if (!isSafeRepoRelativePath(entry)) {
+      return { ok: false, detail: 'readScope entries must each be a canonical safe repo-relative path (no .., no whole-repo root)' };
+    }
+    if (seen.has(entry)) return { ok: false, detail: `readScope must not contain the duplicate path '${entry}'` };
+    if (!isDeclarableReadRoot(entry, project)) {
+      return {
+        ok: false,
+        detail: `readScope path '${entry}' is not a declarable read root: declare only your own '${ORGS_DIR}/${project}' tree or a server-owned shareable root (${SHAREABLE_READ_ROOTS.join(', ')})`,
+      };
+    }
+    seen.add(entry);
+    value.push(entry);
+  }
+  return { ok: true, value };
+}
 
 const SAFE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const SAFE_ACTION_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
@@ -95,6 +165,12 @@ export interface WorkflowDef {
   manager?: WorkflowManagerAssignment;
   /** Explicit launch-time path-segment inputs. Only these placeholders are substituted. */
   parameters?: string[];
+  /**
+   * Optional declared read roots beyond the def's own `orgs/<project>` tree. Validated against the
+   * closed `SHAREABLE_READ_ROOTS` allowlist. Empty when the frontmatter omits `readScope`, which
+   * compiles to today's exact `[orgs/<project>]` behaviour (compile.ts).
+   */
+  readScope: string[];
   /** The Markdown body after the frontmatter (also the fallback work order for a stage). */
   description: string;
   stages: WorkflowStageDef[];
@@ -348,7 +424,7 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
     return { ok: false, detail: 'definition frontmatter is not valid YAML' };
   }
   if (!isRecord(frontmatter)) return { ok: false, detail: 'definition frontmatter must be a mapping' };
-  const allowed = new Set(['id', 'project', 'title', 'profile', 'manager', 'parameters', 'stages']);
+  const allowed = new Set(['id', 'project', 'title', 'profile', 'manager', 'parameters', 'readScope', 'stages']);
   const unknownKey = Object.keys(frontmatter).find((key) => !allowed.has(key));
   if (unknownKey) return { ok: false, detail: `frontmatter has unknown field '${unknownKey}'` };
 
@@ -374,6 +450,8 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
     if (!validated.ok) return validated;
     manager = validated.value;
   }
+  const readScope = validateReadScope(frontmatter.readScope, project);
+  if (!readScope.ok) return readScope;
 
   const description = split.body.trim();
   if (description.length > MAX_DESCRIPTION_CHARS) return { ok: false, detail: 'description body is too long' };
@@ -432,7 +510,13 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
   }
   if (visited !== stages.length) return { ok: false, detail: 'stage dependency graph contains a cycle' };
 
-  return { ok: true, value: { id, project, title, profile, parameters: [...parameters], ...(manager ? { manager } : {}), description, stages } };
+  return {
+    ok: true,
+    value: {
+      id, project, title, profile, readScope: readScope.value, parameters: [...parameters],
+      ...(manager ? { manager } : {}), description, stages,
+    },
+  };
 }
 
 /** Substitute only declared launch parameters; unrelated placeholders such as `<shot-id>` remain literal. */

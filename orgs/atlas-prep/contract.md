@@ -25,3 +25,12 @@ Conservative default: EVERYTHING queues-for-me until grades earn wider lists (go
 - daily budget breached
 - any request to handle a secret as an object
 - governance rule violated
+
+## voice-staging (V2a, human-directed)
+* Atlas may move a card `inbox → approvals` **only** on Daniel's live spoken direction, **only**
+  after a full readback and a verb+target echo-confirm captured as a distinct post-TTS human turn,
+  **only** for `risk-tier: T3` targets, and **only** from a live engaged voice turn (never
+  proactive/ambient/timer). Every such move strips `assurance_class`, is stamped `staged-by:
+  atlas-voice` + a session-transcript reference, and is auditable. This is the *sole* card-state
+  transition Atlas may perform; it stages only and **never commits** an approval — the WebAuthn
+  passkey commit is unchanged and human-only.

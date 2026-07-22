@@ -6,6 +6,13 @@ state_port: 4360            # local read-only /state surface, 127.0.0.1 only (de
 ops_root: C:/Users/danie/kb-worktrees/dashboard-ops   # ops worktree the transcript ledger commits+pushes to (design §5, Task 6)
 announce_when_asleep: true  # design §8, Task 11: speak a completion callback even while ASLEEP (TTS out only — never opens STT)
 watch_period_s: 30          # done-watcher poll period; the timer only polls while cards are pending
+engaged_window_s: 30        # conversation-rules §1: window armed by Atlas-side activity only
+# Base kb vocabulary for the addressed-speech gate (project/skill names are added at startup
+# from seed_keyterms). Outside the engaged window an utterance must contain "atlas" or hit
+# one of these to reach the LLM; everything else gets silence.
+address_vocab: [card, cards, queue, inbox, approvals, approval, workflow, workflows,
+                project, projects, credit, dashboard, working, ledger, budget, status,
+                alice]   # Deepgram mishears "Atlas" as "Alice" (desk 2026-07-21) — the name must gate through
 # dismiss phrases MIGRATED to config/intents.yaml (design §7 reflex lane, Task 10): the reflex
 # lane's `dismiss` intent is now the single source of dismiss matching data — no key here anymore.
 # --- Voice toggle (Daniel 2026-07-20): named voices, switch by pointing active_voice at one
@@ -29,7 +36,11 @@ wake_threshold: 0.5
 # 2026-07-21 verify step 0: on this machine bare "Speakers" first-matches the real Realtek main
 # speaker (id 5) but also substring-matches virtual sinks (Nahimic mirror, SteelSeries Sonar,
 # "Speakers ()"); pinned tighter so a device-order shift can't silently reroute TTS.
-tts_output_device: Speakers (Realtek
+# 2026-07-21 (late): `follow` = output-follow mode (docs/specs/2026-07-21-atlas-output-follow-design.md):
+# TTS hot-follows the Windows default output (headphones connect -> TTS moves there, disconnect ->
+# back to speakers) with no worker restart. Any other string = static substring pin as before
+# (e.g. `Speakers (Realtek`). The wake INPUT stays pinned regardless — BT hands-free mics are unusable.
+tts_output_device: follow
 
 # --- Task 8 persona bake-off (2-way: Deepgram Aura-2 vs ElevenLabs stock; Cartesia scratched) ---
 # The 3 fixed lines below are synthesized per voice into .superpowers/sdd/t8-staging/persona-samples/

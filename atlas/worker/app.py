@@ -29,15 +29,21 @@ from livekit.plugins import deepgram, elevenlabs, silero
 
 from kbmcp import kb_tools
 from worker import anthropic_compat
+from worker import devicewatch
 from worker import engagement as engagement_mod
-from worker import (donewatcher, fastlane, ledgerwriter, repl, router, state, stateserver,
-                    toolreg, wakeword)
+from worker import (addressing as addressing_mod, donewatcher, fastlane, ledgerwriter, repl,
+                    router, sanitize, state, stateserver, toolreg, wakeword)
 
 ATLAS = Path(__file__).resolve().parents[1]
 logger = logging.getLogger("atlas.app")
 
 # Fallback voice if config has no voices/active_voice (pre-bake-off default).
 TTS_VOICE = "aura-2-andromeda-en"
+
+# Output-follow sentinel (docs/specs/2026-07-21-atlas-output-follow-design.md): tts_output_device
+# set to exactly this lowercase string switches TTS from static-pin to hot-follow the Windows default
+# output. Any other non-empty string is the existing static substring pin, byte-for-byte unchanged.
+FOLLOW_SENTINEL = "follow"
 
 # Fallback ops worktree for the transcript ledger if config omits `ops_root` (design §5, Task 6).
 DEFAULT_OPS_ROOT = "C:/Users/danie/kb-worktrees/dashboard-ops"
@@ -75,6 +81,10 @@ _BG_TASKS: set = set()   # strong refs to fire-and-forget tasks (silence watcher
 # a file that failed to ship — the phrases themselves have MIGRATED out of atlas.yaml into
 # intents.yaml (the single source of reflex matching data).
 DEFAULT_DISMISS = ["that's all", "go to sleep", "thanks atlas", "thank you atlas"]
+
+# Canonical session-frame lines (conversation-rules design §3, Daniel-judged 2026-07-21).
+WAKE_LINE = "Hey boss. What can I do for you?"
+SLEEP_LINE = "Okay, sleeping. Wake me when you need something."
 
 
 def _load_intents() -> dict:
@@ -155,23 +165,136 @@ def _silence_decision(orb_state: str) -> str:
     return "check"
 
 
-def _output_device_status(cfg: dict, resolve=wakeword.resolve_output_device) -> dict:
-    """{'configured': <substring or None>, 'resolved': <device name or None>} for the TTS output
-    pin, surfaced in GET /state so a bad pin is visible on the dashboard (M4, 2026-07-21) instead of
-    only a scrolling CRITICAL log line. `resolved` is null when the configured name matches nothing —
-    exactly the case that would otherwise silently reproduce the original wrong-device bug."""
+def _boot_default_output_name() -> str | None:
+    """Name of the output device livekit opened at boot (PortAudio's boot-time default)."""
+    try:
+        import sounddevice as sd
+        return sd.query_devices(sd.default.device[1])["name"]
+    except Exception:
+        return None
+
+
+def _output_device_status(cfg: dict, resolve=wakeword.resolve_output_device,
+                          boot_default=_boot_default_output_name) -> dict:
+    """{'configured', 'resolved', 'following'} for the TTS output, surfaced in GET /state (M4).
+
+    Three modes: absent (system default, not following), a name substring (static pin,
+    unchanged since 2026-07-21), or the sentinel 'follow' (output-follow design: the
+    watcher moves the stream when the Windows default endpoint changes; `resolved` is
+    updated live by the follower and starts as the boot default)."""
     configured = cfg.get("tts_output_device")
     if not configured:
-        return {"configured": None, "resolved": None}
+        return {"configured": None, "resolved": None, "following": False}
+    if configured == FOLLOW_SENTINEL:
+        return {"configured": FOLLOW_SENTINEL, "resolved": boot_default(), "following": True}
     idx = resolve(configured)
     if idx is None:
-        return {"configured": configured, "resolved": None}
+        return {"configured": configured, "resolved": None, "following": False}
     try:
         import sounddevice as sd
         name = sd.query_devices(idx)["name"]
     except Exception:
         name = str(idx)
-    return {"configured": configured, "resolved": name}
+    return {"configured": configured, "resolved": name, "following": False}
+
+
+def _console_singleton():
+    """The live console object whose set_speaker_enabled hot-reopens the output stream.
+
+    livekit.agents.cli._legacy is a PRIVATE module (import-guarded here): AgentsConsole is a
+    singleton (get_instance, _legacy.py:285-293) and set_speaker_enabled (:597) is the same
+    close-and-reopen primitive livekit's own console UI calls (:1441). If a livekit upgrade
+    moves it, _start_output_follow degrades loudly instead of crashing the worker."""
+    from livekit.agents.cli._legacy import AgentsConsole
+    return AgentsConsole.get_instance()
+
+
+def _restart_worker(reason: str) -> None:
+    """Deliberate hard self-exit so pm2 revives the worker with a fresh PortAudio snapshot.
+
+    Called from the devicewatch thread when a swap cannot cleanly open its device (stale
+    snapshot after a Bluetooth topology change — live finding 2026-07-22). os._exit because
+    sys.exit from a non-main thread only kills that thread; pm2 owns the restart. Exit code
+    21 marks a device-table restart in pm2 logs, distinct from crashes."""
+    logger.critical("output-follow requested worker restart: %s — exiting for pm2 revive", reason)
+    import os
+    os._exit(21)
+
+
+def _start_output_follow(cfg: dict, publisher, *,
+                         console_factory=_console_singleton,
+                         watcher_cls=devicewatch.DeviceWatcher,
+                         follower_cls=devicewatch.OutputFollower,
+                         probe=devicewatch.current_default_output):
+    """Start the output-follow watcher when configured; returns it, or None (pin/absent mode).
+
+    Failure to reach the console (livekit internals moved, pycaw missing) is loud-but-running:
+    CRITICAL log + /state shows following:false with the boot default — design 'fail loud,
+    run anyway'."""
+    if cfg.get("tts_output_device") != FOLLOW_SENTINEL:
+        return None
+    # Startup self-check (spec 'Dependencies'): a dead probe (pycaw missing, COM broken)
+    # means the watcher would silently never fire — refuse to claim following:true.
+    probe_ok = False
+    try:
+        probe_ok = probe() is not None
+    except Exception:
+        pass
+    if not probe_ok:
+        logger.critical(
+            "output-follow configured but the default-endpoint probe returned nothing "
+            "(pycaw/comtypes missing or COM failure) — TTS stays on the boot default and "
+            "will NOT follow device changes. `pip install pycaw comtypes` into the worker venv.")
+        publisher.set_output_device(
+            {"configured": FOLLOW_SENTINEL, "resolved": _boot_default_output_name(),
+             "following": False})
+        return None
+    try:
+        console = console_factory()
+    except Exception:
+        logger.critical(
+            "output-follow configured but the console audio object is unavailable — TTS stays "
+            "on the boot default and will NOT follow device changes", exc_info=True)
+        publisher.set_output_device(
+            {"configured": FOLLOW_SENTINEL, "resolved": _boot_default_output_name(),
+             "following": False})
+        return None
+    # Review finding #4 (2026-07-21): everything past the two guards must ALSO degrade
+    # loudly rather than fail the whole voice job — same "fail loud, run anyway" envelope.
+    try:
+        import sounddevice as sd
+        try:
+            # Review finding #2: seed the follower with the boot output index livekit opened,
+            # so even the first swap's open-failure has a known-good device to fall back to.
+            boot_idx = sd.default.device[1]
+        except Exception:
+            boot_idx = None
+        follower = follower_cls(
+            console,
+            resolve_output=wakeword.resolve_output_device,
+            sd_module=sd,
+            initial_idx=boot_idx,
+            request_restart=_restart_worker)
+
+        def _on_change(name: str) -> None:
+            publisher.set_output_device(follower.swap_to(name))
+
+        # Review finding #1: hold the first poll 10s past boot — livekit's own
+        # set_speaker_enabled call at console-audio-mode entry is the only concurrent
+        # caller, and it happens within seconds of startup.
+        watcher = watcher_cls(probe=probe, on_change=_on_change, period_s=1.5,
+                              initial_delay_s=10.0)
+        watcher.start()
+        logger.info("TTS output-follow active: tracking the Windows default output device")
+        return watcher
+    except Exception:
+        logger.critical(
+            "output-follow wiring failed — TTS stays on the boot default and will NOT follow "
+            "device changes", exc_info=True)
+        publisher.set_output_device(
+            {"configured": FOLLOW_SENTINEL, "resolved": _boot_default_output_name(),
+             "following": False})
+        return None
 
 
 class AtlasAgent(Agent):
@@ -200,11 +323,26 @@ class AtlasAgent(Agent):
             # handled locally as a reflex — suppress the LLM reply AND the chat_ctx insertion.
             raise StopResponse()
 
+    def tts_node(self, text, model_settings):
+        # Voice-clean seam (rules design §2): every spoken string — LLM turns AND session.say
+        # canned lines — passes through here; sanitize per chunk (split-safe by construction).
+        async def _clean():
+            async for chunk in text:
+                yield sanitize.sanitize_for_tts(chunk)
+        return Agent.default.tts_node(self, _clean(), model_settings)
+
 
 async def entrypoint(ctx: JobContext) -> None:
     repl.load_env()  # DEEPGRAM_API_KEY / ANTHROPIC_API_KEY -> process env, before plugins build
     cfg = _cfg()
     keyterms = seed_keyterms(kb_tools.kb_root())
+
+    # Addressed-speech gate (rules design §1): vocabulary = config base + kb proper nouns.
+    # Constructed unconditionally so the conversation_item_added handler can re-arm it in
+    # both text and audio modes; user speech never marks it (see addressing.Addressing).
+    addr = addressing_mod.Addressing(
+        cfg.get("engaged_window_s", 30),
+        list(cfg.get("address_vocab") or []) + keyterms)
 
     stt_kwargs: dict = {"model": "flux-general-en"}
     if keyterms:
@@ -241,6 +379,11 @@ async def entrypoint(ctx: JobContext) -> None:
     # resolved) is visible on the dashboard after Daniel walks away, not just a scrolling log line.
     publisher.set_output_device(_output_device_status(cfg))
 
+    # Output-follow (design 2026-07-21): when tts_output_device is 'follow', a watcher thread
+    # tracks the Windows default output endpoint and hot-moves the TTS stream — headphones
+    # connect, Atlas speaks there; disconnect, back to the speakers. No restart.
+    _start_output_follow(cfg, publisher)
+
     # Done-watcher (design §8, Task 11): watches the ops queue for the cards Atlas files by voice
     # and speaks their completion. Its sidecar (default %USERPROFILE%\.atlas\watched.json) is
     # restart-safe, so callbacks survive a worker restart. Same configurable ops_root as the ledger.
@@ -256,6 +399,22 @@ async def entrypoint(ctx: JobContext) -> None:
         watcher.watch(p["id"], p["action"])
     toolreg.set_post_file_hook(_post_file)
 
+    async def _purge_quiet(item_id: str) -> None:
+        # Gate finding #2 (2026-07-21 desk): [quiet] turns left in chat history teach the model
+        # that silence answers everything — it began [quiet]-ing DIRECT addresses ("Atlas, can
+        # you hear me?"). Drop the marker turn and the ambient user line that triggered it, so
+        # ambient noise never accumulates as conversational precedent. chat_ctx.copy() yields a
+        # fresh mutable context; update_chat_ctx replaces the agent's (installed agent.py:235).
+        ctx = agent.chat_ctx.copy()
+        idx = ctx.index_by_id(item_id)
+        if idx is None:
+            return
+        items = ctx.items
+        del items[idx]
+        if idx > 0 and getattr(items[idx - 1], "role", None) == "user":
+            del items[idx - 1]
+        await agent.update_chat_ctx(ctx)
+
     @session.on("conversation_item_added")
     def _on_item(ev) -> None:
         # Final committed turns for BOTH roles feed the transcript mirror (agent_session.py
@@ -269,6 +428,18 @@ async def entrypoint(ctx: JobContext) -> None:
         text = getattr(msg, "text_content", None)
         if not text:
             return
+        if role == "assistant":
+            # Gate finding #1 (2026-07-21 desk): a reply to ambient chatter re-armed the window,
+            # which kept the next ambient line addressed, whose reply re-armed again — a loop the
+            # 30s expiry could never break. A [quiet] turn (the LLM's structural silence) is
+            # therefore neither spoken (sanitizer strips it), mirrored, nor window-re-arming.
+            if sanitize.is_quiet_turn(text):
+                logger.info("quiet turn — no audio, window not re-armed, purged from chat ctx")
+                purge = asyncio.create_task(_purge_quiet(msg.id))
+                _BG_TASKS.add(purge)
+                purge.add_done_callback(_BG_TASKS.discard)
+                return
+            addr.mark_activity()   # a CONTENT Atlas turn re-arms the window (rules design §1)
         publisher.add_line("atlas" if role == "assistant" else "user", text)
 
     # --- Local read-only /state surface (design §3, Task 5). Started HERE on the job-context
@@ -295,6 +466,10 @@ async def entrypoint(ctx: JobContext) -> None:
     engagement = engagement_mod.Engagement(timeout_s=cfg["engagement_timeout_s"])
     session.input.set_audio_enabled(False)  # start ASLEEP: no audio to STT until "hey jarvis"
 
+    # Announcements spoken/queued while ASLEEP are re-told in the next wake greeting (canonical
+    # #3). Plain closed-over local; drained + cleared by _engage on wake.
+    pending_news: list = []
+
     # --- Durable transcript ledger (design §5, Task 6): a second consumer of the ONE publisher
     # stream. It buckets each wake-session's lines and, at sleep, commits+pushes them to the ops
     # worktree. It's built with the atlas-worker commit identity inline (never git config) and
@@ -317,8 +492,8 @@ async def entrypoint(ctx: JobContext) -> None:
         publisher.set_state(state.ASLEEP)
         logger.info("ASLEEP — mic detached, no audio leaves the PC (wake word to re-engage)")
         if announce:
-            session.say("Going to sleep.", add_to_chat_ctx=False)
-            publisher.add_line("atlas", "Going to sleep.")  # audible, so it's mirrored
+            session.say(SLEEP_LINE, add_to_chat_ctx=False)
+            publisher.add_line("atlas", SLEEP_LINE)  # audible, so it's mirrored
         # Flush this wake-session's transcript to ops as a fire-and-forget task so the sleep cue
         # is never blocked. Capture the session_id NOW — a future wake re-mints it, but the
         # ledger buckets by id so flush(sid) drains exactly this wake's lines.
@@ -336,10 +511,14 @@ async def entrypoint(ctx: JobContext) -> None:
         logger.info("ENGAGED — listening (silence timeout %ss, or say \"that's all\")",
                     cfg["engagement_timeout_s"])
         if not already:
+            addr.mark_activity()                  # wake re-arms the window (rules design §1)
             publisher.start_session()             # new wake-session id per wake
             publisher.set_state(state.LISTENING)
-            session.say("Yes?", add_to_chat_ctx=False)  # audible wake ack
-            publisher.add_line("atlas", "Yes?")         # audible, so it's mirrored
+            news = " ".join(pending_news)         # news queued while asleep (canonical #3)
+            pending_news.clear()
+            greeting = f"Hey boss. {news} What can I do for you?" if news else WAKE_LINE
+            session.say(greeting, add_to_chat_ctx=False)  # audible wake greeting
+            publisher.add_line("atlas", greeting)         # audible, so it's mirrored
 
     @session.on("agent_state_changed")
     def _on_agent_state(ev) -> None:
@@ -377,6 +556,7 @@ async def entrypoint(ctx: JobContext) -> None:
         acks."""
         session.say(text, add_to_chat_ctx=False)
         publisher.add_line("atlas", text)
+        addr.mark_activity()   # an Atlas spoken reply re-arms the window (rules design §1)
 
     def _last_atlas_line() -> str | None:
         for line in reversed(publisher.snapshot()["transcript"]):
@@ -391,7 +571,9 @@ async def entrypoint(ctx: JobContext) -> None:
             d = json.loads(raw)
         except (ValueError, TypeError):
             return "I couldn't read the credit balance."
-        return f"You have {d.get('balance')} {d.get('units', 'USD')} of Deepgram credit left."
+        bal, units = d.get("balance", 0), d.get("units", "USD")
+        amount = f"about {round(float(bal))} dollars" if units == "USD" else f"{bal} {units}"
+        return f"You've got {amount} of Deepgram credit left."
 
     async def _handle_reflex(text: str) -> bool:
         """Route one final utterance. Returns True (and performs the reflex) on a reflex hit, so the
@@ -405,6 +587,12 @@ async def entrypoint(ctx: JobContext) -> None:
             return False
         lane, intent = router.route(text, intents)
         if lane != "reflex":
+            if not addr.is_addressed(router.normalize(text)):
+                # Not for Atlas (rules design §1): zero LLM, zero TTS. Mirrored for the
+                # ledger so desk debugging can see what was gated.
+                publisher.add_line("user", text)
+                logger.info("gated (not addressed): %r", text)
+                return True
             return False
         publisher.add_line("user", text)  # the reflex utterance, mirrored (won't arrive elsewhere)
         if intent == "dismiss":
@@ -420,7 +608,7 @@ async def entrypoint(ctx: JobContext) -> None:
                 session.interrupt(force=True)
             except RuntimeError:
                 pass                       # no active generation to interrupt — the ack still fires
-            _reflex_say("Cancelled.")
+            _reflex_say("Dropped.")
         elif intent == "repeat":
             last = _last_atlas_line()
             _reflex_say(last if last else "There's nothing to repeat yet.")
@@ -489,6 +677,12 @@ async def entrypoint(ctx: JobContext) -> None:
             # it here. The ASLEEP _on_agent_state guard keeps this say from flipping the orb.
             session.say(ann.text, add_to_chat_ctx=False)
             publisher.add_line("atlas", ann.text)
+        # ENGAGED -> a spoken callback re-arms the window; not-engaged -> queue for the next wake
+        # greeting exactly once whether or not it was spoken (canonical #3, rules design §1).
+        if engaged:
+            addr.mark_activity()
+        else:
+            pending_news.append(ann.text)
         # Reflect the outcome on the orb's filed-cards list even if we stayed silent while asleep.
         publisher.update_filed_card(ann.card_id, "done" if ann.outcome == "success" else "failed")
 
@@ -525,6 +719,11 @@ def _console_output_args(argv: list[str], cfg: dict,
     substring = cfg.get("tts_output_device")
     if not substring:
         return []
+    if substring == FOLLOW_SENTINEL:
+        # Output-follow mode: pass no flag. livekit opens on the boot-time default, which
+        # IS the current Windows default at start; the devicewatch follower moves the
+        # stream afterward (docs/specs/2026-07-21-atlas-output-follow-design.md).
+        return []
     idx = resolve(substring)
     if idx is None:
         # Loud, non-fatal: Atlas still starts, but Daniel is told WHY he may hear nothing.
@@ -550,6 +749,17 @@ def main() -> int:
         sys.argv.extend(_console_output_args(sys.argv, _cfg()))
     except Exception:
         logger.exception("could not resolve tts_output_device — using the system default output")
+    # Desk finding (2026-07-21, pm2 rollout): the console's STT mic is a SEPARATE capture from
+    # the wake listener and defaults to the OS default input — which drifts to AirPods HFP
+    # (unusable) while indices reshuffle on BT connect (the V0 landmine). A raw name substring
+    # can't ride the CLI flag: the same physical mic appears under MME/DirectSound/WASAPI and
+    # sounddevice raises on multiple matches — so resolve the INDEX here at start time with the
+    # wake listener's own resolver (first input device matching the name, same pin, same config
+    # key). An explicit user-passed flag wins.
+    if "console" in sys.argv and "--input-device" not in sys.argv:
+        idx = wakeword.resolve_input_device(_cfg().get("wake_input_device"))
+        if idx is not None:
+            sys.argv += ["--input-device", str(idx)]
     cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
     return 0
 

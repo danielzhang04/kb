@@ -41,11 +41,15 @@ function fakeGit(repoRoot: string, commonDir: string): {
       async run(args, cwd) {
         calls.push({ args, cwd });
         if (args.includes('worktree') && args.includes('add')) {
-          const index = args.indexOf('add');
-          mkdirSync(args[index + 2], { recursive: true });
+          // The worktree path always follows `--detach`, in both the full and the C2 --no-checkout forms.
+          mkdirSync(args[args.indexOf('--detach') + 1], { recursive: true });
           return { exitCode: 0, stdout: Buffer.alloc(0), stderr: '' };
         }
         if (args.includes('worktree') && args.includes('remove')) {
+          return { exitCode: 0, stdout: Buffer.alloc(0), stderr: '' };
+        }
+        // C2 sparse-checkout provisioning commands (init/set) and the deferred bare checkout.
+        if (args.includes('sparse-checkout') || args.includes('checkout')) {
           return { exitCode: 0, stdout: Buffer.alloc(0), stderr: '' };
         }
         if (args.includes('--show-toplevel')) return { exitCode: 0, stdout: Buffer.from(`${resolve(cwd)}\n`), stderr: '' };
@@ -107,6 +111,148 @@ describe('Git worktree adapter', () => {
     const args = addition!.args;
     expect(args).toContain('core.longpaths=true');
     expect(args[args.indexOf('core.longpaths=true') - 1]).toBe('-c');
+  });
+
+  it('C2: with sparseReadScope OFF, provisioning is byte-identical to full checkout even if sparsePaths is passed', async () => {
+    const root = temporaryRoot();
+    const repoRoot = join(root, 'repo');
+    const commonDir = join(repoRoot, '.git');
+    const worktreeRoot = join(root, 'worktrees');
+    mkdirSync(commonDir, { recursive: true });
+    const fake = fakeGit(repoRoot, commonDir);
+    const adapter = createGitWorktreeAdapter({ repoRoot, worktreeRoot, baseCommit: 'a'.repeat(40), runner: fake.runner });
+    const path = join(worktreeRoot, 'run-1', 'attempt-1');
+
+    // sparsePaths is present but the flag is off — it must be ignored entirely.
+    await adapter.ensure({ operationKey: 'worktree:attempt-1', runRef: 'run-1', path, sparsePaths: ['queue', 'orgs/kb-ops/output'] });
+
+    const additions = fake.calls.filter((call) => call.args.includes('worktree') && call.args.includes('add'));
+    expect(additions).toHaveLength(1);
+    // The exact pre-change add form: no --no-checkout.
+    expect(additions[0].args.slice(-3)).toEqual(['--detach', path, 'a'.repeat(40)]);
+    expect(additions[0].args).not.toContain('--no-checkout');
+    // No sparse-checkout machinery was issued at all.
+    expect(fake.calls.some((call) => call.args.includes('sparse-checkout'))).toBe(false);
+  });
+
+  it('C2: with sparseReadScope ON, materializes exactly readScope ∪ writeScope via sparse-checkout set', async () => {
+    const root = temporaryRoot();
+    const repoRoot = join(root, 'repo');
+    const commonDir = join(repoRoot, '.git');
+    const worktreeRoot = join(root, 'worktrees');
+    mkdirSync(commonDir, { recursive: true });
+    const fake = fakeGit(repoRoot, commonDir);
+    const adapter = createGitWorktreeAdapter({ repoRoot, worktreeRoot, baseCommit: 'a'.repeat(40), runner: fake.runner, sparseReadScope: true });
+    const path = join(worktreeRoot, 'run-1', 'attempt-1');
+    const sparsePaths = ['queue', 'dashboards', 'orgs/kb-ops', 'orgs/kb-ops/output'];
+
+    await adapter.ensure({ operationKey: 'worktree:attempt-1', runRef: 'run-1', path, sparsePaths });
+
+    const addition = fake.calls.find((call) => call.args.includes('worktree') && call.args.includes('add'))!;
+    // The worktree is created WITHOUT a checkout, then the sparse set is written and checked out.
+    expect(addition.args).toContain('--no-checkout');
+    expect(addition.args.slice(-3)).toEqual(['--detach', path, 'a'.repeat(40)]);
+    const init = fake.calls.find((call) => call.args.includes('sparse-checkout') && call.args.includes('init'))!;
+    expect(init.args.slice(-2)).toEqual(['init', '--no-cone']);
+    expect(init.cwd).toBe(path);
+    const set = fake.calls.find((call) => call.args.includes('sparse-checkout') && call.args.includes('set'))!;
+    // The set list is EXACTLY effectiveRead ∪ writeScope, in order, deduped, and ROOT-ANCHORED (leading
+    // '/'). Anchoring is load-bearing: unanchored no-cone patterns match a name at any depth (a `_index.md`
+    // or `dashboards` would leak other orgs / nested fixtures — live-verified 2026-07-22).
+    expect(set.args.slice(set.args.indexOf('set'))).toEqual(['set', '/queue', '/dashboards', '/orgs/kb-ops', '/orgs/kb-ops/output']);
+    expect(set.cwd).toBe(path);
+    // Every emitted pattern is root-anchored.
+    for (const pattern of set.args.slice(set.args.indexOf('set') + 1)) expect(pattern.startsWith('/')).toBe(true);
+    // A path outside the sparse set (e.g. dashboard/server) is never named to git → never materialized.
+    expect(set.args).not.toContain('dashboard/server');
+    expect(set.args).not.toContain('/dashboard/server');
+    // The deferred bare checkout populates the sparse working tree.
+    expect(fake.calls.some((call) => call.args.at(-1) === 'checkout' && call.cwd === path)).toBe(true);
+  });
+
+  it('C2: sparse provisioning still lets inspect detect an in-write-scope change', async () => {
+    const root = temporaryRoot();
+    const repoRoot = join(root, 'repo');
+    const commonDir = join(repoRoot, '.git');
+    const worktreeRoot = join(root, 'worktrees');
+    const path = join(worktreeRoot, 'run-1', 'attempt-1');
+    mkdirSync(commonDir, { recursive: true });
+    const fake = fakeGit(repoRoot, commonDir);
+    const adapter = createGitWorktreeAdapter({ repoRoot, worktreeRoot, baseCommit: 'c'.repeat(40), runner: fake.runner, sparseReadScope: true });
+
+    // Provision first (the fake creates the worktree dir), THEN place an in-write-scope change.
+    await adapter.ensure({ operationKey: 'worktree:attempt-1', runRef: 'run-1', path, sparsePaths: ['orgs/kb-ops', 'orgs/kb-ops/output'] });
+    mkdirSync(join(path, 'orgs', 'kb-ops', 'output'), { recursive: true });
+    writeFileSync(join(path, 'orgs', 'kb-ops', 'output', 'report.md'), 'findings');
+    fake.setStatus(Buffer.from('?? orgs/kb-ops/output/report.md\0'));
+    const inspected = await adapter.inspect({ operationKey: 'inspect:attempt-1', runRef: 'run-1', path });
+    expect(inspected.changed).toEqual([
+      { path: 'orgs/kb-ops/output/report.md', digest: createHash('sha256').update('findings').digest('hex') },
+    ]);
+  });
+
+  it('C2: rejects an unsafe sparse read-scope path before checkout', async () => {
+    const root = temporaryRoot();
+    const repoRoot = join(root, 'repo');
+    const worktreeRoot = join(root, 'worktrees');
+    mkdirSync(join(repoRoot, '.git'), { recursive: true });
+    const fake = fakeGit(repoRoot, join(repoRoot, '.git'));
+    const adapter = createGitWorktreeAdapter({ repoRoot, worktreeRoot, baseCommit: 'a'.repeat(40), runner: fake.runner, sparseReadScope: true });
+    const path = join(worktreeRoot, 'run-1', 'attempt-1');
+    await expect(adapter.ensure({ operationKey: 'worktree:attempt-1', runRef: 'run-1', path, sparsePaths: ['../../etc'] }))
+      .rejects.toThrow('sparse read-scope path');
+  });
+
+  it('C2 wiring: when the engine passes no sparsePaths, the construction resolveSparsePaths callback supplies them (keyed on runRef)', async () => {
+    const root = temporaryRoot();
+    const repoRoot = join(root, 'repo');
+    const commonDir = join(repoRoot, '.git');
+    const worktreeRoot = join(root, 'worktrees');
+    mkdirSync(commonDir, { recursive: true });
+    const fake = fakeGit(repoRoot, commonDir);
+    const seen: string[] = [];
+    const adapter = createGitWorktreeAdapter({
+      repoRoot,
+      worktreeRoot,
+      baseCommit: 'a'.repeat(40),
+      runner: fake.runner,
+      sparseReadScope: true,
+      // The live engine call site (execution.ts) passes NO sparsePaths — this callback is the only source.
+      resolveSparsePaths: (input) => { seen.push(input.runRef); return input.runRef === 'run-1' ? ['queue', 'orgs/kb-ops'] : undefined; },
+    });
+    const path = join(worktreeRoot, 'run-1', 'attempt-1');
+
+    await adapter.ensure({ operationKey: 'worktree:attempt-1', runRef: 'run-1', path });
+
+    expect(seen).toEqual(['run-1']);
+    const set = fake.calls.find((call) => call.args.includes('sparse-checkout') && call.args.includes('set'))!;
+    expect(set.args.slice(set.args.indexOf('set'))).toEqual(['set', '/queue', '/orgs/kb-ops']);
+  });
+
+  it('C2 wiring: resolveSparsePaths is NOT consulted when sparseReadScope is off (byte-identical full checkout)', async () => {
+    const root = temporaryRoot();
+    const repoRoot = join(root, 'repo');
+    const commonDir = join(repoRoot, '.git');
+    const worktreeRoot = join(root, 'worktrees');
+    mkdirSync(commonDir, { recursive: true });
+    const fake = fakeGit(repoRoot, commonDir);
+    let consulted = false;
+    const adapter = createGitWorktreeAdapter({
+      repoRoot,
+      worktreeRoot,
+      baseCommit: 'a'.repeat(40),
+      runner: fake.runner,
+      // Flag OFF (default). The callback must never be consulted and no sparse machinery may run.
+      resolveSparsePaths: () => { consulted = true; return ['queue']; },
+    });
+    const path = join(worktreeRoot, 'run-1', 'attempt-1');
+
+    await adapter.ensure({ operationKey: 'worktree:attempt-1', runRef: 'run-1', path });
+
+    expect(consulted).toBe(false);
+    const additions = fake.calls.filter((call) => call.args.includes('worktree') && call.args.includes('add'));
+    expect(additions[0].args.slice(-3)).toEqual(['--detach', path, 'a'.repeat(40)]);
+    expect(fake.calls.some((call) => call.args.includes('sparse-checkout'))).toBe(false);
   });
 
   it('rejects unplanned paths and mutable refs before invoking Git', () => {

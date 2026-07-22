@@ -16,12 +16,23 @@ target: <paths/urls>   # same restriction
 risk-tier: T1|T2|T3    # per governance/risk-tiers.md
 owner: <agent-id|null> # claim field — see §6 dispatch
 claim-token: <token>   # minted by dispatcher at assignment
-state: inbox|blocked|working|done|approvals|approved|rejected|stop-requested|halting|halted
+state: inbox|blocked|working|done|approvals|approved|rejected|stop-requested|halting|halted|archived
                        # stop-requested/halting/halted: the steering-floor cooperative-stop
                        #  ladder (files-only). A worker polls for stop-requested at a
                        #  checkpoint, moves itself to halting, then halted. SIGKILL is the
                        #  backstop for a worker that never polls. Only a working card may
                        #  enter the ladder; halted is terminal.
+                        # archived: terminal sink for the daemon stranded-archiver. A card
+                       #  owned by a REAL agent, left idle in inbox/working past the
+                       #  stranded window with BOTH the card AND its owner showing no
+                       #  activity for the window, is MOVED to queue/archived/ instead of
+                       #  cluttering the active queue. Terminal but REVERSIBLE: the only
+                       #  legal move out is archived -> inbox, so a human un-archives
+                       #  (reopens) by walking it back. Never entered by an agent's own
+                       #  work; only the archiver (or a human) writes it. Absence of an
+                       #  observable owner runner is NOT evidence of abandonment — the
+                       #  archiver requires positive card-idle AND owner-idle staleness.
+
 approval: <token|null> # human-minted only — see §7
 workflow: <name|null>  # parent workflow instance, if part of one (§5.1)
 depends-on: [ids]      # dispatcher releases the card only when these are done;

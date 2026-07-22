@@ -89,6 +89,14 @@ const WORKFLOW_EXECUTION_PROFILES: readonly WorkflowExecutionProfile[] = [
     id: 'producer',
     allowedTools: ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep'],
   },
+  {
+    // C1 (2026-07-21) — read-only scan class: Read/Glob/Grep to inspect + one Write for the report.
+    // NO Bash (removes the git-plumbing object-store bypass entirely) and NO Edit. This is exactly the
+    // capability self-lint-report.md already tells the worker to use. See
+    // docs/specs/2026-07-21-worker-read-scope-design.md §5.3.
+    id: 'scanner',
+    allowedTools: ['Read', 'Glob', 'Grep', 'Write'],
+  },
 ];
 
 /** The server-owned workflow tool-allowlist profiles. Frozen data; a definition names one by id. */

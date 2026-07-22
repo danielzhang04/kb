@@ -11,6 +11,13 @@ You are agent `dispatcher-cloud` operating in the kb repo. Follow CLAUDE.md (the
    `python -m pip install --user pyyaml`, then re-check with `python -c "import yaml"`.
    If it still fails, write a wake-me card into queue/inbox/ (risk-tier T1), commit + push
    ops, and STOP — do not continue without pyyaml.
+2b. Run `python scripts/sync_daemon_dirs.py --check` (main→ops mirror check for the
+   daemon-read dirs: agents/ and orgs/*/workflows/; on the cloud VM this runs in
+   refs-fallback mode). Exit 0 = in sync — note it in the run summary's health line
+   alongside the sync_skills check. Nonzero = drift: write a wake-me card into
+   queue/inbox/ (risk-tier T1) pasting the drift report and noting that a desktop
+   `python scripts/sync_daemon_dirs.py --sync` (run from the dashboard-ops worktree)
+   is owed, then CONTINUE the run — this gate reports, it never blocks dispatch.
 3. Run `python scripts/dispatch.py --tier cloud --agent dispatcher-cloud`.
 4. For each card the dispatcher just emitted (it prints the paths): set its state to
    `working` (you are the owner), execute its `## Work order` exactly, write `## Result`,

@@ -2,7 +2,13 @@
 id: self-lint-report
 project: kb-ops
 title: Self-lint report (read-only health scan)
-profile: producer
+profile: scanner
+readScope:
+  - queue
+  - dashboards
+  - ledgers
+  - _index.md
+  - orgs/kb-ops/_index.md
 stages:
   - id: report
     title: Scan the repo for hygiene issues and write a read-only report
@@ -19,12 +25,15 @@ change nothing else.
 
 ## Profile / capability note
 
-This definition names the server-owned `producer` profile (`Read`, `Glob`, `Grep`, `Write`, `Edit`,
-`Bash`). Use **only** `Read` / `Glob` / `Grep` to inspect the repo and a single `Write` to author the
-report. Do **not** edit, delete, move, or reformat any existing file; do **not** run any command that
-mutates the repo, the network, or any external system. The engine bounds accepted changes to this stage's
-write scope (derived from the `orgs/kb-ops/output` target) regardless of the tool cap — but the intent here
-is a pure scan-and-report.
+This definition names the server-owned `scanner` profile (`Read`, `Glob`, `Grep`, `Write` — no `Bash`,
+no `Edit`). Use `Read` / `Glob` / `Grep` to inspect the repo and a single `Write` to author the report.
+The scanner cap removes `Bash` entirely (no `git show` / object-store bypass) and `Edit` (no in-place
+mutation of existing files). Do **not** edit, delete, move, or reformat any existing file; do **not** run
+any command that mutates the repo, the network, or any external system. The engine bounds accepted changes
+to this stage's write scope (derived from the `orgs/kb-ops/output` target) regardless of the tool cap —
+but the intent here is a pure scan-and-report. Your read scope is declared in `readScope` above: the four
+scan roots (`queue/`, `dashboards/`, `ledgers/`, top-level `_index.md`, `orgs/kb-ops/_index.md`) plus your
+own `orgs/kb-ops` tree (unioned in automatically).
 
 ## What to scan (read-only)
 
@@ -36,7 +45,9 @@ is a pure scan-and-report.
 
 ## Output
 
-Write the report to `orgs/kb-ops/output/self-lint-report-YYYY-MM-DD.md` (today's date). It MUST contain:
+Write the report to `orgs/kb-ops/output/self-lint-report-YYYY-MM-DD.md` (today's date). First Glob that
+path; if it already exists, add the smallest unused numeric suffix — `...-YYYY-MM-DD-2.md`, then `-3`, and
+so on — so a same-day rerun writes a new file. Never overwrite an existing report. It MUST contain:
 
 - A one-paragraph summary (overall health: green / attention-needed).
 - A findings list: each finding is a file/area, a one-line description, and a suggested follow-up. If there

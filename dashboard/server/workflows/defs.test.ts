@@ -279,4 +279,77 @@ describe('parseWorkflowDef', () => {
     if (!unused.ok) throw new Error(unused.detail);
     expect(instantiateWorkflowDef(unused.value, { channel: 'a', unused: 'b' })).toMatchObject({ ok: false, detail: expect.stringMatching(/not used/) });
   });
+
+  describe('readScope declaration (Layer A)', () => {
+    const withReadScope = (lines: string[]): string =>
+      SINGLE.replace('stages:', ['readScope:', ...lines, 'stages:'].join('\n'));
+
+    it('defaults readScope to an empty list when the frontmatter omits it (byte-identical to today)', () => {
+      const result = parseWorkflowDef(md(SINGLE), { knownProfiles: KNOWN });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.readScope).toEqual([]);
+    });
+
+    it('accepts every SHAREABLE_READ_ROOTS entry and the def\'s own org tree', () => {
+      const result = parseWorkflowDef(md(withReadScope([
+        '  - queue', '  - dashboards', '  - ledgers', '  - _index.md',
+        '  - governance', '  - CLAUDE.md', '  - AGENTS.md', '  - GEMINI.md',
+        '  - orgs/kb-ops/_index.md',
+      ])), { knownProfiles: KNOWN });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.readScope).toContain('queue');
+      expect(result.value.readScope).toContain('orgs/kb-ops/_index.md');
+      expect(result.value.readScope).toContain('governance');
+    });
+
+    it('accepts a descendant of a shareable dir root (queue/inbox)', () => {
+      const result = parseWorkflowDef(md(withReadScope(['  - queue/inbox'])), { knownProfiles: KNOWN });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.readScope).toEqual(['queue/inbox']);
+    });
+
+    it.each([
+      ['traversal', '  - ../../etc/passwd'],
+      ['backslash', '  - queue\\evil'],
+      ['drive letter', '  - C:/Windows'],
+      ['trailing slash', '  - queue/'],
+      ['double slash', '  - queue//inbox'],
+      ['whole-repo dot', '  - .'],
+      ['dotdot segment', '  - orgs/kb-ops/../secrets'],
+    ])('rejects an unsafe readScope entry (%s)', (_label, line) => {
+      const result = parseWorkflowDef(md(withReadScope([line])), { knownProfiles: KNOWN });
+      expect(result.ok).toBe(false);
+    });
+
+    it.each([
+      ['control-plane source', '  - dashboard'],
+      ['control-plane subtree', '  - dashboard/server/control'],
+      ['private agent memory', '  - memory'],
+      ['scripts', '  - scripts'],
+      ['another org', '  - orgs/faceless-youtube'],
+    ])('refuses a non-allowlisted read root (%s)', (_label, line) => {
+      const result = parseWorkflowDef(md(withReadScope([line])), { knownProfiles: KNOWN });
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.detail).toMatch(/not a declarable read root/);
+    });
+
+    it('rejects a duplicate readScope path', () => {
+      const result = parseWorkflowDef(md(withReadScope(['  - queue', '  - queue'])), { knownProfiles: KNOWN });
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.detail).toMatch(/duplicate/);
+    });
+
+    it('rejects more than 64 readScope entries', () => {
+      const many = Array.from({ length: 65 }, (_v, i) => `  - queue/item-${i}`);
+      const result = parseWorkflowDef(md(withReadScope(many)), { knownProfiles: KNOWN });
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.detail).toMatch(/at most 64/);
+    });
+  });
 });

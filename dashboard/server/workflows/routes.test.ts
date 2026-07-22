@@ -106,7 +106,7 @@ describe('workflow definition routes', () => {
   it('lists server-owned execution profiles in stable order', async () => {
     const response = await app.inject({ method: 'GET', url: '/api/workflows/profiles' });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ profiles: ['checker-readonly', 'drive-author', 'gmail-triage', 'producer', 'research'] });
+    expect(response.json()).toEqual({ profiles: ['checker-readonly', 'drive-author', 'gmail-triage', 'producer', 'research', 'scanner'] });
   });
 
   it('returns a definition with its compiled proposal preview and content hash', async () => {
