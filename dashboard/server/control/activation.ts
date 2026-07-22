@@ -324,12 +324,14 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
     try {
       const outcome = await engine.runToBoundary(input);
       try {
-        settleLedgerForRun(
+        await settleLedgerForRun(
           { controlStore: options.controlStore, repoRoot },
           { subject: input.subject, runRef: input.runRef, readUsageMicros },
         );
-      } catch {
-        /* fleet-ledger settlement is best-effort; never let it mask the executor outcome */
+      } catch (err) {
+        // fleet-ledger settlement is best-effort; never let it mask the executor outcome — but never let it
+        // vanish silently either (an unpushed ledger row needs operator follow-up). No logger in scope here.
+        console.error('fleet-ledger settlement failed', err);
       }
       return outcome;
     } finally {
