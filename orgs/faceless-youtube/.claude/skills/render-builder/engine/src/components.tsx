@@ -12,6 +12,7 @@ import {
   useVideoConfig,
 } from 'remotion';
 import type {AudioSpec, LayerSpec, MotionTokens, Overlay, Shot} from './tokens';
+import {pullScale} from './camera';
 
 // ---------------------------------------------------------------------------
 // T1 — camera, idle, entrances. All springs; hard cuts only; no fades exist.
@@ -59,7 +60,7 @@ export const CameraStage: React.FC<{
   const pushDelta = Math.min(perSec * camera.intensity * stageSeconds, maxZoom * camera.intensity);
   let scale = 1;
   if (camera.move === 'push-in') scale = 1 + pushDelta * p;
-  else if (camera.move === 'pull-back') scale = interpolate(p, [0, 1], [k.pull_from, 1 + (k.pull_from - 1) * 0.25]);
+  else if (camera.move === 'pull-back') scale = pullScale(p, k.pull_from, camera.intensity);
   let tx = 0;
   let ty = 0;
   const panDist = k.pan_frac * 100 * camera.intensity;

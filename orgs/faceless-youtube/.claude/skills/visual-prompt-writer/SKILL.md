@@ -1,19 +1,6 @@
 ---
 name: visual-prompt-writer
-description: >-
-  Writes the complete visual plan for a scripted video in this project — the long-form B-roll shot
-  list (a still-frame plan + motion-intent metadata, densified to the retention cadence), the
-  thumbnail generation prompts (turning metadata's thumbnail CONCEPT into actual pixel-gen prompts),
-  and every scripted short's visual prompts — emitted as one videos/<slug>/shots.json that feeds
-  image-generation (the stills), render-builder (the Remotion motion engine), and publish-queue (the
-  thumbnail). Use this whenever the user wants visual prompts, a shot list, a storyboard, "what to
-  show on screen", B-roll, image generation prompts, a thumbnail prompt, scene visuals, or wants to
-  "do the visuals"/"build the shot list"/"prompt the images" for a video or short — for ANY niche.
-  Runs AFTER long-form-writer + shorts-writer + metadata-writer and BEFORE voiceover /
-  image-generation / render-builder. Reads script.md ([B-ROLL] cues) + metadata.json (thumbnail
-  concepts) + shorts/*.md + dna.md + the universal & niche playbooks. Do NOT use it to write the
-  script (long-form-writer / shorts-writer), pick titles/tags (metadata-writer), or generate/assemble
-  the actual pixels (image-generation / render-builder / voiceover).
+description: Writes a scripted video's complete visual plan as videos/SLUG/shots.json. Covers the long-form still and B-roll shot list, motion-intent metadata, retention cadence, thumbnail generation prompts, and scripted-short visuals. Use for visual prompts, shot lists, storyboards, on-screen choices, B-roll, thumbnail prompts, or image-generation prompts in any niche. Runs after script and metadata work and before voiceover, image generation, and rendering. Do not use it to write scripts, choose titles or tags, generate pixels, or assemble video.
 ---
 
 # visual-prompt-writer

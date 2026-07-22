@@ -48,9 +48,12 @@ reason), opt into the existing gentle idle path, keep motivated layers, and add 
   Daniel's taste in explicit rounds, codify, A/B where uncertain.
 - The Poyais retention curve is not yet available in the recovered record. Read it when analytics has
   enough data; until then, do not claim topic/script dominance or exact retention effects.
-- Locks that survive regardless (constitution-level, Daniel-set): third person, one narrator, no
-  second person, reported speech, near-zero exclamations, comedy off on human cost, fact leash.
-  "More tone variation" means DYNAMICS within the register, not a register change.
+- Locks that survive regardless (constitution-level, Daniel-set): one narrator, no viewer role-casting
+  or voiced character dialogue, reported speech, near-zero exclamations, comedy off on human cost, and
+  fact leash. First-person narrator asides and generic audience-facing `you` are allowed. Consequence
+  beats stay concise and respectful, but narration, restrained music, and visual life continue unless a
+  particular line earns a full stop. "More tone variation" means DYNAMICS within the register, not a
+  narrator-identity change.
 
 ## The nighttime wave (launched 2026-07-21 late; results gate in the morning)
 

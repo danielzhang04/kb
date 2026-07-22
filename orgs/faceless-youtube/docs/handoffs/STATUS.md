@@ -55,10 +55,13 @@ defect that will recur until fixed.
 - **Storytelling craft (LOCKED):** one merged doc `channels/the-second-take/storytelling-grammar.md`
   (§0 gold exemplar + before→after bank + §1 architecture · §2 register incl. §2.5 color-vs-dwell · §3
   constraint re-routing · §4 staging · §5 our-edges). Register is a **DIAL set by topic gravity** — hot
-  on money-absurdity, wry+sparse on villainy, **OFF on human cost**. The channel is storytelling-first,
-  more comedic than any pure finance/history channel, **not** a comedy channel. Cross-cutting toolkit
+  on money-absurdity, wry+sparse on villainy, and **OFF on human cost**. Consequence beats stay concise
+  and respectful, while narration, restrained music, and visual life continue unless a particular line
+  earns a full stop. The channel is storytelling-first, more comedic than any pure finance/history
+  channel, **not** a comedy channel. Cross-cutting toolkit
   (board-state / park-and-cut / ensemble / mirror / irony) + a transition seam-kit answers linearity.
-  **Two hard locks: NO second person; ONE narrator.** No quotes — all narrator reported speech.
+  **Hard locks:** ONE narrator; no viewer role-casting or voiced character dialogue. First-person narrator
+  asides and generic audience-facing `you` are allowed. No quotes — all character speech is narrator-reported.
   Reconciled across `long-form-writer`, `universal.md` §5c/§5d/§1d-V, `watchability-rubric.md` (/36),
   `dna.md`, `researcher`, `shorts-writer`, `reference-channels.md`, and the visual grammar.
 - **Scriptwriter — REBUILT + PROVEN (2026-07-08, extended 07-09):** the flat/buttoned-script problem was
