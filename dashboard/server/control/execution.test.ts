@@ -10,6 +10,7 @@ import type { PolicyEnvironment } from './policy.ts';
 import {
   AutomaticExecutionEngine,
   AutomaticExecutionError,
+  canonicalStageResultHash,
   planRunWorktreePath,
   type AccountingAdapter,
   type AutomaticExecutionOptions,
@@ -205,6 +206,103 @@ function engineOptions(store: ControlPlaneStore, fake: Fakes, root = join(tmpdir
     results: fake.results,
     cancellation: fake.cancellation,
   };
+}
+
+function passOutcome() {
+  return {
+    schema: 'kb.review-outcome/v1' as const, decision: 'pass' as const, summary: 'creator is safe',
+    criteria: [{ criterionId: 'safety', verdict: 'pass' as const, findingIds: [] }], findings: [],
+  };
+}
+
+function failOutcome() {
+  return {
+    schema: 'kb.review-outcome/v1' as const, decision: 'fail' as const, summary: 'creator needs changes',
+    criteria: [{ criterionId: 'safety', verdict: 'fail' as const, findingIds: ['finding-1'] }],
+    findings: [{ id: 'finding-1', criterionId: 'safety', severity: 'blocking' as const, summary: 'blocking defect', evidencePaths: [] }],
+  };
+}
+
+function parkedOutcome() {
+  return {
+    schema: 'kb.review-outcome/v1' as const, decision: 'parked' as const, summary: 'cannot verify safely',
+    criteria: [{ criterionId: 'safety', verdict: 'unverified' as const, findingIds: [] }], findings: [],
+  };
+}
+
+function reviewFixture(input: {
+  outcomes: Array<ReturnType<typeof passOutcome> | ReturnType<typeof failOutcome> | ReturnType<typeof parkedOutcome>>;
+  maxCreatorReworks?: number;
+  completionGate?: boolean;
+  crashAfterIntegrationStage?: 'subject' | 'checker';
+  checkerAttemptBaseCommit?: string;
+}) {
+  const store = createStore();
+  const subject = stage('subject');
+  const checker = stage('checker', ['subject']);
+  checker.action = 'review:subject'; checker.workflowProfile = 'checker-readonly'; checker.scope = { read: ['dashboard'], write: [] };
+  checker.artifacts = []; checker.checkpoints = [];
+  checker.review = { subjectStageId: 'subject', maxCreatorReworks: input.maxCreatorReworks ?? 1, criteria: [{ id: 'safety', description: 'No unsafe changes.' }] };
+  checker.assignment = { agentId: 'fyt-checker', declarationPath: 'agents/fyt-checker.md', declarationHash: 'c'.repeat(64),
+    profileId: 'worker:codex:codex-safe', runtime: 'codex', model: 'codex-safe' };
+  if (input.completionGate) checker.completionGate = { id: 'human-final', kind: 'approval', prompt: 'Approve reviewed creator output.', requiresReview: 'pass' };
+  const release = stage('release', ['checker']);
+  const plan = proposal([subject, checker, release]);
+  const run = createApprovedRun(store, plan);
+  const fake = fakes();
+  const results = new Map<string, Awaited<ReturnType<ResultIntegrator['lookup']>>>();
+  const integrations: Parameters<ResultIntegrator['integrate']>[0][] = [];
+  const bases: Array<{ path: string; baseCommit?: string }> = [];
+  const remaining = [...input.outcomes];
+  let crashedAfterIntegration = false;
+  fake.worktrees.ensure = async (worktree) => { bases.push({ path: worktree.path, baseCommit: worktree.baseCommit }); };
+  fake.worktrees.inspect = async () => {
+    const id = fake.executionOrder.at(-1) as string;
+    return id === 'checker' ? { changed: [] } : { changed: [{ path: `dashboard/server/${id}.txt`, digest: 'b'.repeat(64) }] };
+  };
+  fake.workers = { async execute(worker) {
+    const id = worker.action.startsWith('review:') ? 'checker' : worker.action.split(':')[1];
+    fake.executionOrder.push(id);
+    if (id === 'checker') {
+      const reviewOutcome = remaining.shift();
+      if (!reviewOutcome) throw new Error('unexpected checker invocation');
+      return { state: 'succeeded' as const, summary: reviewOutcome.summary, usage: { inputTokens: 1, outputTokens: 1, costUsdMicros: 1 },
+        artifacts: [], checkpoints: [], reviewOutcome };
+    }
+    return { state: 'succeeded' as const, summary: `${id} passed`, usage: { inputTokens: 1, outputTokens: 1, costUsdMicros: 1 },
+      artifacts: [{ path: `dashboard/server/${id}.txt`, digest: 'b'.repeat(64) }], checkpoints: [`${id}-checked`] };
+  } };
+  fake.results = {
+    async lookup(key) { return results.get(key.operationKey) ?? null; },
+    async resolveBase(value) {
+      const exact = value.dependencyResultOperationKeys?.at(-1)?.operationKey;
+      const record = exact ? results.get(exact) : null;
+      return record?.durability === 'canonical' ? record.integrationCommit : 'd'.repeat(40);
+    },
+    async integrate(value) {
+      integrations.push(value);
+      const isCreatorG2 = value.operationKey.endsWith(':subject:g2');
+      const isCheckerG1 = value.operationKey.endsWith(':checker');
+      const isCheckerG2 = value.operationKey.endsWith(':checker:g2');
+      const stored = {
+        summary: value.summary, artifacts: [...value.artifacts], changed: [...value.changed], checkpoints: [...value.checkpoints],
+        ...(value.reviewOutcome ? { reviewOutcome: value.reviewOutcome } : {}), resultHash: value.resultHash, durability: 'canonical' as const,
+        attemptBaseCommit: isCreatorG2 ? 'b'.repeat(40) : isCheckerG1 ? input.checkerAttemptBaseCommit ?? 'b'.repeat(40) : isCheckerG2 ? 'c'.repeat(40) : 'a'.repeat(40),
+        integrationCommit: isCreatorG2 ? 'c'.repeat(40) : isCheckerG2 ? 'd'.repeat(40) : 'b'.repeat(40),
+      };
+      results.set(value.operationKey, stored);
+      if (!crashedAfterIntegration && input.crashAfterIntegrationStage
+        && value.operationKey === `result:${run.runRef}:${input.crashAfterIntegrationStage}`) {
+        crashedAfterIntegration = true;
+        throw new Error('simulated crash after canonical integration');
+      }
+      return { status: 'integrated' as const, resultHash: value.resultHash, durability: 'canonical' as const,
+        attemptBaseCommit: stored.attemptBaseCommit, integrationCommit: stored.integrationCommit };
+    },
+  };
+  const options = engineOptions(store, fake);
+  options.assignedAgents = { resolve: (resolved) => ({ assignment: resolved.assignment, instructionMarkdown: 'checker instructions' }) };
+  return { store, plan, run, fake, results, integrations, bases, engine: new AutomaticExecutionEngine(options) };
 }
 
 function fytPolicy(curatedSkills: string[]): PolicyEnvironment {
@@ -708,7 +806,7 @@ describe('AutomaticExecutionEngine', () => {
     expect(seen).toEqual(['checker-readonly']);
   });
 
-  it('refuses review stages before worker spawn until durable review-loop state exists', async () => {
+  it('runs a checker against the committed creator generation and releases its accepted downstream', async () => {
     const store = createStore();
     const subject = stage('subject');
     const checker = stage('checker', ['subject']);
@@ -729,64 +827,266 @@ describe('AutomaticExecutionEngine', () => {
     const plan = proposal([subject, checker, downstream]);
     const run = createApprovedRun(store, plan);
     const fake = fakes();
-    const execute = vi.fn(fake.workers.execute);
-    fake.workers.execute = execute;
-    const managerEnsure = vi.fn(fake.managers.ensure);
-    const worktreeEnsure = vi.fn(fake.worktrees.ensure);
-    const worktreeInspect = vi.fn(fake.worktrees.inspect);
-    const worktreeRemove = vi.fn(fake.worktrees.remove);
-    const reserve = vi.fn(fake.accounting.reserve);
-    const settle = vi.fn(fake.accounting.settle);
-    const resultLookup = vi.fn(fake.results.lookup);
-    const resultBase = vi.fn(fake.results.resolveBase!);
-    const resultIntegrate = vi.fn(fake.results.integrate);
-    fake.managers.ensure = managerEnsure;
-    fake.worktrees.ensure = worktreeEnsure;
-    fake.worktrees.inspect = worktreeInspect;
-    fake.worktrees.remove = worktreeRemove;
-    fake.accounting.reserve = reserve;
-    fake.accounting.settle = settle;
-    fake.results.lookup = resultLookup;
-    fake.results.resolveBase = resultBase;
-    fake.results.integrate = resultIntegrate;
+    const results = new Map<string, Awaited<ReturnType<ResultIntegrator['lookup']>>>();
+    const seenContracts: unknown[] = [];
+    fake.worktrees.inspect = async () => {
+      const id = fake.executionOrder.at(-1) as string;
+      return id === 'checker' ? { changed: [] } : { changed: [{ path: `dashboard/server/${id}.txt`, digest: 'b'.repeat(64) }] };
+    };
+    fake.workers = {
+      async execute(input) {
+        const id = input.action.startsWith('review:') ? 'checker' : input.action.split(':')[1];
+        fake.executionOrder.push(id);
+        if (id === 'checker') {
+          seenContracts.push(input.reviewContract);
+          return {
+            state: 'succeeded', summary: 'checker passed', usage: { inputTokens: 1, outputTokens: 1, costUsdMicros: 1 },
+            artifacts: [], checkpoints: [], reviewOutcome: {
+              schema: 'kb.review-outcome/v1', decision: 'pass', summary: 'creator is safe',
+              criteria: [{ criterionId: 'safety', verdict: 'pass', findingIds: [] }], findings: [],
+            },
+          };
+        }
+        return {
+          state: 'succeeded', summary: `${id} passed`, usage: { inputTokens: 1, outputTokens: 1, costUsdMicros: 1 },
+          artifacts: [{ path: `dashboard/server/${id}.txt`, digest: 'b'.repeat(64) }], checkpoints: [`${id}-checked`],
+        };
+      },
+    };
+    fake.results = {
+      async lookup(input) { return results.get(input.operationKey) ?? null; },
+      async resolveBase() { return 'd'.repeat(40); },
+      async integrate(input) {
+        const stored = {
+          summary: input.summary, artifacts: [...input.artifacts], changed: [...input.changed], checkpoints: [...input.checkpoints],
+          ...(input.reviewOutcome ? { reviewOutcome: input.reviewOutcome } : {}), resultHash: input.resultHash,
+          durability: 'canonical' as const,
+          attemptBaseCommit: input.operationKey.endsWith(':checker') || input.operationKey.endsWith(':g2') ? 'b'.repeat(40) : 'a'.repeat(40),
+          integrationCommit: input.operationKey.endsWith(':g2') ? 'c'.repeat(40) : 'b'.repeat(40),
+        };
+        results.set(input.operationKey, stored);
+        return { status: 'integrated' as const, resultHash: input.resultHash, durability: 'canonical' as const,
+          attemptBaseCommit: stored.attemptBaseCommit, integrationCommit: stored.integrationCommit };
+      },
+    };
     const options = engineOptions(store, fake);
-    const resolvePolicy = vi.fn(() => policy);
-    const resolveAssignedAgent = vi.fn();
-    const resolveSkills = vi.fn(options.skills.resolve);
-    options.resolvePolicy = resolvePolicy;
-    options.assignedAgents = { resolve: resolveAssignedAgent };
-    options.skills = { resolve: resolveSkills };
-
+    options.assignedAgents = { resolve: (input) => ({ assignment: input.assignment, instructionMarkdown: 'checker instructions' }) };
     const engine = new AutomaticExecutionEngine(options);
     const outcome = await engine.runToBoundary({
       subject: 'operator', runRef: run.runRef, proposal: plan,
     });
 
-    expect(outcome.state).toBe('waiting-human');
-    expect(outcome.waitingStageIds).toEqual(['checker']);
-    expect(resolvePolicy).not.toHaveBeenCalled();
-    expect(resolveAssignedAgent).not.toHaveBeenCalled();
-    expect(managerEnsure).not.toHaveBeenCalled();
-    expect(execute).not.toHaveBeenCalled();
-    expect(worktreeEnsure).not.toHaveBeenCalled();
-    expect(worktreeInspect).not.toHaveBeenCalled();
-    expect(worktreeRemove).not.toHaveBeenCalled();
-    expect(reserve).not.toHaveBeenCalled();
-    expect(settle).not.toHaveBeenCalled();
-    expect(resultLookup).not.toHaveBeenCalled();
-    expect(resultBase).not.toHaveBeenCalled();
-    expect(resultIntegrate).not.toHaveBeenCalled();
-    expect(resolveSkills).not.toHaveBeenCalled();
-    expect(fake.executionOrder).toEqual([]);
+    expect(outcome.state).toBe('succeeded');
+    expect(fake.executionOrder).toEqual(['subject', 'checker', 'release']);
+    expect(seenContracts).toEqual([{ review: checker.review }]);
     const detail = store.getRun('operator', run.runRef);
     expect(detail).toMatchObject({ ok: true, value: {
-      stages: [{ stageId: 'subject', state: 'ready' }, { stageId: 'checker', state: 'waiting-human' }, { stageId: 'release', state: 'blocked' }],
-      humanRequests: [{ kind: 'governance-refusal', prompt: 'review-loop-durable-state-not-yet-available', state: 'open' }],
+      reviewLoops: [{ state: 'passed', acceptedGenerationRef: expect.any(String) }],
+      stageGenerations: [{ generation: 1, canonicalResultOperationKey: `result:${run.runRef}:subject`, resultCardRef: 'card-subject' }],
+      attempts: expect.arrayContaining([expect.objectContaining({ stageRef: expect.any(String), reviewSubjectGenerationRef: expect.any(String) })]),
     } });
-    await engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
-    const replay = store.getRun('operator', run.runRef);
-    expect(replay).toMatchObject({ ok: true, value: { humanRequests: [{ title: 'automatic:policy:checker:review-loop-durable-state-not-yet-available' }] } });
+  });
+
+  it('waits on one dedicated completion gate and releases only after its resolver accepts', async () => {
+    const item = reviewFixture({ outcomes: [passOutcome()], completionGate: true });
+    const waiting = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    expect(waiting).toMatchObject({ state: 'waiting-human', waitingStageIds: ['checker'] });
+    let detail = item.store.getRun('operator', item.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    expect(detail.value.stages.find((stage) => stage.stageId === 'release')?.state).toBe('blocked');
+    expect(detail.value.humanRequests).toHaveLength(1);
+    expect(detail.value.sessions.find((session) => session.role === 'manager')?.state).toBe('running');
+    const gate = detail.value.humanRequests[0];
+    const receipt = detail.value.reviewReceipts[0]; const loop = detail.value.reviewLoops[0];
+    const reviewStage = detail.value.stages.find((stage) => stage.stageId === 'checker') as NonNullable<typeof detail.value.stages[number]>;
+    const subjectStage = detail.value.stages.find((stage) => stage.stageId === 'subject') as NonNullable<typeof detail.value.stages[number]>;
+    expect(item.store.resolveReviewCompletionGate('operator', gate.requestRef, {
+      expectedRequestRevision: gate.revision, expectedReceiptVersion: receipt.version, expectedLoopVersion: loop.version,
+      expectedReviewStageVersion: reviewStage.version, expectedSubjectStageVersion: subjectStage.version,
+      decision: 'approved', idempotencyKey: 'dedicated-gate-approve', response: 'Approved.',
+    }).ok).toBe(true);
+    const completed = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    expect(completed.state).toBe('succeeded');
+    expect(item.fake.executionOrder).toEqual(['subject', 'checker', 'release']);
+    detail = item.store.getRun('operator', item.run.runRef);
+    expect(detail.ok && detail.value.reviewReceipts).toHaveLength(1);
+    expect(detail.ok && detail.value.humanRequests).toHaveLength(1);
+  });
+
+  it('reworks to g2 with generation-specific keys, bases, and accepted downstream release', async () => {
+    const item = reviewFixture({ outcomes: [failOutcome(), passOutcome()], maxCreatorReworks: 1 });
+    const outcome = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    expect(outcome.state).toBe('succeeded');
+    expect(item.fake.executionOrder).toEqual(['subject', 'checker', 'subject', 'checker', 'release']);
+    expect(item.integrations.map((record) => [record.operationKey, record.canonicalCardRef])).toEqual(expect.arrayContaining([
+      [`result:${item.run.runRef}:subject:g2`, null], [`result:${item.run.runRef}:checker:g2`, null],
+    ]));
+    // g1 checker and g2 creator both fork from g1's canonical integration; g2 checker forks from g2 creator.
+    expect(item.bases.filter((item) => item.baseCommit === 'b'.repeat(40))).toHaveLength(2);
+    expect(item.bases.filter((item) => item.baseCommit === 'c'.repeat(40))).toHaveLength(1);
+    const detail = item.store.getRun('operator', item.run.runRef);
+    expect(detail.ok && detail.value.stageGenerations.map((generation) => generation.generation)).toEqual([1, 2]);
+    expect(detail.ok && detail.value.reviewReceipts.map((receipt) => receipt.outcome.decision)).toEqual(['fail', 'pass']);
+  });
+
+  it('parks an exhausted review exactly once without a generic intervention', async () => {
+    const item = reviewFixture({ outcomes: [failOutcome()], maxCreatorReworks: 0 });
+    const waiting = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    expect(waiting.state).toBe('waiting-human');
+    const first = item.store.getRun('operator', item.run.runRef);
+    expect(first.ok && first.value.reviewLoops[0].state).toBe('parked');
+    expect(first.ok && first.value.humanRequests).toHaveLength(1);
+    expect(first.ok && first.value.humanRequests[0].kind).toBe('intervention');
+    expect(first.ok && first.value.sessions.find((session) => session.role === 'manager')?.state).toBe('running');
+    await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    const replay = item.store.getRun('operator', item.run.runRef);
     expect(replay.ok && replay.value.humanRequests).toHaveLength(1);
+    expect(item.fake.executionOrder).toEqual(['subject', 'checker']);
+  });
+
+  it('retains the parser-parked intervention without creating a generic request on replay', async () => {
+    const item = reviewFixture({ outcomes: [parkedOutcome()] });
+    const waiting = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    expect(waiting.state).toBe('waiting-human');
+    const first = item.store.getRun('operator', item.run.runRef);
+    expect(first.ok && first.value.reviewReceipts[0].state).toBe('parked');
+    expect(first.ok && first.value.humanRequests).toHaveLength(1);
+    await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    const replay = item.store.getRun('operator', item.run.runRef);
+    expect(replay.ok && replay.value.humanRequests).toHaveLength(1);
+    expect(item.fake.executionOrder).toEqual(['subject', 'checker']);
+  });
+
+  it('reconciles a canonical creator result after an integration-to-generation crash without rerunning the worker', async () => {
+    const item = reviewFixture({ outcomes: [passOutcome()], crashAfterIntegrationStage: 'subject' });
+    const completed = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    expect(completed.state).toBe('succeeded');
+    expect(item.fake.executionOrder.filter((id) => id === 'subject')).toHaveLength(1);
+    const final = item.store.getRun('operator', item.run.runRef);
+    expect(final.ok && final.value.stageGenerations).toHaveLength(1);
+    expect(final.ok && final.value.reviewReceipts).toHaveLength(1);
+    expect(final.ok && final.value.humanRequests).toHaveLength(0);
+  });
+
+  it('replays a canonical checker result after the terminal-to-receipt seam without rerunning the checker', async () => {
+    const item = reviewFixture({ outcomes: [passOutcome()], crashAfterIntegrationStage: 'checker' });
+    const completed = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    expect(completed.state).toBe('succeeded');
+    expect(item.fake.executionOrder.filter((id) => id === 'checker')).toHaveLength(1);
+    const final = item.store.getRun('operator', item.run.runRef);
+    expect(final.ok && final.value.reviewReceipts).toHaveLength(1);
+    expect(final.ok && final.value.reviewLoops[0].state).toBe('passed');
+    expect(final.ok && final.value.humanRequests).toHaveLength(0);
+  });
+
+  it('rejects a checker canonical result whose attempt base differs from its bound subject generation', async () => {
+    const item = reviewFixture({ outcomes: [passOutcome()], checkerAttemptBaseCommit: 'e'.repeat(40) });
+    const outcome = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    expect(outcome.state).toBe('waiting-human');
+    const detail = item.store.getRun('operator', item.run.runRef);
+    expect(detail.ok && detail.value.reviewReceipts).toHaveLength(0);
+    expect(detail.ok && detail.value.reviewLoops[0].state).toBe('checking');
+    expect(detail.ok && detail.value.stages.find((stage) => stage.stageId === 'release')?.state).toBe('blocked');
+  });
+
+  it('records a terminal checker receipt while an unrelated open boundary keeps normal work paused', async () => {
+    const item = reviewFixture({ outcomes: [passOutcome()] });
+    let detail = item.store.getRun('operator', item.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const subject = detail.value.stages.find((stage) => stage.stageId === 'subject') as NonNullable<typeof detail.value.stages[number]>;
+    const subjectAttempt = item.store.createAttempt('operator', subject.stageRef, { expectedStageVersion: subject.version, runtime: 'codex', model: 'codex-safe' });
+    if (!subjectAttempt.ok) throw new Error(subjectAttempt.detail);
+    const subjectSession = item.store.createWorkerSession('operator', subjectAttempt.value.attemptRef, { expectedAttemptVersion: subjectAttempt.value.version });
+    if (!subjectSession.ok) throw new Error(subjectSession.detail);
+    let current = item.store.getRun('operator', item.run.runRef); if (!current.ok) throw new Error(current.detail);
+    let currentSubject = current.value.stages.find((stage) => stage.stageRef === subject.stageRef) as typeof subject;
+    expect(item.store.transitionStage('operator', currentSubject.stageRef, currentSubject.version, 'running').ok).toBe(true);
+    let currentAttempt = item.store.getRun('operator', item.run.runRef); if (!currentAttempt.ok) throw new Error(currentAttempt.detail);
+    let creator = currentAttempt.value.attempts.find((attempt) => attempt.attemptRef === subjectAttempt.value.attemptRef) as typeof subjectAttempt.value;
+    expect(item.store.transitionAttempt('operator', creator.attemptRef, creator.version, 'starting').ok).toBe(true);
+    currentAttempt = item.store.getRun('operator', item.run.runRef); if (!currentAttempt.ok) throw new Error(currentAttempt.detail);
+    creator = currentAttempt.value.attempts.find((attempt) => attempt.attemptRef === creator.attemptRef) as typeof creator;
+    expect(item.store.transitionAttempt('operator', creator.attemptRef, creator.version, 'running').ok).toBe(true);
+    let sessions = item.store.getRun('operator', item.run.runRef); if (!sessions.ok) throw new Error(sessions.detail);
+    let creatorSession = sessions.value.sessions.find((session) => session.sessionRef === subjectSession.value.sessionRef) as typeof subjectSession.value;
+    expect(item.store.transitionSession('operator', creatorSession.sessionRef, creatorSession.version, 'starting').ok).toBe(true);
+    sessions = item.store.getRun('operator', item.run.runRef); if (!sessions.ok) throw new Error(sessions.detail);
+    creatorSession = sessions.value.sessions.find((session) => session.sessionRef === creatorSession.sessionRef) as typeof creatorSession;
+    expect(item.store.transitionSession('operator', creatorSession.sessionRef, creatorSession.version, 'running').ok).toBe(true);
+    sessions = item.store.getRun('operator', item.run.runRef); if (!sessions.ok) throw new Error(sessions.detail);
+    creatorSession = sessions.value.sessions.find((session) => session.sessionRef === creatorSession.sessionRef) as typeof creatorSession;
+    expect(item.store.transitionSession('operator', creatorSession.sessionRef, creatorSession.version, 'completed').ok).toBe(true);
+    currentAttempt = item.store.getRun('operator', item.run.runRef); if (!currentAttempt.ok) throw new Error(currentAttempt.detail);
+    creator = currentAttempt.value.attempts.find((attempt) => attempt.attemptRef === creator.attemptRef) as typeof creator;
+    expect(item.store.transitionAttempt('operator', creator.attemptRef, creator.version, 'succeeded').ok).toBe(true);
+    current = item.store.getRun('operator', item.run.runRef); if (!current.ok) throw new Error(current.detail);
+    currentSubject = current.value.stages.find((stage) => stage.stageRef === subject.stageRef) as typeof subject;
+    const afterCreator = item.store.getRun('operator', item.run.runRef); if (!afterCreator.ok) throw new Error(afterCreator.detail);
+    const generation = item.store.recordStageGeneration('operator', subject.stageRef, {
+      expectedStageVersion: currentSubject.version, expectedAttemptVersion: afterCreator.value.attempts.find((attempt) => attempt.attemptRef === creator.attemptRef)!.version,
+      expectedGeneration: 1, operationKey: `result:${item.run.runRef}:subject`, resultHash: 'a'.repeat(64), resultCardRef: subject.canonicalCardRef,
+      baseCommit: 'a'.repeat(40), canonicalCommit: 'b'.repeat(40),
+    });
+    if (!generation.ok) throw new Error(generation.detail);
+    current = item.store.getRun('operator', item.run.runRef); if (!current.ok) throw new Error(current.detail);
+    currentSubject = current.value.stages.find((stage) => stage.stageRef === subject.stageRef) as typeof subject;
+    expect(item.store.transitionStage('operator', subject.stageRef, currentSubject.version, 'succeeded').ok).toBe(true);
+    current = item.store.getRun('operator', item.run.runRef); if (!current.ok) throw new Error(current.detail);
+    const checker = current.value.stages.find((stage) => stage.stageId === 'checker') as typeof subject;
+    expect(item.store.transitionStage('operator', checker.stageRef, checker.version, 'ready').ok).toBe(true);
+    current = item.store.getRun('operator', item.run.runRef); if (!current.ok) throw new Error(current.detail);
+    const readyChecker = current.value.stages.find((stage) => stage.stageRef === checker.stageRef) as typeof checker;
+    const checkerAttempt = item.store.createAttempt('operator', readyChecker.stageRef, { expectedStageVersion: readyChecker.version, runtime: 'codex', model: 'codex-safe',
+      reviewSubjectGenerationRef: generation.value.generationRef, reviewSubjectResultHash: 'a'.repeat(64), reviewSubjectCanonicalCommit: 'b'.repeat(40) });
+    if (!checkerAttempt.ok) throw new Error(checkerAttempt.detail);
+    const checkerSession = item.store.createWorkerSession('operator', checkerAttempt.value.attemptRef, { expectedAttemptVersion: checkerAttempt.value.version });
+    if (!checkerSession.ok) throw new Error(checkerSession.detail);
+    const advance = (kind: 'stage' | 'attempt' | 'session', ref: string, state: 'running' | 'starting' | 'completed' | 'succeeded') => {
+      const now = item.store.getRun('operator', item.run.runRef); if (!now.ok) throw new Error(now.detail);
+      if (kind === 'stage') return item.store.transitionStage('operator', ref, now.value.stages.find((value) => value.stageRef === ref)!.version, state as never);
+      if (kind === 'attempt') return item.store.transitionAttempt('operator', ref, now.value.attempts.find((value) => value.attemptRef === ref)!.version, state as never);
+      return item.store.transitionSession('operator', ref, now.value.sessions.find((value) => value.sessionRef === ref)!.version, state as never);
+    };
+    expect(advance('stage', readyChecker.stageRef, 'running').ok).toBe(true);
+    expect(advance('attempt', checkerAttempt.value.attemptRef, 'starting').ok).toBe(true); expect(advance('attempt', checkerAttempt.value.attemptRef, 'running').ok).toBe(true);
+    expect(advance('session', checkerSession.value.sessionRef, 'starting').ok).toBe(true); expect(advance('session', checkerSession.value.sessionRef, 'running').ok).toBe(true); expect(advance('session', checkerSession.value.sessionRef, 'completed').ok).toBe(true);
+    expect(advance('attempt', checkerAttempt.value.attemptRef, 'succeeded').ok).toBe(true); expect(advance('stage', readyChecker.stageRef, 'succeeded').ok).toBe(true);
+    const payload = { summary: 'creator is safe', artifacts: [], changed: [], checkpoints: [], reviewOutcome: passOutcome() };
+    item.results.set(`result:${item.run.runRef}:checker`, { ...payload, resultHash: canonicalStageResultHash(payload), durability: 'canonical', attemptBaseCommit: 'b'.repeat(40), integrationCommit: 'c'.repeat(40) });
+    const request = item.store.createHumanRequest('operator', item.run.runRef, { stageRef: null, kind: 'approval', title: 'unrelated boundary', prompt: 'Pause normal work.' });
+    expect(request.ok).toBe(true);
+    const runBefore = item.store.getRun('operator', item.run.runRef); if (!runBefore.ok) throw new Error(runBefore.detail);
+    expect(item.store.transitionRun('operator', item.run.runRef, runBefore.value.run.version, 'waiting-human').ok).toBe(true);
+    const outcome = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    expect(outcome.state).toBe('waiting-human');
+    const final = item.store.getRun('operator', item.run.runRef);
+    expect(final.ok && final.value.reviewReceipts).toHaveLength(1);
+    expect(final.ok && final.value.reviewLoops[0].state).toBe('passed');
+    expect(final.ok && final.value.humanRequests).toHaveLength(1);
+    expect(final.ok && final.value.humanRequests[0].requestRef).toBe(request.ok && request.value.requestRef);
+    expect(item.fake.executionOrder).toEqual([]);
+    expect(final.ok && final.value.stages.find((stage) => stage.stageId === 'release')?.state).toBe('blocked');
+  });
+
+  it('replays a persisted failed receipt through one rework route without rerunning its checker', async () => {
+    const item = reviewFixture({ outcomes: [failOutcome(), passOutcome()], maxCreatorReworks: 1 });
+    const record = item.store.recordReviewReceipt.bind(item.store);
+    let faulted = false;
+    item.store.recordReviewReceipt = ((...args: Parameters<ControlPlaneStore['recordReviewReceipt']>) => {
+      const saved = record(...args);
+      if (!faulted && saved.ok) {
+        faulted = true;
+        throw new Error('simulated crash after persisted review receipt');
+      }
+      return saved;
+    }) as ControlPlaneStore['recordReviewReceipt'];
+    const completed = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    expect(completed.state).toBe('succeeded');
+    expect(item.fake.executionOrder.filter((id) => id === 'checker')).toHaveLength(2);
+    const final = item.store.getRun('operator', item.run.runRef);
+    expect(final.ok && final.value.reviewReceipts).toHaveLength(2);
+    expect(final.ok && final.value.generationSupersessions).toHaveLength(1);
+    expect(final.ok && final.value.humanRequests).toHaveLength(0);
   });
 
   it('releases equal-priority roots deterministically while honoring bounded concurrency', async () => {

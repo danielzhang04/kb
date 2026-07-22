@@ -168,6 +168,8 @@ export interface ResultIntegrator {
     runRef: string;
     stageId: string;
     dependencyStageIds: readonly string[];
+    /** Exact accepted generation identities for reviewed dependencies, never a stage-id-only lookup. */
+    dependencyResultOperationKeys?: readonly { stageId: string; operationKey: string }[];
   }): Promise<string | null>;
   /** Commits the canonical stage result before dependent release; must deduplicate operationKey. */
   integrate(input: {
@@ -360,7 +362,9 @@ function validatedReviewOutcome(stage: ProposalStage, outcome: ReviewOutcome): R
   }
 }
 
-function hasImmutableLineage(result: CanonicalStageResult | ResultIntegrationReceipt): boolean {
+function hasImmutableLineage(result: CanonicalStageResult | ResultIntegrationReceipt): result is (CanonicalStageResult | ResultIntegrationReceipt) & {
+  durability: 'canonical'; attemptBaseCommit: string; integrationCommit: string;
+} {
   return result.durability === 'canonical'
     && /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/.test(result.attemptBaseCommit)
     && /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/.test(result.integrationCommit);
@@ -555,19 +559,21 @@ export class AutomaticExecutionEngine {
     const waitingStageIds: string[] = [];
     try {
       this.assertRunBinding(input);
-      const reviewPreflight = this.preflightReviewRuntime(input);
-      if (reviewPreflight.length > 0) {
-        return { state: this.detail(input).run.state, startedStageIds, completedStageIds, waitingStageIds: reviewPreflight };
-      }
       // Resolve only after the immutable run/proposal binding is proven. In particular, an arbitrary
       // browser-supplied proposal must never select a project policy loader before it is known to be the
       // exact approved graph attached to this run.
       const policy = this.resolveProjectPolicy(input.proposal.project);
       const resolvedAgents = this.resolveRunAssignments(input, policy);
+      const initialReviewWait = await this.reconcileReviewRuntime(input);
+      if (initialReviewWait.length > 0) {
+        return { state: this.detail(input).run.state, startedStageIds, completedStageIds, waitingStageIds: initialReviewWait };
+      }
       if (!(await this.ensureManager(input, policy, resolvedAgents.manager))) {
         return { state: this.detail(input).run.state, startedStageIds, completedStageIds, waitingStageIds };
       }
-      for (let pass = 0; pass <= input.proposal.stages.length; pass += 1) {
+      // A rework adds a fresh creator and checker pass before the ordinary terminal-settlement pass.
+      const reviewReworkPasses = input.proposal.stages.reduce((total, stage) => total + 2 * (stage.review?.maxCreatorReworks ?? 0), 0);
+      for (let pass = 0; pass <= input.proposal.stages.length + reviewReworkPasses; pass += 1) {
         const detail = this.detail(input);
         if (this.cancellingRuns.has(lockKey)) {
           return { state: detail.run.state, startedStageIds, completedStageIds, waitingStageIds };
@@ -578,7 +584,12 @@ export class AutomaticExecutionEngine {
         if (detail.run.state === 'interrupted' && detail.humanRequests.some((request) => request.state === 'open')) {
           return { state: detail.run.state, startedStageIds, completedStageIds, waitingStageIds };
         }
-        this.releaseDependents(input, detail);
+        const reviewWait = await this.reconcileReviewRuntime(input);
+        if (reviewWait.length > 0) {
+          for (const stageId of reviewWait) if (!waitingStageIds.includes(stageId)) waitingStageIds.push(stageId);
+          return { state: this.detail(input).run.state, startedStageIds, completedStageIds, waitingStageIds };
+        }
+        this.releaseDependents(input, this.detail(input));
         const refreshed = this.detail(input);
         if (refreshed.stages.some((stage) => stage.state === 'failed' || stage.state === 'stopped')) {
           const state = this.transitionRun(input, 'failed').state;
@@ -627,6 +638,9 @@ export class AutomaticExecutionEngine {
         for (const result of results) {
           if (result.state === 'succeeded' && !completedStageIds.includes(result.stageId)) completedStageIds.push(result.stageId);
           if (result.state === 'waiting-human' && !waitingStageIds.includes(result.stageId)) waitingStageIds.push(result.stageId);
+        }
+        if (results.some((result) => result.state === 'waiting-human') && this.detail(input).run.state === 'waiting-human') {
+          return { state: this.detail(input).run.state, startedStageIds, completedStageIds, waitingStageIds };
         }
       }
       throw new AutomaticExecutionError('DAG reconciliation exceeded its deterministic pass bound');
@@ -896,28 +910,242 @@ export class AutomaticExecutionEngine {
     }
   }
 
+  /** A creator and its checker share the subject generation for canonical result identity. */
+  private reviewGeneration(detail: RunDetail, stage: Stage, attempt: Attempt | null = getCurrentAttempt(detail, stage)): number {
+    const creatorLoop = detail.reviewLoops.find((loop) => loop.subjectStageRef === stage.stageRef);
+    if (creatorLoop) return attempt?.logicalGeneration ?? stage.currentGeneration;
+    const checkerLoop = detail.reviewLoops.find((loop) => loop.reviewStageRef === stage.stageRef);
+    if (!checkerLoop) return 1;
+    const generation = attempt?.reviewSubjectGenerationRef === null || attempt?.reviewSubjectGenerationRef === undefined
+      ? undefined
+      : detail.stageGenerations.find((item) => item.generationRef === attempt.reviewSubjectGenerationRef);
+    if (generation) return generation.generation;
+    const active = checkerLoop.activeGenerationRef === null ? undefined
+      : detail.stageGenerations.find((item) => item.generationRef === checkerLoop.activeGenerationRef);
+    if (!active) throw new AutomaticExecutionError(`checker '${stage.stageId}' has no active committed subject generation`);
+    return active.generation;
+  }
+
+  private isReviewOwned(detail: RunDetail, stage: Stage): boolean {
+    return detail.reviewLoops.some((loop) => loop.subjectStageRef === stage.stageRef || loop.reviewStageRef === stage.stageRef);
+  }
+
+  private dependencyResultOperationKeys(detail: RunDetail, dependencyStageIds: readonly string[]): Array<{ stageId: string; operationKey: string }> {
+    return dependencyStageIds.map((stageId) => {
+      const dependency = detail.stages.find((stage) => stage.stageId === stageId);
+      if (!dependency) throw new AutomaticExecutionError(`dependency '${stageId}' disappeared from the run`);
+      const subjectLoop = detail.reviewLoops.find((loop) => loop.subjectStageRef === dependency.stageRef);
+      const checkerLoop = detail.reviewLoops.find((loop) => loop.reviewStageRef === dependency.stageRef);
+      const acceptedRef = subjectLoop?.acceptedGenerationRef ?? checkerLoop?.acceptedGenerationRef ?? null;
+      const generation = acceptedRef === null ? 1 : detail.stageGenerations.find((item) => item.generationRef === acceptedRef)?.generation;
+      if (generation === undefined) throw new AutomaticExecutionError(`dependency '${stageId}' lacks its accepted generation`);
+      return { stageId, operationKey: canonicalResultOperationKey(detail.run.runRef, stageId, generation) };
+    });
+  }
+
   /**
-   * Review execution has no durable generation/receipt loop yet. Refuse the entire bound run before
-   * resolving policy or assignments, starting the manager, or touching any injected execution adapter.
+   * Complete store transitions after canonical integration in the only order accepted by the durable
+   * review state machine. It is intentionally reusable by normal execution and restart recovery.
    */
-  private preflightReviewRuntime(input: ExecuteRunInput): string[] {
-    const reviewStages = input.proposal.stages.filter((proposalStage) => proposalStage.review !== undefined);
-    if (reviewStages.length === 0) return [];
-    const waitingStageIds: string[] = [];
-    for (const proposalStage of reviewStages) {
-      const detail = this.detail(input);
-      const stage = detail.stages.find((candidate) => candidate.stageId === proposalStage.id);
-      if (!stage) throw new AutomaticExecutionError(`review stage '${proposalStage.id}' disappeared from immutable run`);
-      const reason = 'review-loop-durable-state-not-yet-available';
-      const title = stableHumanTitle('policy', stage.stageId, reason);
-      if (!detail.humanRequests.some((request) => request.stageRef === stage.stageRef && request.title === title)) {
-        this.createBoundary(input, stage, 'governance-refusal', title, reason);
-      } else {
-        this.ensureStageWaiting(input, stage.stageRef);
-      }
-      waitingStageIds.push(stage.stageId);
+  private async finalizeCanonicalSuccess(
+    input: ExecuteRunInput,
+    proposalStage: ProposalStage,
+    stageRef: string,
+    attemptRef: string,
+    sessionRef: string,
+    integrated: CanonicalStageResult,
+  ): Promise<'succeeded' | 'waiting-human'> {
+    let detail = this.detail(input);
+    let stage = detail.stages.find((item) => item.stageRef === stageRef);
+    let attempt = detail.attempts.find((item) => item.attemptRef === attemptRef);
+    if (!stage || !attempt) throw new AutomaticExecutionError('canonical result lineage disappeared');
+    const creatorLoop = detail.reviewLoops.find((loop) => loop.subjectStageRef === stageRef);
+    const checkerLoop = detail.reviewLoops.find((loop) => loop.reviewStageRef === stageRef);
+    if ((creatorLoop || checkerLoop) && !hasImmutableLineage(integrated)) {
+      throw new AutomaticExecutionError('reviewed canonical result lacks immutable lineage');
     }
-    return waitingStageIds;
+    if (proposalStage.review && !integrated.reviewOutcome) {
+      throw new AutomaticExecutionError('checker canonical result lacks a validated review outcome');
+    }
+
+    this.transitionSession(input, sessionRef, 'completed');
+    attempt = this.transitionAttempt(input, attemptRef, 'succeeded');
+
+    if (creatorLoop) {
+      if (integrated.durability !== 'canonical') throw new AutomaticExecutionError('creator canonical result lacks immutable lineage');
+      const generation = this.reviewGeneration(this.detail(input), stage, attempt);
+      const operationKey = canonicalResultOperationKey(input.runRef, stage.stageId, generation);
+      const recorded = this.detail(input).stageGenerations.find((item) => item.canonicalResultOperationKey === operationKey);
+      if (recorded) {
+        if (recorded.resultHash !== integrated.resultHash || recorded.attemptRef !== attemptRef
+          || recorded.baseCommit !== integrated.attemptBaseCommit || recorded.canonicalCommit !== integrated.integrationCommit) {
+          throw new AutomaticExecutionError('committed creator generation differs from the canonical result');
+        }
+      } else {
+        const saved = this.options.store.recordStageGeneration(input.subject, stageRef, {
+          expectedStageVersion: this.detail(input).stages.find((item) => item.stageRef === stageRef)?.version as number,
+          expectedAttemptVersion: attempt.version,
+          expectedGeneration: generation,
+          operationKey,
+          resultHash: integrated.resultHash,
+          resultCardRef: generation === 1 ? stage.canonicalCardRef : null,
+          baseCommit: integrated.attemptBaseCommit,
+          canonicalCommit: integrated.integrationCommit,
+        });
+        if (!saved.ok) throw new AutomaticExecutionError(saved.detail);
+      }
+    }
+
+    this.transitionStageByRef(input, stageRef, 'succeeded');
+    if (!checkerLoop) return 'succeeded';
+
+    detail = this.detail(input);
+    stage = detail.stages.find((item) => item.stageRef === stageRef) as Stage;
+    attempt = detail.attempts.find((item) => item.attemptRef === attemptRef) as Attempt;
+    const generationRef = attempt.reviewSubjectGenerationRef;
+    const generation = generationRef === null ? undefined : detail.stageGenerations.find((item) => item.generationRef === generationRef);
+    const loop = detail.reviewLoops.find((item) => item.reviewStageRef === stageRef);
+    if (!generation || !loop || !integrated.reviewOutcome) throw new AutomaticExecutionError('checker review lineage is incomplete');
+    if (integrated.durability !== 'canonical' || generation.canonicalCommit === null
+      || attempt.reviewSubjectCanonicalCommit !== generation.canonicalCommit
+      || integrated.attemptBaseCommit !== generation.canonicalCommit) {
+      throw new AutomaticExecutionError('checker canonical result base does not match its bound subject generation');
+    }
+    const operationKey = `review-outcome:${input.runRef}:${stage.stageId}:g${generation.generation}`;
+    const durableOutcome = JSON.stringify(integrated.reviewOutcome);
+    const existing = detail.reviewReceipts.find((item) => item.operationKey === operationKey);
+    if (existing) {
+      if (existing.checkerAttemptRef !== attempt.attemptRef || existing.subjectGenerationRef !== generation.generationRef
+        || JSON.stringify(existing.outcome) !== durableOutcome) {
+        throw new AutomaticExecutionError('stored review receipt differs from the canonical outcome');
+      }
+      return this.routeReviewReceipt(input, stage.stageId, existing);
+    }
+    const receipt = this.options.store.recordReviewReceipt(input.subject, stageRef, {
+      expectedReviewStageVersion: stage.version,
+      expectedCheckerAttemptVersion: attempt.version,
+      expectedLoopVersion: loop.version,
+      subjectGenerationRef: generation.generationRef,
+      subjectResultHash: generation.resultHash as string,
+      checkerAttemptRef: attempt.attemptRef,
+      outcome: durableOutcome,
+      operationKey,
+    });
+    if (!receipt.ok) throw new AutomaticExecutionError(receipt.detail);
+    return this.routeReviewReceipt(input, stage.stageId, receipt.value);
+  }
+
+  /** Apply the store-owned receipt outcome transitions; no reserved review request is created here. */
+  private routeReviewReceipt(
+    input: ExecuteRunInput,
+    reviewStageId: string,
+    receipt: RunDetail['reviewReceipts'][number],
+  ): 'succeeded' | 'waiting-human' {
+    let detail = this.detail(input);
+    const reviewStage = detail.stages.find((stage) => stage.stageId === reviewStageId);
+    const subjectStage = detail.stages.find((stage) => stage.stageRef === receipt.subjectStageRef);
+    const loop = detail.reviewLoops.find((item) => item.reviewStageRef === receipt.reviewStageRef);
+    const checkerAttempt = detail.attempts.find((attempt) => attempt.attemptRef === receipt.checkerAttemptRef);
+    const subjectGeneration = detail.stageGenerations.find((generation) => generation.generationRef === receipt.subjectGenerationRef);
+    const subjectAttempt = subjectGeneration
+      ? detail.attempts.find((attempt) => attempt.attemptRef === subjectGeneration.attemptRef)
+      : undefined;
+    if (!reviewStage || !subjectStage || !loop || !checkerAttempt || !subjectGeneration || !subjectAttempt) {
+      throw new AutomaticExecutionError('review receipt lineage is incomplete');
+    }
+    if (receipt.state === 'passed') return 'succeeded';
+    if (receipt.state === 'awaiting-completion-gate') {
+      if (receipt.completionRequestRef !== null) {
+        this.transitionRun(input, 'waiting-human');
+        return 'waiting-human';
+      }
+      const attached = this.options.store.attachReviewCompletionGate(input.subject, receipt.reviewReceiptRef, {
+        expectedReceiptVersion: receipt.version,
+        expectedLoopVersion: loop.version,
+        expectedReviewStageVersion: reviewStage.version,
+        idempotencyKey: `review-gate:${input.runRef}:${reviewStage.stageId}:g${subjectGeneration.generation}`,
+      });
+      if (!attached.ok) throw new AutomaticExecutionError(attached.detail);
+      this.transitionRun(input, 'waiting-human');
+      return 'waiting-human';
+    }
+    if (receipt.state === 'parked' || loop.state === 'parked') {
+      this.transitionRun(input, 'waiting-human');
+      return 'waiting-human';
+    }
+    if (loop.state === 'rework-queued') return 'succeeded';
+    if (loop.reworksUsed < loop.maxCreatorReworks) {
+      const advanced = this.options.store.advanceReviewGeneration(input.subject, input.runRef, {
+        expectedSubjectStageVersion: subjectStage.version,
+        expectedReviewStageVersion: reviewStage.version,
+        expectedLoopVersion: loop.version,
+        expectedSubjectAttemptRef: subjectAttempt.attemptRef,
+        expectedSubjectAttemptVersion: subjectAttempt.version,
+        expectedCheckerAttemptRef: checkerAttempt.attemptRef,
+        expectedCheckerAttemptVersion: checkerAttempt.version,
+        expectedFailedReceiptRef: receipt.reviewReceiptRef,
+        expectedGenerationRef: subjectGeneration.generationRef,
+        idempotencyKey: `rework:${input.runRef}:${subjectStage.stageId}:g${subjectGeneration.generation + 1}`,
+      });
+      if (!advanced.ok) throw new AutomaticExecutionError(advanced.detail);
+      return 'succeeded';
+    }
+    const parked = this.options.store.parkExhaustedReview(input.subject, input.runRef, {
+      expectedSubjectStageVersion: subjectStage.version,
+      expectedReviewStageVersion: reviewStage.version,
+      expectedLoopVersion: loop.version,
+      expectedReceiptVersion: receipt.version,
+      expectedSubjectAttemptRef: subjectAttempt.attemptRef,
+      expectedSubjectAttemptVersion: subjectAttempt.version,
+      expectedCheckerAttemptRef: checkerAttempt.attemptRef,
+      expectedCheckerAttemptVersion: checkerAttempt.version,
+      expectedGenerationRef: subjectGeneration.generationRef,
+      expectedFailedReceiptRef: receipt.reviewReceiptRef,
+      idempotencyKey: `review-exhausted:${input.runRef}:${reviewStage.stageId}:g${subjectGeneration.generation}`,
+    });
+    if (!parked.ok) throw new AutomaticExecutionError(parked.detail);
+    this.transitionRun(input, 'waiting-human');
+    return 'waiting-human';
+  }
+
+  /** Replay integration-to-store seams before considering runnable stages after a restart. */
+  private async reconcileReviewRuntime(input: ExecuteRunInput): Promise<string[]> {
+    const waiting: string[] = [];
+    const detail = this.detail(input);
+    for (const stage of detail.stages) {
+      if (!this.isReviewOwned(detail, stage)) continue;
+      const attempt = getCurrentAttempt(detail, stage);
+      if (!attempt?.managedSessionRef) continue;
+      // Adapter exceptions are durably contained as interrupted; the normal preparation path creates
+      // its successor, which then replays this same canonical result without a second worker run.
+      if (attempt.state === 'interrupted') continue;
+      const proposalStage = stageById(input.proposal, stage.stageId);
+      const generation = this.reviewGeneration(detail, stage, attempt);
+      const result = await this.options.results.lookup({
+        operationKey: canonicalResultOperationKey(input.runRef, stage.stageId, generation),
+        subject: input.subject,
+        runRef: input.runRef,
+        stageId: stage.stageId,
+      });
+      if (!result) continue;
+      const expectedHash = canonicalStageResultHash(result);
+      if (result.resultHash !== expectedHash || !resultIsSafe(proposalStage, {
+        state: 'succeeded', summary: result.summary, usage: { inputTokens: 0, outputTokens: 0, costUsdMicros: 0 },
+        artifacts: [...result.artifacts], checkpoints: [...result.checkpoints],
+        ...(result.reviewOutcome ? { reviewOutcome: result.reviewOutcome } : {}),
+      }, { changed: result.changed })) {
+        throw new AutomaticExecutionError('persisted canonical review result failed reconciliation');
+      }
+      const outcome = await this.finalizeCanonicalSuccess(input, proposalStage, stage.stageRef, attempt.attemptRef, attempt.managedSessionRef, result);
+      await this.cleanupAttemptWorktree(
+        input,
+        stage,
+        attempt,
+        planAttemptWorktreePath(this.options.worktreeRoot, input.runRef, attempt.attemptRef),
+      );
+      if (outcome === 'waiting-human') waiting.push(stage.stageId);
+    }
+    return waiting;
   }
 
   private stageBoundary(
@@ -930,18 +1158,6 @@ export class AutomaticExecutionEngine {
     if (detail.humanRequests.some((request) => request.stageRef === stage.stageRef && request.state === 'open')) {
       this.ensureStageWaiting(input, stage.stageRef);
       return 'waiting';
-    }
-    // Review outcomes need append-only generation/receipt state before they can release any dependent.
-    // Do not spawn a checker on a transient result or let an ordinary succeeded Stage bypass that loop.
-    if (proposalStage.review) {
-      const reason = 'review-loop-durable-state-not-yet-available';
-      const title = stableHumanTitle('policy', stage.stageId, reason);
-      if (!detail.humanRequests.some((request) => request.stageRef === stage.stageRef && request.title === title)) {
-        this.createBoundary(input, stage, 'governance-refusal', title, reason);
-      } else {
-        this.ensureStageWaiting(input, stage.stageRef);
-      }
-      return 'refused';
     }
     for (const gate of proposalStage.humanGates) {
       const title = stableHumanTitle('gate', stage.stageId, gate.id);
@@ -1000,7 +1216,9 @@ export class AutomaticExecutionEngine {
       model: routing.model,
       target: proposalStage.target,
       requiredSkills: proposalStage.requiredSkills,
-      scope: proposalStage.scope,
+      // A checker is deliberately read-only. Its target is therefore bounded by its read scope for
+      // policy classification; the actual worker still receives the immutable empty write scope.
+      scope: proposalStage.review ? { read: proposalStage.scope.read, write: proposalStage.scope.read } : proposalStage.scope,
       governanceRefs: input.proposal.governanceRefs,
       proposalHash: this.detail(input).run.proposalHash,
       approvedHash: this.detail(input).run.proposalHash,
@@ -1111,10 +1329,19 @@ export class AutomaticExecutionEngine {
       return null;
     }
     if (!attempt || attempt.state === 'interrupted') {
+      const checkerLoop = detail.reviewLoops.find((loop) => loop.reviewStageRef === stage.stageRef);
+      const subjectGeneration = checkerLoop?.activeGenerationRef === null || checkerLoop?.activeGenerationRef === undefined
+        ? undefined
+        : detail.stageGenerations.find((item) => item.generationRef === checkerLoop.activeGenerationRef);
       const created = this.options.store.createAttempt(input.subject, stage.stageRef, {
         expectedStageVersion: stage.version,
         runtime: routing.runtime,
         model: routing.model,
+        ...(checkerLoop && subjectGeneration ? {
+          reviewSubjectGenerationRef: subjectGeneration.generationRef,
+          reviewSubjectResultHash: subjectGeneration.resultHash,
+          reviewSubjectCanonicalCommit: subjectGeneration.canonicalCommit,
+        } : {}),
       });
       if (!created.ok) throw new AutomaticExecutionError(created.detail);
       attempt = created.value;
@@ -1164,6 +1391,8 @@ export class AutomaticExecutionEngine {
       return await this.executeAttemptUnsafe(input, prepared, policy);
     } catch (error) {
       if (this.cancellationObserved(input)) return { state: 'stopped', stageId: prepared.stage.stageId };
+      const replayed = await this.recoverCaughtReviewResult(input, prepared);
+      if (replayed) return replayed;
       const current = this.detail(input);
       const attempt = current.attempts.find((item) => item.attemptRef === prepared.attempt.attemptRef);
       const session = current.sessions.find((item) => item.sessionRef === prepared.session.sessionRef);
@@ -1173,21 +1402,69 @@ export class AutomaticExecutionEngine {
       if (session && (session.state === 'starting' || session.state === 'running')) {
         this.transitionSession(input, session.sessionRef, 'interrupted');
       }
-      this.transitionStageByRef(input, prepared.stage.stageRef, 'interrupted');
+      const currentStage = this.detail(input).stages.find((item) => item.stageRef === prepared.stage.stageRef) as Stage;
+      if (!['succeeded', 'failed', 'stopped'].includes(currentStage.state)) {
+        this.transitionStageByRef(input, prepared.stage.stageRef, 'interrupted');
+      }
       this.options.store.appendEvent(input.subject, input.runRef, {
         kind: 'lifecycle', source: 'system', stageRef: prepared.stage.stageRef,
         attemptRef: prepared.attempt.attemptRef, sessionRef: prepared.session.sessionRef,
         status: 'interrupted', summary: error instanceof Error ? error.message : 'execution adapter failed',
       });
       const latest = this.detail(input).stages.find((item) => item.stageRef === prepared.stage.stageRef) as Stage;
-      this.createBoundary(
-        input,
-        latest,
-        'intervention',
-        stableHumanTitle('execution', latest.stageId, prepared.attempt.attemptRef),
-        error instanceof Error ? error.message : 'execution adapter failed',
-      );
+      const title = stableHumanTitle('execution', latest.stageId, prepared.attempt.attemptRef);
+      const prompt = error instanceof Error ? error.message : 'execution adapter failed';
+      if (latest.state === 'succeeded') {
+        const existing = this.detail(input).humanRequests.find((request) => request.stageRef === latest.stageRef && request.title === title && request.state === 'open');
+        if (!existing) {
+          const request = this.options.store.createHumanRequest(input.subject, input.runRef, {
+            stageRef: latest.stageRef, kind: 'intervention', title, prompt,
+          });
+          if (!request.ok) throw new AutomaticExecutionError(request.detail);
+        }
+        this.transitionRun(input, 'waiting-human');
+      } else {
+        this.createBoundary(input, latest, 'intervention', title, prompt);
+      }
       return { state: 'waiting-human', stageId: prepared.stage.stageId };
+    }
+  }
+
+  /**
+   * An adapter can lose its acknowledgement after persisting a canonical integration. Re-read that
+   * exact generation before containment so durable work advances automatically rather than asking a
+   * human to approve a transport failure.
+   */
+  private async recoverCaughtReviewResult(
+    input: ExecuteRunInput,
+    prepared: {
+      stage: Stage; proposalStage: ProposalStage; attempt: Attempt; session: ManagedSession;
+      profile: ExecutionProfile; assignedAgent: ResolvedAssignedAgent | null;
+    },
+  ): Promise<{ state: 'succeeded' | 'waiting-human'; stageId: string } | null> {
+    const detail = this.detail(input);
+    const stage = detail.stages.find((item) => item.stageRef === prepared.stage.stageRef);
+    const attempt = detail.attempts.find((item) => item.attemptRef === prepared.attempt.attemptRef);
+    const session = detail.sessions.find((item) => item.sessionRef === prepared.session.sessionRef);
+    if (!stage || !attempt || !session || !this.isReviewOwned(detail, stage)) return null;
+    try {
+      const generation = this.reviewGeneration(detail, stage, attempt);
+      const result = await this.options.results.lookup({
+        operationKey: canonicalResultOperationKey(input.runRef, stage.stageId, generation),
+        subject: input.subject, runRef: input.runRef, stageId: stage.stageId,
+      });
+      if (!result || result.resultHash !== canonicalStageResultHash(result) || !resultIsSafe(prepared.proposalStage, {
+        state: 'succeeded', summary: result.summary, usage: { inputTokens: 0, outputTokens: 0, costUsdMicros: 0 },
+        artifacts: [...result.artifacts], checkpoints: [...result.checkpoints],
+        ...(result.reviewOutcome ? { reviewOutcome: result.reviewOutcome } : {}),
+      }, { changed: result.changed })) return null;
+      const outcome = await this.finalizeCanonicalSuccess(
+        input, prepared.proposalStage, stage.stageRef, attempt.attemptRef, session.sessionRef, result,
+      );
+      await this.cleanupAttemptWorktree(input, stage, attempt, planAttemptWorktreePath(this.options.worktreeRoot, input.runRef, attempt.attemptRef));
+      return { state: outcome, stageId: stage.stageId };
+    } catch {
+      return null;
     }
   }
 
@@ -1201,10 +1478,10 @@ export class AutomaticExecutionEngine {
   ): Promise<({ state: 'succeeded' | 'waiting-human' | 'stopped'; stageId: string })> {
     const { stage, proposalStage, attempt, session, profile, assignedAgent } = prepared;
     const operationKey = `automatic-attempt:${attempt.attemptRef}`;
-    const resultOperationKey = canonicalResultOperationKey(input.runRef, stage.stageId);
+    const resultGeneration = this.reviewGeneration(this.detail(input), stage, attempt);
+    const resultOperationKey = canonicalResultOperationKey(input.runRef, stage.stageId, resultGeneration);
     const worktreePath = planAttemptWorktreePath(this.options.worktreeRoot, input.runRef, attempt.attemptRef);
-    const reviewedGeneration = proposalStage.review !== undefined
-      || this.detail(input).reviewLoops.some((loop) => loop.subjectStageRef === stage.stageRef);
+    const reviewedGeneration = this.isReviewOwned(this.detail(input), stage);
     const integrated = await this.options.results.lookup({
       operationKey: resultOperationKey,
       subject: input.subject,
@@ -1229,13 +1506,13 @@ export class AutomaticExecutionEngine {
         kind: 'lifecycle', source: 'system', stageRef: stage.stageRef, attemptRef: attempt.attemptRef,
         sessionRef: session.sessionRef, status: 'success', summary: 'reconciled previously integrated canonical result',
       });
-      this.transitionSession(input, session.sessionRef, 'completed');
-      this.transitionAttempt(input, attempt.attemptRef, 'succeeded');
-      this.transitionStageByRef(input, stage.stageRef, 'succeeded');
-      return { state: 'succeeded', stageId: stage.stageId };
+      const outcome = await this.finalizeCanonicalSuccess(
+        input, proposalStage, stage.stageRef, attempt.attemptRef, session.sessionRef, integrated,
+      );
+      return { state: outcome, stageId: stage.stageId };
     }
-    let baseCommit: string | undefined;
-    if (proposalStage.dependsOn.length > 0) {
+    let baseCommit: string | undefined = attempt.baseCommit ?? attempt.reviewSubjectCanonicalCommit ?? undefined;
+    if (baseCommit === undefined && proposalStage.dependsOn.length > 0) {
       if (!this.options.results.resolveBase) {
         throw new AutomaticExecutionError('result integrator cannot resolve committed dependency lineage');
       }
@@ -1245,6 +1522,7 @@ export class AutomaticExecutionEngine {
         runRef: input.runRef,
         stageId: stage.stageId,
         dependencyStageIds: [...proposalStage.dependsOn].sort(),
+        dependencyResultOperationKeys: this.dependencyResultOperationKeys(this.detail(input), [...proposalStage.dependsOn].sort()),
       }) ?? undefined;
       if (this.cancellationObserved(input)) return { state: 'stopped', stageId: stage.stageId };
       if (!baseCommit) throw new AutomaticExecutionError('committed dependency lineage is unavailable');
@@ -1303,6 +1581,7 @@ export class AutomaticExecutionEngine {
         readScope: proposalStage.scope.read,
         writeScope: proposalStage.scope.write,
         checkpoints: proposalStage.checkpoints.map((checkpoint) => checkpoint.id),
+        ...(proposalStage.review ? { reviewContract: { review: proposalStage.review } } : {}),
         ...(assignedAgent ? { assignment: assignedAgent.assignment, instructionMarkdown: assignedAgent.instructionMarkdown } : {}),
       });
     } catch (error) {
@@ -1357,7 +1636,7 @@ export class AutomaticExecutionEngine {
         stageRef: stage.stageRef,
         stageId: stage.stageId,
         attemptRef: attempt.attemptRef,
-        canonicalCardRef: stage.canonicalCardRef as string,
+        canonicalCardRef: reviewedGeneration && resultGeneration > 1 ? null : stage.canonicalCardRef,
         summary: result.summary,
         artifacts: result.artifacts,
         changed: inspection.changed,
@@ -1372,11 +1651,27 @@ export class AutomaticExecutionEngine {
       if ((result.reviewOutcome || reviewedGeneration) && !hasImmutableLineage(integratedResult)) {
         throw new AutomaticExecutionError('reviewed canonical result lacks immutable lineage');
       }
-      this.transitionSession(input, session.sessionRef, 'completed');
-      this.transitionAttempt(input, attempt.attemptRef, 'succeeded');
-      this.transitionStageByRef(input, stage.stageRef, 'succeeded');
+      const completedCanonical: CanonicalStageResult = integratedResult.durability === 'canonical'
+        ? {
+            summary: canonical.summary, artifacts: canonical.artifacts, changed: canonical.changed, checkpoints: canonical.checkpoints,
+            ...(canonical.reviewOutcome ? { reviewOutcome: canonical.reviewOutcome } : {}), resultHash,
+            durability: 'canonical', attemptBaseCommit: integratedResult.attemptBaseCommit, integrationCommit: integratedResult.integrationCommit,
+          }
+        : {
+            summary: canonical.summary, artifacts: canonical.artifacts, changed: canonical.changed, checkpoints: canonical.checkpoints,
+            ...(canonical.reviewOutcome ? { reviewOutcome: canonical.reviewOutcome } : {}), resultHash,
+            durability: 'inactive', attemptBaseCommit: null, integrationCommit: null,
+          };
+      const outcome = await this.finalizeCanonicalSuccess(
+        input,
+        proposalStage,
+        stage.stageRef,
+        attempt.attemptRef,
+        session.sessionRef,
+        completedCanonical,
+      );
       await this.cleanupAttemptWorktree(input, stage, attempt, worktreePath);
-      return { state: 'succeeded', stageId: stage.stageId };
+      return { state: outcome, stageId: stage.stageId };
     }
     if (result.state === 'waiting-human') {
       this.createBoundary(input, stage, 'intervention', stableHumanTitle('execution', stage.stageId, attempt.attemptRef), result.summary);
@@ -1422,7 +1717,7 @@ export class AutomaticExecutionEngine {
   private async settleRunState(input: ExecuteRunInput): Promise<RunDetail['run']> {
     const detail = this.detail(input);
     if (detail.run.state === 'stopping' || detail.run.state === 'stopped') return detail.run;
-    if (detail.stages.every((stage) => stage.state === 'succeeded')) {
+    if (detail.stages.every((stage) => stage.state === 'succeeded') && detail.reviewLoops.every((loop) => loop.state === 'passed')) {
       const manager = detail.sessions.find((session) => session.sessionRef === detail.run.managerSessionRef);
       if (!manager) throw new AutomaticExecutionError('manager session disappeared before run completion');
       if (!['completed', 'failed', 'stopped', 'interrupted'].includes(manager.state)) {
