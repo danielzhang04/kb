@@ -28,7 +28,7 @@ function makeApp() {
     sessionConfig: { secret: SESSION_SECRET, ttlMs: 60_000 },
     allowedOrigins: [],
     credentials: () => [],
-    assignmentAmendmentStore: createInMemoryAssignmentAmendmentStore(),
+    definitionAmendmentStore: createInMemoryAssignmentAmendmentStore(),
     controlStore: createInMemoryControlPlaneStore(),
     composerStore: createInMemoryComposerStore({ protector: createProviderIdProtector(SESSION_SECRET) }),
   }));
