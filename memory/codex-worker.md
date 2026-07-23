@@ -261,3 +261,24 @@ Have a human review and merge PR #76 only if the production-logic diff is accept
   move the live candidate to merged main, re-run parity/build/audit smoke, delete-plus-start PM2 from
   that checkout, verify the inert live APIs/SPA, save PM2, and only then remove the rollback checkout.
 
+## Session closeout 2026-07-23 (agent-first dashboard live)
+
+- PR #80 and PR #81 merged. `dashboard-ops` is clean at merged `ops`, the live source is clean at
+  merged `main`, and `sync_daemon_dirs.py --check` proves all daemon-read paths match.
+- Reinstalled the patched lockfile (`npm audit`: zero findings), then passed typecheck, production
+  build, and the 106-test focused agent/workflow suite. The same merged tree previously passed the
+  full 2,101-test dashboard suite with 2 skipped.
+- Used PM2 delete-plus-start to move `kb-dashboard` from the PR #69 rollback checkout to
+  `dashboard-postmerge-live` at merged main. PM2 is online with zero restarts, stores the new script
+  path/cwd, and its verified process list is saved.
+- Live `/healthz`, SPA, index, agents, system-workers, workflows, and video-run detail all return
+  200. The served SPA exactly matches the built index. Live semantic assertions prove four declared
+  unbound FYT agents, two system workers, the exact 7/4/1/2 governance map, zero executable bindings,
+  no pending amendment, activation absent, and no Anthropic API key.
+- Removed the old rollback checkout, both merged repair worktrees, and their integrated local
+  branches. Preserved the active live source, daemon ops/durable roots, managed runtime worktrees,
+  every dirty or unique checkout, and all Poyais assets.
+- No live launch, ownership submission, assignment amendment, external spend, upload, or publish was
+  attempted. The only remaining acceptance item is a human visual pointer-drag check because this
+  terminal had no connected browser backend.
+
