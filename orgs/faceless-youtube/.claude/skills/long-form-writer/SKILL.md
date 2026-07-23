@@ -202,7 +202,7 @@ skill-only execution and a few positive checks that reliably catch the pipeline'
   survives with zero information removed is filler; cut it or rewrite it into the mechanism.
 - **Pacing lives in punctuation, not em dashes.** New sentence or colon = a cut-in; ellipsis = a held beat;
   comma = a catch. Pause cues, used sparingly: **`[BEAT]`** (~0.3s), **`[PAUSE]`** (~0.6s), **`[PAUSE:LONG]`**
-  (~1.2s before a reveal). (Comedic v3 channels may use `[aside: dry]`/`[emote: sigh]`; stripped on v2.)
+  (~1.2s before a reveal). (Comedic v3 channels may use `[aside: dry]`/`[emote: sighs]`; stripped on v2.)
 - **`[B-ROLL]` cues are MEANING ANCHORS, not the shot list.** Mark `[B-ROLL: <the beat's meaning/emotion>]`
   where a visual lands. `visual-prompt-writer` owns the shot count, pacing, and durations and densifies each
   anchor into many shots — so cue the *meaning* (`[B-ROLL: the promise everyone believed]`), not a literal

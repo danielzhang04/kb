@@ -152,6 +152,12 @@ def test_each_whitelisted_expressive_marker_has_an_exact_v3_translation(marker, 
     assert vo.clean_markers(raw, 0.6, is_v3=True) == f"{tag} This is a complete sentence."
 
 
+def test_long_form_writer_documents_only_supported_expressive_markers():
+    writer_skill = Path(__file__).resolve().parents[2] / "long-form-writer" / "SKILL.md"
+    documented = set(vo._EXPRESSIVE_CANDIDATE_RE.findall(writer_skill.read_text(encoding="utf-8")))
+    assert documented <= set(vo.EXPRESSIVE_MARKER_TRANSLATIONS)
+
+
 @pytest.mark.parametrize("raw", [
     "[emote: excited] This is unsupported.",
     "[emote curious] This is malformed.",

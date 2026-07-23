@@ -4,6 +4,11 @@
 **Review target:** `origin/main...HEAD` on `codex/poyais-engagement-overhaul-final`
 **Reviewer:** independent Codex re-review
 
+> Packaging note: the `06ee112`, `0 9`, and 60-path values below are the immutable implementation snapshot
+> this review examined. The PR subsequently gained documentation-only closeout commits and a merge-readiness
+> correction that aligns the writer's `sighs` marker with the already-reviewed voiceover whitelist and pins
+> that cross-skill contract in a regression test. No other production scope was added after this review.
+
 ## Review record
 
 - Preamble: `python scripts/preamble.py` — PASS (`PREAMBLE OK`).

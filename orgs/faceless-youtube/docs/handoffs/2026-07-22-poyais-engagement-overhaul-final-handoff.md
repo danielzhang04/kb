@@ -15,8 +15,10 @@ or ops cleanup was performed.
   in `output/audits/2026-07-22-engagement-overhaul-integration-review.md`.
 - **Fresh bounded review converged** — story/selection, voice, and visual-motion-audio lanes each moved from
   actionable findings to READY after cross-video infrastructure repairs and regression tests.
-- **Clean current-main integration** — `origin/main` `03ba187` is an ancestor and merge base of reviewed head
-  `06ee112`; ahead/behind is `0 9`. The clean diff has 60 engagement paths and zero protected
+- **Clean current-main integration** — `origin/main` `03ba187` is an ancestor and merge base of reviewed
+  implementation head `06ee112`; the `0 9` topology and 60-path count describe that independent-review
+  snapshot. The proposed PR later added documentation-only closeout commits and a merge-readiness correction
+  aligning the writer's `sighs` marker with the canonical voiceover contract; it still has zero protected
   shorts/publish/compliance/video-artifact matches.
 - **Independent final review passed** —
   `output/audits/2026-07-22-engagement-overhaul-independent-final-review.md` reports READY, 109 targeted and
