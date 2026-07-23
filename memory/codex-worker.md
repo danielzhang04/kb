@@ -13,6 +13,16 @@
 - Final integration: merged current `origin/main` into the feature branch after PR conflict detection. Six textual conflicts were split across three independent agents; the resolution preserved both main's read-scope/no-Bash work and this branch's assignments/reviews/completion gates. Post-merge dashboard verification passed 2,055 tests with 2 skipped plus typecheck.
 - Review gates opened: work product PR #69 targets `main`; coordination PR #68 targets `ops`. Neither was merged by Codex.
 
+## 2026-07-22 — Automated income project portfolio deep dive
+
+- Worked: recovered two unmerged 2026-07-21 portfolio research branches, preserved both DRAFT inputs, and synthesized the requested top-eight commercial analysis on `codex/new-projects-deep-dive` without moving or modifying `main`.
+- Worked: delegated models 1–3, 4–6, and 7–8 to three `gpt-5.6-terra` research agents, then used a separate adversarial review and re-review before committing the report.
+- Key lesson: the ranked list was not eight independent projects. Models 1/2/4/6 form one decision-data property; model 7 is its retention channel; model 5 is a gated surface; model 8 is a capital-entry strategy. Revenue ranges must be explicitly non-additive.
+- Key recommendation: validate one calculator-led decision property and one commercially specific media-licensing catalog under a combined 120-hour/$2.3k first-90-day cap; defer app work and acquisition diligence until the day-90 gates.
+- Verification: preamble passed; local Markdown links resolved; no placeholders or trailing whitespace; Git diff check passed; adversarial re-review returned SHIP; work branch pushed at `43f1660`.
+- Preserved: user-owned `.tmp/` contents and `orgs/faceless-youtube/.claude/settings.local.json` were never staged or modified.
+- Remains human-gated: review/merge the work-product branch and this coordination branch; select the decision niche before any implementation or spend.
+
 ## Session handoff 2026-07-22
 
 **Topic:** Recover the FYT autonomous-runner terminal, verify the completed control plane, and start the local dashboard before a Windows sandbox restart.
@@ -211,4 +221,18 @@ Open and merge the `codex/dashboard-alignment-final-handoff` coordination PR int
 ### Exact Next Step
 
 Have a human review and merge PR #76 only if the production-logic diff is accepted, and merge the separate coordination PR into `ops`. Then execute the documented zero-spend Poyais calibration one axis at a time and return the comparisons for a human eye/ear gate. Do not begin paid generation, full rendering, publication, queue transitions, or stale-card cleanup from this handoff.
+
+## Session lesson 2026-07-22 (OAuth gate retirement and branch pruning)
+
+- High-level operational evidence is enough to retire a credential gate without reading credential
+  stores: the protected-main Poyais publish record plus MCP health proved the uploader gate.
+- Do not overstate auth completion. The legacy Google Workspace MCP failed its health probe and the
+  analytics bootstrap lacked a durable completion record, so their cards were retired at the
+  operator's direction with explicit non-attestation notes.
+- Coordination branches may lag card-state infrastructure on `main`; validate moved cards against
+  the target branch's own `scripts/cards.py`. `ops` did not yet accept `archived`, so `done` was the
+  compatible terminal state.
+- `git branch -d` compares against current HEAD. For branches integrated into a different base,
+  first prove `git merge-base --is-ancestor <branch> <intended-base>`, then delete only that exact
+  proven ref. Every Poyais worktree/ref was excluded from cleanup.
 
