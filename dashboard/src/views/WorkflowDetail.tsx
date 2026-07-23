@@ -18,6 +18,7 @@ import { useEffect, useState } from 'react';
 import type { ProposalRoutingDto, ProposalStageDto, ResolvedAgentAssignmentDto, RunMetadataDto } from '../control/controlClient';
 import { EntityDetail, type DetailSection } from '../entity/EntityDetail';
 import type { NavTarget } from '../nav/stack';
+import { WorkflowAgentGraph, type GovernanceAgentOption, type GovernanceDraft } from './WorkflowAgentGraph';
 import '../styles/views/entity.css';
 
 /** One definition entry from `GET /api/workflows` (mirrors `server/workflows/routes.ts`). */
@@ -32,14 +33,18 @@ export interface WorkflowDefEntry {
   title: string | null;
   /** Existing workflow tool capability profile; never an agent assignment profile. */
   profile: string | null;
+  governedBy?: string | null;
   /** Required string parameters declared by the immutable workflow definition. */
   parameters?: string[];
   manager?: { agentId: string; profileId: string } | null;
   stageCount: number;
   riskTier: string | null;
   stages: Array<{
-    id: string; action: string; target: string; riskTier: string;
+    id: string; title?: string; action: string; target: string; riskTier: string; dependsOn?: string[];
+    governedBy?: string | null;
     declaredAssignment?: { agentId: string; profileId: string } | null;
+    review?: { subjectStageId: string; maxCreatorReworks: number } | null;
+    completionGate?: { id: string; kind: 'approval'; requiresReview: 'pass' } | null;
   }>;
   detail: string | null;
   /** Semantic compiler status, deliberately independent from syntax `valid`. */
@@ -82,6 +87,13 @@ export interface WorkflowDetailProps {
   /** Values stay in the owner view so opening detail never changes launch intent. */
   parameterValues?: Record<string, string>;
   onParameterChange?: (name: string, value: string) => void;
+  governanceOptions?: GovernanceAgentOption[];
+  governanceDraft?: GovernanceDraft;
+  onGovernanceDraftChange?: (draft: GovernanceDraft) => void;
+  onGovernanceSubmit?: () => void;
+  governanceDirty?: boolean;
+  governanceReadOnly?: boolean;
+  governanceStatus?: React.ReactNode;
 }
 
 interface AssignmentChoices { options: Array<{ agentId: string; profileId: string }>; unavailable: string | null; }
@@ -139,6 +151,13 @@ export function WorkflowDetail({
   amendmentStatus,
   parameterValues = {},
   onParameterChange,
+  governanceOptions = [],
+  governanceDraft,
+  onGovernanceDraftChange,
+  onGovernanceSubmit,
+  governanceDirty = false,
+  governanceReadOnly = false,
+  governanceStatus,
 }: WorkflowDetailProps): React.JSX.Element {
   const [fetched, setFetched] = useState<WorkflowCompiled | null>(injectedCompiled ?? null);
 
@@ -381,7 +400,43 @@ export function WorkflowDetail({
     </section>
   );
 
+  const agentsSection = (
+    <section className="entity-block" aria-label="Agent handoff network">
+      <h3 className="entity-block__title">Agent handoff network</h3>
+      <p className="entity-note">
+        Stages remain the dependency and retry units. This view groups them by accountable agent and
+        derives cross-agent handoffs from the underlying stage dependencies.
+      </p>
+      {governanceDraft && onGovernanceDraftChange ? (
+        <>
+          <label className="entity-note">Workflow governor{' '}
+            <select aria-label="Workflow governor" value={governanceDraft.workflow ?? ''} disabled={governanceReadOnly} onChange={(event) => onGovernanceDraftChange({ ...governanceDraft, workflow: event.target.value || null })}>
+              <option value="">Unassigned</option>
+              {governanceOptions.map((agent) => <option key={agent.id} value={agent.id}>{agent.id}</option>)}
+            </select>
+          </label>
+          <WorkflowAgentGraph
+            entry={entry}
+            agents={governanceOptions}
+            draft={governanceDraft}
+            onDraftChange={onGovernanceDraftChange}
+            onOpenAgent={(agentId) => onNavigate?.({ view: 'agents', focus: { kind: 'agent', id: agentId } })}
+            readOnly={governanceReadOnly}
+          />
+          <div className="v-workflow-network__actions">
+            <button type="button" className="mc-btn mc-btn--primary" disabled={!governanceDirty || governanceReadOnly || !onGovernanceSubmit} onClick={onGovernanceSubmit}>
+              Submit ownership plan
+            </button>
+            <span className="entity-note">One source-addressed batch amendment and one human-reviewed PR.</span>
+          </div>
+          {governanceStatus ? <p className="entity-note" role="status" data-testid="workflow-governance-status">{governanceStatus}</p> : null}
+        </>
+      ) : <p className="entity-note">Governance data could not be loaded.</p>}
+    </section>
+  );
+
   const sections: DetailSection[] = [
+    { id: 'agents', label: 'Agents', count: new Set([entry.governedBy, ...entry.stages.map((stage) => stage.governedBy)].filter(Boolean)).size, render: () => agentsSection },
     { id: 'overview', label: 'Overview', attention: !entry.valid, render: () => overview },
     { id: 'stages', label: 'Stages', count: entry.stageCount, render: () => stages },
     { id: 'runs', label: 'Runs', count: runs?.length, render: () => runsSection },

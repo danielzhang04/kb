@@ -33,16 +33,21 @@ import { proposalSnapshotHash } from '../control/store.ts';
 import type { AgentWorkspaceLaunchProvenance, JsonObject } from '../control/types.ts';
 import { instantiateWorkflowDef, parseWorkflowDef, type WorkflowDef } from './defs.ts';
 import { compileWorkflowDef } from './compile.ts';
-import { decodeUtf8, isExactAssignmentAmendment, isSafeAssignmentValue, patchWorkflowAssignment, readCanonicalDefinitionLocation, sourceHash, type AssignmentTarget, type AssignmentValue } from './amendments.ts';
+import { decodeUtf8, isExactAssignmentAmendment, isExactGovernanceAmendment, isSafeAssignmentValue, isSafeGovernanceValue, patchWorkflowAssignment, patchWorkflowGovernance, readCanonicalDefinitionLocation, sourceHash, type AssignmentTarget, type AssignmentValue, type GovernanceValue } from './amendments.ts';
 import type { PendingAssignmentAmendment } from './amendmentStore.ts';
 import { DEFAULT_WORK_BRANCH, DurableRouteError, routeDurable } from '../write/branch.ts';
 import { withOpsTransaction } from '../write/asyncGit.ts';
+import { readDeclaredAgentDetails } from '../agents/roster.ts';
 
 interface WorkflowStagePreview {
   id: string;
+  title: string;
   action: string;
   target: string;
   riskTier: 'T1' | 'T2' | 'T3';
+  /** Durable accountable agent; ownership alone never grants execution authority. */
+  governedBy: string | null;
+  dependsOn: string[];
   /** Authored declaration, not effective routing. Null keeps legacy default routing. */
   declaredAssignment: WorkflowAssignmentPreview | null;
   review: { subjectStageId: string; maxCreatorReworks: number } | null;
@@ -65,6 +70,8 @@ export interface WorkflowDefEntry {
   valid: boolean;
   title: string | null;
   profile: string | null;
+  /** Durable workflow governor, separate from executable manager routing. */
+  governedBy: string | null;
   manager: WorkflowAssignmentPreview | null;
   stageCount: number;
   parameters: string[];
@@ -101,6 +108,7 @@ function invalidEntry(project: string, basename: string, path: string, detail: s
       valid: false,
       title: null,
       profile: null,
+      governedBy: null,
       manager: null,
       stageCount: 0,
       parameters: [],
@@ -203,12 +211,15 @@ export function scanWorkflowDefs(repoRoot: string): ScannedDef[] {
             valid: true,
             title: parsed.value.title,
             profile: parsed.value.profile,
+            governedBy: parsed.value.governedBy ?? null,
             manager: parsed.value.manager ? { ...parsed.value.manager } : null,
             stageCount: parsed.value.stages.length,
             parameters: [...(parsed.value.parameters ?? [])],
             riskTier: highestTier(parsed.value),
             stages: parsed.value.stages.map((stage) => ({
-              id: stage.id, action: stage.action, target: stage.target, riskTier: stage.riskTier,
+              id: stage.id, title: stage.title, action: stage.action, target: stage.target, riskTier: stage.riskTier,
+              governedBy: stage.governedBy ?? null,
+              dependsOn: [...stage.dependsOn],
               declaredAssignment: stage.agentId && stage.profileId
                 ? { agentId: stage.agentId, profileId: stage.profileId } : null,
               review: stage.review ? { subjectStageId: stage.review.subjectStageId, maxCreatorReworks: stage.review.maxCreatorReworks } : null,
@@ -244,6 +255,7 @@ export function scanWorkflowDefs(repoRoot: string): ScannedDef[] {
         valid: false,
         title: null,
         profile: null,
+        governedBy: null,
         manager: null,
         stageCount: 0,
         parameters: [],
@@ -411,6 +423,14 @@ function eligibleAssignmentOptions(repoRoot: string, def: WorkflowDef, role: 'ma
   };
 }
 
+function eligibleGovernanceAgents(repoRoot: string, def: WorkflowDef): Array<{ id: string; role: string | null; description: string | null }> {
+  const environment = loadWorkflowCompileEnvironment(repoRoot);
+  return [...environment.declaredAgents.values()]
+    .filter((declaration) => declaration.projects.includes(def.project))
+    .map((declaration) => ({ id: declaration.id, role: declaration.role, description: declaration.description }))
+    .sort((a, b) => a.id.localeCompare(b.id));
+}
+
 function parseAmendmentBody(body: unknown): { expectedSourceHash: string; target: AssignmentTarget; assignment: AssignmentValue } | null {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
   const value = body as Record<string, unknown>;
@@ -431,6 +451,33 @@ function parseAmendmentBody(body: unknown): { expectedSourceHash: string; target
   } else return null;
   if (!isSafeAssignmentValue(assignment)) return null;
   return { expectedSourceHash: value.expectedSourceHash, target: parsedTarget, assignment };
+}
+
+function parseGovernanceAmendmentBody(body: unknown): { expectedSourceHash: string; governance: GovernanceValue } | null {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+  const value = body as Record<string, unknown>;
+  if (Object.keys(value).some((key) => key !== 'expectedSourceHash' && key !== 'governance')) return null;
+  if (typeof value.expectedSourceHash !== 'string' || !/^[a-f0-9]{64}$/.test(value.expectedSourceHash)) return null;
+  if (!value.governance || typeof value.governance !== 'object' || Array.isArray(value.governance)) return null;
+  const raw = value.governance as Record<string, unknown>;
+  if (Object.keys(raw).some((key) => key !== 'workflow' && key !== 'stages')) return null;
+  if (raw.workflow !== null && typeof raw.workflow !== 'string') return null;
+  if (!raw.stages || typeof raw.stages !== 'object' || Array.isArray(raw.stages)) return null;
+  const stages = raw.stages as Record<string, unknown>;
+  if (Object.values(stages).some((owner) => owner !== null && typeof owner !== 'string')) return null;
+  const governance: GovernanceValue = { workflow: raw.workflow as string | null, stages: stages as Record<string, string | null> };
+  return isSafeGovernanceValue(governance) ? { expectedSourceHash: value.expectedSourceHash, governance } : null;
+}
+
+function validateGovernanceOwners(repoRoot: string, def: WorkflowDef, governance: GovernanceValue): string | null {
+  const declarations = readDeclaredAgentDetails(repoRoot);
+  const owners = new Set([governance.workflow, ...Object.values(governance.stages)].filter((owner): owner is string => owner !== null));
+  for (const owner of owners) {
+    const declaration = declarations.get(owner);
+    if (!declaration) return `governance agent '${owner}' is not declared`;
+    if (!declaration.projects.includes(def.project)) return `governance agent '${owner}' is not declared for project '${def.project}'`;
+  }
+  return null;
 }
 
 async function amendAssignment(
@@ -567,6 +614,101 @@ async function amendAssignment(
   };
 }
 
+/** One source-addressed, batch governance edit. It shares the assignment amendment lock/store so the
+ * two edit classes can never race against the same workflow bytes. */
+async function amendGovernance(
+  ctx: SurfaceContext,
+  sub: string,
+  scanned: ScannedDef,
+  input: { expectedSourceHash: string; governance: GovernanceValue },
+): Promise<LaunchOutcome> {
+  if (!scanned.def || !scanned.entry.sourceHash) return { status: 409, body: { error: 'definition-invalid', detail: scanned.entry.detail } };
+  if (input.expectedSourceHash !== scanned.entry.sourceHash) return { status: 409, body: { error: 'stale-source-hash', sourceHash: scanned.entry.sourceHash } };
+  const ownerProblem = validateGovernanceOwners(ctx.repoRoot, scanned.def, input.governance);
+  if (ownerProblem) return { status: 409, body: { error: 'governance-owner-refused', detail: ownerProblem } };
+  if (!ctx.durableRepoRoot) return { status: 409, body: { error: 'durable-worktree-required' } };
+  const durableRoot = ctx.durableRepoRoot;
+  try {
+    if (realpathSync(resolve(ctx.repoRoot)) === realpathSync(resolve(durableRoot))) return { status: 409, body: { error: 'durable-worktree-required' } };
+  } catch { return { status: 409, body: { error: 'durable-worktree-required' } }; }
+  const existingPending = pendingAmendmentFor(ctx, scanned.entry);
+  if (existingPending.error) return { status: 409, body: { error: 'assignment-amendment-state-invalid' } };
+  if (existingPending.pending) return { status: 409, body: { error: 'assignment-amendment-pending' } };
+  type Prepared = { outcome: LaunchOutcome } | {
+    proposedSourceHash: string;
+    proposalHash: string;
+    oldGovernance: GovernanceValue;
+    riskTier: 'T1' | 'T2' | 'T3';
+    durable: { branch: string; pr: { url?: string; number?: number } };
+  };
+  let prepared: Prepared;
+  try {
+    prepared = await withOpsTransaction(async (): Promise<Prepared> => {
+      const active = readCanonicalDefinitionLocation(ctx.repoRoot, scanned.entry.path);
+      const durableLocation = readCanonicalDefinitionLocation(durableRoot, scanned.entry.path);
+      if (!active || !durableLocation || active.path === durableLocation.path) return { outcome: { status: 409, body: { error: 'definition-path-refused' } } };
+      if (sourceHash(active.bytes) !== input.expectedSourceHash) return { outcome: { status: 409, body: { error: 'stale-source-hash', sourceHash: sourceHash(active.bytes) } } };
+      if (!active.bytes.equals(durableLocation.bytes)) return { outcome: { status: 409, body: { error: 'durable-base-mismatch' } } };
+      const source = decodeUtf8(active.bytes);
+      if (source === null) return { outcome: { status: 409, body: { error: 'definition-not-utf8' } } };
+      const original = parseWorkflowDef(source, { knownProfiles: workflowProfileIds() });
+      if (!original.ok || original.value.project !== scanned.entry.project || original.value.id !== scanned.def!.id) return { outcome: { status: 409, body: { error: 'definition-changed' } } };
+      const patched = patchWorkflowGovernance(source, input.governance);
+      if (!patched) return { outcome: { status: 409, body: { error: 'governance-layout-unsupported' } } };
+      if (patched.source === source) return { outcome: { status: 409, body: { error: 'governance-no-change' } } };
+      const parsed = parseWorkflowDef(patched.source, { knownProfiles: workflowProfileIds() });
+      if (!parsed.ok || parsed.value.project !== scanned.entry.project) return { outcome: { status: 409, body: { error: 'amendment-parse-refused', detail: parsed.ok ? 'definition project no longer matches path project' : parsed.detail } } };
+      if (!isExactGovernanceAmendment(original.value, parsed.value, input.governance, patched.oldGovernance)) return { outcome: { status: 409, body: { error: 'governance-semantic-diff-refused' } } };
+      const environment = loadWorkflowCompileEnvironment(ctx.repoRoot);
+      const beforeCompiled = compileWorkflowDef(original.value, environment);
+      const afterCompiled = compileWorkflowDef(parsed.value, environment);
+      if (!beforeCompiled.ok || !afterCompiled.ok) return { outcome: { status: 409, body: { error: 'governance-compile-refused', detail: !beforeCompiled.ok ? beforeCompiled.detail : afterCompiled.ok ? '' : afterCompiled.detail } } };
+      const beforeHash = proposalContentHash(beforeCompiled.value);
+      const proposalHash = proposalContentHash(afterCompiled.value);
+      if (beforeHash !== proposalHash) return { outcome: { status: 409, body: { error: 'governance-changed-execution-proposal' } } };
+      const proposedSourceHash = sourceHash(Buffer.from(patched.source, 'utf8'));
+      const pending: PendingAssignmentAmendment = { workflowPath: scanned.entry.path, baseSourceHash: input.expectedSourceHash, proposedSourceHash, branch: DEFAULT_WORK_BRANCH, pr: {}, phase: 'prepared' };
+      try { ctx.assignmentAmendmentStore.put(pending); }
+      catch (error) { return { outcome: { status: 500, body: { error: 'assignment-amendment-state-write-failed', detail: error instanceof Error ? error.message : String(error) } } }; }
+      try { writeFileSync(durableLocation.path, patched.source, 'utf8'); }
+      catch (error) { return { outcome: { status: 500, body: { ok: false, status: 'recovery-required', stateStatus: 'prepared', error: 'governance-durable-write-failed', detail: error instanceof Error ? error.message : String(error) } } }; }
+      try {
+        const durable = await routeDurable(durableRoot, scanned.entry.path, { runGit: ctx.saveGit, openPr: ctx.openPr, message: `chore(workflow): amend ${scanned.def!.id} governance` });
+        try { ctx.assignmentAmendmentStore.update({ ...pending, phase: 'audit-pending', pr: durable.pr }); }
+        catch (error) { return { outcome: { status: 500, body: { ok: false, status: 'recovery-required', stateStatus: 'update-failed', error: 'assignment-amendment-state-write-failed', detail: error instanceof Error ? error.message : String(error) } } }; }
+        return { proposedSourceHash, proposalHash, oldGovernance: patched.oldGovernance, riskTier: highestTier(parsed.value), durable };
+      } catch (error) {
+        if (!(error instanceof DurableRouteError) || !error.committed) {
+          writeFileSync(durableLocation.path, durableLocation.bytes);
+          try { ctx.assignmentAmendmentStore.remove(scanned.entry.path); } catch { /* cleanup failure remains fail-closed in the store */ }
+        } else {
+          try { ctx.assignmentAmendmentStore.update({ ...pending, phase: error.pushed ? 'pushed' : 'committed' }); } catch { /* prepared remains blocking */ }
+        }
+        return { outcome: { status: 502, body: { error: 'governance-durable-route-incomplete', status: 'recovery-required', detail: error instanceof Error ? error.message : String(error) } } };
+      }
+    });
+  } catch (error) {
+    return { status: 500, body: { error: 'governance-durable-write-failed', detail: error instanceof Error ? error.message : String(error) } };
+  }
+  if ('outcome' in prepared) return prepared.outcome;
+  try {
+    await auditFn(ctx)(ctx.repoRoot, {
+      action: 'workflow-governance-amendment', owner: sub, target: scanned.entry.path, riskTier: prepared.riskTier,
+      result: 'pending-human-merge', detail: {
+        path: scanned.entry.path, oldSourceHash: input.expectedSourceHash, newSourceHash: prepared.proposedSourceHash,
+        proposalHash: prepared.proposalHash, governance: input.governance, oldGovernance: prepared.oldGovernance,
+        branch: prepared.durable.branch, pr: prepared.durable.pr,
+      },
+    }, { runGit: ctx.opsGit, now: ctx.now });
+  } catch {
+    try { ctx.assignmentAmendmentStore.update({ workflowPath: scanned.entry.path, baseSourceHash: input.expectedSourceHash, proposedSourceHash: prepared.proposedSourceHash, branch: prepared.durable.branch, pr: prepared.durable.pr, phase: 'audit-failed' }); } catch { /* prepared remains blocking */ }
+    return { status: 500, body: { ok: false, status: 'pending-human-merge', auditStatus: 'failed', error: 'governance-amendment-audit-required', baseSourceHash: input.expectedSourceHash, proposedSourceHash: prepared.proposedSourceHash, branch: prepared.durable.branch, pr: prepared.durable.pr } };
+  }
+  try { ctx.assignmentAmendmentStore.update({ workflowPath: scanned.entry.path, baseSourceHash: input.expectedSourceHash, proposedSourceHash: prepared.proposedSourceHash, branch: prepared.durable.branch, pr: prepared.durable.pr, phase: 'pending-human-merge' }); }
+  catch (error) { return { status: 500, body: { ok: false, status: 'recovery-required', error: 'assignment-amendment-state-write-failed', detail: error instanceof Error ? error.message : String(error) } }; }
+  return { status: 202, body: { ok: true, status: 'pending-human-merge', path: scanned.entry.path, baseSourceHash: input.expectedSourceHash, proposedSourceHash: prepared.proposedSourceHash, proposalContentHash: prepared.proposalHash, governance: input.governance, branch: prepared.durable.branch, pr: prepared.durable.pr } };
+}
+
 /** Register the workflow-definition registry routes + the governed one-step launch route. */
 export function registerWorkflows(app: FastifyInstance, ctx: SurfaceContext): void {
   const repoRoot = ctx.repoRoot;
@@ -589,6 +731,7 @@ export function registerWorkflows(app: FastifyInstance, ctx: SurfaceContext): vo
         manager: eligibleAssignmentOptions(repoRoot, scanned.def, 'manager'),
         stages: Object.fromEntries(scanned.def.stages.map((stage) => [stage.id, eligibleAssignmentOptions(repoRoot, scanned.def!, 'worker')])),
       },
+      governanceOptions: eligibleGovernanceAgents(repoRoot, scanned.def),
       compiled: 'error' in preview ? { ok: false, error: preview.error, detail: preview.detail } : {
         ok: true, proposalId: preview.proposalId, contentHash: preview.contentHash,
         manager: preview.proposal.manager, stages: preview.proposal.stages,
@@ -679,6 +822,17 @@ export function registerWorkflows(app: FastifyInstance, ctx: SurfaceContext): vo
       const scanned = findScannedDef(repoRoot, id);
       if (!scanned) return reply.code(404).send({ error: 'not-found' });
       const result = await amendAssignment(ctx, sub, scanned, input);
+      return reply.code(result.status).send(result.body);
+    });
+    scope.post('/api/workflows/:id/governance-amendments', { preHandler }, async (req: FastifyRequest, reply: FastifyReply) => {
+      const sub = subject(req);
+      if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
+      const { id } = req.params as { id: string };
+      const input = parseGovernanceAmendmentBody(req.body);
+      if (!input) return reply.code(400).send({ error: 'invalid-governance-amendment-body' });
+      const scanned = findScannedDef(repoRoot, id);
+      if (!scanned) return reply.code(404).send({ error: 'not-found' });
+      const result = await amendGovernance(ctx, sub, scanned, input);
       return reply.code(result.status).send(result.body);
     });
   });

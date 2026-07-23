@@ -245,3 +245,25 @@
   color: var(--fg-faint);
   line-height: 1.5;
 }
+
+.v-agents__system {
+  margin-top: 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
+}
+
+.v-agents__system > summary {
+  cursor: pointer;
+  padding: 0.8rem 1rem;
+  font-weight: 650;
+}
+
+.v-agents__system[open] > summary {
+  border-bottom: 1px solid var(--border);
+}
+
+.v-agents__system > .v-agents__group-note,
+.v-agents__system > .v-agents__empty {
+  padding-inline: 1rem;
+}

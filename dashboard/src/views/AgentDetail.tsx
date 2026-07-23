@@ -279,11 +279,11 @@ export function AgentDetail({
           </section>
 
           <section className="entity-block" aria-label="Workflow relationships">
-            <h3 className="entity-block__title">Workflows</h3>
+            <h3 className="entity-block__title">Governance</h3>
             {detail.workflows.length ? (
               <ul className="entity-list" data-testid="agent-workflows">
                 {detail.workflows.map((workflow) => (
-                  <li key={workflow.ref}>
+                  <li key={workflow.ref} className="entity-governance">
                     <button
                       type="button"
                       className="entity-row entity-row--link"
@@ -296,10 +296,35 @@ export function AgentDetail({
                       {workflow.relationship ? <span className="entity-row__meta">{workflow.relationship}</span> : null}
                       <span className="entity-row__meta">Open workflow</span>
                     </button>
+                    {workflow.governsWorkflow ? (
+                      <p className="entity-note" data-testid={`agent-governs-workflow-${workflow.ref}`}>
+                        Governs the workflow and its cross-agent handoffs.
+                      </p>
+                    ) : null}
+                    {workflow.stages?.length ? (
+                      <ol className="entity-list" data-testid={`agent-governed-stages-${workflow.ref}`}>
+                        {workflow.stages.map((stage) => (
+                          <li key={stage.id} className="entity-row" data-testid={`agent-governed-stage-${stage.id}`}>
+                            <span className="entity-row__main">{stage.title}</span>
+                            <span className="mc-mono entity-row__ref">{stage.id}</span>
+                            <span className="entity-row__meta">
+                              Input: {stage.dependsOn.length ? stage.dependsOn.join(', ') : 'workflow start'}
+                            </span>
+                            <span className="entity-row__meta">
+                              Output: <span className="mc-mono">{stage.action}</span> to <span className="mc-mono">{stage.target}</span>
+                            </span>
+                            {stage.review ? <span className="entity-row__meta">Reviews {stage.review.subjectStageId}; max {stage.review.maxCreatorReworks} creator reworks</span> : null}
+                            {stage.completionGate ? <span className="entity-row__meta">Gate {stage.completionGate.id}: approval after review pass</span> : null}
+                          </li>
+                        ))}
+                      </ol>
+                    ) : workflow.governsWorkflow ? (
+                      <p className="entity-note">Coordinates this workflow without owning an artifact-producing stage.</p>
+                    ) : null}
                   </li>
                 ))}
               </ul>
-            ) : <p className="entity-note">No workflow relationship is declared.</p>}
+            ) : <p className="entity-note">This agent governs no workflow or workflow stages.</p>}
           </section>
 
           <section className="entity-block" aria-label="How this agent runs">
