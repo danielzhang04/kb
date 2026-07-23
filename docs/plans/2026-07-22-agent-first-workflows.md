@@ -50,10 +50,12 @@ infers FYT ownership from stage names.
 
 ## FYT ownership
 
-- `fyt-runner`: workflow manager; no artifact-producing stage.
+- `fyt-runner`: workflow manager and image-review governor. The conductor merges checker findings and
+  performs the honest stamp; `fyt-checker` is explicitly forbidden from merging or stamping production
+  output.
 - `fyt-preproduction`: idea, research, script, shorts, metadata, shots, motion.
 - `fyt-production`: images, voiceover, audio-plan, render.
-- `fyt-checker`: judge-gate, image-review, verify.
+- `fyt-checker`: judge-gate, verify.
 
 All four declarations remain `runner-bound: false`; no activation, spend, upload, publish, or external
 action is added by this change.

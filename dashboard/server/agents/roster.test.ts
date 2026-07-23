@@ -15,6 +15,7 @@ import {
   readRoles,
   roleFor,
   readDeclaredAgents,
+  executionAssignmentRole,
 } from './roster.ts';
 
 const POLICY = parseYaml(`version: 1
@@ -189,6 +190,20 @@ Notes — inert prose.
 `;
 
 describe('readDeclaredAgents / buildRoster declared source (C7.3)', () => {
+  it.each([
+    ['manage', 'manager'],
+    ['manager', 'manager'],
+    ['work', 'worker'],
+    ['worker', 'worker'],
+    ['inspect', 'worker'],
+    ['scout', 'worker'],
+    ['consolidate', 'worker'],
+    ['human', null],
+    [null, null],
+  ] as const)('normalizes declared role %s only at the execution eligibility boundary', (declared, expected) => {
+    expect(executionAssignmentRole(declared)).toBe(expected);
+  });
+
   it('reads declared agents/*.md frontmatter (id, role, runtime, model, runner-bound, description)', () => {
     const declared = readDeclaredAgents(repoWithAgents({ 'research-worker.md': AGENT_FILE }));
     expect(declared.get('research-worker')).toEqual({

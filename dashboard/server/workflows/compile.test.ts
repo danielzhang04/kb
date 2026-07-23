@@ -145,6 +145,25 @@ describe('compileWorkflowDef', () => {
     expect(canonicalProposal(compiled.value)).toContain('"proposalId":"wf-5497530df05dc94e5ba8b528c2738d84e47666f60b52a076"');
   });
 
+  it('keeps ownership out of compiled routing, proposal identity, and canonical proposal bytes', () => {
+    const governed = {
+      ...SINGLE,
+      governedBy: 'fyt-runner',
+      stages: SINGLE.stages.map((stage) => ({ ...stage, governedBy: 'fyt-preproduction' })),
+    };
+    const before = compileWorkflowDef(SINGLE, { registry: REGISTRY });
+    const after = compileWorkflowDef(governed, { registry: REGISTRY });
+    expect(before.ok).toBe(true);
+    expect(after.ok).toBe(true);
+    if (!before.ok || !after.ok) return;
+    expect(after.value.proposalId).toBe(before.value.proposalId);
+    expect(canonicalProposal(after.value)).toBe(canonicalProposal(before.value));
+    expect(after.value.manager).not.toHaveProperty('assignment');
+    expect(after.value.stages[0]).not.toHaveProperty('assignment');
+    expect(after.value).not.toHaveProperty('governedBy');
+    expect(after.value.stages[0]).not.toHaveProperty('governedBy');
+  });
+
   it('resolves manager and stage assignments into immutable snapshots and routes from the selected profiles', () => {
     const compiled = compileWorkflowDef(ASSIGNED, bindingEnvironment());
     expect(compiled.ok).toBe(true);

@@ -139,6 +139,21 @@ export interface DeclaredAgent {
   projects: string[];
 }
 
+export type ExecutionAssignmentRole = 'manager' | 'worker';
+
+/**
+ * Legacy declaration roles describe an agent's organizational function, while executable profiles use
+ * the closed manager/worker vocabulary. Normalize only at the execution-eligibility boundary: display
+ * and canonical declaration data retain the authored role, and unknown roles remain ineligible.
+ */
+export function executionAssignmentRole(role: string | null): ExecutionAssignmentRole | null {
+  if (role === 'manage' || role === 'manager') return 'manager';
+  if (role === 'work' || role === 'worker' || role === 'inspect' || role === 'scout' || role === 'consolidate') {
+    return 'worker';
+  }
+  return null;
+}
+
 /** The inspectable, server-owned view of one `agents/<id>.md` declaration. */
 export interface DeclaredAgentDetail extends DeclaredAgent {
   /** Canonical repo-relative declaration source, always `agents/<filename>.md`. */

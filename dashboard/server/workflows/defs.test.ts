@@ -151,6 +151,58 @@ describe('parseWorkflowDef', () => {
     });
   });
 
+  describe('compile-neutral governance metadata', () => {
+    it('parses workflow and stage governors as declaration-independent safe ids', () => {
+      const fm = SINGLE
+        .replace('profile: research', 'profile: research\ngovernedBy: not-yet-declared')
+        .replace('    riskTier: T2', '    riskTier: T2\n    governedBy: stage-owner');
+      const result = parseWorkflowDef(md(fm), { knownProfiles: KNOWN });
+      expect(result).toMatchObject({
+        ok: true,
+        value: {
+          governedBy: 'not-yet-declared',
+          stages: [{ governedBy: 'stage-owner' }],
+        },
+      });
+    });
+
+    it.each([
+      ['workflow traversal', 'governedBy: ../runner', ''],
+      ['workflow uppercase', 'governedBy: FYT-Runner', ''],
+      ['workflow empty', 'governedBy: ""', ''],
+      ['stage traversal', '', '    governedBy: ../worker'],
+      ['stage uppercase', '', '    governedBy: FYT-Worker'],
+      ['stage scalar', '', '    governedBy: 7'],
+    ])('rejects unsafe governance ids (%s)', (_label, workflowLine, stageLine) => {
+      const fm = SINGLE
+        .replace('profile: research', `profile: research${workflowLine ? `\n${workflowLine}` : ''}`)
+        .replace('    riskTier: T2', `    riskTier: T2${stageLine ? `\n${stageLine}` : ''}`);
+      expect(parseWorkflowDef(md(fm), { knownProfiles: KNOWN })).toMatchObject({
+        ok: false,
+        detail: expect.stringMatching(/governedBy/),
+      });
+    });
+
+    it('keeps workflow and stage governance closed against nested execution-shaped data', () => {
+      const workflowMapping = SINGLE.replace(
+        'profile: research',
+        'profile: research\ngovernedBy:\n  agentId: fyt-runner',
+      );
+      const stageMapping = SINGLE.replace(
+        '    riskTier: T2',
+        '    riskTier: T2\n    governedBy:\n      agentId: fyt-preproduction',
+      );
+      expect(parseWorkflowDef(md(workflowMapping), { knownProfiles: KNOWN })).toMatchObject({
+        ok: false,
+        detail: expect.stringMatching(/governedBy/),
+      });
+      expect(parseWorkflowDef(md(stageMapping), { knownProfiles: KNOWN })).toMatchObject({
+        ok: false,
+        detail: expect.stringMatching(/governedBy/),
+      });
+    });
+  });
+
   it('parses a closed assigned review checker with readonly override and completion gate', () => {
     const fm = [
       'id: checker', 'project: kb-ops', 'title: Checker', 'profile: research', 'stages:',
