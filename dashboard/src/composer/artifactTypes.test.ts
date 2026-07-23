@@ -245,6 +245,38 @@ describe('composer/artifactTypes — deploy mapping', () => {
     expect(plan.content).not.toContain('model:');
   });
 
+  it('workflow governance emits compile-neutral ownership without execution assignments', () => {
+    const plan = toDeploy('workflow', workflow({
+      governedBy: 'fyt-runner',
+      stages: [{
+        id: 'stage-1', action: 'research', target: 'orgs/kb', workOrder: 'Do the work', riskTier: 'T2', dependsOn: [],
+        governedBy: 'fyt-preproduction',
+      }],
+    }));
+
+    expect(plan.content).toContain('profile: "research"\ngovernedBy: "fyt-runner"\nstages:');
+    expect(plan.content).toContain('  - id: "stage-1"\n    governedBy: "fyt-preproduction"');
+    expect(plan.content).not.toContain('manager:');
+    expect(plan.content).not.toContain('agentId:');
+    expect(plan.content).not.toContain('profileId:');
+    expect(parseWorkflowDef(plan.content, { knownProfiles: new Set(['research']) })).toMatchObject({
+      ok: true,
+      value: { governedBy: 'fyt-runner', stages: [{ governedBy: 'fyt-preproduction' }] },
+    });
+  });
+
+  it('workflow governance accepts only safe declared-agent ids', () => {
+    for (const governedBy of ['', 'UPPER', '../runner', 'runner_name', 'a'.repeat(65)]) {
+      expect(validateDraft('workflow', workflow({ governedBy })).map((problem) => problem.field)).toContain('governedBy');
+      expect(() => toDeploy('workflow', workflow({ governedBy }))).toThrow();
+    }
+    const invalidStage = workflow({ stages: [{
+      id: 'stage-1', action: 'research', target: 'orgs/kb', workOrder: 'Do the work', riskTier: 'T2', dependsOn: [], governedBy: 'bad/owner',
+    }] });
+    expect(validateDraft('workflow', invalidStage).map((problem) => problem.field)).toContain('stages[0].governedBy');
+    expect(() => toDeploy('workflow', invalidStage)).toThrow();
+  });
+
   it('workflow stage requires an all-or-nothing logical agent/profile pair', () => {
     const withAgentOnly = workflow({ stages: [{
       id: 'stage-1', action: 'research', target: 'orgs/kb', workOrder: 'Do the work', riskTier: 'T2', dependsOn: [],

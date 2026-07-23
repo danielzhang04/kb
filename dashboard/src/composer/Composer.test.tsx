@@ -319,6 +319,8 @@ describe('Composer', () => {
 
     const manager = screen.getByLabelText('Workflow manager agent') as HTMLSelectElement;
     const stage = screen.getByLabelText('Stage 1 agent') as HTMLSelectElement;
+    const governor = screen.getByLabelText('Workflow governor') as HTMLSelectElement;
+    const stageGovernor = screen.getByLabelText('Stage 1 governor') as HTMLSelectElement;
     await waitFor(() => expect(manager.options).toHaveLength(2));
 
     expect([...manager.options].map((option) => option.text)).toEqual([
@@ -333,6 +335,18 @@ describe('Composer', () => {
     ]);
     expect([...manager.options].map((option) => option.value)).not.toContain('manager-backup');
     expect([...stage.options].map((option) => option.value)).not.toContain('fyt-runner');
+    expect([...governor.options].map((option) => option.text)).toEqual([
+      'Unassigned governance',
+      'fyt-runner · declared agent',
+      'manager-backup · declared agent',
+      'worker-only · declared agent',
+      'worker-primary · declared agent',
+    ]);
+    expect([...stageGovernor.options].map((option) => option.value)).toEqual([
+      '', 'fyt-runner', 'manager-backup', 'worker-only', 'worker-primary',
+    ]);
+    expect([...governor.options].map((option) => option.value)).not.toContain('other-project');
+    expect([...governor.options].map((option) => option.value)).not.toContain('observed-worker');
     expect(screen.getByTestId('workflow-assignment-note').textContent).toMatch(/do not choose a technical executor/i);
     expect(screen.getByTestId('workflow-assignment-note').textContent).toMatch(/adapter availability/i);
   });
@@ -391,6 +405,36 @@ describe('Composer', () => {
     expect(content).toContain('agentId: "worker-only"');
     expect(content).toContain('profileId: "worker:codex:gpt-5.6-sol"');
     expect(content).not.toContain('owner:');
+    expect(content).not.toContain('runtime:');
+    expect(content).not.toContain('model:');
+  });
+
+  it('selects declared project governance independently without creating execution assignments', async () => {
+    const onDeploy = vi.fn();
+    stubWorkflowRegistries();
+    render(<Composer initialKind="workflow" onDeploy={onDeploy} onBack={vi.fn()} />);
+    fillWorkflowDraft();
+
+    const governor = screen.getByLabelText('Workflow governor') as HTMLSelectElement;
+    await waitFor(() => expect(governor.options).toHaveLength(5));
+    fireEvent.change(governor, { target: { value: 'manager-backup' } });
+    fireEvent.change(screen.getByLabelText('Stage 1 governor'), { target: { value: 'worker-only' } });
+
+    // Neither declared-only agent has a usable execution-manager profile. Governance remains selectable
+    // because it is accountability metadata, not a runner/profile binding.
+    expect((screen.getByLabelText('Workflow manager agent') as HTMLSelectElement).value).toBe('');
+    expect((screen.getByLabelText('Stage 1 agent') as HTMLSelectElement).value).toBe('');
+    const profile = screen.getByLabelText('Execution profile') as HTMLSelectElement;
+    await waitFor(() => expect(profile.disabled).toBe(false));
+    fireEvent.change(profile, { target: { value: 'research' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save definition' }));
+
+    const content = onDeploy.mock.calls[0][0].content as string;
+    expect(content).toContain('governedBy: "manager-backup"');
+    expect(content).toContain('governedBy: "worker-only"');
+    expect(content).not.toContain('manager:');
+    expect(content).not.toContain('agentId:');
+    expect(content).not.toContain('profileId:');
     expect(content).not.toContain('runtime:');
     expect(content).not.toContain('model:');
   });
