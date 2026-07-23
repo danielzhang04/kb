@@ -13,7 +13,7 @@ import { WorkflowDetail, type WorkflowDefEntry } from './WorkflowDetail';
 import { listProposalRevisions, listRuns, type ProposalRevisionMetadataDto, type RunMetadataDto } from '../control/controlClient';
 import { runsForWorkflow, WORKFLOW_COMPOSER_REF } from '../control/entityLinks';
 import type { NavTarget } from '../nav/stack';
-import { initialGovernance, type GovernanceAgentOption, type GovernanceDraft } from './WorkflowAgentGraph';
+import { initialGovernance, UNASSIGNED_GOVERNOR, type GovernanceAgentOption, type GovernanceDraft } from './WorkflowAgentGraph';
 import '../styles/views/workflows.css';
 import '../styles/views/entity.css';
 
@@ -25,6 +25,16 @@ export interface WorkflowDefsIndex {
   items: WorkflowDefEntry[];
 }
 const EMPTY_DEFS: WorkflowDefsIndex = { items: [] };
+
+/** Compact, accountable summary for the roster; the handoff network holds the stage-level detail. */
+export function governanceSummary(entry: WorkflowDefEntry): Array<{ id: string; count: number }> {
+  const counts = new Map<string, number>();
+  for (const stage of entry.stages) {
+    const id = stage.governedBy ?? UNASSIGNED_GOVERNOR;
+    counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+  return [...counts].map(([id, count]) => ({ id, count })).sort((a, b) => a.id.localeCompare(b.id));
+}
 
 function pendingPhaseTruth(phase: string): string {
   if (phase === 'pending-human-merge') return 'Pending human merge.';
@@ -417,7 +427,7 @@ export function Workflows({
               <tr>
                 <th>Definition</th>
                 <th>Profile</th>
-                <th>Stages</th>
+                <th>Governance</th>
                 <th>Valid</th>
                 <th>Launch</th>
               </tr>
@@ -442,13 +452,12 @@ export function Workflows({
                   <td className="v-workflows__cell-profile mc-mono">{d.profile ?? '—'}</td>
                   <td className="v-workflows__cell-stages">
                     {d.valid ? (
-                      <ul className="v-workflows__stage-list">
-                        {d.stages.map((s) => (
-                          <li key={s.id} className="mc-mono">
-                            {s.action} → {s.target} <span className="v-workflows__tier">{s.riskTier}</span>
-                          </li>
+                      <div className="v-workflows__governance-summary" data-testid={`workflow-governance-summary-${d.ref}`}>
+                        {d.governedBy ? <span className="entity-chip mc-mono">governor: {d.governedBy}</span> : <span className="entity-chip">no workflow governor</span>}
+                        {governanceSummary(d).map(({ id, count }) => (
+                          <span key={id} className="entity-chip mc-mono">{id === UNASSIGNED_GOVERNOR ? 'unassigned' : id}: {count}</span>
                         ))}
-                      </ul>
+                      </div>
                     ) : (
                       '—'
                     )}

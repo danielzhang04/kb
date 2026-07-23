@@ -69,6 +69,12 @@ const SNAPSHOT: PlaneAIndex = {
   orgStates: [],
 };
 
+// The primary roster is declaration-only; historical card/ledger owners are deliberately absent.
+const PRIMARY_ROSTER: AgentRosterEntry[] = [
+  entry({ id: 'claude-m1', declared: true, working: true, current: { action: 'ship-dashboard', id: 'card-77' }, cardCount: 2, projects: ['kb'] }),
+  entry({ id: 'codex-a', declared: true, cardCount: 1, projects: ['atlas', 'kb'], runnerBound: true, declaredRuntime: 'codex' }),
+];
+
 beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
 });
@@ -96,7 +102,7 @@ describe('deriveRoster', () => {
 
 describe('Agents view', () => {
   it('renders the roster from a snapshot: working agent shows its current card + working dot', () => {
-    render(<Agents snapshot={SNAPSHOT} />);
+    render(<Agents snapshot={SNAPSHOT} roster={PRIMARY_ROSTER} />);
 
     expect(screen.getByLabelText('Agents view')).toBeTruthy();
     const row = screen.getByTestId('agent-row-claude-m1');
@@ -131,7 +137,7 @@ describe('Agents view', () => {
   } as const;
 
   it('renders a live effective-model chip per agent with its provenance tag (R2.2)', () => {
-    render(<Agents snapshot={SNAPSHOT} routing={ROUTING as never} sessionToken="tok" />);
+    render(<Agents snapshot={SNAPSHOT} roster={PRIMARY_ROSTER} routing={ROUTING as never} sessionToken="tok" />);
     const row = screen.getByTestId('agent-row-claude-m1');
     expect(within(row).getByText('claude-opus-4-8')).toBeTruthy();
     expect(within(row).getByText('policy')).toBeTruthy();
@@ -141,7 +147,7 @@ describe('Agents view', () => {
   });
 
   it('shows a Clear-override affordance only when the agent has an override, after opening the popover', () => {
-    render(<Agents snapshot={SNAPSHOT} routing={ROUTING as never} sessionToken="tok" />);
+    render(<Agents snapshot={SNAPSHOT} roster={PRIMARY_ROSTER} routing={ROUTING as never} sessionToken="tok" />);
     fireEvent.click(screen.getByTestId('agent-codex-a-routing-chip'));
     expect(screen.getByTestId('agent-codex-a-routing-clear')).toBeTruthy();
     // The policy-sourced agent has no clear affordance.
@@ -150,7 +156,7 @@ describe('Agents view', () => {
   });
 
   it('is fail-closed without a session: the chip is disabled and a sign-in nudge shows', () => {
-    render(<Agents snapshot={SNAPSHOT} routing={ROUTING as never} />);
+    render(<Agents snapshot={SNAPSHOT} roster={PRIMARY_ROSTER} routing={ROUTING as never} />);
     const chip = screen.getByTestId('agent-claude-m1-routing-chip');
     expect((chip as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getAllByTestId('agent-claude-m1-routing-nudge').length).toBeGreaterThan(0);
@@ -194,10 +200,9 @@ describe('Agents view', () => {
       expect(within(bound).getByText('runner-bound')).toBeTruthy();
       expect(within(bound).queryByText('no runner')).toBeNull();
       // Not declared, but a registry default_worker → a runtime routing fact, not a declaration claim.
-      const dw = within(screen.getByTestId('agent-row-worker-desktop')).getByTestId('agent-binding-worker-desktop');
-      expect(within(dw).getByText('observed')).toBeTruthy();
-      expect(within(dw).getByText('runtime default')).toBeTruthy();
-      expect(within(dw).queryByText('runner-bound')).toBeNull();
+      const dw = screen.getByTestId('system-worker-worker-desktop');
+      expect(dw.textContent).toContain('runtime default');
+      expect(dw.textContent).toContain('queue-addressable');
     });
 
     it('keeps the existing per-agent routing control rendering for declared agents', () => {
@@ -207,20 +212,19 @@ describe('Agents view', () => {
       expect((chip as HTMLButtonElement).disabled).toBe(false);
     });
 
-    it('puts definitions before observed runtime identities without dropping either roster source', () => {
+    it('keeps observed identities out of the primary roster and puts system workers behind the disclosure', () => {
       render(<Agents roster={DECLARED_ROSTER} routing={ROUTING as never} sessionToken="tok" />);
 
-      const declared = screen.getByRole('region', { name: /Declared agents/ });
-      const observed = screen.getByRole('region', { name: /Observed runtime identities/ });
+      const declared = screen.getByRole('region', { name: /Your agents/ });
       expect(within(declared).getByTestId('agent-row-composer-scribe')).toBeTruthy();
-      expect(within(observed).getByTestId('agent-row-worker-desktop')).toBeTruthy();
-      expect(within(observed).queryByTestId('agent-row-composer-scribe')).toBeNull();
+      expect(screen.queryByTestId('agent-row-worker-desktop')).toBeNull();
+      expect(screen.getByTestId('system-workers')).toBeTruthy();
     });
   });
 
   it('degrades to a calm empty state when no agents are on the board', () => {
     render(<Agents snapshot={{ cards: {}, ledgers: EMPTY_LEDGERS, orgStates: [] }} />);
-    expect(screen.getByText('No declared agents or observed runtime identities are on the board.')).toBeTruthy();
+    expect(screen.getByText('No user-created agents are registered.')).toBeTruthy();
     expect(screen.queryByRole('table')).toBeNull();
   });
 });

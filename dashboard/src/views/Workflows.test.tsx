@@ -8,7 +8,8 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const definition = (over: Partial<{
   ref: string; project: string; path: string; sourceHash: string | null; valid: boolean; title: string | null; profile: string | null;
   parameters: string[];
-  stageCount: number; riskTier: string | null; stages: Array<{ id: string; action: string; target: string; riskTier: string }>;
+  stageCount: number; riskTier: string | null; stages: Array<{ id: string; action: string; target: string; riskTier: string; governedBy?: string | null }>;
+  governedBy: string | null;
   detail: string | null;
   pendingAmendment: { workflowPath: string; baseSourceHash: string; proposedSourceHash: string; branch: string; pr: { url?: string }; phase: string } | null;
 }> = {}) => ({
@@ -31,13 +32,15 @@ describe('Workflows view', () => {
     expect(screen.queryByText(/workflow-v1|No workflows registered yet/i)).toBeNull();
   });
 
-  it('uses only the canonical org-definition list and exposes its stage preview', () => {
+  it('uses only the canonical org-definition list and exposes compact governor, per-agent, and unassigned counts', () => {
     render(<Workflows definitions={{ items: [definition()] }} />);
 
     const section = screen.getByTestId('workflow-defs');
     expect(within(section).getByText('Research brief (cited)')).toBeTruthy();
     expect(within(section).getByText('research')).toBeTruthy();
-    expect(within(section).getByText(/research:web-brief → orgs\/kb-ops\/output/)).toBeTruthy();
+    const summary = screen.getByTestId('workflow-governance-summary-research-brief');
+    expect(summary.textContent).toContain('no workflow governor');
+    expect(summary.textContent).toContain('unassigned: 1');
     expect(within(section).getByText('valid')).toBeTruthy();
     expect(within(section).getByRole('button', { name: 'Launch' })).toBeTruthy();
     expect(screen.queryByText('Run now')).toBeNull();
@@ -75,7 +78,7 @@ describe('Workflows view', () => {
   it('collects declared video-run parameters and sends the exact closed source-addressed launch body', async () => {
     const fetchMock = vi.fn(async () => ({ ok: true, status: 202, json: async () => ({ runRef: 'video-1', activationGated: true }) } as Response));
     vi.stubGlobal('fetch', fetchMock);
-    render(<Workflows sessionToken="tok" definitions={{ items: [definition({ ref: 'video-run', title: 'Video run', parameters: ['channel', 'slug'] })] }} />);
+    render(<Workflows activeSectionId="overview" sessionToken="tok" definitions={{ items: [definition({ ref: 'video-run', title: 'Video run', parameters: ['channel', 'slug'] })] }} />);
     fireEvent.click(screen.getByRole('button', { name: /open video run detail/i }));
     const launch = screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement;
     expect(launch.disabled).toBe(true);
@@ -98,7 +101,7 @@ describe('Workflows view', () => {
       throw new Error(`unexpected ${url} ${init?.method}`);
     });
     vi.stubGlobal('fetch', fetchMock);
-    render(<Workflows sessionToken="tok" definitions={{ items: [definition()] }} />);
+    render(<Workflows activeSectionId="overview" sessionToken="tok" definitions={{ items: [definition()] }} />);
     fireEvent.click(screen.getByRole('button', { name: /open research brief/i }));
     const assignment = await screen.findByRole('combobox', { name: 'Manager assignment' });
     fireEvent.change(assignment, { target: { value: '["bound-manager","manager:claude:claude-opus-4-8"]' } });
@@ -111,7 +114,7 @@ describe('Workflows view', () => {
   });
 
   it('renders persisted amendment phases truthfully rather than calling every state pending human merge', () => {
-    render(<Workflows definitions={{ items: [
+    render(<Workflows activeSectionId="overview" definitions={{ items: [
       definition({ pendingAmendment: { workflowPath: 'orgs/kb-ops/workflows/research-brief.md', baseSourceHash: 'a'.repeat(64), proposedSourceHash: 'b'.repeat(64), branch: 'claude/m1-dashboard', pr: {}, phase: 'audit-pending' } }),
       definition({ ref: 'prepared', title: 'Prepared', path: 'orgs/kb-ops/workflows/prepared.md', pendingAmendment: { workflowPath: 'orgs/kb-ops/workflows/prepared.md', baseSourceHash: 'a'.repeat(64), proposedSourceHash: 'c'.repeat(64), branch: 'claude/m1-dashboard', pr: {}, phase: 'prepared' } }),
     ] }} />);
@@ -144,5 +147,29 @@ describe('Workflows view', () => {
     expect(keys[0]).toMatch(/^workflow-launch:research-brief:/);
     expect(keys[1]).toMatch(/^workflow-launch:research-brief:/);
     expect(keys[1]).not.toBe(keys[0]);
+  });
+
+  it('keeps ownership drops local, submits one batch, locks launch in flight, and reports a stale refusal', async () => {
+    vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
+    let resolveGovernance: ((response: Response) => void) | undefined;
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/workflows/research-brief') return Promise.resolve({ ok: true, status: 200, json: async () => ({ governanceOptions: [{ id: 'writer', role: 'worker', description: null }] }) } as Response);
+      if (url.endsWith('/governance-amendments')) return new Promise<Response>((resolve) => { resolveGovernance = resolve; });
+      throw new Error(`unexpected ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<Workflows sessionToken="tok" definitions={{ items: [definition({ stages: [{ id: 'brief', action: 'research:web-brief', target: 'orgs/kb-ops/output', riskTier: 'T2' }] })] }} />);
+    fireEvent.click(screen.getByRole('button', { name: /open research brief/i }));
+    const governor = await screen.findByLabelText('Workflow governor');
+    fireEvent.change(governor, { target: { value: 'writer' } });
+    const submit = screen.getByRole('button', { name: 'Submit ownership plan' }) as HTMLButtonElement;
+    fireEvent.click(submit);
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/governance-amendments'))).toHaveLength(1);
+    expect(submit.disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/assignment-amendments'))).toBe(false);
+    resolveGovernance?.({ ok: false, status: 409, json: async () => ({ status: 'stale-source', detail: 'definition source changed' }) } as Response);
+    expect((await screen.findByTestId('workflow-governance-status')).textContent).toContain('Refused: definition source changed');
   });
 });
