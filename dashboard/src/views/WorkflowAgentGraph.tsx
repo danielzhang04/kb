@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Background,
   Controls,
@@ -57,8 +57,9 @@ function GovernorNode({ data }: NodeProps<GovernorNodeData>): React.JSX.Element 
             type="button"
             key={stage.id}
             draggable={!data.readOnly}
-            className="v-workflow-agent__stage"
+            className="v-workflow-agent__stage nodrag nopan"
             data-testid={`workflow-stage-chip-${stage.id}`}
+            onPointerDown={(event) => event.stopPropagation()}
             onDragStart={(event) => {
               event.stopPropagation();
               event.dataTransfer.setData('application/x-kb-workflow-stage', stage.id);
@@ -82,6 +83,14 @@ export function initialGovernance(entry: WorkflowDefEntry): GovernanceDraft {
   return {
     workflow: entry.governedBy ?? null,
     stages: Object.fromEntries(entry.stages.map((stage) => [stage.id, stage.governedBy ?? null])),
+  };
+}
+
+/** A persisted draft can predate a newly-added stage.  Missing keys mean unassigned, never invisible. */
+export function normalizeGovernance(entry: WorkflowDefEntry, draft: GovernanceDraft): GovernanceDraft {
+  return {
+    workflow: draft.workflow ?? null,
+    stages: Object.fromEntries(entry.stages.map((stage) => [stage.id, draft.stages[stage.id] ?? null])),
   };
 }
 
@@ -121,43 +130,64 @@ export function WorkflowAgentGraph({ entry, agents, draft, onDraftChange, onOpen
   onOpenAgent?: (agentId: string) => void;
   readOnly?: boolean;
 }): React.JSX.Element {
-  const referenced = new Set([draft.workflow, ...Object.values(draft.stages)].filter((id): id is string => id !== null));
+  const normalizedDraft = useMemo(() => normalizeGovernance(entry, draft), [entry.stages, draft]);
+  const referenced = new Set([normalizedDraft.workflow, ...Object.values(normalizedDraft.stages)].filter((id): id is string => id !== null));
   const byId = new Map(agents.map((agent) => [agent.id, agent]));
   const nodeIds = [...new Set([...agents.map((agent) => agent.id), ...referenced, UNASSIGNED_GOVERNOR])];
-  const [selected, setSelected] = useState(draft.workflow ?? nodeIds[0] ?? UNASSIGNED_GOVERNOR);
-  const onDropStage = (stageId: string, governor: string | null): void => {
-    if (readOnly || !(stageId in draft.stages)) return;
-    onDraftChange({ ...draft, stages: { ...draft.stages, [stageId]: governor } });
+  const visibleNodeIds = nodeIds.filter((id) => id !== UNASSIGNED_GOVERNOR || Object.values(normalizedDraft.stages).some((owner) => owner === null));
+  const [selected, setSelected] = useState(normalizedDraft.workflow ?? visibleNodeIds[0] ?? UNASSIGNED_GOVERNOR);
+  const positions = useRef(new Map<string, { x: number; y: number }>());
+  const onDropStage = useCallback((stageId: string, governor: string | null): void => {
+    if (readOnly || !entry.stages.some((stage) => stage.id === stageId)) return;
+    onDraftChange({ ...normalizedDraft, stages: { ...normalizedDraft.stages, [stageId]: governor } });
     setSelected(governor ?? UNASSIGNED_GOVERNOR);
-  };
-  const projectedNodes = useMemo<Node<GovernorNodeData>[]>(() => nodeIds
-    .filter((id) => id !== UNASSIGNED_GOVERNOR || Object.values(draft.stages).some((owner) => owner === null))
+  }, [entry.stages, normalizedDraft, onDraftChange, readOnly]);
+  // A selection may become invalid after a drop or a server refresh.  Keep the inspector on a real node.
+  useEffect(() => {
+    if (!visibleNodeIds.includes(selected)) setSelected(visibleNodeIds[0] ?? UNASSIGNED_GOVERNOR);
+  }, [selected, visibleNodeIds.join('\u0000')]);
+  const projectedNodes = useMemo<Node<GovernorNodeData>[]>(() => visibleNodeIds
     .map((id, index) => ({
       id,
       type: 'governor',
-      position: nodePosition(index),
+      position: positions.current.get(id) ?? nodePosition(index),
       data: {
         id,
         role: byId.get(id)?.role ?? null,
-        stages: entry.stages.filter((stage) => (draft.stages[stage.id] ?? UNASSIGNED_GOVERNOR) === id),
-        workflowGovernor: draft.workflow === id,
+        stages: entry.stages.filter((stage) => (normalizedDraft.stages[stage.id] ?? UNASSIGNED_GOVERNOR) === id),
+        workflowGovernor: normalizedDraft.workflow === id,
         selected: selected === id,
         readOnly,
         onSelect: setSelected,
         onDropStage,
       },
-    })), [agents, draft, entry.stages, readOnly, selected]);
+    })), [agents, normalizedDraft, entry.stages, readOnly, selected, visibleNodeIds.join('\u0000')]);
   const [nodes, setNodes, onNodesChange] = useNodesState(projectedNodes);
-  // Ownership changes rebuild node contents while ReactFlow retains positions after ordinary node drags.
-  useEffect(() => setNodes((current) => projectedNodes.map((next) => ({ ...next, position: current.find((node) => node.id === next.id)?.position ?? next.position }))), [projectedNodes, setNodes]);
+  const keepPosition = useCallback((changes: Parameters<typeof onNodesChange>[0]) => {
+    for (const change of changes) {
+      if (change.type === 'position' && change.position) positions.current.set(change.id, change.position);
+    }
+    onNodesChange(changes);
+  }, [onNodesChange]);
+  // Ownership changes replace node data while the durable local position map survives every projection.
+  useEffect(() => setNodes((current) => {
+    const unchanged = current.length === projectedNodes.length && current.every((node, index) => {
+      const next = projectedNodes[index];
+      return next && node.id === next.id
+        && (node.data as GovernorNodeData).selected === next.data.selected
+        && (node.data as GovernorNodeData).stages === next.data.stages
+        && node.position.x === next.position.x && node.position.y === next.position.y;
+    });
+    return unchanged ? current : projectedNodes;
+  }), [projectedNodes, setNodes]);
   const selectedId = selected === UNASSIGNED_GOVERNOR ? null : selected;
-  const selectedStages = entry.stages.filter((stage) => (draft.stages[stage.id] ?? null) === selectedId);
+  const selectedStages = entry.stages.filter((stage) => (normalizedDraft.stages[stage.id] ?? null) === selectedId);
 
   return (
     <div className="v-workflow-network">
       <div className="v-workflow-network__canvas" data-testid="workflow-agent-network">
         <ReactFlowProvider>
-          <ReactFlow nodes={nodes} edges={governanceEdges(entry, draft)} nodeTypes={NODE_TYPES} onNodesChange={onNodesChange} fitView nodesDraggable>
+          <ReactFlow nodes={nodes} edges={governanceEdges(entry, normalizedDraft)} nodeTypes={NODE_TYPES} onNodesChange={keepPosition} fitView nodesDraggable>
             <Background gap={18} size={1} /><Controls showInteractive={false} />
           </ReactFlow>
         </ReactFlowProvider>
@@ -174,7 +204,7 @@ export function WorkflowAgentGraph({ entry, agents, draft, onDraftChange, onOpen
             <p><strong>Output</strong> <span className="mc-mono">{stage.action}</span> to <span className="mc-mono">{stage.target}</span></p>
             {stage.review ? <p><strong>Review</strong> {stage.review.subjectStageId}; max {stage.review.maxCreatorReworks} reworks</p> : null}
             {stage.completionGate ? <p><strong>Gate</strong> {stage.completionGate.id}: approval after review pass</p> : null}
-            {!readOnly ? <label>Governed by <select aria-label={`${stage.id} governed by`} value={draft.stages[stage.id] ?? ''} onChange={(event) => onDropStage(stage.id, event.target.value || null)}><option value="">Unassigned</option>{agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.id}</option>)}</select></label> : null}
+            {!readOnly ? <label>Governed by <select aria-label={`${stage.id} governed by`} value={normalizedDraft.stages[stage.id] ?? ''} onChange={(event) => onDropStage(stage.id, event.target.value || null)}><option value="">Unassigned</option>{agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.id}</option>)}</select></label> : null}
           </section>
         )) : <p className="entity-note">No stages in this node.</p>}
       </aside>

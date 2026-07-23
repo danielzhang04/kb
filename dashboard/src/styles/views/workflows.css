@@ -202,3 +202,76 @@
   color: var(--fg-faint);
   font-size: var(--text-xs);
 }
+
+/* ---- Agent handoff network ------------------------------------------- */
+.v-workflow-network {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(16rem, 22rem);
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.v-workflow-network__canvas {
+  min-height: 32rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-sunken);
+}
+
+.v-workflow-network__canvas:focus-within,
+.v-workflow-network__inspector:focus-within {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 2px;
+}
+
+.v-workflow-network__inspector {
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
+}
+
+.v-workflow-agent {
+  width: 21rem;
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-left: 2px solid transparent;
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
+  cursor: pointer;
+}
+
+.v-workflow-agent--selected { border-left-color: var(--accent-strong); background: var(--accent-quiet); }
+.v-workflow-agent--unassigned { border-style: dashed; }
+.v-workflow-agent__head, .v-workflow-agent__stages, .v-workflows__governance-summary { display: flex; gap: var(--space-1); flex-wrap: wrap; align-items: center; }
+.v-workflow-agent__head { justify-content: space-between; margin-bottom: var(--space-2); }
+.v-workflow-agent__stage {
+  display: inline-flex;
+  gap: var(--space-1);
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.2rem 0.35rem;
+  color: var(--fg-primary);
+  background: var(--bg-elevated);
+  cursor: grab;
+}
+.v-workflow-agent__stage:focus-visible, .v-workflow-network select:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 2px; }
+.v-workflow-agent__stage:active { cursor: grabbing; }
+.v-workflow-network__stage-detail { padding: var(--space-2) 0; border-top: 1px solid var(--border); }
+.v-workflow-network__stage-detail h5, .v-workflow-network__stage-detail p { margin: 0 0 var(--space-1); }
+.v-workflow-network__actions { display: flex; gap: var(--space-3); align-items: center; flex-wrap: wrap; margin-top: var(--space-3); }
+.v-workflows__governance-summary { font-size: var(--text-xs); }
+.v-workflows__governance-summary .entity-chip { white-space: nowrap; }
+
+@media (max-width: 820px) {
+  .v-workflow-network { grid-template-columns: 1fr; }
+  .v-workflow-network__canvas { min-height: 25rem; }
+  .v-workflow-agent { width: min(19rem, calc(100vw - 5rem)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .v-workflows__row, .v-workflow-agent, .v-workflow-agent__stage { transition: none; }
+}

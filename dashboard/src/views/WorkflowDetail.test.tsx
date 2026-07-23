@@ -7,13 +7,16 @@
  * string and the trail ended there. That path is pinned end to end here — through the real join, not a
  * stubbed run list — so a regression in either the un-drop or the join fails a test.
  */
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { Workflows } from './Workflows';
 import { WorkflowDetail, type WorkflowDefEntry } from './WorkflowDetail';
 import type { ProposalRevisionMetadataDto, RunMetadataDto } from '../control/controlClient';
 
 afterEach(cleanup);
+beforeEach(() => {
+  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
+});
 
 const def = (over: Partial<WorkflowDefEntry> & { ref: string }): WorkflowDefEntry => ({
   project: 'kb',
@@ -195,6 +198,7 @@ describe('fields the tables never rendered', () => {
   it('renders the invalid reason as readable text instead of a title= tooltip', () => {
     render(
       <WorkflowDetail
+        activeSectionId="overview"
         entry={def({ ref: 'kb~broken.md', valid: false, detail: 'stage "render" depends on unknown stage "mix"' })}
         compiled={null}
       />,
@@ -205,7 +209,7 @@ describe('fields the tables never rendered', () => {
   });
 
   it('renders the definition-level risk tier', () => {
-    render(<WorkflowDetail entry={def({ ref: 'kb~video.md', riskTier: 'T3' })} compiled={null} />);
+    render(<WorkflowDetail activeSectionId="overview" entry={def({ ref: 'kb~video.md', riskTier: 'T3' })} compiled={null} />);
     expect(screen.getByTestId('workflow-facts').textContent).toContain('T3');
   });
 
@@ -278,6 +282,7 @@ describe('fields the tables never rendered', () => {
         }}
       />,
     );
+    fireEvent.click(screen.getByTestId('entity-tab-overview'));
     expect(screen.getByTestId('workflow-manager-routing').textContent).toContain('manager-a · manager:claude:claude-opus-4-8');
     expect(screen.getByTestId('workflow-manager-routing').textContent).toContain('claude/claude-opus-4-8');
     expect(screen.getByTestId('workflow-manager-routing').textContent).toContain('m'.repeat(64));
@@ -294,6 +299,7 @@ describe('fields the tables never rendered', () => {
         compiled={{ ok: false, error: 'assigned-agent-not-runner-bound', detail: "assigned agent 'worker-a' is not runner-bound" }}
       />,
     );
+    fireEvent.click(screen.getByTestId('entity-tab-overview'));
     expect(screen.getByTestId('workflow-compile-unavailable').textContent).toContain("assigned agent 'worker-a' is not runner-bound");
     expect(screen.getByTestId('workflow-manager-routing').textContent).toContain('unassigned');
     fireEvent.click(screen.getByTestId('entity-tab-stages'));
