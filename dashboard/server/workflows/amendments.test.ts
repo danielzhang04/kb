@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { isExactAssignmentAmendment, patchWorkflowAssignment } from './amendments.ts';
+import {
+  isExactAssignmentAmendment,
+  isExactGovernanceAmendment,
+  patchWorkflowAssignment,
+  patchWorkflowGovernance,
+} from './amendments.ts';
 import { parseWorkflowDef } from './defs.ts';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -19,7 +24,7 @@ const VIDEO_RUN = [
   '    dependsOn: []',
   '  - id: script',
   '    title: Script',
-  '    action: write:script',
+  '    action: draft:script',
   '    target: orgs/faceless-youtube/output',
   '    workOrder: write it',
   '    dependsOn: [research]',
@@ -67,7 +72,7 @@ describe('patchWorkflowAssignment', () => {
   });
 
   it('proves the parsed target values as well as every non-target semantic field', () => {
-    const semanticSource = VIDEO_RUN.replace('    action: write:script', '    action: research:brief');
+    const semanticSource = VIDEO_RUN.replace('    action: draft:script', '    action: research:brief');
     const patched = patchWorkflowAssignment(semanticSource, { kind: 'stage', stageId: 'script' }, { agentId: 'writer', profileId: 'worker:claude:claude-sonnet-5' });
     const before = parseWorkflowDef(semanticSource); const after = parseWorkflowDef(patched!.source);
     expect(before.ok && after.ok).toBe(true);
@@ -84,5 +89,112 @@ describe('patchWorkflowAssignment', () => {
     const patched = patchWorkflowAssignment(actual, { kind: 'stage', stageId: 'research' }, { agentId: 'writer', profileId: 'worker:claude:claude-sonnet-5' });
     expect(patched).not.toBeNull();
     expect(patched!.source.replace(/    agentId: writer\r?\n    profileId: worker:claude:claude-sonnet-5\r?\n/, '')).toBe(actual);
+  });
+});
+
+describe('patchWorkflowGovernance', () => {
+  const OWNED = {
+    workflow: 'fyt-runner',
+    stages: { research: 'fyt-preproduction', script: 'fyt-checker' },
+  };
+
+  it('adds and clears one complete governance snapshot without changing any other byte', () => {
+    const patched = patchWorkflowGovernance(VIDEO_RUN, OWNED);
+    expect(patched).not.toBeNull();
+    expect(patched?.oldGovernance).toEqual({
+      workflow: null,
+      stages: { research: null, script: null },
+    });
+    expect(patched?.source).toContain('profile: producer\ngovernedBy: fyt-runner\nstages:');
+    expect(patched?.source).toContain('  - id: research\n    governedBy: fyt-preproduction\n');
+    expect(patched?.source).toContain('  - id: script\n    governedBy: fyt-checker\n');
+    expect(patched?.source.endsWith('---\n# body comment stays byte-for-byte\nbody\n')).toBe(true);
+    expect(patchWorkflowGovernance(patched!.source, {
+      workflow: null,
+      stages: { research: null, script: null },
+    })?.source).toBe(VIDEO_RUN);
+  });
+
+  it('preserves CRLF and unrelated comments while replacing existing ownership', () => {
+    const source = VIDEO_RUN
+      .replace('profile: producer', 'profile: producer\n# workflow comment\ngovernedBy: old-runner')
+      .replace('  - id: research', '  - id: research\n    governedBy: old-worker')
+      .replace(/\n/g, '\r\n');
+    const patched = patchWorkflowGovernance(source, {
+      workflow: 'new-runner',
+      stages: { research: 'new-worker', script: null },
+    });
+    expect(patched?.oldGovernance).toEqual({
+      workflow: 'old-runner',
+      stages: { research: 'old-worker', script: null },
+    });
+    expect(patched?.source).toContain('# workflow comment\r\ngovernedBy: new-runner\r\nstages:');
+    expect(patched?.source).toContain('  - id: research\r\n    governedBy: new-worker\r\n');
+    expect(patched?.source.replace(/\r\n/g, '')).not.toContain('\n');
+    expect(patched?.source.endsWith('---\r\n# body comment stays byte-for-byte\r\nbody\r\n')).toBe(true);
+  });
+
+  it('requires the exact closed stage snapshot and rejects unsafe ownership values', () => {
+    expect(patchWorkflowGovernance(VIDEO_RUN, {
+      workflow: 'fyt-runner',
+      stages: { research: 'fyt-preproduction' },
+    })).toBeNull();
+    expect(patchWorkflowGovernance(VIDEO_RUN, {
+      workflow: 'fyt-runner',
+      stages: { research: 'fyt-preproduction', script: 'fyt-checker', extra: null },
+    })).toBeNull();
+    expect(patchWorkflowGovernance(VIDEO_RUN, {
+      workflow: '../runner',
+      stages: { research: null, script: null },
+    })).toBeNull();
+    expect(patchWorkflowGovernance(VIDEO_RUN, {
+      workflow: null,
+      stages: { research: 'bad\n    riskTier: T3', script: null },
+    })).toBeNull();
+  });
+
+  it('normalizes safe JSON-quoted owners but refuses comments, duplicates, and ambiguous layouts', () => {
+    const commented = VIDEO_RUN.replace('profile: producer', 'profile: producer\n# governedBy: preserve-this');
+    expect(patchWorkflowGovernance(commented, OWNED)).toBeNull();
+    const stageComment = VIDEO_RUN.replace('  - id: script', '  - id: script\n    # governedBy: preserve-this');
+    expect(patchWorkflowGovernance(stageComment, OWNED)).toBeNull();
+    const duplicate = VIDEO_RUN.replace('profile: producer', 'profile: producer\ngovernedBy: first\ngovernedBy: second');
+    expect(patchWorkflowGovernance(duplicate, OWNED)).toBeNull();
+    const quoted = VIDEO_RUN
+      .replace('profile: producer', 'profile: producer\ngovernedBy: "old-runner"')
+      .replace('  - id: research', '  - id: research\n    governedBy: "old-worker"');
+    const normalized = patchWorkflowGovernance(quoted, OWNED);
+    expect(normalized?.oldGovernance).toEqual({ workflow: 'old-runner', stages: { research: 'old-worker', script: null } });
+    expect(normalized?.source).toContain('governedBy: fyt-runner');
+    expect(normalized?.source).toContain('    governedBy: fyt-preproduction');
+    const scalar = VIDEO_RUN.replace('profile: producer', 'profile: producer\ngovernedBy: |\n  prose-owner');
+    expect(patchWorkflowGovernance(scalar, OWNED)).toBeNull();
+  });
+
+  it('proves the old/new ownership snapshot and rejects every non-governance semantic change', () => {
+    const patched = patchWorkflowGovernance(VIDEO_RUN, OWNED);
+    const before = parseWorkflowDef(VIDEO_RUN);
+    const after = parseWorkflowDef(patched!.source);
+    expect(before.ok && after.ok).toBe(true);
+    if (!before.ok || !after.ok) return;
+    expect(isExactGovernanceAmendment(before.value, after.value, OWNED, patched!.oldGovernance)).toBe(true);
+    expect(isExactGovernanceAmendment(before.value, after.value, OWNED, {
+      workflow: 'wrong-old',
+      stages: { research: null, script: null },
+    })).toBe(false);
+    const changedAction = {
+      ...after.value,
+      stages: after.value.stages.map((stage) => (
+        stage.id === 'script' ? { ...stage, action: 'research:changed' } : stage
+      )),
+    };
+    expect(isExactGovernanceAmendment(before.value, changedAction, OWNED, patched!.oldGovernance)).toBe(false);
+    const changedOwner = {
+      ...after.value,
+      stages: after.value.stages.map((stage) => (
+        stage.id === 'script' ? { ...stage, governedBy: 'other-checker' } : stage
+      )),
+    };
+    expect(isExactGovernanceAmendment(before.value, changedOwner, OWNED, patched!.oldGovernance)).toBe(false);
   });
 });

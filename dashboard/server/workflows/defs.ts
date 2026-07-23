@@ -126,6 +126,8 @@ export interface WorkflowStageDef {
   declaredRiskTier: ProposalRiskTier | null;
   /** The floor derived from the action namespace registry. */
   classifiedFloor: ProposalRiskTier;
+  /** Durable accountable agent. Ownership is descriptive and never grants execution authority. */
+  governedBy?: string;
   /** Optional declared worker identity; present only with `profileId`. */
   agentId?: string;
   /** Optional declared execution profile identity; present only with `agentId`. */
@@ -161,6 +163,8 @@ export interface WorkflowDef {
   title: string;
   /** Existing workflow tool profile; distinct from the optional execution-profile assignment below. */
   profile: string;
+  /** Durable workflow governor. Distinct from the optional executable manager assignment. */
+  governedBy?: string;
   /** Optional manager declaration. Omitted for legacy workflow definitions. */
   manager?: WorkflowManagerAssignment;
   /** Explicit launch-time path-segment inputs. Only these placeholders are substituted. */
@@ -242,7 +246,7 @@ function validateStage(
 ): { ok: true; value: WorkflowStageDef } | { ok: false; detail: string } {
   const label = `stages[${index}]`;
   if (!isRecord(raw)) return { ok: false, detail: `${label} must be a mapping` };
-  const allowed = new Set(['id', 'title', 'action', 'target', 'workOrder', 'dependsOn', 'riskTier', 'agentId', 'profileId', 'workflowProfile', 'review', 'completionGate']);
+  const allowed = new Set(['id', 'title', 'action', 'target', 'workOrder', 'dependsOn', 'riskTier', 'governedBy', 'agentId', 'profileId', 'workflowProfile', 'review', 'completionGate']);
   const unknownKey = Object.keys(raw).find((key) => !allowed.has(key));
   if (unknownKey) return { ok: false, detail: `${label} has unknown field '${unknownKey}'` };
 
@@ -314,6 +318,14 @@ function validateStage(
     declaredRiskTier = raw.riskTier;
   }
   const floor = classified.minimumTier;
+  let governedBy: string | undefined;
+  if (hasOwn(raw, 'governedBy')) {
+    const owner = asString(raw.governedBy);
+    if (owner === null || !SAFE_AGENT_ID_RE.test(owner)) {
+      return { ok: false, detail: `${label}.governedBy must be a safe agent identifier of 1-64 characters` };
+    }
+    governedBy = owner;
+  }
   const hasAgentId = hasOwn(raw, 'agentId');
   const hasProfileId = hasOwn(raw, 'profileId');
   if (hasAgentId !== hasProfileId) return { ok: false, detail: `${label}.agentId and profileId must appear together` };
@@ -399,6 +411,7 @@ function validateStage(
       riskTier: effectiveTier(declaredRiskTier, floor),
       declaredRiskTier,
       classifiedFloor: floor,
+      ...(governedBy ? { governedBy } : {}),
       ...(assignment ?? {}),
       ...(workflowProfile ? { workflowProfile } : {}),
       ...(review ? { review } : {}),
@@ -424,7 +437,7 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
     return { ok: false, detail: 'definition frontmatter is not valid YAML' };
   }
   if (!isRecord(frontmatter)) return { ok: false, detail: 'definition frontmatter must be a mapping' };
-  const allowed = new Set(['id', 'project', 'title', 'profile', 'manager', 'parameters', 'readScope', 'stages']);
+  const allowed = new Set(['id', 'project', 'title', 'profile', 'governedBy', 'manager', 'parameters', 'readScope', 'stages']);
   const unknownKey = Object.keys(frontmatter).find((key) => !allowed.has(key));
   if (unknownKey) return { ok: false, detail: `frontmatter has unknown field '${unknownKey}'` };
 
@@ -442,6 +455,15 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
   }
   if (options.knownProfiles && !options.knownProfiles.has(profile)) {
     return { ok: false, detail: `profile '${profile}' is not a server-owned execution profile` };
+  }
+
+  let governedBy: string | undefined;
+  if (hasOwn(frontmatter, 'governedBy')) {
+    const managerOwner = asString(frontmatter.governedBy);
+    if (managerOwner === null || !SAFE_AGENT_ID_RE.test(managerOwner)) {
+      return { ok: false, detail: 'governedBy must be a safe agent identifier of 1-64 characters' };
+    }
+    governedBy = managerOwner;
   }
 
   let manager: WorkflowManagerAssignment | undefined;
@@ -514,7 +536,7 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
     ok: true,
     value: {
       id, project, title, profile, readScope: readScope.value, parameters: [...parameters],
-      ...(manager ? { manager } : {}), description, stages,
+      ...(governedBy ? { governedBy } : {}), ...(manager ? { manager } : {}), description, stages,
     },
   };
 }

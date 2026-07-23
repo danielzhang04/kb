@@ -1,10 +1,10 @@
 /**
  * Agents view — the fleet roster with per-agent model routing (R2.2).
  *
- * The roster is the enriched `/api/agents` union (card owners ∪ ledger writers ∪ role catalog), each
- * row carrying its role + last-active date; until it loads (and in tests that pass only a snapshot) it
- * falls back to `deriveRoster` over `/api/index` (distinct non-null card `owner`, working iff it owns a
- * `working` card). Per-agent ROUTING (effective runtime/model + provenance,
+ * `/api/agents` enriches declared agents and observed runtime identities. The primary roster contains
+ * declarations only; observed default workers are projected separately as system workers. Until the
+ * enriched projection loads, `deriveRoster` over `/api/index` supplies observed activity without
+ * promoting queue owners into declared agents. Per-agent ROUTING (effective runtime/model + provenance,
  * and the governed toggle) comes from `/api/routing` (R2.1 projection). The model cell is now a live
  * governed control: it shows the effective model (mono) + provenance tag, and — with a WebAuthn session —
  * opens a popover to write an agent-scope override (audited, ops pull-rebase-push) or clear it. Fail-closed
@@ -28,7 +28,7 @@ import {
 } from '../lib/routingClient';
 import { RoutingControl } from './routingControls';
 import { AgentDetail } from './AgentDetail';
-import { fetchAgentDetail, type AgentDetailDto } from '../lib/agentClient';
+import { fetchAgentDetail, fetchSystemWorkers, type AgentDetailDto, type SystemWorkerDto } from '../lib/agentClient';
 import { getRun, listRuns, type RunMetadataDto } from '../control/controlClient';
 import { cardOwnerIndex, runsForAgent, type RunWithStages } from '../control/entityLinks';
 import type { NavTarget } from '../nav/stack';
@@ -279,6 +279,26 @@ function AgentRosterTable({
   );
 }
 
+function SystemWorkerTable({ workers }: { workers: SystemWorkerDto[] }): React.JSX.Element {
+  return (
+    <div className="v-agents__table-wrap">
+      <table className="mc-table v-agents__table" data-testid="system-workers-table">
+        <thead><tr><th>Worker</th><th>Runtime</th><th>Registration</th><th>Invocation</th></tr></thead>
+        <tbody>
+          {workers.map((worker) => (
+            <tr key={worker.id} data-testid={`system-worker-${worker.id}`}>
+              <td className="mc-mono">{worker.id}</td>
+              <td className="mc-mono">{worker.runtime}</td>
+              <td>runtime default</td>
+              <td>{worker.dashboardTriggerable ? 'dashboard-triggerable' : 'queue-addressable'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export function Agents({
   snapshot,
   roster,
@@ -322,6 +342,7 @@ export function Agents({
   const [localOpenId, setLocalOpenId] = useState<string | null>(null);
   const [scannedRuns, setScannedRuns] = useState<RunWithStages[] | null>(null);
   const [detail, setDetail] = useState<AgentDetailDto | null>(null);
+  const [systemWorkerState, setSystemWorkerState] = useState<SystemWorkerDto[] | null>(null);
   const [detailState, setDetailState] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
   const openAgentId = onOpenAgent ? focusAgentId ?? null : localOpenId;
 
@@ -356,6 +377,14 @@ export function Agents({
       cancelled = true;
     };
   }, [roster]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchSystemWorkers()
+      .then((workers) => { if (!cancelled && Array.isArray(workers)) setSystemWorkerState(workers); })
+      .catch(() => { /* routing registry fallback below remains truthful */ });
+    return () => { cancelled = true; };
+  }, []);
 
   /**
    * Agent → its runs, the inverse card index (arc-3 step 4.3).
@@ -416,8 +445,8 @@ export function Agents({
   const index = snapshot ?? fetched ?? EMPTY_INDEX;
   const routingSnap = routing ?? routingState ?? EMPTY_ROUTING;
   const enriched = roster ?? rosterState;
-  // Prefer the enriched server roster (queue owners ∪ ledger writers ∪ roles); fall back to the
-  // snapshot-derived roster until it loads (and in tests that pass only a snapshot).
+  // Prefer the enriched union; the declared/system-worker partition below is authoritative. The
+  // snapshot-derived fallback supplies observed activity but cannot manufacture declarations.
   const agentRows = enriched ? enriched.map(rowFromEntry) : deriveRoster(index);
   const detailTarget = openAgentId ? agentRows.find((agent) => agent.id === openAgentId) : undefined;
 
@@ -456,7 +485,14 @@ export function Agents({
       .filter((w): w is string => typeof w === 'string' && w !== ''),
   );
   const declaredRows = agentRows.filter((agent) => agent.declared);
-  const observedRows = agentRows.filter((agent) => !agent.declared);
+  const declaredIds = new Set(declaredRows.map((agent) => agent.id));
+  const systemWorkers = (systemWorkerState ?? Object.entries(registry).flatMap(([runtime, value]) => value.default_worker ? [{
+    id: value.default_worker,
+    runtime,
+    addressable: true as const,
+    dashboardTriggerable: false,
+    registrationSource: 'runtime-default' as const,
+  }] : [])).filter((worker) => !declaredIds.has(worker.id));
   const canAct = Boolean(sessionToken) || Boolean(onRequestSession);
 
   async function resolveToken(): Promise<string | undefined> {
@@ -576,31 +612,35 @@ export function Agents({
   return (
     <section className="v-agents" aria-label="Agents view">
       <h2 className="v-agents__title">
-        Agents <span className="v-agents__count mc-num">({agentRows.length})</span>
+        Agents <span className="v-agents__count mc-num">({declaredRows.length})</span>
       </h2>
 
-      {agentRows.length === 0 ? (
-        <p className="v-agents__empty">No declared agents or observed runtime identities are on the board.</p>
+      {declaredRows.length === 0 ? (
+        <p className="v-agents__empty">No user-created agents are registered.</p>
       ) : (
         <>
           <section className="v-agents__group" aria-labelledby="declared-agents-title">
-            <h3 id="declared-agents-title" className="v-agents__group-title">Declared agents <span className="mc-num">({declaredRows.length})</span></h3>
-            <p className="v-agents__group-note">Authoritative definitions in <code className="mc-mono">agents/*.md</code>. These are the agents you can open into a dedicated Composer workspace.</p>
+            <h3 id="declared-agents-title" className="v-agents__group-title">Your agents <span className="mc-num">({declaredRows.length})</span></h3>
+            <p className="v-agents__group-note">Agents you create in <code className="mc-mono">agents/*.md</code>. Open one to see exactly what it governs and work with it directly.</p>
             {declaredRows.length ? <AgentRosterTable rows={declaredRows} defaultWorkers={defaultWorkers} onOpenAgent={openAgent} renderRouting={routingControlFor} /> : <p className="v-agents__empty">No declared agents are registered.</p>}
           </section>
-          <section className="v-agents__group" aria-labelledby="observed-runtimes-title">
-            <h3 id="observed-runtimes-title" className="v-agents__group-title">Observed runtime identities <span className="mc-num">({observedRows.length})</span></h3>
-            <p className="v-agents__group-note">IDs observed in queue ownership or ledger activity. They can be inspected, but are not authoritative agent declarations.</p>
-            {observedRows.length ? <AgentRosterTable rows={observedRows} defaultWorkers={defaultWorkers} onOpenAgent={openAgent} renderRouting={routingControlFor} /> : <p className="v-agents__empty">No observed runtime identities are recorded.</p>}
-          </section>
-          <p className="v-agents__note">
-            Observed identities are retained from card owners and ledger writers; declared agents are
-            additionally sourced from their definition files. The model cell shows
-            effective routing (source tag); with a passkey session it writes a governed, audited
-            agent-scope override.
-          </p>
         </>
       )}
+
+      <details className="v-agents__system" data-testid="system-workers">
+        <summary>System workers <span className="mc-num">({systemWorkers.length})</span></summary>
+        <p className="v-agents__group-note">
+          Infrastructure identities registered by the runtime policy. Dashboard-triggerable means this
+          control plane can start the worker directly; queue-addressable workers pick up routed work through
+          their existing runner boundary.
+        </p>
+        {systemWorkers.length ? <SystemWorkerTable workers={systemWorkers} /> : <p className="v-agents__empty">No separate system workers are registered.</p>}
+      </details>
+
+      <p className="v-agents__note">
+        Humans and identities found only in historical queue or ledger records are intentionally omitted.
+        The model cell shows effective routing; changing it remains a governed, audited write.
+      </p>
 
       <RoutingAuditStrip audit={routingSnap.audit} />
     </section>

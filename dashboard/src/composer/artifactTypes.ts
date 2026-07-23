@@ -73,6 +73,8 @@ export interface WorkflowStageDraft {
   workOrder: string;
   riskTier: 'T1' | 'T2';
   dependsOn: string[];
+  /** Optional accountable declared agent. Descriptive only; never an executable assignment. */
+  governedBy?: string;
   /** Optional logical agent assignment. Must be authored with profileId. */
   agentId?: string;
   /** Optional declared execution profile assignment. Must be authored with agentId. */
@@ -90,6 +92,8 @@ export interface WorkflowDraft {
   project: string;
   /** Server-owned execution profile. Never default this client-side. */
   profile: string;
+  /** Optional accountable workflow governor. Descriptive only; never an executable assignment. */
+  governedBy?: string;
   /** Optional logical manager assignment. Execution identity remains compiler-owned. */
   manager?: WorkflowManagerDraft;
   body: string;
@@ -441,6 +445,7 @@ function validateWorkflow(draft: WorkflowDraft): Problem[] {
   const projectProblem = nameSegmentProblem('project', draft.project);
   if (projectProblem) problems.push(projectProblem);
   requireNonEmpty(problems, 'profile', draft.profile, 'a server-owned execution profile is required');
+  validateGovernanceAgent(problems, 'governedBy', draft.governedBy);
   validateWorkflowAssignment(problems, 'manager', draft.manager);
   if (!Array.isArray(draft.stages) || draft.stages.length === 0) {
     problems.push({ field: 'stages', message: 'at least one executable stage is required' });
@@ -461,6 +466,7 @@ function validateWorkflow(draft: WorkflowDraft): Problem[] {
     if (!['T1', 'T2'].includes(stage.riskTier)) {
       problems.push({ field: `${prefix}.riskTier`, message: 'Run now v1 accepts T1 or T2 only' });
     }
+    validateGovernanceAgent(problems, `${prefix}.governedBy`, stage.governedBy);
     validateWorkflowAssignment(problems, prefix, stage);
   }
   for (const [index, stage] of draft.stages.entries()) {
@@ -470,6 +476,14 @@ function validateWorkflow(draft: WorkflowDraft): Problem[] {
     }
   }
   return problems;
+}
+
+/** Matches the server workflow-definition grammar. Ownership is a safe declared-agent id, not a profile. */
+function validateGovernanceAgent(problems: Problem[], field: string, governedBy: string | undefined): void {
+  if (governedBy === undefined) return;
+  if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(governedBy)) {
+    problems.push({ field, message: 'governedBy must be a safe 1-64 character declared agent id' });
+  }
 }
 
 /** Client-only shape check. Composition/compiler owns live registry and adapter validation. */
@@ -619,6 +633,7 @@ function workflowPlan(draft: WorkflowDraft): DeployPlan {
     // until the canonical authoring form adds one.
     `title: ${JSON.stringify(id)}`,
     `profile: ${JSON.stringify(draft.profile)}`,
+    ...(draft.governedBy !== undefined ? [`governedBy: ${draft.governedBy}`] : []),
     ...(draft.manager?.agentId !== undefined && draft.manager.profileId !== undefined
       ? [
           'manager:',
@@ -629,6 +644,7 @@ function workflowPlan(draft: WorkflowDraft): DeployPlan {
     'stages:',
     ...draft.stages.flatMap((stage) => [
       `  - id: ${JSON.stringify(stage.id)}`,
+      ...(stage.governedBy !== undefined ? [`    governedBy: ${stage.governedBy}`] : []),
       `    title: ${JSON.stringify(stage.id)}`,
       `    action: ${JSON.stringify(stage.action)}`,
       `    target: ${JSON.stringify(stage.target)}`,

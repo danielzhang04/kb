@@ -27,11 +27,13 @@ function fixture(): string {
     'project: kb-ops',
     'title: Research brief',
     'profile: research',
+    'governedBy: research-worker',
     'stages:',
     '  - id: brief',
     '    title: Research',
     '    action: research:web-brief',
     '    target: orgs/kb-ops/output',
+    '    governedBy: research-worker',
     '---',
     'Write a bounded research brief.',
     '',
@@ -40,9 +42,14 @@ function fixture(): string {
 }
 
 describe('agent declaration detail route', () => {
-  it('exposes only the declared agent document and its contained workflow relationships', async () => {
+  it('exposes exact governed relationships and excludes same-project workflows with no ownership', async () => {
+    const root = fixture();
+    writeFileSync(join(root, 'orgs', 'kb-ops', 'workflows', 'unowned.md'), [
+      '---', 'id: unowned', 'project: kb-ops', 'title: Unowned', 'stages:',
+      '  - id: untouched', '    action: write', '    target: orgs/kb-ops/output', '---', '',
+    ].join('\n'), 'utf8');
     const app = Fastify();
-    registerAgents(app, fixture());
+    registerAgents(app, root);
     const response = await app.inject({ method: 'GET', url: '/api/agents/research-worker' });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
@@ -58,10 +65,12 @@ describe('agent declaration detail route', () => {
       codebases: [{ project: 'kb-ops', path: 'orgs/kb-ops' }],
       workflows: [{
         ref: 'research-brief', path: 'orgs/kb-ops/workflows/research-brief.md',
-        stageIds: ['brief'], relationship: 'project-workflow',
+        governsWorkflow: true, relationship: 'governor-and-stage-governor',
+        stages: [expect.objectContaining({ id: 'brief', dependsOn: [] })],
       }],
       howItRuns: { runner: null, command: null },
     });
+    expect(response.json().workflows).toHaveLength(1);
     await app.close();
   });
 

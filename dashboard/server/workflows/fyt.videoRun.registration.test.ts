@@ -19,6 +19,25 @@ const STAGE_IDS = [
   'idea', 'research', 'script', 'judge-gate', 'shorts', 'metadata', 'shots', 'motion',
   'images', 'image-review', 'voiceover', 'audio-plan', 'render', 'verify',
 ];
+const GOVERNANCE = {
+  workflow: 'fyt-runner',
+  stages: {
+    idea: 'fyt-preproduction',
+    research: 'fyt-preproduction',
+    script: 'fyt-preproduction',
+    'judge-gate': 'fyt-checker',
+    shorts: 'fyt-preproduction',
+    metadata: 'fyt-preproduction',
+    shots: 'fyt-preproduction',
+    motion: 'fyt-preproduction',
+    images: 'fyt-production',
+    'image-review': 'fyt-runner',
+    voiceover: 'fyt-production',
+    'audio-plan': 'fyt-production',
+    render: 'fyt-production',
+    verify: 'fyt-checker',
+  },
+} as const;
 
 function makeApp() {
   const app = Fastify();
@@ -28,7 +47,7 @@ function makeApp() {
     sessionConfig: { secret: SESSION_SECRET, ttlMs: 60_000 },
     allowedOrigins: [],
     credentials: () => [],
-    assignmentAmendmentStore: createInMemoryAssignmentAmendmentStore(),
+    definitionAmendmentStore: createInMemoryAssignmentAmendmentStore(),
     controlStore: createInMemoryControlPlaneStore(),
     composerStore: createInMemoryComposerStore({ protector: createProviderIdProtector(SESSION_SECRET) }),
   }));
@@ -63,30 +82,36 @@ describe('checked-out FYT video-run registry acceptance', () => {
         valid: true,
         launchable: true,
         profile: 'producer',
+        governedBy: GOVERNANCE.workflow,
+        governanceProblems: [],
         stageCount: 14,
         parameters: ['channel', 'slug'],
         manager: null,
         pendingAmendment: null,
       });
       expect((item?.stages as Array<Record<string, unknown>>).map((stage) => stage.id)).toEqual(STAGE_IDS);
+      expect(Object.fromEntries((item?.stages as Array<Record<string, unknown>>).map((stage) => [stage.id, stage.governedBy]))).toEqual(GOVERNANCE.stages);
       expect((item?.stages as Array<Record<string, unknown>>).every((stage) => stage.declaredAssignment === null)).toBe(true);
 
       const detail = await app.inject({ method: 'GET', url: '/api/workflows/video-run' });
       expect(detail.statusCode).toBe(200);
       const body = detail.json() as {
-        definition: { profile: string; parameters: string[]; manager?: unknown; stages: Array<{ agentId?: unknown; profileId?: unknown }> };
+        definition: { profile: string; governedBy?: string; parameters: string[]; manager?: unknown; stages: Array<{ id: string; governedBy?: string; agentId?: unknown; profileId?: unknown }> };
         compiled: { ok: boolean; manager: Record<string, unknown>; stages: Array<Record<string, unknown>> };
         assignmentOptions: { manager: { options: unknown[]; unavailable: string | null }; stages: Record<string, { options: unknown[]; unavailable: string | null }> };
       };
       // This is the generic `producer` path: it is compiler-launchable without an authored immutable
       // binding, not an assertion that a real runner has been activated.
-      expect(body.definition).toMatchObject({ profile: 'producer', parameters: ['channel', 'slug'] });
+      expect(body.definition).toMatchObject({ profile: 'producer', governedBy: GOVERNANCE.workflow, parameters: ['channel', 'slug'] });
       expect(body.definition.manager).toBeUndefined();
       expect(body.definition.stages).toHaveLength(14);
+      expect(Object.fromEntries(body.definition.stages.map((stage) => [stage.id, stage.governedBy]))).toEqual(GOVERNANCE.stages);
       expect(body.definition.stages.every((stage) => stage.agentId === undefined && stage.profileId === undefined)).toBe(true);
       expect(body.compiled.ok).toBe(true);
+      expect(body.compiled).not.toHaveProperty('governedBy');
       expect(body.compiled.manager.assignment).toBeUndefined();
       expect(body.compiled.stages).toHaveLength(14);
+      expect(body.compiled.stages.every((stage) => !Object.hasOwn(stage, 'governedBy'))).toBe(true);
       expect(body.compiled.stages.every((stage) => stage.assignment === undefined)).toBe(true);
       expect(body.assignmentOptions.manager).toEqual({
         options: [],

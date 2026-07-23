@@ -36,7 +36,7 @@ async function launchPayload(app: ReturnType<typeof Fastify>, id: string, idempo
 /** The launch route's injected side-effect runners: no real git, py, or queue tree is ever touched. */
 function runners() {
   return {
-    assignmentAmendmentStore: createInMemoryAssignmentAmendmentStore(),
+    definitionAmendmentStore: createInMemoryAssignmentAmendmentStore(),
     appendAudit: (_repoRoot: string, event: AuditEvent) => ({ ts: new Date().toISOString(), ...event }),
     appendAuditLocal: (_repoRoot: string, event: AuditEvent) => ({ ts: new Date().toISOString(), ...event }),
     runPreamble: () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }),
@@ -646,7 +646,7 @@ describe('workflow assignment amendment route', () => {
     }
     token = mintSession('operator', SESSION).token;
     app = Fastify();
-    registerWorkflows(app, makeSurfaceContext({ repoRoot: activeRoot, durableRepoRoot: durableRoot, stateRoot: join(activeRoot, 'dashboard-state'), sessionConfig: SESSION, allowedOrigins: [ORIGIN], credentials: () => [], controlStore: createInMemoryControlPlaneStore(), ...runners(), assignmentAmendmentStore: createFileAssignmentAmendmentStore(join(activeRoot, 'dashboard-state')),
+    registerWorkflows(app, makeSurfaceContext({ repoRoot: activeRoot, durableRepoRoot: durableRoot, stateRoot: join(activeRoot, 'dashboard-state'), sessionConfig: SESSION, allowedOrigins: [ORIGIN], credentials: () => [], controlStore: createInMemoryControlPlaneStore(), ...runners(), definitionAmendmentStore: createFileAssignmentAmendmentStore(join(activeRoot, 'dashboard-state')),
       saveGit: async (_root, args) => { gitCalls.push(args); if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'claude/m1-dashboard\n'; if (overrides.gitFailure === 'commit' && args[0] === 'commit') throw new Error('commit refused'); return ''; },
       openPr: async (_root, request) => { prCalls.push(request as unknown as Record<string, unknown>); if (overrides.prFailure) throw new Error('PR unavailable'); return { url: 'https://example.test/pull/9', number: 9 }; },
       appendAudit: (_root, event) => { if (overrides.auditFailure) throw new Error('audit unavailable'); audits.push(event as unknown as Record<string, unknown>); return { ts: 'now', ...event }; },
@@ -655,6 +655,8 @@ describe('workflow assignment amendment route', () => {
   }
   async function amend(body: Record<string, unknown>): Promise<ReturnType<ReturnType<typeof Fastify>['inject']>> { return app.inject({ method: 'POST', url: '/api/workflows/amendable/assignment-amendments', headers: headers(token), payload: body }); }
   async function input(target: Record<string, unknown> = { kind: 'stage', stageId: 'brief' }, assignment: unknown = null): Promise<Record<string, unknown>> { const hash = (await app.inject({ method: 'GET', url: '/api/workflows/amendable' })).json().entry.sourceHash; return { expectedSourceHash: hash, target, assignment }; }
+  async function amendGovernance(body: Record<string, unknown>): Promise<ReturnType<ReturnType<typeof Fastify>['inject']>> { return app.inject({ method: 'POST', url: '/api/workflows/amendable/governance-amendments', headers: headers(token), payload: body }); }
+  async function governanceInput(governance: unknown = { workflow: 'assigned-manager', stages: { brief: 'assigned-worker' } }): Promise<Record<string, unknown>> { const hash = (await app.inject({ method: 'GET', url: '/api/workflows/amendable' })).json().entry.sourceHash; return { expectedSourceHash: hash, governance }; }
 
   beforeEach(async () => { setup(); await app.ready(); });
   afterEach(async () => { if (app) await app.close(); if (activeRoot) rmSync(activeRoot, { recursive: true, force: true }); if (durableRoot) rmSync(durableRoot, { recursive: true, force: true }); });
@@ -708,7 +710,7 @@ describe('workflow assignment amendment route', () => {
     expect(launch.json()).toMatchObject({ error: 'assignment-amendment-pending' });
     expect(gitCalls.filter((call) => call[0] === 'add')).toHaveLength(1);
     await app.close(); app = Fastify();
-    registerWorkflows(app, makeSurfaceContext({ repoRoot: activeRoot, durableRepoRoot: durableRoot, stateRoot: join(activeRoot, 'dashboard-state'), sessionConfig: SESSION, allowedOrigins: [ORIGIN], credentials: () => [], controlStore: createInMemoryControlPlaneStore(), ...runners(), assignmentAmendmentStore: createFileAssignmentAmendmentStore(join(activeRoot, 'dashboard-state')),
+    registerWorkflows(app, makeSurfaceContext({ repoRoot: activeRoot, durableRepoRoot: durableRoot, stateRoot: join(activeRoot, 'dashboard-state'), sessionConfig: SESSION, allowedOrigins: [ORIGIN], credentials: () => [], controlStore: createInMemoryControlPlaneStore(), ...runners(), definitionAmendmentStore: createFileAssignmentAmendmentStore(join(activeRoot, 'dashboard-state')),
       saveGit: async (_root, args) => { gitCalls.push(args); return args.join(' ') === 'rev-parse --abbrev-ref HEAD' ? 'claude/m1-dashboard\n' : ''; },
       openPr: async (_root, request) => { prCalls.push(request as unknown as Record<string, unknown>); return { url: 'https://example.test/pull/9', number: 9 }; },
       appendAudit: (_root, event) => { audits.push(event as unknown as Record<string, unknown>); return { ts: 'now', ...event }; },
@@ -727,5 +729,91 @@ describe('workflow assignment amendment route', () => {
     expect((await amend({ ...(await input()), assignment: { agentId: 'writer\n    riskTier: T3', profileId: 'worker:claude:claude-sonnet-5' } })).json()).toMatchObject({ error: 'invalid-assignment-amendment-body' });
     expect(readFileSync(join(activeRoot, 'orgs/kb-ops/workflows/amendable.md'), 'utf8')).toBe(original);
     expect(gitCalls).toHaveLength(0); expect(prCalls).toHaveLength(0); expect(audits).toHaveLength(0);
+  });
+
+  it('normalizes the legacy manage role only when deriving manager assignment eligibility', async () => {
+    const path = join(activeRoot, 'agents', 'assigned-manager.md');
+    writeFileSync(path, readFileSync(path, 'utf8').replace('role: manager', 'role: manage'), 'utf8');
+    const detail = (await app.inject({ method: 'GET', url: '/api/workflows/amendable' })).json();
+    expect(detail.assignmentOptions.manager.options).toContainEqual({
+      agentId: 'assigned-manager',
+      profileId: 'manager:claude:claude-opus-4-8',
+    });
+    writeFileSync(path, readFileSync(path, 'utf8').replace('role: manage', 'role: observer'), 'utf8');
+    const refused = (await app.inject({ method: 'GET', url: '/api/workflows/amendable' })).json();
+    expect(refused.assignmentOptions.manager.options).not.toContainEqual(expect.objectContaining({ agentId: 'assigned-manager' }));
+  });
+
+  it.each(['work', 'inspect', 'scout', 'consolidate'])(
+    'normalizes legacy %s only when deriving worker assignment eligibility',
+    async (role) => {
+      const path = join(activeRoot, 'agents', 'assigned-worker.md');
+      writeFileSync(path, readFileSync(path, 'utf8').replace('role: worker', `role: ${role}`), 'utf8');
+      const detail = (await app.inject({ method: 'GET', url: '/api/workflows/amendable' })).json();
+      expect(detail.assignmentOptions.stages.brief.options).toContainEqual({
+        agentId: 'assigned-worker',
+        profileId: 'worker:claude:claude-sonnet-5',
+      });
+    },
+  );
+
+  it('reports checked-in undeclared and cross-project governance without changing compile or launchability', async () => {
+    const workflowPath = join(activeRoot, 'orgs', 'kb-ops', 'workflows', 'amendable.md');
+    writeFileSync(workflowPath, definitionText()
+      .replace('profile: research', 'profile: research\ngovernedBy: missing-governor')
+      .replace('  - id: brief', '  - id: brief\n    governedBy: other-project-agent'), 'utf8');
+    writeFileSync(join(activeRoot, 'agents', 'other-project-agent.md'), [
+      '---', 'id: other-project-agent', 'projects: [faceless-youtube]', 'runner-bound: false', 'role: work', '---', 'Other project.',
+    ].join('\n'), 'utf8');
+
+    const detail = (await app.inject({ method: 'GET', url: '/api/workflows/amendable' })).json();
+    expect(detail.entry).toMatchObject({
+      valid: true,
+      launchable: true,
+      governanceProblems: [
+        "workflow governance agent 'missing-governor' is not declared",
+        "stage 'brief' governance agent 'other-project-agent' is not declared for project 'kb-ops'",
+      ],
+    });
+    expect(detail.compiled.ok).toBe(true);
+    expect(detail.compiled.manager.assignment.agentId).toBe('assigned-manager');
+    expect(detail.compiled.stages[0].assignment.agentId).toBe('assigned-worker');
+  });
+
+  it('routes a byte-preserving governance snapshot through the same pending/audit pipeline', async () => {
+    const response = await amendGovernance(await governanceInput());
+    expect(response.statusCode).toBe(202);
+    expect(response.json()).toMatchObject({ status: 'pending-human-merge', governance: { workflow: 'assigned-manager', stages: { brief: 'assigned-worker' } } });
+    const durable = readFileSync(join(durableRoot, 'orgs/kb-ops/workflows/amendable.md'), 'utf8');
+    expect(durable).toContain('governedBy: assigned-manager'); expect(durable).toContain('    governedBy: assigned-worker');
+    expect(audits[0].action).toBe('workflow-governance-amendment');
+    expect((await amendGovernance(await governanceInput())).json()).toMatchObject({ error: 'assignment-amendment-pending' });
+  });
+
+  it('rejects stale, undeclared, and cross-project governance owners before durable side effects', async () => {
+    expect((await amendGovernance({ ...(await governanceInput()), expectedSourceHash: '0'.repeat(64) })).json()).toMatchObject({ error: 'stale-source-hash' });
+    expect((await amendGovernance(await governanceInput({ workflow: 'missing-owner', stages: { brief: null } }))).json()).toMatchObject({ error: 'governance-owner-refused' });
+    writeFileSync(join(activeRoot, 'agents', 'other-project-agent.md'), [
+      '---', 'id: other-project-agent', 'projects: [faceless-youtube]', 'runner-bound: false', 'role: work', '---', 'Other project.',
+    ].join('\n'), 'utf8');
+    expect((await amendGovernance(await governanceInput({ workflow: null, stages: { brief: 'other-project-agent' } }))).json()).toMatchObject({
+      error: 'governance-owner-refused',
+      detail: "stage 'brief' governance agent 'other-project-agent' is not declared for project 'kb-ops'",
+    });
+    expect(gitCalls).toHaveLength(0); expect(prCalls).toHaveLength(0); expect(audits).toHaveLength(0);
+  });
+
+  it('rejects incomplete, extra-stage, and no-op governance snapshots before durable side effects', async () => {
+    expect((await amendGovernance(await governanceInput({ workflow: null, stages: {} }))).json()).toMatchObject({ error: 'governance-layout-unsupported' });
+    expect((await amendGovernance(await governanceInput({ workflow: null, stages: { brief: null, extra: null } }))).json()).toMatchObject({ error: 'governance-layout-unsupported' });
+    expect((await amendGovernance(await governanceInput({ workflow: null, stages: { brief: null } }))).json()).toMatchObject({ error: 'governance-no-change' });
+    expect(gitCalls).toHaveLength(0); expect(prCalls).toHaveLength(0); expect(audits).toHaveLength(0);
+  });
+
+  it('reports governance recovery after a post-commit route failure', async () => {
+    await app.close(); setup({ prFailure: true }); await app.ready();
+    const response = await amendGovernance(await governanceInput());
+    expect(response.statusCode).toBe(502);
+    expect(response.json()).toMatchObject({ error: 'governance-durable-route-incomplete', committed: true, pushed: true });
   });
 });

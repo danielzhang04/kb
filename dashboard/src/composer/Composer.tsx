@@ -117,6 +117,7 @@ interface FormState {
   wfBody: string;
   wfProject: string;
   wfProfile: string;
+  wfGovernedBy: string;
   wfManager: WorkflowManagerDraft;
   wfStages: WorkflowStageDraft[];
   // project
@@ -148,6 +149,7 @@ function initialForm(): FormState {
     wfBody: '',
     wfProject: '',
     wfProfile: '',
+    wfGovernedBy: '',
     wfManager: {},
     wfStages: [{ id: 'stage-1', action: '', target: '.', workOrder: '', riskTier: 'T2', dependsOn: [] }],
     projName: '',
@@ -223,6 +225,14 @@ function eligibleWorkflowAgents(
     .sort((left, right) => left.id.localeCompare(right.id));
 }
 
+/** Governance is project-scoped declaration metadata, deliberately independent of runner/profile eligibility. */
+function eligibleGovernanceAgents(agents: WorkflowRosterAgent[] | null, project: string): WorkflowRosterAgent[] {
+  if (!agents || project === '') return [];
+  return agents
+    .filter((agent) => agent.declared && agent.projects.includes(project))
+    .sort((left, right) => left.id.localeCompare(right.id));
+}
+
 function assignmentForAgent(agent: WorkflowRosterAgent, role: AssignmentRole): WorkflowManagerDraft {
   const profiles = profilesForRole(agent, role);
   const profileId = agent.defaultProfile && profiles.includes(agent.defaultProfile)
@@ -246,6 +256,7 @@ function buildDraft(
         filename: f.wfFilename,
         project: f.wfProject,
         profile: f.wfProfile,
+        governedBy: f.wfGovernedBy === '' ? undefined : f.wfGovernedBy,
         manager: f.wfManager.agentId !== undefined || f.wfManager.profileId !== undefined ? f.wfManager : undefined,
         body: f.wfBody,
         stages: f.wfStages,
@@ -567,12 +578,14 @@ function DraftForm({
     case 'workflow':
       const managerAgents = eligibleWorkflowAgents(workflowAgents, form.wfProject, 'manager');
       const workerAgents = eligibleWorkflowAgents(workflowAgents, form.wfProject, 'worker');
+      const governanceAgents = eligibleGovernanceAgents(workflowAgents, form.wfProject);
       const updateWorkflowProject = (project: string): void => {
-        // A declaration's project scope is part of the option filter. Changing it clears assignments
-        // rather than leaving a hidden cross-project logical identity in the draft.
+        // A declaration's project scope is part of the option filter. Changing it clears ownership and
+        // assignments rather than leaving a hidden cross-project logical identity in the draft.
         setField('wfProject', project);
+        setField('wfGovernedBy', '');
         setField('wfManager', {});
-        setField('wfStages', form.wfStages.map((stage) => ({ ...stage, agentId: undefined, profileId: undefined })));
+        setField('wfStages', form.wfStages.map((stage) => ({ ...stage, governedBy: undefined, agentId: undefined, profileId: undefined })));
       };
       return (
         <div className="v-composer__fields">
@@ -595,6 +608,13 @@ function DraftForm({
               {(workflowProfiles ?? []).map((profile) => <option key={profile} value={profile}>{profile}</option>)}
             </select>
           </label>
+          <GovernanceControls
+            label="Workflow governance"
+            agentLabel="Workflow governor"
+            agents={governanceAgents}
+            value={form.wfGovernedBy}
+            onChange={(governedBy) => setField('wfGovernedBy', governedBy)}
+          />
           <AssignmentControls
             label="Workflow manager"
             agentLabel="Workflow manager agent"
@@ -635,6 +655,13 @@ function DraftForm({
                       <option value="T1">T1</option><option value="T2">T2</option>
                     </select>
                   </label>
+                  <GovernanceControls
+                    label={`Stage ${index + 1} governance`}
+                    agentLabel={`Stage ${index + 1} governor`}
+                    agents={governanceAgents}
+                    value={stage.governedBy ?? ''}
+                    onChange={(governedBy) => update('governedBy', governedBy === '' ? undefined : governedBy)}
+                  />
                   <AssignmentControls
                     label={`Stage ${index + 1} assignment`}
                     agentLabel={`Stage ${index + 1} agent`}
@@ -698,6 +725,35 @@ function DraftForm({
         </div>
       );
   }
+}
+
+/** One ownership selector. It only changes `governedBy`; assignments retain their own controls. */
+function GovernanceControls({
+  label,
+  agentLabel,
+  agents,
+  value,
+  onChange,
+}: {
+  label: string;
+  agentLabel: string;
+  agents: WorkflowRosterAgent[];
+  value: string;
+  onChange: (governedBy: string) => void;
+}): React.JSX.Element {
+  return (
+    <fieldset className="v-composer__stage" aria-label={label}>
+      <legend>{label}</legend>
+      <label className="v-composer__field">
+        <span className="v-composer__field-label">Declared governor</span>
+        <select aria-label={agentLabel} value={value} onChange={(event) => onChange(event.target.value)}>
+          <option value="">Unassigned governance</option>
+          {agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.id} · declared agent</option>)}
+        </select>
+      </label>
+      <p className="v-composer__deploy-note">Governance records accountability only; it does not bind a runner or assign execution.</p>
+    </fieldset>
+  );
 }
 
 /** One logical assignment selector. It never exposes or changes a queue-card owner/runtime/model. */

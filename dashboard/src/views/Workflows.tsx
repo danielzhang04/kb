@@ -13,6 +13,7 @@ import { WorkflowDetail, type WorkflowDefEntry } from './WorkflowDetail';
 import { listProposalRevisions, listRuns, type ProposalRevisionMetadataDto, type RunMetadataDto } from '../control/controlClient';
 import { runsForWorkflow, WORKFLOW_COMPOSER_REF } from '../control/entityLinks';
 import type { NavTarget } from '../nav/stack';
+import { initialGovernance, UNASSIGNED_GOVERNOR, type GovernanceAgentOption, type GovernanceDraft } from './WorkflowAgentGraph';
 import '../styles/views/workflows.css';
 import '../styles/views/entity.css';
 
@@ -24,6 +25,16 @@ export interface WorkflowDefsIndex {
   items: WorkflowDefEntry[];
 }
 const EMPTY_DEFS: WorkflowDefsIndex = { items: [] };
+
+/** Compact, accountable summary for the roster; the handoff network holds the stage-level detail. */
+export function governanceSummary(entry: WorkflowDefEntry): Array<{ id: string; count: number }> {
+  const counts = new Map<string, number>();
+  for (const stage of entry.stages) {
+    const id = stage.governedBy ?? UNASSIGNED_GOVERNOR;
+    counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+  return [...counts].map(([id, count]) => ({ id, count })).sort((a, b) => a.id.localeCompare(b.id));
+}
 
 function pendingPhaseTruth(phase: string): string {
   if (phase === 'pending-human-merge') return 'Pending human merge.';
@@ -76,6 +87,9 @@ export function Workflows({
   const [launchingRefs, setLaunchingRefs] = useState<Set<string>>(() => new Set());
   const [amendingRef, setAmendingRef] = useState<string | null>(null);
   const [assignmentOptions, setAssignmentOptions] = useState<Record<string, NonNullable<React.ComponentProps<typeof WorkflowDetail>['assignmentOptions']>>>( {});
+  const [governanceOptions, setGovernanceOptions] = useState<Record<string, GovernanceAgentOption[]>>({});
+  const [governanceDrafts, setGovernanceDrafts] = useState<Record<string, GovernanceDraft>>({});
+  const [governanceStatus, setGovernanceStatus] = useState<Record<string, string>>({});
   const [amendmentStatus, setAmendmentStatus] = useState<Record<string, string>>({});
   const [pendingAmendments, setPendingAmendments] = useState<Record<string, { baseSourceHash: string; proposedSourceHash: string; branch?: string; pr?: { url?: string; number?: number }; phase: string }>>({});
   const [parameterValues, setParameterValues] = useState<Record<string, Record<string, string>>>({});
@@ -214,11 +228,46 @@ export function Workflows({
     if (!openDefRef || assignmentOptions[openDefRef] || typeof fetch !== 'function') return;
     let alive = true;
     fetch(`/api/workflows/${encodeURIComponent(openDefRef)}`)
-      .then((response) => response.json() as Promise<{ assignmentOptions?: NonNullable<React.ComponentProps<typeof WorkflowDetail>['assignmentOptions']> }>)
-      .then((body) => { if (alive && body.assignmentOptions) setAssignmentOptions((current) => ({ ...current, [openDefRef]: body.assignmentOptions! })); })
+      .then((response) => response.json() as Promise<{ assignmentOptions?: NonNullable<React.ComponentProps<typeof WorkflowDetail>['assignmentOptions']>; governanceOptions?: GovernanceAgentOption[] }>)
+      .then((body) => {
+        if (!alive) return;
+        if (body.assignmentOptions) setAssignmentOptions((current) => ({ ...current, [openDefRef]: body.assignmentOptions! }));
+        if (body.governanceOptions) setGovernanceOptions((current) => ({ ...current, [openDefRef]: body.governanceOptions! }));
+      })
       .catch(() => { /* detail remains inspectable if choices cannot be read */ });
     return () => { alive = false; };
   }, [openDefRef, assignmentOptions]);
+
+  useEffect(() => {
+    if (!openDefRef) return;
+    const entry = defs.items.find((candidate) => candidate.ref === openDefRef);
+    if (!entry) return;
+    setGovernanceDrafts((current) => current[openDefRef] ? current : { ...current, [openDefRef]: initialGovernance(entry) });
+  }, [defs.items, openDefRef]);
+
+  async function submitGovernance(ref: string): Promise<void> {
+    const entry = defs.items.find((candidate) => candidate.ref === ref);
+    const governance = governanceDrafts[ref];
+    if (!entry?.sourceHash || !governance || amendingRef) return;
+    const token = sessionToken ?? (await onRequestSession?.())?.token;
+    if (!token) { setGovernanceStatus((current) => ({ ...current, [ref]: 'Unlock refused.' })); return; }
+    setAmendingRef(ref);
+    setGovernanceStatus((current) => ({ ...current, [ref]: 'Submitting ownership plan for human merge…' }));
+    try {
+      const response = await fetch(`/api/workflows/${encodeURIComponent(ref)}/governance-amendments`, {
+        method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ expectedSourceHash: entry.sourceHash, governance }),
+      });
+      await invalidateSessionOnGovernedAuthFailure(response);
+      const body = await response.json() as { status?: string; baseSourceHash?: string; proposedSourceHash?: string; branch?: string; pr?: { url?: string; number?: number }; error?: string; detail?: string };
+      if (body.status === 'pending-human-merge' && body.baseSourceHash === entry.sourceHash && body.proposedSourceHash) {
+        setPendingAmendments((current) => ({ ...current, [ref]: { baseSourceHash: body.baseSourceHash!, proposedSourceHash: body.proposedSourceHash!, branch: body.branch, pr: body.pr, phase: 'pending-human-merge' } }));
+        setGovernanceStatus((current) => ({ ...current, [ref]: 'Pending human merge. The active workflow and execution routing have not changed.' }));
+      } else setGovernanceStatus((current) => ({ ...current, [ref]: `Refused: ${body.detail ?? body.error ?? response.status}` }));
+    } catch (error) {
+      setGovernanceStatus((current) => ({ ...current, [ref]: `Failed: ${error instanceof Error ? error.message : String(error)}` }));
+    } finally { setAmendingRef(null); }
+  }
 
   async function amendAssignment(ref: string, target: { kind: 'manager' } | { kind: 'stage'; stageId: string }, assignment: { agentId: string; profileId: string } | null): Promise<void> {
     const entry = (definitions ?? fetchedDefs ?? EMPTY_DEFS).items.find((candidate) => candidate.ref === ref);
@@ -334,6 +383,13 @@ export function Workflows({
           amendmentStatus={openDef.pendingAmendment || openDef.pendingAmendmentError ? <span>{openDef.pendingAmendmentError ? `Required amendment state is unreadable: ${openDef.pendingAmendmentError}. Launch remains blocked.` : <>{pendingPhaseTruth(openDef.pendingAmendment!.phase)} Branch <span className="mc-mono">{openDef.pendingAmendment!.branch}</span>; proposed source hash <span className="mc-mono">{openDef.pendingAmendment!.proposedSourceHash}</span>. {openDef.pendingAmendment!.pr.url ? <a href={openDef.pendingAmendment!.pr.url}>Open pull request</a> : null} The active definition has not changed.</>}</span> : pendingAmendments[openDef.ref] ? <span>{pendingPhaseTruth(pendingAmendments[openDef.ref].phase)} Branch <span className="mc-mono">{pendingAmendments[openDef.ref].branch ?? 'workflow amendment branch'}</span>; proposed source hash <span className="mc-mono">{pendingAmendments[openDef.ref].proposedSourceHash}</span>. {pendingAmendments[openDef.ref].pr?.url ? <a href={pendingAmendments[openDef.ref].pr!.url}>Open pull request</a> : null} The active definition has not changed.</span> : amendmentStatus[openDef.ref] ?? null}
           parameterValues={parameterValues[openDef.ref] ?? {}}
           onParameterChange={(name, value) => setParameterValues((current) => ({ ...current, [openDef.ref]: { ...current[openDef.ref], [name]: value } }))}
+          governanceOptions={governanceOptions[openDef.ref] ?? []}
+          governanceDraft={governanceDrafts[openDef.ref] ?? initialGovernance(openDef)}
+          onGovernanceDraftChange={(draft) => setGovernanceDrafts((current) => ({ ...current, [openDef.ref]: draft }))}
+          onGovernanceSubmit={() => void submitGovernance(openDef.ref)}
+          governanceDirty={JSON.stringify(governanceDrafts[openDef.ref] ?? initialGovernance(openDef)) !== JSON.stringify(initialGovernance(openDef))}
+          governanceReadOnly={isPendingAmendment(openDef) || amendingRef === openDef.ref}
+          governanceStatus={governanceStatus[openDef.ref] ?? null}
         />
       </section>
     );
@@ -371,7 +427,7 @@ export function Workflows({
               <tr>
                 <th>Definition</th>
                 <th>Profile</th>
-                <th>Stages</th>
+                <th>Governance</th>
                 <th>Valid</th>
                 <th>Launch</th>
               </tr>
@@ -396,13 +452,12 @@ export function Workflows({
                   <td className="v-workflows__cell-profile mc-mono">{d.profile ?? '—'}</td>
                   <td className="v-workflows__cell-stages">
                     {d.valid ? (
-                      <ul className="v-workflows__stage-list">
-                        {d.stages.map((s) => (
-                          <li key={s.id} className="mc-mono">
-                            {s.action} → {s.target} <span className="v-workflows__tier">{s.riskTier}</span>
-                          </li>
+                      <div className="v-workflows__governance-summary" data-testid={`workflow-governance-summary-${d.ref}`}>
+                        {d.governedBy ? <span className="entity-chip mc-mono">governor: {d.governedBy}</span> : <span className="entity-chip">no workflow governor</span>}
+                        {governanceSummary(d).map(({ id, count }) => (
+                          <span key={id} className="entity-chip mc-mono">{id === UNASSIGNED_GOVERNOR ? 'unassigned' : id}: {count}</span>
                         ))}
-                      </ul>
+                      </div>
                     ) : (
                       '—'
                     )}

@@ -48,7 +48,7 @@ function entry(over: Partial<AgentRosterEntry> & { id: string }): AgentRosterEnt
     ledger: { dispatches: 0, steps: 0, days: 0, lastActive: null },
     sources: [],
     effective: { runtime: 'claude', model: 'claude-opus-4-8', sourceRuntime: 'policy', sourceModel: 'policy' },
-    declared: false,
+    declared: true,
     runnerBound: false,
     declaredRuntime: null,
     declaredModel: null,

@@ -12,6 +12,7 @@ import type { FastifyInstance } from 'fastify';
 import { indexRepo } from '../planeA/indexer.ts';
 import { loadPolicy, loadOverride } from '../routing/policy.ts';
 import { scanWorkflowDefs } from '../workflows/routes.ts';
+import { taskForOwner } from '../runner/trigger.ts';
 import {
   buildRoster,
   isContainedRepoPath,
@@ -35,8 +36,18 @@ export interface AgentDetailResponse {
     ref: string;
     title: string | null;
     path: string;
-    stageIds: string[];
-    relationship: 'declared-workflow' | 'project-workflow';
+    governsWorkflow: boolean;
+    relationship: 'governor' | 'stage-governor' | 'governor-and-stage-governor' | 'declared-workflow';
+    stages: Array<{
+      id: string;
+      title: string;
+      action: string;
+      target: string;
+      riskTier: string;
+      dependsOn: string[];
+      review: { subjectStageId: string; maxCreatorReworks: number } | null;
+      completionGate: { id: string; kind: 'approval'; requiresReview: 'pass' } | null;
+    }>;
   }>;
   howItRuns: { runner: string | null; command: null; summary: string };
 }
@@ -47,13 +58,29 @@ export function readAgentDetail(repoRoot: string, id: string): AgentDetailRespon
   if (!declaration) return null;
   const workflows = scanWorkflowDefs(repoRoot)
     .filter(({ entry }) => declaration.projects.includes(entry.project))
-    .map(({ entry }) => ({
-      ref: entry.ref,
-      title: entry.title,
-      path: entry.path,
-      stageIds: entry.stages.map((stage) => stage.id),
-      relationship: declaration.workflowPaths.includes(entry.path) ? 'declared-workflow' as const : 'project-workflow' as const,
-    }));
+    .flatMap(({ entry }) => {
+      const governsWorkflow = entry.governedBy === declaration.id;
+      const stages = entry.stages.filter((stage) => stage.governedBy === declaration.id).map((stage) => ({
+        id: stage.id,
+        title: stage.title,
+        action: stage.action,
+        target: stage.target,
+        riskTier: stage.riskTier,
+        dependsOn: [...stage.dependsOn],
+        review: stage.review ? { ...stage.review } : null,
+        completionGate: stage.completionGate ? { ...stage.completionGate } : null,
+      }));
+      const declaredWorkflow = declaration.workflowPaths.includes(entry.path);
+      if (!governsWorkflow && stages.length === 0 && !declaredWorkflow) return [];
+      const relationship = governsWorkflow && stages.length > 0
+        ? 'governor-and-stage-governor' as const
+        : governsWorkflow
+          ? 'governor' as const
+          : stages.length > 0
+            ? 'stage-governor' as const
+            : 'declared-workflow' as const;
+      return [{ ref: entry.ref, title: entry.title, path: entry.path, governsWorkflow, relationship, stages }];
+    });
   const runner = declaration.runnerBound ? declaration.runtime : null;
   const codebases = declaration.projects.flatMap((project) => {
     const path = join(repoRoot, 'orgs', project);
@@ -92,6 +119,28 @@ export function readAgentDetail(repoRoot: string, id: string): AgentDetailRespon
   };
 }
 
+export interface SystemWorkerResponse {
+  id: string;
+  runtime: string;
+  addressable: true;
+  dashboardTriggerable: boolean;
+  registrationSource: 'runtime-default';
+}
+
+/** Runtime defaults are the canonical system-worker registry; observations never create workers. */
+export function readSystemWorkers(repoRoot: string): SystemWorkerResponse[] {
+  const policy = loadPolicy(repoRoot);
+  return Object.entries(policy.runtimes ?? {})
+    .flatMap(([runtime, config]) => config?.default_worker ? [{
+      id: config.default_worker,
+      runtime,
+      addressable: true as const,
+      dashboardTriggerable: taskForOwner(config.default_worker) !== null,
+      registrationSource: 'runtime-default' as const,
+    }] : [])
+    .sort((a, b) => a.id.localeCompare(b.id));
+}
+
 /** dashboard/server/agents/routes.ts → ../../../ is the repo root. Overridable for tests/config. */
 export function resolveRepoRoot(): string {
   return process.env.DASHBOARD_REPO_ROOT ?? fileURLToPath(new URL('../../../', import.meta.url));
@@ -105,6 +154,7 @@ export function registerAgents(app: FastifyInstance, repoRoot: string = resolveR
     const index = indexRepo(repoRoot);
     return buildRoster(index, repoRoot, policy, override);
   });
+  app.get('/api/agents/system-workers', async () => readSystemWorkers(repoRoot));
   app.get('/api/agents/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
     const detail = readAgentDetail(repoRoot, id);

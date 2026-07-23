@@ -33,7 +33,7 @@ import { registerApprovalsRoutes } from '../approvals/routes.ts';
 import { drainVibeProcesses } from '../vibe/session.ts';
 import { drainAsyncGit } from '../write/asyncGit.ts';
 import { createFileControlPlaneStore } from '../control/store.ts';
-import { createFileAssignmentAmendmentStore } from '../workflows/amendmentStore.ts';
+import { createFileDefinitionAmendmentStore } from '../workflows/amendmentStore.ts';
 import { registerControlRoutes } from '../control/routes.ts';
 import { buildActivatedExecution } from '../control/activation.ts';
 
@@ -79,10 +79,11 @@ export function makeSurfaceContext(
   const activated = activationOverridden
     ? null
     : build({ env: activation.env, controlStore, repoRoot, stateRoot });
+  const definitionAmendmentStore = overrides.definitionAmendmentStore ?? createFileDefinitionAmendmentStore(stateRoot);
   return {
     repoRoot,
     stateRoot,
-    assignmentAmendmentStore: overrides.assignmentAmendmentStore ?? createFileAssignmentAmendmentStore(stateRoot),
+    definitionAmendmentStore,
     durableRepoRoot: overrides.durableRepoRoot ?? overrides.repoRoot ?? resolveDurableRepoRoot(),
     sessionConfig,
     allowedOrigins: overrides.allowedOrigins ?? resolveAllowedOrigins(),

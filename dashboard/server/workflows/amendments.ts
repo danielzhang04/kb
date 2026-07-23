@@ -13,6 +13,7 @@ import { parseWorkflowDef, type WorkflowDef } from './defs.ts';
 
 export type AssignmentTarget = { kind: 'manager' } | { kind: 'stage'; stageId: string };
 export type AssignmentValue = { agentId: string; profileId: string } | null;
+export interface GovernanceValue { workflow: string | null; stages: Record<string, string | null> }
 
 /** Keep the raw patcher closed to the same scalar grammar the workflow parser admits. */
 export const SAFE_AGENT_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
@@ -22,9 +23,21 @@ export function isSafeAssignmentValue(value: AssignmentValue): boolean {
   return value === null || (SAFE_AGENT_ID_RE.test(value.agentId) && SAFE_EXECUTION_PROFILE_ID_RE.test(value.profileId));
 }
 
+export function isSafeGovernanceValue(value: GovernanceValue): boolean {
+  if (value.workflow !== null && !SAFE_AGENT_ID_RE.test(value.workflow)) return false;
+  return Object.entries(value.stages).every(([stageId, agentId]) =>
+    /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(stageId)
+      && (agentId === null || SAFE_AGENT_ID_RE.test(agentId)));
+}
+
 export interface PatchedAssignment {
   source: string;
   oldAssignment: AssignmentValue;
+}
+
+export interface PatchedGovernance {
+  source: string;
+  oldGovernance: GovernanceValue;
 }
 
 export function sourceHash(bytes: Buffer): string {
@@ -69,6 +82,107 @@ function frontmatterEnd(source: string): number | null {
   if (!source.startsWith('---\n') && !source.startsWith('---\r\n')) return null;
   const match = /^(?:---\r?\n)([\s\S]*?)(?:\r?\n---)(?:\r?\n|$)/.exec(source);
   return match ? match[0].length : null;
+}
+
+function plainOrJsonAgentId(raw: string): string | null {
+  const value = raw.trim();
+  if (SAFE_AGENT_ID_RE.test(value)) return value;
+  if (!value.startsWith('"') || !value.endsWith('"')) return null;
+  try {
+    const decoded = JSON.parse(value) as unknown;
+    return typeof decoded === 'string' && SAFE_AGENT_ID_RE.test(decoded) ? decoded : null;
+  } catch {
+    return null;
+  }
+}
+
+function governedValue(source: string, start: number, end: number, indent: string): { start: number; end: number; value: string } | null | 'malformed' {
+  const body = source.slice(start, end);
+  if (new RegExp(`^${indent}#\\s*governedBy:`, 'm').test(body)) return 'malformed';
+  const loose = [...body.matchAll(new RegExp(`^${indent}governedBy:.*$`, 'gm'))];
+  if (loose.length === 0) return null;
+  if (loose.length !== 1) return 'malformed';
+  const exact = new RegExp(`^${indent}governedBy: ([^\\r\\n#]+?)\\s*\\r?$`).exec(loose[0][0]);
+  const value = exact ? plainOrJsonAgentId(exact[1]) : null;
+  if (!value || loose[0].index === undefined) return 'malformed';
+  const absoluteStart = start + loose[0].index;
+  return { start: absoluteStart, end: lineEnd(source, absoluteStart), value };
+}
+
+function patchGovernedValue(source: string, start: number, end: number, indent: string, insertAt: number, value: string | null): { source: string; oldValue: string | null } | null {
+  const current = governedValue(source, start, end, indent);
+  if (current === 'malformed') return null;
+  if (current && value === current.value) return { source, oldValue: current.value };
+  if (current && value === null) return { source: `${source.slice(0, current.start)}${source.slice(current.end)}`, oldValue: current.value };
+  const newline = source.includes('\r\n') ? '\r\n' : '\n';
+  const replacement = value === null ? '' : `${indent}governedBy: ${value}${newline}`;
+  if (current) return { source: `${source.slice(0, current.start)}${replacement}${source.slice(current.end)}`, oldValue: current.value };
+  if (value === null) return { source, oldValue: null };
+  return { source: `${source.slice(0, insertAt)}${replacement}${source.slice(insertAt)}`, oldValue: null };
+}
+
+function governanceOf(definition: WorkflowDef): GovernanceValue {
+  return {
+    workflow: definition.governedBy ?? null,
+    stages: Object.fromEntries(definition.stages.map((stage) => [stage.id, stage.governedBy ?? null])),
+  };
+}
+
+function composerOrPlainStageId(raw: string): string | null {
+  const value = raw.trim();
+  if (/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(value)) return value;
+  if (!value.startsWith('"') || !value.endsWith('"')) return null;
+  try {
+    const decoded = JSON.parse(value) as unknown;
+    return typeof decoded === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(decoded) ? decoded : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Patch the complete governance snapshot in one byte-preserving operation. */
+export function patchWorkflowGovernance(source: string, governance: GovernanceValue): PatchedGovernance | null {
+  if (!isSafeGovernanceValue(governance)) return null;
+  const parsed = parseWorkflowDef(source);
+  if (!parsed.ok) return null;
+  const stageIds = parsed.value.stages.map((stage) => stage.id).sort();
+  const requestedIds = Object.keys(governance.stages).sort();
+  if (JSON.stringify(stageIds) !== JSON.stringify(requestedIds)) return null;
+  const oldGovernance = governanceOf(parsed.value);
+  let next = source;
+  const fmEnd = frontmatterEnd(next);
+  if (fmEnd === null) return null;
+  const anchor = /^(?:manager|parameters|readScope|stages):/m.exec(next.slice(0, fmEnd));
+  if (!anchor || anchor.index === undefined) return null;
+  const workflowPatch = patchGovernedValue(next, 0, fmEnd, '', anchor.index, governance.workflow);
+  if (!workflowPatch) return null;
+  next = workflowPatch.source;
+  for (const stageId of stageIds) {
+    const nextFmEnd = frontmatterEnd(next);
+    if (nextFmEnd === null) return null;
+    const frontmatter = next.slice(0, nextFmEnd);
+    const starts = [...frontmatter.matchAll(/^  - id: ([^\r\n#]+?)\s*\r?$/gm)];
+    const found = starts.find((match) => composerOrPlainStageId(match[1]) === stageId);
+    if (!found || found.index === undefined) return null;
+    const following = starts.find((match) => match.index! > found.index!);
+    const end = following?.index ?? frontmatter.lastIndexOf('\n---') + 1;
+    const insertAt = lineEnd(next, found.index);
+    const stagePatch = patchGovernedValue(next, insertAt, end, '    ', insertAt, governance.stages[stageId]);
+    if (!stagePatch) return null;
+    next = stagePatch.source;
+  }
+  return { source: next, oldGovernance };
+}
+
+export function isExactGovernanceAmendment(before: WorkflowDef, after: WorkflowDef, governance: GovernanceValue, expectedOld: GovernanceValue): boolean {
+  if (JSON.stringify(governanceOf(before)) !== JSON.stringify(expectedOld) || JSON.stringify(governanceOf(after)) !== JSON.stringify(governance)) return false;
+  const clean = (definition: WorkflowDef): WorkflowDef => {
+    const copy = { ...definition, stages: definition.stages.map((stage) => ({ ...stage })) };
+    delete copy.governedBy;
+    for (const stage of copy.stages) delete stage.governedBy;
+    return copy;
+  };
+  return JSON.stringify(clean(before)) === JSON.stringify(clean(after));
 }
 
 interface FieldBlock { start: number; end: number; indent: string; headerStart?: number; agent?: { start: number; end: number; value: string }; profile?: { start: number; end: number; value: string } }

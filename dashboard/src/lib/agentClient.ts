@@ -17,6 +17,25 @@ export interface AgentWorkflowFact {
   title: string | null;
   path: string | null;
   relationship: string | null;
+  governsWorkflow?: boolean;
+  stages?: Array<{
+    id: string;
+    title: string;
+    action: string;
+    target: string;
+    riskTier: string;
+    dependsOn: string[];
+    review: { subjectStageId: string; maxCreatorReworks: number } | null;
+    completionGate: { id: string; kind: 'approval'; requiresReview: 'pass' } | null;
+  }>;
+}
+
+export interface SystemWorkerDto {
+  id: string;
+  runtime: string;
+  addressable: true;
+  dashboardTriggerable: boolean;
+  registrationSource: 'runtime-default';
 }
 
 export interface AgentRunFact {
@@ -46,4 +65,10 @@ export async function fetchAgentDetail(agentId: string, fetchImpl: typeof fetch 
   const response = await fetchImpl(`/api/agents/${encodeURIComponent(agentId)}`);
   if (!response.ok) throw new Error(`agent detail request failed (${response.status})`);
   return await response.json() as AgentDetailDto;
+}
+
+export async function fetchSystemWorkers(fetchImpl: typeof fetch = fetch): Promise<SystemWorkerDto[]> {
+  const response = await fetchImpl('/api/agents/system-workers');
+  if (!response.ok) throw new Error(`system worker request failed (${response.status})`);
+  return await response.json() as SystemWorkerDto[];
 }
