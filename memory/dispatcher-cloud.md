@@ -129,3 +129,19 @@
 - REMAINS: stale done-in-inbox cards 6a5dbb3e-295a9d2b, 6a5f0cef-53d31df4 (and now this run's
   6a605e40) sit at state:done in queue/inbox/, never swept to queue/done/. Recurring — worth a
   janitor step, but outside the nightly work order so left untouched.
+
+## 2026-07-23 nightly-dispatcher run
+- WORKED: full nightly cycle green — preamble OK, sync_skills clean, dashboards regenerated,
+  card 6a61b00f lifecycle inbox→working→done, cost step logged. Quiet/healthy night; sent no
+  push notification (nothing new broke; all pending items are carried-over with wake cards
+  already filed — silence is correct for a "ran and all's well" run).
+- RESOLVED SINCE 07-22: the daemon-dir drift on self-lint-report.md is now CLEAN
+  (`sync_daemon_dirs --check` from the main copy reports ops matches main). So wake card
+  6a605ebb-d86dff79 is now HALF stale — only its "missing script on ops" half still stands.
+- STILL: `scripts/sync_daemon_dirs.py` exists on origin/main but not on ops; step-2b's literal
+  invocation still file-not-founds on ops. Same workaround (extract from origin/main, run temp
+  copy). Left for Daniel per the existing wake card — did not mirror it myself (governance/
+  CLAUDE.md are human-edited; script-mirror is a desktop decision).
+- REMAINS: stale done-in-inbox cards now number 3 (6a5dbb3e, 6a5f0cef, 6a605e40) — recurring;
+  a janitor step to sweep state:done cards out of queue/inbox/ would help, but it's outside the
+  nightly work order so left untouched again.
