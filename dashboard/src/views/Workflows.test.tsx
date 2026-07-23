@@ -154,7 +154,13 @@ describe('Workflows view', () => {
     let resolveGovernance: ((response: Response) => void) | undefined;
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === '/api/workflows/research-brief') return Promise.resolve({ ok: true, status: 200, json: async () => ({ governanceOptions: [{ id: 'writer', role: 'worker', description: null }] }) } as Response);
+      if (url === '/api/workflows/research-brief') return Promise.resolve({ ok: true, status: 200, json: async () => ({
+        governanceOptions: [{ id: 'writer', role: 'worker', description: null }],
+        assignmentOptions: {
+          manager: { options: [{ agentId: 'manager', profileId: 'manager:claude:test' }], unavailable: null },
+          stages: { brief: { options: [{ agentId: 'writer', profileId: 'worker:claude:test' }], unavailable: null } },
+        },
+      }) } as Response);
       if (url.endsWith('/governance-amendments')) return new Promise<Response>((resolve) => { resolveGovernance = resolve; });
       throw new Error(`unexpected ${url}`);
     });
@@ -169,7 +175,10 @@ describe('Workflows view', () => {
     expect(submit.disabled).toBe(true);
     expect((screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement).disabled).toBe(true);
     expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/assignment-amendments'))).toBe(false);
+    fireEvent.click(screen.getByTestId('entity-tab-overview'));
+    expect((screen.getByRole('combobox', { name: 'Manager assignment' }) as HTMLSelectElement).disabled).toBe(true);
     resolveGovernance?.({ ok: false, status: 409, json: async () => ({ status: 'stale-source', detail: 'definition source changed' }) } as Response);
+    fireEvent.click(screen.getByTestId('entity-tab-agents'));
     expect((await screen.findByTestId('workflow-governance-status')).textContent).toContain('Refused: definition source changed');
   });
 });

@@ -37,7 +37,11 @@ import { decodeUtf8, isExactAssignmentAmendment, isExactGovernanceAmendment, isS
 import type { PendingDefinitionAmendment } from './amendmentStore.ts';
 import { DEFAULT_WORK_BRANCH, DurableRouteError, routeDurable } from '../write/branch.ts';
 import { withOpsTransaction } from '../write/asyncGit.ts';
-import { readDeclaredAgentDetails } from '../agents/roster.ts';
+import {
+  executionAssignmentRole,
+  readDeclaredAgentDetails,
+  type DeclaredAgentDetail,
+} from '../agents/roster.ts';
 
 interface WorkflowStagePreview {
   id: string;
@@ -72,6 +76,8 @@ export interface WorkflowDefEntry {
   profile: string | null;
   /** Durable workflow governor, separate from executable manager routing. */
   governedBy: string | null;
+  /** Declaration/project diagnostics for authored governance. They never alter compiled execution. */
+  governanceProblems: string[];
   manager: WorkflowAssignmentPreview | null;
   stageCount: number;
   parameters: string[];
@@ -109,6 +115,7 @@ function invalidEntry(project: string, basename: string, path: string, detail: s
       title: null,
       profile: null,
       governedBy: null,
+      governanceProblems: [],
       manager: null,
       stageCount: 0,
       parameters: [],
@@ -146,6 +153,7 @@ export function scanWorkflowDefs(repoRoot: string): ScannedDef[] {
   }
   if (!isWithin(rootReal, orgsReal)) return [];
   const knownProfiles = workflowProfileIds();
+  const declarations = readDeclaredAgentDetails(repoRoot);
   const scanned: ScannedDef[] = [];
   for (const project of readdirSync(orgsRoot, { withFileTypes: true })) {
     if (!project.isDirectory()) continue;
@@ -201,6 +209,11 @@ export function scanWorkflowDefs(repoRoot: string): ScannedDef[] {
           ));
           continue;
         }
+        const governanceProblems = validateGovernanceOwnersAgainst(
+          declarations,
+          parsed.value,
+          governanceOf(parsed.value),
+        );
         scanned.push({
           def: parsed.value,
           entry: {
@@ -212,6 +225,7 @@ export function scanWorkflowDefs(repoRoot: string): ScannedDef[] {
             title: parsed.value.title,
             profile: parsed.value.profile,
             governedBy: parsed.value.governedBy ?? null,
+            governanceProblems,
             manager: parsed.value.manager ? { ...parsed.value.manager } : null,
             stageCount: parsed.value.stages.length,
             parameters: [...(parsed.value.parameters ?? [])],
@@ -256,6 +270,7 @@ export function scanWorkflowDefs(repoRoot: string): ScannedDef[] {
         title: null,
         profile: null,
         governedBy: null,
+        governanceProblems: [],
         manager: null,
         stageCount: 0,
         parameters: [],
@@ -405,7 +420,7 @@ function eligibleAssignmentOptions(repoRoot: string, def: WorkflowDef, role: 'ma
   const options: AssignmentOption[] = [];
   for (const declaration of environment.declaredAgents.values()) {
     const allowedProfiles = declaration.allowedProfiles;
-    if (!declaration.runnerBound || !declaration.projects.includes(def.project) || declaration.role !== role
+    if (!declaration.runnerBound || !declaration.projects.includes(def.project) || executionAssignmentRole(declaration.role) !== role
       || !declaration.defaultProfile || !allowedProfiles || !allowedProfiles.includes(declaration.defaultProfile)) continue;
     const defaultProfile = environment.executionProfiles.find((profile) => profile.id === declaration.defaultProfile);
     if (!defaultProfile || defaultProfile.role !== role || declaration.runtime !== defaultProfile.runtime || declaration.model !== defaultProfile.model) continue;
@@ -469,15 +484,38 @@ function parseGovernanceAmendmentBody(body: unknown): { expectedSourceHash: stri
   return isSafeGovernanceValue(governance) ? { expectedSourceHash: value.expectedSourceHash, governance } : null;
 }
 
-function validateGovernanceOwners(repoRoot: string, def: WorkflowDef, governance: GovernanceValue): string | null {
-  const declarations = readDeclaredAgentDetails(repoRoot);
-  const owners = new Set([governance.workflow, ...Object.values(governance.stages)].filter((owner): owner is string => owner !== null));
-  for (const owner of owners) {
-    const declaration = declarations.get(owner);
-    if (!declaration) return `governance agent '${owner}' is not declared`;
-    if (!declaration.projects.includes(def.project)) return `governance agent '${owner}' is not declared for project '${def.project}'`;
+function governanceOf(def: WorkflowDef): GovernanceValue {
+  return {
+    workflow: def.governedBy ?? null,
+    stages: Object.fromEntries(def.stages.map((stage) => [stage.id, stage.governedBy ?? null])),
+  };
+}
+
+function validateGovernanceOwnersAgainst(
+  declarations: ReadonlyMap<string, DeclaredAgentDetail>,
+  def: WorkflowDef,
+  governance: GovernanceValue,
+): string[] {
+  const claims = [
+    ...(governance.workflow ? [{ label: 'workflow', owner: governance.workflow }] : []),
+    ...Object.entries(governance.stages)
+      .filter((entry): entry is [string, string] => entry[1] !== null)
+      .map(([stageId, owner]) => ({ label: `stage '${stageId}'`, owner })),
+  ];
+  const problems: string[] = [];
+  for (const claim of claims) {
+    const declaration = declarations.get(claim.owner);
+    if (!declaration) {
+      problems.push(`${claim.label} governance agent '${claim.owner}' is not declared`);
+    } else if (!declaration.projects.includes(def.project)) {
+      problems.push(`${claim.label} governance agent '${claim.owner}' is not declared for project '${def.project}'`);
+    }
   }
-  return null;
+  return problems;
+}
+
+function validateGovernanceOwners(repoRoot: string, def: WorkflowDef, governance: GovernanceValue): string | null {
+  return validateGovernanceOwnersAgainst(readDeclaredAgentDetails(repoRoot), def, governance)[0] ?? null;
 }
 
 type DefinitionAmendmentSpec = {

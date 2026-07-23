@@ -34,6 +34,7 @@ export interface WorkflowDefEntry {
   /** Existing workflow tool capability profile; never an agent assignment profile. */
   profile: string | null;
   governedBy?: string | null;
+  governanceProblems?: string[];
   /** Required string parameters declared by the immutable workflow definition. */
   parameters?: string[];
   manager?: { agentId: string; profileId: string } | null;
@@ -246,8 +247,8 @@ export function WorkflowDetail({
       <section className="entity-block" aria-label="Assignment amendments">
         <h3 className="entity-block__title">Pre-launch assignment amendments</h3>
         <p className="entity-note">Active source hash: <span className="mc-mono" data-testid="workflow-source-hash">{entry.sourceHash ?? 'unavailable'}</span></p>
-        <AssignmentAmendmentRow label="Manager" target={{ kind: 'manager' }} declared={entry.manager} choices={assignmentOptions?.manager} onAmend={onAssignmentAmend} />
-        {entry.stages.map((stage) => <AssignmentAmendmentRow key={stage.id} label={`Stage ${stage.id}`} target={{ kind: 'stage', stageId: stage.id }} declared={stage.declaredAssignment} choices={assignmentOptions?.stages[stage.id]} onAmend={onAssignmentAmend} />)}
+        <AssignmentAmendmentRow label="Manager" target={{ kind: 'manager' }} declared={entry.manager} choices={assignmentOptions?.manager} onAmend={onAssignmentAmend} readOnly={governanceReadOnly} />
+        {entry.stages.map((stage) => <AssignmentAmendmentRow key={stage.id} label={`Stage ${stage.id}`} target={{ kind: 'stage', stageId: stage.id }} declared={stage.declaredAssignment} choices={assignmentOptions?.stages[stage.id]} onAmend={onAssignmentAmend} readOnly={governanceReadOnly} />)}
         {amendmentStatus ? <p className="entity-note" data-testid="workflow-amendment-status">{amendmentStatus}</p> : null}
       </section>
 
@@ -407,6 +408,20 @@ export function WorkflowDetail({
         Stages remain the dependency and retry units. This view groups them by accountable agent and
         derives cross-agent handoffs from the underlying stage dependencies.
       </p>
+      {entry.governanceProblems?.length ? (
+        <section className="entity-undeclared" data-testid="workflow-governance-problems" aria-label="Workflow governance needs correction">
+          <p className="entity-undeclared__head">
+            <span className="entity-undeclared__tag mc-mono">governance</span>
+            Authored ownership does not match the declared project roster.
+          </p>
+          <ul className="entity-undeclared__body">
+            {entry.governanceProblems.map((problem) => <li key={problem}>{problem}</li>)}
+          </ul>
+          <p className="entity-undeclared__body">
+            Ownership remains compile-neutral: executable assignments and the compiled proposal are unchanged.
+          </p>
+        </section>
+      ) : null}
       {governanceDraft && onGovernanceDraftChange ? (
         <>
           <label className="entity-note">Workflow governor{' '}
@@ -466,12 +481,13 @@ export function WorkflowDetail({
   );
 }
 
-function AssignmentAmendmentRow({ label, target, declared, choices, onAmend }: {
+function AssignmentAmendmentRow({ label, target, declared, choices, onAmend, readOnly = false }: {
   label: string;
   target: { kind: 'manager' } | { kind: 'stage'; stageId: string };
   declared: { agentId: string; profileId: string } | null | undefined;
   choices: AssignmentChoices | undefined;
   onAmend?: WorkflowDetailProps['onAssignmentAmend'];
+  readOnly?: boolean;
 }): React.JSX.Element {
   const [choice, setChoice] = useState('');
   const assignmentKey = (option: { agentId: string; profileId: string }): string => JSON.stringify([option.agentId, option.profileId]);
@@ -479,7 +495,7 @@ function AssignmentAmendmentRow({ label, target, declared, choices, onAmend }: {
   return <div className="entity-note" data-testid={`workflow-amendment-${target.kind === 'manager' ? 'manager' : target.stageId}`}>
     <p><span className="mc-mono">{label}</span> · {declared ? `${declared.agentId} · ${declared.profileId}` : 'unassigned'}</p>
     {choices?.unavailable ? <p>{choices.unavailable}</p> : null}
-    {choices?.options.length ? <><select aria-label={`${label} assignment`} value={choice} onChange={(event) => setChoice(event.target.value)}><option value="">Select eligible assignment</option>{choices.options.map((option) => <option key={assignmentKey(option)} value={assignmentKey(option)}>{option.agentId} · {option.profileId}</option>)}</select><button type="button" className="mc-btn mc-btn--quiet" disabled={!selected} onClick={() => selected && onAmend?.(target, selected)}>Amend</button></> : null}
-    {declared ? <button type="button" className="mc-btn mc-btn--quiet" onClick={() => onAmend?.(target, null)}>Clear assignment</button> : null}
+    {choices?.options.length ? <><select aria-label={`${label} assignment`} value={choice} disabled={readOnly} onChange={(event) => setChoice(event.target.value)}><option value="">Select eligible assignment</option>{choices.options.map((option) => <option key={assignmentKey(option)} value={assignmentKey(option)}>{option.agentId} · {option.profileId}</option>)}</select><button type="button" className="mc-btn mc-btn--quiet" disabled={!selected || readOnly} onClick={() => selected && onAmend?.(target, selected)}>Amend</button></> : null}
+    {declared ? <button type="button" className="mc-btn mc-btn--quiet" disabled={readOnly} onClick={() => onAmend?.(target, null)}>Clear assignment</button> : null}
   </div>;
 }

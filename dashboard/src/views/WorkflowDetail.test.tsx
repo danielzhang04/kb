@@ -70,6 +70,21 @@ const run = (over: Partial<RunMetadataDto> & { runRef: string }): RunMetadataDto
 });
 
 describe('reaching a workflow detail and coming back', () => {
+  it('surfaces checked-in governance diagnostics without calling the workflow invalid', () => {
+    render(<WorkflowDetail entry={def({
+      ref: 'kb~governance.md',
+      governanceProblems: [
+        "workflow governance agent 'missing-governor' is not declared",
+        "stage 'render' governance agent 'other-agent' is not declared for project 'kb'",
+      ],
+    })} compiled={null} />);
+    const warning = screen.getByTestId('workflow-governance-problems');
+    expect(warning.textContent).toContain('missing-governor');
+    expect(warning.textContent).toContain('other-agent');
+    expect(warning.textContent).toMatch(/compile-neutral/i);
+    expect(screen.getByTestId('entity-detail-status').textContent).toContain('valid');
+  });
+
   it('opens the detail on a definition click and returns to the list on back', () => {
     render(
       <Workflows
