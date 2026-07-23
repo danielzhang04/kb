@@ -171,6 +171,57 @@ Have a human review and merge PR #72 into `ops`. In the owner session, pull `ori
 
 Open and merge the `codex/dashboard-alignment-final-handoff` coordination PR into `ops`; no dashboard-alignment work remains after that. Before any live FYT run, the human must next approve the assignment/review/completion-gate semantics and runner bindings, resolve the durable-save branch/identity policy, and separately authorize any paid stages. Publishing remains its own T3/G3 decision.
 
+## Merge readiness is a tree property, not a commit-label property
+
+### Context
+- The FYT handoff correctly named six engagement commits, but their consolidation branch inherited an older shorts pipeline that current `main` did not contain.
+
+### Root Cause / Core Insight
+- Reviewing only named commits proved their local intent while hiding the aggregate tree that a pull request would actually merge. Cherry-pick conflicts also carried unrelated parent context, so accepting a whole "theirs" side would have silently restored out-of-scope behavior.
+
+### The Pattern (transferable)
+- Next time I inherit a consolidation branch, I will compare `origin/main...HEAD` by changed path before calling it merge-ready; if unrelated domains appear, I will rebuild from current main and resolve conflicts from the source commit's actual delta rather than either whole side.
+- Signal to recognize: the aggregate changed-path set contains owners or artifacts absent from the requirement map, even though every named feature commit looks correct in isolation.
+
+## Session handoff 2026-07-22 (FYT engagement overhaul integrated)
+
+**Topic:** Recover, audit, repair, isolate, and propose the six-axis FYT engagement overhaul for human review.
+
+### What WORKED (with evidence)
+
+- **Fresh lane review** — story/selection, voice, and visual-motion-audio agents each persisted findings and returned READY after focused infrastructure repairs.
+- **Infrastructure fixes** — opaque-card pauses now require authored cues; voice marker placement and dry-run spoken-region parity are covered; blockquoted dialogue cannot bypass lint; research viability canonically controls writer/metadata promises; renderer pull intensity now affects output.
+- **Clean integration** — the final work branch `codex/poyais-engagement-overhaul-final` is based on current main `03ba187`, excludes inherited shorts/publish/compliance/video-artifact paths, and is published as PR #76.
+- **Verification** — independent final review is READY; 109 targeted and 411 broad local tests passed, renderer camera math passed 2/2, all nine changed skills passed structural validation, and `git diff --check` passed.
+- **Durable closeout** — the live FYT status, project dashboard, consolidated audit, independent audit, and exact-next-step handoff are committed on the work branch.
+
+### What Did NOT Work (and why)
+
+- **Directly proposing `codex/poyais-engagement-resume`** — its aggregate diff carried an older shorts pipeline not present on current main, so it was retained only as provenance.
+- **Naive clean-branch cherry-pick** — several conflicts mixed engagement changes with shorts-only context. Resolutions kept current-main behavior and replayed only the source commit's engagement delta, including dedicated engagement-only tests.
+- **First independent review** — correctly requested changes after main advanced, the renderer ignored pull intensity, and current docs retained superseded creative locks. All three were repaired before the READY re-review.
+- **TypeScript type-check** — not run because the isolated render engine had no local TypeScript installation and no dependency download was authorized; a dependency-free Node engine test covers the new camera math.
+
+### What Has NOT Been Tried Yet
+
+- Human review or merge of PR #76.
+- The zero-spend Poyais baseline/cuts/life/camera comparison and selected-visual audio comparison.
+- The later blind Bricks script/voice dry-run, any paid generation, full render, publication, or stale queue-card reconciliation.
+
+### Current State of Files
+
+| File / branch | Status | Notes |
+| ---- | ------ | ----- |
+| `codex/poyais-engagement-overhaul-final` / PR #76 | DONE / HUMAN GATE | Clean current-main work product; independent verdict READY |
+| `orgs/faceless-youtube/docs/handoffs/2026-07-22-poyais-engagement-overhaul-final-handoff.md` | DONE | Work evidence, failures, untried steps, and exact next action |
+| `orgs/faceless-youtube/output/audits/2026-07-22-engagement-overhaul-independent-final-review.md` | DONE | Fresh-context final READY review |
+| `codex/poyais-engagement-resume` | SUPERSEDED FOR MERGE | Provenance only; inherited scope is intentionally excluded |
+| `memory/codex-worker.md` | DONE / COORDINATION PR | This growth entry and session handoff target `ops` through a separate worker PR |
+
+### Exact Next Step
+
+Have a human review and merge PR #76 only if the production-logic diff is accepted, and merge the separate coordination PR into `ops`. Then execute the documented zero-spend Poyais calibration one axis at a time and return the comparisons for a human eye/ear gate. Do not begin paid generation, full rendering, publication, queue transitions, or stale-card cleanup from this handoff.
+
 ## Session lesson 2026-07-22 (OAuth gate retirement and branch pruning)
 
 - High-level operational evidence is enough to retire a credential gate without reading credential
