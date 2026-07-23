@@ -1,8 +1,8 @@
-import { mkdtempSync, mkdirSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createFileAssignmentAmendmentStore } from './amendmentStore.ts';
+import { createFileAssignmentAmendmentStore, createFileDefinitionAmendmentStore } from './amendmentStore.ts';
 
 const path = 'orgs/kb-ops/workflows/research.md';
 const record = { workflowPath: path, baseSourceHash: 'a'.repeat(64), proposedSourceHash: 'b'.repeat(64), branch: 'claude/m1-dashboard', pr: { url: 'https://example.test/pull/7', number: 7 }, phase: 'pending-human-merge' as const };
@@ -14,8 +14,8 @@ describe('file assignment amendment store', () => {
     const root = mkdtempSync(join(tmpdir(), 'kb-amendment-state-')); roots.push(root);
     createFileAssignmentAmendmentStore(root).put(record);
     const restarted = createFileAssignmentAmendmentStore(root);
-    expect(restarted.lookup(path, record.baseSourceHash)).toEqual({ ok: true, record });
-    expect(restarted.lookup(path, 'c'.repeat(64))).toEqual({ ok: true, record });
+    expect(restarted.lookup(path, record.baseSourceHash)).toEqual({ ok: true, record: { ...record, kind: 'assignment' } });
+    expect(restarted.lookup(path, 'c'.repeat(64))).toEqual({ ok: true, record: { ...record, kind: 'assignment' } });
     expect(restarted.lookup(path, record.proposedSourceHash)).toEqual({ ok: true, record: null });
   });
 
@@ -34,5 +34,15 @@ describe('file assignment amendment store', () => {
     mkdirSync(join(root, 'workflows'), { recursive: true });
     symlinkSync(outside, join(root, 'workflows', 'assignment-amendments'), 'junction');
     expect(() => createFileAssignmentAmendmentStore(root).put(record)).toThrow('state directory refused');
+  });
+
+  it('loads legacy assignment state without kind and persists explicit kinds for new records', () => {
+    const root = mkdtempSync(join(tmpdir(), 'kb-amendment-state-')); roots.push(root);
+    createFileAssignmentAmendmentStore(root).put(record);
+    expect(createFileDefinitionAmendmentStore(root).lookup(path, record.baseSourceHash)).toMatchObject({ ok: true, record: { kind: 'assignment' } });
+    const governance = { ...record, kind: 'governance' as const, proposedSourceHash: 'c'.repeat(64) };
+    createFileDefinitionAmendmentStore(root).update(governance);
+    const file = join(root, 'workflows', 'assignment-amendments', readdirSync(join(root, 'workflows', 'assignment-amendments'))[0]);
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toMatchObject({ kind: 'governance' });
   });
 });

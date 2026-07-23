@@ -34,7 +34,7 @@ import type { AgentWorkspaceLaunchProvenance, JsonObject } from '../control/type
 import { instantiateWorkflowDef, parseWorkflowDef, type WorkflowDef } from './defs.ts';
 import { compileWorkflowDef } from './compile.ts';
 import { decodeUtf8, isExactAssignmentAmendment, isExactGovernanceAmendment, isSafeAssignmentValue, isSafeGovernanceValue, patchWorkflowAssignment, patchWorkflowGovernance, readCanonicalDefinitionLocation, sourceHash, type AssignmentTarget, type AssignmentValue, type GovernanceValue } from './amendments.ts';
-import type { PendingAssignmentAmendment } from './amendmentStore.ts';
+import type { PendingDefinitionAmendment } from './amendmentStore.ts';
 import { DEFAULT_WORK_BRANCH, DurableRouteError, routeDurable } from '../write/branch.ts';
 import { withOpsTransaction } from '../write/asyncGit.ts';
 import { readDeclaredAgentDetails } from '../agents/roster.ts';
@@ -84,7 +84,7 @@ export interface WorkflowDefEntry {
   compileError: string | null;
   compileDetail: string | null;
   /** Server-owned durable amendment state. It stays blocking until active canonical bytes equal its proposal. */
-  pendingAmendment?: PendingAssignmentAmendment | null;
+  pendingAmendment?: PendingDefinitionAmendment | null;
   pendingAmendmentError?: string | null;
 }
 
@@ -374,9 +374,9 @@ function compiledPreview(repoRoot: string, def: WorkflowDef): { proposalId: stri
 }
 
 /** Preserve parser validity while exposing the compiler's exact semantic launch decision. */
-function pendingAmendmentFor(ctx: SurfaceContext, entry: WorkflowDefEntry): { pending: PendingAssignmentAmendment | null; error: string | null } {
+function pendingAmendmentFor(ctx: SurfaceContext, entry: WorkflowDefEntry): { pending: PendingDefinitionAmendment | null; error: string | null } {
   if (!entry.sourceHash) return { pending: null, error: null };
-  const lookup = ctx.assignmentAmendmentStore.lookup(entry.path, entry.sourceHash);
+  const lookup = ctx.definitionAmendmentStore.lookup(entry.path, entry.sourceHash);
   if (!lookup.ok) return { pending: null, error: lookup.detail };
   return { pending: lookup.record, error: null };
 }
@@ -480,138 +480,125 @@ function validateGovernanceOwners(repoRoot: string, def: WorkflowDef, governance
   return null;
 }
 
+type DefinitionAmendmentSpec = {
+  kind: 'assignment' | 'governance';
+  expectedSourceHash: string;
+  patch: (source: string) => { source: string; old: unknown } | null;
+  validateInput?: (definition: WorkflowDef) => string | null;
+  isExact: (before: WorkflowDef, after: WorkflowDef, old: unknown) => boolean;
+  layoutError: string;
+  noChangeError: string;
+  semanticError: string;
+  auditAction: string;
+  routeMessage: string;
+  auditDetail: (old: unknown, proposalHash: string, durable: { branch: string; pr: { url?: string; number?: number } }) => Record<string, unknown>;
+  successDetail: (proposalHash: string, durable: { branch: string; pr: { url?: string; number?: number } }) => Record<string, unknown>;
+};
+
+/** The single durable pipeline for every workflow-definition edit. The edit-specific patch and
+ * semantic proof are supplied by the caller; CAS, pending state, durable route, rollback and audit
+ * remain deliberately identical so amendment kinds cannot drift or race. */
+async function amendDefinition(ctx: SurfaceContext, sub: string, scanned: ScannedDef, spec: DefinitionAmendmentSpec): Promise<LaunchOutcome> {
+  if (!scanned.def || !scanned.entry.sourceHash) return { status: 409, body: { error: 'definition-invalid', detail: scanned.entry.detail } };
+  if (spec.expectedSourceHash !== scanned.entry.sourceHash) return { status: 409, body: { error: 'stale-source-hash', sourceHash: scanned.entry.sourceHash } };
+  if (!ctx.durableRepoRoot) return { status: 409, body: { error: 'durable-worktree-required' } };
+  const durableRoot = ctx.durableRepoRoot;
+  try { if (realpathSync(resolve(ctx.repoRoot)) === realpathSync(resolve(durableRoot))) return { status: 409, body: { error: 'durable-worktree-required' } }; }
+  catch { return { status: 409, body: { error: 'durable-worktree-required' } }; }
+  type Prepared = { outcome: LaunchOutcome } | { proposedSourceHash: string; proposalHash: string; old: unknown; riskTier: 'T1' | 'T2' | 'T3'; durable: { branch: string; pr: { url?: string; number?: number } } };
+  let prepared: Prepared;
+  try {
+    prepared = await withOpsTransaction(async (): Promise<Prepared> => {
+      const active = readCanonicalDefinitionLocation(ctx.repoRoot, scanned.entry.path);
+      const durableLocation = readCanonicalDefinitionLocation(durableRoot, scanned.entry.path);
+      if (!active || !durableLocation || active.path === durableLocation.path) return { outcome: { status: 409, body: { error: 'definition-path-refused' } } };
+      const activeHash = sourceHash(active.bytes);
+      if (activeHash !== spec.expectedSourceHash) return { outcome: { status: 409, body: { error: 'stale-source-hash', sourceHash: activeHash } } };
+      // The lookup belongs after the authoritative reread: a concurrent settled record must not block,
+      // and a concurrently-created record must block both amendment kinds before any patch/write.
+      const pendingLookup = ctx.definitionAmendmentStore.lookup(scanned.entry.path, activeHash);
+      if (!pendingLookup.ok) return { outcome: { status: 409, body: { error: 'assignment-amendment-state-invalid' } } };
+      if (pendingLookup.record) return { outcome: { status: 409, body: { error: 'assignment-amendment-pending', pending: pendingLookup.record } } };
+      if (!active.bytes.equals(durableLocation.bytes)) return { outcome: { status: 409, body: { error: 'durable-base-mismatch' } } };
+      const source = decodeUtf8(active.bytes);
+      if (source === null) return { outcome: { status: 409, body: { error: 'definition-not-utf8' } } };
+      const original = parseWorkflowDef(source, { knownProfiles: workflowProfileIds() });
+      if (!original.ok || original.value.project !== scanned.entry.project || original.value.id !== scanned.def!.id) return { outcome: { status: 409, body: { error: 'definition-changed' } } };
+      const inputProblem = spec.validateInput?.(original.value);
+      if (inputProblem) return { outcome: { status: 409, body: { error: 'governance-owner-refused', detail: inputProblem } } };
+      const patched = spec.patch(source);
+      if (!patched) return { outcome: { status: 409, body: { error: spec.layoutError } } };
+      if (patched.source === source) return { outcome: { status: 409, body: { error: spec.noChangeError } } };
+      const reparsed = parseWorkflowDef(patched.source, { knownProfiles: workflowProfileIds() });
+      if (!reparsed.ok || reparsed.value.project !== scanned.entry.project) return { outcome: { status: 409, body: { error: 'amendment-parse-refused', detail: reparsed.ok ? 'definition project no longer matches path project' : reparsed.detail } } };
+      if (!spec.isExact(original.value, reparsed.value, patched.old)) return { outcome: { status: 409, body: { error: spec.semanticError } } };
+      const environment = loadWorkflowCompileEnvironment(ctx.repoRoot);
+      const afterCompiled = compileWorkflowDef(reparsed.value, environment);
+      if (!afterCompiled.ok) return { outcome: { status: 409, body: { error: spec.kind === 'governance' ? 'governance-compile-refused' : afterCompiled.reason, detail: afterCompiled.detail } } };
+      const afterValidation = validateServerCompiledPlanProposal(afterCompiled.value as unknown, environment.registry);
+      if (!afterValidation.ok) return { outcome: { status: 409, body: { error: 'compiled-proposal-invalid', detail: afterValidation.detail } } };
+      const proposalHash = proposalContentHash(afterCompiled.value);
+      if (spec.kind === 'governance') {
+        const beforeCompiled = compileWorkflowDef(original.value, environment);
+        if (!beforeCompiled.ok) return { outcome: { status: 409, body: { error: 'governance-compile-refused', detail: beforeCompiled.detail } } };
+        const beforeValidation = validateServerCompiledPlanProposal(beforeCompiled.value as unknown, environment.registry);
+        if (!beforeValidation.ok) return { outcome: { status: 409, body: { error: 'compiled-proposal-invalid', detail: beforeValidation.detail } } };
+        if (proposalContentHash(beforeCompiled.value) !== proposalHash) return { outcome: { status: 409, body: { error: 'governance-changed-execution-proposal' } } };
+      }
+      const proposedSourceHash = sourceHash(Buffer.from(patched.source, 'utf8'));
+      const pending: PendingDefinitionAmendment = { kind: spec.kind, workflowPath: scanned.entry.path, baseSourceHash: spec.expectedSourceHash, proposedSourceHash, branch: DEFAULT_WORK_BRANCH, pr: {}, phase: 'prepared' };
+      try { ctx.definitionAmendmentStore.put(pending); }
+      catch (error) { return { outcome: { status: 500, body: { error: 'assignment-amendment-state-write-failed', detail: error instanceof Error ? error.message : String(error) } } }; }
+      try { writeFileSync(durableLocation.path, patched.source, 'utf8'); }
+      catch (error) { return { outcome: { status: 500, body: { ok: false, status: 'recovery-required', stateStatus: 'prepared', error: `${spec.kind}-durable-write-failed`, path: scanned.entry.path, baseSourceHash: spec.expectedSourceHash, proposedSourceHash, branch: DEFAULT_WORK_BRANCH, detail: error instanceof Error ? error.message : String(error) } } }; }
+      try {
+        const durable = await routeDurable(durableRoot, scanned.entry.path, { runGit: ctx.saveGit, openPr: ctx.openPr, message: spec.routeMessage });
+        try { ctx.definitionAmendmentStore.update({ ...pending, phase: 'audit-pending', branch: durable.branch, pr: durable.pr }); }
+        catch (error) { return { outcome: { status: 500, body: { ok: false, status: 'recovery-required', stateStatus: 'update-failed', error: 'assignment-amendment-state-write-failed', path: scanned.entry.path, baseSourceHash: spec.expectedSourceHash, proposedSourceHash, branch: durable.branch, pr: durable.pr, detail: error instanceof Error ? error.message : String(error) } } }; }
+        return { proposedSourceHash, proposalHash, old: patched.old, riskTier: highestTier(reparsed.value), durable };
+      } catch (error) {
+        if (error instanceof DurableRouteError && error.committed) {
+          try { ctx.definitionAmendmentStore.update({ ...pending, phase: error.pushed ? 'pushed' : 'committed' }); } catch { /* prepared is a safe block */ }
+          return { outcome: { status: 502, body: { error: `${spec.kind}-durable-route-incomplete`, status: 'recovery-required', committed: true, pushed: error.pushed, detail: error.message, path: scanned.entry.path, baseSourceHash: spec.expectedSourceHash, proposedSourceHash, branch: DEFAULT_WORK_BRANCH } } };
+        }
+        try { writeFileSync(durableLocation.path, durableLocation.bytes); }
+        catch (cleanupError) { return { outcome: { status: 500, body: { error: `${spec.kind}-durable-rollback-required`, detail: cleanupError instanceof Error ? cleanupError.message : String(cleanupError) } } }; }
+        try { ctx.definitionAmendmentStore.remove(scanned.entry.path); }
+        catch (cleanupError) { return { outcome: { status: 500, body: { error: 'assignment-amendment-state-cleanup-required', detail: cleanupError instanceof Error ? cleanupError.message : String(cleanupError) } } }; }
+        throw error;
+      }
+    });
+  } catch (error) { return { status: 500, body: { error: `${spec.kind}-durable-write-failed`, detail: error instanceof Error ? error.message : String(error) } }; }
+  if ('outcome' in prepared) return prepared.outcome;
+  try {
+    await auditFn(ctx)(ctx.repoRoot, { action: spec.auditAction, owner: sub, target: scanned.entry.path, riskTier: prepared.riskTier, result: 'pending-human-merge', detail: { path: scanned.entry.path, oldSourceHash: spec.expectedSourceHash, newSourceHash: prepared.proposedSourceHash, ...spec.auditDetail(prepared.old, prepared.proposalHash, prepared.durable) } }, { runGit: ctx.opsGit, now: ctx.now });
+  } catch {
+    try { ctx.definitionAmendmentStore.update({ kind: spec.kind, workflowPath: scanned.entry.path, baseSourceHash: spec.expectedSourceHash, proposedSourceHash: prepared.proposedSourceHash, branch: prepared.durable.branch, pr: prepared.durable.pr, phase: 'audit-failed' }); } catch { /* pending remains fail-closed */ }
+    return { status: 500, body: { ok: false, status: 'pending-human-merge', auditStatus: 'failed', error: `${spec.kind}-amendment-audit-required`, path: scanned.entry.path, baseSourceHash: spec.expectedSourceHash, proposedSourceHash: prepared.proposedSourceHash, branch: prepared.durable.branch, pr: prepared.durable.pr } };
+  }
+  try { ctx.definitionAmendmentStore.update({ kind: spec.kind, workflowPath: scanned.entry.path, baseSourceHash: spec.expectedSourceHash, proposedSourceHash: prepared.proposedSourceHash, branch: prepared.durable.branch, pr: prepared.durable.pr, phase: 'pending-human-merge' }); }
+  catch (error) { return { status: 500, body: { ok: false, status: 'recovery-required', stateStatus: 'update-failed', error: 'assignment-amendment-state-write-failed', path: scanned.entry.path, baseSourceHash: spec.expectedSourceHash, proposedSourceHash: prepared.proposedSourceHash, branch: prepared.durable.branch, pr: prepared.durable.pr, detail: error instanceof Error ? error.message : String(error) } }; }
+  return { status: 202, body: { ok: true, status: 'pending-human-merge', path: scanned.entry.path, baseSourceHash: spec.expectedSourceHash, proposedSourceHash: prepared.proposedSourceHash, proposalContentHash: prepared.proposalHash, ...spec.successDetail(prepared.proposalHash, prepared.durable) } };
+}
+
 async function amendAssignment(
   ctx: SurfaceContext,
   sub: string,
   scanned: ScannedDef,
   input: { expectedSourceHash: string; target: AssignmentTarget; assignment: AssignmentValue },
 ): Promise<LaunchOutcome> {
-  if (!scanned.def || !scanned.entry.sourceHash) return { status: 409, body: { error: 'definition-invalid', detail: scanned.entry.detail } };
-  if (input.expectedSourceHash !== scanned.entry.sourceHash) return { status: 409, body: { error: 'stale-source-hash', sourceHash: scanned.entry.sourceHash } };
-  if (!ctx.durableRepoRoot) return { status: 409, body: { error: 'durable-worktree-required' } };
-  const durableRoot = ctx.durableRepoRoot;
-  try {
-    if (realpathSync(resolve(ctx.repoRoot)) === realpathSync(resolve(durableRoot))) {
-      return { status: 409, body: { error: 'durable-worktree-required' } };
-    }
-  } catch { return { status: 409, body: { error: 'durable-worktree-required' } }; }
-  const existingPending = pendingAmendmentFor(ctx, scanned.entry);
-  if (existingPending.error) return { status: 409, body: { error: 'assignment-amendment-state-invalid' } };
-  if (existingPending.pending) return { status: 409, body: { error: 'assignment-amendment-pending' } };
-  type Prepared = { outcome: LaunchOutcome } | {
-    reparsed: WorkflowDef; patched: NonNullable<ReturnType<typeof patchWorkflowAssignment>>;
-    proposedSourceHash: string; proposalHash: string; durable: { branch: string; pr: { url?: string; number?: number } };
-  };
-  let prepared: Prepared;
-  try {
-    prepared = await withOpsTransaction(async (): Promise<Prepared> => {
-      // The authoritative active and durable bytes, the patch validation, and the first durable write
-      // all share one transaction.  Do not widen this window: a source/base change must fail before git.
-      const active = readCanonicalDefinitionLocation(ctx.repoRoot, scanned.entry.path);
-      const durableLocation = readCanonicalDefinitionLocation(durableRoot, scanned.entry.path);
-      if (!active || !durableLocation || active.path === durableLocation.path) return { outcome: { status: 409, body: { error: 'definition-path-refused' } } };
-      if (sourceHash(active.bytes) !== input.expectedSourceHash) {
-        return { outcome: { status: 409, body: { error: 'stale-source-hash', sourceHash: sourceHash(active.bytes) } } };
-      }
-      if (!active.bytes.equals(durableLocation.bytes)) return { outcome: { status: 409, body: { error: 'durable-base-mismatch' } } };
-      const source = decodeUtf8(active.bytes);
-      if (source === null) return { outcome: { status: 409, body: { error: 'definition-not-utf8' } } };
-      const original = parseWorkflowDef(source, { knownProfiles: workflowProfileIds() });
-      if (!original.ok || original.value.project !== scanned.entry!.project || original.value.id !== scanned.def!.id) {
-        return { outcome: { status: 409, body: { error: 'definition-changed' } } };
-      }
+  return amendDefinition(ctx, sub, scanned, {
+    kind: 'assignment', expectedSourceHash: input.expectedSourceHash,
+    patch: (source) => {
       const patched = patchWorkflowAssignment(source, input.target, input.assignment);
-      if (!patched) return { outcome: { status: 409, body: { error: 'assignment-layout-unsupported' } } };
-      if (patched.source === source) return { outcome: { status: 409, body: { error: 'assignment-no-change' } } };
-      const parsed = parseWorkflowDef(patched.source, { knownProfiles: workflowProfileIds() });
-      if (!parsed.ok || parsed.value.project !== scanned.entry!.project) {
-        return { outcome: { status: 409, body: { error: 'amendment-parse-refused', detail: parsed.ok ? 'definition project no longer matches path project' : parsed.detail } } };
-      }
-      if (!isExactAssignmentAmendment(original.value, parsed.value, input.target, input.assignment, patched.oldAssignment)) {
-        return { outcome: { status: 409, body: { error: 'assignment-semantic-diff-refused' } } };
-      }
-      const environment = loadWorkflowCompileEnvironment(ctx.repoRoot);
-      const compiled = compileWorkflowDef(parsed.value, environment);
-      if (!compiled.ok) return { outcome: { status: 409, body: { error: compiled.reason, detail: compiled.detail } } };
-      const validation = validateServerCompiledPlanProposal(compiled.value as unknown, environment.registry);
-      if (!validation.ok) return { outcome: { status: 409, body: { error: 'compiled-proposal-invalid', detail: validation.detail } } };
-      const proposedSourceHash = sourceHash(Buffer.from(patched.source, 'utf8'));
-      const pending: PendingAssignmentAmendment = { workflowPath: scanned.entry.path, baseSourceHash: input.expectedSourceHash, proposedSourceHash, branch: DEFAULT_WORK_BRANCH, pr: {}, phase: 'prepared' };
-      try { ctx.assignmentAmendmentStore.put(pending); }
-      catch (error) { return { outcome: { status: 500, body: { error: 'assignment-amendment-state-write-failed', detail: error instanceof Error ? error.message : String(error) } } }; }
-      try { writeFileSync(durableLocation.path, patched.source, 'utf8'); }
-      catch (error) { return { outcome: { status: 500, body: { ok: false, status: 'recovery-required', stateStatus: 'prepared', error: 'assignment-durable-write-failed', path: scanned.entry.path, baseSourceHash: input.expectedSourceHash, proposedSourceHash, branch: DEFAULT_WORK_BRANCH, detail: error instanceof Error ? error.message : String(error) } } }; }
-      try {
-        const durable = await routeDurable(durableRoot, scanned.entry.path, {
-          runGit: ctx.saveGit,
-          openPr: ctx.openPr,
-          message: `chore(workflow): amend ${scanned.def!.id} assignment`,
-        });
-        try { ctx.assignmentAmendmentStore.update({ ...pending, phase: 'audit-pending', pr: durable.pr }); }
-        catch (error) { return { outcome: { status: 500, body: { ok: false, status: 'recovery-required', stateStatus: 'update-failed', error: 'assignment-amendment-state-write-failed', path: scanned.entry.path, baseSourceHash: input.expectedSourceHash, proposedSourceHash, branch: durable.branch, pr: durable.pr, detail: error instanceof Error ? error.message : String(error) } } }; }
-        return { reparsed: parsed.value, patched, proposedSourceHash, proposalHash: proposalContentHash(compiled.value), durable };
-      } catch (error) {
-        if (!(error instanceof DurableRouteError) || !error.committed) {
-          writeFileSync(durableLocation.path, durableLocation.bytes);
-          try { ctx.assignmentAmendmentStore.remove(scanned.entry.path); }
-          catch (cleanupError) { return { outcome: { status: 500, body: { error: 'assignment-amendment-state-cleanup-required', detail: cleanupError instanceof Error ? cleanupError.message : String(cleanupError) } } }; }
-        }
-        if (error instanceof DurableRouteError && error.committed) {
-          try { ctx.assignmentAmendmentStore.update({ ...pending, phase: error.pushed ? 'pushed' : 'committed' }); } catch { /* prepared state remains a safe block */ }
-          return { outcome: { status: 502, body: {
-            error: 'assignment-durable-route-incomplete', status: 'recovery-required', committed: true, pushed: error.pushed, detail: error.message,
-            path: scanned.entry.path, baseSourceHash: input.expectedSourceHash, proposedSourceHash, branch: DEFAULT_WORK_BRANCH,
-          } } };
-        }
-        throw error;
-      }
-    });
-  } catch (error) {
-    return { status: 500, body: { error: 'assignment-durable-write-failed', detail: error instanceof Error ? error.message : String(error) } };
-  }
-  if ('outcome' in prepared) return prepared.outcome;
-  const riskTier = highestTier(prepared.reparsed);
-  try {
-    await auditFn(ctx)(ctx.repoRoot, {
-      action: 'workflow-assignment-amendment', owner: sub, target: scanned.entry.path, riskTier,
-      result: 'pending-human-merge',
-      detail: {
-        path: scanned.entry.path, oldSourceHash: input.expectedSourceHash, newSourceHash: prepared.proposedSourceHash,
-        proposalHash: prepared.proposalHash, target: input.target, assignment: input.assignment, branch: prepared.durable.branch,
-        pr: prepared.durable.pr, oldAssignment: prepared.patched.oldAssignment,
-      },
-    }, { runGit: ctx.opsGit, now: ctx.now });
-  } catch {
-    // The durable branch may already exist.  State that fact instead of falsely claiming an audited
-    // amendment or pretending the active source changed.
-    try { ctx.assignmentAmendmentStore.update({
-      workflowPath: scanned.entry.path, baseSourceHash: input.expectedSourceHash, proposedSourceHash: prepared.proposedSourceHash,
-      branch: prepared.durable.branch, pr: prepared.durable.pr, phase: 'audit-failed',
-    }); } catch { /* the prepared record remains a fail-closed pending state */ }
-    return { status: 500, body: {
-      ok: false, status: 'pending-human-merge', auditStatus: 'failed', error: 'assignment-amendment-audit-required',
-      path: scanned.entry.path, baseSourceHash: input.expectedSourceHash, proposedSourceHash: prepared.proposedSourceHash,
-      branch: prepared.durable.branch, pr: prepared.durable.pr,
-    } };
-  }
-  try { ctx.assignmentAmendmentStore.update({
-    workflowPath: scanned.entry.path, baseSourceHash: input.expectedSourceHash, proposedSourceHash: prepared.proposedSourceHash,
-    branch: prepared.durable.branch, pr: prepared.durable.pr, phase: 'pending-human-merge',
-  }); } catch (error) {
-    return { status: 500, body: {
-      ok: false, status: 'recovery-required', stateStatus: 'update-failed', error: 'assignment-amendment-state-write-failed',
-      path: scanned.entry.path, baseSourceHash: input.expectedSourceHash, proposedSourceHash: prepared.proposedSourceHash,
-      branch: prepared.durable.branch, pr: prepared.durable.pr, detail: error instanceof Error ? error.message : String(error),
-    } };
-  }
-  return {
-    status: 202,
-    body: {
-      ok: true, status: 'pending-human-merge', path: scanned.entry.path,
-      baseSourceHash: input.expectedSourceHash, proposedSourceHash: prepared.proposedSourceHash, proposalContentHash: prepared.proposalHash,
-      target: input.target, assignment: input.assignment, branch: prepared.durable.branch, pr: prepared.durable.pr,
+      return patched ? { source: patched.source, old: patched.oldAssignment } : null;
     },
-  };
+    isExact: (before, after, old) => isExactAssignmentAmendment(before, after, input.target, input.assignment, old as AssignmentValue),
+    layoutError: 'assignment-layout-unsupported', noChangeError: 'assignment-no-change', semanticError: 'assignment-semantic-diff-refused',
+    auditAction: 'workflow-assignment-amendment', routeMessage: `chore(workflow): amend ${scanned.def?.id ?? scanned.entry.ref} assignment`,
+    auditDetail: (old, proposalHash, durable) => ({ proposalHash, target: input.target, assignment: input.assignment, branch: durable.branch, pr: durable.pr, oldAssignment: old }),
+    successDetail: (_proposalHash, durable) => ({ target: input.target, assignment: input.assignment, branch: durable.branch, pr: durable.pr }),
+  });
 }
 
 /** One source-addressed, batch governance edit. It shares the assignment amendment lock/store so the
@@ -622,91 +609,19 @@ async function amendGovernance(
   scanned: ScannedDef,
   input: { expectedSourceHash: string; governance: GovernanceValue },
 ): Promise<LaunchOutcome> {
-  if (!scanned.def || !scanned.entry.sourceHash) return { status: 409, body: { error: 'definition-invalid', detail: scanned.entry.detail } };
-  if (input.expectedSourceHash !== scanned.entry.sourceHash) return { status: 409, body: { error: 'stale-source-hash', sourceHash: scanned.entry.sourceHash } };
-  const ownerProblem = validateGovernanceOwners(ctx.repoRoot, scanned.def, input.governance);
-  if (ownerProblem) return { status: 409, body: { error: 'governance-owner-refused', detail: ownerProblem } };
-  if (!ctx.durableRepoRoot) return { status: 409, body: { error: 'durable-worktree-required' } };
-  const durableRoot = ctx.durableRepoRoot;
-  try {
-    if (realpathSync(resolve(ctx.repoRoot)) === realpathSync(resolve(durableRoot))) return { status: 409, body: { error: 'durable-worktree-required' } };
-  } catch { return { status: 409, body: { error: 'durable-worktree-required' } }; }
-  const existingPending = pendingAmendmentFor(ctx, scanned.entry);
-  if (existingPending.error) return { status: 409, body: { error: 'assignment-amendment-state-invalid' } };
-  if (existingPending.pending) return { status: 409, body: { error: 'assignment-amendment-pending' } };
-  type Prepared = { outcome: LaunchOutcome } | {
-    proposedSourceHash: string;
-    proposalHash: string;
-    oldGovernance: GovernanceValue;
-    riskTier: 'T1' | 'T2' | 'T3';
-    durable: { branch: string; pr: { url?: string; number?: number } };
-  };
-  let prepared: Prepared;
-  try {
-    prepared = await withOpsTransaction(async (): Promise<Prepared> => {
-      const active = readCanonicalDefinitionLocation(ctx.repoRoot, scanned.entry.path);
-      const durableLocation = readCanonicalDefinitionLocation(durableRoot, scanned.entry.path);
-      if (!active || !durableLocation || active.path === durableLocation.path) return { outcome: { status: 409, body: { error: 'definition-path-refused' } } };
-      if (sourceHash(active.bytes) !== input.expectedSourceHash) return { outcome: { status: 409, body: { error: 'stale-source-hash', sourceHash: sourceHash(active.bytes) } } };
-      if (!active.bytes.equals(durableLocation.bytes)) return { outcome: { status: 409, body: { error: 'durable-base-mismatch' } } };
-      const source = decodeUtf8(active.bytes);
-      if (source === null) return { outcome: { status: 409, body: { error: 'definition-not-utf8' } } };
-      const original = parseWorkflowDef(source, { knownProfiles: workflowProfileIds() });
-      if (!original.ok || original.value.project !== scanned.entry.project || original.value.id !== scanned.def!.id) return { outcome: { status: 409, body: { error: 'definition-changed' } } };
+  return amendDefinition(ctx, sub, scanned, {
+    kind: 'governance', expectedSourceHash: input.expectedSourceHash,
+    validateInput: (definition) => validateGovernanceOwners(ctx.repoRoot, definition, input.governance),
+    patch: (source) => {
       const patched = patchWorkflowGovernance(source, input.governance);
-      if (!patched) return { outcome: { status: 409, body: { error: 'governance-layout-unsupported' } } };
-      if (patched.source === source) return { outcome: { status: 409, body: { error: 'governance-no-change' } } };
-      const parsed = parseWorkflowDef(patched.source, { knownProfiles: workflowProfileIds() });
-      if (!parsed.ok || parsed.value.project !== scanned.entry.project) return { outcome: { status: 409, body: { error: 'amendment-parse-refused', detail: parsed.ok ? 'definition project no longer matches path project' : parsed.detail } } };
-      if (!isExactGovernanceAmendment(original.value, parsed.value, input.governance, patched.oldGovernance)) return { outcome: { status: 409, body: { error: 'governance-semantic-diff-refused' } } };
-      const environment = loadWorkflowCompileEnvironment(ctx.repoRoot);
-      const beforeCompiled = compileWorkflowDef(original.value, environment);
-      const afterCompiled = compileWorkflowDef(parsed.value, environment);
-      if (!beforeCompiled.ok || !afterCompiled.ok) return { outcome: { status: 409, body: { error: 'governance-compile-refused', detail: !beforeCompiled.ok ? beforeCompiled.detail : afterCompiled.ok ? '' : afterCompiled.detail } } };
-      const beforeHash = proposalContentHash(beforeCompiled.value);
-      const proposalHash = proposalContentHash(afterCompiled.value);
-      if (beforeHash !== proposalHash) return { outcome: { status: 409, body: { error: 'governance-changed-execution-proposal' } } };
-      const proposedSourceHash = sourceHash(Buffer.from(patched.source, 'utf8'));
-      const pending: PendingAssignmentAmendment = { workflowPath: scanned.entry.path, baseSourceHash: input.expectedSourceHash, proposedSourceHash, branch: DEFAULT_WORK_BRANCH, pr: {}, phase: 'prepared' };
-      try { ctx.assignmentAmendmentStore.put(pending); }
-      catch (error) { return { outcome: { status: 500, body: { error: 'assignment-amendment-state-write-failed', detail: error instanceof Error ? error.message : String(error) } } }; }
-      try { writeFileSync(durableLocation.path, patched.source, 'utf8'); }
-      catch (error) { return { outcome: { status: 500, body: { ok: false, status: 'recovery-required', stateStatus: 'prepared', error: 'governance-durable-write-failed', detail: error instanceof Error ? error.message : String(error) } } }; }
-      try {
-        const durable = await routeDurable(durableRoot, scanned.entry.path, { runGit: ctx.saveGit, openPr: ctx.openPr, message: `chore(workflow): amend ${scanned.def!.id} governance` });
-        try { ctx.assignmentAmendmentStore.update({ ...pending, phase: 'audit-pending', pr: durable.pr }); }
-        catch (error) { return { outcome: { status: 500, body: { ok: false, status: 'recovery-required', stateStatus: 'update-failed', error: 'assignment-amendment-state-write-failed', detail: error instanceof Error ? error.message : String(error) } } }; }
-        return { proposedSourceHash, proposalHash, oldGovernance: patched.oldGovernance, riskTier: highestTier(parsed.value), durable };
-      } catch (error) {
-        if (!(error instanceof DurableRouteError) || !error.committed) {
-          writeFileSync(durableLocation.path, durableLocation.bytes);
-          try { ctx.assignmentAmendmentStore.remove(scanned.entry.path); } catch { /* cleanup failure remains fail-closed in the store */ }
-        } else {
-          try { ctx.assignmentAmendmentStore.update({ ...pending, phase: error.pushed ? 'pushed' : 'committed' }); } catch { /* prepared remains blocking */ }
-        }
-        return { outcome: { status: 502, body: { error: 'governance-durable-route-incomplete', status: 'recovery-required', detail: error instanceof Error ? error.message : String(error) } } };
-      }
-    });
-  } catch (error) {
-    return { status: 500, body: { error: 'governance-durable-write-failed', detail: error instanceof Error ? error.message : String(error) } };
-  }
-  if ('outcome' in prepared) return prepared.outcome;
-  try {
-    await auditFn(ctx)(ctx.repoRoot, {
-      action: 'workflow-governance-amendment', owner: sub, target: scanned.entry.path, riskTier: prepared.riskTier,
-      result: 'pending-human-merge', detail: {
-        path: scanned.entry.path, oldSourceHash: input.expectedSourceHash, newSourceHash: prepared.proposedSourceHash,
-        proposalHash: prepared.proposalHash, governance: input.governance, oldGovernance: prepared.oldGovernance,
-        branch: prepared.durable.branch, pr: prepared.durable.pr,
-      },
-    }, { runGit: ctx.opsGit, now: ctx.now });
-  } catch {
-    try { ctx.assignmentAmendmentStore.update({ workflowPath: scanned.entry.path, baseSourceHash: input.expectedSourceHash, proposedSourceHash: prepared.proposedSourceHash, branch: prepared.durable.branch, pr: prepared.durable.pr, phase: 'audit-failed' }); } catch { /* prepared remains blocking */ }
-    return { status: 500, body: { ok: false, status: 'pending-human-merge', auditStatus: 'failed', error: 'governance-amendment-audit-required', baseSourceHash: input.expectedSourceHash, proposedSourceHash: prepared.proposedSourceHash, branch: prepared.durable.branch, pr: prepared.durable.pr } };
-  }
-  try { ctx.assignmentAmendmentStore.update({ workflowPath: scanned.entry.path, baseSourceHash: input.expectedSourceHash, proposedSourceHash: prepared.proposedSourceHash, branch: prepared.durable.branch, pr: prepared.durable.pr, phase: 'pending-human-merge' }); }
-  catch (error) { return { status: 500, body: { ok: false, status: 'recovery-required', error: 'assignment-amendment-state-write-failed', detail: error instanceof Error ? error.message : String(error) } }; }
-  return { status: 202, body: { ok: true, status: 'pending-human-merge', path: scanned.entry.path, baseSourceHash: input.expectedSourceHash, proposedSourceHash: prepared.proposedSourceHash, proposalContentHash: prepared.proposalHash, governance: input.governance, branch: prepared.durable.branch, pr: prepared.durable.pr } };
+      return patched ? { source: patched.source, old: patched.oldGovernance } : null;
+    },
+    isExact: (before, after, old) => isExactGovernanceAmendment(before, after, input.governance, old as GovernanceValue),
+    layoutError: 'governance-layout-unsupported', noChangeError: 'governance-no-change', semanticError: 'governance-semantic-diff-refused',
+    auditAction: 'workflow-governance-amendment', routeMessage: `chore(workflow): amend ${scanned.def?.id ?? scanned.entry.ref} governance`,
+    auditDetail: (old, proposalHash, durable) => ({ proposalHash, governance: input.governance, oldGovernance: old, branch: durable.branch, pr: durable.pr }),
+    successDetail: (_proposalHash, durable) => ({ governance: input.governance, branch: durable.branch, pr: durable.pr }),
+  });
 }
 
 /** Register the workflow-definition registry routes + the governed one-step launch route. */
@@ -794,7 +709,7 @@ export function registerWorkflows(app: FastifyInstance, ctx: SurfaceContext): vo
         if (!reparsed.ok || reparsed.value.id !== scanned.def!.id || reparsed.value.project !== scanned.def!.project) {
           return { status: 409, body: { error: 'definition-changed' } };
         }
-        const currentPending = ctx.assignmentAmendmentStore.lookup(scanned.entry.path, sourceHash(fresh.bytes));
+        const currentPending = ctx.definitionAmendmentStore.lookup(scanned.entry.path, sourceHash(fresh.bytes));
         if (!currentPending.ok) return { status: 409, body: { error: 'assignment-amendment-state-invalid' } };
         if (currentPending.record) return { status: 409, body: { error: 'assignment-amendment-pending', pending: currentPending.record } };
         const instantiated = instantiateWorkflowDef(reparsed.value, parameters as Record<string, string>);

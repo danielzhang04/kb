@@ -24,7 +24,7 @@ import type { LivenessCache, SchtasksRunner } from '../runner/liveness.ts';
 import type { ControlPlaneStore } from '../control/store.ts';
 import type { ManagedSessionBroker } from '../control/broker.ts';
 import type { CancelRunInput, CancellationOutcome, ExecuteRunInput, ExecutionOutcome } from '../control/execution.ts';
-import type { AssignmentAmendmentStore } from '../workflows/amendmentStore.ts';
+import type { DefinitionAmendmentStore } from '../workflows/amendmentStore.ts';
 
 /** How a route records exactly one audit row. Injected as a recording fake in tests. Widened to allow a
  *  `Promise` so the real (now async, off-the-event-loop) `appendAudit` and synchronous test fakes both fit;
@@ -38,8 +38,8 @@ export interface SurfaceContext {
   repoRoot: string;
   /** Dashboard-owned runtime state root; never a repository content path. */
   stateRoot: string;
-  /** Restart-safe, server-owned pending amendment records. */
-  assignmentAmendmentStore: AssignmentAmendmentStore;
+  /** Restart-safe, server-owned pending definition-amendment records. */
+  definitionAmendmentStore: DefinitionAmendmentStore;
   /** Isolated work-branch checkout used only for durable Composer saves. */
   durableRepoRoot?: string;
   /** One shared session config (secret resolved ONCE) so a token minted at assert/verify verifies at
