@@ -6,7 +6,7 @@ line. A blind regen proved it: the writer shipped grandeur buttons and dwell str
 pass. Fresh, single-mandate readers with no attachment to the draft catch what the writer structurally can't.
 
 **Scope:** this runs in `long_form: staged` Step 3d, after the leash pass (3c), before humanize (Step 5). It
-is deliberately **thin**: three fresh critics (taste, leash, coherence) + one editor, plus a single capped
+is deliberately **thin**: four fresh critics (taste, leash, coherence, raw-versus-leashed) + one editor, plus a single capped
 writer structural pass when coherence flags a structural hole, plus a mechanical lint. It does NOT re-research;
 and it re-does structure only through that one capped writer bounce, which the writer (not the editor) owns.
 
@@ -15,18 +15,18 @@ and it re-does structure only through that one capped writer bounce, which the w
 ```
 draft script.md
   → mechanical lint            (scripts/lint_script.py — deterministic; see below)
-  → taste ∥ leash ∥ coherence  (three parallel subagents; each returns FINDINGS only, edits nothing)
+  → taste ∥ leash ∥ coherence ∥ raw-vs-leashed  (four parallel subagents; each returns FINDINGS only, edits nothing)
   → route on the coherence critic's [LOCAL]/[STRUCTURAL] tags:
       • only line-level findings (taste + leash + [LOCAL] coherence):
           → editor             (one subagent: applies fixes IN VOICE → revised script + changelog)
       • any [STRUCTURAL] coherence finding:
           → writer structural revision  (one subagent: reworks the sequence/framing of the flagged spans,
-            from ALL THREE findings lists at once, leashed → revised script + changelog)
+            from ALL FOUR findings lists at once, leashed → revised script + changelog)
           → re-verify once     (leash re-read: no invented facts; coherence re-read: the confusion is gone)
   → mechanical lint again      (confirm no new dash/quote/trace; word count still sane)
 ```
 
-Run the three critics **in parallel** (they're independent), then route on the coherence critic's severity
+Run the four critics **in parallel** (they're independent), then route on the coherence critic's severity
 tags. **One cycle only for line-level edits, and at most ONE structural bounce for coherence** — never loop
 critic→edit→critic. If the re-verify still finds the structure confusing, the final lint trips, or a changelog
 flags something unresolved, **surface it to the human** instead of spinning.
@@ -35,9 +35,11 @@ flags something unresolved, **surface it to the human** instead of spinning.
 usually fixed by building the missing connection into the telling or resequencing, not by cutting, so its
 structural findings go to the *writer* (who owns structure), not the *editor* (who only touches flagged lines).
 
-**Everyone reads the bar first:** every agent below is given `storytelling-grammar.md` (§0 gold exemplar, the
-principles including §3.8 non-linear-but-followable, and the §5 before→after bank) and the channel's gold
-`script.md` as the voice/density reference.
+**Everyone reads the bar first:** every agent below receives `storytelling-grammar.md` (the facet rules,
+including §3.8 non-linear-but-followable, and the §5 before→after bank) plus the approved
+`personable-calibration.md` excerpt. Blind fixtures receive the purpose-built reader bundle instead: approved
+brief, research/ledger, applicable locks, and that excerpt. They receive neither a legacy candidate script
+nor the full Poyais script.
 
 ---
 
@@ -48,6 +50,10 @@ principles including §3.8 non-linear-but-followable, and the §5 before→after
 - **quotation marks** in VO lines — the no-quotes lock (markdown/header punctuation excluded).
 - **leftover `<!--F-NN-->` traces or outline comments** that must be stripped before ship.
 - **word count vs. target runtime** (words ÷ 150 vs. the header's target band) — a heads-up, not a failure.
+- **Step cards** only for malformed, duplicate, skipped, or orphaned spoken `Step N:` sequences — hard
+  mechanical failures. The lint does not require cards or judge whether a causal mechanism earns one.
+- **credibility-padding phrases** (`that part is real`, `he actually did`, `he really did`, `seriously`) as
+  non-blocking exact-phrase advisories. Contextual `actually` or `really` is taste-critic territory.
 
 **Second person is NOT in the lint.** Whether a "you" casts the viewer into the story (banned) or is the
 generic impersonal "you" meaning "anyone" (fine, e.g. "gold you could wash out of the sand") is a *judgment
@@ -63,9 +69,9 @@ description.
 > writer cannot hear in its own prose. This is a **taste pass — ignore factual accuracy completely** (a
 > separate critic owns that).
 >
-> **Read first, they define the target:** `storytelling-grammar.md` — §0 is the gold exemplar (the bar),
-> §1–§2 the voice/story principles, §5 the before→after bank of exact tells — and the gold `script.md` as the
-> reference for the right *density* and voice.
+> **Read first, they define the target:** `storytelling-grammar.md` for the facet rules, §1–§2 voice/story
+> principles, and §5 before→after bank; then `personable-calibration.md` for the right narrator energy,
+> analogy use, chaptering, and delivery. Do not load the full Poyais script for a blind fixture.
 >
 > **Hunt for these, and only these. Quote the exact offending text for every finding:**
 > 1. **Grandeur / summary buttons** — a beat that ends on a summary, thesis, or profound line instead of a
@@ -80,11 +86,12 @@ description.
 > 4. **Premise over-restatement** — count how many times the core premise recurs across the whole script
 >    ("it didn't exist" / "a country that wasn't there"). Past ~2–3, flag the weakest repeats to cut.
 > 5. **Jargon** — a term a normal person wouldn't say in conversation, where a plain word exists. (§1.5)
-> 6. **Over-signposting / enumeration** — announced beats ("this is the part worth slowing down for," "here's
->    the strange part") and list scaffolding ("first the land, then the money, and then the big one"). (§3.4)
-> 7. **Flat or educational analogy / dead joke** — an analogy that's an abstract concept rather than something
->    the viewer instantly pictures; a joke that rides no fact or reads dated/cringe; OR a hot money-absurdity
->    stretch carrying a mechanism with ZERO modern analogy (density under-shoot). (§1.6, §6)
+> 6. **Empty signposting or list scaffolding** — flag a label that hides the next action ("this is the part
+>    worth slowing down for," "here's the strange part") or labels bare chronology. Do **not** flag an
+>    optional `Step N:` that names a sourced causal lever and helps the viewer assemble a real scheme.
+> 7. **Flat or educational analogy / dead joke** — flag an analogy that derails the mechanism, repeats a
+>    point that already landed, or makes the fact harder to follow; flag a joke that rides no fact or reads
+>    dated/cringe. Do **not** use analogy counts or a missing-analogy quota as a finding. (§1.6, §6)
 > 8. **Register-dial error** — any joke or wink on a death / human-cost beat (comedy is OFF there), or flat,
 >    humorless telling of a money-absurdity beat that should run hot. (§1.4)
 > 9. **Viewer-casting second person** — a "you" that stages the viewer INTO the story as a participant
@@ -93,11 +100,9 @@ description.
 >    function: casting the viewer vs. a stand-in for "anyone". (Also flag any voiced character quote.)
 > 10. **Lesson / essay close** — a moralizing ending ("it repeats every generation," "and that's why")
 >     instead of one earned ironic image. (§3.5)
-> 11. **Self-insisting intensifier** — "genuinely / actually / really / truly / legitimately + adjective"
->     ("genuinely ahead of its time," "actually brilliant," "really was clever"). The intensifier asserts a
->     judgment the narration should let the facts earn; it reads as the writer reaching in to reassure the
->     viewer, and usually flags a beat that *tells* instead of *shows*. Fix: cut the word (the plain claim
->     stands) or show the thing. (§5)
+> 11. **Credibility padding in context** — exact boilerplate phrases are lint advisories; judge contextual
+>     `actually` and `really` only when they make the narrator insist on credibility instead of stating the
+>     fact. Do not turn this into a word ban.
 >
 > **NEVER flag these — they are correct and MUST survive (over-cutting is the failure mode):**
 > - **Fact-riding deadpan buttons** ("And MacGregor? He was fine.") — the GOOD kind (§1.3). Only flag buttons
@@ -133,6 +138,23 @@ description.
 
 ---
 
+## Raw-versus-leashed critic
+
+> **You are a fresh preservation reader.** Compare the raw casual story pass, the leashed draft, and the
+> research ledger. You do not judge general taste or re-fact-check every sentence. Flag only a changed sentence
+> where the ledger required a correction that could have been local, but the leash edit also altered unrelated
+> rhythm, wording, conversational joints, repetitions, slang, comic cadence, or narrator presence.
+>
+> A local factual correction is allowed and required. This is not a diff quota: do not flag a changed sentence
+> merely because it changed, and do not demand that a non-local correction remain. When a claim cannot be
+> fixed locally, the correct result is a writer-facing research-gap flag, not a polished replacement paragraph.
+>
+> **Output:** each finding gives the raw sentence, leashed sentence, supporting `[F-NN]` or gap, the smallest
+> factual correction that was available, and the unrelated voice loss. Return `no preservation finding` when
+> the leashed text preserved the raw voice.
+
+---
+
 ## Coherence critic (first-time viewer)
 
 > **You are watching this as an average viewer who knows NOTHING about the topic going in, with ONE job: find
@@ -141,8 +163,8 @@ description.
 > piece connects*.
 >
 > **Read first:** `storytelling-grammar.md` §3 (structure), especially **§3.8 (non-linear, but followable)**
-> and **§3.7 (pre-spoiled endings / withheld payoffs)**, and the gold `script.md` — which is non-linear and
-> still perfectly followable. That is the bar: jumping around is GOOD; losing the viewer is the defect.
+> and **§3.7 (pre-spoiled endings / withheld payoffs)**, plus `personable-calibration.md`. That is the bar:
+> jumping around is GOOD; losing the viewer is the defect. Do not load a legacy script for a blind fixture.
 >
 > **Flag only genuine, UNEARNED confusion. Quote the exact text and say what a real viewer would ask:**
 > 1. **Used-before-introduced** — a person, place, company, or term the story leans on before it has been
@@ -181,8 +203,8 @@ description.
 > line-level fixes yourself rather than letting each critic hack at the prose. (Any **[STRUCTURAL]** coherence
 > finding is NOT yours — it goes to the writer structural pass below.)
 >
-> **Read** `storytelling-grammar.md` (§0 gold + §5 bank) and the gold `script.md` so your rewrites land in the
-> channel's voice.
+> **Read** `storytelling-grammar.md` (facet rules + §5 bank) and `personable-calibration.md` so your rewrites
+> land in the channel's voice. Do not load the full Poyais script for a blind fixture.
 >
 > **Rules:**
 > - **Touch only flagged lines.** Do not free-write, re-order, or "improve" lines no critic flagged. Your job
@@ -207,7 +229,8 @@ description.
 > problem: the story, as sequenced, loses a first-time viewer. You also hold the taste and leash findings. Fix
 > the structure so the through-line is followable (grammar §3.8) while keeping the voice and staying leashed.
 >
-> **Read** `storytelling-grammar.md` (§0 gold, §1 voice, §3 structure incl. §3.8) and `research.md` (the ledger).
+> **Read** `storytelling-grammar.md` (facet rules, §1 voice, §3 structure incl. §3.8),
+> `personable-calibration.md`, and `research.md` (the ledger). Do not load a legacy script for a blind fixture.
 >
 > **Rules:**
 > - Fix the confusion the way the critic tagged it: **resequence, introduce something earlier, or reframe a

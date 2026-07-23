@@ -22,7 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "render-builder" / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "visual-prompt-writer" / "scripts"))
 from menu import load_menu           # noqa: E402
-from motion_plan import validate_plan  # noqa: E402
+from motion_plan import camera_stage_errors, validate_plan  # noqa: E402
 # The SUPPLIED-TEXT law, imported rather than reimplemented. motion-planner authors
 # `cutout_prompt`/`plate_prompt` independently of visual-prompt-writer, so it is a SECOND
 # authoring surface for the same defect — and in fact the one that shipped it: the Wells
@@ -155,13 +155,14 @@ def lint(plan, shots_ids, shots_meta=None, suffix=""):
     if shots_meta is not None:
         order, stage = _order_stage(shots_meta)
         errors.extend(_lineage_errors(plan, order, stage))
+        errors.extend(camera_stage_errors(plan, shots_meta))
     return errors
 
 
 def _shots_meta(shots_json):
     """The ordered shots.json shot rows we lineage-check against — id + stage, in shot order."""
     shots = shots_json.get("shots") or (shots_json.get("long_form") or {}).get("shots") or []
-    return [{"id": s.get("id"), "stage": s.get("stage")} for s in shots]
+    return [{"id": s.get("id"), "stage": s.get("stage"), "stage_role": s.get("stage_role")} for s in shots]
 
 
 if __name__ == "__main__":

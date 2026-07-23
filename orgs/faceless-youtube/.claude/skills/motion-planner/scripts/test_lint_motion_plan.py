@@ -149,6 +149,23 @@ def test_engine_layer_source_surfaces_through_lint():
     assert any("L01" in e and "cutout" in e for e in errs), errs
 
 
+def test_camera_on_later_delta_fails():
+    plan = {"shots": [{"id": "L01", "background": {"mode": "plate", "plate": "scenes/L01.png"}, "layers": []},
+                      {"id": "L02", "background": {"mode": "delta-chain", "plate": "scenes/L01.png"}, "layers": [],
+                       "camera": {"move": "push", "pan": None, "intensity": 0.5}}]}
+    meta = [{"id": "L01", "stage": "desk", "stage_role": "base"},
+            {"id": "L02", "stage": "desk", "stage_role": "delta"}]
+    errs = lint(plan, {"L01", "L02"}, meta)
+    assert any("L02" in e and "stage-start" in e for e in errs), errs
+
+
+def test_camera_on_stage_start_is_allowed():
+    plan = {"shots": [{"id": "L01", "background": {"mode": "plate", "plate": "scenes/L01.png"}, "layers": [],
+                       "camera": {"move": "pull", "pan": "right", "intensity": 1.0}}]}
+    meta = [{"id": "L01", "stage": "desk", "stage_role": "base"}]
+    assert lint(plan, {"L01"}, meta) == []
+
+
 def main():
     for fn in [test_clean_plan_passes, test_unknown_shot_id_fails, test_cutout_without_prompt_fails,
                test_cutout_with_reuse_and_no_prompt_ok,
@@ -158,7 +175,8 @@ def main():
                test_delta_chain_passthrough_with_prior_in_stage_ok,
                test_plate_reuse_across_stages_fails, test_plate_reuse_same_stage_ok,
                test_plates_dir_plate_is_exempt_from_reuse_check, test_self_scene_reference_ok,
-               test_forward_scene_reference_fails, test_engine_layer_source_surfaces_through_lint]:
+               test_forward_scene_reference_fails, test_engine_layer_source_surfaces_through_lint,
+               test_camera_on_later_delta_fails, test_camera_on_stage_start_is_allowed]:
         fn(); print("ok", fn.__name__)
     print("OK")
 

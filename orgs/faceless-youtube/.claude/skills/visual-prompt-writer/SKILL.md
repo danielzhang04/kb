@@ -1,19 +1,6 @@
 ---
 name: visual-prompt-writer
-description: >-
-  Writes the complete visual plan for a scripted video in this project — the long-form B-roll shot
-  list (a still-frame plan + motion-intent metadata, densified to the retention cadence), the
-  thumbnail generation prompts (turning metadata's thumbnail CONCEPT into actual pixel-gen prompts),
-  and every scripted short's visual prompts — emitted as one videos/<slug>/shots.json that feeds
-  image-generation (the stills), render-builder (the Remotion motion engine), and publish-queue (the
-  thumbnail). Use this whenever the user wants visual prompts, a shot list, a storyboard, "what to
-  show on screen", B-roll, image generation prompts, a thumbnail prompt, scene visuals, or wants to
-  "do the visuals"/"build the shot list"/"prompt the images" for a video or short — for ANY niche.
-  Runs AFTER long-form-writer + shorts-writer + metadata-writer and BEFORE voiceover /
-  image-generation / render-builder. Reads script.md ([B-ROLL] cues) + metadata.json (thumbnail
-  concepts) + shorts/*.md + dna.md + the universal & niche playbooks. Do NOT use it to write the
-  script (long-form-writer / shorts-writer), pick titles/tags (metadata-writer), or generate/assemble
-  the actual pixels (image-generation / render-builder / voiceover).
+description: Writes a scripted video's complete visual plan as videos/SLUG/shots.json. Covers the long-form still and B-roll shot list, motion-intent metadata, retention cadence, thumbnail generation prompts, and scripted-short visuals. Use for visual prompts, shot lists, storyboards, on-screen choices, B-roll, thumbnail prompts, or image-generation prompts in any niche. Runs after script and metadata work and before voiceover, image generation, and rendering. Do not use it to write scripts, choose titles or tags, generate pixels, or assemble video.
 ---
 
 # visual-prompt-writer
@@ -33,7 +20,7 @@ the plan into motion.
 
 **Know what the engine can actually do — and author only that.** What renders per shot today: the
 verified still — **with any in-video text baked into the image** (diegetic stamps, signs, ledgers,
-banners) — a camera that is **always locked** (no derived moves), an idle micro-motion baseline,
+banners) — no VPW-authored camera move (the motion planner may make a rare stage-start exception), an idle micro-motion baseline,
 animated cutout **layers** (a matted element that slides / paths / appears / bobs, or a route the engine
 draws on — planned downstream by `motion-planner`, not authored here), and burned word-highlight
 captions on shorts. There are **no engine text overlays and no device kit** — both are retired; all
@@ -53,7 +40,7 @@ Step 8 critic reviews):
    mid-sweep) is broken output. The beat's change arrives at a cut or via motion intent — never baked
    into the pose.
 2. **Retention-engineered, not decorative.** Visuals are a primary retention lever (§6a), not
-   illustration. You *densify* past the script's cues to hit the §10 cadence (new cut every 3–8s, new
+   illustration. You *densify* past the script's cues to hit the new-video 2–5s cadence (new
    stimulus every 30–45s) and front-load the first 60s. A "visual question" precedes the narration
    (§1b tactic 6) — the first frame must make the viewer *need* the answer.
 3. **On the house style, every frame.** §13: a locked visual signature is a **monetization
@@ -111,10 +98,11 @@ render if skipped. They are restated in context further down; collected here so 
    per chain); or **(b) baked diegetic text** — where the text IS the payload, quote it verbatim in the
    `still_prompt`, kept SHORT (1–4 words), designed into the scene (a stamp, a ledger line, a sign). There
    is **no engine text overlay** and **no motion field** to carry a reveal — those are deleted.
-4. **Cadence enforcement — this kills stretch-to-fill** (§13a-ii, BINDING). Minimum shot count =
-   `Estimated runtime ÷ 8s`; a healthy hook zone runs closer to `÷ 4s`. Make **Σ `duration_s` ≈
-   `Estimated runtime`** so the whole VO track is covered. **A shot may exceed ~8s ONLY if it carries a
-   progressive within-shot reveal** — otherwise split it or cut. **The stretch-to-fill failure:** if
+4. **Cadence enforcement — this kills stretch-to-fill** (§13a-ii, BINDING). New long-form plans start at
+   **2–5 seconds per shot** and need at least `Estimated runtime ÷ 5s` shots. Make **Σ `duration_s` ≈
+   `Estimated runtime`** so the whole VO track is covered. A hold over roughly 6 seconds needs a real
+   progressive reveal/animation or a short `hold_reason` for legibility or gravity; otherwise split it.
+   **The stretch-to-fill failure:** if
    you under-produce the list, its durations sum short of the VO, so `render-builder` re-times to the
    VO track and **stretches each shot** — leaving one visual dead on screen for 15–25s and silently
    destroying the cadence you engineered. Densify; never lengthen holds to close the gap.
@@ -387,7 +375,7 @@ names). It's review metadata only — the engine doesn't read it.
   `vo_text` that comes out long (>~8s of VO on one anchor) is a signal to **densify** (add a cut) or
   confirm a progressive in-shot reveal — never to cram more meaning into one prompt (§10).
 - **Densify to the cadence.** The script's cues are the *floor*, not the ceiling. Insert additional
-  shots (`from_cue: false`) so there is a **new cut every 3–8s and a new stimulus every 30–45s**
+  shots (`from_cue: false`) so new long-form plans start with a **new cut every 2–5s** and a new stimulus every 30–45s
   (§10), and weight density **highest in the first 60s** (the 55% cliff zone). A 20-second VO passage
   with one cue needs 3–5 shots, not one. Never leave static ambient B-roll under the first 3–5s
   (anti-pattern 8).
@@ -428,16 +416,16 @@ names). It's review metadata only — the engine doesn't read it.
   script header's **`Estimated runtime`** (words ÷ 150 wpm — the project constant); make **Σ
   `duration_s` ≈ that runtime** (if the header is missing, compute VO words ÷ 150 yourself). This is
   load-bearing: `render-builder` re-times shots against the VO track, so a list whose durations sum
-  short of the VO forces it to *stretch* every shot — which silently breaks the 3–8s cadence you just
-  engineered. Concretely: minimum shot count is `runtime ÷ 8s`; a healthy hook zone runs closer to
-  `÷ 4s`. If your shots sum well under the runtime, you have too few — densify, don't just lengthen
-  holds. (If the script's declared runtime disagrees with its own word count, trust the word count and
+  short of the VO forces it to *stretch* every shot — which silently breaks the 2–5s cadence you just
+  engineered. Concretely: minimum shot count is `runtime ÷ 5s`. If your shots sum well under the runtime,
+  you have too few — densify, don't just lengthen holds. A hold over ~6s needs a real progressive reveal
+  or a short `hold_reason` explaining legibility/gravity. (If the script's declared runtime disagrees with its own word count, trust the word count and
   flag it — a mismatch is a scriptwriter bug, not something to design around.)
 - **Diagram-first niches may hold longer per cut** (engineering, some finance/health): a single
   annotated schematic that *progressively reveals* (arrows draw on, labels tick, callouts appear) can
   legitimately hold 10–14s because the **in-shot annotation is the 30–45s stimulus refresh** — the cut
-  is not the only stimulus. In those shots set a longer `duration_s` and author the reveal in the
-  intent note. Event shots (a failure, a reveal, a silence beat) still stay short (3–6s). Do **not**
+  is not the only stimulus. In those shots set a longer `duration_s`, author the reveal in the
+  intent note, and record `hold_reason` once it exceeds ~6s. Event shots (a failure, a reveal, a silence beat) still stay short (2–5s). Do **not**
   use this to justify a sparse list of static holds — motion-graphics niches (§13) still cut fast.
 - **Visual question before narration (§1b) — and the hook-frame bar.** The hook shot (and each
   new-loop opening) presents something whose meaning is unexplained — the frame poses the question the
@@ -522,7 +510,8 @@ estimates until render — mark `timing_status: "estimated-from-script — re-ti
 **Then run the lint (mandatory):**
 `python .claude/skills/visual-prompt-writer/scripts/lint_shots.py videos/<slug>/shots.json --write`.
 It validates every `vo_ref` against `script.md` (verbatim + narration order, mirroring render-builder's
-matcher) and, on a clean pass, injects the **derived** `vo_text` coverage + `shot_counts`. **Any HARD
+matcher) and, on a clean pass, injects the **derived** `vo_text` coverage + `shot_counts`; it enforces
+runtime ÷ 5 coverage and requires `hold_reason` on holds over roughly 6 seconds. **Any HARD
 failure means render sync will degrade — fix it before handoff** (re-copy the exact opening words from
 `script.md`; move the out-of-order shot to its true script position). Heads-up warnings (a shot covering
 >~8s of VO on one anchor) mean **densify** there or confirm a progressive in-shot reveal — do not fix
@@ -543,7 +532,7 @@ only when the video is fully assembled). The folder is then ready for `voiceover
 Short summary only: the `shots.json` path, the long-form shot count (and how many are densified
 inserts vs. cue expansions), the thumbnail primary one-liner, the count of shorts visualized (with
 total short shots), **confirmation `lint_shots.py` passed** (anchors verbatim + in narration order;
-`vo_text` coverage + `shot_counts` written) plus any densify heads-up it raised, and **the critic
+`vo_text` coverage + `shot_counts` written; cadence/long-hold checks passed) plus any densify heads-up it raised, and **the critic
 pass result** (N findings, how each was addressed or why rejected). `shots.json` is the source of
 truth; keep the chat brief.
 - **If `needed_assets` is non-empty:** STOP and surface the wanted poses/expressions/interactions (each with
@@ -553,7 +542,8 @@ truth; keep the chat brief.
 ## Output contract (what image-generation + render-builder + publish-queue read)
 `videos/<slug>/shots.json` — a single JSON object:
 - `house_style` + `global_prompt_suffix` — the channel signature every prompt inherits.
-- `long_form.shots[]` — ordered; each with `id`, `beat`, `start_hint`, `duration_s`,
+- `long_form.shots[]` — ordered; each with `id`, `beat`, `start_hint`, `duration_s`, `hold_reason?`
+  (required when `duration_s > ~6`),
   `vo_ref`, `from_cue`, `narration_type`, `shot_class`, `cast?`, `props?`, `source`, `still_prompt`,
   `stage?`/`stage_role?`/`changed_elements?`, `stock_query?`, `synthetic`, `notes` (+ the derived
   `vo_text` after lint). **The full field list and

@@ -50,6 +50,8 @@ from render import match_shots_to_tokens, word_timings_for  # noqa: E402
 _BRACKET = re.compile(r"\[[^\]]*\]")            # [B-ROLL]/[PAUSE]/[BEAT] — never spoken
 _NORM = lambda w: re.sub(r"[^a-z0-9]+", "", w.lower())   # mirrors render.py::_NORM
 LONG_SPAN_WORDS = 20                            # V1 D13: ~>8s of VO on one anchor -> densify heads-up
+CADENCE_TARGET_S = 5.0                          # Checkpoint 3: new long-form default is 2–5s cuts
+HOLD_REASON_THRESHOLD_S = 6.0                   # >~6s holds must state why they earn the time
 
 
 def build_vo_stream(md_path):
@@ -136,7 +138,9 @@ def lint_piece(label, shots, md_path, hard, soft, word_timings=None):
                 f"Copy the opening words VERBATIM and keep shots in narration order.")
 
     # Q3: cadence floor — durations must ~cover the runtime and there must be enough cuts
-    # (the stretch-to-fill dead-hold kill-rule, made deterministic).
+    # (the stretch-to-fill dead-hold kill-rule, made deterministic). Checkpoint 3 tightens
+    # the planning floor from runtime/8 to runtime/5; authored long holds above ~6s need a
+    # concrete reason for the critic to judge, not a generic exemption.
     if vo_words:
         runtime_s = vo_words / 150.0 * 60.0      # 150 wpm
         sum_dur = sum(_dur(sh) or 0.0 for sh in shots)
@@ -144,9 +148,18 @@ def lint_piece(label, shots, md_path, hard, soft, word_timings=None):
             hard.append(f"[{label}] Σ duration_s {sum_dur:.0f}s < 85% of the ~{runtime_s:.0f}s runtime "
                         f"({vo_words} words / 150wpm) — durations don't cover the VO (stretch-to-fill "
                         f"risk); size shots near real seconds or densify.")
-        if len(shots) < runtime_s / 8.0:
-            hard.append(f"[{label}] {len(shots)} shots for a ~{runtime_s:.0f}s runtime (< 1 cut / 8s) — "
-                        f"too few cuts; densify to the retention cadence.")
+        if len(shots) < runtime_s / CADENCE_TARGET_S:
+            hard.append(f"[{label}] {len(shots)} shots for a ~{runtime_s:.0f}s runtime (< 1 cut / {CADENCE_TARGET_S:.0f}s) — "
+                        f"too few cuts; densify to the 2–5s new-video cadence.")
+
+    for sh in shots:
+        dur = _dur(sh)
+        if dur is not None and dur > HOLD_REASON_THRESHOLD_S:
+            reason = sh.get("hold_reason")
+            if not isinstance(reason, str) or not reason.strip():
+                hard.append(f"[{label}] {sh.get('id', '?')}: duration_s {dur:g}s exceeds ~{HOLD_REASON_THRESHOLD_S:g}s "
+                            "without a non-empty hold_reason — split the hold, add a real progressive reveal, "
+                            "or record the short legibility/gravity reason for the critic.")
 
     if any(m["start"] is None for m in hard_matches):
         return None

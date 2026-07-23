@@ -72,8 +72,9 @@ long_form: staged       # writers-room: outline → section drafts → accuracy/
   (148.1 Hz) and a different passage held within 4 Hz, ~175 gross wpm, ~18% pause — so the run-to-run
   variance is human-bounded even without seed-locking. Full rationale: `voice-lab/voice-lab.md`.)*
 - **Tone (locked — storytelling-first, witty):** storytelling-first and genuinely *fun*; witty, fast,
-  deadpan, hyper-literate; unimpressed by hype. **Third-person throughout — NO second person
-  (no "you," no "you, the investor"), and ONE narrator only** (everyone else is *reported*, never voiced).
+  deadpan, hyper-literate; unimpressed by hype. **Narrator-I and generic audience-facing `you` are allowed.**
+  Never role-cast the viewer into the story ("you, the investor") and keep **ONE narrator only** (everyone
+  else is reported, never voiced).
 - **Script/voice register (locked — storytelling-first, register by gravity):** **plain-concrete-specific
   AND witty** — a concrete number/term/mechanism in nearly every line, delivered by a wry, story-first
   narrator (Crayon Capital / HeyHistorically register *as storytellers*), **not** dry-serious.
@@ -86,8 +87,8 @@ long_form: staged       # writers-room: outline → section drafts → accuracy/
 - **Narrator persona (locked):** **the razor-smart storyteller** — a fast, wry, hyper-literate narrator
   who makes real money-history *fun*, **roasts the fools** (the con-man, the market, the institution —
   never the mark or the audience), and tells it like a story, not a lecture. Register = Crayon Capital +
-  HeyHistorically *as storytellers*. **One narrator, third-person, no quotes:** dramatized beats are the
-  narrator's **reported speech** ("he reportedly told them the vault was on a time lock"), **never voiced
+  HeyHistorically *as storytellers*. **One narrator, no quotes:** dramatized beats are the narrator's
+  **reported speech** ("he reportedly told them the vault was on a time lock"), **never voiced
   character exchanges and never verbatim quotes**; **no second-person role-casting** ("you, the king"). Do
   NOT import funny character-voices, pure-bit jokes with no fact, or cringe/meme silliness that dents
   credibility. Full macro-architecture + register grammar: `storytelling-grammar.md`. Writes toward this
@@ -96,9 +97,8 @@ long_form: staged       # writers-room: outline → section drafts → accuracy/
   gravity, NOT a fixed rate** (`storytelling-grammar.md §1.4`). Money-absurdity / systemic farce runs **hot**
   (dense wit); human-villainy / ruin runs **wry and sparse**; **human cost → comedy OFF entirely**. Slide the
   dial to the beat you're on. Across the channel this lands **more comedic than any pure finance-or-history
-  channel, without becoming a comedy channel** — storytelling first, the wit riding on it. *(Watch the
-  under-shoot: our regens go flat — absurd stretches must carry fact-riding wit; enforce with a density pass
-  calibrated to the beat's gravity.)* Toolbox: **anachronistic analogy that *teaches*** ("jazz became the
+  channel, without becoming a comedy channel** — storytelling first, the wit riding on it. Toolbox:
+  **anachronistic analogy that *teaches*** ("jazz became the
   Wi-Fi of the 20s"), deadpan undercut, ironic re-label ("exorbitant privilege = legalized robbery"), comic
   false precision, absurd escalation capped by a pun, bathos, narrator-described personification. **Every joke
   carries a fact** (delete-test — lose the joke, lose the info). On the human-cost beat don't joke *at* the
@@ -127,11 +127,13 @@ output_format: mp3_44100_128
 
 - **Script rules:** curiosity-gap hook <5s that the video actually pays off; value in 7s; withheld "fine
   print" in final 20%; payoff is a *realization*, not a lesson; `[B-ROLL]`/`[PAUSE]`/tiered-pause cues;
-  cadence self-check + anti-cliché pass + humor pass (§1d-V). YMYL accuracy gate (below).
+  cadence self-check + anti-cliché pass + humor pass (§1d-V). Default to contractions. A researched,
+  multi-lever scheme may use optional sequential causal `Step N:` prose; never use cards for bare chronology.
+  YMYL accuracy gate (below).
 - **Visual style (LOCKED recipe):** **clean 2.5D vector cast + built environments + marker-style
   charts/diegetic lettering + one red accent.** NOT a literal crayon clone and NOT hand-drawn/sketchy — the
-  hand-feel lives only in the hand-drawn marker charts + baked diegetic lettering (no title/chapter
-  cards — dropped 2026-07-15); character/object art is clean
+  hand-feel lives only in the hand-drawn marker charts + baked diegetic lettering (device/text cards
+  remain retired; optional opaque chapter cards are the live, pause-aligned exception); character/object art is clean
   vector. The screen is a **cast of distinct characters acting the money story** on built, depth-layered
   environments — there is **no on-screen narrator/host** (narration is a VOICE only); animated diagrams +
   timelines carry the numbers. **Cast identity is locked:** a shared facial rig (round near-circle head,

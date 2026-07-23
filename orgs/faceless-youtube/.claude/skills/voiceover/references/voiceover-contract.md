@@ -37,6 +37,26 @@ Model note: `eleven_multilingual_v2` is the reliable default (full voice-setting
 is more expressive but newer — prefer it only once verified on the channel's key. `eleven_turbo_v2_5`
 is cheapest/fastest for high-volume shorts.
 
+### Expressive delivery markers and dry-run review
+
+The script may use only these exact writer-facing markers, each immediately before a sentence:
+
+`[emote: curious]`; `[emote: knowingly]`; `[emote: sternly]`; `[emote: sighs]`;
+`[emote: exhales]`; `[aside: dry]`
+
+Use them sparsely at a real chapter, reveal, or mood turn. Never put them next to each other; punctuation
+remains the main rhythm tool. Unknown, malformed, adjacent, or mid-sentence expressive markup is a hard
+error before any provider request. On `eleven_v3`, the engine translates the markers to Eleven audio tags
+`[curious]`, `[knowingly]`, `[sternly]`, `[sighs]`, `[exhales]`, and `[deadpan]`. On v2 it strips every
+approved expressive marker, preserving the spoken sentence and existing v2 pause behavior. No v3 setting
+change follows from a marker: any stability audition remains one chapter and a human ear gate.
+
+`--dry-run` is the zero-spend request-shape review. It writes the normal transcript and manifest while
+reporting the configured effective settings, v3 and v2 cleaned request chunks, cleanup, and seam locations.
+v3 cannot use `previous_text`/`next_text`, so the planner prefers a substantial chapter/mood-turn paragraph
+for a forced seam; otherwise it uses the nearest paragraph or sentence boundary and marks the seam for ear
+review. The report is planning only: it does not alter the channel's paid configuration or make a request.
+
 ### Measured delivery targets (2026-07-04 reference-channel audio analysis)
 
 A measured pass on 5 reference channels (Crayon Capital, Patrick Boyle, Casually Explained, Half as

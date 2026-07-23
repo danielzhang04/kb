@@ -2,18 +2,64 @@
 """Deterministic lint for a long-form script.md.
 
 Checks ONLY what needs no judgment: em/en dashes, quotation marks in the VO body,
-leftover fact-traces / outline comments, a filled-in header runtime, and the VO
-word count vs runtime.
+leftover fact-traces / outline comments, a filled-in header runtime, mechanical
+Step-card sequences, and the VO word count vs runtime. Exact credibility-padding
+phrases are reported as non-blocking advisories.
 
 Second person is intentionally NOT checked here: whether a "you" casts the viewer
 into the story (banned) or is the generic impersonal "you" ("gold you could wash
 out of the sand", fine) is a judgment call that belongs to the taste critic.
 
 Usage: python lint_script.py <path-to-script.md>
-Exit code 0 = clean, 1 = hard violations found (dashes / quotes / traces).
+Exit code 0 = clean or advisory-only, 1 = hard violations found.
 """
 import re
 import sys
+
+
+STEP_NUMBER = re.compile(r"^Step\s+(\d+)\b", re.I)
+STEP_CARD = re.compile(r"^Step\s+(\d+)\s*:\s*.+", re.I)
+MALFORMED_STEP = re.compile(r"^Step(?:\s+\d+)?\s*:\s*$", re.I)
+CREDIBILITY_ADVISORIES = (
+    (re.compile(r"\bthat part is real\b", re.I), "credibility-padding phrase: that part is real"),
+    (re.compile(r"\bhe actually did\b", re.I), "credibility-padding phrase: he actually did"),
+    (re.compile(r"\bhe really did\b", re.I), "credibility-padding phrase: he really did"),
+    (re.compile(r"\bseriously\b", re.I), "credibility-padding phrase: seriously"),
+)
+
+
+def lint_step_sequences(lines, body_start, body_end, hard):
+    """Reject only mechanically malformed spoken Step N card sequences."""
+    steps = []
+    for i in range(body_start, body_end):
+        text = lines[i].strip().strip("*").strip()
+        numbered = STEP_NUMBER.match(text)
+        if numbered:
+            if not STEP_CARD.match(text):
+                hard.append((i + 1, "malformed Step card", lines[i].strip()))
+                continue
+            steps.append((int(numbered.group(1)), i + 1, lines[i].strip()))
+        elif MALFORMED_STEP.match(text):
+            hard.append((i + 1, "malformed Step card", lines[i].strip()))
+
+    if not steps:
+        return
+
+    numbers = [number for number, _, _ in steps]
+    if len(steps) == 1:
+        number, lineno, text = steps[0]
+        hard.append((lineno, "orphan Step sequence", text))
+        return
+    if numbers[0] != 1:
+        hard.append((steps[0][1], "Step sequence must start at 1", steps[0][2]))
+    seen = set()
+    for number, lineno, text in steps:
+        if number in seen:
+            hard.append((lineno, "duplicate Step number", text))
+        seen.add(number)
+    for expected, (actual, lineno, text) in enumerate(steps, start=1):
+        if actual != expected:
+            hard.append((lineno, f"skipped/out-of-order Step (expected {expected})", text))
 
 
 def main(path):
@@ -37,6 +83,8 @@ def main(path):
             break
     if body_start is None:
         body_start = 0
+
+    lint_step_sequences(lines, body_start, body_end, hard)
 
     # Header (everything before the VO body) must carry a filled-in runtime estimate.
     header = lines[: body_start if body_start else 0]
@@ -66,12 +114,18 @@ def main(path):
         is_cue = stripped.startswith("[")            # [B-ROLL] / [PAUSE] / [BEAT]
         is_meta = stripped.startswith(("#", "-", "*", ">")) or stripped == "---" or stripped == ""
 
+        # The no-quotes lock applies to the whole script body, including Markdown blockquotes or
+        # list-formatted prose. Those lines are non-spoken metadata to voiceover, but allowing a quote
+        # there would let a generated story beat pass this gate and then disappear from the transcript.
+        if in_body and not is_cue and ('"' in ln or "“" in ln or "”" in ln):
+            hard.append((lineno, "quote in VO body", stripped))
+
         if in_body and not is_cue and not is_meta:
-            # quotation marks in a spoken VO line = the no-quotes lock.
-            if '"' in ln or "“" in ln or "”" in ln:
-                hard.append((lineno, "quote in VO line", stripped))
             # count spoken words (rough: split on whitespace).
             vo_words += len(stripped.split())
+            for pattern, label in CREDIBILITY_ADVISORIES:
+                if pattern.search(ln):
+                    soft.append((lineno, label, stripped))
 
     print(f"== lint: {path} ==")
     if hard:
@@ -81,6 +135,11 @@ def main(path):
             print(f"  L{lineno}  [{kind}]  {snippet}")
     else:
         print("\nHARD violations: none (no dashes, no VO quotes, no leftover traces).")
+
+    if soft:
+        print(f"\nAdvisories ({len(soft)}) — review, do not block:")
+        for lineno, kind, text in soft:
+            print(f"  L{lineno}  [{kind}]  {text[:100]}")
 
     total_s = round(vo_words / 150.0 * 60)
     mm, ss = divmod(total_s, 60)

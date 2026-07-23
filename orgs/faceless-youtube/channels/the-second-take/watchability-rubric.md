@@ -37,7 +37,7 @@ instruction gap, a not-followed rule, or missing doctrine.
 **1. Payload density** — a concrete number, name, date, or mechanism in nearly every line. *[covered §1-P]*
 2 = almost every line carries a fact · 1 = drifts into vague stretches · 0 = vibes/portent, no payload.
 
-**2. Register & colloquialism — casual, NOT literary** — plain, spoken, contractions, casual "telling-a-friend" register, **zero narrator self-editorializing** (no "the maddening thing," "here's the annoying bit" — see §2.5), zero lecture-voice. **Casual-not-literary (§2.2):** no clever-convoluted backflip sentences, no writerly aphorisms / profound summary-lines, no cliché stock transitions ("which brings us to," "the strangest turn of the whole story"); a casual deadpan button ("He was fine.") is fine, a literary flourish is not. Third-person only (no second-person "you"-casting — that's dim 11). *[gap — no explicit checklist]*
+**2. Register & colloquialism — casual, NOT literary** — plain, spoken, contractions, casual "telling-a-friend" register, **zero narrator self-editorializing** (no "the maddening thing," "here's the annoying bit" — see §2.5), zero lecture-voice. **Casual-not-literary (§2.2):** no clever-convoluted backflip sentences, no writerly aphorisms / profound summary-lines, no cliché stock transitions ("which brings us to," "the strangest turn of the whole story"); a casual deadpan button ("He was fine.") is fine, a literary flourish is not. Narrator-I and generic `you` are allowed; viewer role-casting is not (dim 11). *[gap — no explicit checklist]*
 2 = reads like a sharp friend talking, casual all through · 1 = mostly plain but some textbook phrasing, a mood-tag, or a literary/aphoristic line slips in · 0 = essay/lecture register or writerly-clever throughout.
 
 **3. Sentence-length variance (anti-metronome)** — collide long builds with short lines so the rhythm never flatlines. *[covered §1d-V B]*
@@ -46,9 +46,11 @@ Target: real variance (stdev ≥ ~7 words), a short AND a long sentence in every
 2 = varied rhythm, and every short punch lands wit/payload · 1 = flat, or a portent-y punch slips in · 0 = metronomic, or stacked dramatic fragments.
 
 **4. Fact-riding humor — REGISTER-BY-GRAVITY dial (headline rule)** — the comedic rate is **not a fixed constant; it is a DIAL set by the topic's gravity** (storytelling-grammar §1.4). Money-absurdity / systemic farce runs **hot** (dense wit); human-villainy / ruin runs **wry and sparse**; **human cost → comedy OFF entirely** (§4). Judge whether the dial is *correct for the beat being scored*, not against a target number. Every joke that ships survives the delete-test (loses information if cut, §6); toolbox = anachronistic-analogy-that-teaches, deadpan undercut, ironic re-label, comic false precision, absurd escalation, bathos (§6); butt is the fool/institution, never the mark or the viewer; **evergreen only, never dating memes** (§6). *[covered §1d-V C/D/F + storytelling-grammar §6]*
-**Hot means DENSE with modern analogy, spread through the body (§2.1):** in the hot acts a vivid, instantly-pictured modern comparison should land every beat or two and CARRY the telling, not garnish it. A hot-act stretch that explains a mechanism with ZERO modern analogy is the pipeline's #1 recurring miss (flat fact-telling), and analogies run through the whole body, not one at the end.
-**Humor bar (auto-0 on a violation, §2.5):** the analogy must map onto a modern thing the viewer *instantly & universally* pictures (PASS "a startup with no product"); **BANNED** = dead/literary metaphors ("the load-bearing wall of the con") and coined repurposings nobody's heard ("a bug in him"); plain words only, **no narrator self-editorializing** ("the maddening thing"); gloss-or-cut every unfamiliar name/term.
-2 = the dial is correct for the topic's gravity (hot where it's absurd, wry where it's villainy, silent on human cost), modern analogy is dense through the hot acts, and every joke clears the humor bar · 1 = dial roughly right but a hot stretch runs analogy-thin or too jokey for its gravity, or a couple empty jokes · 0 = comedy at the wrong gravity (jokes *at* the human cost, or a dry near-humorless read of an absurd story), hot mechanism stretches with no modern analogy at all, a dead metaphor/coinage, or forced/cringe/meme jokes.
+**Analogies are selective explanatory tools, not a density target.** A vivid modern comparison may recur across
+distinct beats when it helps the viewer follow the mechanism. Judge whether each one carries the fact rather
+than repeating a landed point, derailing the story, or obscuring the explanation; do not auto-zero a script for
+analogy density or a particular metaphor type.
+2 = the dial is correct for the topic's gravity (hot where it's absurd, wry where it's villainy, silent on human cost), and analogies/jokes sharpen rather than obscure the telling · 1 = dial roughly right but a few jokes or comparisons feel empty, repetitive, or mistimed · 0 = comedy at the wrong gravity (jokes at the human cost), or repeated/forced/cringe comparisons make the story harder to follow.
 
 **5. Playful framing (the HeyHistorically lift)** — anachronism/modern-slang reframing of dry finance, a lightly-present self-aware narrator, institutions voiced as characters, the "I'm not making this up" honesty beat on absurd-but-true facts. *[gap — the 20–30% ingredient; underspecified in doctrine]*
 2 = story feels alive & narrated by a person · 1 = occasional spark · 0 = flat recitation.
@@ -68,8 +70,8 @@ Target: real variance (stdev ≥ ~7 words), a short AND a long sentence in every
 **10. Digestibility / segmentation** — each idea ~20–30s, one concrete picture per abstract concept, tangents snap back in one clause ("...anyway"). *[covered §2/§5b]*
 2 = never bogs down · 1 = one soggy stretch · 0 = dense homework.
 
-**11. Reported-speech / no-quotes compliance (hard narrator locks)** — the two locked constraints (storytelling-grammar §0/§3): (a) **NO second person** — never casts the viewer as "you"; (b) **ONE narrator, NO quotes** — every dramatized beat is the narrator's *reported speech* (what was said/done, characterized with attitude), with **zero quotation in the script** and no voiced character exchanges / distinct character voices. *[locked in dna + storytelling-grammar §0/§3]*
-2 = clean third-person, one narrator, zero quotes, all scenes reported-speech · 1 = one slip · 0 = casts the viewer as "you," quotes a source verbatim, or stages voiced character dialogue.
+**11. Reported-speech / no-quotes compliance (hard narrator locks)** — the two locked constraints (storytelling-grammar §0/§3): (a) **NO viewer role-casting** — generic `you` and narrator-I are allowed, but never casts the viewer as a historical participant; (b) **ONE narrator, NO quotes** — every dramatized beat is the narrator's *reported speech* (what was said/done, characterized with attitude), with **zero quotation in the script** and no voiced character exchanges / distinct character voices. *[locked in dna + storytelling-grammar §0/§3]*
+2 = clean narrator framing, one narrator, zero quotes, all scenes reported-speech · 1 = one slip · 0 = role-casts the viewer, quotes a source verbatim, or stages voiced character dialogue.
 
 **12. End on the story, no essay conclusion** — the close is the last ironic story beat (the smallest stake / a realization / a dry button / sealed hook-paradox), then hard-cut. **BANNED: the essay conclusion:** "And that's why…", CTA-inspiration, and the paper-conclusion (a list of historical rhymes A→B→C capped by "the tell never changes / the lesson is X / it repeats every generation," the AI-essay tell; §3.5/§4). The vindication insight is woven into the body, never a closing lesson paragraph. Model the close on the exit menu (deflate/bathos/where-are-they-now/loop; §3.5). *[covered §1d-V E + storytelling-grammar §3.5]*
 2 = ends on the story's own irony with a dry button · 1 = tidy but a little preachy · 0 = essay conclusion / summary / CTA / moral lecture / "repeats every generation."
@@ -77,7 +79,10 @@ Target: real variance (stdev ≥ ~7 words), a short AND a long sentence in every
 <!-- Dimensions 13-15 = the staging / vindication lever (storytelling-grammar §4). -->
 
 **13. Mechanism-assembly** — a how-it-was-engineered payload is *built one nameable lever per beat* with signposts said out loud ("here's the crucial part…"), so the viewer watches the trick assemble — not narrated smoothly in one pass. *[covered §5c #2 + storytelling-grammar §3.6]*
-2 = each lever lands on its own beat, the build is felt · 1 = levers present but compressed · 0 = a smooth summary of "how it worked."
+Optional sequential `Step N:` cards are allowed when they clarify genuine causal levers. Do not demand them
+for every story, and do not treat bare chronology as mechanism assembly.
+
+2 = each lever lands on its own beat and the build is felt · 1 = levers present but compressed · 0 = a smooth summary of "how it worked," or cards that label chronology rather than a causal mechanism.
 
 **14. Verification staged (vindication lever)** — the proof is *shown before the accusation* (the match resolving, the trace run), corroboration is counted out loud, and the obvious suspect is exonerated where evidence is thin; the payoff lands on the system, not the person. *[covered §5c #3 + storytelling-grammar §4]*
 2 = the viewer watches the bar get cleared · 1 = states a verdict with some sourcing shown · 0 = "analysts say X is guilty," no proving.
@@ -93,7 +98,10 @@ Target: real variance (stdev ≥ ~7 words), a short AND a long sentence in every
 <!-- Dimension 17 = the transitions / seam kit (storytelling-grammar §1.9). -->
 
 **17. Transitions (the seam kit)** — leave **zero flat "and then" seams** (storytelling-grammar §1.9): every beat exits on an **open loop / forward-promise button** the viewer must stay to collect; turn-word grammar closes one beat and opens the next; escalation is honest ("it gets worse" is followed by something actually worse). And **deliver the moment, don't announce it** — no section-opener that labels the *category* of the coming beat ("here's the strange part," "the uncomfortable question," "this is where it becomes a production") and no mechanical scaffolding ("Piece one/two/three…"); open on the *content* — the real question it answers or the next action plainly; constructions are direct, not clever-indirect ("he wasn't a con-man" > "he doesn't read like a con-man"). *[covered storytelling-grammar §1.9]*
-2 = every seam is a button or content-driven turn, no flat "and then," no label-openers · 1 = mostly clean but a flat seam, a label-opener, or a beat that exits with no forward pull · 0 = flat "and then" seams throughout, section-openers routinely announce the beat, or numbered-listicle scaffolding.
+An announced `Step N:` is not a label-opener when it exposes a real causal lever. Rhetorical questions earn
+their place when they turn causality or narrator self-awareness, not merely fill air.
+
+2 = every seam is a button or content-driven turn, and any announced Step reveals a causal lever · 1 = mostly clean but a flat seam, filler question, or generic label · 0 = flat "and then" seams throughout, routine generic label-openers, or cards that only list chronology.
 
 <!-- Dimension 18 = weave-the-metaphor-in (storytelling-grammar §1.2). -->
 

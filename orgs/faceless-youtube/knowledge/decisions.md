@@ -3135,3 +3135,66 @@ run brief binds nobody — a fresh terminal reads the style-bible and skill docs
   Routed: universal.md §5 (full rule) + storytelling-grammar §2.1 (channel note). Poyais keeps its
   crowd-first gold hook AS SHIPPED — its first-minute retention curve (cliff before MacGregor
   enters ~0:35?) is the standing empirical check before any regen.
+
+## 2026-07-22 — Engagement-overhaul direction + first validation topic (Daniel's ruling)
+
+- **Target both levers:** faster, beat-shaped cuts **and** more movement inside held shots. Poyais'
+  95 stills / 503.7s is 5.3s/still, not 11s, but the aggregate comparison band mixes visual systems
+  and does not override Daniel's eye. Animation-heavy passages may hold only when meaningful action
+  keeps changing the frame; non-animated passages must match the materially faster stills-channel cut
+  pattern. The channel is mostly stills-based, so faster cutting is the default; meaningful animation is
+  the exception. Ambient drift/bob is not animation. Keep calibration simple but legible: add cuts,
+  baseline life, and restrained camera cumulatively so each adjacent comparison isolates one axis before
+  locking the combined treatment.
+- **Script voice is part of the overhaul, not a protected control:** target a personable, fun narrator
+  who reacts to sourced facts, speaks like a smart friend, uses recurring modern comparisons, and walks
+  the viewer through causal scheme steps. Poyais remains gold for fact leash, causality, concise
+  consequence, and the close—not universal gold for narrator presence, analogy density, or chaptering.
+  Daniel's rough MacGregor/Madoff/Step 1 draft is the positive energy direction. The first “refinement”
+  polished it back into the bland Poyais register and was rejected. Keep its casual repetition, direct
+  questions, slang, recurring comparisons, and excited explanatory momentum; edit only where they obscure
+  the mechanism, repeat a landed joke, or outrun the ledger. The casual pass is voice source-of-truth;
+  the leash pass makes the smallest local factual correction and may not replace a lively paragraph with
+  documentary exposition. Raw and slightly messy beats polished and bland. Approve a leashed facet
+  exemplar before changing the writer skill.
+- **Voice micro-rulings from the exemplar review:** use contractions; the identity aside is exactly the
+  plain `Yeah, that's his real name`; ban credibility-padding constructions (`that part is real`, `he
+  actually did`, `he really did`, `seriously`) while preserving `real` when it contrasts real money/land/
+  identity with the fake; omit famous names, precise geography, `reportedly`, and credentials when they do
+  not improve the causal story; use accurate familiar scale comparisons instead (8M acres is roughly
+  Maryland-sized, not Texas-sized); prefer conversational round numbers and active verbs where the ledger
+  supports them; retain the textbook-cover, hype-train, NFT, tourist-cab, and `I'd move there too` audience
+  relationship moves.
+- **Scheme Step cards are allowed:** where research supports a real multi-lever mechanism, the narrator may
+  announce `Step N` and the existing opaque chapter-card path may display it. Generic chronology/listicle
+  cards remain out. If used, the peer levers are sequential—no orphan Step 1. The script owns spoken Step
+  prose, motion-planner owns `cards[]`, and audio-director owns the co-located silent pause. First-person
+  narrator asides and generic audience-facing `you` are allowed; viewer role-casting, voiced character
+  dialogue, and invented color remain banned.
+- **Keep engagement gates causal, not ritual:** `idea-generator` records four named viability fields and
+  `researcher` revises unsupported promises; a mid-video forward question appears only when the story has
+  naturally withheld proof. Blind Bricks/Pearlman fixtures receive the approved calibration excerpt but
+  neither legacy script nor the full Poyais script. Raw-versus-leashed preservation is a fresh critic call,
+  not a diff quota; contextual `actually`/`really` remains a taste judgment rather than a blocking word ban.
+- **Voice dry-run must prove the planned request shape:** the zero-spend path will report effective v3/v2
+  settings, chunk boundaries, and seam locations before any paid audition. It does not claim chunk proof
+  merely from producing a cleaned transcript.
+- **Keep the visual build simple:** new stills-based plans cut faster (initial 2–5s guidance; holds over
+  roughly 6s need a recorded reason; provisional coverage floor `runtime/5`), opt into a separate
+  human-calibrated bob/breathe token block, use the existing layer path for genuinely separable
+  entrance/travel/reveal beats without imposing a quota, and gain stage-start
+  `camera.move:push|pull`. One top-level `baseline_life:true` opt-in protects legacy derived output;
+  absent/false preserves the old path. Baseline life must also cover layered tableaux. Do not build
+  per-shot life profiles or a complex motion taxonomy.
+- **Calibrate without confounding:** on the local Poyais slice compare baseline → cuts-only → cuts plus
+  baseline life → cuts/life plus restrained camera, then compare audio treatments on the selected visual.
+  Keep assets, VO, and already-motivated layers fixed. Audio review uses a flag-only semantic critic plus
+  authored-versus-resolved QA; no cue-rate target or permanent beat-disposition ledger.
+- **Human consequence stays concise:** comedy off, but forward narration, restrained music, and
+  visual life continue unless a particular line earns a full stop. No automatic extended, slow,
+  static, dry, or music-off passage.
+- **Validation order:** MiniScribe / Bricks first (blind control/candidate), Pearlman second as the
+  mixed-tone contrast; Wells Fargo is excluded. Poyais remains published and serves only as a local,
+  zero-spend calibration reference.
+- **Gates:** review design, then production-logic diff, then zero-spend calibration and Bricks script/
+  dry-run. Paid voice, image generation, full render, and publication each remain separately human-gated.

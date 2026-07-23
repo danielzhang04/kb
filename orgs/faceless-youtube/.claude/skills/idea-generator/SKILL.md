@@ -159,6 +159,24 @@ Everything else (title options, payload, lever, why-original, score, sources, st
 them **provisional** — the final shorts are derived by `shorts-writer` from the *researched, finished
 long-form*, not locked here. Don't over-invest the bench at idea stage for these channels.
 
+### Viability gate — before scoring or research
+
+Every deep-path brief must clear all four named fields below. This is a storyability screen, not a
+retention prediction or another weighted score. If any field is missing or vague, re-angle the idea or
+drop it before research spends time proving the wrong promise:
+
+- **Accountable stake and question:** name the accountable person or system, the concrete stake, and one
+  dominant open question.
+- **Cold open and title promises:** give one vivid cold-open moment and at least three short, defensible
+  title promises.
+- **Mechanism, escalation, relevance:** state the specific mechanism, its escalation or reversal, and a
+  plausible relevance bridge.
+- **Differentiated against:** name the specific published and/or backlog items compared, and say how this
+  angle differs. Never assert originality from memory.
+
+The researcher owns evidence, not wishful fulfillment: it must verify or revise the first three fields and
+record every title or angle promise the evidence cannot support.
+
 ## Step 4 — Payload + originality gates (both non-negotiable, both pass/fail)
 
 **Payload gate (new — apply first).** Before an idea can be scored at all, write its **Payload** line:
@@ -271,6 +289,10 @@ for the Step-3a trio and mark shorts provisional:
 ```
 - **Provisional angle:** the specific lens/thesis (a bet, refined after research)
 - **Payload promise:** the one concrete thing the finished video must leave the viewer with
+- **Viability — accountable stake and question:** <accountable person/system> · <concrete stake> · <one dominant open question>
+- **Viability — cold open and title promises:** <vivid opening moment>; 1. <defensible title promise> 2. <defensible title promise> 3. <defensible title promise>
+- **Viability — mechanism, escalation, relevance:** <specific mechanism> → <escalation/reversal> → <plausible relevance bridge>
+- **Viability — differentiated against:** <named backlog/published items compared> · <specific difference>
 - **Key questions the video must answer (→ the researcher's seed):**
   1. <concrete, hunt-able question>
   2. …  (4–8 total; steer toward mechanism + overlooked specifics, away from the saturated narrative)

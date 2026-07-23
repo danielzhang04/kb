@@ -92,9 +92,10 @@ _OVERLAY_ROLE = {"stat-card": "pop", "counter": "pop", "definition-card": "pop",
                  "text": "tick", "meter": "riser"}
 
 
-# Register (human-cost music pull-back, SFX withheld under talk) is now AUTHORED by the audio-director
-# (a `dry` span + simply not placing SFX). The number-reveal DIP still lands in the render-inserted breath
-# gap (an authored `pause` cue) — see build_audio_spec + breath.py.
+# Register is now AUTHORED by the audio-director rather than inferred from a structural tag. A restrained
+# bed normally continues through human-cost material; a particular line may earn a rare `dry` span, and
+# comedic SFX are withheld simply by not placing them. A reveal dip can still land in a render-inserted
+# breath gap from an authored `pause` cue — see build_audio_spec + breath.py.
 
 
 def snap_element_sfx(events, shots, window_s=0.7):
@@ -121,8 +122,9 @@ def snap_element_sfx(events, shots, window_s=0.7):
 
 def register_audio(shots, tokens):
     """Register is now AUTHORED by the audio-director, not derived from a structural tag: human-cost
-    music pull-back is an authored `dry` span, and SFX are "withheld" simply by the director not placing
-    them there. Kept as a stable seam returning ([], []) so build_audio_spec's call site is unchanged."""
+    material does not automatically remove the bed, a line-specific `dry` remains available, and SFX
+    are "withheld" simply by the director not placing them there. Kept as a stable seam returning
+    ([], []) so build_audio_spec's call site is unchanged."""
     return [], []
 
 
@@ -315,8 +317,8 @@ def build_music_lane(resolved_cues, resolved_dry, shots, tokens, audio_dir=None)
                 seg["fade_out_s"] = float(c["fade_out_s"])
             segs.append(seg)
 
-    # 2. Carve holes: AUTHORED dry spans (human-cost music pull-back is an authored `dry` span, no
-    #    longer an automatic drop).
+    # 2. Carve holes: rare, line-specific AUTHORED dry spans. Human-cost material does not create one
+    #    automatically; the normal consequence treatment is a restrained continuing bed.
     holes = [{"at_s": float(d["at_s"]), "to_s": float(d.get("to_s", piece_end))} for d in (resolved_dry or [])]
     segs = _subtract_holes(segs, holes)
 

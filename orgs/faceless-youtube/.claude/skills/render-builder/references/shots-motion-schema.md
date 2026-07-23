@@ -51,6 +51,18 @@ BASE frame** (not the last delta, whose ≤3-delta cap can throw the set away).
     end, pixel-aligned with the animating shot's final frame (same `bez`/dot params). (Fixes the
     vanishing-route-line gap: an engine-drawn line otherwise exists only while its live `path` layer is
     on screen and unmounts at the shot cut.)
+  - `camera` (optional): only on a standalone or stage-start/base shot. `{ "move": "push" | "pull",
+    "pan": null | "left" | "right" | "top" | "bottom", "intensity": >0 and <=1 }`. `push` maps to
+    engine `push-in`; legacy `pull` maps to `pull-back`. A later delta is rejected because `CameraStage`
+    reads the stage's first camera only.
+
+## Baseline life (plan-level)
+
+`"baseline_life": true` opts this new plan into gentle life. `build_motion` then takes the nonzero values
+from the channel's separate `visual-kit/motion-tokens.json` `baseline_life` block and applies them to both
+scene-backed shots and plate-plus-cutout tableaux. Placeholders and opaque chapter cards remain static.
+Absent or `false` preserves legacy derived motion JSON and frame behavior; it never silently changes an
+existing video.
 
 ## Rules
 - Every layer's `source` MUST be `"cutout"` and its `animation.type` MUST be on the cutout menu
@@ -71,13 +83,13 @@ rides on the overlay layer and shifts NO downstream cut (unlike an inserted card
 AUTO-ALIGNED to a co-located spliced pause SILENCE: the `audio-director` authors a `pause` cue on each
 in-video card anchor, and `apply_cards` fills exactly that silence block — `[render_anchor − gap_dur,
 render_anchor]` (silence is spliced BEFORE the anchor word) — so the card is up only while nothing is
-spoken. **The card anchor MUST equal the pause cue's anchor.** No co-located pause → `apply_cards` warns
-loudly and falls back to a fixed `hold_s` ending on the anchor word.
+spoken. **The card anchor MUST equal the pause cue's anchor.** No co-located pause is a hard failure;
+there is no fallback that can safely show an opaque normal card over narration.
 
 - `cards[]` — each: `text` (str, required — the copy), `anchor` (str, required for a normal card —
   verbatim VO words = the co-located pause anchor, resolved via `render.anchor_time`; ANCHOR-based only,
-  never an absolute second, so a VO re-synth can't break it), `hold_s` (number > 0 — FALLBACK width if
-  the pause gap is absent; the real width comes from the gap), `fade_s` (number > 0, default 0.15),
+  never an absolute second, so a VO re-synth can't break it), `hold_s` (number > 0 — compatibility field;
+  real width always comes from the required pause gap), `fade_s` (number > 0, default 0.15),
   `end_card` (bool).
 - The **end card** (`end_card: true`) is EXEMPT from gap-alignment — it is opaque over the closing VO
   line + the `post_vo_hold_s` tail, running from its anchor to the last shot's end. It may omit `anchor`

@@ -1,19 +1,13 @@
 ---
 name: render-builder
 description: >-
-  Assembles the finished video for a scripted + voiced + storyboarded + imaged video in this
-  faceless-YouTube project — turns a videos/<slug>/shots.json + the verified assets/scenes/ stills +
-  the voiceover audio into a rendered MP4 via the local Remotion motion engine — the only render
-  engine, for the long-form AND every publish-tagged short. Use this whenever the user wants
-  to render, assemble, build, or produce the actual video / final cut / MP4, "put it together",
-  "make the video", stitch the B-roll to the voiceover, or run the render step for a video or its
-  shorts — for ANY niche. Runs AFTER voiceover + visual-prompt-writer + image-generation and BEFORE
-  compliance-check / publish-queue. Reads shots.json + assets/scenes/ (the verified pre-generated
-  stills, when the channel style-locks its visuals) + assets/voiceover.manifest.json + the VO mp3s;
-  writes assets/final.mp4, assets/shorts/short-NN.mp4, and assets/render.manifest.json. Do NOT use
-  it to write the script (scriptwriter), plan visuals (visual-prompt-writer), generate the images
-  (image-generation), generate the narration (voiceover), pick titles/tags (metadata-writer), or
-  upload to YouTube (publish-queue).
+  Assembles a scripted, voiced, storyboarded, and imaged video into long-form and short MP4s with
+  the project's local Remotion engine. Use when asked to render, assemble, build, produce, make the
+  final cut/MP4, stitch B-roll to voiceover, or run the render step for any channel. Reads a video's
+  shots.json, verified scene assets, voiceover manifest, and VO audio; writes final.mp4, short MP4s,
+  motion specs, and render.manifest.json. Runs after voiceover, visual-prompt-writer, and
+  image-generation, and before compliance-check and publish-queue. Do not use it to write scripts,
+  plan or generate visuals, generate narration, write metadata, or upload to YouTube.
 ---
 
 # render-builder
@@ -35,7 +29,7 @@ Turn a fully-prepared video folder into a finished MP4 — locally, on the Remot
   `render_engine: remotion`, `watermark: false` — the local engine never watermarks).
 
 The whole job is done by the scripts — there is no hand-authoring step. Motion is fixed mechanically:
-the camera is always locked, every shot hard-cuts, and the layered cutout motion is merged from the
+the camera is locked by default, every shot hard-cuts, and the layered cutout motion is merged from the
 `motion-planner`'s `shots.motion.json` (via `--motion-plan`). You never hand-edit a derived motion.json.
 (Audio is authored separately by the `audio-director` skill.)
 
@@ -99,10 +93,11 @@ There is no second render engine.
   ai-gen/hybrid shot is a **hard error** (run image-generation pass 2), never a silent fallback;
   chart/screencap/stock/archival shots (which image-generation deliberately skips) fall back to a
   visible placeholder card and are counted in the manifest (`scenes_from_files` / `inline_fallback`).
-- **Camera is furniture; the cuts carry the life.** The camera is **always locked** (`move: none`) —
-  build_motion never derives a move (decoupled 2026-07-12; the engine keeps `CameraStage` for a future
-  explicit/authored move, but nothing emits one). Idle bob is a channel token (`idle.bob_px: 0` on The
-  Second Take = frames hold dead-still); every shot hard-cuts. The old authored motion fields `ken_burns`
+- **Camera is furniture; the cuts carry the life.** The camera is **locked by default** (`move: none`);
+  only a motion-plan stage start may author restrained `push`/`pull` punctuation (mapped to engine
+  `push-in`/`pull-back`). Baseline life is also opt-in: top-level `baseline_life:true` uses the channel's
+  separate calibrated token block on real scene/layer tableaux only, never placeholders or opaque cards.
+  Absent/false retains legacy derived JSON and frames. Every shot hard-cuts. The old authored motion fields `ken_burns`
   and `within_shot_motion` are **deleted** — no longer authored, no longer read anywhere.
 - **Publish gating.** Only shorts with `status: publish` in `shots.json` render by default — bench
   shorts don't render until promoted. `--all-shorts` overrides.

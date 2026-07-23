@@ -3,6 +3,8 @@ from menu import valid_animation
 
 _SLIDE_EDGES = {"left", "right", "top", "bottom"}
 _APPEAR_STYLES = {"pop", "fade", "slam"}
+_CAMERA_MOVES = {"push", "pull"}
+_CAMERA_PANS = _SLIDE_EDGES
 
 
 def _num(v):
@@ -109,13 +111,52 @@ def _card_errors(plan):
     return e
 
 
+def _camera_errors(sid, cam):
+    """Validate the planner-facing camera exception. Stage placement is checked separately because
+    it needs shots.json's ordered stage metadata."""
+    if not isinstance(cam, dict):
+        return [f"{sid}: camera must be an object"]
+    e = []
+    move = cam.get("move")
+    if move not in _CAMERA_MOVES:
+        e.append(f"{sid}: camera.move must be one of {sorted(_CAMERA_MOVES)}")
+    pan = cam.get("pan")
+    if pan is not None and pan not in _CAMERA_PANS:
+        e.append(f"{sid}: camera.pan must be null or one of {sorted(_CAMERA_PANS)}")
+    intensity = cam.get("intensity", 1.0)
+    if not (_num(intensity) and 0 < intensity <= 1.0):
+        e.append(f"{sid}: camera.intensity must be a number in (0,1]")
+    return e
+
+
+def camera_stage_errors(plan, shots_meta):
+    """A stage camera is read from its first frame by the engine. Reject a later delta / later
+    same-stage declaration rather than accepting a move that the renderer would ignore."""
+    meta = {s.get("id"): (i, s) for i, s in enumerate(shots_meta or []) if s.get("id")}
+    e = []
+    for entry in (plan or {}).get("shots", []):
+        if not entry.get("camera") or entry.get("id") not in meta:
+            continue
+        i, shot = meta[entry["id"]]
+        stage = shot.get("stage")
+        previous = shots_meta[i - 1] if i else None
+        if shot.get("stage_role") == "delta" or (stage and previous and previous.get("stage") == stage):
+            e.append(f"{entry['id']}: camera may be declared only on a stage-start/base shot — "
+                     "a later delta's camera is ignored by CameraStage")
+    return e
+
+
 def validate_plan(plan, menu):
     errors = _card_errors(plan)
+    if "baseline_life" in plan and not isinstance(plan["baseline_life"], bool):
+        errors.append("baseline_life must be a boolean when present")
     for shot in plan.get("shots", []):
         sid = shot.get("id", "<no id>")
         bg = shot.get("background")
         if not isinstance(bg, dict) or bg.get("mode") not in ("plate", "delta-chain"):
             errors.append(f"{sid}: background missing/invalid (need mode plate|delta-chain)")
+        if "camera" in shot:
+            errors.extend(_camera_errors(sid, shot["camera"]))
         for layer in shot.get("layers", []):
             lid = layer.get("id", "<no id>")
             src = layer.get("source")

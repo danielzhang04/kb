@@ -120,6 +120,9 @@ export type Shot = {
   camera: {move: 'push-in' | 'pull-back' | 'none'; pan: 'left' | 'right' | 'top' | 'bottom' | null; intensity: number};
   entrance: 'cut' | 'whip';
   idle: 'bob' | 'none';
+  // Emitted only by an opted-in shots.motion.json plan for a layered tableau. Legacy layered shots can
+  // carry idle:'bob' from derive_shots, so Video must not infer this new behavior from idle alone.
+  baseline_life?: true;
   overlays: Overlay[];
   plate?: string | null;
   layers?: LayerSpec[];

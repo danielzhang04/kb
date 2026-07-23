@@ -3,7 +3,7 @@ name: metadata-writer
 description: >-
   Writes the YouTube publishing metadata for a scripted video in this project — the title (primary +
   A/B challengers), description, tags, hashtags, chapters, thumbnail concepts, and pinned-comment copy
-  — for the long-form video AND every scripted short, emitted as one videos/<slug>/metadata.json that
+  — for the long-form video AND every scripted short, emitted as one videos/SLUG/metadata.json that
   feeds the publish-queue skill (YouTube Data API v3). Use this whenever the user wants metadata, a
   title, titles, "titles and tags", a description, YouTube SEO, tags/keywords, hashtags, chapters/
   timestamps, thumbnail text, a pinned comment, or wants to "package"/"prep for upload"/"write the
@@ -62,10 +62,14 @@ and **Shorts are not eligible at all.** The Data API's `videos.insert` accepts e
   peak, the beat structure (for chapters), any Sources list (for YMYL/health/engineering trust), and
   the shorts count. Titles/descriptions must reflect *what the video actually delivers* — mismatch
   hurts session watch time (`universal.md §3a`).
+- **`videos/<slug>/research.md`** (when present) — read its **Viability verification** block as the
+  canonical post-research packaging contract. Supported/revised cold-open and title promises supersede
+  conflicting raw options in `brief.md`; anything under **Unsupported promises** is forbidden packaging.
 - **`videos/<slug>/shorts/short-NN.md`** — each short's archetype, hook, `publish`|`bench` status.
   Write metadata for **every** short (even `bench` ones — the library stays ready); carry the status.
-- **`videos/<slug>/brief.md`** — the idea's title options, angle/POV, **emotional lever**. The brief's
-  title options are raw ideation; you produce the final CTR-tuned set from them + `universal.md §3c`.
+- **`videos/<slug>/brief.md`** — the idea's provisional title options, angle/POV, **emotional lever**.
+  The title options are raw ideation; produce the final CTR-tuned set from them + `universal.md §3c`,
+  subject to the research viability contract above when one exists.
 - **`channels/<name>/dna.md`** — the **locked emotional lever**, voice/tone, title naming conventions,
   visual/thumbnail style, audience/region/language, and any category override. Everything you write
   serves *this* lever and *this* identity.

@@ -13,7 +13,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent))
+import voiceover as vo
 from voiceover import measure_chunk_duration_s, stitch_chunks
 
 
@@ -133,3 +136,119 @@ def test_probe_returns_none_on_empty_or_garbage_bytes():
         print("  (skipped garbage-bytes half of probe-failure test: ffprobe not on PATH)")
         return
     assert measure_chunk_duration_s(b"definitely not an mp3 frame stream") is None
+
+
+# --- Checkpoint 3 delivery markers + zero-spend request planning -----------------
+
+def test_expressive_marker_whitelist_translates_on_v3_and_strips_on_v2():
+    raw = "[emote: curious] Is this normal?\n\n[aside: dry] Apparently not."
+    assert vo.clean_markers(raw, 0.6, is_v3=True) == "[curious] Is this normal?\n\n[deadpan] Apparently not."
+    assert vo.clean_markers(raw, 0.6, is_v3=False) == "Is this normal?\n\nApparently not."
+
+
+@pytest.mark.parametrize("marker,tag", vo.EXPRESSIVE_MARKER_TRANSLATIONS.items())
+def test_each_whitelisted_expressive_marker_has_an_exact_v3_translation(marker, tag):
+    raw = f"{marker} This is a complete sentence."
+    assert vo.clean_markers(raw, 0.6, is_v3=True) == f"{tag} This is a complete sentence."
+
+
+def test_long_form_writer_documents_only_supported_expressive_markers():
+    writer_skill = Path(__file__).resolve().parents[2] / "long-form-writer" / "SKILL.md"
+    documented = set(vo._EXPRESSIVE_CANDIDATE_RE.findall(writer_skill.read_text(encoding="utf-8")))
+    assert documented <= set(vo.EXPRESSIVE_MARKER_TRANSLATIONS)
+
+
+@pytest.mark.parametrize("raw", [
+    "[emote: excited] This is unsupported.",
+    "[emote curious] This is malformed.",
+    "[emote: curious This is malformed.",
+    "[aside: wry] This is unsupported.",
+])
+def test_unknown_or_malformed_expressive_marker_fails(raw):
+    with pytest.raises(ValueError, match="Unsupported or malformed"):
+        vo.clean_markers(raw, 0.6, is_v3=True)
+
+
+def test_expressive_marker_rejects_adjacency_and_mid_sentence_placement():
+    with pytest.raises(ValueError, match="adjacent"):
+        vo.clean_markers("[emote: curious] [aside: dry] Is this normal?", 0.6, is_v3=True)
+    with pytest.raises(ValueError, match="before a sentence"):
+        vo.clean_markers("This is [aside: dry] not normal.", 0.6, is_v3=True)
+
+
+@pytest.mark.parametrize("cue", ["[BEAT]", "[PAUSE]", "[PAUSE:LONG]"])
+def test_rhythm_cue_may_precede_one_expressive_marker(cue):
+    raw = f"The reveal lands. {cue}\n\n[emote: curious] What happened next?"
+    v3 = vo.clean_markers(raw, 0.6, is_v3=True)
+    v2 = vo.clean_markers(raw, 0.6, is_v3=False)
+    assert "[curious] What happened next?" in v3
+    assert "What happened next?" in v2
+    assert "[emote:" not in v2
+
+
+def test_v3_chunking_prefers_a_substantial_mood_turn_paragraph():
+    lead = "A" * 300 + "."
+    turn = "[curious] " + "B" * 300 + "."
+    tail = "C" * 300 + "."
+    chunks = vo.chunk_text("\n\n".join((lead, turn, tail)), 700, is_v3=True)
+    assert len(chunks) == 2
+    assert chunks[1].startswith("[curious]"), chunks
+
+
+def test_dry_run_reports_v3_v2_plan_and_never_opens_network(tmp_path, monkeypatch, capsys):
+    (tmp_path / ".env").write_text("", encoding="utf-8")
+    channel = tmp_path / "channels" / "test"
+    video = channel / "videos" / "marker-plan"
+    video.mkdir(parents=True)
+    (channel / "dna.md").write_text(
+        "```yaml\nvoice_id: testVoice\nmodel_id: eleven_v3\nstability: 0.25\n```\n",
+        encoding="utf-8",
+    )
+    (video / "script.md").write_text(
+        "## LONG-FORM VOICEOVER\n\n[emote: knowingly] This sentence has a delivery turn.\n",
+        encoding="utf-8",
+    )
+
+    def no_network(*args, **kwargs):
+        raise AssertionError("dry-run must not open a network request")
+
+    monkeypatch.setattr(vo.urllib.request, "urlopen", no_network)
+    monkeypatch.setattr(sys, "argv", ["voiceover.py", str(video), "--dry-run", "--max-chunk-chars", "50"])
+    vo.main()
+
+    output = capsys.readouterr().out
+    assert "no ElevenLabs request" in output
+    assert "effective configured settings" in output
+    assert "v3: 1 planned request chunk" in output
+    assert "v2: 1 planned request chunk" in output
+    assert "v2 strips 1 expressive marker" in output
+    assert (video / "assets" / "vo.txt").read_text(encoding="utf-8") == "[knowingly] This sentence has a delivery turn."
+    assert (video / "assets" / "voiceover.manifest.json").exists()
+
+
+def test_dry_run_ignores_expressive_examples_in_unspoken_tail(tmp_path, monkeypatch, capsys):
+    (tmp_path / ".env").write_text("", encoding="utf-8")
+    channel = tmp_path / "channels" / "test"
+    video = channel / "videos" / "marker-tail"
+    video.mkdir(parents=True)
+    (channel / "dna.md").write_text(
+        "```yaml\nvoice_id: testVoice\nmodel_id: eleven_v3\nstability: 0.25\n```\n",
+        encoding="utf-8",
+    )
+    (video / "script.md").write_text(
+        "## LONG-FORM VOICEOVER\n\nThe story lands.\n\n"
+        "## SOURCES / ACCURACY NOTE\n\nDo not use [emote: excited] in narration.\n",
+        encoding="utf-8",
+    )
+
+    def no_network(*args, **kwargs):
+        raise AssertionError("dry-run must not open a network request")
+
+    monkeypatch.setattr(vo.urllib.request, "urlopen", no_network)
+    monkeypatch.setattr(sys, "argv", ["voiceover.py", str(video), "--dry-run"])
+    vo.main()
+
+    output = capsys.readouterr().out
+    assert "no ElevenLabs request" in output
+    assert "no expressive markers" in output
+    assert (video / "assets" / "vo.txt").read_text(encoding="utf-8") == "The story lands."
