@@ -236,3 +236,28 @@ Have a human review and merge PR #76 only if the production-logic diff is accept
   first prove `git merge-base --is-ancestor <branch> <intended-base>`, then delete only that exact
   proven ref. Every Poyais worktree/ref was excluded from cleanup.
 
+## Session handoff 2026-07-23 (agent-first post-merge QA)
+
+- Verified merged `main` and `ops` exactly matched their pre-merge validation trains, then found the
+  live dashboard still served the older PR #69 checkout and its ops data root lacked PR #79's FYT
+  `governedBy` metadata.
+- Prepared PR #80 as the standard one-file daemon mirror. The workflow blob is byte-identical to
+  `origin/main`; sync-daemon tests passed 23/23. Do not retarget production until this ops PR merges
+  and `dashboard-ops` passes `sync_daemon_dirs.py --check`.
+- Built an isolated current-main dashboard and ran the focused agent/workflow suite (106/106), full
+  dashboard suite (2,101 passed, 2 skipped), typecheck, build, and an inert port-4317 semantic smoke.
+  The smoke proved four declared unbound FYT agents, two canonical system workers, the exact
+  7/4/1/2 ownership map, zero executable bindings, and no pending amendment.
+- A clean install exposed two newly published production dependency advisories. Both predated PR
+  #79 and their vulnerable preconditions are absent, but compatible patches existed; PR #81 updates
+  only the lockfile and passes `npm audit` with zero findings plus the full validation suite.
+- Browser pointer QA remains untried because the connected browser runtime exposed no browser
+  backend. Component tests cover node position persistence, local-only ownership drafting, and the
+  single-batch/no-assignment-write boundary; no live write, launch, paid stage, or activation ran.
+- Removed nine clean integrated worktrees and thirteen proven integrated/tree-equivalent local
+  branches. Preserved the active old dashboard checkout for rollback, the new live candidate, both
+  open-PR worktrees, daemon ops/durable roots, every dirty or unique worktree, and all Poyais assets.
+- Exact next step: human merges PR #80 (`ops`) and #81 (`main`); then fast-forward `dashboard-ops`,
+  move the live candidate to merged main, re-run parity/build/audit smoke, delete-plus-start PM2 from
+  that checkout, verify the inert live APIs/SPA, save PM2, and only then remove the rollback checkout.
+
