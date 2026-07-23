@@ -4,18 +4,40 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { WorkflowDefEntry } from './WorkflowDetail';
 import { WorkflowAgentGraph, governanceEdges, initialGovernance, type GovernanceDraft } from './WorkflowAgentGraph';
 
-vi.mock('reactflow', () => ({
-  Background: () => null,
-  Controls: () => null,
-  Handle: () => null,
-  Position: { Left: 'left', Right: 'right' },
-  ReactFlowProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  ReactFlow: ({ nodes, nodeTypes }: { nodes: Array<{ id: string; type: string; data: unknown }>; nodeTypes: Record<string, React.ComponentType<{ data: unknown }>> }) => <>{nodes.map((node) => {
-    const Component = nodeTypes[node.type]!;
-    return <Component key={node.id} data={node.data} />;
-  })}</>,
-  useNodesState: (initial: unknown[]) => [initial, vi.fn(), vi.fn()],
-}));
+vi.mock('reactflow', async () => {
+  const React = await import('react');
+  type MockNode = { id: string; type: string; position: { x: number; y: number }; data: unknown };
+  type MockChange = { id: string; type: string; position?: { x: number; y: number } };
+  return {
+    Background: () => null,
+    Controls: () => null,
+    Handle: () => null,
+    Position: { Left: 'left', Right: 'right' },
+    ReactFlowProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    ReactFlow: ({ nodes, nodeTypes, nodesDraggable, onNodesChange }: {
+      nodes: MockNode[];
+      nodeTypes: Record<string, React.ComponentType<{ data: unknown }>>;
+      nodesDraggable: boolean;
+      onNodesChange: (changes: MockChange[]) => void;
+    }) => <div data-testid="reactflow-mock" data-nodes-draggable={String(nodesDraggable)}>
+      {nodes.map((node) => {
+        const Component = nodeTypes[node.type]!;
+        return <div key={node.id} data-testid={`reactflow-position-${node.id}`} data-position={`${node.position.x},${node.position.y}`}><Component data={node.data} /></div>;
+      })}
+      <button type="button" onClick={() => onNodesChange([{ id: 'alpha', type: 'position', position: { x: 123, y: 456 } }])}>Move alpha node</button>
+    </div>,
+    useNodesState: (initial: MockNode[]) => {
+      const [nodes, setNodes] = React.useState(initial);
+      const onNodesChange = React.useCallback((changes: MockChange[]) => {
+        setNodes((current) => current.map((node) => {
+          const change = changes.find((candidate) => candidate.id === node.id && candidate.type === 'position' && candidate.position);
+          return change?.position ? { ...node, position: change.position } : node;
+        }));
+      }, []);
+      return [nodes, setNodes, onNodesChange];
+    },
+  };
+});
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
@@ -53,6 +75,14 @@ describe('WorkflowAgentGraph', () => {
     expect((edges.find((edge) => edge.source === 'alpha' && edge.target === 'beta') as { title?: string } | undefined)?.title).toContain('a2');
   });
 
+  it('retains a ReactFlow position change through the next ownership projection', () => {
+    render(<WorkflowAgentGraph entry={entry()} agents={agents} draft={initialGovernance(entry())} onDraftChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Move alpha node' }));
+    expect(screen.getByTestId('reactflow-position-alpha').dataset.position).toBe('123,456');
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect beta' }));
+    expect(screen.getByTestId('reactflow-position-alpha').dataset.position).toBe('123,456');
+  });
+
   it('shows selected governance facts and navigates from the inspector without a network write', () => {
     const onOpenAgent = vi.fn();
     const onDraftChange = vi.fn();
@@ -79,9 +109,12 @@ describe('WorkflowAgentGraph', () => {
   });
 
   it('keeps a keyboard-selectable fallback while read-only hides mutation controls', () => {
-    render(<WorkflowAgentGraph entry={entry()} agents={agents} draft={initialGovernance(entry())} onDraftChange={vi.fn()} readOnly />);
+    const workflow = entry({ governedBy: 'coordinator' });
+    render(<WorkflowAgentGraph entry={workflow} agents={[...agents, { id: 'coordinator', role: 'manager', description: null }]} draft={initialGovernance(workflow)} onDraftChange={vi.fn()} readOnly />);
     expect(screen.queryByLabelText('draft governed by')).toBeNull();
     expect((screen.getByTestId('workflow-stage-chip-draft') as HTMLButtonElement).draggable).toBe(false);
-    expect(screen.getByTestId('workflow-agent-inspector').textContent).toContain('Research');
+    expect(screen.getByTestId('reactflow-mock').dataset.nodesDraggable).toBe('false');
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect coordinator' }));
+    expect(screen.getByTestId('workflow-agent-inspector').textContent).toContain('Governs the whole workflow');
   });
 });

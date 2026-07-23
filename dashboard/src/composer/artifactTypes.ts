@@ -633,7 +633,7 @@ function workflowPlan(draft: WorkflowDraft): DeployPlan {
     // until the canonical authoring form adds one.
     `title: ${JSON.stringify(id)}`,
     `profile: ${JSON.stringify(draft.profile)}`,
-    ...(draft.governedBy !== undefined ? [`governedBy: ${JSON.stringify(draft.governedBy)}`] : []),
+    ...(draft.governedBy !== undefined ? [`governedBy: ${draft.governedBy}`] : []),
     ...(draft.manager?.agentId !== undefined && draft.manager.profileId !== undefined
       ? [
           'manager:',
@@ -644,7 +644,7 @@ function workflowPlan(draft: WorkflowDraft): DeployPlan {
     'stages:',
     ...draft.stages.flatMap((stage) => [
       `  - id: ${JSON.stringify(stage.id)}`,
-      ...(stage.governedBy !== undefined ? [`    governedBy: ${JSON.stringify(stage.governedBy)}`] : []),
+      ...(stage.governedBy !== undefined ? [`    governedBy: ${stage.governedBy}`] : []),
       `    title: ${JSON.stringify(stage.id)}`,
       `    action: ${JSON.stringify(stage.action)}`,
       `    target: ${JSON.stringify(stage.target)}`,

@@ -22,6 +22,7 @@ import {
   type ProjectDraft,
   type AgentDraft,
 } from './artifactTypes';
+import { patchWorkflowGovernance } from '../../server/workflows/amendments';
 import { parseWorkflowDef } from '../../server/workflows/defs';
 
 function workflow(over: Partial<WorkflowDraft> = {}): WorkflowDraft {
@@ -254,8 +255,8 @@ describe('composer/artifactTypes — deploy mapping', () => {
       }],
     }));
 
-    expect(plan.content).toContain('profile: "research"\ngovernedBy: "fyt-runner"\nstages:');
-    expect(plan.content).toContain('  - id: "stage-1"\n    governedBy: "fyt-preproduction"');
+    expect(plan.content).toContain('profile: "research"\ngovernedBy: fyt-runner\nstages:');
+    expect(plan.content).toContain('  - id: "stage-1"\n    governedBy: fyt-preproduction');
     expect(plan.content).not.toContain('manager:');
     expect(plan.content).not.toContain('agentId:');
     expect(plan.content).not.toContain('profileId:');
@@ -263,6 +264,10 @@ describe('composer/artifactTypes — deploy mapping', () => {
       ok: true,
       value: { governedBy: 'fyt-runner', stages: [{ governedBy: 'fyt-preproduction' }] },
     });
+    expect(patchWorkflowGovernance(plan.content, {
+      workflow: 'fyt-preproduction',
+      stages: { 'stage-1': 'fyt-runner' },
+    })?.source).toContain('profile: "research"\ngovernedBy: fyt-preproduction\nstages:');
   });
 
   it('workflow governance accepts only safe declared-agent ids', () => {

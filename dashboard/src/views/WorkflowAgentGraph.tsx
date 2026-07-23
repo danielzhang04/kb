@@ -9,8 +9,10 @@ import {
   useNodesState,
   type Edge,
   type Node,
+  type NodeChange,
   type NodeProps,
   type NodeTypes,
+  type XYPosition,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import type { WorkflowDefEntry } from './WorkflowDetail';
@@ -50,6 +52,15 @@ function GovernorNode({ data }: NodeProps<GovernorNodeData>): React.JSX.Element 
         <strong className="mc-mono">{unassigned ? 'Unassigned' : data.id}</strong>
         {data.workflowGovernor ? <span className="entity-chip">workflow governor</span> : null}
         {data.role ? <span className="entity-chip mc-mono">{data.role}</span> : null}
+        <button
+          type="button"
+          className="v-workflow-agent__inspect nodrag nopan"
+          aria-label={`Inspect ${unassigned ? 'unassigned stages' : data.id}`}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => { event.stopPropagation(); data.onSelect(data.id); }}
+        >
+          Inspect
+        </button>
       </header>
       <div className="v-workflow-agent__stages">
         {data.stages.map((stage) => (
@@ -122,6 +133,12 @@ function nodePosition(index: number): { x: number; y: number } {
   return { x: (index % 2) * 390, y: Math.floor(index / 2) * 280 };
 }
 
+function rememberNodePositions(changes: NodeChange[], positions: Map<string, XYPosition>): void {
+  for (const change of changes) {
+    if (change.type === 'position' && change.position) positions.set(change.id, change.position);
+  }
+}
+
 export function WorkflowAgentGraph({ entry, agents, draft, onDraftChange, onOpenAgent, readOnly = false }: {
   entry: WorkflowDefEntry;
   agents: GovernanceAgentOption[];
@@ -164,9 +181,7 @@ export function WorkflowAgentGraph({ entry, agents, draft, onDraftChange, onOpen
     })), [agents, normalizedDraft, entry.stages, readOnly, selected, visibleNodeIds.join('\u0000')]);
   const [nodes, setNodes, onNodesChange] = useNodesState(projectedNodes);
   const keepPosition = useCallback((changes: Parameters<typeof onNodesChange>[0]) => {
-    for (const change of changes) {
-      if (change.type === 'position' && change.position) positions.current.set(change.id, change.position);
-    }
+    rememberNodePositions(changes, positions.current);
     onNodesChange(changes);
   }, [onNodesChange]);
   // Ownership changes replace node data while the durable local position map survives every projection.
@@ -187,7 +202,7 @@ export function WorkflowAgentGraph({ entry, agents, draft, onDraftChange, onOpen
     <div className="v-workflow-network">
       <div className="v-workflow-network__canvas" data-testid="workflow-agent-network">
         <ReactFlowProvider>
-          <ReactFlow nodes={nodes} edges={governanceEdges(entry, normalizedDraft)} nodeTypes={NODE_TYPES} onNodesChange={keepPosition} fitView nodesDraggable>
+          <ReactFlow nodes={nodes} edges={governanceEdges(entry, normalizedDraft)} nodeTypes={NODE_TYPES} onNodesChange={keepPosition} fitView nodesDraggable={!readOnly}>
             <Background gap={18} size={1} /><Controls showInteractive={false} />
           </ReactFlow>
         </ReactFlowProvider>

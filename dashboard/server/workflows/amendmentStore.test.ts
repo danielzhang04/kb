@@ -17,6 +17,7 @@ describe('file assignment amendment store', () => {
     expect(restarted.lookup(path, record.baseSourceHash)).toEqual({ ok: true, record: { ...record, kind: 'assignment' } });
     expect(restarted.lookup(path, 'c'.repeat(64))).toEqual({ ok: true, record: { ...record, kind: 'assignment' } });
     expect(restarted.lookup(path, record.proposedSourceHash)).toEqual({ ok: true, record: null });
+    expect(restarted.lookup(path, 'd'.repeat(64))).toEqual({ ok: true, record: null });
   });
 
   it('fails closed for a tampered URL or branch', () => {
@@ -39,10 +40,15 @@ describe('file assignment amendment store', () => {
   it('loads legacy assignment state without kind and persists explicit kinds for new records', () => {
     const root = mkdtempSync(join(tmpdir(), 'kb-amendment-state-')); roots.push(root);
     createFileAssignmentAmendmentStore(root).put(record);
+    const dir = join(root, 'workflows', 'assignment-amendments');
+    const file = join(dir, readdirSync(dir)[0]);
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toMatchObject({ kind: 'assignment' });
+    const legacy = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+    delete legacy.kind;
+    writeFileSync(file, `${JSON.stringify(legacy)}\n`, 'utf8');
     expect(createFileDefinitionAmendmentStore(root).lookup(path, record.baseSourceHash)).toMatchObject({ ok: true, record: { kind: 'assignment' } });
     const governance = { ...record, kind: 'governance' as const, proposedSourceHash: 'c'.repeat(64) };
-    createFileDefinitionAmendmentStore(root).update(governance);
-    const file = join(root, 'workflows', 'assignment-amendments', readdirSync(join(root, 'workflows', 'assignment-amendments'))[0]);
+    createFileAssignmentAmendmentStore(root).update(governance);
     expect(JSON.parse(readFileSync(file, 'utf8'))).toMatchObject({ kind: 'governance' });
   });
 });

@@ -430,8 +430,8 @@ describe('Composer', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save definition' }));
 
     const content = onDeploy.mock.calls[0][0].content as string;
-    expect(content).toContain('governedBy: "manager-backup"');
-    expect(content).toContain('governedBy: "worker-only"');
+    expect(content).toContain('governedBy: manager-backup');
+    expect(content).toContain('governedBy: worker-only');
     expect(content).not.toContain('manager:');
     expect(content).not.toContain('agentId:');
     expect(content).not.toContain('profileId:');

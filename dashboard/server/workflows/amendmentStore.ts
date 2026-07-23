@@ -9,8 +9,7 @@ export type AmendmentPhase = 'prepared' | 'committed' | 'pushed' | 'audit-pendin
 export type DefinitionAmendmentKind = 'assignment' | 'governance';
 
 export interface PendingDefinitionAmendment {
-  /** Missing on disk is accepted as a pre-generalization assignment record. */
-  kind?: DefinitionAmendmentKind;
+  kind: DefinitionAmendmentKind;
   workflowPath: string;
   baseSourceHash: string;
   proposedSourceHash: string;
@@ -64,6 +63,7 @@ export function createInMemoryDefinitionAmendmentStore(): DefinitionAmendmentSto
     lookup(workflowPath, activeSourceHash) {
       const row = rows.get(workflowPath);
       if (!row) return { ok: true, record: null };
+      if (row.phase === 'settled') return { ok: true, record: null };
       if (row.proposedSourceHash === activeSourceHash) { rows.set(workflowPath, { ...row, phase: 'settled' }); return { ok: true, record: null }; }
       return { ok: true, record: { ...row, pr: { ...row.pr } } };
     },
@@ -109,7 +109,8 @@ export function createFileDefinitionAmendmentStore(stateRoot: string): Definitio
       try {
         const row = read(workflowPath);
         if (!row) return { ok: true, record: null };
-        if (row.proposedSourceHash === activeSourceHash) { if (row.phase !== 'settled') write({ ...row, phase: 'settled' }); return { ok: true, record: null }; }
+        if (row.phase === 'settled') return { ok: true, record: null };
+        if (row.proposedSourceHash === activeSourceHash) { write({ ...row, phase: 'settled' }); return { ok: true, record: null }; }
         return { ok: true, record: row };
       } catch (error) { return { ok: false, detail: error instanceof Error ? error.message : String(error) }; }
     },
@@ -120,10 +121,28 @@ export function createFileDefinitionAmendmentStore(stateRoot: string): Definitio
 }
 
 /** @deprecated Use DefinitionAmendmentStore. Kept for existing integrations. */
-export type PendingAssignmentAmendment = PendingDefinitionAmendment;
+export type PendingAssignmentAmendment = Omit<PendingDefinitionAmendment, 'kind'> & { kind?: 'assignment' };
 /** @deprecated Use DefinitionAmendmentStore. Kept for existing integrations. */
-export type AssignmentAmendmentStore = DefinitionAmendmentStore;
+export interface AssignmentAmendmentStore extends Omit<DefinitionAmendmentStore, 'put' | 'update'> {
+  put(record: PendingDefinitionAmendment | PendingAssignmentAmendment): void;
+  update(record: PendingDefinitionAmendment | PendingAssignmentAmendment): void;
+}
+function normalizeLegacyAssignmentRecord(record: PendingDefinitionAmendment | PendingAssignmentAmendment): PendingDefinitionAmendment {
+  return { ...record, kind: record.kind ?? 'assignment' };
+}
+function legacyAssignmentStore(store: DefinitionAmendmentStore): AssignmentAmendmentStore {
+  return {
+    lookup: store.lookup,
+    put: (record) => store.put(normalizeLegacyAssignmentRecord(record)),
+    update: (record) => store.update(normalizeLegacyAssignmentRecord(record)),
+    remove: store.remove,
+  };
+}
 /** @deprecated Use createInMemoryDefinitionAmendmentStore. */
-export const createInMemoryAssignmentAmendmentStore = createInMemoryDefinitionAmendmentStore;
+export function createInMemoryAssignmentAmendmentStore(): AssignmentAmendmentStore {
+  return legacyAssignmentStore(createInMemoryDefinitionAmendmentStore());
+}
 /** @deprecated Use createFileDefinitionAmendmentStore. */
-export const createFileAssignmentAmendmentStore = createFileDefinitionAmendmentStore;
+export function createFileAssignmentAmendmentStore(stateRoot: string): AssignmentAmendmentStore {
+  return legacyAssignmentStore(createFileDefinitionAmendmentStore(stateRoot));
+}

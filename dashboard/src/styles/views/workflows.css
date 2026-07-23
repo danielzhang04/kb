@@ -247,6 +247,16 @@
 .v-workflow-agent--unassigned { border-style: dashed; }
 .v-workflow-agent__head, .v-workflow-agent__stages, .v-workflows__governance-summary { display: flex; gap: var(--space-1); flex-wrap: wrap; align-items: center; }
 .v-workflow-agent__head { justify-content: space-between; margin-bottom: var(--space-2); }
+.v-workflow-agent__inspect {
+  border: 0;
+  padding: 0.15rem 0.3rem;
+  color: var(--fg-dim);
+  background: transparent;
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+.v-workflow-agent__inspect:hover { color: var(--fg-primary); }
 .v-workflow-agent__stage {
   display: inline-flex;
   gap: var(--space-1);
@@ -258,7 +268,7 @@
   background: var(--bg-elevated);
   cursor: grab;
 }
-.v-workflow-agent__stage:focus-visible, .v-workflow-network select:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 2px; }
+.v-workflow-agent__stage:focus-visible, .v-workflow-agent__inspect:focus-visible, .v-workflow-network select:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 2px; }
 .v-workflow-agent__stage:active { cursor: grabbing; }
 .v-workflow-network__stage-detail { padding: var(--space-2) 0; border-top: 1px solid var(--border); }
 .v-workflow-network__stage-detail h5, .v-workflow-network__stage-detail p { margin: 0 0 var(--space-1); }

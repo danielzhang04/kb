@@ -153,15 +153,20 @@ describe('patchWorkflowGovernance', () => {
     })).toBeNull();
   });
 
-  it('refuses comments, duplicate/quoted declarations, and ambiguous layouts instead of rewriting them', () => {
+  it('normalizes safe JSON-quoted owners but refuses comments, duplicates, and ambiguous layouts', () => {
     const commented = VIDEO_RUN.replace('profile: producer', 'profile: producer\n# governedBy: preserve-this');
     expect(patchWorkflowGovernance(commented, OWNED)).toBeNull();
     const stageComment = VIDEO_RUN.replace('  - id: script', '  - id: script\n    # governedBy: preserve-this');
     expect(patchWorkflowGovernance(stageComment, OWNED)).toBeNull();
     const duplicate = VIDEO_RUN.replace('profile: producer', 'profile: producer\ngovernedBy: first\ngovernedBy: second');
     expect(patchWorkflowGovernance(duplicate, OWNED)).toBeNull();
-    const quoted = VIDEO_RUN.replace('profile: producer', 'profile: producer\ngovernedBy: "old-runner"');
-    expect(patchWorkflowGovernance(quoted, OWNED)).toBeNull();
+    const quoted = VIDEO_RUN
+      .replace('profile: producer', 'profile: producer\ngovernedBy: "old-runner"')
+      .replace('  - id: research', '  - id: research\n    governedBy: "old-worker"');
+    const normalized = patchWorkflowGovernance(quoted, OWNED);
+    expect(normalized?.oldGovernance).toEqual({ workflow: 'old-runner', stages: { research: 'old-worker', script: null } });
+    expect(normalized?.source).toContain('governedBy: fyt-runner');
+    expect(normalized?.source).toContain('    governedBy: fyt-preproduction');
     const scalar = VIDEO_RUN.replace('profile: producer', 'profile: producer\ngovernedBy: |\n  prose-owner');
     expect(patchWorkflowGovernance(scalar, OWNED)).toBeNull();
   });

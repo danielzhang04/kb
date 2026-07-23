@@ -1,10 +1,10 @@
 /**
  * Agents view — the fleet roster with per-agent model routing (R2.2).
  *
- * The roster is the enriched `/api/agents` union (card owners ∪ ledger writers ∪ role catalog), each
- * row carrying its role + last-active date; until it loads (and in tests that pass only a snapshot) it
- * falls back to `deriveRoster` over `/api/index` (distinct non-null card `owner`, working iff it owns a
- * `working` card). Per-agent ROUTING (effective runtime/model + provenance,
+ * `/api/agents` enriches declared agents and observed runtime identities. The primary roster contains
+ * declarations only; observed default workers are projected separately as system workers. Until the
+ * enriched projection loads, `deriveRoster` over `/api/index` supplies observed activity without
+ * promoting queue owners into declared agents. Per-agent ROUTING (effective runtime/model + provenance,
  * and the governed toggle) comes from `/api/routing` (R2.1 projection). The model cell is now a live
  * governed control: it shows the effective model (mono) + provenance tag, and — with a WebAuthn session —
  * opens a popover to write an agent-scope override (audited, ops pull-rebase-push) or clear it. Fail-closed
@@ -445,8 +445,8 @@ export function Agents({
   const index = snapshot ?? fetched ?? EMPTY_INDEX;
   const routingSnap = routing ?? routingState ?? EMPTY_ROUTING;
   const enriched = roster ?? rosterState;
-  // Prefer the enriched server roster (queue owners ∪ ledger writers ∪ roles); fall back to the
-  // snapshot-derived roster until it loads (and in tests that pass only a snapshot).
+  // Prefer the enriched union; the declared/system-worker partition below is authoritative. The
+  // snapshot-derived fallback supplies observed activity but cannot manufacture declarations.
   const agentRows = enriched ? enriched.map(rowFromEntry) : deriveRoster(index);
   const detailTarget = openAgentId ? agentRows.find((agent) => agent.id === openAgentId) : undefined;
 

@@ -84,16 +84,29 @@ function frontmatterEnd(source: string): number | null {
   return match ? match[0].length : null;
 }
 
+function plainOrJsonAgentId(raw: string): string | null {
+  const value = raw.trim();
+  if (SAFE_AGENT_ID_RE.test(value)) return value;
+  if (!value.startsWith('"') || !value.endsWith('"')) return null;
+  try {
+    const decoded = JSON.parse(value) as unknown;
+    return typeof decoded === 'string' && SAFE_AGENT_ID_RE.test(decoded) ? decoded : null;
+  } catch {
+    return null;
+  }
+}
+
 function governedValue(source: string, start: number, end: number, indent: string): { start: number; end: number; value: string } | null | 'malformed' {
   const body = source.slice(start, end);
   if (new RegExp(`^${indent}#\\s*governedBy:`, 'm').test(body)) return 'malformed';
   const loose = [...body.matchAll(new RegExp(`^${indent}governedBy:.*$`, 'gm'))];
   if (loose.length === 0) return null;
   if (loose.length !== 1) return 'malformed';
-  const exact = new RegExp(`^${indent}governedBy: ([a-z0-9][a-z0-9-]{0,63})\\s*\\r?$`).exec(loose[0][0]);
-  if (!exact || loose[0].index === undefined) return 'malformed';
+  const exact = new RegExp(`^${indent}governedBy: ([^\\r\\n#]+?)\\s*\\r?$`).exec(loose[0][0]);
+  const value = exact ? plainOrJsonAgentId(exact[1]) : null;
+  if (!value || loose[0].index === undefined) return 'malformed';
   const absoluteStart = start + loose[0].index;
-  return { start: absoluteStart, end: lineEnd(source, absoluteStart), value: exact[1] };
+  return { start: absoluteStart, end: lineEnd(source, absoluteStart), value };
 }
 
 function patchGovernedValue(source: string, start: number, end: number, indent: string, insertAt: number, value: string | null): { source: string; oldValue: string | null } | null {
@@ -113,6 +126,18 @@ function governanceOf(definition: WorkflowDef): GovernanceValue {
     workflow: definition.governedBy ?? null,
     stages: Object.fromEntries(definition.stages.map((stage) => [stage.id, stage.governedBy ?? null])),
   };
+}
+
+function composerOrPlainStageId(raw: string): string | null {
+  const value = raw.trim();
+  if (/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(value)) return value;
+  if (!value.startsWith('"') || !value.endsWith('"')) return null;
+  try {
+    const decoded = JSON.parse(value) as unknown;
+    return typeof decoded === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(decoded) ? decoded : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Patch the complete governance snapshot in one byte-preserving operation. */
@@ -137,7 +162,7 @@ export function patchWorkflowGovernance(source: string, governance: GovernanceVa
     if (nextFmEnd === null) return null;
     const frontmatter = next.slice(0, nextFmEnd);
     const starts = [...frontmatter.matchAll(/^  - id: ([^\r\n#]+?)\s*\r?$/gm)];
-    const found = starts.find((match) => match[1].trim() === stageId);
+    const found = starts.find((match) => composerOrPlainStageId(match[1]) === stageId);
     if (!found || found.index === undefined) return null;
     const following = starts.find((match) => match.index! > found.index!);
     const end = following?.index ?? frontmatter.lastIndexOf('\n---') + 1;
