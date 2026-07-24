@@ -1,4 +1,4 @@
-# Running the dashboard always-on
+# Running the dashboard and Atlas always-on
 
 Today the dashboard daemon also serves the built SPA directly (see `server/static/routes.ts`). The
 raw development server defaults to `127.0.0.1:4317`; the PM2 always-on configuration sets it to
@@ -8,6 +8,10 @@ iteration (it proxies `/api/*` to the raw development server on `:4317`).
 
 Localhost-only binding (`127.0.0.1`) is deliberate and unchanged — WebAuthn is armed for the
 `localhost` RP origin, so the write surface only works from the same machine.
+
+Atlas is a separate desk voice worker with its own PM2 configuration. It is projected read-only in
+the dashboard, but it is not a dashboard-launched agent; start and update the two processes
+independently.
 
 ## Build
 
@@ -26,10 +30,12 @@ Run once, from the repo root:
 ```
 npm i -g pm2
 pm2 start dashboard/pm2.config.cjs
+pm2 start atlas/pm2.config.cjs
 pm2 save
 ```
 
-`pm2 save` snapshots the running process list so it can be resurrected later (next step).
+`pm2 save` snapshots the combined running process list so both independently configured processes
+can be resurrected later (next step).
 
 ### Resurrect PM2 on Windows logon
 
@@ -54,9 +60,17 @@ user, with action:
 schtasks /create /tn "pm2-resurrect" /sc onstart /ru <username> /rl highest /tr "pm2 resurrect"
 ```
 
+`pm2 resurrect` restores the entire saved list. Once that list contains `atlas-worker`, do not use
+the pre-logon Task Scheduler recipe above: Atlas needs the interactive user's microphone and
+speakers. Resurrect the combined dashboard-and-Atlas list at user logon instead.
+
 To remove the registry-based hook: `pm2-startup uninstall`.
 
 ## Updating after a merge
+
+Pull the reviewed merged source, then restart only the process whose source changed.
+
+Dashboard change:
 
 ```
 git pull
@@ -64,6 +78,16 @@ cd dashboard
 npm run build
 pm2 restart kb-dashboard
 ```
+
+Atlas change (from the repo root):
+
+```
+git pull
+pm2 restart atlas-worker
+```
+
+After adding or removing either process, run `pm2 save` again so the resurrection list stays
+aligned.
 
 ## Access
 
