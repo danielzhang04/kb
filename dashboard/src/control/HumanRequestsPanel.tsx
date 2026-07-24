@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { SESSION_INVALIDATED_EVENT } from '../lib/authClient';
 import {
+  activateRun,
   getRun,
   listRuns,
   resolveReviewCompletionGate,
@@ -12,13 +13,15 @@ import {
   type RunMetadataDto,
 } from './controlClient';
 import type { FetchLike } from './controlClient';
-import { decisionsForHumanRequest } from './humanBoundaries';
+import { canResumePublishedRun, decisionsForHumanRequest } from './humanBoundaries';
 
 function requestKey(request: HumanRequestDto, decision: HumanRequestDecision): string {
   return `human:${request.requestRef}:${request.revision}:${decision}`;
 }
 
 type OpenRequest = { request: HumanRequestDto; completionGate: boolean };
+type ResumeBinding = Pick<RunDetailDto['run'], 'runRef' | 'version' | 'managerGeneration' | 'proposalHash'>;
+type StrandedRun = { run: RunMetadataDto; resumeBinding: ResumeBinding | null };
 
 export function HumanRequestsPanel({
   sessionToken,
@@ -31,9 +34,9 @@ export function HumanRequestsPanel({
 }): React.JSX.Element {
   const [localToken, setLocalToken] = useState(sessionToken);
   const [requests, setRequests] = useState<OpenRequest[]>([]);
-  // Runs stuck `waiting-human` with NO open request — otherwise unreachable from the UI, so surface them
-  // as a distinct, non-actionable "inspect run" row rather than letting them hang invisibly (audit gap #3).
-  const [strandedRuns, setStrandedRuns] = useState<RunMetadataDto[]>([]);
+  // Runs stuck `waiting-human` with NO open request — otherwise unreachable from the UI, so surface them.
+  // Only exact accepted-boundary details receive an activate-only recovery action.
+  const [strandedRuns, setStrandedRuns] = useState<StrandedRun[]>([]);
   const [responses, setResponses] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,7 +57,13 @@ export function HumanRequestsPanel({
     setRequests(details.flatMap((detail: RunDetailDto) => detail.humanRequests
       .filter((request) => request.state === 'open')
       .map((request) => ({ request, completionGate: detail.reviewReceipts?.some((receipt) => receipt.completionRequestRef === request.requestRef) ?? false }))));
-    setStrandedRuns(runs.filter((run) => run.state === 'waiting-human' && run.openHumanRequestCount === 0));
+    const detailByRun = new Map(details.map((detail) => [detail.run.runRef, detail]));
+    setStrandedRuns(runs
+      .filter((run) => run.state === 'waiting-human' && run.openHumanRequestCount === 0)
+      .map((run) => {
+        const detail = detailByRun.get(run.runRef);
+        return { run, resumeBinding: detail && canResumePublishedRun(detail) ? detail.run : null };
+      }));
   }, [fetchImpl]);
 
   useEffect(() => {
@@ -95,6 +104,16 @@ export function HumanRequestsPanel({
       .finally(() => setBusy(false));
   };
 
+  const resume = (binding: ResumeBinding): void => {
+    if (!token || busy) return;
+    setBusy(true);
+    setError(null);
+    void activateRun(binding, token, fetchImpl)
+      .then(() => refresh(token))
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Run resume was refused.'))
+      .finally(() => setBusy(false));
+  };
+
   return (
     <section className="control-inbox-requests mc-panel" aria-label="Managed Human Requests">
       <header className="control-managed-runs__head">
@@ -105,13 +124,18 @@ export function HumanRequestsPanel({
       </header>
       {error ? <p role="alert">{error}</p> : null}
       {token && requests.length === 0 && strandedRuns.length === 0 ? <p className="control-help">No managed run requests need attention.</p> : null}
-      {strandedRuns.map((run) => (
+      {strandedRuns.map(({ run, resumeBinding }) => (
         <article key={run.runRef} className="control-request control-request--stranded" data-testid={`waiting-no-request-${run.runRef}`}>
           <p className="control-eyebrow">waiting-human · no open request</p>
           <h3>{run.title}</h3>
-          <p>This run is waiting on a human with NO open request — inspect the run to see why it is parked.</p>
-          {/* No actionable control here: with no open request there is nothing to approve/respond. The run
-              ref is the handle the operator uses to open it in the Governed runs view. */}
+          <p>{resumeBinding
+            ? 'The request is resolved. Resume this existing run when execution is active.'
+            : 'This run is waiting on a human with NO open request — inspect the run to see why it is parked.'}</p>
+          {resumeBinding ? (
+            <button type="button" className="mc-btn mc-btn--primary" disabled={busy} onClick={() => resume(resumeBinding)}>
+              Resume run
+            </button>
+          ) : null}
           <p className="control-help mc-mono" data-testid={`inspect-run-${run.runRef}`}>run {run.runRef}</p>
         </article>
       ))}

@@ -450,14 +450,37 @@ export function launchProposalRevision(
   return write(`/api/control/proposals/${segment(proposalRef)}/revisions/${revision}/launch`, input, token, fetchImpl);
 }
 
+export function acceptsHumanRequest(request: HumanRequestDto): boolean {
+  if (request.state !== 'resolved' || !request.response || request.kind === 'governance-refusal') return false;
+  if (request.kind === 'approval' || request.kind === 'review') {
+    return request.response.decision === 'approved';
+  }
+  return request.response.decision === 'approved' || request.response.decision === 'responded';
+}
+
+export type ActivatableRun = Pick<RunDto, 'runRef' | 'version' | 'managerGeneration' | 'proposalHash'>;
+
+/** Strictly resume one existing published run. This path cannot launch proposals or create successors. */
+export function activateRun(
+  run: ActivatableRun,
+  token: string,
+  fetchImpl?: FetchLike,
+): Promise<{ ok: true; value: RunDto; replayed?: boolean; starting?: boolean }> {
+  return write(`/api/control/runs/${segment(run.runRef)}/activate`, {
+    expectedRunVersion: run.version,
+    expectedManagerGeneration: run.managerGeneration,
+    idempotencyKey: `activate:${run.runRef}:${run.version}:${run.proposalHash}:${run.managerGeneration}`,
+  }, token, fetchImpl);
+}
+
 /** Re-enter the exact launch operation after accepted Human Requests have committed. */
-export async function resumeRunAfterHumanResponse(runRef: string, token: string, fetchImpl?: FetchLike): Promise<void> {
+export async function resumeRunAfterHumanResponse(
+  runRef: string,
+  token: string,
+  fetchImpl?: FetchLike,
+): Promise<void> {
   const detail = await getRun(runRef, token, fetchImpl);
-  const accepted = detail.humanRequests.length > 0 && detail.humanRequests.every((request) => {
-    if (request.state !== 'resolved' || !request.response || request.kind === 'governance-refusal') return false;
-    if (request.kind === 'approval' || request.kind === 'review') return request.response.decision === 'approved';
-    return request.response.decision === 'approved' || request.response.decision === 'responded';
-  });
+  const accepted = detail.humanRequests.length > 0 && detail.humanRequests.every(acceptsHumanRequest);
   if (!accepted) return;
   if (detail.run.publicationState === 'waiting-human') {
     await launchProposalRevision(detail.run.proposalRef, detail.run.proposalRevision, {
@@ -466,11 +489,7 @@ export async function resumeRunAfterHumanResponse(runRef: string, token: string,
     }, token, fetchImpl);
   } else if (detail.run.publicationState === 'published' && detail.run.state === 'waiting-human') {
     try {
-      await write(`/api/control/runs/${segment(runRef)}/activate`, {
-        expectedRunVersion: detail.run.version,
-        expectedManagerGeneration: detail.run.managerGeneration,
-        idempotencyKey: `activate:${detail.run.proposalHash}:${detail.run.managerGeneration}`,
-      }, token, fetchImpl);
+      await activateRun(detail.run, token, fetchImpl);
     } catch (error) {
       // The Human Request response is already durable. An intentionally inactive daemon runtime is
       // still a successful response flow; activation remains visibly gated on the refreshed run.

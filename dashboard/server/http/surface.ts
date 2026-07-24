@@ -36,6 +36,8 @@ import { createFileControlPlaneStore } from '../control/store.ts';
 import { createFileDefinitionAmendmentStore } from '../workflows/amendmentStore.ts';
 import { registerControlRoutes } from '../control/routes.ts';
 import { buildActivatedExecution } from '../control/activation.ts';
+import { RunControlTransactions } from '../control/runTransactions.ts';
+import { DEFAULT_MANAGER_START_ACK_TIMEOUT_MS } from '../control/execution.ts';
 
 /** dashboard/server/http/surface.ts -> ../../../ is the repo root. Overridable via env / tests. */
 export function resolveRepoRoot(): string {
@@ -74,7 +76,8 @@ export function makeSurfaceContext(
   // invariant): the executor fields below stay `undefined` exactly as today.
   const activationOverridden = overrides.controlBroker !== undefined
     || overrides.runAutomatic !== undefined
-    || overrides.cancelAutomatic !== undefined;
+    || overrides.cancelAutomatic !== undefined
+    || overrides.containManagerStart !== undefined;
   const build = activation.build ?? buildActivatedExecution;
   const activated = activationOverridden
     ? null
@@ -99,6 +102,7 @@ export function makeSurfaceContext(
     openPr: overrides.openPr,
     runPy: overrides.runPy,
     runPreamble: overrides.runPreamble,
+    activateManagedRoots: overrides.activateManagedRoots,
     spawn: overrides.spawn,
     vibeRateGuard: overrides.vibeRateGuard,
     now: overrides.now,
@@ -114,6 +118,9 @@ export function makeSurfaceContext(
     controlBroker: overrides.controlBroker ?? activated?.controlBroker,
     runAutomatic: overrides.runAutomatic ?? activated?.runAutomatic,
     cancelAutomatic: overrides.cancelAutomatic ?? activated?.cancelAutomatic,
+    containManagerStart: overrides.containManagerStart ?? activated?.containManagerStart,
+    runControlTransactions: overrides.runControlTransactions ?? new RunControlTransactions(),
+    managerStartAckTimeoutMs: overrides.managerStartAckTimeoutMs ?? DEFAULT_MANAGER_START_ACK_TIMEOUT_MS,
     triggerRunner: overrides.triggerRunner,
     schtasksRun: overrides.schtasksRun,
     // One liveness cache per context (see resumeRegistry) — persists across responds within this process,

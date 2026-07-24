@@ -762,6 +762,7 @@ describe('surface — Wave-A executor activation wiring (env-gated, default OFF)
     controlBroker: { drain() {} } as unknown as NonNullable<SurfaceContext['controlBroker']>,
     runAutomatic: (async () => ({ state: 'succeeded', startedStageIds: [], completedStageIds: [], waitingStageIds: [] })) as unknown as NonNullable<SurfaceContext['runAutomatic']>,
     cancelAutomatic: (async () => ({ state: 'stopped', stoppedSessionRefs: [], interruptedSessionRefs: [], replayed: false })) as unknown as NonNullable<SurfaceContext['cancelAutomatic']>,
+    containManagerStart: (async () => {}) as NonNullable<SurfaceContext['containManagerStart']>,
   });
 
   it('CORE INERT INVARIANT: gate unset ⇒ controlBroker/runAutomatic/cancelAutomatic are undefined', () => {
@@ -770,6 +771,7 @@ describe('surface — Wave-A executor activation wiring (env-gated, default OFF)
     expect(ctx.controlBroker).toBeUndefined();
     expect(ctx.runAutomatic).toBeUndefined();
     expect(ctx.cancelAutomatic).toBeUndefined();
+    expect(ctx.containManagerStart).toBeUndefined();
   });
 
   it('gate set ⇒ the three executor fields are populated from the builder result', () => {
@@ -788,6 +790,7 @@ describe('surface — Wave-A executor activation wiring (env-gated, default OFF)
     expect(ctx.controlBroker).toBe(triple.controlBroker);
     expect(ctx.runAutomatic).toBe(triple.runAutomatic);
     expect(ctx.cancelAutomatic).toBe(triple.cancelAutomatic);
+    expect(ctx.containManagerStart).toBe(triple.containManagerStart);
   });
 
   it('an explicit executor override wins and short-circuits activation entirely (builder never called)', () => {
@@ -801,6 +804,7 @@ describe('surface — Wave-A executor activation wiring (env-gated, default OFF)
     expect(ctx.controlBroker).toBe(overrideBroker);
     expect(ctx.runAutomatic).toBeUndefined();
     expect(ctx.cancelAutomatic).toBeUndefined();
+    expect(ctx.containManagerStart).toBeUndefined();
   });
 });
 

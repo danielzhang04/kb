@@ -52,6 +52,7 @@ export interface RunCockpitProps {
   onNavigate?: (target: NavTarget) => void;
   onManagerMessage?: (message: string) => void | Promise<void>;
   onStop?: () => void | Promise<void>;
+  onResume?: () => void | Promise<void>;
   onRetry?: () => void | Promise<void>;
   onManagerSuccessor?: () => void | Promise<void>;
   onSteer?: (checkpoint: string, instruction: string) => void | Promise<void>;
@@ -392,6 +393,7 @@ export function RunCockpit({
   onNavigate,
   onManagerMessage,
   onStop,
+  onResume,
   onRetry,
   onManagerSuccessor,
   onSteer,
@@ -458,14 +460,16 @@ export function RunCockpit({
           <div><dt>Logical assignment</dt><dd className="mc-mono">{logicalAssignment(detail.run.managerAssignment)}</dd></div>
           <div><dt>State</dt><dd>{manager?.state ?? 'unavailable'}</dd></div>
         </dl>
-        <button
-          type="button"
-          className="mc-btn"
-          disabled={busy || !onManagerSuccessor || !manager || !['interrupted', 'failed', 'stopped', 'completed'].includes(manager.state)}
-          onClick={() => void onManagerSuccessor?.()}
-        >
-          Start successor Manager
-        </button>
+        {onManagerSuccessor ? (
+          <button
+            type="button"
+            className="mc-btn"
+            disabled={busy || !manager || !['interrupted', 'failed', 'stopped', 'completed'].includes(manager.state)}
+            onClick={() => void onManagerSuccessor()}
+          >
+            Start successor Manager
+          </button>
+        ) : null}
         <form className="control-form" onSubmit={submitMessage}>
           <label htmlFor="manager-message">Message manager</label>
           <textarea id="manager-message" value={message} onChange={(event) => setMessage(event.target.value)} disabled={busy} />
@@ -632,6 +636,16 @@ export function RunCockpit({
 
   const actions = (
     <>
+      {onResume ? (
+        <button
+          type="button"
+          className="mc-btn mc-btn--primary"
+          disabled={busy || detail.run.state !== 'waiting-human'}
+          onClick={() => void onResume()}
+        >
+          Resume run
+        </button>
+      ) : null}
       <button
         type="button"
         className="mc-btn"

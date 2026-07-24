@@ -72,6 +72,7 @@ const MAX_REVIEW_CRITERIA = 16;
 const MAX_REVIEW_REWORKS = 2;
 const MAX_REVIEW_CRITERION_DESCRIPTION = 200;
 const MAX_COMPLETION_GATE_PROMPT = 2_000;
+const MAX_ACTIVATION_RECEIPTS_PER_RUN = 64;
 const HASH_RE = /^[a-f0-9]{64}$/;
 const CANONICAL_COMMIT_RE = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/;
 const SAFE_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -104,6 +105,7 @@ const QUARANTINE_SETTLED_STAGE = new Set<StageState>([...TERMINAL_STAGE, 'interr
 const QUARANTINE_SETTLED_ATTEMPT = new Set<AttemptState>([...TERMINAL_ATTEMPT, 'interrupted']);
 const QUARANTINE_SETTLED_SESSION = new Set<ManagedSessionState>([...TERMINAL_SESSION, 'interrupted']);
 const PUBLICATION_STATES = new Set<Run['publicationState']>(['pending', 'waiting-human', 'publishing', 'published', 'reconcile-required']);
+const ACTIVATION_PHASES = new Set<RunActivationPhase>(['claimed', 'roots-activated', 'dispatched', 'failed']);
 
 const RUN_EDGES: Readonly<Record<RunState, ReadonlySet<RunState>>> = {
   planned: new Set(['recovering', 'running', 'waiting-human', 'stopping', 'failed', 'stopped', 'interrupted']),
@@ -162,6 +164,17 @@ interface StoredRun extends Run {
   subject: string;
   launchOperationKey?: string | null;
   launchOperationFingerprint?: string | null;
+  activationReceipts?: StoredRunActivationReceipt[];
+}
+
+export type RunActivationPhase = 'claimed' | 'roots-activated' | 'dispatched' | 'failed';
+
+interface StoredRunActivationReceipt {
+  idempotencyKey: string;
+  fingerprint: string;
+  phase: RunActivationPhase;
+  claimedAt: string;
+  updatedAt: string;
 }
 
 interface StoredStage extends Stage {
@@ -348,6 +361,17 @@ export interface CreateRunInput {
   /** Internal, server-derived Composer origin; HTTP clients never choose declaration identity. */
   agentWorkspaceLaunch?: AgentWorkspaceLaunchProvenance | null;
   stages: CreateRunStageInput[];
+}
+
+export interface RunActivationInput {
+  expectedRunVersion: number;
+  expectedManagerGeneration: number;
+  idempotencyKey: string;
+}
+
+export interface RunActivationReceipt {
+  run: Run;
+  phase: RunActivationPhase;
 }
 
 export interface CreateAttemptInput {
@@ -587,6 +611,21 @@ export interface ControlPlaneStore extends BrokerStoreBackend {
   listRuns(subject: string): RunMetadata[];
   getRun(subject: string, runRef: string): ControlResult<RunDetail>;
   createRun(subject: string, input: CreateRunInput): ControlResult<RunDetail>;
+  /** Read an exact durable activation receipt without claiming a new activation. */
+  getRunActivationReceipt(subject: string, runRef: string, input: RunActivationInput): ControlResult<RunActivationReceipt | null>;
+  /** Internal lifecycle guard used to exclude competing Manager recovery while activation owns the run. */
+  hasActiveRunActivation(subject: string, runRef: string): ControlResult<boolean>;
+  /** Atomically bind one exact activation operation and move waiting-human -> recovering. */
+  claimRunActivation(subject: string, runRef: string, input: RunActivationInput): ControlResult<RunActivationReceipt>;
+  /** Advance the durable activation outbox without repeating an earlier phase. */
+  advanceRunActivation(
+    subject: string,
+    runRef: string,
+    input: RunActivationInput,
+    phase: Extract<RunActivationPhase, 'roots-activated' | 'dispatched'>,
+  ): ControlResult<RunActivationReceipt>;
+  /** Fail a claimed activation and return an undispatched run to waiting-human. */
+  failRunActivation(subject: string, runRef: string, input: RunActivationInput): ControlResult<RunActivationReceipt>;
   transitionRun(subject: string, runRef: string, expectedVersion: number, state: RunState): ControlResult<Run>;
   transitionPublication(
     subject: string,
@@ -958,6 +997,7 @@ function publicRun(value: StoredRun): Run {
     subject: _subject,
     launchOperationKey: _launchOperationKey,
     launchOperationFingerprint: _launchOperationFingerprint,
+    activationReceipts: _activationReceipts,
     ...run
   } = value;
   return clone(run);
@@ -1114,6 +1154,52 @@ function boundariesAccepted(document: StoreDocument, subject: string, runRef: st
     .every(boundaryAccepted);
 }
 
+function activationFingerprint(runRef: string, input: RunActivationInput): string {
+  return sha256(canonicalJson({
+    runRef,
+    expectedRunVersion: input.expectedRunVersion,
+    expectedManagerGeneration: input.expectedManagerGeneration,
+  }));
+}
+
+function validRunActivationInput(input: RunActivationInput): boolean {
+  return validNonEmpty(input.idempotencyKey, MAX_SHORT_TEXT)
+    && Number.isSafeInteger(input.expectedRunVersion) && input.expectedRunVersion >= 1
+    && Number.isSafeInteger(input.expectedManagerGeneration) && input.expectedManagerGeneration >= 1;
+}
+
+function latestPendingActivationReceipt(run: StoredRun): StoredRunActivationReceipt | undefined {
+  const receipts = run.activationReceipts ?? [];
+  for (let index = receipts.length - 1; index >= 0; index -= 1) {
+    const receipt = receipts[index];
+    if (receipt && (receipt.phase === 'claimed' || receipt.phase === 'roots-activated')) return receipt;
+  }
+  return undefined;
+}
+
+function assertActivationReceipts(run: StoredRun): void {
+  const receipts = run.activationReceipts;
+  if (receipts === undefined) return;
+  if (!Array.isArray(receipts) || receipts.length > MAX_ACTIVATION_RECEIPTS_PER_RUN) {
+    throw new Error('invalid control-plane run activation receipt');
+  }
+  const keys = new Set<string>();
+  for (const receipt of receipts) {
+    if (!receipt || typeof receipt !== 'object'
+      || !validNonEmpty(receipt.idempotencyKey, MAX_SHORT_TEXT)
+      || keys.has(receipt.idempotencyKey)
+      || !HASH_RE.test(receipt.fingerprint)
+      || !ACTIVATION_PHASES.has(receipt.phase)
+      || !validNonEmpty(receipt.claimedAt, MAX_SHORT_TEXT)
+      || !validNonEmpty(receipt.updatedAt, MAX_SHORT_TEXT)) {
+      throw new Error('invalid control-plane run activation receipt');
+    }
+    keys.add(receipt.idempotencyKey);
+  }
+  const pending = receipts.filter((receipt) => receipt.phase === 'claimed' || receipt.phase === 'roots-activated');
+  if (pending.length > 1) throw new Error('invalid control-plane pending run activation receipts');
+}
+
 function loopForReviewStage(document: StoreDocument, stage: StoredStage): StoredReviewLoop | undefined {
   return document.reviewLoops.find((loop) => loop.subject === stage.subject && loop.runRef === stage.runRef && loop.reviewStageRef === stage.stageRef);
 }
@@ -1197,9 +1283,21 @@ function assertDocument(document: unknown): asserts document is StoreDocument {
     }
     previous = event.cursor;
   }
+  for (const run of candidate.runs ?? []) {
+    assertActivationReceipts(run);
+  }
+  for (const bundle of candidate.quarantine ?? []) {
+    assertActivationReceipts(bundle.run);
+  }
 }
 
-function appendRecoveryEvent(document: StoreDocument, subject: string, runRef: string, stamp: string): void {
+function appendRecoveryEvent(
+  document: StoreDocument,
+  subject: string,
+  runRef: string,
+  stamp: string,
+  pendingActivation: boolean,
+): void {
   document.events.push({
     subject,
     cursor: document.nextEventCursor,
@@ -1209,8 +1307,10 @@ function appendRecoveryEvent(document: StoreDocument, subject: string, runRef: s
     stageRef: null,
     attemptRef: null,
     sessionRef: null,
-    status: 'interrupted',
-    summary: 'dashboard restarted; active control-plane records were normalized to interrupted',
+    status: pendingActivation ? 'waiting' : 'interrupted',
+    summary: pendingActivation
+      ? 'dashboard restarted; an undispatched activation was returned to waiting-human for durable recovery'
+      : 'dashboard restarted; active control-plane records were normalized to interrupted',
     command: null,
     toolName: null,
     path: null,
@@ -1816,6 +1916,12 @@ function normalizeCrash(document: StoreDocument, stamp: string): boolean {
   let changed = migrateReviewCollections(document);
   for (const run of document.runs) {
     let runChanged = false;
+    if (run.activationReceipts === undefined) {
+      run.activationReceipts = [];
+      changed = true;
+    }
+    assertActivationReceipts(run);
+    const pendingActivation = latestPendingActivationReceipt(run);
     const managerAssignment = normalizeAssignment(run.managerAssignment);
     if (managerAssignment === undefined) throw new Error('invalid control-plane assignment provenance');
     if (run.managerAssignment === undefined) {
@@ -1829,7 +1935,7 @@ function normalizeCrash(document: StoreDocument, stamp: string): boolean {
       changed = true;
     }
     if (run.state === 'running' || run.state === 'recovering' || run.state === 'stopping') {
-      run.state = 'interrupted';
+      run.state = pendingActivation ? 'waiting-human' : 'interrupted';
       run.version += 1;
       run.updatedAt = stamp;
       runChanged = true;
@@ -1869,11 +1975,16 @@ function normalizeCrash(document: StoreDocument, stamp: string): boolean {
       runChanged = true;
     }
     if (runChanged) {
-      appendRecoveryEvent(document, run.subject, run.runRef, stamp);
+      appendRecoveryEvent(document, run.subject, run.runRef, stamp, run.state === 'waiting-human' && pendingActivation !== undefined);
       changed = true;
     }
   }
   for (const bundle of document.quarantine) {
+    if (bundle.run.activationReceipts === undefined) {
+      bundle.run.activationReceipts = [];
+      changed = true;
+    }
+    assertActivationReceipts(bundle.run);
     const managerAssignment = normalizeAssignment(bundle.run.managerAssignment);
     if (managerAssignment === undefined) throw new Error('invalid control-plane assignment provenance');
     if (bundle.run.managerAssignment === undefined) {
@@ -2284,6 +2395,7 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
         subject,
         launchOperationKey: input.idempotencyKey,
         launchOperationFingerprint: launchFingerprint,
+        activationReceipts: [],
         runRef,
         predecessorRunRef,
         title: input.title.trim(),
@@ -2374,6 +2486,167 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       document.reviewLoops.push(...reviewLoops);
       commit(document);
       return ok(detail(document, subject, run));
+    },
+
+    getRunActivationReceipt(subject, runRef, input) {
+      if (!validRunActivationInput(input)) {
+        return fail('invalid', 'run activation identity is invalid');
+      }
+      const document = load();
+      const run = findRun(document, subject, runRef);
+      if (!run) return fail('not-found', 'run was not found');
+      const receipt = (run.activationReceipts ?? []).find((candidate) =>
+        candidate.idempotencyKey === input.idempotencyKey);
+      if (!receipt) return ok(null);
+      const fingerprint = activationFingerprint(runRef, input);
+      if (receipt.fingerprint !== fingerprint) {
+        return fail('idempotency-conflict', 'idempotencyKey was reused with different activation content');
+      }
+      return ok({ run: publicRun(run), phase: receipt.phase }, true);
+    },
+
+    hasActiveRunActivation(subject, runRef) {
+      const document = load();
+      const run = findRun(document, subject, runRef);
+      if (!run) return fail('not-found', 'run was not found');
+      const receipts = run.activationReceipts ?? [];
+      const latest = receipts[receipts.length - 1];
+      return ok(latestPendingActivationReceipt(run) !== undefined
+        || (latest?.phase === 'dispatched' && (run.state === 'recovering' || run.state === 'running')));
+    },
+
+    claimRunActivation(subject, runRef, input) {
+      if (!validRunActivationInput(input)) {
+        return fail('invalid', 'run activation identity is invalid');
+      }
+      const document = load();
+      const run = findRun(document, subject, runRef);
+      if (!run) return fail('not-found', 'run was not found');
+      const fingerprint = activationFingerprint(runRef, input);
+      const receipts = run.activationReceipts ??= [];
+      const receipt = receipts.find((candidate) => candidate.idempotencyKey === input.idempotencyKey);
+      if (receipt) {
+        if (receipt.fingerprint !== fingerprint) {
+          return fail('idempotency-conflict', 'idempotencyKey was reused with different activation content');
+        }
+        if (receipt.phase === 'failed') {
+          return fail('conflict', 'run activation previously failed');
+        }
+        if (receipt.phase === 'dispatched') {
+          return ok({ run: publicRun(run), phase: receipt.phase }, true);
+        }
+        if (run.publicationState !== 'published'
+          || (run.state !== 'recovering' && run.state !== 'waiting-human')) {
+          return fail('conflict', 'claimed run activation state changed');
+        }
+        const requests = document.humanRequests.filter((request) =>
+          request.subject === subject && request.runRef === runRef);
+        if (requests.length === 0 || requests.some((request) => !boundaryAccepted(request))) {
+          return fail('conflict', 'run activation Human Request boundaries are absent or unresolved');
+        }
+        if (run.state === 'waiting-human') {
+          run.state = 'recovering';
+          run.version += 1;
+          run.updatedAt = stamp();
+          commit(document);
+        }
+        return ok({ run: publicRun(run), phase: receipt.phase }, true);
+      }
+      const pending = latestPendingActivationReceipt(run);
+      if (pending && run.state !== 'waiting-human') {
+        return fail('idempotency-conflict', 'run activation is already claimed by another idempotencyKey');
+      }
+      if (run.version !== input.expectedRunVersion || run.managerGeneration !== input.expectedManagerGeneration
+        || run.publicationState !== 'published' || run.state !== 'waiting-human') {
+        return fail('conflict', 'run activation state changed');
+      }
+      const requests = document.humanRequests.filter((request) =>
+        request.subject === subject && request.runRef === runRef);
+      if (requests.length === 0 || requests.some((request) => !boundaryAccepted(request))) {
+        return fail('conflict', 'run activation Human Request boundaries are absent or unresolved');
+      }
+      if (receipts.length >= MAX_ACTIVATION_RECEIPTS_PER_RUN) {
+        return fail('limit', `run has reached the ${MAX_ACTIVATION_RECEIPTS_PER_RUN} activation receipt limit`);
+      }
+      if (pending) {
+        pending.phase = 'failed';
+        pending.updatedAt = stamp();
+      }
+      const claimedAt = stamp();
+      const claimedReceipt: StoredRunActivationReceipt = {
+        idempotencyKey: input.idempotencyKey,
+        fingerprint,
+        phase: 'claimed',
+        claimedAt,
+        updatedAt: claimedAt,
+      };
+      receipts.push(claimedReceipt);
+      run.state = 'recovering';
+      run.version += 1;
+      run.updatedAt = claimedAt;
+      commit(document);
+      return ok({ run: publicRun(run), phase: claimedReceipt.phase });
+    },
+
+    advanceRunActivation(subject, runRef, input, phase) {
+      if (!validRunActivationInput(input) || (phase !== 'roots-activated' && phase !== 'dispatched')) {
+        return fail('invalid', 'run activation identity or phase is invalid');
+      }
+      const document = load();
+      const run = findRun(document, subject, runRef);
+      if (!run) return fail('not-found', 'run was not found');
+      const receipt = (run.activationReceipts ?? []).find((candidate) =>
+        candidate.idempotencyKey === input.idempotencyKey);
+      if (!receipt) return fail('conflict', 'run activation was not claimed');
+      if (receipt.fingerprint !== activationFingerprint(runRef, input)) {
+        return fail('idempotency-conflict', 'idempotencyKey was reused with different activation content');
+      }
+      if (receipt.phase === 'failed') return fail('conflict', 'run activation previously failed');
+      const rank: Record<Exclude<RunActivationPhase, 'failed'>, number> = {
+        claimed: 0,
+        'roots-activated': 1,
+        dispatched: 2,
+      };
+      if (rank[receipt.phase] >= rank[phase]) {
+        return ok({ run: publicRun(run), phase: receipt.phase }, true);
+      }
+      if ((phase === 'roots-activated' && run.state !== 'recovering')
+        || (phase === 'dispatched' && run.state !== 'running')) {
+        return fail('conflict', 'run activation state changed');
+      }
+      if (phase === 'dispatched' && receipt.phase !== 'roots-activated') {
+        return fail('conflict', 'run activation roots are not durably activated');
+      }
+      receipt.phase = phase;
+      receipt.updatedAt = stamp();
+      commit(document);
+      return ok({ run: publicRun(run), phase: receipt.phase });
+    },
+
+    failRunActivation(subject, runRef, input) {
+      if (!validRunActivationInput(input)) return fail('invalid', 'run activation identity is invalid');
+      const document = load();
+      const run = findRun(document, subject, runRef);
+      if (!run) return fail('not-found', 'run was not found');
+      const receipt = (run.activationReceipts ?? []).find((candidate) =>
+        candidate.idempotencyKey === input.idempotencyKey);
+      if (!receipt) return fail('conflict', 'run activation was not claimed');
+      if (receipt.fingerprint !== activationFingerprint(runRef, input)) {
+        return fail('idempotency-conflict', 'idempotencyKey was reused with different activation content');
+      }
+      if (receipt.phase === 'dispatched') return fail('conflict', 'dispatched run activation cannot fail');
+      if (receipt.phase === 'failed') {
+        return ok({ run: publicRun(run), phase: receipt.phase }, true);
+      }
+      receipt.phase = 'failed';
+      receipt.updatedAt = stamp();
+      if (run.state === 'recovering' || run.state === 'running') {
+        run.state = 'waiting-human';
+        run.version += 1;
+        run.updatedAt = receipt.updatedAt;
+      }
+      commit(document);
+      return ok({ run: publicRun(run), phase: receipt.phase });
     },
 
     transitionRun(subject, runRef, expectedVersion, state) {

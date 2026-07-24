@@ -187,6 +187,24 @@ describe('RunCockpit', () => {
     expect(onManagerSuccessor).toHaveBeenCalledTimes(1);
   });
 
+  it('offers in-place resume only when its governed caller supplies the action', () => {
+    const onResume = vi.fn();
+    const waiting: RunDetailDto = {
+      ...detail,
+      run: { ...detail.run, state: 'waiting-human' },
+    };
+    const { rerender } = render(<RunCockpit detail={waiting} events={[]} onResume={onResume} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Resume run' }));
+    expect(onResume).toHaveBeenCalledTimes(1);
+
+    rerender(<RunCockpit detail={waiting} events={[]} onResume={onResume} busy />);
+    expect(screen.getByRole('button', { name: 'Resume run' })).toHaveProperty('disabled', true);
+
+    rerender(<RunCockpit detail={waiting} events={[]} />);
+    expect(screen.queryByRole('button', { name: 'Resume run' })).toBeNull();
+  });
+
   // ---- arc-3: the fields that were arriving in the browser and being discarded ----
 
   it('RENDERS THE DIFF BODY that the old event flattening discarded', () => {

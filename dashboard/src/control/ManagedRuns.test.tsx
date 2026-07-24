@@ -114,6 +114,102 @@ describe('ManagedRuns', () => {
     expect(calls).not.toContain('/api/control/human-requests/gate-1/respond');
   });
 
+  it('surfaces the inactive gate, then resumes the same run without creating successors', async () => {
+    const waitingRun = {
+      ...runs[0],
+      state: 'waiting-human' as const,
+      version: 5,
+      managerGeneration: 1,
+    };
+    const acceptedRequest = {
+      requestRef: 'request-accepted',
+      runRef: 'run-1',
+      stageRef: 'stage-1',
+      kind: 'intervention' as const,
+      revision: 1,
+      state: 'resolved' as const,
+      title: 'Execution report',
+      prompt: 'Review the execution report.',
+      response: {
+        decision: 'responded' as const,
+        response: 'Accepted.',
+        responder: 'operator',
+        respondedAt: '2026-07-24T03:58:56.782Z',
+      },
+      createdAt: '2026-07-24T03:00:00.000Z',
+      updatedAt: '2026-07-24T03:58:56.782Z',
+    };
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    let activationAllowed = false;
+    let resumed = false;
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      calls.push({ url, init });
+      if (url.includes('/events')) {
+        return { ok: true, status: 200, json: async () => ({ ok: true, value: [] }) } as Response;
+      }
+      if (url.includes('/revisions/')) {
+        return { ok: true, status: 200, json: async () => ({
+          ok: true,
+          value: {
+            proposalRef: 'proposal-1', revision: 2, hash: 'a'.repeat(64), previousHash: null,
+            title: 't', createdAt: '2026-07-18T10:00:00.000Z', approval: null,
+            sourceComposerRef: 'c', sourceTurnId: 't', snapshot: { stages: [] },
+          },
+        }) } as Response;
+      }
+      if (url === '/api/control/runs/run-1/activate') {
+        if (!activationAllowed) {
+          return {
+            ok: false,
+            status: 409,
+            json: async () => ({ error: 'automatic-runtime-not-activated' }),
+          } as Response;
+        }
+        resumed = true;
+        return { ok: true, status: 202, json: async () => ({ ok: true, value: waitingRun, starting: true }) } as Response;
+      }
+      if (url === '/api/control/runs/run-1') {
+        return { ok: true, status: 200, json: async () => ({
+          ok: true,
+          value: {
+            ...detailFor('run-1').value,
+            run: resumed ? { ...waitingRun, state: 'recovering', version: 6 } : waitingRun,
+            sessions: [{
+              sessionRef: 'session-manager', runRef: 'run-1', stageRef: null, attemptRef: null,
+              role: 'manager', generation: 1, predecessorSessionRef: null, runtime: 'claude',
+              model: 'claude-opus-4-8', state: 'interrupted', version: 2,
+              createdAt: '2026-07-24T03:00:00.000Z', updatedAt: '2026-07-24T03:30:00.000Z',
+            }],
+            humanRequests: [acceptedRequest],
+          },
+        }) } as Response;
+      }
+      return { ok: true, status: 200, json: async () => ({ runs: [waitingRun, runs[1]] }) } as Response;
+    }));
+
+    render(<ManagedRuns sessionToken="token-1" runs={[waitingRun, runs[1]]} focusRunRef="run-1" onOpenRun={vi.fn()} />);
+    await screen.findByRole('button', { name: 'Resume run' });
+    expect(screen.queryByRole('button', { name: 'Start successor Manager' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Resume run' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('automatic-runtime-not-activated');
+    expect(screen.getByTestId('entity-detail-title').textContent).toBe(LONG_TITLE);
+    activationAllowed = true;
+    fireEvent.click(screen.getByRole('button', { name: 'Resume run' }));
+
+    await waitFor(() => expect(calls.filter((call) => call.url === '/api/control/runs/run-1/activate')).toHaveLength(2));
+    const activation = calls.filter((call) => call.url === '/api/control/runs/run-1/activate').at(-1)!;
+    expect(JSON.parse(String(activation.init?.body))).toEqual({
+      expectedRunVersion: 5,
+      expectedManagerGeneration: 1,
+      idempotencyKey: `activate:run-1:5:${'a'.repeat(64)}:1`,
+    });
+    expect(calls.some((call) => call.url.includes('/launch'))).toBe(false);
+    expect(calls.some((call) => call.url.includes('/successor'))).toBe(false);
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Resume run' })).toBeNull());
+  });
+
   it('lands on the grid and shows every run title in full', () => {
     stubFetch();
     render(<Harness />);
@@ -206,7 +302,7 @@ describe('ManagedRuns', () => {
  * ========================================================================= */
 
 /** Every governed mutation `RunCockpit` puts in its header. None may exist without a focused run. */
-const GOVERNED_ACTIONS = ['Stop run', 'Retry as successor'];
+const GOVERNED_ACTIONS = ['Stop run', 'Resume run', 'Retry as successor'];
 
 function expectNoGovernedActions(): void {
   for (const name of GOVERNED_ACTIONS) {

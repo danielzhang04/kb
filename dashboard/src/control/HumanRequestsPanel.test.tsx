@@ -5,8 +5,8 @@ import { HumanRequestsPanel } from './HumanRequestsPanel';
 
 afterEach(cleanup);
 
-function response(body: unknown): Response {
-  return { ok: true, status: 200, json: async () => body } as Response;
+function response(body: unknown, status = 200): Response {
+  return { ok: status >= 200 && status < 300, status, json: async () => body } as Response;
 }
 
 describe('HumanRequestsPanel', () => {
@@ -92,6 +92,78 @@ describe('HumanRequestsPanel', () => {
     expect(screen.queryByRole('button', { name: /Approve|Respond|Request changes/i })).toBeNull();
     // The "nothing needs attention" empty note must NOT show when a stranded run is present.
     expect(screen.queryByText(/No managed run requests need attention/i)).toBeNull();
+  });
+
+  it('surfaces the inactive gate, then resumes a stranded run through the same exact action', async () => {
+    const run = {
+      runRef: 'run-resumable',
+      proposalRef: 'proposal-1',
+      proposalRevision: 1,
+      proposalHash: 'a'.repeat(64),
+      publicationState: 'published',
+      state: 'waiting-human',
+      version: 5,
+      managerGeneration: 1,
+      openHumanRequestCount: 0,
+      title: 'Accepted execution report',
+    };
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    let activationAllowed = false;
+    let resumed = false;
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      if (url === '/api/control/runs') {
+        return response({ runs: [resumed ? { ...run, state: 'recovering' } : run] });
+      }
+      if (url === '/api/control/runs/run-resumable') {
+        return response({ ok: true, value: {
+          run,
+          stages: [],
+          attempts: [],
+          sessions: [],
+          humanRequests: [{
+            requestRef: 'request-accepted',
+            runRef: 'run-resumable',
+            stageRef: null,
+            kind: 'intervention',
+            revision: 1,
+            state: 'resolved',
+            title: 'Execution report',
+            prompt: 'Review the execution report.',
+            response: {
+              decision: 'responded',
+              response: 'Accepted.',
+              responder: 'operator',
+              respondedAt: '2026-07-24T03:58:56.782Z',
+            },
+            createdAt: '2026-07-24T03:00:00.000Z',
+            updatedAt: '2026-07-24T03:58:56.782Z',
+          }],
+        } });
+      }
+      if (url === '/api/control/runs/run-resumable/activate') {
+        if (!activationAllowed) return response({ error: 'automatic-runtime-not-activated' }, 409);
+        resumed = true;
+        return response({ ok: true, value: run, starting: true }, 202);
+      }
+      throw new Error(`unexpected ${url}`);
+    });
+
+    render(<HumanRequestsPanel sessionToken="token" fetchImpl={fetchImpl as unknown as typeof fetch} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Resume run' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('automatic-runtime-not-activated');
+    activationAllowed = true;
+    fireEvent.click(screen.getByRole('button', { name: 'Resume run' }));
+
+    await waitFor(() => expect(calls.filter((call) => call.url.endsWith('/activate'))).toHaveLength(2));
+    const activation = calls.filter((call) => call.url.endsWith('/activate')).at(-1)!;
+    expect(JSON.parse(String(activation.init?.body))).toEqual({
+      expectedRunVersion: 5,
+      expectedManagerGeneration: 1,
+      idempotencyKey: `activate:run-resumable:5:${'a'.repeat(64)}:1`,
+    });
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Resume run' })).toBeNull());
   });
 
   it('does not surface a waiting-human run that HAS an open request as a stranded row (it renders as a request)', async () => {

@@ -23,8 +23,16 @@ import type { RunnerTrigger } from '../runner/trigger.ts';
 import type { LivenessCache, SchtasksRunner } from '../runner/liveness.ts';
 import type { ControlPlaneStore } from '../control/store.ts';
 import type { ManagedSessionBroker } from '../control/broker.ts';
-import type { CancelRunInput, CancellationOutcome, ExecuteRunInput, ExecutionOutcome } from '../control/execution.ts';
+import type {
+  CancelRunInput,
+  CancellationOutcome,
+  ContainManagerStartInput,
+  ExecuteRunInput,
+  ExecutionOutcome,
+} from '../control/execution.ts';
+import type { RunControlTransactions } from '../control/runTransactions.ts';
 import type { DefinitionAmendmentStore } from '../workflows/amendmentStore.ts';
+import type { activateManagedRootCards } from '../write/workflowRun.ts';
 
 /** How a route records exactly one audit row. Injected as a recording fake in tests. Widened to allow a
  *  `Promise` so the real (now async, off-the-event-loop) `appendAudit` and synchronous test fakes both fit;
@@ -64,6 +72,8 @@ export interface SurfaceContext {
   openPr?: PrOpener;
   runPy?: PyRunner;
   runPreamble?: PreambleRunner;
+  /** Exact managed-root activation seam; production uses the canonical queue-card transaction. */
+  activateManagedRoots?: typeof activateManagedRootCards;
   spawn?: VibeSpawner;
   /** Optional dedicated guard for the vibe module's own internal limiter (else its module singleton). */
   vibeRateGuard?: LockoutGuard;
@@ -82,6 +92,12 @@ export interface SurfaceContext {
   runAutomatic?: (input: ExecuteRunInput) => Promise<ExecutionOutcome>;
   /** Optional executor-owned cancellation boundary for Manager and Worker processes. */
   cancelAutomatic?: (input: CancelRunInput) => Promise<CancellationOutcome>;
+  /** Recovery-only Manager startup containment; preserves the run/stage graph for exact resume. */
+  containManagerStart?: (input: ContainManagerStartInput) => Promise<void>;
+  /** Per-run runtime-control serializer; never substitutes for durable store CAS. */
+  runControlTransactions: RunControlTransactions;
+  /** Deadline for the durable Manager-start acknowledgement returned to an activating operator. */
+  managerStartAckTimeoutMs: number;
   /** Signals an already-provisioned background runner after a committed launch. */
   triggerRunner?: RunnerTrigger;
   /** G3 reply-liveness — read-only Windows Task Scheduler probe seam (mirrors `triggerRunner`). Injected as
