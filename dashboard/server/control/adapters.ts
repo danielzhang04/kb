@@ -20,6 +20,7 @@ import type { ExecutionProfile } from './policy.ts';
 import { isSafeRepoRelativePath } from './proposal.ts';
 import {
   canonicalStageResultHash,
+  canonicalStageResultHashMatches,
   canonicalResultOperationKey,
   type AccountingAdapter,
   type CanonicalStageResultPayload,
@@ -570,7 +571,10 @@ function assertResultDocument(value: unknown): asserts value is ResultDocument {
       checkpoints: normalizedCheckpoints(record.result.checkpoints),
       ...(reviewOutcome ? { reviewOutcome } : {}),
     };
-    if (canonicalStageResultHash(canonicalResult) !== record.result.resultHash) {
+    if (canonicalStageResultHash(
+      canonicalResult,
+      hasReviewContract ? 'current' : 'legacy-non-review',
+    ) !== record.result.resultHash) {
       throw new ExecutionAdapterError('stored canonical result hash does not match its payload');
     }
     const fingerprintInput = {
@@ -888,15 +892,22 @@ export function createFileResultIntegrator(options: FileResultIntegratorOptions)
         result,
       };
       const fingerprint = digest(normalizedInput);
-      const { reviewContract: _reviewContract, ...legacyNormalizedInput } = normalizedInput;
-      const legacyFingerprint = digest(legacyNormalizedInput);
       return document.mutate((state) => {
         const byOperation = state.results.find((item) => item.operationKey === input.operationKey);
         if (byOperation) {
-          const expectedFingerprint = Object.prototype.hasOwnProperty.call(byOperation, 'reviewContract')
-            ? fingerprint
-            : legacyFingerprint;
-          if (byOperation.fingerprint !== expectedFingerprint || byOperation.result.resultHash !== input.resultHash) {
+          let expectedFingerprint = fingerprint;
+          if (!Object.prototype.hasOwnProperty.call(byOperation, 'reviewContract')) {
+            const { reviewContract: _reviewContract, ...legacyNormalizedInput } = normalizedInput;
+            expectedFingerprint = digest({
+              ...legacyNormalizedInput,
+              result: {
+                ...result,
+                resultHash: canonicalStageResultHash(result, 'legacy-non-review'),
+              },
+            });
+          }
+          if (byOperation.fingerprint !== expectedFingerprint
+            || !canonicalStageResultHashMatches(result, byOperation.result.resultHash)) {
             throw new ExecutionAdapterError('canonical result replay differs from the committed payload');
           }
           return { status: 'replayed' as const, resultHash: byOperation.result.resultHash, durability: 'inactive' as const };

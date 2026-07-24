@@ -11,6 +11,7 @@ import {
   AutomaticExecutionEngine,
   AutomaticExecutionError,
   canonicalStageResultHash,
+  canonicalStageResultHashMatches,
   planRunWorktreePath,
   type AccountingAdapter,
   type AutomaticExecutionOptions,
@@ -341,6 +342,67 @@ afterEach(() => {
 });
 
 describe('AutomaticExecutionEngine', () => {
+  it('accepts the historical omitted-review hash only for non-review payloads', () => {
+    const payload = { summary: 'legacy result', artifacts: [], changed: [], checkpoints: [] };
+    const legacyHash = canonicalStageResultHash(payload, 'legacy-non-review');
+    expect(canonicalStageResultHashMatches(payload, legacyHash)).toBe(true);
+    expect(canonicalStageResultHashMatches(payload, canonicalStageResultHash(payload))).toBe(true);
+    expect(canonicalStageResultHashMatches({ ...payload, reviewOutcome: passOutcome() }, legacyHash)).toBe(false);
+    expect(() => canonicalStageResultHash(
+      { ...payload, reviewOutcome: passOutcome() },
+      'legacy-non-review',
+    )).toThrow(/cannot encode a review outcome/);
+  });
+
+  it('reconciles a canonical legacy non-review result without rerunning its worker', async () => {
+    const store = createStore();
+    const plan = proposal([stage('legacy-lookup')]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const payload = {
+      summary: 'legacy stage complete',
+      artifacts: [{ path: 'dashboard/server/legacy-lookup.txt', digest: 'b'.repeat(64) }],
+      changed: [{ path: 'dashboard/server/legacy-lookup.txt', digest: 'b'.repeat(64) }],
+      checkpoints: ['legacy-lookup-checked'],
+    };
+    fake.results.lookup = async () => ({
+      ...payload,
+      resultHash: canonicalStageResultHash(payload, 'legacy-non-review'),
+      durability: 'canonical',
+      attemptBaseCommit: 'a'.repeat(40),
+      integrationCommit: 'b'.repeat(40),
+    });
+    const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
+
+    await expect(engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan }))
+      .resolves.toMatchObject({ state: 'succeeded' });
+    expect(fake.executionOrder).toEqual([]);
+  });
+
+  it('accepts a legacy hash receipt when resuming an in-progress canonical integration', async () => {
+    const store = createStore();
+    const plan = proposal([stage('legacy-resume')]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    fake.results.integrate = async (input) => ({
+      status: 'integrated',
+      resultHash: canonicalStageResultHash({
+        summary: input.summary,
+        artifacts: input.artifacts,
+        changed: input.changed,
+        checkpoints: input.checkpoints,
+      }, 'legacy-non-review'),
+      durability: 'canonical',
+      attemptBaseCommit: 'a'.repeat(40),
+      integrationCommit: 'b'.repeat(40),
+    });
+    const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
+
+    await expect(engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan }))
+      .resolves.toMatchObject({ state: 'succeeded' });
+    expect(fake.executionOrder).toEqual(['legacy-resume']);
+  });
+
   it('rejects a stored/proposal assignment mismatch before invoking an assigned-agent resolver', async () => {
     const root = mkdtempSync(join(tmpdir(), 'kb-assignment-binding-'));
     tempDirs.push(root);

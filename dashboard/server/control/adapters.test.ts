@@ -577,19 +577,52 @@ describe('file result integrator', () => {
 
     const path = join(stateRoot, 'control', 'execution-results.json');
     const stored = JSON.parse(readFileSync(path, 'utf8')) as {
-      results: Array<Record<string, unknown> & { fingerprint: string }>;
+      results: Array<Record<string, unknown> & {
+        fingerprint: string;
+        result: Parameters<typeof canonicalStageResultHash>[0] & { resultHash: string };
+      }>;
     };
     const record = stored.results[0];
     delete record.reviewContract;
+    record.result.resultHash = canonicalStageResultHash(record.result, 'legacy-non-review');
+    const legacyResultHash = record.result.resultHash;
     const { fingerprint: _fingerprint, integratedAt: _integratedAt, ...legacyFingerprintInput } = record;
     record.fingerprint = documentFingerprint(legacyFingerprintInput);
     writeFileSync(path, JSON.stringify(stored), 'utf8');
 
     const restarted = createFileResultIntegrator({ stateRoot });
-    await expect(restarted.lookup(input)).resolves.toMatchObject({ summary: input.summary });
-    await expect(restarted.integrate(input)).resolves.toMatchObject({ status: 'replayed' });
+    await expect(restarted.lookup(input)).resolves.toMatchObject({
+      summary: input.summary,
+      resultHash: legacyResultHash,
+    });
+    await expect(restarted.integrate(input)).resolves.toMatchObject({
+      status: 'replayed',
+      resultHash: legacyResultHash,
+    });
     const replayed = JSON.parse(readFileSync(path, 'utf8')) as { results: Array<{ reviewContract?: unknown }> };
     expect(replayed.results[0]).not.toHaveProperty('reviewContract');
+  });
+
+  it('rejects a legacy hash on a current explicit-null non-review receipt', async () => {
+    const stateRoot = temporaryRoot();
+    const integrator = createFileResultIntegrator({ stateRoot });
+    const input = nonReviewCanonicalInput();
+    await integrator.integrate(input);
+    const path = join(stateRoot, 'control', 'execution-results.json');
+    const stored = JSON.parse(readFileSync(path, 'utf8')) as {
+      results: Array<Record<string, unknown> & {
+        fingerprint: string;
+        result: Parameters<typeof canonicalStageResultHash>[0] & { resultHash: string };
+      }>;
+    };
+    const record = stored.results[0];
+    record.result.resultHash = canonicalStageResultHash(record.result, 'legacy-non-review');
+    const { fingerprint: _fingerprint, integratedAt: _integratedAt, ...fingerprintInput } = record;
+    record.fingerprint = documentFingerprint(fingerprintInput);
+    writeFileSync(path, JSON.stringify(stored), 'utf8');
+
+    await expect(createFileResultIntegrator({ stateRoot }).lookup(input))
+      .rejects.toThrow('stored canonical result hash does not match its payload');
   });
 
   it('rejects a legacy review outcome whose immutable review contract is absent', async () => {

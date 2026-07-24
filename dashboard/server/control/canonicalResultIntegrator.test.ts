@@ -258,16 +258,11 @@ function fixture(options: {
     if (code === CANONICAL_RESULT_VERIFY_SCRIPT) {
       if (verifyFails) return { exitCode: 1, stdout: '', stderr: 'committed canonical Result payload differs' };
       const verify = JSON.parse(jsonArg) as { cardRef: string; runRef: string; result: Record<string, unknown> };
-      expect(verify).toMatchObject({
-        cardRef,
-        runRef,
-        result: {
-          resultHash: input.resultHash,
-          ...(input.reviewOutcome ? { reviewOutcome: input.reviewOutcome } : {}),
-          attemptBaseCommit: attemptBase,
-          integrationCommit,
-        },
-      });
+      const cardText = readFileSync(join(coordinationRoot, ...doneRel.split('/')), 'utf8');
+      const marker = '```kb.canonical-stage-result/v1\n';
+      const start = cardText.indexOf(marker) + marker.length;
+      const end = cardText.indexOf('\n```', start);
+      expect(verify).toEqual({ cardRef, runRef, result: JSON.parse(cardText.slice(start, end)) });
       return { exitCode: 0, stdout: JSON.stringify({ path: doneRel }), stderr: '' };
     }
     expect(code).toBe(CANONICAL_RESULT_CARD_SCRIPT);
@@ -292,7 +287,7 @@ function fixture(options: {
     gitRunner, coordinationGit, runPy,
   });
   return {
-    input, integrator, gitCalls, coordinationCalls, stateRoot,
+    input, integrator, gitCalls, coordinationCalls, stateRoot, coordinationRoot, doneRel,
     setPushFails(value: boolean) { pushFails = value; },
     setCardFails(value: boolean) { cardFails = value; },
     setLineagePushFails(value: boolean) { lineagePushFails = value; },
@@ -481,6 +476,11 @@ describe('canonical Git result integrator', () => {
     };
     const record = stored.records[0];
     delete record.reviewContract;
+    const currentResultHash = String(record.result.resultHash);
+    record.result.resultHash = canonicalStageResultHash(
+      record.result as unknown as Parameters<typeof canonicalStageResultHash>[0],
+      'legacy-non-review',
+    );
     record.fingerprint = fingerprint({
       operationKey: item.input.operationKey,
       subject: item.input.subject,
@@ -492,8 +492,17 @@ describe('canonical Git result integrator', () => {
       result: record.result,
     });
     writeFileSync(path, JSON.stringify(stored), 'utf8');
+    const donePath = join(item.coordinationRoot, ...item.doneRel.split('/'));
+    writeFileSync(
+      donePath,
+      readFileSync(donePath, 'utf8').replace(currentResultHash, String(record.result.resultHash)),
+      'utf8',
+    );
 
-    await expect(item.integrator.lookup(item.input)).resolves.toMatchObject({ summary: item.input.summary });
+    await expect(item.integrator.lookup(item.input)).resolves.toMatchObject({
+      summary: item.input.summary,
+      resultHash: record.result.resultHash,
+    });
     await expect(item.integrator.resolveBase?.({
       operationKey: 'base:run-1:stage-2',
       subject: item.input.subject,
@@ -501,7 +510,10 @@ describe('canonical Git result integrator', () => {
       stageId: 'stage-2',
       dependencyStageIds: [item.input.stageId],
     })).resolves.toBe('d'.repeat(40));
-    await expect(item.integrator.integrate(item.input)).resolves.toMatchObject({ status: 'replayed' });
+    await expect(item.integrator.integrate(item.input)).resolves.toMatchObject({
+      status: 'replayed',
+      resultHash: record.result.resultHash,
+    });
     const replayed = JSON.parse(readFileSync(path, 'utf8')) as { records: Array<{ reviewContract?: unknown }> };
     expect(replayed.records[0]).not.toHaveProperty('reviewContract');
   });
@@ -515,6 +527,10 @@ describe('canonical Git result integrator', () => {
     };
     const record = stored.records[0];
     delete record.reviewContract;
+    record.result.resultHash = canonicalStageResultHash(
+      record.result as unknown as Parameters<typeof canonicalStageResultHash>[0],
+      'legacy-non-review',
+    );
     record.fingerprint = fingerprint({
       operationKey: item.input.operationKey,
       subject: item.input.subject,
@@ -527,7 +543,57 @@ describe('canonical Git result integrator', () => {
     });
     writeFileSync(path, JSON.stringify(stored), 'utf8');
 
-    await expect(item.integrator.integrate(item.input)).resolves.toMatchObject({ status: 'integrated' });
+    await expect(item.integrator.integrate(item.input)).resolves.toMatchObject({
+      status: 'integrated',
+      resultHash: record.result.resultHash,
+    });
+  });
+
+  it('resumes a legacy canonical-intent record against its immutable old card payload', async () => {
+    const item = fixture({ nonReview: true, failAfterCardMutation: true });
+    await expect(item.integrator.integrate(item.input)).rejects.toThrow('simulated daemon exit after canonical card mutation');
+    const path = join(item.stateRoot, 'control/canonical-integration.json');
+    const stored = JSON.parse(readFileSync(path, 'utf8')) as {
+      records: Array<Record<string, unknown> & { result: Record<string, unknown>; fingerprint: string }>;
+    };
+    const record = stored.records[0];
+    expect(record.state).toBe('canonical-intent');
+    delete record.reviewContract;
+    const currentResultHash = String(record.result.resultHash);
+    record.result.resultHash = canonicalStageResultHash(
+      record.result as unknown as Parameters<typeof canonicalStageResultHash>[0],
+      'legacy-non-review',
+    );
+    record.fingerprint = fingerprint({
+      operationKey: item.input.operationKey,
+      subject: item.input.subject,
+      runRef: item.input.runRef,
+      stageRef: item.input.stageRef,
+      stageId: item.input.stageId,
+      attemptRef: item.input.attemptRef,
+      canonicalCardRef: item.input.canonicalCardRef,
+      result: record.result,
+    });
+    writeFileSync(path, JSON.stringify(stored), 'utf8');
+    const donePath = join(item.coordinationRoot, ...item.doneRel.split('/'));
+    writeFileSync(
+      donePath,
+      readFileSync(donePath, 'utf8').replace(currentResultHash, String(record.result.resultHash)),
+      'utf8',
+    );
+
+    await expect(item.integrator.integrate(item.input)).resolves.toMatchObject({
+      status: 'integrated',
+      resultHash: record.result.resultHash,
+    });
+    const replayed = JSON.parse(readFileSync(path, 'utf8')) as {
+      records: Array<{ state: string; reviewContract?: unknown; result: { resultHash: string } }>;
+    };
+    expect(replayed.records[0]).toMatchObject({
+      state: 'canonical-committed',
+      result: { resultHash: record.result.resultHash },
+    });
+    expect(replayed.records[0]).not.toHaveProperty('reviewContract');
   });
 
   it('rejects a legacy review outcome whose immutable review contract is absent', async () => {
