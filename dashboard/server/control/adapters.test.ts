@@ -23,6 +23,17 @@ function temporaryRoot(): string {
   return root;
 }
 
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(',')}}`;
+}
+
+function documentFingerprint(value: unknown): string {
+  return createHash('sha256').update(canonicalJson(value), 'utf8').digest('hex');
+}
+
 afterEach(() => {
   for (const path of tempDirs.splice(0)) rmSync(path, { recursive: true, force: true });
 });
@@ -486,6 +497,23 @@ function canonicalInput() {
   };
 }
 
+function nonReviewCanonicalInput() {
+  const reviewed = canonicalInput();
+  const {
+    reviewOutcome: _reviewOutcome,
+    reviewContract: _reviewContract,
+    resultHash: _resultHash,
+    ...input
+  } = reviewed;
+  const canonical = {
+    summary: input.summary,
+    artifacts: input.artifacts,
+    changed: input.changed,
+    checkpoints: input.checkpoints,
+  };
+  return { ...input, resultHash: canonicalStageResultHash(canonical) };
+}
+
 describe('file result integrator', () => {
   it('commits, durably looks up, and exactly replays a canonical result', async () => {
     const stateRoot = temporaryRoot();
@@ -538,6 +566,44 @@ describe('file result integrator', () => {
     stored.results[0].result.reviewOutcome.summary = 'sk-abcdefghijklmnopqrstuvwxyz1234567890';
     writeFileSync(path, JSON.stringify(stored), 'utf8');
     await expect(createFileResultIntegrator({ stateRoot }).lookup(input)).rejects.toThrow('invalid review outcome');
+  });
+
+  it('accepts legacy non-review receipts while preserving current explicit-null replay', async () => {
+    const stateRoot = temporaryRoot();
+    const integrator = createFileResultIntegrator({ stateRoot });
+    const input = nonReviewCanonicalInput();
+    await expect(integrator.integrate(input)).resolves.toMatchObject({ status: 'integrated' });
+    await expect(integrator.integrate(input)).resolves.toMatchObject({ status: 'replayed' });
+
+    const path = join(stateRoot, 'control', 'execution-results.json');
+    const stored = JSON.parse(readFileSync(path, 'utf8')) as {
+      results: Array<Record<string, unknown> & { fingerprint: string }>;
+    };
+    const record = stored.results[0];
+    delete record.reviewContract;
+    const { fingerprint: _fingerprint, integratedAt: _integratedAt, ...legacyFingerprintInput } = record;
+    record.fingerprint = documentFingerprint(legacyFingerprintInput);
+    writeFileSync(path, JSON.stringify(stored), 'utf8');
+
+    const restarted = createFileResultIntegrator({ stateRoot });
+    await expect(restarted.lookup(input)).resolves.toMatchObject({ summary: input.summary });
+    await expect(restarted.integrate(input)).resolves.toMatchObject({ status: 'replayed' });
+    const replayed = JSON.parse(readFileSync(path, 'utf8')) as { results: Array<{ reviewContract?: unknown }> };
+    expect(replayed.results[0]).not.toHaveProperty('reviewContract');
+  });
+
+  it('rejects a legacy review outcome whose immutable review contract is absent', async () => {
+    const stateRoot = temporaryRoot();
+    const integrator = createFileResultIntegrator({ stateRoot });
+    const input = canonicalInput();
+    await integrator.integrate(input);
+    const path = join(stateRoot, 'control', 'execution-results.json');
+    const stored = JSON.parse(readFileSync(path, 'utf8')) as { results: Array<Record<string, unknown>> };
+    delete stored.results[0].reviewContract;
+    writeFileSync(path, JSON.stringify(stored), 'utf8');
+
+    await expect(createFileResultIntegrator({ stateRoot }).lookup(input))
+      .rejects.toThrow('canonical result review contract is absent');
   });
 
   it('persists a later generation separately without reusing the g1 card identity', async () => {
