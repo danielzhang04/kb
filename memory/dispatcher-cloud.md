@@ -145,3 +145,16 @@
 - REMAINS: stale done-in-inbox cards now number 3 (6a5dbb3e, 6a5f0cef, 6a605e40) — recurring;
   a janitor step to sweep state:done cards out of queue/inbox/ would help, but it's outside the
   nightly work order so left untouched again.
+
+## 2026-07-24 nightly-dispatcher run
+- WORKED: full nightly cycle green — preamble OK, sync_skills clean, dashboards regenerated,
+  card 6a63014e-dca8e859 lifecycle inbox→working→done, cost step logged. Quiet/healthy night;
+  no push notification (nothing new broke; all pending items already carry wake cards — silence
+  is correct for "ran and all's well").
+- daemon-dir mirror still CLEAN this run (`sync_daemon_dirs --check` from the main copy: ops
+  matches main). Wake card 6a605ebb-d86dff79 remains only for its "missing script on ops" half.
+- STILL: `scripts/sync_daemon_dirs.py` absent on ops; step-2b literal invocation file-not-founds.
+  Same workaround (extract from origin/main, run temp copy). Left for Daniel per existing wake
+  card — did not self-mirror (script-mirror is a desktop decision).
+- REMAINS: 3 stale done-in-inbox cards (6a5dbb3e, 6a5f0cef, 6a605e40) still unswept — recurring;
+  a janitor sweep would help but is outside the nightly work order, left untouched again.
