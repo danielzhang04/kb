@@ -332,7 +332,12 @@ export function canonicalResultOperationKey(runRef: string, stageId: string, gen
   return generation === 1 ? base : `${base}:g${generation}`;
 }
 
-export function canonicalStageResultHash(result: CanonicalStageResultPayload): string {
+export type CanonicalStageResultHashFormat = 'current' | 'legacy-non-review';
+
+export function canonicalStageResultHash(
+  result: CanonicalStageResultPayload,
+  format: CanonicalStageResultHashFormat = 'current',
+): string {
   const artifacts = [...result.artifacts].map((item) => ({ path: item.path, digest: item.digest })).sort((a, b) => a.path.localeCompare(b.path));
   const changed = [...result.changed].map((item) => ({ path: item.path, digest: item.digest })).sort((a, b) => a.path.localeCompare(b.path));
   const checkpoints = [...result.checkpoints].sort();
@@ -355,7 +360,20 @@ export function canonicalStageResultHash(result: CanonicalStageResultPayload): s
         })),
       }
     : null;
-  return createHash('sha256').update(JSON.stringify({ summary: result.summary, artifacts, changed, checkpoints, reviewOutcome }), 'utf8').digest('hex');
+  if (format === 'legacy-non-review' && result.reviewOutcome !== undefined) {
+    throw new AutomaticExecutionError('legacy canonical result hash cannot encode a review outcome');
+  }
+  const payload = { summary: result.summary, artifacts, changed, checkpoints };
+  return createHash('sha256').update(JSON.stringify(
+    format === 'legacy-non-review' ? payload : { ...payload, reviewOutcome },
+  ), 'utf8').digest('hex');
+}
+
+/** Accept the historical omitted-reviewOutcome hash only for an otherwise non-review payload. */
+export function canonicalStageResultHashMatches(result: CanonicalStageResultPayload, resultHash: string): boolean {
+  return resultHash === canonicalStageResultHash(result)
+    || (result.reviewOutcome === undefined
+      && resultHash === canonicalStageResultHash(result, 'legacy-non-review'));
 }
 
 function validatedReviewOutcome(stage: ProposalStage, outcome: ReviewOutcome): ReviewOutcome | null {
@@ -1134,8 +1152,7 @@ export class AutomaticExecutionEngine {
         stageId: stage.stageId,
       });
       if (!result) continue;
-      const expectedHash = canonicalStageResultHash(result);
-      if (result.resultHash !== expectedHash || !resultIsSafe(proposalStage, {
+      if (!canonicalStageResultHashMatches(result, result.resultHash) || !resultIsSafe(proposalStage, {
         state: 'succeeded', summary: result.summary, usage: { inputTokens: 0, outputTokens: 0, costUsdMicros: 0 },
         artifacts: [...result.artifacts], checkpoints: [...result.checkpoints],
         ...(result.reviewOutcome ? { reviewOutcome: result.reviewOutcome } : {}),
@@ -1457,7 +1474,7 @@ export class AutomaticExecutionEngine {
         operationKey: canonicalResultOperationKey(input.runRef, stage.stageId, generation),
         subject: input.subject, runRef: input.runRef, stageId: stage.stageId,
       });
-      if (!result || result.resultHash !== canonicalStageResultHash(result) || !resultIsSafe(prepared.proposalStage, {
+      if (!result || !canonicalStageResultHashMatches(result, result.resultHash) || !resultIsSafe(prepared.proposalStage, {
         state: 'succeeded', summary: result.summary, usage: { inputTokens: 0, outputTokens: 0, costUsdMicros: 0 },
         artifacts: [...result.artifacts], checkpoints: [...result.checkpoints],
         ...(result.reviewOutcome ? { reviewOutcome: result.reviewOutcome } : {}),
@@ -1494,8 +1511,7 @@ export class AutomaticExecutionEngine {
     });
     if (this.cancellationObserved(input)) return { state: 'stopped', stageId: stage.stageId };
     if (integrated) {
-      const expectedHash = canonicalStageResultHash(integrated);
-      if (integrated.resultHash !== expectedHash || !resultIsSafe(
+      if (!canonicalStageResultHashMatches(integrated, integrated.resultHash) || !resultIsSafe(
         proposalStage,
         {
           state: 'succeeded', summary: integrated.summary, usage: { inputTokens: 0, outputTokens: 0, costUsdMicros: 0 },
@@ -1651,19 +1667,21 @@ export class AutomaticExecutionEngine {
         worktreePath,
       });
       if (this.cancellationObserved(input)) return { state: 'stopped', stageId: stage.stageId };
-      if (integratedResult.resultHash !== resultHash) throw new AutomaticExecutionError('canonical result replay hash differs');
+      if (!canonicalStageResultHashMatches(canonical, integratedResult.resultHash)) {
+        throw new AutomaticExecutionError('canonical result replay hash differs');
+      }
       if ((result.reviewOutcome || reviewedGeneration) && !hasImmutableLineage(integratedResult)) {
         throw new AutomaticExecutionError('reviewed canonical result lacks immutable lineage');
       }
       const completedCanonical: CanonicalStageResult = integratedResult.durability === 'canonical'
         ? {
             summary: canonical.summary, artifacts: canonical.artifacts, changed: canonical.changed, checkpoints: canonical.checkpoints,
-            ...(canonical.reviewOutcome ? { reviewOutcome: canonical.reviewOutcome } : {}), resultHash,
+            ...(canonical.reviewOutcome ? { reviewOutcome: canonical.reviewOutcome } : {}), resultHash: integratedResult.resultHash,
             durability: 'canonical', attemptBaseCommit: integratedResult.attemptBaseCommit, integrationCommit: integratedResult.integrationCommit,
           }
         : {
             summary: canonical.summary, artifacts: canonical.artifacts, changed: canonical.changed, checkpoints: canonical.checkpoints,
-            ...(canonical.reviewOutcome ? { reviewOutcome: canonical.reviewOutcome } : {}), resultHash,
+            ...(canonical.reviewOutcome ? { reviewOutcome: canonical.reviewOutcome } : {}), resultHash: integratedResult.resultHash,
             durability: 'inactive', attemptBaseCommit: null, integrationCommit: null,
           };
       const outcome = await this.finalizeCanonicalSuccess(

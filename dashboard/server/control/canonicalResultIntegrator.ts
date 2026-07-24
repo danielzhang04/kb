@@ -273,7 +273,10 @@ function readState(path: string): IntegrationState {
       || !record.result || typeof record.result.summary !== 'string' || !Array.isArray(record.result.artifacts)
       || !Array.isArray(record.result.changed) || !Array.isArray(record.result.checkpoints)
       || !/^[a-f0-9]{64}$/.test(record.result.resultHash)
-      || canonicalStageResultHash(record.result) !== record.result.resultHash
+      || canonicalStageResultHash(
+        record.result,
+        hasReviewContract ? 'current' : 'legacy-non-review',
+      ) !== record.result.resultHash
       || operations.has(record.operationKey)) {
       throw new CanonicalResultIntegrationError('canonical integration state is invalid');
     }
@@ -495,10 +498,17 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
         const state = readState(statePath);
         let record = state.records.find((item) => item.operationKey === input.operationKey);
         if (record) {
-          const { reviewContract: _reviewContract, ...legacyFingerprintInput } = fingerprintInput;
-          const expectedFingerprint = Object.prototype.hasOwnProperty.call(record, 'reviewContract')
-            ? fingerprint
-            : hash(legacyFingerprintInput);
+          let expectedFingerprint = fingerprint;
+          if (!Object.prototype.hasOwnProperty.call(record, 'reviewContract')) {
+            const { reviewContract: _reviewContract, ...legacyFingerprintInput } = fingerprintInput;
+            expectedFingerprint = hash({
+              ...legacyFingerprintInput,
+              result: {
+                ...result,
+                resultHash: canonicalStageResultHash(result, 'legacy-non-review'),
+              },
+            });
+          }
           if (record.fingerprint !== expectedFingerprint) {
             throw new CanonicalResultIntegrationError('result replay payload differs');
           }
@@ -743,7 +753,7 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
         await verifyCanonical(record);
         record.state = 'canonical-committed';
         saveState(statePath, state);
-        return { status: 'integrated' as const, resultHash: input.resultHash,
+        return { status: 'integrated' as const, resultHash: record.result.resultHash,
           durability: 'canonical' as const, attemptBaseCommit: record.attemptBaseCommit, integrationCommit: record.integrationCommit };
       });
     },
