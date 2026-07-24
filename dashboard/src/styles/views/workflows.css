@@ -212,11 +212,39 @@
 }
 
 .v-workflow-network__canvas {
-  min-height: 32rem;
+  min-height: 46rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   overflow: hidden;
   background: var(--bg-sunken);
+}
+
+.v-workflow-network__legend {
+  max-width: min(31rem, calc(100% - 6rem));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.3rem 0.5rem;
+  color: var(--fg-dim);
+  background: var(--bg-panel);
+  font-size: var(--text-xs);
+  line-height: 1.35;
+}
+
+.v-workflow-handoff .react-flow__edge-path {
+  stroke: var(--fg-faint);
+  stroke-width: 1.5;
+}
+
+.v-workflow-handoff .react-flow__edge-text {
+  fill: var(--fg-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.v-workflow-handoff .react-flow__edge-textbg {
+  fill: var(--bg-panel);
+  stroke: var(--border);
+  stroke-width: 1;
 }
 
 .v-workflow-network__canvas:focus-within,
@@ -245,6 +273,7 @@
 
 .v-workflow-agent--selected { border-left-color: var(--accent-strong); background: var(--accent-quiet); }
 .v-workflow-agent--unassigned { border-style: dashed; }
+.v-workflow-agent__handle { opacity: 0; pointer-events: none; }
 .v-workflow-agent__head, .v-workflow-agent__stages, .v-workflows__governance-summary { display: flex; gap: var(--space-1); flex-wrap: wrap; align-items: center; }
 .v-workflow-agent__head { justify-content: space-between; margin-bottom: var(--space-2); }
 .v-workflow-agent__inspect {
@@ -270,6 +299,9 @@
 }
 .v-workflow-agent__stage:focus-visible, .v-workflow-agent__inspect:focus-visible, .v-workflow-network select:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 2px; }
 .v-workflow-agent__stage:active { cursor: grabbing; }
+.v-workflow-network__handoffs { padding: var(--space-2) 0; border-top: 1px solid var(--border); }
+.v-workflow-network__handoffs h5, .v-workflow-network__handoffs p { margin: 0 0 var(--space-1); }
+.v-workflow-network__handoffs .mc-mono { overflow-wrap: anywhere; }
 .v-workflow-network__stage-detail { padding: var(--space-2) 0; border-top: 1px solid var(--border); }
 .v-workflow-network__stage-detail h5, .v-workflow-network__stage-detail p { margin: 0 0 var(--space-1); }
 .v-workflow-network__actions { display: flex; gap: var(--space-3); align-items: center; flex-wrap: wrap; margin-top: var(--space-3); }
