@@ -1,6 +1,12 @@
 import type { WorkflowRunRequest } from '../write/workflowRun.ts';
 import type { PlanProposal, ProposalHumanGate } from './proposal.ts';
-import { classifyActionRisk, evaluateExecutionPolicy, type PolicyDecision, type PolicyEnvironment } from './policy.ts';
+import {
+  classifyActionRisk,
+  evaluateExecutionPolicy,
+  policyScopeForStage,
+  type PolicyDecision,
+  type PolicyEnvironment,
+} from './policy.ts';
 
 export interface CompileEnvironment {
   policy: PolicyEnvironment;
@@ -74,7 +80,7 @@ export function compileApprovedProposal(
       model: stage.worker.model,
       target: stage.target,
       requiredSkills: stage.requiredSkills,
-      scope: stage.scope,
+      scope: policyScopeForStage(stage.scope, Boolean(stage.review)),
       governanceRefs: proposal.governanceRefs,
       proposalHash,
       approvedHash,

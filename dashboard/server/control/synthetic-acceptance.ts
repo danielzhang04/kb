@@ -47,10 +47,10 @@ export class AcceptanceRefusal extends Error {}
 /** The synthetic run is low-risk and no-op: a single-file write, no web, no spend, no publish. */
 const SYNTHETIC = {
   project: 'kb-ops',
-  action: 'research:web-brief',
+  action: 'report:self-lint',
   target: 'orgs/kb-ops/output',
-  profile: 'research',
-  riskTier: 'T2',
+  profile: 'scanner',
+  riskTier: 'T1',
   body: [
     '## Work order',
     '',
@@ -125,8 +125,8 @@ export interface ThrowawayRepo {
  *   1. `git clone --local` the source (full content, so policy/profiles/orgs load in the clone).
  *   2. Create a local `ops` branch — `assertCoordinationCheckout` refuses any coordination write unless
  *      HEAD is exactly `ops`, and prepare/commit pull/push `origin ops`.
- *   3. RE-POINT `origin` at a fresh throwaway BARE mirror (replacing the `origin` clone set to the REAL
- *      repo) and seed `origin/ops` in it. Now the canonical writeback + reconcile push land in the mirror
+ *   3. RE-POINT `origin` at a fresh throwaway BARE clone (replacing the `origin` clone set to the REAL
+ *      repo) and seed `origin/ops` by updating its ref. Canonical writeback + reconcile pushes land there
  *      and cannot reach the real repo — not by git's incidental `receive.denyCurrentBranch`, but because
  *      the remote is a different repository entirely.
  */
@@ -148,12 +148,16 @@ export function setUpThrowawayRepo(sourceRepo: string): ThrowawayRepo {
   git(clone, ['config', 'protocol.file.allow', 'always']);
   // A local `ops` branch, from the cloned content, is REQUIRED by the coordination seam.
   git(clone, ['checkout', '-B', 'ops']);
-  // Isolate the coordination remote: a fresh bare mirror, replacing the real-repo origin.
-  git(mirror, ['init', '--bare', '--quiet']);
+  // Isolate the coordination remote with a bare clone that already contains the source objects. Do not
+  // seed a freshly initialized bare repo by receiving the entire packed source repository: on Windows,
+  // receive-pack quarantine can fail renaming an incoming pack that is byte-identical to a source pack.
+  // Subsequent acceptance pushes contain only the small synthetic delta.
+  git(sourceRepo, ['clone', '--local', '--bare', '--no-hardlinks', sourceRepo, mirror]);
   git(mirror, ['config', 'protocol.file.allow', 'always']);
   git(clone, ['remote', 'set-url', 'origin', mirror]);
-  // Seed origin/ops in the mirror so `pull --rebase origin ops` has an upstream and pushes land there.
-  git(clone, ['push', '--quiet', 'origin', 'ops']);
+  // Seed origin/ops without a redundant full-repository receive-pack.
+  const sourceHead = git(clone, ['rev-parse', 'HEAD']).trim();
+  git(mirror, ['update-ref', 'refs/heads/ops', sourceHead]);
   return { repoRoot: clone, coordinationRemote: mirror };
 }
 
@@ -247,6 +251,34 @@ export async function main(): Promise<number> {
     if (res.runRef) {
       const finalState = await pollRunTerminal(ctx, res.runRef);
       record(checks, 'run reached a terminal state', ['succeeded', 'failed', 'stopped', 'interrupted'].includes(finalState), `state=${finalState}`);
+
+      // The stage output is committed on its managed integration lineage, not into the coordination
+      // checkout. Verify the canonical record names exactly the approved file and that the isolated mirror
+      // serves its exact content from the recorded integration branch.
+      const integrationState = JSON.parse(readFileSync(
+        join(stateRoot, 'control', 'canonical-integration.json'),
+        'utf8',
+      )) as {
+        records?: Array<{
+          runRef?: string;
+          integrationBranch?: string;
+          result?: { changed?: Array<{ path?: string }> };
+        }>;
+      };
+      const integrationRecord = integrationState.records?.find((record) => record.runRef === res.runRef);
+      const expectedOutputPath = 'orgs/kb-ops/output/synthetic-acceptance.md';
+      const changed = integrationRecord?.result?.changed ?? [];
+      let canonicalOutput = '';
+      if (integrationRecord?.integrationBranch && changed.length === 1 && changed[0]?.path === expectedOutputPath) {
+        canonicalOutput = git(coordinationRemote, ['show', `${integrationRecord.integrationBranch}:${expectedOutputPath}`]);
+      }
+      record(
+        checks,
+        'synthetic stage committed the exact approved output on canonical lineage',
+        canonicalOutput === 'SYNTHETIC-ACCEPTANCE-OK'
+          || canonicalOutput === 'SYNTHETIC-ACCEPTANCE-OK\n'
+          || canonicalOutput === 'SYNTHETIC-ACCEPTANCE-OK\r\n',
+      );
 
       // Canonical writeback: the minted canonical card in queue/done carries a `## Result`.
       const doneDir = join(repoRoot, 'queue', 'done');

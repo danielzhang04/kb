@@ -52,11 +52,12 @@ PASS  synthetic trigger card minted + committed (throwaway repo) — <card-id>
 PASS  gate ON: runAutomatic + controlBroker constructed
 PASS  dispatchClaimedCard launched the run (real claude -p spawned) — outcome=launched status=201
 PASS  run reached a terminal state — state=succeeded
+PASS  synthetic stage committed the exact approved output on canonical lineage
 PASS  canonical card written to queue/done with a ## Result — 1 done card(s) with ## Result
 PASS  trigger card reconciled out of inbox/working — reconciled=true
 PASS  fleet cost ledger row emitted (billing:subscription) — 1 row(s)
 
-ACCEPTANCE PASS — 7/7 checks
+ACCEPTANCE PASS — 8/8 checks
 ```
 
 The `claude -p smoke` is inside `dispatchClaimedCard launched … (real claude -p spawned)` +
@@ -96,5 +97,5 @@ Cross-checks that must hold across ALL faults:
 
 ## Exit criteria
 
-`ACCEPTANCE PASS — 7/7` on the happy path **and** every fault row above shows its expected result. Only then
+`ACCEPTANCE PASS — 8/8` on the happy path **and** every fault row above shows its expected result. Only then
 proceed to `docs/plans/2026-07-20-wave-a-live-fire-runbook.md`.

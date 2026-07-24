@@ -196,7 +196,10 @@ export function compileWorkflowDef(def: WorkflowDef, env: CompileWorkflowEnviron
     managerAssignment = resolved.value;
   }
 
-  const writeTargets = [...new Set(def.stages.map((stage) => stage.target))];
+  // Structured checker stages inspect their subject's immutable canonical result and must not write.
+  // Their authored `target` remains routing/context metadata, not a capability grant. Proposal-level
+  // write scope therefore contains creator targets only.
+  const writeTargets = [...new Set(def.stages.filter((stage) => !stage.review).map((stage) => stage.target))];
   const readScope = effectiveReadScope(def);
   const proposalScope = { read: readScope, write: writeTargets };
 
@@ -225,7 +228,7 @@ export function compileWorkflowDef(def: WorkflowDef, env: CompileWorkflowEnviron
       worker: assignment ? { runtime: assignment.runtime, model: assignment.model } : { runtime: 'claude', model: workerModel as string },
       requiredSkills: [],
       // Minimal-valid stage envelope: the stage reads its org and writes only its own declared target.
-      scope: { read: readScope, write: [stage.target] },
+      scope: { read: readScope, write: stage.review ? [] : [stage.target] },
       artifacts: [],
       checkpoints: [],
       humanGates: [],

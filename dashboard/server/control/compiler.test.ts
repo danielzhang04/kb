@@ -50,6 +50,37 @@ describe('compileApprovedProposal', () => {
     expect(result.value.humanGates).toEqual([{ stageId: 'two', gate: proposal.stages[1].humanGates[0] }]);
   });
 
+  it('classifies a read-only review target against read scope without granting worker writes', () => {
+    const reviewProposal: PlanProposal = {
+      ...proposal,
+      stages: [
+        proposal.stages[0],
+        {
+          ...proposal.stages[1],
+          action: 'review:one',
+          scope: { read: ['dashboard'], write: [] },
+          artifacts: [],
+          checkpoints: [],
+          workflowProfile: 'checker-readonly',
+          review: {
+            subjectStageId: 'one',
+            maxCreatorReworks: 1,
+            criteria: [{ id: 'quality', description: 'Stage one meets its acceptance criteria.' }],
+          },
+        },
+      ],
+    };
+
+    const result = compileApprovedProposal(reviewProposal, 'abc', 'abc', environment);
+    expect(result).toMatchObject({ ok: true });
+    if (!result.ok) return;
+    expect(result.value.stagePolicies[1].decision).toMatchObject({
+      disposition: 'allow',
+      reason: 'inside-approved-envelope',
+    });
+    expect(reviewProposal.stages[1].scope.write).toEqual([]);
+  });
+
   it('marks unapproved work waiting-human and refuses unbound, widened, and artifact-out-of-scope work', () => {
     const unapproved = compileApprovedProposal(proposal, 'new', 'old', environment);
     expect(unapproved).toMatchObject({ ok: true });

@@ -87,7 +87,7 @@ const CHECKER = def([
   'id: checker', 'project: kb-ops', 'title: Checker', 'profile: research',
   'stages:',
   '  - id: create', '    title: Create', '    action: implement:thing', '    target: orgs/kb-ops/output', '    workOrder: Create',
-  '  - id: check', '    title: Check', '    action: review:thing', '    target: orgs/kb-ops/output', '    workOrder: Check', '    dependsOn: [create]',
+  '  - id: check', '    title: Check', '    action: review:thing', '    target: orgs/kb-ops/reviews', '    workOrder: Check', '    dependsOn: [create]',
   '    agentId: fyt-production', '    profileId: worker:claude:claude-sonnet-5', '    workflowProfile: checker-readonly',
   '    review:', '      subjectStageId: create', '      maxCreatorReworks: 1', '      criteria:', '        - id: safety', '          description: No unsafe changes',
   '    completionGate:', '      id: checker-approval', '      kind: approval', '      prompt: Approve checker result?', '      requiresReview: pass',
@@ -198,6 +198,13 @@ describe('compileWorkflowDef', () => {
       }, {},
     ] } });
     if (!compiled.ok) return;
+    expect(compiled.value.stages[1]).toMatchObject({
+      scope: { write: [] },
+      artifacts: [],
+      checkpoints: [],
+    });
+    expect(compiled.value.scope.write).toEqual(['orgs/kb-ops/output']);
+    expect(compiled.value.scope.write).not.toContain('orgs/kb-ops/reviews');
     expect(validatePlanProposal(compiled.value, REGISTRY)).toMatchObject({ ok: false });
     expect(validateServerCompiledPlanProposal(compiled.value, REGISTRY)).toMatchObject({ ok: true });
     const changed = compileWorkflowDef({
