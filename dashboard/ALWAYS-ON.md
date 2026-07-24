@@ -60,8 +60,9 @@ user, with action:
 schtasks /create /tn "pm2-resurrect" /sc onstart /ru <username> /rl highest /tr "pm2 resurrect"
 ```
 
-The pre-logon Task Scheduler option is suitable for the dashboard only. Atlas needs the interactive
-user's microphone and speakers, so resurrect a saved list containing `atlas-worker` at user logon.
+`pm2 resurrect` restores the entire saved list. Once that list contains `atlas-worker`, do not use
+the pre-logon Task Scheduler recipe above: Atlas needs the interactive user's microphone and
+speakers. Resurrect the combined dashboard-and-Atlas list at user logon instead.
 
 To remove the registry-based hook: `pm2-startup uninstall`.
 
