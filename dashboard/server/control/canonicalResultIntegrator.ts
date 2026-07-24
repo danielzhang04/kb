@@ -54,11 +54,32 @@ export interface CanonicalGitResultIntegratorOptions {
   runPy?: PyRunner;
 }
 
+// Mirrors the repository's existing exact-byte card-section grammar: only `## Result` at column 0,
+// with no trailing whitespace, outside balanced column-0 backtick fences is structural. Keep this
+// helper embedded with the fixed scripts because they execute against the independently versioned
+// ops worktree and must not depend on a newly added cards.py API being deployed there first.
+const CANONICAL_RESULT_HEADING_HELPER = `
+def canonical_result_structure(body):
+    offsets = []
+    fenced = False
+    offset = 0
+    for line in body.splitlines(keepends=True):
+        value = line.rstrip("\\r\\n")
+        if value.startswith("\`\`\`"):
+            fenced = not fenced
+        elif not fenced and value == "## Result":
+            offsets.append(offset)
+        offset += len(line)
+    return offsets, fenced
+`.trim();
+
 export const CANONICAL_RESULT_CARD_SCRIPT = `
 import sys, json
 from pathlib import Path
 sys.path.insert(0, "scripts")
 import cards
+
+${CANONICAL_RESULT_HEADING_HELPER}
 
 op = json.loads(sys.argv[1])
 card_id = op["cardRef"]
@@ -80,8 +101,14 @@ if card.meta.get("execution-controller") != "dashboard":
 
 wire = json.dumps(op["result"], sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 block = "## Result\\n\\n\`\`\`kb.canonical-stage-result/v1\\n" + wire + "\\n\`\`\`\\n"
-if "## Result" in card.body:
-    if card.body.rstrip() != (card.body.split("## Result", 1)[0].rstrip() + "\\n\\n" + block).rstrip():
+headings, fenced = canonical_result_structure(card.body)
+if fenced:
+    raise cards.ValidationError("canonical card has unbalanced fenced content")
+if len(headings) > 1:
+    raise cards.ValidationError("canonical card has ambiguous Result sections")
+if headings:
+    prefix = card.body[:headings[0]].rstrip()
+    if card.body.rstrip() != (prefix + "\\n\\n" + block).rstrip():
         raise cards.ValidationError("canonical card already has a different Result")
 else:
     card.body = card.body.rstrip() + "\\n\\n" + block
@@ -109,30 +136,64 @@ print(json.dumps({"oldPath": str(old_path), "resultPath": str(result_path), "cha
 `.trim();
 
 export const CANONICAL_RESULT_VERIFY_SCRIPT = `
-import sys, json
+import sys, json, re, subprocess
 from pathlib import Path
 sys.path.insert(0, "scripts")
 import cards
 
+${CANONICAL_RESULT_HEADING_HELPER}
+
 op = json.loads(sys.argv[1])
 path = Path("queue/done") / (op["cardRef"] + ".md")
-if not path.is_file():
-    raise cards.ValidationError("committed canonical result card is missing")
-card = cards.parse(path)
+git_commit = op.get("gitCommit")
+if git_commit is None:
+    if not path.is_file():
+        raise cards.ValidationError("committed canonical result card is missing")
+    card = cards.parse(path)
+elif re.fullmatch(r"[a-f0-9]{40}(?:[a-f0-9]{24})?", git_commit):
+    candidates = [
+        Path("queue/inbox") / (op["cardRef"] + ".md"),
+        Path("queue/working") / (op["cardRef"] + ".md"),
+        Path("queue/approvals") / (op["cardRef"] + ".md"),
+        path,
+    ]
+    found = []
+    for candidate in candidates:
+        shown = subprocess.run(
+            ["git", "show", git_commit + ":" + candidate.as_posix()],
+            capture_output=True, text=True, encoding="utf-8",
+        )
+        if shown.returncode == 0:
+            found.append((candidate, shown.stdout))
+    if len(found) != 1 or found[0][0] != path:
+        raise cards.ValidationError("published canonical result card is missing or ambiguous")
+    card = cards.parse_text(found[0][1], path)
+else:
+    raise cards.ValidationError("canonical result verification commit is invalid")
 if card.meta.get("id") != op["cardRef"] or card.meta.get("workflow") != op["runRef"]:
     raise cards.ValidationError("committed canonical result identity differs")
 if card.meta.get("execution-controller") != "dashboard" or card.meta.get("state") != "done":
     raise cards.ValidationError("committed canonical result controller or state differs")
+headings, fenced = canonical_result_structure(card.body)
+if fenced:
+    raise cards.ValidationError("committed canonical result has unbalanced fenced content")
 marker = "\`\`\`kb.canonical-stage-result/v1\\n"
-if card.body.count("## Result") != 1 or card.body.count(marker) != 1:
+if len(headings) != 1:
     raise cards.ValidationError("committed canonical Result section is missing or ambiguous")
-start = card.body.index(marker) + len(marker)
-end = card.body.find("\\n\`\`\`", start)
+section = card.body[headings[0]:]
+prefix = "## Result\\n\\n" + marker
+if not section.startswith(prefix):
+    raise cards.ValidationError("committed canonical Result fence is missing")
+start = len(prefix)
+end = section.find("\\n\`\`\`", start)
 if end < 0:
     raise cards.ValidationError("committed canonical Result fence is incomplete")
-wire = json.loads(card.body[start:end])
+wire = json.loads(section[start:end])
 if wire != op["result"]:
     raise cards.ValidationError("committed canonical Result payload differs")
+expected = prefix + json.dumps(op["result"], sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\\n\`\`\`"
+if section.rstrip() != expected:
+    raise cards.ValidationError("committed canonical Result section has extra or non-canonical content")
 print(json.dumps({"path": str(path)}))
 `.trim();
 
@@ -199,6 +260,25 @@ function publicResult(record: IntegrationRecord): CanonicalStageResult {
     attemptBaseCommit: record.attemptBaseCommit,
     integrationCommit: record.integrationCommit,
   });
+}
+
+function canonicalWire(record: IntegrationRecord): CanonicalStageResultPayload & {
+  resultHash: string;
+  attemptBaseCommit: string;
+  integrationCommit: string;
+  runRef: string;
+  stageId: string;
+  attemptRef: string;
+} {
+  if (!record.integrationCommit) throw new CanonicalResultIntegrationError('canonical integration commit is unavailable');
+  return {
+    ...record.result,
+    attemptBaseCommit: record.attemptBaseCommit,
+    integrationCommit: record.integrationCommit,
+    runRef: record.runRef,
+    stageId: record.stageId,
+    attemptRef: record.attemptRef,
+  };
 }
 
 function validatedReviewOutcome(value: unknown, contract: unknown): ReviewOutcome | undefined {
@@ -410,19 +490,18 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
       if (remoteCommit !== record.integrationCommit) throw new CanonicalResultIntegrationError('generation lineage is not remotely durable');
       return;
     }
-    await prepareCoordination(coordinationRoot, opsGit);
-    const path = `queue/done/${record.cardRef}.md`;
-    const current = readFileSync(join(coordinationRoot, ...path.split('/')), 'utf8').replace(/\r\n?/g, '\n');
-    const committed = (await opsGit(coordinationRoot, ['show', `HEAD:${path}`])).replace(/\r\n?/g, '\n');
-    if (current !== committed) {
-      throw new CanonicalResultIntegrationError('committed canonical card no longer matches the integrated result');
+    await opsGit(coordinationRoot, [
+      'fetch', '--no-tags', 'origin', 'refs/heads/ops:refs/remotes/origin/ops',
+    ]);
+    const publishedCommit = (await opsGit(
+      coordinationRoot, ['rev-parse', '--verify', 'refs/remotes/origin/ops^{commit}'],
+    )).trim();
+    if (!SHA.test(publishedCommit)) {
+      throw new CanonicalResultIntegrationError('published coordination commit is not immutable');
     }
-    const wire = {
-      ...record.result, attemptBaseCommit: record.attemptBaseCommit, integrationCommit: record.integrationCommit, runRef: record.runRef,
-      stageId: record.stageId, attemptRef: record.attemptRef,
-    };
+    const wire = canonicalWire(record);
     const verified = runPy(coordinationRoot, CANONICAL_RESULT_VERIFY_SCRIPT, JSON.stringify({
-      cardRef: record.cardRef, runRef: record.runRef, result: wire,
+      cardRef: record.cardRef, runRef: record.runRef, result: wire, gitCommit: publishedCommit,
     }));
     if (verified.exitCode !== 0) {
       throw new CanonicalResultIntegrationError(verified.stderr.trim() || verified.stdout.trim() || 'canonical Result verification failed');
@@ -436,15 +515,25 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
 
   return {
     async lookup(input) {
-      const state = readState(statePath);
-      const record = state.records.find((item) => item.operationKey === input.operationKey);
-      if (!record) return null;
-      if (record.operationKey !== input.operationKey || record.subject !== input.subject || record.runRef !== input.runRef
-        || record.stageId !== input.stageId || record.state !== 'canonical-committed') {
-        throw new CanonicalResultIntegrationError('canonical result lookup identity differs');
-      }
-      await verifyCanonical(record);
-      return publicResult(record);
+      return serialize(async () => {
+        const state = readState(statePath);
+        const record = state.records.find((item) => item.operationKey === input.operationKey);
+        if (!record) return null;
+        if (record.operationKey !== input.operationKey || record.subject !== input.subject || record.runRef !== input.runRef
+          || record.stageId !== input.stageId
+          || (record.state !== 'canonical-intent' && record.state !== 'canonical-committed')) {
+          throw new CanonicalResultIntegrationError('canonical result lookup identity differs');
+        }
+        // The coordination push can succeed before its acknowledgement/final verification returns.
+        // Re-prove the exact journaled card from one immutable fetched ops commit; only that remotely
+        // durable state may promote canonical-intent. Dirty, local-only, unpushed, or different cards fail.
+        await verifyCanonical(record);
+        if (record.state === 'canonical-intent') {
+          record.state = 'canonical-committed';
+          saveState(statePath, state);
+        }
+        return publicResult(record);
+      });
     },
 
     async resolveBase(input) {
@@ -689,20 +778,13 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
         const branch = (await opsGit(coordinationRoot, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim();
         if (branch !== 'ops') throw new CanonicalResultIntegrationError('canonical coordination checkout differs');
         if (!record.integrationCommit) throw new CanonicalResultIntegrationError('integration commit is unavailable');
-        const wire = {
-          ...record.result,
-          attemptBaseCommit: record.attemptBaseCommit,
-          integrationCommit: record.integrationCommit,
-          runRef: input.runRef,
-          stageId: input.stageId,
-          attemptRef: input.attemptRef,
-        };
-        const encoded = JSON.stringify({ runRef: input.runRef, cardRef: input.canonicalCardRef, result: wire });
+        const wire = canonicalWire(record);
+        const encoded = JSON.stringify({ runRef: record.runRef, cardRef: record.cardRef, result: wire });
         if (Buffer.byteLength(encoded) > MAX_RESULT_BYTES) throw new CanonicalResultIntegrationError('canonical card result exceeds its bound');
         const card = runPy(coordinationRoot, CANONICAL_RESULT_CARD_SCRIPT, encoded);
         if (card.exitCode !== 0) throw new CanonicalResultIntegrationError(card.stderr.trim() || card.stdout.trim() || 'canonical card mutation failed');
         const parsed = JSON.parse(card.stdout.trim()) as { oldPath: string; resultPath: string; changed: boolean };
-        const resultPath = `queue/done/${input.canonicalCardRef}.md`;
+        const resultPath = `queue/done/${record.cardRef}.md`;
         if (parsed.resultPath.replace(/\\/g, '/') !== resultPath || typeof parsed.changed !== 'boolean') {
           throw new CanonicalResultIntegrationError('canonical card mutation returned a mismatched result');
         }

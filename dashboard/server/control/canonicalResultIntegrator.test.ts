@@ -214,6 +214,7 @@ function fixture(options: {
   let remainingPushFailures = options.pushFailsOnce ? 1 : 0;
   let coordinationIndexDirty = options.coordinationIndexDirty ?? false;
   let coordinationCommitted = false;
+  let coordinationPushed = false;
   let failCanonicalRecovery = options.failAfterCardMutation ?? false;
   const coordinationCalls: string[][] = [];
   const coordinationGit: GitRunner = (_cwd, fullArgs) => {
@@ -227,6 +228,7 @@ function fixture(options: {
     expect(fullArgs).toContain('--literal-pathspecs');
     const args = fullArgs.slice(fullArgs.indexOf('--literal-pathspecs') + 1);
     coordinationCalls.push([...args]);
+    if (args[0] === 'rev-parse' && args[1] === '--verify') return `${'e'.repeat(40)}\n`;
     if (args[0] === 'rev-parse') return 'ops\n';
     if (args[0] === 'diff' && args[1] === '--cached') return coordinationIndexDirty ? 'queue/inbox/residue.md\0' : '';
     if (args[0] === 'diff' && args[1] === '--name-only') {
@@ -243,9 +245,13 @@ function fixture(options: {
       coordinationCommitted = true;
       return '';
     }
-    if (args[0] === 'push' && (pushFails || remainingPushFailures > 0)) {
-      if (remainingPushFailures > 0) remainingPushFailures -= 1;
-      throw new Error('push refused');
+    if (args[0] === 'push') {
+      if (pushFails || remainingPushFailures > 0) {
+        if (remainingPushFailures > 0) remainingPushFailures -= 1;
+        throw new Error('push refused');
+      }
+      coordinationPushed = true;
+      return '';
     }
     if (args[0] === 'show') return readFileSync(join(coordinationRoot, ...doneRel.split('/')), 'utf8');
     return '';
@@ -257,12 +263,20 @@ function fixture(options: {
   const runPy: PyRunner = (_cwd, code, jsonArg) => {
     if (code === CANONICAL_RESULT_VERIFY_SCRIPT) {
       if (verifyFails) return { exitCode: 1, stdout: '', stderr: 'committed canonical Result payload differs' };
-      const verify = JSON.parse(jsonArg) as { cardRef: string; runRef: string; result: Record<string, unknown> };
+      const verify = JSON.parse(jsonArg) as {
+        cardRef: string; runRef: string; result: Record<string, unknown>; gitCommit?: string;
+      };
+      if (verify.gitCommit && !coordinationPushed) {
+        return { exitCode: 1, stdout: '', stderr: 'published canonical result card is missing or ambiguous' };
+      }
       const cardText = readFileSync(join(coordinationRoot, ...doneRel.split('/')), 'utf8');
       const marker = '```kb.canonical-stage-result/v1\n';
       const start = cardText.indexOf(marker) + marker.length;
       const end = cardText.indexOf('\n```', start);
-      expect(verify).toEqual({ cardRef, runRef, result: JSON.parse(cardText.slice(start, end)) });
+      expect(verify).toEqual({
+        cardRef, runRef, result: JSON.parse(cardText.slice(start, end)),
+        ...(verify.gitCommit ? { gitCommit: 'e'.repeat(40) } : {}),
+      });
       return { exitCode: 0, stdout: JSON.stringify({ path: doneRel }), stderr: '' };
     }
     expect(code).toBe(CANONICAL_RESULT_CARD_SCRIPT);
@@ -329,7 +343,8 @@ describe('canonical Git result integrator', () => {
     const cherryPick = item.gitCalls.findIndex((call) => call.args[0] === 'cherry-pick');
     const canonicalCommit = item.coordinationCalls.findIndex((args) => args[0] === 'commit');
     const push = item.coordinationCalls.findIndex((args) => args[0] === 'push');
-    const reread = item.coordinationCalls.findIndex((args) => args[0] === 'show');
+    const reread = item.coordinationCalls.findIndex((args) =>
+      args[0] === 'fetch' && args.includes('refs/heads/ops:refs/remotes/origin/ops'));
     expect(cherryPick).toBeGreaterThan(-1);
     expect(canonicalCommit).toBeGreaterThan(-1);
     expect(push).toBeGreaterThan(canonicalCommit);
@@ -410,7 +425,7 @@ describe('canonical Git result integrator', () => {
   it('does not expose lookup or dependency base until canonical push and reread succeed', async () => {
     const item = fixture({ pushFails: true });
     await expect(item.integrator.integrate(item.input)).rejects.toThrow('push refused');
-    await expect(item.integrator.lookup(item.input)).rejects.toThrow('lookup identity differs');
+    await expect(item.integrator.lookup(item.input)).rejects.toThrow('published canonical result card is missing or ambiguous');
     await expect(item.integrator.resolveBase?.({
       operationKey: 'base:run-1:stage-2', subject: 'operator', runRef: 'run-1', stageId: 'stage-2', dependencyStageIds: ['stage-1'],
     })).rejects.toThrow('lacks a committed canonical result');
@@ -444,6 +459,43 @@ describe('canonical Git result integrator', () => {
       .toBe('canonical-intent');
     await expect(item.integrator.integrate(item.input)).resolves.toMatchObject({ status: 'integrated' });
     expect(item.coordinationCalls.filter((args) => args[0] === 'commit')).toHaveLength(1);
+  });
+
+  it('promotes a pushed canonical-intent result through lookup without replaying its mutable input', async () => {
+    const item = fixture({ verifyFails: true });
+    await expect(item.integrator.integrate(item.input)).rejects.toThrow('committed canonical Result payload differs');
+    const path = join(item.stateRoot, 'control/canonical-integration.json');
+    expect(JSON.parse(readFileSync(path, 'utf8')).records[0].state).toBe('canonical-intent');
+    expect(item.coordinationCalls.filter((args) => args[0] === 'commit')).toHaveLength(1);
+    expect(item.coordinationCalls.filter((args) => args[0] === 'push')).toHaveLength(1);
+
+    item.setVerifyFails(false);
+    await expect(item.integrator.lookup({
+      operationKey: item.input.operationKey,
+      subject: item.input.subject,
+      runRef: item.input.runRef,
+      stageId: item.input.stageId,
+    })).resolves.toMatchObject({
+      summary: item.input.summary,
+      resultHash: item.input.resultHash,
+      durability: 'canonical',
+    });
+    expect(JSON.parse(readFileSync(path, 'utf8')).records[0].state).toBe('canonical-committed');
+    expect(item.cardMutations()).toBe(1);
+    expect(item.coordinationCalls.filter((args) => args[0] === 'commit')).toHaveLength(1);
+  });
+
+  it('does not promote a local-only canonical-intent card through lookup', async () => {
+    const item = fixture({ failAfterCardMutation: true });
+    await expect(item.integrator.integrate(item.input)).rejects.toThrow('simulated daemon exit after canonical card mutation');
+    await expect(item.integrator.lookup({
+      operationKey: item.input.operationKey,
+      subject: item.input.subject,
+      runRef: item.input.runRef,
+      stageId: item.input.stageId,
+    })).rejects.toThrow();
+    const path = join(item.stateRoot, 'control/canonical-integration.json');
+    expect(JSON.parse(readFileSync(path, 'utf8')).records[0].state).toBe('canonical-intent');
   });
 
   it('rejects a direct caller that supplies a malformed review outcome before journaling', async () => {
