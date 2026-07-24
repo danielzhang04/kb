@@ -5,7 +5,7 @@ import { visibleAssistantText } from '../composer/publicTimeline.ts';
 import { defaultGitRunner, prepareCoordination } from '../write/branch.ts';
 import { withOpsTransaction } from '../write/asyncGit.ts';
 import { setCardRouting } from '../write/cardRouting.ts';
-import { activateManagedRootCards } from '../write/workflowRun.ts';
+import { activateManagedRootCards, workflowCardId } from '../write/workflowRun.ts';
 import { defaultPreambleRunner } from '../write/preambleGate.ts';
 import {
   createProposalRevision as protocolRevision,
@@ -43,6 +43,17 @@ function sendResult<T>(reply: FastifyReply, result: ControlResult<T>, success = 
 
 function subject(req: FastifyRequest): string | null {
   return verifiedSession(req)?.claims.sub ?? null;
+}
+
+class CompletedRootProvenanceError extends Error {}
+
+class ActivationPreparationError extends Error {
+  constructor(
+    readonly statusCode: 409 | 500,
+    readonly body: { error: string; detail?: string },
+  ) {
+    super(body.error);
+  }
 }
 
 /** Authenticated app-local proposal/run control plane. Queue cards remain canonical execution truth. */
@@ -756,67 +767,83 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       defaultWorkers: defaultWorkers(ctx.repoRoot),
     });
     if (!compiled.ok) return reply.code(409).send({ error: compiled.reason, detail: compiled.detail });
-    try {
-      await auditFn(ctx)(ctx.repoRoot, {
-        action: 'control-run-activate-authorize', owner: sub, target: runRef, riskTier: 'T3',
-        result: `authorized:${runRef}:${stored.value.hash}`,
-        detail: { runRef, proposalHash: stored.value.hash, managerGeneration: detail.value.run.managerGeneration },
-      }, { runGit: ctx.opsGit, now: ctx.now });
-    } catch {
-      return reply.code(500).send({ error: 'activation-audit-reconciliation-required' });
-    }
-    const postAuditPreamble = (ctx.runPreamble ?? defaultPreambleRunner)(ctx.repoRoot);
-    if (postAuditPreamble.exitCode !== 0 || !postAuditPreamble.stdout.includes('PREAMBLE OK')) {
-      return reply.code(409).send({ error: 'post-audit-preamble-refused' });
-    }
-    const postAuditProposal = validateServerCompiledPlanProposal(stored.value.snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
-    const postAuditCompiled = postAuditProposal.ok
-      ? compileApprovedProposal(postAuditProposal.value, stored.value.hash, stored.value.hash, {
-          policy: loadPolicyEnvironment(ctx.repoRoot, postAuditProposal.value.project, postAuditProposal.value.governanceRefs),
-          defaultWorkers: defaultWorkers(ctx.repoRoot),
-        })
-      : null;
-    if (!postAuditCompiled?.ok
-      || JSON.stringify(postAuditCompiled.value.stagePolicies) !== JSON.stringify(compiled.value.stagePolicies)) {
-      return reply.code(409).send({ error: 'activation-policy-changed' });
-    }
     const rootStageIds = new Set(proposal.value.stages.filter((stage) => stage.dependsOn.length === 0).map((stage) => stage.id));
-    const rootCards = detail.value.stages
-      .filter((stage) => rootStageIds.has(stage.stageId))
+    const rootStages = detail.value.stages.filter((stage) => rootStageIds.has(stage.stageId));
+    const rootCards = rootStages
       .map((stage) => stage.canonicalCardRef)
       .filter((cardRef): cardRef is string => typeof cardRef === 'string' && cardRef.length > 0);
-    if (rootCards.length !== rootStageIds.size) {
+    if (rootCards.length !== rootStageIds.size || new Set(rootCards).size !== rootCards.length) {
       return reply.code(409).send({ error: 'managed-root-card-binding-lost' });
     }
+    const rootByCard = new Map(rootStages.map((stage) => [stage.canonicalCardRef, stage]));
     let claimed = receipt.value ?? null;
     try {
       await (ctx.activateManagedRoots ?? activateManagedRootCards)({
         repoRoot: ctx.repoRoot, runRef, cardRefs: rootCards, runPy: ctx.runPy,
         runGit: ctx.opsGit ?? defaultGitRunner,
-        authorizeAfterPrepare: () => {
-          const current = ctx.controlStore.getRun(sub, runRef);
-          const exactPending = claimed?.phase === 'claimed' || claimed?.phase === 'roots-activated';
-          if (!current.ok
-            || (!exactPending && current.value.run.version !== activationInput.expectedRunVersion)
-            || current.value.run.managerGeneration !== activationInput.expectedManagerGeneration
-            || current.value.run.publicationState !== 'published'
-            || (exactPending
-              ? current.value.run.state !== 'waiting-human' && current.value.run.state !== 'recovering'
-              : current.value.run.state !== 'waiting-human')
-            || current.value.humanRequests.length === 0
-            || current.value.humanRequests.some((request) => !acceptsBoundary(request))) {
-            throw new Error('run activation state changed before canonical root activation');
+        verifyCompletedRoots: async ({ cardRefs }) => {
+          if (!ctx.verifyCanonicalResult) throw new CompletedRootProvenanceError('canonical result verifier is unavailable');
+          for (const cardRef of cardRefs) {
+            const stage = rootByCard.get(cardRef);
+            let verified = false;
+            try {
+              verified = !!stage && stage.currentGeneration === 1 && workflowCardId(runRef, stage.stageId) === cardRef
+                && await ctx.verifyCanonicalResult({ subject: sub, runRef, stageId: stage.stageId });
+            } catch {
+              throw new CompletedRootProvenanceError('completed managed root provenance is not canonical');
+            }
+            if (!verified) {
+              throw new CompletedRootProvenanceError('completed managed root provenance is not canonical');
+            }
           }
-          const currentProposal = validateServerCompiledPlanProposal(stored.value.snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
-          const currentCompiled = currentProposal.ok
-            ? compileApprovedProposal(currentProposal.value, stored.value.hash, stored.value.hash, {
-                policy: loadPolicyEnvironment(ctx.repoRoot, currentProposal.value.project, currentProposal.value.governanceRefs),
-                defaultWorkers: defaultWorkers(ctx.repoRoot),
-              })
-            : null;
-          if (!currentCompiled?.ok
-            || JSON.stringify(currentCompiled.value.stagePolicies) !== JSON.stringify(compiled.value.stagePolicies)) {
-            throw new Error('managed root activation policy changed');
+        },
+        authorizeAfterPrepare: async () => {
+          const exactPending = claimed?.phase === 'claimed' || claimed?.phase === 'roots-activated';
+          const assertCurrentState = (): void => {
+            const current = ctx.controlStore.getRun(sub, runRef);
+            if (!current.ok
+              || (!exactPending && current.value.run.version !== activationInput.expectedRunVersion)
+              || current.value.run.managerGeneration !== activationInput.expectedManagerGeneration
+              || current.value.run.publicationState !== 'published'
+              || (exactPending
+                ? current.value.run.state !== 'waiting-human' && current.value.run.state !== 'recovering'
+                : current.value.run.state !== 'waiting-human')
+              || current.value.humanRequests.length === 0
+              || current.value.humanRequests.some((request) => !acceptsBoundary(request))) {
+              throw new Error('run activation state changed before canonical root activation');
+            }
+          };
+          const currentPolicyMatches = (): boolean => {
+            const currentProposal = validateServerCompiledPlanProposal(stored.value.snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
+            const currentCompiled = currentProposal.ok
+              ? compileApprovedProposal(currentProposal.value, stored.value.hash, stored.value.hash, {
+                  policy: loadPolicyEnvironment(ctx.repoRoot, currentProposal.value.project, currentProposal.value.governanceRefs),
+                  defaultWorkers: defaultWorkers(ctx.repoRoot),
+                })
+              : null;
+            return !!currentCompiled?.ok
+              && JSON.stringify(currentCompiled.value.stagePolicies) === JSON.stringify(compiled.value.stagePolicies);
+          };
+          assertCurrentState();
+          if (!currentPolicyMatches()) {
+            throw new ActivationPreparationError(409, { error: 'activation-policy-changed' });
+          }
+          try {
+            await auditFn(ctx)(ctx.repoRoot, {
+              action: 'control-run-activate-authorize', owner: sub, target: runRef, riskTier: 'T3',
+              result: `authorized:${runRef}:${stored.value.hash}`,
+              detail: { runRef, proposalHash: stored.value.hash, managerGeneration: detail.value.run.managerGeneration },
+            }, { runGit: ctx.opsGit, now: ctx.now });
+          } catch {
+            throw new ActivationPreparationError(500, { error: 'activation-audit-reconciliation-required' });
+          }
+          const postAuditPreamble = (ctx.runPreamble ?? defaultPreambleRunner)(ctx.repoRoot);
+          if (postAuditPreamble.exitCode !== 0 || !postAuditPreamble.stdout.includes('PREAMBLE OK')) {
+            throw new ActivationPreparationError(409, { error: 'post-audit-preamble-refused' });
+          }
+          assertCurrentState();
+          if (!currentPolicyMatches()) {
+            throw new ActivationPreparationError(409, { error: 'activation-policy-changed' });
           }
           const claim = ctx.controlStore.claimRunActivation(sub, runRef, activationInput);
           if (!claim.ok) throw new Error(claim.detail);
@@ -824,6 +851,12 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
         },
       });
     } catch (error) {
+      if (error instanceof CompletedRootProvenanceError) {
+        return reply.code(409).send({ error: 'completed-root-provenance-refused' });
+      }
+      if (error instanceof ActivationPreparationError) {
+        return reply.code(error.statusCode).send(error.body);
+      }
       if (claimed) ctx.controlStore.failRunActivation(sub, runRef, activationInput);
       return reply.code(409).send({
         error: 'canonical-activation-failed', detail: error instanceof Error ? error.message : String(error),

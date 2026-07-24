@@ -77,7 +77,8 @@ export function makeSurfaceContext(
   const activationOverridden = overrides.controlBroker !== undefined
     || overrides.runAutomatic !== undefined
     || overrides.cancelAutomatic !== undefined
-    || overrides.containManagerStart !== undefined;
+    || overrides.containManagerStart !== undefined
+    || overrides.verifyCanonicalResult !== undefined;
   const build = activation.build ?? buildActivatedExecution;
   const activated = activationOverridden
     ? null
@@ -119,6 +120,7 @@ export function makeSurfaceContext(
     runAutomatic: overrides.runAutomatic ?? activated?.runAutomatic,
     cancelAutomatic: overrides.cancelAutomatic ?? activated?.cancelAutomatic,
     containManagerStart: overrides.containManagerStart ?? activated?.containManagerStart,
+    verifyCanonicalResult: overrides.verifyCanonicalResult ?? activated?.verifyCanonicalResult,
     runControlTransactions: overrides.runControlTransactions ?? new RunControlTransactions(),
     managerStartAckTimeoutMs: overrides.managerStartAckTimeoutMs ?? DEFAULT_MANAGER_START_ACK_TIMEOUT_MS,
     triggerRunner: overrides.triggerRunner,
