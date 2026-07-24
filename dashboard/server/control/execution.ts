@@ -2,7 +2,13 @@ import { createHash } from 'node:crypto';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import type { ControlPlaneStore } from './store.ts';
 import type { Attempt, ManagedSession, RunDetail, Stage } from './types.ts';
-import { classifyActionRisk, evaluateExecutionPolicy, type ExecutionProfile, type PolicyEnvironment } from './policy.ts';
+import {
+  classifyActionRisk,
+  evaluateExecutionPolicy,
+  policyScopeForStage,
+  type ExecutionProfile,
+  type PolicyEnvironment,
+} from './policy.ts';
 import { isSafeRepoRelativePath, proposalContentHash, type PlanProposal, type ProposalStage, type ResolvedAgentAssignment } from './proposal.ts';
 import type { AssignedAgentResolver, ResolvedAssignedAgent } from './agentAssignmentResolver.ts';
 import { parseReviewOutcome, type ReviewContract, type ReviewOutcome } from './reviewOutcome.ts';
@@ -1216,9 +1222,7 @@ export class AutomaticExecutionEngine {
       model: routing.model,
       target: proposalStage.target,
       requiredSkills: proposalStage.requiredSkills,
-      // A checker is deliberately read-only. Its target is therefore bounded by its read scope for
-      // policy classification; the actual worker still receives the immutable empty write scope.
-      scope: proposalStage.review ? { read: proposalStage.scope.read, write: proposalStage.scope.read } : proposalStage.scope,
+      scope: policyScopeForStage(proposalStage.scope, Boolean(proposalStage.review)),
       governanceRefs: input.proposal.governanceRefs,
       proposalHash: this.detail(input).run.proposalHash,
       approvedHash: this.detail(input).run.proposalHash,

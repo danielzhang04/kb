@@ -15,6 +15,15 @@ export interface ApprovedScope {
   write: string[];
 }
 
+/**
+ * Project a stage's capability scope into the scope used only for target-policy classification.
+ * Read-only stages must still prove that their target is inside approved readable territory, while
+ * the worker continues to receive the original empty write scope.
+ */
+export function policyScopeForStage(scope: ApprovedScope, readOnly: boolean): ApprovedScope {
+  return readOnly ? { read: [...scope.read], write: [...scope.read] } : scope;
+}
+
 export interface PolicyRequest {
   project: string;
   riskTier: 'T1' | 'T2' | 'T3';
