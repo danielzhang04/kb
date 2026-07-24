@@ -282,3 +282,35 @@ Have a human review and merge PR #76 only if the production-logic diff is accept
   attempted. The only remaining acceptance item is a human visual pointer-drag check because this
   terminal had no connected browser backend.
 
+## Session checkpoint 2026-07-24 (accepted-run Resume deployed; live click pending)
+
+- Corrected the supplied resume path to the Git-registered worktree
+  `C:/Users/danie/kb/_private/codex-worktrees/dashboard-resume-accepted-run` and read its binding
+  handoff. PR #89 was already human-merged: refreshed `origin/main` is merge commit `a6fea53` and
+  contains implementation `649c9f7` plus handoff `3ef2ce4`.
+- Verified `dashboard-postmerge-live` was clean and fast-forwardable, advanced it from `b7c772e` to
+  `a6fea53`, and passed dashboard typecheck and production build. The only build note was the known
+  chunk-size advisory.
+- Confirmed PM2 already stored the deployment worktree's exact script path/cwd. Used plain
+  `pm2 restart kb-dashboard` without `--update-env`; `kb-dashboard` and the independent
+  `atlas-worker` remained online. `/healthz`, `/`, and `/api/index` returned 200. The error log's
+  last write was 2026-07-23 23:24, before this deployment; the output log recorded the fresh
+  2026-07-24 13:40 listen event.
+- Read-only durable preflight found the exact stranded run unchanged and Resume-eligible:
+  `run-87d8aef2-f78b-4e78-ba00-323c67cc8fc6`, proposal
+  `proposal-82000862-688a-4570-b713-8ccae2d8dfa8`, hash
+  `d33265bf6d55c4455ff7b22f0f028b9ce009809d61d70e14aa0e42b3be933cf8`, published
+  `waiting-human`, version 5, one `report` stage at `waiting-human`, interrupted generation-1
+  Manager, interrupted attempt, zero activation receipts, and one resolved `intervention` request
+  with decision `responded`.
+- Two independently requested lower-tier audits confirmed their actual responding model was
+  `gpt-5.6-terra` (orchestrator: `gpt-5.6-sol`). Both accepted the corrected post-merge/live
+  checklist and its stop-on-error containment.
+- Live Resume was not clicked: browser discovery returned no available backend. No raw authenticated
+  endpoint was substituted and no credential/session material was inspected. Exact next step:
+  connect a browser to this terminal, open the stranded run, verify `Resume run` is present and the
+  manual Manager-successor action is absent, snapshot the same public identities, then click Resume
+  exactly once. On `automatic-runtime-not-activated`, stop and ask Daniel to re-arm the watched
+  runtime; on any other mismatch/error, preserve the run and diagnose without retry, relaunch, or a
+  manual successor.
+
