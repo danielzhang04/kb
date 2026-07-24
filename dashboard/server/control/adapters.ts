@@ -417,7 +417,8 @@ interface ResultRecord {
   stageId: string;
   attemptRef: string;
   canonicalCardRef: string | null;
-  reviewContract: ReviewContract | null;
+  /** Absent only on legacy non-review v1 records written before review contracts were journaled. */
+  reviewContract?: ReviewContract | null;
   result: CanonicalStageResultPayload & { resultHash: string };
   integratedAt: string;
 }
@@ -535,7 +536,10 @@ function assertResultDocument(value: unknown): asserts value is ResultDocument {
   for (const item of value.results) {
     if (!item || typeof item !== 'object' || Array.isArray(item)) throw new ExecutionAdapterError('invalid canonical result record');
     const record = item as unknown as ResultRecord;
-    if (!Object.prototype.hasOwnProperty.call(record, 'reviewContract')) throw new ExecutionAdapterError('canonical result review contract is absent');
+    const hasReviewContract = Object.prototype.hasOwnProperty.call(record, 'reviewContract');
+    if (!hasReviewContract && record.result && Object.prototype.hasOwnProperty.call(record.result, 'reviewOutcome')) {
+      throw new ExecutionAdapterError('canonical result review contract is absent');
+    }
     requireOperationKey(record.operationKey);
     if (operations.has(record.operationKey) || !SHA256.test(record.fingerprint)
       || !record.result || !SHA256.test(record.result.resultHash)) {
@@ -550,7 +554,10 @@ function assertResultDocument(value: unknown): asserts value is ResultDocument {
     if (!validCanonicalCardRef(record.operationKey, record.runRef, record.stageId, record.canonicalCardRef)) {
       throw new ExecutionAdapterError('invalid canonical result card identity');
     }
-    const reviewOutcome = validatedReviewOutcome(record.result.reviewOutcome, record.reviewContract);
+    const reviewOutcome = validatedReviewOutcome(
+      record.result.reviewOutcome,
+      hasReviewContract ? record.reviewContract : undefined,
+    );
     if (!record.result.summary || record.result.summary.includes('\0')
       || Buffer.byteLength(record.result.summary, 'utf8') > MAX_RESULT_SUMMARY_BYTES
       || redactSensitiveText(record.result.summary) !== record.result.summary) {
@@ -566,7 +573,7 @@ function assertResultDocument(value: unknown): asserts value is ResultDocument {
     if (canonicalStageResultHash(canonicalResult) !== record.result.resultHash) {
       throw new ExecutionAdapterError('stored canonical result hash does not match its payload');
     }
-    if (record.fingerprint !== digest({
+    const fingerprintInput = {
       operationKey: record.operationKey,
       subject: record.subject,
       runRef: record.runRef,
@@ -574,9 +581,12 @@ function assertResultDocument(value: unknown): asserts value is ResultDocument {
       stageId: record.stageId,
       attemptRef: record.attemptRef,
       canonicalCardRef: record.canonicalCardRef,
-      reviewContract: record.reviewContract,
       result: { ...canonicalResult, resultHash: record.result.resultHash },
-    })) throw new ExecutionAdapterError('stored canonical result fingerprint differs');
+    };
+    const storedFingerprint = digest(hasReviewContract
+      ? { ...fingerprintInput, reviewContract: record.reviewContract }
+      : fingerprintInput);
+    if (record.fingerprint !== storedFingerprint) throw new ExecutionAdapterError('stored canonical result fingerprint differs');
     operations.add(record.operationKey);
   }
 }
@@ -878,10 +888,15 @@ export function createFileResultIntegrator(options: FileResultIntegratorOptions)
         result,
       };
       const fingerprint = digest(normalizedInput);
+      const { reviewContract: _reviewContract, ...legacyNormalizedInput } = normalizedInput;
+      const legacyFingerprint = digest(legacyNormalizedInput);
       return document.mutate((state) => {
         const byOperation = state.results.find((item) => item.operationKey === input.operationKey);
         if (byOperation) {
-          if (byOperation.fingerprint !== fingerprint || byOperation.result.resultHash !== input.resultHash) {
+          const expectedFingerprint = Object.prototype.hasOwnProperty.call(byOperation, 'reviewContract')
+            ? fingerprint
+            : legacyFingerprint;
+          if (byOperation.fingerprint !== expectedFingerprint || byOperation.result.resultHash !== input.resultHash) {
             throw new ExecutionAdapterError('canonical result replay differs from the committed payload');
           }
           return { status: 'replayed' as const, resultHash: byOperation.result.resultHash, durability: 'inactive' as const };

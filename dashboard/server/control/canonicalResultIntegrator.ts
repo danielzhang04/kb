@@ -26,7 +26,8 @@ interface IntegrationRecord {
   stageId: string;
   attemptRef: string;
   cardRef: string | null;
-  reviewContract: ReviewContract | null;
+  /** Absent only on legacy non-review v1 records written before review contracts were journaled. */
+  reviewContract?: ReviewContract | null;
   integrationBranch: string;
   attemptBaseCommit: string;
   attemptCommit: string | null;
@@ -251,7 +252,11 @@ function readState(path: string): IntegrationState {
   }
   const operations = new Set<string>();
   for (const record of value.records) {
-    if (!Object.prototype.hasOwnProperty.call(record, 'reviewContract')) {
+    const hasReviewContract = Object.prototype.hasOwnProperty.call(record, 'reviewContract');
+    // reviewContract was added to the v1 journal after non-review results were already durable.
+    // Preserve that legacy wire shape because its omission is part of the immutable fingerprint.
+    if (!hasReviewContract && record.result && typeof record.result === 'object'
+      && Object.prototype.hasOwnProperty.call(record.result, 'reviewOutcome')) {
       throw new CanonicalResultIntegrationError('canonical integration review contract is absent');
     }
     const branch = `codex/managed-${createHash('sha256').update(record.runRef ?? '').digest('hex').slice(0, 24)}`;
@@ -272,7 +277,7 @@ function readState(path: string): IntegrationState {
       || operations.has(record.operationKey)) {
       throw new CanonicalResultIntegrationError('canonical integration state is invalid');
     }
-    validatedReviewOutcome(record.result.reviewOutcome, record.reviewContract);
+    validatedReviewOutcome(record.result.reviewOutcome, hasReviewContract ? record.reviewContract : undefined);
     normalizeArtifacts(record.result.artifacts);
     normalizeArtifacts(record.result.changed);
     normalizeCheckpoints(record.result.checkpoints);
@@ -479,16 +484,25 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
           resultHash: input.resultHash,
         };
         if (canonicalStageResultHash(result) !== input.resultHash) throw new CanonicalResultIntegrationError('result hash differs');
-        const fingerprint = hash({
+        const fingerprintInput = {
           operationKey: input.operationKey, subject: input.subject, runRef: input.runRef,
           stageRef: input.stageRef, stageId: input.stageId, attemptRef: input.attemptRef,
           canonicalCardRef: input.canonicalCardRef,
           reviewContract: reviewOutcome ? structuredClone(input.reviewContract as ReviewContract) : null,
           result,
-        });
+        };
+        const fingerprint = hash(fingerprintInput);
         const state = readState(statePath);
         let record = state.records.find((item) => item.operationKey === input.operationKey);
-        if (record && record.fingerprint !== fingerprint) throw new CanonicalResultIntegrationError('result replay payload differs');
+        if (record) {
+          const { reviewContract: _reviewContract, ...legacyFingerprintInput } = fingerprintInput;
+          const expectedFingerprint = Object.prototype.hasOwnProperty.call(record, 'reviewContract')
+            ? fingerprint
+            : hash(legacyFingerprintInput);
+          if (record.fingerprint !== expectedFingerprint) {
+            throw new CanonicalResultIntegrationError('result replay payload differs');
+          }
+        }
         if (record?.state === 'canonical-committed') {
           await verifyCanonical(record);
           return { status: 'replayed' as const, resultHash: record.result.resultHash,
