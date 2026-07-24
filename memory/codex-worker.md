@@ -313,4 +313,7 @@ Have a human review and merge PR #76 only if the production-logic diff is accept
   exactly once. On `automatic-runtime-not-activated`, stop and ask Daniel to re-arm the watched
   runtime; on any other mismatch/error, preserve the run and diagnose without retry, relaunch, or a
   manual successor.
+- Continuation check: a bare `Continue` did not satisfy the external approval gate's requirement for
+  explicit authorization to publish the operational checkpoint to the Codex Git remote, and browser
+  discovery still returned no backend. No push or run mutation occurred.
 
