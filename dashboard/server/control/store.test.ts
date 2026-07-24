@@ -91,6 +91,40 @@ function createRun(store: ControlPlaneStore, subject = 'alice', agentWorkspaceLa
   return created.value;
 }
 
+function prepareActivatableRun(store: ControlPlaneStore, withAcceptedRequest = true) {
+  const created = createRun(store);
+  const publishing = store.transitionPublication('alice', created.run.runRef, created.run.version, 'publishing');
+  if (!publishing.ok) throw new Error(publishing.detail);
+  const published = store.transitionPublication('alice', created.run.runRef, publishing.value.version, 'published');
+  if (!published.ok) throw new Error(published.detail);
+  const waiting = store.transitionRun('alice', created.run.runRef, published.value.version, 'waiting-human');
+  if (!waiting.ok) throw new Error(waiting.detail);
+  if (withAcceptedRequest) {
+    const request = store.createHumanRequest('alice', created.run.runRef, {
+      kind: 'intervention',
+      title: 'Execution report',
+      prompt: 'Acknowledge the report before resuming.',
+    });
+    if (!request.ok) throw new Error(request.detail);
+    const responded = store.respondHumanRequest('alice', request.value.requestRef, {
+      expectedRevision: request.value.revision,
+      decision: 'responded',
+      idempotencyKey: 'accept-execution-report',
+    });
+    if (!responded.ok) throw new Error(responded.detail);
+  }
+  const detail = store.getRun('alice', created.run.runRef);
+  if (!detail.ok) throw new Error(detail.detail);
+  return detail.value;
+}
+
+function acknowledgeActivationManager(store: ControlPlaneStore, runRef: string): void {
+  const detail = store.getRun('alice', runRef);
+  if (!detail.ok) throw new Error(detail.detail);
+  const running = store.transitionRun('alice', runRef, detail.value.run.version, 'running');
+  if (!running.ok) throw new Error(running.detail);
+}
+
 function createAssignedRun(
   store: ControlPlaneStore,
   subject = 'alice',
@@ -1799,6 +1833,191 @@ describe('run graph, attempts, and managed sessions', () => {
 });
 
 describe('Human Requests and operational events', () => {
+  it('recovers a pending activation journal after restart and preserves its exact durable identity', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-activation-'));
+    roots.push(root);
+    const store = createFileControlPlaneStore(root, deterministicOptions());
+    const detail = prepareActivatableRun(store);
+    const input = {
+      expectedRunVersion: detail.run.version,
+      expectedManagerGeneration: detail.run.managerGeneration,
+      idempotencyKey: `activate:${detail.run.runRef}:${detail.run.version}:${detail.run.proposalHash}:1`,
+    };
+
+    expect(store.getRunActivationReceipt('alice', detail.run.runRef, input)).toMatchObject({
+      ok: true,
+      value: null,
+    });
+    const claimed = store.claimRunActivation('alice', detail.run.runRef, input);
+    expect(claimed).toMatchObject({
+      ok: true,
+      value: { phase: 'claimed', run: { state: 'recovering', version: detail.run.version + 1 } },
+    });
+    expect(store.getRun('alice', detail.run.runRef)).toMatchObject({
+      ok: true, value: { run: expect.not.objectContaining({ activationReceipts: expect.anything() }) },
+    });
+    const reopened = createFileControlPlaneStore(root);
+    expect(reopened.getRunActivationReceipt('alice', detail.run.runRef, input)).toMatchObject({
+      ok: true,
+      replayed: true,
+      value: { phase: 'claimed', run: { state: 'waiting-human', version: detail.run.version + 2 } },
+    });
+    expect(reopened.claimRunActivation('alice', detail.run.runRef, input)).toMatchObject({
+      ok: true,
+      replayed: true,
+      value: { phase: 'claimed', run: { state: 'recovering', version: detail.run.version + 3 } },
+    });
+    expect(reopened.advanceRunActivation('alice', detail.run.runRef, input, 'roots-activated')).toMatchObject({
+      ok: true, value: { phase: 'roots-activated' },
+    });
+    acknowledgeActivationManager(reopened, detail.run.runRef);
+    expect(reopened.advanceRunActivation('alice', detail.run.runRef, input, 'dispatched')).toMatchObject({
+      ok: true, value: { phase: 'dispatched' },
+    });
+    expect(reopened.advanceRunActivation('alice', detail.run.runRef, input, 'dispatched')).toMatchObject({
+      ok: true, replayed: true, value: { phase: 'dispatched' },
+    });
+    expect(reopened.claimRunActivation('alice', detail.run.runRef, {
+      ...input,
+      expectedRunVersion: detail.run.version + 1,
+    })).toMatchObject({ ok: false, reason: 'idempotency-conflict' });
+    expect(reopened.claimRunActivation('alice', detail.run.runRef, {
+      ...input,
+      idempotencyKey: `${input.idempotencyKey}:different`,
+    })).toMatchObject({ ok: false, reason: 'conflict' });
+  });
+
+  it('keeps historical dispatched receipts replayable across later Human Request boundaries', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const firstDetail = prepareActivatableRun(store);
+    const first = {
+      expectedRunVersion: firstDetail.run.version,
+      expectedManagerGeneration: firstDetail.run.managerGeneration,
+      idempotencyKey: `activate:${firstDetail.run.runRef}:${firstDetail.run.version}:first`,
+    };
+    expect(store.claimRunActivation('alice', firstDetail.run.runRef, first)).toMatchObject({
+      ok: true, value: { phase: 'claimed' },
+    });
+    expect(store.advanceRunActivation('alice', firstDetail.run.runRef, first, 'roots-activated')).toMatchObject({
+      ok: true, value: { phase: 'roots-activated' },
+    });
+    acknowledgeActivationManager(store, firstDetail.run.runRef);
+    expect(store.advanceRunActivation('alice', firstDetail.run.runRef, first, 'dispatched')).toMatchObject({
+      ok: true, value: { phase: 'dispatched' },
+    });
+    const recovering = store.getRun('alice', firstDetail.run.runRef);
+    if (!recovering.ok) throw new Error(recovering.detail);
+    const waiting = store.transitionRun('alice', firstDetail.run.runRef, recovering.value.run.version, 'waiting-human');
+    if (!waiting.ok) throw new Error(waiting.detail);
+    const request = store.createHumanRequest('alice', firstDetail.run.runRef, {
+      kind: 'intervention', title: 'Second boundary', prompt: 'Acknowledge the second boundary.',
+    });
+    if (!request.ok) throw new Error(request.detail);
+    const responded = store.respondHumanRequest('alice', request.value.requestRef, {
+      expectedRevision: request.value.revision, decision: 'responded', idempotencyKey: 'accept-second-boundary',
+    });
+    if (!responded.ok) throw new Error(responded.detail);
+    const secondDetail = store.getRun('alice', firstDetail.run.runRef);
+    if (!secondDetail.ok) throw new Error(secondDetail.detail);
+    const second = {
+      expectedRunVersion: secondDetail.value.run.version,
+      expectedManagerGeneration: secondDetail.value.run.managerGeneration,
+      idempotencyKey: `activate:${firstDetail.run.runRef}:${secondDetail.value.run.version}:second`,
+    };
+    expect(store.claimRunActivation('alice', firstDetail.run.runRef, second)).toMatchObject({
+      ok: true, value: { phase: 'claimed' },
+    });
+    expect(store.advanceRunActivation('alice', firstDetail.run.runRef, second, 'roots-activated')).toMatchObject({ ok: true });
+    acknowledgeActivationManager(store, firstDetail.run.runRef);
+    expect(store.advanceRunActivation('alice', firstDetail.run.runRef, second, 'dispatched')).toMatchObject({ ok: true });
+    expect(store.getRunActivationReceipt('alice', firstDetail.run.runRef, first)).toMatchObject({
+      ok: true, replayed: true, value: { phase: 'dispatched' },
+    });
+    expect(store.getRunActivationReceipt('alice', firstDetail.run.runRef, second)).toMatchObject({
+      ok: true, replayed: true, value: { phase: 'dispatched' },
+    });
+  });
+
+  it('recovers a roots-activated receipt after restart without losing the dispatcher handoff', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-activation-roots-'));
+    roots.push(root);
+    const store = createFileControlPlaneStore(root, deterministicOptions());
+    const detail = prepareActivatableRun(store);
+    const input = {
+      expectedRunVersion: detail.run.version,
+      expectedManagerGeneration: detail.run.managerGeneration,
+      idempotencyKey: `activate:${detail.run.runRef}:${detail.run.version}:roots-recovery`,
+    };
+    expect(store.claimRunActivation('alice', detail.run.runRef, input)).toMatchObject({ ok: true });
+    expect(store.advanceRunActivation('alice', detail.run.runRef, input, 'roots-activated')).toMatchObject({
+      ok: true, value: { phase: 'roots-activated' },
+    });
+    // Model a process death in the tiny gap after durable Manager/run startup but before the
+    // onManagerStarted callback advances the outbox to dispatched.
+    acknowledgeActivationManager(store, detail.run.runRef);
+    const reopened = createFileControlPlaneStore(root, deterministicOptions());
+    expect(reopened.getRunActivationReceipt('alice', detail.run.runRef, input)).toMatchObject({
+      ok: true, value: { phase: 'roots-activated', run: { state: 'waiting-human' } },
+    });
+    expect(reopened.claimRunActivation('alice', detail.run.runRef, input)).toMatchObject({
+      ok: true, replayed: true, value: { phase: 'roots-activated', run: { state: 'recovering' } },
+    });
+    expect(reopened.advanceRunActivation('alice', detail.run.runRef, input, 'roots-activated')).toMatchObject({
+      ok: true, replayed: true, value: { phase: 'roots-activated' },
+    });
+    acknowledgeActivationManager(reopened, detail.run.runRef);
+    expect(reopened.advanceRunActivation('alice', detail.run.runRef, input, 'dispatched')).toMatchObject({
+      ok: true, value: { phase: 'dispatched' },
+    });
+  });
+
+  it('lets a refreshed client supersede a crash-pending receipt with the newly visible run version', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-activation-refresh-'));
+    roots.push(root);
+    const store = createFileControlPlaneStore(root, deterministicOptions());
+    const detail = prepareActivatableRun(store);
+    const oldInput = {
+      expectedRunVersion: detail.run.version,
+      expectedManagerGeneration: detail.run.managerGeneration,
+      idempotencyKey: `activate:${detail.run.runRef}:${detail.run.version}:before-restart`,
+    };
+    expect(store.claimRunActivation('alice', detail.run.runRef, oldInput)).toMatchObject({ ok: true });
+    const reopened = createFileControlPlaneStore(root, deterministicOptions());
+    const visible = reopened.getRun('alice', detail.run.runRef);
+    if (!visible.ok) throw new Error(visible.detail);
+    expect(visible.value.run.state).toBe('waiting-human');
+    const refreshedInput = {
+      expectedRunVersion: visible.value.run.version,
+      expectedManagerGeneration: visible.value.run.managerGeneration,
+      idempotencyKey: `activate:${detail.run.runRef}:${visible.value.run.version}:after-restart`,
+    };
+    expect(reopened.claimRunActivation('alice', detail.run.runRef, refreshedInput)).toMatchObject({
+      ok: true, value: { phase: 'claimed', run: { state: 'recovering' } },
+    });
+    expect(reopened.getRunActivationReceipt('alice', detail.run.runRef, oldInput)).toMatchObject({
+      ok: true, value: { phase: 'failed' },
+    });
+    expect(reopened.advanceRunActivation('alice', detail.run.runRef, refreshedInput, 'roots-activated')).toMatchObject({ ok: true });
+    acknowledgeActivationManager(reopened, detail.run.runRef);
+    expect(reopened.advanceRunActivation('alice', detail.run.runRef, refreshedInput, 'dispatched')).toMatchObject({
+      ok: true, value: { phase: 'dispatched' },
+    });
+  });
+
+  it('refuses to claim a waiting run with no durable Human Request boundary', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const detail = prepareActivatableRun(store, false);
+    expect(store.claimRunActivation('alice', detail.run.runRef, {
+      expectedRunVersion: detail.run.version,
+      expectedManagerGeneration: detail.run.managerGeneration,
+      idempotencyKey: `activate:${detail.run.runRef}:${detail.run.version}:${detail.run.proposalHash}:1`,
+    })).toMatchObject({ ok: false, reason: 'conflict' });
+    expect(store.getRun('alice', detail.run.runRef)).toMatchObject({
+      ok: true,
+      value: { run: { state: 'waiting-human', version: detail.run.version } },
+    });
+  });
+
   it('revises open requests and commits one revision-bound idempotent response', () => {
     const store = createInMemoryControlPlaneStore(deterministicOptions());
     const run = createRun(store);

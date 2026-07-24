@@ -26,7 +26,11 @@ describe('isExecutionActivated (the whole gate)', () => {
 
 /** A deps object whose every factory is a spy, so we can assert the gate-off path touches none of them. */
 function spyDeps(): ActivationDeps {
-  const engine = { runToBoundary: vi.fn().mockResolvedValue({ state: 'succeeded' }), cancelRun: vi.fn().mockResolvedValue({ state: 'stopped' }) };
+  const engine = {
+    runToBoundary: vi.fn().mockResolvedValue({ state: 'succeeded' }),
+    cancelRun: vi.fn().mockResolvedValue({ state: 'stopped' }),
+    containManagerStart: vi.fn().mockResolvedValue(undefined),
+  };
   const broker = { __brand: 'broker' } as never;
   return {
     loadPolicy: vi.fn().mockReturnValue({ profiles: [], curatedSkills: new Set<string>(), contractText: '', governanceContents: {} }),
@@ -101,13 +105,14 @@ describe('buildActivatedExecution — gate ON', () => {
     expect(() => resolver('../faceless-youtube')).toThrow(/unsafe/);
   });
 
-  it('returns all three injection fields', () => {
+  it('returns every activated execution injection field', () => {
     const deps = spyDeps();
     const result = buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
     expect(result).not.toBeNull();
     expect(result?.controlBroker).toBeDefined();
     expect(typeof result?.runAutomatic).toBe('function');
     expect(typeof result?.cancelAutomatic).toBe('function');
+    expect(typeof result?.containManagerStart).toBe('function');
   });
 
   it('constructs the assigned-agent resolver only behind the activation gate and passes it to the engine', () => {
@@ -122,7 +127,7 @@ describe('buildActivatedExecution — gate ON', () => {
     expect(engineOptions.assignedAgents).toBe((on.createAssignedAgentResolver as ReturnType<typeof vi.fn>).mock.results[0].value);
   });
 
-  it('runAutomatic delegates to engine.runToBoundary and cancelAutomatic to engine.cancelRun', async () => {
+  it('delegates run, stop, and recoverable Manager-start containment to the engine', async () => {
     const deps = spyDeps();
     const engineFactory = deps.createEngine as ReturnType<typeof vi.fn>;
     const result = buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
@@ -133,6 +138,9 @@ describe('buildActivatedExecution — gate ON', () => {
     const cancelInput = { subject: 's', runRef: 'r', idempotencyKey: 'k', reason: 'x' } as never;
     await result?.cancelAutomatic(cancelInput);
     expect(engine.cancelRun).toHaveBeenCalledWith(cancelInput);
+    const containInput = { subject: 's', runRef: 'r', idempotencyKey: 'contain-k' };
+    await result?.containManagerStart?.(containInput);
+    expect(engine.containManagerStart).toHaveBeenCalledWith(containInput);
   });
 
   it('runAutomatic settles the fleet ledger for the run AFTER driving it to the boundary (T6 wire-up, gated)', async () => {

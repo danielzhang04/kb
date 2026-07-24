@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { SESSION_INVALIDATED_EVENT } from '../lib/authClient';
 import {
+  activateRun,
   ControlApiError,
   createManagerSuccessor,
   getProposalRevision,
@@ -31,6 +32,7 @@ import { RetentionPanel } from './RetentionPanel';
 import { cardOwnerIndex, workflowIdForRun, WORKFLOW_COMPOSER_REF } from './entityLinks';
 import type { PlaneAIndex } from '../../server/planeA/indexer';
 import type { NavTarget } from '../nav/stack';
+import { canResumePublishedRun } from './humanBoundaries';
 
 function idempotencyKey(request: HumanRequestDto, decision: HumanRequestDecision): string {
   return `human:${request.requestRef}:${request.revision}:${decision}`;
@@ -335,6 +337,18 @@ export function ManagedRuns({
     } finally { setBusy(false); }
   };
 
+  const resume = async (): Promise<void> => {
+    if (!token || !detail || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await activateRun(detail.run, token);
+      await loadRun(detail.run.runRef, token);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Run resume was refused.');
+    } finally { setBusy(false); }
+  };
+
   const recoverManager = async (): Promise<void> => {
     if (!token || !detail || busy) return;
     const manager = detail.sessions.find((session) => session.sessionRef === detail.run.managerSessionRef);
@@ -383,10 +397,11 @@ export function ManagedRuns({
    *
    * The clear-on-change above is what normally upholds it; this ref-identity check makes it STRUCTURAL,
    * so no future reordering of state updates can reintroduce a detail/nav mismatch. `RunCockpit` is the
-   * only thing that renders `Stop run` and `Retry as successor`, and it is unreachable unless the loaded
+   * only thing that renders `Stop run`, `Resume run`, and `Retry as successor`, and it is unreachable unless the loaded
    * detail is the focused run.
    */
   const focused = detail && openRunRef && detail.run.runRef === openRunRef ? detail : null;
+  const resumeAvailable = focused ? canResumePublishedRun(focused) : false;
 
   return (
     <section className="control-managed-runs" aria-label="Managed runs">
@@ -409,8 +424,9 @@ export function ManagedRuns({
             onManagerMessage={managerRunning ? managerMessage : undefined}
             onSteer={managerRunning ? steer : undefined}
             onStop={focused.sessions.some((session) => session.state === 'running') ? stop : undefined}
+            onResume={resumeAvailable ? resume : undefined}
             onRetry={['failed', 'stopped', 'interrupted'].includes(focused.run.state) ? retry : undefined}
-            onManagerSuccessor={focused.sessions.some((session) => session.sessionRef === focused.run.managerSessionRef
+            onManagerSuccessor={!resumeAvailable && focused.sessions.some((session) => session.sessionRef === focused.run.managerSessionRef
               && ['interrupted', 'failed', 'stopped', 'completed'].includes(session.state)) ? recoverManager : undefined}
             onReroute={reroute}
             onHumanResponse={respond}

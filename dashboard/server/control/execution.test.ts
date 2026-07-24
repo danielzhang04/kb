@@ -342,6 +342,127 @@ afterEach(() => {
 });
 
 describe('AutomaticExecutionEngine', () => {
+  it('acknowledges Manager startup only after durable Manager session and run state are running', async () => {
+    const store = createStore();
+    const plan = proposal([stage('manager-start-ack')]);
+    const run = createApprovedRun(store, plan);
+    const observed: Array<{ runState: string; managerState: string | undefined }> = [];
+    const engine = new AutomaticExecutionEngine(engineOptions(store, fakes()));
+    await engine.runToBoundary({
+      subject: 'operator',
+      runRef: run.runRef,
+      proposal: plan,
+      onManagerStarted: () => {
+        const detail = store.getRun('operator', run.runRef);
+        if (!detail.ok) throw new Error(detail.detail);
+        observed.push({
+          runState: detail.value.run.state,
+          managerState: detail.value.sessions.find((session) =>
+            session.sessionRef === detail.value.run.managerSessionRef)?.state,
+        });
+      },
+    });
+    expect(observed).toEqual([{ runState: 'running', managerState: 'running' }]);
+  });
+
+  it('contains failed Manager startup without terminalizing the resumable run or stage graph', async () => {
+    const store = createStore();
+    const plan = proposal([stage('manager-start-containment')]);
+    const run = createApprovedRun(store, plan);
+    const initial = store.getRun('operator', run.runRef);
+    if (!initial.ok) throw new Error(initial.detail);
+    const manager = initial.value.sessions.find((session) => session.sessionRef === initial.value.run.managerSessionRef);
+    if (!manager) throw new Error('manager session missing');
+    const starting = store.transitionSession('operator', manager.sessionRef, manager.version, 'starting');
+    if (!starting.ok) throw new Error(starting.detail);
+    const runningManager = store.transitionSession('operator', manager.sessionRef, starting.value.version, 'running');
+    if (!runningManager.ok) throw new Error(runningManager.detail);
+    const runningRun = store.transitionRun('operator', run.runRef, initial.value.run.version, 'running');
+    if (!runningRun.ok) throw new Error(runningRun.detail);
+    const waitingRun = store.transitionRun('operator', run.runRef, runningRun.value.version, 'waiting-human');
+    if (!waitingRun.ok) throw new Error(waitingRun.detail);
+    const fake = fakes();
+    const cancelManager = vi.fn(async () => {});
+    fake.cancellation.cancelManager = cancelManager;
+    const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
+    await engine.containManagerStart({
+      subject: 'operator', runRef: run.runRef, idempotencyKey: 'contain-manager-start-test',
+    });
+    expect(cancelManager).toHaveBeenCalledTimes(1);
+    expect(store.getRun('operator', run.runRef)).toMatchObject({
+      ok: true,
+      value: {
+        run: { state: 'waiting-human' },
+        stages: [expect.objectContaining({ state: 'ready' })],
+        sessions: [expect.objectContaining({ role: 'manager', state: 'interrupted' })],
+      },
+    });
+  });
+
+  it('durably fences Manager startup before a hung adapter cancellation can race its completion', async () => {
+    const store = createStore();
+    const plan = proposal([stage('manager-start-crossing')]);
+    const run = createApprovedRun(store, plan);
+    const initial = store.getRun('operator', run.runRef);
+    if (!initial.ok) throw new Error(initial.detail);
+    const recovering = store.transitionRun('operator', run.runRef, initial.value.run.version, 'recovering');
+    if (!recovering.ok) throw new Error(recovering.detail);
+    let managerEntered!: () => void;
+    let releaseManager!: () => void;
+    let cancellationEntered!: () => void;
+    let releaseCancellation!: () => void;
+    const managerStarted = new Promise<void>((resolve) => { managerEntered = resolve; });
+    const managerHeld = new Promise<void>((resolve) => { releaseManager = resolve; });
+    const cancellationStarted = new Promise<void>((resolve) => { cancellationEntered = resolve; });
+    const cancellationHeld = new Promise<void>((resolve) => { releaseCancellation = resolve; });
+    const fake = fakes();
+    fake.managers.ensure = async () => {
+      managerEntered();
+      await managerHeld;
+    };
+    fake.cancellation.cancelManager = async () => {
+      cancellationEntered();
+      await cancellationHeld;
+    };
+    const acknowledged = vi.fn();
+    const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
+    const execution = engine.runToBoundary({
+      subject: 'operator', runRef: run.runRef, proposal: plan, onManagerStarted: acknowledged,
+    });
+    await managerStarted;
+    const beforeContainment = store.getRun('operator', run.runRef);
+    if (!beforeContainment.ok) throw new Error(beforeContainment.detail);
+    const waiting = store.transitionRun(
+      'operator', run.runRef, beforeContainment.value.run.version, 'waiting-human',
+    );
+    if (!waiting.ok) throw new Error(waiting.detail);
+    const containment = engine.containManagerStart({
+      subject: 'operator', runRef: run.runRef, idempotencyKey: 'contain-crossing',
+    });
+    await cancellationStarted;
+    expect(store.getRun('operator', run.runRef)).toMatchObject({
+      ok: true,
+      value: {
+        run: { state: 'waiting-human' },
+        stages: [expect.objectContaining({ state: 'ready' })],
+        sessions: [expect.objectContaining({ role: 'manager', state: 'interrupted' })],
+      },
+    });
+    releaseManager();
+    await expect(execution).resolves.toMatchObject({ state: 'waiting-human' });
+    expect(acknowledged).not.toHaveBeenCalled();
+    releaseCancellation();
+    await containment;
+    expect(store.getRun('operator', run.runRef)).toMatchObject({
+      ok: true,
+      value: {
+        run: { state: 'waiting-human' },
+        stages: [expect.objectContaining({ state: 'ready' })],
+        sessions: [expect.objectContaining({ role: 'manager', state: 'interrupted' })],
+      },
+    });
+  });
+
   it('accepts the historical omitted-review hash only for non-review payloads', () => {
     const payload = { summary: 'legacy result', artifacts: [], changed: [], checkpoints: [] };
     const legacyHash = canonicalStageResultHash(payload, 'legacy-non-review');

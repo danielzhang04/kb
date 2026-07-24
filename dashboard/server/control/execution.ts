@@ -259,7 +259,12 @@ export interface ExecuteRunInput {
   subject: string;
   runRef: string;
   proposal: PlanProposal;
+  /** Server-local acknowledgement after the Manager adapter and durable session/run state are live. */
+  onManagerStarted?: () => void;
 }
+
+/** Bound for HTTP/operator acknowledgement of durable Manager startup; adapters own deeper timeouts. */
+export const DEFAULT_MANAGER_START_ACK_TIMEOUT_MS = 30_000;
 
 export interface ExecutionOutcome {
   state: RunDetail['run']['state'];
@@ -273,6 +278,12 @@ export interface CancelRunInput {
   runRef: string;
   idempotencyKey: string;
   reason: string;
+}
+
+export interface ContainManagerStartInput {
+  subject: string;
+  runRef: string;
+  idempotencyKey: string;
 }
 
 export interface CancellationOutcome {
@@ -883,12 +894,13 @@ export class AutomaticExecutionEngine {
     }
     if (manager.state === 'pending') manager = this.transitionSession(input, manager.sessionRef, 'starting');
     if (manager.state === 'starting' || manager.state === 'running') {
+      const managerSessionRef = manager.sessionRef;
       try {
         await this.options.managers.ensure({
-          operationKey: `automatic-manager-session:${manager.sessionRef}`,
+          operationKey: `automatic-manager-session:${managerSessionRef}`,
           subject: input.subject,
           runRef: input.runRef,
-          sessionRef: manager.sessionRef,
+          sessionRef: managerSessionRef,
           generation: manager.generation,
           predecessorSessionRef: manager.predecessorSessionRef,
           proposalHash: detail.run.proposalHash,
@@ -896,6 +908,11 @@ export class AutomaticExecutionEngine {
           ...(assignedAgent ? { assignment: assignedAgent.assignment, instructionMarkdown: assignedAgent.instructionMarkdown } : {}),
         });
         if (this.cancellationObserved(input)) return false;
+        const refreshedManager = this.detail(input).sessions.find((session) => session.sessionRef === managerSessionRef);
+        if (!refreshedManager || ['completed', 'failed', 'stopped', 'interrupted'].includes(refreshedManager.state)) {
+          return false;
+        }
+        manager = refreshedManager;
         if (manager.state === 'starting') this.transitionSession(input, manager.sessionRef, 'running');
       } catch (error) {
         if (this.cancellationObserved(input)) return false;
@@ -920,7 +937,45 @@ export class AutomaticExecutionEngine {
     if (detail.run.state === 'planned' || detail.run.state === 'interrupted' || detail.run.state === 'recovering' || detail.run.state === 'waiting-human') {
       this.transitionRun(input, 'running');
     }
+    input.onManagerStarted?.();
     return true;
+  }
+
+  /**
+   * Contain only a Manager startup that failed before dispatcher acknowledgement. Unlike operator
+   * cancellation, this preserves the run/stage graph so the same run can resume after intervention.
+   */
+  async containManagerStart(input: ContainManagerStartInput): Promise<void> {
+    const detail = this.detail(input);
+    const manager = detail.sessions.find((session) => session.sessionRef === detail.run.managerSessionRef);
+    if (!manager || ['completed', 'failed', 'stopped', 'interrupted'].includes(manager.state)) return;
+    // Fence the logical session before awaiting an adapter that may never acknowledge cancellation.
+    // ensureManager re-reads this durable state after its own await and cannot revive a fenced session.
+    const interrupted = this.options.store.transitionSession(
+      input.subject,
+      manager.sessionRef,
+      manager.version,
+      'interrupted',
+    );
+    if (!interrupted.ok) throw new AutomaticExecutionError(interrupted.detail);
+    let cancellationError: unknown = null;
+    try {
+      await this.options.cancellation.cancelManager({
+        operationKey: `contain-manager-start:${input.idempotencyKey}:${manager.sessionRef}`,
+        subject: input.subject,
+        runRef: input.runRef,
+        sessionRef: manager.sessionRef,
+        attemptRef: null,
+        intent: 'run-cancel',
+      });
+    } catch (error) {
+      cancellationError = error;
+    }
+    if (cancellationError) {
+      throw new AutomaticExecutionError(
+        cancellationError instanceof Error ? cancellationError.message : 'Manager startup cancellation failed',
+      );
+    }
   }
 
   private releaseDependents(input: ExecuteRunInput, detail: RunDetail): void {

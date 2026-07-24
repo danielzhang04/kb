@@ -10,6 +10,8 @@ import type { TimelineModel } from '../../src/lib/timelineModel.ts';
 import { workflowCardId } from '../write/workflowRun.ts';
 import { ManagedSessionBroker } from './broker.ts';
 import { createSubjectBrokerPersistence } from './brokerStore.ts';
+import type { JsonObject } from './types.ts';
+import type { ExecuteRunInput } from './execution.ts';
 
 const SESSION: SessionConfig = { secret: Buffer.from('control-route-test-secret-32-bytes!'), ttlMs: 60_000 };
 const ORIGIN = 'http://localhost:5317';
@@ -137,6 +139,143 @@ describe('control proposal routes', () => {
       },
     } as never));
     return { request, resolve };
+  }
+
+  function seedActivatableRun(withAcceptedRequest = true) {
+    const stored = controlStore.createProposalRevision('operator', {
+      sourceComposerRef: 'composer-activation',
+      sourceTurnId: 'turn-activation',
+      title: proposal.title,
+      snapshot: proposal as unknown as JsonObject,
+    });
+    if (!stored.ok) throw new Error(stored.detail);
+    const approved = controlStore.decideProposal('operator', stored.value.proposalRef, stored.value.revision, {
+      expectedHash: stored.value.hash,
+      expectedApprovalRevision: 0,
+      decision: 'approved',
+      idempotencyKey: 'approve-activation',
+    });
+    if (!approved.ok) throw new Error(approved.detail);
+    const created = controlStore.createRun('operator', {
+      title: proposal.title,
+      proposalRef: stored.value.proposalRef,
+      proposalRevision: stored.value.revision,
+      expectedProposalHash: stored.value.hash,
+      managerRuntime: proposal.manager.runtime,
+      managerModel: proposal.manager.model,
+      idempotencyKey: 'launch-activation',
+      stages: proposal.stages.map((stage) => ({
+        stageId: stage.id,
+        title: stage.title,
+        dependsOn: stage.dependsOn,
+      })),
+    });
+    if (!created.ok) throw new Error(created.detail);
+    for (const stage of created.value.stages.filter((candidate) => candidate.dependsOn.length === 0)) {
+      const linked = controlStore.linkStageCard('operator', stage.stageRef, stage.version, `card-${stage.stageId}`);
+      if (!linked.ok) throw new Error(linked.detail);
+    }
+    const publishing = controlStore.transitionPublication(
+      'operator',
+      created.value.run.runRef,
+      created.value.run.version,
+      'publishing',
+    );
+    if (!publishing.ok) throw new Error(publishing.detail);
+    const published = controlStore.transitionPublication(
+      'operator',
+      created.value.run.runRef,
+      publishing.value.version,
+      'published',
+    );
+    if (!published.ok) throw new Error(published.detail);
+    const waiting = controlStore.transitionRun(
+      'operator',
+      created.value.run.runRef,
+      published.value.version,
+      'waiting-human',
+    );
+    if (!waiting.ok) throw new Error(waiting.detail);
+    if (withAcceptedRequest) {
+      const request = controlStore.createHumanRequest('operator', created.value.run.runRef, {
+        kind: 'intervention',
+        title: 'Execution report',
+        prompt: 'Acknowledge the report before resuming.',
+      });
+      if (!request.ok) throw new Error(request.detail);
+      const responded = controlStore.respondHumanRequest('operator', request.value.requestRef, {
+        expectedRevision: request.value.revision,
+        decision: 'responded',
+        idempotencyKey: 'accept-activation',
+      });
+      if (!responded.ok) throw new Error(responded.detail);
+    }
+    const detail = controlStore.getRun('operator', created.value.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    return detail.value;
+  }
+
+  async function activatedApp(
+    beforeRootAuthorization?: () => void | Promise<void>,
+    overrides: {
+      appendAudit?: (root: string, event: unknown) => unknown | Promise<unknown>;
+      runAutomatic?: (input: ExecuteRunInput) => Promise<unknown>;
+      cancelAutomatic?: () => Promise<unknown>;
+      containManagerStart?: () => Promise<void>;
+      managerStartAckTimeoutMs?: number;
+    } = {},
+  ) {
+    const runAutomatic = vi.fn(overrides.runAutomatic ?? (async (input: ExecuteRunInput) => {
+      const current = controlStore.getRun(input.subject, input.runRef);
+      if (!current.ok) throw new Error(current.detail);
+      const running = controlStore.transitionRun(input.subject, input.runRef, current.value.run.version, 'running');
+      if (!running.ok) throw new Error(running.detail);
+      input.onManagerStarted?.();
+      return {
+        state: 'succeeded' as const,
+        startedStageIds: [],
+        completedStageIds: [],
+        waitingStageIds: [],
+      };
+    }));
+    const cancelAutomatic = vi.fn(overrides.cancelAutomatic ?? (async () => ({
+      state: 'stopped' as const,
+      stoppedSessionRefs: [],
+      interruptedSessionRefs: [],
+      replayed: false,
+    })));
+    const containManagerStart = vi.fn(overrides.containManagerStart ?? (async () => {}));
+    const activateManagedRoots = vi.fn(async (options: { cardRefs: string[]; authorizeAfterPrepare?: () => void }) => {
+      await beforeRootAuthorization?.();
+      options.authorizeAfterPrepare?.();
+      return {
+        replayed: false,
+        cardPaths: options.cardRefs.map((cardRef) => `queue/inbox/${cardRef}.md`),
+      };
+    });
+    const activated = Fastify();
+    registerWriteSurface(activated, makeSurfaceContext({
+      repoRoot: fileURLToPath(new URL('../../..', import.meta.url)),
+      sessionConfig: SESSION,
+      allowedOrigins: [ORIGIN],
+      credentials: () => [],
+      composerStore,
+      controlStore,
+      controlBroker: { isRunning: () => false, drain: () => {} } as never,
+      runAutomatic: runAutomatic as never,
+      cancelAutomatic: cancelAutomatic as never,
+      containManagerStart: containManagerStart as never,
+      managerStartAckTimeoutMs: overrides.managerStartAckTimeoutMs,
+      activateManagedRoots: activateManagedRoots as never,
+      appendAudit: (overrides.appendAudit ?? ((_root: string, event: Record<string, unknown>) => ({
+        ts: new Date().toISOString(), ...event,
+      }))) as never,
+      appendAuditLocal: (_root, event) => ({ ts: new Date().toISOString(), ...event }),
+      runPreamble: () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }),
+      opsGit: (_root, args) => args.join(' ') === 'rev-parse --abbrev-ref HEAD' ? 'ops\n' : '',
+    }));
+    await activated.ready();
+    return { activated, runAutomatic, cancelAutomatic, containManagerStart, activateManagedRoots };
   }
 
   /** A real store-backed gate, used to lock the HTTP replay fingerprint rather than a mocked resolver. */
@@ -800,6 +939,531 @@ describe('control proposal routes', () => {
     expect(auditRows.some((event) => event.action === 'control-manager-successor-authorize')).toBe(true);
   });
 
+  it('claims activation once and replays concurrent exact requests without a second engine dispatch', async () => {
+    const detail = seedActivatableRun();
+    const payload = {
+      expectedRunVersion: detail.run.version,
+      expectedManagerGeneration: detail.run.managerGeneration,
+      idempotencyKey: `activate:${detail.run.runRef}:${detail.run.version}:${detail.run.proposalHash}:${detail.run.managerGeneration}`,
+    };
+    const { activated, runAutomatic, activateManagedRoots } = await activatedApp();
+    try {
+      const [first, second] = await Promise.all([
+        activated.inject({
+          method: 'POST',
+          url: `/api/control/runs/${detail.run.runRef}/activate`,
+          headers: headers(token),
+          payload,
+        }),
+        activated.inject({
+          method: 'POST',
+          url: `/api/control/runs/${detail.run.runRef}/activate`,
+          headers: headers(token),
+          payload,
+        }),
+      ]);
+
+      expect([first.statusCode, second.statusCode].sort()).toEqual([200, 202]);
+      expect([first.json(), second.json()].some((body) => body.replayed === true)).toBe(true);
+      expect(runAutomatic).toHaveBeenCalledTimes(1);
+      expect(activateManagedRoots).toHaveBeenCalledTimes(1);
+      expect(controlStore.getRun('operator', detail.run.runRef)).toMatchObject({
+        ok: true,
+        value: {
+          run: { state: 'running', version: detail.run.version + 2 },
+          humanRequests: [{ state: 'resolved' }],
+        },
+      });
+      const gatedReplay = await app.inject({
+        method: 'POST',
+        url: `/api/control/runs/${detail.run.runRef}/activate`,
+        headers: headers(token),
+        payload,
+      });
+      expect(gatedReplay.statusCode).toBe(200);
+      expect(gatedReplay.json()).toMatchObject({ ok: true, replayed: true });
+
+      const changedBody = await activated.inject({
+        method: 'POST',
+        url: `/api/control/runs/${detail.run.runRef}/activate`,
+        headers: headers(token),
+        payload: { ...payload, expectedRunVersion: payload.expectedRunVersion + 1 },
+      });
+      expect(changedBody.statusCode).toBe(409);
+      expect(changedBody.json()).toMatchObject({ error: 'idempotency-conflict' });
+
+      const changedKey = await activated.inject({
+        method: 'POST',
+        url: `/api/control/runs/${detail.run.runRef}/activate`,
+        headers: headers(token),
+        payload: { ...payload, idempotencyKey: `${payload.idempotencyKey}:different` },
+      });
+      expect(changedKey.statusCode).toBe(409);
+      expect(changedKey.json()).toMatchObject({ error: 'activation-state-changed' });
+      expect(runAutomatic).toHaveBeenCalledTimes(1);
+      expect(activateManagedRoots).toHaveBeenCalledTimes(1);
+    } finally {
+      await activated.close();
+    }
+  });
+
+  it('refuses direct activation when a waiting run has no durable Human Request boundary', async () => {
+    const detail = seedActivatableRun(false);
+    const { activated, runAutomatic, activateManagedRoots } = await activatedApp();
+    try {
+      const response = await activated.inject({
+        method: 'POST',
+        url: `/api/control/runs/${detail.run.runRef}/activate`,
+        headers: headers(token),
+        payload: {
+          expectedRunVersion: detail.run.version,
+          expectedManagerGeneration: detail.run.managerGeneration,
+          idempotencyKey: `activate:${detail.run.runRef}:${detail.run.version}:${detail.run.proposalHash}:${detail.run.managerGeneration}`,
+        },
+      });
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toMatchObject({ error: 'human-boundary-unresolved' });
+      expect(runAutomatic).not.toHaveBeenCalled();
+      expect(activateManagedRoots).not.toHaveBeenCalled();
+      expect(controlStore.getRun('operator', detail.run.runRef)).toMatchObject({
+        ok: true,
+        value: { run: { state: 'waiting-human', version: detail.run.version } },
+      });
+    } finally {
+      await activated.close();
+    }
+  });
+
+  it('rechecks activation CAS after canonical preparation and before any engine dispatch', async () => {
+    const detail = seedActivatableRun();
+    const { activated, runAutomatic } = await activatedApp(() => {
+      const changed = controlStore.transitionRun(
+        'operator',
+        detail.run.runRef,
+        detail.run.version,
+        'stopping',
+      );
+      if (!changed.ok) throw new Error(changed.detail);
+    });
+    try {
+      const response = await activated.inject({
+        method: 'POST',
+        url: `/api/control/runs/${detail.run.runRef}/activate`,
+        headers: headers(token),
+        payload: {
+          expectedRunVersion: detail.run.version,
+          expectedManagerGeneration: detail.run.managerGeneration,
+          idempotencyKey: `activate:${detail.run.runRef}:${detail.run.version}:${detail.run.proposalHash}:${detail.run.managerGeneration}`,
+        },
+      });
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toMatchObject({
+        error: 'canonical-activation-failed',
+        detail: 'run activation state changed before canonical root activation',
+      });
+      expect(runAutomatic).not.toHaveBeenCalled();
+      expect(controlStore.getRun('operator', detail.run.runRef)).toMatchObject({
+        ok: true,
+        value: { run: { state: 'stopping', version: detail.run.version + 1 } },
+      });
+    } finally {
+      await activated.close();
+    }
+  });
+
+  it('does not claim roots or dispatch when asynchronous activation audit persistence rejects', async () => {
+    const detail = seedActivatableRun();
+    const payload = {
+      expectedRunVersion: detail.run.version,
+      expectedManagerGeneration: detail.run.managerGeneration,
+      idempotencyKey: `activate:${detail.run.runRef}:${detail.run.version}:audit-failure`,
+    };
+    const { activated, runAutomatic, activateManagedRoots } = await activatedApp(undefined, {
+      appendAudit: async () => { throw new Error('audit unavailable'); },
+    });
+    try {
+      const response = await activated.inject({
+        method: 'POST', url: `/api/control/runs/${detail.run.runRef}/activate`,
+        headers: headers(token), payload,
+      });
+      expect(response.statusCode, response.body).toBe(500);
+      expect(response.json()).toMatchObject({ error: 'activation-audit-reconciliation-required' });
+      expect(activateManagedRoots).not.toHaveBeenCalled();
+      expect(runAutomatic).not.toHaveBeenCalled();
+      expect(controlStore.getRunActivationReceipt('operator', detail.run.runRef, payload)).toMatchObject({
+        ok: true, value: null,
+      });
+    } finally {
+      await activated.close();
+    }
+  });
+
+  it('serializes stop behind activation so stale stop CAS cannot cancel the newly resumed run', async () => {
+    const detail = seedActivatableRun();
+    let releasePreparation!: () => void;
+    let preparationEntered!: () => void;
+    const entered = new Promise<void>((resolve) => { preparationEntered = resolve; });
+    const release = new Promise<void>((resolve) => { releasePreparation = resolve; });
+    const { activated, cancelAutomatic } = await activatedApp(async () => {
+      preparationEntered();
+      await release;
+    });
+    const activationPayload = {
+      expectedRunVersion: detail.run.version,
+      expectedManagerGeneration: detail.run.managerGeneration,
+      idempotencyKey: `activate:${detail.run.runRef}:${detail.run.version}:stop-race`,
+    };
+    try {
+      const activationPromise = activated.inject({
+        method: 'POST', url: `/api/control/runs/${detail.run.runRef}/activate`,
+        headers: headers(token), payload: activationPayload,
+      });
+      await entered;
+      const stopPromise = activated.inject({
+        method: 'POST', url: `/api/control/runs/${detail.run.runRef}/manager/stop`,
+        headers: headers(token),
+        payload: {
+          expectedRunVersion: detail.run.version,
+          expectedManagerGeneration: detail.run.managerGeneration,
+          idempotencyKey: `stop:${detail.run.runRef}:${detail.run.version}`,
+        },
+      });
+      await Promise.resolve();
+      expect(cancelAutomatic).not.toHaveBeenCalled();
+      releasePreparation();
+      const [activation, stop] = await Promise.all([activationPromise, stopPromise]);
+      expect(activation.statusCode, activation.body).toBe(202);
+      expect(stop.statusCode, stop.body).toBe(409);
+      expect(stop.json()).toMatchObject({ error: 'run-state-changed' });
+      expect(cancelAutomatic).not.toHaveBeenCalled();
+    } finally {
+      releasePreparation();
+      await activated.close();
+    }
+  });
+
+  it('makes activation and Manager successor mutually exclusive for the same run', async () => {
+    const detail = seedActivatableRun();
+    const manager = detail.sessions.find((session) => session.sessionRef === detail.run.managerSessionRef);
+    if (!manager) throw new Error('manager session missing');
+    const interrupted = controlStore.transitionSession('operator', manager.sessionRef, manager.version, 'interrupted');
+    if (!interrupted.ok) throw new Error(interrupted.detail);
+    let releasePreparation!: () => void;
+    let preparationEntered!: () => void;
+    const entered = new Promise<void>((resolve) => { preparationEntered = resolve; });
+    const release = new Promise<void>((resolve) => { releasePreparation = resolve; });
+    const { activated, runAutomatic } = await activatedApp(async () => {
+      preparationEntered();
+      await release;
+    });
+    try {
+      const activationPromise = activated.inject({
+        method: 'POST', url: `/api/control/runs/${detail.run.runRef}/activate`,
+        headers: headers(token),
+        payload: {
+          expectedRunVersion: detail.run.version,
+          expectedManagerGeneration: detail.run.managerGeneration,
+          idempotencyKey: `activate:${detail.run.runRef}:${detail.run.version}:successor-race`,
+        },
+      });
+      await entered;
+      const successorPromise = activated.inject({
+        method: 'POST', url: `/api/control/runs/${detail.run.runRef}/manager/successor`,
+        headers: headers(token),
+        payload: {
+          expectedManagerGeneration: detail.run.managerGeneration,
+          runtime: proposal.manager.runtime,
+          model: proposal.manager.model,
+          idempotencyKey: `successor:${detail.run.runRef}:${detail.run.managerGeneration}`,
+        },
+      });
+      releasePreparation();
+      const [activation, successor] = await Promise.all([activationPromise, successorPromise]);
+      expect(activation.statusCode, activation.body).toBe(202);
+      expect(successor.statusCode, successor.body).toBe(409);
+      expect(successor.json()).toMatchObject({ error: 'activation-resume-required' });
+      expect(runAutomatic).toHaveBeenCalledTimes(1);
+      expect(controlStore.getRun('operator', detail.run.runRef)).toMatchObject({
+        ok: true,
+        value: {
+          run: { managerGeneration: detail.run.managerGeneration },
+          humanRequests: [{ state: 'resolved' }],
+        },
+      });
+    } finally {
+      releasePreparation();
+      await activated.close();
+    }
+  });
+
+  it('dispatches an exact pending activation receipt after process-style recovery', async () => {
+    const detail = seedActivatableRun();
+    const payload = {
+      expectedRunVersion: detail.run.version,
+      expectedManagerGeneration: detail.run.managerGeneration,
+      idempotencyKey: `activate:${detail.run.runRef}:${detail.run.version}:pending-recovery`,
+    };
+    expect(controlStore.claimRunActivation('operator', detail.run.runRef, payload)).toMatchObject({
+      ok: true, value: { phase: 'claimed', run: { state: 'recovering' } },
+    });
+    const waiting = controlStore.transitionRun(
+      'operator', detail.run.runRef, detail.run.version + 1, 'waiting-human',
+    );
+    if (!waiting.ok) throw new Error(waiting.detail);
+    const { activated, runAutomatic, activateManagedRoots } = await activatedApp();
+    try {
+      const response = await activated.inject({
+        method: 'POST', url: `/api/control/runs/${detail.run.runRef}/activate`,
+        headers: headers(token), payload,
+      });
+      expect(response.statusCode, response.body).toBe(202);
+      expect(runAutomatic).toHaveBeenCalledTimes(1);
+      expect(activateManagedRoots).toHaveBeenCalledTimes(1);
+      expect(controlStore.getRunActivationReceipt('operator', detail.run.runRef, payload)).toMatchObject({
+        ok: true, value: { phase: 'dispatched' },
+      });
+    } finally {
+      await activated.close();
+    }
+  });
+
+  it('records durable dispatch before returning 202 and contains later executor rejection once', async () => {
+    const detail = seedActivatableRun();
+    const payload = {
+      expectedRunVersion: detail.run.version,
+      expectedManagerGeneration: detail.run.managerGeneration,
+      idempotencyKey: `activate:${detail.run.runRef}:${detail.run.version}:late-rejection`,
+    };
+    const { activated, runAutomatic } = await activatedApp(undefined, {
+      runAutomatic: async (input) => {
+        const current = controlStore.getRun(input.subject, input.runRef);
+        if (!current.ok) throw new Error(current.detail);
+        const running = controlStore.transitionRun(input.subject, input.runRef, current.value.run.version, 'running');
+        if (!running.ok) throw new Error(running.detail);
+        input.onManagerStarted?.();
+        throw new Error('worker adapter failed after Manager startup');
+      },
+    });
+    try {
+      const response = await activated.inject({
+        method: 'POST', url: `/api/control/runs/${detail.run.runRef}/activate`,
+        headers: headers(token), payload,
+      });
+      expect(response.statusCode, response.body).toBe(202);
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(controlStore.getRunActivationReceipt('operator', detail.run.runRef, payload)).toMatchObject({
+        ok: true, value: { phase: 'dispatched' },
+      });
+      expect(controlStore.getRun('operator', detail.run.runRef)).toMatchObject({
+        ok: true,
+        value: {
+          run: { state: 'waiting-human' },
+          humanRequests: [
+            { state: 'resolved' },
+            { state: 'open', kind: 'intervention', prompt: 'worker adapter failed after Manager startup' },
+          ],
+        },
+      });
+      const replay = await activated.inject({
+        method: 'POST', url: `/api/control/runs/${detail.run.runRef}/activate`,
+        headers: headers(token), payload,
+      });
+      expect(replay.statusCode, replay.body).toBe(200);
+      expect(replay.json()).toMatchObject({ ok: true, replayed: true });
+      expect(runAutomatic).toHaveBeenCalledTimes(1);
+    } finally {
+      await activated.close();
+    }
+  });
+
+  it('cancels and parks the run when durable dispatch acknowledgement cannot be recorded', async () => {
+    const detail = seedActivatableRun();
+    const payload = {
+      expectedRunVersion: detail.run.version,
+      expectedManagerGeneration: detail.run.managerGeneration,
+      idempotencyKey: `activate:${detail.run.runRef}:${detail.run.version}:dispatch-store-failure`,
+    };
+    const advance = controlStore.advanceRunActivation.bind(controlStore);
+    controlStore.advanceRunActivation = ((subject, runRef, input, phase) =>
+      phase === 'dispatched'
+        ? { ok: false, reason: 'conflict', detail: 'injected dispatch receipt failure' }
+        : advance(subject, runRef, input, phase)) as typeof controlStore.advanceRunActivation;
+    const { activated, containManagerStart } = await activatedApp();
+    try {
+      const response = await activated.inject({
+        method: 'POST', url: `/api/control/runs/${detail.run.runRef}/activate`,
+        headers: headers(token), payload,
+      });
+      expect(response.statusCode, response.body).toBe(409);
+      expect(response.json()).toMatchObject({
+        error: 'automatic-dispatch-failed',
+        detail: 'injected dispatch receipt failure',
+      });
+      expect(containManagerStart).toHaveBeenCalledTimes(1);
+      expect(controlStore.getRunActivationReceipt('operator', detail.run.runRef, payload)).toMatchObject({
+        ok: true, value: { phase: 'failed' },
+      });
+      expect(controlStore.getRun('operator', detail.run.runRef)).toMatchObject({
+        ok: true,
+        value: {
+          run: { state: 'waiting-human' },
+          humanRequests: [
+            { state: 'resolved' },
+            {
+              state: 'open',
+              kind: 'intervention',
+              title: 'Activation dispatch needs reconciliation',
+              prompt: 'injected dispatch receipt failure',
+            },
+          ],
+        },
+      });
+    } finally {
+      controlStore.advanceRunActivation = advance;
+      await activated.close();
+    }
+  });
+
+  it('times out a hung Manager start, contains it, and releases the run-control lock for stop', async () => {
+    const detail = seedActivatableRun();
+    const payload = {
+      expectedRunVersion: detail.run.version,
+      expectedManagerGeneration: detail.run.managerGeneration,
+      idempotencyKey: `activate:${detail.run.runRef}:${detail.run.version}:manager-timeout`,
+    };
+    const { activated, cancelAutomatic, containManagerStart } = await activatedApp(undefined, {
+      managerStartAckTimeoutMs: 10,
+      runAutomatic: async () => new Promise<never>(() => {}),
+    });
+    try {
+      const response = await activated.inject({
+        method: 'POST', url: `/api/control/runs/${detail.run.runRef}/activate`,
+        headers: headers(token), payload,
+      });
+      expect(response.statusCode, response.body).toBe(409);
+      expect(response.json()).toMatchObject({
+        error: 'automatic-dispatch-failed',
+        detail: 'Manager startup was not durably acknowledged within 10ms',
+      });
+      expect(containManagerStart).toHaveBeenCalledTimes(1);
+      const contained = controlStore.getRun('operator', detail.run.runRef);
+      if (!contained.ok) throw new Error(contained.detail);
+      expect(contained.value.run.state).toBe('waiting-human');
+      const stopped = await activated.inject({
+        method: 'POST', url: `/api/control/runs/${detail.run.runRef}/manager/stop`,
+        headers: headers(token),
+        payload: {
+          expectedRunVersion: contained.value.run.version,
+          expectedManagerGeneration: contained.value.run.managerGeneration,
+          idempotencyKey: `stop:${detail.run.runRef}:${contained.value.run.version}`,
+        },
+      });
+      expect(stopped.statusCode, stopped.body).toBe(200);
+      expect(cancelAutomatic).toHaveBeenCalledTimes(1);
+    } finally {
+      await activated.close();
+    }
+  });
+
+  it('fails the receipt before awaiting cancellation so a late Manager callback cannot dispatch', async () => {
+    const detail = seedActivatableRun();
+    let releaseManagerAck!: () => void;
+    let cancellationEntered!: () => void;
+    let releaseCancellation!: () => void;
+    const managerAck = new Promise<void>((resolve) => { releaseManagerAck = resolve; });
+    const cancellationStarted = new Promise<void>((resolve) => { cancellationEntered = resolve; });
+    const cancellationHeld = new Promise<void>((resolve) => { releaseCancellation = resolve; });
+    const payload = {
+      expectedRunVersion: detail.run.version,
+      expectedManagerGeneration: detail.run.managerGeneration,
+      idempotencyKey: `activate:${detail.run.runRef}:${detail.run.version}:late-manager-ack`,
+    };
+    const { activated } = await activatedApp(undefined, {
+      managerStartAckTimeoutMs: 10,
+      runAutomatic: async (input) => {
+        const current = controlStore.getRun(input.subject, input.runRef);
+        if (!current.ok) throw new Error(current.detail);
+        const running = controlStore.transitionRun(input.subject, input.runRef, current.value.run.version, 'running');
+        if (!running.ok) throw new Error(running.detail);
+        await managerAck;
+        input.onManagerStarted?.();
+        return { state: 'running', startedStageIds: [], completedStageIds: [], waitingStageIds: [] };
+      },
+      containManagerStart: async () => {
+        cancellationEntered();
+        await cancellationHeld;
+      },
+    });
+    try {
+      const activation = activated.inject({
+        method: 'POST', url: `/api/control/runs/${detail.run.runRef}/activate`,
+        headers: headers(token), payload,
+      });
+      await cancellationStarted;
+      expect(controlStore.getRunActivationReceipt('operator', detail.run.runRef, payload)).toMatchObject({
+        ok: true, value: { phase: 'failed' },
+      });
+      releaseManagerAck();
+      await Promise.resolve();
+      releaseCancellation();
+      const response = await activation;
+      expect(response.statusCode, response.body).toBe(409);
+      expect(controlStore.getRunActivationReceipt('operator', detail.run.runRef, payload)).toMatchObject({
+        ok: true, value: { phase: 'failed' },
+      });
+      const replay = await activated.inject({
+        method: 'POST', url: `/api/control/runs/${detail.run.runRef}/activate`,
+        headers: headers(token), payload,
+      });
+      expect(replay.statusCode, replay.body).toBe(409);
+      expect(replay.json()).toMatchObject({ error: 'activation-failed' });
+    } finally {
+      releaseManagerAck();
+      releaseCancellation();
+      await activated.close();
+    }
+  });
+
+  it('bounds hung activation cancellation and still releases the run-control lock', async () => {
+    const detail = seedActivatableRun();
+    const payload = {
+      expectedRunVersion: detail.run.version,
+      expectedManagerGeneration: detail.run.managerGeneration,
+      idempotencyKey: `activate:${detail.run.runRef}:${detail.run.version}:hung-cancellation`,
+    };
+    const { activated } = await activatedApp(undefined, {
+      managerStartAckTimeoutMs: 5,
+      runAutomatic: async () => new Promise<never>(() => {}),
+      containManagerStart: async () => new Promise<never>(() => {}),
+    });
+    try {
+      const activation = await activated.inject({
+        method: 'POST', url: `/api/control/runs/${detail.run.runRef}/activate`,
+        headers: headers(token), payload,
+      });
+      expect(activation.statusCode, activation.body).toBe(409);
+      const contained = controlStore.getRun('operator', detail.run.runRef);
+      if (!contained.ok) throw new Error(contained.detail);
+      expect(contained.value.run.state).toBe('waiting-human');
+      expect(controlStore.getRunActivationReceipt('operator', detail.run.runRef, payload)).toMatchObject({
+        ok: true, value: { phase: 'failed' },
+      });
+      const stop = await activated.inject({
+        method: 'POST', url: `/api/control/runs/${detail.run.runRef}/manager/stop`,
+        headers: headers(token),
+        payload: {
+          expectedRunVersion: contained.value.run.version,
+          expectedManagerGeneration: contained.value.run.managerGeneration,
+          idempotencyKey: `stop:${detail.run.runRef}:${contained.value.run.version}`,
+        },
+      });
+      expect(stop.statusCode, stop.body).toBe(200);
+    } finally {
+      await activated.close();
+    }
+  });
+
   it('accepts stored assigned snapshots through publication reconciliation and activation validation', async () => {
     const managerAssignment = {
       agentId: 'assigned-manager', declarationPath: 'agents/assigned-manager.md', declarationHash: 'e'.repeat(64),
@@ -851,12 +1515,23 @@ describe('control proposal routes', () => {
     if (!pub2.ok) throw new Error(pub2.detail);
     const waiting = controlStore.transitionRun('operator', activationRun.value.run.runRef, pub2.value.version, 'waiting-human');
     if (!waiting.ok) throw new Error(waiting.detail);
+    const activationRequest = controlStore.createHumanRequest('operator', activationRun.value.run.runRef, {
+      kind: 'intervention', title: 'Activation review', prompt: 'Acknowledge before activation.',
+    });
+    if (!activationRequest.ok) throw new Error(activationRequest.detail);
+    const activationResponse = controlStore.respondHumanRequest('operator', activationRequest.value.requestRef, {
+      expectedRevision: activationRequest.value.revision,
+      decision: 'responded',
+      idempotencyKey: 'assigned-activation-response',
+    });
+    if (!activationResponse.ok) throw new Error(activationResponse.detail);
     const activationApp = Fastify();
     registerWriteSurface(activationApp, makeSurfaceContext({
       repoRoot: fileURLToPath(new URL('../../..', import.meta.url)), sessionConfig: SESSION,
       allowedOrigins: [ORIGIN], credentials: () => [], composerStore, controlStore,
       controlBroker: { isRunning: () => false, drain: () => {} } as never,
       runAutomatic: (async () => ({ ok: true })) as never,
+      containManagerStart: async () => {},
       appendAudit: (_root, event) => ({ ts: new Date().toISOString(), ...event }),
       appendAuditLocal: (_root, event) => ({ ts: new Date().toISOString(), ...event }),
       runPreamble: () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }),

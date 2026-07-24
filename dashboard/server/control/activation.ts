@@ -35,6 +35,7 @@ import {
   type AutomaticExecutionOptions,
   type CancelRunInput,
   type CancellationOutcome,
+  type ContainManagerStartInput,
   type ExecuteRunInput,
   type ExecutionBudget,
   type ExecutionOutcome,
@@ -109,12 +110,14 @@ export function isExecutionActivated(env: Record<string, string | undefined> = p
 export interface ActivationEngine {
   runToBoundary(input: ExecuteRunInput): Promise<ExecutionOutcome>;
   cancelRun(input: CancelRunInput): Promise<CancellationOutcome>;
+  containManagerStart?(input: ContainManagerStartInput): Promise<void>;
 }
 
 export interface ActivatedExecution {
   controlBroker: ManagedSessionBroker;
   runAutomatic: (input: ExecuteRunInput) => Promise<ExecutionOutcome>;
   cancelAutomatic: (input: CancelRunInput) => Promise<CancellationOutcome>;
+  containManagerStart?: (input: ContainManagerStartInput) => Promise<void>;
 }
 
 /**
@@ -374,5 +377,8 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
     controlBroker: broker,
     runAutomatic,
     cancelAutomatic: (input) => engine.cancelRun(input),
+    ...(engine.containManagerStart
+      ? { containManagerStart: (input: ContainManagerStartInput) => engine.containManagerStart!(input) }
+      : {}),
   };
 }

@@ -17,7 +17,9 @@ import {
 } from './proposal.ts';
 import { compileApprovedProposal } from './compiler.ts';
 import { loadExecutionProfiles, loadPolicyEnvironment, loadRuntimeSkillRegistry } from './environment.ts';
-import type { ControlResult, JsonObject, ProposalDecision } from './types.ts';
+import type { ControlResult, JsonObject, ProposalDecision, Run } from './types.ts';
+import type { RunActivationPhase } from './store.ts';
+import { withControlDeadline } from './runTransactions.ts';
 import { reconcileCanonicalPublication } from './publication.ts';
 import { classifyActionRisk, evaluateExecutionPolicy } from './policy.ts';
 import { acceptsBoundary, defaultWorkers, executeApprovedLaunch, statusOf } from './launch.ts';
@@ -588,6 +590,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     const runRef = (req.params as { runRef: string }).runRef;
     const body = record(req.body);
+    return ctx.runControlTransactions.run(sub, runRef, async () => {
     const detail = ctx.controlStore.getRun(sub, runRef);
     if (!detail.ok) return sendResult(reply, detail);
     if (!ctx.cancelAutomatic) return reply.code(409).send({ error: 'automatic-stop-not-activated' });
@@ -606,6 +609,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
         detail: error instanceof Error ? error.message : 'the executor could not confirm Manager and Worker cancellation',
       });
     }
+    });
   });
 
   scope.post('/api/control/runs/:runRef/manager/successor', { preHandler }, async (req, reply) => {
@@ -613,8 +617,18 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     const runRef = (req.params as { runRef: string }).runRef;
     const body = record(req.body);
+    return ctx.runControlTransactions.run(sub, runRef, async () => {
     const detail = ctx.controlStore.getRun(sub, runRef);
     if (!detail.ok) return sendResult(reply, detail);
+    const activeActivation = ctx.controlStore.hasActiveRunActivation(sub, runRef);
+    if (!activeActivation.ok) return sendResult(reply, activeActivation);
+    const acceptedResume = detail.value.run.publicationState === 'published'
+      && detail.value.run.state === 'waiting-human'
+      && detail.value.humanRequests.length > 0
+      && detail.value.humanRequests.every((request) => acceptsBoundary(request));
+    if (activeActivation.value || acceptedResume) {
+      return reply.code(409).send({ error: 'activation-resume-required' });
+    }
     const runtime = string(body.runtime);
     const model = string(body.model);
     const profile = loadExecutionProfiles(ctx.repoRoot).find((candidate) =>
@@ -637,7 +651,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       });
     }
     try {
-      auditFn(ctx)(ctx.repoRoot, {
+      await auditFn(ctx)(ctx.repoRoot, {
         action: 'control-manager-successor-authorize', owner: sub, target: runRef, riskTier: 'T2',
         result: `authorized:generation:${integer(body.expectedManagerGeneration) + 1}`,
         detail: {
@@ -663,26 +677,62 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       });
     });
     return reply.code(202).send({ ok: true, value: successor.value, replayed: successor.replayed ?? false, starting: true });
+    });
   });
 
   scope.post('/api/control/runs/:runRef/activate', { preHandler }, async (req, reply) => {
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
-    if (!ctx.controlBroker || !ctx.runAutomatic) return reply.code(409).send({ error: 'automatic-runtime-not-activated' });
     const runRef = (req.params as { runRef: string }).runRef;
     const body = record(req.body);
     if (!string(body.idempotencyKey)) return reply.code(400).send({ error: 'idempotency-key-required' });
+    const activationInput = {
+      expectedRunVersion: integer(body.expectedRunVersion),
+      expectedManagerGeneration: integer(body.expectedManagerGeneration),
+      idempotencyKey: string(body.idempotencyKey),
+    };
+    // Exact completed retries are read-only and remain replayable even if the runtime gate was
+    // turned off after the original dispatch. Pending receipts still require a live dispatcher.
+    const persistedReceipt = ctx.controlStore.getRunActivationReceipt(sub, runRef, activationInput);
+    if (!persistedReceipt.ok) return sendResult(reply, persistedReceipt);
+    if (persistedReceipt.value?.phase === 'dispatched') {
+      return reply.send({ ok: true, value: persistedReceipt.value.run, replayed: true });
+    }
+    if (persistedReceipt.value?.phase === 'failed') {
+      return reply.code(409).send({ error: 'activation-failed' });
+    }
+    if (!ctx.controlBroker || !ctx.runAutomatic || !ctx.containManagerStart) {
+      return reply.code(409).send({ error: 'automatic-runtime-not-activated' });
+    }
+    // Captured before the span closure: the handler's early activation gate proved it non-null, but
+    // control-flow narrowing does not cross the closure boundary.
+    const runAutomatic = ctx.runAutomatic;
+    const containManagerStart = ctx.containManagerStart;
+    if (!runAutomatic || !containManagerStart) {
+      return reply.code(409).send({ error: 'automatic-runtime-not-activated' });
+    }
+    // Per-run serialization excludes stop/successor controls without holding the fleet-wide Git lock
+    // during runtime startup. The nested ops transaction covers only audit and canonical root mutation.
+    return ctx.runControlTransactions.run(sub, runRef, async () => {
+    const receipt = ctx.controlStore.getRunActivationReceipt(sub, runRef, activationInput);
+    if (!receipt.ok) return sendResult(reply, receipt);
+    if (receipt.value?.phase === 'dispatched') {
+      return reply.send({ ok: true, value: receipt.value.run, replayed: true });
+    }
+    if (receipt.value?.phase === 'failed') return reply.code(409).send({ error: 'activation-failed' });
     const detail = ctx.controlStore.getRun(sub, runRef);
     if (!detail.ok) return sendResult(reply, detail);
-    if (detail.value.run.state === 'running' && ctx.controlBroker.isRunning(detail.value.run.managerSessionRef)) {
-      return reply.send({ ok: true, value: detail.value.run, replayed: true });
-    }
-    if (detail.value.run.version !== integer(body.expectedRunVersion)
-      || detail.value.run.managerGeneration !== integer(body.expectedManagerGeneration)
-      || detail.value.run.publicationState !== 'published' || detail.value.run.state !== 'waiting-human') {
+    const pendingReplay = receipt.value?.phase === 'claimed' || receipt.value?.phase === 'roots-activated';
+    if ((!pendingReplay && detail.value.run.version !== activationInput.expectedRunVersion)
+      || detail.value.run.managerGeneration !== activationInput.expectedManagerGeneration
+      || detail.value.run.publicationState !== 'published'
+      || (pendingReplay
+        ? detail.value.run.state !== 'waiting-human' && detail.value.run.state !== 'recovering'
+        : detail.value.run.state !== 'waiting-human')) {
       return reply.code(409).send({ error: 'activation-state-changed' });
     }
-    if (detail.value.humanRequests.some((request) => !acceptsBoundary(request))) {
+    if (detail.value.humanRequests.length === 0
+      || detail.value.humanRequests.some((request) => !acceptsBoundary(request))) {
       return reply.code(409).send({ error: 'human-boundary-unresolved' });
     }
     const stored = ctx.controlStore.getProposalRevision(
@@ -691,12 +741,8 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (!stored.ok || stored.value.hash !== detail.value.run.proposalHash || stored.value.approval?.decision !== 'approved') {
       return reply.code(409).send({ error: 'approved-proposal-binding-lost' });
     }
-    // Captured before the span closure: the handler's early activation gate proved it non-null, but
-    // control-flow narrowing does not cross the closure boundary.
-    const runAutomatic = ctx.runAutomatic;
-    if (!runAutomatic) return reply.code(409).send({ error: 'automatic-runtime-not-activated' });
-    // One ops transaction (nested audit/activation helpers reenter the held lock).
-    return withOpsTransaction(async () => {
+    let proposalForDispatch: PlanProposal | null = null;
+    const preparationFailure = await withOpsTransaction(async (): Promise<FastifyReply | null> => {
     try {
       await prepareCoordination(ctx.repoRoot, ctx.opsGit ?? defaultGitRunner);
     } catch {
@@ -711,7 +757,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     });
     if (!compiled.ok) return reply.code(409).send({ error: compiled.reason, detail: compiled.detail });
     try {
-      auditFn(ctx)(ctx.repoRoot, {
+      await auditFn(ctx)(ctx.repoRoot, {
         action: 'control-run-activate-authorize', owner: sub, target: runRef, riskTier: 'T3',
         result: `authorized:${runRef}:${stored.value.hash}`,
         detail: { runRef, proposalHash: stored.value.hash, managerGeneration: detail.value.run.managerGeneration },
@@ -742,11 +788,25 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (rootCards.length !== rootStageIds.size) {
       return reply.code(409).send({ error: 'managed-root-card-binding-lost' });
     }
+    let claimed = receipt.value ?? null;
     try {
-      await activateManagedRootCards({
+      await (ctx.activateManagedRoots ?? activateManagedRootCards)({
         repoRoot: ctx.repoRoot, runRef, cardRefs: rootCards, runPy: ctx.runPy,
         runGit: ctx.opsGit ?? defaultGitRunner,
         authorizeAfterPrepare: () => {
+          const current = ctx.controlStore.getRun(sub, runRef);
+          const exactPending = claimed?.phase === 'claimed' || claimed?.phase === 'roots-activated';
+          if (!current.ok
+            || (!exactPending && current.value.run.version !== activationInput.expectedRunVersion)
+            || current.value.run.managerGeneration !== activationInput.expectedManagerGeneration
+            || current.value.run.publicationState !== 'published'
+            || (exactPending
+              ? current.value.run.state !== 'waiting-human' && current.value.run.state !== 'recovering'
+              : current.value.run.state !== 'waiting-human')
+            || current.value.humanRequests.length === 0
+            || current.value.humanRequests.some((request) => !acceptsBoundary(request))) {
+            throw new Error('run activation state changed before canonical root activation');
+          }
           const currentProposal = validateServerCompiledPlanProposal(stored.value.snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
           const currentCompiled = currentProposal.ok
             ? compileApprovedProposal(currentProposal.value, stored.value.hash, stored.value.hash, {
@@ -758,20 +818,123 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
             || JSON.stringify(currentCompiled.value.stagePolicies) !== JSON.stringify(compiled.value.stagePolicies)) {
             throw new Error('managed root activation policy changed');
           }
+          const claim = ctx.controlStore.claimRunActivation(sub, runRef, activationInput);
+          if (!claim.ok) throw new Error(claim.detail);
+          claimed = claim.value;
         },
       });
     } catch (error) {
+      if (claimed) ctx.controlStore.failRunActivation(sub, runRef, activationInput);
       return reply.code(409).send({
         error: 'canonical-activation-failed', detail: error instanceof Error ? error.message : String(error),
       });
     }
-    void runAutomatic({ subject: sub, runRef, proposal: proposal.value }).catch((error: unknown) => {
-      ctx.controlStore.createHumanRequest(sub, runRef, {
+    if (!claimed) return reply.code(409).send({ error: 'activation-claim-missing' });
+    const rootsActivated = ctx.controlStore.advanceRunActivation(sub, runRef, activationInput, 'roots-activated');
+    if (!rootsActivated.ok) {
+      ctx.controlStore.failRunActivation(sub, runRef, activationInput);
+      return sendResult(reply, rootsActivated);
+    }
+    proposalForDispatch = proposal.value;
+    return null;
+    });
+    if (preparationFailure) return preparationFailure;
+    if (!proposalForDispatch) return reply.code(409).send({ error: 'activation-preparation-missing' });
+    let acknowledgeDispatch!: (receipt: { run: Run; phase: RunActivationPhase }) => void;
+    let rejectDispatch!: (error: Error) => void;
+    let dispatchAcknowledged = false;
+    const dispatchAcknowledgement = new Promise<{
+      run: Run;
+      phase: RunActivationPhase;
+    }>((resolve, reject) => {
+      acknowledgeDispatch = resolve;
+      rejectDispatch = reject;
+    });
+    let execution: Promise<unknown>;
+    try {
+      execution = runAutomatic({
+        subject: sub,
+        runRef,
+        proposal: proposalForDispatch,
+        onManagerStarted: () => {
+          const dispatched = ctx.controlStore.advanceRunActivation(sub, runRef, activationInput, 'dispatched');
+          if (!dispatched.ok) throw new Error(dispatched.detail);
+          dispatchAcknowledged = true;
+          acknowledgeDispatch(dispatched.value);
+        },
+      });
+    } catch (error) {
+      ctx.controlStore.failRunActivation(sub, runRef, activationInput);
+      return reply.code(409).send({
+        error: 'automatic-dispatch-failed',
+        detail: error instanceof Error ? error.message : 'automatic execution adapter failed',
+      });
+    }
+    void execution.then(
+      () => {
+        if (!dispatchAcknowledged) rejectDispatch(new Error('automatic execution returned before durable Manager startup'));
+      },
+      (error: unknown) => rejectDispatch(error instanceof Error ? error : new Error('automatic execution adapter failed')),
+    );
+    let dispatched: { run: Run; phase: RunActivationPhase };
+    try {
+      dispatched = await withControlDeadline(
+        dispatchAcknowledgement,
+        ctx.managerStartAckTimeoutMs,
+        `Manager startup was not durably acknowledged within ${ctx.managerStartAckTimeoutMs}ms`,
+      );
+    } catch (error) {
+      // Close the outbox first. A Manager-start callback arriving while cancellation is in flight
+      // must observe `failed` and can never turn a timeout response into a later dispatched replay.
+      ctx.controlStore.failRunActivation(sub, runRef, activationInput);
+      try {
+        await withControlDeadline(
+          containManagerStart({
+            subject: sub,
+            runRef,
+            idempotencyKey: `activation-contain:${activationInput.idempotencyKey}`,
+          }),
+          ctx.managerStartAckTimeoutMs,
+          `Manager startup cancellation was not acknowledged within ${ctx.managerStartAckTimeoutMs}ms`,
+        );
+      } catch {
+        // The durable run/receipt containment below remains mandatory even if process cancellation
+        // cannot be confirmed.
+      }
+      const intervention = ctx.controlStore.createHumanRequest(sub, runRef, {
+        kind: 'intervention',
+        title: 'Activation dispatch needs reconciliation',
+        prompt: error instanceof Error ? error.message : 'durable Manager startup acknowledgement failed',
+      });
+      if (!intervention.ok) {
+        const current = ctx.controlStore.getRun(sub, runRef);
+        if (current.ok && (current.value.run.state === 'recovering'
+          || current.value.run.state === 'running'
+          || current.value.run.state === 'waiting-human')) {
+          ctx.controlStore.transitionRun(sub, runRef, current.value.run.version, 'interrupted');
+        }
+      }
+      return reply.code(409).send({
+        error: 'automatic-dispatch-failed',
+        detail: error instanceof Error ? error.message : 'automatic execution adapter failed',
+      });
+    }
+    void execution.catch((error: unknown) => {
+      const intervention = ctx.controlStore.createHumanRequest(sub, runRef, {
         kind: 'intervention', title: 'Automatic execution needs intervention',
         prompt: error instanceof Error ? error.message : 'automatic execution adapter failed',
       });
+      const current = ctx.controlStore.getRun(sub, runRef);
+      if (current.ok && (current.value.run.state === 'recovering' || current.value.run.state === 'running')) {
+        ctx.controlStore.transitionRun(
+          sub,
+          runRef,
+          current.value.run.version,
+          intervention.ok ? 'waiting-human' : 'interrupted',
+        );
+      }
     });
-    return reply.code(202).send({ ok: true, value: detail.value.run, starting: true });
+    return reply.code(202).send({ ok: true, value: dispatched.run, starting: true });
     });
   });
 

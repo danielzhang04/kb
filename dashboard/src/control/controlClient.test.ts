@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  activateRun,
   createProposalRevision,
   createManagerSuccessor,
   decideProposalRevision,
@@ -192,6 +193,59 @@ describe('control client run and retention writes', () => {
 
     await expect(resumeRunAfterHumanResponse('run-1', 'bearer', fetchImpl)).resolves.toBeUndefined();
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
+      '/api/control/runs/run-1/activate',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(JSON.parse(String((fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls[1][1]?.body))).toEqual({
+      expectedRunVersion: 5,
+      expectedManagerGeneration: 1,
+      idempotencyKey: `activate:run-1:5:${'a'.repeat(64)}:1`,
+    });
+  });
+
+  it('strictly activates one existing run and surfaces an inactive runtime', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(response({ error: 'automatic-runtime-not-activated' }, 409)) as unknown as FetchLike;
+
+    await expect(activateRun({
+      runRef: 'run/ref',
+      version: 5,
+      managerGeneration: 1,
+      proposalHash: 'proof',
+    }, 'bearer', fetchImpl)).rejects.toMatchObject({
+      reason: 'automatic-runtime-not-activated',
+      status: 409,
+    });
+    expect(fetchImpl).toHaveBeenCalledWith(
+      '/api/control/runs/run%2Fref/activate',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          expectedRunVersion: 5,
+          expectedManagerGeneration: 1,
+          idempotencyKey: 'activate:run/ref:5:proof:1',
+        }),
+      }),
+    );
+  });
+
+  it('does not swallow non-gate activation failures after a Human Request response', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(response({ ok: true, value: {
+        run: {
+          runRef: 'run-1', proposalRef: 'proposal-1', proposalRevision: 1, proposalHash: 'a'.repeat(64),
+          publicationState: 'published', state: 'waiting-human', version: 5, managerGeneration: 1,
+        },
+        humanRequests: [{ kind: 'intervention', state: 'resolved', response: { decision: 'responded' } }],
+      } }))
+      .mockResolvedValueOnce(response({ error: 'activation-state-changed' }, 409)) as unknown as FetchLike;
+
+    await expect(resumeRunAfterHumanResponse('run-1', 'bearer', fetchImpl)).rejects.toMatchObject({
+      reason: 'activation-state-changed',
+      status: 409,
+    });
   });
 
   it('separates dry-run inventory from exact-plan quarantine', async () => {
