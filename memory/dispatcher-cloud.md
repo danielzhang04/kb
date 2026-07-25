@@ -158,3 +158,17 @@
   card — did not self-mirror (script-mirror is a desktop decision).
 - REMAINS: 3 stale done-in-inbox cards (6a5dbb3e, 6a5f0cef, 6a605e40) still unswept — recurring;
   a janitor sweep would help but is outside the nightly work order, left untouched again.
+
+## 2026-07-25 nightly-dispatcher run
+- WORKED: full nightly + weekly-audit cycle green — preamble OK, sync_skills --check clean,
+  daemon-dir mirror clean (main copy). Dispatcher emitted 2 cards tonight (nightly-review +
+  weekly-audit); both executed inbox→working→done, cost steps logged.
+- daemon-dir DRIFT (self-lint-report.md content-differs, flagged 2026-07-22) is now RESOLVED —
+  today's check is clean. Wake card 6a605ebb-d86dff79's drift half is stale; only its
+  "missing script on ops" half persists.
+- STILL: scripts/sync_daemon_dirs.py absent on ops; step-2b literal invocation file-not-founds.
+  Same workaround (run origin/main copy). Left for Daniel — did NOT write a duplicate wake card
+  (6a605ebb already covers it). Lesson: check inbox for an existing wake card before filing a
+  new one for a recurring gap.
+- REMAINS: 3 stale done-in-inbox cards (6a5dbb3e, 6a5f0cef, 6a605e40) still unswept (recurring).
+- Silent run (no push): nothing new broke; all pending items already carry wake/decision cards.
