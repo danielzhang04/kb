@@ -172,3 +172,14 @@
   new one for a recurring gap.
 - REMAINS: 3 stale done-in-inbox cards (6a5dbb3e, 6a5f0cef, 6a605e40) still unswept (recurring).
 - Silent run (no push): nothing new broke; all pending items already carry wake/decision cards.
+
+## 2026-07-26 nightly-review (dispatcher-cloud, cloud self-exec)
+- WORKED: clean nightly. preamble OK, sync_skills --check clean, daemon-dir mirror clean
+  (ran origin/main copy — sync_daemon_dirs.py still absent on ops). Dispatcher emitted 1 card
+  (nightly-review 6a65a3cd-dabf5d57); executed inbox→working→done, cost step logged, dashboards
+  rewritten in full.
+- CONFIRMED recurring: scripts/sync_daemon_dirs.py missing on ops (present on main). Existing
+  wake card 6a605ebb-d86dff79 already covers it — did NOT file a duplicate. Same workaround holds.
+- REMAINS: 3 stale done-in-inbox cards (6a5dbb3e, 6a5f0cef, 6a605e40) still unswept — carried
+  across ≥3 runs now; worth a one-time housekeeping sweep when a human touches ops.
+- DIRECT-PUSH path expected this run (coordination writes to ops). If restricted → PR fallback.

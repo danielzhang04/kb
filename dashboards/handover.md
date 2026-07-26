@@ -1,11 +1,11 @@
 # System Handover
-_Generated: 2026-07-25 06:07 UTC_
+_Generated: 2026-07-26 06:07 UTC_
 
-Quiet, healthy night. Two cadences fired tonight — nightly-review and the weekly-audit — and
-both ran their checks clean: preamble OK, skills in sync, and the daemon-dir mirror reports
-clean (ops matches main for every daemon-read dir, so nothing is owed there). Budget is
-untouched ($0.00 of the $5.00/day cap). No fleet work ran unattended; the daily self-lint
-cadence stays dormant because no scheduler is enabled.
+Quiet, healthy night. One cadence fired — the nightly-review — and its checks all ran clean:
+preamble OK, skills in sync, and the daemon-dir mirror reports clean (ops matches main for every
+daemon-read dir, so nothing is owed there). Budget is untouched ($0.00 of the $5.00/day cap). No
+fleet work ran unattended; the daily self-lint cadence stays dormant because no scheduler is
+enabled.
 
 What's waiting on you is all carried over — nothing new broke tonight. The biggest is the
 faceless-youtube engagement-fold: six delta cards are staged and ready, but the governed queue
