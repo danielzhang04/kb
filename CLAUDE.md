@@ -37,3 +37,6 @@ Read it at start. Durable facts go in files, never only in conversation.
 ## Navigation
 Start at `_index.md`. Projects live in `orgs/<project>/` — read that project's `_index.md`,
 `STATE.md`, `contract.md` before working on it.
+
+## Boss session
+The interactive orchestrator terminal additionally follows @BOSS.md
