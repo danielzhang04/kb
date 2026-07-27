@@ -107,8 +107,9 @@ this document too** (the fix: `.claude/skills/README.md` §Design rules).
   Append-only. Dates absolute (`YYYY-MM-DD`), **taken from the session's current date** — never a
   stale one copied from context.
 - **F-status:** `docs/STATUS.md` is the live status — a **doc**, kept current in place.
-  Dated pickups/handoffs are **append-only logs** carrying resume state; they live in the kb
-  repo-root `handoffs/` (fyt scope, per `handoffs/README.md`), never beside STATUS.md.
+  Dated pickups/handoffs carry resume state for in-flight work only; they live in the kb
+  repo-root `handoffs/` (fyt scope) and are **deleted on pickup or completion** per the
+  `handoffs/README.md` lifecycle — git history keeps them recoverable.
 - **F-docs — integrate, don't append:** write the change into the right section and delete what it
   supersedes; never stack dated blocks, bolt on corrections contradicting earlier sections, or grow a
   pile of one-off notes. Docs stay structured by topic, **concise**, comprehensive, non-overlapping,
