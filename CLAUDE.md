@@ -32,7 +32,7 @@ never printed, copied, persisted, or transmitted. Never spend real money. When i
 
 ## Memory
 End every run by appending lessons to `memory/<agent-id>.md` (what worked / failed / remains).
-Read it at start. Durable facts go in files, never only in conversation.
+Read it at start. Durable facts go in files, never only in conversation. Route each lesson to the least-general file a fresh session actually loads — a lesson written where nothing reads it is a silent no-op.
 
 ## Navigation
 Start at `_index.md`. Projects live in `orgs/<project>/` — read that project's `_index.md`,
