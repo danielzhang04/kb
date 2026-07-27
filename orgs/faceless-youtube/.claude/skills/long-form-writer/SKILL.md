@@ -32,11 +32,10 @@ the story exists (Steps 3a–3c). The facts never shape the voice; the voice car
 
 - **The idea brief** in `idea-backlog.md`. On the deep path its promises are hypotheses until research
   verifies them.
-- **`videos/<slug>/research.md`** — the source of truth for facts and a **pool, not a checklist**: a
-  ceiling (state only what it sources), never a floor (a great script uses maybe half). Its
-  **Viability verification** block is the canonical story/packaging contract — its supported or
-  revised stake, mechanism, payload, cold open, and titles override conflicting brief text; never
-  reuse anything under **Unsupported promises**.
+- **`videos/<slug>/research.md`** — the source of truth for facts; select from it per grammar §2.2 (a
+  ceiling, never a floor). Its **Viability verification** block is the canonical story/packaging
+  contract — its supported or revised stake, mechanism, payload, cold open, and titles override
+  conflicting brief text; never reuse anything under **Unsupported promises**.
 - **`channels/<name>/storytelling-grammar.md`** — the craft law. Read every run, plus
   `references/personable-calibration.md` (the voice reference) where the channel routes to it.
 - **`channels/<name>/dna.md`** — length band, locked lever, narrator persona, humor dial.
@@ -59,8 +58,8 @@ order is the flat-explainer failure.
 
 1. **The story.** In a few sentences: what story would you tell a friend? Which events earn a place,
    at what level of detail.
-2. **The plot.** Sequence to land hardest, not by the calendar — choose the shape from grammar §3.
-   Note where the wit runs hot and where it goes off (grammar §1.7, `dna.md` humor dial).
+2. **The plot.** Sequence to land hardest, not by the calendar — choose the shape from grammar §3 and
+   design the retention arc now (grammar §2.6). Set the humor register off `dna.md`'s dial.
 3. **The spine.** 8–14 beats in plain English, one line each, no `[F-NN]` tags, no jargon; note beside
    each which facts are on hand. Read it back cold for followability (grammar §3.7) and fix by
    resequencing, never a bolted-on patch. For a major scheme sequence, a compact planning card:
@@ -76,19 +75,23 @@ mid-draft is what flattens the voice.
 ### 3c — Leash pass: now check every claim
 
 Trace every factual claim to its `[F-NN]`; cut or hedge anything unsourced (`Conf: low` → hedge or
-cut). The casual draft stays the voice source of truth: make the **smallest local factual correction**
-and preserve sentence order, conversational joints, repetitions, slang, comic rhythm, and narrator
-presence. A claim that can't be fixed locally gets flagged to the writer, never laundered into
-documentary exposition. Optional inline `<!--F-NN-->` traces are allowed; **strip every one before
-final output.**
+cut); date-sensitive mechanics carry their "as of <year>". The casual draft stays the voice source of
+truth: make the **smallest local factual correction** and preserve sentence order, conversational
+joints, repetitions, slang, comic rhythm, and narrator presence. A claim that can't be fixed locally
+gets flagged to the writer, never laundered into documentary exposition. Optional inline `<!--F-NN-->`
+traces are allowed; **strip every one before final output.** Put the **Sources** list (the `[S#]`
+entries actually used) at the bottom of `script.md`, and apply the niche policy gate where one exists
+(business-money **defamation discipline** per grammar §4; micro-health ≥2 sources; engineering
+analysis-not-gore; AI-disclosure line where required).
 
-### 3d — Critics (`references/critics.md`)
+### 3d — Critics + humanize (`references/critics.md`)
 
 Fresh, single-mandate agents — the writer can't catch its own taste flaws. Run exactly per
 `critics.md`: mechanical lint (`scripts/lint_script.py`), four parallel flag-only critics (taste,
 leash, coherence, raw-versus-leashed), one editor applying line fixes in voice, at most one structural
-writer bounce, re-lint. Taste and leash are subtractive; coherence is the one structural lane. Still
-confusing after the bounce → surface to the human.
+writer bounce, then the **`humanizer` skill as the closing pass** (keep its edits), re-lint. Taste and
+leash are subtractive; coherence is the one structural lane. Still confusing after the bounce →
+surface to the human.
 
 ### 3e — Accept
 
@@ -100,7 +103,7 @@ fact). Then Step 4.
 ## Step 3 (single) — one strong pass · `long_form: single`
 
 Write the full script in one disciplined pass with the same voice and spine discipline, leash-check if
-a `research.md` exists, then Step 4.
+a `research.md` exists, run the `humanizer` skill, then Step 4.
 
 ---
 
@@ -112,35 +115,16 @@ The craft lives in the grammar — apply it, don't re-derive it. The execution c
   Pacing otherwise lives in punctuation (new sentence/colon = cut-in; ellipsis = held beat; comma =
   catch); never an em/en dash. (v3 channels may use `[aside: dry]`/`[emote: sighs]`; stripped on v2.)
 - **`[B-ROLL]` cues are meaning anchors, not the shot list.** Cue the beat's meaning/emotion
-  (`[B-ROLL: the promise everyone believed]`), not a literal picture — `visual-prompt-writer` owns
-  shot count, pacing, and durations. Surface claims in the narrator's reported form so the visual can
-  unmask them; reach for vivid verbs/idioms the visual can draw literally.
-- **Retention:** open on the intrigue in the first lines; a real reason to stay inside ~15s. Past 10
-  minutes, keep new stimulus coming, re-arm mid-video, and hold the best fact for the final stretch.
-- **Length:** the story's natural length (grammar §2.3); ~150 wpm, runtime ≈ words ÷ 150. **Header
-  `Estimated runtime: MM:SS` is REQUIRED, never `TBD`** — `lint_script.py` prints the exact string to
-  paste and hard-fails without it. Header `Target length` is the channel norm, not the brief's
-  aspirational band.
+  (`[B-ROLL: the promise everyone believed]`), not a literal picture — `visual-prompt-writer` reads
+  them as its spine and owns shot count, pacing, and durations. Surface claims in the narrator's
+  reported form so the visual can unmask them; reach for vivid verbs/idioms the visual can draw
+  literally.
+- **Runtime header:** **`Estimated runtime: MM:SS` is REQUIRED, never `TBD`** — computed at the
+  **channel voice's measured wpm** from `dna.md` (fallback 150). `lint_script.py --wpm <N>` prints the
+  exact string to paste and hard-fails without it. Header `Target length` is the channel norm (grammar
+  §2.3), not the brief's aspirational band.
 
-## Step 5 — Humanize
-
-Bake it in from the first draft (contractions, varied sentence length, concrete nouns, active present
-tense), then one focused pass: kill the AI-tells ("in today's video," "delve," "tapestry," "it's
-important to note"), empty intensifiers, over-signposting, the rhetorical-question tic (≤1 per ~200
-words), the reflexive rule-of-three, "not X but Y," and every em/en dash. Then **run the `humanizer`
-skill as a final pass** and keep its edits.
-
-## Step 6 — Accuracy & policy
-
-- Keep the channel's **original POV/framework**.
-- **Leash (research channels):** nothing outside the ledger; every hard claim traces to an `[F-NN]`;
-  `Conf: low` hedged; date-sensitive mechanics carry "as of <year>". Sources list (the `[S#]` entries
-  used) at the bottom of `script.md`.
-- **Niche gate** where one exists: micro-health ≥2 sources; engineering analysis-not-gore;
-  business-money **defamation discipline** (grammar §4). Add the AI/synthetic-content disclosure line
-  where required.
-
-## Step 7 — Status + handoff
+## Step 5 — Status + handoff
 
 Set the idea to **`scripted`** in `idea-backlog.md` (preserve everything else). The folder is ready
 for `shorts-writer` and, in parallel, `metadata-writer` → `visual-prompt-writer` → `voiceover` →

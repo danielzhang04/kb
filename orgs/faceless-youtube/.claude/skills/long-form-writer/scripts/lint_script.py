@@ -7,7 +7,9 @@ word count vs runtime. Quotation marks in the VO body and exact
 credibility-padding phrases are reported as non-blocking advisories (quoting is
 a taste call for the critics, not a lock).
 
-Usage: python lint_script.py <path-to-script.md>
+Usage: python lint_script.py <path-to-script.md> [--wpm N]
+--wpm is the channel voice's measured words-per-minute from dna.md (default 150),
+used only for the runtime suggestion.
 Exit code 0 = clean or advisory-only, 1 = hard violations found.
 """
 import re
@@ -59,7 +61,7 @@ def lint_step_sequences(lines, body_start, body_end, hard):
             hard.append((lineno, f"skipped/out-of-order Step (expected {expected})", text))
 
 
-def main(path):
+def main(path, wpm=150):
     with open(path, encoding="utf-8") as f:
         lines = f.readlines()
 
@@ -138,18 +140,28 @@ def main(path):
         for lineno, kind, text in soft:
             print(f"  L{lineno}  [{kind}]  {text[:100]}")
 
-    total_s = round(vo_words / 150.0 * 60)
+    total_s = round(vo_words / float(wpm) * 60)
     mm, ss = divmod(total_s, 60)
     print(
         f"\nVO word count: {vo_words}  ->  header should read: "
-        f"Estimated runtime: {mm}:{ss:02d} ({vo_words:,} words ÷ 150 wpm)"
+        f"Estimated runtime: {mm}:{ss:02d} ({vo_words:,} words ÷ {wpm} wpm)"
     )
 
     return 1 if hard else 0
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("usage: python lint_script.py <path-to-script.md>")
+    args = sys.argv[1:]
+    wpm = 150
+    if "--wpm" in args:
+        i = args.index("--wpm")
+        try:
+            wpm = int(args[i + 1])
+        except (IndexError, ValueError):
+            print("usage: python lint_script.py <path-to-script.md> [--wpm N]")
+            sys.exit(2)
+        del args[i : i + 2]
+    if len(args) != 1:
+        print("usage: python lint_script.py <path-to-script.md> [--wpm N]")
         sys.exit(2)
-    sys.exit(main(sys.argv[1]))
+    sys.exit(main(args[0], wpm))

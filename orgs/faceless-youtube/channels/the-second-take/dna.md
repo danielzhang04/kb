@@ -92,17 +92,15 @@ long_form: staged       # writers-room: outline → section drafts → accuracy/
   credibility. Full macro-architecture + register grammar: `storytelling-grammar.md`. Writes toward this
   person on every line (§1d-V/§5d).
 - **Humor dial (locked — register set by topic gravity):** the comedic rate is **a DIAL set by the topic's
-  gravity, NOT a fixed rate** (owned here; grammar §1.7 keeps comedy off human cost). Money-absurdity / systemic farce runs **hot**
-  (dense wit); human-villainy / ruin runs **wry and sparse**; **human cost → comedy OFF entirely**. Slide the
+  gravity, NOT a fixed rate** (owned here). Money-absurdity / systemic farce runs **hot**
+  (dense wit); human-villainy / ruin runs **wry and sparse**. Slide the
   dial to the beat you're on. Across the channel this lands **more comedic than any pure finance-or-history
   channel, without becoming a comedy channel** — storytelling first, the wit riding on it. Toolbox:
   **anachronistic analogy that *teaches*** ("jazz became the
   Wi-Fi of the 20s"), deadpan undercut, ironic re-label ("exorbitant privilege = legalized robbery"), comic
   false precision, absurd escalation capped by a pun, bathos, narrator-described personification. **Every joke
-  carries a fact** (delete-test — lose the joke, lose the info). On the human-cost beat don't joke *at* the
-  deaths, but **calibrate to the audience's real stake** — a 200-year-old con is a curiosity, not a tragedy
-  the viewer personally grieves; state the cost, don't over-dwell (full silence only for genuinely resonant
-  suffering). No solemn essay, no paper-conclusion close (grammar §4/§3.5). **Smart-not-cringe:** laughs reward
+  carries a fact** (delete-test — lose the joke, lose the info). No solemn essay, no paper-conclusion
+  close (grammar §3.5). **Smart-not-cringe:** laughs reward
   knowing the real thing; **evergreen references only, never memes/slang that date**; the butt is the
   fool/institution. **TTS-safe:** keep jokes that live in *fact + framing*; convert any needing performance
   timing/voices to narrator-reported or hand to visuals. Rules in §1d-V; full grammar in

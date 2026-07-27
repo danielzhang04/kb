@@ -17,9 +17,12 @@ That is the target energy. Match it; don't quote it.
 
 **1.1 — Casual friend, plain words.** Short declaratives colliding with longer runs. No literary
 phrasing, and no term a normal person wouldn't say out loud ("sovereign debt," "underwritten," "yield") —
-say the plain version or cut it. This is a money-*story*, not a finance tutorial: deliver the amazing
-fact, skip the mechanics lesson. *Test: would you actually say this line to a friend?* (Formatting: no
-em/en dashes, ever — an AI tell the viewer can't hear. Breath is periods, commas, colons, and cue tags.)
+say the plain version or cut it. **When a term or mechanism the viewer may not know has to stay,
+contextualize it in the same breath** — a plain gloss or an analogy, never an assumption of knowledge
+("He issued government bonds. Basically IOUs from a country: lend us money now, we pay you back with
+interest."). This is a money-*story*, not a finance tutorial: deliver the amazing fact, skip the
+mechanics lesson. *Test: would you actually say this line to a friend?* (Formatting: no em/en dashes,
+ever — an AI tell the viewer can't hear. Breath is periods, commas, colons, and cue tags.)
 > ✗ "underwritten by a respectable banking house, in notes of a hundred"
 > ✓ "So MacGregor gets the Bank of Scotland's official printer to make 5,000 Poyais dollar notes."
 
@@ -29,10 +32,13 @@ move; the story concludes exactly once, at the very end, on one earned image. **
 read the last sentence of every paragraph — if it's a general statement *about* the story, fold it
 forward or cut it. A dry *factual* aside is the good kind; keep it.
 
-**1.3 — The wit rides the facts.** A deadpan line that carries information is the goal: delete the joke
-and the fact survives; delete the fact and the joke collapses.
+**1.3 — The wit is abundant, consistent, and rides the facts.** Jokes, metaphors, and asides are not
+seasoning for a few beats; they run **throughout** — the recurring draft failure is a script that goes
+deadpan-flat for stretches. A couple of beats in a row with no joke, analogy, aside, or reaction is a
+defect, not restraint. Every piece of wit still rides a fact: delete the joke and the fact survives;
+delete the fact and the joke collapses.
 > "Yeah, that's his real name." · "That's a chunk of land bigger than Maryland for a bar tab and a
-> necklace." · "The hard drives were fake. The bricks were real."
+> necklace." · "Most people would look at that and become a landowner. So he hatches a plot."
 
 **1.4 — Analogies are the explanatory engine.** The strongest tool this channel has. A modern comparison
 the viewer instantly pictures IS the explanation, not decoration on top of it — reach for one wherever a
@@ -40,7 +46,7 @@ mechanism, a scale, or an absurdity would otherwise need a lecture. Runs of comp
 a good one can recur as a callback.
 > Scale: "It's like the Louisiana Purchase on crack. Even Thomas Jefferson is looking a little
 > overpriced."
-> Mechanism: "It's like being a tourist and the guy at the airport says the cab ride is fifty dollars.
+> Mechanism: "It's like being a tourist in Bali and the cab driver wants to charge you 50 bucks for a ride to the hotel.
 > Maybe that's normal. Maybe it's a scam. You don't know, because you just got there."
 > Character: "MacGregor was like the Bernie Madoff of the 1820s, except Madoff sold securities and
 > MacGregor sold a whole fake country."
@@ -64,28 +70,37 @@ actually did," "he really did," "seriously," "the maddening thing," "genuinely a
 insane fact plainly and let the *viewer* be the one amazed. The identity aside is exactly "Yeah, that's
 his real name." ("Real" survives where it contrasts real money, land, or a real name with the fake.)
 
-**1.7 — Human cost: comedy off, concise.** On death and ruin the jokes stop and the prose goes plain —
-name what happened, land one or two concrete faces in a line each, give the aggregate, and move. Forward
-momentum, narration, and visual life continue; no grief-milking, no named-victim biographies, no
-automatic slow static passage. (The full humor dial is channel data: `dna.md`.)
-
 ---
 
 ## 2. The story
 
-**2.1 — The hook gets them in the door; it does not tell the story.** State the intrigue and stop — no
-outline, no preview. Roughly four to five sentences. **Person-led packaging → person-led hook:** when
-the title/thumbnail promise a person, open ON that person and name them within two sentences (teasing an
-unknown name buys nothing); the stakes beat moves to the turn, it does not vanish.
+**2.1 — The hook gets them in the door; it does not tell the story.** Roughly four to five sentences
+that do three jobs: state the settled, impossible-sounding fact; make the scale or stakes concrete (a
+number, a count, a fortune); and end on the one problem that makes it a story — then stop. No outline,
+no preview, no "he was not some nobody," no "welcome back." The viewer should be left holding exactly
+one question the story now owes them.
+> "In the late 1980s, a hot American tech company shipped about 26,000 brand-new hard drives out to
+> warehouses around the world. On the books, they were worth around four million dollars. Every one had
+> a serial number. There was just one problem. They were bricks. Actual clay bricks."
+
+**Person-led packaging → person-led hook:** when the title/thumbnail promise a person, open ON that
+person and name them within two sentences (teasing an unknown name buys nothing); the stakes beat moves
+to the turn, it does not vanish.
+> "So there was this guy, Gregor MacGregor. Yeah, that's his real name."
 
 **2.2 — Select by story value; develop what you keep.** `research.md` is a pool, not a checklist. Cut
 the beats that don't carry the story; give the ones that do their real color — the scene, the concrete
 detail, the telling number. Three inert research paragraphs collapse to one beat, but a beat that carries
 the story earns more than a hurried sentence. The pipeline's most stubborn miss is stuffing in facts
 because they're sourced; the opposite miss — racing through a beat that deserved room — is just as real.
+> Three sourced paragraphs on audit sampling methodology collapse to: "Auditors don't open every box,
+> the same reason airport security doesn't tear open every suitcase. They spot-check a sample and trust
+> the pile." The beat that carries the story (the bricks getting weighed, packed, and serial-numbered)
+> gets the room instead.
 
-**2.3 — Let the story set the length; the natural center is about ten minutes.** Roughly 1,400–1,600
-words at ~150 wpm, as a center of gravity, not a target. Landing well under usually means beats are
+**2.3 — Let the story set the length; the natural center is about ten minutes.** Word target follows
+the **channel voice's measured wpm** (in `dna.md`; e.g. Miles runs ~175 gross with ~18% pause), not a
+universal constant — a center of gravity, not a target. Landing well under usually means beats are
 under-developed (starved of color), not that filler is missing; running long usually means dwell (§2.5).
 Add length only as a genuine cut *thread*, never padding.
 
@@ -99,6 +114,12 @@ paper clips; the rivers ran with gold you could wash out of the sand. *Dwell* is
 it has landed. **The test: does the line add a new fact or image, or re-emphasize one already said?**
 Add the first, cut the second. A line that survives with zero information removed is filler. Lean toward
 color — the miss we correct most is a draft gone too terse.
+
+**2.6 — Design for retention before drafting.** These are outline decisions, not post-hoc patches: open
+on the intrigue in the very first lines (no logo, no throat-clearing); give a real reason to stay inside
+the first ~15 seconds; keep new stimulus arriving beat to beat; on longer stories re-arm the tension
+around the middle (a new question, a turn, a second scheme); and hold the single best fact for the final
+stretch instead of front-loading everything.
 
 ---
 
@@ -176,11 +197,23 @@ The taste defects the pipeline reliably produces, as transformations (what criti
 
 ## 6. The joke toolbox (reach for these; never force them)
 
-All fact-riding: anachronistic analogy that *teaches* the mechanism (the workhorse) · deadpan undercut /
-bathos · ironic re-label ("Official Shoemaker to the Princess of Poyais") · comic false precision (exact
-numbers for deadpan authority) · deflate-the-powerful (a grand figure reduced to a petty real detail) ·
-self-aware narrator (honest about gaps in the record) · historical irony where the real fact *is* the
-punchline.
+All fact-riding, and used **often** (§1.3 — abundance is the default, flatness is the defect):
+
+- **Anachronistic analogy that teaches the mechanism** (the workhorse): "the Bernie Madoff of the
+  1820s, except Madoff sold securities and MacGregor sold a whole fake country."
+- **Deadpan undercut / bathos:** "Most people would look at that and become a landowner. So he hatches
+  a plot."
+- **Ironic re-label:** "Official Shoemaker to the Princess of Poyais."
+- **Comic false precision** (exact numbers for deadpan authority): "eight million acres for a bar tab
+  and a necklace."
+- **Deflate-the-powerful** (a grand figure reduced to a petty real detail): "Even Thomas Jefferson is
+  looking a little overpriced."
+- **Viewer-solidarity aside** (the narrator admits they'd fall for it too): "I'd move to a country with
+  golden rivers too, you know."
+- **Playing out the mark's inner monologue:** "You see that many pages and you just believe the cover.
+  Wow, that looks so real. Somebody must know what they're talking about."
+- **Self-aware narrator** (honest about gaps in the record): "Did I mention he'd made a flag?"
+- **Historical irony where the real fact is the punchline:** the bricks had serial numbers.
 
 **The humor bar:** a joke ships only if the modern half is instantly and universally picturable, the
 words are plain, and the narrator states the insane fact flat and lets the *viewer* be the one amazed.

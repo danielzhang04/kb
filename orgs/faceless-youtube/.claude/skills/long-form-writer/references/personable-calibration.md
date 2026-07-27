@@ -44,8 +44,7 @@ Poyais rewrite order and does not replace the published script. It is the blind-
 > of the 1820s. Before the ships have even left Britain, he's turned their savings into money he made up.
 
 Raw and a little messy is preferable to polished and bland. Preserve contractions, direct questions, slang,
-repeated conversational joints, and a run of useful comparisons. Keep comedy off human-cost beats and keep every
-claim within the fact leash.
+repeated conversational joints, and a run of useful comparisons. Keep every claim within the fact leash.
 
 ## Blind reader bundle
 

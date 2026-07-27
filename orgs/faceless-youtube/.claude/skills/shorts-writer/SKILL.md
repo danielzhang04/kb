@@ -73,8 +73,7 @@ Script **every viable short** — as many as are genuinely strong, sized to the 
   idioms (so it can draw the pun). Shorts are the most-cloned surface — non-literal visuals matter most.
 - **Match the channel's register, narrator persona, and locked lever,** with the same anti-trailer-voice
   + human-cadence rules as long-form (universal §1d-V). Set the comedic rate by the clip's **topic gravity**
-  (the humor dial in `dna.md`) — a DIAL, never a fixed rate — with comedy off on human cost (grammar
-  §1.7). Shape it as a **mini-arc** (§1): hook on the paradox/irony → one
+  (the humor dial in `dna.md`) — a DIAL, never a fixed rate. Shape it as a **mini-arc** (§1): hook on the paradox/irony → one
   turn → a button, not a flat fact — the humor riding the fact (§2.4), never a bare dry recital.
 - **Stay on the leash (research channels):** every number/claim in a short traces to an `[F-NN]`. A short
   can't say what the long-form couldn't source.

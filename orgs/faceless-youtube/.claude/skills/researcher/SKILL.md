@@ -169,7 +169,7 @@ Name every unsupported promise so downstream skills do not resurrect it:
 ## Cast, motive & human-cost  ← the story fuel a fact-ledger prunes; all sourced
 <!-- Without this the writer can only produce a mechanism-explainer. Each entry is still sourced + hedged.
      Human cost is extracted as a LIGHT, concrete story beat here, never a named-victim biography
-     (storytelling-grammar §1.7/§4). -->
+     (storytelling-grammar §4). -->
 - **Villain / protagonist:** <documented psychology, motive, a control tic or telling trait> [F-0x] (Src/date). Interiority the writer can open a character beat on. Not "mood," the engine of the con. This is still wanted.
 - **Human cost (light, aggregate):** <what broadly happened to the marks/settlers/investors: they lost savings, homes, or lives; the promise was a lie; how many were ruined or died> [F-0x]. A fast, concrete beat the writer registers and moves past, NOT a mandated named-individual story. A named victim is OPTIONAL light texture at most: never required, never a personal life-story, never grief to milk.
 - **Witnessed-absurd / telling details (2-3):** <lived specifics that make it feel witnessed, not summarized, e.g. the erased-designer control move, collectors chasing delivery trucks> [F-0x].

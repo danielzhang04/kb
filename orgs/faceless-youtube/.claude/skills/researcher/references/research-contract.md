@@ -96,7 +96,7 @@ same sourcing/defamation discipline as the ledger:
 - **Cast, motive & human-cost:** the villain's *documented* psychology/motive; the human cost as a LIGHT,
   concrete beat (what broadly happened to the marks: lost savings, homes, or lives; the promise was a lie;
   how many were ruined); and 2-3 witnessed-absurd telling details. A named victim is OPTIONAL light texture
-  at most, never required and never a personal life-story (storytelling-grammar §1.7/§4). These are payload,
+  at most, never required and never a personal life-story (storytelling-grammar §4). These are payload,
   not "mood," but still sourced and hedged (a `Conf: low` motive is flagged, not dramatized as fact).
 - **Reportable scenes & characterization** `[Q-NN]` — what was said/done and who was in the room, inside
   your sources. Dramatized beats default to narrator reported speech (storytelling-grammar.md

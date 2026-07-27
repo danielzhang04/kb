@@ -23,6 +23,7 @@ draft script.md
           → writer structural revision  (one subagent: reworks the sequence/framing of the flagged spans,
             from ALL FOUR findings lists at once, leashed → revised script + changelog)
           → re-verify once     (leash re-read: no invented facts; coherence re-read: the confusion is gone)
+  → humanizer skill            (the closing pass — keep its edits; owns the AI-tell kill list)
   → mechanical lint again      (confirm no new dash/trace; word count still sane)
 ```
 
@@ -87,8 +88,9 @@ brief, research/ledger, the grammar's rules, and that excerpt. They receive no l
 > 7. **Flat or educational analogy / dead joke** — flag an analogy that derails the mechanism, repeats a
 >    point that already landed, or makes the fact harder to follow; flag a joke that rides no fact or reads
 >    dated/cringe. Do **not** use analogy counts or a missing-analogy quota as a finding. (§1.4, §6)
-> 8. **Register error** — any joke or wink on a death / human-cost beat (comedy is OFF there, §1.7), or
->    flat, humorless telling of a money-absurdity beat that should run hot (the humor dial in `dna.md`).
+> 8. **Flat stretch / too deadpan** — two or more consecutive beats with no joke, analogy, aside, or
+>    narrator reaction (§1.3 — abundance is the default), or a money-absurdity beat told flat and
+>    humorless when it should run hot (the humor dial in `dna.md`).
 > 9. **Lesson / essay close** — a moralizing ending ("it repeats every generation," "and that's why")
 >    instead of one earned ironic image. (§3.5)
 > 10. **Credibility padding in context** — exact boilerplate phrases are lint advisories; judge contextual
