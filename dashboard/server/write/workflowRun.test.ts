@@ -384,13 +384,14 @@ describe('managed canonical root activation', async () => {
       return '';
     };
     let changed = true;
-    const runPy: PyRunner = (_root, code) => {
+    const runPy: PyRunner = (_root, code, raw) => {
       expect(code).toBe(MANAGED_ROOT_ACTIVATION_SCRIPT);
-      if (changed) writeFileSync(cardPath, 'state: inbox\nexecution-controller: dashboard\n');
+      const operation = JSON.parse(raw) as { mode: 'probe' | 'apply' };
+      if (operation.mode === 'apply' && changed) writeFileSync(cardPath, 'state: inbox\nexecution-controller: dashboard\n');
       const result = { exitCode: 0, stderr: '', stdout: JSON.stringify({
-        cards: [{ cardRef, path: `queue/inbox/${cardRef}.md`, changed }],
+        cards: [{ cardRef, path: `queue/inbox/${cardRef}.md`, completed: false, changed }],
       }) };
-      changed = false;
+      if (operation.mode === 'apply') changed = false;
       return result;
     };
 
@@ -413,6 +414,44 @@ describe('managed canonical root activation', async () => {
       .toEqual({ replayed: true, cardPaths: [`queue/inbox/${cardRef}.md`] });
     expect(calls.some((args) => args[0] === 'commit')).toBe(false);
     expect(calls.findIndex((args) => args[0] === 'show')).toBeGreaterThan(calls.findIndex((args) => args[0] === 'push'));
+  });
+
+  it('requires remote proof for a terminal root and leaves its canonical done path untouched', async () => {
+    const cardRef = 'wf-9b91ad52f99f63f91e0cbd97';
+    const repoRoot = mkdtempSync(join(tmpdir(), 'managed-terminal-root-'));
+    const donePath = join(repoRoot, 'queue', 'done', `${cardRef}.md`);
+    mkdirSync(join(repoRoot, 'queue', 'done'), { recursive: true });
+    writeFileSync(donePath, 'state: done\nexecution-controller: dashboard\n');
+    const seen: string[] = [];
+    const runGit = (_root: string, args: string[]): string => {
+      if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      if (args[0] === 'show') return 'state: done\nexecution-controller: dashboard\n';
+      seen.push(args[0]);
+      return '';
+    };
+    const runPy: PyRunner = (_root, _code, _raw) => {
+      return { exitCode: 0, stderr: '', stdout: JSON.stringify({
+        cards: [{ cardRef, path: `queue/done/${cardRef}.md`, completed: true, changed: false }],
+      }) };
+    };
+    const verifyCompletedRoots = vi.fn(async () => {});
+    await expect(activateManagedRootCards({
+      repoRoot, runRef: 'wf-test-0001', cardRefs: [cardRef], runGit, runPy, verifyCompletedRoots,
+    })).resolves.toEqual({ replayed: true, cardPaths: [`queue/done/${cardRef}.md`] });
+    expect(verifyCompletedRoots).toHaveBeenCalledWith({ runRef: 'wf-test-0001', cardRefs: [cardRef] });
+    expect(seen).not.toContain('commit');
+  });
+
+  it('fails closed when a proved terminal root changes before apply', async () => {
+    const cardRef = 'wf-9b91ad52f99f63f91e0cbd97';
+    let calls = 0;
+    const runPy: PyRunner = (_root, _code, _raw) => ({ exitCode: 0, stderr: '', stdout: JSON.stringify({
+      cards: [{ cardRef, path: calls++ === 0 ? `queue/done/${cardRef}.md` : `queue/inbox/${cardRef}.md`, completed: calls === 1, changed: false }],
+    }) });
+    await expect(activateManagedRootCards({
+      repoRoot: '/repo', runRef: 'wf-test-0001', cardRefs: [cardRef], runGit: (_root, args) => args.join(' ') === 'rev-parse --abbrev-ref HEAD' ? 'ops\n' : '', runPy,
+      verifyCompletedRoots: async () => {},
+    })).rejects.toThrow('completion state changed');
   });
 
   it('refuses a dirty index before card mutation', async () => {

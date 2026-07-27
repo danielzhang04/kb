@@ -39,6 +39,7 @@ import {
   type ExecuteRunInput,
   type ExecutionBudget,
   type ExecutionOutcome,
+  canonicalResultOperationKey,
 } from './execution.ts';
 import { loadPolicyEnvironment } from './environment.ts';
 import type { PolicyEnvironment } from './policy.ts';
@@ -118,6 +119,8 @@ export interface ActivatedExecution {
   runAutomatic: (input: ExecuteRunInput) => Promise<ExecutionOutcome>;
   cancelAutomatic: (input: CancelRunInput) => Promise<CancellationOutcome>;
   containManagerStart?: (input: ContainManagerStartInput) => Promise<void>;
+  /** Exact g1 canonical-result proof for a terminal managed root. */
+  verifyCanonicalResult: (input: { subject: string; runRef: string; stageId: string }) => Promise<boolean>;
 }
 
 /**
@@ -377,6 +380,12 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
     controlBroker: broker,
     runAutomatic,
     cancelAutomatic: (input) => engine.cancelRun(input),
+    verifyCanonicalResult: async (input) => (await results.lookup({
+      operationKey: canonicalResultOperationKey(input.runRef, input.stageId),
+      subject: input.subject,
+      runRef: input.runRef,
+      stageId: input.stageId,
+    })) !== null,
     ...(engine.containManagerStart
       ? { containManagerStart: (input: ContainManagerStartInput) => engine.containManagerStart!(input) }
       : {}),

@@ -94,6 +94,8 @@ export interface SurfaceContext {
   cancelAutomatic?: (input: CancelRunInput) => Promise<CancellationOutcome>;
   /** Recovery-only Manager startup containment; preserves the run/stage graph for exact resume. */
   containManagerStart?: (input: ContainManagerStartInput) => Promise<void>;
+  /** Exact canonical g1 result proof used only before replaying an already-completed root. */
+  verifyCanonicalResult?: (input: { subject: string; runRef: string; stageId: string }) => Promise<boolean>;
   /** Per-run runtime-control serializer; never substitutes for durable store CAS. */
   runControlTransactions: RunControlTransactions;
   /** Deadline for the durable Manager-start acknowledgement returned to an activating operator. */

@@ -141,7 +141,7 @@ describe('control proposal routes', () => {
     return { request, resolve };
   }
 
-  function seedActivatableRun(withAcceptedRequest = true) {
+  function seedActivatableRun(withAcceptedRequest = true, suffix = '') {
     const stored = controlStore.createProposalRevision('operator', {
       sourceComposerRef: 'composer-activation',
       sourceTurnId: 'turn-activation',
@@ -153,7 +153,7 @@ describe('control proposal routes', () => {
       expectedHash: stored.value.hash,
       expectedApprovalRevision: 0,
       decision: 'approved',
-      idempotencyKey: 'approve-activation',
+      idempotencyKey: `approve-activation${suffix}`,
     });
     if (!approved.ok) throw new Error(approved.detail);
     const created = controlStore.createRun('operator', {
@@ -163,7 +163,7 @@ describe('control proposal routes', () => {
       expectedProposalHash: stored.value.hash,
       managerRuntime: proposal.manager.runtime,
       managerModel: proposal.manager.model,
-      idempotencyKey: 'launch-activation',
+      idempotencyKey: `launch-activation${suffix}`,
       stages: proposal.stages.map((stage) => ({
         stageId: stage.id,
         title: stage.title,
@@ -172,7 +172,7 @@ describe('control proposal routes', () => {
     });
     if (!created.ok) throw new Error(created.detail);
     for (const stage of created.value.stages.filter((candidate) => candidate.dependsOn.length === 0)) {
-      const linked = controlStore.linkStageCard('operator', stage.stageRef, stage.version, `card-${stage.stageId}`);
+      const linked = controlStore.linkStageCard('operator', stage.stageRef, stage.version, workflowCardId(created.value.run.runRef, stage.stageId));
       if (!linked.ok) throw new Error(linked.detail);
     }
     const publishing = controlStore.transitionPublication(
@@ -206,7 +206,7 @@ describe('control proposal routes', () => {
       const responded = controlStore.respondHumanRequest('operator', request.value.requestRef, {
         expectedRevision: request.value.revision,
         decision: 'responded',
-        idempotencyKey: 'accept-activation',
+        idempotencyKey: `accept-activation${suffix}`,
       });
       if (!responded.ok) throw new Error(responded.detail);
     }
@@ -222,6 +222,8 @@ describe('control proposal routes', () => {
       runAutomatic?: (input: ExecuteRunInput) => Promise<unknown>;
       cancelAutomatic?: () => Promise<unknown>;
       containManagerStart?: () => Promise<void>;
+      completedRoot?: boolean;
+      verifyCanonicalResult?: boolean;
       managerStartAckTimeoutMs?: number;
     } = {},
   ) {
@@ -245,9 +247,11 @@ describe('control proposal routes', () => {
       replayed: false,
     })));
     const containManagerStart = vi.fn(overrides.containManagerStart ?? (async () => {}));
-    const activateManagedRoots = vi.fn(async (options: { cardRefs: string[]; authorizeAfterPrepare?: () => void }) => {
+    const verifyCanonicalResult = vi.fn(async () => overrides.verifyCanonicalResult ?? true);
+    const activateManagedRoots = vi.fn(async (options: { runRef: string; cardRefs: string[]; authorizeAfterPrepare?: () => void | Promise<void>; verifyCompletedRoots?: (input: { runRef: string; cardRefs: string[] }) => Promise<void> }) => {
       await beforeRootAuthorization?.();
-      options.authorizeAfterPrepare?.();
+      if (overrides.completedRoot) await options.verifyCompletedRoots?.({ runRef: options.runRef, cardRefs: [options.cardRefs[0]] });
+      await options.authorizeAfterPrepare?.();
       return {
         replayed: false,
         cardPaths: options.cardRefs.map((cardRef) => `queue/inbox/${cardRef}.md`),
@@ -265,6 +269,7 @@ describe('control proposal routes', () => {
       runAutomatic: runAutomatic as never,
       cancelAutomatic: cancelAutomatic as never,
       containManagerStart: containManagerStart as never,
+      verifyCanonicalResult: verifyCanonicalResult as never,
       managerStartAckTimeoutMs: overrides.managerStartAckTimeoutMs,
       activateManagedRoots: activateManagedRoots as never,
       appendAudit: (overrides.appendAudit ?? ((_root: string, event: Record<string, unknown>) => ({
@@ -275,7 +280,7 @@ describe('control proposal routes', () => {
       opsGit: (_root, args) => args.join(' ') === 'rev-parse --abbrev-ref HEAD' ? 'ops\n' : '',
     }));
     await activated.ready();
-    return { activated, runAutomatic, cancelAutomatic, containManagerStart, activateManagedRoots };
+    return { activated, runAutomatic, cancelAutomatic, containManagerStart, activateManagedRoots, verifyCanonicalResult };
   }
 
   /** A real store-backed gate, used to lock the HTTP replay fingerprint rather than a mocked resolver. */
@@ -1007,6 +1012,51 @@ describe('control proposal routes', () => {
     }
   });
 
+  it('proves an already-done root before claim and refuses an unproven result without dispatch', async () => {
+    const detail = seedActivatableRun();
+    const payload = {
+      expectedRunVersion: detail.run.version,
+      expectedManagerGeneration: detail.run.managerGeneration,
+      idempotencyKey: `activate:${detail.run.runRef}:${detail.run.version}:terminal-root`,
+    };
+    const accepted = await activatedApp(undefined, { completedRoot: true, verifyCanonicalResult: true });
+    try {
+      const response = await accepted.activated.inject({
+        method: 'POST', url: `/api/control/runs/${detail.run.runRef}/activate`, headers: headers(token), payload,
+      });
+      expect(response.statusCode, response.body).toBe(202);
+      expect(accepted.verifyCanonicalResult).toHaveBeenCalledWith({
+        subject: 'operator', runRef: detail.run.runRef, stageId: 'verify',
+      });
+      expect(accepted.runAutomatic).toHaveBeenCalledTimes(1);
+    } finally { await accepted.activated.close(); }
+
+    const refusedDetail = seedActivatableRun(true, ':terminal-refused');
+    const refusedAudit = vi.fn((_root: string, _event: unknown) => ({
+      ts: new Date().toISOString(),
+    }));
+    const refused = await activatedApp(undefined, {
+      completedRoot: true,
+      verifyCanonicalResult: false,
+      appendAudit: refusedAudit,
+    });
+    try {
+      const response = await refused.activated.inject({
+        method: 'POST', url: `/api/control/runs/${refusedDetail.run.runRef}/activate`, headers: headers(token),
+        payload: { ...payload, expectedRunVersion: refusedDetail.run.version, idempotencyKey: `${payload.idempotencyKey}:refused` },
+      });
+      expect(response.statusCode, response.body).toBe(409);
+      expect(response.json()).toMatchObject({ error: 'completed-root-provenance-refused' });
+      expect(refusedAudit).not.toHaveBeenCalled();
+      expect(refused.runAutomatic).not.toHaveBeenCalled();
+      expect(controlStore.getRunActivationReceipt('operator', refusedDetail.run.runRef, {
+        expectedRunVersion: refusedDetail.run.version,
+        expectedManagerGeneration: refusedDetail.run.managerGeneration,
+        idempotencyKey: `${payload.idempotencyKey}:refused`,
+      })).toMatchObject({ ok: true, value: null });
+    } finally { await refused.activated.close(); }
+  });
+
   it('refuses direct activation when a waiting run has no durable Human Request boundary', async () => {
     const detail = seedActivatableRun(false);
     const { activated, runAutomatic, activateManagedRoots } = await activatedApp();
@@ -1088,7 +1138,7 @@ describe('control proposal routes', () => {
       });
       expect(response.statusCode, response.body).toBe(500);
       expect(response.json()).toMatchObject({ error: 'activation-audit-reconciliation-required' });
-      expect(activateManagedRoots).not.toHaveBeenCalled();
+      expect(activateManagedRoots).toHaveBeenCalledTimes(1);
       expect(runAutomatic).not.toHaveBeenCalled();
       expect(controlStore.getRunActivationReceipt('operator', detail.run.runRef, payload)).toMatchObject({
         ok: true, value: null,

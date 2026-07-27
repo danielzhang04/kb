@@ -41,7 +41,7 @@ function spyDeps(): ActivationDeps {
     createWorktrees: vi.fn().mockReturnValue({}) as never,
     createSkills: vi.fn().mockReturnValue({}) as never,
     createAccounting: vi.fn().mockReturnValue({}) as never,
-    createResults: vi.fn().mockReturnValue({}) as never,
+    createResults: vi.fn().mockReturnValue({ lookup: vi.fn().mockResolvedValue(null) }) as never,
     createToolPolicyResolver: vi.fn().mockReturnValue(() => ({ allowedTools: ['Read'], permissionMode: 'default' })) as never,
     createAssignedAgentResolver: vi.fn().mockReturnValue({ resolve: vi.fn() }) as never,
     createWorkers: vi.fn().mockReturnValue({}) as never,
@@ -113,6 +113,18 @@ describe('buildActivatedExecution — gate ON', () => {
     expect(typeof result?.runAutomatic).toBe('function');
     expect(typeof result?.cancelAutomatic).toBe('function');
     expect(typeof result?.containManagerStart).toBe('function');
+    expect(typeof result?.verifyCanonicalResult).toBe('function');
+  });
+
+  it('delegates terminal-root proof to the existing exact g1 canonical result lookup', async () => {
+    const deps = spyDeps();
+    const lookup = vi.fn().mockResolvedValue({ durability: 'canonical' });
+    (deps.createResults as ReturnType<typeof vi.fn>).mockReturnValue({ lookup });
+    const built = buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
+    await expect(built?.verifyCanonicalResult({ subject: 'operator', runRef: 'run-1', stageId: 'report' })).resolves.toBe(true);
+    expect(lookup).toHaveBeenCalledWith(expect.objectContaining({
+      operationKey: 'result:run-1:report', subject: 'operator', runRef: 'run-1', stageId: 'report',
+    }));
   });
 
   it('constructs the assigned-agent resolver only behind the activation gate and passes it to the engine', () => {

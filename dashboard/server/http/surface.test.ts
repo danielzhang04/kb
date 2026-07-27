@@ -763,6 +763,7 @@ describe('surface — Wave-A executor activation wiring (env-gated, default OFF)
     runAutomatic: (async () => ({ state: 'succeeded', startedStageIds: [], completedStageIds: [], waitingStageIds: [] })) as unknown as NonNullable<SurfaceContext['runAutomatic']>,
     cancelAutomatic: (async () => ({ state: 'stopped', stoppedSessionRefs: [], interruptedSessionRefs: [], replayed: false })) as unknown as NonNullable<SurfaceContext['cancelAutomatic']>,
     containManagerStart: (async () => {}) as NonNullable<SurfaceContext['containManagerStart']>,
+    verifyCanonicalResult: (async () => true) as NonNullable<SurfaceContext['verifyCanonicalResult']>,
   });
 
   it('CORE INERT INVARIANT: gate unset ⇒ controlBroker/runAutomatic/cancelAutomatic are undefined', () => {
@@ -791,6 +792,7 @@ describe('surface — Wave-A executor activation wiring (env-gated, default OFF)
     expect(ctx.runAutomatic).toBe(triple.runAutomatic);
     expect(ctx.cancelAutomatic).toBe(triple.cancelAutomatic);
     expect(ctx.containManagerStart).toBe(triple.containManagerStart);
+    expect(ctx.verifyCanonicalResult).toBe(triple.verifyCanonicalResult);
   });
 
   it('an explicit executor override wins and short-circuits activation entirely (builder never called)', () => {

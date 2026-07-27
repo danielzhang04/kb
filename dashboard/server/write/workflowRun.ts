@@ -119,11 +119,15 @@ sys.path.insert(0, "scripts")
 import cards
 
 op = json.loads(sys.argv[1])
-results = []
-for card_id in op["cardRefs"]:
-    path = Path("queue/inbox") / (card_id + ".md")
-    if not path.is_file():
-        raise cards.ValidationError("managed root card is absent from queue/inbox")
+def inspect(card_id):
+    candidates = [
+        Path("queue/inbox") / (card_id + ".md"),
+        Path("queue/done") / (card_id + ".md"),
+    ]
+    found = [path for path in candidates if path.is_file()]
+    if len(found) != 1:
+        raise cards.ValidationError("managed root card is missing or ambiguous")
+    path = found[0]
     card = cards.parse(path)
     if card.meta.get("id") != card_id or card.meta.get("workflow") != op["runRef"]:
         raise cards.ValidationError("managed root card identity differs")
@@ -131,13 +135,32 @@ for card_id in op["cardRefs"]:
         raise cards.ValidationError("managed root card controller differs")
     if card.meta.get("depends-on"):
         raise cards.ValidationError("only dependency-free managed roots may be activated")
-    if card.meta.get("state") == "inbox":
-        results.append({"cardRef": card_id, "path": str(path), "changed": False})
+    if path.parent.name == "done":
+        if card.meta.get("state") != "done":
+            raise cards.ValidationError("completed managed root card is not done")
+        return {"cardRef": card_id, "path": str(path), "completed": True, "changed": False}
+    if card.meta.get("state") not in ("inbox", "blocked"):
+        raise cards.ValidationError("managed root card is not activatable")
+    return {"cardRef": card_id, "path": str(path), "completed": False, "changed": card.meta.get("state") == "blocked"}
+
+inspected = [inspect(card_id) for card_id in op["cardRefs"]]
+if op["mode"] == "probe":
+    print(json.dumps({"cards": inspected}))
+    raise SystemExit(0)
+if op["mode"] != "apply":
+    raise cards.ValidationError("managed root activation mode is invalid")
+completed = set(op.get("completedCardRefs", []))
+for item in inspected:
+    if item["completed"] != (item["cardRef"] in completed):
+        raise cards.ValidationError("managed root completion state changed")
+results = []
+for item in inspected:
+    if item["completed"] or not item["changed"]:
+        results.append(item)
         continue
-    if card.meta.get("state") != "blocked":
-        raise cards.ValidationError("managed root card is not blocked")
+    card = cards.parse(Path(item["path"]))
     activated = cards.transition(card, "inbox", Path("queue"))
-    results.append({"cardRef": card_id, "path": str(activated), "changed": True})
+    results.append({"cardRef": item["cardRef"], "path": str(activated), "completed": False, "changed": True})
 print(json.dumps({"cards": results}))
 `.trim();
 
@@ -150,7 +173,9 @@ export interface ManagedRootActivationOptions {
   /** Locally prepared audit/coordination paths committed in the same exact-path transaction. */
   alsoStage?: string[];
   /** Re-prove policy/approval against the just-reconciled canonical ops head before local mutation. */
-  authorizeAfterPrepare?: () => void;
+  authorizeAfterPrepare?: () => void | Promise<void>;
+  /** Remotely prove every terminal root before a claim or queue mutation. */
+  verifyCompletedRoots?: (input: { runRef: string; cardRefs: string[] }) => Promise<void>;
 }
 
 /**
@@ -168,28 +193,44 @@ export async function activateManagedRootCards(options: ManagedRootActivationOpt
   const runPy = options.runPy ?? defaultPyRunner;
   return withOpsTransaction(async () => {
   await prepareCoordination(options.repoRoot, runGit);
-  options.authorizeAfterPrepare?.();
   const staged = (await runGit(options.repoRoot, ['diff', '--cached', '--name-only', '-z']))
     .split('\0').map((path) => path.trim()).filter(Boolean);
   if (staged.length > 0) throw new Error(`managed root activation refuses dirty index: ${staged.join(', ')}`);
-  const mutation = runPy(options.repoRoot, MANAGED_ROOT_ACTIVATION_SCRIPT, JSON.stringify({
-    runRef: options.runRef,
-    cardRefs: [...options.cardRefs].sort(),
-  }));
-  if (mutation.exitCode !== 0) throw new Error(mutation.stderr.trim() || mutation.stdout.trim() || 'managed root activation failed');
-  const decoded = JSON.parse(mutation.stdout.trim()) as { cards?: Array<{ cardRef?: unknown; path?: unknown; changed?: unknown }> };
-  if (!Array.isArray(decoded.cards) || decoded.cards.length !== options.cardRefs.length) {
-    throw new Error('managed root activation returned an invalid result');
-  }
+  const decode = (result: ReturnType<PyRunner>): Array<{ cardRef?: unknown; path?: unknown; completed?: unknown; changed?: unknown }> => {
+    if (result.exitCode !== 0) throw new Error(result.stderr.trim() || result.stdout.trim() || 'managed root activation failed');
+    const decoded = JSON.parse(result.stdout.trim()) as { cards?: Array<{ cardRef?: unknown; path?: unknown; completed?: unknown; changed?: unknown }> };
+    if (!Array.isArray(decoded.cards) || decoded.cards.length !== options.cardRefs.length) {
+      throw new Error('managed root activation returned an invalid result');
+    }
+    return decoded.cards;
+  };
   const expected = [...options.cardRefs].sort();
-  const cardPaths = decoded.cards.map((card, index) => {
+  const checked = (cards: Array<{ cardRef?: unknown; path?: unknown; completed?: unknown; changed?: unknown }>) => cards.map((card, index) => {
+    const completed = card.completed === true;
     const path = String(card.path ?? '').replace(/\\/g, '/');
-    if (card.cardRef !== expected[index] || path !== `queue/inbox/${expected[index]}.md` || typeof card.changed !== 'boolean') {
+    const expectedPath = `${completed ? 'queue/done' : 'queue/inbox'}/${expected[index]}.md`;
+    if (card.cardRef !== expected[index] || path !== expectedPath || typeof card.changed !== 'boolean' || typeof card.completed !== 'boolean') {
       throw new Error('managed root activation returned a mismatched card');
     }
-    return path;
+    return { cardRef: expected[index], path, completed, changed: card.changed };
   });
-  const changed = decoded.cards.some((card) => card.changed === true);
+  const probe = checked(decode(runPy(options.repoRoot, MANAGED_ROOT_ACTIVATION_SCRIPT, JSON.stringify({
+    mode: 'probe', runRef: options.runRef, cardRefs: expected,
+  }))));
+  const completedCardRefs = probe.filter((card) => card.completed).map((card) => card.cardRef);
+  if (completedCardRefs.length > 0) {
+    if (!options.verifyCompletedRoots) throw new Error('completed managed roots require canonical provenance verification');
+    await options.verifyCompletedRoots({ runRef: options.runRef, cardRefs: completedCardRefs });
+  }
+  await options.authorizeAfterPrepare?.();
+  const applied = checked(decode(runPy(options.repoRoot, MANAGED_ROOT_ACTIVATION_SCRIPT, JSON.stringify({
+    mode: 'apply', runRef: options.runRef, cardRefs: expected, completedCardRefs,
+  }))));
+  if (applied.some((card, index) => card.completed !== probe[index].completed)) {
+    throw new Error('managed root completion state changed');
+  }
+  const cardPaths = applied.map((card) => card.path);
+  const changed = applied.some((card) => card.changed === true);
   if (changed) {
     const [first, ...rest] = cardPaths;
     await commitPreparedCoordination(options.repoRoot, first, {

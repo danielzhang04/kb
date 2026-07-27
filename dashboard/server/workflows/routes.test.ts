@@ -580,7 +580,12 @@ describe('workflow launch governance boundaries', () => {
       runPy: (_repo: string, _code: string, jsonArg: string) => {
         const op = JSON.parse(jsonArg) as { runId?: string; cardRefs?: string[]; stages?: Array<{ id: string }> };
         if (op.cardRefs) {
-          const cards = [...op.cardRefs].sort().map((ref) => ({ cardRef: ref, path: `queue/inbox/${ref}.md`, changed: false }));
+          const cards = [...op.cardRefs].sort().map((ref) => ({
+            cardRef: ref,
+            path: `queue/inbox/${ref}.md`,
+            completed: false,
+            changed: false,
+          }));
           return { exitCode: 0, stdout: `${JSON.stringify({ cards })}\n`, stderr: '' };
         }
         const cards = (op.stages ?? []).map((stage) => {
