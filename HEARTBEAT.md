@@ -41,4 +41,18 @@ cadences:
       4. If reconcile exits 0 ("reconcile: clean"), append a lessons line to
          memory/<agent-id>.md noting the clean run, then commit ONLY ledgers/ queue/
          memory/ changes to ops and push.
+  - name: daemon-dirs-sync
+    schedule: daily
+    tier: desktop
+    risk-tier: T1
+    prompt: |
+      1. Run: py -3 scripts/preamble.py — if it fails, stop and write a wake-me card into queue/inbox/.
+      2. Run: py -3 scripts/sync_daemon_dirs.py --check
+      3. Exit 0 (no drift): append a lessons line to memory/<agent-id>.md and stop.
+      4. Drift: run py -3 scripts/sync_daemon_dirs.py --sync (NEVER pass --prune), then re-run --check.
+         The script commits SCOPED to agents/ and orgs/*/workflows/ only and aborts conflicted
+         rebases cleanly — never resolve a conflict by hand, never commit anything else to ops.
+      5. Re-check exit 0: lessons line, commit ONLY memory/ to ops, push.
+         Still dirty or --sync failed/aborted: wake-me card into queue/inbox/ with the script
+         output and STOP — do not retry.
 ```
