@@ -169,15 +169,15 @@ Name every unsupported promise so downstream skills do not resurrect it:
 ## Cast, motive & human-cost  ← the story fuel a fact-ledger prunes; all sourced
 <!-- Without this the writer can only produce a mechanism-explainer. Each entry is still sourced + hedged.
      Human cost is extracted as a LIGHT, concrete story beat here, never a named-victim biography
-     (storytelling-grammar §2.8/§4). -->
+     (storytelling-grammar §1.7/§4). -->
 - **Villain / protagonist:** <documented psychology, motive, a control tic or telling trait> [F-0x] (Src/date). Interiority the writer can open a character beat on. Not "mood," the engine of the con. This is still wanted.
 - **Human cost (light, aggregate):** <what broadly happened to the marks/settlers/investors: they lost savings, homes, or lives; the promise was a lie; how many were ruined or died> [F-0x]. A fast, concrete beat the writer registers and moves past, NOT a mandated named-individual story. A named victim is OPTIONAL light texture at most: never required, never a personal life-story, never grief to milk.
 - **Witnessed-absurd / telling details (2-3):** <lived specifics that make it feel witnessed, not summarized, e.g. the erased-designer control move, collectors chasing delivery trucks> [F-0x].
 
 ## Reportable scenes & characterization  ← for the writer's dramatized beats (§3 of storytelling-grammar.md)
-<!-- The scripts use NO quotes — every dramatized beat is narrator REPORTED SPEECH. Extract what was
-     said/done and who was in the room, as characterizable substance (with what attitude), NOT verbatim
-     lines to stage. Defamation-checked: attribute to who said/did it; flag a witness account as reported. -->
+<!-- Dramatized beats default to narrator REPORTED SPEECH (storytelling-grammar §4). Extract what was
+     said/done and who was in the room, as characterizable substance (with what attitude), not just
+     verbatim lines to stage. Defamation-checked: attribute to who said/did it; flag a witness account as reported. -->
 - **[Q-01]** <what was said/done, by whom, where, when — the characterizable substance, e.g. "he pitched investors a simple choice, calm as a deacon: buy in now or miss the country of the century"> — [S-x]. (Flag a witness account as *reported*, not asserted.)
 - **Claim ↔ reality pairs (the unmasking material):** whenever a source states a claim / promise / spin (a brochure line, an official assurance, a slogan), pair it with the SOURCED reality that contradicts it (the promise plus the fact that unmasks it, e.g. the guidebook's promised riches ↔ the empty coast and the death toll). Only you hold both halves; this pair is the channel's signature vindication/unmasking beat (§4). — claim [F-0x] ↔ reality [F-0y]
 
@@ -193,7 +193,7 @@ Name every unsupported promise so downstream skills do not resurrect it:
 
 ## Why this matters (universality): OPTIONAL body texture, never the close
 <!-- Context the writer MAY weave into the body where it lands, NOT a mandated ending. The video ends on
-     the story's own irony, never a takeaway/lesson (storytelling-grammar §1.11). -->
+     the story's own irony, never a takeaway/lesson (storytelling-grammar §3.5). -->
 - **The rhyme:** <the historical/contemporary pattern this instance repeats, e.g. tulip mania, dot-com, NFTs>. **The spottable tell:** <the one signal that flags the next one>. Surface these as material the writer may WEAVE through the body, never as a closing moral. Do NOT tee up a "this repeats every generation" wrap-up. (Grounds [F-0x] where sourced; general-knowledge rhymes are fine here and flagged as such.)
 
 ## Open questions, gaps & hedges

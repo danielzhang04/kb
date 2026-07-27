@@ -3198,3 +3198,27 @@ run brief binds nobody — a fresh terminal reads the style-bible and skill docs
   zero-spend calibration reference.
 - **Gates:** review design, then production-logic diff, then zero-spend calibration and Bricks script/
   dry-run. Paid voice, image generation, full render, and publication each remain separately human-gated.
+
+## 2026-07-27 — storytelling-grammar + long-form-writer slimmed; hard locks retired (Daniel)
+
+- **Grammar §0 removed; Poyais de-golded everywhere.** No script is "gold"; the voice bar is Daniel's
+  approved personable-calibration excerpt. Both files purged of Poyais-as-standard framing.
+  (Alternative rejected: keep §0 with facet-scoped gold — Daniel: "poyais isn't a gold for anything".)
+- **Hard locks deleted entirely** — the viewer role-casting ban and the one-narrator/no-quotes lock are
+  now taste calls, not law. **This reverses the 2026-07-22 ruling** that kept them banned. Reported
+  speech stays the *default* telling mode (grammar §4); lint demoted "quote in VO body" from hard
+  violation to advisory; the taste critic's viewer-casting finding was removed. (Alternative rejected:
+  keep the rules as one-liners in §4.) The em/en-dash ban survives (AI-tell, still linted hard).
+- **Grammar register-dial section (§1.4) deleted** — the humor dial lives in `dna.md` only; the grammar
+  keeps just "comedy off on human cost, concise" (§1.7). §1.1 absorbed old §1.5 (jargon); old §1.7
+  (character's-head narration) cut; §1.4 is now analogies-as-the-explanatory-engine, promoted with
+  examples from the calibration excerpt.
+- **Structure moves audited against actual use:** board-state and mirror cut (no usage evidence in any
+  script, teardown, or craft record); paradox-hook+rewind, park-and-cut/irony cross-cut, question
+  turns, Step-N causal assembly, pre-spoiled tension, followability all kept.
+- **Writer read-load slimmed:** `universal.md` (18k words), `watchability-rubric.md`, and
+  `performance.md` removed from long-form-writer Step 1; `playbook.md` + the niche playbook's policy
+  quirk kept (consumed at Step 6). The writer is now pure process; all craft derives from the grammar.
+- **Open item:** `watchability-rubric.md` dimension 11 (reported-speech/no-quotes hard locks) is built
+  on the retired locks and sits in proxy-judge's hard gate — rubric + calibration set need Daniel's
+  re-ruling before the next judged draft.

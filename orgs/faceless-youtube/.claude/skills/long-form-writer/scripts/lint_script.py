@@ -1,14 +1,11 @@
 #!/usr/bin/env python3
 """Deterministic lint for a long-form script.md.
 
-Checks ONLY what needs no judgment: em/en dashes, quotation marks in the VO body,
-leftover fact-traces / outline comments, a filled-in header runtime, mechanical
-Step-card sequences, and the VO word count vs runtime. Exact credibility-padding
-phrases are reported as non-blocking advisories.
-
-Second person is intentionally NOT checked here: whether a "you" casts the viewer
-into the story (banned) or is the generic impersonal "you" ("gold you could wash
-out of the sand", fine) is a judgment call that belongs to the taste critic.
+Checks ONLY what needs no judgment: em/en dashes, leftover fact-traces / outline
+comments, a filled-in header runtime, mechanical Step-card sequences, and the VO
+word count vs runtime. Quotation marks in the VO body and exact
+credibility-padding phrases are reported as non-blocking advisories (quoting is
+a taste call for the critics, not a lock).
 
 Usage: python lint_script.py <path-to-script.md>
 Exit code 0 = clean or advisory-only, 1 = hard violations found.
@@ -114,11 +111,11 @@ def main(path):
         is_cue = stripped.startswith("[")            # [B-ROLL] / [PAUSE] / [BEAT]
         is_meta = stripped.startswith(("#", "-", "*", ">")) or stripped == "---" or stripped == ""
 
-        # The no-quotes lock applies to the whole script body, including Markdown blockquotes or
-        # list-formatted prose. Those lines are non-spoken metadata to voiceover, but allowing a quote
-        # there would let a generated story beat pass this gate and then disappear from the transcript.
+        # Quotes in the VO body are a taste call (narrator-reported speech is the default telling
+        # mode, not a lock) — surfaced as an advisory so the critics see them, never a hard failure.
+        # The whole body is scanned, including blockquotes/lists, so a quoted beat can't hide there.
         if in_body and not is_cue and ('"' in ln or "“" in ln or "”" in ln):
-            hard.append((lineno, "quote in VO body", stripped))
+            soft.append((lineno, "quote in VO body (taste review)", stripped))
 
         if in_body and not is_cue and not is_meta:
             # count spoken words (rough: split on whitespace).
@@ -134,7 +131,7 @@ def main(path):
             snippet = text[:100] + ("…" if len(text) > 100 else "")
             print(f"  L{lineno}  [{kind}]  {snippet}")
     else:
-        print("\nHARD violations: none (no dashes, no VO quotes, no leftover traces).")
+        print("\nHARD violations: none (no dashes, no leftover traces).")
 
     if soft:
         print(f"\nAdvisories ({len(soft)}) — review, do not block:")

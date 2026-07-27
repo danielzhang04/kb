@@ -73,8 +73,7 @@ long_form: staged       # writers-room: outline → section drafts → accuracy/
   variance is human-bounded even without seed-locking. Full rationale: `voice-lab/voice-lab.md`.)*
 - **Tone (locked — storytelling-first, witty):** storytelling-first and genuinely *fun*; witty, fast,
   deadpan, hyper-literate; unimpressed by hype. **Narrator-I and generic audience-facing `you` are allowed.**
-  Never role-cast the viewer into the story ("you, the investor") and keep **ONE narrator only** (everyone
-  else is reported, never voiced).
+  Dramatized beats default to the narrator's reported speech.
 - **Script/voice register (locked — storytelling-first, register by gravity):** **plain-concrete-specific
   AND witty** — a concrete number/term/mechanism in nearly every line, delivered by a wry, story-first
   narrator (Crayon Capital / HeyHistorically register *as storytellers*), **not** dry-serious.
@@ -87,14 +86,13 @@ long_form: staged       # writers-room: outline → section drafts → accuracy/
 - **Narrator persona (locked):** **the razor-smart storyteller** — a fast, wry, hyper-literate narrator
   who makes real money-history *fun*, **roasts the fools** (the con-man, the market, the institution —
   never the mark or the audience), and tells it like a story, not a lecture. Register = Crayon Capital +
-  HeyHistorically *as storytellers*. **One narrator, no quotes:** dramatized beats are the narrator's
-  **reported speech** ("he reportedly told them the vault was on a time lock"), **never voiced
-  character exchanges and never verbatim quotes**; **no second-person role-casting** ("you, the king"). Do
+  HeyHistorically *as storytellers*. Dramatized beats default to the narrator's **reported speech**
+  ("he reportedly told them the vault was on a time lock"), characterized with attitude. Do
   NOT import funny character-voices, pure-bit jokes with no fact, or cringe/meme silliness that dents
   credibility. Full macro-architecture + register grammar: `storytelling-grammar.md`. Writes toward this
   person on every line (§1d-V/§5d).
 - **Humor dial (locked — register set by topic gravity):** the comedic rate is **a DIAL set by the topic's
-  gravity, NOT a fixed rate** (`storytelling-grammar.md §1.4`). Money-absurdity / systemic farce runs **hot**
+  gravity, NOT a fixed rate** (owned here; grammar §1.7 keeps comedy off human cost). Money-absurdity / systemic farce runs **hot**
   (dense wit); human-villainy / ruin runs **wry and sparse**; **human cost → comedy OFF entirely**. Slide the
   dial to the beat you're on. Across the channel this lands **more comedic than any pure finance-or-history
   channel, without becoming a comedy channel** — storytelling first, the wit riding on it. Toolbox:

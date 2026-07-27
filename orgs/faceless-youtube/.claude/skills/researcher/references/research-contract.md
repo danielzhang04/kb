@@ -96,11 +96,11 @@ same sourcing/defamation discipline as the ledger:
 - **Cast, motive & human-cost:** the villain's *documented* psychology/motive; the human cost as a LIGHT,
   concrete beat (what broadly happened to the marks: lost savings, homes, or lives; the promise was a lie;
   how many were ruined); and 2-3 witnessed-absurd telling details. A named victim is OPTIONAL light texture
-  at most, never required and never a personal life-story (storytelling-grammar §2.8/§4). These are payload,
+  at most, never required and never a personal life-story (storytelling-grammar §1.7/§4). These are payload,
   not "mood," but still sourced and hedged (a `Conf: low` motive is flagged, not dramatized as fact).
 - **Reportable scenes & characterization** `[Q-NN]` — what was said/done and who was in the room, inside
-  your sources. **The scripts use NO quotes** (one narrator, all reported speech — storytelling-grammar.md
-  §3), so you extract the *characterizable substance* — what was said, with what attitude; what a witness
+  your sources. Dramatized beats default to narrator reported speech (storytelling-grammar.md
+  §4), so extract the *characterizable substance* — what was said, with what attitude; what a witness
   described happening — NOT verbatim lines to stage. **This is extraction depth, not extra searching:** when
   a source is a transcript, interview, or news account, mine it for this material instead of reducing it to
   summary facts. The study's biggest single miss was a rich interview we had *already cited* being flattened
@@ -113,7 +113,7 @@ same sourcing/defamation discipline as the ledger:
   what lets the writer *stage the proving* rather than assert a verdict.
 - **Why this matters (universality):** the historical rhyme + the spottable tell, as OPTIONAL body texture
   the writer may weave in where it lands, never a mandated close (the video ends on the story's own irony,
-  not a lesson; storytelling-grammar §1.11). General-knowledge rhymes (tulips to NFTs) are allowed here and
+  not a lesson; storytelling-grammar §3.5). General-knowledge rhymes (tulips to NFTs) are allowed here and
   flagged as such.
 
 None of this loosens §1–§3: story material is still sourced, dated, confidence-rated, and defamation-safe.

@@ -22,7 +22,7 @@ name the substantive changes he would want.
 
 ## Read first (in this order)
 
-1. `storytelling-grammar.md` **§0 gold** — the finished exemplar. This is the bar; internalize its
+1. `long-form-writer/references/personable-calibration.md` — the approved voice excerpt. This is the bar; internalize its
    density and voice before judging anything.
 2. `watchability-rubric.md` — the 18-dimension `/36` instrument and its gate.
 3. The **TRAINING** section of `calibration-set.md` — Daniel's labeled judgments (accept / revise /
@@ -37,7 +37,7 @@ name the substantive changes he would want.
 1. **Score the rubric.** Give each of the 18 dimensions a 0/1/2. Apply the gate: publishable = total
    ≥ 30 AND no 0 on dimensions {1, 4, 8, 11, 13, 14, 16, 17, 18}.
 2. **Apply Daniel's calibration preferences on top of the rubric.** For each TRAINING entry, check
-   whether this draft commits the same tell (grandeur buttons, dwell, jargon, viewer-casting, essay
+   whether this draft commits the same tell (grandeur buttons, dwell, jargon, essay
    close, meta-frame commentary, invented dialogue, padding, etc.). A rubric score can pass while a
    calibration preference is still violated — Daniel's judgments are the finer grain.
 3. **Integrate the leash findings.** Any unsourced/over-confident claim the leash critic flagged is a
@@ -46,8 +46,8 @@ name the substantive changes he would want.
 4. **Map to a verdict:**
    - `greenlight` — gate clears AND no reject-level calibration hit AND no unresolved leash defect.
    - `revise` — shippable in principle but carries fixable defects; list them in `flagged`.
-   - `reject` — the gate fails, a hard lock is broken (no-quotes / viewer-casting / a fabricated fact),
-     or the draft is fundamentally off (vapor, no payload, wrong register throughout).
+   - `reject` — the gate fails, a fabricated fact stands, or the draft is fundamentally off (vapor, no
+     payload, wrong register throughout).
 5. **Anchor to a precedent.** Name the single TRAINING entry this draft most resembles
    (`calibration_anchor`) so the verdict is grounded in Daniel's past judgment, not a free opinion.
 
@@ -63,10 +63,8 @@ Write exactly the contract in `verdict-schema.md` to `videos/<slug>/judge-verdic
 
 ## Calibration guardrails (do not over-trigger)
 
-- **Never flag the GOOD fact-riding button** ("And MacGregor? He was fine.") — only summary/moralizing
+- **Never flag the GOOD fact-riding button** ("And him? He was fine.") — only summary/moralizing
   buttons. Concrete-detail color (a name, a number, a vivid image) is what makes a beat live; flag
   *repetition*, never *detail*. The single earned line at the very end is allowed.
-- **The generic impersonal "you"** ("gold you could wash out of the sand") is fine — only viewer-casting
-  "you" (imagine you're a settler / your life savings) is banned.
 - If a draft is clean, say so. Do not invent problems to look thorough. A judge that flattens the voice
   (cutting good color/wit) is failing — Daniel's bar is high, not hostile.
