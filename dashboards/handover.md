@@ -1,5 +1,5 @@
 # System Handover
-_Generated: 2026-07-26 06:07 UTC_
+_Generated: 2026-07-27 06:21 UTC_
 
 Quiet, healthy night. One cadence fired — the nightly-review — and its checks all ran clean:
 preamble OK, skills in sync, and the daemon-dir mirror reports clean (ops matches main for every
@@ -15,7 +15,8 @@ the passkey+UI launch route, or authorize the claude-subagent fallback; pick one
 Also open: the budget-gate decision (T3) and the delivery-gate warn→block flip. One housekeeping
 item persists — `scripts/sync_daemon_dirs.py` lives on main but is missing from the ops branch,
 so tonight's run again used a main copy; it's noted in a wake-me card and blocks nothing. A
-minor cleanup: three already-done nightly cards are physically stranded in `queue/inbox/`.
+minor cleanup: four already-done nightly cards are now physically stranded in `queue/inbox/`
+(yesterday's joined the pile).
 
 Project status is steady: Atlas V1 shipped and is live (PR #44 merged; V2 planning awaits your
 go/no-go); faceless-youtube PR #41 is reviewed and ready to merge (paired with the dashboard

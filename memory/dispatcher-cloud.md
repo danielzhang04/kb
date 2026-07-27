@@ -183,3 +183,17 @@
 - REMAINS: 3 stale done-in-inbox cards (6a5dbb3e, 6a5f0cef, 6a605e40) still unswept — carried
   across ≥3 runs now; worth a one-time housekeeping sweep when a human touches ops.
 - DIRECT-PUSH path expected this run (coordination writes to ops). If restricted → PR fallback.
+
+## 2026-07-27 nightly-review (dispatcher-cloud, cloud self-exec)
+- WORKED: clean nightly. preamble OK, sync_skills --check clean, sync_daemon_dirs --check clean
+  (ran origin/main copy in refs-fallback — script still absent on ops). Dispatcher emitted 1 card
+  (nightly-review 6a66f89c-3af8cac7); executed inbox→working→done, cost step logged, dashboards
+  (executive + handover) rewritten in full.
+- CONFIRMED recurring: scripts/sync_daemon_dirs.py missing on ops (present on main). Existing
+  wake card 6a605ebb-d86dff79 covers it — did NOT file a duplicate.
+- STRANDED count grew 3→4: 6a65a3cd-dabf5d57 (yesterday's nightly card) joined 6a5dbb3e,
+  6a5f0cef, 6a605e40 as done-in-inbox. Lesson: the nightly card's own inbox→done transition
+  leaves the file in inbox/ on the cloud path every run — each night adds one. Worth a real fix
+  (physical move on transition) not just a sweep, since it recurs deterministically.
+- Nothing new broke; all pending items already carry wake/decision cards. DIRECT-PUSH path
+  expected; PR fallback if branch-restricted.
