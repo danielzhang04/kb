@@ -66,6 +66,11 @@ module.exports = {
         // coordination truth and never something a runner should commit or merge.
         DASHBOARD_STATE_ROOT: 'C:\\Users\\danie\\AppData\\Local\\kb-dashboard',
         DASHBOARD_CODEX_RUNNER_TASK: 'kb-codex-runner',
+        // Stranded-archiver DRY-RUN clock (rollout gate step 1, policy ratified 2026-07-22): daily
+        // sweep that only REPORTS would-archive picks. Both live-MOVE locks stay off
+        // (STRANDED_ARCHIVE_LIVE_MOVE_ALLOWED=false compile-time; DASHBOARD_STRANDED_ARCHIVE_LIVE unset),
+        // so this is fail-safe to commit — unlike the execution gate below, which stays Daniel-only.
+        DASHBOARD_STRANDED_ARCHIVE_INTERVAL_MS: '86400000',
         // Enrolled PUBLIC credential (NON-SECRET), mirrored from governance/webauthn-credentials.yaml.
         // The server's login path (simplewebauthn) reads the credential store from THIS env as
         // [{id, publicKey}] where publicKey is base64url COSE bytes; the yaml stores the same P-256 key
