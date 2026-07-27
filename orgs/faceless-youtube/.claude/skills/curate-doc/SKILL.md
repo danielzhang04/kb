@@ -1,17 +1,6 @@
 ---
 name: curate-doc
-description: >-
-  Restructures a drifted document (a skill, playbook, channel doc, spec, notes file — any markdown/text
-  file, or a folder of them) into a concise, structured, comprehensive form WITHOUT losing information.
-  Use whenever a file has become disorganized, bloated, contradictory, or append-drifted and needs a
-  cleanup — cues like "clean up this doc," "restructure this file," "this skill is a mess / all over the
-  place," "de-dupe this," "it's just been appended to over and over," "make it structured/concise,"
-  "there's stale/outdated stuff in here," or when you (per the operating-law §F-docs integrate-don't-append rule) are
-  about to edit a doc that has clearly rotted. Reads the target file(s), maps the real learnings, detects
-  drift (dated log-blocks, contradictions, orphaned examples, duplication, verbosity), and rewrites it
-  structured-by-topic — PRESERVING every genuine learning, cutting only noise. Do NOT use it to author a
-  brand-new file from scratch (just write it), to summarize/shorten a doc at the cost of information, or to
-  edit code logic.
+description: Restructures a drifted document (skill, playbook, channel doc, spec, notes — any markdown/text file or folder) into concise, structured, comprehensive form WITHOUT losing information. Use for "clean up this doc", "restructure this file", "this skill is a mess", "de-dupe this", "appended to over and over", "stale/outdated stuff in here". Maps real learnings, detects drift (dated blocks, contradictions, duplication), rewrites structured-by-topic, preserving every learning. Do NOT use to author a new file from scratch, to shorten at the cost of information, or to edit code logic.
 ---
 
 # curate-doc

@@ -2,7 +2,7 @@
 
 Durable lessons for the faceless-youtube conductor. Read at the start of every run; append (never
 overwrite) at the end of every run, with the numbers. Seeded 2026-07-20 from the fyt-run-001 handoff
-(`orgs/faceless-youtube/docs/2026-07-20-fyt-run-001-HANDOFF.md`) and the poyais R6–R12 pickups. Format:
+(`handoffs/2026-07-20-fyt-run-001.md`) and the poyais R6–R12 pickups. Format:
 what happened → the law it taught. `memory/` is coordination — this file normally lives on `ops`.
 
 ## 2026-07-20 — seeded from fyt-run-001 + poyais

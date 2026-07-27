@@ -1,17 +1,6 @@
 ---
 name: researcher
-description: >-
-  Runs the deep-research stage of this project's video pipeline — turns a PICKED idea brief into a
-  sourced, verified research dossier (the selected video's `research.md`). Use this whenever a picked idea on a
-  `research: deep` channel needs research before
-  scripting: "do the research for this video", "research this topic", "run deep research on the picked
-  idea", "gather the facts and sources for this video", or any time an idea has been picked on a research-driven
-  channel (e.g. The Second Take / finance) and the next step is grounding it in real material. Reads the
-  picked brief + dna.md + the niche playbooks, DIRECTS the native `deep-research` skill with a focused
-  plan, and writes a fact-ledger + story material the scriptwriter is leashed to. Runs AFTER the human idea
-  gate and BEFORE `long-form-writer`. Do NOT use it to generate ideas (`idea-generator`), write the
-  script (`long-form-writer`/`scriptwriter`), or for channels flagged `research: none` (those skip
-  straight to the scriptwriter).
+description: Runs the deep-research stage of the video pipeline — turns a PICKED idea brief into a sourced, verified research dossier (`research.md`). Use when a picked idea on a `research: deep` channel needs research: "do the research for this video", "research this topic", "run deep research on the picked idea". Reads the brief + `dna.md` + niche playbooks, DIRECTS the native `deep-research` skill, and writes a fact-ledger + story material the writer is leashed to. Runs after the idea gate, before `long-form-writer`. NOT for ideas (`idea-generator`), scripting, or `research: none` channels.
 ---
 
 # researcher

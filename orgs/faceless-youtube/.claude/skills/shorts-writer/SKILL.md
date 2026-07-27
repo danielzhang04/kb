@@ -1,16 +1,6 @@
 ---
 name: shorts-writer
-description: >-
-  Writes the SHORT-FORM bench for a video whose long-form script is already written — self-contained
-  vertical Shorts derived from the finished long-form + its research. Use whenever the user wants to
-  write/derive the shorts, "make the shorts", "clip the long-form into shorts", write the short bench, or
-  run the shorts scripting step for a video — for ANY niche. Reads videos/<slug>/script.md (the finished
-  long-form) + research.md (if present) + brief.md + dna.md + the universal & niche playbooks + the
-  shorts-clipping reference, and writes videos/<slug>/shorts/short-NN.md (each a closed-loop script with
-  [B-ROLL] cues, caption, and publish|bench status). Runs AFTER `long-form-writer` and can run in
-  parallel with metadata-writer / visual-prompt-writer. Do NOT use it to write the long-form script
-  (that's `long-form-writer`), generate ideas (`idea-generator`), do research (`researcher`), or pick
-  titles/tags (`metadata-writer`).
+description: Writes the SHORT-FORM bench for a video whose long-form script.md is already done — self-contained vertical Shorts derived from it (+ research.md if present). Use for "make the shorts", "clip the long-form into shorts", or the shorts scripting step, any niche. Writes videos/<slug>/shorts/short-NN.md. Runs after long-form-writer, parallel with metadata-writer/visual-prompt-writer. Do NOT use for the long-form script (long-form-writer), ideas (idea-generator), research (researcher), or titles/tags (metadata-writer).
 ---
 
 # shorts-writer

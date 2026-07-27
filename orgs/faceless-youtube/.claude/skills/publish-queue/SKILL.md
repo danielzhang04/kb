@@ -1,15 +1,6 @@
 ---
 name: publish-queue
-description: >-
-  Performs the human-gated, idempotent PRIVATE upload of a finished video in this faceless-YouTube
-  project — the last pipeline stage, after compliance-check. Use this whenever a compliance-passed
-  video folder is ready to go up: "publish this video", "upload to YouTube", "run publish-queue",
-  "push the finished video", or the runner reaches the publish stage. It preflights (idempotency +
-  compliance PASS + final.mp4), uploads via the youtube-uploader MCP as `private`, then writes a
-  durable publish-record.json. Uploads are ALWAYS private — only a human in YouTube Studio can make a
-  video public, and only a human approves each publish. Does NOT set the thumbnail or flip
-  private→public (both are deliberately manual Studio steps). Do NOT use it to assemble the video
-  (render-builder) or to run the pre-publish gate (compliance-check).
+description: Performs the human-gated, idempotent PRIVATE upload of a finished video — the last pipeline stage, after compliance-check. Use when a compliance-passed folder is ready: "publish this video", "upload to YouTube", "run publish-queue", "push the finished video". Preflights (idempotency + compliance PASS + final.mp4), uploads via the youtube-uploader MCP as `private`, writes `publish-record.json`. Uploads are ALWAYS private — only a human in Studio can flip it public, and only a human approves each publish. NOT for assembling video (`render-builder`) or the pre-publish gate (`compliance-check`).
 ---
 
 # publish-queue

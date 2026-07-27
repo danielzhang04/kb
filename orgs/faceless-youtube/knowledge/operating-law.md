@@ -25,7 +25,7 @@ this document too** (the fix: `.claude/skills/README.md` §Design rules).
 - **Know what exists:** the live skill registry is the source of truth. Consult it (already in
   context) or **search** — before hand-rolling, or concluding no skill fits.
 - **Self-maintain.** When work reveals that the folder structure, the file map, a rule, the status
-  block (`docs/handoffs/STATUS.md`), the dashboard, or any doc no longer matches reality, **change it
+  block (`docs/STATUS.md`), the dashboard, or any doc no longer matches reality, **change it
   without being asked** (add folders, update the map, revise the rule, fix the status) and log it in
   `knowledge/decisions.md`.
   Separately, on a **material** `knowledge/`-or-status change, also update the dashboard `index.html`
@@ -106,8 +106,10 @@ this document too** (the fix: `.claude/skills/README.md` §Design rules).
   change) with the reasoning **+ the alternatives rejected**, so calls aren't re-litigated.
   Append-only. Dates absolute (`YYYY-MM-DD`), **taken from the session's current date** — never a
   stale one copied from context.
-- **F-status — `docs/handoffs/`:** `STATUS.md` is the live status — a **doc**, kept current in place.
-  The dated pickups beside it are **append-only logs** carrying resume state for in-flight work.
+- **F-status:** `docs/STATUS.md` is the live status — a **doc**, kept current in place.
+  Dated pickups/handoffs carry resume state for in-flight work only; they live in the kb
+  repo-root `handoffs/` (fyt scope) and are **deleted on pickup or completion** per the
+  `handoffs/README.md` lifecycle — git history keeps them recoverable.
 - **F-docs — integrate, don't append:** write the change into the right section and delete what it
   supersedes; never stack dated blocks, bolt on corrections contradicting earlier sections, or grow a
   pile of one-off notes. Docs stay structured by topic, **concise**, comprehensive, non-overlapping,

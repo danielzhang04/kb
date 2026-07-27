@@ -12,6 +12,8 @@ You REWRITE two files in full (never append). Read before writing:
    (kinds: dispatch, cost, activity) — runs, per-agent cost totals, budget remaining
    vs governance/budget.yaml.
 3. Every `orgs/*/STATE.md` "## Now" section (skip orgs/_archive).
+4. `handoffs/` — newest file per scope (kb, fyt, dashboard, atlas, ecc, ...) by
+   filename date.
 
 ## dashboards/executive.md — exact structure
 # Executive Dashboard
@@ -27,6 +29,9 @@ _Generated: <UTC timestamp> by <agent-id>_
 _Generated: <UTC timestamp>_
 Plain English, <= 300 words, for the human returning after time away:
 what happened, what is waiting on them, what the system will do next unattended.
+End with a "## Latest handoffs" list: one line per scope —
+`<scope> — [<filename>](../handoffs/<filename>) (<date>)` — newest handoff per
+scope from `handoffs/`.
 
 Rules: this is a T1 task under standing authorization (human-authored cadence; governance/risk-tiers.md); write ONLY these two files; commit to ops with
 message "chore(dashboards): nightly regeneration".

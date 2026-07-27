@@ -98,8 +98,9 @@ either way the gates below are non-negotiable.
 1. `py -3 scripts/preamble.py` from the **repo root**. Must print `PREAMBLE OK`. If it fails, STOP
    and emit a wake-me card. (STOP file / `ANTHROPIC_API_KEY` set / budget breached.)
 2. Read, in order: `orgs/faceless-youtube/CLAUDE.md`, `knowledge/operating-law.md`,
-   `knowledge/stack.md`, `channels/<name>/dna.md`, `docs/handoffs/STATUS.md`, and the newest dated
-   pickup in `docs/handoffs/`.
+   `knowledge/stack.md`, `channels/<name>/dna.md`, `docs/STATUS.md`, and the newest `fyt`-scoped
+   handoff in the kb repo-root `handoffs/` — then `git rm` that handoff (pickup consumes it,
+   per `handoffs/README.md` lifecycle; write a new one if you pause mid-run).
 3. Read `memory/fyt-runner.md` at the kb repo root. That is where prior runs left their lessons.
 4. **Read `queue/` from an `ops` checkout — never from your own worktree.** See Rule R6.
 5. Never touch a video parked at a human gate for its *content*. Today that means poyais

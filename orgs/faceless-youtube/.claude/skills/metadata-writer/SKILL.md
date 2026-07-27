@@ -1,16 +1,6 @@
 ---
 name: metadata-writer
-description: >-
-  Writes the YouTube publishing metadata for a scripted video in this project — the title (primary +
-  A/B challengers), description, tags, hashtags, chapters, thumbnail concepts, and pinned-comment copy
-  — for the long-form video AND every scripted short, emitted as one videos/SLUG/metadata.json that
-  feeds the publish-queue skill (YouTube Data API v3). Use this whenever the user wants metadata, a
-  title, titles, "titles and tags", a description, YouTube SEO, tags/keywords, hashtags, chapters/
-  timestamps, thumbnail text, a pinned comment, or wants to "package"/"prep for upload"/"write the
-  metadata" for a video or short — for ANY niche. Runs AFTER long-form-writer + shorts-writer and BEFORE
-  visual-prompt-writer / voiceover / render-builder / publish-queue. Reads script.md + brief.md +
-  dna.md + the universal & niche playbooks. Do NOT use it to generate ideas (idea-generator), write
-  the script (long-form-writer / shorts-writer), or actually upload (publish-queue).
+description: Writes YouTube publishing metadata for a scripted video — title (primary + A/B challengers), description, tags, hashtags, chapters, thumbnail concepts, pinned-comment copy — for the long-form video and every short, as videos/SLUG/metadata.json. Use for "titles and tags", a title/description, YouTube SEO, hashtags, chapters, thumbnail text, or pinned comment. Reads script.md + brief.md + dna.md + playbooks. Runs after long-form-writer/shorts-writer, before publish-queue. Do NOT use it to generate ideas (idea-generator), write the script, or upload (publish-queue).
 ---
 
 # metadata-writer

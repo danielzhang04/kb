@@ -1,16 +1,6 @@
 ---
 name: analytics-reporter
-description: >-
-  Closes the faceless-YouTube learning loop for this project: pulls READ-ONLY YouTube Analytics for a
-  channel's published videos, keeps the numbers in files, rebuilds a self-contained dashboard, and
-  appends a dated digest to the channel's performance.md (which idea-generator reads to learn what
-  worked — nothing else ever writes to it). Use this whenever the user wants to pull analytics, refresh
-  the metrics/dashboard, "run the analytics cycle", update performance.md, or report on how published
-  videos are doing — for ANY channel. Three deterministic engines: pull_analytics.py (the only network
-  step — read-only Analytics API v2 + a single OAuth token refresh), build_dashboard.py (files → one
-  offline HTML artifact), append_digest.py (rollup → dated performance.md block). Read-only over
-  YouTube; never uploads, never changes a video. Do NOT use it to pick ideas (idea-generator), publish
-  a video (publish-queue), or write scripts — it only measures what is already live.
+description: Pulls read-only YouTube Analytics for a channel's published videos, rebuilds the offline dashboard, and appends a dated digest to performance.md. Use for "pull analytics", "refresh the metrics/dashboard", "run the analytics cycle", "how are the videos doing" — any channel. Engines: pull_analytics.py (only network step), build_dashboard.py, append_digest.py. Read-only over YouTube; never uploads or edits videos. NOT for picking ideas (idea-generator), publishing (publish-queue), or writing scripts.
 ---
 
 # analytics-reporter

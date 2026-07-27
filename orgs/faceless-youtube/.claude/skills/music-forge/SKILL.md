@@ -1,6 +1,6 @@
 ---
 name: music-forge
-description: Sources, objectively vets, and CLAP-ranks casual-comedic music beds (CC-BY, Incompetech / manual YouTube-Audio-Library drops) for a channel by mood bucket, then wires the human-picked finalists into the channel's `music_pools`. Use whenever the user wants to source/find/add music, build or expand the music library, "get a casual/comedic bed", run the music audition, or run the music sourcing step — for ANY channel with a `visual-kit/audio` setup. Claude does the curation (fetch CC-BY → vet loop-ability/loudness/duration → CLAP-rank); the HUMAN ear-gates the pick on the audition board. Do NOT use it to author WHEN music plays (that's the Phase-3B music-cue layer), to AI-generate music, to source SFX (`sfx-forge`), or to assemble the video (`render-builder`).
+description: Sources, objectively vets, and CLAP-ranks casual-comedic music beds (CC-BY, Incompetech / YouTube-Audio-Library) for a channel by mood bucket, wiring human-picked finalists into `music_pools`. Use to source/find/add music, build the music library, "get a casual/comedic bed", or run the music audition — for any channel with a `visual-kit/audio` setup. Claude fetches, vets, and CLAP-ranks; the human ear-gates the pick. Do NOT use to author WHEN music plays (Phase-3B music-cue layer), AI-generate music, source SFX (`sfx-forge`), or assemble the video (`render-builder`).
 ---
 
 # music-forge — casual-comedic music sourcing, vetting, and ranking

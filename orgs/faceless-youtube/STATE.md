@@ -15,8 +15,8 @@ _Updated: 2026-07-19_
   prompt→render, stage-two work owned by the run orchestrator).
   Image-generation **Pass 1 complete** (3/3 cast locked, 4 calls, ~$0.54); **Pass 2 in progress**.
   Authorised by parent card `6a5d53ea-562cad3a` (Daniel's verbatim 2026-07-19 instruction,
-  ~$15–30 one-video API budget). Resume state:
-  `docs/handoffs/2026-07-20-wells-fargo-imagegen-pickup.md`.
+  ~$15–30 one-video API budget). Run PARKED — Wells Fargo excluded from the validation
+  order (knowledge/decisions.md 2026-07-22); handoff retired 2026-07-27 (git history).
 
 ## Blocked
 - (none)

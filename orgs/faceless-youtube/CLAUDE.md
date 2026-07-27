@@ -20,9 +20,10 @@ This top level is **niche-agnostic infrastructure.** Specific channels/niches ea
 
 ## Where things stand
 
-- **Live status** (what's built, what's in flight): `docs/handoffs/STATUS.md` — **keep it current**
+- **Live status** (what's built, what's in flight): `docs/STATUS.md` — **keep it current**
   (operating-law §A self-maintain); it is a doc, integrated in place, not an append-log
-- **Resume state** for in-flight work: the newest dated pickup in `docs/handoffs/`
+- **Resume state** for in-flight work: the newest `fyt`-scoped handoff in the kb repo-root
+  `handoffs/` directory (per `handoffs/README.md`)
 - **What we decided and why**: `knowledge/decisions.md`
 
 ## Read this for that
@@ -93,7 +94,7 @@ Policy and legal realities that protect the channel. **Detail + sources: `knowle
 - `channels/` — one folder per channel (channels are *data*, not code)
   - `_TEMPLATE/` — copy to start a channel: `dna.md`, `performance.md`, `idea-backlog.md`, `videos/`
 - `.claude/skills/` — pipeline skills + skill design rules (see the README there)
-- `docs/handoffs/` — `STATUS.md` (live status) + dated pickups (resume state)
+- `docs/STATUS.md` — live status; dated handoffs/pickups live at kb repo-root `handoffs/` (fyt scope)
 - `docs/superpowers/specs/` + `plans/` — design specs and implementation plans
 - `logs/` — autonomous run reports
 - `.env` — secrets (git-ignored; see `.env.example`)

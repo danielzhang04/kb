@@ -1,15 +1,6 @@
 ---
 name: voiceover
-description: >-
-  Generates the narration audio for a scripted video in this faceless-YouTube project — turns a
-  videos/SLUG/script.md (and every publish-tagged short) into ElevenLabs TTS mp3s plus a manifest
-  that render-builder syncs visuals to. Use this whenever the user wants to voice a script, generate
-  the voiceover / narration / audio / VO, "do the TTS", "record the audio", make the mp3, or run the
-  voiceover step for a video or its shorts — for ANY niche. Runs AFTER long-form-writer + shorts-writer (and alongside
-  visual-prompt-writer) and BEFORE render-builder. Reads a video script + shorts and the channel's
-  dna.md voice config; writes assets/vo.mp3, assets/shorts/short-NN.mp3, and
-  assets/voiceover.manifest.json. Do NOT use it to write the script (scriptwriter), pick titles/tags
-  (metadata-writer), plan visuals (visual-prompt-writer), or assemble the final video (render-builder).
+description: Generates narration audio for a scripted video — turns script.md (and every publish-tagged short) into ElevenLabs TTS mp3s plus a manifest render-builder syncs visuals to. Use for "do the TTS", "record the audio", voicing a script, or the voiceover step, any niche. Runs after long-form-writer + shorts-writer, before render-builder. Writes assets/vo.mp3, assets/shorts/short-NN.mp3, assets/voiceover.manifest.json. Do NOT use it to write the script (scriptwriter), pick titles/tags (metadata-writer), plan visuals (visual-prompt-writer), or assemble video (render-builder).
 ---
 
 # voiceover

@@ -1,16 +1,6 @@
 ---
 name: compliance-check
-description: >-
-  Produces the mechanical + provenance Gate-3 report a HUMAN reads before approving a YouTube
-  publish in this faceless-YouTube project — the hard, objective pre-publish gate. Use this whenever
-  a finished video folder needs its pre-publish compliance report: "run compliance", "the Gate-3
-  check", "is this video publish-ready", "check policy/limits before publish", or the runner reaches
-  the compliance stage. Reads the video's committed artifacts (render.manifest.json, metadata.json,
-  scenes/manifest.json, thumbnail.png, audio-plan.json, library/manifest.json, script.md, research.md)
-  and writes videos/<slug>/compliance-report.md with a PASS/FAIL verdict (exit 0 = PASS, 1 = FAIL).
-  Runs AFTER render-builder and BEFORE publish-queue (whose preflight consumes the exit code). Does
-  NOT publish, upload, schedule, or edit any artifact — it is read-only over the video and only writes
-  the report. Do NOT use it to assemble the video (render-builder) or to upload (publish-queue).
+description: Produces the mechanical + provenance Gate-3 report a human reads before approving a publish. Use for "run compliance", "the Gate-3 check", "is this video publish-ready", "check policy/limits before publish". Reads render.manifest.json, metadata.json, scenes/manifest.json, thumbnail.png, audio-plan.json, library/manifest.json, script.md, research.md; writes compliance-report.md (PASS/FAIL, exit 0/1). Runs after render-builder, before publish-queue. Read-only — never publishes or edits. Do NOT use to assemble the video (render-builder) or upload (publish-queue).
 ---
 
 # compliance-check
