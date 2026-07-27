@@ -116,8 +116,10 @@ skill family (e.g. "write the tags for this video" must still route to metadata-
 | claude-code-setup | setup/automation recommender | DISABLE in kb | one-shot advisory tool, not a workflow dependency |
 | chrome-devtools-mcp | browser automation + perf/a11y | DISABLE in kb | redundant with playwright, which kb dashboard work already uses |
 | notion | Notion workspace integration | DISABLE in kb | no kb workflow touches Notion |
-| claude-md-management | CLAUDE.md audit skills | DISABLE in kb | CLAUDE.md is human-edited-only here; skill would be refused anyway |
-| everything else (superpowers, commit-commands, skill-creator, humanizer, multi-source-synthesis, document-skills, context7, claude-video-vision, playwright, desktop-commander, claude-context-optimizer) | | KEEP | in active kb use or plausibly needed |
+| claude-md-management | CLAUDE.md audit skills | DISABLE in kb | CLAUDE.md is human-edited-only here; skill would be refused anyway (Daniel confirmed 2026-07-27) |
+| desktop-commander | persistent-shell/REPL/SSH toolkit (~10 skills, long descriptions) | DISABLE in kb | kb uses native Bash/PowerShell; no recorded kb workflow depends on it (Daniel confirmed 2026-07-27) |
+| claude-context-optimizer | cco suite: passive read-cache/context-shield/budget hooks + ~19 on-demand skills | KEEP plugin; set its skills to `user-invocable-only` in kb `.claude/settings.local.json` skillOverrides | the hooks passively REDUCE context (block redundant re-reads, waste warnings) and must stay; the 19 skill listings are user commands (/cco-*) that never need model auto-triggering, so hiding them from the model loses nothing |
+| everything else (superpowers, commit-commands, skill-creator, humanizer, multi-source-synthesis, document-skills, context7, claude-video-vision, playwright) | | KEEP | in active kb use or plausibly needed (document-skills kept per Daniel 2026-07-27) |
 
 Estimated saving: ~2–4k tokens per terminal. Reversal: flip the line to `true`.
 
