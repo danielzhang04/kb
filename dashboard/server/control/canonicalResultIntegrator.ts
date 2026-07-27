@@ -3,6 +3,7 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSyn
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { redactSensitiveText } from '../composer/publicTimeline.ts';
 import { defaultGitRunner, prepareCoordination, type GitRunner } from '../write/branch.ts';
+import { withOpsTransaction } from '../write/asyncGit.ts';
 import { defaultPyRunner, type PyRunner } from '../write/launch.ts';
 import { workflowCardId } from '../write/workflowRun.ts';
 import type { CanonicalStageResult, CanonicalStageResultPayload, ResultIntegrator, WorkerArtifactResult } from './execution.ts';
@@ -507,11 +508,12 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
       throw new CanonicalResultIntegrationError(verified.stderr.trim() || verified.stdout.trim() || 'canonical Result verification failed');
     }
   };
-  const serialize = <T>(operation: () => Promise<T>): Promise<T> => {
-    const next = tail.then(operation, operation);
-    tail = next.then(() => undefined, () => undefined);
-    return next;
-  };
+  const serialize = <T>(operation: () => Promise<T>): Promise<T> =>
+    withOpsTransaction(() => {
+      const next = tail.then(operation, operation);
+      tail = next.then(() => undefined, () => undefined);
+      return next;
+    });
 
   return {
     async lookup(input) {
