@@ -48,11 +48,13 @@ function subject(req: FastifyRequest): string | null {
 class CompletedRootProvenanceError extends Error {}
 
 class ActivationPreparationError extends Error {
-  constructor(
-    readonly statusCode: 409 | 500,
-    readonly body: { error: string; detail?: string },
-  ) {
+  readonly statusCode: 409 | 500;
+  readonly body: { error: string; detail?: string };
+
+  constructor(statusCode: 409 | 500, body: { error: string; detail?: string }) {
     super(body.error);
+    this.statusCode = statusCode;
+    this.body = body;
   }
 }
 
