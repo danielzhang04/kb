@@ -1,6 +1,6 @@
 ---
 name: save-session
-description: Capture a resumable handoff at the end of a kb run — what worked (with evidence), what did not and why, what is untried, current file state, and the exact next step — as a dated section appended to memory/<agent-id>.md and/or the project's orgs/<project>/STATE.md, so the next session resumes with full context.
+description: Capture a resumable handoff at the end of a kb run — context, what worked (with evidence), what did not and why, what remains, and a Load list of files to read on resume — written to handoffs/YYYY-MM-DD-<scope>-<topic>.md (the one canonical handoff location). Lessons additionally go to memory/<agent-id>.md; orgs/<project>/STATE.md gets a current-state refresh if stale.
 source: ecc@2.0.0/commands/save-session.md
 imported: 2026-07-19
 provenance-tier: curated
@@ -20,12 +20,16 @@ Capture what happened this session — what was built, what worked, what failed,
 
 ## Where it lands (kb retarget)
 
-Do NOT write to `~/.claude/session-data`. The handoff lands as a dated section:
+Do NOT write to `~/.claude/session-data`. Three surfaces, three jobs:
 
-- Appended to `memory/<agent-id>.md` (your durable per-agent lessons file, read at the start of every run), and/or
-- Appended to the project's `orgs/<project>/STATE.md` when the state belongs to a specific project's resume point.
-
-Use a dated heading so entries stack without overwriting each other, for example `## Session handoff YYYY-MM-DD`. Append — never overwrite a previous session's section. Both files are ordinary work-product on your agent branch (or `ops` for STATE.md, per the branch rules); commit them the normal way.
+- The HANDOFF itself → a NEW file `handoffs/YYYY-MM-DD-<scope>-<topic>.md` per the
+  template in `handoffs/README.md` (scope = `kb`, `fyt`, `dashboard`, `atlas`, ...).
+  Include the Load list — the files a resuming terminal should read first.
+  `handoffs/` follows the ops-branch coordination flow (pull --rebase before, push after).
+- LESSONS (reusable what-worked/what-failed patterns) → appended to
+  `memory/<agent-id>.md` under a dated heading. Not the handoff content — just lessons.
+- `orgs/<project>/STATE.md` → update the current-state sections in place if the
+  session made them stale (it is a doc, not a log).
 
 ## Process
 
@@ -36,7 +40,7 @@ Use a dated heading so entries stack without overwriting each other, for example
 ## Handoff section skeleton
 
 ```markdown
-## Session handoff YYYY-MM-DD
+# <topic> handoff — YYYY-MM-DD
 
 **Topic:** [one line: what this session was about]
 
@@ -71,10 +75,16 @@ If none: "No files modified this session."
 The single most important thing to do on resume, precise enough that resuming
 requires zero thinking about where to start. If unknown, say so and point to the
 "Not tried yet" and blockers above.
+
+### Load list
+The specific files/dirs a resuming terminal should read FIRST, as repo-relative
+links, plus any skill to invoke.
+- `path/one`
+- `path/two`
 ```
 
 ## Notes
 
 - The "What Did NOT Work" section is the most critical — without it, future sessions blindly retry failed approaches.
 - If asked to save mid-session, save what is known so far and mark WIP items clearly.
-- This section is meant to be read at the start of the next run when the agent reads its `memory/<agent-id>.md` (constitution Memory rule) and the project's `STATE.md`.
+- This section is meant to be read at the start of the next run when the agent reads its `memory/<agent-id>.md` (constitution Memory rule) and the project's `STATE.md`. Handoffs are found by listing `handoffs/` — newest file per scope wins.
