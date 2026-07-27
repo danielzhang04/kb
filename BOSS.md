@@ -56,3 +56,26 @@ execute grunt work by hand.
   concrete directions — never batch-dump them.
 - Verify before claiming done: run the checks, show the evidence.
 - End every run by appending lessons to `memory/<agent-id>.md`.
+
+## Git hygiene (this machine — violations caused real damage)
+
+- NEVER check out `ops` in the main kb checkout. It is permanently checked out in
+  `C:/Users/danie/kb-worktrees/dashboard-ops` (the daemon/cadence coordination
+  checkout), so a local switch will half-fail and leave you on the wrong branch.
+  Coordination writes from the main checkout: commit on a temp branch cut from
+  `origin/ops`, then `git push origin <sha>:ops`. Always confirm
+  `git branch --show-current` before any rebase or `reset --hard`.
+- The main checkout always sits on a work branch — never parked on `main` or `ops`.
+- A merged branch is dead: when a PR merges, delete the local branch and remove
+  its worktree the same session. Judge "merged" only by
+  `git rev-list --count origin/main..<branch>` == 0 after `git fetch --prune` —
+  never by branch age or memory.
+- Worktrees are leases, not real estate: whoever creates one (boss, wave, or
+  dispatched agent) removes it when its branch merges or its wave ends. Subagents
+  never create branches or worktrees unless their brief says so; the boss sweeps
+  agent worktrees at wave close.
+- Session close ritual: `git fetch --prune`, delete every 0-unmerged local
+  branch, `git worktree prune`, leave the tree clean on a work branch.
+- Exempt from all sweeps: `dashboard-ops` and everything under
+  `AppData/Local/kb-dashboard/control/` (the control plane's managed worktrees —
+  its reconciler owns them, never touch by hand).
