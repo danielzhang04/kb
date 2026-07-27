@@ -275,3 +275,12 @@ by ear on merged code. Ops synced clean; hygiene done. Codex session parked the 
 checkout on its branch AGAIN (project-portfolio-research) — returned to main; that terminal
 needs its own worktree. OPEN: pre-activation pass for C2/C3; #62 body's 3 desk-tuning Qs;
 Daniel's standing gates (V2a build go, contract clause, archiver Qs, cadences, orphan dir).
+
+## 2026-07-27 — Boss protocol + handoff consolidation + context slim (interactive, Fable 5 boss)
+- SHIPPED: BOSS.md protocol (PR #91) loaded via @import in CLAUDE.md; handoffs/ consolidation + lifecycle + 17 FYT skill-description curations (PR #92, 12 commits); both merged same day, CLAUDE.md lines added by Daniel.
+- LAW (new): handoffs/ is the ONE handoff location — active work only, deleted on pickup/completion, Load-list template in handoffs/README.md. 45 of 49 historical handoffs purged with per-file evidence; git history keeps them.
+- WORKED: 3-agent evidence-checked classification (verdict + PR/decisions.md citation per file) made a 49-file purge safe enough to run without a human pass per file.
+- WORKED: Sonnet workers for description curation with acceptance criteria (≤600 chars, triggers + DO-NOT redirects + safety invariants preserved) — 17/17 clean on first pass, model transcript-verified.
+- FRICTION: .claude/skills/ are GENERATED mirrors — edit skills/curated/ then scripts/sync_skills.py (a commit hook blocks mirror edits). FYT skill descriptions are multi-line YAML — single-line grep measurements lie.
+- FRICTION: stale local ops branch rebase-conflicted on the append-only audit ledger via a skipped-cherry-pick duplicate; origin/ops..ops was empty so reset --hard was lossless — always check for local-only commits before resolving.
+- LOCAL (this machine): kb .claude/settings.local.json now disables 7 plugins + hides cco's 19 skill listings (user-invocable-only; hooks stay live). Concise output style active user-wide.
