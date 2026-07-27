@@ -26,6 +26,10 @@ Do NOT write to `~/.claude/session-data`. Three surfaces, three jobs:
   template in `handoffs/README.md` (scope = `kb`, `fyt`, `dashboard`, `atlas`, ...).
   Include the Load list — the files a resuming terminal should read first.
   `handoffs/` follows the ops-branch coordination flow (pull --rebase before, push after).
+  LIFECYCLE: `handoffs/` holds only ACTIVE work. If this session RESUMED from a
+  handoff, `git rm` that consumed handoff in the same push that adds your new one
+  (or that completes the work — completed work leaves no handoff). Git history
+  keeps every deleted file recoverable.
 - LESSONS (reusable what-worked/what-failed patterns) → appended to
   `memory/<agent-id>.md` under a dated heading. Not the handoff content — just lessons.
 - `orgs/<project>/STATE.md` → update the current-state sections in place if the

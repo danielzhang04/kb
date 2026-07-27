@@ -6,6 +6,17 @@ Filename: `YYYY-MM-DD-<scope>-<topic>.md` — scope is `kb`, `fyt`, `dashboard`,
 follow the ops-branch coordination flow (`git pull --rebase origin ops` before,
 push after), same as queue/ and memory/.
 
+## Lifecycle — this is a live board, not an archive
+
+A handoff is ACTIVE resume state. `handoffs/` lists exactly the arcs currently
+paused mid-flight — nothing else. Delete a handoff (`git rm`) when:
+- the work it describes is completed, or
+- a terminal picks it up to resume the work — the picker deletes it on pickup.
+  If the picker later pauses before finishing, it writes a NEW dated handoff.
+
+Git history preserves every deleted handoff; nothing is ever lost. A handoff
+superseded by a newer one for the same workstream is deleted, not kept beside it.
+
 Related surfaces with different jobs (do NOT put handoffs there):
 - `memory/<agent-id>.md` — per-agent LESSONS only (what worked/failed as reusable patterns)
 - `orgs/<project>/STATE.md` — current state of a project (a doc kept current, not a log)
