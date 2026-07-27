@@ -13,10 +13,10 @@ def test_resolves_story_paths():
     r = resolve("story", "the-second-take", ROOT)
     assert r["grammar"].name == "storytelling-grammar.md"
     assert r["grammar"].exists()
-    assert r["rubric"].name == "watchability-rubric.md"
-    assert r["gold"].name == "script.md"
+    assert r["voice"].name == "personable-calibration.md"
+    assert r["voice"].exists()
     assert r["calibration"].name == "calibration-set.md"
-    assert "no-zero" in r["gates"]
+    assert "verdict-only" in r["gates"]
 
 
 def test_unknown_facet_raises():

@@ -3222,3 +3222,23 @@ run brief binds nobody — a fresh terminal reads the style-bible and skill docs
 - **Open item:** `watchability-rubric.md` dimension 11 (reported-speech/no-quotes hard locks) is built
   on the retired locks and sits in proxy-judge's hard gate — rubric + calibration set need Daniel's
   re-ruling before the next judged draft.
+
+## 2026-07-27 — watchability rubric retired; round-2 writer/grammar rulings (Daniel)
+
+- **`watchability-rubric.md` deleted.** 15/18 dimensions duplicated the grammar in scored form and had
+  drifted (still enforced the deleted locks, humor dial, human cost, 150-wpm constant). Surviving
+  unique learnings folded into the grammar: the short-punch rule (§1.1) and forward-promise seams /
+  deliver-don't-announce (§3.4). Digestibility timing dropped (Daniel unsure); jargon-free-line-one
+  already covered by §1.1+§2.1; the measured baseline dropped as inherent in current voice/pause
+  doctrine. (Alternatives rejected: slim 6-dim rewrite; unscored checklist.)
+- **proxy-judge is verdict-only:** judges against grammar + the approved voice excerpt + the
+  calibration TRAINING set; no /36 score, no numeric gate. facets.md story pack now resolves
+  grammar/voice/calibration; the Poyais gold entry removed. `score_agreement.py` unaffected (never
+  parsed the score).
+- **Round-2 writer/grammar rulings:** wit/analogies/asides abundant and consistent throughout — a flat
+  deadpan stretch is a defect (grammar §1.3, taste critic #8); unavoidable unknown terms are
+  contextualized in the same breath (§1.1); hook anatomy fleshed with examples (§2.1); retention is
+  designed at the outline, not checked post-script (§2.6); runtime estimates use the channel voice's
+  measured wpm (`lint_script.py --wpm`); humanize folded into the critic cycle (writer 3d); Step 6
+  folded into 3c; **all human-cost comedy rules removed from scripting docs** (grammar, critics, dna
+  dial, shorts-writer, calibration note) — irrelevant for now per Daniel.

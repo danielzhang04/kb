@@ -26,6 +26,12 @@ ever — an AI tell the viewer can't hear. Breath is periods, commas, colons, an
 > ✗ "underwritten by a respectable banking house, in notes of a hundred"
 > ✓ "So MacGregor gets the Bank of Scotland's official printer to make 5,000 Poyais dollar notes."
 
+**The short-punch rule:** a standalone ultra-short line is allowed only when it lands dry wit or a
+concrete payoff ("It didn't exist."). A clipped fragment manufacturing drama with no joke ("Everything
+changed." / "The rules were gone." / "For good.") is the trailer-voice AI tell — cut it. And never
+stack fragments in a run ("A loan. For a government. Of a country that wasn't there."): one earned
+punch after a long build, at most.
+
 **1.2 — End on the fact or the action; no grandeur buttons.** The recurring failure is ending a beat on
 a summary, thesis, or profound line ("the mania did the work"). Land the point *inside* the telling and
 move; the story concludes exactly once, at the very end, on one earned image. **The mechanical check:**
@@ -137,9 +143,13 @@ cleanly before cutting, with a casual signpost ("Meanwhile, back in London…").
 choppy ones. For a pre-spoiled ending, the **irony cross-cut** — obliviousness against the gathering
 disaster — is the main engine (§3.6).
 
-**3.4 — Casual transitions and question turns.** Spoken connective tissue and the
-question-answered-casually move ("So how does a warehouse full of bricks pass an audit? Well…"). Never
-an announced or literary transition ("which brings us to," "little did they know").
+**3.4 — Casual transitions, question turns, and forward-promise seams.** Spoken connective tissue and
+the question-answered-casually move ("So how does a warehouse full of bricks pass an audit? Well…").
+Never an announced or literary transition ("which brings us to," "little did they know"). A beat exits
+on an open loop or forward promise the viewer stays to collect, and escalation is honest ("it gets
+worse" is followed by something actually worse). **Deliver the moment; don't announce its category** —
+no "here's the strange part," "the uncomfortable question," "piece one/two/three": open on the content
+itself.
 
 **3.5 — End on the story, never a lesson.** The close is one earned ironic image, told the way you'd end
 it for a friend. Banned: the essay conclusion ("here's what it means," "and that's why"). The insight is

@@ -67,7 +67,7 @@ defect that will recur until fixed.
   (board-state / park-and-cut / ensemble / mirror / irony) + a transition seam-kit answers linearity.
   **Hard locks:** ONE narrator; no viewer role-casting or voiced character dialogue. First-person narrator
   asides and generic audience-facing `you` are allowed. No quotes — all character speech is narrator-reported.
-  Reconciled across `long-form-writer`, `universal.md` §5c/§5d/§1d-V, `watchability-rubric.md` (/36),
+  Reconciled across `long-form-writer`, `universal.md` §5c/§5d/§1d-V,
   `dna.md`, `researcher`, `shorts-writer`, `reference-channels.md`, and the visual grammar.
 - **Scriptwriter — REBUILT + PROVEN (2026-07-08, extended 07-09):** the flat/buttoned-script problem was
   root-caused (a model self-checking prohibitions shares its own blind spot) and fixed architecturally.

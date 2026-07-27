@@ -6,7 +6,6 @@ See `docs/superpowers/specs/2026-07-09-proxy-judge-story-editor-me-design.md` §
 
 ## story
 grammar: channels/<ch>/storytelling-grammar.md
-rubric: channels/<ch>/watchability-rubric.md
-gold: channels/<ch>/videos/2026-07-04-poyais/script.md
+voice: .claude/skills/long-form-writer/references/personable-calibration.md
 calibration: knowledge/proxy-me/story/calibration-set.md
-gates: total>=30; no-zero on 1,4,8,11,13,14,16,17,18
+gates: verdict-only (no numeric score); judged against grammar + calibration TRAINING set
