@@ -1,0 +1,5 @@
+model	step	usd
+gpt-5.6-sol	requested=gpt-5.6-sol;responding=gpt-5.6-sol;dashboard-resume-postmerge-orchestration	0.0
+gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;deployment-readiness-audit	0.0
+gpt-5.6-terra	requested=gpt-5.6-terra;responding=gpt-5.6-terra;live-acceptance-audit	0.0
+gpt-5.6-sol	requested=gpt-5.6-sol;responding=gpt-5.6-sol;dashboard-resume-blocked-continuation	0.0
