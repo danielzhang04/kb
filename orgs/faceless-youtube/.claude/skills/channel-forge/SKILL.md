@@ -1,6 +1,6 @@
 ---
 name: channel-forge
-description: Guided channel-genesis conductor for this faceless-YouTube project — builds a NEW channel by walking a stage-by-stage conversation (niche → look → voice → production pipeline → guardrails → scaffold), driving research + converged options at each stage, with the human holding final say. Use when the user wants to create/start/spin-up a NEW channel, "make a new channel", set up another niche, or run channel genesis. Reuses/adapts existing skills per a per-channel capability map, enforces the Enforcement Contract, and keeps a clean, resumable file tree. Do NOT use for per-video work on an EXISTING channel (use idea-generator / long-form-writer / etc.), or to build a new production pipeline (its own brainstorm→plan→build project).
+description: Guided channel-genesis conductor: builds a NEW channel by walking a stage-by-stage conversation (niche → look → voice → production pipeline → guardrails → scaffold), with the human holding final say. Use when the user wants to create/start/spin-up a NEW channel, "make a new channel", set up another niche, or run channel genesis. Reuses existing skills per a per-channel capability map. Do NOT use for per-video work on an EXISTING channel (idea-generator / long-form-writer / etc.), or to build a new production pipeline.
 ---
 
 # channel-forge — the conductor

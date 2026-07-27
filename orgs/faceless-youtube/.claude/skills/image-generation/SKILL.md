@@ -1,18 +1,6 @@
 ---
 name: image-generation
-description: >
-  Generates ALL the verified, on-style images for a channel with a LOCKED style bible — the full
-  visual production for a video (two passes: lock the video's recurring characters, then generate every
-  scene), and one-off assets (characters, expressions, action poses, environments, props). Use whenever the
-  user wants to generate the images/visuals/B-roll frames for a video, "do the image generation",
-  build a video's asset library, run the visual production step after shots.json exists; OR wants a
-  single asset — draw/generate/regenerate a character in a new expression, outfit, pose, or action;
-  add a scene/environment/prop; iterate on an approved frame ("give me this one but ___"); extend the
-  cast — for ANY channel whose visual-kit has a style-bible.md. Reads videos/<slug>/shots.json +
-  visual-kit/style-bible.md + registry/registry.json + refs/; seeds every generation from the right
-  canonical reference and VERIFIES every output against the bible in one batched review before shipping. Do NOT use
-  it to plan the shots (visual-prompt-writer), design/lock a brand-new style from scratch (that's
-  establishing the bible), write scripts, or assemble the final video (render-builder).
+description: Generates all verified, on-style images for a channel with a locked style bible — full visual production for a video, plus one-off assets (characters, poses, environments, props). Use for "do the image generation", generating visuals/B-roll frames, building a video's asset library, or single-asset requests like "give me this one but ___". Reads shots.json + style-bible.md + registry.json + refs/. Do NOT use it to plan shots (visual-prompt-writer), lock a new style, write scripts, or assemble video (render-builder).
 ---
 
 # image-generation

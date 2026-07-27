@@ -1,21 +1,6 @@
 ---
 name: shot-board
-description: >-
-  Builds the Gate-2 shot board — the single self-contained HTML page a HUMAN reviews before
-  approving a video's generated stills in this faceless-YouTube project. Use this whenever a
-  storyboarded + imaged video folder needs its Gate-2 review surface: "build the shot board",
-  "the Gate-2 surface", "let me review the stills", "show me every shot against the script", or
-  the runner reaches the shot-review gate. Reads the video's shots.json (story order + script
-  lines), shots.motion.json (motion intent), assets/library + assets/scenes and their manifests
-  (the still + the review_status honesty), and writes ONE gitignored file,
-  videos/<slug>/assets/board.html — every shot card shows the downscaled still, the covered
-  script lines, the motion intent, and the machine's honest review badge (verified / parked +
-  reasons / unreviewed) so a parked or unreviewed frame can never hide behind a nice thumbnail.
-  Runs AFTER image-generation (and motion-planner) and BEFORE the human's Gate-2 sign-off. The
-  orchestrator publishes the file as the per-video Claude artifact; this skill only writes it.
-  Does NOT generate, edit, review, or approve any still — it is read-only over the video and only
-  writes the board. Do NOT use it to generate the images (image-generation), plan motion
-  (motion-planner), or run the pre-publish compliance gate (compliance-check).
+description: Builds the Gate-2 shot board — one self-contained board.html a HUMAN reviews before approving a video's generated stills. Use for "build the shot board", "the Gate-2 surface", "let me review the stills", or the shot-review gate step. Reads shots.json + scene manifests; writes videos/<slug>/assets/board.html with each still, script lines, motion intent, and the honest verified/parked/unreviewed badge. Runs after image-generation, before Gate-2 sign-off; read-only. Do NOT use it to generate/edit/approve stills (image-generation), plan motion (motion-planner), or run compliance-check.
 ---
 
 # shot-board

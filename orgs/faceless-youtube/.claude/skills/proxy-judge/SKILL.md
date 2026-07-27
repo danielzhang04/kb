@@ -1,19 +1,6 @@
 ---
 name: proxy-judge
-description: >-
-  Stands where the human stands at a pipeline GATE and renders their acceptance verdict on a finished
-  artifact — v1 judges the LONG-FORM SCRIPT after `humanize`. Use whenever the user wants to "judge the
-  script," "would I approve this," "run the acceptance gate," "proxy-me review," "should this ship,"
-  "gate this draft," or wants a fresh-eyes accept/revise/reject on a written script for ANY channel that
-  has a taste pack. Runs a FRESH-CONTEXT subagent (real fresh eyes) that reads the channel's
-  storytelling-grammar (§0 gold) + watchability-rubric + the TRAINING section of the facet's
-  calibration-set (the human's labeled judgments), consumes the leash critic's accuracy findings, and
-  writes `videos/<slug>/judge-verdict.md` (verdict + /36 score + ranked substantive redirects). It
-  imitates the human's CONTENT PREFERENCES, not their phrasing. Runs AFTER `long-form-writer` (post
-  `humanize`) and BEFORE voiceover / visuals. Do NOT use it to write or fix the script (that's
-  `long-form-writer`), to re-run the in-writer critic layer (that already ran, subtractively), to
-  fact-check from scratch (it consumes the leash critic instead), or to author/modify any taste-pack doc
-  (v1 has zero write access — it only NAMES an uncodified gap).
+description: Stands where the human stands at a pipeline GATE, rendering the acceptance verdict on a finished artifact — v1 judges the LONG-FORM SCRIPT after `humanize`. Use for "judge the script," "would I approve this," "run the acceptance gate," "should this ship" — fresh-eyes accept/revise/reject for any taste-pack channel. A FRESH-CONTEXT subagent judges against the storytelling-grammar + rubric + calibration TRAINING set, writing `judge-verdict.md`. Runs after `long-form-writer`, before voiceover/visuals. NOT for writing/fixing scripts (`long-form-writer`), fact-checking, or editing taste-pack docs.
 ---
 
 # proxy-judge — the acceptance gate (proxy-me)

@@ -1,16 +1,6 @@
 ---
 name: long-form-writer
-description: >-
-  Writes the LONG-FORM voiceover script for a picked (and, on research channels, researched) video in
-  this project. Use whenever the user wants to script/write/draft a long-form video, turn a research dossier +
-  brief into long-form VO, or run the long-form scripting step — for ANY niche. Reads the picked brief +
-  (if present) the selected video's research.md + dna.md + the channel's storytelling-grammar + the universal &
-  niche playbooks, and writes the selected video's script.md with [B-ROLL]/[PAUSE] cues. Runs a staged
-  writers-room (spine → casual story pass → leash pass → editor → humanize) on `long_form: staged`
-  channels, and a single strong pass on `long_form: single`. On research channels it is LEASHED to the
-  fact-ledger — it states only what research.md sourced. Runs after `researcher` (deep path) or the idea
-  gate (plain path), before shorts, metadata, visuals, and voiceover. Do not use it for shorts, ideas,
-  research, or metadata.
+description: Writes the long-form voiceover script for a picked (and, on research channels, researched) video. Use to script/write/draft a long-form video or run the long-form scripting step — any niche. Reads the picked brief + research.md (if present) + dna.md + storytelling-grammar + playbooks; writes script.md with [B-ROLL]/[PAUSE] cues. Runs after researcher/idea gate, before shorts, metadata, visuals, voiceover. Do NOT use it for shorts, ideas, research, or metadata.
 ---
 
 # long-form-writer

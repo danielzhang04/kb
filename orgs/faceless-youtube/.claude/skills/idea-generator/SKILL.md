@@ -1,14 +1,6 @@
 ---
 name: idea-generator
-description: >-
-  Generates differentiated, ranked video ideas for a faceless YouTube channel in this project.
-  Use this whenever the user wants new content ideas, video concepts, angles, titles, a content
-  backlog, "what should we make next", a video/short idea, ideation, or brainstorming for a
-  channel — even if they don't say the word "idea-generator". Reads a channel's dna.md +
-  performance.md + idea-backlog.md and writes ranked idea briefs back to idea-backlog.md. Works
-  for ANY niche (personal finance, "what if" scenarios, history, etc.) — the niche is data in the
-  channel folder, not code. Do NOT use it to write full scripts (that's `long-form-writer`/`shorts-writer`) or to pick
-  metadata/tags (that's `metadata-writer`).
+description: Generates differentiated, ranked video ideas for a faceless YouTube channel. Use for new content ideas, video concepts, angles, titles, a content backlog, "what should we make next", ideation, or brainstorming — any niche. Reads dna.md + performance.md + idea-backlog.md; writes ranked idea briefs back to idea-backlog.md. Do NOT use it to write scripts (long-form-writer/shorts-writer) or pick metadata/tags (metadata-writer).
 ---
 
 # idea-generator

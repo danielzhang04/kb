@@ -1,6 +1,6 @@
 ---
 name: sfx-forge
-description: Sources, objectively vets, and CLAP-ranks CC0 sound effects for a channel, then wires the human-picked finalists into the channel's audio pools. Use whenever the user wants to find/source/add sound effects, build or expand the SFX set, "get a whoosh/boing/riser/sting", replace a placeholder SFX, or run the SFX audition loop — for ANY channel with a visual-kit/audio/ dir. Claude does the curation (search CC0 → vet clean transients → rank by semantic match); the HUMAN judges the finalists by ear and the in-context render. Do NOT use it to author WHEN a sound fires (that is the audio-director + the emission layer in build_audio), to generate/source music beds (that is music-forge), or to assemble the video (render-builder).
+description: Sources, vets, and CLAP-ranks CC0 sound effects for a channel and wires human-picked finalists into its audio pools. Use for "get a whoosh/boing/riser/sting", building/expanding the SFX set, or running the SFX audition loop, for any channel with visual-kit/audio/. Claude curates and ranks; the HUMAN judges finalists by ear on the audition and in-context render. Do NOT use it to author WHEN a sound fires (audio-director), source music beds (music-forge), or assemble video (render-builder).
 ---
 
 # sfx-forge — CC0 SFX sourcing, vetting, and ranking
