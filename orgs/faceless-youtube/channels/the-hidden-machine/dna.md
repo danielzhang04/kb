@@ -59,25 +59,50 @@ task. Fields marked TODO are set at channel creation (genesis in progress — se
 
 ## Format
 
-- **Primary format:** TODO — long-form / Shorts / hybrid funnel
-- **Target length:** TODO  (see the niche playbook at `knowledge/research/niche-playbooks/<niche>.md`
-  §Length band for the validated 2025-2026 range — old universal 8–15 min rule is retired)
+- **Primary format:** long-form is the pillar; Shorts are a **derived funnel, not a pillar** (A1 card
+  stance, locked Daniel 2026-07-28) — Shorts clip the long-form's scale-shock beats to route viewers
+  back to it; they carry no independent format identity of their own.
+- **Target length:** **8–10 min** (locked Daniel 2026-07-28, matching The Second Take's 2026-07-28
+  ruling — see `the-second-take/dna.md` §Format) — **avoid the 16–24 min death zone.**
 - **Shorts per long-form:** TODO — from the niche cadence band (business 2–4 / what-if 3–6 /
   AI tools 2–3 / engineering 1–3 / horror-lore 4–8 / micro-health 3–5). See universal.md §10.
-- **Cadence:** TODO — e.g. 1–2 long-form/week + shorts staggered every 2–3 days after each
-  long-form (long-form ships first; shorts decoupled algorithmically since late-2025).
-- **Recurring structure:** TODO — the repeatable shape (hook → second gate → body cycles →
-  mid-video re-arm → withheld peak → emotional close) for this niche's beat template.
+- **Cadence:** TBD — deliberately unset (Daniel 2026-07-28); decided after first videos, not a
+  genesis field.
+- **Recurring structure (flexible per idea, decided at brief time — locked Daniel 2026-07-28):** no
+  single shape frozen at genesis. **Preferred default** when one system chain honestly fills 8–10
+  minutes: **one action → one descent** — the wedge's single mundane action, followed down one
+  mechanism chain to its civilization-scale consequence. **Licensed alternative** when a single chain
+  cannot honestly fill the runtime: **one action → branching systems** (or multi-action) — the same
+  opening action fans out into more than one system instead of one straight descent. **The test is
+  content density, never padding:** branch only because the honest single-chain descent runs short —
+  never to stretch a thin system to fill the clock. Padding a thin system to reach the runtime
+  violates the doctrine's earned-magnitude rule (Doctrine §"What it licenses" above — the human
+  action must be genuinely small and the system response genuinely large, never inflated to fit).
+  Structure is picked per brief, not locked here.
 
 ## Pipeline (machine-read by idea-generator / researcher / the scriptwriters)
 <!-- Routes this channel through the pipeline. Skills read these flags to pick the path; a channel
      with no block defaults to the lightweight path (research: none / topic_scouting: stored /
      long_form: single) so a new channel never silently triggers the expensive route. -->
 ```yaml
-research: none          # deep = insert the researcher stage (idea → researcher → long-form-writer,
-                        #        grounds the script in a sourced fact-ledger; use for deeply-
-                        #        informative / YMYL niches). none = idea-generator hands the brief
-                        #        straight to the scriptwriter (fine for lighter niches).
+research: deep                           # REQUIRED (locked Daniel 2026-07-28) — this is a
+                                          # scale-claims channel: every number in a script (weight,
+                                          # distance, count, speed) must trace to a research dossier
+                                          # fact-ledger. Insert the researcher stage (idea →
+                                          # researcher → long-form-writer).
+research_scope: capped-to-descent-chain  # NOT unbounded deep-research (locked Daniel 2026-07-28,
+                                          # verbatim problem: full deep-research "goes way deeper
+                                          # than I want and burns 10M tokens in a sitting"). Scope the
+                                          # dossier to the single descent chain the video needs (or
+                                          # the chosen branches, if "one action → branching systems"
+                                          # was picked at brief time) — breadth capped to what the
+                                          # video actually uses, not the topic's full extent. Explicit
+                                          # token discipline: capped/medium research budget, never the
+                                          # unbounded deep-research default.
+                                          # VERIFY BEFORE FIRST VIDEO: the `researcher` skill's
+                                          # cap-handling has not yet been checked against this field
+                                          # as of 2026-07-28 — confirm it actually honors the cap
+                                          # before running research on the first picked idea.
 topic_scouting: stored  # live = idea-generator does live web topic-scouting every run. stored =
                         #        riff from stored knowledge/playbooks unless asked to go live.
 long_form: single       # staged = long-form writers-room (outline → section drafts → accuracy/
