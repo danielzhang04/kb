@@ -2,14 +2,19 @@
 """Deterministic lint for a long-form script.md.
 
 Checks ONLY what needs no judgment: em/en dashes, leftover fact-traces / outline
-comments, a filled-in header runtime, mechanical Step-card sequences, and the VO
-word count vs runtime. Quotation marks in the VO body and exact
-credibility-padding phrases are reported as non-blocking advisories (quoting is
-a taste call for the critics, not a lock).
+comments, a filled-in header runtime, mechanical Step-card sequences, bracketed
+production cues in the VO body, and the VO word count vs runtime. Quotation
+marks in the VO body, exact credibility-padding phrases, and standalone
+one-sentence paragraphs are reported as non-blocking advisories (quoting and
+paragraph shape are taste calls for the critics, not a lock).
 
-The runtime suggestion is words-at-wpm PLUS the authored pause cues counted from
-the VO body ([PAUSE:LONG]=1.2s, [PAUSE]=0.6s, [BEAT]=0.3s) — a script leaning on
-cues runs longer than its word count alone implies, and the estimate should say so.
+script.md is pure prose: the writer authors no pause cues, no beats, and no
+[B-ROLL] anchors. Any `[B-ROLL`, `[PAUSE`, or `[BEAT` occurrence in the VO body
+is a HARD violation: deliberate pauses are audio-director's job and visual
+beat segmentation moves downstream entirely.
+
+The runtime suggestion is words-at-wpm only: the channel voice's measured gross
+wpm already embeds its natural pausing, so no separate cue-time math is added.
 
 Usage: python lint_script.py <path-to-script.md> [--wpm N]
 --wpm is the channel voice's measured words-per-minute from dna.md (default 150),
@@ -23,12 +28,8 @@ import sys
 STEP_NUMBER = re.compile(r"^Step\s+(\d+)\b", re.I)
 STEP_CARD = re.compile(r"^Step\s+(\d+)\s*:\s*.+", re.I)
 MALFORMED_STEP = re.compile(r"^Step(?:\s+\d+)?\s*:\s*$", re.I)
-PAUSE_LONG_CUE = re.compile(r"\[PAUSE:LONG\]")
-PAUSE_CUE = re.compile(r"\[PAUSE\]")
-BEAT_CUE = re.compile(r"\[BEAT\]")
-PAUSE_LONG_S = 1.2
-PAUSE_S = 0.6
-BEAT_S = 0.3
+CUE_PATTERN = re.compile(r"\[B-ROLL|\[PAUSE|\[BEAT")
+SENTENCE_END = re.compile(r"[.!?]+[\"'\)’”]*(?=\s|$)")
 CREDIBILITY_ADVISORIES = (
     (re.compile(r"\bthat part is real\b", re.I), "credibility-padding phrase: that part is real"),
     (re.compile(r"\bhe actually did\b", re.I), "credibility-padding phrase: he actually did"),
@@ -107,21 +108,22 @@ def main(path, wpm=150):
         hard.append((0, "unfilled header runtime", runtime_line.strip()))
 
     vo_words = 0
-    pause_long_count = 0
-    pause_count = 0
-    beat_count = 0
+    one_sentence_paragraphs = []   # line numbers of standalone one-sentence VO paragraphs
+    para_start = None
+    para_text = []
+
+    def close_paragraph():
+        nonlocal para_start, para_text
+        if para_start is not None and para_text:
+            joined = " ".join(para_text)
+            if len(SENTENCE_END.findall(joined)) == 1:
+                one_sentence_paragraphs.append(para_start)
+        para_start = None
+        para_text = []
+
     for i, ln in enumerate(lines):
         lineno = i + 1
         stripped = ln.strip()
-
-        # Authored pause cues count toward runtime from the VO body, independently of the
-        # word-count skip below — a cue on its own line is still a cue. Match [PAUSE:LONG]
-        # first and strip it out so a bare [PAUSE] count can't double-count it.
-        if body_start <= i < body_end:
-            pause_long_count += len(PAUSE_LONG_CUE.findall(ln))
-            ln_without_long = PAUSE_LONG_CUE.sub("", ln)
-            pause_count += len(PAUSE_CUE.findall(ln_without_long))
-            beat_count += len(BEAT_CUE.findall(ln))
 
         # em/en dashes anywhere are a hard violation.
         if "—" in ln or "–" in ln:
@@ -135,11 +137,32 @@ def main(path, wpm=150):
         is_cue = stripped.startswith("[")            # [B-ROLL] / [PAUSE] / [BEAT]
         is_meta = stripped.startswith(("#", "-", "*", ">")) or stripped == "---" or stripped == ""
 
+        # script.md is pure prose: any bracketed production cue anywhere in the VO body
+        # is a hard violation, wherever it sits on the line (standalone or inline).
+        # Deliberate pauses are audio-director's job; visual beats move downstream.
+        if in_body and CUE_PATTERN.search(ln):
+            hard.append((
+                lineno,
+                "bracketed cue in VO body (script.md is pure prose; pauses belong to "
+                "audio-director, visual beats move downstream)",
+                stripped,
+            ))
+
         # Quotes in the VO body are a taste call (narrator-reported speech is the default telling
         # mode, not a lock) — surfaced as an advisory so the critics see them, never a hard failure.
         # The whole body is scanned, including blockquotes/lists, so a quoted beat can't hide there.
         if in_body and not is_cue and ('"' in ln or "“" in ln or "”" in ln):
             soft.append((lineno, "quote in VO body (taste review)", stripped))
+
+        # Paragraph tracking for the standalone one-sentence-paragraph advisory: a paragraph
+        # is consecutive non-blank VO prose lines; any meta/blank/cue line or leaving the body
+        # closes it. Reuses the same prose-line definition as the word count below.
+        if in_body and not is_cue and not is_meta:
+            if para_start is None:
+                para_start = lineno
+            para_text.append(stripped)
+        else:
+            close_paragraph()
 
         if in_body and not is_cue and not is_meta:
             # count spoken words (rough: split on whitespace).
@@ -147,6 +170,17 @@ def main(path, wpm=150):
             for pattern, label in CREDIBILITY_ADVISORIES:
                 if pattern.search(ln):
                     soft.append((lineno, label, stripped))
+
+    close_paragraph()  # a final paragraph that runs to the end of the body without a trailing blank
+
+    if one_sentence_paragraphs:
+        refs = ", ".join(f"L{n}" for n in one_sentence_paragraphs)
+        soft.append((
+            0,
+            "one-sentence paragraph",
+            f"{len(one_sentence_paragraphs)} one-sentence paragraphs; idea blocks average "
+            f"4-5 sentences ({refs})",
+        ))
 
     print(f"== lint: {path} ==")
     if hard:
@@ -162,13 +196,11 @@ def main(path, wpm=150):
         for lineno, kind, text in soft:
             print(f"  L{lineno}  [{kind}]  {text[:100]}")
 
-    cue_s = pause_long_count * PAUSE_LONG_S + pause_count * PAUSE_S + beat_count * BEAT_S
-    total_s = round(vo_words / float(wpm) * 60 + cue_s)
+    total_s = round(vo_words / float(wpm) * 60)
     mm, ss = divmod(total_s, 60)
-    cue_s_display = round(cue_s)
     print(
         f"\nVO word count: {vo_words}  ->  header should read: "
-        f"Estimated runtime: {mm}:{ss:02d} ({vo_words:,} words ÷ {wpm} wpm + {cue_s_display}s pauses)"
+        f"Estimated runtime: {mm}:{ss:02d} ({vo_words:,} words ÷ {wpm} wpm)"
     )
 
     return 1 if hard else 0

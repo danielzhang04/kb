@@ -64,25 +64,53 @@ class LintScriptTests(unittest.TestCase):
                 self.assertIn("quote in VO body", output)
                 self.assertIn("Advisories", output)
 
-    def test_runtime_suggestion_adds_authored_pause_cue_seconds(self):
-        # 15 VO words (cue tokens on non-cue-opening lines still count as split() tokens,
-        # by design — see the inline [BEAT]/[PAUSE] lines below), plus 2 [PAUSE] (0.6s
-        # each), 1 [BEAT] (0.3s), and 1 [PAUSE:LONG] (1.2s) = 2.7s of cue time, split
-        # across standalone cue lines (excluded from the word count as is_cue) and an
-        # inline cue (counted in the word count, since the line doesn't open with "[").
-        # words/wpm*60 = 15/150*60 = 6.0s; + 2.7s cues = 8.7s -> rounds to 9s (0:09).
+    def test_runtime_suggestion_is_words_over_wpm_with_no_cue_math(self):
+        # 15 VO words at the default 150 wpm: 15/150*60 = 6.0s -> 0:06. No cue-seconds
+        # math is added (script.md is pure prose; pauses live with audio-director).
         code, output = self.run_lint(script(
             "One two three four five.",
-            "Six seven [BEAT] eight nine ten.",
-            "[PAUSE]",
-            "Eleven twelve [PAUSE] thirteen.",
-            "[PAUSE:LONG]",
+            "Six seven eight nine ten.",
+            "Eleven twelve thirteen fourteen fifteen.",
         ))
         self.assertEqual(code, 0)
-        self.assertIn(
-            "Estimated runtime: 0:09 (15 words ÷ 150 wpm + 3s pauses)",
-            output,
-        )
+        self.assertIn("Estimated runtime: 0:06 (15 words ÷ 150 wpm)", output)
+        self.assertNotIn("pauses", output)
+
+    def test_bracketed_cues_in_vo_body_are_hard_violations(self):
+        # script.md is pure prose: [B-ROLL]/[PAUSE]/[BEAT] (standalone or inline) are all
+        # hard violations now, never a legal cue the writer can author.
+        cases = {
+            "b-roll": "[B-ROLL: exterior of the warehouse]",
+            "pause": "[PAUSE]",
+            "pause-long": "[PAUSE:LONG]",
+            "beat": "[BEAT]",
+            "inline": "He signed the paperwork [PAUSE] and walked out.",
+        }
+        for name, line in cases.items():
+            with self.subTest(name=name):
+                code, output = self.run_lint(script("Some ordinary VO line.", line))
+                self.assertEqual(code, 1)
+                self.assertIn("bracketed cue in VO body", output)
+                self.assertIn("pure prose", output)
+
+    def test_one_sentence_paragraphs_are_a_nonblocking_advisory(self):
+        # Two standalone one-sentence paragraphs (lines 6 and 10 of the written file)
+        # among two multi-sentence idea blocks. Advisory only, never blocking.
+        code, output = self.run_lint(script(
+            "This is a two sentence paragraph. It keeps going right here.",
+            "",
+            "Short standalone sentence.",
+            "",
+            "Multi-sentence block one. Multi-sentence block two. Multi-sentence block three.",
+            "",
+            "Another lone line here.",
+        ))
+        self.assertEqual(code, 0)
+        self.assertIn("Advisories", output)
+        self.assertIn("2 one-sentence paragraphs", output)
+        self.assertIn("idea blocks average 4-5 sentences", output)
+        self.assertIn("L6", output)
+        self.assertIn("L10", output)
 
 
 if __name__ == "__main__":
