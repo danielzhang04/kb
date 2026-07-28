@@ -42,9 +42,9 @@ of it, in the order it happened.
 **Paragraphs are idea blocks, four to five sentences on average.** A block carries one idea to its end
 and stops; the next block starts the next idea. Short sentences are how a speaker lands a hit, and they
 land *inside* a block, powered by the longer sentences around them.
-> "The company was MiniScribe, a hard drive manufacturer out of Colorado, founded in [verify: year] by
-> [verify: founder(s)/garage]. And they were HOT. By 1985 they were shipping [verify: volume] hard
-> drives a year to electronics giants like IBM and [verify: second customer]."
+> "The company was MiniScribe, a hard drive manufacturer out of Colorado, founded in 1980 by a guy
+> named Terry Johnson. And they were HOT. By 1984 they were pulling in 125 million dollars a year
+> selling hard drives to IBM."
 
 A sentence standing alone as its own paragraph is the defect, and a page of them is the staccato
 monotone this pipeline falls into by default: every line gets identical weight, so nothing lands and
@@ -198,14 +198,14 @@ stretch instead of front-loading everything.
 **2.7 — A company story tells the rise before the fall, and motivates every step out loud.** The
 collapse only hurts if the viewer watched the climb first: who they were, how fast they got big, and
 how big "big" was, before anything goes wrong.
-> "The company was MiniScribe, a hard drive manufacturer out of Colorado, founded in [verify: year] by
-> [verify: founder(s)/garage]. And they were HOT."
+> "The company was MiniScribe, a hard drive manufacturer out of Colorado, founded in 1980 by a guy
+> named Terry Johnson. And they were HOT."
 
 From there, every escalation says out loud what caused it. The chain is spoken, not implied: pressure
 produced a hire, the hire produced impossible targets, the targets produced fear, the fear produced the
 plan.
-> "MiniScribe was struggling after facing increasing competition from other hard drive manufacturers,
-> so they brought in the man, the myth, the legend: Q.T. Wiles."
+> "By 1985, MiniScribe was struggling. IBM had slashed its orders, and the competition was closing in.
+> So they brought in the man, the myth, the legend: Q.T. Wiles."
 >
 > "Wiles set impossible sales targets, and missing them meant your head was on the chopping block. So
 > the managers put their heads together, and hatched a brilliant plan."

@@ -12,8 +12,6 @@ Raw and a little messy is preferable to polished and bland. Preserve contraction
 repeated conversational joints, and a run of useful comparisons. Keep every claim within the fact leash.
 
 Every excerpt is what the narrator says and nothing else, because `script.md` is pure voiceover prose.
-A `[verify: ...]` slot marks a fact awaiting the research top-up; it is a placeholder in this file only,
-never a shape to copy into a script.
 
 ## MacGregor / the Poyais pitch
 
@@ -68,7 +66,7 @@ are in on it together, and the doorway line simply opens the story without annou
 
 ## Bricks / the company's rise
 
-> The company was MiniScribe, a hard drive manufacturer out of Colorado, founded in [verify: year] by [verify: founder(s)/garage]. And they were HOT. By 1985 they were shipping [verify: volume] hard drives a year to electronics giants like IBM and [verify: second customer]. And at their peak in 1988, they were making over 600 million dollars a year. Accounting for inflation, they were making as much money as Reddit. Or so they said.
+> The company was MiniScribe, a hard drive manufacturer out of Colorado, founded in 1980 by a guy named Terry Johnson. And they were HOT. By 1984 they were pulling in 125 million dollars a year selling hard drives to IBM. And at their peak in 1988, they were selling to giants like Compaq and making over 600 million dollars a year. Accounting for inflation, that's almost as much money as Reddit makes today. Or so they said.
 
 **What this demonstrates.** The rise told before the fall, inside one idea block: who they were, how
 fast they got big, and how big "big" actually was. Scale lands as a comparison to a company the viewer
@@ -78,7 +76,7 @@ four words turn the whole rise ironic without announcing that they are doing it.
 
 ## Bricks / meet the fixer
 
-> By [verify: year/mid 1980s], MiniScribe was struggling after facing increasing competition from other hard drive manufacturers, so they brought in the man, the myth, the legend: Q.T. Wiles. Q.T. Wiles was an investment banker nicknamed "Doctor Fix It". He was the mechanic for dying companies, and he built a reputation off of turning dying companies back into successful ones. And, like Doctor Strange with his many sanctums, Doctor Fix It ran several other companies at the same time.
+> By 1985, MiniScribe was struggling. IBM had slashed its orders, and the competition was closing in. So they brought in the man, the myth, the legend: Q.T. Wiles. Q.T. Wiles was an investment banker nicknamed "Doctor Fix It". He was the mechanic for dying companies, and he built a reputation off of turning dying companies back into successful ones. And, like Doctor Strange with his many sanctums, Doctor Fix It ran several other companies at the same time.
 
 **What this demonstrates.** A character introduced together with the cause that produced him, so the
 escalation is motivated out loud: competition squeezed them, so they went and got the fixer. The
