@@ -252,8 +252,8 @@ defect that will recur until fixed.
   `master_target`, ear-gated to **−14.5 LUFS / −1.0 dBTP / LRA 4**).
 - **Measured-grammar anchors:** bed PLACED ~79% (not wall-to-wall); the default register is **wry/dry, NOT
   cheerful** (the `sneaky` family is the con-story workhorse; `upbeat` = an opt-in lift). Structural
-  sounds fire by **selective director judgment** (guided by `references/grammar-guidance.md` ← measured
-  `universal.md §13a-iii.8`), not mechanical auto-fire.
+  sounds fire by **selective director judgment** (guided by the audio-director SKILL's Placement laws ←
+  measured `universal.md §13a-iii.8`), not mechanical auto-fire.
 - **Files + measurement:** SFX/music sourced by **`sfx-forge`** (16-role CC0/CC-BY library) +
   **`music-forge`** (Incompetech CC-BY beds); the measured grammar came from **`audio-analyzer`** (8
   references, audio-only, tools-measured — the model-listening-hallucination fix). Ear-gated + approved by
@@ -352,7 +352,7 @@ defect that will recur until fixed.
   (0) a **6/6 capability probe** of one-run multi-seed; (1) code removals (producers gone, `source:"engine"`
   invalid in lint, menu cutout-only, `forge` seed requirement + tests, hook paths → `${CLAUDE_PROJECT_DIR}`);
   (2) `refs/env/` style anchors from three human-gated frames; (3) this doc rewrite (`universal.md §13a`,
-  audio-director `grammar-guidance.md`, this STATUS, one `operating-law.md` clause). **(4) DOGFOOD DONE
+  audio-director `SKILL.md`, this STATUS, one `operating-law.md` clause). **(4) DOGFOOD DONE
   (2026-07-15): 7-shot slice + full chunk 2 ran through the simplified pipeline** — multi-seed identity
   hold STRONG, baked-text spelling STRONG, env-anchor style MOSTLY-HELD. **Identity-starve failure —
   RESOLVED to a DEFAULT (human-confirmed 2026-07-16):** a scene-heavy delta renders the blank base
