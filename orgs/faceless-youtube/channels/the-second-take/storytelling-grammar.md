@@ -18,57 +18,63 @@ the target energy, and every inline example below is drawn from it. Match it; do
 **1.1 — Casual friend, plain words.** Short declaratives colliding with longer runs. No literary
 phrasing, and no term a normal person wouldn't say out loud ("sovereign debt," "underwritten," "yield") —
 say the plain version or cut it. **When a term or mechanism the viewer may not know has to stay,
-contextualize it in the same breath** — a plain gloss or an analogy, never an assumption of knowledge
-("He issued government bonds. Basically IOUs from a country: lend us money now, we pay you back with
-interest."). This is a money-*story*, not a finance tutorial: deliver the amazing fact, skip the
-mechanics lesson. *Test: would you actually say this line to a friend?* (Formatting: no em/en dashes,
-ever — an AI tell the viewer can't hear. Breath is periods, commas, colons, and cue tags.)
+contextualize it in the same breath:** a plain gloss or an analogy pitched at someone who has never
+thought about it, never an assumption of knowledge ("computers run on these things called hard drives,
+which are basically where your computer keeps everything it remembers"). This is a money-*story*, not a
+finance tutorial: deliver the amazing fact, skip the mechanics lesson. *Test: would you actually say
+this line to a friend?* (Formatting: no em/en dashes, ever — an AI tell the viewer can't hear. Breath
+is periods, commas, colons, and cue tags.)
 > ✗ "underwritten by a respectable banking house, in notes of a hundred"
-> ✓ "So MacGregor gets the Bank of Scotland's official printer to make 5,000 Poyais dollar notes."
+> ✓ "MacGregor, seeing that people believed him, then convinces the Bank of Scotland's official printer
+> to make him 5,000 custom Poyais dollar notes."
 
-**The short-punch rule:** a standalone ultra-short line is allowed only when it lands dry wit or a
-concrete payoff ("It didn't exist."). A clipped fragment manufacturing drama with no joke ("Everything
-changed." / "The rules were gone." / "For good.") is the trailer-voice AI tell — cut it. And never
-stack fragments in a run ("A loan. For a government. Of a country that wasn't there."): one earned
-punch after a long build, at most.
+**The short-punch rule:** a standalone ultra-short line is allowed when it lands dry wit or a concrete
+payoff ("It didn't exist."). What is banned is the clipped fragment that manufactures drama with no
+joke and no new fact ("Everything changed." / "The rules were gone." / "For good."): that is the
+trailer-voice AI tell, and stacking those in a run ("A loan. For a government. Of a country that wasn't
+there.") is its worst form. A run of short lines carrying real content is just how people talk when
+they pick up speed ("Peru. Chile. Argentina.").
 
 **1.2 — End on the fact or the action; no grandeur buttons.** The recurring failure is ending a beat on
 a summary, thesis, or profound line ("the mania did the work"). Land the point *inside* the telling and
 move; the story concludes exactly once, at the very end, on one earned image. **The mechanical check:**
-read the last sentence of every paragraph — if it's a general statement *about* the story, fold it
-forward or cut it. A dry *factual* aside is the good kind; keep it.
+read the last sentence of every paragraph. If it sums up or moralizes what just happened instead of
+landing on a fact, an action, or the push into what comes next, fold it forward or cut it. A dry
+*factual* aside is the good kind; keep it.
 
 **1.3 — The wit is abundant, consistent, and rides the facts.** Jokes, metaphors, and asides are not
 seasoning for a few beats; they run **throughout** — the recurring draft failure is a script that goes
 deadpan-flat for stretches. A couple of beats in a row with no joke, analogy, aside, or reaction is a
 defect, not restraint. Every piece of wit still rides a fact: delete the joke and the fact survives;
 delete the fact and the joke collapses.
-> "Yeah, that's his real name." · "That's a chunk of land bigger than Maryland for a bar tab and a
-> necklace." · "Most people would look at that and become a landowner. So he hatches a plot."
+> "Yeah, that's his real name." · "That's a chunk of land the size of Maryland for a bar tab and a
+> necklace." · "It was like Harry Potter in real life."
 
 **1.4 — Analogies are the explanatory engine.** The strongest tool this channel has. A modern comparison
 the viewer instantly pictures IS the explanation, not decoration on top of it — reach for one wherever a
 mechanism, a scale, or an absurdity would otherwise need a lecture. Runs of comparisons are welcome, and
 a good one can recur as a callback.
-> Scale: "It's like the Louisiana Purchase on crack. Even Thomas Jefferson is looking a little
-> overpriced."
-> Mechanism: "It's like being a tourist in Bali and the cab driver wants to charge you 50 bucks for a ride to the hotel.
-> Maybe that's normal. Maybe it's a scam. You don't know, because you just got there."
+> Scale: "It was the Louisiana Purchase on crack."
+> Mechanism: "It's like reading a textbook, you know? You see that many pages and you just skim through
+> and believe the pretty pictures."
 > Character: "MacGregor was like the Bernie Madoff of the 1820s, except Madoff sold securities and
-> MacGregor sold a whole fake country."
-> Texture: "It's like Harry Potter with mortgage paperwork."
+> MacGregor sold a fake country."
+> Era: "It was the dot-com bubble of the 1820s."
 
 Cut a comparison only when it repeats a point already landed, derails the story, or makes the fact
-harder to understand. The modern half must be something a normal viewer instantly and universally
-pictures (dot-com, NFTs, an airport cab) — never a private literary metaphor. Evergreen only; meme-slang
-dates and reads cringe.
+harder to understand. **The universality bar governs every pull, not just the analogies:** a joke, a
+metaphor, a turn of phrase, an era anchor, each has to be something a general viewer understands and
+pictures instantly. Pop-culture anchors at the grade of Megamind or Jordan Belfort are in bounds; a
+private literary metaphor is not. Evergreen only, since meme-slang dates and reads cringe. The approved
+excerpts in `channels/the-second-take/example-scripts.md` are the calibration for where that bar sits.
 
 **1.5 — The narrator is present and reacting.** The energy comes from a narrator who is IN the telling:
-direct questions answered casually ("But normal people don't know the difference, right?"),
-conversational joints ("So anyway," "you know," "See?"), honest reactions ("I'd move to a country with
-golden rivers too"), casual repetition when momentum wants it, and first-person asides. Generic "you" is
-normal speech. Where the research supports a genuine multi-move scheme, the narrator may announce
-**Step N** ("Step one in selling a fake country: create the fake country") — it exposes a mechanism,
+direct questions answered casually ("After all, who would move to a new country without local
+currency?"), conversational joints ("So anyway," "you know," "See?"), honest reactions ("I'd move to a
+country with golden rivers too, you know," "The balls on this guy, huh?"), casual repetition when
+momentum wants it ("So he thinks, and schemes, and finally, he hatches a plot."), and first-person
+asides. Generic "you" is normal speech. Where the research supports a genuine multi-move scheme, the
+narrator may announce **Step N** ("**Step 1: Create the Fake Country.**") — it exposes a mechanism,
 never bare chronology, and runs as a complete sequential set.
 
 **1.6 — State the amazing thing flat; never pad credibility.** Banned: "that part is real," "he
@@ -80,14 +86,21 @@ his real name." ("Real" survives where it contrasts real money, land, or a real 
 
 ## 2. The story
 
-**2.1 — The hook gets them in the door; it does not tell the story.** Roughly four to five sentences
-that do three jobs: state the settled, impossible-sounding fact; make the scale or stakes concrete (a
-number, a count, a fortune); and end on the one problem that makes it a story — then stop. No outline,
-no preview, no "he was not some nobody," no "welcome back." The viewer should be left holding exactly
-one question the story now owes them.
-> "In the late 1980s, a hot American tech company shipped about 26,000 brand-new hard drives out to
-> warehouses around the world. On the books, they were worth around four million dollars. Every one had
-> a serial number. There was just one problem. They were bricks. Actual clay bricks."
+**2.1 — The hook gets them in the door; it does not tell the story.** Its one job is intrigue: leave the
+viewer holding exactly one question the story now owes them. The **shape is open**, and inventing a new
+one is fair game. Two that work: the **paradox cold-open**, which states the settled,
+impossible-sounding fact and withholds the mechanism; and the **era drop-in**, which sets the viewer
+down in a period on anchors everyone already pictures and lets the narrator say plainly what kind of
+story is coming (self-positioning the story is legitimate). Concrete stakes (a number, a count, a
+fortune) go wherever they land hardest. What stays dead is outlining the story's beats ("first he did
+X, then Y"), "he was not some nobody," and "welcome back."
+> Paradox cold-open: "In the late 1980s, a hot American tech company shipped about 26,000 brand-new
+> hard drives out to warehouses around the world. On the books, they were worth around four million
+> dollars. Every one had a serial number. There was just one problem. They were bricks. Actual clay
+> bricks."
+>
+> Era drop-in: "We're in the 1980s. Home to big hair, Pac-Man, and one of the funniest corporate scams
+> that you've never heard of."
 
 **Person-led packaging → person-led hook:** when the title/thumbnail promise a person, open ON that
 person and name them within two sentences (teasing an unknown name buys nothing); the stakes beat moves
@@ -111,8 +124,8 @@ under-developed (starved of color), not that filler is missing; running long usu
 Add length only as a genuine cut *thread*, never padding.
 
 **2.4 — Motifs and callbacks carry the telling.** Plant a phrase and reuse it so it pays off ("eight
-million acres" → "eight million acres of swamp"). A recurring analogy is a callback too: "See? He is the
-Madoff of the 1820s."
+million acres of land" → "those eight million acres was swampland"). A recurring analogy is a callback
+too: the comparison planted in the opening line can come back at the payoff with no new setup.
 
 **2.5 — Color, not dwell.** *Color* is a new, concrete, specific detail that makes a beat vivid: the
 supplier was the Colorado Brick Company; the manager picked the auditors' locks with Allen wrenches and
@@ -145,11 +158,12 @@ disaster — is the main engine (§3.6).
 
 **3.4 — Casual transitions, question turns, and forward-promise seams.** Spoken connective tissue and
 the question-answered-casually move ("So how does a warehouse full of bricks pass an audit? Well…").
-Never an announced or literary transition ("which brings us to," "little did they know"). A beat exits
+What is dead is the literary connector ("which brings us to," "little did they know") and the announced
+category ("here's the strange part," "the uncomfortable question," "piece one/two/three"): **deliver the
+moment, don't announce its category**, and open on the content itself. A plain spoken doorway that opens the
+story ("Here is the story of that company.") is normal speech, not an announced transition. A beat exits
 on an open loop or forward promise the viewer stays to collect, and escalation is honest ("it gets
-worse" is followed by something actually worse). **Deliver the moment; don't announce its category** —
-no "here's the strange part," "the uncomfortable question," "piece one/two/three": open on the content
-itself.
+worse" is followed by something actually worse).
 
 **3.5 — End on the story, never a lesson.** The close is one earned ironic image, told the way you'd end
 it for a friend. Banned: the essay conclusion ("here's what it means," "and that's why"). The insight is
@@ -157,7 +171,8 @@ woven into the body.
 
 **3.6 — Pre-spoiled tension.** Our titles usually give away the ending, so carry tension on something
 other than the outcome: dramatic irony, comic dread (make them wait for the doom you can both see
-coming), and how-badly / how-exactly assembly.
+coming), leaning into the give-away on purpose so the narrator and the viewer are in on it together
+("well, the title gives it away"), and how-badly / how-exactly assembly.
 
 **3.7 — Non-linear, but followable.** Jumping around is the craft; the bar is that a first-time viewer
 can follow the causal through-line. Introduce a person, place, or company before the story leans on it;
@@ -193,13 +208,13 @@ The taste defects the pipeline reliably produces, as transformations (what criti
 | --- | --- |
 | Literary/essayist phrasing | Plain and short, the way it would be said aloud |
 | Grandeur button ending a beat | End on the fact/action; the point lands inside the telling |
-| Restating the premise over and over | Say it once, hard, in the hook; then trust the audience |
+| Restating the premise over and over | Say it once, hard, then trust the audience |
 | Outline-then-retell fluff ("he was not some nobody") | Cut it; just tell what he was |
-| Announced/literary transition | Casual signpost or a question turn (§3.4) |
+| Literary connector or announced category | Open on the content itself; a casual signpost or a question turn (§3.4) |
 | Cramming every sourced fact in | Select and compress to one vivid beat (§2.2) |
 | Essay/moral close | One earned ironic image (§3.5) |
 | Dwell — restating a landed point | Say it once, on the sharpest image, then move |
-| Writerly triple-build of one idea | One clean line |
+| Triple-build that restates one idea three ways | One clean line |
 | Too terse — compressing away the vivid detail | Keep the specific color (§2.5) |
 | Credibility padding ("he actually did") | State the fact directly (§1.6) |
 
@@ -210,21 +225,24 @@ The taste defects the pipeline reliably produces, as transformations (what criti
 All fact-riding, and used **often** (§1.3 — abundance is the default, flatness is the defect):
 
 - **Anachronistic analogy that teaches the mechanism** (the workhorse): "the Bernie Madoff of the
-  1820s, except Madoff sold securities and MacGregor sold a whole fake country."
-- **Deadpan undercut / bathos:** "Most people would look at that and become a landowner. So he hatches
-  a plot."
-- **Ironic re-label:** "Official Shoemaker to the Princess of Poyais."
-- **Comic false precision** (exact numbers for deadpan authority): "eight million acres for a bar tab
-  and a necklace."
-- **Deflate-the-powerful** (a grand figure reduced to a petty real detail): "Even Thomas Jefferson is
-  looking a little overpriced."
+  1820s, except Madoff sold securities and MacGregor sold a fake country." The same move closes a beat
+  as a kicker: "This guy might even put Jordan Belfort to shame."
+- **Deadpan undercut / bathos:** "And what does he get in return for all his efforts? 250 customers."
+- **Ironic re-label:** "he's turned their savings into his homemade magic money."
+- **Comic false precision** (exact numbers for deadpan authority): "a chunk of land the size of
+  Maryland for a bar tab and a necklace."
+- **Deflate-the-powerful** (the mastermind reduced to an ordinary man in a lucky moment): "It's not
+  even that MacGregor was Megamind, you know. He wasn't some super intelligent con man; people just
+  didn't care."
 - **Viewer-solidarity aside** (the narrator admits they'd fall for it too): "I'd move to a country with
   golden rivers too, you know."
-- **Playing out the mark's inner monologue:** "You see that many pages and you just believe the cover.
-  Wow, that looks so real. Somebody must know what they're talking about."
-- **Self-aware narrator** (honest about gaps in the record): "Did I mention he'd made a flag?"
+- **Playing out the mark's inner monologue:** "You see that many pages and you just skim through and
+  believe the pretty pictures like 'wow, that looks so real. Somebody must know what they're talking
+  about.'"
+- **Irreverent reaction** (the narrator says out loud what the viewer is thinking): "The balls on this
+  guy, huh?"
 - **Historical irony where the real fact is the punchline:** the bricks had serial numbers.
 
-**The humor bar:** a joke ships only if the modern half is instantly and universally picturable, the
-words are plain, and the narrator states the insane fact flat and lets the *viewer* be the one amazed.
-Punch up at power and absurdity, never at the mark or the viewer.
+**The humor bar:** a joke ships only if it clears the universality bar (§1.4), the words are plain, and
+the narrator states the insane fact flat and lets the *viewer* be the one amazed. Punch up at power and
+absurdity, never at the mark or the viewer.
