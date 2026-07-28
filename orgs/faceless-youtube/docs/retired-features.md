@@ -83,3 +83,59 @@ Retired pipeline capabilities — what/why/where the code is parked, for possibl
 - Why retired: measurement moved to direct Pillow calls (mean-abs-diff, alpha histograms, crop-battery) inside the review procedure instead of a standalone CLI helper.
 - Where parked: removed from forge.py; no equivalent script currently wraps Pillow for this.
 - Re-verify: confirm the ad-hoc Pillow calls used in review still cover every case the old helpers handled before rebuilding a CLI wrapper.
+
+## Hook-bar law
+
+- What: VPW's named law requiring the hook shot (and each new-loop opening) to show something whose meaning is unexplained, posing the question the VO answers a beat later, held to a scroll-stop staging standard.
+- Why retired: wave-3 ruling 1 drops it from the seven-named-laws apparatus; non-literal-default classification plus the densify-cadence guidance already drives an arresting opening without a dedicated named law and its own critic question.
+- Where parked: nowhere — deleted from VPW SKILL.md, critics.md's Q5, and the never-flag list.
+- Re-verify: if opening-shot strength regresses on a future video, check whether cadence/non-literal guidance alone is sufficient before restoring a named rule.
+
+## Delta-decisiveness law
+
+- What: VPW's named law requiring a world-flip delta to flip the whole frame (full palette turn, "paradise fully gone") — timid partial coexistence flagged as mushy.
+- Why retired: wave-3 ruling 1 collapses it out of the named-law apparatus into one sentence of chain logic in visual-grammar.md (one element per delta; a world/register change is a hard cut) rather than a standalone law with its own critic check.
+- Where parked: the rule survives compressed into visual-grammar.md's chain-logic line; the named-law framing and critics.md's dedicated question are gone.
+- Re-verify: not applicable — a compression, not a capability loss; reopen only if the one-line version proves ambiguous in practice.
+
+## Anti-slop guardrail + channel-translation step
+
+- What: VPW Step 2.5's "anti-slop guardrail" (vary depiction content across videos, keep the relationship) and "channel translation" (cast on the locked rig, ironic-counterpoint as signature, humor dial, desaturated grim register) procedural items.
+- Why retired: wave-3 ruling 1 drops both as separate named steps; the surviving substance now lives directly in visual-grammar.md §3's lever/register section instead of a VPW procedural checklist item.
+- Where parked: content redistributed into visual-grammar.md; no standalone "anti-slop" or "channel translation" step remains in VPW SKILL.md.
+- Re-verify: watch for depiction reuse across videos creeping back without a dedicated procedural check; restore an explicit critic question if it recurs.
+
+## VPW-side needed_assets hard-stop
+
+- What: VPW's pose/expression gate — a hard stop mid-authoring run when a shot needs a `pose_ref`/`expression_ref`/interaction the registry lacks, surfaced via `needed_assets` for human approve/veto before VPW proceeds.
+- Why retired: wave-3 ruling 8 moves the missing-asset gate to image-generation Pass 1 (derive the full asset list from shots.json → surface gaps → STOP for human pre-gen approval), so VPW no longer owns a mid-run stop of its own.
+- Where parked: the pre-gen approval step survives, relocated to image-generation SKILL.md Pass 1; shots.json v2 drops the `needed_assets` field, and VPW's no-re-request-after-veto convergence rule is absorbed into the Pass-1 gate.
+- Re-verify: confirm Pass 1's vocab-name asset scan catches every case the old VPW-side `needed_assets` entries used to.
+
+## Per-video house_style distillation
+
+- What: VPW Step 2 — distilling `dna.md`'s visual style + niche conventions into a per-video `house_style` block and `global_prompt_suffix` string, committing to one lane (stylized/illustrated vs real-footage) each run.
+- Why retired: wave-3 ruling 5 makes house style fixed channel data (texture/line-weight/art-style only); the one `global_prompt_suffix` string now lives once in visual-grammar.md's header, not re-distilled per video.
+- Where parked: nowhere — the distillation step is deleted from VPW; palette and light stay per-shot facts authored per prompt, not part of the fixed suffix.
+- Re-verify: if a future channel genuinely needs per-video style variation beyond per-shot palette/light, reopen a distillation step for that channel only.
+
+## Metadata-writer thumbnail concepts
+
+- What: metadata-writer Step 3 — authoring the long-form thumbnail's primary + 2 challenger concepts as part of its title/thumbnail A/B output.
+- Why retired: wave-3 ruling 7 — VPW now derives thumbnail gen-prompts directly from `script.md` + `dna.md`, making metadata-writer's separate thumbnail-concept authoring redundant with the downstream visual step.
+- Where parked: nowhere — removed from metadata-writer/SKILL.md frontmatter + Step 3; title/description/tags/chapters/pinned-comment output is unchanged.
+- Re-verify: confirm VPW's script+dna-derived thumbnail prompts keep the CTR-teardown-grounded pattern discipline metadata-writer's Step 3 used to apply; re-add a metadata-side concept pass if quality regresses.
+
+## shots.json v1 author-metadata fields
+
+- What: the v1 shots.json fields `from_cue`, `beat`, `narration_type`, `hold_reason`, `cast` (+ `pose_ref`/`expression_ref`), `props`.
+- Why retired: wave-3 ruling 9 drops these authoring/review-metadata fields (never engine-consumed); casting moves to inline registry-vocabulary names in `still_prompt` prose (ruling 3), and `shot_class` survives as the one audit tag in place of the beat/narration_type trail.
+- Where parked: nowhere in the schema — engine-read fields are unchanged so v1 files still parse; `lint_shots.py` v2 adds an unknown-legacy-field WARNING (not an error) so v1 files stay valid but flagged.
+- Re-verify: confirm no downstream script (motion-planner, render-builder, compliance-check) silently expects one of these keys before treating the removal as final.
+
+## Seven-authoring-laws apparatus
+
+- What: VPW SKILL.md's named "seven laws" framing (held tableau · scene facts · acting · casting · delta decisiveness · hook bar · disclosure order) as a canonical, critic-mapped taxonomy.
+- Why retired: wave-3 ruling 1 dissolves the apparatus itself, not all its content — hook bar and delta decisiveness are cut outright (see their own entries above); held tableau demotes to one line of prompt guidance ("stage poses that hold; don't freeze mid-motion"), and scene facts + disclosure order continue as ordinary rules in grammar/VPW rather than a numbered law.
+- Where parked: surviving content lives on in visual-grammar.md and VPW SKILL.md as plain procedure/prompt guidance; no numbered "seven laws" list or matching critics.md taxonomy remains.
+- Re-verify: not applicable — a framing simplification; reopen only if critics.md's five-question charter proves to miss a check the old seven-law mapping used to guarantee.
