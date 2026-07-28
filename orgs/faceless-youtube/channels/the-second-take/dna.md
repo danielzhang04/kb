@@ -93,17 +93,20 @@ long_form: staged       # writers-room: outline → section drafts → accuracy/
 - **Humor dial (locked — register set by topic gravity):** the comedic rate is **a DIAL set by the topic's
   gravity, NOT a fixed rate** (owned here). Money-absurdity / systemic farce runs **hot**
   (dense wit); human-villainy / ruin runs **wry and sparse**. Slide the
-  dial to the beat you're on. Across the channel this lands **more comedic than any pure finance-or-history
-  channel, without becoming a comedy channel** — storytelling first, the wit riding on it. Toolbox:
-  **anachronistic analogy that *teaches*** ("jazz became the
+  dial to the beat you're on. The default register is **warm, irreverent, and loaded with pop
+  culture** (a narrator plainly enjoying the story). Across the channel this lands **more comedic than
+  any pure finance-or-history channel, without becoming a comedy channel** (storytelling first, the wit
+  riding on it). Toolbox: **anachronistic analogy that *teaches*** ("jazz became the
   Wi-Fi of the 20s"), deadpan undercut, ironic re-label ("exorbitant privilege = legalized robbery"), comic
   false precision, absurd escalation capped by a pun, bathos, narrator-described personification. **Every joke
   carries a fact** (delete-test — lose the joke, lose the info). No solemn essay, no paper-conclusion
-  close (grammar §3.5). **Smart-not-cringe:** laughs reward
-  knowing the real thing; **evergreen references only, never memes/slang that date**; the butt is the
-  fool/institution. **TTS-safe:** keep jokes that live in *fact + framing*; convert any needing performance
-  timing/voices to narrator-reported or hand to visuals. Rules in §1d-V; full grammar in
-  `storytelling-grammar.md`.
+  close (grammar §3.5). **Franchise and meme references with staying power are licensed** (Thanos,
+  Doctor Strange's sanctums, the idiot sandwich, a Peloton, Ocean's Eleven is the grade of reference to
+  reach for); the bar is instant recognition and the joke has to HIT, never how recently it was coined.
+  **Profanity is in bounds at the "ass"/"shit" grade and stops there; the f-word is not the channel.**
+  Punch up at power and absurdity, never at the mark or the audience. **TTS-safe:** keep jokes that live
+  in *fact + framing*; convert any needing performance timing/voices to narrator-reported or hand to
+  visuals. Rules in §1d-V; full grammar in `storytelling-grammar.md`.
 
 ### Voiceover config (machine-read by the `voiceover` skill)
 ```yaml
@@ -122,8 +125,8 @@ output_format: mp3_44100_128
 ```
 
 - **Script rules:** curiosity-gap hook <5s that the video actually pays off; value in 7s; withheld "fine
-  print" in final 20%; payoff is a *realization*, not a lesson; `[B-ROLL]`/`[PAUSE]`/tiered-pause cues;
-  cadence self-check + anti-cliché pass + humor pass (§1d-V). Default to contractions. A researched,
+  print" in final 20%; payoff is a *realization*, not a lesson; cadence self-check + anti-cliché pass +
+  humor pass (§1d-V). Default to contractions. A researched,
   multi-lever scheme may use optional sequential causal `Step N:` prose; never use cards for bare chronology.
   YMYL accuracy gate (below).
 - **Visual style (LOCKED recipe):** **clean 2.5D vector cast + built environments + marker-style

@@ -3292,3 +3292,65 @@ run brief binds nobody — a fresh terminal reads the style-bible and skill docs
   script tests; fresh-eyes probe reconstructed all six core doctrines from the trimmed files alone.
   Residual over spec's ~1,220 aspiration is protected content (slug lists, hex values, caps,
   enforcement procedures) — kept per terse-and-complete-over-short-and-lossy.
+
+## 2026-07-28 - Scripting overhaul round 2: examples dominate, rules that manufactured dryness deleted (Daniel)
+
+- **Fresh Bricks script #1 rejected** ("pretty terrible across the board"). Root cause: the docs were
+  still rule-heavy, so the writer optimized against prohibitions and produced clipped one-liner monotone
+  paragraphs, concept-prose instead of plain action, audible hedges ("by one account"), and a still-life
+  hook with no actor doing anything. Round 2 rebuilds doctrine so the approved examples dominate and
+  removes the specific rules that produced each failure, rather than appending exceptions on top.
+- **Paragraph doctrine replaces the short-punch rule.** Idea blocks run four to five sentences on
+  average; a standalone one-liner paragraph is now the defect, not the goal. The short-punch rule
+  (added 2026-07-27) is deleted outright as the dryness engine; short sentences still land, but inside a
+  block, carried by the longer sentences around them (storytelling-grammar §1.1).
+- **Humor recalibrated:** the register is warm, irreverent, and pop-culture-loaded by default.
+  Franchise and meme references with staying power are licensed (Thanos, Doctor Strange's sanctums, the
+  idiot sandwich, a Peloton, Ocean's Eleven), and profanity is in bounds up to the "ass"/"shit" grade,
+  never the f-word. The old "never memes/slang that date" and "smart-not-cringe" phrasing is deleted;
+  the bar is instant recognition and the joke has to HIT, register-agnostic (grammar §1.3/§6, dna.md
+  humor dial).
+- **Hedges banned from narration; hedging moves into fact selection.** "By one account," "sources
+  disagree," and every cousin are out of the voiceover; the writer states the strongest sourced version
+  flat or cuts the claim. A genuine gap in the record gets transparent, playful speculation in the
+  narrator's voice instead of a confession ("Don't ask me why. Maybe Wiles was just that charismatic, or
+  maybe there was some under-the-table dealing going on. Either way...") (grammar §4).
+- **Tense doctrine:** past is the storytelling default; present is licensed only for framing the viewer
+  into a period, for mechanics still true today, and optionally for a scheme's hottest run. The
+  present-tense still-life tableau, a scene with nobody doing anything in it, is banned (grammar §1.1).
+- **Hook doctrine:** actor plus event plus a familiar anchor, with concrete names in the first breath.
+  Still-life, bloodless abstraction, and the unnamed-mystery-company are all dead; the shape itself stays
+  open (grammar §2.1).
+- **Endings are a tone, not a formula.** Casual, brisk, unceremonious, usually landing an ironic
+  observation or one last laugh. The "one earned ironic image" requirement is deleted; it was producing
+  reaching, over-crafted button lines instead of a clean stop. Daniel's fate-roundup-plus-ironic-winner
+  ending enters as one worked example, explicitly not the shape every ending takes (grammar §3.5).
+- **Wink doctrine scrapped.** Neither required nor taught as a move; the approved Bricks intro keeps its
+  own wink line untouched as approved text, not as an instance of a rule.
+- **Company stories tell the rise before the fall, with every escalation motivated out loud** (new
+  grammar §2.7): who they were and how big they got before anything goes wrong, then an explicit causal
+  chain for each step of the collapse.
+- **`script.md` becomes pure prose.** The writer authors no pause cues, no beats, and no `[B-ROLL]`
+  anchors; default rendered sentence-gaps live in the render engine, deliberate pauses become
+  audio-director's job, and visual beat segmentation moves downstream entirely. Lint flips: any
+  bracketed cue in the VO body is now a hard violation, and runtime reverts to words divided by measured
+  wpm. **Deferred debt (recorded, not built now):** the `visual-prompt-writer` + image-generation logic
+  rework needed to consume pure prose comes after scripting is perfected; this ripple does not reach
+  `shorts-writer`, which authors its own self-contained short scripts and was checked clean of hedges,
+  old humor phrasing, and short-punch language.
+- **Bricks research ledger topped up** ([F-25]-[F-31]): no source supports a garage founding (founded
+  1980 by 20-year industry veteran Terry Johnson); the sourced 1984 marker is IBM-driven growth to $125M
+  (1985 was a dip to $114M after IBM cut orders, which is what brought Wiles in); the reported 1988 peak
+  of $603M was itself inflated by the same fraud at the time it was first reported; the sourced second
+  major customer is Compaq, not Apple; Reddit's FY2025 revenue is about $2.2 billion, making the
+  inflation-adjusted MiniScribe peak (roughly $1.6-1.7B) same-order-of-magnitude but not an exact match
+  to "as much money as Reddit" (close enough for the comedic beat, noted as approximate).
+- **Five new approved excerpts land in `example-scripts.md`:** the company's rise, meet the fixer, the
+  caper, speaking to a gap in the record, and the ending, alongside the existing MacGregor and Bricks
+  cold-open excerpts, all with "what this demonstrates" notes; every inline grammar/critic example is
+  re-drawn from these.
+- **Alternatives rejected:** bolting exception lists onto the existing prohibitions instead of rewording
+  them; keeping a formulaic ending requirement; keeping any hedge language in narration on the theory
+  that it reads as honest; keeping `[B-ROLL]`/pause-cue markup in the writer's output on the theory that
+  downstream skills need it now (the rework is deferred debt instead, so scripting doctrine is not held
+  hostage to it).

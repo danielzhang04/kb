@@ -70,11 +70,11 @@ defect that will recur until fixed.
   Reconciled across `long-form-writer`, `universal.md` §5c/§5d/§1d-V,
   `dna.md`, `researcher`, `shorts-writer`, `reference-channels.md`, and the visual grammar.
 - **Scriptwriter — REBUILT + PROVEN (2026-07-08, extended 07-09); scripting overhaul LANDED 2026-07-28
-  on `claude/fyt-writer-grammar-slim`:** the flat/buttoned-script problem was root-caused (a model
-  self-checking prohibitions shares its own blind spot) and fixed architecturally. The voice bar is now
-  `channels/the-second-take/example-scripts.md` (Daniel's approved excerpts; replaces the retired
-  `personable-calibration.md` and the earlier Poyais-as-gold framing, and is designed to grow with future
-  approved excerpts). The blind fixture/candidate protocol is retired: acceptance is a fresh writer run
+  on `claude/fyt-writer-grammar-slim`, round 2 LANDED same day:** the flat/buttoned-script problem was
+  root-caused (a model self-checking prohibitions shares its own blind spot) and fixed architecturally.
+  The voice bar is now `channels/the-second-take/example-scripts.md` (Daniel's approved excerpts;
+  replaces the retired `personable-calibration.md` and the earlier Poyais-as-gold framing, seven excerpts
+  now approved). The blind fixture/candidate protocol is retired: acceptance is a fresh writer run
   Daniel reviews directly. The writer now runs a cultural-pull sweep inside Step 3a (era anchors,
   comparisons, joke angles, WebSearch-licensed for era texture and the universality bar). Voice dials
   moved to `stability: 0.20` / `style: 0.6`. `long-form-writer` generates **casual-first, leash-second**
@@ -82,9 +82,23 @@ defect that will recur until fixed.
   ∥ leash critics + a **coherence critic** (first-time-viewer pass, capped one-bounce structural rewrite;
   bar = grammar §3.8 "non-linear but followable") → in-voice editor + `scripts/lint_script.py`. On
   research channels the writer is LEASHED to the fact-ledger; the `researcher` now captures
-  relational/connective facts (not just atoms). Length norm centered on **~10 min**. **Next: a fresh
-  Bricks acceptance run** (scratch slug, zero spend, old script untouched) is the test of the whole
-  scripting-overhaul exercise.
+  relational/connective facts (not just atoms). Length norm centered on **~10 min**. **Round 2 (Daniel,
+  same session): the fresh Bricks script from round 1 was rejected** ("pretty terrible across the
+  board") for rule-shaped dryness (clipped one-liner monotone, concept-prose, audible hedges, a
+  still-life hook); the doctrine, not the artifact, was rebuilt. Landed: the paragraph-as-idea-block
+  doctrine (short-punch rule deleted); humor recalibrated to warm/irreverent/pop-culture-loaded with a
+  hit-or-miss bar; a hedge ban (hedging happens in fact selection, never narration) plus a transparent-
+  speculation move for record gaps; a past-default tense doctrine; hook = actor + event + familiar
+  anchor; endings as tone, not formula (the "one earned ironic image" requirement deleted); the wink
+  doctrine scrapped; rise-before-fall with every escalation motivated out loud (`storytelling-grammar
+  §2.7`). **`script.md` is now pure voiceover prose:** no `[B-ROLL]`, no pause/beat cues; deliberate
+  pauses are `audio-director`'s job and visual beat segmentation moves downstream entirely; runtime lint
+  reverts to words ÷ measured wpm. **Deferred debt (recorded, not built):** `visual-prompt-writer` +
+  `image-generation` still assume cue-bearing scripts and need a rework to consume pure prose; this is
+  intentionally NOT fixed yet (see *Visual system* + *Audio system* below for the stale references it
+  leaves behind). Full rationale: `knowledge/decisions.md` 2026-07-28 round-2 entry. **Next: fresh Bricks
+  acceptance run #2** (scratch slug, zero spend, writer blind to the round-1 script and to decisions
+  history) is gate ⑥ of the round-2 plan and the real test of the whole scripting-overhaul exercise.
 - **proxy-judge ("taste me") — BUILT + PAUSED (2026-07-09):** additive, advisory-only acceptance gate
   after `humanize` proxying Daniel's accept/revise/reject + `/36`. On branch
   `feat/proxy-judge-story-editor-me` (NOT merged; changes nothing until invoked). Verdict agreement 3/3;
@@ -117,7 +131,10 @@ defect that will recur until fixed.
   motion + one VO-synced transform + progressive-reveal enumerations) + §13a-ii (cut cadence + the HARD
   RULE that kills the stretch-to-fill dead-hold bug). Core rule: **non-literal is default; literal only
   for physical action/objects.** `visual-prompt-writer` OWNS the shot list and must author a choreographed
-  slate; `long-form-writer`'s `[B-ROLL]` cues are meaning-anchors only. The channel
+  slate. **KNOWN STALE (round-2, 2026-07-28):** `script.md` is now pure prose with no `[B-ROLL]` cues at
+  all, so `visual-prompt-writer` can no longer anchor shots to writer-authored cues; the rework to plan
+  shots straight off prose is DEFERRED (recorded debt, see *Front half* above), so this section still
+  describes the pre-round-2 contract until that rework lands. The channel
   `visual-kit/visual-grammar.md` is **staging law only** (staging conventions + composition menu + lever
   translation); recipe + library build spec live in `style-bible.md`.
 - **Still-side authoring — REBUILT (2026-07-08):** `visual-prompt-writer` rebuilt on a Remotion-reality
@@ -229,7 +246,8 @@ defect that will recur until fixed.
   authored `dry` spans, and fade→silence→fade track switches; same-mood neighbours coalesce) · structural
   + authored **SFX** (item-appearance sounds snap to the cut via `sync:"element"`; whoosh/pop use ONE
   fixed variant — `consistent_sfx`) · **breath/full-stop** (a `pause` cue splices a derived
-  `vo.breath.mp3`; the −40 dB dip lands in the gap; distinct from the writer's `[PAUSE]` prosody) ·
+  `vo.breath.mp3`; the −40 dB dip lands in the gap; deliberate pauses are entirely `audio-director`'s
+  call as of round-2, 2026-07-28 (the writer authors no pause cues at all) ·
   **register** (human-cost = an authored `dry` pull-back) · **mastering** (`loudnorm_pass` reads
   `master_target`, ear-gated to **−14.5 LUFS / −1.0 dBTP / LRA 4**).
 - **Measured-grammar anchors:** bed PLACED ~79% (not wall-to-wall); the default register is **wry/dry, NOT
