@@ -1,16 +1,29 @@
-# Channel DNA — <CHANNEL NAME>
+# Channel DNA — The Hidden Machine
 
 The frozen identity of one channel. Written once during setup, then referenced by every per-video
-task. **To start a channel: copy this `_TEMPLATE/` folder to `channels/<name>/` and fill this in.**
-Fields marked TODO are set at channel creation.
+task. Fields marked TODO are set at channel creation (genesis in progress — see
+`docs/superpowers/plans/2026-07-28-hidden-machine-genesis-plan.md`).
 
 ## Identity
 
-- **Channel name:** TODO
-- **Niche:** TODO  (see `knowledge/research/niches.md`)
-- **One-line promise:** TODO — what a viewer reliably gets from every video
-- **Original angle / POV:** TODO — the differentiation that keeps us policy-safe (must NOT clone a rival)
-- **Audience / region / language:** US, English (default; change if different)
+- **Channel name:** The Hidden Machine  *(origin: concept A1, 2026-07-14 channel-forge niche board)*
+- **Handle:** `@TheHiddenMachine` — **desired only; nothing registered.** Verify availability before
+  the real YouTube channel is created.
+- **Premise (locked):** the invisible infrastructure of daily life — **the system is the character.**
+- **Niche:** everyday-infrastructure / mechanism-explainer  (see `knowledge/research/niches.md`)
+- **One-line promise:** what's actually happening, right now, behind the ordinary thing you just
+  did — tap Pay, send a text, flush, flip a switch — the machine behind the moment.
+- **Original angle / POV — the wedge ("behind one everyday action"):** every video starts from a
+  mundane human moment (tap Pay, send a text, flush, flip a switch) and descends into the machinery
+  behind it; the hook is the viewer's own life. Differentiation vs. incumbents (Wendover,
+  RealLifeLore, Animagraffs): they explain topics; we open inside YOUR ordinary second.
+  **Boundary vs. The Second Take (sister channel):** mechanism-explainers are in-bounds here even on
+  money-adjacent systems (e.g. what happens after you tap Pay) — The Second Take owns narrative
+  money STORIES (cons, collapses, characters). No topic here may be a re-skin of a Second Take story.
+- **ID prefix:** `HM-###`
+- **Audience / region / language:** US, English; general-curious — no technical background assumed,
+  concrete, story-led explainers (same register altitude as The Second Take's audience definition,
+  different subject).
 
 ## Doctrine (universal.md §1a — one lever per channel, never per video)
 
