@@ -66,7 +66,7 @@ long_form: staged       # writers-room: outline → section drafts → accuracy/
 ## Voice & style
 
 - **Voice ID (locked):** vSjOBQp24DUB2COr2xI9  *(ElevenLabs library voice **"Miles"**; locked 2026-07-06,
-  replacing Jake. In-gate register (~148 Hz, D3), brighter/younger, run **Creative-leaning at stability 0.25**
+  replacing Jake. In-gate register (~148 Hz, D3), brighter/younger, run **Creative-leaning at stability 0.20**
   for pitch-life. Chosen by ear over Jake after a short-pause + stability A/B; the low stability was
   validated by a **consistency proof** — two independent rolls of the same passage landed on identical F0
   (148.1 Hz) and a different passage held within 4 Hz, ~175 gross wpm, ~18% pause — so the run-to-run
@@ -112,10 +112,11 @@ voice_id: vSjOBQp24DUB2COr2xI9   # LOCKED 2026-07-06 — ElevenLabs library "Mil
                                  # In-gate ~148 Hz (D3), bright/young. Consistency PROVEN at stability 0.25:
                                  # F0 148.1/148.1/144.1 across 2 rolls + a 2nd passage; ~175 wpm; ~18% pause.
 model_id: eleven_v3              # v3 = expressive; verified working with /with-timestamps (render-sync intact)
-stability: 0.25                   # Creative-leaning for pitch-life. Picked by ear + validated by the proof above.
-                                 # Do NOT raise — the low stability IS the chosen delivery (F0 stays put anyway).
+stability: 0.20                   # LOWERED 2026-07-28 (Daniel) — more variance + vocal emphasis, supersedes
+                                 # the 0.25 lock. The 0.25-era consistency proof above does NOT cover this
+                                 # value; re-proof by ear on the next real VO render before trusting it.
 similarity_boost: 0.85
-style: 0.4                        # light expressiveness for the dry asides
+style: 0.6                        # RAISED 2026-07-28 (Daniel) — more vocal emphasis, was 0.4 light-expressive
 use_speaker_boost: true           # v3 ignores this flag; harmless to leave
 speed: 1.0                        # runs the liked pace natively (~175 gross wpm) — do NOT slow
 output_format: mp3_44100_128
