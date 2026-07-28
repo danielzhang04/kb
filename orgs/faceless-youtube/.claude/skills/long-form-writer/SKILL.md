@@ -59,10 +59,16 @@ order is the flat-explainer failure.
 1. **The story.** In a few sentences: what story would you tell a friend? Which events earn a place,
    at what level of detail.
 2. **The plot.** Sequence to land hardest, not by the calendar — choose the shape from grammar §3 and
-   design the retention arc now (grammar §2.6). Set the humor register off `dna.md`'s dial.
+   design the retention arc now (grammar §2.6). Set the humor register off `dna.md`'s dial, and gather
+   the video's **cultural material** here, because it belongs to the writer and never to the researcher:
+   the era anchors (what does everyone picture when they hear 1983?), the candidate modern comparisons,
+   and the joke angles the story invites. **WebSearch is licensed at this step**, for era texture and for
+   checking that a reference is universally understood (the bar: a general viewer pictures it instantly;
+   the approved excerpts in `channels/<name>/example-scripts.md` are the calibration). Anything the
+   script then states as fact still lives on the leash.
 3. **The spine.** 8–14 beats in plain English, one line each, no `[F-NN]` tags, no jargon; note beside
-   each which facts are on hand. Read it back cold for followability (grammar §3.7) and fix by
-   resequencing, never a bolted-on patch. For a major scheme sequence, a compact planning card:
+   each which facts are on hand and which era anchor, comparison, or joke angle that beat carries. Read
+   it back cold for followability (grammar §3.7) and fix by resequencing, never a bolted-on patch. For a major scheme sequence, a compact planning card:
    `question → sourced action/mechanism → narrator angle → what it enables → next question`; a spoken
    `Step N` only per grammar §1.5. **Lock the spine before drafting.**
 

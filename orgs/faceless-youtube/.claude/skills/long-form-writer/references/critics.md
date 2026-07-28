@@ -2,8 +2,9 @@
 
 This is the enforcement layer for the defects a writer **cannot catch in its own prose** — the taste and
 voice flaws that survive self-editing because the writer already made the judgment call when it wrote the
-line. A regen from inputs alone proved it: the writer shipped grandeur buttons and dwell straight through its own editor
-pass. Fresh, single-mandate readers with no attachment to the draft catch what the writer structurally can't.
+line. A regen from inputs alone proved it: the writer shipped grandeur buttons and dwell straight through
+its own editor pass. Fresh, single-mandate readers with no attachment to the draft catch what the writer
+structurally can't.
 
 **Scope:** this runs in `long_form: staged` Step 3d, after the leash pass (3c), before humanize (Step 5). It
 is deliberately **thin**: four fresh critics (taste, leash, coherence, raw-versus-leashed) + one editor, plus a single capped
@@ -70,23 +71,28 @@ including §3.7 non-linear-but-followable, and the §5 before→after bank) plus
 >
 > **Hunt for these, and only these. Quote the exact offending text for every finding:**
 > 1. **Grandeur / summary buttons** — a beat that ends on a summary, thesis, or profound line instead of a
->    fact or action. Read the LAST sentence of every paragraph: it must land on a concrete noun, name,
->    number, or action. (Tell: "It was just the biggest version of it." / "the fake country and the real ones
->    died the exact same death.")
-> 2. **Dwell / harping** — a point restated for emphasis after it already landed; a triple-build of one idea
->    ("what it could be… something even better… a place already finished"); circling back to an irony you've
->    already made. (§2.5)
+>    fact or action. Read the LAST sentence of every paragraph: it must land on a fact, an action, or the
+>    push into what comes next, never a verdict about the story. (Tell: "It was just the biggest version of
+>    it." / "the fake country and the real ones died the exact same death.")
+> 2. **Dwell / harping** — a point restated for emphasis after it already landed; a triple-build restating
+>    one idea three ways ("what it could be… something even better… a place already finished"); circling
+>    back to an irony you've already made. (§2.5)
 > 3. **Writerly / literary** — clever-convoluted sentences, aphorisms written to sound deep, any line no real
 >    person would say aloud to a friend. (§1.1)
 > 4. **Premise over-restatement** — count how many times the core premise recurs across the whole script
 >    ("it didn't exist" / "a country that wasn't there"). Past ~2–3, flag the weakest repeats to cut.
 > 5. **Jargon** — a term a normal person wouldn't say in conversation, where a plain word exists. (§1.1)
-> 6. **Empty signposting or list scaffolding** — flag a label that hides the next action ("this is the part
->    worth slowing down for," "here's the strange part") or labels bare chronology. Do **not** flag an
->    optional `Step N:` that names a sourced causal lever and helps the viewer assemble a real scheme.
+> 6. **Empty signposting or list scaffolding** — flag a label that hides or delays the next action ("this
+>    is the part worth slowing down for," "here's the strange part") or labels bare chronology. The defect
+>    is the announced category, not spoken connective tissue: a plain doorway that opens the story ("Here
+>    is the story of that company."), a hook that positions itself ("one of the funniest corporate scams
+>    that you've never heard of"), and an optional `Step N:` naming a sourced causal lever are all correct
+>    (§3.4, §2.1).
 > 7. **Flat or educational analogy / dead joke** — flag an analogy that derails the mechanism, repeats a
->    point that already landed, or makes the fact harder to follow; flag a joke that rides no fact or reads
->    dated/cringe. Do **not** use analogy counts or a missing-analogy quota as a finding. (§1.4, §6)
+>    point that already landed, or makes the fact harder to follow; flag a joke that rides no fact, or a
+>    pull (joke, metaphor, phrasing, era anchor) a general viewer would not picture instantly, judged
+>    against the approved excerpts. Do **not** use analogy counts or a missing-analogy quota as a finding.
+>    (§1.4, §6)
 > 8. **Flat stretch / too deadpan** — two or more consecutive beats with no joke, analogy, aside, or
 >    narrator reaction (§1.3 — abundance is the default), or a money-absurdity beat told flat and
 >    humorless when it should run hot (the humor dial in `dna.md`).
