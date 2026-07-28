@@ -5,7 +5,7 @@ Cluster agents implement their range; the intent-critic checks each shot against
 
 ## Global rules (every agent)
 - **Keep shot IDs STABLE.** Removed shots are deleted (leave the ID gap); do NOT renumber survivors.
-- **Match the existing schema + prompt quality exactly** (read `.claude/skills/visual-prompt-writer/references/shots-schema.md` for shots.json; `.claude/skills/render-builder/references/shots-motion-schema.md` + `animation-menu.md` for shots.motion.json). A rewritten `still_prompt` must be as rich/specific as its neighbors (committed palette, light, depth, house-style suffix).
+- **Match the existing schema + prompt quality exactly** (read `.claude/skills/visual-prompt-writer/references/shots-schema.md` for shots.json; `.claude/skills/render-builder/references/shots-motion-schema.md` for shots.motion.json). A rewritten `still_prompt` must be as rich/specific as its neighbors (committed palette, light, depth, house-style suffix).
 - **Camera is LOCKED** — never author a camera move. Any "push/pull/zoom" request is restaged as a cut/delta/tableau.
 - **`cutout_prompt` never uses the literal word "plate"** — say "isolated on a plain flat pale background, no surface under it" (the dinner-plate bug).
 - **Crowd rig:** any shot with anonymous people gets the `style-bible.md §2d` crowd-rig clause written VERBATIM into its `still_prompt`. Named characters are `cast` (seeded canonical → full rig), never folded into the crowd clause.

@@ -12,13 +12,12 @@ prop, chain) gets its layer. ELEMENT motion first; the camera stays locked excep
 stage-start `camera.move: "push"|"pull"` punctuation. Authors PLACEMENT; the human
 gates FEEL.
 
-Contract: `render-builder/references/shots-motion-schema.md`. Vocabulary: `render-builder/references/
-animation-menu.md` (author ONLY menu animations). Rules: `references/animation-rules.md`. Critic:
-`references/critics.md`.
+Contract + vocabulary: `render-builder/references/shots-motion-schema.md` (author ONLY menu
+animations). Rules: `references/animation-rules.md`. Critic: `references/critics.md`.
 
 ## Procedure
 
-1. **Read** the video's `shots.json`, plus `animation-rules.md` and `animation-menu.md`.
+1. **Read** the video's `shots.json`, plus `animation-rules.md` and `shots-motion-schema.md`.
 2. **Classify each shot** by the **two-test boundary** (`animation-rules.md`). A held scene evolves one of
    two ways: **DELTA-CHAIN when the change is INTEGRATIVE** (the element fuses into the scene's
    architecture — a city grows a bank, gold threads the streets): regenerate seeded off the prior frame
