@@ -7,6 +7,10 @@ word count vs runtime. Quotation marks in the VO body and exact
 credibility-padding phrases are reported as non-blocking advisories (quoting is
 a taste call for the critics, not a lock).
 
+The runtime suggestion is words-at-wpm PLUS the authored pause cues counted from
+the VO body ([PAUSE:LONG]=1.2s, [PAUSE]=0.6s, [BEAT]=0.3s) — a script leaning on
+cues runs longer than its word count alone implies, and the estimate should say so.
+
 Usage: python lint_script.py <path-to-script.md> [--wpm N]
 --wpm is the channel voice's measured words-per-minute from dna.md (default 150),
 used only for the runtime suggestion.
@@ -19,6 +23,12 @@ import sys
 STEP_NUMBER = re.compile(r"^Step\s+(\d+)\b", re.I)
 STEP_CARD = re.compile(r"^Step\s+(\d+)\s*:\s*.+", re.I)
 MALFORMED_STEP = re.compile(r"^Step(?:\s+\d+)?\s*:\s*$", re.I)
+PAUSE_LONG_CUE = re.compile(r"\[PAUSE:LONG\]")
+PAUSE_CUE = re.compile(r"\[PAUSE\]")
+BEAT_CUE = re.compile(r"\[BEAT\]")
+PAUSE_LONG_S = 1.2
+PAUSE_S = 0.6
+BEAT_S = 0.3
 CREDIBILITY_ADVISORIES = (
     (re.compile(r"\bthat part is real\b", re.I), "credibility-padding phrase: that part is real"),
     (re.compile(r"\bhe actually did\b", re.I), "credibility-padding phrase: he actually did"),
@@ -97,9 +107,21 @@ def main(path, wpm=150):
         hard.append((0, "unfilled header runtime", runtime_line.strip()))
 
     vo_words = 0
+    pause_long_count = 0
+    pause_count = 0
+    beat_count = 0
     for i, ln in enumerate(lines):
         lineno = i + 1
         stripped = ln.strip()
+
+        # Authored pause cues count toward runtime from the VO body, independently of the
+        # word-count skip below — a cue on its own line is still a cue. Match [PAUSE:LONG]
+        # first and strip it out so a bare [PAUSE] count can't double-count it.
+        if body_start <= i < body_end:
+            pause_long_count += len(PAUSE_LONG_CUE.findall(ln))
+            ln_without_long = PAUSE_LONG_CUE.sub("", ln)
+            pause_count += len(PAUSE_CUE.findall(ln_without_long))
+            beat_count += len(BEAT_CUE.findall(ln))
 
         # em/en dashes anywhere are a hard violation.
         if "—" in ln or "–" in ln:
@@ -140,11 +162,13 @@ def main(path, wpm=150):
         for lineno, kind, text in soft:
             print(f"  L{lineno}  [{kind}]  {text[:100]}")
 
-    total_s = round(vo_words / float(wpm) * 60)
+    cue_s = pause_long_count * PAUSE_LONG_S + pause_count * PAUSE_S + beat_count * BEAT_S
+    total_s = round(vo_words / float(wpm) * 60 + cue_s)
     mm, ss = divmod(total_s, 60)
+    cue_s_display = round(cue_s)
     print(
         f"\nVO word count: {vo_words}  ->  header should read: "
-        f"Estimated runtime: {mm}:{ss:02d} ({vo_words:,} words ÷ {wpm} wpm)"
+        f"Estimated runtime: {mm}:{ss:02d} ({vo_words:,} words ÷ {wpm} wpm + {cue_s_display}s pauses)"
     )
 
     return 1 if hard else 0

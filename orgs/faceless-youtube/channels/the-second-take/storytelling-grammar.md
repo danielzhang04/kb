@@ -117,11 +117,13 @@ because they're sourced; the opposite miss — racing through a beat that deserv
 > the pile." The beat that carries the story (the bricks getting weighed, packed, and serial-numbered)
 > gets the room instead.
 
-**2.3 — Let the story set the length; the natural center is about ten minutes.** Word target follows
-the **channel voice's measured wpm** (in `dna.md`; e.g. Miles runs ~175 gross with ~18% pause), not a
-universal constant — a center of gravity, not a target. Landing well under usually means beats are
-under-developed (starved of color), not that filler is missing; running long usually means dwell (§2.5).
-Add length only as a genuine cut *thread*, never padding.
+**2.3 — Let the story set the length inside the 8–10 minute band, natural center near the top of it.**
+Word target still follows the **channel voice's measured wpm** (in `dna.md`; e.g. Miles runs ~175 gross
+with ~18% pause) — a center of gravity within the band, not a universal constant. The runtime estimate
+is not words alone: it includes the authored pause cues (`[PAUSE]`/`[BEAT]`/`[PAUSE:LONG]`), which
+`lint_script.py` computes automatically. Landing well under usually means beats are under-developed
+(starved of color), not that filler is missing; running long usually means dwell (§2.5). Add length
+only as a genuine cut *thread*, never padding.
 
 **2.4 — Motifs and callbacks carry the telling.** Plant a phrase and reuse it so it pays off ("eight
 million acres of land" → "those eight million acres was swampland"). A recurring analogy is a callback

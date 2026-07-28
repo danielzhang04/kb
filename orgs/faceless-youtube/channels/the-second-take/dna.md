@@ -43,8 +43,7 @@ easy fallbacks in the same vein: "Second Take", "On Second Take", "Take Two".)*
 
 - **Primary format:** long-form is the earner; Shorts are a **first-class** viral engine (our edge over
   the model channels — each Short is a self-contained money-mechanism payload, §11-0, not a teaser).
-- **Target length:** 8–15 min primary (Explains101/Crayon band; **avoid the 16–24 min death zone**; a
-  big story may run 25–45).
+- **Target length:** 8–10 min primary (ruled 2026-07-28; **avoid the 16–24 min death zone**).
 - **Shorts per long-form:** 3–5 (virality-forward; one surprising money fact each, closed in-short).
 - **Cadence:** 1 long-form/week + shorts staggered every 2–3 days after (long-form ships first).
 - **Recurring structure:** curiosity-gap cold-open (the surprising claim/number) → the setup (who/what/

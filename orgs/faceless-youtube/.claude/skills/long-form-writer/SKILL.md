@@ -126,9 +126,11 @@ The craft lives in the grammar — apply it, don't re-derive it. The execution c
   reported form so the visual can unmask them; reach for vivid verbs/idioms the visual can draw
   literally.
 - **Runtime header:** **`Estimated runtime: MM:SS` is REQUIRED, never `TBD`** — computed at the
-  **channel voice's measured wpm** from `dna.md` (fallback 150). `lint_script.py --wpm <N>` prints the
-  exact string to paste and hard-fails without it. Header `Target length` is the channel norm (grammar
-  §2.3), not the brief's aspirational band.
+  **channel voice's measured wpm** from `dna.md` (fallback 150) PLUS the authored pause cues
+  (`[PAUSE]`/`[BEAT]`/`[PAUSE:LONG]`). `lint_script.py --wpm <N>` prints the exact string to paste,
+  now including the pause-cue seconds, and hard-fails without it. Header `Target length` is the
+  channel norm (grammar §2.3) — 8–10 min for this channel via `dna.md` — not the brief's aspirational
+  band.
 
 ## Step 5 — Status + handoff
 

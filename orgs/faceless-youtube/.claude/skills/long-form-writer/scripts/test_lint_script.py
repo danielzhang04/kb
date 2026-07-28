@@ -64,6 +64,26 @@ class LintScriptTests(unittest.TestCase):
                 self.assertIn("quote in VO body", output)
                 self.assertIn("Advisories", output)
 
+    def test_runtime_suggestion_adds_authored_pause_cue_seconds(self):
+        # 15 VO words (cue tokens on non-cue-opening lines still count as split() tokens,
+        # by design — see the inline [BEAT]/[PAUSE] lines below), plus 2 [PAUSE] (0.6s
+        # each), 1 [BEAT] (0.3s), and 1 [PAUSE:LONG] (1.2s) = 2.7s of cue time, split
+        # across standalone cue lines (excluded from the word count as is_cue) and an
+        # inline cue (counted in the word count, since the line doesn't open with "[").
+        # words/wpm*60 = 15/150*60 = 6.0s; + 2.7s cues = 8.7s -> rounds to 9s (0:09).
+        code, output = self.run_lint(script(
+            "One two three four five.",
+            "Six seven [BEAT] eight nine ten.",
+            "[PAUSE]",
+            "Eleven twelve [PAUSE] thirteen.",
+            "[PAUSE:LONG]",
+        ))
+        self.assertEqual(code, 0)
+        self.assertIn(
+            "Estimated runtime: 0:09 (15 words ÷ 150 wpm + 3s pauses)",
+            output,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
