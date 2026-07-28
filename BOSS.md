@@ -35,8 +35,11 @@ execute grunt work by hand.
   - `opus` — security-critical code, exploitable surfaces, design synthesis,
     adversarial review of code that can hurt us
 
-  The boss never delegates to fable; verify — don't assume — the model by
-  grepping the subagent transcript (`subagents/agent-*.jsonl`) for the model id.
+  The boss never delegates to fable. The model is verified at GRADING, never assumed
+  from the dispatch arg: the FIRST line of every grade is the result of grepping
+  `~/.claude/projects/C--Users-danie-kb/<session-id>/subagents/agent-<id>.jsonl`
+  for `"model":` — an ungrepped grade is invalid. (The task `.output` path the
+  harness reports greps empty; use the projects path above.)
 - Codex workers: dispatch through the KB platform — write a `queue/` card per
   `governance/card-schema.md` on the ops branch with `owner: codex`, a precise
   Work order, and acceptance criteria. Prefer this route when a task can run
