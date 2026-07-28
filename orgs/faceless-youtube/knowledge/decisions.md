@@ -3335,9 +3335,9 @@ run brief binds nobody — a fresh terminal reads the style-bible and skill docs
   audio-director's job, and visual beat segmentation moves downstream entirely. Lint flips: any
   bracketed cue in the VO body is now a hard violation, and runtime reverts to words divided by measured
   wpm. **Deferred debt (recorded, not built now):** the `visual-prompt-writer` + image-generation logic
-  rework needed to consume pure prose comes after scripting is perfected; this ripple does not reach
-  `shorts-writer`, which authors its own self-contained short scripts and was checked clean of hedges,
-  old humor phrasing, and short-punch language.
+  rework needed to consume pure prose comes after scripting is perfected. `shorts-writer` still authors
+  its own self-contained short-script cues; Daniel flagged that for the same later rework (it was
+  checked clean of hedges, old humor phrasing, and short-punch language meanwhile).
 - **Bricks research ledger topped up** ([F-25]-[F-31]): no source supports a garage founding (founded
   1980 by 20-year industry veteran Terry Johnson); the sourced 1984 marker is IBM-driven growth to $125M
   (1985 was a dip to $114M after IBM cut orders, which is what brought Wiles in); the reported 1988 peak

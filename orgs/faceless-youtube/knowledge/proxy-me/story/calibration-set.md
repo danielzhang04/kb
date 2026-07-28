@@ -150,8 +150,8 @@ flagged:
   - quote: the tell never changes; it repeats every generation
     dimension: storytelling-grammar §3.5
     preference: essay/moral close
-    fix: one earned ironic image (a beautiful country that never existed)
-notes: End on the story, never a lesson.
+    fix: end on the story itself, casual and unceremonious, landing an ironic observation (a beautiful country that never existed)
+notes: End on the story, never a lesson. Endings are a tone, not a formula (2026-07-28 re-ruling).
 ```
 
 ```calib
@@ -243,8 +243,8 @@ flagged:
   - quote: In the end, the country was the only thing in the whole story that ever paid a price for not being real.
     dimension: storytelling-grammar §3.5
     preference: a profound essay button at the close
-    fix: end on the concrete ironic image (the guidebook still sitting in libraries, anyone can read about the country that never existed)
-notes: The clever aphorism close was replaced by the guidebook image — the only sanctioned button spot.
+    fix: end on the story's own concrete irony, told plainly (the guidebook still sitting in libraries, anyone can read about the country that never existed)
+notes: The clever aphorism close was replaced by the guidebook image. Historical instance; endings are a tone, not a formula (2026-07-28 re-ruling).
 ```
 
 ```calib

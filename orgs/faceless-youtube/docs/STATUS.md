@@ -94,8 +94,9 @@ defect that will recur until fixed.
   §2.7`). **`script.md` is now pure voiceover prose:** no `[B-ROLL]`, no pause/beat cues; deliberate
   pauses are `audio-director`'s job and visual beat segmentation moves downstream entirely; runtime lint
   reverts to words ÷ measured wpm. **Deferred debt (recorded, not built):** `visual-prompt-writer` +
-  `image-generation` still assume cue-bearing scripts and need a rework to consume pure prose; this is
-  intentionally NOT fixed yet (see *Visual system* + *Audio system* below for the stale references it
+  `image-generation` still assume cue-bearing scripts and need a rework to consume pure prose, and
+  `shorts-writer` still authors its own short-script cues (Daniel flagged it for the same later rework);
+  this is intentionally NOT fixed yet (see *Visual system* + *Audio system* below for the stale references it
   leaves behind). Full rationale: `knowledge/decisions.md` 2026-07-28 round-2 entry. **Next: fresh Bricks
   acceptance run #2** (scratch slug, zero spend, writer blind to the round-1 script and to decisions
   history) is gate ⑥ of the round-2 plan and the real test of the whole scripting-overhaul exercise.
