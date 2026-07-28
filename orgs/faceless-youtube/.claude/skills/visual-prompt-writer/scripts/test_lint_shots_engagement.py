@@ -24,16 +24,10 @@ def test_runtime_over_five_cadence_floor_fails():
     assert any("1 cut / 5s" in e for e in errs), errs
 
 
-def test_long_hold_requires_reason():
-    words = ["word"] * 10
-    shots = [{"id": "L01", "vo_ref": "word", "duration_s": 6.1}]
+def test_coverage_floor_still_fails_short_durations():
+    """The other half of the cadence pair: enough cuts, but the durations don't
+    cover the VO — the stretch-to-fill dead-hold risk."""
+    words = ["word"] * 100
+    shots = [{"id": f"L{i}", "vo_ref": "word", "duration_s": 1} for i in range(1, 12)]
     errs = _lint_piece(shots, words)
-    assert any("hold_reason" in e for e in errs), errs
-
-
-def test_long_hold_with_reason_is_allowed():
-    words = ["word"] * 10
-    shots = [{"id": "L01", "vo_ref": "word", "duration_s": 6.1,
-              "hold_reason": "Viewer needs the map labels long enough to read."}]
-    errs = _lint_piece(shots, words)
-    assert not any("hold_reason" in e for e in errs), errs
+    assert any("don't cover the VO" in e for e in errs), errs

@@ -21,14 +21,14 @@ the render's per-line sync is safe.
 
 WHAT IT ALSO DOES (--write)
 ---------------------------
-On a clean pass, (re)generates two DERIVED, review-only fields, preserving the
+On a clean pass, (re)generates ONE DERIVED, review-only field, preserving the
 file's exact formatting:
   * `vo_text` on every shot = the verbatim script span it covers (from its anchor
     to the next shot's). This is COMPUTED, never authored, and is NOT a depiction
     brief — a shot's image is anchored to its moment, not asked to represent the
     whole span. A span that comes out long is a signal to DENSIFY (add a cut),
-    per the §10 cadence rule, not to cram meaning into one image.
-  * a top-level `shot_counts` block (informational; downstream ignores it).
+    per the cadence rule, not to cram meaning into one image.
+It also STRIPS the retired `shot_counts` block from any v1 file it rewrites.
 
 Usage:
   python lint_shots.py <path-to/shots.json> [--write]
@@ -51,7 +51,17 @@ _BRACKET = re.compile(r"\[[^\]]*\]")            # [B-ROLL]/[PAUSE]/[BEAT] — ne
 _NORM = lambda w: re.sub(r"[^a-z0-9]+", "", w.lower())   # mirrors render.py::_NORM
 LONG_SPAN_WORDS = 20                            # V1 D13: ~>8s of VO on one anchor -> densify heads-up
 CADENCE_TARGET_S = 5.0                          # Checkpoint 3: new long-form default is 2–5s cuts
-HOLD_REASON_THRESHOLD_S = 6.0                   # >~6s holds must state why they earn the time
+
+# --- shots.json v2 ----------------------------------------------------------
+# v2 drops the v1 AUTHORING/REVIEW metadata below. None of it was ever engine-read
+# (build_motion.py defaults `beat`; render.py reads none of them), so a v1 file
+# still parses, still lints, and still renders. The lint therefore SAYS SO and
+# never fails on one: hard-failing a naming change would break every archived
+# video for nothing. What the fields were and why they went: docs/retired-features.md.
+SCHEMA_V1 = "faceless-youtube/shots@1"
+SCHEMA_V2 = "faceless-youtube/shots@2"
+LEGACY_FILE_FIELDS = ("house_style", "needed_assets", "shot_counts", "timing_status")
+LEGACY_SHOT_FIELDS = ("from_cue", "beat", "narration_type", "hold_reason", "cast", "props")
 
 
 def build_vo_stream(md_path):
@@ -152,15 +162,6 @@ def lint_piece(label, shots, md_path, hard, soft, word_timings=None):
             hard.append(f"[{label}] {len(shots)} shots for a ~{runtime_s:.0f}s runtime (< 1 cut / {CADENCE_TARGET_S:.0f}s) — "
                         f"too few cuts; densify to the 2–5s new-video cadence.")
 
-    for sh in shots:
-        dur = _dur(sh)
-        if dur is not None and dur > HOLD_REASON_THRESHOLD_S:
-            reason = sh.get("hold_reason")
-            if not isinstance(reason, str) or not reason.strip():
-                hard.append(f"[{label}] {sh.get('id', '?')}: duration_s {dur:g}s exceeds ~{HOLD_REASON_THRESHOLD_S:g}s "
-                            "without a non-empty hold_reason — split the hold, add a real progressive reveal, "
-                            "or record the short legibility/gravity reason for the critic.")
-
     if any(m["start"] is None for m in hard_matches):
         return None
 
@@ -193,31 +194,15 @@ def lint_piece(label, shots, md_path, hard, soft, word_timings=None):
 def strip_derived(txt):
     # V1 D12: match at any indent (^\s*), not a hardcoded 2 spaces, so a reflowed file still cleans.
     txt = re.sub(r'(?m)^[ \t]*"vo_text": .*\n', "", txt)
+    # v2 retired shot_counts. Still stripped, never re-emitted, so rewriting a v1
+    # file cleans the stale block out instead of leaving a count that drifts.
     txt = re.sub(r'(?ms)^\s*"shot_counts": \{.*?\n\s*\},\n', "", txt)
     return txt
 
 
 def write_back(path, data, ordered_shots, id2text):
-    """Insert vo_text after each vo_ref line + a top-level shot_counts, preserving format."""
+    """Insert the derived vo_text after each vo_ref line, preserving the file's format."""
     txt = strip_derived(Path(path).read_text(encoding="utf-8"))
-    lf = data["long_form"]["shots"]
-    n_long = len(lf)
-    n_thumb = 1 + len(data.get("thumbnail", {}).get("challengers", []))
-    shorts = data.get("shorts", []) or []
-    n_short_pieces = len(shorts)
-    n_short_shots = sum(len(s.get("shots", [])) for s in shorts)
-    sc = (
-        '  "shot_counts": {\n'
-        '    "_note": "informational only; not consumed by downstream image-gen -- counts of prompt blocks in this file",\n'
-        f'    "long_form_shots": {n_long},\n'
-        f'    "thumbnail_prompts": {n_thumb},\n'
-        f'    "shorts": {n_short_pieces},\n'
-        f'    "shorts_shots": {n_short_shots},\n'
-        f'    "total_prompts": {n_long + n_thumb + n_short_shots}\n'
-        '  },\n'
-    )
-    txt = re.sub(r'(?m)^(\s*"status": .*\n)', lambda m: m.group(1) + sc, txt, count=1)  # V1 D12: any indent
-
     vo_ref_re = re.compile(r'^(\s*)"vo_ref":')
     out, idx = [], 0
     for line in txt.splitlines(keepends=True):
@@ -281,26 +266,46 @@ def stage_check(label, shots, hard, soft):
             soft.append(f"[{label}] stage '{sid}' appears in {c} non-contiguous runs — a stage should be one consecutive run.")
 
 
-# A3: casting enforcement. A known channel-registry CHARACTER named in a still_prompt but absent from
-# the shot's `cast` is an authoring gap — image-gen enumerates figures from `cast`, so an uncast
-# registry name renders off-rig (free-drawn) instead of seeded. Derived-only, SOFT (never blocks a
-# render). Deliberately scoped to REGISTRY names — a generic capitalized-proper-noun heuristic was
-# tried and cut: it fired on the channel name in the house-style suffix and on every place-name
-# (Britain, Europe, Mosquito Coast), all noise, no reliable signal. A brand-new (unregistered)
-# character is already surfaced by VPW's own `needed_assets` gate, not here.
-def _cast_names(shot):
-    return {(c.get("character") or "").lower() for c in (shot.get("cast") or []) if c.get("character")}
+# v2 SCHEMA + LEGACY-FIELD CHECKS — heads-ups, never violations.
+#
+# There is no casting check here any more. It compared a registry character named
+# in a `still_prompt` against that shot's `cast` array; v2 has no `cast` array —
+# naming figures by registry VOCABULARY inline in the prose IS the contract now,
+# and resolving those names to files is image-generation's Pass 1. Whether every
+# named figure resolves is the post-VPW critic's question (references/critics.md),
+# not a deterministic one this lint can answer.
+def schema_check(data, soft):
+    schema = data.get("schema")
+    if schema == SCHEMA_V2:
+        return
+    if schema == SCHEMA_V1:
+        soft.append(f"[file] schema is {SCHEMA_V1!r} — a LEGACY v1 file. It lints and renders "
+                    f"exactly as before (no engine-read field changed); author new files as "
+                    f"{SCHEMA_V2!r}.")
+    else:
+        soft.append(f"[file] schema {schema!r} is not {SCHEMA_V2!r} — set it, so downstream can "
+                    f"tell a v2 file from a v1 one.")
 
 
-def casting_check(label, shots, registry_characters, soft):
-    reg = {c.lower() for c in (registry_characters or [])}
-    for sh in shots:
-        prompt = sh.get("still_prompt") or ""
-        cast = _cast_names(sh)
-        for rc in reg:
-            if re.search(r"\b" + re.escape(rc) + r"\b", prompt, re.IGNORECASE) and rc not in cast:
-                soft.append(f"[{label}] {sh.get('id','?')}: names registry character '{rc}' in "
-                            f"still_prompt but it is not in `cast` — cast it or it renders off-rig.")
+def legacy_field_check(data, soft):
+    """One heads-up listing every dropped v1 field still present. NEVER a violation."""
+    found = {}
+    for f in LEGACY_FILE_FIELDS:
+        if f in data:
+            found[f] = found.get(f, 0) + 1
+    pieces = [data.get("long_form", {}).get("shots", []) or []]
+    pieces += [s.get("shots", []) or [] for s in (data.get("shorts", []) or [])]
+    for shots in pieces:
+        for sh in shots:
+            for f in LEGACY_SHOT_FIELDS:
+                if f in sh:
+                    found[f] = found.get(f, 0) + 1
+    if found:
+        listed = ", ".join(f"{f} (x{n})" for f, n in sorted(found.items()))
+        soft.append(f"[file] dropped v1 fields still present, ignored by every consumer: {listed}. "
+                    f"shots.json v2 removed them (docs/retired-features.md); casting is now inline "
+                    f"registry-vocabulary names in `still_prompt`, resolved by image-generation "
+                    f"Pass 1. Harmless to leave in an existing file; don't author them into a new one.")
 
 
 # ---------------------------------------------------------------------------
@@ -758,21 +763,6 @@ def main(argv):
     vdir = Path(path).parent
     script_md = vdir / "script.md"
 
-    # A3: registry character names (minus the base template) for the casting check — best-effort.
-    reg_chars = []
-    reg_path = None
-    for anc in vdir.parents:
-        cand = anc / "visual-kit" / "registry" / "registry.json"
-        if cand.exists():
-            reg_path = cand
-            break
-    if reg_path:
-        try:
-            reg_json = json.loads(reg_path.read_text(encoding="utf-8"))
-            reg_chars = [c for c in (reg_json.get("characters") or {}) if c != "base"]
-        except (ValueError, OSError):
-            reg_chars = []
-
     # S3: the VO word-timings render actually matches against (empty if not yet voiced).
     vo_manifest_path = vdir / "assets" / "voiceover.manifest.json"
     vo_manifest = (json.loads(vo_manifest_path.read_text(encoding="utf-8"))
@@ -804,10 +794,12 @@ def main(argv):
     hard, soft = [], []
     ordered, id2text_all = [], {}
 
+    schema_check(data, soft)
+    legacy_field_check(data, soft)
+
     lf_text = lint_piece("long-form", lf_shots, script_md, hard, soft,
                          word_timings=word_timings_for(vo_manifest, "long-form"))
     stage_check("long-form", lf_shots, hard, soft)
-    casting_check("long-form", lf_shots, reg_chars, soft)
     suffix = data.get("global_prompt_suffix") or ""
     lf_prompts = _shot_prompts(lf_shots)
     text_supply_check("long-form", lf_prompts, suffix, hard)
@@ -835,7 +827,6 @@ def main(argv):
         st = lint_piece(f"short:{short.get('file','?')}", sshots, smd, hard, soft,
                         word_timings=word_timings_for(vo_manifest, piece))
         stage_check(f"short:{short.get('file','?')}", sshots, hard, soft)
-        casting_check(f"short:{short.get('file','?')}", sshots, reg_chars, soft)
         slabel = f"short:{short.get('file','?')}"
         sprompts = _shot_prompts(sshots)
         # The first_frame IS the short's thumbnail; it carries baked caption text
@@ -870,7 +861,7 @@ def main(argv):
             print("\n--write SKIPPED: fix HARD violations first (won't derive vo_text over broken anchors).")
             return 1
         write_back(path, data, ordered, id2text_all)
-        print(f"\nWROTE derived vo_text ({len(id2text_all)} shots) + shot_counts. JSON valid.")
+        print(f"\nWROTE derived vo_text ({len(id2text_all)} shots). JSON valid.")
     return 1 if hard else 0
 
 
