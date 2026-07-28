@@ -3273,3 +3273,22 @@ run brief binds nobody — a fresh terminal reads the style-bible and skill docs
 - **Era anchor "Walkman" rejected; replaced with Pac-Man.** The universality bar is empirical, not a
   vibe call: if a general reader would not instantly picture the reference, it is out, no matter how
   period-accurate it is. Pac-Man cleared the bar where Walkman did not.
+
+## 2026-07-28 — Visual-stack trim: single-home law map, retired-features archive
+
+- **The seven files governing visual prompting + image generation trimmed ~2,900 -> ~1,590 lines**
+  (spec `docs/superpowers/specs/2026-07-28-visual-stack-trim-design.md`): every shared law now has ONE
+  home (seed doctrine -> style-bible §5; text laws -> shots-schema §4; authoring laws + procedure -> VPW
+  SKILL; review/stamp -> image-gen SKILL; staging -> visual-grammar; narration grammar -> universal §13a)
+  with pointers elsewhere. Alternatives rejected: keeping evidence essays in place (Daniel: fold
+  learnings into the rule's wording; a changelog is appended trash); per-file retirement one-liners
+  (Daniel: retired features move OUT of workflow files).
+- **`docs/retired-features.md` created** — the only home for retired capabilities (engine text/device
+  cards, VPW motion fields, merge tier, flash tier, chapter cards, forge diff/crop), each with
+  what/why/where-parked/re-verify.
+- **Zero examples, zero provenance dates, zero changelog blocks** in governing files (Daniel's verbatim
+  rulings). style-bible §10 change log deleted; descriptor blockquotes §2/2b/2c/2d/2e byte-identical.
+- **Acceptance:** purge greps clean; pointer sweep clean (one stale test docstring repointed); 82/82
+  script tests; fresh-eyes probe reconstructed all six core doctrines from the trimmed files alone.
+  Residual over spec's ~1,220 aspiration is protected content (slug lists, hex values, caps,
+  enforcement procedures) — kept per terse-and-complete-over-short-and-lossy.

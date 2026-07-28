@@ -144,12 +144,12 @@ def test_absence_instruction_is_not_a_request():
 
 
 def test_schema_worked_example_no_longer_teaches_the_defect():
-    """shots-schema.md §6's exemplar is the single most-copied prompt in this
-    skill. It used to read "a single load-bearing calculation carved into a
-    monolithic stone tablet" — a value-free text request, modelled as good
-    practice. Both halves are pinned: the old form must FAIL, the shipped form
-    must PASS. (Catching the old form is why `calculation` and `carved` are in
-    the vocabularies at all.)"""
+    """Regression pin from the retired shots-schema worked example (the §6
+    exemplar, deleted in the 2026-07-28 trim). It once read "a single
+    load-bearing calculation carved into a monolithic stone tablet" — a
+    value-free text request, modelled as good practice. Both halves stay
+    pinned: the old form must FAIL, the corrected form must PASS. (Catching
+    the old form is why `calculation` and `carved` are in the vocabularies.)"""
     old = ("a single load-bearing calculation carved into a monolithic stone tablet "
            "balanced on a knife-edge, cold blue key light")
     new = ("a monolithic stone tablet with the single figure '2,800 TONS' carved into its "
