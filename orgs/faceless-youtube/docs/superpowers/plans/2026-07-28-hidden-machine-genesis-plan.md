@@ -155,26 +155,36 @@ duplicate it).
 - [ ] Grade (model grep); present diff [taste gate]
 - [ ] Commit: `feat(fyt): hidden-machine storytelling grammar — ST grammar adapted to <lever> register`
 
-### Task 7: Visual identity direction + draft docs
+### Task 7: Visual identity — rendered direction boards → style-lock → visual-kit docs
+*(Rescoped at the Task-6 gate, Daniel 2026-07-28: image generation now LIVE. Direction options
+are presented as RENDERED sample boards per operating-law §E — real assets, one axis at a time.
+Spend gate before every paid batch; spend logged to the run friction/close-out record.)*
 
-**Files:** Create `channels/the-hidden-machine/visual-kit/style-bible.md` (DRAFT header) and
-`visual-kit/visual-grammar.md` (DRAFT header). Structure donors: ST's current (trimmed) files.
+**Files:** Create `visual-kit/style-bible.md`, `visual-kit/visual-grammar.md`,
+`visual-kit/refs/` (canonical anchors), `visual-kit/registry/registry.json` (seeded),
+`videos/_style-lab/` (sweep workspace, pruned at lock — F-clean). Structure donors: ST's
+current (trimmed) files.
 
-**Pre-gate:** present 3 visual-direction OPTIONS (text descriptions only — no generation):
-e.g. (a) diagram-forward 2.5D cutaway world (Animagraffs-adjacent, system-as-character, no host),
-(b) ST-style stylized cast BUT cast = anthropomorphized systems/objects, (c) clean-vector
-schematic + occasional human-scale inserts. Each: palette family, cast implications, motion
-implications, distance from ST's look. Daniel picks direction + palette family + cast stance.
-
-- [ ] Draft options inline (boss); Daniel picks [taste gate]
-- [ ] Dispatch opus worker: author BOTH drafts — style-bible carries ST's section architecture
-      (§-numbering, verify-gate, seed rules, base-then-fan-out protocol) with this channel's
-      direction filled in and every generation-dependent value marked `DRAFT — locked at
-      style-lock sweep`; visual-grammar layered on `universal.md §13`, staging rules translated
-      from the locked lever; acceptance = zero ST palette/rig/cast values copied, DRAFT status
-      + sweep plan section present, no claim of locked anything
-- [ ] Grade; present both [review of taste docs — second gate]
-- [ ] Commit: `feat(fyt): hidden-machine visual-kit drafts — style-bible + visual-grammar (pre-sweep)`
+- [ ] **7a — batch plan gate:** present the direction-sampler plan (3 directions × N frames of
+      the SAME test scene, est. $ from ST's per-call history) + direction priors question.
+      Daniel approves batch [spend gate]
+- [ ] **7b — direction sampler:** dispatch worker to run the image-generation skill's one-off
+      path for the sampler frames (no style bible yet — genesis sampling, labeled as such);
+      build side-by-side board (Artifact); Daniel picks direction, palette family, cast stance
+      [taste gate — one axis at a time, iterate rounds as directed]
+- [ ] **7c — style-lock sweep:** batch plan → [spend gate] → sweep variants within the picked
+      direction (rig consistency, palette, line, texture across 3-4 scene types); board;
+      Daniel locks [taste gate]
+- [ ] **7d — canonical anchors:** generate base cast/env/prop canonicals from the locked look;
+      Daniel approves each canonical [gate]; write `refs/` + seed `registry.json`
+      (base-then-fan-out law satisfied for video dev)
+- [ ] **7e — docs:** dispatch opus worker: author style-bible (ST's section architecture:
+      §-numbering, verify-gate, seed rules, base-then-fan-out protocol) with LOCKED values from
+      7c/7d, and visual-grammar layered on `universal.md §13`, staging translated from the
+      scale-shock lever; acceptance = zero ST palette/rig/cast values, every locked value
+      traceable to an approved board asset, no DRAFT markers left except genuinely-open items
+- [ ] Grade; present both [review gate]; prune `_style-lab/` (F-clean)
+- [ ] Commit: `feat(fyt): hidden-machine visual identity locked — style-bible, visual-grammar, canonical refs + registry`
 
 ### Task 8: Voice lab → locked voice + dials
 

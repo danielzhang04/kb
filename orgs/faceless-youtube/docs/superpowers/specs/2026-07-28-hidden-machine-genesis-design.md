@@ -20,7 +20,7 @@ that isn't. No video content is produced or iterated in this pass.
 | --- | --- |
 | Concept | A1 · The Hidden Machine (niche-board recommendation; name itself re-confirmed at step 1) |
 | Conductor | **Boss-driven.** channel-forge stays parked as machinery; its 12 genesis stages + recipes are the plan skeleton and reference. Friction/learnings logged back for the forge. |
-| Visual generation | **Deferred.** Style-bible + visual-grammar built as draft docs (structure + direction); zero image-gen spend; style-lock sweeps owed later. |
+| Visual generation | **Live** (Daniel reversed the defer call at the Task-6 gate, 2026-07-28). Direction options presented as RENDERED sample boards (operating-law §E), then style-lock sweeps, canonical base assets, registry seeds. Spend gate before each paid batch. |
 | Voice | **Live.** Real ElevenLabs voice-lab auditions; new voice mandatory (never reuse Miles); fresh dials — ST's 2026-07-28 dial values are un-proofed, do not inherit. |
 | Audio kit | **Copy over** ST's SFX/music pools + attribution (generic CC0/CC-BY assets, not taste-locked). |
 | Storytelling grammar | **Copy ST's `storytelling-grammar.md` and adapt** the register to hidden-systems. No teardown/measurement wave in this pass. |
@@ -114,9 +114,11 @@ sequential on its gate.
 1. `example-scripts.md` voice bar — from first Daniel-approved script excerpts.
 2. proxy-judge story facet: calibration set (5-source mining), 2–3 blind holdouts,
    agreement report ≥80% verdict-match — after gold script #1 exists.
-3. Visual style-lock: sweeps → locked rig/palette/recipe → canonical base cast +
-   env anchors → `registry.json` seeds (base-then-fan-out; image-gen spend gate).
-4. Brand art (avatar/banner) — blocked on style lock.
+3. Visual style-lock — moved INTO first pass at the Task-6 gate (Daniel 2026-07-28):
+   sweeps, canonical base assets, and registry seeds happen at Task 7. Whatever the
+   sweeps leave unlocked (secondary cast, prop families) stays on this list.
+4. Brand art (avatar/banner) — unblocked once Task 7 locks the style; in-pass if Daniel
+   approves the batch, else here.
 5. Channel-page application in Studio + real handle/URL — human, after branding.
 6. Grammar re-measure decision: after N videos, judge whether the copied-adapted grammar
    needs a real teardown wave (explicitly skipped in first pass).
@@ -125,6 +127,6 @@ sequential on its gate.
 ## 8. Out of scope
 
 Any video content (script, shots, VO takes kept beyond audition snippets, renders); YouTube
-account/handle creation; Studio changes; image generation of any kind; modifying Second Take
+account/handle creation; Studio changes; modifying Second Take
 or shared skills (exception: adding the new niche playbook file, which is additive shared
 data); unparking channel-forge machinery.
