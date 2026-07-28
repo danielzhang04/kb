@@ -72,12 +72,10 @@ Retired pipeline capabilities — what/why/where the code is parked, for possibl
 - Where parked: nowhere — the tier logic was deleted, not archived.
 - Re-verify: only reconsider a cheap tier at daily-cadence volume, and then via the Batch API (half price, overnight), not flash.
 
-## Chapter/title cards
+## Chapter cards — NOT retired (correction)
 
-- What: a dedicated on-screen chapter/title card marking a section boundary.
-- Why retired: a chapter turn is realized as a hard cut plus palette shift on the next held stage, not a distinct card element; folds into the general device-card retirement above.
-- Where parked: no separate component — its Remotion `progressive-reveal`/type-on/chapter-card overlays are the same dormant components covered under engine text overlays.
-- Re-verify: whether a chapter needs a stronger signal than hard-cut + palette shift once longer or multi-chapter videos are attempted.
+- What: chapter cards are LIVE — plan-level `cards[]` → `apply_cards` → opaque `chapter-card` overlays with the card-on-silence law (authoring home: render-builder `references/shots-motion-schema.md`).
+- Only the sibling overlay components (`progressive-reveal`/type-on and the device cards) remain parked, covered by the engine-text entry above; an entry here previously misstated cards as retired.
 
 ## forge.py diff/crop helper commands
 

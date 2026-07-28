@@ -111,8 +111,9 @@ defect that will recur until fixed.
 - **Visual identity — LOCKED (2026-07-04):** The Second Take template = round cream `#f5ead6` head,
   dark brown-black `#241a12` outline, calm no-nose face; canonical frame set in `visual-kit/refs/base/`.
   MacGregor canonical = red/gold, ear-free, costume PINNED (`refs/macgregor/`). Diegetic art = flat-cel.
-- **Visual doctrine files TRIMMED 2026-07-28** (single-home law map; retired capabilities live only in
-  `docs/retired-features.md`; spec 2026-07-28-visual-stack-trim-design.md).
+- **Visual + audio/motion/render doctrine files TRIMMED 2026-07-28** (both waves; single-home law
+  map; retired capabilities live only in `docs/retired-features.md`; specs
+  2026-07-28-visual-stack-trim-design.md + 2026-07-28-audio-motion-stack-trim-design.md).
 - **Generation system:** per-channel **`visual-kit/style-bible.md`** is THE single image-gen doc (rig
   lock + descriptors + verify gate + committed recipe + asset-library build spec) + `registry.json` (the
   LIVE asset vocabulary) + the **`image-generation`** skill running a **two-pass flow**: pass 1 derives a

@@ -3354,3 +3354,19 @@ run brief binds nobody — a fresh terminal reads the style-bible and skill docs
   that it reads as honest; keeping `[B-ROLL]`/pause-cue markup in the writer's output on the theory that
   downstream skills need it now (the rework is deferred debt instead, so scripting doctrine is not held
   hostage to it).
+## 2026-07-28 — Audio/VO/motion/render-stack trim (wave 2)
+
+- **14 doctrine files trimmed 1,512 -> 1,290 lines; two files deleted, one merge** (spec
+  `docs/superpowers/specs/2026-07-28-audio-motion-stack-trim-design.md`): `animation-menu.md` folded
+  into shots-motion-schema; `grammar-guidance.md` merged into audio-director SKILL as Placement laws.
+  Boundary law and supplied-text law collapsed to their wave-1 homes (universal §13a-ii,
+  shots-schema §4); SFX-tail/sentence-gap/no-dip laws single-homed in audio-plan-schema; retirement
+  prose moved to docs/retired-features.md (which also gained the motion/audio entries and a
+  correction: chapter cards are LIVE, not retired). Alternatives rejected: trimming the channel
+  research logs (Daniel: out of scope); forcing the ~1,050 numeric target (residual is enforced
+  contract content — terse-and-complete wins over the count).
+- **Doc-vs-code corrections made TO code reality:** render-builder SKILL's "overlays always empty"
+  (chapter cards are emitted); audio-director's "sneaky is the con workhorse" (audio-tokens names
+  underscore the default con-spine bed).
+- **Acceptance:** purge + deleted-file pointer greps clean; analyzer suites + 241 script tests pass;
+  fresh-eyes probe reconstructed all seven core doctrines from the trimmed files alone, zero gaps.
