@@ -51,9 +51,8 @@ ranks — objective work it can own. CLAP is a *proxy* that narrows ~40 → ~4; 
 - `torch` + `transformers` (CLAP: `laion/clap-htsat-unfused`, ~2 GB, one-time), `librosa`, `soundfile`,
   `certifi`, `ffmpeg`/`ffprobe`.
 
-## Scope boundary (important)
+## Scope boundary
 
-sfx-forge sources and installs the SOUNDS. It does NOT decide **when** a sound fires — that is authored
-by the `audio-director` skill (which places SFX cues by judgment: money→cash, a pivot→record_scratch,
-the reveal punch, an aside→sting) and realized deterministically by `render-builder/build_audio.py`.
-Sourcing a role is step one; the director decides where it lands.
+Sourcing a role is step one; placement is a separate job. sfx-forge never decides **when** a sound
+fires — `audio-director` places SFX cues by judgment (money→cash, a pivot→record_scratch, the reveal
+punch, an aside→sting), realized deterministically by `render-builder/build_audio.py`.

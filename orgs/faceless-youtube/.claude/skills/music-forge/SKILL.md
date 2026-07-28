@@ -12,11 +12,11 @@ duration) → **CLAP** rank against the bucket's mood prompt → an **audition a
 scores) that is the human checkpoint → picks loudness-normalized + wired into
 `visual-kit/audio-tokens.json music_pools`.
 
-**Division of labor (load-bearing — see [[audio-taste-is-human-judged]]).** Claude sources, vets, and
-ranks — objective work it can own. CLAP narrows the field; it does not pick, and on full music clips it
-is a *stronger* aid than it is on SFX transients but it's still a ranking aid, not a verdict. The
-**human judges taste**, both on the isolated audition board and (better) later, in the Phase-3B render,
-where the bed is judged looping under real narration.
+**Division of labor (G6, load-bearing — see [[audio-taste-is-human-judged]]).** Claude runs the fetch,
+the objective vet, and the CLAP ranking — all mechanical or model-scored, none of it a taste judgment.
+CLAP is a semantic-match proxy, stronger on full music clips than on short SFX transients, but it still
+only narrows the field, never substituting for the ear-gate. The **human judges taste** end to end, on
+the isolated audition board and (better) later, in the Phase-3B render, looping under real narration.
 
 ## When it runs
 
@@ -26,9 +26,8 @@ lane** (which will decide *when* a bed plays); it does not itself place anything
 
 ## Inputs
 
-- `music-buckets.json` (this skill's own config: the mood-bucket taxonomy, Incompetech seed names, CLAP
-  prompts, duration bands, pick counts). This is the only sourcing-config home — read it, don't restate
-  its contents here.
+- `music-buckets.json` (this skill's own config: mood-bucket taxonomy, Incompetech seed names, CLAP
+  prompts, duration bands, pick counts) — the only sourcing-config home; read it, don't restate it here.
 - `channels/<channel>/visual-kit/audio/incoming/<bucket>/` — the drop folder candidates are vetted from.
 - The measured audio grammar (`universal.md §13a-iii.8` + `visual-kit/research/audio-logs/synthesis.md`)
   for target loudness/placement context — Phase-3B will lean on this more than this skill does.
@@ -59,34 +58,21 @@ The channel carries two music registers, and the mood bucket names which one a s
 
 - **Casual-comedic idiom** (Crayon-Capital): a light, quirky groove that rides under narration —
   buckets `casual-bed` / `upbeat` / `sneaky`, sourced from Incompetech's comedic catalog.
-- **Restrained exposé-underscore** (added 2026-07-17 retrack — decisions.md): a present, credible
-  instrumental underscore that reads serious-but-not-dramatic — buckets `underscore` (the DEFAULT
-  con-spine bed, replacing the meme-coded `sneaky` cues as default) and `somber` (the elegiac button
-  tail). Understated pizzicato/strings/keys tension, soft mystery, noir investigation, dignified solo
-  piano — present at ~2-3 dB under VO, never buried.
+- **Restrained exposé-underscore**: a present, credible instrumental underscore that reads
+  serious-but-not-dramatic — buckets `underscore` (the DEFAULT con-spine bed) and `somber` (the
+  elegiac button tail). Understated pizzicato/strings/keys tension, soft mystery, noir investigation,
+  dignified solo piano — present at ~2-3 dB under VO, never buried.
 
-The hard boundary in BOTH registers: **NOT a movie score, NOT a big cinematic tension/stinger cue.**
-The retrack widened the register toward credible restraint; it did not open the door to dramatic
-scoring. If a candidate reads as a swelling cinematic stinger or a dramatic set-piece score, it
-doesn't belong in any pool regardless of how well it loops. The `sneaky` and `Monkeys Spinning
-Monkeys` meme cues STAY in the library for occasional *deliberate* comedic use — they are just no
-longer the default.
-
-## Objective vet, human taste (G6)
-
-Claude runs the fetch, the objective vet, and the CLAP ranking — all mechanical or model-scored, none of
-it a taste judgment. The *feel* pick is the human's call end to end
-([[audio-taste-is-human-judged]]): CLAP is a semantic-match proxy that's usefully stronger on full music
-clips than it is on short SFX transients, but it still only narrows the board — it never substitutes for
-the ear-gate.
+The hard boundary in BOTH registers: **NOT a movie score, NOT a big cinematic tension/stinger cue** — a
+candidate reading as a swelling stinger or dramatic set-piece score doesn't belong in any pool
+regardless of how well it loops. `sneaky` and `Monkeys Spinning Monkeys` stay in the library for
+deliberate comedic use, just not as the default.
 
 ## Scope boundaries
 
 music-forge sources, vets, and installs the BEDS into `music_pools`. It does **not**:
 
-- author *when* a bed plays or which bucket a scene calls for — that's the Phase-3B music-cue layer
-  (not yet built; parallel to `audio-cue-writer`'s SFX role);
+- author *when* a bed plays or which bucket a scene calls for — the Phase-3B music-cue layer (not yet built);
 - AI-generate music — everything here is a real CC-BY recording, sourced and credited, same
   monetization-safety posture as `sfx-forge`'s CC0 SFX;
-- source sound effects — that's `sfx-forge`;
-- assemble or render the video — that's `render-builder`.
+- source sound effects (`sfx-forge`) or assemble/render the video (`render-builder`).

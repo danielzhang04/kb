@@ -1,13 +1,12 @@
 # voiceover — config & output contract
 
-Two things the rest of the pipeline depends on: the **Voiceover-config block** the skill reads from
-`dna.md`, and the **manifest** it writes for `render-builder`.
+Two things the rest of the pipeline depends on: the **Voiceover-config block** read from `dna.md`, and the **manifest** written for `render-builder`.
 
 ## 1. The dna.md Voiceover-config block
 
 Put this fenced block inside the channel's `## Voice & style` section of `dna.md`. The engine finds the
 first fenced code block containing `voice_id:` and reads simple `key: value` lines (no YAML library
-needed). Every field except `voice_id` is optional and falls back to the project default shown.
+needed); every field except `voice_id` is optional and falls back to the project default shown.
 
 ````markdown
 ### Voiceover config (machine-read by the `voiceover` skill)
@@ -23,8 +22,7 @@ output_format: mp3_44100_128     # mp3 sample-rate_bitrate; bitrate also drives 
 ```
 ````
 
-### Starting points by locked lever
-These are defaults to adjust, not rules — the point is to match delivery to the channel's one lever.
+### Starting points by locked lever (defaults to adjust, not rules — match delivery to the channel's one lever)
 
 | Lever (dna.md) | Feel | stability | style | speed |
 | --- | --- | --- | --- | --- |
@@ -33,62 +31,51 @@ These are defaults to adjust, not rules — the point is to match delivery to th
 | Vindication / exposé | crisp, confident, deliberate | 0.5–0.6 | 0.15–0.3 | 1.0–1.05 |
 | Righteous anger | urgent, weighted | 0.35–0.5 | 0.3–0.45 | 1.0–1.1 |
 
-Model note: `eleven_multilingual_v2` is the reliable default (full voice-settings support). `eleven_v3`
-is more expressive but newer — prefer it only once verified on the channel's key. `eleven_turbo_v2_5`
-is cheapest/fastest for high-volume shorts.
+Model note: `eleven_multilingual_v2` is the reliable default (full voice-settings support); `eleven_v3`
+is more expressive but newer — verify on the channel's key first; `eleven_turbo_v2_5` is cheapest/fastest for high-volume shorts.
 
 ### Expressive delivery markers and dry-run review
 
-The script may use only these exact writer-facing markers, each immediately before a sentence:
+The script may use only these exact writer-facing markers, each immediately before a sentence, never
+adjacent to another, never mid-sentence: `[emote: curious]`, `[emote: knowingly]`, `[emote: sternly]`,
+`[emote: sighs]`, `[emote: exhales]`, `[aside: dry]`. Use them sparsely, at a real chapter, reveal, or
+mood turn — punctuation remains the main rhythm tool. Unknown, malformed, adjacent, or mid-sentence
+markup is a hard error before any provider request. On `eleven_v3` the engine translates them to Eleven
+audio tags `[curious]`, `[knowingly]`, `[sternly]`, `[sighs]`, `[exhales]`, `[deadpan]`; on v2 it strips
+every approved marker, preserving the spoken sentence and v2's existing pause behavior. No v3 setting
+change follows from a marker — a stability audition still needs one chapter and a human ear gate.
 
-`[emote: curious]`; `[emote: knowingly]`; `[emote: sternly]`; `[emote: sighs]`;
-`[emote: exhales]`; `[aside: dry]`
+`--dry-run` is the zero-spend request-shape review: it writes the normal transcript and manifest while
+reporting effective settings, the cleaned v3/v2 request chunks, cleanup, and seam locations, without
+altering the channel's paid config or making a request. v3 has no `previous_text`/`next_text`, so the
+planner prefers a substantial chapter/mood-turn paragraph for a forced seam, else the nearest paragraph
+or sentence boundary — flagged for ear review either way.
 
-Use them sparsely at a real chapter, reveal, or mood turn. Never put them next to each other; punctuation
-remains the main rhythm tool. Unknown, malformed, adjacent, or mid-sentence expressive markup is a hard
-error before any provider request. On `eleven_v3`, the engine translates the markers to Eleven audio tags
-`[curious]`, `[knowingly]`, `[sternly]`, `[sighs]`, `[exhales]`, and `[deadpan]`. On v2 it strips every
-approved expressive marker, preserving the spoken sentence and existing v2 pause behavior. No v3 setting
-change follows from a marker: any stability audition remains one chapter and a human ear gate.
+### Delivery-target rules
 
-`--dry-run` is the zero-spend request-shape review. It writes the normal transcript and manifest while
-reporting the configured effective settings, v3 and v2 cleaned request chunks, cleanup, and seam locations.
-v3 cannot use `previous_text`/`next_text`, so the planner prefers a substantial chapter/mood-turn paragraph
-for a forced seam; otherwise it uses the nearest paragraph or sentence boundary and marks the seam for ear
-review. The report is planning only: it does not alter the channel's paid configuration or make a request.
+**The goal is NOT a flat AI read, but the fix is not what people assume:**
 
-### Measured delivery targets (2026-07-04 reference-channel audio analysis)
+- **Liveliness is pitch + sentence-variance, never volume.** Loudness stays flat across a video — don't
+  fake loudness dynamics; life comes from an expressive voice and the script's varied sentence lengths.
+  Pick a voice with genuine pitch life (not a flat news-reader); set **stability ~0.4–0.5** so pitch
+  actually moves, with **style ~0.15–0.3** — low enough to stay stable, high enough to not be monotone.
+  Monotone *pitch* is the enemy; flat *loudness* is fine.
+- **Pace is persona-dependent, never a fixed wpm target.** Perceived pace comes from articulation rate
+  + pause share, not gross wpm — a voice can talk fast and feel relaxed at ~20–30% pause share (measure
+  with ffmpeg `silencedetect`). Match pace to persona feel plus that pause share at **speed 1.0** unless
+  clearly too fast/slow; an energetic persona can comfortably sit at **~180–200 gross wpm**.
+- **Pauses are rare, structural, and short.** Punctuation carries most of the cadence (periods = full
+  stops, commas = catches); spend the tiered pause cues sparingly and short — human/library voices
+  already breathe at punctuation, so an unkept-short injected pause stacks on top and reads too long.
+  Engine mapping (v3): `[BEAT]` → natural (no tag), `[PAUSE]` → short, `[PAUSE:LONG]` → normal. A wall
+  of identical `[PAUSE]`s reads as a metronome, and dense breaks destabilize ElevenLabs.
+- **Flat, compressed loudness is correct** — the industry norm, and what lets a deadpan line land;
+  don't post-process volume drama in.
 
-A measured pass on 5 reference channels (Crayon Capital, Patrick Boyle, Casually Explained, Half as
-Interesting, HeyHistorically — full audio via ffmpeg `ebur128`/`silencedetect`) drives these settings.
-**The goal is NOT a flat AI read** — but the fix is not what people assume:
-
-- **Liveliness is PITCH + sentence-variance, never VOLUME.** Every channel's loudness range was *flat*
-  (1.8–3.7 LU) — none of them manufacture energy with volume swings. So don't expect or fake loudness
-  dynamics; the life comes from an expressive *voice* and the *script's* varied sentence lengths.
-  Practically: **pick a voice with genuine pitch life** (not a flat news-reader), set **stability
-  moderate-to-low (~0.4–0.5)** so pitch actually moves, with **some style (~0.15–0.3)** — low enough to
-  stay stable, high enough to not be monotone. Tune on the real voice; monotone *pitch* is the enemy,
-  flat *loudness* is fine.
-- **Pace is persona-dependent — don't chase a single wpm number.** *(2026-07-05 correction, from The Second
-  Take voice audition.)* The old "≈145–150 wpm" default was measured off **dry/calm** channels (Crayon/Boyle/
-  HeyHistorically ~144); it is **wrong for a young/energetic persona**, which can sit at **~180–200 gross wpm**
-  and still feel comfortable. The real driver of *perceived* pace is **articulation rate + pause share**, NOT
-  gross wpm: a voice can rattle words off fast yet feel relaxed if it pauses ~25% of the time (measure silence
-  with ffmpeg `silencedetect`). **Set pace by matching the persona's feel + ~20–30% pause share**, and let the
-  chosen voice run at **speed 1.0** unless it's clearly too fast/slow. (The Second Take locked "Jake" at ~195
-  gross / ~26% pause — energetic but breathing; do not slow it to 145.)
-- **Pauses are rare, structural, AND short.** The admired channels run near wall-to-wall with only
-  a handful of real pauses (a reveal, an act break). Let **punctuation carry most of the cadence**
-  (periods = full stops, commas = catches — scripts are written this way), and spend the tiered pause
-  cues sparingly. **Keep them short** *(2026-07-06 correction, from the v3 Poyais auditions):* human/library
-  voices already breathe at punctuation, so an injected pause **stacks on top** of a natural one and reads
-  too long. Our pauses punctuate, they don't stall. Current engine mapping (v3): **`[BEAT]` → natural (no
-  tag; the voice's own micro-pause carries it) · `[PAUSE]` → a short pause · `[PAUSE:LONG]` → a normal pause**
-  (dialled down from a "long pause"). A wall of identical `[PAUSE]`s is its own metronome, and dense breaks
-  make ElevenLabs unstable.
-- **Flat, compressed loudness is CORRECT** — it's the industry norm and it's what lets a deadpan line
-  land; don't post-process volume drama in.
+This channel's `script.md` is never authored with literal `[PAUSE]`/`[BEAT]` text tags — rhythm comes
+from prosody + the engine's automatic sentence-gap + authored `audio-plan.json` pause cues (see
+`docs/retired-features.md`); the marker/pause mapping above is project-wide engine behavior and stays
+live for any channel that does author those tags.
 
 ## 2. The manifest (assets/voiceover.manifest.json)
 
@@ -126,11 +113,9 @@ Interesting, HeyHistorically — full audio via ffmpeg `ebur128`/`silencedetect`
 
 Field notes for downstream skills:
 - **`audio`** — path relative to the video dir. `null` if the piece was dry-run or budget-skipped.
-- **`est_duration_s`** — from the real mp3 when synthesized (CBR-bitrate size estimate; render-builder
-  or ffprobe may re-measure exactly), or a word-count ÷ 150 wpm estimate in `--dry-run`.
-- **`long_form_est_runtime_s`** — cross-check against the script header's `Estimated runtime`. A large
-  gap means the script word count and the spoken text diverged (markers, edits) — worth a look before
-  rendering.
+- **`est_duration_s`** — from the real mp3 when synthesized (CBR-bitrate size estimate; render-builder/ffprobe may re-measure exactly), or word-count ÷ 150 wpm in `--dry-run`.
+- **`long_form_est_runtime_s`** — cross-check against the script header's `Estimated runtime`; a large
+  gap means the script word count and spoken text diverged (markers, edits) — worth a look before rendering.
 - **`state`** — `synthesized` | `dry-run` | `skipped-budget`.
 - **`transcript`** — the exact spoken text; the QA artifact and what a human reviews at the audit gate.
 

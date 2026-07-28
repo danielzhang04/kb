@@ -11,9 +11,9 @@ bands that set concrete dials in the channel's `audio-tokens.json` + `universal.
 
 ## The load-bearing rule (why this skill exists)
 
-**Deterministic tools produce the numbers; the model only structures/interprets them — it never "listens".**
-An earlier teardown pointed a general video model at the audio and it **hallucinated an SFX inventory that
-wasn't there.** Every number here comes from ffmpeg / librosa / Demucs. Findings are tagged:
+**Deterministic tools produce the numbers; the model only structures/interprets them — it never
+"listens".** A general video model pointed at audio hallucinates an SFX inventory that isn't there, so
+every number here comes from ffmpeg / librosa / Demucs instead. Findings are tagged:
 
 - **`reliable`** — load-bearing, sets dials (loudness, speech gaps, music presence/dips/ducking, breath-by-
   acoustic-bucket).
@@ -25,10 +25,10 @@ Audio FEEL (does this sting land, is the bed too loud) stays the **human's** cal
 
 ## Scope guardrails
 
-- **Audio-only, never video** (`yt-dlp -x`) — no size/timeout, and cuts aren't inferable from audio or
-  load-bearing for us (we control our own render's cuts). Beat maps are **narrative** (transcript-derived).
+- **Audio-only, never video** (`yt-dlp -x`) — cuts aren't inferable from audio or load-bearing for us
+  (we control our own render's cuts); beat maps are **narrative** (transcript-derived) instead.
 - **Deterministic + idempotent** — no wall-clock/random in the measures; stems are content-addressed by
-  video id and cached. Same audio → same numbers.
+  video id and cached, so the same audio always gives the same numbers.
 - **Binaries gitignored** (`*.mp3`/`*.wav`); the scripts + `report.json`/`.md` + `synthesis.md` are the record.
 
 ## How to run
