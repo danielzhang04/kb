@@ -2,12 +2,54 @@
 
 Retired pipeline capabilities — what/why/where the code is parked, for possible re-implementation. Governing files do not re-explain these.
 
-## Engine text overlays + T2 device cards
+## Engine text overlays + T2 device cards (+ `source:"engine"` motion layers)
 
-- What: Remotion components for engine-drawn on-screen text — definition, meter/gauge, stat-callout, chapter, and escalating-counter cards.
+- What: Remotion components for engine-drawn on-screen text — definition, meter/gauge, stat-callout, chapter, and escalating-counter cards — plus any `shots.motion.json` layer authored with `source:"engine"`.
 - Why retired: all in-video text is now baked diegetic into the generated image (signs, ledgers, stamps); a render-time text layer added garble risk the baked image doesn't have.
-- Where parked: component source sits dormant, out of the active render path; no `source: engine` layers are materialized.
+- Where parked: component source sits dormant, out of the active render path; no `source: engine` layers are materialized, and `lint_motion_plan.py`/`motion_plan.py::validate_plan` hard-reject any layer whose `source != "cutout"`.
 - Re-verify: whether baked-diegetic text still holds at higher output volume, and whether the dormant components still match the current Remotion engine version.
+
+## Engine device-card token styling
+
+- What: the `card` (`border_px`/`radius_px`/`shadow`/`tilt_deg`) and `type_on` (`story_chars_per_s`/`card_chars_per_s`) blocks in `motion-tokens.json`.
+- Why retired: these style the same dormant device-card/overlay components as the entry above; with no live consumer, the token values have nothing to drive.
+- Where parked: the blocks stay in `motion-tokens.json` (data, out of scope for doc trims) solely because the parked components still reference their shape.
+- Re-verify: safe to delete once the parked components are formally removed, not before.
+
+## Whip entrance
+
+- What: a whip-pan shot-entrance style, driven by a `whip_frames` motion-token.
+- Why retired: the camera decouple made every shot entrance a hard cut; `entrance` is now always `cut` and is never authored per-shot.
+- Where parked: `whip_frames` remains in `motion-tokens.json` for parity; no code path selects a whip entrance.
+- Re-verify: only if a future camera-authoring surface reintroduces entrance variation.
+
+## `audio_layer` motion-tokens block
+
+- What: an `audio_layer` block in `motion-tokens.json`, once read for audio dials.
+- Why retired: superseded by a separate `visual-kit/audio-tokens.json` that `build_audio.py` now reads exclusively for the `audioSpec`/`MusicLane`/`SfxTrack` behavior.
+- Where parked: any `audio_layer` block still present in a channel's `motion-tokens.json` is stale and silently ignored by the current audio path.
+- Re-verify: safe to delete the stale block from any channel's `motion-tokens.json`; nothing reads it.
+
+## Baked TTS pause tags
+
+- What: `[PAUSE]`/`[BEAT]` inline tags authored directly in `script.md` to control TTS pacing.
+- Why retired: this channel's rhythm now comes from VO prosody + the engine's automatic per-sentence gap splice + authored `pause` cues in `audio-plan.json` — a baked script tag can't coordinate with bed/SFX the way a cue can.
+- Where parked: `voiceover.py` still carries the v3 tag-translation / v2 strip for portability; `script.md` is never authored with these tags on this channel.
+- Re-verify: only if a future channel needs pacing control the sentence-gap + pause-cue system can't express.
+
+## 2s SFX truncation
+
+- What: a hard 2-second playback ceiling applied to every SFX file at render.
+- Why retired: it chopped long sounds (applause, collapse) mid-ring; the engine now plays each SFX for its full ffprobe-measured file length.
+- Where parked: removed from the realizer entirely; a long tail is now shaped with `fade_out_s` or a same-anchor `pause`, not a truncation window.
+- Re-verify: not applicable — no truncation path remains; the realizer's overshoot WARN is the only remaining safeguard.
+
+## Human-cost dry pull-back
+
+- What: automatically cutting the music bed to full silence (`dry`) under human-cost narrative beats.
+- Why retired: a full pull-back read heavier than intended; the bed now runs THROUGH human-cost sections, with register carried by track choice + level instead of silence.
+- Where parked: `dry` stays available as a rare, deliberately-authored tool for a genuine big reveal, not an automatic human-cost response; comedic SFX are still withheld on human-cost beats.
+- Re-verify: not applicable — this is a settled register decision, not a capability gap.
 
 ## VPW camera/motion authoring fields
 
