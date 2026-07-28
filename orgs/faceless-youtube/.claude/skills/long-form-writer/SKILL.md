@@ -1,6 +1,6 @@
 ---
 name: long-form-writer
-description: Writes the long-form voiceover script for a picked (and, on research channels, researched) video. Use to script/write/draft a long-form video or run the long-form scripting step — any niche. Reads the picked brief + research.md (if present) + dna.md + storytelling-grammar; writes script.md with [B-ROLL]/[PAUSE] cues. Runs after researcher/idea gate, before shorts, metadata, visuals, voiceover. Do NOT use it for shorts, ideas, research, or metadata.
+description: Writes the long-form voiceover script for a picked (and, on research channels, researched) video. Use to script/write/draft a long-form video or run the long-form scripting step — any niche. Reads the picked brief + research.md (if present) + dna.md + storytelling-grammar; writes script.md as pure voiceover prose. Runs after researcher/idea gate, before shorts, metadata, visuals, voiceover. Do NOT use it for shorts, ideas, research, or metadata.
 ---
 
 # long-form-writer
@@ -62,7 +62,10 @@ order is the flat-explainer failure.
    design the retention arc now (grammar §2.6). Set the humor register off `dna.md`'s dial, and gather
    the video's **cultural material** here, because it belongs to the writer and never to the researcher:
    the era anchors (what does everyone picture when they hear 1983?), the candidate modern comparisons,
-   and the joke angles the story invites. **WebSearch is licensed at this step**, for era texture and for
+   and the joke angles the story invites. On a company story, gather what the **rise beat** needs while
+   you are here (grammar §2.7): how big they got, who they sold to, and the modern company their peak
+   revenue can be measured against, so the climb is on hand before the fall is written. **WebSearch is
+   licensed at this step**, for era texture and for
    checking that a reference is universally understood (the bar: a general viewer pictures it instantly;
    the approved excerpts in `channels/<name>/example-scripts.md` are the calibration). Anything the
    script then states as fact still lives on the leash.
@@ -80,15 +83,18 @@ mid-draft is what flattens the voice.
 
 ### 3c — Leash pass: now check every claim
 
-Trace every factual claim to its `[F-NN]`; cut or hedge anything unsourced (`Conf: low` → hedge or
-cut); date-sensitive mechanics carry their "as of <year>". The casual draft stays the voice source of
-truth: make the **smallest local factual correction** and preserve sentence order, conversational
-joints, repetitions, slang, comic rhythm, and narrator presence. A claim that can't be fixed locally
-gets flagged to the writer, never laundered into documentary exposition. Optional inline `<!--F-NN-->`
-traces are allowed; **strip every one before final output.** Put the **Sources** list (the `[S#]`
-entries actually used) at the bottom of `script.md`, and apply the niche policy gate where one exists
-(business-money **defamation discipline** per grammar §4; micro-health ≥2 sources; engineering
-analysis-not-gore; AI-disclosure line where required).
+Trace every factual claim to its `[F-NN]`. **The narration never hedges** (grammar §4): a claim goes in
+as the strongest version the ledger supports, stated flat, or it comes out. Contested and `Conf: low`
+facts are resolved *here, in selection*, never by softening the voiceover, and "by one account,"
+"sources disagree," and "reportedly" never reach the audio. Where the record genuinely cannot answer a
+*why* the story needs, the fix is the narrator's transparent speculation ("Don't ask me why. Maybe…"),
+not a confession about sourcing. Date-sensitive mechanics carry their "as of <year>".
+
+The casual draft stays the voice source of truth: make the **smallest local factual correction** and
+preserve sentence order, block structure, conversational joints, repetitions, slang, comic rhythm, and
+narrator presence. A claim that can't be fixed locally gets flagged to the writer, never laundered into
+documentary exposition. Optional inline `<!--F-NN-->` traces are allowed; **strip every one before
+final output.**
 
 ### 3d — Critics + humanize (`references/critics.md`)
 
@@ -113,24 +119,25 @@ a `research.md` exists, run the `humanizer` skill, then Step 4.
 
 ---
 
-## Step 4 — Markup & shape (every mode)
+## Step 4 — Shape & header (every mode)
 
 The craft lives in the grammar — apply it, don't re-derive it. The execution contract:
 
-- **Pause cues**, sparingly: `[BEAT]` ~0.3s · `[PAUSE]` ~0.6s · `[PAUSE:LONG]` ~1.2s before a reveal.
-  Pacing otherwise lives in punctuation (new sentence/colon = cut-in; ellipsis = held beat; comma =
-  catch); never an em/en dash. (v3 channels may use `[aside: dry]`/`[emote: sighs]`; stripped on v2.)
-- **`[B-ROLL]` cues are meaning anchors, not the shot list.** Cue the beat's meaning/emotion
-  (`[B-ROLL: the promise everyone believed]`), not a literal picture — `visual-prompt-writer` reads
-  them as its spine and owns shot count, pacing, and durations. Surface claims in the narrator's
-  reported form so the visual can unmask them; reach for vivid verbs/idioms the visual can draw
-  literally.
-- **Runtime header:** **`Estimated runtime: MM:SS` is REQUIRED, never `TBD`** — computed at the
-  **channel voice's measured wpm** from `dna.md` (fallback 150) PLUS the authored pause cues
-  (`[PAUSE]`/`[BEAT]`/`[PAUSE:LONG]`). `lint_script.py --wpm <N>` prints the exact string to paste,
-  now including the pause-cue seconds, and hard-fails without it. Header `Target length` is the
-  channel norm (grammar §2.3) — 8–10 min for this channel via `dna.md` — not the brief's aspirational
-  band.
+- **`script.md` is pure voiceover prose:** the words the narrator says, in paragraphs, and nothing
+  else. No pause or beat cues, no visual anchors, no stage directions, no bracketed markup of any
+  kind. Default sentence gaps are the render engine's; a deliberate pause is `audio-director`'s call;
+  visual segmentation belongs to `visual-prompt-writer`, which reads the prose. Pacing inside the
+  script is punctuation (new sentence/colon = cut-in; ellipsis = held beat; comma = catch); never an
+  em/en dash. Paragraphs are idea blocks, not one-line drops (grammar §1.1).
+- **Runtime header:** **`Estimated runtime: MM:SS` is REQUIRED, never `TBD`** — words ÷ the **channel
+  voice's measured wpm** from `dna.md` (fallback 150). That rate is gross, so it already embeds the
+  narrator's natural pausing; nothing is added on top. `lint_script.py --wpm <N>` prints the exact
+  string to paste and hard-fails without it. Header `Target length` is the channel norm (grammar §2.3)
+  — 8–10 min for this channel via `dna.md` — not the brief's aspirational band.
+- **Sources:** on research channels, the `[S#]` entries actually used go at the bottom of `script.md`.
+- **Policy gate:** apply the niche policy gate where one exists (business-money **defamation
+  discipline** per grammar §4; micro-health ≥2 sources; engineering analysis-not-gore; AI-disclosure
+  line where required).
 
 ## Step 5 — Status + handoff
 
@@ -146,8 +153,9 @@ one-line leash note (any claim cut for lack of a source). `script.md` is the sou
 ## Output contract (what downstream reads)
 
 - `videos/<slug>/script.md` — header (source idea ID, target length, voice, **`Estimated runtime:
-  MM:SS`**) + the VO script with `[B-ROLL]`/pause cues + Sources on gated niches. No `<!--F-NN-->`
-  traces or outline comments. Beat timestamps (if any) from cumulative words ÷ 150, never round
-  numbers.
+  MM:SS`**) + the voiceover prose + Sources on gated niches. No cues, no brackets, no timestamps, no
+  `<!--F-NN-->` traces or outline comments: everything below the header is speakable. Downstream
+  stages that still expect authored cues are recorded debt in `knowledge/decisions.md` and
+  `docs/STATUS.md`, not a reason to write them here.
 - `videos/<slug>/brief.md` — the copied idea brief.
 - Shorts are **not** written here — `shorts-writer` owns `videos/<slug>/shorts/`.
