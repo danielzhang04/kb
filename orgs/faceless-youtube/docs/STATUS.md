@@ -69,16 +69,22 @@ defect that will recur until fixed.
   asides and generic audience-facing `you` are allowed. No quotes — all character speech is narrator-reported.
   Reconciled across `long-form-writer`, `universal.md` §5c/§5d/§1d-V,
   `dna.md`, `researcher`, `shorts-writer`, `reference-channels.md`, and the visual grammar.
-- **Scriptwriter — REBUILT + PROVEN (2026-07-08, extended 07-09):** the flat/buttoned-script problem was
-  root-caused (a model self-checking prohibitions shares its own blind spot) and fixed architecturally.
-  The Poyais `script.md` is the hand-locked **GOLD exemplar** (voice + accuracy benchmark).
-  `long-form-writer` generates **casual-first, leash-second** (spine → casual draft → leash-check), then
-  a **critic layer** (Step 3d, `references/critics.md`): taste ∥ leash critics + a **coherence critic**
-  (first-time-viewer pass, capped one-bounce structural rewrite; bar = grammar §3.8 "non-linear but
-  followable") → in-voice editor + `scripts/lint_script.py`. On research channels the writer is LEASHED
-  to the fact-ledger; the `researcher` now captures relational/connective facts (not just atoms). Length
-  norm centered on **~10 min**. Proven on a blind regen (critics caught all leaked buttons + a subtle
-  leash error). **Still open:** validate the writer on a *fresh* topic (generalization beyond Poyais).
+- **Scriptwriter — REBUILT + PROVEN (2026-07-08, extended 07-09); scripting overhaul LANDED 2026-07-28
+  on `claude/fyt-writer-grammar-slim`:** the flat/buttoned-script problem was root-caused (a model
+  self-checking prohibitions shares its own blind spot) and fixed architecturally. The voice bar is now
+  `channels/the-second-take/example-scripts.md` (Daniel's approved excerpts; replaces the retired
+  `personable-calibration.md` and the earlier Poyais-as-gold framing, and is designed to grow with future
+  approved excerpts). The blind fixture/candidate protocol is retired: acceptance is a fresh writer run
+  Daniel reviews directly. The writer now runs a cultural-pull sweep inside Step 3a (era anchors,
+  comparisons, joke angles, WebSearch-licensed for era texture and the universality bar). Voice dials
+  moved to `stability: 0.20` / `style: 0.6`. `long-form-writer` generates **casual-first, leash-second**
+  (spine → casual draft → leash-check), then a **critic layer** (Step 3d, `references/critics.md`): taste
+  ∥ leash critics + a **coherence critic** (first-time-viewer pass, capped one-bounce structural rewrite;
+  bar = grammar §3.8 "non-linear but followable") → in-voice editor + `scripts/lint_script.py`. On
+  research channels the writer is LEASHED to the fact-ledger; the `researcher` now captures
+  relational/connective facts (not just atoms). Length norm centered on **~10 min**. **Next: a fresh
+  Bricks acceptance run** (scratch slug, zero spend, old script untouched) is the test of the whole
+  scripting-overhaul exercise.
 - **proxy-judge ("taste me") — BUILT + PAUSED (2026-07-09):** additive, advisory-only acceptance gate
   after `humanize` proxying Daniel's accept/revise/reject + `/36`. On branch
   `feat/proxy-judge-story-editor-me` (NOT merged; changes nothing until invoked). Verdict agreement 3/3;

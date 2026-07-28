@@ -22,7 +22,7 @@ name the substantive changes he would want.
 
 ## Read first (in this order)
 
-1. `long-form-writer/references/personable-calibration.md` — the approved voice excerpt. This is the bar; internalize its
+1. `channels/<ch>/example-scripts.md` — the approved excerpts. This is the bar; internalize their
    density and voice before judging anything.
 2. `storytelling-grammar.md` — the channel's craft law (voice, story, structure, staging).
 3. The **TRAINING** section of `calibration-set.md` — Daniel's labeled judgments (accept / revise /

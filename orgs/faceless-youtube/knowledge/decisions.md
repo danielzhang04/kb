@@ -3242,3 +3242,34 @@ run brief binds nobody — a fresh terminal reads the style-bible and skill docs
   measured wpm (`lint_script.py --wpm`); humanize folded into the critic cycle (writer 3d); Step 6
   folded into 3c; **all human-cost comedy rules removed from scripting docs** (grammar, critics, dna
   dial, shorts-writer, calibration note) — irrelevant for now per Daniel.
+
+## 2026-07-28 - scripting overhaul: example-scripts.md voice bar, blind protocol retired, writer cultural pull (Daniel)
+
+- **Blind control/candidate protocol retired,** reversing the 2026-07-26 blind-validation plan. Reason:
+  Bricks became a teaching exemplar rather than a held-out test case, so acceptance is now a fresh
+  writer run Daniel reviews directly, not a blind fixture comparison. All "blind fixture" / "blind
+  reader bundle" machinery removed from `critics.md` and the calibration doc.
+- **`channels/the-second-take/example-scripts.md` replaces `personable-calibration.md`** as the voice
+  bar: channel data now lives with the channel instead of inside the writer skill. The file is designed
+  to grow with future Daniel-approved excerpts, each carrying a short "what this demonstrates" note.
+  Writers match its energy; judges judge against it; every reference across the writer, critics,
+  proxy-judge, facets manifest, and shorts-writer was retargeted.
+- **Excerpt cuts are taste verdicts:** lines Daniel deleted from the MacGregor excerpt are purged as
+  grammar exemplars, not merely trimmed prose. Every inline grammar example is now drawn only from the
+  approved excerpt text (or the endorsed Bricks cold open); nothing invented or legacy survives as an
+  example.
+- **Hook shapes are an open set; doorway/wink/gloss sanctioned by rewording rules, not by exceptions.**
+  The paradox cold open and the era drop-in are named shapes; other shapes may be invented. What stays
+  dead is outlining the story's beats. The spoiler wink, the plain doorway line, and the everyman gloss
+  are now normal speech inside the reworded rules. Alternative rejected: bolting on exception lists to
+  the existing prohibitions; Daniel's ruling is to change the rule, not except around it.
+- **Writer owns cultural pulls, not the researcher.** Inside Step 3a (outline), the writer now gathers
+  era anchors, candidate modern comparisons, and joke angles per beat, with a WebSearch license for era
+  texture and for checking a reference clears the universality bar. Alternative rejected: a
+  researcher-side analogy section; Daniel's ruling is that cultural material belongs with the writer,
+  and the fact leash still governs anything stated as fact.
+- **Voice dials moved to `stability: 0.20`, `style: 0.6`** (from 0.25/0.4) for more variance and vocal
+  emphasis, superseding the 0.25 consistency lock; re-proof by ear on the next real VO render.
+- **Era anchor "Walkman" rejected; replaced with Pac-Man.** The universality bar is empirical, not a
+  vibe call: if a general reader would not instantly picture the reference, it is out, no matter how
+  period-accurate it is. Pac-Man cleared the bar where Walkman did not.

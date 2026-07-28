@@ -13,7 +13,7 @@ def test_resolves_story_paths():
     r = resolve("story", "the-second-take", ROOT)
     assert r["grammar"].name == "storytelling-grammar.md"
     assert r["grammar"].exists()
-    assert r["voice"].name == "personable-calibration.md"
+    assert r["voice"].name == "example-scripts.md"
     assert r["voice"].exists()
     assert r["calibration"].name == "calibration-set.md"
     assert "verdict-only" in r["gates"]
