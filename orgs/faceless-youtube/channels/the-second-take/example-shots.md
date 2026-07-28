@@ -1,7 +1,5 @@
 # The Second Take: example shots (depiction bar)
 
-<!-- PENDING Daniel approval — gate B -->
-
 **What this is:** the channel's non-literal calibration for `visual-prompt-writer`, the shot-side
 counterpart to `example-scripts.md`. Each pair is a script line paired with the ideal shot
 `visual-grammar.md`'s literal/non-literal bar argues for, mined from the strongest beats in
