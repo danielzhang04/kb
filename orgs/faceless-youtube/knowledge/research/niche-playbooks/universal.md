@@ -1420,7 +1420,7 @@ at a stage start.
    half; any hold over ~8s is a progressive build.
 8. **Audio (co-equal layer)** — SFX/pause/music/dry spans authored by `audio-director` as one
    `audio-plan.json` (distinct from the script's own `[PAUSE]`/`[BEAT]` VO prosody); dial values
-   live in `audio-tokens.json` + its `grammar-guidance.md`.
+   live in `audio-tokens.json`; the placement laws are the `audio-director` SKILL's.
 9. **Typography law:** ONE handwritten/marker family; sentence case for spoken lines, ALL-CAPS
    for labels/warnings; red is the only emphasis ink; numbers/dates live on diegetic surfaces
    (§13 rule 4); no burned captions in long-form.
