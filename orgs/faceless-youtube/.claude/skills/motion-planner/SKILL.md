@@ -18,17 +18,12 @@ animations). Rules: `references/animation-rules.md`. Critic: `references/critics
 ## Procedure
 
 1. **Read** the video's `shots.json`, plus `animation-rules.md` and `shots-motion-schema.md`.
-2. **Classify each shot** by the **two-test boundary** (`animation-rules.md`). A held scene evolves one of
-   two ways: **DELTA-CHAIN when the change is INTEGRATIVE** (the element fuses into the scene's
-   architecture — a city grows a bank, gold threads the streets): regenerate seeded off the prior frame
-   (base + ≤3 deltas; **a re-base inside the SAME location seeds the prior stage's BASE frame, never a
-   fresh canonical**). **LAYER when the change is DISCRETE** (the element sits on the scene without fusing —
-   a character enters, a stamp slams onto a page): keep the plate, composite an animated cutout. A cutout
-   layer requires BOTH: the change is **DISCRETE** (not integrative) **AND** the cutout is **SEEDABLE**
-   (from a character/prop canonical, or from the plate it lands on + a `refs/env/` style anchor — an
-   unseeded cutout invents its own register). The planner's menu is **cutout-only**: `slide` · `path`
-   (+ `draw_line`) · `appear` · `bob`. There are no device cards and no engine text — all in-video text is
-   diegetic (baked into the still); the engine draws only the route line.
+2. **Classify each shot** by the **two-test boundary** (`animation-rules.md`; full law in
+   `knowledge/research/niche-playbooks/universal.md` §13a-ii): a change that is **DISCRETE AND SEEDABLE**
+   becomes a cutout LAYER on a kept plate; an **INTEGRATIVE** change becomes a **DELTA-CHAIN**
+   regenerated seeded off the prior frame; everything else stays **passthrough**. The planner's menu is
+   **cutout-only**: `slide` · `path` (+ `draw_line`) · `appear` · `bob`. There are no device cards and no
+   engine text — all in-video text is diegetic (baked into the still); the engine draws only the route line.
 
    Default = **passthrough** (`background.mode: "plate"`, its existing `scenes/<id>.png` as `plate`,
    `layers: []`). A `delta-chain` (shared `stage`/`stage_role`) passes through untouched **unless its delta
@@ -53,27 +48,16 @@ animations). Rules: `references/animation-rules.md`. Critic: `references/critics
 3. **Decompose layered shots BY SUBTRACTION** (never re-author from scratch): `plate_prompt` = the shot's
    `still_prompt` minus the cutout elements (in-video text is NOT subtracted — it stays baked diegetic;
    state what fills the region so no blank slot is left); `cutout_prompt` = the single element alone on a
-   plain plate.
-   **SUPPLIED-TEXT law (HARD, lint-enforced).** Subtraction is not a licence to *paraphrase* an element.
-   If the `still_prompt` bakes a value — a number, a name, a date, a stamp face — carry that literal
-   **verbatim** into the `cutout_prompt`/`plate_prompt`; never restate it as a description. Writing
-   *"a large marker scorecard number painted on its face"* where the shot means the numeral `'8'` hands
-   the value to the diffusion model, which invents one — it rendered `1`. That exact line, in this file,
-   is how a fabricated on-screen fact shipped in the Wells Fargo documentary about a real, named person.
-   If the source prompt genuinely supplies no value, **cut the element** rather than gesture at it, and
-   flag the gap back to `visual-prompt-writer` — never invent a plausible number to fill it.
-   **LETTERING-FIDELITY laws (also HARD, also lint-enforced).** Subtraction inherits the still's wording
-   wholesale, which makes a `cutout_prompt` the easiest surface in the pipeline for these:
-   - **Carry a literal VERBATIM, never RECASED.** A cutout redraws every glyph from scratch, so a
-     lowercased literal is a guessed literal — the still's `'CHECKING'` becoming *"the checking
-     passbook"* is exactly what rendered `CHECKIG` on L12.
-   - **Strip production-control vocabulary when you subtract.** "hold ONLY the rig form" and "comedy
-     off" travel out of the `still_prompt` unless you delete them, and a cutout is a lone element on a
-     plain plate — the easiest possible surface for a stray instruction to get lettered onto. Both
-     `rig form` and `COMEDY OFF` shipped as artwork in this channel.
-   - **≤4 words per authored string**, uniformly.
-   `lint_motion_plan.py` imports all of these from `lint_shots.py` — one implementation, two callers.
-   Full law + worked examples: `visual-prompt-writer/references/shots-schema.md §4`.
+   plain plate. Two corollaries belong to the subtraction step itself — the supplied-text and
+   lettering-fidelity laws in full are `visual-prompt-writer/references/shots-schema.md` §4, which
+   `lint_motion_plan.py` imports from `lint_shots.py` and HARD-fails on:
+   - **Carry every literal VERBATIM and case-exact** into the `cutout_prompt`/`plate_prompt`. A cutout
+     redraws every glyph from scratch, so a paraphrased or lowercased literal is a guessed literal and
+     the engine invents one. If the source prompt genuinely supplies no value, **cut the element** and
+     flag the gap back to `visual-prompt-writer` — never invent a plausible number to fill it.
+   - **Strip production-control vocabulary when you subtract.** Rig and comedy directions travel out of
+     the `still_prompt` unless you delete them, and a lone element on a plain plate is the easiest
+     surface in the pipeline for a stray instruction to get lettered onto. Authored strings stay ≤4 words.
 4. **Fresh-eyes critic** (`references/critics.md`, a fresh-context reviewer) → apply its fixes in ONE
    revise pass. The #1 defect it catches: a `plate_prompt` that still implies a moved element.
 5. **Write** `videos/<slug>/shots.motion.json` (schema per `shots-motion-schema.md`).
@@ -83,7 +67,7 @@ animations). Rules: `references/animation-rules.md`. Critic: `references/critics
    plate reuse must be an earlier same-stage shot — no chaining across stages or forward in time).
    It also validates `baseline_life`, camera move/pan/intensity, and rejects a camera declaration on a
    later stage delta.
-7. **Human gate:** present a short summary — which shots got Family-A motion and the animation each — for
+7. **Human gate:** present a short summary — which shots got cutout motion and the animation each — for
    the human to approve BEFORE image-generation spends tokens. The human authors the ruleset's taste; the
    planner applies it.
 

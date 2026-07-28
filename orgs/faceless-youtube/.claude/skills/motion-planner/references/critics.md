@@ -22,8 +22,7 @@ per layered shot:
    its plate/style anchor must be named).
 5. **Re-base seed** — a re-base frame inside the SAME location that doesn't chain from the stage's BASE
    frame (it seeds a fresh canonical, or a different prior stage) → flag. A re-base must seed the prior
-   stage's base frame or the held set drifts (chunk-1 evidence: a dropped base produced two different
-   swamps).
+   stage's base frame or the held set drifts into two different versions of the same place.
 6. **Missed motivated layer** — flag a clearly separable object that enters, travels, accumulates, or
    reveals on the spoken beat but was baked static without a stated practical or visual reason. Do not
    demand layers for ordinary held tableaux, integrative changes, or to hit a coverage quota.
