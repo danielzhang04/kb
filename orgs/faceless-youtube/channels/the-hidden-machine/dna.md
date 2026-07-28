@@ -27,15 +27,35 @@ task. Fields marked TODO are set at channel creation (genesis in progress — se
 
 ## Doctrine (universal.md §1a — one lever per channel, never per video)
 
-- **Locked emotional lever:** TODO — pick ONE from the 10 named levers in `universal.md §1a`
-  (curiosity gap is the carrier for all; the underlying arousal lever is: morbid curiosity /
-  awe / morbid awe-dread / righteous anger / vindication-forbidden-knowledge / schadenfreude /
-  hope-porn [face-required, avoid for faceless] / tribal identity / wonder-puzzle). **This is
-  the load-bearing brand decision — cross-lever content gets flagged as slop by the July-2025
-  policy classifier AND by the human audience.** Every idea and script must serve this lever.
-- **Named refusals:** TODO — categories of content this channel explicitly does NOT do (e.g.
-  Zack D. refuses non-visualizable topics; Bright Side refuses non-evergreen). Holds the DNA
-  legible.
+- **Locked emotional lever (2026-07-28, Daniel):** **Scale-shock** — the disproportion between the
+  viewer's tiny, ordinary action and the colossal machinery that action sets in motion ("I did
+  THAT?"). It is the §1a **awe** lever (perceived vastness that dwarfs the self) narrowed to one
+  specific trigger: the gap between a human-scale input and a civilization-scale consequence,
+  measured in orders of magnitude. Register sample (spirit, not a script template): cold open —
+  *"Your thumb moved one centimeter. That started a relay across 14,000 miles — 200,000 tons of
+  steel began moving because of it."* Every idea and script must make that gap **felt**, not just
+  stated — this is the load-bearing brand decision; cross-lever content gets flagged as slop by the
+  policy classifier and by the human audience.
+- **What it licenses:** earned magnitude contrasts — the human action must be genuinely small and
+  the system response genuinely large, never inflated to fit; scale-facts (weight, distance, count,
+  speed) doing the emotional work directly rather than decorating it — concrete-object +
+  startling-number is the proven converter (`reference-channels.md` §2, Branch Education's
+  transistor-count hook); an arc that runs **vertigo → wonder**, landing on revelation ("the
+  machine was always this big; you just never looked") — **never on dread.**
+- **Named refusals:** no topic where the true scale is modest — never inflate a number to
+  manufacture the lever where it isn't earned; no alarmism / fragility-porn (the system is
+  fragile, could fail, should scare you) — that is a different channel's lever, rejected
+  2026-07-28; no comedic-deflation register (Half as Interesting's lane — the punchline undercuts
+  the scale instead of landing it); no competence-lecture register (Practical Engineering's lane —
+  admiration for the engineers/design, not vertigo at the size); never open on the object or the
+  structure itself — the wedge requires opening inside the human action, before the machine is
+  named.
+- **Lever vs. wedge:** the wedge (open inside the action) is the doorway; scale-shock is what walks
+  through it once the door is open.
+- **Alternatives rejected at the gate:** awe-of-the-invisible (unenforceable as a script-time
+  check — too vague to fail a script against); competence-reverence (Practical Engineering's home
+  register, not a wedge onto it); fragility-tension (disaster-adjacent, reads as dread rather than
+  the vertigo-then-wonder arc this channel owns).
 
 ## Format
 
