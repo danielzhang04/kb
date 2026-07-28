@@ -44,15 +44,15 @@ viewer pictures instantly.
 
 ## Bricks / the era drop-in intro
 
-<!-- PENDING Daniel approval, gate ② -->
-
 > We're in the 1980s. Home to big hair, Pac-Man, and one of the funniest corporate scams that you've never heard of.
 >
-> Back then, a new computer hitting the shelves was the iPhone launch of its day. People lined up for it. And computers run on these things called hard drives, which are basically where your computer keeps everything it remembers. Every single machine needed one.
+> It's 1983, and personal computers had just hit the market a few years earlier. They were all the rage. Anybody who had money was buying themselves a computer. It was like when Apple released the iPhone.
 >
-> So one company skipped the computers entirely and got rich selling the drives that went inside everybody else's. Picks and shovels in a gold rush. You don't pan for the gold, you sell shovels to the guys who do.
+> Well, computers run on these things called hard drives, which are basically where your computer keeps everything it remembers. Your files, your photos, your games: all of it lives on the hard drive. So while the computer companies fought for the spotlight, the hard drive guys quietly made a killing. They were the people selling picks and shovels in the gold rush.
 >
-> And it worked. For years, it worked beautifully. Then, well, the title gives it away. Here is the story of that company.
+> And one of those companies packaged 26,000... well, the title gives it away... red clay bricks into little boxes labelled "hard drive", and sold them to customers around the world. [PAUSE] Here is the story of that company.
+>
+> MiniScribe was founded in...
 
 **What this demonstrates.** The era drop-in hook: set the viewer down in a period on anchors everyone
 already pictures, then say plainly what kind of story is coming. The everyman gloss explains a hard
