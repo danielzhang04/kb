@@ -8,8 +8,8 @@ clone. Read it every run; where it conflicts with generic doctrine, this doc win
 reacting to it as they go, explaining it with comparisons you instantly picture. Not a writer crafting
 prose, not a finance teacher. **Raw and a little messy beats polished and bland.**
 
-**The voice reference:** the approved excerpt at `long-form-writer/references/personable-calibration.md`.
-That is the target energy. Match it; don't quote it.
+**The voice reference:** the approved excerpts in `channels/the-second-take/example-scripts.md`. That is
+the target energy, and every inline example below is drawn from it. Match it; don't quote it.
 
 ---
 

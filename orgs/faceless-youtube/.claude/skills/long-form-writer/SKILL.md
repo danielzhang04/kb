@@ -37,7 +37,7 @@ the story exists (Steps 3a–3c). The facts never shape the voice; the voice car
   contract — its supported or revised stake, mechanism, payload, cold open, and titles override
   conflicting brief text; never reuse anything under **Unsupported promises**.
 - **`channels/<name>/storytelling-grammar.md`** — the craft law. Read every run, plus
-  `references/personable-calibration.md` (the voice reference) where the channel routes to it.
+  `channels/<name>/example-scripts.md` (the approved excerpts: the voice bar) where the channel has one.
 - **`channels/<name>/dna.md`** — length band, locked lever, narrator persona, humor dial.
 - **Policy** (consumed at Step 6): `knowledge/playbook.md` + the policy quirk in
   `knowledge/research/niche-playbooks/<niche>.md`.
@@ -68,7 +68,7 @@ order is the flat-explainer failure.
 
 ### 3b — Story pass: casual, ledger set aside
 
-Draft the whole script to the spine in the channel's voice (grammar §1 + the calibration excerpt), as
+Draft the whole script to the spine in the channel's voice (grammar §1 + the approved excerpts), as
 if telling it out loud. Write to the *story*, not fact-coverage. No fact-checking here — checking
 mid-draft is what flattens the voice.
 

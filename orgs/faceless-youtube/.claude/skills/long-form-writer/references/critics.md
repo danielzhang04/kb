@@ -2,7 +2,7 @@
 
 This is the enforcement layer for the defects a writer **cannot catch in its own prose** — the taste and
 voice flaws that survive self-editing because the writer already made the judgment call when it wrote the
-line. A blind regen proved it: the writer shipped grandeur buttons and dwell straight through its own editor
+line. A regen from inputs alone proved it: the writer shipped grandeur buttons and dwell straight through its own editor
 pass. Fresh, single-mandate readers with no attachment to the draft catch what the writer structurally can't.
 
 **Scope:** this runs in `long_form: staged` Step 3d, after the leash pass (3c), before humanize (Step 5). It
@@ -37,9 +37,8 @@ usually fixed by building the missing connection into the telling or resequencin
 structural findings go to the *writer* (who owns structure), not the *editor* (who only touches flagged lines).
 
 **Everyone reads the bar first:** every agent below receives `storytelling-grammar.md` (the craft rules,
-including §3.7 non-linear-but-followable, and the §5 before→after bank) plus the approved
-`personable-calibration.md` excerpt. Blind fixtures receive the purpose-built reader bundle instead: approved
-brief, research/ledger, the grammar's rules, and that excerpt. They receive no legacy candidate script.
+including §3.7 non-linear-but-followable, and the §5 before→after bank) plus the approved excerpts in
+`channels/<name>/example-scripts.md`.
 
 ---
 
@@ -66,8 +65,8 @@ brief, research/ledger, the grammar's rules, and that excerpt. They receive no l
 > separate critic owns that).
 >
 > **Read first, they define the target:** `storytelling-grammar.md` for the craft rules, §1–§2 voice/story
-> principles, and §5 before→after bank; then `personable-calibration.md` for the right narrator energy,
-> analogy use, chaptering, and delivery. Do not load any legacy script for a blind fixture.
+> principles, and §5 before→after bank; then `channels/<name>/example-scripts.md` for the right narrator
+> energy, analogy use, chaptering, and delivery.
 >
 > **Hunt for these, and only these. Quote the exact offending text for every finding:**
 > 1. **Grandeur / summary buttons** — a beat that ends on a summary, thesis, or profound line instead of a
@@ -156,8 +155,8 @@ brief, research/ledger, the grammar's rules, and that excerpt. They receive no l
 > piece connects*.
 >
 > **Read first:** `storytelling-grammar.md` §3 (structure), especially **§3.7 (non-linear, but followable)**
-> and **§3.6 (pre-spoiled endings / withheld payoffs)**, plus `personable-calibration.md`. That is the bar:
-> jumping around is GOOD; losing the viewer is the defect. Do not load a legacy script for a blind fixture.
+> and **§3.6 (pre-spoiled endings / withheld payoffs)**, plus `channels/<name>/example-scripts.md`. That is
+> the bar: jumping around is GOOD; losing the viewer is the defect.
 >
 > **Flag only genuine, UNEARNED confusion. Quote the exact text and say what a real viewer would ask:**
 > 1. **Used-before-introduced** — a person, place, company, or term the story leans on before it has been
@@ -196,8 +195,8 @@ brief, research/ledger, the grammar's rules, and that excerpt. They receive no l
 > line-level fixes yourself rather than letting each critic hack at the prose. (Any **[STRUCTURAL]** coherence
 > finding is NOT yours — it goes to the writer structural pass below.)
 >
-> **Read** `storytelling-grammar.md` (craft rules + §5 bank) and `personable-calibration.md` so your rewrites
-> land in the channel's voice. Do not load any legacy script for a blind fixture.
+> **Read** `storytelling-grammar.md` (craft rules + §5 bank) and `channels/<name>/example-scripts.md` so
+> your rewrites land in the channel's voice.
 >
 > **Rules:**
 > - **Touch only flagged lines.** Do not free-write, re-order, or "improve" lines no critic flagged. Your job
@@ -223,7 +222,7 @@ brief, research/ledger, the grammar's rules, and that excerpt. They receive no l
 > the structure so the through-line is followable (grammar §3.7) while keeping the voice and staying leashed.
 >
 > **Read** `storytelling-grammar.md` (craft rules, §1 voice, §3 structure incl. §3.7),
-> `personable-calibration.md`, and `research.md` (the ledger). Do not load a legacy script for a blind fixture.
+> `channels/<name>/example-scripts.md`, and `research.md` (the ledger).
 >
 > **Rules:**
 > - Fix the confusion the way the critic tagged it: **resequence, introduce something earlier, or reframe a
