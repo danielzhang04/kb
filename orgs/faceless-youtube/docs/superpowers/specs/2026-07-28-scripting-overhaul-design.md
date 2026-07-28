@@ -70,5 +70,76 @@ REMOVES existing functionality — nothing is bolted on as an exception or a "do
 
 ## Human gates
 
-① Design/spec — PASSED (this doc). ② Bricks exemplar text — Daniel approves before it enters
-example-scripts.md. ③ Fresh Bricks script — Daniel reviews.
+① Design/spec — PASSED (this doc). ② Bricks exemplar text — PASSED. ③ Fresh Bricks script —
+REJECTED (Daniel 2026-07-28 late: "pretty terrible across the board") → Round 2 below.
+
+---
+
+# Round 2 (same session) — diagnosis rulings after the rejected fresh script
+
+**Root cause:** the docs were still rule-heavy, so the writer optimized against prohibitions and
+produced clipped, dry, hedged, concept-clever prose. Round 2 makes the approved examples dominate and
+deletes the rules that manufactured the dryness. All rulings below are Daniel's, from a line-level
+diagnosis session over the rejected script.
+
+## Voice & prose
+- **Paragraphs are natural idea blocks, ~4–5 sentences on average. No standalone one-liner
+  paragraphs** — short sentences live inside blocks ("And they were HOT." / "Or so they said.").
+  The short-punch rule is DELETED (it was the dryness engine).
+- **Spoken grammar wins 100%** ("none of them are").
+- **Concept-prose is a named kill** ("make the world's version match his target"), and every line
+  must parse literally on first listen ("That's it doing that" fails).
+- **Tense:** past is the storytelling default; present for frames ("We're in the 1980s"), timeless
+  mechanics ("computers run on"), and optionally a scheme's hottest run. The present-tense still-life
+  tableau is banned.
+- **Caps-for-heat and knowing stock phrases licensed** ("they were HOT", "the man, the myth, the
+  legend"); trailer-drama clichés stay dead.
+
+## Humor
+- **Register: warm, irreverent, pop-culture-loaded.** Franchise/meme-with-staying-power references
+  licensed (Thanos, Doctor Strange's sanctums, idiot sandwich, Peloton, Ocean's Eleven,
+  Reddit-revenue). **Profanity in-bounds up to "ass"/"shit" grade; never the f-word.** The old
+  "never memes / smart-not-cringe" language recalibrates to: instant recognition + it HITS.
+  Dry-ironic allowed only when it lands; smirking-distant as house style is out. Dry speech beats
+  ("You rotate") are speech, not comedy — fine. Delete-test unchanged.
+
+## Facts & leash
+- **Hedges banned from narration** ("by one account", "sources disagree" never spoken). Hedging
+  happens in fact SELECTION: state the strongest sourced version flat, or cut.
+- **Research gaps get transparent playful speculation, never confession:** "Don't ask me why. Maybe
+  Wiles was just that charismatic, or maybe there was some under-the-table dealing going on. Either
+  way..."
+- **Company scale lands early** as revenue/valuation against a modern company everyone knows ("as
+  much money as Reddit"); facts enter when the story needs them; visible payoff-plants are a
+  taste-critic kill.
+
+## Story shape
+- **Hook = actor + event + familiar anchor, concrete names.** Still-life, bloodless abstraction,
+  unnamed-mystery-company all dead. Shape stays open; language is what matters.
+- **Wink doctrine SCRAPPED** (neither required nor taught; the approved Bricks exemplar text keeps
+  its own wink line untouched).
+- **Company stories tell the rise before the fall.** Causal chains explicit (each escalation
+  motivated out loud).
+- **Endings are a tone, not a formula:** casual, brisk, unceremonious; settle the story the way a
+  friend wraps up, usually landing an ironic observation or last laugh. No moral, no essay, no
+  crafted profundity (the "one earned resonant image" requirement is deleted — it produced "That's a
+  workday"). Daniel's fate-roundup + ironic-winner ending is ONE example, not the shape.
+
+## Markup — script.md becomes pure prose
+- **The writer authors NO pause cues, NO beats, and NO [B-ROLL] anchors.** Default rendered
+  sentence-gaps live in the engine; deliberate pauses are audio-director's job; visual beat
+  segmentation moves downstream entirely. Lint flips: any bracketed cue in the VO body is a
+  violation; runtime returns to words ÷ measured wpm.
+- **Deferred debt (recorded, not built now):** visual-prompt-writer + image-gen logic rework to
+  consume pure prose comes AFTER scripting is perfected.
+
+## Examples
+- Daniel's three corrected rewrites (company intro, Wiles intro, caper paragraph), the
+  gap-speculation line, and his ending example enter `example-scripts.md` with note blocks; grammar
+  examples re-draw from them. Off-the-dome facts get pinned by a targeted research top-up first
+  (founding, growth marker, 1988 peak revenue + its own restatement, Wiles arrival, second customer,
+  Reddit revenue).
+
+## Round-2 gates
+④ Plan approval before launch. ⑤ Filled [verify] values shown with the grade report (veto window).
+⑥ Fresh Bricks script #2 — Daniel judges.
