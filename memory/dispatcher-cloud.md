@@ -197,3 +197,20 @@
   (physical move on transition) not just a sweep, since it recurs deterministically.
 - Nothing new broke; all pending items already carry wake/decision cards. DIRECT-PUSH path
   expected; PR fallback if branch-restricted.
+
+## 2026-07-28 nightly-review (dispatcher-cloud, cloud self-exec)
+- WORKED: clean nightly. preamble OK, sync_skills --check clean, sync_daemon_dirs --check clean
+  (ran origin/main copy in refs-fallback — script still absent on ops). Dispatcher emitted 1 card
+  (nightly-review 6a68483c-7832ea5f); executed inbox→working→done via cards.transition (which
+  unlinks the old path, so this card does NOT strand), cost step logged, dashboards rewritten.
+- CONFIRMED recurring: scripts/sync_daemon_dirs.py missing on ops (present on main). Wake card
+  6a605ebb-d86dff79 covers it — did NOT file a duplicate.
+- STRANDED held at 4 (NOT grown): same four done-in-inbox cards (6a5dbb3e, 6a5f0cef, 6a605e40,
+  6a65a3cd). Yesterday's card 6a66f89c correctly landed in queue/done/ — so the stranding is NOT
+  deterministic-per-run as an earlier note guessed; those 4 are legacy from older runs. cards.transition
+  unlinks old_path, so the modern path is clean. The 4 legacy files just need a one-time sweep by a
+  human touching ops.
+- Counting lesson: count cards by their `state:` frontmatter field, NOT by directory — 4 done cards
+  physically live in queue/inbox/, so a dir-based count over-reports inbox and under-reports done.
+- Nothing new broke; all pending items already carry wake/decision cards. DIRECT-PUSH expected;
+  PR fallback if branch-restricted.

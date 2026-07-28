@@ -1,5 +1,5 @@
 # Executive Dashboard
-_Generated: 2026-07-27 06:21 UTC by dispatcher-cloud_
+_Generated: 2026-07-28T06:14Z by dispatcher-cloud_
 
 ## Action required
 No cards in `queue/approvals/`. Items owned by / addressed to a human that cannot move without Daniel:
@@ -13,26 +13,29 @@ No cards in `queue/approvals/`. Items owned by / addressed to a human that canno
 The engagement-fold wake asks Daniel to pick one of three paths (wire the queue bridge /
 passkey+UI / claude-subagent fallback) to unpark the six staged `eng-fold-*` cards. The
 budget-gate decision, delivery-gate flip, and the daemon-dir wake are all carried unchanged
-from prior nights — none has moved.
+from prior nights — none has moved. Project gates also awaiting Daniel: faceless-youtube PR #41
+(READY TO MERGE, must merge with `claude/fyt-video-run-test`), Poyais GATE 3 (thumbnail / L17 /
+publish), and the Atlas V2 "Trust" go/no-go.
 
 ## Queue
 | state | count |
 |-------|-------|
 | inbox | 13 |
 | working | 1 |
-| done | 73 |
+| done | 74 |
 | approvals | 0 |
 
 (`queue/inbox/` holds 17 files: 13 truly at `state:inbox` + 4 `state:done` nightly cards
-physically stranded there — see Anomalies. The 13 = 4 human-owned items above + 6 `eng-fold-*`
-cards owned by `dashboard-engine` awaiting the governed-worker bridge + 2 `wf-*` self-lint cards
-owned by `worker-desktop` + the `weekly-audit` follow-up `6a645395`. working = tonight's
-`nightly-review` card, in-flight. done 73 = 69 in `queue/done/` + 4 stranded in `inbox/`.)
+physically stranded there — see Anomalies. The 13 = 4 human/unassigned items above + 6
+`eng-fold-*` cards owned by `dashboard-engine` awaiting the governed-worker bridge + 2 `wf-*`
+self-lint cards owned by `worker-desktop` + the weekly-audit follow-up `6a645395`. working =
+tonight's `nightly-review` card, in-flight. done 74 = 70 in `queue/done/` + 4 stranded in
+`inbox/`.)
 
 ## Last 24h
-- **Cadences:** `nightly-review` dispatched tonight (2026-07-27, card `6a66f89c-3af8cac7`,
+- **Cadences:** `nightly-review` dispatched tonight (2026-07-28, card `6a68483c-7832ea5f`,
   executed by dispatcher-cloud this run — cloud self-executing carve-out). Yesterday
-  (2026-07-26): `nightly-review` (1 dispatch row).
+  (2026-07-27): `nightly-review` (card `6a66f89c-3af8cac7`, 1 dispatch + 1 cost row).
 - **Cost:** $0.00 API-billed today vs **$5.00/day** cap → $5.00 remaining. All steps
   subscription-billed (logged 0.0).
 - **Health:** preamble OK; `sync_skills --check` clean; `sync_daemon_dirs --check` clean —
@@ -58,11 +61,11 @@ owned by `worker-desktop` + the `weekly-audit` follow-up `6a645395`. working = t
   the `ops` branch, so the routine's literal step-2b invocation fails file-not-found on ops; ran
   from a main copy this run (result clean). Already filed in wake-me card `6a605ebb-d86dff79` —
   its drift half stays clean; the missing-script half remains and needs a desktop
-  `sync_daemon_dirs.py --sync` (or amend step 2b). No new card filed — the existing wake-me
-  still covers it.
+  `sync_daemon_dirs.py --sync`/script-mirror (or amend step 2b). No new card filed — the existing
+  wake-me still covers it.
 - **Stale done-in-inbox:** four `nightly-review` cards (`6a5dbb3e-295a9d2b`, `6a5f0cef-53d31df4`,
   `6a605e40-ca81f0c8`, `6a65a3cd-dabf5d57`) sit in `queue/inbox/` at `state:done`, never moved to
-  `queue/done/` (up from 3 last night — yesterday's nightly card joined them). Recurring pattern;
-  candidate for a housekeeping sweep.
+  `queue/done/`. Same four as last night (yesterday's card `6a66f89c` did not join them — it
+  moved to `queue/done/` correctly). Recurring pattern; candidate for a housekeeping sweep.
 - No stale cards in `queue/working/` (only tonight's in-flight card). No preamble failures, no
   skill drift.
