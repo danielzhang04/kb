@@ -122,9 +122,20 @@ defect that will recur until fixed.
   **excerpt-covered-beat default**; and a **verdict-regen mode** in `long-form-writer` (Step 0.4 + the
   critics' verdict-overlay rule) that archives `script.rN.md`, locks Daniel-verbatim lines against every
   downstream agent, and requires generalizable lessons to land in doctrine before a regen runs. Endings
-  stay formula-free (Daniel declined to codify the counterfactual close). Voice bar deliberately NOT
-  refreshed until he accepts the regen. Full rationale: `knowledge/decisions.md` round-4 entry.
-  **Next: the round-4 Bricks regen run** is the live gate and the real test of the whole exercise.
+  stay formula-free (Daniel declined to codify the counterfactual close). Full rationale:
+  `knowledge/decisions.md` round-4 entry. The round-4 Bricks regen was then **accepted** by Daniel
+  (`videos/2026-07-28-bricks-fresh/script.md`).
+  **Blind-generation experiment (2026-07-29): COMPLETE; doctrine wave LANDED.** Two uncontaminated blind
+  drafts of the same story were measured against the accepted script across 36 lenses. Historic defects
+  are dead in both (block rhythm, orphaned callbacks, viewer-staging, hedging, leash, format); staging
+  reproduced only 1-of-2; and doctrine that pairs a ban with a licensed replacement transmits **only the
+  ban** (both blinds used zero heat mechanisms). Landed in response: grammar §1.6 heat inversion, §3.1
+  named shapes (the peak-first rewind), §1.4 pull-first at a mechanism beat, §2.2 precision-is-opt-in,
+  §1.1 unconditional gloss, §2.4 minor-character payoff, the preamble quarry-guard; critics gained the
+  coherence **pre-authorization** flaw, hook-overspend, the quiet-script tripwire, and precision/
+  speculation leash rules; `long-form-writer` 3a.3 became a **spine gate**. The accepted round-4 blocks
+  are now banked in `example-scripts.md`. Full rationale: `knowledge/decisions.md` 2026-07-29 entry.
+  **Next: the next fresh story is the live test** of whether the wave transmits.
 - **proxy-judge ("taste me") — BUILT + PAUSED (2026-07-09):** additive, advisory-only acceptance gate
   after `humanize` proxying Daniel's accept/revise/reject + `/36`. On branch
   `feat/proxy-judge-story-editor-me` (NOT merged; changes nothing until invoked). Verdict agreement 3/3;

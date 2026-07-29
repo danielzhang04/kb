@@ -43,9 +43,9 @@ the story exists (Steps 3a–3c). The facts never shape the voice; the voice car
   contract — its supported or revised stake, mechanism, payload, cold open, and titles override
   conflicting brief text; never reuse anything under **Unsupported promises**.
 - **`channels/<name>/storytelling-grammar.md`** — the craft law. Read every run, plus
-  `channels/<name>/example-scripts.md` (the approved excerpts, the voice bar: absorb it for language,
-  tone, joke grade, pull species, and density; a register, not a quarry and not a minefield). **Where
-  the bar already renders the beat you are drafting, its phrasing is the default** (grammar §1 intro).
+  `channels/<name>/example-scripts.md` (the approved excerpts: absorb them for tone, joke grade, pull
+  species, and density; a register, not a quarry). **Where the bar already renders the beat you are
+  drafting, its phrasing is the default** (grammar §1 intro).
 - **`channels/<name>/dna.md`** — length band, locked lever, narrator persona, humor dial.
 - **Policy** (consumed at Step 4): `knowledge/playbook.md` + the policy quirk in
   `knowledge/research/niche-playbooks/<niche>.md`.
@@ -68,18 +68,20 @@ flat-explainer failure).
    the video's **cultural material** here, because it belongs to the writer and never to the researcher:
    the era anchors (what does everyone picture when they hear 1983?), the candidate modern comparisons,
    which skew heavily to named cultural references (grammar §1.4), and the joke angles the story
-   invites. On a company story, gather what the **rise beat** needs while you are here (grammar §2.7):
-   how big they got, who they sold to, and the modern company their peak revenue measures against, so
-   the climb is on hand before the fall is written, told once and never re-climbed. **WebSearch is
-   licensed at this step**, for era texture and for checking a reference is universally understood (the
-   approved excerpts are the calibration). Anything stated as fact still lives on the leash.
+   invites. On a company story, gather what the **rise beat** needs (grammar §2.7): how big they got,
+   who they sold to, and the modern company their peak revenue measures against, so the climb is on
+   hand before the fall is written, told once and never re-climbed. **WebSearch is licensed here**, for
+   era texture and for checking a reference is universally understood; anything stated as fact still
+   lives on the leash.
 3. **The spine.** 8–14 beats in plain English, one line each, no `[F-NN]` tags, no jargon; note beside
-   each which facts are on hand and which era anchor, comparison, or joke angle that beat carries. Read
-   it back cold for followability (grammar §3.7) and fix by resequencing, never a bolted-on patch. For
+   each which facts are on hand and which era anchor, comparison, or joke angle that beat carries. For
    the title scheme, plan it on a card in **grammar §3.2's staged order**:
    `pressure → the corner they are in → the decision as a moment → the act with its audacious detail →
-   "how did nobody notice?" → the mechanism as the punchline → escalation`. The mechanism goes AFTER
-   the act, never before it; a spoken `Step N` only per grammar §1.5. **Lock the spine before drafting.**
+   "how did nobody notice?" → the mechanism as the punchline → escalation`; a spoken `Step N` only per
+   grammar §1.5. **Then read the spine back cold and gate it:** (a) every mechanism beat sits AFTER the
+   act it explains, (b) the climb is told once (§2.7), (c) scale lands inside the first third (§2.2),
+   (d) a first-time viewer can follow the causal through-line (§3.7). A spine failing any check is
+   resequenced now, never patched with a bolted-on beat. **Lock the spine before drafting.**
 
 **On a regen** (Step 0.4), the sheet's directives are inputs to the plot and spine alongside the grammar;
 every locked line gets a home in the spine, goes in verbatim at 3b, and passes through 3c–3e untouched.
@@ -95,9 +97,9 @@ long pass, and the re-read between acts is what holds the back half at the front
 ### 3c — Leash pass: now check every claim
 
 Trace every factual claim to its `[F-NN]`. **The narration never hedges** (grammar §4): a claim goes in
-as the strongest version the ledger supports, stated flat, or it comes out. Contested and `Conf: low`
-facts are resolved *here, in selection*, never by softening the voiceover, and "by one account,"
-"sources disagree," and "reportedly" never reach the audio. Where the record cannot answer a *why* the
+as the strongest version the ledger supports, stated flat, or it comes out. Contested facts, `Conf: low`
+facts, and ledger ranges are resolved *here, in selection* (a range becomes one flat number), never by
+softening the voiceover; "by one account," "sources disagree," and "reportedly" never reach the audio. Where the record cannot answer a *why* the
 story needs, the fix is the narrator's transparent speculation ("Don't ask me why. Maybe…"), not a
 confession about sourcing. Date-sensitive mechanics carry their "as of <year>".
 
@@ -111,10 +113,9 @@ exposition. Inline `<!--F-NN-->` traces are optional; **strip every one before f
 Fresh, single-mandate agents — the writer can't catch its own taste flaws. Run exactly per
 `critics.md`: mechanical lint (`scripts/lint_script.py`), four parallel flag-only critics (taste,
 leash, coherence, raw-versus-leashed), one editor applying line fixes in voice, at most one structural
-writer bounce, then the **`humanizer` skill as the closing pass** (keep its edits), re-lint. Taste and
-leash are subtractive; coherence is the one structural lane. On a regen, every agent (humanizer
-included) gets the verdict overlay: locked lines are preserved, never rewritten. Still confusing after
-the bounce → surface to the human.
+writer bounce, then the **`humanizer` skill as the closing pass** (keep its edits), re-lint. On a
+regen, every agent (humanizer included) gets the verdict overlay: locked lines are preserved, never
+rewritten. Still confusing after the bounce → surface to the human.
 
 ### 3e — Accept
 
@@ -157,9 +158,8 @@ research channels a one-line leash note (any claim cut for lack of a source).
 
 - `videos/<slug>/script.md` — header (source idea ID, target length, voice, **`Estimated runtime:
   MM:SS`**) + the voiceover prose + Sources on gated niches. No cues, no brackets, no timestamps, no
-  `<!--F-NN-->` traces or outline comments: everything below the header is speakable. Downstream
-  stages that still expect authored cues are recorded debt in `knowledge/decisions.md` and
-  `docs/STATUS.md`, not a reason to write them here.
+  `<!--F-NN-->` traces or outline comments: everything below the header is speakable. Downstream stages
+  that still expect authored cues are recorded debt, not a reason to write them here.
 - `videos/<slug>/script.rN.md` — on a regen, the archived prior round, never edited afterward.
 - `videos/<slug>/brief.md` — the copied idea brief. Shorts are **not** written here; `shorts-writer`
   owns `videos/<slug>/shorts/`.

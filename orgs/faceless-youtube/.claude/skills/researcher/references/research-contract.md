@@ -104,8 +104,11 @@ same sourcing/defamation discipline as the ledger:
   described happening — NOT verbatim lines to stage. **This is extraction depth, not extra searching:** when
   a source is a transcript, interview, or news account, mine it for this material instead of reducing it to
   summary facts. The study's biggest single miss was a rich interview we had *already cited* being flattened
-  to two bullets. Defamation rule still applies — attribute the substance to who said/did it/where; flag a
-  witness account as "reported," not asserted. **Claim ↔ reality pairs:** when a source states a claim /
+  to two bullets. Defamation rule still applies — attribute the substance to who said/did it/where; mark
+  a witness account's sourcing status as reported/anecdotal, not asserted — single-source → color
+  license (storytelling-grammar §4). This is a status tag for the ledger, never narration hedge
+  phrasing ("by one account," "reportedly"): the writer's grammar owns how (or whether) that status
+  reads in the prose. **Claim ↔ reality pairs:** when a source states a claim /
   promise / spin, pair it with the sourced reality that contradicts it (the promise plus the fact that
   unmasks it); only you hold both halves, and that pair is the channel's signature unmasking beat (§4).
 - **Verification chain** — for the vindication lever: what's proven/uncontested vs. soft, the

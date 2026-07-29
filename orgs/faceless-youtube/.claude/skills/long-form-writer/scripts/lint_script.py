@@ -4,9 +4,10 @@
 Checks ONLY what needs no judgment: em/en dashes, leftover fact-traces / outline
 comments, a filled-in header runtime, mechanical Step-card sequences, bracketed
 production cues in the VO body, and the VO word count vs runtime. Quotation
-marks in the VO body, exact credibility-padding phrases, and standalone
-one-sentence paragraphs are reported as non-blocking advisories (quoting and
-paragraph shape are taste calls for the critics, not a lock).
+marks in the VO body, exact credibility-padding phrases, standalone
+one-sentence paragraphs, and a skewed contraction ratio are reported as
+non-blocking advisories (quoting, paragraph shape, and contraction register
+are taste calls for the critics, not a lock).
 
 script.md is pure prose: the writer authors no pause cues, no beats, and no
 [B-ROLL] anchors. Any `[B-ROLL`, `[PAUSE`, or `[BEAT` occurrence in the VO body
@@ -35,6 +36,23 @@ CREDIBILITY_ADVISORIES = (
     (re.compile(r"\bhe actually did\b", re.I), "credibility-padding phrase: he actually did"),
     (re.compile(r"\bhe really did\b", re.I), "credibility-padding phrase: he really did"),
     (re.compile(r"\bseriously\b", re.I), "credibility-padding phrase: seriously"),
+)
+# Contraction-ratio advisory: contraction tokens (closed class, not possessive 's) vs
+# their expandable uncontracted forms at clause starts. A channel voice that runs
+# contracted (the norm for this project's casual-friend register) reading uncontracted
+# at scale is a register drift worth a human look — never a lock.
+CONTRACTION_PATTERN = re.compile(
+    r"\b(?:i'm|i've|i'll|i'd|you're|you've|you'll|you'd|he's|he'll|he'd|she's|she'll|she'd|"
+    r"it's|it'll|it'd|we're|we've|we'll|we'd|they're|they've|they'll|they'd|that's|that'll|"
+    r"that'd|there's|there'll|who's|who'll|what's|what'll|here's|let's|don't|doesn't|didn't|"
+    r"won't|wouldn't|shouldn't|couldn't|can't|cannot|isn't|aren't|wasn't|weren't|hasn't|"
+    r"haven't|hadn't|mustn't|needn't|ain't)\b",
+    re.I,
+)
+UNCONTRACTED_PATTERN = re.compile(
+    r"\b(?:That is|It is|There is|He is|She is|They are|You are|We are|Do not|Did not|"
+    r"Was not|Were not|Is not|Are not|Cannot|Could not|Would not|Should not)\b",
+    re.I,
 )
 
 
@@ -109,6 +127,9 @@ def main(path, wpm=150):
 
     vo_words = 0
     one_sentence_paragraphs = []   # line numbers of standalone one-sentence VO paragraphs
+    contraction_count = 0
+    uncontracted_count = 0
+    uncontracted_lines = []        # line numbers carrying an uncontracted expandable form
     para_start = None
     para_text = []
 
@@ -170,6 +191,11 @@ def main(path, wpm=150):
             for pattern, label in CREDIBILITY_ADVISORIES:
                 if pattern.search(ln):
                     soft.append((lineno, label, stripped))
+            contraction_count += len(CONTRACTION_PATTERN.findall(stripped))
+            uncontracted_hits = UNCONTRACTED_PATTERN.findall(stripped)
+            if uncontracted_hits:
+                uncontracted_count += len(uncontracted_hits)
+                uncontracted_lines.append(lineno)
 
     close_paragraph()  # a final paragraph that runs to the end of the body without a trailing blank
 
@@ -180,6 +206,15 @@ def main(path, wpm=150):
             "one-sentence paragraph",
             f"{len(one_sentence_paragraphs)} one-sentence paragraphs; idea blocks average "
             f"4-5 sentences ({refs})",
+        ))
+
+    if uncontracted_count >= 5 and uncontracted_count >= contraction_count / 2:
+        refs = ", ".join(f"L{n}" for n in uncontracted_lines)
+        soft.append((
+            0,
+            "contraction ratio",
+            f"{contraction_count} contractions vs {uncontracted_count} uncontracted expandable "
+            f"forms (That is / It is / Do not / etc.); channel voice runs contracted ({refs})",
         ))
 
     print(f"== lint: {path} ==")

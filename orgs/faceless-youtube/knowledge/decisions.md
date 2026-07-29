@@ -3469,3 +3469,53 @@ run brief binds nobody — a fresh terminal reads the style-bible and skill docs
   plus three new bank rows exceeded what §1.1/§1.4/§1.5/§2.x/§4/§6 condensation could return without
   dropping enforcement text), critics 335 -> 342 (+7, same reason), SKILL 165 -> 165 (exact).
   `example-scripts.md` byte-identical.
+
+## 2026-07-29 - Blind-generation experiment: what doctrine actually transmits, and the edit wave it bought
+
+- **The design.** Two writers drafted the same Bricks story from the doctrine alone, with no sight of
+  the accepted script, of each other, or of Daniel's verdicts (BLIND A, BLIND B). Both were compared
+  against the accepted round-4 script across 36 lenses (voice, story, structure, staging, leash, format),
+  and every delta was sorted into SYSTEMATIC (present in both blinds, so it is a doctrine hole),
+  VARIANCE (one blind only), and PROTECTED (what the blinds did as well as or better than the ideal).
+  The PROTECTED list is the guard rail: no doctrine edit may weaken a behavior on it.
+- **Headline results.** The historic defects are dead in both samples: zero standalone one-sentence
+  paragraphs, zero orphaned callbacks, zero viewer-staging, zero audible hedges, zero unsourced claims,
+  zero em/en dashes, both endings closing on story rather than meaning, and both aftermath stretches
+  carrying the ideal's pull density. **Staging reproduced 1-of-2**: B staged the caper correctly
+  (pressure -> corner -> decision -> act -> mechanism as punchline) while A taught the test count eight
+  blocks before the bricks were bought and pre-lectured the lockbox before the break-in - the same
+  defect Daniel rejected in round 3, reproduced with no critic hunting it. **Bans transmit, licensed
+  replacements do not:** both blinds obeyed every prohibition and used NONE of the heat mechanisms (zero
+  caps for heat, flat fixer introductions, almost no stock-idiom reach, A no profanity at all), because
+  every mechanism was written as a subordinate clause inside a paragraph whose headline is a ban.
+- **Edits landed (this wave).** Grammar: §1.6 inverted so the four heat mechanisms lead affirmatively
+  with the bans as the boundary; §3.1 now names the **peak-first rewind** as the proven shape for a
+  company rise-and-fall (satisfying §2.7 one-climb and §2.2 scale-early by construction); §1.4 inverted
+  so a named pull is the FIRST reach at a mechanism beat and prose explanation is the fallback; §2.2
+  rewritten as **precision is opt-in** (friend-rounded by default, a ledger range resolved flat in
+  selection, a comedic scale pull committed flat); §1.1's gloss made unconditional for the story's core
+  object and for legal/financial terms at first use; §2.4 gained the minor-character payoff; the
+  preamble gained a quarry-guard covering the doc's own inline examples. Critics: coherence gains flaw
+  #7 **pre-authorization present in draft** ([STRUCTURAL], remedy = move the explanation after the act),
+  taste #5/#11 extended to hook overspend, taste #13 generalized to two decay zones plus the global
+  quiet-script form, the leash critic told never to raise precision or qualify a flat comedic pull and
+  that a speculation may guess at MOTIVE but never invent an unrecorded scene. SKILL: 3a.3's spine lock
+  became a **gate** (mechanism after act, one climb, scale in the first third, followable) failing which
+  the spine is resequenced before 3b.
+- **Alternatives rejected.** (1) *Writer-side heat quotas* (a countable target of caps/pulls/profanity
+  per script) - rejected, because a quota invites the writer to manufacture heat on the page, which is
+  the §1.6 defect itself; the enforcement went to critic-side tripwires instead (taste #13's global
+  quiet-script finding). (2) *Making the peak-first rewind mandatory* for company stories - rejected,
+  because a single mandated shape is a template and the grammar is generative; it is named as the proven
+  default with peers listed, and "no shape at all" is the only banned option.
+- **Three blind lines were better than the accepted script's, and are recorded UNBANKED** (they are not
+  Daniel-approved text, so they may not enter `example-scripts.md`): "wrote the gap off as a
+  transposition error, which is accountant for oops, I typed it wrong" (used as the gloss-as-joke
+  exemplar in grammar §1.1, cited as doctrine, not banked as a bar excerpt); "three years in federal
+  prison, which finally got Dr. Fix-It down to one company at a time"; "It's the world's worst Amazon
+  return." If Daniel approves any of them in a future script, they bank then.
+- **Model-prior convergence, worth watching.** Both blinds independently invented the same Amazon-return
+  joke at the same beat, from doctrine that names no such pull. Independent reach that lands is the
+  goal, but identical reach across runs means the same line can surface in video after video: the
+  preamble quarry-guard now covers doctrine examples, and cross-video repetition of an unprompted pull
+  is a thing to check at review, not a thing doctrine can prevent.
