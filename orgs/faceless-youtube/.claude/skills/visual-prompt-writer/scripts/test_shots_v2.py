@@ -10,7 +10,7 @@ v2 drops the v1 authoring/review metadata (`from_cue`, `beat`, `narration_type`,
     naming change.
 
 The behaviour floor the v2 cut must NOT disturb (verbatim anchors in narration
-order, supplied-text, lettering L1-L4, delta caps, runtime/5 + coverage) is pinned
+order, supplied-text, lettering L1-L4, delta caps, runtime/4 + coverage) is pinned
 by the sibling suites; this file pins the v2-specific behaviour plus the
 end-to-end `--write` contract.
 """
@@ -30,11 +30,14 @@ SCRIPT = (
     "leaving four hundred families holding nothing at all."
 )
 
+# Five anchors, not four: a 50-word script is a ~20s runtime and the cadence floor is
+# runtime/4, so a four-shot fixture is legitimately too thin to lint green.
 ANCHORS = [
     "The founder walked into",
     "Investors emptied their savings",
     "The ledgers told a",
     "By December the scheme",
+    "leaving four hundred families",
 ]
 
 
@@ -61,7 +64,7 @@ def _v2(**extra):
         "generated": "2026-07-28",
         "status": "shots-drafted",
         "global_prompt_suffix": "clean flat cel cartoon, 16:9.",
-        "long_form": {"aspect_ratio": "16:9", "shots": [_shot(i) for i in range(4)]},
+        "long_form": {"aspect_ratio": "16:9", "shots": [_shot(i) for i in range(5)]},
         "thumbnail": {"primary": {"gen_prompt": "a plain cartoon poster"}, "challengers": []},
         "shorts": [],
     }
@@ -136,7 +139,7 @@ def test_derived_vo_text_is_not_a_legacy_field():
 # --- the long hold: v1 demanded a `hold_reason`; v2 has no such field ----------
 
 def test_a_long_hold_is_no_longer_an_error():
-    shots = [_shot(i, duration_s=12) for i in range(4)]
+    shots = [_shot(i, duration_s=12) for i in range(5)]
     hard, soft = [], []
     with tempfile.TemporaryDirectory() as td:
         md = Path(td) / "script.md"
@@ -169,7 +172,7 @@ def test_a_legacy_v1_file_still_lints_green_and_loses_shot_counts_on_write():
     # `long_form`, so the strip regex sees the trailing comma it keys off.
     data = {"schema": lint_shots.SCHEMA_V1, "channel": "the-second-take", "video_slug": "t",
             "generated": "2026-07-28", "status": "shots-drafted",
-            "shot_counts": {"_note": "informational only", "long_form_shots": 4},
+            "shot_counts": {"_note": "informational only", "long_form_shots": 5},
             "timing_status": "estimated-from-script", "house_style": {"x": 1},
             "needed_assets": []}
     data.update(_v2())
@@ -181,6 +184,21 @@ def test_a_legacy_v1_file_still_lints_green_and_loses_shot_counts_on_write():
     assert "shot_counts" not in out
     assert out["long_form"]["shots"][0]["beat"] == "hook", "--write must not strip v1 fields"
     assert "vo_text" in out["long_form"]["shots"][0]
+
+
+def test_the_report_prints_on_a_cp1252_console(capsys):
+    """F-3 from the bricks pipe test: the coverage message carried a literal capital
+    sigma (U+03A3) for "sum of", and on
+    this project's Windows console (cp1252) printing it raised UnicodeEncodeError —
+    so the HARD list the author needed was invisible unless they knew to set
+    PYTHONIOENCODING. A lint whose output can crash reports nothing."""
+    data = _v2()
+    for sh in data["long_form"]["shots"]:
+        sh["duration_s"] = 1
+    rc, _ = _run(data)
+    out = capsys.readouterr().out
+    assert rc == 1 and "don't cover the VO" in out
+    out.encode("cp1252")     # must not raise
 
 
 def test_the_hard_floor_still_fails_a_paraphrased_anchor():
