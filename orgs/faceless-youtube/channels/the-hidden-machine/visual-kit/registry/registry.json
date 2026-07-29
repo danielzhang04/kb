@@ -1,0 +1,32 @@
+{
+  "channel": "the-hidden-machine",
+  "engine": "gemini-3-pro-image",
+  "register": "R1 screen-print editorial — riso grain, limited inks (rust/teal/mustard/cream), registration drift. Locked by Daniel 2026-07-29 (revocable). Full doctrine in visual-kit/style-bible.md.",
+  "characters": {
+    "everyman": {
+      "role": "THE EVERYMAN — the channel's recurring viewer-proxy; the human whose ordinary action opens every video. Not named on screen.",
+      "costume": "PINNED canonical look (charD 'slim-urban editorial', Daniel pick 2026-07-29): slim elongated silhouette, navy-blue open overcoat over an olive crew-neck sweater, navy trousers, dark shoes, orange-rust messenger bag worn cross-body, short dark side-parted hair, understated minimal face. Every appearance renders in this unless a shot deliberately authors a change (season/context swaps allowed, silhouette is the identity).",
+      "base": "channels/the-hidden-machine/visual-kit/refs/everyman/everyman.png"
+    }
+  },
+  "environments": {
+    "coffee-shop": {
+      "role": "The wedge interior — where the tap happens; recurring cold-open environment.",
+      "base": "channels/the-hidden-machine/visual-kit/refs/env/coffee-shop.png"
+    },
+    "machine-hall": {
+      "role": "Generic 'inside the system' infrastructure hall — racks, cable trays, cold blue-teal inks, one warm accent, human silhouette for scale.",
+      "base": "channels/the-hidden-machine/visual-kit/refs/env/machine-hall.png"
+    },
+    "street-corner": {
+      "role": "Night street exterior of the corner shop — the walk-away / world-above environment; wet-pavement reflections, warm window against teal night.",
+      "base": "channels/the-hidden-machine/visual-kit/refs/env/street-corner.png"
+    }
+  },
+  "modes": {
+    "mechanism-cutaway": {
+      "role": "HYBRID MECHANISM MODE exemplar — R6 clear-line cutaway grammar rendered in R1's ink palette with LOCKED registration (no drift) for how-it-works beats. Approved via watchability probe 2026-07-29. Rules live in style-bible.md; this frame is the visual anchor.",
+      "base": "channels/the-hidden-machine/visual-kit/refs/mode/mechanism-cutaway.png"
+    }
+  }
+}
