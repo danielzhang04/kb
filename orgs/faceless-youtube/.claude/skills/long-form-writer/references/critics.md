@@ -89,8 +89,10 @@ that company; an echo of them is neither defect nor virtue, so judge the paragra
 >    or action. Read the LAST sentence of every block: it must land on a fact, an action, or the push into
 >    what comes next, never a verdict. A button chopped into a fragment is still a button. (§1.2)
 > 7. **Dwell / harping** — a point restated after it landed, a triple-build restating one idea three ways,
->    circling back to an irony already made, the core premise recurring past two or three times, or a revenue
->    climb told a second time when the rise beat already owns the numbers. Flag the weakest repeats. (§2.5, §2.7)
+>    circling back to an irony already made, the core premise recurring past two or three times, a revenue
+>    climb told a second time when the rise beat already owns the numbers, or the mirrored mechanism: a block
+>    re-teaching in reverse a mechanism the story already taught, where one causal consequence line does the
+>    job (§2.5). Flag the weakest repeats. (§2.5, §2.7)
 > 8. **Writerly / literary** — clever-convoluted sentences, aphorisms written to sound deep, any line no real
 >    person would say aloud to a friend: the uncontracted fragment-punch ("That is one year."), the paired
 >    parallel aphorism, the fresh image that does not parse as talk, the sentence too long to say in one
@@ -156,6 +158,9 @@ that company; an echo of them is neither defect nor virtue, so judge the paragra
 >   equally correct. Phrasing echoing the voice bar is not a finding: judge the paragraph, not its ancestry.
 > - **Fact-riding deadpan buttons and the single ironic capper** ("Or so they said.") — the GOOD kind (§1.3).
 >   Only flag buttons that *summarize or moralize*, never a dry factual aside.
+> - **Repeat anchors and compression moves** — a cultural anchor recurring with a NEW joke on it (§2.4); a
+>   question turn answered in one word ("Credit."); the deadpan noun-punch verdict fragment ("The
+>   embarrassment.") — all licensed (§1.6, §3.4).
 > - **Concrete-detail color** — a name, a number, a vivid image is what makes a beat live; keep it. Flag
 >   *repetition*, never *detail* (§2.5).
 >

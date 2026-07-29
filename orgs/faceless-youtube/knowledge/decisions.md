@@ -3558,3 +3558,47 @@ run brief binds nobody — a fresh terminal reads the style-bible and skill docs
   goal, but identical reach across runs means the same line can surface in video after video: the
   preamble quarry-guard now covers doctrine examples, and cross-video repetition of an unprompted pull
   is a thing to check at review, not a thing doctrine can prevent.
+
+## 2026-07-29 — Silver live test: hand-edit synthesis wave (r3)
+
+**Context.** The fresh-story live test ran ST-012 (Hunt silver corner) through the hardened pipeline:
+blind r1 → Daniel line-verdicts (verdict.r1.md) → r2 regen (all 15 directives landed, ≤2-pass success
+condition met) → Daniel hand-edits (r3) → boss consistency sweep. Daniel then directed his edit CHOICES
+be synthesized into doctrine and five blocks banked to the voice bar. What landed, and why:
+
+- **Hook-tease chronology added as a peer shape (grammar §3.1).** Daniel cut the "Now rewind" seam: the
+  hook spends the peak tease + start date, the body walks forward. The announced rewind is scaffolding
+  when the door already anchors the start. (Peak-first rewind stays the default; bricks proved it.)
+- **The turn is the bridge (§3.4).** Question turns answered in the shortest true word ("Credit.")
+  before unpacking; connective bridges never get their own sentences (he cut the Zurich-was-cash bridge).
+- **Famous events asserted flat (§1.4).** "Robinhood did the same thing to GameStop in 2021" — no "if
+  that sounds familiar" wind-up; setup-then-apply reserved for references that need handing over. Named
+  skew re-scoped as means-not-goal: an everyday grievance can beat a brand ("worse than concert ticket
+  scalpers" replaced Ticketmaster).
+- **The mirrored mechanism named as dwell (§2.5 + critics #7).** Daniel deleted the
+  leverage-reverses/margin-call block TWICE; the consequence rides one causal line ("the creditors
+  demanded their money back"). Teach a mechanism once, at first use; never re-teach it in reverse.
+- **Qualifier compression (§2.2).** The title's mandated qualifier rides as one word ("tradeable
+  silver"), never a relative clause or an honesty-aside block — he cut the whole 2%-vs-half block; the
+  hook's one word satisfies F-41.
+- **Deadpan noun-punch licensed as the fifth loud move (§1.6).** "The embarrassment." / "A shell
+  company." — a two-or-three-word verdict fragment carrying a judgment (distinct from the banned empty
+  fragment). Profanity noted as the rarest reach, never owed (Daniel removed "Hard money, my ass." and
+  did not replace it in kind; NOT banned outright — the approved bricks excerpts still carry the grade;
+  revisit if the next script confirms the pattern).
+- **Three new toolbox species (§6):** observational one-liner ("Conspiracy theorists with means are the
+  scariest kind."), counterfactual/behavior-contrast gag (poker player / Belfort-in-Switzerland),
+  intensity comparison (Argentina World Cup).
+- **Critic guards (critics.md never-flag):** anchor reuse with a NEW joke (Argentina twice was
+  deliberate — boss wrongly flagged it), one-word turn answers, and the noun-punch, so critics cannot
+  undo these moves on the next run.
+- **Banked to example-scripts.md (Daniel-approved):** the silver hook, airlift scene, mechanism block,
+  bailout block, and ending. Rejected alternative: banking the whole script (only the five chosen
+  blocks are bar-grade).
+- **Ledger discipline held under hand-edits:** Daniel's new squeeze mechanism ("they demanded payment in
+  silver") was unledgered → verified same-session (Priceonomics direct quote + convergent secondary) and
+  landed as F-44/S11/S12 rather than softening his line. Pattern: a human edit that adds a fact gets a
+  targeted verification, not a hedge.
+
+**Next:** run the updated doctrine on another fresh script (Daniel's directive) — that run tests whether
+these learnings transmit blind.

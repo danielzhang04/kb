@@ -287,7 +287,7 @@ premise, no famous name · **C** = pure-obscure anchor (hold/repackage while the
 - **Score:** 89/100 (payload 18, hook 15, lever 9, demand 12, monetization 14, diff 13, fit 4, feasibility 4)
 - **Candidate shorts (provisional):** • "In 1980, two brothers owned much of the world's deliverable silver" • the exchange changed the rules to break them • Silver Thursday, explained
 - **Sources:** (evergreen — verify before scripting) en.wikipedia.org/wiki/Silver_Thursday · CFTC findings on the Hunt silver corner · contemporaneous NYT/WSJ 1980 reporting
-- **Status:** scripted (2026-07-10 — production batch; slug 2026-07-10-silver. Front-half only; shorts skipped this batch.)
+- **Status:** scripted (2026-07-10 batch, slug 2026-07-10-silver, superseded; re-scripted FRESH 2026-07-29 through the hardened doctrine as the live test — Daniel-edited script, five blocks banked to the voice bar, accuracy flag resolved as "tradeable silver" per ledger F-41; slug 2026-07-29-silver-fresh)
 
 ### ST-011 — One 28-Year-Old Broke a 233-Year-Old Bank
 - **Format:** long-form (~10–14 min) + shorts bench (provisional)

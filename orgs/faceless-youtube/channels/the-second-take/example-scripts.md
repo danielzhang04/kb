@@ -166,3 +166,48 @@ final joke. Nothing gets drawn out into a meaning, because the irony is already 
 The second is a different approved shape, the counterfactual last laugh, running the story one step
 past its end into what almost happened. Both settle rather than conclude, and neither is the shape
 every ending takes.
+
+## Silver / the person-led hook
+
+> So there was this guy, Nelson Bunker Hunt. He was the son of a Texas oil billionaire, and he had one very firm opinion: the dollar in your pocket was fake money, and silver was the only real thing left. So, in 1973, he started buying silver, and he didn't stop. This guy wanted silver more badly than Argentines wanted to win the World Cup. By January 1980, Bunker, his brother Herbert, and their partners were sitting on about half of all tradeable silver in the world. That's a Bond villain plot with a Dallas accent. But ten weeks later a broker called them asking for cash, and they didn't have any.
+
+**What this demonstrates.** The whole door in one block: the man, the opinion that drives everything,
+the start date, the impossible endpoint, and the ten-week paradox tease, so the body can walk forward
+chronologically with no announced rewind. The title's mandatory qualifier compresses to one word
+("tradeable") riding the claim, an intensity comparison and a named pull keep the density up inside a
+block that is mostly load-bearing facts.
+
+## Silver / the airlift scene
+
+> Back then, silver went for two dollars an ounce. The Hunts started buying, chartered three Boeing 707s, and loaded forty million ounces of it onto them in Chicago and New York. They flew the whole lot to Zurich, where they split it across six different storage spots around Switzerland. To guard their silver, the Hunts hired cowboys. Ranch hands off the family's own Circle K Ranch in Texas, picked by Bunker's brother-in-law, who held a shooting match and gave the job to whoever could shoot straightest. That's not a hiring process, that's a Western. At least when Belfort went to Switzerland, he acted like a businessman.
+
+**What this demonstrates.** A scene carried on chained verbs (bought, chartered, loaded, flew, split),
+single-sourced color told flat under the color license, then a double capper: the genre re-label and a
+behavior-contrast pull off a name the viewer already holds. Two pulls may close one scene block when
+each lands a different joke.
+
+## Silver / the mechanism block
+
+> So how do two guys buy up half a market? Credit. By the end of the seventies, about half of what they held wasn't silver, but silver futures. Silver futures are just contracts where somebody promises to hand you silver at a set price on a set date. You put a deposit down, like a house, and your broker fronts the rest. None of this is investment advice, by the way. Their investment was more volatile than my crypto wallet. So a dollar of oil money could hold a whole lot more silver than it could ever buy.
+
+**What this demonstrates.** The question turn answered in one word before the unpacking, the gloss in
+the same breath as the term, a generic comparison held to a clause ("like a house"), the
+narrator-at-his-own-expense aside, and the exit on the consequence line the collapse will later cash.
+The mechanism is taught here once; nothing later re-teaches it in reverse.
+
+## Silver / the bailout
+
+> If the Hunts went down, the brokers went with them, and nobody on Wall Street wanted to find out what happened after that. Cue the bailout, 2008 style. Thirteen banks put together a loan of 1.1 billion dollars to Placid Oil, the family's oil company. They secured it against the family's oil, its gas and its pipelines. The two men who thought banks and paper dollars were a con on the American people got out of their mess by borrowing a billion dollars. The embarrassment.
+
+**What this demonstrates.** Systemic stakes in one causal line, a famous event asserted flat with no
+wind-up ("Cue the bailout, 2008 style."), the irony stated as plain fact, and the deadpan noun-punch as
+the block's exit. The punch ends the block; no nuance trails after it.
+
+## Silver / the ending
+
+> The year after that they settled with the commodities regulator, paid a fine, and were barred from trading commodities for life. Bunker Hunt died in 2014, at eighty-eight. Imagine blowing billions trying to buy silver. He could've been a high stakes poker player and not lost that much money. Somebody once asked Bunker how a family fortune goes from around eight billion dollars down to about one billion, and he didn't get defensive about it. He said a billion dollars just ain't what it used to be.
+
+**What this demonstrates.** Fates settled in lines, then two quick gags (the conversational imperative
+and the counterfactual), then the subject's own words as the last laugh, placed with no timestamp
+machinery. The quote close: when the record hands you a perfect line, the narrator sets it up in one
+sentence and gets out of its way.
