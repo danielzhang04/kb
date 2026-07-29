@@ -1,9 +1,18 @@
 # faceless-youtube — STATE
 
-_Updated: 2026-07-20 (fyt-runner + tail arc complete; note: a richer 2026-07-19 STATE.md exists on
+_Updated: 2026-07-29 (scripting doctrine arc closed; note: a richer 2026-07-19 STATE.md exists on
 branch claude/faceless-live-import — reconcile to this one at merge, this is newer)_
 
 ## Now
+- **Scripting doctrine arc COMPLETE (2026-07-29):** bricks round-4 script ACCEPTED (first accepted
+  script, 4 rounds), then a blind-generation experiment (two uncontaminated pipeline samples vs the
+  accepted ideal, 36 lenses) drove a doctrine-hardening wave: heat inversion, named story shapes
+  (peak-first rewind), pull-first mechanism beats, precision-opt-in, unconditional gloss, spine
+  gate, pre-authorization critic hunt, lint contraction advisory, verdict-regen mode (the two-pass
+  gen → human verdict → locked-lines regen loop, now built into long-form-writer). All on branch
+  `claude/fyt-writer-grammar-slim` (through 21b22f9) — **UNMERGED, Daniel's review gates it**;
+  foreign commits c0c676c/74356fb + an audio-director grammar-guidance.md deletion ride the branch,
+  disclose at PR. Next live test: a FRESH story through the hardened pipeline.
 - **PR #41 open** (claude/faceless-live-import → main): the whole post-render tail + run-001
   structural gate fixes + fyt-runner agent + workflow segments. Whole-branch review: READY TO
   MERGE, zero blocking. **Must merge together with claude/fyt-video-run-test** (dashboard test
