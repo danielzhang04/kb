@@ -111,9 +111,12 @@ defect that will recur until fixed.
 - **Visual identity — LOCKED (2026-07-04):** The Second Take template = round cream `#f5ead6` head,
   dark brown-black `#241a12` outline, calm no-nose face; canonical frame set in `visual-kit/refs/base/`.
   MacGregor canonical = red/gold, ear-free, costume PINNED (`refs/macgregor/`). Diegetic art = flat-cel.
-- **Visual + audio/motion/render doctrine files TRIMMED 2026-07-28** (both waves; single-home law
-  map; retired capabilities live only in `docs/retired-features.md`; specs
-  2026-07-28-visual-stack-trim-design.md + 2026-07-28-audio-motion-stack-trim-design.md).
+- **Visual pipeline REDESIGNED 2026-07-28 (wave 3)** — VPW = thin procedure over visual-grammar +
+  example-shots (the depiction bar, gate-B approved); shots.json v2 (lint warns on legacy fields);
+  image-gen Pass1(build+tag)→Pass2(consume), missing-asset pre-gen gate; style-bible = LOOK law only.
+  Waves 1–2 trimmed all visual+audio/motion/render doctrine; retired capabilities live only in
+  `docs/retired-features.md`. Specs: 2026-07-28-visual-{stack-trim,pipeline-redesign}-design.md +
+  2026-07-28-audio-motion-stack-trim-design.md.
 - **Generation system:** per-channel **`visual-kit/style-bible.md`** is THE single image-gen doc (rig
   lock + descriptors + verify gate + committed recipe + asset-library build spec) + `registry.json` (the
   LIVE asset vocabulary) + the **`image-generation`** skill running a **two-pass flow**: pass 1 derives a
