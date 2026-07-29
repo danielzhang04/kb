@@ -15,7 +15,7 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
   "long_form": { "aspect_ratio": "16:9", "shots": [
       {
         "id": "L01", "duration_s": 4, "synthetic": false,
-        "vo_ref": "VERBATIM opening words (≥4) of the VO line, copied exactly from script.md",
+        "vo_ref": "VERBATIM opening words of the VO line, copied exactly from script.md — ≥4 where the sentence has them, else its full text",
         "vo_text": "DERIVED by lint_shots.py --write; never hand-authored",
         "stage": "OPTIONAL id shared by consecutive shots on ONE persistent set (e.g. \"guidebook-desk\"); omit or unique = a standalone one-frame stage",
         "stage_role": "base | delta — base establishes the set + subject; delta = ONE element added or moved on the SAME set", "changed_elements": ["+ golden city rises"],
@@ -27,7 +27,7 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
       }
   ]},
   "thumbnail": { "thumbnail_source": "derived-from-script+dna",
-    "primary": { "source": "hybrid", "text_overlay": "≤3 words or \"\"", "gen_prompt": "full prompt — one hero with one loud emotion, ONE dominant thing legible at 168px, the red accent pointing", "composition": "framing notes — rule-of-thirds, red-circle-on-anomaly, number-as-object", "synthetic": true },
+    "primary": { "source": "per the channel's LOCKED register in dna.md — an illustrated channel's thumbnail is ai-gen; hybrid/stock only where a real photographic subject is on-register", "text_overlay": "≤3 words or \"\"", "gen_prompt": "full prompt — one hero with one loud emotion, ONE dominant thing legible at 168px, the red accent pointing", "composition": "framing notes — rule-of-thirds, red-circle-on-anomaly, number-as-object", "synthetic": "true ONLY when the render is photoreal (it drives the AI-disclosure flag); false for a drawn/animated register" },
     "challengers": [ "exactly two more objects of the same shape as primary" ] },
   "shorts": [
     { "file": "shorts/short-01.md", "archetype": "string (from the short)", "status": "publish | bench", "aspect_ratio": "9:16",
@@ -39,10 +39,13 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
 
 ## 2. Field semantics
 
-- **`vo_ref` is load-bearing for timing.** `render-builder` matches its **first 4 normalized words**
-  against the real VO word-stream (`render.py::retime_by_timings`) to place the cut, so it is a verbatim
-  copy of the script's wording (≥4 words, exact order) and shots run in **strict narration order**;
-  `lint_shots.py` mirrors that matcher and HARD-fails both defects.
+- **`vo_ref` is load-bearing for timing.** `render-builder` matches its **first 4 normalized words** —
+  or all of them when the line is shorter — against the real VO word-stream
+  (`render.py::retime_by_timings`) to place the cut, so it is a verbatim copy of the script's wording
+  (**≥4 words where the sentence has them; a shorter sentence anchors on its full text**, exact order)
+  and shots run in **strict narration order**; `lint_shots.py` mirrors that matcher and HARD-fails both
+  defects. The stream is SPOKEN text only — a whole-line italic authoring note is excluded from it, so
+  nothing can anchor there.
 - **`vo_text` is DERIVED, review-only** — written by `lint_shots.py --write`, never by hand; a long span
   means *densify*.
 - **`stage` / `stage_role` / `changed_elements` — held evolving stages, INTENT ONLY.** Consecutive shots
@@ -52,10 +55,11 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
   the scene's architecture) stays a delta frame; a DISCRETE one (a character enters, a stamp slams onto a
   page) is promoted downstream by `motion-planner` to a moving cutout LAYER. Lint enforces exactly one
   `base`, first, per stage · **≤3 deltas** per chain · contiguity.
-- **Casting is PROSE, by vocabulary name.** Every recurring figure, pose, expression, and prop is named
-  inline in the `still_prompt` by its exact `registry.json` name, backticked — there are no structured
-  cast/pose/expression arrays. `image-generation` resolves names → files and surfaces any name the
-  registry lacks at its Pass-1 human gate, before a token is spent.
+- **Casting is PROSE, by vocabulary name.** Every recurring figure, pose, expression, and already-built
+  prop is named inline in the `still_prompt` by its exact `registry.json` name, backticked — there are no
+  structured cast/pose/expression arrays. A prop making its FIRST appearance has no entry to name and is
+  described in prose instead (`visual-grammar.md` §2 owns that rule). `image-generation` resolves names →
+  files and surfaces any name the registry lacks at its Pass-1 human gate, before a token is spent.
 - **`assets` (image-gen-owned, added in Pass 1).** `image-generation` writes a per-shot `assets` map
   (`{"<vocab name>": "<library path>"}`) back into this file after its gate passes and Pass 2 reads only
   those tags; VPW never authors it, and `lint_shots.py` + `render-builder` ignore it.
@@ -72,7 +76,7 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
 | --- | --- | --- |
 | `ai-gen` | stylized, impossible, illustrative, or metaphor shots | full generation; set `synthetic` per realism |
 | `stock` | real places / people / events that must look real | give a `stock_query`; blends out the uncanny look |
-| `hybrid` | real subject + AI/graphic background (default thumbnail) | best proof-of-human; `stock_query` for the real half |
+| `hybrid` | real subject + AI/graphic background | best proof-of-human, and the usual thumbnail pick on a channel whose locked register admits a photographic subject; `stock_query` for the real half |
 | `chart` | data, numbers, timelines | render-builder builds the viz; prefer numbers-as-objects |
 | `screencap` | filings, headlines, receipts, product UI | credibility artifact; provide or point to the capture |
 | `archival` | historical footage/photos | `stock_query`; check the licensing note in playbook |
@@ -115,13 +119,16 @@ composition can carry the meaning instead.
 
 ## 5. Limits, defaults, timing
 
-- **Density:** 2–5s per cut, weighted heaviest in the first 60s; shorts cut every 2–4s.
+- **Density:** a new shot every **1.5–3s**, up to 4s only where the beat earns it, weighted heaviest in
+  the first 60s; shorts cut every 2–4s.
 - **Duration coverage:** Σ `duration_s` across `long_form.shots[]` ≈ the script header's `Estimated
-  runtime` (words ÷ **150** wpm, the project constant; compute it if the header is absent), with at least
-  **`runtime ÷ 5s` shots**. A short-summing list gets stretched by `render-builder`'s re-time, destroying
+  runtime`, sized off **the rate that header states** ("N words ÷ M wpm" — the channel's measured voice,
+  not a fixed constant; 150 wpm is only the fallback when the header states no rate), with at least
+  **`runtime ÷ 4s` shots**. A short-summing list gets stretched by `render-builder`'s re-time, destroying
   the cadence — densify, never lengthen holds to close a gap.
 - **Holds:** deltas run 1.5–3s, a base/hold frame 4–12s; a diagram-first shot that progressively reveals
-  may hold 10–14s (the in-shot annotation is the stimulus refresh). Event/reveal/silence shots stay 2–5s.
+  may hold 10–14s (the in-shot annotation is the stimulus refresh). Event/reveal/silence shots stay
+  1.5–3s.
 - `duration_s` is an estimate; `render-builder` re-times against the real VO track.
 - `synthetic` drives AI disclosure — set `true` on any photoreal AI shot or thumbnail so the flag in
   `metadata.json` is honored. Thumbnail `text_overlay` ≤3 words, no all-caps.

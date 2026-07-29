@@ -3,8 +3,11 @@
 **What this is:** how The Second Take decides WHAT a shot depicts and HOW it is staged — the doc
 `visual-prompt-writer` reads when authoring `shots.json`. The LOOK is `style-bible.md`; the asset
 vocabulary is `registry/registry.json`; the depiction bar is `../example-shots.md`; writing craft is
-`../storytelling-grammar.md`. Within-shot motion, cut cadence, and the stretch-to-fill rule live in
-`universal.md` §13a-i/§13a-ii and are **BINDING**, not restated here.
+`../storytelling-grammar.md`. Within-shot motion and the stretch-to-fill rule live in `universal.md`
+§13a-i/§13a-ii and are **BINDING**. This channel's **cut cadence is the dial on top of them: a new
+shot every 1.5–3s; up to 4s only where the beat earns it** — so a shot list carries at least
+`Estimated runtime ÷ 4s` shots (lint-enforced), and a gap closes by densifying, never by lengthening
+a hold.
 
 **`global_prompt_suffix`** — fixed channel data, copied verbatim into `shots.json`, appended to every prompt:
 
@@ -12,8 +15,12 @@ vocabulary is `registry/registry.json`; the depiction bar is `../example-shots.m
 > everything, flat colours with gentle soft cel shading, rounded friendly shapes, no realistic
 > detail, hand-lettered marker capitals for any in-world text
 
-Texture, line weight, and art style only — palette, light, era, and depth are **per-shot facts** authored
-into the `still_prompt`, never the suffix.
+The suffix carries texture, line weight, and art style — and it is the ONLY place they are stated. A
+`still_prompt` describes **CONTENT and nothing else**: layout, orientation, the action, the committed
+scene palette, light, era, and depth. Never write art-style, texture, or line-weight words into a
+prompt (no "flat cel", "clean vector", "even outline", "hand-lettered marker style") — this suffix and
+`style-bible.md`'s forge descriptors already inject every one of them, and repeating them spends the
+prompt's weight on the look instead of on the scene.
 
 ## 1. What to depict — classify, then invent
 
@@ -67,6 +74,12 @@ shows what the VO has not yet said — a withheld entity is absent entirely from
   `image-generation` resolves each name to its file; a backticked name absent from `registry.json` is
   an authoring gap it surfaces at its pre-gen gate. Never author body pose, finger mechanics, or
   facial expression as prose — naming the asset IS the authoring act.
+- **Props follow the same rule ONLY once they exist.** A prop that recurs across the video and already
+  has a library entry is named by that entry (`registry.json` `assets[]` takes a `kind: "prop"` row like
+  any other vocabulary). A prop making its FIRST appearance has no name to use: describe it in prose,
+  concretely and identically on every shot that carries it, and `image-generation`'s Pass 1 mints its
+  canonical from that description at the pre-gen gate. Inventing a plausible-looking backticked slug for
+  an unbuilt prop is the failure — it resolves to nothing.
 - **Emotion acts through mouth and body, restrained by default:** the beat's lead gets a legible
   expression sized to its register, secondary characters hold one, posture carries the rest. Register
   dial (`../storytelling-grammar.md §1.4`): `expr-smug` on con/boast beats · hopeful-warm on the sell

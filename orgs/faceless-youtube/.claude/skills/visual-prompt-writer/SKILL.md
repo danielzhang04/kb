@@ -47,11 +47,14 @@ named, the most recently scripted, or ask. **No `script.md` → stop** and say t
    body pose, finger mechanics, or facial expression in words — naming the asset IS the authoring act. A
    name the registry lacks may still be written; `image-generation`'s Pass-1 gate surfaces it for the
    human's pre-gen approval, and a veto comes back to you as a restage.
-4. **State the scene facts the beat needs** — layout, orientation (who faces whom; a vehicle points where
-   it travels), what a gesture or highlight targets ("the northern half of South America", not "the
-   continent"), framing + scale, the committed scene palette, light/atmosphere, and depth (fore/mid/
-   background, filled edge-to-edge). Name concrete elements, not categories; a thin, palette-less prompt
-   renders thin. **Stage poses that hold** — a tableau, never a freeze of mid-motion.
+4. **State the scene facts the beat needs — CONTENT only** — layout, orientation (who faces whom; a
+   vehicle points where it travels), the action, what a gesture or highlight targets ("the northern half
+   of South America", not "the continent"), framing + scale, the committed scene palette,
+   light/atmosphere, and depth (fore/mid/background, filled edge-to-edge). Name concrete elements, not
+   categories; a thin, palette-less prompt renders thin. **Never art style, texture, or line weight** —
+   the `global_prompt_suffix` and the style bible's forge descriptors inject those on every gen, and
+   restating them spends the prompt on the look instead of the scene.
+   **Stage poses that hold** — a tableau, never a freeze of mid-motion.
    **Supplied-text law (HARD):** never name a text element without supplying its value verbatim, inline,
    beside its own element — quote the literal from the fact ledger and cite `[F-NN]` in `notes`, or omit
    the element, or author it deliberately blank. Rule + lettering laws L-1…L-4: `shots-schema.md §4`.
@@ -62,14 +65,19 @@ named, the most recently scripted, or ask. **No `script.md` → stop** and say t
    set `synthetic: true` on any photoreal AI shot.
 
 ## Step 3 — Walk the script, then densify
-- **Anchor every shot with a `vo_ref`** copied VERBATIM from `script.md` — that VO line's opening words
-  (≥4, exact wording and order, never reworded or pronoun-swapped) — and author in **strict narration
-  order**, each anchor at or after the previous shot's script position. `render-builder` times each cut
-  off the first 4 normalized words, so a bad anchor mis-places the shot.
-- **Cadence + coverage (lint-enforced):** 2–5s per shot, at least `Estimated runtime ÷ 5s` shots, and Σ
-  `duration_s` ≈ `Estimated runtime` (the script header; words ÷ **150** wpm — compute it yourself if
-  absent, and trust the word count over a disagreeing header). A short-summing list gets stretched at
-  render, leaving one visual dead 15–25s — **densify, never lengthen holds.**
+- **Anchor every shot with a `vo_ref`** copied VERBATIM from `script.md` — that VO line's opening words,
+  **≥4 where the sentence has them; a shorter sentence anchors on its full text** (a `[PAUSE]`-bounded
+  "The audit passed." is a legal 3-word anchor) — exact wording and order, never reworded or
+  pronoun-swapped, and authored in **strict narration order**, each anchor at or after the previous
+  shot's script position. `render-builder` times each cut off the first 4 normalized words (all of them
+  when there are fewer), so a bad anchor mis-places the shot. Anchor only on SPOKEN text: an italic
+  authoring note in the script is not narration and matches nothing.
+- **Cadence + coverage (lint-enforced):** 1.5–3s per shot (up to 4s only where the beat earns it), at
+  least `Estimated runtime ÷ 4s` shots, and Σ `duration_s` ≈ `Estimated runtime` — read the runtime and
+  the rate off the script header ("N words ÷ M wpm"), never a fixed 150; the header's rate is the
+  channel's MEASURED voice, and sizing off a slower one buys shots for a video that doesn't exist. A
+  short-summing list gets stretched at render, leaving one visual dead 15–25s — **densify, never
+  lengthen holds.**
 - **Weight the density heaviest in the first 60s**; never leave a static ambient shot under the first
   3–5s. A shot covering more than ~8s of VO means densify there, never widen the image's scope.
 - **Reserve the most striking staging** for the opening, the mid-video re-arm (55–65%), and the withheld

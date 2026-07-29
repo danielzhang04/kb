@@ -56,7 +56,7 @@ vocabulary) + `example-shots.md` (the depiction bar) · the charter below, verba
 >
 > Then two plan-level checks. **Cadence taste** — flag a slow static hold with no earned progressive
 > reveal, legibility, or gravity reason, a run of conspicuously equal-duration holds, or cuts so rapid the
-> payload cannot be read; impose no bucket, profile, or quota (lint owns the runtime ÷ 5 floor). **Stage
+> payload cannot be read; impose no bucket, profile, or quota (lint owns the runtime ÷ 4 floor). **Stage
 > grouping** — the **SEMANTIC call only**: *are these really one held set?* The mechanical caps (one
 > `base`, ≤3 `delta`s, contiguity, delta timing, order) are `lint_shots.py`'s job; do not re-flag them.
 >
