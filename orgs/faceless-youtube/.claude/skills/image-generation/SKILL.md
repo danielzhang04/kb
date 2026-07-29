@@ -66,7 +66,8 @@ Output: `assets/library/` + `manifest.json`, plus the per-shot asset tags Pass 2
    - **Expression frames** are authored **moderate**: the scene gen copies their eye/brow/mouth shape directly, so a
      frame flat on its own lands flat in the scene; the big end is for a real comedic peak.
    - **Prop / group / plate:** `--mode environment`/`style` with a style-anchor seed (Pass 2's seed law). Kebab-case
-     names; batch what you can (`--batch <file.json>`, items `{name, character, mode, delta, aspect, seed?}`);
+     names; batch what you can (`--batch <file.json>`, items `{name, character, mode, delta, aspect, seed?, figures?,
+     stage_role?, image_size?}`);
      `forge.py gen` stages into `<kit>/_staging/`. Standing-library build order (most-reused first): expressions →
      concept props → diegetic screen devices → environment plates → secondary cast → action poses.
 5. **Verify** every staged asset against **bible §3** by looking at it (inline — Pass 1 is a handful of frames). Pass
@@ -108,7 +109,11 @@ reverts to the engine's five-finger prior, while the frame carries the four-digi
 `long_form.aspect_ratio`, a short's `9:16`. `forge.py`'s default is portrait `2:3`, so 16:9 work MUST pass `--aspect
 16:9` on every scene/plate gen — forget it and the scene generates portrait, silently mis-framed. A **CUTOUT is the
 opposite**: wide squashes the object, so cutouts use `2:3` (or `4:3`/`3:2` for a naturally wide object); `forge.py
-cutout` HARD-ERRORS on width/height ≥ 1.5 unless `--allow-wide`.
+cutout` HARD-ERRORS on width/height ≥ 1.5 unless `--allow-wide`. **Resolution is the other engine dial:** `forge.py`
+requests `imageSize: 2K` and takes `--image-size 1K|2K|4K` (or per-batch-item `image_size`). Leaving it unset — the
+state of every gen before 2026-07-29 — takes the engine default **1K**, which is *below* the 1920×1080 delivery frame,
+so full scenes were upscaled at render and the crop battery zoomed into interpolated pixels. **4K is the top tier at
+~6× the 1K price**, so it is a per-run spend call raised at the Pass-1 gate, never a silent default.
 
 **Scope.** Generate stills only for `source: ai-gen` or the generated half of `hybrid`;
 `chart|screencap|stock|archival` belong to other pipelines — skip and record `skipped: source=<x>`. Ignore motion and
@@ -116,11 +121,20 @@ stage fields and any unknown key. **ALL in-video text is diegetic**, quoted verb
 words; **every text-bearing gen seeds the lettering exemplar** (`refs/env/lettering-marker-italic.png`), and every
 stamp/seal/mark gen seeds the stamp exemplar **plus its destination plate** for scale and palette (§5).
 
-**Prompt assembly + precedence.** `forge.py` auto-prepends the bible descriptor (§2/§2b by mode) and auto-appends §2c
-RIG-HOLD to any character-bearing seed; your delta is the shot's `still_prompt` (already carrying
-`global_prompt_suffix` and the authored framing) plus the seeds — do NOT re-compose the shot, add only minimal
-technical placement. The **delta overrides the descriptor on exactly the variables it names**; everything else the
-descriptor holds, and where the suffix and the bible disagree **the bible wins**.
+**Prompt assembly + precedence.** `forge.py` assembles every gen in ONE order — **[bible descriptor, §2/§2b by mode]
++ [the shot's `still_prompt`] + [the `figures` expansion] + [§2c RIG-HOLD]** — and your delta is the `still_prompt`
+itself (already carrying `global_prompt_suffix` and the authored framing) plus the seeds: do NOT re-compose the shot,
+add only minimal technical placement. **Anonymous-figure rig clauses are never written into a prompt.** The shot
+DECLARES them in `figures` — `{"anon_foreground": ["the worker at the dock edge"], "crowd": true}`, one entry per
+§2e-tier foreground figure, each phrased exactly as the prompt stages it — and forge expands the bible's §2d/§2e
+blockquotes at gen time: §2e named over the entries and bound so it cannot leak onto named cast, `crowd: true` → the
+§2d clause, and on a `stage_role: "delta"` shot the **held-figure** wording instead (§2e's "give them a distinct
+outfit" is a FIRST-ESTABLISHMENT instruction and would redesign the very figure the chain is holding). A declared
+`figures` field also forces the §2c append by itself; a shot with **no** `figures` key assembles exactly as it did
+before the field existed. The **delta overrides the descriptor on exactly the variables it names**; everything else the
+descriptor holds, and where the suffix and the bible disagree **the bible wins**. **Pre-flight a batch with `forge.py
+gen --dry-run`**: it prints every assembled prompt and resolves every seed with zero API calls — read the prompts
+before paying for the batch.
 
 Per shot, pick the **cheapest technique that holds the locked elements**:
 
@@ -150,8 +164,8 @@ seeded cutout. Art style, proportions and period never switch mid-chain.
   reliable shape is a **SECOND targeted pass seeded off the already-fixed frame**. A fix TECHNIQUE, not a loosening
   of the one-retry rule. **Re-authoring an expression frame** invalidates only the scenes seeded from it — re-author,
   human-gate, regen those; never ship a video mixing old- and new-register faces.
-- Record `{shot_id, file, technique, seeds, flagged: false, review_status: "unreviewed", parked_reasons: [], notes}`
-  in `assets/scenes/manifest.json` (skipped shots get a `skipped` entry); `review_status` is set ONLY by
+- Record `{shot_id, file, technique, seeds, flagged: false, review_status: "unreviewed", parked_reasons: [],
+  retry_cause: null, notes}` in `assets/scenes/manifest.json` (skipped shots get a `skipped` entry); `review_status` is set ONLY by
   `stamp_review.py`. **Shorts** repeat the walk per short's `shots[]` + `first_frame`, aspect `9:16`, files
   `scenes/<short-file-stem>-<shot-id>.png`.
 - **Thumbnail:** `thumbnail.primary` AND each challenger at `16:9` into `assets/thumbs/`, seeding any locked CHARACTER
@@ -200,10 +214,19 @@ never a fidelity source).
    frames, all figures; silence on a seeded or §2e figure is not allowed. **This FRESH-EYES review is the rig
    authority — a GENERATING agent's self-verification does NOT substitute for it** (a generator under-reports its own
    defects, anchored on the prompt it wrote). **Never downgrade a fresh-eyes nose/ear FAIL to "minor".**
-2. **Fidelity** — does the image assert **exactly the shot's load-bearing facts** (layout, geography, orientation,
-   gesture + highlight targets, casting/costume) and **nothing extra that changes the read**? Check the claims one by
-   one against the pixels, and **transcribe any authored in-image text LETTER-BY-LETTER** against the words the
-   `still_prompt` quotes — a garbled, misspelled or partial render is **blocking** (§3 sets which text is legal).
+2. **Fidelity — run it as DSG-lite, two calls per still.** Does the image assert **exactly the shot's load-bearing
+   facts** (layout, geography, orientation, gesture + highlight targets, casting/costume) and **nothing extra that
+   changes the read**? Answer that as a checklist, not as free-form claim-hunting: **(a) one call decomposes** the
+   **ASSEMBLED prompt** — what forge actually sent, which `gen --dry-run` prints, not the `still_prompt` alone — into a
+   small **dependency-ordered list of atomic facts**, `entities → their attributes → relations between them →
+   lettering`, each item naming its `parent` (≈6–12 items; you still judge which facts are load-bearing).
+   **(b) one multimodal call answers them in that order**, and **short-circuits the children of any failed parent**
+   (`verdict: "skipped"`) — an attribute of an absent entity is not a second defect, and asking anyway invents an
+   answer. **Lettering items transcribe LETTER-BY-LETTER** against the words the `still_prompt` quotes; a garbled,
+   misspelled or partial render is **blocking** (§3 sets which text is legal). Log every item into the shot's ruling as
+   `dsg: [{id, parent, q, verdict: pass|fail|skipped, note}]`; **`stamp_review.py` parks any shot carrying a failed
+   item even when the axis severities came back clean** — the items are the evidence, the axis severity only its
+   summary. This is an ADHERENCE check that runs alongside the §3 rig judge above; it never substitutes for it.
 3. **Style/taste** — does it read as its `shot_class` at a glance, on-recipe per §5 **AND rich — committed scene
    palette, fore/mid/background depth, light/atmosphere, filled edge-to-edge** — or is it slop: generic, cluttered,
    off-register, drifting to the detailed middle, thin, sparse? **Check expression register per beat** (§3).
@@ -211,10 +234,16 @@ never a fidelity source).
 Each returns a **flagged list keyed by shot id**, one sentence per defect quoting the offending fact. A frame no agent
 flagged ships as-is. **Then fix flagged frames — ONE re-authored retry, then surface:**
 
-- **Exactly ONE auto-retry per frame.** Not two, not a ladder. **It is a FRESH gen off a RE-AUTHORED prompt — never
-  prompt-accretion**: appending the flag onto the failed delta keeps the logic that just failed and stacks a patch on
-  it. Change the prompt logic — a different composition strategy, a different phrasing of the fact — and generate
-  clean off the canonical, not the failed frame.
+- **Exactly ONE auto-retry per frame.** Not two, not a ladder. **It is a FRESH gen off a SURGICALLY re-authored prompt
+  — never prompt-accretion**: appending the flag onto the failed delta keeps the logic that just failed and stacks a
+  patch on it, while re-writing the whole prompt discards every clause that rendered CORRECTLY and re-rolls the frame's
+  passing half. **Rewrite only the clause(s) the flags name** — a failed `dsg` item points at the exact atomic fact —
+  hold every other clause byte-identical, and generate clean off the canonical, not the failed frame. Tactics by
+  defect: a **garbled literal** → spell it out inside that clause (*the word BRICKS — B, R, I, C, K, S*), still ≤4
+  words; a **fact the composition buried** → move that clause to the prompt's END (the payload zone) or change the
+  composition strategy for it alone; a **rig defect** → the targeted identity / de-nose pass above. **Log the cause**
+  on the manifest entry as `retry_cause` (the flag string that triggered it, plus which clause was rewritten), so a
+  second failure reads as systematic rather than random.
 - **Re-author HOW an authored fact is depicted, never WHETHER it appears.** Deleting or softening a load-bearing fact
   to dodge a rendering defect is a fidelity VIOLATION dressed as a fix; a fact that still won't render clean after the
   one retry is flagged for the human, never silently removed.
@@ -224,11 +253,12 @@ flagged ships as-is. **Then fix flagged frames — ONE re-authored retry, then s
   like a bible value being off → surface a proposed fix, never self-apply.
 - **Stamp the gate — generating agents NEVER stamp; the ORCHESTRATOR alone does**, and only after the crop battery +
   fresh-eyes review pass. It merges every agent's structured verdict into `assets/_review/merged.json` (one ruling per
-  shot id, per-axis severities + `why`), then runs `py -3
+  shot id, per-axis severities + `why`, plus the fidelity agent's `dsg` checklist), then runs `py -3
   .claude/skills/image-generation/scripts/stamp_review.py <video_dir>` — the **ONLY writer** of the render gate's
   verdict. It writes **`review_status` + `parked_reasons`** onto each `scenes/manifest.json` entry in three honest
-  states: **`verified`** (a fully-clean ruling on every axis — the ONLY state render-builder ships), **`parked`** (ANY
-  defect ruling, even LOW: reviewed, defects known, honestly not shippable — its defect strings become
+  states: **`verified`** (a fully-clean ruling on every axis AND no failed `dsg` item — the ONLY state render-builder
+  ships), **`parked`** (ANY defect ruling, even LOW, or any failed `dsg` item: reviewed, defects known, honestly not
+  shippable — its defect strings become
   `parked_reasons`, which the gate prints, and the entry hard-errors the render), **`unreviewed`** (no ruling covered
   the shot — hard-errors like a missing scene). Uncovered entries are untouched; it never writes a `verified: true`.
 
