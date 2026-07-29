@@ -130,40 +130,23 @@ output_format: mp3_44100_128
   multi-lever scheme may use optional sequential causal `Step N:` prose; never use cards for bare chronology.
   YMYL accuracy gate (below).
 - **Visual style (LOCKED recipe):** **clean 2.5D vector cast + built environments + marker-style
-  charts/diegetic lettering + one red accent.** NOT a literal crayon clone and NOT hand-drawn/sketchy — the
-  hand-feel lives only in the hand-drawn marker charts + baked diegetic lettering (device/text cards
-  remain retired; optional opaque chapter cards are the live, pause-aligned exception); character/object art is clean
-  vector. The screen is a **cast of distinct characters acting the money story** on built, depth-layered
-  environments — there is **no on-screen narrator/host** (narration is a VOICE only); animated diagrams +
-  timelines carry the numbers. **Cast identity is locked:** a shared facial rig (round near-circle head,
-  no nose, no ears, flat cel; the base template is bald cream `#f5ead6`) spec'd verbatim in
-  `visual-kit/style-bible.md`. Only the character's own colours are fixed — per-video scene palettes move
-  freely. Motion = hold-then-snap "limited" animation + Ken Burns + motion-graphics for props/data
-  (deterministic 2.5D on our own Remotion stack). Cheap, coherent, hides AI tells; the moat is the
-  editorial voice, not the look.
-- **Visual register (locked):** **stylized-signature** — one locked illustrated style-token on every
-  frame (best continuity + control + $0-marginal on our 2.5D stack; never photoreal, never the uncanny
-  middle, §13). The specific variant is **locked** (the clean 2.5D vector recipe above +
-  `visual-kit/style-bible.md`) — the earlier clone-bait risk is resolved by our own bald-cream-rig cast.
+  charts / diegetic lettering + one red accent** — no on-screen narrator; the screen is a cast of
+  distinct characters acting the money story on built, depth-layered environments. The LOOK law (rig,
+  descriptors, character colours, the recipe) is `visual-kit/style-bible.md`; what a shot depicts and
+  how it is staged is `visual-kit/visual-grammar.md`; the live asset vocabulary is
+  `visual-kit/registry/registry.json`.
+- **Visual register (locked):** **stylized-signature** — one locked illustrated style on every frame;
+  never photoreal, never the uncanny middle (§13).
+- **Imagery policy (binding on every prompt):** no defamatory depiction of a real named person;
+  analysis-not-gore on grim beats; evergreen references only, no memes/wojaks/anachronism cutaways.
 
 ## Branding
 
-- **Thumbnail style (SUPERSEDED 2026-07-21 — flagged for Daniel's veto):** the old spec here ("one
-  dominant clean-2.5D-vector money object as the anomaly, locked single-color field + the red accent,
-  ≥50% negative space, ≤3-word overlay, no face, no clutter") was **refuted** by the frame-level
-  reference-channel teardown (`research/thumbnail-teardown-2026-07-21.md`, 8 high-CTR channels): a
-  no-face / empty-vignette / cold-money-object frame is the single weakest configuration in the whole set,
-  and it is exactly what sank the rejected Poyais candidates. **New grammar (built into `metadata-writer`
-  §Step 3 + `visual-prompt-writer` §Step 4, per Daniel's regen order):** a **hero with ONE loud emotion**
-  (a cast member — the con-man, the mark — OR a personified money object *with a face*, smug / menacing /
-  panicked / gloating; a cold faceless object is banned as the sole subject); **ONE big thing legible at
-  168px**; overlay text is a **punchline / verdict / fake-quote ≤6 words, never a premise or label**; the
-  **one red accent POINTS** (arrow / circle / underline) or highlights the payoff word; **absurd or
-  menacing juxtaposition over literal illustration**; a **familiar anchor** leads; a persistent corner
-  wordmark. Faces ARE now allowed — we have the 2.5D vector cast. Still distinctly *our* illustration
-  style (flat-cel 2.5D, `#241a12` outline, the one red `#d7402b`). Acceptance = the 168px half-second
-  test. *(This edit was made under Daniel's explicit "build the findings in" order; `dna.md` is otherwise
-  human-edited — flagged here for his veto.)*
+- **Thumbnail style:** our own flat-cel 2.5D look — a **cast member or a personified money object as
+  the hero** (faces are allowed and preferred), the one red `#d7402b` accent, and a persistent corner
+  wordmark. The full rule set — one loud emotion, one big thing legible at 168px, punchline/verdict
+  overlay text, the pointing accent, the 168px half-second test — lives in `visual-prompt-writer`
+  Step 4, which derives every concept from `script.md` plus this file.
 - **Banner / profile:** locked 2–3 color palette + accent; the illustrated wordmark.
 - **Naming conventions for titles:** curiosity-gap **story** declaratives — "The [person] Who [did the
   impossible-sounding thing]" / "The [famous thing] That [hidden twist]" / "The [scam/collapse] That

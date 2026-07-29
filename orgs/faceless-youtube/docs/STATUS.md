@@ -148,8 +148,12 @@ defect that will recur until fixed.
 - **Visual identity — LOCKED (2026-07-04):** The Second Take template = round cream `#f5ead6` head,
   dark brown-black `#241a12` outline, calm no-nose face; canonical frame set in `visual-kit/refs/base/`.
   MacGregor canonical = red/gold, ear-free, costume PINNED (`refs/macgregor/`). Diegetic art = flat-cel.
-- **Visual doctrine files TRIMMED 2026-07-28** (single-home law map; retired capabilities live only in
-  `docs/retired-features.md`; spec 2026-07-28-visual-stack-trim-design.md).
+- **Visual pipeline REDESIGNED 2026-07-28 (wave 3)** — VPW = thin procedure over visual-grammar +
+  example-shots (the depiction bar, gate-B approved); shots.json v2 (lint warns on legacy fields);
+  image-gen Pass1(build+tag)→Pass2(consume), missing-asset pre-gen gate; style-bible = LOOK law only.
+  Waves 1–2 trimmed all visual+audio/motion/render doctrine; retired capabilities live only in
+  `docs/retired-features.md`. Specs: 2026-07-28-visual-{stack-trim,pipeline-redesign}-design.md +
+  2026-07-28-audio-motion-stack-trim-design.md.
 - **Generation system:** per-channel **`visual-kit/style-bible.md`** is THE single image-gen doc (rig
   lock + descriptors + verify gate + committed recipe + asset-library build spec) + `registry.json` (the
   LIVE asset vocabulary) + the **`image-generation`** skill running a **two-pass flow**: pass 1 derives a
@@ -289,8 +293,8 @@ defect that will recur until fixed.
   `master_target`, ear-gated to **−14.5 LUFS / −1.0 dBTP / LRA 4**).
 - **Measured-grammar anchors:** bed PLACED ~79% (not wall-to-wall); the default register is **wry/dry, NOT
   cheerful** (the `sneaky` family is the con-story workhorse; `upbeat` = an opt-in lift). Structural
-  sounds fire by **selective director judgment** (guided by `references/grammar-guidance.md` ← measured
-  `universal.md §13a-iii.8`), not mechanical auto-fire.
+  sounds fire by **selective director judgment** (guided by the audio-director SKILL's Placement laws ←
+  measured `universal.md §13a-iii.8`), not mechanical auto-fire.
 - **Files + measurement:** SFX/music sourced by **`sfx-forge`** (16-role CC0/CC-BY library) +
   **`music-forge`** (Incompetech CC-BY beds); the measured grammar came from **`audio-analyzer`** (8
   references, audio-only, tools-measured — the model-listening-hallucination fix). Ear-gated + approved by
@@ -389,7 +393,7 @@ defect that will recur until fixed.
   (0) a **6/6 capability probe** of one-run multi-seed; (1) code removals (producers gone, `source:"engine"`
   invalid in lint, menu cutout-only, `forge` seed requirement + tests, hook paths → `${CLAUDE_PROJECT_DIR}`);
   (2) `refs/env/` style anchors from three human-gated frames; (3) this doc rewrite (`universal.md §13a`,
-  audio-director `grammar-guidance.md`, this STATUS, one `operating-law.md` clause). **(4) DOGFOOD DONE
+  audio-director `SKILL.md`, this STATUS, one `operating-law.md` clause). **(4) DOGFOOD DONE
   (2026-07-15): 7-shot slice + full chunk 2 ran through the simplified pipeline** — multi-seed identity
   hold STRONG, baked-text spelling STRONG, env-anchor style MOSTLY-HELD. **Identity-starve failure —
   RESOLVED to a DEFAULT (human-confirmed 2026-07-16):** a scene-heavy delta renders the blank base

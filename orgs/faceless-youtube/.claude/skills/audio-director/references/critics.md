@@ -1,6 +1,6 @@
 # audio-director critic — fresh-eyes check (merged SFX + music)
 
-Run a fresh-context reviewer over the draft `audio-plan.json` + the script + `grammar-guidance.md`. It
+Run a fresh-context reviewer over the draft `audio-plan.json` + the script + the SKILL's Placement laws. It
 flags, most-important first:
 
 1. **Semantic coverage + restraint** — flag a high-value material reveal, concrete number, pivot,

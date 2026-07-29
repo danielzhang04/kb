@@ -1,6 +1,6 @@
 ---
 name: metadata-writer
-description: Writes YouTube publishing metadata for a scripted video — title (primary + A/B challengers), description, tags, hashtags, chapters, thumbnail concepts, pinned-comment copy — for the long-form video and every short, as videos/SLUG/metadata.json. Use for "titles and tags", a title/description, YouTube SEO, hashtags, chapters, thumbnail text, or pinned comment. Reads script.md + brief.md + dna.md + playbooks. Runs after long-form-writer/shorts-writer, before publish-queue. Do NOT use it to generate ideas (idea-generator), write the script, or upload (publish-queue).
+description: Writes YouTube publishing metadata for a scripted video — title (primary + A/B challengers), description, tags, hashtags, chapters, pinned-comment copy — for the long-form video and every short, as videos/SLUG/metadata.json. Use for "titles and tags", a title/description, YouTube SEO, hashtags, chapters, or pinned comment. Reads script.md + brief.md + dna.md + playbooks. Runs after long-form-writer/shorts-writer, before publish-queue. Do NOT use it to generate ideas (idea-generator), write the script, pick thumbnail concepts (visual-prompt-writer), or upload (publish-queue).
 ---
 
 # metadata-writer
@@ -14,11 +14,12 @@ short — for one faceless-YouTube channel. One skill for every channel; the nic
 the scriptwriters (`long-form-writer` / `shorts-writer`) decided *exactly what is said*; you decide *how the video is found, clicked, and
 watched to the end* — the packaging that lives outside the video itself. Your output is the contract
 for `publish-queue`, which maps it 1:1 onto the YouTube Data API v3 upload. So the metadata must be
-(1) **doctrine-grounded** (the title/thumbnail craft in `universal.md §3` + `§8`, matching the
-channel's **locked emotional lever**), (2) **policy-safe** (private by default under the audit gate;
-AI-synthetic disclosed; no misleading metadata), and (3) **shaped for the real platform** — one
-primary title/thumbnail the API can actually submit, with the extra variants parked in a Studio-only
-A/B block (see *The A/B reality* below). **Write for the click AND the retention** — a high-CTR title
+(1) **doctrine-grounded** (the title craft in `universal.md §3`, matching the channel's **locked
+emotional lever**), (2) **policy-safe** (private by default under the audit gate; AI-synthetic
+disclosed; no misleading metadata), and (3) **shaped for the real platform** — one primary title the
+API can actually submit, with the extra variants parked in a Studio-only A/B block (see *The A/B
+reality* below). **Thumbnails are not yours** — `visual-prompt-writer` derives every thumbnail concept
+and gen-prompt from `script.md` + `dna.md`. **Write for the click AND the retention** — a high-CTR title
 the video can't pay off costs the channel more than it earns (session-watch-time algorithm,
 `universal.md §3a`).
 
@@ -29,14 +30,14 @@ YouTube's "Test & Compare" lets a creator test **up to 3 titles + 3 thumbnails**
 and **Shorts are not eligible at all.** The Data API's `videos.insert` accepts exactly **one** title;
 `thumbnails.set` sets **one** thumbnail. Therefore:
 
-- You commit to **ONE primary title + ONE primary thumbnail** per video — this is the only thing
-  `publish-queue` uploads. The pipeline always has an unambiguous single title. Nothing about the
-  extra variants can break that contract.
-- You also propose **2 challenger titles + 2 challenger thumbnail concepts** for the long-form,
-  parked in an `ab_experiment` block flagged *Studio-only* — a human (or a future `packaging-optimizer`
-  skill) sets those up manually in Studio. Make challengers test **genuinely different angles/hook
-  framings within the locked lever**, not trivial rewrites — an uninformative A/B wastes the slot.
-- **Shorts get a single title/thumbnail, no challengers** (ineligible). Don't emit an A/B block for them.
+- You commit to **ONE primary title** per video — this is the only title `publish-queue` uploads. The
+  pipeline always has an unambiguous single title; nothing about the extra variants can break that.
+- You also propose **2 challenger titles** for the long-form, parked in an `ab_experiment` block flagged
+  *Studio-only* — a human (or a future `packaging-optimizer` skill) sets those up manually in Studio.
+  Make challengers test **genuinely different angles/hook framings within the locked lever**, not
+  trivial rewrites — an uninformative A/B wastes the slot. (Thumbnail challengers are authored
+  alongside them by `visual-prompt-writer`, in `shots.json`.)
+- **Shorts get a single title, no challengers** (ineligible). Don't emit an A/B block for them.
 - You do **not** run the test or pick a live winner — that emerges from real watch-time and flows back
   later via `analytics-reporter` → `performance.md`, which informs future title picks.
 
@@ -61,25 +62,23 @@ and **Shorts are not eligible at all.** The Data API's `videos.insert` accepts e
   The title options are raw ideation; produce the final CTR-tuned set from them + `universal.md §3c`,
   subject to the research viability contract above when one exists.
 - **`channels/<name>/dna.md`** — the **locked emotional lever**, voice/tone, title naming conventions,
-  visual/thumbnail style, audience/region/language, and any category override. Everything you write
-  serves *this* lever and *this* identity.
+  audience/region/language, and any category override. Everything you write serves *this* lever and
+  *this* identity.
 - **`knowledge/research/niche-playbooks/universal.md`** — read every run. Load-bearing here: **§3**
-  (title principles + anti-patterns + the 15-pattern library with levers), **§8** (2026 thumbnail
-  rules), **§9** (funnel: pinned comment + description link + end-screen). Also §1a (one lever per
-  channel).
+  (title principles + anti-patterns + the 15-pattern library with levers) and **§9** (funnel: pinned
+  comment + description link + end-screen). Also §1a (one lever per channel).
 - **`knowledge/research/niche-playbooks/<niche>.md`** — match from dna.md's niche. Its niche-flavored
-  **title formulas**, thumbnail conventions, and any **policy quirk** (health YMYL, engineering
-  analysis-not-gore framing, business defamation care) constrain wording.
+  **title formulas** and any **policy quirk** (health YMYL, engineering analysis-not-gore framing,
+  business defamation care) constrain wording.
 - **`knowledge/playbook.md`** — policy: audit-gate (private default), AI-synthetic disclosure, no
   misleading metadata.
 - **`references/metadata-schema.md`** (in this skill) — the exact `metadata.json` structure, the
   field→YouTube-API mapping, the category-ID table, char limits, and the policy defaults. **Follow it
   exactly** so `publish-queue` maps 1:1.
-- `channels/<name>/performance.md` (if it has data) — reuse title/thumbnail shapes that have proven
+- `channels/<name>/performance.md` (if it has data) — reuse title shapes that have proven
   CTR/retention for *this* channel; avoid ones that flopped.
-- `channels/<name>/research/metadata-teardown-*.md` (if present) — the measured reference-channel
-  packaging harvest grounding the description/chapters/hashtags/pinned rules below (The Second
-  Take's: `metadata-teardown-2026-07-21.md`, 36 videos / 9 channels).
+- `channels/<name>/research/metadata-teardown-*.md` (if present) — the reference-channel packaging
+  harvest grounding the description/chapters/hashtags/pinned rules below.
 
 ## Step 2 — Titles (long-form: primary + 2 challengers)
 Apply `universal.md §3`:
@@ -97,61 +96,7 @@ Apply `universal.md §3`:
   cosmetic variants.
 - Match the channel's **title naming conventions** in `dna.md`.
 
-## Step 3 — Thumbnails (long-form: primary + 2 challengers)
-Concepts only — text overlay + visual concept (the actual pixels come later from
-`visual-prompt-writer`/render). Apply `universal.md §8` **as deepened by the frame-level reference-channel
-teardown** (`channels/the-second-take/research/thumbnail-teardown-2026-07-21.md` — 8 high-CTR channels,
-~55 thumbnails read pixel-by-pixel; it is the grounding for the mechanical rules below and it **refuted**
-the old "no-face / ≥50%-negative-space / one-money-object / ≤3-word" spec as the single weakest
-configuration in the whole set). Rules are tagged **[EMOTION]/[CHARACTER]/[ABSURD]** (the personality
-hooks — where the winners live) vs **[COMP]** (composition/legibility — necessary frame, not the hook).
-**When they conflict, EMOTION/CHARACTER/ABSURD beat COMP** — a busy, imperfect frame with a great
-emotional hook out-clicks a clean, tasteful, empty one.
-
-- **[CHARACTER][EMOTION] A hero with ONE loud, readable emotion is mandatory.** Default = a member of
-  the channel's cast (the con-man, the mark, the personified institution) wearing a single big expression
-  — **smug, menacing, panicked, or gloating**. If no human fits, **personify the money object and give it
-  a face** (a crowned banknote with an evil grin, a sweating bond — the Crayon move done right). **A cold,
-  faceless object with no emotion is banned as the sole subject** (that is exactly what sank the rejected
-  Poyais set). The only no-face exception: a single loaded metaphor-icon that itself carries dread (skull,
-  fire, scissors cutting, a crash line). Faces ARE allowed — a channel whose visual kit has a cast SHOULD
-  use it.
-- **[EMOTION] The overlay text is a PUNCHLINE / VERDICT / fake-quote, ≤6 words — NEVER the premise or a
-  neutral label.** It must land the joke or the alarm in a half-second. The strongest form is a **fake
-  first-person quote in quote marks put in the subject's mouth** (`"I LOVE INFLATION"`). **Ban
-  task-prompts** ("Spot the fake") and quiet labels ("As advertised", "Population: 0") — those describe
-  the premise instead of delivering a verdict. (VPW still owns the final on-pixel word count / lettering;
-  keep the *concept* text tight and punchy.)
-- **[COMP] Exactly ONE dominant thing, big and simple, legible at 168px.** No fine engraving, no rows of
-  near-identical items, no numbers smaller than ~15% of frame height. If understanding the anomaly
-  requires *inspection* (a task, not a glance), the thumbnail fails — blow the anomaly up until it reads
-  at feed size. Negative space is not a driver; a filled, packed frame with one clear focal face is the
-  norm across the winners.
-- **[COMP] The one red accent must POINT at the anomaly or highlight the payoff word** — a hand-drawn
-  marker arrow, circle, string-web, or underline, OR the payoff word in the channel's accent colour (the
-  way RealLifeLore yellows `COLLAPSE`). Red is the director's finger, not just the colour of a money
-  number. Keep one-red discipline (one red element).
-- **[ABSURD] Prefer an absurd or menacing juxtaposition over a literal illustration.** Subvert the
-  subject's own branding (a con's "brochure" turned against it), stage an impossible/damning scene, or an
-  oversized prop — the image itself should be the joke or the threat, not a neutral depiction of the
-  premise.
-- **[COMP] Lead with a familiar anchor** (a recognizable brand/face/place/era the story touches — same
-  rule as titles, `dna.md`); the obscure specifics are the payoff.
-- **[COMP] Title + thumbnail = one asset**: the thumbnail delivers the promise visually; neither fully
-  resolves the question. Don't restate the title text on the thumbnail. A **persistent corner wordmark**
-  carries channel identity.
-- **[COMP] "Proof of human"** (a real/photographic or on-style illustrated *character* subject) beats a
-  cold graphic ~18–22%; on an illustrated channel, use its locked cast as that subject.
-- Each challenger pairs with its title challenger as a coherent package, testing a **genuinely different
-  hook** (a different hero/emotion/absurd framing) within the locked lever — not a cosmetic variant.
-
-**The 168px half-second acceptance test (apply to every concept):** shrink the concept to ~168px wide in
-your mind's eye and give it half a second. If a first-time viewer can't read (a) one loud emotion and (b)
-the punchline's joke/alarm in that glance, the concept fails — restage it before it goes to
-`visual-prompt-writer`. This is the check that the rejected Poyais set (cold objects, fine detail,
-label-text, no face, no pointing accent) could not pass.
-
-## Step 4 — Description
+## Step 3 — Description
 Structure (see `references/metadata-schema.md` for exact field + char limits; measured grounding =
 the channel's metadata-teardown. The teardown's core fact: at the reference tier the description is
 **not a discovery surface** — it is a stable per-channel skeleton with one or two variable slots, and
@@ -162,7 +107,7 @@ title+thumbnail carry all discovery):
    holds the fold only until the channel has a sponsor; that is the slot a future sponsor displaces.)
 2. **Body (2–4 sentences)** expanding the promise — keyword-rich but **natural language, no keyword
    stuffing** (stuffing is spam under policy and reads as slop).
-3. **Chapters** (see Step 5).
+3. **Chapters** (see Step 4).
 4. **Links / CTA** — related-video or playlist link if relevant. If the target will exist at publish
    but isn't known yet, use a `<...-url>` placeholder (same convention as the shorts' `<long-form-url>`);
    if there is genuinely nothing to link (e.g. the channel's first video), **omit this section**. (The
@@ -176,14 +121,14 @@ title+thumbnail carry all discovery):
    exempt, no reference channel discloses (n=36), and a volunteered AI label spends trust for
    nothing. Also do NOT adopt Crayon's "may contain inaccuracies" hedge — we are accuracy-leashed
    and the hedge would spend the trust the leash buys. (If a channel ever ships realistic synthetic
-   media, the disclosure line AND the machine flag both come back — see Step 9.)
+   media, the disclosure line AND the machine flag both come back — see Step 8.)
 7. **Sources** — if `script.md` carried a Sources list (health/engineering/business trust), reproduce
    it **compactly**. This is part of the originality/trust moat — a deliberate divergence from the
    references (majors cite nothing; the closest analogs cite one doc/URL-dump/named source).
 8. **Alternate-titles block** — the `title_challengers` pasted as bare lines at the very bottom
    (below Sources): free extra search surface (the Magnates move). No header, no framing — bare lines.
 
-## Step 5 — Chapters (estimated at draft; MEASURED before publish)
+## Step 4 — Chapters (estimated at draft; MEASURED before publish)
 Derive chapter markers from the script's beats (hook → second gate → body cycles → mid-video re-arm →
 withheld peak → close). **First chapter must be `00:00`.** Real timestamps only exist after render, so
 mark `chapters_status: "estimated-from-script — re-time after render before publish"`. Include chapters
@@ -199,7 +144,7 @@ carries aspirational beat timestamps that overshoot its own word-count runtime, 
 otherwise the chapters will claim a 12-min video that is really 6, and desync from the shot list.
 
 **Write them in two places, kept in sync:** (1) the `mm:ss Label` lines **inside the description string**
-in the position Step 4 specifies — YouTube only creates chapter markers when the timestamps physically
+in the position Step 3 specifies — YouTube only creates chapter markers when the timestamps physically
 appear in the description, so this is what actually works; and (2) the structured `chapters[]` array as a
 machine-readable mirror for re-timing. `publish-queue` submits the description **verbatim** and does not
 re-inject chapters. Keep labels curiosity-open, not spoilers.
@@ -212,12 +157,12 @@ closes). After render, re-time each chapter from the render's **measured per-sho
 any video whose chapters are still `estimated…` or whose description/array chapter lines disagree — 
 estimated chapters cannot reach a live upload.
 
-## Step 6 — Tags
+## Step 5 — Tags
 Front-load the **exact-match subject keyword**, then close variants, then broader niche terms. ~15–25
 tags, **≤500 characters total**, no stuffing/irrelevant tags (misleading-metadata risk). Tags carry
 minor SEO weight today; their real job is disambiguation. Shorts get a tighter, Short-appropriate set.
 
-## Step 7 — Pinned comments
+## Step 6 — Pinned comments
 - **Long-form:** an **engagement pin, framed warm** — a short observation or thanks in the narrator's
   voice + ONE question tied to the video's lever/withheld peak that invites comments (comments are a
   ranking signal). Not "like and subscribe." (Teardown: references pin monetization CTAs — ColdFusion's
@@ -229,14 +174,14 @@ minor SEO weight today; their real job is disambiguation. Shorts get a tighter, 
   ~+12% conversions among non-subscribers (`universal.md §9`). `publish-queue` fills the real URL after
   the long-form uploads; write the copy with a `<long-form-url>` placeholder.
 
-## Step 8 — Shorts metadata
+## Step 7 — Shorts metadata
 For every short in the folder, emit a block: single `title` (Short hook, ≤~50 chars, first-person or
 punch-first), `description` (1–2 lines + `#Shorts` + 2–3 hashtags), a tight `tags` set,
-`category_id`, the `pinned_comment` from Step 7, and `thumbnail_note: "first frame IS the thumbnail"`
-(`universal.md §8`/§11). **No A/B block** (Shorts ineligible). Carry the `publish`|`bench` status and
+`category_id`, the `pinned_comment` from Step 6, and `thumbnail_note: "first frame IS the thumbnail"`
+(`universal.md §11`). **No A/B block** (Shorts ineligible). Carry the `publish`|`bench` status and
 `archetype` from the short file.
 
-## Step 9 — Policy defaults (non-negotiable at Stage 0)
+## Step 8 — Policy defaults (non-negotiable at Stage 0)
 Set in the `defaults` block, applied to long-form + every short:
 - `privacy_status: "private"` — the **audit gate**; unaudited OAuth uploads everything private. Never
   default to public. (`playbook.md` / CLAUDE.md.)
@@ -252,7 +197,7 @@ Enforce any **niche policy quirk**: no health claim in metadata without the scri
 defamatory phrasing in business collapse titles; keep engineering framing analysis-not-gore; never
 write a title the video doesn't pay off (misleading-metadata = policy strike + session-time penalty).
 
-## Step 10 — Write the file + hand off
+## Step 9 — Write the file + hand off
 Write **`videos/<slug>/metadata.json`** per `references/metadata-schema.md` (one file: `defaults` +
 `long_form` + `shorts[]`; set the file's own `status: "metadata-drafted"` field — that is the file's
 production state, distinct from the idea-backlog lifecycle). **Leave the idea-backlog lifecycle status
@@ -260,20 +205,20 @@ at `scripted`** — the project's
 coarse lifecycle (`idea → picked → scripted → produced → published`) doesn't have a per-sub-step rung,
 and *files are the memory*: this step is "done" because `metadata.json` now exists in the folder (the
 idea flips to `produced` only when the video is fully assembled). The folder is now ready for
-`visual-prompt-writer` (thumbnail concepts + `[B-ROLL]` shots) → `voiceover` + `render-builder` →
-`compliance-check` → `publish-queue`.
+`visual-prompt-writer` (the shot list + thumbnail gen-prompts) → `voiceover` + `image-generation` →
+`render-builder` → `compliance-check` → `publish-queue`.
 
 ## Output to the user
 Short summary only: the metadata.json path, the **primary long-form title** (+ char count) and its 2
-challengers, the thumbnail primary concept, chapter count (flagged estimated), and the count of shorts
-metadata written (and how many `publish`). `metadata.json` is the source of truth; keep the chat brief.
+challengers, chapter count (flagged estimated), and the count of shorts metadata written (and how many
+`publish`). `metadata.json` is the source of truth; keep the chat brief.
 
 ## Output contract (what publish-queue reads)
 `videos/<slug>/metadata.json` — a single JSON object:
 - `defaults` — privacy/disclosure/kids/language/license flags applied to every asset.
 - `long_form` — `title_primary`, `title_challengers[2]`, `description`, `tags[]`, `hashtags[]`,
-  `category_id`/`category_name`, `chapters[]` + `chapters_status`, `thumbnail.{primary,challengers[2]}`,
-  `pinned_comment`, `ab_experiment` (Studio-only note).
+  `category_id`/`category_name`, `chapters[]` + `chapters_status`, `pinned_comment`, `ab_experiment`
+  (Studio-only note). No `thumbnail` block — `visual-prompt-writer` owns thumbnails in `shots.json`.
 - `shorts[]` — one per short: `file`, `archetype`, `status`, `title`, `description`, `tags[]`,
   `hashtags[]`, `category_id`, `pinned_comment`, `thumbnail_note`.
 Field→YouTube-API-v3 mapping is documented in `references/metadata-schema.md` so `publish-queue` maps

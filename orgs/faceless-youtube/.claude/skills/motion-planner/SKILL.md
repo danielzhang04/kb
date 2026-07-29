@@ -47,8 +47,11 @@ animations). Rules: `references/animation-rules.md`. Critic: `references/critics
    stage camera would ignore it and lint rejects it.
 3. **Decompose layered shots BY SUBTRACTION** (never re-author from scratch): `plate_prompt` = the shot's
    `still_prompt` minus the cutout elements (in-video text is NOT subtracted — it stays baked diegetic;
-   state what fills the region so no blank slot is left); `cutout_prompt` = the single element alone on a
-   plain plate. Two corollaries belong to the subtraction step itself — the supplied-text and
+   state what fills the region so no blank slot is left); `cutout_prompt` = **the OBJECT ONLY** — the
+   single element described as itself, with no background, field or surrounding-scene language at all
+   (`image-generation` gens it on a solid magenta chroma field and keys that out, so any scene you write
+   there is either keyed away or fringes the matte). Two corollaries belong to the subtraction step
+   itself — the supplied-text and
    lettering-fidelity laws in full are `visual-prompt-writer/references/shots-schema.md` §4, which
    `lint_motion_plan.py` imports from `lint_shots.py` and HARD-fails on:
    - **Carry every literal VERBATIM and case-exact** into the `cutout_prompt`/`plate_prompt`. A cutout
@@ -56,7 +59,7 @@ animations). Rules: `references/animation-rules.md`. Critic: `references/critics
      the engine invents one. If the source prompt genuinely supplies no value, **cut the element** and
      flag the gap back to `visual-prompt-writer` — never invent a plausible number to fill it.
    - **Strip production-control vocabulary when you subtract.** Rig and comedy directions travel out of
-     the `still_prompt` unless you delete them, and a lone element on a plain plate is the easiest
+     the `still_prompt` unless you delete them, and a lone element on an empty field is the easiest
      surface in the pipeline for a stray instruction to get lettered onto. Authored strings stay ≤4 words.
 4. **Fresh-eyes critic** (`references/critics.md`, a fresh-context reviewer) → apply its fixes in ONE
    revise pass. The #1 defect it catches: a `plate_prompt` that still implies a moved element.

@@ -5,7 +5,9 @@ WHY THIS EXISTS
 ---------------
 `render-builder` times every cut by finding each shot's `vo_ref` in the real VO
 word-stream (see render.py::retime_by_timings): it normalizes the FIRST 4 WORDS of
-`vo_ref` and matches them SEQUENTIALLY (each shot at or after the previous match).
+`vo_ref` — or all of them when the line is shorter, so a 3-word `[PAUSE]`-bounded
+sentence is a legal anchor — and matches them SEQUENTIALLY (each shot at or after
+the previous match).
 Two authoring mistakes silently break that:
 
   1. A PARAPHRASED vo_ref (e.g. "he commissioned…" when the script says
@@ -21,14 +23,14 @@ the render's per-line sync is safe.
 
 WHAT IT ALSO DOES (--write)
 ---------------------------
-On a clean pass, (re)generates two DERIVED, review-only fields, preserving the
+On a clean pass, (re)generates ONE DERIVED, review-only field, preserving the
 file's exact formatting:
   * `vo_text` on every shot = the verbatim script span it covers (from its anchor
     to the next shot's). This is COMPUTED, never authored, and is NOT a depiction
     brief — a shot's image is anchored to its moment, not asked to represent the
     whole span. A span that comes out long is a signal to DENSIFY (add a cut),
-    per the §10 cadence rule, not to cram meaning into one image.
-  * a top-level `shot_counts` block (informational; downstream ignores it).
+    per the cadence rule, not to cram meaning into one image.
+It also STRIPS the retired `shot_counts` block from any v1 file it rewrites.
 
 Usage:
   python lint_shots.py <path-to/shots.json> [--write]
@@ -48,10 +50,30 @@ if str(_RENDER_SCRIPTS) not in sys.path:
 from render import match_shots_to_tokens, word_timings_for  # noqa: E402
 
 _BRACKET = re.compile(r"\[[^\]]*\]")            # [B-ROLL]/[PAUSE]/[BEAT] — never spoken
+_ITALIC_META = re.compile(r"^\*[^*].*[^*]\*$")  # a WHOLE line in italics = a note about the video
 _NORM = lambda w: re.sub(r"[^a-z0-9]+", "", w.lower())   # mirrors render.py::_NORM
 LONG_SPAN_WORDS = 20                            # V1 D13: ~>8s of VO on one anchor -> densify heads-up
-CADENCE_TARGET_S = 5.0                          # Checkpoint 3: new long-form default is 2–5s cuts
-HOLD_REASON_THRESHOLD_S = 6.0                   # >~6s holds must state why they earn the time
+CADENCE_TARGET_S = 4.0                          # 2026-07-28 dial: the band is 1.5–3s, up to 4s earned
+
+# The runtime a shot list is sized against comes from the SCRIPT HEADER's stated rate
+# ("1,728 words ÷ 175 wpm" / "Estimated runtime: 9:52"), never a project constant: the
+# 150 wpm this lint used to assume is ~17% slower than The Second Take's measured voice,
+# so it bought 140 shots for an 11:38 video that runs 9:52. 150 remains the FALLBACK for a
+# header that states no rate (mostly shorts, which carry no header).
+DEFAULT_WPM = 150.0
+_HEADER_WPM = re.compile(r"([\d,]+)\s*(?:gross\s+)?wpm", re.IGNORECASE)
+_HEADER_RUNTIME = re.compile(r"Estimated runtime\D{0,4}\s*(\d+):([0-5]\d)", re.IGNORECASE)
+
+# --- shots.json v2 ----------------------------------------------------------
+# v2 drops the v1 AUTHORING/REVIEW metadata below. None of it was ever engine-read
+# (build_motion.py defaults `beat`; render.py reads none of them), so a v1 file
+# still parses, still lints, and still renders. The lint therefore SAYS SO and
+# never fails on one: hard-failing a naming change would break every archived
+# video for nothing. What the fields were and why they went: docs/retired-features.md.
+SCHEMA_V1 = "faceless-youtube/shots@1"
+SCHEMA_V2 = "faceless-youtube/shots@2"
+LEGACY_FILE_FIELDS = ("house_style", "needed_assets", "shot_counts", "timing_status")
+LEGACY_SHOT_FIELDS = ("from_cue", "beat", "narration_type", "hold_reason", "cast", "props")
 
 
 def build_vo_stream(md_path):
@@ -73,8 +95,14 @@ def build_vo_stream(md_path):
             break
     if body_start is None:
         body_start = 0
+    # A line wholly wrapped in asterisks is an authoring NOTE about the video (the
+    # disclosure tail: "*Disclosure line (spoken tail or end card, per channel YMYL
+    # rule): …*"), not narration — counting it inflates the runtime and offers an
+    # anchor no voice will speak. Emphasis INSIDE a spoken sentence is spoken, and
+    # dropping it would shift every anchor after it, so only a solitary line goes.
     narr = [ln.strip() for ln in lines[body_start:body_end]
-            if ln.strip() and not ln.strip().startswith("[B-ROLL")]
+            if ln.strip() and not ln.strip().startswith("[B-ROLL")
+            and not _ITALIC_META.match(ln.strip())]
     vo = " ".join(narr)
     spans = [(m.start(), m.end()) for m in _BRACKET.finditer(vo)]
     in_bracket = lambda p: any(a <= p < b for a, b in spans)
@@ -89,6 +117,29 @@ def build_vo_stream(md_path):
         if n:
             toks.append((n, m.start()))
     return vo, toks
+
+
+def header_pace(md_path):
+    """Return (wpm | None, stated_runtime_s | None) from the script header — the block above
+    the first `---`. A header states its rate as "N words ÷ M wpm" and its length as
+    "Estimated runtime: M:SS"; either alone is enough to retire the 150 fallback. The RATE
+    wins when both are present: the word count is measured off the real stream here, so
+    rate × measured words beats a header total the script may have drifted from."""
+    try:
+        lines = Path(md_path).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None, None
+    head = []
+    for ln in lines:
+        if ln.strip() == "---":
+            break
+        head.append(ln)
+    head = "\n".join(head)
+    m = _HEADER_WPM.search(head)
+    wpm = float(m.group(1).replace(",", "")) if m and float(m.group(1).replace(",", "")) > 0 else None
+    r = _HEADER_RUNTIME.search(head)
+    runtime_s = int(r.group(1)) * 60 + int(r.group(2)) if r else None
+    return wpm, runtime_s
 
 
 def tile(shots, matches, vo_len, vo):
@@ -138,28 +189,28 @@ def lint_piece(label, shots, md_path, hard, soft, word_timings=None):
                 f"Copy the opening words VERBATIM and keep shots in narration order.")
 
     # Q3: cadence floor — durations must ~cover the runtime and there must be enough cuts
-    # (the stretch-to-fill dead-hold kill-rule, made deterministic). Checkpoint 3 tightens
-    # the planning floor from runtime/8 to runtime/5; authored long holds above ~6s need a
-    # concrete reason for the critic to judge, not a generic exemption.
+    # (the stretch-to-fill dead-hold kill-rule, made deterministic). The planning floor is
+    # runtime/4 (the 1.5–3s band, 4s only where the beat earns it); authored long holds above
+    # ~6s need a concrete reason for the critic to judge, not a generic exemption. The runtime
+    # itself is sized off the header's REAL rate — see header_pace.
     if vo_words:
-        runtime_s = vo_words / 150.0 * 60.0      # 150 wpm
+        wpm, stated_runtime_s = header_pace(md_path) if md_exists else (None, None)
+        if wpm:
+            runtime_s, rate = vo_words / wpm * 60.0, f"{vo_words} words / {wpm:.0f}wpm, per the header"
+        elif stated_runtime_s:
+            runtime_s, rate = float(stated_runtime_s), "the header's stated Estimated runtime"
+        else:
+            runtime_s = vo_words / DEFAULT_WPM * 60.0
+            rate = f"{vo_words} words / {DEFAULT_WPM:.0f}wpm, the fallback — the header states no rate"
         sum_dur = sum(_dur(sh) or 0.0 for sh in shots)
         if sum_dur < 0.85 * runtime_s:
-            hard.append(f"[{label}] Σ duration_s {sum_dur:.0f}s < 85% of the ~{runtime_s:.0f}s runtime "
-                        f"({vo_words} words / 150wpm) — durations don't cover the VO (stretch-to-fill "
+            hard.append(f"[{label}] Sum of duration_s {sum_dur:.0f}s < 85% of the ~{runtime_s:.0f}s "
+                        f"runtime ({rate}) — durations don't cover the VO (stretch-to-fill "
                         f"risk); size shots near real seconds or densify.")
         if len(shots) < runtime_s / CADENCE_TARGET_S:
-            hard.append(f"[{label}] {len(shots)} shots for a ~{runtime_s:.0f}s runtime (< 1 cut / {CADENCE_TARGET_S:.0f}s) — "
-                        f"too few cuts; densify to the 2–5s new-video cadence.")
-
-    for sh in shots:
-        dur = _dur(sh)
-        if dur is not None and dur > HOLD_REASON_THRESHOLD_S:
-            reason = sh.get("hold_reason")
-            if not isinstance(reason, str) or not reason.strip():
-                hard.append(f"[{label}] {sh.get('id', '?')}: duration_s {dur:g}s exceeds ~{HOLD_REASON_THRESHOLD_S:g}s "
-                            "without a non-empty hold_reason — split the hold, add a real progressive reveal, "
-                            "or record the short legibility/gravity reason for the critic.")
+            hard.append(f"[{label}] {len(shots)} shots for a ~{runtime_s:.0f}s runtime ({rate}) "
+                        f"(< 1 cut / {CADENCE_TARGET_S:.0f}s) — too few cuts; densify to the "
+                        f"1.5–3s cadence.")
 
     if any(m["start"] is None for m in hard_matches):
         return None
@@ -193,31 +244,15 @@ def lint_piece(label, shots, md_path, hard, soft, word_timings=None):
 def strip_derived(txt):
     # V1 D12: match at any indent (^\s*), not a hardcoded 2 spaces, so a reflowed file still cleans.
     txt = re.sub(r'(?m)^[ \t]*"vo_text": .*\n', "", txt)
+    # v2 retired shot_counts. Still stripped, never re-emitted, so rewriting a v1
+    # file cleans the stale block out instead of leaving a count that drifts.
     txt = re.sub(r'(?ms)^\s*"shot_counts": \{.*?\n\s*\},\n', "", txt)
     return txt
 
 
 def write_back(path, data, ordered_shots, id2text):
-    """Insert vo_text after each vo_ref line + a top-level shot_counts, preserving format."""
+    """Insert the derived vo_text after each vo_ref line, preserving the file's format."""
     txt = strip_derived(Path(path).read_text(encoding="utf-8"))
-    lf = data["long_form"]["shots"]
-    n_long = len(lf)
-    n_thumb = 1 + len(data.get("thumbnail", {}).get("challengers", []))
-    shorts = data.get("shorts", []) or []
-    n_short_pieces = len(shorts)
-    n_short_shots = sum(len(s.get("shots", [])) for s in shorts)
-    sc = (
-        '  "shot_counts": {\n'
-        '    "_note": "informational only; not consumed by downstream image-gen -- counts of prompt blocks in this file",\n'
-        f'    "long_form_shots": {n_long},\n'
-        f'    "thumbnail_prompts": {n_thumb},\n'
-        f'    "shorts": {n_short_pieces},\n'
-        f'    "shorts_shots": {n_short_shots},\n'
-        f'    "total_prompts": {n_long + n_thumb + n_short_shots}\n'
-        '  },\n'
-    )
-    txt = re.sub(r'(?m)^(\s*"status": .*\n)', lambda m: m.group(1) + sc, txt, count=1)  # V1 D12: any indent
-
     vo_ref_re = re.compile(r'^(\s*)"vo_ref":')
     out, idx = [], 0
     for line in txt.splitlines(keepends=True):
@@ -281,26 +316,46 @@ def stage_check(label, shots, hard, soft):
             soft.append(f"[{label}] stage '{sid}' appears in {c} non-contiguous runs — a stage should be one consecutive run.")
 
 
-# A3: casting enforcement. A known channel-registry CHARACTER named in a still_prompt but absent from
-# the shot's `cast` is an authoring gap — image-gen enumerates figures from `cast`, so an uncast
-# registry name renders off-rig (free-drawn) instead of seeded. Derived-only, SOFT (never blocks a
-# render). Deliberately scoped to REGISTRY names — a generic capitalized-proper-noun heuristic was
-# tried and cut: it fired on the channel name in the house-style suffix and on every place-name
-# (Britain, Europe, Mosquito Coast), all noise, no reliable signal. A brand-new (unregistered)
-# character is already surfaced by VPW's own `needed_assets` gate, not here.
-def _cast_names(shot):
-    return {(c.get("character") or "").lower() for c in (shot.get("cast") or []) if c.get("character")}
+# v2 SCHEMA + LEGACY-FIELD CHECKS — heads-ups, never violations.
+#
+# There is no casting check here any more. It compared a registry character named
+# in a `still_prompt` against that shot's `cast` array; v2 has no `cast` array —
+# naming figures by registry VOCABULARY inline in the prose IS the contract now,
+# and resolving those names to files is image-generation's Pass 1. Whether every
+# named figure resolves is the post-VPW critic's question (references/critics.md),
+# not a deterministic one this lint can answer.
+def schema_check(data, soft):
+    schema = data.get("schema")
+    if schema == SCHEMA_V2:
+        return
+    if schema == SCHEMA_V1:
+        soft.append(f"[file] schema is {SCHEMA_V1!r} — a LEGACY v1 file. It lints and renders "
+                    f"exactly as before (no engine-read field changed); author new files as "
+                    f"{SCHEMA_V2!r}.")
+    else:
+        soft.append(f"[file] schema {schema!r} is not {SCHEMA_V2!r} — set it, so downstream can "
+                    f"tell a v2 file from a v1 one.")
 
 
-def casting_check(label, shots, registry_characters, soft):
-    reg = {c.lower() for c in (registry_characters or [])}
-    for sh in shots:
-        prompt = sh.get("still_prompt") or ""
-        cast = _cast_names(sh)
-        for rc in reg:
-            if re.search(r"\b" + re.escape(rc) + r"\b", prompt, re.IGNORECASE) and rc not in cast:
-                soft.append(f"[{label}] {sh.get('id','?')}: names registry character '{rc}' in "
-                            f"still_prompt but it is not in `cast` — cast it or it renders off-rig.")
+def legacy_field_check(data, soft):
+    """One heads-up listing every dropped v1 field still present. NEVER a violation."""
+    found = {}
+    for f in LEGACY_FILE_FIELDS:
+        if f in data:
+            found[f] = found.get(f, 0) + 1
+    pieces = [data.get("long_form", {}).get("shots", []) or []]
+    pieces += [s.get("shots", []) or [] for s in (data.get("shorts", []) or [])]
+    for shots in pieces:
+        for sh in shots:
+            for f in LEGACY_SHOT_FIELDS:
+                if f in sh:
+                    found[f] = found.get(f, 0) + 1
+    if found:
+        listed = ", ".join(f"{f} (x{n})" for f, n in sorted(found.items()))
+        soft.append(f"[file] dropped v1 fields still present, ignored by every consumer: {listed}. "
+                    f"shots.json v2 removed them (docs/retired-features.md); casting is now inline "
+                    f"registry-vocabulary names in `still_prompt`, resolved by image-generation "
+                    f"Pass 1. Harmless to leave in an existing file; don't author them into a new one.")
 
 
 # ---------------------------------------------------------------------------
@@ -380,6 +435,21 @@ _SLOT = re.compile(
     r"\b(?:" + _PROMINENCE + r")\b(?:\s+[\w#'-]+){0,3}?\s+\b(?:" + _TEXT_NOUN + r")\b",
     re.IGNORECASE)
 
+# …but only when the text noun is the HEAD of that phrase. Used ATTRIBUTIVELY it is a
+# modifier and nothing is lettered: in "one red price rail" the count and the colour
+# belong to the RAIL, `price` only says what the rail is for (bricks L84, a HARD false
+# positive that cost an author a rewrite). The tell is the word AFTER the noun. In every
+# real defect the phrase has ENDED there — punctuation ("one prominent number."), a
+# participle ("number PAINTED", "number FLOATING"), a comparative ("number HIGHER") or a
+# preposition ("numerals IN a row"). A bare following noun means the phrase continues.
+_PHRASE_END = re.compile(
+    r"\s*(?:[^\w\s]|$)"                              # punctuation, or end of the body
+    r"|\s+\w+(?:ing|ed|er|est|ly)\b"                 # participle / comparative / adverb
+    r"|\s+(?:in|on|at|of|to|for|from|over|under|above|below|beside|behind|with|without"
+    r"|across|against|into|onto|through|along|is|are|was|were|that|which|who|and|or|but"
+    r"|while|as|its|their|his|her)\b",
+    re.IGNORECASE)
+
 # (2) RENDER VERB — an explicit instruction to put glyphs on a surface:
 #       "…number PAINTED on its face" · "a customer's name MARKER-WRITTEN across
 #       the top" · "a stamp READING …" · "a bank MARKED WITH the tag"
@@ -393,12 +463,15 @@ _RENDER_VERB = re.compile(
     # entirely and the hyphen guard kept, because the rig vocabulary is full of
     # compounds that end in one — "bare-headed" investors flagged L10, whose
     # placard "reading 'CROSS-SELLING'" was correctly authored all along.
-    r"|(?<!-)\b(?:reading|labell?ed|captioned|titled|that\s+says|which\s+reads)\b",
+    # (?!\s+glasses) : "half-moon READING GLASSES" is an object on a face, not an
+    # instruction to letter anything (bricks L148, a HARD false positive).
+    r"|(?<!-)\b(?:reading(?!\s+glasses\b)|labell?ed|captioned|titled|that\s+says|which\s+reads)\b",
     re.IGNORECASE)
 
-# "reads as" / "read as" is this project's idiom for LEGIBILITY ("he reads as the
-# confident architect", "a king reads as a king"), never for rendered lettering.
-_READS_AS = re.compile(r"\breads?\s+as\b", re.IGNORECASE)
+# "reads as" / "read as" / "reading as" is this project's idiom for LEGIBILITY ("he reads
+# as the confident architect", "the opening reading as a hole"), never for rendered
+# lettering. The participle form earned its place on bricks L07, a HARD false positive.
+_READS_AS = re.compile(r"\bread(?:s|ing)?\s+as\b", re.IGNORECASE)
 
 # How this project's TEXT law supplies a value: QUOTED VERBATIM ("a stamp reading
 # 'ADMITTED'", "a marker header 'JUSTICE DEPT'") or as DIGITS ("a marker span
@@ -510,6 +583,10 @@ def unsupplied_text_requests(prompt, suffix=""):
     spans = _value_spans(body)
     for rx in (_SLOT, _RENDER_VERB):
         for m in rx.finditer(body):
+            # The SLOT grammar only fires on a text noun that HEADS its phrase; an
+            # attributive one ("one red price rail") stages no value at all.
+            if rx is _SLOT and not _PHRASE_END.match(body, m.end()):
+                continue
             # The value must sit NEXT TO the construct that demands it, and the
             # lookbehind is deliberately TIGHT while the lookahead is generous,
             # because a supplied value follows its request ("a header 'OCC'") and
@@ -749,6 +826,14 @@ def _shot_prompts(shots):
 
 
 def main(argv):
+    # This machine's console is cp1252 and a single un-encodable character in ONE message
+    # raises UnicodeEncodeError mid-print, so the whole HARD list the author needs vanishes
+    # (bricks pipe test F-3 — the report was invisible without PYTHONIOENCODING=utf-8).
+    # Messages stay ASCII-safe on their own; this is the belt for anything added later.
+    try:
+        sys.stdout.reconfigure(errors="replace")
+    except (AttributeError, ValueError):
+        pass                                     # captured/wrapped stdout — nothing to do
     if not argv or argv[0] in ("-h", "--help"):
         print("usage: python lint_shots.py <path-to/shots.json> [--write]")
         return 2
@@ -757,21 +842,6 @@ def main(argv):
     data = json.loads(Path(path).read_text(encoding="utf-8"))
     vdir = Path(path).parent
     script_md = vdir / "script.md"
-
-    # A3: registry character names (minus the base template) for the casting check — best-effort.
-    reg_chars = []
-    reg_path = None
-    for anc in vdir.parents:
-        cand = anc / "visual-kit" / "registry" / "registry.json"
-        if cand.exists():
-            reg_path = cand
-            break
-    if reg_path:
-        try:
-            reg_json = json.loads(reg_path.read_text(encoding="utf-8"))
-            reg_chars = [c for c in (reg_json.get("characters") or {}) if c != "base"]
-        except (ValueError, OSError):
-            reg_chars = []
 
     # S3: the VO word-timings render actually matches against (empty if not yet voiced).
     vo_manifest_path = vdir / "assets" / "voiceover.manifest.json"
@@ -804,10 +874,12 @@ def main(argv):
     hard, soft = [], []
     ordered, id2text_all = [], {}
 
+    schema_check(data, soft)
+    legacy_field_check(data, soft)
+
     lf_text = lint_piece("long-form", lf_shots, script_md, hard, soft,
                          word_timings=word_timings_for(vo_manifest, "long-form"))
     stage_check("long-form", lf_shots, hard, soft)
-    casting_check("long-form", lf_shots, reg_chars, soft)
     suffix = data.get("global_prompt_suffix") or ""
     lf_prompts = _shot_prompts(lf_shots)
     text_supply_check("long-form", lf_prompts, suffix, hard)
@@ -835,7 +907,6 @@ def main(argv):
         st = lint_piece(f"short:{short.get('file','?')}", sshots, smd, hard, soft,
                         word_timings=word_timings_for(vo_manifest, piece))
         stage_check(f"short:{short.get('file','?')}", sshots, hard, soft)
-        casting_check(f"short:{short.get('file','?')}", sshots, reg_chars, soft)
         slabel = f"short:{short.get('file','?')}"
         sprompts = _shot_prompts(sshots)
         # The first_frame IS the short's thumbnail; it carries baked caption text
@@ -870,7 +941,7 @@ def main(argv):
             print("\n--write SKIPPED: fix HARD violations first (won't derive vo_text over broken anchors).")
             return 1
         write_back(path, data, ordered, id2text_all)
-        print(f"\nWROTE derived vo_text ({len(id2text_all)} shots) + shot_counts. JSON valid.")
+        print(f"\nWROTE derived vo_text ({len(id2text_all)} shots). JSON valid.")
     return 1 if hard else 0
 
 

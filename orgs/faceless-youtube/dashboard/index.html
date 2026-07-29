@@ -213,7 +213,7 @@ const NODES = [
   {id:'audiodir', name:'audio-director', col:6, lane:2, kind:'skill',
    one:'The unified audio plan',
    what:'Authors SFX hits, deliberate pauses, music-bed placement, and dry/pull-back spans — PLACEMENT only. Timid by default; the human ear-gates feel on the render.',
-   in:'shots.json · script.md · sfx/music pools · measured grammar', out:'audio-plan.json', dep:'visual-prompt-writer', docs:'grammar-guidance.md (measured §13a-iii) · audio-tokens.json · critics.md · lint_audio_plan.py'},
+   in:'shots.json · script.md · sfx/music pools · measured grammar', out:'audio-plan.json', dep:'visual-prompt-writer', docs:'SKILL.md placement laws (measured §13a-iii) · audio-tokens.json · critics.md · lint_audio_plan.py'},
 
   // library subsystem (one-time / periodic setup) — feeds audio-director
   {id:'analyzer', name:'audio-analyzer', col:4, lane:3, kind:'lib', anchor:'audiodir', service:{name:'CLAP + Demucs', kind:'tech'},

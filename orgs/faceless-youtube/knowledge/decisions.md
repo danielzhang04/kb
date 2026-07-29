@@ -3355,6 +3355,45 @@ run brief binds nobody — a fresh terminal reads the style-bible and skill docs
   downstream skills need it now (the rework is deferred debt instead, so scripting doctrine is not held
   hostage to it).
 
+## 2026-07-28 — Audio/VO/motion/render-stack trim (wave 2)
+
+- **14 doctrine files trimmed 1,512 -> 1,290 lines; two files deleted, one merge** (spec
+  `docs/superpowers/specs/2026-07-28-audio-motion-stack-trim-design.md`): `animation-menu.md` folded
+  into shots-motion-schema; `grammar-guidance.md` merged into audio-director SKILL as Placement laws.
+  Boundary law and supplied-text law collapsed to their wave-1 homes (universal §13a-ii,
+  shots-schema §4); SFX-tail/sentence-gap/no-dip laws single-homed in audio-plan-schema; retirement
+  prose moved to docs/retired-features.md (which also gained the motion/audio entries and a
+  correction: chapter cards are LIVE, not retired). Alternatives rejected: trimming the channel
+  research logs (Daniel: out of scope); forcing the ~1,050 numeric target (residual is enforced
+  contract content — terse-and-complete wins over the count).
+- **Doc-vs-code corrections made TO code reality:** render-builder SKILL's "overlays always empty"
+  (chapter cards are emitted); audio-director's "sneaky is the con workhorse" (audio-tokens names
+  underscore the default con-spine bed).
+- **Acceptance:** purge + deleted-file pointer greps clean; analyzer suites + 241 script tests pass;
+  fresh-eyes probe reconstructed all seven core doctrines from the trimmed files alone, zero gaps.
+
+## 2026-07-28 — Visual-pipeline redesign (wave 3): function changes
+
+- **VPW thinned to a 125-line procedure over channel doctrine** (spec
+  `docs/superpowers/specs/2026-07-28-visual-pipeline-redesign-design.md`): the scripting work split is
+  the template (writer:storytelling-grammar:example-scripts:critics = VPW:visual-grammar:example-shots:
+  shot-critic; image-gen:style-bible the second pair). Laws deleted: hook bar, delta decisiveness,
+  anti-slop, channel translation, the seven-laws apparatus (tableau survives as one line of prompt
+  guidance). Alternatives rejected: keeping a separate reviewer rulebook (Daniel: the judge judges on
+  the same rules the generator gens on — bible §3 is the one shared set); structured cast arrays
+  (Daniel: prose with backticked registry vocab, image-gen resolves).
+- **shots.json v2** (`shots@2`): from_cue/beat/narration_type/hold_reason/cast/props/needed_assets/
+  house_style dropped; lint warns (never errors) on legacy fields; both shipped v1 files verified
+  byte-identical on every surviving check. The missing-asset human gate moved from VPW to image-gen
+  Pass 1 (pre-gen approval kept; veto → restage).
+- **example-shots.md approved (gate B)** — 8 depiction exemplars, 6 non-literal in distinct classes;
+  the bar skews harder non-literal than the shipped reference. Thumbnails moved to VPW (from
+  script+dna); metadata-writer keeps title/description/tags. Style bible cut to LOOK law (165 lines,
+  descriptors byte-identical — forge.py parses them at runtime); gen mechanics live in image-gen SKILL.
+- **Acceptance:** 333 script tests + analyzer green; descriptor diff empty vs pre-wave; authoring
+  probe produced a correct 4-shot v2 fragment from a cold paragraph (right skew, supplied-text
+  resolutions, verbatim anchors) using only the trimmed files.
+
 ## 2026-07-28 - Scripting overhaul round 3: metaphor species, idiom default, detail budget, act-by-act drift fix (Daniel)
 
 - **Fresh Bricks script #2 line-reviewed by Daniel** (better than #1 but below the bar). Plan:
