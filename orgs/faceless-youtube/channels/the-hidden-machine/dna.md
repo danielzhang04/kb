@@ -112,8 +112,8 @@ long_form: single       # staged = long-form writers-room (outline → section d
 
 ## Voice & style
 
-- **Voice ID (locked):** TODO — one ElevenLabs voice ID for this channel (premium prosody tier
-  minimum; stock TTS is documented at 35% drop-off in first 45s vs human/premium)
+- **Voice ID (locked):** `iP95p4xoKVk53GoZ742B` — ElevenLabs "Chris" (Daniel ear-gate 2026-07-29,
+  revocable "for now"; full config + consistency-proof-owed note in §Voiceover config below)
 - **Tone:** TODO — e.g. authoritative-calm / dramatic-narration / conversational
 - **Script/voice register (locked):** TODO — the **default is plain-concrete-specific** (Explains101 /
   Crayon Capital: lead with the fact, quiet true emotion — curiosity, sympathy, recognition). Choose the
@@ -154,12 +154,12 @@ output_format: mp3_44100_128
   mid-video re-arm at 55–65% runtime**; withheld peak in final 20% (hard rule); emotional
   payoff — NO "and that's why…" closer; `[B-ROLL]` + `[PAUSE]` markers; humanized (no AI tells);
   visual density weighted to first 60s. Full doctrine in `universal.md`.
-- **Visual style:** TODO — palette, footage type, motion vs stills. Must be a locked signature
-  (July-2025 policy hunts templated stock B-roll).
-- **Visual register (locked):** TODO — pick ONE lane (universal.md §13): **stylized-signature** (a
-  single locked illustrated style-token — best for abstract niches: finance, what-if, mechanisms;
-  cheap, coherent, hides AI tells) OR **real-footage/screencap/archival** (only where the value is the
-  realism — ai-tools demos, internet-lore evidence). **Never** the generic semi-photoreal AI B-roll
+- **Visual style:** **R1 "screen-print editorial"** (LOCKED Daniel 2026-07-29, revocable) — riso
+  grain, limited rust/teal/mustard/cream inks, registration drift; two render modes (full-texture
+  narrative + locked-registration mechanism cutaways) + flat data cards; mostly stills at 1.5–3s cuts
+  with eased moves, 15–20 Veo motion beats per video. Full law: `visual-kit/style-bible.md`.
+- **Visual register (locked):** **stylized-signature** — the single locked style-token above
+  (universal.md §13 lane). **Never** the generic semi-photoreal AI B-roll
   middle (uncanny + identity-less).
 
 ## Branding

@@ -27,6 +27,10 @@
     "mechanism-cutaway": {
       "role": "HYBRID MECHANISM MODE exemplar — R6 clear-line cutaway grammar rendered in R1's ink palette with LOCKED registration (no drift) for how-it-works beats. Approved via watchability probe 2026-07-29. Rules live in style-bible.md; this frame is the visual anchor.",
       "base": "channels/the-hidden-machine/visual-kit/refs/mode/mechanism-cutaway.png"
+    },
+    "data-card": {
+      "role": "DATA-CARD exemplar — flat high-contrast stat card on the register's paper-grain background, type shapes untextured; the only text-bearing frame type. Approved via watchability probe 2026-07-29 (probe N6). Law in style-bible.md §2d.",
+      "base": "channels/the-hidden-machine/visual-kit/refs/mode/data-card.png"
     }
   }
 }
