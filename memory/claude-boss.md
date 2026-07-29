@@ -297,3 +297,14 @@ Daniel's standing gates (V2a build go, contract clause, archiver Qs, cadences, o
 - LEARNED: rejected phrasings recur unless writer-visible — "beige box"/"just landed" (Daniel-rejected in r3) reappeared in run #3 because rejections lived only in decision history, not in any file the writer loads. Verdicts must land in a loaded surface (register notes / grammar hunt-item) or they are silent no-ops.
 - WORKED: act-by-act drafting + voice-bar re-read between acts cured back-half register drift — run #3 held voice to the end. Blind-run + verify protocol (model grep, independent lint, full boss read) caught all misses before Daniel saw them except the structural one he had to teach me.
 - STATE: handoff at handoffs/2026-07-29-fyt-scripting-r4.md (ops 391345a); doc branch claude/fyt-writer-grammar-slim in fyt-writer-r2 worktree; run #3 UNCOMMITTED there; Daniel feeds round-4 verdicts to the picker.
+
+## 2026-07-29 — Hidden Machine genesis session (paused mid-Task-7/8, handoff written)
+
+- WORKED: evidence-based visual funnel — keep user's keepers un-regenerated, regen only challengers with verbatim-controlled prompts, one evolving artifact URL (same file path → same URL). Daniel engages fastest with this shape.
+- WORKED: Veo motion recipe = single anchor frame + directed beat prompt + explicit style-lock clause. First+last-frame interpolation is WORSE when keyframes aren't canon-locked (inherits their flaws). Recorded as candidate doctrine.
+- WORKED: auto-opening video in Daniel's player surprised him but he approved it ("No it's good") — keep doing it, but say what's opening in the same message.
+- FAILED: worker relaunched a gen script on apparent hang without killing the first run → skip-check race → 2 duplicate billable image calls. Dispatch briefs must say: kill before relaunch.
+- FAILED: image-gen prompts drift toward frames/panels/print-borders in print-like styles (linocut, gouache) despite no-labels rules — a full-bleed/single-panel LAW belongs in any register lock, not per-prompt patching.
+- LESSON: scratchpad is session-mortal — lab scripts worth reusing get copied into the (gitignored) project lab dir before handoff, or they're lost with the session.
+- LESSON: incremental spend logs with per-script running-total args desync across scripts; per-call rows are authoritative, recompute cumulative at close-out.
+- Handoff: handoffs/2026-07-29-fyt-hidden-machine-genesis.md (three open Daniel gates: V5 verdict, register pick, voice finalists).
