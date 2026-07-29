@@ -48,18 +48,11 @@ YouTube Data API v3 with **no interpretation**.
       {"time": "01:45", "label": "string"}
     ],
     "chapters_status": "estimated-from-script — re-time after render before publish",
-    "thumbnail": {
-      "primary": {"text": "≤3–4 words", "concept": "visual concept, delivers the promise, doesn't restate the title"},
-      "challengers": [
-        {"text": "…", "concept": "…"},
-        {"text": "…", "concept": "…"}
-      ]
-    },
     "pinned_comment": "engagement question tied to the lever / withheld peak",
     "ab_experiment": {
       "eligible": true,
       "dimension": "title_and_thumbnail",
-      "note": "YouTube Studio-only (Test & Compare, desktop, long-form). Data API v3 cannot submit this. Set up manually: pick title_primary+challengers and thumbnail primary+challengers."
+      "note": "YouTube Studio-only (Test & Compare, desktop, long-form). Data API v3 cannot submit this. Set up manually: pick title_primary+challengers here + the thumbnail primary+challengers from assets/thumbs/ (visual-prompt-writer authors thumbnail prompts; image-generation produces the candidates)."
     }
   },
 
@@ -108,9 +101,9 @@ its block). This is why the JSON stores API-ready scalars — no transformation 
 | `defaults.license` | `status.license` |
 | `defaults.embeddable` | `status.embeddable` |
 | `defaults.contains_synthetic_media` | `status.containsSyntheticMedia` *(altered/synthetic-content disclosure)* |
-| `long_form.thumbnail.primary` | uploaded separately via `thumbnails.set` (from the rendered thumbnail file) |
+| *(thumbnail — not in this file)* | `assets/thumbnail.png` uploaded via `thumbnails.set`; prompts authored by visual-prompt-writer |
 | `long_form.pinned_comment` | posted after upload via `commentThreads.insert`, then pinned |
-| `long_form.title_challengers`, `thumbnail.challengers`, `ab_experiment` | **not submitted** — Studio-only |
+| `long_form.title_challengers`, `ab_experiment` | **not submitted** — Studio-only |
 
 **Important — `description` is already complete.** `metadata-writer` writes the full description string
 including the chapter lines, the hashtags line, links, the AI-disclosure line, and Sources (Step 4).

@@ -266,7 +266,7 @@ def cmd_gen(k, reqs, force):
         if not seeds:
             # A5: identity / new-character gens auto-seed the character portrait. environment & style
             # gens MUST carry an explicit style-anchor seed — an unseeded environment/style gen falls
-            # back to a stock-clipart prior (off the locked style, per style-bible §5), so it is a
+            # back to a stock-clipart prior (off the locked style, per the image-generation SKILL seed laws), so it is a
             # HARD ERROR now rather than a silent off-recipe frame.
             if mode in ("identity", "new_character"):
                 seeds = [k.base_frame(r.get("character", "base"))]
@@ -422,7 +422,7 @@ def trim_to_alpha(rgba):
 CUTOUT_WIDE_RATIO = 1.5
 
 def check_cutout_aspect(w, h, allow_wide=False):
-    """Cutout-aspect ban (style-bible §6/§8 + the pass-2 law): a cutout gen must NOT be wide — a 16:9
+    """Cutout-aspect ban (the image-generation SKILL Pass-2 aspect law): a cutout gen must NOT be wide — a 16:9
     (or other wide) cutout squashes the object's proportions (a ship shipped at aspect 1.54 vs the
     approved 1.22, human-caught). HARD-ERROR when width/height >= 1.5 so the squashed source is
     regenerated at 2:3 / 4:3 / 3:2, unless --allow-wide is passed for a legitimately wide object
