@@ -1,8 +1,9 @@
 # The Hidden Machine — channel genesis handoff — 2026-07-29 (evening, supersedes morning version)
 
-**Topic:** Boss session cleared ALL THREE morning gates plus the register-doubt arc, and drove Task 7
-to its final review gate. Work lives in worktree `C:/Users/danie/kb-worktrees/hidden-machine` on branch
-`claude/hidden-machine-genesis` (pushed through 8b78427? NO — see file table). Plan:
+**Topic:** Task 7 is CLOSED (2026-07-29 late: 7e docs gate passed, batch committed 4650293, branch
+pushed through 4650293, `_style-lab/` pruned per F-clean). Arc PARKED by Daniel; resume at Task 9.
+Work lives in worktree `C:/Users/danie/kb-worktrees/hidden-machine` on branch
+`claude/hidden-machine-genesis`. Plan:
 `docs/superpowers/plans/2026-07-28-hidden-machine-genesis-plan.md`. Operating rules for the resuming
 terminal are unchanged from the morning handoff (boss orchestrates, ≤Opus workers, model verified by
 transcript grep at grading, media law §H, .env hard ceiling, voiceover.py only for TTS).
@@ -27,6 +28,11 @@ transcript grep at grading, media law §H, .env hard ceiling, voiceover.py only 
    Daniel rejected the first parka figure), machine-hall (border-cropped), coffee-shop (=A1),
    street-corner (re-roll after Daniel flagged A4's floating window-hands), mechanism-cutaway (=probe
    N1). Committed 8b78427 with registry seed.
+6. **7e docs (style-bible.md + visual-grammar.md)** — **PASSED** ("Fine for now", 2026-07-29 late).
+   Committed 4650293, branch pushed through it. `_style-lab/` pruned same session: remotion install +
+   104 files deleted; 17 survivors = spend ledgers, findings.md, notes.md, `*.attempt`/`*.uncropped`
+   evidence, and `veo/V4.mp4` (kept — bible §9 cites the card-tap clip as the Daniel-liked motion
+   reference; deleting it would orphan the anchor).
 
 ## What WORKED (with evidence)
 
@@ -63,44 +69,33 @@ transcript grep at grading, media law §H, .env hard ceiling, voiceover.py only 
 
 ## What Has NOT Been Tried Yet (= remaining, ordered)
 
-1. **OPEN GATE: Daniel reviews style-bible.md + visual-grammar.md** (left open in his VS Code at pause).
-   Pass → commit the 7e batch (see table), push the branch, then prune `_style-lab/` per plan (F-clean;
-   KEEP spend ledgers + findings.md + notes.md + *.attempt evidence per bible §8; N6 already promoted
-   to refs/mode/data-card.png so the prune is safe).
-2. **Task 9** — audio kit: copy ST pools (attribution moves with assets; NOTE pools are manifests not
+1. **Task 9** — audio kit: copy ST pools (attribution moves with assets; NOTE pools are manifests not
    files), fresh audio/motion tokens minus retired fields (`docs/retired-features.md`); haiku worker;
    `py -3 -m json.tool` validation.
-3. **Task 10** — guardrails + capability-map (`production_pipeline: stylized-compositing`). PRE-GATES
+2. **Task 10** — guardrails + capability-map (`production_pipeline: stylized-compositing`). PRE-GATES
    for Daniel: fact-ledger accuracy bar, topic exclusions, AI-disclosure stance (ST scratched it for
    animated register; HM needs its own call).
-4. **Tasks 11–13** — idea backlog (idea-generator skill, `HM-###`, zero ST-overlap), channel page +
+3. **Tasks 11–13** — idea backlog (idea-generator skill, `HM-###`, zero ST-overlap), channel page +
    TO-DEVELOP.md, close-out (STATUS/decisions/STATE/index.html/forge-friction; SPEND RECONCILIATION —
    spend-c.md running totals are per-section and inconsistent; recompute the true lab total at close-out).
-5. Optional: validation batch for the STRONG law vs uniform-border-ring mode (bible §2c DRAFT);
+4. Optional: validation batch for the STRONG law vs uniform-border-ring mode (bible §2c DRAFT);
    explicit V5/V6/V7 verdicts if Daniel wants the motion doctrine fully gated.
 
 ## Current State of Files (worktree `kb-worktrees/hidden-machine`, branch `claude/hidden-machine-genesis`)
 
 | File | Status | Notes |
 | ---- | ------ | ----- |
-| Commits 83ac22b (voice lock) + 8b78427 (canonicals+registry) | DONE, LOCAL ONLY | origin has through 12e6397 — **push the branch on resume** |
-| `visual-kit/style-bible.md` + `visual-kit/visual-grammar.md` | WIP — UNCOMMITTED | authored + graded, awaiting Daniel gate |
-| `visual-kit/registry/registry.json` | WIP — UNCOMMITTED edit | data-card mode entry added atop committed v1 |
-| `visual-kit/refs/mode/data-card.png` | WIP — UNCOMMITTED | probe N6 promoted (bible §2d anchor) |
-| `dna.md` | WIP — UNCOMMITTED edits | Visual style/register + Voice ID prose fields backfilled |
-| `videos/_style-lab/` (gitignored, disk only) | WIP | canonicals/, lock-sweep/, watchability-probe/ (probe.mp4 70MB + remotion/ node_modules), register/spend-c.md, veo/ V1–V7 |
+| Branch `claude/hidden-machine-genesis` | PUSHED through 4650293 | 83ac22b voice lock, 8b78427 canonicals+registry, 4650293 doctrine (7e batch: style-bible, visual-grammar, registry.json, refs/mode/data-card.png, dna.md) |
+| `visual-kit/` (bible, grammar, registry, refs/) | DONE, COMMITTED | 6 canonicals in refs/: everyman, 3 envs, mechanism-cutaway, data-card |
+| `videos/_style-lab/` (gitignored, disk only) | PRUNED (F-clean, 2026-07-29 late) | 17 survivors: spend ledgers, findings.md, notes.md, attempt/uncropped evidence, veo/V4.mp4 (cited bible §9 reference). Board artifact URL remains the visual record; its rebuild script was pruned with the source frames |
 | `voice-lab/` | DONE | voice-lab.md committed through round-2 Chris verdict; mp3s disk-only |
-| Main kb checkout | untouched this arc | on `claude/fyt-stack-trims`; visual-pipeline-redesign handoff items 2–5 remain its own arc |
-
-**Suggested 7e commit batch (one commit):** style-bible.md, visual-grammar.md, registry.json,
-refs/mode/data-card.png, dna.md — `feat(fyt): hidden-machine visual doctrine locked — style-bible +
-visual-grammar (Daniel gate YYYY-MM-DD)`.
+| Main kb checkout | on `claude/boss-20260729` | PR #99 merged by a parallel terminal; bricks-fresh untracked artifacts belong to the fresh-story workstream (4d8ee25) |
 
 ## Exact Next Step
 
-Ask Daniel for his style-bible/visual-grammar verdict. Pass → commit the 7e batch above, push the
-branch, prune `_style-lab/` (keep ledgers/findings/notes/attempt-evidence), then dispatch Task 9
-(haiku). Task 10's three pre-gate questions are the next human gate after that.
+Dispatch Task 9 (audio kit, haiku worker — remember ST pools are URL manifests, not local files).
+Task 10's three pre-gate questions (fact-ledger bar, topic exclusions, AI-disclosure stance) are the
+next human gate after that.
 
 ## Load list
 
