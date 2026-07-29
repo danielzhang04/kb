@@ -3354,3 +3354,42 @@ run brief binds nobody — a fresh terminal reads the style-bible and skill docs
   that it reads as honest; keeping `[B-ROLL]`/pause-cue markup in the writer's output on the theory that
   downstream skills need it now (the rework is deferred debt instead, so scripting doctrine is not held
   hostage to it).
+
+## 2026-07-28 - Scripting overhaul round 3: metaphor species, idiom default, detail budget, act-by-act drift fix (Daniel)
+
+- **Fresh Bricks script #2 line-reviewed by Daniel** (better than #1 but below the bar). Plan:
+  `docs/superpowers/plans/2026-07-28-scripting-overhaul-r3-plan.md` (its "Round-3 doctrine" section is
+  the ruling record). All edits replace-in-place; grammar §numbers unchanged.
+- **Metaphor species:** pulls skew heavily to named cultural references; generic situational comparisons
+  are the minority; the drawn-out multi-sentence generic metaphor is the defect. Setup-then-apply
+  licensed ("You know that Gordon Ramsay show where..."). Density: one to two pulls/reactions per block;
+  two consecutive dry blocks = register drift (grammar §1.3/§1.4).
+- **Language:** stock idiom is the default reach; fresh imagery survives only when it parses instantly
+  as talk. Contractions default. Dead: the uncontracted fragment-punch ("That is one year.") and the
+  paired parallel aphorism; the single ironic capper stays (grammar §1.1/§1.6).
+- **Detail budget:** one number per beat, rounded in the mouth, precision only where precision is the
+  story; resume/model-name/logistics detail only when load-bearing; a color detail earns its place by
+  becoming a pull or a joke (grammar §2.2/§2.5).
+- **Narrator stance:** viewer-staging dead ("put yourself in that room"); historiography dead ("the
+  version of this story you usually hear") — a myth is busted by telling the documented version flat
+  (grammar §1.5/§4).
+- **Escalation:** motivate once, then trust it; the namesake returns as itself, escalating (grammar §2.7).
+  Hook reveal = one-sentence tease + doorway (§2.1). Aftermath compresses to two blocks (money, trial).
+- **Color license:** a witnessed scene from ONE credible source is tellable flat (the Wiles
+  fired-two-managers scene, Q-01); numbers and load-bearing plot facts keep the strict leash (grammar §4,
+  leash critic).
+- **Voice bar is a register, not a rulebook edge:** writers absorb example-scripts.md for language, tone,
+  joke grade, pull species, density; it is neither a quarry to quote nor a minefield to avoid, and
+  critics judge a paragraph, not its ancestry. The old "no line lifted" header language deleted (it made
+  run #2 paraphrase around approved gold).
+- **Drift fix:** 3b drafts act-by-act with a re-read of example-scripts.md between acts (the register
+  decays over one long pass; run #2's back half proved it). Taste judging becomes comparative
+  (side-by-side against the bar) with countable tripwires only on the judge side.
+- **Voice bar grew to ten excerpt sections:** intro gloss reworked (Samsung/Apple pull, "private
+  collections" wink), rise v2, Ramsay fixer, NEW fear regime / break-in / it-kept-going, caper v2,
+  second approved ending shape (the counterfactual last laugh). Two knowing fact-bends flagged at
+  checkpoint: break-in states $4M flat (top of the sourced $2-4M range); "kept buying bricks" bent to
+  "kept going" (repeat purchases unsourced).
+- **Alternatives rejected:** hard pull-per-block quotas for the writer (quota-written jokes); a runtime
+  filter excluding same-story excerpts from the writer's read (machinery Daniel declined); treating
+  stock idioms as cliches to hunt (the channel speaks in them — critics now explicitly protect them).

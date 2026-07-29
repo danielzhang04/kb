@@ -97,9 +97,18 @@ defect that will recur until fixed.
   `image-generation` still assume cue-bearing scripts and need a rework to consume pure prose, and
   `shorts-writer` still authors its own short-script cues (Daniel flagged it for the same later rework);
   this is intentionally NOT fixed yet (see *Visual system* + *Audio system* below for the stale references it
-  leaves behind). Full rationale: `knowledge/decisions.md` 2026-07-28 round-2 entry. **Next: fresh Bricks
-  acceptance run #2** (scratch slug, zero spend, writer blind to the round-1 script and to decisions
-  history) is gate ⑥ of the round-2 plan and the real test of the whole scripting-overhaul exercise.
+  leaves behind). Full rationale: `knowledge/decisions.md` 2026-07-28 round-2 entry. **Round 3 (Daniel,
+  same session): script #2 line-reviewed, better but below the bar.** Landed: metaphor species (pulls
+  skew heavily to NAMED cultural references, setup-then-apply licensed, drawn-out generic metaphor is
+  the defect); stock-idiom default with contraction default (fragment-punch and paired aphorism dead);
+  detail budget (one rounded number per beat, precision only where precision IS the story);
+  viewer-staging and historiography kills; motivate-once escalation + the namesake rule; the one-source
+  color license for witnessed scenes; the voice bar reframed as a register (no-lift language deleted);
+  3b now drafts act-by-act with a voice-bar re-read between acts (the drift fix); taste judging is
+  comparative with judge-side tripwires. Voice bar grew to ten sections (Ramsay fixer, fear regime,
+  break-in, it-kept-going, second ending shape). Full rationale + plan:
+  `knowledge/decisions.md` round-3 entry / `docs/superpowers/plans/2026-07-28-scripting-overhaul-r3-plan.md`.
+  **Next: fresh Bricks acceptance run #3** is the live gate and the real test of the whole exercise.
 - **proxy-judge ("taste me") — BUILT + PAUSED (2026-07-09):** additive, advisory-only acceptance gate
   after `humanize` proxying Daniel's accept/revise/reject + `/36`. On branch
   `feat/proxy-judge-story-editor-me` (NOT merged; changes nothing until invoked). Verdict agreement 3/3;

@@ -37,7 +37,9 @@ the story exists (Steps 3a–3c). The facts never shape the voice; the voice car
   contract — its supported or revised stake, mechanism, payload, cold open, and titles override
   conflicting brief text; never reuse anything under **Unsupported promises**.
 - **`channels/<name>/storytelling-grammar.md`** — the craft law. Read every run, plus
-  `channels/<name>/example-scripts.md` (the approved excerpts: the voice bar) where the channel has one.
+  `channels/<name>/example-scripts.md` (the approved excerpts, the voice bar: absorb it for language,
+  tone, joke grade, pull species, and density; it is a register, not a quarry and not a minefield) where
+  the channel has one.
 - **`channels/<name>/dna.md`** — length band, locked lever, narrator persona, humor dial.
 - **Policy** (consumed at Step 6): `knowledge/playbook.md` + the policy quirk in
   `knowledge/research/niche-playbooks/<niche>.md`.
@@ -62,13 +64,13 @@ order is the flat-explainer failure.
    design the retention arc now (grammar §2.6). Set the humor register off `dna.md`'s dial, and gather
    the video's **cultural material** here, because it belongs to the writer and never to the researcher:
    the era anchors (what does everyone picture when they hear 1983?), the candidate modern comparisons,
-   and the joke angles the story invites. On a company story, gather what the **rise beat** needs while
-   you are here (grammar §2.7): how big they got, who they sold to, and the modern company their peak
-   revenue can be measured against, so the climb is on hand before the fall is written. **WebSearch is
-   licensed at this step**, for era texture and for
-   checking that a reference is universally understood (the bar: a general viewer pictures it instantly;
-   the approved excerpts in `channels/<name>/example-scripts.md` are the calibration). Anything the
-   script then states as fact still lives on the leash.
+   which skew heavily to named cultural references (grammar §1.4), and the joke angles the story
+   invites. On a company story, gather what the **rise beat** needs while you are here (grammar §2.7):
+   how big they got, who they sold to, and the modern company their peak revenue can be measured
+   against, so the climb is on hand before the fall is written. **WebSearch is licensed at this step**,
+   for era texture and for checking that a reference is universally understood (the bar: a general
+   viewer pictures it instantly; the approved excerpts in `channels/<name>/example-scripts.md` are the
+   calibration). Anything the script then states as fact still lives on the leash.
 3. **The spine.** 8–14 beats in plain English, one line each, no `[F-NN]` tags, no jargon; note beside
    each which facts are on hand and which era anchor, comparison, or joke angle that beat carries. Read
    it back cold for followability (grammar §3.7) and fix by resequencing, never a bolted-on patch. For a major scheme sequence, a compact planning card:
@@ -77,9 +79,12 @@ order is the flat-explainer failure.
 
 ### 3b — Story pass: casual, ledger set aside
 
-Draft the whole script to the spine in the channel's voice (grammar §1 + the approved excerpts), as
-if telling it out loud. Write to the *story*, not fact-coverage. No fact-checking here — checking
-mid-draft is what flattens the voice.
+Draft **act by act** (the acts fall out of the spine: the setup, the scheme, the unraveling, two to four
+of them). Before each act, re-read `example-scripts.md` to re-tune the ear, then write that act to the
+spine in the channel's voice (grammar §1), telling it out loud. Write to the *story*, not fact-coverage,
+and no fact-checking here: checking mid-draft is what flattens the voice. The register decays over a
+long single pass, and the re-read between acts is what holds the back half's voice at the front half's
+level.
 
 ### 3c — Leash pass: now check every claim
 
@@ -93,8 +98,7 @@ not a confession about sourcing. Date-sensitive mechanics carry their "as of <ye
 The casual draft stays the voice source of truth: make the **smallest local factual correction** and
 preserve sentence order, block structure, conversational joints, repetitions, slang, comic rhythm, and
 narrator presence. A claim that can't be fixed locally gets flagged to the writer, never laundered into
-documentary exposition. Optional inline `<!--F-NN-->` traces are allowed; **strip every one before
-final output.**
+exposition. Optional inline `<!--F-NN-->` traces are allowed; **strip every one before final output.**
 
 ### 3d — Critics + humanize (`references/critics.md`)
 

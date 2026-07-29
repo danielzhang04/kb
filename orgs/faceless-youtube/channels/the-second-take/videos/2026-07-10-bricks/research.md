@@ -72,7 +72,7 @@
 - **Witnessed-absurd / telling details:** (a) the bricks came from an actual outfit named **Colorado Brick Co.** [F-06]; (b) executives broke into the auditors' locked boxes with **Allen wrenches and paper clips** [F-12]; (c) customers **agreed to leave the pallets shrink-wrapped and mail them back** so the same bricks could be counted twice [F-09].
 
 ## Reportable scenes & characterization  (NO quotes — narrator reported speech only)
-- **[Q-01]** Wiles ran meetings as intimidation theater: by one account he ordered two controllers to *stand up* in front of their colleagues and then fired them on the spot, saying it was just to show everyone he was in control of the company. — *Src:* S5. *(Reported/anecdotal — attribute as "by one account," flag as reported, not asserted.)*
+- **[Q-01]** Wiles ran meetings as intimidation theater: by one account he ordered two controllers to *stand up* in front of their colleagues and then fired them on the spot, saying it was just to show everyone he was in control of the company. — *Src:* S5. *(Reported single-source scene, tellable flat under the color license, grammar §4; keep hard numbers out of it.)*
 - **[Q-02]** Under the quota terror, managers didn't invent the fraud in a boardroom — it grew task by task: first swapping numbers in the auditors' lockboxes, then, when that wasn't enough, renting a warehouse and packing literal bricks. — *Src:* S2,S5. *(The escalation, as described.)*
 - **[Q-03]** The fired insiders who'd packed the bricks picked up the phone to Denver newspapers — the people who built the lie ended it, out of spite. — *Src:* S1,S4.
 - **Claim ↔ reality pairs (the unmasking material):**
