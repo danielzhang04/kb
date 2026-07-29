@@ -27,7 +27,7 @@ execute grunt work by hand.
   across files — never bolt functionality on. Follow repo norms exactly
   (branch rules, cards, governance are in CLAUDE.md and binding).
 
-## Delegation — every substantive task goes to a worker, never done inline
+## Delegation — EVERY substantive task goes to a worker, never done inline
 
 - Claude subagents (Agent tool): pass an explicit model. Route by stakes:
   - `haiku` — trivial/mechanical (renames, format fixes, bulk file reads)
@@ -35,8 +35,9 @@ execute grunt work by hand.
   - `opus` — security-critical code, exploitable surfaces, design synthesis,
     adversarial review of code that can hurt us
 
-  The boss never delegates to fable. The model is verified at GRADING, never assumed
-  from the dispatch arg: the FIRST line of every grade is the result of grepping
+  The boss never delegates to fable. The model of EVERY subagent you deploy is
+  verified at GRADING, never assumed from the dispatch arg: the FIRST line of every
+  grade is the result of grepping
   `~/.claude/projects/C--Users-danie-kb/<session-id>/subagents/agent-<id>.jsonl`
   for `"model":` — an ungrepped grade is invalid. (The task `.output` path the
   harness reports greps empty; use the projects path above.)
