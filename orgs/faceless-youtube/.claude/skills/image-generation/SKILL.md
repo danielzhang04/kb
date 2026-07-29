@@ -188,15 +188,24 @@ scene and do not gen a plate: `background.plate` already points at the prior in-
 overlay cutout. **Render handoff:** `render-builder` consumes `assets/scenes/` directly (scenes mode, auto-detected
 via this pass's manifest); a missing scene for an ai-gen/hybrid shot is a render-time hard error.
 
-## Reviewing the batch (ONE pass, after every scene is generated)
+## Reviewing the run (per ACT batch — generate, review, fix, then the next act)
 
-Generate all of Pass 2 first — **do not gate mid-run** — then run ONE review round over the whole batch and regen only
-what is genuinely wrong. **The rules this review judges by are `style-bible.md` §3 — the exact values the generator
+Pass 2 runs in **2–4 contiguous act batches snapped to stage boundaries** (a held stage never splits — batch on the
+script's act turns like the writer and VPW do). **Within a batch, generate everything first — do not gate mid-batch —
+then run the review round below on that batch and fix its flags before the next batch generates.** One whole-video
+round finds a systemic defect (a bible value off, a bad seed route, palette drift) only after the entire budget is
+spent, and a reviewer's eye decays across a 90-frame round; the act boundary is where systemics get caught cheap.
+Two things carry forward between batches: **(a)** a defect class flagged **≥2** in a batch review → its surgical
+prompt-fix is applied to the NEXT batch's assembled prompts before generating (a suspected bible-value defect is
+still *surfaced*, never self-applied); **(b)** a **verified** frame from an earlier batch is a legal extra seed for a
+scene-continuous shot in a later one, alongside its canonicals.
+
+**The rules this review judges by are `style-bible.md` §3 — the exact values the generator
 generated against**; there is no separate reviewer rulebook, and what lives here is the PROCEDURE. This is also the
 ONLY seed-routing gate, so watch for what one-run multi-seeding produces: hands off the character's tone, a weak or
 wrong expression, identity bleed between co-present figures.
 
-**Dispatch three concurrent review subagents**, each with one mandate over the whole batch, given the scene files +
+**Dispatch three concurrent review subagents**, each with one mandate over the batch, given the scene files +
 per shot its `still_prompt`, `vo_text` (the full narrated span — facts often live in the tail) and `shot_class`, plus
 bible **§3**, the **§5 recipe** and the channel's `visual-grammar.md` (`vo_ref` is only the render timing anchor,
 never a fidelity source).
