@@ -115,7 +115,8 @@ Q.T. Wiles"); **the stock idiom as the default reach** ("a fat bonus," "your hea
 block," "fell off a cliff," "raking it in"); and **profanity at the sanctioned grade, where the
 absurdity peaks** ("shitting on your risotto," "What a dick.") — the grade is "ass" and "shit" and stops
 there, the f-word is not the channel. No quota attaches: pick the beats where the voice would actually
-get loud. But a whole script reaching for none of the four has drifted quiet, and that is a defect of
+get loud, and a loud move is its block's exit: nuance and qualifiers land before the punch, never
+trailing after it. But a whole script reaching for none of the four has drifted quiet, and that is a defect of
 its own (taste #13) even where every ban below is honored.
 **The boundary is credibility padding, not volume.** Banned: "that part is real," "he actually did," "he
 really did," "seriously," "the maddening thing," "genuinely audacious" — state the insane fact plainly
@@ -150,6 +151,10 @@ name them within two sentences (teasing an unknown name buys nothing); the stake
 turn, it does not vanish.
 > "So there was this guy, Gregor MacGregor. Yeah, that's his real name."
 
+**The door is fast:** between the cold open and the first turn into the engine ("So why silver?",
+"Now rewind four years.") there is room for at most one block beyond the hook, and every front block
+still earns its pull (§1.3); a front stretch of bare numbers is a textbook open however short it runs.
+
 **2.2 — Select by story value; develop what you keep.** `research.md` is a pool, not a checklist. Cut
 the beats that don't carry the story; give the ones that do their real color: the scene, the concrete
 detail, the telling number. Three inert research paragraphs collapse to one beat, but racing through the
@@ -158,12 +163,15 @@ beat that carries the story is as real a miss as stuffing in facts because they'
 > number, because hard drives have serial numbers, and shrink wrapped them onto pallets."
 
 **A fact enters when the story needs it, and not one beat earlier.** Sourced material has no claim on a
-position; put each fact where it does work. **Scale is the exception worth planning for: it lands early,
+position; put each fact where it does work — the title's own qualifier included: it enters where it
+powers a beat, never as an early caveat block apologizing for the title. **Scale is the exception worth planning for: it lands early,
 and as a comparison**, because a revenue figure means nothing alone and a company the viewer has a feel
 for means everything. **The ledger's precision has no claim on the narration.** The detail budget is one
 number per beat, and a figure enters friend-rounded ("over half a billion dollars") unless precision IS
 the story (26,000 bricks). A ledger range resolves to one flat number in selection, never a spoken
-range, and a comedic scale pull the ledger calls approximate is committed flat, never qualified. Résumé
+range, and a comedic scale pull the ledger calls approximate is committed flat, never qualified. Dates are
+numbers too: one dated beat anchors a stretch and its neighbors ride relative ("Two weeks later"),
+never a spelled-out date in block after block. Résumé
 lines, model numbers, and logistics enter only when load-bearing.
 > "And at their peak in 1988, they were making over 600 million dollars a year. Accounting for
 > inflation, that's almost as much money as Reddit makes today. Or so they said."
@@ -218,8 +226,10 @@ Each quarter, Wiles raised sales targets and management came up with better ways
 **3.1 — Impose a shape; refuse flat chronology.** Design the sequence in the outline before drafting,
 and name the shape you are imposing: the calendar is never the answer. The proven shape for a company
 rise-and-fall is the **peak-first rewind** — tell the whole climb once, at its peak, with the ironic
-capper on top ("Or so they said."), then rewind to the cause of the fall ("Now rewind four years."). It
-satisfies §2.7's one-climb rule and §2.2's scale-lands-early by construction, which is exactly what a
+capper on top ("Or so they said."), then rewind to the cause of the fall ("Now rewind four years.").
+The peak block holds the peak alone, how big and how fast, as comparisons; the origin (when it
+started, the first buys) belongs to the rewind, or the rewind arrives with its facts already spent and
+the shape shows its seams. It satisfies §2.7's one-climb rule and §2.2's scale-lands-early by construction, which is exactly what a
 chronological draft breaks. It is a default, not a mandate: a cold open on the act with a rewind to how
 they got there, or a cross-cut between two threads (§3.3), are peers. Having no shape is not.
 

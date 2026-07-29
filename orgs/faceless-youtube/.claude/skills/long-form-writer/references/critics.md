@@ -93,13 +93,15 @@ that company; an echo of them is neither defect nor virtue, so judge the paragra
 >    climb told a second time when the rise beat already owns the numbers. Flag the weakest repeats. (§2.5, §2.7)
 > 8. **Writerly / literary** — clever-convoluted sentences, aphorisms written to sound deep, any line no real
 >    person would say aloud to a friend: the uncontracted fragment-punch ("That is one year."), the paired
->    parallel aphorism, the fresh image that does not parse as talk, and **elegant variation** — the plain
+>    parallel aphorism, the fresh image that does not parse as talk, the sentence too long to say in one
+>    breath, and **elegant variation** — the plain
 >    object-word swapped for a fancier synonym ("masonry" for bricks). The plain word repeats; flag the
 >    synonym, not the repetition. An image that parses instantly is NOT this defect. (§1.1, §1.6)
 > 9. **Detail-budget overrun** — more than one number in a beat, an unrounded figure where a friend would
 >    round out loud ("over half a billion dollars"), the ledger's own precision or uncertainty range shipped
->    into narration ("somewhere between two and four million"), or résumé lines, model numbers, and logistics
->    doing no story work. A detail earns its place by becoming a pull or a joke. (§2.2, §2.5)
+>    into narration ("somewhere between two and four million"), résumé lines, model numbers, and logistics
+>    doing no story work, or a scale figure landing bare where the grammar wants a comparison (195 million
+>    ounces, with nothing beside it). A detail earns its place by becoming a pull or a joke. (§2.2, §2.5)
 > 10. **Jargon** — a term a normal person wouldn't say in conversation, where a plain word exists. (§1.1)
 > 11. **Empty signposting, viewer-staging, historiography, or hook overspend** — a label that hides or delays
 >     the next action ("here's the strange part"); the narrator casting the viewer into the scene ("So put
@@ -117,7 +119,8 @@ that company; an echo of them is neither defect nor virtue, so judge the paragra
 >     clause-sized; never file an analogy-count quota. (§1.4, §6)
 > 13. **Flat stretch / too deadpan, or a quiet script** — the countable tripwire is two consecutive blocks
 >     with no pull or reaction (§1.3: one or two per block is the running density); its number-pile cousin is
->     #9. **Two decay zones:** the aftermath (lawsuits, verdict, settlement, sentence, fates), where the
+>     #9, and the slow open is the same drift measured at the front: no named pull by the end of the second
+>     block, filed against the door (§2.1). **Two decay zones:** the aftermath (lawsuits, verdict, settlement, sentence, fates), where the
 >     narrator turns into a court reporter, and any **mechanism-exposition stretch**, where he turns into a
 >     lecturer. Fire the tripwire in both; the fix is a short bit, never a longer metaphor. **The global
 >     form:** a whole script reaching for none of the heat mechanisms (no caps on a leaned-on word, no knowing
