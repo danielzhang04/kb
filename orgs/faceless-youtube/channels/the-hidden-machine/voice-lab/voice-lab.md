@@ -63,6 +63,44 @@ bills ~1 credit/character) — a character-count estimate; the skill's engine do
 subscription-usage-delta readout, and the account-usage endpoint was not queried (out of scope for a
 read-only discovery pass).
 
-**Round 1 ear gate: pending Daniel.**
+**Round 1 ear gate: Daniel picked Eric (02) + Chris (03) as finalists (2026-07-29).**
 
 ---
+
+## Round 2 — 2026-07-29 · 2 finalists, ST-matched dials, semicolon paragraph fix
+Files: `voice-lab/auditions/round-2/`. Settings (Daniel: match The Second Take's **new** levels, per
+`channels/the-second-take/dna.md` §Voiceover config): `model_id eleven_v3, stability 0.20,
+similarity_boost 0.85, style 0.6, speed 1.0`. `use_speaker_boost` dropped/ignored per ST's v3
+convention (`channels/the-second-take/voice-lab/voice-lab.md` line ~24 — v3 doesn't use the flag;
+the engine's default `true` is harmless to leave and was left as-is). This is a deliberate move off
+Round 1's `eleven_multilingual_v2` neutral dials onto v3 with ST's creative-leaning dials — settings
+tuning, not a new identity screen.
+
+**Paragraph change:** the colon after "Total elapsed time" was changed to a semicolon — Daniel's
+Round 1 note that the colon rendered as too long a pause. Paragraph is otherwise verbatim identical
+to Round 1 (still 350 characters).
+
+Generated via the `voiceover` skill's engine (`.claude/skills/voiceover/scripts/voiceover.py`) —
+dry-run verified first for each voice_id (clean 350-char single-chunk parse, no expressive-marker or
+markup leakage), then one real synthesis per finalist, against a disposable temp
+`channels/_audition-tmp-hm-r2/` scaffold (deleted immediately after both syntheses; the real
+`channels/the-hidden-machine/dna.md` was never edited). Same paragraph, single take per voice, no
+seed control (same no-seed doctrine as Round 1).
+
+| File | Voice · voice_id | Settings |
+| --- | --- | --- |
+| `01-eric.mp3` | Eric — "Smooth, Trustworthy" · `cjVigY5qzO86Huf0OWal` | eleven_v3, stability 0.20, similarity_boost 0.85, style 0.6, speed 1.0 |
+| `02-chris.mp3` | Chris — "Charming, Down-to-Earth" · `iP95p4xoKVk53GoZ742B` | eleven_v3, stability 0.20, similarity_boost 0.85, style 0.6, speed 1.0 |
+
+**Estimated credits used:** ~700 characters total (2 × 350-char paragraph; `eleven_v3` billing follows
+the same character-count convention as Round 1's estimate — the skill's engine does not surface a
+subscription-usage-delta readout).
+
+**Round 2 ear gate: pending Daniel.**
+
+---
+
+**Round 2 ear gate: Daniel picked Chris (02-chris.mp3) — 2026-07-29, "for now" (revocable). Locked
+into dna.md §Voiceover at the round-2 dials (eleven_v3, stability 0.20, similarity 0.85, style 0.6,
+speed 1.0). Dial-variant round (2x3) skipped by Daniel's pick; consistency proof owed at first real
+script (spec §7.7 note in dna.md).**
