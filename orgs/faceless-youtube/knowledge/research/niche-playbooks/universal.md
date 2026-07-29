@@ -1310,52 +1310,19 @@ Each supported by 2024-2026 data:
 ### 13a. Visual-narration grammar — what to SHOW over what NARRATION
 
 §13 locks the look; this locks what appears — the fix for a shot that literally depicts the
-sentence. A channel's `visual-kit/visual-grammar.md` holds its own staging application (live asset
-vocabulary in `visual-kit/registry/registry.json`); this is the shared, BINDING craft every
-channel inherits.
+sentence.
 
-**The governing rule — a grammar, not a phrasebook.** Map KINDS of narration to KINDS of shot,
-never fixed "X means Y" pairs — cited images illustrate a class, never a rule. Procedure: read the
-line → identify its narration type → pick the shot class → INVENT a fresh, on-style shot;
-same-typed lines in different videos must yield visibly different images.
+**The governing principle — a grammar, not a phrasebook.** Map KINDS of narration to KINDS of
+shot, never fixed "X means Y" pairs: read the line → identify its narration type → pick the shot
+class → INVENT a fresh, on-style shot, so same-typed lines in different videos yield visibly
+different images. **Non-literal is the DEFAULT**; literal is reserved for a concrete physical
+action or object.
 
-**Core doctrine:**
-1. Non-literal is the DEFAULT; literal is reserved for concrete physical action/objects.
-2. One idea per FRAME — standalone shots swap on the beat; a held stage chains one element per
-   frame instead (§13a-ii).
-3. Personify institutions/forces as characters; stage relationships as physical interactions, not
-   diagrams.
-4. Glue every number/date to a tangible object or a diegetic surface, never a floating caption.
-5. Motion is cheap and cut-driven: idle micro-motion + ONE meaningful transform + hold-then-
-   hard-cut (§13a-i/§13a-ii).
-6. Register-switches carry meaning — a cleaner "infographic" register signals the real machinery.
-7. Humor lives in the image-vs-words CONTRAST (ironic counterpoint), not a funnier drawing.
-8. Palette codes tone/time — warm/day/triumph, cool/night/defeat, high-contrast/danger,
-   monochrome/tragedy-turn.
-9. Escalate by MULTIPLYING cast/prop, not redrawing — reuse a small cast/prop kit.
-
-**The narration-type → shot-class table** (pick the class, invent the shot):
-
-| When the narration is… | Show a shot of class… |
-| --- | --- |
-| an abstract force/property/state (trust, inflation, dominance, "cut off") | **symbolic stand-in object** or **personification** — one concrete object/creature that *embodies* it |
-| a relationship/deal/conflict between parties | **staged interaction** between personified parties (handshake, linked arms, tug-of-war, argument) |
-| an institution/nation/company as an actor | **personified character with one identity tag** (flag-tie, hat, uniform) or its **iconic landmark** |
-| a bare number/stat/date/quantity | **number glued to its referent object**, a **diegetic dateline**, or a **countable mass** |
-| a comparison or a trend | **physicalized imbalance** (tipping scale, relative size) or a **deliberately-crude in-world chart** |
-| a historical event/announcement/shock | **diegetic media** (period TV/radio/newspaper) or a **dialogue reenactment** |
-| a mechanism / "how it really works" | **register-shift to a clean infographic + animate the one transform** |
-| a plan/spatial move/territory | **top-down map or plan-view with tokens/arrows/color-fills** |
-| a claim/boast/euphemism/spin | **ironic counterpoint** (image contradicts the words) or **literal-unmasking** |
-| a dry aside/punchline | **reaction shot on the payload word** or a **deadpan cutaway to a mundane/absurd object** |
-| a line with a vivid verb/idiom | **draw the phrase literally** (a visual pun on the idiom, not the fact) |
-| a grim/violent/tragic beat | **aftermath / witness / stylized-safe + palette shift** — never gore |
-| scale/magnitude | **scale as argument** (relative size) or **crowd multiplication** |
-| a real physical action/object | **literal depiction** (the one place it's correct) |
-
-**Cross-channel caution:** channels leaning on real-archival-footage registers and
-meme/wojak/anachronism cutaways are studied for mechanic, never cloned — this pipeline's
-evergreen-references-only humor dial (§1d-V) takes their timing and contrast, not those layers.
+**Each channel owns the specifics.** The narration-type → shot-class TABLE, the literal/non-literal
+bar and its exemplar file, chain logic, staging, and composition live in that channel's
+`visual-kit/visual-grammar.md` (live asset vocabulary in `visual-kit/registry/registry.json`);
+a new channel copies an existing kit's grammar as its skeleton. §13a-i and §13a-ii below stay
+cross-channel and BINDING.
 
 #### 13a-i. Within-shot motion — a shot is a COMPOSED SLATE, never a static hold (BINDING)
 
