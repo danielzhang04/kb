@@ -1291,301 +1291,116 @@ Each supported by 2024-2026 data:
 
 ## 13. Production universals (AI pipeline)
 
-- **Voice: expressive, inflected AI voice or human VO — never flat monotone TTS.** The #1 slop tell
-  and the largest single retention lever the pipeline controls. Premium TTS (ElevenLabs prosody
-  tier) minimum. One recognizable voice register per channel, locked.
-- **Visual identity: lock one house style** (palette, type, motion, sound) per channel. **The
-  channel's visual signature is a monetization prerequisite in 2026, not a style choice** —
-  templated stock B-roll is a July-2025 policy trigger.
-- **Visual register — stylized vs. real-footage — is a per-niche `dna.md` decision, not a global
-  default.** The winning variable is *distinctive + coherent + matched to the content*, while avoiding
-  the uncanny middle:
-  - **Stylized / illustrated wins when the subject is abstract** (finance, what-if, mechanisms,
-    explainers, most history). There's nothing real to film; a **single locked style-token in every
-    image prompt** buys instant brand coherence AND hides AI-artifact tells — *nobody expects realism
-    from a doodle.* It's cheaper, more automatable, and dodges the "AI slop" look. (Crayon Capital's
-    hand-drawn finance; Explains101's whiteboard; a flat-vector what-if.)
-  - **Real footage / photoreal wins only when the value IS the realism** — a real place, archival, a
-    product UI, actual screen-captures (ai-tools demos, internet-lore evidence à la Visual Venture).
-    There, authenticity is the register.
-  - **Ban the uncanny middle: generic semi-photoreal AI B-roll** (the "cinematic dread stock-AI" look).
-    It is uncanny enough to read as slop AND carries no brand identity — the worst quadrant. If a niche
-    wants realism, use real stock/screencap/archival (blend per §6a/tools.md); if it wants a signature,
-    commit fully to a stylized locked look. Don't split the difference.
-- **A cheap, locked, distinctive style beats expensive photoreal AI B-roll** for the abstract niches —
-  but the aesthetic alone is clone-bait (already being mass-cloned), so defensibility must come from the
-  **editorial voice / payload**, not the look.
-- **Where AI is weak:** high-end bespoke animation (Zack-D 3D, Kurzgesagt) is hard to fully
-  generate — plan a hybrid (reusable asset kits + Blender / image→video tools + assembly), keep
-  the *substance* human. Flat 2D / motion-graphics + charts + a locked illustrated style is the most
-  AI-friendly lane and often the *better* one, not merely the cheaper one.
-- **Disclosure:** any realistic altered or synthetic content must be disclosed via YouTube's
-  Altered Content toggle at upload. YMYL topics (health, news, finance, elections) trigger a more
-  prominent player-level label — write assuming viewers see it first.
-- **Cadence discipline:** batch-produce, don't react. Researched-queued-packaged pipelines
-  distinguish surviving AI-gen channels from slop even more than aesthetic. Zero trend-chasing.
+- **Voice: expressive, inflected AI or human narration, never flat monotone TTS** — the largest
+  single retention lever the pipeline controls; premium TTS minimum, one locked voice register per
+  channel.
+- **Visual identity: lock ONE house style** (palette, type, motion, sound) per channel — a
+  monetization prerequisite, not a style choice; templated stock B-roll is a policy trigger.
+- **Visual register is a per-niche `dna.md` decision — commit fully, never split the
+  difference:** stylized/illustrated wins when the subject is abstract (a locked style-token buys
+  brand coherence and hides AI-artifact tells); real footage/photoreal wins only when the value IS
+  the realism (a real place, archival, screen-captures); never the uncanny middle — generic
+  semi-photoreal AI B-roll reads as slop with no brand identity.
+- **Disclosure:** realistic altered or synthetic content is disclosed via the platform's Altered
+  Content toggle at upload; YMYL topics get a more prominent label — write assuming the viewer
+  sees it first.
+- **Cadence discipline:** batch-produce, don't react — researched-queued-packaged, zero
+  trend-chasing.
 
 ### 13a. Visual-narration grammar — what to SHOW over what NARRATION
 
-§13 locks the *look*; this locks *what appears*. Derived from a frame-by-frame study of illustrated
-story channels against their audio (HeyHistorically, Crayon Capital, OverSimplified + animation
-craft from Odd1sOut/Jaiden/Domics/SomethingElse). It is the fix for the most common visual failure:
-a shot that literally depicts the sentence. A channel with a `visual-kit/visual-grammar.md` holds its
-own staging application (staging conventions, composition menu, lever translation; the live asset
-vocabulary is `visual-kit/registry/registry.json`); this is the shared, **binding** craft
-every channel inherits. **Everything below is LAW, not reference** — the shot-writer authors to it.
+§13 locks the look; this locks what appears — the fix for a shot that literally depicts the
+sentence.
 
-**The governing rule — a grammar, not a phrasebook.** We map *kinds* of narration to *kinds* of
-shot, never fixed "when the script says X, draw Y" pairs. Cited images are illustrations of a class,
-never rules. The procedure: **read the line → identify its narration type → pick the shot class →
-then INVENT a fresh, on-style shot.** Same-typed lines in different videos must yield visibly
-different images. Reusing one depiction as a reflex rebuilds the phrasebook and re-enters slop
-(templated near-duplicates = the July-2025 trigger). This is the same "name the principle so the
-writer invents variants" rule used for hooks (§4b) and titles (§3a).
+**The governing principle — a grammar, not a phrasebook.** Map KINDS of narration to KINDS of
+shot, never fixed "X means Y" pairs: read the line → identify its narration type → pick the shot
+class → INVENT a fresh, on-style shot, so same-typed lines in different videos yield visibly
+different images. **Non-literal is the DEFAULT**; literal is reserved for a concrete physical
+action or object.
 
-**Core doctrine (every studied channel converged on these):**
-1. **Non-literal is the DEFAULT; literal depiction is reserved for concrete physical action/objects.**
-   If the line names a physical thing/action, show it. If it names a **concept, force, relationship,
-   quantity, or claim**, do NOT show the words — show a stand-in.
-2. **One idea per FRAME.** Standalone shots swap whole on the beat (~every 4–8s); shots on a **held
-   stage** instead *chain* — the set persists and ONE element is added/moved per frame — with a
-   whole-swap only at a stage change (full cadence + staging law in §13a-ii).
-3. **Personify institutions/forces as characters; stage relationships as physical interactions**
-   between them (not diagrams).
-4. **Glue every number/date to a tangible object or a diegetic surface** (a label on the thing, a
-   sign, a screenshot, a torn calendar) — never a floating narrator caption.
-5. **Motion is cheap and cut-driven:** an idle micro-motion baseline so no frame is dead + ONE
-   meaningful transform per shot (the coin that shrinks, the scale that tips, the chart that draws) +
-   hold-then-hard-cut on the payload word. Every shot is a composed slate — the full binding grammar
-   is §13a-i (within-shot motion) + §13a-ii (cut cadence).
-6. **Register-switches carry meaning** — shifting to a cleaner "infographic" register signals "this
-   is the real machinery"; the switch itself is a reading cue.
-7. **Humor usually lives in the image-vs-words CONTRAST (ironic counterpoint), not a funnier drawing.**
-8. **Palette codes tone/time** — warm = day/triumph, cool = night/defeat, high-contrast = danger, a
-   monochrome flip for a horror/tragedy turn. The scene palette is a cheap emotional register.
-9. **Escalate by MULTIPLYING the cast/prop, not redrawing** — a bigger pile, a growing crowd, an
-   on-screen counter ticking up; keep a small reusable cast + prop kit and reuse it.
-
-**The narration-type → shot-class table** (pick the class, invent the shot):
-
-| When the narration is… | Show a shot of class… |
-| --- | --- |
-| an abstract force/property/state (trust, inflation, dominance, "cut off") | **symbolic stand-in object** or **personification** — one concrete object/creature that *embodies* it |
-| a relationship/deal/conflict between parties | **staged interaction** between personified parties (handshake, linked arms, tug-of-war, argument) |
-| an institution/nation/company as an actor | **personified character with one identity tag** (flag-tie, hat, uniform) or its **iconic landmark** |
-| a bare number/stat/date/quantity | **number glued to its referent object**, a **diegetic dateline**, or a **countable mass** |
-| a comparison or a trend | **physicalized imbalance** (tipping scale, relative size) or a **deliberately-crude in-world chart** |
-| a historical event/announcement/shock | **diegetic media** (period TV/radio/newspaper) or a **dialogue reenactment** |
-| a mechanism / "how it really works" | **register-shift to a clean infographic + animate the one transform** |
-| a plan/spatial move/territory | **top-down map or plan-view with tokens/arrows/color-fills** |
-| a claim/boast/euphemism/spin | **ironic counterpoint** (image contradicts the words) or **literal-unmasking** |
-| a dry aside/punchline | **reaction shot on the payload word** or a **deadpan cutaway to a mundane/absurd object** |
-| a line with a vivid verb/idiom | **draw the phrase literally** (a visual pun on the idiom, not the fact) |
-| a grim/violent/tragic beat | **aftermath / witness / stylized-safe + palette shift** — never gore |
-| scale/magnitude | **scale as argument** (relative size) or **crowd multiplication** |
-| a real physical action/object | **literal depiction** (the one place it's correct) |
-
-**Cross-channel caution:** the studied channels lean on **real-archival-footage registers** and
-**meme/wojak/anachronism cutaways** — a channel that bans the uncanny middle (§13) and runs an
-evergreen-references-only humor dial (§1d-V) takes their *timing and contrast*, not those layers; its
-"gravity register" is a restrained, desaturated version of its OWN style + a real dated document, not
-real footage.
+**Each channel owns the specifics.** The narration-type → shot-class TABLE, the literal/non-literal
+bar and its exemplar file, chain logic, staging, and composition live in that channel's
+`visual-kit/visual-grammar.md` (live asset vocabulary in `visual-kit/registry/registry.json`);
+a new channel copies an existing kit's grammar as its skeleton. §13a-i and §13a-ii below stay
+cross-channel and BINDING.
 
 #### 13a-i. Within-shot motion — a shot is a COMPOSED SLATE, never a static hold (BINDING)
 
-The single biggest pacing fix. A shot is **not** a still image parked on screen for N seconds; it is a
-**composed slate with internal choreography synced to the VO.** The shot-writer AUTHORS this now (as the
-`within_shot_motion` field per shot, and by composing `still_prompt` *to move*), even though full motion
-*rendering* is a later Remotion phase — the authoring is binding regardless. Every shot carries all four:
+A shot is not a still parked on screen — it is a composed slate with internal choreography synced
+to the VO, authored as INTENT only (in `still_prompt` + stage metadata, never a motion field).
+Every shot carries all four:
 
-- **(a) Idle micro-motion baseline** — every held frame *breathes*: a globe spins, cash flutters, a flame
-  flickers, a character bobs/blinks, rain streaks. No frame is ever dead.
-- **(b) ONE meaningful transform that IS the beat** — spend the motion budget on the single move that
-  carries the payload: a coin shrinks (debasement), a scale tips (over-printing), a chart draws itself, a
-  ship sails toward frame, a plug pulls out, a crowd multiplies. Everything else stays near-still.
-- **(c) Element reveal synced to the narrated word** — the payload element *appears* on the word it is
-  named. **For enumerations/lists, elements appear one at a time ON the word.** The renderable mechanisms
-  are: a **stage delta-chain** (the next seeded frame adds the element in-scene), a **seeded cutout layer**
-  (appear / slide / path, anchored to the word by the motion engine), and **baked diegetic text** (a
-  number/label already painted into the generated image) — NOT type-on, burned captions, or card overlays
-  (retired with the engine text layer). Canonical example: *"no church, no paved roads, no rivers of gold"*
-  → hold **ONE** set and add a red X / strike on each promised thing *as it is named* (a delta frame, or a
-  cutout per item). This is **one shot with internal choreography** — not three cuts, and not a static hold.
-- **(d) Hold, then hard-cut on the payload word** — hold a neutral/composed pose ~0.6–0.8s, then snap
-  (1–2 frames, no easing) to the reaction/reveal on the exact punch word. Never ease into a punchline.
+- **(a) Idle micro-motion baseline** — every held frame breathes (a globe spins, cash flutters, a
+  character bobs/blinks); this is the engine's, not authored.
+- **(b) ONE meaningful transform that IS the beat** — a coin shrinks, a scale tips, a chart draws
+  itself; everything else stays near-still.
+- **(c) Element reveal synced to the narrated word** — the payload appears ON the word it is
+  named, via a stage delta-chain, a seeded cutout layer (`motion-planner`), or baked diegetic
+  text — never type-on, burned captions, or card overlays.
+- **(d) Hold, then hard-cut on the payload word** — hold briefly, then snap (no easing) to the
+  reaction/reveal on the exact punch word.
 
-Gesture/lean/recoil is the acting (body language carries emotion; simple-handed rigs lean on posture);
-the camera stays mostly locked, with an occasional slow push-in on a character intro or an establishing
-landmark as a cheap substitute for animation.
+Gesture/lean/recoil is the acting; the camera stays locked except a rare motivated push authored
+at a stage start.
 
 #### 13a-ii. Cut cadence — and the HARD RULE that kills stretch-to-fill (BINDING)
 
-- **~4–8s per frame-swap**, one distinct visual idea per sentence/clause. The eye is rewarded
-  continuously; there is never a "narrator over one B-roll" stretch.
-- **Vary cadence by role:** fast (**1.5–3s**) for jokes/enumerations; slow (**5–12s**) for
-  dialogue/mechanism beats/emotional turns. Place a deliberate **breath-beat** (a longer, quieter,
-  atmospheric shot) at emotional turns.
-- **HARD RULE: a shot may exceed ~8s ONLY if it carries a progressive within-shot reveal** (a
-  delta-chain enumeration, an accreting chart/build, a multiplying crowd). Otherwise, **cut.**
-- **Failure mode to avoid — stretch-to-fill:** an under-produced shot list gets re-timed to the VO and
-  each shot stretched to fill the gap, leaving one visual on screen for a dead 15–25s. The fix is
-  authored here: produce enough shots (roughly `runtime ÷ 8s` minimum) and give any long shot a
-  progressive reveal so it earns its length.
-- **Structural breaths** every ~30–90s serve as breath + reset — a hard cut to a new stage, a palette
-  turn, or a VO gap with a music dip. (The reference channels do this with black title/chapter cards;
-  this pipeline authors **no cards** — dropped 2026-07-15 with all engine text.)
+- **~4–8s per frame-swap**, one visual idea per sentence/clause. Vary by role: fast (1.5–3s) for
+  jokes/enumerations, slow (5–12s) for dialogue/mechanism/emotional-turn beats; a longer,
+  quieter breath-beat at emotional turns.
+- **HARD RULE: a shot exceeds ~8s ONLY with a progressive within-shot reveal** (a delta-chain
+  enumeration, an accreting build, a multiplying crowd) — otherwise, cut.
+- **Stretch-to-fill fix:** produce enough shots (roughly `runtime ÷ 8s` minimum) and give any long
+  shot a progressive reveal — an under-produced list gets stretched by re-timing, leaving one
+  visual on screen too long.
+- **Structural breaths** every ~30–90s: a hard cut to a new stage, a palette turn, or a VO gap
+  with a music dip.
+- **Continuity, cheapest first:** move a layer (zero drift) > a seeded delta-chain (a held STAGE:
+  `base` + ≤3 `delta` frames, each moving ONE element) > a hard cut to a new stage. No fades,
+  ever.
+- **Layer-vs-delta boundary:** a LAYER is discrete and non-integrated on a persistent plate (a
+  seeded cutout that slides/pops over an unchanged background); a DELTA-CHAIN is integrative
+  growth of the scene's own architecture, regenerated seeded off the prior frame. A re-base in
+  the SAME location seeds the prior stage's BASE frame, never a fresh canonical.
 
-**Held stages + the continuity hierarchy (executor-agnostic).** Continuity between shots comes from
-three tools, cheapest first: **(1) move a layer** (a motion engine composites element cutouts — zero
-drift), **(2) a seeded delta-chain** (a held STAGE: a `base` frame + **≤3 `delta` frames**, each
-adding/moving ONE element on the SAME set — the still-era realization of §13a-i's progressive reveal),
-and **(3) a hard cut** to a new stage. **No fades, ever** — a flat-vector cartoon dissolving reads as
-photo-documentary B-roll; continuity is the held stage, never a blend.
+#### 13a-iii. Motion direction — the operational grammar (the motion-layer sibling of §13a-i)
 
-**The layer-vs-delta boundary (which tool for which addition).** A **LAYER** is a *discrete,
-non-integrated* addition on a **persistent plate** — a seeded cutout the compositor slides / paths / pops
-over an unchanged background (the character, the ship, the stamp). A **DELTA-CHAIN** is *integrative
-growth of one scene's own architecture* — the element belongs inside the painted world, so the next frame
-is **regenerated seeded off the prior frame** (a city rising in the guidebook, red spreading across a
-map). **Re-base rule:** a re-base inside the SAME location must seed the prior stage's **BASE** frame, not
-restart clean — the ≤3-delta cap otherwise throws the held set away and invents a second, different world.
-Law: **a layer must be discrete AND seedable** — seeded from its character/prop canonical, or (for a
-discrete invented element like a stamp) from the plate it lands on plus a style anchor; an unseeded
-cutout invents its own register. What is *integrative* is never a layer regardless of seedability —
-delta-chain it.
+**One-line summary: the camera is furniture; the ELEMENT layer is the life; the cut is the verb.**
 
-A stage's shots carry only the *intent* (which set they share, and what changed), never the generation
-mechanism — the executor (the seeded delta-chain, OR the LIVE layer-move compositor: a `plate` + animated
-cutout `layers`, planned by `motion-planner`, rendered by the engine `LayerView`) realizes it. Delta
-frames run fast (1.5–3s); base/hold frames 4–12s; each frame stays one timing unit with its own `vo_ref`.
-
-#### 13a-iii. Motion direction — the MEASURED grammar (the motion-layer sibling of §13a-i)
-
-Where §13a-i says a shot must move and §13a-ii says when to cut, this section says **how the
-reference grade actually moves** — measured 2026-07-08 by frame-burst teardown (3–4fps windows,
-easing read from frame spacing, cut lists from scene-detection, audio from loudness traces + model
-listening) of Crayon Capital ×3 (the base; every video extracted twice, independently, convergent),
-HeyHistorically, OverSimplified, and Kurzgesagt (entrances/type only, aspirational). Full evidence:
-the channel's `visual-kit/research/motion-logs/`. Learn the mechanic, never clone the execution.
-
-**The one-line summary: the camera is furniture; the ELEMENT layer is the life; the cut is the verb.**
-
-1. **Camera law — locked by default, one motivated crawl when it moves.** Explainer mode: ~10–15%
-   of holds carry any camera motion; story mode: ~20% overt + a micro-drift floor (0.3–1.5%/s,
-   pixel-diff-visible only) on pictorial holds. **Text/diagram frames are DEAD STATIC,
-   always.** A camera move is ONE slow single-direction crawl spanning the whole hold (push-in
-   1–3%/s typical, reveal-by-widening ~3%/s, tracking ≤8%/s) — motivated by intro/vista/gravity.
-   The fast register (whip-pan/whip-zoom, one blur frame) exists ONLY inside list montages and
-   dialogue ping-pong. No mid-hold re-frames; re-frame = punch-in CUT.
-2. **Entrance vocabulary (measured counts, most→least):** pop/snap-in with a 0.3–0.5s spring settle
-   (one element per spoken NOUN) > type-on/handwrite/draw-on > slide/swing/toss-in with real motion
-   blur (~0.5s, ease-out, no overshoot) > grow > walk-on > drop. **Fade-in is near-banned** (≈1 per
-   video, mood only). In-world characters/props arrive staged-at-the-cut or slide in — never fade.
-   Every entrance lands ON its spoken word.
-3. **Text always animates on, at speech pace, and it IS an event:** typewriter ~12–15 chars/s
-   (story cards, matching VO), ~25 chars/s (explainer pivot cards); labels/stat lines handwrite
-   word-by-word paced to the VO. Text entrances get an SFX tick; the words completing on the spoken
-   word is the sync payoff. Pre-set text exists only on chapter titles and in-prop print revealed
-   by an insert cut.
-4. **Transition law:** hard cut ≈ 99–100% of scene seams (zero scene crossfades across 50+ minutes
-   of Crayon). The exceptions are RESERVED-MEANING devices, ≤2 per video: fade-through-black =
-   death/era-jump (paired with a music drop + palette shift), white-flash = flashback, iris/wipe =
-   once, at an act seam or montage list (wipes land on list items). The reference grammar's two
-   black-card families (the chapter card; the write-on pivot card) are **NOT used by this pipeline** —
-   no cards, no engine text (dropped 2026-07-15). Era-jump cuts land in VO pauses with NO hit;
-   gag/seam cuts take the sting.
-5. **Number-selling recipe (emphasis grammar):** the number is NEVER floating overlay text — it is
-   made in-world (painted, typed into a ledger, on a tossed newspaper, on a prop). The full
-   sequence: mix dips (~0.5–2s, to ≈−40dB) → riser → the carrier prop arrives (~0.75s, ease-out/
-   spring) → hit lands ON the spoken number → hold ~1.5s → reaction cut or hard CONTRAST cut
-   (juxtaposition, not motion, delivers the weight). Variant: the scene BECOMES the statistic
-   (bars grow with characters riding them; buildings rise while the stat handwrites at VO pace).
-6. **Held-set evolution — the unanimous verdict:** reference-grade channels evolve a held set LIVE
-   (one element pops/draws per spoken noun; an in-world agent erases and redraws; panels accrete
-   while earlier panels stay alive) and **never cut to a changed state of the same set.**
-   Enumeration WITHIN a concept = live adds on the held set; enumeration ACROSS concepts = hard
-   cuts. Charts/maps: structure arrives first, then populates in waves timed to nouns, emphasis
-   red LAST as the punch; draw-ons ride a riser; UI/dashboard panels pop pre-populated one-per-noun.
-7. **Cut cadence (measured, refines §13a-ii):** story mode median hold 3–5s (~12–13 cuts/min),
-   explainer ~3s (~13–17/min); the cold open runs a full second faster than the back half. Longest
-   holds (16–38s) are ALWAYS progressive builds — confirming the hard rule. Highest-energy cuts
-   flip background VALUE (dark↔light); a punch-in cut re-frames the same scene for emphasis.
-8. **Audio grammar (co-equal layer) — MEASURED audio-only 2026-07-10** (Demucs vocal/residual stems +
-   ffmpeg/librosa over 8 references; supersedes the earlier model-listening estimates that hallucinated
-   the SFX inventory; per-video reports + `synthesis.md` in `visual-kit/research/audio-logs/`):
-   - **The bed is PLACED, not wall-to-wall.** Music presence ~**79%** (61–85%; Kurzgesagt's 94% is the
-     restrained *floor*, not the target) — real music-off passages exist. Hyper-compressed (LRA ~3.5–4.5),
-     integrated ~**−18 LUFS**. References CLIP (true-peak often >0 dBFS); **our** master holds true-peak
-     **≤ −1**, target ~−15/−16 LUFS.
-   - **Two ducking regimes (register-dependent).** Explainer/story keeps the bed PRESENT, ducking only
-     ~**2–3 dB** under VO (not buried). The comedic register (OverSimplified) does the opposite on marked
-     beats — **music AND SFX AND VO drop together** in a synchronized full-stop (the silence-cut gag). Both
-     are wanted; the full-stop is the same device as our number-reveal dip, and should be **extended so SFX
-     drop in that gap too**, not just the bed.
-   - **Silence is a scalpel (measured).** Ordinary music dips ~**19 dB** (16–26) on gravity/reveal; the
-     deliberate full-silence drop (to −40 dB) is reserved for the number/reveal.
-   - **Breath is SELECTIVE.** A sustained/dramatic hit earns its own VO silence ~**0.55s** (0.3–0.8) — but
-     only ~**20%** of events get one; most ride under continuous VO. → breathe on specific beats only (a
-     number reveal, a chapter boundary), never on every event.
-   - **SFX couple to structural events.** In the references, structural SFX track scene structure
-     (scene-change→whoosh, chapter boundary→boom, an escalation capper→thud, text→tick); content-nuanced
-     hits (the number-reveal punch, an aside→sting) land where the content warrants. In OUR stack ALL of
-     these are **authored** by the `audio-director` and placed selectively — a whoosh/boom is NOT fired on
-     *every* instance (the director's `grammar-guidance.md` sets the restraint: whoosh is rare, pop is
-     additive-only). Element SFX anchor to **cutout appearances** (`sync:"element"`, LIVE — the pop lands on
-     the frame the cutout enters); the device-card pop/pluck/riser roles are **retired with the device
-     cards** (they never shipped). Camera crawls + idle loops stay silent; a boom under a frozen frame is
-     the one audio-only emphasis.
-     Density (directional — SFX+music not separable in the residual) ~**20–40 transients/min** combined →
-     SFX-only is lower; the story cap ~20/min holds.
-   - **Dips land on ~⅓ of punchlines** (~36%, directional) — dip the music on SOME emphasis beats, never all
-     (predictability kills it).
-   - VO pace ~**200 wpm** (story/comedic; explainer ~165). Concrete dials live in `audio-tokens.json`
-     (breath lengths, `dip_db`, `master_target`, the music-lane knobs `music_present_db`/`music_fade_s`/
-     `track_switch_gap_s`).
-9. **Typography law:** ONE handwritten/marker family carries everything (cards, bubbles, labels);
-   sentence case for spoken lines, ALL-CAPS for labels/warnings; **red is the only emphasis ink**
-   (semantic: alarm/prohibition/ownership); numbers/dates live on diegetic surfaces (§13 rule 4).
-   **No burned word-captions exist anywhere in the studied 16:9 grade.** In OUR stack on-screen text is
-   **diegetic only — baked into the generated image** (a number typed into a ledger, a label painted on a
-   prop); the deliberate-card path is retired along with all engine-drawn text. One contrast face per video
-   max, as a device.
-10. **Executor reconciliation (how OUR stack realizes each rule) — THREE executors, nothing else:**
-    **(1) the layer-move compositor** (a `plate` + animated cutout `layers` — slide/path/bob/appear —
-    planned by `motion-planner`, rendered by the engine `LayerView`; this teardown is its evidence base;
-    the engine's **only** drawn element is the route line — `draw_line` on a cutout path); **(2) the
-    seeded delta-chain** (§13a-ii: one element per delta, landing on its noun, regenerated in-scene);
-    **(3) the hard cut** to a new stage. Camera law + cadence are the engine's locked defaults.
-    **Engine-drawn device cards and `progressive-reveal`/type-on/chapter-card overlays are RETIRED** —
-    their Remotion components are parked dormant; in-video text is baked diegetic (§13a-iii.9). Limb
-    animation / fluid morphs / Kurzgesagt's continuous-travel camera → observed, NOT adoptable. A grammar
-    row with no executor in the current stack is authored as intent and realized at the cut (never faked
-    with an off-grammar mechanism).
-    **Music (Phase 3B):** the measured "placed bed, ~2–3 dB present duck" is realized as a **placed
-    music lane** (`build_music_lane` → engine `MusicLane`): per-section mood tracks (authored by the
-    `audio-director`) at a **CONSTANT present level** (`music_present_db`, ear-gated to 7), silent on
-    authored `dry` spans, switching tracks via a fade→silence→fade gap. Two
-    measured behaviors are DELIBERATELY not realized (owner taste, spec 2026-07-12-phase3b): the per-phrase
-    ~2–3 dB VO duck (we hold the level constant — calm over breathing) and the references' frequent ~19 dB
-    on-beat dips (music drops ONLY on the full-stop, dry spans, and track switches). The −40 full-stop dip
-    is inherited by the lane, not re-authored.
-
-**How this grammar is realized (2026-07-12) — no per-shot treatment enum.** Treatment is NOT a per-shot enum
-the author picks; the old beat-type field is retired. The camera is **always locked** and every shot **hard-cuts** (the
-engine; §13a-iii.1 — idle-bob + element deltas + the element-layer compositor carry the life), and the sound
-is **authored** by the `audio-director` as one `audio-plan.json` (SFX · pause · music · dry), guided by this
-measured grammar and its `grammar-guidance.md` distillation and placed **selectively** (not on every scene/
-boundary). Deliberate **breaths** are authored `pause` cues — a render-inserted silence *before* the anchor
-word, into which the dip lands while the outgoing frame holds; distinct from the writer's `[PAUSE]`/`[BEAT]`
-prosody (baked in the VO). Breath lengths + all audio dials are data in `audio-tokens.json`, not restated here.
+1. **Camera law** — locked by default; story mode allows one motivated crawl (push-in/reveal-
+   widen/track) on ~10–20% of shots (peak beats only); everything else holds a micro-drift;
+   text/diagram frames are dead static; a re-frame is a cut, never mid-hold.
+2. **Entrance vocabulary, most to least:** pop/snap-in on the spoken noun > type-on/handwrite >
+   slide/toss-in with motion blur > grow > walk-on > drop; fade-in is near-banned; every entrance
+   lands ON its spoken word.
+3. **Text animates on, at speech pace, as an event** — typewriter/handwrite paced to the VO with
+   an SFX tick, completing on the spoken word.
+4. **Transition law:** hard cut is the default seam; the only exceptions are RESERVED-MEANING
+   devices, ≤2/video (fade-through-black = death/era-jump + music drop + palette shift; white-
+   flash = flashback; iris/wipe = once, at an act seam). No cards, no engine text.
+5. **Number-selling recipe:** never floating overlay text — made in-world: mix dip → riser →
+   carrier prop arrives → hit lands ON the spoken number → hold → reaction or hard contrast cut.
+6. **Held-set evolution:** evolve a held set LIVE (one element pops/draws per spoken noun), never
+   cut to a changed state of the same set — enumeration within a concept live-adds, across
+   concepts hard-cuts.
+7. **Cut cadence:** story mode median hold 3–5s, explainer ~3s, cold open faster than the back
+   half; any hold over ~8s is a progressive build.
+8. **Audio (co-equal layer)** — SFX/pause/music/dry spans authored by `audio-director` as one
+   `audio-plan.json` (distinct from the script's own `[PAUSE]`/`[BEAT]` VO prosody); dial values
+   live in `audio-tokens.json`; the placement laws are the `audio-director` SKILL's.
+9. **Typography law:** ONE handwritten/marker family; sentence case for spoken lines, ALL-CAPS
+   for labels/warnings; red is the only emphasis ink; numbers/dates live on diegetic surfaces
+   (§13 rule 4); no burned captions in long-form.
+10. **Three executors, nothing else:** the layer-move compositor (`motion-planner`-planned,
+    engine `LayerView`); the seeded delta-chain; the hard cut. Camera law and cadence are the
+    engine's locked defaults; an unrealized grammar row is authored as intent, never faked.
 
 ### The Simon Whistler test
 
-Craig Billings, host of Doctor NOS (1.7M subs, part of Simon Whistler's compliant faceless
-network): *"The people who do the same content as me without their face in it, most of them are
-getting demonetized."* Same script, same production, same b-roll — the presence of a real narrated
-voice is the monetization pivot. Where a human narrator isn't viable, hand cameos + screencap-first
-visuals + one signature format is the compromise that clears the credibility bar.
+Same script, same production, same B-roll — the presence of a real narrated voice is the
+monetization pivot; a channel running the same content without one draws demonetization. Where a
+narrator isn't viable, hand cameos + screencap-first visuals + one signature format clears the
+credibility bar.
 
 ---
 

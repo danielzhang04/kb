@@ -25,10 +25,8 @@ The engine is `scripts/voiceover.py` (Python 3, stdlib only — no pip install).
 stripping, chunking, the ElevenLabs call, retries, and the manifest. **Prefer it over ad-hoc curl/HTTP**
 so every run is identical and resumable.
 
-> **Interpreter note (Windows):** the API call needs an interpreter with a working TLS trust store.
-> On this machine that is the native **`py -3`** launcher — the msys2 `python` ships no CA bundle and
-> fails with a certificate error (the script says so and how to fix it). `--dry-run` needs no network,
-> so any `python` works for it. Substitute `python`/`python3` on Linux/macOS.
+> **Interpreter note (Windows):** use the native **`py -3`** launcher for real synthesis — the msys2
+> `python` ships no CA bundle and fails the ElevenLabs call on a TLS/certificate error (the script says how to fix it). `--dry-run` needs no network, so any `python`/`python3` works, including on Linux/macOS.
 
 ```bash
 # 1. ALWAYS dry-run first — parses + strips markers + writes the .txt transcripts + manifest,
@@ -56,13 +54,9 @@ wastes real quota and money.
 - **Only spoken words survive.** `[B-ROLL: …]` cue blocks (even multi-line), `### beat headers`,
   `> note blockquotes`, the `## SOURCES / ACCURACY NOTE` tail, and markdown emphasis are all stripped.
   `[PAUSE]` becomes a real TTS break tag, not the literal word "pause".
-- **Expressive delivery is precise and model-conditional.** Before a sentence, use only
-  `[emote: curious]`, `[emote: knowingly]`, `[emote: sternly]`, `[emote: sighs]`,
-  `[emote: exhales]`, or `[aside: dry]`. Never place two delivery markers together. The engine
-  rejects unknown, malformed, adjacent, or mid-sentence markers before it can call ElevenLabs.
-  On `eleven_v3`, they become `[curious]`, `[knowingly]`, `[sternly]`, `[sighs]`, `[exhales]`,
-  and `[deadpan]`; v2 strips them cleanly. Keep them sparse at genuine chapter, reveal, or mood
-  turns. A consequence beat permits only optional restrained `sternly`.
+- **Expressive markers are validated, not free text.** The six approved `[emote: …]`/`[aside: dry]`
+  tags, their adjacency/mid-sentence hard errors, and the v3/v2 translation live in one place:
+  `references/voiceover-contract.md`.
 - **Long-form and shorts read from the right region.** Long-form = the `## LONG-FORM VOICEOVER`
   section only (so the header metadata and Sources note are never voiced). Shorts = the `## VO + cues`
   section only (so the burned-in Caption block is never voiced).
@@ -89,15 +83,12 @@ touch that channel.
 
 ## Choosing the voice for a new channel
 
-Voice is a per-niche/per-lever decision, so make it deliberately when a real channel is set up (it is
-intentionally NOT hardcoded here):
-- Match the **locked emotional lever** in `dna.md`. Dread/morbid-awe → a calm, low, measured voice
-  (let the scenario carry it, never campy). Wonder → warmer, brighter. Vindication/exposé →
-  crisp, confident.
-- Premium prosody tier minimum — `universal.md` documents stock/robotic TTS at ~35% drop-off in the
-  first 45s. Pick a named ElevenLabs voice, lock its ID in `dna.md`, and keep it stable across videos.
-- Set model + `stability`/`style` to fit: lower stability = more expressive/variable, higher =
-  steadier. See `references/voiceover-contract.md` for starting points by lever.
+Make this choice deliberately per channel — it is intentionally NOT hardcoded here. Match the locked
+emotional lever in `dna.md` (dread/morbid-awe → calm, low, measured; wonder → warmer, brighter;
+vindication/exposé → crisp, confident). Use a premium prosody tier minimum — `universal.md` documents
+stock/robotic TTS's steep early drop-off. Pick a named ElevenLabs voice, lock its ID in `dna.md`, and
+keep it stable across videos. Set model + `stability`/`style` per lever using the starting-point table
+in `references/voiceover-contract.md`.
 
 ## After it runs
 

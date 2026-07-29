@@ -19,28 +19,27 @@ Turn a fully-prepared video folder into a finished MP4 — locally, on the Remot
 `visual-prompt-writer` → `image-generation` ∥ `voiceover` → **render-builder** → `compliance-check` → `publish-queue`
 
 - **Reads:** `channels/<name>/videos/<slug>/shots.json` (the shot list + house style),
-  **`assets/scenes/`** — the verified, style-locked stills `image-generation` pass 2 produced (one
-  PNG per shot + a manifest; the pipeline default whenever its manifest exists) — the channel's
-  narration in `assets/vo.mp3` + `assets/shorts/short-NN.mp3`, and `assets/voiceover.manifest.json`
-  (real audio durations, the source of truth for timing).
-- **Writes:** `assets/final.mp4` (long-form), `assets/shorts/short-NN.mp4` (each `publish` short),
-  the reproducible `assets/motion/<piece>.motion.json` specs, and `assets/render.manifest.json` —
-  the contract `compliance-check` / `publish-queue` read (output paths + durations;
-  `render_engine: remotion`, `watermark: false` — the local engine never watermarks).
+  **`assets/scenes/`** — the verified, style-locked stills `image-generation` pass 2 produced (one PNG
+  per shot + a manifest; the pipeline default whenever its manifest exists) — the narration in
+  `assets/vo.mp3` + `assets/shorts/short-NN.mp3`, and `assets/voiceover.manifest.json` (real audio
+  durations, the source of truth for timing).
+- **Writes:** `assets/final.mp4` (long-form), `assets/shorts/short-NN.mp4` (each `publish` short), the
+  reproducible `assets/motion/<piece>.motion.json` specs, and `assets/render.manifest.json` — the
+  contract `compliance-check` / `publish-queue` read (output paths + durations; `render_engine:
+  remotion`, `watermark: false` — the local engine never watermarks).
 
-The whole job is done by the scripts — there is no hand-authoring step. Motion is fixed mechanically:
-the camera is locked by default, every shot hard-cuts, and the layered cutout motion is merged from the
-`motion-planner`'s `shots.motion.json` (via `--motion-plan`). You never hand-edit a derived motion.json.
-(Audio is authored separately by the `audio-director` skill.)
+The scripts do the whole job — there is no hand-authoring step. Motion is mechanical: camera locked by
+default, every shot hard-cuts, layered cutout motion merged from `motion-planner`'s `shots.motion.json`
+(`--motion-plan`); never hand-edit a derived motion.json. Audio is authored by `audio-director`.
 
 ## How to run it — the Remotion engine
 
-The one path is `scripts/build_motion.py` (Python, derives the motion spec) + `engine/`
-(the local Remotion component library that renders it — Node 24 (Remotion 4.x pinned), `npm install`
-once inside `engine/`). It re-times the shots to the real voiceover, derives a per-piece
+The one path is `scripts/build_motion.py` (Python, derives the motion spec) + `engine/` (the local
+Remotion component library that renders it — Node 24, Remotion 4.x pinned, `npm install` once inside
+`engine/`). It re-times the shots to the real voiceover, derives a per-piece
 **`assets/motion/<piece>.motion.json`** (contract: `references/motion-schema.md`), renders locally
-(≈1.5× faster than realtime on this machine), and writes the same `render.manifest.json` —
-**no API, no credits, no watermark, no length cap**.
+(≈1.5× faster than realtime on this machine), and writes `render.manifest.json` — **no API, no
+credits, no watermark, no length cap**.
 
 ```bash
 # 1. ALWAYS dry-run first — derives + saves the motion.json specs, renders nothing.
@@ -67,72 +66,53 @@ py -3 .claude/skills/render-builder/scripts/build_motion.py channels/<name>/vide
 stages grouped? placeholders only where expected? layered shots carry `plate`+`layers`?) → real
 render. **Layered cutout motion is authored upstream, not here:** `motion-planner` emits it in
 `shots.motion.json`, and `build_motion --motion-plan` merges each shot's `plate`+cutout `layers` (via
-`apply_motion_plan`). There are no engine text/device overlays — `overlays[]` is always empty and
-in-video text is baked into the generated images (see `references/motion-schema.md` §3). Never
-hand-edit the derived timing fields; re-derive instead. Channel look =
-`channels/<name>/visual-kit/motion-tokens.json` (data; engine defaults if absent).
+`apply_motion_plan`). In-video text is baked into the generated images, so the engine draws text only
+as captions and chapter cards — `overlays[]` holds chapter cards and nothing else
+(`references/motion-schema.md` §3). Never hand-edit derived timing fields; re-derive instead. Channel
+look = `channels/<name>/visual-kit/motion-tokens.json` (data; engine defaults if absent).
 
 ## `scripts/render.py` — shared timing/scene helpers (not an engine)
 
-`render.py` is **not runnable and has no `main()`** — it is the shared library that `build_motion.py`
-(and `visual-prompt-writer/lint_shots.py`) import: the VO re-timing (`retime`, `retime_by_timings`),
-the `vo_ref`→word-stream matcher, `resolve_scene_files`, and the voiceover-manifest readers. Both the
-motion engine and the shot linter depend on one set of timing/scene semantics by sharing this code.
-There is no second render engine.
+`render.py` is **not runnable and has no `main()`** — it is the shared library `build_motion.py` and
+`visual-prompt-writer/lint_shots.py` import: VO re-timing (`retime`, `retime_by_timings`), the
+`vo_ref`→word-stream matcher, `resolve_scene_files`, the voiceover-manifest readers. One set of
+timing/scene semantics serves both; there is no second render engine.
 
 ## What the engine guarantees (so you don't re-check by hand)
 
-- **Visuals sync to the REAL voiceover.** Each piece's shot durations are scaled so they sum to the
-  measured VO length from `voiceover.manifest.json` (preserving each shot's cadence ratio). When
-  per-line timings are present in the manifest it uses those instead (true per-line sync); when no VO
-  audio exists yet (dry-run / a short that wasn't voiced) it falls back to the shots.json estimates
-  and says so in the manifest. This replaces the earlier word-based runtime guess with ground truth.
-- **The locked style reaches the screen (scenes mode).** When `assets/scenes/manifest.json` exists,
-  every shot's visual is the verified PNG `image-generation` produced — seeded, rig-checked,
-  taste-gated — hosted via the media seam and used as the scene image. A missing scene file for an
-  ai-gen/hybrid shot is a **hard error** (run image-generation pass 2), never a silent fallback;
-  chart/screencap/stock/archival shots (which image-generation deliberately skips) fall back to a
-  visible placeholder card and are counted in the manifest (`scenes_from_files` / `inline_fallback`).
+- **Visuals sync to the REAL voiceover.** Shot durations are scaled to sum to the measured VO length
+  from `voiceover.manifest.json` (each shot's cadence ratio preserved); per-line timings in the
+  manifest are used when present (true per-line sync). With no VO audio yet (dry-run / an unvoiced
+  short) it falls back to the shots.json estimates and says so in the manifest.
+- **The locked style reaches the screen (scenes mode).** Render-builder **assembles; it does not create
+  the look.** When `assets/scenes/manifest.json` exists, every shot's visual is the verified PNG
+  `image-generation` produced — `assets/scenes/<shot-id>.png` (shorts: `<short-stem>-<shot-id>.png`),
+  seeded, rig-checked, taste-gated — auto-detected via that manifest, hosted through the media seam. A
+  missing scene file for an ai-gen/hybrid shot is a **hard error** (run image-generation pass 2), never
+  a silent fallback; chart/screencap/stock/archival shots (which image-generation deliberately skips)
+  render as a **visible placeholder card**, counted in the manifest (`scenes_from_files` /
+  `inline_fallback`). `still_prompt` stays authored on every shot — image-generation's input upstream.
 - **Camera is furniture; the cuts carry the life.** The camera is **locked by default** (`move: none`);
   only a motion-plan stage start may author restrained `push`/`pull` punctuation (mapped to engine
-  `push-in`/`pull-back`). Baseline life is also opt-in: top-level `baseline_life:true` uses the channel's
-  separate calibrated token block on real scene/layer tableaux only, never placeholders or opaque cards.
-  Absent/false retains legacy derived JSON and frames. Every shot hard-cuts. The old authored motion fields `ken_burns`
-  and `within_shot_motion` are **deleted** — no longer authored, no longer read anywhere.
+  `push-in`/`pull-back`). Baseline life is opt-in too: top-level `baseline_life:true` uses the channel's
+  separate calibrated token block on real scene/layer tableaux only, never placeholders or opaque cards;
+  absent/false retains legacy derived JSON and frames. Every shot hard-cuts.
 - **Publish gating.** Only shorts with `status: publish` in `shots.json` render by default — bench
   shorts don't render until promoted. `--all-shorts` overrides.
-- **Captions.** A word-highlight caption track driven by our own ElevenLabs `word_timings` — exact
-  word sync, no transcription — big and tight on shorts (silent-autoplay retention), a restrained
-  band on long-form; styled by the channel's motion tokens. `--no-captions` opts out.
+- **Captions.** A word-highlight track driven by our own ElevenLabs `word_timings` — exact word sync,
+  no transcription — big and tight on shorts (silent-autoplay retention), a restrained band on
+  long-form; styled by the channel's motion tokens. `--no-captions` opts out.
 - **Handoff is a file.** `assets/render.manifest.json` lists every piece with its output path, real
   duration, and `render_engine`/`watermark: false` — the contract the gate + publisher read.
-
-## Visual generation is an upstream step
-
-Render-builder **assembles; it does not create the look.** The look arrives as the verified
-`assets/scenes/<shot-id>.png` files `image-generation` produced (shorts: `<short-stem>-<shot-id>.png`);
-`build_motion.py` auto-detects them via `assets/scenes/manifest.json` and uses each as its shot's
-visual. A missing scene file for an ai-gen/hybrid shot is a **hard error**; chart/screencap/stock/
-archival shots (which image-generation deliberately skips) render as a **visible placeholder card**
-and are counted in the manifest.
-
-`still_prompt` stays authored on every shot — it is `image-generation`'s input upstream. Field-level
-mapping: `references/motion-schema.md`.
 
 ## After it runs
 
 - Confirm `assets/render.manifest.json` exists and each expected piece has a non-null `render_url`
   and a sane `rendered_seconds`; the local `assets/final.mp4` / `assets/shorts/*.mp4` are present.
-- The video's backlog status flips to **`produced`** once the video is fully assembled (files are the
-  memory — this step is done because the MP4s + render manifest exist).
-- Hand off to `compliance-check` (originality + policy + quality gate), then
-  `publish-queue`. The thumbnail is owned upstream by `image-generation`, which generates the
-  candidates into `assets/thumbs/` and, after the human picks a winner, finalizes the publishable
-  `assets/thumbnail.png` (the file every downstream gate/publish step reads) — render-builder
-  assembles the video only.
-
-## Full field mapping + schema
-
-`references/motion-schema.md` — the `motion.json` contract the engine renders: shots.json → motion
-spec mapping, camera/entrance derivation, stage grouping, cutout layers + captions, placeholder cards,
-and the `render.manifest.json` schema. Read it when a render looks wrong.
+- The backlog status flips to **`produced`** once the MP4s + render manifest exist (files are the memory).
+- Hand off to `compliance-check` (originality + policy + quality gate), then `publish-queue`. The
+  thumbnail is owned upstream by `image-generation` — it generates candidates into `assets/thumbs/`
+  and, after the human picks a winner, finalizes the publishable `assets/thumbnail.png`.
+- When a render looks wrong, read `references/motion-schema.md` — the full `motion.json` contract:
+  shots.json → motion-spec mapping, camera/entrance derivation, stage grouping, cutout layers,
+  captions, chapter cards, placeholder cards, and the `render.manifest.json` schema.

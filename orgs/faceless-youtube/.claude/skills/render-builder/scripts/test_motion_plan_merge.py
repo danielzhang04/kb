@@ -44,6 +44,34 @@ def test_reuse_layer_composites_the_reused_cutout_not_the_derived_path():
     assert out[0]["layers"][0]["animation"]["static"] is True, out[0]
 
 
+def test_a_merged_layered_shot_drops_its_placeholder():
+    # Observation O-1 (bricks pipe test): the layered branch set plate+layers but left the
+    # placeholder block standing, the way the plate-only branch does not — so a shot whose
+    # plate and cutouts DID resolve still read as an inline fallback in the manifest and
+    # carried a dead placeholder into the derived motion JSON.
+    shots = [{"id": "L128", "image": None, "placeholder": {"kind": "ai-gen", "label": "sale"}}]
+    plan = {"shots": [{"id": "L128", "background": {"mode": "plate", "plate_prompt": "shop"},
+             "layers": [{"id": "sale", "source": "cutout", "cutout_prompt": "a sign",
+                         "animation": {"type": "appear"}}]}]}
+    apply_motion_plan(shots, plan)
+    assert shots[0]["plate"] == "plates/L128.png", shots[0]
+    assert shots[0].get("placeholder") is None, shots[0]
+
+
+def test_a_dropped_layered_shot_keeps_its_placeholder():
+    # The other side of the same rule: under --allow-missing the layers are DROPPED, so the
+    # placeholder is the shot's only visual and must survive.
+    import tempfile
+    shots = [{"id": "L128", "image": None, "placeholder": {"kind": "ai-gen", "label": "sale"}}]
+    plan = {"shots": [{"id": "L128", "background": {"mode": "plate", "plate_prompt": "shop"},
+             "layers": [{"id": "sale", "source": "cutout", "cutout_prompt": "a sign",
+                         "animation": {"type": "appear"}}]}]}
+    with tempfile.TemporaryDirectory() as td:
+        apply_motion_plan(shots, plan, assets_dir=td, allow_missing=True)
+    assert shots[0]["placeholder"] == {"kind": "ai-gen", "label": "sale"}, shots[0]
+    assert "layers" not in shots[0], shots[0]
+
+
 def test_cutout_anchor_resolves_to_shot_relative_start():
     wt = [["The", 100.0], ["ship", 100.4], ["left", 100.9], ["harbor", 101.3],
           ["that", 102.4], ["autumn", 102.7]]

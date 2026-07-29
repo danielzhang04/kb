@@ -205,6 +205,11 @@ def apply_motion_plan(shots, plan, assets_dir=None, allow_missing=False, word_ti
                       f"-> cutout layer(s) dropped, placeholder background stands")
             else:
                 shot["plate"] = plate_rel
+                # The plate + cutouts ARE this shot's visual, so the placeholder block that
+                # stood in for a missing scenes/<id>.png is now dead — drop it exactly as the
+                # plate-only branch below does. Left standing it rode into the derived motion
+                # JSON and counted the shot as an inline fallback in the manifest.
+                shot.pop("placeholder", None)
                 shot["layers"] = [{"id": l["id"], "src": rel,
                                    "animation": _resolve_cutout_anim(
                                        l.get("animation"), start_s, word_timings)}
@@ -640,8 +645,12 @@ def build_piece_spec(piece, shots, res, is_short, video_dir, vo_manifest, args, 
         "sum_scene_seconds": round(sum(scaled), 2),
         "retime_basis": basis,
         "vo_seconds": vo_s,
-        "scenes_from_files": sum(1 for f in scene_files if f is not None),
-        "inline_fallback": sum(1 for f in scene_files if f is None),
+        # Counted AFTER the motion-plan merge, off the derived shots themselves: a layered or
+        # plate-only shot resolves its visual from plates/ + cutouts/, not scenes/, so counting
+        # the pre-merge scene_files reported every one of them as an inline fallback (188/188
+        # on the bricks plan). A shot has exactly one of image / layers / placeholder.
+        "scenes_from_files": sum(1 for s in spec["shots"] if s.get("image") or s.get("layers")),
+        "inline_fallback": sum(1 for s in spec["shots"] if s.get("placeholder")),
         # Reported tally for the guard asserted above: camera moves land ONLY on plan-authored shots.
         # 0 on a camera-less plan; else exactly the human-authorized exceptions (e.g. L44's pull).
         "camera_moving": sum(1 for s in spec["shots"] if s["camera"]["move"] != "none"),

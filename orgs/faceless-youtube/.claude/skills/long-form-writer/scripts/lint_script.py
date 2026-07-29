@@ -1,16 +1,25 @@
 #!/usr/bin/env python3
 """Deterministic lint for a long-form script.md.
 
-Checks ONLY what needs no judgment: em/en dashes, quotation marks in the VO body,
-leftover fact-traces / outline comments, a filled-in header runtime, mechanical
-Step-card sequences, and the VO word count vs runtime. Exact credibility-padding
-phrases are reported as non-blocking advisories.
+Checks ONLY what needs no judgment: em/en dashes, leftover fact-traces / outline
+comments, a filled-in header runtime, mechanical Step-card sequences, bracketed
+production cues in the VO body, and the VO word count vs runtime. Quotation
+marks in the VO body, exact credibility-padding phrases, standalone
+one-sentence paragraphs, and a skewed contraction ratio are reported as
+non-blocking advisories (quoting, paragraph shape, and contraction register
+are taste calls for the critics, not a lock).
 
-Second person is intentionally NOT checked here: whether a "you" casts the viewer
-into the story (banned) or is the generic impersonal "you" ("gold you could wash
-out of the sand", fine) is a judgment call that belongs to the taste critic.
+script.md is pure prose: the writer authors no pause cues, no beats, and no
+[B-ROLL] anchors. Any `[B-ROLL`, `[PAUSE`, or `[BEAT` occurrence in the VO body
+is a HARD violation: deliberate pauses are audio-director's job and visual
+beat segmentation moves downstream entirely.
 
-Usage: python lint_script.py <path-to-script.md>
+The runtime suggestion is words-at-wpm only: the channel voice's measured gross
+wpm already embeds its natural pausing, so no separate cue-time math is added.
+
+Usage: python lint_script.py <path-to-script.md> [--wpm N]
+--wpm is the channel voice's measured words-per-minute from dna.md (default 150),
+used only for the runtime suggestion.
 Exit code 0 = clean or advisory-only, 1 = hard violations found.
 """
 import re
@@ -20,11 +29,30 @@ import sys
 STEP_NUMBER = re.compile(r"^Step\s+(\d+)\b", re.I)
 STEP_CARD = re.compile(r"^Step\s+(\d+)\s*:\s*.+", re.I)
 MALFORMED_STEP = re.compile(r"^Step(?:\s+\d+)?\s*:\s*$", re.I)
+CUE_PATTERN = re.compile(r"\[B-ROLL|\[PAUSE|\[BEAT")
+SENTENCE_END = re.compile(r"[.!?]+[\"'\)’”]*(?=\s|$)")
 CREDIBILITY_ADVISORIES = (
     (re.compile(r"\bthat part is real\b", re.I), "credibility-padding phrase: that part is real"),
     (re.compile(r"\bhe actually did\b", re.I), "credibility-padding phrase: he actually did"),
     (re.compile(r"\bhe really did\b", re.I), "credibility-padding phrase: he really did"),
     (re.compile(r"\bseriously\b", re.I), "credibility-padding phrase: seriously"),
+)
+# Contraction-ratio advisory: contraction tokens (closed class, not possessive 's) vs
+# their expandable uncontracted forms at clause starts. A channel voice that runs
+# contracted (the norm for this project's casual-friend register) reading uncontracted
+# at scale is a register drift worth a human look — never a lock.
+CONTRACTION_PATTERN = re.compile(
+    r"\b(?:i'm|i've|i'll|i'd|you're|you've|you'll|you'd|he's|he'll|he'd|she's|she'll|she'd|"
+    r"it's|it'll|it'd|we're|we've|we'll|we'd|they're|they've|they'll|they'd|that's|that'll|"
+    r"that'd|there's|there'll|who's|who'll|what's|what'll|here's|let's|don't|doesn't|didn't|"
+    r"won't|wouldn't|shouldn't|couldn't|can't|cannot|isn't|aren't|wasn't|weren't|hasn't|"
+    r"haven't|hadn't|mustn't|needn't|ain't)\b",
+    re.I,
+)
+UNCONTRACTED_PATTERN = re.compile(
+    r"\b(?:That is|It is|There is|He is|She is|They are|You are|We are|Do not|Did not|"
+    r"Was not|Were not|Is not|Are not|Cannot|Could not|Would not|Should not)\b",
+    re.I,
 )
 
 
@@ -62,7 +90,7 @@ def lint_step_sequences(lines, body_start, body_end, hard):
             hard.append((lineno, f"skipped/out-of-order Step (expected {expected})", text))
 
 
-def main(path):
+def main(path, wpm=150):
     with open(path, encoding="utf-8") as f:
         lines = f.readlines()
 
@@ -98,6 +126,22 @@ def main(path):
         hard.append((0, "unfilled header runtime", runtime_line.strip()))
 
     vo_words = 0
+    one_sentence_paragraphs = []   # line numbers of standalone one-sentence VO paragraphs
+    contraction_count = 0
+    uncontracted_count = 0
+    uncontracted_lines = []        # line numbers carrying an uncontracted expandable form
+    para_start = None
+    para_text = []
+
+    def close_paragraph():
+        nonlocal para_start, para_text
+        if para_start is not None and para_text:
+            joined = " ".join(para_text)
+            if len(SENTENCE_END.findall(joined)) == 1:
+                one_sentence_paragraphs.append(para_start)
+        para_start = None
+        para_text = []
+
     for i, ln in enumerate(lines):
         lineno = i + 1
         stripped = ln.strip()
@@ -114,11 +158,32 @@ def main(path):
         is_cue = stripped.startswith("[")            # [B-ROLL] / [PAUSE] / [BEAT]
         is_meta = stripped.startswith(("#", "-", "*", ">")) or stripped == "---" or stripped == ""
 
-        # The no-quotes lock applies to the whole script body, including Markdown blockquotes or
-        # list-formatted prose. Those lines are non-spoken metadata to voiceover, but allowing a quote
-        # there would let a generated story beat pass this gate and then disappear from the transcript.
+        # script.md is pure prose: any bracketed production cue anywhere in the VO body
+        # is a hard violation, wherever it sits on the line (standalone or inline).
+        # Deliberate pauses are audio-director's job; visual beats move downstream.
+        if in_body and CUE_PATTERN.search(ln):
+            hard.append((
+                lineno,
+                "bracketed cue in VO body (script.md is pure prose; pauses belong to "
+                "audio-director, visual beats move downstream)",
+                stripped,
+            ))
+
+        # Quotes in the VO body are a taste call (narrator-reported speech is the default telling
+        # mode, not a lock) — surfaced as an advisory so the critics see them, never a hard failure.
+        # The whole body is scanned, including blockquotes/lists, so a quoted beat can't hide there.
         if in_body and not is_cue and ('"' in ln or "“" in ln or "”" in ln):
-            hard.append((lineno, "quote in VO body", stripped))
+            soft.append((lineno, "quote in VO body (taste review)", stripped))
+
+        # Paragraph tracking for the standalone one-sentence-paragraph advisory: a paragraph
+        # is consecutive non-blank VO prose lines; any meta/blank/cue line or leaving the body
+        # closes it. Reuses the same prose-line definition as the word count below.
+        if in_body and not is_cue and not is_meta:
+            if para_start is None:
+                para_start = lineno
+            para_text.append(stripped)
+        else:
+            close_paragraph()
 
         if in_body and not is_cue and not is_meta:
             # count spoken words (rough: split on whitespace).
@@ -126,6 +191,31 @@ def main(path):
             for pattern, label in CREDIBILITY_ADVISORIES:
                 if pattern.search(ln):
                     soft.append((lineno, label, stripped))
+            contraction_count += len(CONTRACTION_PATTERN.findall(stripped))
+            uncontracted_hits = UNCONTRACTED_PATTERN.findall(stripped)
+            if uncontracted_hits:
+                uncontracted_count += len(uncontracted_hits)
+                uncontracted_lines.append(lineno)
+
+    close_paragraph()  # a final paragraph that runs to the end of the body without a trailing blank
+
+    if one_sentence_paragraphs:
+        refs = ", ".join(f"L{n}" for n in one_sentence_paragraphs)
+        soft.append((
+            0,
+            "one-sentence paragraph",
+            f"{len(one_sentence_paragraphs)} one-sentence paragraphs; idea blocks average "
+            f"4-5 sentences ({refs})",
+        ))
+
+    if uncontracted_count >= 5 and uncontracted_count >= contraction_count / 2:
+        refs = ", ".join(f"L{n}" for n in uncontracted_lines)
+        soft.append((
+            0,
+            "contraction ratio",
+            f"{contraction_count} contractions vs {uncontracted_count} uncontracted expandable "
+            f"forms (That is / It is / Do not / etc.); channel voice runs contracted ({refs})",
+        ))
 
     print(f"== lint: {path} ==")
     if hard:
@@ -134,25 +224,35 @@ def main(path):
             snippet = text[:100] + ("…" if len(text) > 100 else "")
             print(f"  L{lineno}  [{kind}]  {snippet}")
     else:
-        print("\nHARD violations: none (no dashes, no VO quotes, no leftover traces).")
+        print("\nHARD violations: none (no dashes, no leftover traces).")
 
     if soft:
         print(f"\nAdvisories ({len(soft)}) — review, do not block:")
         for lineno, kind, text in soft:
             print(f"  L{lineno}  [{kind}]  {text[:100]}")
 
-    total_s = round(vo_words / 150.0 * 60)
+    total_s = round(vo_words / float(wpm) * 60)
     mm, ss = divmod(total_s, 60)
     print(
         f"\nVO word count: {vo_words}  ->  header should read: "
-        f"Estimated runtime: {mm}:{ss:02d} ({vo_words:,} words ÷ 150 wpm)"
+        f"Estimated runtime: {mm}:{ss:02d} ({vo_words:,} words ÷ {wpm} wpm)"
     )
 
     return 1 if hard else 0
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("usage: python lint_script.py <path-to-script.md>")
+    args = sys.argv[1:]
+    wpm = 150
+    if "--wpm" in args:
+        i = args.index("--wpm")
+        try:
+            wpm = int(args[i + 1])
+        except (IndexError, ValueError):
+            print("usage: python lint_script.py <path-to-script.md> [--wpm N]")
+            sys.exit(2)
+        del args[i : i + 2]
+    if len(args) != 1:
+        print("usage: python lint_script.py <path-to-script.md> [--wpm N]")
         sys.exit(2)
-    sys.exit(main(sys.argv[1]))
+    sys.exit(main(args[0], wpm))

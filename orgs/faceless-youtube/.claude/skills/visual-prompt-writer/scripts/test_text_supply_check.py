@@ -99,6 +99,21 @@ CLEAN = [
     pytest.param(
         "A money bag being clawed back with a marker tag '$67M' and a small 'TOLSTEDT' label.",
         id="L99-plate-every-element-carries-its-own-value"),
+    # The three FALSE POSITIVES the 2026-07-28 bricks pipe test hit (fragments recorded
+    # verbatim in that video's pipe-test-log.md, F-4). All three cost an author a rewrite
+    # of a correctly-authored prompt, which is exactly how a lint loses its credibility.
+    pytest.param(
+        "A stack of sealed kraft cartons with one carton pulled out, the opening reading as a "
+        "hole punched in the wall of boxes, cold overhead light.",
+        id="bricks-L07-reading-AS-is-the-legibility-idiom"),
+    pytest.param(
+        "An auditor figure in half-moon reading glasses looking down at a clipboard, "
+        "arms-crossed appraisal, warm desk lamp.",
+        id="bricks-L148-reading-glasses-is-an-object-not-a-text-verb"),
+    pytest.param(
+        "A supermarket aisle end-cap seen wide, one red price rail running along the shelf edge, "
+        "the shelves themselves empty.",
+        id="bricks-L84-price-modifies-rail-nothing-is-lettered"),
 ]
 
 
@@ -144,12 +159,12 @@ def test_absence_instruction_is_not_a_request():
 
 
 def test_schema_worked_example_no_longer_teaches_the_defect():
-    """shots-schema.md §6's exemplar is the single most-copied prompt in this
-    skill. It used to read "a single load-bearing calculation carved into a
-    monolithic stone tablet" — a value-free text request, modelled as good
-    practice. Both halves are pinned: the old form must FAIL, the shipped form
-    must PASS. (Catching the old form is why `calculation` and `carved` are in
-    the vocabularies at all.)"""
+    """Regression pin from the retired shots-schema worked example (the §6
+    exemplar, deleted in the 2026-07-28 trim). It once read "a single
+    load-bearing calculation carved into a monolithic stone tablet" — a
+    value-free text request, modelled as good practice. Both halves stay
+    pinned: the old form must FAIL, the corrected form must PASS. (Catching
+    the old form is why `calculation` and `carved` are in the vocabularies.)"""
     old = ("a single load-bearing calculation carved into a monolithic stone tablet "
            "balanced on a knife-edge, cold blue key light")
     new = ("a monolithic stone tablet with the single figure '2,800 TONS' carved into its "
@@ -168,6 +183,22 @@ def test_incised_lettering_verbs_are_text_verbs():
             f"a stone plaque with the date {verb} into its face, cold key light", SUFFIX), verb
     assert unsupplied_text_requests(
         "a stone plaque with the date '1907' carved into its face, cold key light", SUFFIX) == []
+
+
+def test_a_text_noun_used_attributively_is_not_a_request():
+    """"one red price rail" — the count and the colour belong to the RAIL; `price`
+    only says what the rail is for. The staged-focal-value shape the SLOT grammar
+    hunts needs the text noun to END its phrase, which is what separates these two."""
+    assert unsupplied_text_requests("one red price rail along the shelf edge", SUFFIX) == []
+    assert unsupplied_text_requests("one red price painted along the shelf edge", SUFFIX)
+
+
+def test_bare_reading_is_still_a_text_verb_when_it_introduces_lettering():
+    """The two `reading` exclusions must not gut the verb itself: "a stamp reading
+    <nothing>" is the original defect and stays HARD."""
+    assert unsupplied_text_requests("a rubber stamp reading across the invoice face", SUFFIX)
+    assert unsupplied_text_requests("a rubber stamp reading 'PAID' across the invoice face",
+                                    SUFFIX) == []
 
 
 def test_text_supply_check_reports_id_field_and_excerpt():

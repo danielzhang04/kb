@@ -13,7 +13,7 @@ Status lifecycle: `idea → picked → scripted → produced → published`.
 **ID prefix:** `ST-` · creation-order, never renumbered (Rank is a separate, re-scorable column).
 
 First slate generated 2026-07-04 (strategy mode, new channel) from a live 3-territory scout
-(frauds/cons · collapses & hidden giants · heists/mysteries). Scored against `watchability-rubric.md`.
+(frauds/cons · collapses & hidden giants · heists/mysteries).
 
 ## Queue (ranked by score)
 

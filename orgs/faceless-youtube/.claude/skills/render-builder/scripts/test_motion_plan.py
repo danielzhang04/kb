@@ -97,6 +97,23 @@ def test_valid_cutout_params_ok():
     assert validate_plan(plan, load_menu()) == []
 
 
+def test_layer_seed_is_an_optional_non_empty_string():
+    """A cutout's seed (a refs/ path or a registry vocabulary name) is authored per LAYER —
+    25 of 29 bricks cutouts named none, and an unseeded cutout invents its own register."""
+    def _plan(layer_extra):
+        layer = {"id": "mac", "source": "cutout", "cutout_prompt": "man",
+                 "animation": {"type": "appear"}}
+        layer.update(layer_extra)
+        return {"shots": [{"id": "L13", "background": {"mode": "plate", "plate_prompt": "stage"},
+                           "layers": [layer]}]}
+    assert validate_plan(_plan({}), load_menu()) == []                       # absent is legal
+    assert validate_plan(_plan({"seed": "macgregor"}), load_menu()) == []     # registry name
+    assert validate_plan(_plan({"seed": "refs/env/parchment.png"}), load_menu()) == []
+    for bad in ("", "   ", 3, None, ["macgregor"]):
+        errs = validate_plan(_plan({"seed": bad}), load_menu())
+        assert any("seed" in e for e in errs), (bad, errs)
+
+
 def test_anchor_origin_valid_on_every_type():
     # anchor_origin (center|bottom) is accepted on appear/slide/bob/path — the M16 origin override.
     for anim in [{"type": "appear", "at": [0.5, 0.5], "anchor_origin": "center"},
@@ -170,6 +187,7 @@ def main():
                test_camera_move_pan_and_intensity_are_validated,
                test_slide_to_must_be_coord, test_slide_needs_positive_dur, test_path_needs_exactly_three_points,
                test_appear_style_enum_and_anchor_type, test_valid_cutout_params_ok,
+               test_layer_seed_is_an_optional_non_empty_string,
                test_anchor_origin_valid_on_every_type, test_anchor_origin_bad_value_errors,
                test_dot_fields_valid_with_draw_line, test_dot_fields_require_draw_line_and_positive,
                test_chapter_cards_valid, test_card_missing_text_and_anchor_error,

@@ -173,7 +173,7 @@
       "somber-1"
     ]
   },
-  "_music_fade_note": "R10 2026-07-18 (W12, Daniel-ruled): music fades are LONG by default - every bed enters on a ~1.2s swell and leaves on a ~2.5s fade that starts earlier; track_switch_gap_s 1.2 between different beds. Per-cue fade_out_s in audio-plan.json may author LONGER still; these defaults are the floor. Doctrine: audio-director grammar-guidance.md.",
+  "_music_fade_note": "R10 2026-07-18 (W12, Daniel-ruled): music fades are LONG by default - every bed enters on a ~1.2s swell and leaves on a ~2.5s fade that starts earlier; track_switch_gap_s 1.2 between different beds. Per-cue fade_out_s in audio-plan.json may author LONGER still; these defaults are the floor. Doctrine: audio-director SKILL.md Placement laws.",
   "sentence_gap_target_s": 0.65,
   "sentence_gap_chained_target_s": 0.45,
   "sentence_gap_min_insert_s": 0.02

@@ -1,6 +1,6 @@
 ---
 name: proxy-judge
-description: Stands where the human stands at a pipeline GATE, rendering the acceptance verdict on a finished artifact — v1 judges the LONG-FORM SCRIPT after `humanize`. Use for "judge the script," "would I approve this," "run the acceptance gate," "should this ship" — fresh-eyes accept/revise/reject for any taste-pack channel. A FRESH-CONTEXT subagent judges against the storytelling-grammar + rubric + calibration TRAINING set, writing `judge-verdict.md`. Runs after `long-form-writer`, before voiceover/visuals. NOT for writing/fixing scripts (`long-form-writer`), fact-checking, or editing taste-pack docs.
+description: Stands where the human stands at a pipeline GATE, rendering the acceptance verdict on a finished artifact — v1 judges the LONG-FORM SCRIPT after `humanize`. Use for "judge the script," "would I approve this," "run the acceptance gate," "should this ship" — fresh-eyes accept/revise/reject for any taste-pack channel. A FRESH-CONTEXT subagent judges against the storytelling-grammar + calibration TRAINING set, writing `judge-verdict.md`. Runs after `long-form-writer`, before voiceover/visuals. NOT for writing/fixing scripts (`long-form-writer`), fact-checking, or editing taste-pack docs.
 ---
 
 # proxy-judge — the acceptance gate (proxy-me)
@@ -24,7 +24,7 @@ Full rationale + the calibration proof: `docs/superpowers/specs/2026-07-09-proxy
 
 1. **Resolve the taste pack.**
    `python .claude/skills/proxy-judge/scripts/resolve_manifest.py <facet> <channel>`
-   → the grammar, rubric, gold, calibration, and gates paths. A missing pack file is a hard error.
+   → the grammar, voice-excerpt, and calibration paths. A missing pack file is a hard error.
 
 2. **Gather the accuracy signal (do not re-derive it).**
    - If `videos/<slug>/research.md` exists (research channels): run the **leash critic** prompt from
@@ -50,14 +50,14 @@ Full rationale + the calibration proof: `docs/superpowers/specs/2026-07-09-proxy
 - **Never read the HELD-OUT section** of the calibration set — it is the blind-rating answer key.
 - **Content preference, not voice** — redirects may be phrased however is clearest.
 - **Zero taste-pack writes.** The judge only NAMES an uncodified preference in `proposed_rule_stub`; it
-  never edits the grammar/rubric. (Auto-authoring new rules = the v2 self-maintaining loop.)
+  never edits the grammar. (Auto-authoring new rules = the v2 self-maintaining loop.)
 - **Accuracy is the leash critic's**, folded in — the judge never re-traces `[F-NN]` facts.
 - **Leave `long-form-writer` Step 3d untouched.** This is an added gate, not a replacement.
 
 ## Files
 
-- Reads: the resolved taste pack (grammar, rubric, gold, `knowledge/proxy-me/<facet>/calibration-set.md`
+- Reads: the resolved taste pack (grammar, voice excerpt, `knowledge/proxy-me/<facet>/calibration-set.md`
   TRAINING only), `videos/<slug>/leash-findings.md`, `videos/<slug>/script.md`.
 - Writes: `videos/<slug>/judge-verdict.md` (and `leash-findings.md`).
 - Helpers: `scripts/resolve_manifest.py`, `scripts/score_agreement.py` (validation), `scripts/lint_calibration.py`.
-- Worked example: `references/example-verdict-gold.md` (the gold script, greenlit 35/36).
+- Worked example: `references/example-verdict-gold.md` (historical — predates the verdict-only schema).

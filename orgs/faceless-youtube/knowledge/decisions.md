@@ -3198,3 +3198,363 @@ run brief binds nobody — a fresh terminal reads the style-bible and skill docs
   zero-spend calibration reference.
 - **Gates:** review design, then production-logic diff, then zero-spend calibration and Bricks script/
   dry-run. Paid voice, image generation, full render, and publication each remain separately human-gated.
+
+## 2026-07-27 — storytelling-grammar + long-form-writer slimmed; hard locks retired (Daniel)
+
+- **Grammar §0 removed; Poyais de-golded everywhere.** No script is "gold"; the voice bar is Daniel's
+  approved personable-calibration excerpt. Both files purged of Poyais-as-standard framing.
+  (Alternative rejected: keep §0 with facet-scoped gold — Daniel: "poyais isn't a gold for anything".)
+- **Hard locks deleted entirely** — the viewer role-casting ban and the one-narrator/no-quotes lock are
+  now taste calls, not law. **This reverses the 2026-07-22 ruling** that kept them banned. Reported
+  speech stays the *default* telling mode (grammar §4); lint demoted "quote in VO body" from hard
+  violation to advisory; the taste critic's viewer-casting finding was removed. (Alternative rejected:
+  keep the rules as one-liners in §4.) The em/en-dash ban survives (AI-tell, still linted hard).
+- **Grammar register-dial section (§1.4) deleted** — the humor dial lives in `dna.md` only; the grammar
+  keeps just "comedy off on human cost, concise" (§1.7). §1.1 absorbed old §1.5 (jargon); old §1.7
+  (character's-head narration) cut; §1.4 is now analogies-as-the-explanatory-engine, promoted with
+  examples from the calibration excerpt.
+- **Structure moves audited against actual use:** board-state and mirror cut (no usage evidence in any
+  script, teardown, or craft record); paradox-hook+rewind, park-and-cut/irony cross-cut, question
+  turns, Step-N causal assembly, pre-spoiled tension, followability all kept.
+- **Writer read-load slimmed:** `universal.md` (18k words), `watchability-rubric.md`, and
+  `performance.md` removed from long-form-writer Step 1; `playbook.md` + the niche playbook's policy
+  quirk kept (consumed at Step 6). The writer is now pure process; all craft derives from the grammar.
+- **Open item:** `watchability-rubric.md` dimension 11 (reported-speech/no-quotes hard locks) is built
+  on the retired locks and sits in proxy-judge's hard gate — rubric + calibration set need Daniel's
+  re-ruling before the next judged draft.
+
+## 2026-07-27 — watchability rubric retired; round-2 writer/grammar rulings (Daniel)
+
+- **`watchability-rubric.md` deleted.** 15/18 dimensions duplicated the grammar in scored form and had
+  drifted (still enforced the deleted locks, humor dial, human cost, 150-wpm constant). Surviving
+  unique learnings folded into the grammar: the short-punch rule (§1.1) and forward-promise seams /
+  deliver-don't-announce (§3.4). Digestibility timing dropped (Daniel unsure); jargon-free-line-one
+  already covered by §1.1+§2.1; the measured baseline dropped as inherent in current voice/pause
+  doctrine. (Alternatives rejected: slim 6-dim rewrite; unscored checklist.)
+- **proxy-judge is verdict-only:** judges against grammar + the approved voice excerpt + the
+  calibration TRAINING set; no /36 score, no numeric gate. facets.md story pack now resolves
+  grammar/voice/calibration; the Poyais gold entry removed. `score_agreement.py` unaffected (never
+  parsed the score).
+- **Round-2 writer/grammar rulings:** wit/analogies/asides abundant and consistent throughout — a flat
+  deadpan stretch is a defect (grammar §1.3, taste critic #8); unavoidable unknown terms are
+  contextualized in the same breath (§1.1); hook anatomy fleshed with examples (§2.1); retention is
+  designed at the outline, not checked post-script (§2.6); runtime estimates use the channel voice's
+  measured wpm (`lint_script.py --wpm`); humanize folded into the critic cycle (writer 3d); Step 6
+  folded into 3c; **all human-cost comedy rules removed from scripting docs** (grammar, critics, dna
+  dial, shorts-writer, calibration note) — irrelevant for now per Daniel.
+
+## 2026-07-28 - scripting overhaul: example-scripts.md voice bar, blind protocol retired, writer cultural pull (Daniel)
+
+- **Blind control/candidate protocol retired,** reversing the 2026-07-26 blind-validation plan. Reason:
+  Bricks became a teaching exemplar rather than a held-out test case, so acceptance is now a fresh
+  writer run Daniel reviews directly, not a blind fixture comparison. All "blind fixture" / "blind
+  reader bundle" machinery removed from `critics.md` and the calibration doc.
+- **`channels/the-second-take/example-scripts.md` replaces `personable-calibration.md`** as the voice
+  bar: channel data now lives with the channel instead of inside the writer skill. The file is designed
+  to grow with future Daniel-approved excerpts, each carrying a short "what this demonstrates" note.
+  Writers match its energy; judges judge against it; every reference across the writer, critics,
+  proxy-judge, facets manifest, and shorts-writer was retargeted.
+- **Excerpt cuts are taste verdicts:** lines Daniel deleted from the MacGregor excerpt are purged as
+  grammar exemplars, not merely trimmed prose. Every inline grammar example is now drawn only from the
+  approved excerpt text (or the endorsed Bricks cold open); nothing invented or legacy survives as an
+  example.
+- **Hook shapes are an open set; doorway/wink/gloss sanctioned by rewording rules, not by exceptions.**
+  The paradox cold open and the era drop-in are named shapes; other shapes may be invented. What stays
+  dead is outlining the story's beats. The spoiler wink, the plain doorway line, and the everyman gloss
+  are now normal speech inside the reworded rules. Alternative rejected: bolting on exception lists to
+  the existing prohibitions; Daniel's ruling is to change the rule, not except around it.
+- **Writer owns cultural pulls, not the researcher.** Inside Step 3a (outline), the writer now gathers
+  era anchors, candidate modern comparisons, and joke angles per beat, with a WebSearch license for era
+  texture and for checking a reference clears the universality bar. Alternative rejected: a
+  researcher-side analogy section; Daniel's ruling is that cultural material belongs with the writer,
+  and the fact leash still governs anything stated as fact.
+- **Voice dials moved to `stability: 0.20`, `style: 0.6`** (from 0.25/0.4) for more variance and vocal
+  emphasis, superseding the 0.25 consistency lock; re-proof by ear on the next real VO render.
+- **Era anchor "Walkman" rejected; replaced with Pac-Man.** The universality bar is empirical, not a
+  vibe call: if a general reader would not instantly picture the reference, it is out, no matter how
+  period-accurate it is. Pac-Man cleared the bar where Walkman did not.
+
+## 2026-07-28 — Visual-stack trim: single-home law map, retired-features archive
+
+- **The seven files governing visual prompting + image generation trimmed ~2,900 -> ~1,590 lines**
+  (spec `docs/superpowers/specs/2026-07-28-visual-stack-trim-design.md`): every shared law now has ONE
+  home (seed doctrine -> style-bible §5; text laws -> shots-schema §4; authoring laws + procedure -> VPW
+  SKILL; review/stamp -> image-gen SKILL; staging -> visual-grammar; narration grammar -> universal §13a)
+  with pointers elsewhere. Alternatives rejected: keeping evidence essays in place (Daniel: fold
+  learnings into the rule's wording; a changelog is appended trash); per-file retirement one-liners
+  (Daniel: retired features move OUT of workflow files).
+- **`docs/retired-features.md` created** — the only home for retired capabilities (engine text/device
+  cards, VPW motion fields, merge tier, flash tier, chapter cards, forge diff/crop), each with
+  what/why/where-parked/re-verify.
+- **Zero examples, zero provenance dates, zero changelog blocks** in governing files (Daniel's verbatim
+  rulings). style-bible §10 change log deleted; descriptor blockquotes §2/2b/2c/2d/2e byte-identical.
+- **Acceptance:** purge greps clean; pointer sweep clean (one stale test docstring repointed); 82/82
+  script tests; fresh-eyes probe reconstructed all six core doctrines from the trimmed files alone.
+  Residual over spec's ~1,220 aspiration is protected content (slug lists, hex values, caps,
+  enforcement procedures) — kept per terse-and-complete-over-short-and-lossy.
+
+## 2026-07-28 - Scripting overhaul round 2: examples dominate, rules that manufactured dryness deleted (Daniel)
+
+- **Fresh Bricks script #1 rejected** ("pretty terrible across the board"). Root cause: the docs were
+  still rule-heavy, so the writer optimized against prohibitions and produced clipped one-liner monotone
+  paragraphs, concept-prose instead of plain action, audible hedges ("by one account"), and a still-life
+  hook with no actor doing anything. Round 2 rebuilds doctrine so the approved examples dominate and
+  removes the specific rules that produced each failure, rather than appending exceptions on top.
+- **Paragraph doctrine replaces the short-punch rule.** Idea blocks run four to five sentences on
+  average; a standalone one-liner paragraph is now the defect, not the goal. The short-punch rule
+  (added 2026-07-27) is deleted outright as the dryness engine; short sentences still land, but inside a
+  block, carried by the longer sentences around them (storytelling-grammar §1.1).
+- **Humor recalibrated:** the register is warm, irreverent, and pop-culture-loaded by default.
+  Franchise and meme references with staying power are licensed (Thanos, Doctor Strange's sanctums, the
+  idiot sandwich, a Peloton, Ocean's Eleven), and profanity is in bounds up to the "ass"/"shit" grade,
+  never the f-word. The old "never memes/slang that date" and "smart-not-cringe" phrasing is deleted;
+  the bar is instant recognition and the joke has to HIT, register-agnostic (grammar §1.3/§6, dna.md
+  humor dial).
+- **Hedges banned from narration; hedging moves into fact selection.** "By one account," "sources
+  disagree," and every cousin are out of the voiceover; the writer states the strongest sourced version
+  flat or cuts the claim. A genuine gap in the record gets transparent, playful speculation in the
+  narrator's voice instead of a confession ("Don't ask me why. Maybe Wiles was just that charismatic, or
+  maybe there was some under-the-table dealing going on. Either way...") (grammar §4).
+- **Tense doctrine:** past is the storytelling default; present is licensed only for framing the viewer
+  into a period, for mechanics still true today, and optionally for a scheme's hottest run. The
+  present-tense still-life tableau, a scene with nobody doing anything in it, is banned (grammar §1.1).
+- **Hook doctrine:** actor plus event plus a familiar anchor, with concrete names in the first breath.
+  Still-life, bloodless abstraction, and the unnamed-mystery-company are all dead; the shape itself stays
+  open (grammar §2.1).
+- **Endings are a tone, not a formula.** Casual, brisk, unceremonious, usually landing an ironic
+  observation or one last laugh. The "one earned ironic image" requirement is deleted; it was producing
+  reaching, over-crafted button lines instead of a clean stop. Daniel's fate-roundup-plus-ironic-winner
+  ending enters as one worked example, explicitly not the shape every ending takes (grammar §3.5).
+- **Wink doctrine scrapped.** Neither required nor taught as a move; the approved Bricks intro keeps its
+  own wink line untouched as approved text, not as an instance of a rule.
+- **Company stories tell the rise before the fall, with every escalation motivated out loud** (new
+  grammar §2.7): who they were and how big they got before anything goes wrong, then an explicit causal
+  chain for each step of the collapse.
+- **`script.md` becomes pure prose.** The writer authors no pause cues, no beats, and no `[B-ROLL]`
+  anchors; default rendered sentence-gaps live in the render engine, deliberate pauses become
+  audio-director's job, and visual beat segmentation moves downstream entirely. Lint flips: any
+  bracketed cue in the VO body is now a hard violation, and runtime reverts to words divided by measured
+  wpm. **Deferred debt (recorded, not built now):** the `visual-prompt-writer` + image-generation logic
+  rework needed to consume pure prose comes after scripting is perfected. `shorts-writer` still authors
+  its own self-contained short-script cues; Daniel flagged that for the same later rework (it was
+  checked clean of hedges, old humor phrasing, and short-punch language meanwhile).
+- **Bricks research ledger topped up** ([F-25]-[F-31]): no source supports a garage founding (founded
+  1980 by 20-year industry veteran Terry Johnson); the sourced 1984 marker is IBM-driven growth to $125M
+  (1985 was a dip to $114M after IBM cut orders, which is what brought Wiles in); the reported 1988 peak
+  of $603M was itself inflated by the same fraud at the time it was first reported; the sourced second
+  major customer is Compaq, not Apple; Reddit's FY2025 revenue is about $2.2 billion, making the
+  inflation-adjusted MiniScribe peak (roughly $1.6-1.7B) same-order-of-magnitude but not an exact match
+  to "as much money as Reddit" (close enough for the comedic beat, noted as approximate).
+- **Five new approved excerpts land in `example-scripts.md`:** the company's rise, meet the fixer, the
+  caper, speaking to a gap in the record, and the ending, alongside the existing MacGregor and Bricks
+  cold-open excerpts, all with "what this demonstrates" notes; every inline grammar/critic example is
+  re-drawn from these.
+- **Alternatives rejected:** bolting exception lists onto the existing prohibitions instead of rewording
+  them; keeping a formulaic ending requirement; keeping any hedge language in narration on the theory
+  that it reads as honest; keeping `[B-ROLL]`/pause-cue markup in the writer's output on the theory that
+  downstream skills need it now (the rework is deferred debt instead, so scripting doctrine is not held
+  hostage to it).
+
+## 2026-07-28 — Audio/VO/motion/render-stack trim (wave 2)
+
+- **14 doctrine files trimmed 1,512 -> 1,290 lines; two files deleted, one merge** (spec
+  `docs/superpowers/specs/2026-07-28-audio-motion-stack-trim-design.md`): `animation-menu.md` folded
+  into shots-motion-schema; `grammar-guidance.md` merged into audio-director SKILL as Placement laws.
+  Boundary law and supplied-text law collapsed to their wave-1 homes (universal §13a-ii,
+  shots-schema §4); SFX-tail/sentence-gap/no-dip laws single-homed in audio-plan-schema; retirement
+  prose moved to docs/retired-features.md (which also gained the motion/audio entries and a
+  correction: chapter cards are LIVE, not retired). Alternatives rejected: trimming the channel
+  research logs (Daniel: out of scope); forcing the ~1,050 numeric target (residual is enforced
+  contract content — terse-and-complete wins over the count).
+- **Doc-vs-code corrections made TO code reality:** render-builder SKILL's "overlays always empty"
+  (chapter cards are emitted); audio-director's "sneaky is the con workhorse" (audio-tokens names
+  underscore the default con-spine bed).
+- **Acceptance:** purge + deleted-file pointer greps clean; analyzer suites + 241 script tests pass;
+  fresh-eyes probe reconstructed all seven core doctrines from the trimmed files alone, zero gaps.
+
+## 2026-07-28 — Visual-pipeline redesign (wave 3): function changes
+
+- **VPW thinned to a 125-line procedure over channel doctrine** (spec
+  `docs/superpowers/specs/2026-07-28-visual-pipeline-redesign-design.md`): the scripting work split is
+  the template (writer:storytelling-grammar:example-scripts:critics = VPW:visual-grammar:example-shots:
+  shot-critic; image-gen:style-bible the second pair). Laws deleted: hook bar, delta decisiveness,
+  anti-slop, channel translation, the seven-laws apparatus (tableau survives as one line of prompt
+  guidance). Alternatives rejected: keeping a separate reviewer rulebook (Daniel: the judge judges on
+  the same rules the generator gens on — bible §3 is the one shared set); structured cast arrays
+  (Daniel: prose with backticked registry vocab, image-gen resolves).
+- **shots.json v2** (`shots@2`): from_cue/beat/narration_type/hold_reason/cast/props/needed_assets/
+  house_style dropped; lint warns (never errors) on legacy fields; both shipped v1 files verified
+  byte-identical on every surviving check. The missing-asset human gate moved from VPW to image-gen
+  Pass 1 (pre-gen approval kept; veto → restage).
+- **example-shots.md approved (gate B)** — 8 depiction exemplars, 6 non-literal in distinct classes;
+  the bar skews harder non-literal than the shipped reference. Thumbnails moved to VPW (from
+  script+dna); metadata-writer keeps title/description/tags. Style bible cut to LOOK law (165 lines,
+  descriptors byte-identical — forge.py parses them at runtime); gen mechanics live in image-gen SKILL.
+- **Acceptance:** 333 script tests + analyzer green; descriptor diff empty vs pre-wave; authoring
+  probe produced a correct 4-shot v2 fragment from a cold paragraph (right skew, supplied-text
+  resolutions, verbatim anchors) using only the trimmed files.
+
+## 2026-07-28 - Scripting overhaul round 3: metaphor species, idiom default, detail budget, act-by-act drift fix (Daniel)
+
+- **Fresh Bricks script #2 line-reviewed by Daniel** (better than #1 but below the bar). Plan:
+  `docs/superpowers/plans/2026-07-28-scripting-overhaul-r3-plan.md` (its "Round-3 doctrine" section is
+  the ruling record). All edits replace-in-place; grammar §numbers unchanged.
+- **Metaphor species:** pulls skew heavily to named cultural references; generic situational comparisons
+  are the minority; the drawn-out multi-sentence generic metaphor is the defect. Setup-then-apply
+  licensed ("You know that Gordon Ramsay show where..."). Density: one to two pulls/reactions per block;
+  two consecutive dry blocks = register drift (grammar §1.3/§1.4).
+- **Language:** stock idiom is the default reach; fresh imagery survives only when it parses instantly
+  as talk. Contractions default. Dead: the uncontracted fragment-punch ("That is one year.") and the
+  paired parallel aphorism; the single ironic capper stays (grammar §1.1/§1.6).
+- **Detail budget:** one number per beat, rounded in the mouth, precision only where precision is the
+  story; resume/model-name/logistics detail only when load-bearing; a color detail earns its place by
+  becoming a pull or a joke (grammar §2.2/§2.5).
+- **Narrator stance:** viewer-staging dead ("put yourself in that room"); historiography dead ("the
+  version of this story you usually hear") — a myth is busted by telling the documented version flat
+  (grammar §1.5/§4).
+- **Escalation:** motivate once, then trust it; the namesake returns as itself, escalating (grammar §2.7).
+  Hook reveal = one-sentence tease + doorway (§2.1). Aftermath compresses to two blocks (money, trial).
+- **Color license:** a witnessed scene from ONE credible source is tellable flat (the Wiles
+  fired-two-managers scene, Q-01); numbers and load-bearing plot facts keep the strict leash (grammar §4,
+  leash critic).
+- **Voice bar is a register, not a rulebook edge:** writers absorb example-scripts.md for language, tone,
+  joke grade, pull species, density; it is neither a quarry to quote nor a minefield to avoid, and
+  critics judge a paragraph, not its ancestry. The old "no line lifted" header language deleted (it made
+  run #2 paraphrase around approved gold).
+- **Drift fix:** 3b drafts act-by-act with a re-read of example-scripts.md between acts (the register
+  decays over one long pass; run #2's back half proved it). Taste judging becomes comparative
+  (side-by-side against the bar) with countable tripwires only on the judge side.
+- **Voice bar grew to ten excerpt sections:** intro gloss reworked (Samsung/Apple pull, "private
+  collections" wink), rise v2, Ramsay fixer, NEW fear regime / break-in / it-kept-going, caper v2,
+  second approved ending shape (the counterfactual last laugh). Two knowing fact-bends flagged at
+  checkpoint: break-in states $4M flat (top of the sourced $2-4M range); "kept buying bricks" bent to
+  "kept going" (repeat purchases unsourced).
+- **Alternatives rejected:** hard pull-per-block quotas for the writer (quota-written jokes); a runtime
+  filter excluding same-story excerpts from the writer's read (machinery Daniel declined); treating
+  stock idioms as cliches to hunt (the channel speaks in them — critics now explicitly protect them).
+
+## 2026-07-29 - Scripting overhaul round 4: the staging law, short-bit register, verdict-regen mode (Daniel)
+
+- **Fresh Bricks script #3 line-reviewed by Daniel** (`videos/2026-07-28-bricks-fresh/verdict.r3.md` is
+  the ruling record and the binding overlay for the regen). All edits replace-in-place; grammar, critic,
+  and SKILL section numbers unchanged; no round-4 fragments banked into `example-scripts.md` (the voice
+  bar only refreshes after Daniel accepts the regen, so banking unaccepted lines would corrupt the bar).
+- **THE BIG ONE - the unstaged reveal.** Daniel: "the bricks was just introduced with no reason. And the
+  audit came before the bricks. The whole thing was just very confusing. No building." Root cause: the
+  spoiler-frame hook's one-sentence reveal was treated as *audience knowledge* rather than a teaser, so
+  the body pre-authorized the caper (a test-count / TSA audit lecture at old L31-33) before any brick
+  scene existed, and winked at bricks twice before that (L21, L29). The coherence critic's structural
+  bounce is what resequenced the story into textbook explanation-before-event order, and NO doctrine said
+  mystery order beats textbook order, so nothing stopped it.
+  **Fix - grammar §3.2 rewritten as the staging law:** under a spoiler-frame hook the body still STAGES
+  the promised reveal as a scene, in order: pressure -> the corner they are painted into -> the decision
+  as a moment (somebody has the insane idea, at a beat of its own) -> the act with its audacious detail
+  -> the mechanism, arriving as the punchline to "how did nobody notice?" Explanation before the act is
+  **pre-authorization**: the act stops being a scene and becomes a worked example of a rule the viewer
+  already holds. **Mystery order beats textbook order** (a viewer briefly wondering is engaged because
+  the answer is visibly coming; a pre-taught viewer is owed nothing). §3.6 and §3.7 now cohere with it
+  (§3.7's withheld-vs-unestablished line is the same line), and §3.4's audit-question example is pinned
+  to "asked once the bricks are on the pallets, never before them."
+  **Enforcement, so the same agent cannot re-break it:** the coherence critic's never-flag list gains
+  *mystery order* (never propose moving an explanation in front of the event it explains); its
+  [STRUCTURAL] remedy guidance now requires resequencing TOWARD the staged order and never into
+  explanation-first order; and the writer structural-revision prompt is explicitly bound to §3.2 and told
+  it is the agent that broke the script once already.
+- **Orphaned callback named as a defect** (grammar §2.4, coherence critic flaw #6, taste #4, §5 bank): a
+  wink pointing at a scene the script has not built yet ("as long as nobody counts the inventory," before
+  any count happens). The viewer has nothing to hear it against and the real scene arrives pre-spoiled.
+  A callback only points backward.
+- **Metaphor bar re-specified from sentence count to breath** (grammar §1.4, taste #12, §5 bank). The old
+  bar said "the drawn-out multi-sentence generic metaphor is the defect," which licensed the long
+  single-sentence Super Bowl TV line that shipped. New law: a generic (non-cultural) comparison may play
+  but must land inside one short clause ("It's the TSA."); a long one is the defect however punctuated,
+  one sentence spent building it out included.
+- **Register push - abundant SHORT banter, including the back half** (grammar §1.3, taste #13). Daniel:
+  "I want some more fun banter, fun tone, fun narrator throughout in general by the way, in my taste.
+  Shorter bits not the sentence long metaphors that don't hit." The law: bits are a clause or a line, run
+  at the same density in the last third as the first, and **when a stretch reads flat the fix is another
+  short bit, never a longer metaphor**; a limp line is cut or swapped, never extended. The taste critic's
+  flat-stretch tripwire now names the **aftermath/legal stretch** (lawsuits, verdict, settlement,
+  sentence, fates) as the classic decay zone, where the narrator turns into a court reporter. This is
+  what Daniel meant by "the back half reads a lot more like old Poyais."
+- **Elegant variation banned** (grammar §1.1, taste #8, §5 bank): the story's plain object-word repeats
+  without shame. Script #3 reached for "masonry" to avoid saying "bricks" a fourth time; that is a
+  writer's tic nobody speaks with.
+- **One climb owns the numbers** (grammar §2.7, taste #7, §5 bank): the rise is told once with its
+  figures, and later beats escalate the OBJECT and the stakes instead of re-climbing revenue. Script #3
+  told the climb at L17 and re-climbed it at L29; a re-climb is dwell however good the line on top of it.
+- **Excerpt-covered-beat default** (grammar §1 voice-reference block, echoed in the SKILL's Step 1 read):
+  where the voice bar already contains an approved rendering of the exact beat being drafted, the
+  excerpt's phrasing is the default; deviate to improve, never sideways. Script #3 drifted the approved
+  "ran MiniScribe with fear" into "ran the place on fear" for no gain.
+- **Verdict-regen mode built into `long-form-writer`** (SKILL Step 0.4 + a touch each at 3a, 3d, 3e,
+  output contract; mechanics in `references/critics.md` "The verdict overlay"). When a
+  `videos/<slug>/verdict.rN.md` exists the run is the round-(N+1) regen: archive the prior script as
+  `script.rN.md`; the sheet is a **binding overlay** whose blockquoted lines are Daniel-verbatim LOCKED
+  deliverables the writer places and no downstream agent (critics, editor, structural pass, humanizer)
+  rewrites, while its directives steer the outline at 3a; and **generalizable lessons must already be in
+  doctrine before the regen runs** - fix the skill, never the artifact, and if the sheet implies a
+  doctrine gap, stop and surface it. This encodes the two-pass gen -> human feedback -> learn + regen
+  loop Daniel asked to build in, so the review round is a pipeline stage rather than a manual habit.
+  **Alternatives rejected:** keeping the loop only in the run conductor (`fyt-runner`) - rejected because
+  the locked-line mechanics have to bind the critics and humanizer, which live where the writing happens,
+  not where the run is scheduled; a new standalone regen doc - rejected as bloat, since the loop is three
+  small touches inside an existing staged flow.
+- **NOT codified: the counterfactual close.** Daniel picked the counterfactual last laugh for this
+  video's ending but answered "Not sure" when asked whether it should become the channel's preferred
+  ending shape, so grammar §3.5 is untouched: the fate-roundup and the counterfactual last laugh remain
+  peer options, and no ending formula exists.
+- **Line budgets held by replacement, not addition:** grammar 357 -> 360 (+3 over cap; the staging law
+  plus three new bank rows exceeded what §1.1/§1.4/§1.5/§2.x/§4/§6 condensation could return without
+  dropping enforcement text), critics 335 -> 342 (+7, same reason), SKILL 165 -> 165 (exact).
+  `example-scripts.md` byte-identical.
+
+## 2026-07-29 - Blind-generation experiment: what doctrine actually transmits, and the edit wave it bought
+
+- **The design.** Two writers drafted the same Bricks story from the doctrine alone, with no sight of
+  the accepted script, of each other, or of Daniel's verdicts (BLIND A, BLIND B). Both were compared
+  against the accepted round-4 script across 36 lenses (voice, story, structure, staging, leash, format),
+  and every delta was sorted into SYSTEMATIC (present in both blinds, so it is a doctrine hole),
+  VARIANCE (one blind only), and PROTECTED (what the blinds did as well as or better than the ideal).
+  The PROTECTED list is the guard rail: no doctrine edit may weaken a behavior on it.
+- **Headline results.** The historic defects are dead in both samples: zero standalone one-sentence
+  paragraphs, zero orphaned callbacks, zero viewer-staging, zero audible hedges, zero unsourced claims,
+  zero em/en dashes, both endings closing on story rather than meaning, and both aftermath stretches
+  carrying the ideal's pull density. **Staging reproduced 1-of-2**: B staged the caper correctly
+  (pressure -> corner -> decision -> act -> mechanism as punchline) while A taught the test count eight
+  blocks before the bricks were bought and pre-lectured the lockbox before the break-in - the same
+  defect Daniel rejected in round 3, reproduced with no critic hunting it. **Bans transmit, licensed
+  replacements do not:** both blinds obeyed every prohibition and used NONE of the heat mechanisms (zero
+  caps for heat, flat fixer introductions, almost no stock-idiom reach, A no profanity at all), because
+  every mechanism was written as a subordinate clause inside a paragraph whose headline is a ban.
+- **Edits landed (this wave).** Grammar: §1.6 inverted so the four heat mechanisms lead affirmatively
+  with the bans as the boundary; §3.1 now names the **peak-first rewind** as the proven shape for a
+  company rise-and-fall (satisfying §2.7 one-climb and §2.2 scale-early by construction); §1.4 inverted
+  so a named pull is the FIRST reach at a mechanism beat and prose explanation is the fallback; §2.2
+  rewritten as **precision is opt-in** (friend-rounded by default, a ledger range resolved flat in
+  selection, a comedic scale pull committed flat); §1.1's gloss made unconditional for the story's core
+  object and for legal/financial terms at first use; §2.4 gained the minor-character payoff; the
+  preamble gained a quarry-guard covering the doc's own inline examples. Critics: coherence gains flaw
+  #7 **pre-authorization present in draft** ([STRUCTURAL], remedy = move the explanation after the act),
+  taste #5/#11 extended to hook overspend, taste #13 generalized to two decay zones plus the global
+  quiet-script form, the leash critic told never to raise precision or qualify a flat comedic pull and
+  that a speculation may guess at MOTIVE but never invent an unrecorded scene. SKILL: 3a.3's spine lock
+  became a **gate** (mechanism after act, one climb, scale in the first third, followable) failing which
+  the spine is resequenced before 3b.
+- **Alternatives rejected.** (1) *Writer-side heat quotas* (a countable target of caps/pulls/profanity
+  per script) - rejected, because a quota invites the writer to manufacture heat on the page, which is
+  the §1.6 defect itself; the enforcement went to critic-side tripwires instead (taste #13's global
+  quiet-script finding). (2) *Making the peak-first rewind mandatory* for company stories - rejected,
+  because a single mandated shape is a template and the grammar is generative; it is named as the proven
+  default with peers listed, and "no shape at all" is the only banned option.
+- **Three blind lines were better than the accepted script's, and are recorded UNBANKED** (they are not
+  Daniel-approved text, so they may not enter `example-scripts.md`): "wrote the gap off as a
+  transposition error, which is accountant for oops, I typed it wrong" (used as the gloss-as-joke
+  exemplar in grammar §1.1, cited as doctrine, not banked as a bar excerpt); "three years in federal
+  prison, which finally got Dr. Fix-It down to one company at a time"; "It's the world's worst Amazon
+  return." If Daniel approves any of them in a future script, they bank then.
+- **Model-prior convergence, worth watching.** Both blinds independently invented the same Amazon-return
+  joke at the same beat, from doctrine that names no such pull. Independent reach that lands is the
+  goal, but identical reach across runs means the same line can surface in video after video: the
+  preamble quarry-guard now covers doctrine examples, and cross-video repetition of an unprompted pull
+  is a thing to check at review, not a thing doctrine can prevent.

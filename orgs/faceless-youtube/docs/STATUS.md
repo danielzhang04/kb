@@ -67,18 +67,75 @@ defect that will recur until fixed.
   (board-state / park-and-cut / ensemble / mirror / irony) + a transition seam-kit answers linearity.
   **Hard locks:** ONE narrator; no viewer role-casting or voiced character dialogue. First-person narrator
   asides and generic audience-facing `you` are allowed. No quotes — all character speech is narrator-reported.
-  Reconciled across `long-form-writer`, `universal.md` §5c/§5d/§1d-V, `watchability-rubric.md` (/36),
+  Reconciled across `long-form-writer`, `universal.md` §5c/§5d/§1d-V,
   `dna.md`, `researcher`, `shorts-writer`, `reference-channels.md`, and the visual grammar.
-- **Scriptwriter — REBUILT + PROVEN (2026-07-08, extended 07-09):** the flat/buttoned-script problem was
+- **Scriptwriter — REBUILT + PROVEN (2026-07-08, extended 07-09); scripting overhaul LANDED 2026-07-28
+  on `claude/fyt-writer-grammar-slim`, round 2 LANDED same day:** the flat/buttoned-script problem was
   root-caused (a model self-checking prohibitions shares its own blind spot) and fixed architecturally.
-  The Poyais `script.md` is the hand-locked **GOLD exemplar** (voice + accuracy benchmark).
-  `long-form-writer` generates **casual-first, leash-second** (spine → casual draft → leash-check), then
-  a **critic layer** (Step 3d, `references/critics.md`): taste ∥ leash critics + a **coherence critic**
-  (first-time-viewer pass, capped one-bounce structural rewrite; bar = grammar §3.8 "non-linear but
-  followable") → in-voice editor + `scripts/lint_script.py`. On research channels the writer is LEASHED
-  to the fact-ledger; the `researcher` now captures relational/connective facts (not just atoms). Length
-  norm centered on **~10 min**. Proven on a blind regen (critics caught all leaked buttons + a subtle
-  leash error). **Still open:** validate the writer on a *fresh* topic (generalization beyond Poyais).
+  The voice bar is now `channels/the-second-take/example-scripts.md` (Daniel's approved excerpts;
+  replaces the retired `personable-calibration.md` and the earlier Poyais-as-gold framing, seven excerpts
+  now approved). The blind fixture/candidate protocol is retired: acceptance is a fresh writer run
+  Daniel reviews directly. The writer now runs a cultural-pull sweep inside Step 3a (era anchors,
+  comparisons, joke angles, WebSearch-licensed for era texture and the universality bar). Voice dials
+  moved to `stability: 0.20` / `style: 0.6`. `long-form-writer` generates **casual-first, leash-second**
+  (spine → casual draft → leash-check), then a **critic layer** (Step 3d, `references/critics.md`): taste
+  ∥ leash critics + a **coherence critic** (first-time-viewer pass, capped one-bounce structural rewrite;
+  bar = grammar §3.7 "non-linear but followable") → in-voice editor + `scripts/lint_script.py`. On
+  research channels the writer is LEASHED to the fact-ledger; the `researcher` now captures
+  relational/connective facts (not just atoms). Length norm centered on **~10 min**. **Round 2 (Daniel,
+  same session): the fresh Bricks script from round 1 was rejected** ("pretty terrible across the
+  board") for rule-shaped dryness (clipped one-liner monotone, concept-prose, audible hedges, a
+  still-life hook); the doctrine, not the artifact, was rebuilt. Landed: the paragraph-as-idea-block
+  doctrine (short-punch rule deleted); humor recalibrated to warm/irreverent/pop-culture-loaded with a
+  hit-or-miss bar; a hedge ban (hedging happens in fact selection, never narration) plus a transparent-
+  speculation move for record gaps; a past-default tense doctrine; hook = actor + event + familiar
+  anchor; endings as tone, not formula (the "one earned ironic image" requirement deleted); the wink
+  doctrine scrapped; rise-before-fall with every escalation motivated out loud (`storytelling-grammar
+  §2.7`). **`script.md` is now pure voiceover prose:** no `[B-ROLL]`, no pause/beat cues; deliberate
+  pauses are `audio-director`'s job and visual beat segmentation moves downstream entirely; runtime lint
+  reverts to words ÷ measured wpm. **Deferred debt (recorded, not built):** `visual-prompt-writer` +
+  `image-generation` still assume cue-bearing scripts and need a rework to consume pure prose, and
+  `shorts-writer` still authors its own short-script cues (Daniel flagged it for the same later rework);
+  this is intentionally NOT fixed yet (see *Visual system* + *Audio system* below for the stale references it
+  leaves behind). Full rationale: `knowledge/decisions.md` 2026-07-28 round-2 entry. **Round 3 (Daniel,
+  same session): script #2 line-reviewed, better but below the bar.** Landed: metaphor species (pulls
+  skew heavily to NAMED cultural references, setup-then-apply licensed, drawn-out generic metaphor is
+  the defect); stock-idiom default with contraction default (fragment-punch and paired aphorism dead);
+  detail budget (one rounded number per beat, precision only where precision IS the story);
+  viewer-staging and historiography kills; motivate-once escalation + the namesake rule; the one-source
+  color license for witnessed scenes; the voice bar reframed as a register (no-lift language deleted);
+  3b now drafts act-by-act with a voice-bar re-read between acts (the drift fix); taste judging is
+  comparative with judge-side tripwires. Voice bar grew to ten sections (Ramsay fixer, fear regime,
+  break-in, it-kept-going, second ending shape). Full rationale + plan:
+  `knowledge/decisions.md` round-3 entry / `docs/superpowers/plans/2026-07-28-scripting-overhaul-r3-plan.md`.
+  **Round 4 (Daniel, 2026-07-29): script #3 line-reviewed; DOCTRINE LANDED, REGEN PENDING.** Verdicts
+  live in `channels/the-second-take/videos/2026-07-28-bricks-fresh/verdict.r3.md` (the binding overlay).
+  Root cause of the round-3 miss was **the unstaged reveal**: the spoiler-frame hook's reveal was treated
+  as audience knowledge, so the mechanism (test-count/TSA audit lecture) was taught before the bricks
+  existed and two winks fired before any brick scene. Landed: grammar §3.2 rewritten as **the staging
+  law** (pressure → the corner → the decision as a moment → the act → mechanism as the punchline;
+  **mystery order beats textbook order**), with §3.6/§3.7 cohered and the coherence critic + writer
+  structural pass bound to it so the bounce cannot re-teach explanation-first; the **orphaned callback**
+  named as a defect; the generic-metaphor bar re-specified from sentence count to **one short clause**;
+  an abundant-but-SHORT banter law with the **aftermath/legal stretch** named as the flat-stretch decay
+  zone; **elegant variation** banned (bricks stay bricks); **one climb owns the numbers**; the
+  **excerpt-covered-beat default**; and a **verdict-regen mode** in `long-form-writer` (Step 0.4 + the
+  critics' verdict-overlay rule) that archives `script.rN.md`, locks Daniel-verbatim lines against every
+  downstream agent, and requires generalizable lessons to land in doctrine before a regen runs. Endings
+  stay formula-free (Daniel declined to codify the counterfactual close). Full rationale:
+  `knowledge/decisions.md` round-4 entry. The round-4 Bricks regen was then **accepted** by Daniel
+  (`videos/2026-07-28-bricks-fresh/script.md`).
+  **Blind-generation experiment (2026-07-29): COMPLETE; doctrine wave LANDED.** Two uncontaminated blind
+  drafts of the same story were measured against the accepted script across 36 lenses. Historic defects
+  are dead in both (block rhythm, orphaned callbacks, viewer-staging, hedging, leash, format); staging
+  reproduced only 1-of-2; and doctrine that pairs a ban with a licensed replacement transmits **only the
+  ban** (both blinds used zero heat mechanisms). Landed in response: grammar §1.6 heat inversion, §3.1
+  named shapes (the peak-first rewind), §1.4 pull-first at a mechanism beat, §2.2 precision-is-opt-in,
+  §1.1 unconditional gloss, §2.4 minor-character payoff, the preamble quarry-guard; critics gained the
+  coherence **pre-authorization** flaw, hook-overspend, the quiet-script tripwire, and precision/
+  speculation leash rules; `long-form-writer` 3a.3 became a **spine gate**. The accepted round-4 blocks
+  are now banked in `example-scripts.md`. Full rationale: `knowledge/decisions.md` 2026-07-29 entry.
+  **Next: the next fresh story is the live test** of whether the wave transmits.
 - **proxy-judge ("taste me") — BUILT + PAUSED (2026-07-09):** additive, advisory-only acceptance gate
   after `humanize` proxying Daniel's accept/revise/reject + `/36`. On branch
   `feat/proxy-judge-story-editor-me` (NOT merged; changes nothing until invoked). Verdict agreement 3/3;
@@ -91,6 +148,12 @@ defect that will recur until fixed.
 - **Visual identity — LOCKED (2026-07-04):** The Second Take template = round cream `#f5ead6` head,
   dark brown-black `#241a12` outline, calm no-nose face; canonical frame set in `visual-kit/refs/base/`.
   MacGregor canonical = red/gold, ear-free, costume PINNED (`refs/macgregor/`). Diegetic art = flat-cel.
+- **Visual pipeline REDESIGNED 2026-07-28 (wave 3)** — VPW = thin procedure over visual-grammar +
+  example-shots (the depiction bar, gate-B approved); shots.json v2 (lint warns on legacy fields);
+  image-gen Pass1(build+tag)→Pass2(consume), missing-asset pre-gen gate; style-bible = LOOK law only.
+  Waves 1–2 trimmed all visual+audio/motion/render doctrine; retired capabilities live only in
+  `docs/retired-features.md`. Specs: 2026-07-28-visual-{stack-trim,pipeline-redesign}-design.md +
+  2026-07-28-audio-motion-stack-trim-design.md.
 - **Generation system:** per-channel **`visual-kit/style-bible.md`** is THE single image-gen doc (rig
   lock + descriptors + verify gate + committed recipe + asset-library build spec) + `registry.json` (the
   LIVE asset vocabulary) + the **`image-generation`** skill running a **two-pass flow**: pass 1 derives a
@@ -109,7 +172,10 @@ defect that will recur until fixed.
   motion + one VO-synced transform + progressive-reveal enumerations) + §13a-ii (cut cadence + the HARD
   RULE that kills the stretch-to-fill dead-hold bug). Core rule: **non-literal is default; literal only
   for physical action/objects.** `visual-prompt-writer` OWNS the shot list and must author a choreographed
-  slate; `long-form-writer`'s `[B-ROLL]` cues are meaning-anchors only. The channel
+  slate. **KNOWN STALE (round-2, 2026-07-28):** `script.md` is now pure prose with no `[B-ROLL]` cues at
+  all, so `visual-prompt-writer` can no longer anchor shots to writer-authored cues; the rework to plan
+  shots straight off prose is DEFERRED (recorded debt, see *Front half* above), so this section still
+  describes the pre-round-2 contract until that rework lands. The channel
   `visual-kit/visual-grammar.md` is **staging law only** (staging conventions + composition menu + lever
   translation); recipe + library build spec live in `style-bible.md`.
 - **Still-side authoring — REBUILT (2026-07-08):** `visual-prompt-writer` rebuilt on a Remotion-reality
@@ -221,13 +287,14 @@ defect that will recur until fixed.
   authored `dry` spans, and fade→silence→fade track switches; same-mood neighbours coalesce) · structural
   + authored **SFX** (item-appearance sounds snap to the cut via `sync:"element"`; whoosh/pop use ONE
   fixed variant — `consistent_sfx`) · **breath/full-stop** (a `pause` cue splices a derived
-  `vo.breath.mp3`; the −40 dB dip lands in the gap; distinct from the writer's `[PAUSE]` prosody) ·
+  `vo.breath.mp3`; the −40 dB dip lands in the gap; deliberate pauses are entirely `audio-director`'s
+  call as of round-2, 2026-07-28 (the writer authors no pause cues at all) ·
   **register** (human-cost = an authored `dry` pull-back) · **mastering** (`loudnorm_pass` reads
   `master_target`, ear-gated to **−14.5 LUFS / −1.0 dBTP / LRA 4**).
 - **Measured-grammar anchors:** bed PLACED ~79% (not wall-to-wall); the default register is **wry/dry, NOT
   cheerful** (the `sneaky` family is the con-story workhorse; `upbeat` = an opt-in lift). Structural
-  sounds fire by **selective director judgment** (guided by `references/grammar-guidance.md` ← measured
-  `universal.md §13a-iii.8`), not mechanical auto-fire.
+  sounds fire by **selective director judgment** (guided by the audio-director SKILL's Placement laws ←
+  measured `universal.md §13a-iii.8`), not mechanical auto-fire.
 - **Files + measurement:** SFX/music sourced by **`sfx-forge`** (16-role CC0/CC-BY library) +
   **`music-forge`** (Incompetech CC-BY beds); the measured grammar came from **`audio-analyzer`** (8
   references, audio-only, tools-measured — the model-listening-hallucination fix). Ear-gated + approved by
@@ -326,7 +393,7 @@ defect that will recur until fixed.
   (0) a **6/6 capability probe** of one-run multi-seed; (1) code removals (producers gone, `source:"engine"`
   invalid in lint, menu cutout-only, `forge` seed requirement + tests, hook paths → `${CLAUDE_PROJECT_DIR}`);
   (2) `refs/env/` style anchors from three human-gated frames; (3) this doc rewrite (`universal.md §13a`,
-  audio-director `grammar-guidance.md`, this STATUS, one `operating-law.md` clause). **(4) DOGFOOD DONE
+  audio-director `SKILL.md`, this STATUS, one `operating-law.md` clause). **(4) DOGFOOD DONE
   (2026-07-15): 7-shot slice + full chunk 2 ran through the simplified pipeline** — multi-seed identity
   hold STRONG, baked-text spelling STRONG, env-anchor style MOSTLY-HELD. **Identity-starve failure —
   RESOLVED to a DEFAULT (human-confirmed 2026-07-16):** a scene-heavy delta renders the blank base

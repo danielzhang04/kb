@@ -1,15 +1,25 @@
 # shots.motion.json — the derived production spec
 
-A NEW derived file (`videos/<slug>/shots.motion.json`) the `motion-planner` emits from `shots.json`.
+A derived file (`videos/<slug>/shots.motion.json`) the `motion-planner` emits from `shots.json`.
 `shots.json` stays VPW's pristine visual truth; this is the machine-planned layer spec that
 image-generation and build_motion consume. Validated by `scripts/motion_plan.py::validate_plan`.
 
-**The delta-chain / layer boundary** (the canon this spec serves): DELTA-CHAIN when the change is
-INTEGRATIVE — the new element becomes part of the scene's architecture. LAYER when the change is
-DISCRETE — the added element sits on the scene without fusing into its architecture: keep the plate,
-composite an animated cutout. Every cutout is SEEDED — from its character/prop canonical, or from the
-plate it lands on plus a style anchor. **A re-base inside the SAME location seeds the prior stage's
-BASE frame** (not the last delta, whose ≤3-delta cap can throw the set away).
+**The boundary this spec serves:** DELTA-CHAIN an INTEGRATIVE change (the element becomes part of the
+scene's architecture) — regenerate seeded off the prior frame; LAYER a DISCRETE change (the element
+sits on the scene without fusing into it) — keep the plate, composite a seeded animated cutout. Full
+law, including the ≤3-delta cap and the same-location re-base:
+`knowledge/research/niche-playbooks/universal.md` §13a-ii.
+
+## Animation vocabulary
+
+The closed vocabulary is DATA — `animation-menu.json`, loaded and validated by `scripts/menu.py`; edit
+the JSON, never a prose copy. `source: "cutout"` (generated image layers) is the only authorable family:
+rigid transforms + reveals, no articulation (`appear`/`bob`/`slide`/`path`), each animation declaring
+the asset image-gen must produce. The engine's ONE drawn element is the **`draw_line`** param on `path`
+(route dots trailed along the cutout's bezier); everything else in a layer is the generated image. VPW
+and the motion-planner author ONLY menu animations, and extending the menu is deliberate: prove it in
+Remotion, add its triple (params × asset × engine) to the JSON, then it is authorable — which is what
+prevents authoring a motion the engine cannot render.
 
 ## Per long-form shot
 - `id` (str, required) — matches the `shots.json` shot id.
@@ -22,35 +32,37 @@ BASE frame** (not the last delta, whose ≤3-delta cap can throw the set away).
     set, e.g. a FICTION stamp). Then `background.plate` = `scenes/<prior-in-stage-id>.png` (the prior
     frame, **reused** — image-gen generates no new plate); only the overlay's `cutout_prompt` is authored.
 - `layers` (array, required; `[]` for a simple/passthrough shot):
-  - `id` (str), `source`: **`"cutout"` only.** `"engine"` is INVALID — `motion_plan.py::validate_plan`
-    rejects any layer whose `source != "cutout"`. (The old engine device-card/text layers are retired;
-    in-video text is now baked into the generated images — see the schema note at the foot of this doc.)
-  - cutout: `cutout_prompt` (str) + `animation`. The `animation` MAY carry an **`anchor`** (verbatim VO
+  - `id` (str), `source`: **`"cutout"` only** — `motion_plan.py::validate_plan` rejects any other value.
+  - cutout: `cutout_prompt` (str) + `animation`. The `cutout_prompt` describes **the OBJECT ONLY** — no
+    background, field or surrounding-scene language; image-gen supplies the magenta chroma field at gen
+    time and keys it out. The `animation` MAY carry an **`anchor`** (verbatim VO
     words the element lands on). `build_motion.apply_motion_plan` resolves it (via `render.anchor_time`)
     to a **shot-relative `start_s`** written into the animation, and the engine `LayerView` starts the
     slide/path/appear window there instead of the default frame-4 lead-in. No `anchor` → the element
     enters at the shot cut (frame 4).
-  - **`reuse`** (str, optional) — a path to an already-materialized cutout PNG (e.g.
-    `cutouts/L17-macgregor.png`). image-gen generates NO new PNG for a `reuse` layer, and
-    `build_motion.apply_motion_plan` composites that exact file instead of the derived
-    `cutouts/<shot-id>-<layer-id>.png`. Use it to hold ONE cutout across several shots (the same
-    MacGregor figure marching then standing across the L15→L16→L17 map stage) so there is no identity
-    drift between separately-generated versions. A `reuse` layer carries no `cutout_prompt` (lint exempts it).
+  - **`seed`** (str, optional) — the reference this cutout is generated FROM: a path (a canonical PNG, a
+    `refs/env/` anchor) or a registry vocabulary name. image-gen resolves it and prefers it over its own
+    fallback (the character/prop canonical, or the destination plate + a style anchor); an unseeded
+    cutout invents its own register and lands off-style against a flat-cel plate.
+    `motion_plan.py::validate_plan` requires a non-empty string when the field is present.
+  - **`reuse`** (str, optional) — a path to an already-materialized cutout PNG. image-gen generates NO
+    new PNG for it, and `build_motion.apply_motion_plan` composites that exact file instead of the
+    derived `cutouts/<shot-id>-<layer-id>.png`. Use it to hold ONE cutout across several shots (the
+    same figure marching, then standing, across one map stage) so separately-generated versions cannot
+    drift apart. A `reuse` layer carries no `cutout_prompt` (lint exempts it).
   - `animation` (object, required; cutout only): `{ "type": <cutout-menu entry>, ...params }` — the
     `type` must be on the cutout family in `animation-menu.json` (`appear`/`bob`/`slide`/`path`).
     Optional **`anchor_origin`** (`"center"`|`"bottom"`, any type) overrides the engine's per-type
     vertical transform origin — appear/path default CENTER, bob/slide default BOTTOM (feet-on-ground).
     Set `"center"` to place a non-figure bob/slide (a floating book, a gliding arrow) by its center
-    instead of its bottom edge (the M16 "sits too high" fix). DISTINCT from `anchor` (VO words).
+    instead of its bottom edge. DISTINCT from `anchor` (VO words).
     On a `path` with `draw_line`, **`dot_count`** (int > 0, default 44) and **`dot_r`** (px > 0,
     default 5) tune the route's dot density — LOWER both for a clearly DOTTED read (the 44/5 default
     reads solid on a short path). Both require `draw_line:true`.
-    On a `path`, the optional **`static: true`** param gives **completed-route persistence**: a
-    delta-chain shot re-declares an earlier shot's route (SAME `points`) so the engine-drawn line
-    survives the hard cut — static draws the whole line from frame 0 and parks the cutout at the route
-    end, pixel-aligned with the animating shot's final frame (same `bez`/dot params). (Fixes the
-    vanishing-route-line gap: an engine-drawn line otherwise exists only while its live `path` layer is
-    on screen and unmounts at the shot cut.)
+    On a `path`, optional **`static: true`** gives **completed-route persistence**: a delta-chain shot
+    re-declares an earlier route (SAME `points`) so the drawn line survives the hard cut — it draws the
+    whole line from frame 0 and parks the cutout at the route end, pixel-aligned with the animating
+    shot's final frame (same `bez`/dot params). Otherwise the line unmounts with its live `path` layer.
   - `camera` (optional): only on a standalone or stage-start/base shot. `{ "move": "push" | "pull",
     "pan": null | "left" | "right" | "top" | "bottom", "intensity": >0 and <=1 }`. `push` maps to
     engine `push-in`; legacy `pull` maps to `pull-back`. A later delta is rejected because `CameraStage`
@@ -58,33 +70,32 @@ BASE frame** (not the last delta, whose ≤3-delta cap can throw the set away).
 
 ## Baseline life (plan-level)
 
-`"baseline_life": true` opts this new plan into gentle life. `build_motion` then takes the nonzero values
+`"baseline_life": true` opts this plan into gentle life. `build_motion` then takes the nonzero values
 from the channel's separate `visual-kit/motion-tokens.json` `baseline_life` block and applies them to both
 scene-backed shots and plate-plus-cutout tableaux. Placeholders and opaque chapter cards remain static.
 Absent or `false` preserves legacy derived motion JSON and frame behavior; it never silently changes an
 existing video.
 
 ## Rules
-- Every layer's `source` MUST be `"cutout"` and its `animation.type` MUST be on the cutout menu
-  (`motion_plan.py::validate_plan` → `menu.py::valid_animation`; `source:"engine"` is rejected).
-- A simple shot = `{ "background": {"mode":"plate","plate":"scenes/L01.png"}, "layers": [] }` (passthrough).
-- A hybrid overlay = `{ "background": {"mode":"delta-chain","plate":"scenes/L06.png"}, "layers": [{"id":"stamp","source":"cutout","cutout_prompt":"a red FICTION marker stamp alone on a plain plate","animation":{"type":"appear"}}] }` (the plate reuses the prior in-stage scene).
+Every layer's `source` MUST be `"cutout"` and its `animation.type` MUST be on the cutout menu
+(`motion_plan.py::validate_plan` → `menu.py::valid_animation`). A passthrough shot is `mode:"plate"` on
+its existing `scenes/<id>.png` with `layers: []`; a hybrid is `mode:"delta-chain"` whose `plate` reuses
+the prior in-stage scene, plus one cutout layer carrying the overlay's `cutout_prompt` + `animation`.
+Layer sources other than `cutout`: `docs/retired-features.md`.
 
-## Chapter cards (plan-level `cards`) — re-enabled 2026-07-17
+## Chapter cards (plan-level `cards`)
 
 A motion plan MAY carry a TOP-LEVEL `cards` array — full-frame, **FULLY OPAQUE** near-black chapter
-beats (the re-enabled `ChapterCard`: dedicated ground `#151310`, cream centered text = `palette.card_bg`,
-Ink Free, no card chrome, quick ~0.15s fade in/out). They read as their OWN scenes — nothing of the
-underlying footage is visible while a card is up. `build_motion.apply_cards` resolves each card to a
-`chapter-card` overlay and attaches it to the shot whose span contains the resolved time, so a card
-rides on the overlay layer and shifts NO downstream cut (unlike an inserted card SHOT). Long-form only.
+beats (`ChapterCard`: ground `#151310`, cream centered `palette.card_bg` text, Ink Free, no chrome,
+~0.15s fade in/out) that read as their OWN scenes; nothing of the footage shows while a card is up.
+`build_motion.apply_cards` resolves each to a `chapter-card` overlay on the shot whose span contains
+the resolved time, so a card shifts NO downstream cut (unlike an inserted card SHOT). Long-form only.
 
 **Opaque ⇒ card-on-silence.** An opaque in-video card must never cover VO-speaking time, so each is
 AUTO-ALIGNED to a co-located spliced pause SILENCE: the `audio-director` authors a `pause` cue on each
-in-video card anchor, and `apply_cards` fills exactly that silence block — `[render_anchor − gap_dur,
-render_anchor]` (silence is spliced BEFORE the anchor word) — so the card is up only while nothing is
-spoken. **The card anchor MUST equal the pause cue's anchor.** No co-located pause is a hard failure;
-there is no fallback that can safely show an opaque normal card over narration.
+in-video card anchor, and `apply_cards` fills exactly that block — `[render_anchor − gap_dur,
+render_anchor]` (silence splices BEFORE the anchor word). **The card anchor MUST equal the pause cue's
+anchor.** No co-located pause is a hard failure — nothing can safely show an opaque card over narration.
 
 - `cards[]` — each: `text` (str, required — the copy), `anchor` (str, required for a normal card —
   verbatim VO words = the co-located pause anchor, resolved via `render.anchor_time`; ANCHOR-based only,
@@ -100,30 +111,12 @@ there is no fallback that can safely show an opaque normal card over narration.
   the end card holds and the last bed rides through the tail.
 - Validated by `motion_plan.py::_card_errors` (folded into `validate_plan`).
 
-Example:
-```json
-"post_vo_hold_s": 4.0,
-"cards": [
-  {"text": "How to Invent a Country", "anchor": "So what happened", "hold_s": 2.0, "fade_s": 0.15},
-  {"text": "Thanks for Watching", "anchor": "Thanks for watching", "end_card": true, "fade_s": 0.2}
-]
-```
-
 ## Materialized assets (the layout image-gen writes and the engine reads)
 image-generation materializes a layered shot into a fixed layout under `videos/<slug>/assets/`:
 - **plate:** `plates/<shot-id>.png` — the background (opaque). `forge gen` from `background.plate_prompt`.
 - **cutout layers:** `cutouts/<shot-id>-<layer-id>.png` — transparent RGBA. `forge gen` the `cutout_prompt`
-  on a plain plate, then `forge cutout` (rembg → alpha-harden → trim). Human-gated on the hand-QC crop.
+  (the object only) on the solid magenta chroma field image-gen adds, then `forge cutout` (rembg →
+  alpha-harden → trim). Human-gated on the hand-QC crop.
 A simple/passthrough shot keeps using the existing `scenes/<shot-id>.png`; `plates/`+`cutouts/` are the
 layered-shot addition. A **hybrid overlay** shot generates **no `plates/<id>.png`** — it reuses the prior
-in-stage `scenes/<prior-id>.png` as its plate and adds only its `cutouts/<id>-<layer>.png`. (Phase-2
-fixture: `videos/2026-07-04-poyais/` L13 + L03 are materialized here.)
-
-## Retired: engine device-card / text layers (chapter cards EXCEPTED)
-The `source:"engine"` device cards (stat/counter/meter/definition/reveal) and diegetic `at_scene` text
-are **retired from the flow (2026-07-15)** — nothing authors them as layers and lint rejects
-`source != "cutout"`. In-video text (stats, labels, definitions, enumerations) is now baked into the
-generated scene/plate images by image-generation. Those Remotion components remain parked in
-`engine/src/components.tsx` (see `motion-schema.md` §3) if ever revived.
-**Chapter cards are the exception:** re-enabled 2026-07-17 via the plan-level `cards` array above (NOT
-a `source:"engine"` layer) — they render through the live `ChapterCard`/`OverlayView` path.
+in-stage `scenes/<prior-id>.png` as its plate and adds only its `cutouts/<id>-<layer>.png`.

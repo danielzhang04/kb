@@ -58,8 +58,8 @@ Script **every viable short** — as many as are genuinely strong, sized to the 
 - **Stage it, even in 20 seconds — apply storytelling-grammar (mini-arc version).** A short is still a
   *scene*, not a fact-recital: build it on **one lever/mechanism** (not the whole machine) and lead with
   the single sharpest **staged** move the story has (per storytelling-grammar §1 + §4 — its move catalog is
-  the source of truth, don't re-derive it here). Render any exchange as narrator **reported speech — no
-  quotes** (§3), never inventing a line the source doesn't support.
+  the source of truth, don't re-derive it here). Render an exchange as narrator **reported speech** by
+  default (grammar §4), never inventing a line the source doesn't support.
 - **Close the loop, then seam it.** Answer the question you opened; write the **last line to flow back
   into the first** so a replay is seamless (loops = views since Mar 2025).
 - **Never end on "watch the full video to find out."** That's the withholding failure. The short must
@@ -73,8 +73,7 @@ Script **every viable short** — as many as are genuinely strong, sized to the 
   idioms (so it can draw the pun). Shorts are the most-cloned surface — non-literal visuals matter most.
 - **Match the channel's register, narrator persona, and locked lever,** with the same anti-trailer-voice
   + human-cadence rules as long-form (universal §1d-V). Set the comedic rate by the clip's **topic gravity**
-  (storytelling-grammar §2.1) — a DIAL, never a fixed rate — and hold the channel's locks (third-person, one
-  narrator, no second person, no quotes). Shape it as a **mini-arc** (§1): hook on the paradox/irony → one
+  (the humor dial in `dna.md`) — a DIAL, never a fixed rate. Shape it as a **mini-arc** (§1): hook on the paradox/irony → one
   turn → a button, not a flat fact — the humor riding the fact (§2.4), never a bare dry recital.
 - **Stay on the leash (research channels):** every number/claim in a short traces to an `[F-NN]`. A short
   can't say what the long-form couldn't source.
