@@ -3,7 +3,7 @@
 - **Source idea:** ST-012
 - **Target length:** 8-10 min
 - **Voice:** Miles (vSjOBQp24DUB2COr2xI9)
-- **Estimated runtime:** 7:58
+- **Estimated runtime:** 7:56
 
 ---
 
@@ -23,7 +23,7 @@ Now normally, people who trade futures contracts sell the contract for money ins
 
 In January 1980, COMEX, the New York exchange where silver futures get traded, declared an emergency and cut the number of contracts anybody was allowed to hold. Two weeks later the board went all the way: silver could be traded on liquidation orders only. You could sell. You couldn't buy. They called it Silver Rule 7. Robinhood did the same thing to GameStop in 2021 and half the internet lost its mind. Same move, forty years earlier, on a metal instead of a meme stock.
 
-The Hunts said the game was rigged. The men who passed Silver Rule 7 were some of the same people on the other side of those contracts. The brothers' version was simple: the referees had money on the game. New buying stopped dead, and silver, which had spent a year going nowhere but up, fell off a cliff.
+The Hunts said the game was rigged. The men who passed Silver Rule 7 were some of the same people on the other side of those contracts. The brothers' version was simple: the referees had money on the game. It was worse than Argentina in the World Cup. New buying stopped dead, and silver, which had spent a year going nowhere but up, fell off a cliff.
 
 On the way down, all that borrowed money multiplied the losses just as hard. Every time the price dropped, the brokers wanted more cash in the account by the end of the day. That's a margin call, and you can't pay one in metal. They wanted dollars. The fake ones.
 
@@ -33,11 +33,11 @@ That Thursday morning, silver fell to eleven bucks an ounce. A year of climbing,
 
 If the Hunts went down, the brokers went with them, and nobody on Wall Street wanted to find out what happened after that. Cue the bailout, 2008 style. Thirteen banks put together a loan of 1.1 billion dollars to Placid Oil, the family's oil company. They secured it against the family's oil, its gas and its pipelines. The two men who thought banks and paper dollars were a con on the American people got out of their mess by borrowing a billion dollars. The embarrassment.
 
-In 1988 a Peruvian minerals company took them to court, and a federal jury agreed. Bunker, Herbert and others had conspired to corner the silver market. Which is the official name for everything you just watched. The jury hung 134 million dollars in damages on them. That September the brothers filed for Chapter 11, which is the kind of bankruptcy where nobody shuts you down, a court just takes charge of who gets paid what. Everything's bigger in Texas, and this was one of the biggest personal bankruptcies the state had ever seen.
+In 1988 a Peruvian minerals company took them to court, and a federal jury agreed. Bunker, Herbert and others had conspired to corner the silver market. The jury hung 134 million dollars in damages on them. That September the brothers filed for Chapter 11, which is the kind of bankruptcy where nobody shuts you down, a court just takes charge of who gets paid what. Everything's bigger in Texas, and this was one of the biggest personal bankruptcies the state had ever seen.
 
 The court divvied up the Hunts' assets. That November they walked 580 of Bunker's thoroughbred racehorses through a sale ring in Kentucky for 47 million dollars, the biggest horse sale anybody had ever held at that point. His collection of ancient Greek, Roman and Islamic coins went to Sotheby's. Fifteen years earlier the man had been flying silver to Zurich under armed guard because he wanted money a government couldn't touch, and he ended up paying his creditors in Roman coins.
 
-The year after that they settled with the commodities regulator, paid a fine, and were barred from trading commodities for life. Bunker Hunt died in 2014, at eighty-eight, and Herbert outlived him. Imagine blowing billions trying to buy silver. He could've been a high stakes poker player and not lost that much money. Somebody once asked Bunker how a family fortune goes from around eight billion dollars down to about one billion, and he didn't get defensive about it. He said a billion dollars just ain't what it used to be.
+The year after that they settled with the commodities regulator, paid a fine, and were barred from trading commodities for life. Bunker Hunt died in 2014, at eighty-eight. Imagine blowing billions trying to buy silver. He could've been a high stakes poker player and not lost that much money. Somebody once asked Bunker how a family fortune goes from around eight billion dollars down to about one billion, and he didn't get defensive about it. He said a billion dollars just ain't what it used to be.
 
 ## Sources
 
