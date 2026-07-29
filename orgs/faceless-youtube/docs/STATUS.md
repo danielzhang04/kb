@@ -80,7 +80,7 @@ defect that will recur until fixed.
   moved to `stability: 0.20` / `style: 0.6`. `long-form-writer` generates **casual-first, leash-second**
   (spine → casual draft → leash-check), then a **critic layer** (Step 3d, `references/critics.md`): taste
   ∥ leash critics + a **coherence critic** (first-time-viewer pass, capped one-bounce structural rewrite;
-  bar = grammar §3.8 "non-linear but followable") → in-voice editor + `scripts/lint_script.py`. On
+  bar = grammar §3.7 "non-linear but followable") → in-voice editor + `scripts/lint_script.py`. On
   research channels the writer is LEASHED to the fact-ledger; the `researcher` now captures
   relational/connective facts (not just atoms). Length norm centered on **~10 min**. **Round 2 (Daniel,
   same session): the fresh Bricks script from round 1 was rejected** ("pretty terrible across the
@@ -108,7 +108,23 @@ defect that will recur until fixed.
   comparative with judge-side tripwires. Voice bar grew to ten sections (Ramsay fixer, fear regime,
   break-in, it-kept-going, second ending shape). Full rationale + plan:
   `knowledge/decisions.md` round-3 entry / `docs/superpowers/plans/2026-07-28-scripting-overhaul-r3-plan.md`.
-  **Next: fresh Bricks acceptance run #3** is the live gate and the real test of the whole exercise.
+  **Round 4 (Daniel, 2026-07-29): script #3 line-reviewed; DOCTRINE LANDED, REGEN PENDING.** Verdicts
+  live in `channels/the-second-take/videos/2026-07-28-bricks-fresh/verdict.r3.md` (the binding overlay).
+  Root cause of the round-3 miss was **the unstaged reveal**: the spoiler-frame hook's reveal was treated
+  as audience knowledge, so the mechanism (test-count/TSA audit lecture) was taught before the bricks
+  existed and two winks fired before any brick scene. Landed: grammar §3.2 rewritten as **the staging
+  law** (pressure → the corner → the decision as a moment → the act → mechanism as the punchline;
+  **mystery order beats textbook order**), with §3.6/§3.7 cohered and the coherence critic + writer
+  structural pass bound to it so the bounce cannot re-teach explanation-first; the **orphaned callback**
+  named as a defect; the generic-metaphor bar re-specified from sentence count to **one short clause**;
+  an abundant-but-SHORT banter law with the **aftermath/legal stretch** named as the flat-stretch decay
+  zone; **elegant variation** banned (bricks stay bricks); **one climb owns the numbers**; the
+  **excerpt-covered-beat default**; and a **verdict-regen mode** in `long-form-writer` (Step 0.4 + the
+  critics' verdict-overlay rule) that archives `script.rN.md`, locks Daniel-verbatim lines against every
+  downstream agent, and requires generalizable lessons to land in doctrine before a regen runs. Endings
+  stay formula-free (Daniel declined to codify the counterfactual close). Voice bar deliberately NOT
+  refreshed until he accepts the regen. Full rationale: `knowledge/decisions.md` round-4 entry.
+  **Next: the round-4 Bricks regen run** is the live gate and the real test of the whole exercise.
 - **proxy-judge ("taste me") — BUILT + PAUSED (2026-07-09):** additive, advisory-only acceptance gate
   after `humanize` proxying Daniel's accept/revise/reject + `/36`. On branch
   `feat/proxy-judge-story-editor-me` (NOT merged; changes nothing until invoked). Verdict agreement 3/3;

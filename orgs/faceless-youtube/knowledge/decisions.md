@@ -3393,3 +3393,79 @@ run brief binds nobody — a fresh terminal reads the style-bible and skill docs
 - **Alternatives rejected:** hard pull-per-block quotas for the writer (quota-written jokes); a runtime
   filter excluding same-story excerpts from the writer's read (machinery Daniel declined); treating
   stock idioms as cliches to hunt (the channel speaks in them — critics now explicitly protect them).
+
+## 2026-07-29 - Scripting overhaul round 4: the staging law, short-bit register, verdict-regen mode (Daniel)
+
+- **Fresh Bricks script #3 line-reviewed by Daniel** (`videos/2026-07-28-bricks-fresh/verdict.r3.md` is
+  the ruling record and the binding overlay for the regen). All edits replace-in-place; grammar, critic,
+  and SKILL section numbers unchanged; no round-4 fragments banked into `example-scripts.md` (the voice
+  bar only refreshes after Daniel accepts the regen, so banking unaccepted lines would corrupt the bar).
+- **THE BIG ONE - the unstaged reveal.** Daniel: "the bricks was just introduced with no reason. And the
+  audit came before the bricks. The whole thing was just very confusing. No building." Root cause: the
+  spoiler-frame hook's one-sentence reveal was treated as *audience knowledge* rather than a teaser, so
+  the body pre-authorized the caper (a test-count / TSA audit lecture at old L31-33) before any brick
+  scene existed, and winked at bricks twice before that (L21, L29). The coherence critic's structural
+  bounce is what resequenced the story into textbook explanation-before-event order, and NO doctrine said
+  mystery order beats textbook order, so nothing stopped it.
+  **Fix - grammar §3.2 rewritten as the staging law:** under a spoiler-frame hook the body still STAGES
+  the promised reveal as a scene, in order: pressure -> the corner they are painted into -> the decision
+  as a moment (somebody has the insane idea, at a beat of its own) -> the act with its audacious detail
+  -> the mechanism, arriving as the punchline to "how did nobody notice?" Explanation before the act is
+  **pre-authorization**: the act stops being a scene and becomes a worked example of a rule the viewer
+  already holds. **Mystery order beats textbook order** (a viewer briefly wondering is engaged because
+  the answer is visibly coming; a pre-taught viewer is owed nothing). §3.6 and §3.7 now cohere with it
+  (§3.7's withheld-vs-unestablished line is the same line), and §3.4's audit-question example is pinned
+  to "asked once the bricks are on the pallets, never before them."
+  **Enforcement, so the same agent cannot re-break it:** the coherence critic's never-flag list gains
+  *mystery order* (never propose moving an explanation in front of the event it explains); its
+  [STRUCTURAL] remedy guidance now requires resequencing TOWARD the staged order and never into
+  explanation-first order; and the writer structural-revision prompt is explicitly bound to §3.2 and told
+  it is the agent that broke the script once already.
+- **Orphaned callback named as a defect** (grammar §2.4, coherence critic flaw #6, taste #4, §5 bank): a
+  wink pointing at a scene the script has not built yet ("as long as nobody counts the inventory," before
+  any count happens). The viewer has nothing to hear it against and the real scene arrives pre-spoiled.
+  A callback only points backward.
+- **Metaphor bar re-specified from sentence count to breath** (grammar §1.4, taste #12, §5 bank). The old
+  bar said "the drawn-out multi-sentence generic metaphor is the defect," which licensed the long
+  single-sentence Super Bowl TV line that shipped. New law: a generic (non-cultural) comparison may play
+  but must land inside one short clause ("It's the TSA."); a long one is the defect however punctuated,
+  one sentence spent building it out included.
+- **Register push - abundant SHORT banter, including the back half** (grammar §1.3, taste #13). Daniel:
+  "I want some more fun banter, fun tone, fun narrator throughout in general by the way, in my taste.
+  Shorter bits not the sentence long metaphors that don't hit." The law: bits are a clause or a line, run
+  at the same density in the last third as the first, and **when a stretch reads flat the fix is another
+  short bit, never a longer metaphor**; a limp line is cut or swapped, never extended. The taste critic's
+  flat-stretch tripwire now names the **aftermath/legal stretch** (lawsuits, verdict, settlement,
+  sentence, fates) as the classic decay zone, where the narrator turns into a court reporter. This is
+  what Daniel meant by "the back half reads a lot more like old Poyais."
+- **Elegant variation banned** (grammar §1.1, taste #8, §5 bank): the story's plain object-word repeats
+  without shame. Script #3 reached for "masonry" to avoid saying "bricks" a fourth time; that is a
+  writer's tic nobody speaks with.
+- **One climb owns the numbers** (grammar §2.7, taste #7, §5 bank): the rise is told once with its
+  figures, and later beats escalate the OBJECT and the stakes instead of re-climbing revenue. Script #3
+  told the climb at L17 and re-climbed it at L29; a re-climb is dwell however good the line on top of it.
+- **Excerpt-covered-beat default** (grammar §1 voice-reference block, echoed in the SKILL's Step 1 read):
+  where the voice bar already contains an approved rendering of the exact beat being drafted, the
+  excerpt's phrasing is the default; deviate to improve, never sideways. Script #3 drifted the approved
+  "ran MiniScribe with fear" into "ran the place on fear" for no gain.
+- **Verdict-regen mode built into `long-form-writer`** (SKILL Step 0.4 + a touch each at 3a, 3d, 3e,
+  output contract; mechanics in `references/critics.md` "The verdict overlay"). When a
+  `videos/<slug>/verdict.rN.md` exists the run is the round-(N+1) regen: archive the prior script as
+  `script.rN.md`; the sheet is a **binding overlay** whose blockquoted lines are Daniel-verbatim LOCKED
+  deliverables the writer places and no downstream agent (critics, editor, structural pass, humanizer)
+  rewrites, while its directives steer the outline at 3a; and **generalizable lessons must already be in
+  doctrine before the regen runs** - fix the skill, never the artifact, and if the sheet implies a
+  doctrine gap, stop and surface it. This encodes the two-pass gen -> human feedback -> learn + regen
+  loop Daniel asked to build in, so the review round is a pipeline stage rather than a manual habit.
+  **Alternatives rejected:** keeping the loop only in the run conductor (`fyt-runner`) - rejected because
+  the locked-line mechanics have to bind the critics and humanizer, which live where the writing happens,
+  not where the run is scheduled; a new standalone regen doc - rejected as bloat, since the loop is three
+  small touches inside an existing staged flow.
+- **NOT codified: the counterfactual close.** Daniel picked the counterfactual last laugh for this
+  video's ending but answered "Not sure" when asked whether it should become the channel's preferred
+  ending shape, so grammar §3.5 is untouched: the fate-roundup and the counterfactual last laugh remain
+  peer options, and no ending formula exists.
+- **Line budgets held by replacement, not addition:** grammar 357 -> 360 (+3 over cap; the staging law
+  plus three new bank rows exceeded what §1.1/§1.4/§1.5/§2.x/§4/§6 condensation could return without
+  dropping enforcement text), critics 335 -> 342 (+7, same reason), SKILL 165 -> 165 (exact).
+  `example-scripts.md` byte-identical.
