@@ -1,26 +1,31 @@
 # System Handover
-_Generated: 2026-07-28T06:14Z_
+_Generated: 2026-07-29T06:10Z_
 
-Quiet, healthy night. One cadence fired — the nightly-review — and its checks all ran clean:
-preamble OK, skills in sync, and the daemon-dir mirror reports clean (ops matches main for every
-daemon-read dir, so nothing is owed there). Budget is untouched ($0.00 of the $5.00/day cap). No
-fleet work ran unattended; the daily self-lint cadence stays dormant because no scheduler is
-enabled.
+Overnight was quiet and healthy. The `nightly-review` cadence ran on the cloud dispatcher
+(card `6a6998eb-da760811`): preamble passed, skills are in sync, and the daemon-dir check came
+back clean — the `self-lint-report.md` drift flagged back on 2026-07-22 is now reconciled. Both
+dashboards were regenerated. $0.00 of the $5.00 daily API budget was spent (everything is
+subscription-billed). Nothing new broke, and no fleet work ran unattended.
 
-What's waiting on you is all carried over — nothing new broke tonight. The biggest is the
-faceless-youtube engagement-fold: six delta cards are staged and ready, but the governed queue
-bridge (built and test-covered) is never started by the production daemon, so nothing polls them.
-The wake card lays out three paths to unpark them — wire the bridge as a small PR, use the
-passkey+UI launch route, or authorize the claude-subagent fallback; pick one at the desk. Also
-open: the budget-gate decision (T3) and the delivery-gate warn→block flip. One housekeeping item
-persists — `scripts/sync_daemon_dirs.py` lives on main but is missing from the ops branch, so
-tonight's run again used a main copy; it's noted in a wake-me card and blocks nothing. A minor
-cleanup: four already-done nightly cards remain physically stranded in `queue/inbox/` (the same
-four as last night — yesterday's card filed correctly into `queue/done/`).
+What's waiting on you is all carried over. The biggest is the faceless-youtube engagement-fold:
+six delta cards are staged and ready, but nothing polls them until you pick one of three launch
+paths (wire the queue bridge / passkey+UI / claude-subagent fallback). Also open, all unchanged:
+faceless-youtube PR #41 (reviewed READY TO MERGE — must merge together with
+`claude/fyt-video-run-test`), Poyais GATE 3 (thumbnail decision needs your paid-gen
+authorization, plus L17 and publish approval), the Atlas V2 "Trust" go/no-go, and two standing
+kb-ops decisions — the T3 budget-gate question (`6a5e482a`) and the delivery-gate warn→block flip
+(`6a5c7274-635d84bf`).
+
+The daemon-dir wake-me (`6a605ebb`) is now down to a single open item: `scripts/sync_daemon_dirs.py`
+lives on `main` but is still missing from the `ops` branch, so tonight's step-2b check again ran
+from a `main` copy. Its drift half has cleared, so all that's owed is mirroring the script onto
+`ops` (or amending routine step 2b) from a desk session — the cloud routine only reports it. One
+cosmetic quirk persists: four already-done nightly cards sit stranded in `queue/inbox/` at
+`state:done` (same four as recent nights); harmless, worth a one-time sweep from the desk.
 
 Project status is steady: Atlas V1 shipped and is live (PR #44 merged; V2 planning awaits your
-go/no-go); faceless-youtube PR #41 is reviewed and ready to merge (paired with the dashboard test
-branch), Poyais parked at GATE 3 for your thumbnail/publish decisions.
+go/no-go); faceless-youtube PR #41 reviewed and ready; Poyais parked at GATE 3.
 
-Next unattended: the nightly-review cadence fires again tomorrow. Nothing else runs on its own —
-the staged engagement cards keep sitting until you choose a launch path.
+Next unattended: the nightly-review cadence fires again tomorrow and regenerates these
+dashboards. Nothing else runs on its own — no code touched, nothing merged, no money spent
+without you; the self-lint cadence stays dormant until launched from a watched desk session.

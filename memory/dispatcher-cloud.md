@@ -214,3 +214,20 @@
   physically live in queue/inbox/, so a dir-based count over-reports inbox and under-reports done.
 - Nothing new broke; all pending items already carry wake/decision cards. DIRECT-PUSH expected;
   PR fallback if branch-restricted.
+
+## 2026-07-29 nightly-review (dispatcher-cloud, cloud self-exec)
+- WORKED: clean nightly. preamble OK, sync_skills --check clean, sync_daemon_dirs --check clean
+  (ran origin/main copy in refs-fallback — script still absent on ops). Dispatcher emitted 1 card
+  (nightly-review 6a6998eb-da760811); executed inbox→working→done via cards.transition, cost step
+  logged, both dashboards rewritten.
+- NEW this run: the daemon-dir DRIFT half of wake card 6a605ebb has RESOLVED — origin/main vs
+  origin/ops now clean for all daemon-read dirs (the self-lint-report.md content-differs from
+  2026-07-22 is reconciled). So that wake card is now half-stale: only the missing-script-on-ops
+  half remains open. Noted in both dashboards; did NOT file a new card or edit the existing one
+  (human-owned, and editing another owner's card is outside the nightly-review carve-out).
+- CONFIRMED recurring: scripts/sync_daemon_dirs.py still missing on ops (present on main) — the
+  only reason step-2b runs from a main copy. Same 4 legacy done-in-inbox strays (6a5dbb3e,
+  6a5f0cef, 6a605e40, 6a65a3cd); count held at 4, not grown. Yesterday's card 6a68483c landed in
+  queue/done/ correctly (done dir 70→71). Both are human-desk housekeeping, outside my carve-out.
+- Nothing new broke; all pending items already carry wake/decision cards. DIRECT-PUSH expected;
+  PR fallback if branch-restricted.
