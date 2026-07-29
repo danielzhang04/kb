@@ -163,9 +163,11 @@ seeded cutout. Art style, proportions and period never switch mid-chain.
 **Layered shots (from `shots.motion.json`).** Each shot `motion-planner` marks with a `cutout` `layers[]` is
 materialized into the layout the engine reads (render-builder `references/shots-motion-schema.md`). The **plate**
 `plates/<id>.png` is the scene MINUS the moved element, still reading as a **complete** object, never a blank slot.
-**Cutout layers** `cutouts/<id>-<layer>.png` are **always seeded** (character/prop canonical, or the destination plate
-plus a style anchor); **the engine emits no alpha, so transparency is always post-hoc keying** — gen the
-`cutout_prompt` on a **solid MAGENTA chroma field** (*"one solid uniform FLAT magenta background, NO glow, NO
+**Cutout layers** `cutouts/<id>-<layer>.png` are **always seeded** — use the layer's own **`seed`** when the plan
+names one (a reference path or a registry vocabulary name, resolved like any Pass-1 tag); otherwise fall back to the
+character/prop canonical, or the destination plate plus a style anchor. **The engine emits no alpha, so transparency
+is always post-hoc keying** — the `cutout_prompt` describes the OBJECT ALONE, and YOU add the field here: gen it on a
+**solid MAGENTA chroma field** (*"one solid uniform FLAT magenta background, NO glow, NO
 gradient, NO vignette"*, since fringe and halo failures are generation-side glows), then `forge.py cutout` (rembg →
 alpha-harden → trim). On a **hybrid** shot (a delta-chain frame carrying a cutout layer) do not bake a full delta
 scene and do not gen a plate: `background.plate` already points at the prior in-stage frame, so materialize only the

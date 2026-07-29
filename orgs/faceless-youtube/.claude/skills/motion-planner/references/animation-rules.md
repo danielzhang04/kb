@@ -46,7 +46,10 @@ environment/style gen). Full law, incl. the ≤3-delta cap and the same-location
   established (→ `slide`, anchored to the naming/entry word), or a **discrete PROP** placed into the scene
   (→ `appear`/`slide`). The plate REUSES the prior in-stage scene (`background.plate: scenes/<prior-id>.png`,
   no new plate gen) and only the added element's `cutout_prompt` is authored. This fires on a delta-chain
-  delta AND on any shot that builds on an already-materialized scene.
+  delta AND on any shot that builds on an already-materialized scene. **A hybrid produces no baked
+  composite**, so nothing downstream may chain off it: a BAKED delta that FOLLOWS a hybrid seeds the
+  hybrid's own plate (the prior REAL scene the overlay sat on), or the chain re-bases there — never
+  `scenes/<hybrid-id>.png`, which is never generated. `lint_motion_plan.py` hard-errors the latter.
 - **A recurring FIGURE across a held sequence is ONE reused cutout — never re-genned per shot.** When
   the same figure (a character, a ship) persists across consecutive shots on ONE stage — marching, then
   standing, then addressed — author the cutout ONCE and point every later shot's layer at it with the
@@ -126,7 +129,10 @@ against delta-chains, and independent scenes stay correct for a genuinely NEW se
   **complete, natural** scene/object: state what fills the region instead, never leave a conspicuous blank
   slot ("…the map with the coastline unbroken and no route drawn", not "…a blank space where the line
   was"). (In-video text is NOT subtracted — it stays baked diegetic in the plate.)
-- `cutout_prompt` = the single element alone, on a plain plate, framed for a clean matte.
+- `cutout_prompt` = **THE OBJECT ONLY** — the single element, described as itself and nothing else. Write
+  no background, field, ground, backdrop, plate or surrounding-scene language at all (not even "on a plain
+  field"): `image-generation` gens every cutout on its own solid magenta chroma field and keys it out, so
+  any scene the prompt describes is either keyed away or fringes the matte. Frame it whole, with air.
 - **Hybrid (a discrete overlay on a delta-chain):** there is **no `plate_prompt`** — the plate is the
   prior in-stage scene, reused (`background.plate: scenes/<prior-in-stage-id>.png`). Author only the
   `cutout_prompt` (the overlay alone).

@@ -33,11 +33,18 @@ prevents authoring a motion the engine cannot render.
     frame, **reused** — image-gen generates no new plate); only the overlay's `cutout_prompt` is authored.
 - `layers` (array, required; `[]` for a simple/passthrough shot):
   - `id` (str), `source`: **`"cutout"` only** — `motion_plan.py::validate_plan` rejects any other value.
-  - cutout: `cutout_prompt` (str) + `animation`. The `animation` MAY carry an **`anchor`** (verbatim VO
+  - cutout: `cutout_prompt` (str) + `animation`. The `cutout_prompt` describes **the OBJECT ONLY** — no
+    background, field or surrounding-scene language; image-gen supplies the magenta chroma field at gen
+    time and keys it out. The `animation` MAY carry an **`anchor`** (verbatim VO
     words the element lands on). `build_motion.apply_motion_plan` resolves it (via `render.anchor_time`)
     to a **shot-relative `start_s`** written into the animation, and the engine `LayerView` starts the
     slide/path/appear window there instead of the default frame-4 lead-in. No `anchor` → the element
     enters at the shot cut (frame 4).
+  - **`seed`** (str, optional) — the reference this cutout is generated FROM: a path (a canonical PNG, a
+    `refs/env/` anchor) or a registry vocabulary name. image-gen resolves it and prefers it over its own
+    fallback (the character/prop canonical, or the destination plate + a style anchor); an unseeded
+    cutout invents its own register and lands off-style against a flat-cel plate.
+    `motion_plan.py::validate_plan` requires a non-empty string when the field is present.
   - **`reuse`** (str, optional) — a path to an already-materialized cutout PNG. image-gen generates NO
     new PNG for it, and `build_motion.apply_motion_plan` composites that exact file instead of the
     derived `cutouts/<shot-id>-<layer-id>.png`. Use it to hold ONE cutout across several shots (the
@@ -108,7 +115,8 @@ anchor.** No co-located pause is a hard failure — nothing can safely show an o
 image-generation materializes a layered shot into a fixed layout under `videos/<slug>/assets/`:
 - **plate:** `plates/<shot-id>.png` — the background (opaque). `forge gen` from `background.plate_prompt`.
 - **cutout layers:** `cutouts/<shot-id>-<layer-id>.png` — transparent RGBA. `forge gen` the `cutout_prompt`
-  on a plain plate, then `forge cutout` (rembg → alpha-harden → trim). Human-gated on the hand-QC crop.
+  (the object only) on the solid magenta chroma field image-gen adds, then `forge cutout` (rembg →
+  alpha-harden → trim). Human-gated on the hand-QC crop.
 A simple/passthrough shot keeps using the existing `scenes/<shot-id>.png`; `plates/`+`cutouts/` are the
 layered-shot addition. A **hybrid overlay** shot generates **no `plates/<id>.png`** — it reuses the prior
 in-stage `scenes/<prior-id>.png` as its plate and adds only its `cutouts/<id>-<layer>.png`.

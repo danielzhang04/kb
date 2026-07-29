@@ -80,7 +80,7 @@ taller/lankier figures are the standing drift and a review axis (§3). **VPW aut
 > style/size/position, NO nose, NO ears, SAME classic cartoon hands (exactly THREE fingers plus ONE thumb,
 > four digits total, never five), SAME even medium-thick dark warm brown-black (#241a12) outline, SAME
 > clean FLAT cel render — the identical rig the named cast holds, just NOT a specific person. Give them a
-> distinct, era-appropriate outfit and hair so they read as an individual; hold ONLY the rig form.
+> distinct, era-appropriate outfit and hair so they read as an individual; hold ONLY this form.
 
 A large / foreground anonymous figure needs the FULL rig but has no canonical to seed, so §2c's auto-append
 never fires and §2d is too simplified. Like §2d, **VPW authors §2e into the `still_prompt`**.
