@@ -47,8 +47,8 @@ and voiceover/image-gen/sfx-forge all resolve to it.
 
 ## Remaining (ordered)
 
-1. **Gate C — Daniel reads the three doctrine files** (`visual-grammar.md`, VPW `SKILL.md`,
-   `example-shots.md`). Not yet done; blocks everything below.
+1. **Gate C — PASSED 2026-07-29** (Daniel read `visual-grammar.md`, VPW `SKILL.md`,
+   `example-shots.md`: "looks good for now, may iterate later"). Items below unblocked.
 2. **Land the branch**: push `claude/fyt-stack-trims`, PR to main. Then records: decisions.md entry
    + STATUS.md update for the redesign (not yet written).
 3. **Prove on pixels**: first paid image-gen Pass 1 off a ready approval sheet (~$2.50). The
@@ -62,12 +62,18 @@ and voiceover/image-gen/sfx-forge all resolve to it.
 6. Known fallout, accepted: archived poyais lints 1 extra HARD under the ÷4 floor (shipped video,
    expected); Bricks dry-run rewrote derived `assets/motion/*.json` + `render.manifest.json`
    (untracked).
+7. **Future arc (any terminal, AFTER items 2–3)**: wave-3-style functional redesign of the
+   post-image stack — render-builder (432 lines/5 files) and motion-planner (228/4) are the
+   candidates for the procedure/grammar/checker split; audio-director, voiceover, and the small
+   forges are already lean (wave-2 trimmed, ≤185 each) and likely not worth restructuring.
+   Daniel approved queueing this 2026-07-29. Do not start before the branch lands and the paid
+   Pass 1 pixels proof validates the upstream contract.
 
 ## Load list
 
 - `orgs/faceless-youtube/CLAUDE.md` (router; imports operating-law)
 - `orgs/faceless-youtube/docs/superpowers/plans/2026-07-28-visual-pipeline-redesign-plan.md` (the plan)
-- `orgs/faceless-youtube/.claude/skills/visual-prompt-writer/references/visual-grammar.md`
+- `orgs/faceless-youtube/channels/the-second-take/visual-kit/visual-grammar.md`
 - `orgs/faceless-youtube/.claude/skills/visual-prompt-writer/SKILL.md`
 - `orgs/faceless-youtube/channels/the-second-take/visual-kit/style-bible.md`
 - `orgs/faceless-youtube/channels/the-second-take/videos/2026-07-28-bricks-fresh/pass1-gate.md`
