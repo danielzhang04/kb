@@ -1,77 +1,114 @@
-# The Hidden Machine — channel genesis handoff — 2026-07-29
+# The Hidden Machine — channel genesis handoff — 2026-07-29 (evening, supersedes morning version)
 
-**Topic:** Boss-orchestrated first-pass infrastructure build for "The Hidden Machine" (hidden-systems channel, concept A1) in `orgs/faceless-youtube/`, per plan `docs/superpowers/plans/2026-07-28-hidden-machine-genesis-plan.md`. Session paused mid-Task-7/8 with two Daniel gates open. Work lives in worktree `C:/Users/danie/kb-worktrees/hidden-machine` on branch `claude/hidden-machine-genesis` (pushed to origin 2026-07-29).
+**Topic:** Boss session cleared ALL THREE morning gates plus the register-doubt arc, and drove Task 7
+to its final review gate. Work lives in worktree `C:/Users/danie/kb-worktrees/hidden-machine` on branch
+`claude/hidden-machine-genesis` (pushed through 8b78427? NO — see file table). Plan:
+`docs/superpowers/plans/2026-07-28-hidden-machine-genesis-plan.md`. Operating rules for the resuming
+terminal are unchanged from the morning handoff (boss orchestrates, ≤Opus workers, model verified by
+transcript grep at grading, media law §H, .env hard ceiling, voiceover.py only for TTS).
 
-## Operating rules for the resuming terminal (non-negotiable, from Daniel)
+## Gate outcomes (Daniel, 2026-07-29)
 
-- Boss orchestrates; every substantive build goes to a ≤Opus worker (haiku mechanical / sonnet standard / opus taste-critical). Worker model VERIFIED by grepping the subagent transcript `~/.claude/projects/C--Users-danie-kb/<session-id>/subagents/agent-<id>.jsonl` for `"model":` — first line of every grade. The harness-reported `.output` path greps empty; use the projects path.
-- Per-task PRE-GATES: ask ALL clarifying/taste questions BEFORE building. Post-task summaries. No content iteration without Daniel.
-- Review media law (§H operating-law): images → Artifact with zoomable images (lightbox); video/audio → open in device player (`cmd //c start <path>`); files → VS Code. Daniel approved the auto-open-player behavior explicitly.
-- Never handle credentials as objects. `.env` at repo root + worktree holds GEMINI_API_KEY + ELEVENLABS_API_KEY (Daniel recreated them after an earlier loss episode — NEVER read/copy/create/sweep .env). `scripts/hooks/hard_ceiling_guard.js` blocks Bash touching .env — load env inside Python only (see `load_env` in the lab scripts).
-- Voice generation ONLY via `.claude/skills/voiceover/scripts/voiceover.py`; never hand-rolled TTS calls. Read-only GET /v1/voices discovery is fine.
-
-## OPEN DANIEL GATES (present one at a time, in this order)
-
-1. **V5 verdict** — Poyais ship-deck Veo clip (`videos/_style-lab/veo/V5.mp4` under the-hidden-machine) was opened in his player right before pause; no reaction captured. It's the 40-character on-model stress test on ST's own style. Ask for the verdict first; fold into motion doctrine.
-2. **Register pick from the 6×3 round-B board** (tabled by Daniel "for one sec", never returned). Artifact: https://claude.ai/code/artifact/a3895866-c345-4d62-8f67-95fdceb240ad — R1 + R4 carried over un-regenerated, challengers R6 clear-line cutaway / R7 linocut noir / R8 gouache storybook / R9 flat paper collage, same 3 scenes each. On-record boss recommendation: R9 first, R6 second, hybrid legal (one register as base world + R6 cutaway grammar as composition rule).
-3. **Voice ear gate round 1** — 5 clips in `channels/the-hidden-machine/voice-lab/auditions/round-1/` (01-roger, 02-eric, 03-chris, 04-george, 05-bill; all ElevenLabs premades — fingerprint caveat given, round-1b shared-library dig is a legal alternative). He picks 2 finalists → round 2 = 2×3 fresh dial variants (never ST's 0.20/0.6 dials) → lock into dna.md §Voiceover. Gated answers already given: warm male mid-30s+, test paragraph approved, lean 5→2×3 spend.
+1. **V5 verdict** — implicit pass ("Saw the poyais one"), then ordered V6 (MacGregor plaza) + V7
+   (riverside ghosts), delivered clean at $0.80 each. NO explicit verdict on V5/V6/V7 — recorded in
+   the style bible as supporting evidence, not a gate. V4 (card tap) remains the Daniel-liked reference.
+2. **Register** — **R1 screen-print editorial, revocable** ("default... may change in the future").
+3. **Voice** — **Chris `iP95p4xoKVk53GoZ742B`**, eleven_v3 @ ST's new dials (stability 0.20, style 0.6),
+   picked over Eric in round 2 (fresh clips at those dials + colon→semicolon paragraph fix for the
+   too-long pause). Committed 83ac22b with consistency-proof-owed note. 2×3 dial round SKIPPED by
+   Daniel's direct pick.
+4. **Register doubt arc (mid-session)** — Daniel worried R1 "might not be the play." Resolved by:
+   comps research (no riso precedent in ANY explainer niche; two-mode design is the convergent pattern
+   of mixed narrative+mechanism channels; LEMMiNO discipline makes stills watchable) + a $1 watchability
+   probe (43s: V4 open + stills at cadence + hybrid frames + data card + Chris VO, Remotion-rendered).
+   **Daniel passed it** ("fine for now, iterate later") → hybrid doctrine locked: R1 full-texture
+   narrative + R6-clear-line-in-R1-inks mechanism mode (locked registration) + flat data-card module.
+5. **Canonicals (7d)** — approved: everyman = **charD slim-urban editorial** (4-variant sweep after
+   Daniel rejected the first parka figure), machine-hall (border-cropped), coffee-shop (=A1),
+   street-corner (re-roll after Daniel flagged A4's floating window-hands), mechanism-cutaway (=probe
+   N1). Committed 8b78427 with registry seed.
 
 ## What WORKED (with evidence)
 
-- **Register round B board (6×3)** — 12 new images `_style-lab/register/R6-S1..R9-S3.png` all 1376×768; artifact rebuilt and published same-URL. Spend: 14 billable calls $1.876 (2 duplicate calls from a retry race, logged in `_style-lab/register/spend-c.md`). Board findings: R9 is the only fully clean full-bleed style; R6-S3 best theme-fit image of the lab; R7 all render as photographed prints; R8 has postcard/letterbox framing drift.
-- **Motion recipe proven twice** — single anchor frame + directed prompt + style-lock clause on Veo 3.1 Fast (`veo-3.1-fast-generate-preview`, $0.10/s, 8s max, native audio):
-  - V4 = Daniel's card-tap prompt verbatim on R1-S1, 54.3s latency, $0.80. Daniel liked it ("No it's good"; "there was another video I saw that wasn't anywhere near as good" = V1/V2 keyframe interpolation).
-  - V5 = ST Poyais superseded frame L54 (ship-deck ~40 characters), directed beats (doctor nod+bag grip, LAW-book hug, baby rock, crowd sway, ambient ocean/creak/gulls), 53.8s, $0.80. Verdict pending (gate 1).
-- **Doctrine finding**: single-frame + prompt BEATS first+last-frame interpolation when keyframes aren't canon-locked — interpolation inherits keyframe flaws. Candidate doctrine line at register lock.
-- **Full-motion cost model** (told to Daniel): 8-min full-motion = 60×8s ≈ $48 Veo + $8.04 anchors + ~25% retakes ≈ $56–70/video; hybrid (15–20 motion-worthy beats) ≈ $15–25/video. Hybrid band is the candidate doctrine number.
-- **Voice lab round 1** — 5 auditions delivered under lean cap, ID3-verified >348KB each; `voice-lab/voice-lab.md` committed (12e6397). Miles `vSjOBQp24DUB2COr2xI9` permanently excluded.
-- **Veo REST quirks nailed down** (in `_style-lab/scripts/veo_probe_step2_generate.py`): image field is `{bytesBase64Encoded, mimeType}` NOT `inlineData`; `numberOfVideos` rejected; `durationSeconds` must be JSON number; `lastFrame` requires `durationSeconds: 8`; bills only delivered output.
-- **Grades transcript-grepped**: register-B worker claude-sonnet-5 ×92; voice worker claude-sonnet-5 ×69.
+- **Full-bleed fix round** — 5 register-board frames re-rolled full-bleed ($1.07); board artifact
+  rebuilt same URL: https://claude.ai/code/artifact/a3895866-c345-4d62-8f67-95fdceb240ad (now carries:
+  register round B + lock sweep + canonical/character sections).
+- **7c lock sweep PASSED** ($1.47, 11 calls) — zero style/identity degradation across a 4-delta edit
+  chain + re-anchor; borders only on fresh gens (3/9); STRONG full-bleed law fixed the vignette mode
+  (n=1). Findings: `videos/_style-lab/lock-sweep/findings.md`.
+- **Watchability probe** — `videos/_style-lab/watchability-probe/probe.mp4` (43.2s, h264 1080p,
+  word-level sync spot-checked). Standalone Remotion project in `watchability-probe/remotion/`
+  (Remotion 4.0.500, bundled ffmpeg — system ffmpeg still absent, winget question still undecided).
+- **Deterministic Pillow crop kills border drift** — machine-hall + charB canonicals cropped clean;
+  sanctioned into doctrine (bible §2c); uncropped originals preserved beside them.
+- **7e docs authored (Opus, verified claude-opus-5 ×60)** — style-bible.md + visual-grammar.md,
+  zero-ST-token grep clean, full traceability map in the worker's report. UNCOMMITTED, awaiting gate.
+- All worker grades model-grepped (sonnet ×27/×50/×58/×98/×105/×162/×175 across the session's workers,
+  opus ×60); every paid batch pre-approved and ledgered.
 
 ## What Did NOT Work (and why)
 
-- **First+last-frame Veo interpolation (V1/V2)** — visibly worse because the flick keyframes weren't canon-locked; do not retry until frames are canonical.
-- **Register-B worker relaunch race** — worker relaunched the gen script on an apparent hang (WinError 10054 stall) without killing the first run → skip-check race → 2 duplicate billable calls (R9-S2/S3). Lesson: kill before relaunch.
-- **`shared-voices` search** — HTTP 400 on the filter combo used; only account premades auditioned. Round-1b would need a different query shape.
-- **voiceover.py outside a channel** — requires dna.md two dirs up; worker used disposable `channels/_audition-tmp-hm-r1/` scaffold, then deleted it (verified gone). Real dna.md untouched (dna edit only at voice lock).
-- **Round-B prompt drift (flagged, NOT re-rolled)**: R6-S1 diagram arrows + thin border despite no-labels rule; R6-S2 portrait insert; R7 photographed-print framing (worst R7-S1); R8-S1 postcard frame, R8-S2 letterbox. → a **full-bleed / single-panel law** must be written into the register lock.
-- **Daniel's 10s clip ask** — Veo caps at 8s; ran 8s, told him.
-- **ffmpeg absent on machine** — Pillow GIFs used instead; `winget install ffmpeg` offered, undecided.
+- **Baseline full-bleed law on fresh generations** — 3/9 border violations in the sweep; edit-chains
+  had zero. STRONG law untested vs the uniform-border-ring mode (only vignette, n=1). Wide establishing
+  exteriors are the worst offenders. Doctrine: prefer chains, budget retries on fresh wides, crop fallback.
+- **R1-S3 + R6-S2 board frames** — residual borders after their one retry (thin ring / pillarbox).
+  Accepted on the board; they are not canonicals.
+- **ST audio pools are URL manifests** (`sources.json`), NOT local audio files — a probe music bed
+  would have required external fetches; skipped. Task 9 (audio kit copy) must account for this.
+- **render-builder Remotion engine has no video-clip shot type** and no npm install in this worktree —
+  could not embed V4.mp4; the probe used its own standalone Remotion project instead.
+- **`python` on this box lacks Pillow** — crashes gen scripts AFTER a billable call returns; always `py -3`.
+- **charB/charC/charD first attempts** — framing/prop drift (knee crop, phone-for-card, clipped head),
+  fixed on retries; evidence preserved as `*.attempt1.png` in `_style-lab/canonicals/`.
 
-## What Has NOT Been Tried Yet (= remaining plan tasks)
+## What Has NOT Been Tried Yet (= remaining, ordered)
 
-After the three gates clear, per plan `docs/superpowers/plans/2026-07-28-hidden-machine-genesis-plan.md`:
-- **Task 7c–7e**: register lock sweep (write full-bleed/single-panel law; consistency probe in the locked register via iterative-edit-chain — Nano Banana `gemini-3-pro-image` 2K $0.134/img, consistency comes from prior-frame-as-input + delta instruction, big deltas re-anchor on canon refs), canonical anchors → `refs/` + `registry.json`, style-bible + visual-grammar (OPUS worker). Also: lock motion doctrine (single-frame+prompt recipe + $15–25 hybrid band), re-run a V4-style proof in the LOCKED register, then `_style-lab/` prune (F-clean, only at lock).
-- **Task 8 finish**: finalist round 2×3 dials → dna.md §Voiceover.
-- **Task 9**: audio kit — copy ST pools, fresh tokens minus retired fields (per `docs/retired-features.md`), haiku worker, `python -m json.tool` validation.
-- **Task 10**: guardrails + capability-map (`production_pipeline: stylized-compositing`); PRE-GATES: fact-ledger accuracy bar, topic exclusions, AI-disclosure stance (note: AI-disclosure was scratched for ST's animated register — HM needs its own call).
-- **Tasks 11–13**: idea backlog via idea-generator; channel-page draft + TO-DEVELOP.md; close-out (STATE/decisions.md/forge-friction log incl. .env-sweep failure, relaunch-race duplicate billing, false security flag; memory lessons; spend reconciliation).
-- Fix F5 hair-flip / F3 pulse-hides-card when canonicalizing flick frames.
-- Verify researcher honors `research_scope: capped-to-descent-chain` before first video.
+1. **OPEN GATE: Daniel reviews style-bible.md + visual-grammar.md** (left open in his VS Code at pause).
+   Pass → commit the 7e batch (see table), push the branch, then prune `_style-lab/` per plan (F-clean;
+   KEEP spend ledgers + findings.md + notes.md + *.attempt evidence per bible §8; N6 already promoted
+   to refs/mode/data-card.png so the prune is safe).
+2. **Task 9** — audio kit: copy ST pools (attribution moves with assets; NOTE pools are manifests not
+   files), fresh audio/motion tokens minus retired fields (`docs/retired-features.md`); haiku worker;
+   `py -3 -m json.tool` validation.
+3. **Task 10** — guardrails + capability-map (`production_pipeline: stylized-compositing`). PRE-GATES
+   for Daniel: fact-ledger accuracy bar, topic exclusions, AI-disclosure stance (ST scratched it for
+   animated register; HM needs its own call).
+4. **Tasks 11–13** — idea backlog (idea-generator skill, `HM-###`, zero ST-overlap), channel page +
+   TO-DEVELOP.md, close-out (STATUS/decisions/STATE/index.html/forge-friction; SPEND RECONCILIATION —
+   spend-c.md running totals are per-section and inconsistent; recompute the true lab total at close-out).
+5. Optional: validation batch for the STRONG law vs uniform-border-ring mode (bible §2c DRAFT);
+   explicit V5/V6/V7 verdicts if Daniel wants the motion doctrine fully gated.
 
-## Current State of Files
+## Current State of Files (worktree `kb-worktrees/hidden-machine`, branch `claude/hidden-machine-genesis`)
 
 | File | Status | Notes |
 | ---- | ------ | ----- |
-| worktree `kb-worktrees/hidden-machine`, branch `claude/hidden-machine-genesis` | WIP, pushed | Commits through 12e6397 (voice-lab.md). **At PR time: rebuild branch clean — cherry-pick ONLY genesis commits; foreign commits fb3df37/38f25b4/814765d/8377de2 belong to another effort.** |
-| `channels/the-hidden-machine/` (dna.md, storytelling-grammar.md, reference-channels.md, idea-backlog.md, ...) | DONE (tasks 1–6) | Identity/doctrine/format/grammar locked by Daniel 2026-07-28 |
-| `channels/the-hidden-machine/videos/_style-lab/` | WIP, **gitignored — disk only** | register/ (R1..R9 PNGs + spend-c.md), veo/ (V1–V5.mp4 + spend.md), flick/, scripts/ (all session lab scripts + board HTML, copied for persistence) |
-| `channels/the-hidden-machine/voice-lab/` | WIP | voice-lab.md committed; 5 mp3s gitignored, disk only |
-| Register board artifact | DONE | https://claude.ai/code/artifact/a3895866-c345-4d62-8f67-95fdceb240ad (rebuild via `_style-lab/scripts/build_board.py`, same file path → same URL) |
-| Spend ledgers | WIP — **reconcile at close-out** | veo `spend.md` per-call rows authoritative; running-total columns understate (register-B $1.876 lives only in spend-c.md). True lab total ≈ $10.038 (register A $2.010 + B $1.876 + palette/flick/veo chain through V5 $0.80 each for V4/V5). Recompute cumulative at close-out. |
-| ST Poyais frames | note | Production L*.png gone from repo; only `_superseded-2026-07-16/` and `_superseded-2026-07-18-r10/` survive (V5 used r10 L54.png) |
+| Commits 83ac22b (voice lock) + 8b78427 (canonicals+registry) | DONE, LOCAL ONLY | origin has through 12e6397 — **push the branch on resume** |
+| `visual-kit/style-bible.md` + `visual-kit/visual-grammar.md` | WIP — UNCOMMITTED | authored + graded, awaiting Daniel gate |
+| `visual-kit/registry/registry.json` | WIP — UNCOMMITTED edit | data-card mode entry added atop committed v1 |
+| `visual-kit/refs/mode/data-card.png` | WIP — UNCOMMITTED | probe N6 promoted (bible §2d anchor) |
+| `dna.md` | WIP — UNCOMMITTED edits | Visual style/register + Voice ID prose fields backfilled |
+| `videos/_style-lab/` (gitignored, disk only) | WIP | canonicals/, lock-sweep/, watchability-probe/ (probe.mp4 70MB + remotion/ node_modules), register/spend-c.md, veo/ V1–V7 |
+| `voice-lab/` | DONE | voice-lab.md committed through round-2 Chris verdict; mp3s disk-only |
+| Main kb checkout | untouched this arc | on `claude/fyt-stack-trims`; visual-pipeline-redesign handoff items 2–5 remain its own arc |
+
+**Suggested 7e commit batch (one commit):** style-bible.md, visual-grammar.md, registry.json,
+refs/mode/data-card.png, dna.md — `feat(fyt): hidden-machine visual doctrine locked — style-bible +
+visual-grammar (Daniel gate YYYY-MM-DD)`.
 
 ## Exact Next Step
 
-Open with gate 1: ask Daniel for his V5 verdict (offer to reopen `...\the-hidden-machine\videos\_style-lab\veo\V5.mp4` in his player). Then gate 2 (register pick from the artifact board), then gate 3 (voice finalists). Do not build anything until the register gate clears — everything in Task 7c+ depends on the pick.
+Ask Daniel for his style-bible/visual-grammar verdict. Pass → commit the 7e batch above, push the
+branch, prune `_style-lab/` (keep ledgers/findings/notes/attempt-evidence), then dispatch Task 9
+(haiku). Task 10's three pre-gate questions are the next human gate after that.
 
 ## Load list
 
-- `orgs/faceless-youtube/_index.md`, `STATE.md`, `contract.md` (project preamble)
-- `docs/superpowers/plans/2026-07-28-hidden-machine-genesis-plan.md` (the plan; tasks 7–14)
-- `docs/superpowers/specs/2026-07-28-hidden-machine-genesis-design.md`
-- `orgs/faceless-youtube/operating-law.md` (§D spend gates, §E options, §F-git, §H review media law)
-- `orgs/faceless-youtube/channels/the-hidden-machine/dna.md` + `storytelling-grammar.md`
-- `orgs/faceless-youtube/channels/the-hidden-machine/voice-lab/voice-lab.md`
-- Worktree-only (disk): `channels/the-hidden-machine/videos/_style-lab/scripts/` (gen + veo + board scripts), `register/spend-c.md`, `veo/spend.md`
-- `memory/claude-boss.md` (2026-07-29 lessons section)
+- `orgs/faceless-youtube/CLAUDE.md`, `orgs/faceless-youtube/operating-law.md` (§D spend, §E options, §F-git, §H media)
+- `orgs/faceless-youtube/docs/superpowers/plans/2026-07-28-hidden-machine-genesis-plan.md` (tasks 9–13)
+- `orgs/faceless-youtube/channels/the-hidden-machine/visual-kit/style-bible.md` + `visual-grammar.md` (the gate objects)
+- `orgs/faceless-youtube/channels/the-hidden-machine/visual-kit/registry/registry.json` + `channels/the-hidden-machine/dna.md`
+- `orgs/faceless-youtube/channels/the-hidden-machine/videos/_style-lab/lock-sweep/findings.md` + `watchability-probe/notes.md`
+- Board artifact: https://claude.ai/code/artifact/a3895866-c345-4d62-8f67-95fdceb240ad (rebuild via
+  `_style-lab/scripts/build_board.py` — its OUT path is session-specific, update before running)
+- Worktree `C:/Users/danie/kb-worktrees/hidden-machine`, branch `claude/hidden-machine-genesis` — do not rebase away
