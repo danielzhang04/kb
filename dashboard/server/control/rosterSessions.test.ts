@@ -1162,10 +1162,50 @@ describe('roster scoped per-run permissions', () => {
     expect(JSON.parse(settings.json)).toEqual({
       permissions: {
         defaultMode: 'bypassPermissions',
+        deny: settings.deny,
         allow: settings.allow,
         additionalDirectories: settings.additionalDirectories,
       },
     });
+  });
+
+  /**
+   * The RESTRICTION FLOOR — the only half of this file that still enforces under the auto `defaultMode`,
+   * because `deny`/`ask`/`allow` evaluate in that fixed order whatever the mode is: auto skips the ASK
+   * step, never the DENY step. Verified live against CLI 2.1.220 (each rule paired with an `allow` that
+   * would otherwise let the action through, so a denial proves the RULE matched): `Bash(git config *)`
+   * refuses the command, and a `Read(<path>)` deny also refuses a Bash command that reads that path.
+   */
+  it('emits an enforced restriction floor an unattended terminal can never step outside', () => {
+    const settings = buildRosterPermissionSettings({
+      repoRoot: 'C:/Users/danie/kb',
+      agentDir: 'C:/state/control/roster/run-7/fyt-visuals',
+      read: ['orgs/faceless-youtube'],
+      write: ['orgs/faceless-youtube/channels'],
+      tools: ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep'],
+    });
+    // Publication and identity: a stage proposes work, the server-side integrator publishes it.
+    expect(settings.deny).toContain('Bash(git push *)');
+    expect(settings.deny).toContain('Bash(git config *)');
+    // `.env`, at the root and at any depth, through every built-in file tool.
+    for (const rule of [
+      'Read(.env)', 'Read(**/.env)', 'Edit(.env)', 'Edit(**/.env)', 'Write(.env)', 'Write(**/.env)',
+    ]) expect(settings.deny).toContain(rule);
+    // Credential stores.
+    for (const rule of [
+      'Read(**/.ssh/**)', 'Read(**/.aws/**)', 'Read(**/.claude/.credentials.json)',
+      'Read(**/.git-credentials)', 'Read(**/*.pem)',
+    ]) expect(settings.deny).toContain(rule);
+    // The floor is a CONSTANT: an agent with a wider scope, more tools and a different repo root gets
+    // exactly the same list, so no proposal can negotiate it away.
+    const other = buildRosterPermissionSettings({
+      repoRoot: '/repo', agentDir: '/state/agent', read: [], write: [], tools: [],
+    });
+    expect(other.deny).toEqual(settings.deny);
+    // The emitted file carries it, and no allow rule overlaps it (a deny would win anyway).
+    const parsed = JSON.parse(settings.json) as { permissions: { deny: string[] } };
+    expect(parsed.permissions.deny).toEqual(settings.deny);
+    expect(settings.allow.some((rule) => settings.deny.includes(rule))).toBe(false);
   });
 
   it('emits no rule for a tool the server-owned profile withholds', () => {
@@ -1234,10 +1274,13 @@ describe('roster scoped per-run permissions', () => {
     const raw = fs.files.get(settingsPath);
     expect(raw).toBeDefined();
     const parsed = JSON.parse(raw as string) as {
-      permissions: { defaultMode: string; allow: string[]; additionalDirectories: string[] };
+      permissions: { defaultMode: string; deny: string[]; allow: string[]; additionalDirectories: string[] };
     };
     // Full-auto per Daniel's 2026-07-30 ruling: no tool prompts at all in a roster terminal.
     expect(parsed.permissions.defaultMode).toBe('bypassPermissions');
+    // …and the restriction floor rides in the SAME file, which is what still enforces under that mode.
+    expect(parsed.permissions.deny).toContain('Bash(git push *)');
+    expect(parsed.permissions.deny).toContain('Read(**/.env)');
     expect(parsed.permissions.allow).toContain(`Read(/state/control/roster/${runRef}/fyt-story/**)`);
     expect(parsed.permissions.allow).toContain('Read(/repo/orgs/faceless-youtube/**)');
     expect(parsed.permissions.allow).toContain('Edit(/repo/orgs/faceless-youtube/channels/**)');

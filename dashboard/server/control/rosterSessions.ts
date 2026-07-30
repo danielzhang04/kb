@@ -544,8 +544,78 @@ export interface RosterPermissionInput {
   tools: readonly string[];
 }
 
+/**
+ * THE RESTRICTION FLOOR: what an UNATTENDED terminal may never do, whatever else it was scoped to.
+ *
+ * WHY A DENY LIST IS THE RIGHT INSTRUMENT HERE. Roster terminals run under the auto `defaultMode`
+ * (Daniel's 2026-07-30 ruling), so the `allow` rules below are declared intent rather than containment —
+ * auto mode skips the ASK step. It does NOT skip the DENY step: `deny` / `ask` / `allow` evaluate in that
+ * fixed order regardless of mode, so these entries are the one part of this file that still ENFORCES.
+ * Verified live against the installed CLI (2.1.220), each case paired against an `allow` that would
+ * otherwise let the action through, so a denial proves the rule matched and not the absence of a grant:
+ *  - `Bash(git config *)` in `deny` → the Bash call is refused ("Permission to use Bash with command
+ *    git config --get user.name has been denied"); the same run without it executes and returns output.
+ *  - `Read(<path>)` in `deny` → a BASH command that reads that path is refused too ("permission to use
+ *    Bash with `cat marker.txt` was denied"). The CLI resolves the file a command touches and applies
+ *    file-path denies to it, so these entries cover the shell as well as the built-in file tools.
+ *
+ * WHAT IS ON THE LIST, AND WHY EACH ONE IS "NEVER" RATHER THAN "NOT NOW":
+ *  - Publication and identity. A roster stage PROPOSES work; the server-side integrator publishes it, on
+ *    the coordination checkout, under its own branch guard. A terminal that can `git push` can bypass
+ *    every gate in this file, and one that can `git config` can rewrite the identity the fleet's history
+ *    is attributed to. Neither is ever part of a stage's job.
+ *  - Secrets. `.env` at the repo root and at any depth, through the built-in file tools and (per the
+ *    verified behaviour above) through the shell. Nothing in the video pipeline reads a `.env`.
+ *  - Credential stores. The obvious ambient ones: ssh keys, cloud/CLI credential directories, the
+ *    CLI's own stored credentials, npm/git credential files, and bare private-key material.
+ *
+ * KNOWN RESIDUAL — the honest boundary. These rules plus the repo's PreToolUse hooks cover Claude's TOOL
+ * layer and the Bash commands the CLI can parse. A script the agent WRITES and then RUNS
+ * (`python fetch.py`, where `fetch.py` opens `.env` itself) is opaque to command parsing: nothing here
+ * sees that read, and stopping it is OS-level sandboxing, not a permission rule. That gap is pre-existing
+ * — it is the same under the interactive default mode — and is NOT introduced by the auto `defaultMode`.
+ * It is named here so no one mistakes this floor for containment of arbitrary code execution.
+ */
+const RESTRICTION_FLOOR: readonly string[] = [
+  // Publication and identity.
+  'Bash(git push *)',
+  'Bash(git config *)',
+  // `.env`, through the file tools and (verified) through any shell command that opens it.
+  'Read(.env)',
+  'Read(**/.env)',
+  'Read(**/.env.*)',
+  'Edit(.env)',
+  'Edit(**/.env)',
+  'Edit(**/.env.*)',
+  'Write(.env)',
+  'Write(**/.env)',
+  'Write(**/.env.*)',
+  // Shell shapes that move a `.env` wholesale rather than reading it in place.
+  'Bash(cp .env*)',
+  'Bash(mv .env*)',
+  // Credential stores.
+  'Read(**/.ssh/**)',
+  'Write(**/.ssh/**)',
+  'Edit(**/.ssh/**)',
+  'Read(**/.aws/**)',
+  'Write(**/.aws/**)',
+  'Edit(**/.aws/**)',
+  'Read(**/.config/gh/**)',
+  'Read(**/.claude/.credentials.json)',
+  'Read(**/.git-credentials)',
+  'Read(**/.npmrc)',
+  'Read(**/credentials.json)',
+  'Read(**/token.json)',
+  'Read(**/*.pem)',
+];
+
 export interface RosterPermissionSettings {
   allow: string[];
+  /**
+   * The restriction floor actually emitted — {@link RESTRICTION_FLOOR}. Exposed so the ENFORCING half of
+   * this settings file is assertable, not only the declared-intent half.
+   */
+  deny: string[];
   additionalDirectories: string[];
   /** The exact bytes written to the per-run settings file and handed to `claude --settings`. */
   json: string;
@@ -589,9 +659,14 @@ export interface RosterPermissionSettings {
  *    roster directory can sit outside the session cwd, and an allow rule alone does not extend the
  *    working set.
  *
- * There is no wildcard, no deny-list override, and no path that is not either a declared scope entry or
- * this agent's own order channel. An entry that is not a safe repo-relative path is dropped rather than
- * interpolated.
+ *  - `permissions.deny`: {@link RESTRICTION_FLOOR}, the one part of this file that still ENFORCES under
+ *    the auto `defaultMode` (deny/ask/allow evaluate in that fixed order, mode-independent — auto mode
+ *    skips only the ASK step). It is a constant: nothing in the proposal, the scope or the tool cap can
+ *    widen it or shrink it, so every roster terminal on every run carries the same floor.
+ *
+ * There is no wildcard and no path that is not either a declared scope entry or this agent's own order
+ * channel. An entry that is not a safe repo-relative path is dropped rather than interpolated. No allow
+ * rule can override the floor — a deny always wins, whatever the allow list or the mode says.
  */
 export function buildRosterPermissionSettings(input: RosterPermissionInput): RosterPermissionSettings {
   const allow: string[] = [];
@@ -618,9 +693,14 @@ export function buildRosterPermissionSettings(input: RosterPermissionInput): Ros
   }
   for (const path of readPaths) addDir(absoluteDir(input.repoRoot, path));
 
-  const permissions = { defaultMode: 'bypassPermissions', allow, additionalDirectories };
+  // `deny` first, in the file as in the evaluation order: it is the half that still ENFORCES under the
+  // auto `defaultMode`, and it is not derived from the proposal — no scope, no stage and no tool cap can
+  // add to it or take from it. See {@link RESTRICTION_FLOOR}, including its named residual.
+  const deny = [...RESTRICTION_FLOOR];
+  const permissions = { defaultMode: 'bypassPermissions', deny, allow, additionalDirectories };
   return {
     allow,
+    deny,
     additionalDirectories,
     json: `${JSON.stringify({ permissions }, null, 2)}\n`,
   };
