@@ -250,6 +250,9 @@ export async function executeApprovedLaunch(
       runPy: ctx.runPy,
       makeRunId: () => runRef,
       publishBlocked: true,
+      // The managed approvals path is the only caller entitled to admit a T3 stage, and it says so here
+      // rather than inheriting it from `publishBlocked`.
+      admitApprovalBoundT3: true,
       stageRouting: (stage) => {
         const approved = parsed.value.stages.find((candidate) => candidate.id === stage.id);
         if (!approved) throw new Error(`approved proposal is missing stage '${stage.id}'`);

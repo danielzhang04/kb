@@ -91,16 +91,11 @@ export interface WorkflowRunDeps {
    * ALSO admitted an approval-bound T3 stage was incidental coupling — safe only because exactly one
    * non-test caller sets it and it is never read from a request body.
    *
-   * Setting this `false` withholds T3 admission from a caller that is otherwise on the managed path, so a
-   * future managed-mode caller has a way to say "block the cards, but no T3" without inheriting T3
-   * silently. It cannot GRANT admission on its own: T3 still requires the managed approvals path, so both
-   * this and `publishBlocked` are consulted at the single call site below.
-   *
-   * NOTE (needs a human ruling): making this a hard opt-IN — the shape that would make it impossible for a
-   * future caller to inherit T3 admission for free — means the sole caller, `control/launch.ts`, must pass
-   * it explicitly. That file is outside this change's ownership, so the condition below is written as
-   * opt-out; flipping `!== false` to `=== true` here plus `admitApprovalBoundT3: true` at
-   * `control/launch.ts`'s `launchWorkflowRun` call completes it.
+   * This is a hard opt-IN: a caller that does not name it gets no T3 admission, however it sets
+   * `publishBlocked`. That is deliberate — `publishBlocked` answers "how do the cards publish" and a future
+   * managed-mode caller must not inherit the right to admit an upload stage just by turning card
+   * publication off. It cannot GRANT admission on its own either: T3 still requires the managed approvals
+   * path, so both this and `publishBlocked` are consulted at the single call site below.
    */
   admitApprovalBoundT3?: boolean;
 }
@@ -544,7 +539,7 @@ export async function launchWorkflowRun(input: unknown, session: SessionInput, d
   // it: `publishBlocked` answers "how do the cards publish", `admitApprovalBoundT3` answers "may a T3
   // stage enter at all". Both must hold, so an unmanaged caller still cannot reach T3.
   const validated = validateWorkflowRunRequest(input, {
-    admitApprovalBoundT3: deps.publishBlocked === true && deps.admitApprovalBoundT3 !== false,
+    admitApprovalBoundT3: deps.publishBlocked === true && deps.admitApprovalBoundT3 === true,
   });
   if (!validated.ok) return { ok: false, reason: 'invalid-workflow', detail: validated.detail };
 

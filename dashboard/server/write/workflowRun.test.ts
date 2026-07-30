@@ -138,7 +138,17 @@ describe('workflow-run v1 schema', async () => {
       }),
       stderr: '',
     }));
-    expect(await launchWorkflowRun(t3, session(), deps(runPy, { publishBlocked: true }))).toMatchObject({ ok: true });
+    expect(await launchWorkflowRun(t3, session(), deps(runPy, { publishBlocked: true, admitApprovalBoundT3: true })))
+      .toMatchObject({ ok: true });
+    // Card-publication mode alone does NOT confer T3 admission: admitApprovalBoundT3 is a hard opt-in, so a
+    // future managed-mode caller cannot inherit the right to admit an upload stage by turning publication off.
+    const publishBlockedOnly = vi.fn(() => ({ exitCode: 0, stdout: '{}', stderr: '' }));
+    expect(await launchWorkflowRun(t3, session(), deps(publishBlockedOnly, { publishBlocked: true }))).toMatchObject({
+      ok: false,
+      reason: 'invalid-workflow',
+      detail: 'stages[0].riskTier must be T1 or T2; T3 requires the approvals path',
+    });
+    expect(publishBlockedOnly).not.toHaveBeenCalled();
     // Without managed mode — the shape every non-approvals caller has — the same request is refused before
     // any card operation runs.
     const unmanaged = vi.fn(() => ({ exitCode: 0, stdout: '{}', stderr: '' }));
