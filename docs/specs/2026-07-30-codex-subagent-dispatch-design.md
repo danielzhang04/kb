@@ -52,44 +52,61 @@ CLI:
 
 ```
 py -3 scripts/codex_dispatch.py --prompt-file <path> [--model <alias|id>] [--effort <tier>]
-    [--cwd <dir>] [--sandbox read-only|workspace-write] [--worktree]
-    [--project <org>] [--label <short-slug>]
+    [--timeout <seconds>] [--cwd <dir>] [--sandbox read-only|workspace-write] [--worktree]
+    [--project <org>] [--label <short-slug>] [--follow-up <thread-id>]
 ```
 
 Flow, in order:
 
-1. **Gates** (all before any spawn): `STOP` file absent; `governance/budget.yaml` daily check
-   (reuse `scripts/preamble.py` logic by import or subprocess); billing guard — refuse if
+1. **Gates** (all before any spawn): `STOP` file absent; billing guard — refuse if
    `OPENAI_API_KEY` or `CODEX_API_KEY` is set in the environment, and require
-   `codex login status` exit 0 (subscription only, never metered fallback; same law as
-   `agent_runner.ps1:167-194`).
+   `codex login status` exit 0 within 15s (subscription only, never metered fallback; same law
+   as `agent_runner.ps1:167-194`). No budget-cost gate: every dispatch's cost row is
+   structurally `usd 0.0` (subscription billing), so a cost check here would measure nothing;
+   API spend is governed per-run by card authorization, not this script.
 2. **Model resolution** via `scripts/routing.py` (`known_models` + aliases,
    `governance/model-routing.yaml` precedence). Unknown model/alias → exit non-zero with the
    routing error, nothing spawned. `--model` omitted → runtime codex default. `--effort` is a
-   script-layer dial passed as `-c model_reasoning_effort=...`; it never enters routing.
+   script-layer dial passed as `-c model_reasoning_effort=...`; it never enters routing. On
+   `--follow-up <thread-id>`, `--worktree`/`--sandbox`/`--cwd` refuse loudly (the resumed
+   session keeps its own); `--model` is still resolved and pinned onto the resumed session via
+   `-c model=<id>` — a `codex exec resume` otherwise silently keeps whatever model the CLI
+   defaults to, not the original turn's.
 3. **Spool** a crash-trace JSON (dispatch id, model, prompt path, cwd, start time) to
    `%LOCALAPPDATA%\kb-codex-dispatch\spool\<id>.json` (precedent: `kb-agent-runner.log`).
 4. **Worktree (opt-in):** `--worktree` creates `git worktree add --detach` from current HEAD
    under `%LOCALAPPDATA%\kb-codex-dispatch\worktrees\<id>` and uses it as cwd. The script never
    removes it; the calling terminal harvests and sweeps it (worktrees-are-leases law).
 5. **Spawn** `codex exec - --model <id> --json --output-last-message <out.md> --cd <cwd>
-   -s <sandbox> [-c model_reasoning_effort=<effort>]`, prompt piped to stdin, JSONL stream
-   captured to `%LOCALAPPDATA%\kb-codex-dispatch\logs\<id>.jsonl`. Wait for exit.
+   -s <sandbox> [-c model_reasoning_effort=<effort>]` (or `codex exec resume <thread-id> - --json
+   --output-last-message <out.md> -c model=<id>` on `--follow-up`), prompt piped to stdin, JSONL
+   stream captured to `%LOCALAPPDATA%\kb-codex-dispatch\logs\<id>.jsonl`. Waits up to
+   `--timeout` seconds (default 2700 = 45 min) via `Popen`/`communicate`; on timeout,
+   `taskkill /PID <pid> /T /F` and exit code `124`.
 6. **Card** built with `scripts/cards.py` primitives: `runtime: codex`, resolved `model:`,
    `owner: codex-worker`, `execution-controller: terminal`, `session-id` from the dispatching
    terminal (env `CLAUDE_SESSION_ID` if present, else the dispatch id), `risk-tier: T1`
    (fixed — a direct dispatch is ordinary supervised work; higher-tier work goes through the
-   governed paths, not this one). Body: `## Work order` = the prompt file content; `## Result` = the
-   output-last-message content (success) or exit code + JSONL log path (failure). Final state:
-   `done` on exit 0, `halted` otherwise — reached through legal transitions in-memory.
-7. **Ledger**: cost row (usd 0.0, `billing: subscription`, model id read back from the JSONL
-   stream) sharded `ledgers/cost/codex-direct-<date>.tsv`, same columns as existing cost shards.
-8. **Ops publish, best-effort**: one commit containing card + ledger row. Dance: fetch
-   `origin/ops` → temp detached worktree → write files → commit → `git push origin <sha>:ops`;
-   one rebase-retry on reject; on second failure the card stays spooled and the failure is
-   printed loudly. Publish failure NEVER fails the dispatch.
-9. **Stdout** (the notification payload): result text, then a short footer — card id, model
-   actually run, duration, log path, worktree path if any, publish status.
+   governed paths, not this one), `workflow:` the parsed `thread_id` (null on parse failure).
+   Body: `## Work order` = the prompt file content, `## Result` = the output-last-message
+   content (success) or `FAILED: ...` + exit code/timeout + JSONL log path (failure) — both
+   heading-escaped so an embedded `## Result`/`## Work order` in the prompt or result text can't
+   confuse a section parser. Final state is always `done`: failure lives in the Result text and
+   the ledger's `codex_exit` field, never a distinct terminal state.
+7. **Ledger**: cost row (usd 0.0, `billing: subscription`, resolved model id — never a
+   JSONL read-back, since the model is now always pinned by the script itself) sharded
+   `ledgers/cost/codex-direct-<date>.tsv`, same columns as existing cost shards.
+8. **Ops publish, best-effort**: one commit containing card + ledger row, verified landed.
+   Up to 3 attempts, each: fetch `origin/ops` → reset (or create) a temp detached worktree onto
+   it → write card + ledger row → commit → push `HEAD:refs/heads/ops` → `git ls-remote` confirms
+   the pushed sha actually landed before reporting success. No `pull --rebase` anywhere — a
+   rejected push means the whole record is rebuilt on fresh `origin/ops`, never merged with a
+   stale local copy, so a same-second concurrent writer can never be silently overwritten. After
+   3 failed attempts the card stays spooled locally and the failure is printed loudly. Publish
+   failure NEVER fails the dispatch.
+9. **Stdout** (the notification payload): result text (UTF-8, so non-ASCII glyphs in a worker's
+   answer never crash the print), then a short footer — card id, model actually run, duration,
+   log path, worktree path if any, publish status, session id when a thread id was parsed.
 
 ### 2. `dispatch-codex` skill (new, thin)
 
@@ -110,10 +127,13 @@ with no `execution-controller` value* — exact-string arbitration, the pattern
 (`dashboard`) both become unclaimable by the legacy runner. Update `tests/test_agent_runner.py`
 shape assertions accordingly.
 
-### 4. MCP short-call lane (config only)
+### 4. MCP short-call lane (`scripts/codex_mcp_guard.py`, new + config)
 
-Add `codex` → `codex mcp-server` (stdio) to kb's project `.mcp.json`. Blocking inline lane for
-short asks; documented in the skill's "when NOT to dispatch" line. Nothing else built.
+`.mcp.json`'s `codex` server launches `py -3 scripts/codex_mcp_guard.py` instead of
+`codex mcp-server` directly, so the lane is billing-guarded the same way as the dispatch script:
+refuse (exit 2) if `OPENAI_API_KEY`/`CODEX_API_KEY` is set, else exec `codex mcp-server` with
+stdio inherited. Blocking inline lane for short asks, writes no card; documented in the skill's
+"when NOT to dispatch" line.
 
 ### 5. HUMAN GATE — governance edits (Daniel applies)
 
@@ -145,18 +165,20 @@ Claude terminal                          codex_dispatch.py (background child)
 
 | Failure | Behavior |
 | --- | --- |
-| STOP file / budget / billing guard | Refuse pre-spawn, non-zero exit, reason on stdout |
+| STOP file / billing guard | Refuse pre-spawn, non-zero exit, reason on stdout |
 | Unknown model or alias | Refuse pre-spawn with routing error (fail-loud, no substitute) |
-| `codex exec` non-zero exit | Card `halted`, Result = exit code + JSONL log path; notification says FAILED |
-| Ops push fails twice | Card + row stay spooled locally; loud warning in footer; dispatch still succeeds |
+| `codex exec` non-zero exit, or timeout (124) | Card still `done`; Result = `FAILED: ...` + exit code/timeout + JSONL log path; notification says FAILED |
+| Ops push rebuilt 3x, none verified landed | Card + row stay spooled locally; loud warning in footer; dispatch still succeeds |
 | Machine dies mid-run | Spool file is the trace; no card (record-not-gate accepted trade-off) |
 | Parallel dispatches | Independent children, ids, cards, log files; no shared state |
 
 ## Testing
 
 - `tests/test_codex_dispatch.py` (pytest, subprocess mocked): gate refusals (STOP, billing env,
-  unknown model), card shape + legal state transitions, ledger row shape, ops-dance command
-  sequence, spool lifecycle, failure paths.
+  unknown model), card shape + the always-`done` state walk, ledger row shape, rebuild-publish
+  command sequence (incl. the ls-remote-mismatch-is-not-"pushed" case), spool lifecycle,
+  timeout/taskkill, follow-up model pinning, failure paths.
+- `tests/test_codex_mcp_guard.py`: billing refusal, clean-env exec path.
 - `tests/test_agent_runner.py`: updated filter assertion (claims only unstamped cards).
 - Live smoke (manual, subscription $0): trivial read-only dispatch from a real terminal —
   proves background + notification + card on ops end-to-end. This is the acceptance test.
