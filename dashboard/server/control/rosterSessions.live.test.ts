@@ -17,12 +17,13 @@
  * their own `repoRoot`, so a stray write lands in the fixture and dies with it.
  */
 import { spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 
-import { buildRosterPermissionSettings } from './rosterSessions.ts';
+import { buildRosterPermissionSettings, detectReplReadiness, stripTerminalControl } from './rosterSessions.ts';
 
 const LIVE = process.env.ROSTER_LIVE_PERM_TEST === '1';
 // NOT via a shell: on Windows `shell: true` concatenates argv without quoting, which truncates the
@@ -57,6 +58,23 @@ function fixture(): { repoRoot: string; agentDir: string; settingsPath: string }
   writeFileSync(join(agentDir, 'binding.md'), '# binding\n\nYou are fyt-story.\n');
   return { repoRoot, agentDir, settingsPath: join(root, 'settings.json').replace(/\\/g, '/') };
 }
+
+interface PtyLike { onData(cb: (d: string) => void): void; kill(): void; }
+interface PtyModule { spawn(file: string, args: string[], opts: Record<string, unknown>): PtyLike; }
+
+/**
+ * node-pty, loaded lazily so the file imports even where the native ConPTY addon is not built. The
+ * interactive regression below is the ONLY thing that needs it; a missing addon skips that case cleanly.
+ */
+function loadPty(): PtyModule | null {
+  try {
+    return createRequire(import.meta.url)('node-pty') as PtyModule;
+  } catch {
+    return null;
+  }
+}
+
+const delay = (ms: number) => new Promise<void>((resolve) => { setTimeout(resolve, ms); });
 
 /** One headless turn under an exact settings file. `-p` cannot prompt, so a refusal surfaces as data. */
 function runHeadless(cwd: string, settingsPath: string, prompt: string): HeadlessRun {
@@ -115,4 +133,62 @@ describe.skipIf(!LIVE)('roster permission settings against a live claude (gated)
       || /deni|blocked|not permitted|permission/i.test(run.result);
     expect(blocked).toBe(true);
   });
+
+  /**
+   * THE INTERACTIVE REGRESSION — the one the `-p` cases structurally cannot catch. Headless mode skips
+   * every interactive prompt, so it never sees the first-launch Bypass-Permissions acceptance modal that
+   * stalled the idea stage: the roster substrate is an INTERACTIVE REPL, delivery TYPES a line into it,
+   * and the bug was `detectReplReadiness` green-lighting that type into the acceptance modal (whose menu
+   * columns are cursor moves, so it read as a non-empty, menu-free, busy-marker-free "ready" frame). The
+   * order was consumed by the menu and no turn began.
+   *
+   * This drives a REAL `claude` under a pty with the verbatim generated settings in a FRESH project dir
+   * and feeds its actual output through the same `stripTerminalControl` + `detectReplReadiness` the daemon
+   * uses. The invariant, whichever config state the box is in:
+   *   - If the acceptance modal appears (config has not recorded acceptance), readiness must NEVER reach
+   *     `ready` while it is up — the gate must refuse to type, so the delivery parks instead of swallowing.
+   *   - If the modal does NOT appear (acceptance already recorded — the pipeline's normal state), the REPL
+   *     comes up and readiness MUST reach `ready`, proving the launch lands directly at the input line.
+   * Either way the classifier reaches a DECIDED state — never an indefinite silent "running" stall.
+   */
+  it('never green-lights a type into the first-launch acceptance modal (interactive)', async () => {
+    const pty = loadPty();
+    if (!pty) return; // native ConPTY addon absent — the headless cases still cover the rule grammar.
+    const { repoRoot, agentDir, settingsPath } = fixture();
+    const settings = buildRosterPermissionSettings({
+      repoRoot, agentDir,
+      read: ['orgs/faceless-youtube'], write: ['orgs/faceless-youtube/channels'],
+      tools: ['Read', 'Write', 'Edit', 'Glob', 'Grep'],
+    });
+    // Verbatim: the exact bytes a roster session boots with, `defaultMode: bypassPermissions` included.
+    writeFileSync(settingsPath, settings.json);
+
+    const term = pty.spawn(CLAUDE, ['--model', 'claude-sonnet-4-5', '--settings', settingsPath], {
+      name: 'xterm-color', cols: 120, rows: 40, cwd: repoRoot, env: process.env,
+    });
+    let screen = '';
+    let everReady = false;
+    let sawModal = false;
+    let sawFooter = false;
+    term.onData((chunk) => {
+      screen = (screen + stripTerminalControl(chunk)).slice(-8000);
+      const state = detectReplReadiness(screen).state;
+      if (state === 'ready') everReady = true;
+      if (/Bypass\s*Permissions\s*mode/i.test(screen)) sawModal = true;
+      if (/shift\s*\+?\s*tab\s*to\s*cycle/i.test(screen)) sawFooter = true;
+    });
+    // Long enough for the modal to draw or the REPL to come up; the CLI is never sent a keystroke.
+    await delay(20_000);
+    term.kill();
+
+    // Something rendered — otherwise the assertions below are vacuous.
+    expect(screen.length, `claude produced no interactive output; screen=${JSON.stringify(screen.slice(-400))}`).toBeGreaterThan(0);
+    if (sawModal && !sawFooter) {
+      // The acceptance modal is up and unanswered: the gate MUST NOT have called it ready.
+      expect(everReady, 'readiness reached READY while the acceptance modal was on screen — a delivered order would be swallowed').toBe(false);
+    } else {
+      // Acceptance already recorded: the REPL came up, so readiness MUST have reached ready.
+      expect(everReady, `no acceptance modal, but readiness never reached READY; screen=${JSON.stringify(screen.slice(-400))}`).toBe(true);
+    }
+  }, 30_000);
 });
