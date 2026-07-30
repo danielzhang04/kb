@@ -274,6 +274,12 @@ function fakeFs(existing: string[] = [], seed: { directories?: string[]; content
   };
 }
 
+/**
+ * A settled REPL frame: the idle input box, with no menu and no spinner on it. Emitted into every
+ * freshly spawned test terminal because readiness now requires evidence that SOMETHING is alive there.
+ */
+const IDLE_FRAME = '╭───╮\r\n│ >  │\r\n╰───╯\r\n';
+
 function harness(options: {
   plan?: PlanProposal;
   existingPaths?: string[];
@@ -284,6 +290,11 @@ function harness(options: {
   /** Runs on every readiness-backoff sleep, so a test can change what is on screen between polls. */
   onSleep?: (elapsedMs: number) => void;
   seed?: { directories?: string[]; contents?: Record<string, string> };
+  /**
+   * Leave freshly spawned terminals SILENT — nothing on screen at all, which is what a terminal that
+   * has not yet booted `claude` looks like. Off by default: see {@link IDLE_FRAME}.
+   */
+  coldTerminals?: boolean;
 } = {}) {
   const plan = options.plan ?? proposalFixture();
   const store = createInMemoryControlPlaneStore({ newId: () => `id-${++sequence}` });
@@ -316,7 +327,23 @@ function harness(options: {
     ...(options.deliveryTimeoutMs === undefined ? {} : { deliveryTimeoutMs: options.deliveryTimeoutMs }),
     ...(options.replReadyTimeoutMs === undefined ? {} : { replReadyTimeoutMs: options.replReadyTimeoutMs }),
   });
-  return { plan, store, runRef, registry, host, fs, sessions, resolve, sleeps };
+  // A spawned terminal is stood up at a settled prompt unless the test asked for a cold one. An empty
+  // screen is no longer `ready` — it is the "the REPL never came up" case — so a fixture that spawns and
+  // immediately delivers would otherwise be testing the cold-start park rather than what it means to.
+  // This mirrors reality: a real pty answers within milliseconds of the launch line.
+  const spawned: RosterSessionManager = {
+    ...sessions,
+    ensureRoster(input) {
+      const result = sessions.ensureRoster(input);
+      if (!options.coldTerminals) {
+        for (const row of sessions.state(input.subject, input.runRef)) {
+          if (row.sessionId) host.emit(row.sessionId, IDLE_FRAME);
+        }
+      }
+      return result;
+    },
+  };
+  return { plan, store, runRef, registry, host, fs, sessions: spawned, resolve, sleeps };
 }
 
 function stageOf(plan: PlanProposal, stageId: string): ProposalStage {
@@ -1335,7 +1362,10 @@ describe('roster REPL-readiness gate', () => {
     expect(detectReplReadiness('\u273b Nebulizing\u2026 (3s \u00b7 thinking)')).toMatchObject({ state: 'busy' });
     expect(detectReplReadiness('\u273b Herding\u2026 \u2193 25 tokens \u00b7 thinking)')).toMatchObject({ state: 'busy' });
     expect(detectReplReadiness('\u256d\u2500\u2500\u2500\u256e\n\u2502 >  \u2502\n\u2570\u2500\u2500\u2500\u256f')).toEqual({ state: 'ready' });
-    expect(detectReplReadiness('')).toEqual({ state: 'ready' });
+    // An EMPTY screen is not an idle screen \u2014 it is a terminal that has said nothing at all, which is
+    // what a shell that has not yet booted `claude` looks like. It used to classify `ready`.
+    expect(detectReplReadiness('')).toMatchObject({ state: 'silent' });
+    expect(detectReplReadiness('\r\n   \r\n')).toMatchObject({ state: 'silent' });
     // An answered menu stops matching once the REPL has redrawn past it.
     const scrolled = `Do you want to proceed?\n${Array.from({ length: 40 }, (_, index) => `line ${index}`).join('\n')}\n> `;
     expect(detectReplReadiness(scrolled)).toEqual({ state: 'ready' });
@@ -1407,6 +1437,48 @@ describe('roster REPL-readiness gate', () => {
     expect(result.state).toBe('waiting-human');
     expect(result.summary).toContain('mid-turn');
     expect(result.summary).toContain(DELIVERY_NOT_READY_REASON);
+  });
+
+  it('never types a work order into a terminal that has produced no output at all', async () => {
+    // The daemon-restart resume path re-spawns the WHOLE roster, and a delivery in that window used to
+    // be typed into a shell that had not yet booted `claude` — the failure this module's header names.
+    const { plan, store, sessions, runRef, host, fs } = harness({ coldTerminals: true, replReadyTimeoutMs: 60_000 });
+    sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    const sessionId = sessionIdFor(sessions, runRef, 'fyt-story');
+    succeedStage(store, runRef, 'idea');
+    resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
+    const written = host.writes.get(sessionId)?.length ?? 0;
+
+    const result = await sessions.deliver(deliverInput(store, runRef, plan, 'story'));
+
+    expect(result.state).toBe('waiting-human');
+    expect(result.summary).toContain(DELIVERY_NOT_READY_REASON);
+    expect(result.summary).toContain('no output at all');
+    // Nothing typed, nothing authored: the order never left the control plane.
+    expect(host.writes.get(sessionId)).toHaveLength(written);
+    expect(fs.files.has(`/state/control/roster/${runRef}/fyt-story/orders/story.md`)).toBe(false);
+  });
+
+  it('delivers as soon as a cold terminal produces its first output', async () => {
+    let sessionId = '';
+    let liveHost: ReturnType<typeof fakeHost> | null = null;
+    const item = harness({
+      coldTerminals: true,
+      replReadyTimeoutMs: 60_000,
+      // The REPL finishes booting between polls: silence is a RETRY, not a park.
+      onSleep: (elapsed) => { if (elapsed >= 250 && liveHost && sessionId) liveHost.emit(sessionId, IDLE_FRAME); },
+    });
+    liveHost = item.host;
+    item.sessions.ensureRoster({ subject: 'operator', runRef: item.runRef, proposal: item.plan });
+    sessionId = sessionIdFor(item.sessions, item.runRef, 'fyt-story');
+    succeedStage(item.store, item.runRef, 'idea');
+    resolveGate(item.store, item.runRef, 'story', 'g0-idea-pick', 'approved');
+
+    const pending = item.sessions.deliver(deliverInput(item.store, item.runRef, item.plan, 'story'));
+    const orderPath = `/state/control/roster/${item.runRef}/fyt-story/orders/story.md`;
+    await vi.waitFor(() => { expect(item.fs.files.has(orderPath)).toBe(true); });
+    item.host.emit(sessionId, `FYT-STAGE-DONE story ${'0'.repeat(31)}1 delivered once the REPL came up\r\n`);
+    await expect(pending).resolves.toMatchObject({ state: 'succeeded' });
   });
 
   it('keeps the marker deadline as the OUTER bound on the readiness wait', async () => {

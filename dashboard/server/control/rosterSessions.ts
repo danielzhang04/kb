@@ -451,7 +451,9 @@ const BUSY_MARKERS: readonly RegExp[] = [
 export type ReplReadiness =
   | { state: 'ready' }
   | { state: 'modal'; marker: string }
-  | { state: 'busy'; marker: string };
+  | { state: 'busy'; marker: string }
+  /** Nothing has come back from this terminal at all — see {@link detectReplReadiness}. */
+  | { state: 'silent'; marker: string };
 
 /** The current frame: the last non-empty lines of the tail, which is all a redrawing REPL leaves true. */
 function currentFrame(tail: string): string {
@@ -474,9 +476,22 @@ function currentFrame(tail: string): string {
  * swallowed order for a total outage. Refusing on a RECOGNISED blocker and defaulting to ready is the
  * safe direction: an unrecognised idle frame behaves exactly as it does today, and every blocker this
  * pipeline has actually hit is recognised.
+ *
+ * WITH ONE EXCEPTION: AN EMPTY FRAME IS NOT AN IDLE FRAME. `entry.screen` starts empty and only fills
+ * from `scan`, so "nothing at all" used to classify `ready` — and the window where that is true is
+ * exactly the window this gate exists for. `ensureRoster` re-spawns the WHOLE roster on the
+ * daemon-restart resume path, and a delivery that arrives in the same tick would be typed into a shell
+ * that has not yet booted `claude`: the "a REPL that never came up and a delivery line typed into a bare
+ * shell prompt" failure this module's header names. Silence is now not-ready, and the caller retries
+ * under its existing bound, so the cost of the change is a few hundred ms of backoff on a cold session.
+ *
+ * This is a FLOOR, not a proof: a pty echoes the launch line, so the first bytes back may be the shell's
+ * own echo rather than a booted REPL. It closes the empty-screen hole and nothing more — a positive
+ * "the REPL is up" detector is the thing this function deliberately refuses to become.
  */
 export function detectReplReadiness(tail: string): ReplReadiness {
   const frame = currentFrame(tail);
+  if (frame === '') return { state: 'silent', marker: 'no output yet' };
   for (const pattern of MODAL_MARKERS) {
     const match = pattern.exec(frame);
     if (match) return { state: 'modal', marker: match[0].trim().slice(0, 80) };
@@ -1259,6 +1274,22 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
     // roster's tokens are already dead (every pending delivery settled above, every session closed), so
     // keeping the directory is a needless durable copy of them. A resume re-authors both from the
     // immutable proposal, so nothing here is load-bearing state.
+    //
+    // TODO(roster-boot-sweep): this is the ONLY thing that deletes a roster directory, and it runs only
+    // on a graceful path — `retireAll` from daemon shutdown (`http/surface.ts`) and from an operator
+    // `lock()` (`activation.ts`). A SIGKILL or power loss therefore leaves `<stateRoot>/control/roster/
+    // <runRef>/<agentId>/{settings.json,binding.md,orders/*.md}` on disk indefinitely, tokens included.
+    // The close is a boot sweep of roster dirs with no live run, which needs three things this file does
+    // not have yet: (1) a `listDirs(path): string[]` member on {@link RosterFileSystem} (real impl:
+    // `readdirSync(path, { withFileTypes: true })`, absent dir → `[]`), so tests keep their disk-free
+    // seam; (2) a call in `createRosterSessionManager` — NOT unconditional: `runs` is empty at
+    // construction, so a naive sweep would delete a LIVE run's order channel if the manager is ever
+    // reconstructed while another instance holds sessions (`activateExecution` is re-entrant across an
+    // unlock). Gate it on the store: sweep a `<runRef>` only when `store.getRun` says the run is in a
+    // terminal state or is unknown. (3) One test per branch. Deliberately NOT done in this pass: the
+    // orphan itself is inert (a settings file is only read by a process launched with `--settings` at
+    // that exact path, and `scan` matches only the LIVE `pending.token`), and getting (2) wrong loses a
+    // running roster's orders — a strictly worse failure than the leak it closes.
     try { fs.removeDir?.(runDir(runRef)); } catch { /* a locked file must never block the reap */ }
     return retired;
   };
@@ -1366,7 +1397,9 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
         // This settles as a named human wait, never as a hang and never as a silent success.
         const detail = readiness.state === 'modal'
           ? `an interactive prompt is open ("${readiness.marker}")`
-          : `it is still mid-turn ("${readiness.marker}")`;
+          : readiness.state === 'silent'
+            ? 'it has produced no output at all — the REPL may never have come up'
+            : `it is still mid-turn ("${readiness.marker}")`;
         const summary = `work order withheld: the ${agentId} terminal was not at a REPL prompt within `
           + `${Math.max(1, Math.round(readinessBudget / 60_000))} min — ${detail} (${DELIVERY_NOT_READY_REASON}); `
           + 'answer or clear it in that terminal, then re-run the stage';
