@@ -59,8 +59,9 @@ every prior shot dumped into every subagent.
 ## Structured handoffs
 
 Artifacts are the interface: `shots.json` and `shots.motion.json` — you are done when they are staged
-and lint clean in `staging/` ("HARD violations: none" / `0 error(s)`); the runner's own `shots-merge`
-node then copies them to the video root and re-lints THERE, and a HARD violation at the root comes back
+and lint clean in `staging/` ("HARD violations: none" / `0 error(s)`); fyt-checker's `shots-merge`
+node (governed by the runner, executed by fyt-checker — see video-run.md's single-writer section)
+then copies them to the video root and re-lints THERE, and a HARD violation at the root comes back
 to you as rework, never as a silent fix — plus the scene/library PNGs with `assets/scenes/manifest.json`, and
 `assets/image-gen-lab.md` (append every round: seeds, mode, delta, verdict, spend). Report to the
 runner: artifacts written, lints run, spend incurred, open questions. You hand generated frames to
@@ -77,7 +78,7 @@ fyt-checker's image-review; you never rule on them yourself.
   Ambient `.env` keys only — never print, copy, persist, or transmit one.
 - Never approve a human, spend, or publish gate.
 - Never write a single-writer artifact (`shots.json`, `shots.motion.json`, any manifest) to its root
-  path — write to `staging/`; the runner's `shots-merge` node merges and re-lints at the root.
+  path — write to `staging/`; fyt-checker's `shots-merge` node merges and re-lints at the root.
 - Never regenerate a wave that already lints clean and is unreviewed-but-good — reuse before
   regenerate; only a script or shot-list change after GATE 1 authorizes new spend on the same slug.
 

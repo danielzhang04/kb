@@ -50,7 +50,15 @@ def _entry(shot_id, **extra):
     return e
 
 
-def _write_video_dir(base: Path, rulings, manifest):
+def _write_video_dir(base: Path, rulings, manifest, schema=stamp_review._SHOTS_SCHEMA_V1):
+    """`schema`: MEDIUM-4 made a MISSING shots.json fail-closed (`require_dsg=True`), so every one
+    of this file's many pre-existing callers that only mean to exercise ruling/manifest mechanics
+    (not that behaviour specifically) would otherwise start requiring a `dsg` checklist their
+    fixtures never carry. Default here writes a minimal companion shots.json declaring an EXPLICIT
+    v1 — the legacy, dsg-optional path — so those callers are unaffected. A caller that already
+    wrote its OWN shots.json first (`_write_shots_json`, or directly, as the MEDIUM-4 tests do) is
+    never overwritten. Pass `schema=None` to skip writing one at all (the "isolated caller, truly
+    no shots.json" case those same tests need)."""
     review_dir = base / "assets" / "_review"
     scenes_dir = base / "assets" / "scenes"
     review_dir.mkdir(parents=True)
@@ -59,6 +67,9 @@ def _write_video_dir(base: Path, rulings, manifest):
         json.dumps(rulings, ensure_ascii=False, indent=1), encoding="utf-8")
     (scenes_dir / "manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=1), encoding="utf-8")
+    shots_path = base / "shots.json"
+    if schema is not None and not shots_path.exists():
+        shots_path.write_text(json.dumps({"schema": schema}), encoding="utf-8")
     return scenes_dir / "manifest.json"
 
 
@@ -232,6 +243,32 @@ def test_a_ruling_with_at_least_one_axis_still_gets_the_missing_axis_default():
     still gets the "missing axis defaults to clean" convenience for the others."""
     status, reasons = stamp_review.classify({"id": "L6", "f": "clean"})
     assert status == "verified", (status, reasons)
+
+
+# --------------------------------------------------------------------------- #
+# MEDIUM-4 (audit follow-up) — `_is_clean` must not trust `worst` alone: a clean aggregate next to
+# an explicitly non-clean axis is the defect written down and ignored, not silence.
+# --------------------------------------------------------------------------- #
+def test_worst_clean_but_an_axis_says_high_parks_not_verifies():
+    """The reproduction from the audit: `{'id': 'L5', 'worst': 'clean', 'f': 'HIGH'}` used to
+    classify as clean because `worst` short-circuited before the axes were ever read."""
+    status, reasons = stamp_review.classify({"id": "L5", "worst": "clean", "f": "HIGH"})
+    assert status == "parked", (status, reasons)
+    assert any("fidelity: HIGH" in x for x in reasons), reasons
+
+
+def test_worst_clean_but_style_axis_non_clean_parks():
+    status, reasons = stamp_review.classify({"id": "L7", "worst": "clean", "s": "LOW"})
+    assert status == "parked", (status, reasons)
+    assert any("style: LOW" in x for x in reasons), reasons
+
+
+def test_worst_clean_and_every_present_axis_clean_still_verifies():
+    """Regression guard: the fix must not park a genuinely clean ruling that names its axes."""
+    status, reasons = stamp_review.classify(
+        {"id": "L8", "worst": "clean", "f": "clean", "s": "clean", "r": "clean"})
+    assert status == "verified", (status, reasons)
+    assert reasons == [], reasons
 
 
 # --------------------------------------------------------------------------- #
@@ -420,18 +457,55 @@ def test_main_typo_schema_in_shots_json_requires_dsg():
         assert e["review_status"] == "parked", e
 
 
-def test_main_no_shots_json_at_all_stays_a_noop():
-    """No shots.json is not a real pipeline state (VPW always writes one first) — only an
-    isolated/test invocation hits this, and it must not silently change behaviour for every
-    existing caller that never had an opinion on schema version."""
+def test_main_no_shots_json_at_all_now_requires_dsg_and_parks():
+    """MEDIUM-4 (audit follow-up): this used to be documented as a permanent no-op — "not a real
+    pipeline state... defaulting False keeps this a no-op". That was FAILING OPEN on the one
+    signal this function reads: a missing shots.json is unknown schema, not legacy schema, and an
+    isolated caller with no shots.json at all must now park for want of a `dsg` checklist, the
+    same as a real run whose shots.json is missing/typo'd v2, rather than silently verify."""
     with tempfile.TemporaryDirectory() as td:
         base = Path(td)
         mpath = _write_video_dir(
             base, [_ruling("L01", "clean")],
-            {"video_slug": "t", "generated": "2026", "notes": "", "shots": [_entry("L01")]})
+            {"video_slug": "t", "generated": "2026", "notes": "", "shots": [_entry("L01")]},
+            schema=None)
         stamp_review.main([str(base)])
         e = _read(mpath)["shots"][0]
-        assert e["review_status"] == "verified", e
+        assert e["review_status"] == "parked", e
+        assert any("dsg" in x for x in e["parked_reasons"]), e
+
+
+def test_require_dsg_for_missing_shots_json_is_true():
+    """Unit-level companion to the e2e test above, exercising `_require_dsg_for` directly."""
+    with tempfile.TemporaryDirectory() as td:
+        assert stamp_review._require_dsg_for(Path(td)) is True
+
+
+def test_require_dsg_for_non_utf8_shots_json_fails_closed_not_a_crash():
+    """LOW-8 (audit follow-up): `UnicodeDecodeError` was missing from the except tuple, and the
+    call sits outside `main()`'s own try/except, so a mojibake'd shots.json raised a raw
+    traceback instead of a controlled, fail-closed answer. Write a shots.json with a byte
+    sequence that is not valid UTF-8 and confirm `_require_dsg_for` returns True (fail-closed —
+    same conservative answer as a missing file) instead of raising."""
+    with tempfile.TemporaryDirectory() as td:
+        base = Path(td)
+        (base / "shots.json").write_bytes(b'{"schema": "faceless-youtube/shots@2", "bad": "\xff\xfe"}')
+        assert stamp_review._require_dsg_for(base) is True
+
+
+def test_main_non_utf8_shots_json_parks_instead_of_crashing():
+    """End-to-end companion: the CLI must not crash on a mojibake'd shots.json — it fails closed
+    (requires dsg) exactly like a missing file, and a ruling with no dsg checklist parks."""
+    with tempfile.TemporaryDirectory() as td:
+        base = Path(td)
+        (base / "shots.json").write_bytes(b'{"schema": "\xff\xfe-not-utf8"}')
+        mpath = _write_video_dir(
+            base, [_ruling("L01", "clean")],
+            {"video_slug": "t", "generated": "2026", "notes": "", "shots": [_entry("L01")]})
+        rc = stamp_review.main([str(base)])
+        assert rc == 0, rc
+        e = _read(mpath)["shots"][0]
+        assert e["review_status"] == "parked", e
 
 
 # --------------------------------------------------------------------------- #

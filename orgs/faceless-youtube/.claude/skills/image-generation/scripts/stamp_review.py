@@ -49,18 +49,29 @@ def _require_dsg_for(video_dir: Path) -> bool:
     `<video_dir>/shots.json`'s `schema` field the same fail-closed way lint_shots.py's HIGH-5 fix
     reads it: only an EXPLICIT `_SHOTS_SCHEMA_V1` earns the legacy no-op path.
 
-    A video directory with NO shots.json at all is not a real pipeline state — VPW always writes
-    it before image-generation runs, so by the time this script runs it is guaranteed present —
-    it only happens in an isolated/test invocation that never set one up. Defaulting False there
-    (rather than fail-closed True) keeps this a no-op for that case instead of silently changing
-    behaviour for every caller that has no opinion on schema version at all."""
+    MEDIUM-4 (audit follow-up): a missing or unreadable shots.json used to return False here —
+    "don't require the checklist" — which is FAILING OPEN on exactly the signal this function
+    exists to read. The prior rationale ("VPW always writes shots.json before image-generation
+    runs, so a missing file only happens in an isolated/test invocation with no opinion on schema
+    version") is true, but "no opinion" is not a reason to default to the LENIENT reading — the
+    same fail-closed law HIGH-5 applies to an unreadable/missing schema KEY applies one level up
+    to an unreadable/missing schema FILE: absent or unreadable means require the checklist, the
+    same as a present-but-wrong-or-missing `schema` value does. An isolated caller with no
+    shots.json now has its ruling(s) PARK for want of a `dsg` checklist rather than silently
+    verify — it can supply a real shots.json (or an explicit v1 one) if it wants the legacy path.
+
+    LOW-8 (audit follow-up): `UnicodeDecodeError` was missing from the except tuple, and this
+    call sits outside `main()`'s own try/except, so a mojibake'd (non-UTF-8) shots.json raised a
+    raw traceback instead of a named, controlled refusal. Folded into the same fail-closed
+    branch as a missing file: an unreadable plan gets the same conservative answer as an absent
+    one, and the caller never sees an unhandled exception."""
     shots_path = video_dir / "shots.json"
     if not shots_path.exists():
-        return False
+        return True
     try:
         schema = json.loads(shots_path.read_text(encoding="utf-8")).get("schema")
-    except (json.JSONDecodeError, AttributeError, OSError):
-        schema = None
+    except (json.JSONDecodeError, AttributeError, OSError, UnicodeDecodeError):
+        return True
     return schema != _SHOTS_SCHEMA_V1
 
 
@@ -136,18 +147,29 @@ def _is_clean(ruling: dict, require_dsg: bool = False) -> bool:
     summarizing — and a frame whose adherence check FAILED must never reach the render gate because
     a summary field said `clean`. The items are the evidence; the aggregate is the opinion.
 
+    MEDIUM-4 (audit follow-up): `worst` used to be trusted ALONE and short-circuit the axes —
+    `{"id": "L5", "worst": "clean", "f": "HIGH"}` classified as clean, discarding an explicitly
+    HIGH fidelity axis the same ruling names. That is the louder version of the "silence is not
+    evidence" hole MEDIUM-10 closed for a ruling with NO axis info at all: here the evidence is
+    not silent, it is written down and ignored. `worst` and the per-axis fields are written by the
+    same judge pass and can disagree the same way `worst` and `dsg` can (see the DSG-lite
+    docstring above) — an aggregate that lags or misreports one axis must not outrank the axis
+    itself. A ruling now verifies only when the aggregate says clean AND every axis actually
+    present in the ruling says clean too; a present, non-clean axis parks regardless of `worst`.
+
     MEDIUM-10 (audit follow-up): a ruling carrying NONE of `worst`/`f`/`s`/`r` at all (a bare
     `{"id": "L5"}`) used to default every axis to "clean" and verify — that is silence, not
     evidence, and the operating law disallows it. Only a ruling with at least one axis actually
     present is eligible for the "missing axis defaults to clean" convenience below."""
     if _dsg_failures(ruling, require_dsg):
         return False
+    axes_clean = all(ruling.get(k, "clean") == "clean" for k, _ in _AXES)
     worst = ruling.get("worst")
     if worst is not None:
-        return worst == "clean"
+        return worst == "clean" and axes_clean
     if not any(k in ruling for k, _ in _AXES):
         return False
-    return all(ruling.get(k, "clean") == "clean" for k, _ in _AXES)
+    return axes_clean
 
 
 def _reasons(ruling: dict, require_dsg: bool = False):

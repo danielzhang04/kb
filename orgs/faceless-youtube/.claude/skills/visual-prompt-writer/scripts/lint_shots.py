@@ -32,9 +32,24 @@ file's exact formatting:
     per the cadence rule, not to cram meaning into one image.
 It also STRIPS the retired `shot_counts` block from any v1 file it rewrites.
 
+WHAT IT ALSO DOES (--require-schema <value>)
+---------------------------------------------
+Refuses (a distinct exit code and message, never confusable with a HARD-violation
+finding) any file whose `schema` key is not EXACTLY <value>. This is the merge
+node's tool, not a change to this lint's own default strictness: an explicit v1
+declaration is a legitimate downgrade for a genuinely archived file (schema_check
+below still treats it that way when the flag is absent), but a shots-merge DAG
+node promoting a plan to the video root needs a way to refuse ANY schema other
+than the one it is promoting to — including a v1 file that lints perfectly
+clean under its own lenient rules. Only the caller that knows "this plan is
+being promoted right now" can draw that line; the flag lets it.
+
 Usage:
-  python lint_shots.py <path-to/shots.json> [--write]
-Exit 0 = clean (safe to render); 1 = HARD violations (fix before handoff).
+  python lint_shots.py <path-to/shots.json> [--write] [--require-schema <value>]
+Exit 0 = clean (safe to render); 1 = HARD violations (fix before handoff);
+2 = usage error; 3 = SCHEMA REFUSED (--require-schema mismatch — distinct from 1
+on purpose, since a schema refusal is not a claim that the plan's content is
+broken).
 """
 import difflib
 import json
@@ -1152,7 +1167,22 @@ _RIG_CLAUSE = re.compile(
 # HIGH-6: catches EVERY "drawn as follows", anchored or not, so an off-vocabulary figure noun
 # never produces zero signal. Anything it finds that _RIG_CLAUSE already matched (the anchored,
 # HARD-eligible case) is de-duplicated in rig_clause_check below; what's left is reported SOFT.
-_BARE_DRAWN_AS_FOLLOWS = re.compile(r"\bdrawn as follows\b", re.IGNORECASE)
+#
+# LOW-7 (audit follow-up): the literal single-space "drawn as follows" reached ZERO signal — not
+# even the soft heads-up above — on ordinary wording variants a real author produces without
+# thinking about it: a double space, a wrapped line (a newline where the space would be), "drawn
+# EXACTLY as follows", "RENDERED as follows" instead of "drawn". None of those are a different
+# defect; they are the same un-migrated §2d/§2e hand-off idiom in slightly different clothes, and
+# silence on them is the same "silence is disallowed" failure HIGH-6 already fixed for off-list
+# nouns. `\s+` (not a literal space) absorbs the double-space and the newline alike; `(?:\s+\w+){0,2}`
+# tolerates 0-2 filler words between the verb and "as follows" ("drawn exactly as follows"); the
+# verb alternation adds "rendered". This ONLY widens the SOFT catch-all, never `_RIG_CLAUSE` above:
+# the anchored, HARD-eligible case stays the exact literal single-space phrase it always was, so an
+# anchored occurrence written with one of these looser variants still falls through to soft, never
+# gets promoted to HARD — ordinary prose about a non-figure subject must never hard-block, whatever
+# its wording.
+_BARE_DRAWN_AS_FOLLOWS = re.compile(
+    r"\b(?:drawn|rendered)\b(?:\s+\w+){0,2}\s+as\s+follows\b", re.IGNORECASE)
 
 
 def rig_clause_check(label, prompts, suffix, hard, soft=None, strict=True):
@@ -1315,11 +1345,46 @@ def main(argv):
     except (AttributeError, ValueError):
         pass                                     # captured/wrapped stdout — nothing to do
     if not argv or argv[0] in ("-h", "--help"):
-        print("usage: python lint_shots.py <path-to/shots.json> [--write]")
+        print("usage: python lint_shots.py <path-to/shots.json> [--write] [--require-schema <value>]")
         return 2
     path = argv[0]
-    do_write = "--write" in argv[1:]
+    rest = argv[1:]
+    do_write = "--write" in rest
+    # MEDIUM-3 (audit follow-up): `schema_check`'s fail-closed strictness (HIGH-5) still lets an
+    # author self-declare `"schema": "faceless-youtube/shots@1"` on a BRAND NEW file, which
+    # downgrades literal_count_check/rig_clause_check/shot_class_check from HARD to a heads-up —
+    # a real, available cheat, since every committed shots.json today happens to BE v1. That
+    # softening is legitimate for a genuinely archived file (nothing enforced v2's rules when it
+    # was authored) and illegitimate for a plan a merge node is about to promote to the video
+    # root. `schema_check`'s in-band heads-up cannot tell those apart; only the CALLER — the
+    # shots-merge DAG node, which knows "this plan is being promoted right now" — can. So the
+    # refusal is an opt-in CLI gate, not a change to the lint's own default strictness: a plain
+    # `lint_shots.py <path>` on an archived v1 file keeps working exactly as it always has.
+    require_schema = None
+    if "--require-schema" in rest:
+        i = rest.index("--require-schema")
+        if i + 1 >= len(rest):
+            print("--require-schema requires a value, e.g. --require-schema faceless-youtube/shots@2",
+                  file=sys.stderr)
+            return 2
+        require_schema = rest[i + 1]
     data = json.loads(Path(path).read_text(encoding="utf-8"))
+    if require_schema is not None:
+        schema = data.get("schema")
+        if schema != require_schema:
+            # Deliberately printed and coded DIFFERENTLY from a HARD-violation refusal below: this is
+            # not a claim that the plan's CONTENT is broken (it may lint perfectly clean), it is a
+            # refusal to promote a plan carrying the wrong schema declaration at all. A caller (the
+            # merge node) that greps the HARD-violations report for its BLOCKED reason must not
+            # confuse "this plan is unsafe to render" with "this plan is the wrong schema version" —
+            # they are different failures with different fixes (rework the shots vs. re-author to
+            # v2), so exit code 3 (never 0, 1, or 2) and the "SCHEMA REFUSED" prefix both signal it.
+            print(f"== lint_shots: {path} ==")
+            print(f"\nSCHEMA REFUSED (not a HARD-violation finding): schema is {schema!r}, but "
+                  f"--require-schema demands exactly {require_schema!r}. This plan may otherwise lint "
+                  f"clean — it is refused because a merge node may not promote a plan that is not "
+                  f"exactly the required schema, whatever its `schema` key currently says.")
+            return 3
     vdir = Path(path).parent
     script_md = vdir / "script.md"
 

@@ -346,6 +346,61 @@ def test_g6_anchored_and_unanchored_in_the_same_prompt_report_both():
     assert len(hard) == 1 and len(soft) == 1, (hard, soft)
 
 
+# --- LOW-7 (audit follow-up): the bare "drawn as follows" catch-all reached ZERO signal — not
+# even a soft heads-up — on ordinary wording variants: a double space, a wrapped line, an intervening
+# word ("drawn EXACTLY as follows"), or the "rendered" spelling. Each must now produce at least a
+# soft hit, and none of them may be promoted to HARD even when paired with an on-list figure noun,
+# because the anchored HARD regex still demands the exact literal single-space phrase. ------------
+def test_g7low_double_space_still_produces_a_soft_signal():
+    hard, soft = [], []
+    L.rig_clause_check(
+        "lf", _p("The stall keeper is drawn  as follows: round head, no nose, no ears."),
+        SUFFIX, hard, soft)
+    assert hard == [] and len(soft) == 1 and "drawn" in soft[0].lower(), (hard, soft)
+
+
+def test_g7low_newline_inside_the_phrase_still_produces_a_soft_signal():
+    hard, soft = [], []
+    L.rig_clause_check(
+        "lf", _p("The stall keeper is drawn as\nfollows: round head, no nose, no ears."),
+        SUFFIX, hard, soft)
+    assert hard == [] and len(soft) == 1, (hard, soft)
+
+
+def test_g7low_drawn_exactly_as_follows_still_produces_a_soft_signal():
+    hard, soft = [], []
+    L.rig_clause_check(
+        "lf", _p("The stall keeper is drawn exactly as follows: round head, no nose, no ears."),
+        SUFFIX, hard, soft)
+    assert hard == [] and len(soft) == 1, (hard, soft)
+
+
+def test_g7low_rendered_as_follows_still_produces_a_soft_signal():
+    hard, soft = [], []
+    L.rig_clause_check(
+        "lf", _p("The stall keeper is rendered as follows: round head, no nose, no ears."),
+        SUFFIX, hard, soft)
+    assert hard == [] and len(soft) == 1, (hard, soft)
+
+
+def test_g7low_ordinary_prose_with_no_as_follows_stays_silent():
+    """False-positive guard: the widened regex must not fire on prose that merely contains
+    "drawn" and "follows" without the "as follows" idiom between them."""
+    assert _run(L.rig_clause_check,
+                "The plan the keeper drew inspired the design that follows in this chapter.") == []
+
+
+def test_g7low_wording_variant_never_promotes_to_hard():
+    """Even paired with an on-list figure noun, a wording variant must stay soft-only — the
+    anchored HARD regex demands the exact literal single-space phrase and is untouched by the
+    LOW-7 widening."""
+    hard, soft = [], []
+    L.rig_clause_check(
+        "lf", _p("The stall keeper is drawn  as follows: round head, no nose, no ears."),
+        SUFFIX, hard, soft)
+    assert hard == [], hard
+
+
 # --- FIX 6 (audit follow-up): rig_clause_check gated on schema == SCHEMA_V2, same law as
 # shot_class_check — a v1 file predates the `figures`-field migration entirely, so hard-failing an
 # archived video over vocabulary the migration retired breaks it for nothing. -----------------------
@@ -557,3 +612,71 @@ def test_g5_missing_schema_key_shot_class_check_is_strict_directly():
     L.shot_class_check("lf", [{"id": "L01", "shot_class": "vibes-montage"}], hard, soft,
                         strict_schema)
     assert len(hard) == 1 and soft == [], (hard, soft)
+
+
+# =========================================================================
+# MEDIUM-3 (audit follow-up) — `--require-schema <value>`: `schema_check`'s fail-closed HARD/soft
+# strictness (HIGH-5) does not stop an author self-declaring an explicit v1 on a brand-new file,
+# which is a real, available cheat given every shots.json committed today happens to BE v1 (a
+# v1 declaration downgrades literal_count_check/rig_clause_check/shot_class_check from HARD to a
+# heads-up). Only the CALLER promoting a plan (the shots-merge DAG node) knows it is being
+# promoted right now, so the refusal is an opt-in CLI flag, never a change to the lint's own
+# default strictness.
+# =========================================================================
+def test_require_schema_refuses_a_v1_file_with_its_own_named_reason(capsys):
+    """A file that otherwise lints perfectly clean (default shot_class, no other defects) is still
+    REFUSED — not merely heads-up'd — when it declares v1 and the caller demands v2, and the
+    printed reason names the file's ACTUAL schema value."""
+    rc, _ = _main(_file(schema=L.SCHEMA_V1), "--require-schema", L.SCHEMA_V2)
+    out = capsys.readouterr().out
+    assert rc == 3, (rc, out)
+    assert "SCHEMA REFUSED" in out, out
+    assert repr(L.SCHEMA_V1) in out, out
+    assert repr(L.SCHEMA_V2) in out, out
+
+
+def test_require_schema_is_unaffected_by_a_matching_v2_file():
+    """A file whose schema already equals the required value proceeds exactly as if the flag were
+    absent — clean in, clean out, exit 0."""
+    rc, _ = _main(_file(schema=L.SCHEMA_V2), "--require-schema", L.SCHEMA_V2)
+    assert rc == 0, rc
+
+
+def test_require_schema_refuses_a_missing_schema_key_too():
+    """Fail-closed applies here exactly as it does to schema_check's own HARD/soft gate: a missing
+    `schema` key is not a v1 declaration and is refused just as a wrong one is."""
+    rc, _ = _main(_file(schema=None), "--require-schema", L.SCHEMA_V2)
+    assert rc == 3, rc
+
+
+def test_require_schema_refusal_is_distinguishable_from_a_hard_violation_report(capsys):
+    """The merge node has to tell "wrong schema, plan otherwise fine" apart from "plan is broken" —
+    the refusal must never be confusable with the ordinary HARD-violations report, in EITHER its
+    exit code or its printed text."""
+    rc, _ = _main(_file(schema=L.SCHEMA_V1), "--require-schema", L.SCHEMA_V2)
+    out = capsys.readouterr().out
+    assert rc not in (0, 1), rc                 # never the HARD-violations exit code
+    assert "HARD violations" not in out, out    # never worded like one either
+    # A genuine HARD violation, by contrast, keeps its own exit code and wording untouched by the
+    # new flag when schema DOES match — the two failure shapes never collide.
+    rc2, p2 = _main(_file(schema=L.SCHEMA_V2, shot_class="vibes-montage"), "--require-schema", L.SCHEMA_V2)
+    out2 = capsys.readouterr().out
+    assert rc2 == 1, rc2
+    assert "HARD violations" in out2, out2
+    assert "SCHEMA REFUSED" not in out2, out2
+
+
+def test_require_schema_absent_leaves_an_archived_v1_file_untouched():
+    """The flag is opt-in: an archived v1 file linted with NO --require-schema behaves exactly as
+    it does today (the same file this suite already proves stays lenient in
+    test_e2e_explicit_v1_lints_lenient), including that --write still succeeds."""
+    rc, p = _main(_file(schema=L.SCHEMA_V1, shot_class="vibes-montage"), "--write")
+    assert rc == 0
+    assert "vo_text" in json.loads(p.read_text(encoding="utf-8"))["long_form"]["shots"][0]
+
+
+def test_require_schema_missing_value_is_a_usage_error():
+    """`--require-schema` with no following value is a usage error (exit 2), caught before the
+    file is even opened."""
+    rc = L.main(["/does/not/exist/shots.json", "--require-schema"])
+    assert rc == 2
