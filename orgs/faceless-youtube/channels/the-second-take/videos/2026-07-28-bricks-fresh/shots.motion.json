@@ -1,0 +1,1987 @@
+{
+  "video_slug": "2026-07-28-bricks-fresh",
+  "generated": "2026-07-30",
+  "_note": "Motion plan for the bricks-fresh 215-shot run. Mostly baked passthrough (plate or delta-chain, layers: []). 10 shots get cutout motion: 3 hybrid character-entrance slides (L28 terry-johnson, L81/L98 auditor-rep — all explicit '+X enters' deltas onto an already-established set); the Act-1 shipping map's three pallets fanning across the water (L24, standalone, path+draw_line, reuse across two of the three); the shipping-map stage's own travelling pallet icon in two legs (L118/L119, hybrid path, second leg reuses the first's materialized cutout); three stamp-slam beats on fresh plates (L108 the serial-number stamp, L132 the test-count 'everyone gets a pass' stamp, L172 the bankruptcy filing stamp); and one ghost-fade callback (L184, hq-banker's doorway with qt-wiles's silhouette). Two stage-start camera punctuations: L01 (cold open push-in) and L178 (the '550 MILLION' courtroom reveal, pull-back). Camera otherwise locked. Human gates FEEL on the render.",
+  "shots": [
+    {
+      "id": "L01",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L01.png"
+      },
+      "layers": [],
+      "camera": {
+        "move": "push",
+        "pan": null,
+        "intensity": 0.35
+      }
+    },
+    {
+      "id": "L02",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L01.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L03",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L02.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L04",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L03.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L05",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L05.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L06",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L05.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L07",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L06.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L08",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L07.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L09",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L09.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L10",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L10.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L11",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L11.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L12",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L12.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L13",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L12.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L14",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L13.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L15",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L14.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L16",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L16.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L17",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L17.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L18",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L17.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L19",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L19.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L20",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L20.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L21",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L21.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L22",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L21.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L23",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L23.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L24",
+      "background": {
+        "mode": "plate",
+        "plate_prompt": "A flat top-down world plan staged on `env-map-parchment`: warm ochre landmasses on pale blue water, coastlines simplified and open. One small marked dock sits on the North American west coast; the water beyond it is left open and empty, with no route line and no cargo drawn yet. Warm ochre, parchment cream and pale sea blue. Straight top-down framing with the plan filling the frame edge to edge. Every landmass and route is left completely unlabelled."
+      },
+      "layers": [
+        {
+          "id": "pallet-1",
+          "source": "cutout",
+          "cutout_prompt": "A single shrink-wrapped pallet of sealed cartons, banded tight under taut plastic wrap, seen small in three-quarter view.",
+          "seed": "channels/the-second-take/visual-kit/refs/env/env-map-parchment.png",
+          "animation": {
+            "type": "path",
+            "points": [
+              [
+                0.24,
+                0.44
+              ],
+              [
+                0.46,
+                0.3
+              ],
+              [
+                0.7,
+                0.2
+              ]
+            ],
+            "dur_s": 2.2,
+            "draw_line": true,
+            "dot_count": 22,
+            "dot_r": 4,
+            "anchor": "around the world"
+          }
+        },
+        {
+          "id": "pallet-2",
+          "source": "cutout",
+          "reuse": "cutouts/L24-pallet-1.png",
+          "animation": {
+            "type": "path",
+            "points": [
+              [
+                0.24,
+                0.44
+              ],
+              [
+                0.38,
+                0.58
+              ],
+              [
+                0.5,
+                0.78
+              ]
+            ],
+            "dur_s": 2.2,
+            "draw_line": true,
+            "dot_count": 22,
+            "dot_r": 4,
+            "anchor": "around the world"
+          }
+        },
+        {
+          "id": "pallet-3",
+          "source": "cutout",
+          "reuse": "cutouts/L24-pallet-1.png",
+          "animation": {
+            "type": "path",
+            "points": [
+              [
+                0.24,
+                0.44
+              ],
+              [
+                0.52,
+                0.46
+              ],
+              [
+                0.8,
+                0.5
+              ]
+            ],
+            "dur_s": 2.2,
+            "draw_line": true,
+            "dot_count": 22,
+            "dot_r": 4,
+            "anchor": "around the world"
+          }
+        }
+      ]
+    },
+    {
+      "id": "L25",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L25.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L26",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L26.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L27",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L26.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L28",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L27.png"
+      },
+      "layers": [
+        {
+          "id": "terry-johnson",
+          "source": "cutout",
+          "cutout_prompt": "`terry-johnson`, a lean figure with a flat pale-cream head tone, thinning fair hair and a trimmed moustache, in shirtsleeves with the cuffs turned back and a thin dark tie, `expr-delighted`, `hold-one-hand` raising one finished drive at chest height.",
+          "seed": "channels/the-second-take/visual-kit/refs/terry-johnson/terry-johnson.png",
+          "animation": {
+            "type": "slide",
+            "from_edge": "right",
+            "to": [
+              0.62,
+              0.94
+            ],
+            "dur_s": 1.1,
+            "anchor": "a guy named Terry Johnson."
+          }
+        }
+      ]
+    },
+    {
+      "id": "L29",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L29.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L30",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L30.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L31",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L31.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L32",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L31.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L33",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L32.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L34",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L34.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L35",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L35.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L36",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L36.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L37",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L37.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L38",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L38.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L39",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L39.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L40",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L40.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L41",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L41.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L42",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L42.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L43",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L43.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L44",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L43.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L45",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L45.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L46",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L45.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L47",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L46.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L48",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L48.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L49",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L49.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L50",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L49.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L51",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L51.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L52",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L52.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L53",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L52.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L54",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L53.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L55",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L55.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L56",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L55.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L57",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L56.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L58",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L58.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L59",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L59.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L60",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L60.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L61",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L60.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L62",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L61.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L63",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L62.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L64",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L64.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L65",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L64.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L66",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L66.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L67",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L66.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L68",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L67.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L69",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L69.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L70",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L70.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L71",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L70.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L72",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L71.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L73",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L72.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L74",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L74.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L75",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L74.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L76",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L76.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L77",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L76.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L78",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L78.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L79",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L79.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L80",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L80.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L81",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L80.png"
+      },
+      "layers": [
+        {
+          "id": "auditor-rep",
+          "source": "cutout",
+          "cutout_prompt": "`auditor-rep`, a trim precise figure in a charcoal three-piece suit with a slim leather ledger case under one arm and half-moon spectacles pushed up on his forehead, `expr-skeptical`, ledger raised, mid-tally.",
+          "seed": "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
+          "animation": {
+            "type": "slide",
+            "from_edge": "left",
+            "to": [
+              0.16,
+              0.93
+            ],
+            "dur_s": 1.0,
+            "anchor": "everybody started counting"
+          }
+        }
+      ]
+    },
+    {
+      "id": "L82",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L81.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L83",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L83.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L84",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L84.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L85",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L85.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L86",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L86.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L87",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L86.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L88",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L87.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L89",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L89.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L90",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L90.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L91",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L91.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L92",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L92.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L93",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L93.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L94",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L94.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L95",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L94.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L96",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L95.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L97",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L97.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L98",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L97.png"
+      },
+      "layers": [
+        {
+          "id": "auditor-rep",
+          "source": "cutout",
+          "cutout_prompt": "`auditor-rep`, a trim precise figure in a charcoal three-piece suit with a slim leather ledger case under one arm and half-moon spectacles pushed up on his forehead, `expr-skeptical`, `hold-one-hand` resting flat, testing weight and solidity.",
+          "seed": "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
+          "animation": {
+            "type": "slide",
+            "from_edge": "right",
+            "to": [
+              0.56,
+              0.95
+            ],
+            "dur_s": 1.3,
+            "anchor": "an auditor could walk up"
+          }
+        }
+      ]
+    },
+    {
+      "id": "L99",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L98.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L100",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L100.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L101",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L100.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L102",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L102.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L103",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L103.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L104",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L103.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L105",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L104.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L106",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L106.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L107",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L107.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L108",
+      "background": {
+        "mode": "plate",
+        "plate_prompt": "The same packing bench, same locked framing: the row of three open cartons with red clay bricks nested inside, two anonymous fellow managers at the bench, bare bulbs overhead, corrugated walls. `brick-foreman` (`hold-one-hand`) now holds a small handheld stamp raised just above the nearest carton's closed flap, poised a hair off the surface, the flap itself still bare and unmarked; everything else exactly as established."
+      },
+      "layers": [
+        {
+          "id": "stamp",
+          "source": "cutout",
+          "cutout_prompt": "A plain serial-style rubber stamp mark, dense flat dark ink, a hand-pressed edge distress, no lettering.",
+          "animation": {
+            "type": "appear",
+            "style": "slam",
+            "at": [
+              0.4,
+              0.6
+            ],
+            "anchor": "gave each one a serial number"
+          }
+        }
+      ]
+    },
+    {
+      "id": "L109",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L108.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L110",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L109.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L111",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L111.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L112",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L112.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L113",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L113.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L114",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L114.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L115",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L115.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L116",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L116.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L117",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L116.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L118",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L117.png"
+      },
+      "layers": [
+        {
+          "id": "pallet",
+          "source": "cutout",
+          "cutout_prompt": "A single shrink-wrapped pallet of sealed cartons, banded tight under taut plastic wrap, seen small in three-quarter view.",
+          "seed": "channels/the-second-take/visual-kit/refs/env/env-map-parchment.png",
+          "animation": {
+            "type": "path",
+            "points": [
+              [
+                0.24,
+                0.44
+              ],
+              [
+                0.4,
+                0.5
+              ],
+              [
+                0.52,
+                0.56
+              ]
+            ],
+            "dur_s": 1.6,
+            "draw_line": true,
+            "dot_count": 20,
+            "dot_r": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "L119",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L117.png"
+      },
+      "layers": [
+        {
+          "id": "pallet",
+          "source": "cutout",
+          "reuse": "cutouts/L118-pallet.png",
+          "animation": {
+            "type": "path",
+            "points": [
+              [
+                0.52,
+                0.56
+              ],
+              [
+                0.66,
+                0.6
+              ],
+              [
+                0.78,
+                0.62
+              ]
+            ],
+            "dur_s": 1.8,
+            "draw_line": true,
+            "dot_count": 20,
+            "dot_r": 4,
+            "anchor": "went overseas to Singapore"
+          }
+        }
+      ]
+    },
+    {
+      "id": "L120",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L120.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L121",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L120.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L122",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L122.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L123",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L123.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L124",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L124.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L125",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L125.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L126",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L126.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L127",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L127.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L128",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L128.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L129",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L128.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L130",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L130.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L131",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L130.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L132",
+      "background": {
+        "mode": "plate",
+        "plate_prompt": "The same pallet canyon, same locked framing: `auditor-rep` (`expr-deadpan`) holding the single pulled carton at chest height, a checked ledger page held up beside it, the untouched row of pallets receding behind him toward the vanishing point. Cold fluorescent light, concrete grey and pallet-wrap white. The nearest pallet's face is still bare and unmarked; a faint, already-repeating trace of the same plain stamp shape is visible further down the receding row, fading with distance."
+      },
+      "layers": [
+        {
+          "id": "stamp",
+          "source": "cutout",
+          "cutout_prompt": "A plain rubber ink stamp mark, dense flat dark ink, a hand-pressed edge distress, no lettering.",
+          "animation": {
+            "type": "appear",
+            "style": "slam",
+            "at": [
+              0.34,
+              0.56
+            ],
+            "anchor": "everything else in the building"
+          }
+        }
+      ]
+    },
+    {
+      "id": "L133",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L133.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L134",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L134.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L135",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L134.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L136",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L136.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L137",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L136.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L138",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L138.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L139",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L139.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L140",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L139.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L141",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L140.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L142",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L142.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L143",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L143.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L144",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L143.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L145",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L145.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L146",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L146.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L147",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L146.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L148",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L147.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L149",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L149.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L150",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L150.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L151",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L151.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L152",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L152.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L153",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L152.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L154",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L153.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L155",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L155.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L156",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L156.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L157",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L156.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L158",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L157.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L159",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L159.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L160",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L160.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L161",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L160.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L162",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L161.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L163",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L163.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L164",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L164.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L165",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L165.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L166",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L165.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L167",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L166.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L168",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L168.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L169",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L169.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L170",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L170.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L171",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L171.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L172",
+      "background": {
+        "mode": "plate",
+        "plate_prompt": "A single official document lies flat on a bare desk, its face otherwise clear with no stamp mark on it yet. A small desk calendar propped beside it is lettered 'SEPTEMBER'. Cool office light, palette of paper cream and steel grey. Straight-on flat framing at desk height, the document filling the frame's centre."
+      },
+      "layers": [
+        {
+          "id": "stamp",
+          "source": "cutout",
+          "cutout_prompt": "A plain heavy rubber ink stamp mark, dense flat dark ink, a hand-pressed edge distress, no lettering.",
+          "animation": {
+            "type": "appear",
+            "style": "slam",
+            "at": [
+              0.5,
+              0.52
+            ],
+            "anchor": "filed for bankruptcy"
+          }
+        }
+      ]
+    },
+    {
+      "id": "L173",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L173.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L174",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L173.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L175",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L174.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L176",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L176.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L177",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L177.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L178",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L178.png"
+      },
+      "layers": [],
+      "camera": {
+        "move": "push",
+        "pan": null,
+        "intensity": 0.3
+      }
+    },
+    {
+      "id": "L179",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L179.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L180",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L180.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L181",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L180.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L182",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L181.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L183",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L183.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L184",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L183.png"
+      },
+      "layers": [
+        {
+          "id": "ghost",
+          "source": "cutout",
+          "cutout_prompt": "A faint pale ghostly silhouette of a high-rise office doorway with a lean silhouetted man's figure stepping through it, translucent, dreamlike, barely there.",
+          "animation": {
+            "type": "appear",
+            "style": "fade",
+            "at": [
+              0.72,
+              0.45
+            ],
+            "anchor": "sent Wiles in to begin with"
+          }
+        }
+      ]
+    },
+    {
+      "id": "L185",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L185.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L186",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L185.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L187",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L186.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L188",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L188.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L189",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L189.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L190",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L190.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L191",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L190.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L192",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L192.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L193",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L192.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L194",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L194.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L195",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L195.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L196",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L196.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L197",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L196.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L198",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L197.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L199",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L199.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L200",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L199.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L201",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L201.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L202",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L202.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L203",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L202.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L204",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L204.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L205",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L205.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L206",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L206.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L207",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L207.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L208",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L207.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L209",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L209.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L210",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L209.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L211",
+      "background": {
+        "mode": "delta-chain",
+        "plate": "scenes/L210.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L212",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L212.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L213",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L213.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L214",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L214.png"
+      },
+      "layers": []
+    },
+    {
+      "id": "L215",
+      "background": {
+        "mode": "plate",
+        "plate": "scenes/L215.png"
+      },
+      "layers": []
+    }
+  ]
+}
