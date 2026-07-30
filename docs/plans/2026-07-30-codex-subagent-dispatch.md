@@ -858,3 +858,136 @@ answer + second card on ops with same `workflow` value.
 - [ ] **Step 4: Live TaskStop probe (boss runs):** dispatch a deliberately long task, TaskStop
 the background task, then verify no `codex` process survives (`Get-Process | findstr codex`)
 and the spool trace remains. Record the observed behavior in the PR body.
+
+---
+
+## Fix wave (post-adversarial-review, Daniel-approved 2026-07-30 evening)
+
+Source: opus adversarial review findings (PR #103 thread). Design decisions locked: publish
+rebuilds instead of rebasing (verified push landing); failed records go to `done` with FAILED
+Result (halted path deleted); follow-up pins the model via `-c model=`; `ran_model` deleted;
+budget-cost gate deleted (structurally $0.0 — fake assurance); MCP lane gets a billing-guard
+wrapper. Fixes integrate into the files that own the behavior; net line count should not grow
+much — deletions offset additions.
+
+### Task F1: `codex_dispatch.py` correctness fixes (opus)
+
+**Files:** Modify `scripts/codex_dispatch.py`, `tests/test_codex_dispatch.py` (TDD per fix).
+
+1. **UTF-8 stdout**: first statement of `main()`:
+   `sys.stdout.reconfigure(encoding="utf-8", errors="replace")` — kills the cp1252 crash on
+   `✓/→/CJK` in worker answers. Test: monkeypatch a stdout without the method → no crash
+   (guard with `hasattr`), and result printing with `"✓"` doesn't raise.
+2. **`--timeout <seconds>`** (default 2700). `spawn` switches to `subprocess.Popen` +
+   `proc.communicate(input=..., timeout=...)`; on `TimeoutExpired`:
+   `subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True)`,
+   `proc.wait()`, return `124` (coreutils convention). `main` treats 124 as failure with
+   result text `FAILED: timeout after {timeout}s; JSONL log: ...`. `billing_guard`'s
+   `codex login status` gets `timeout=15`. Tests: fake Popen raising TimeoutExpired → 124 +
+   taskkill invoked with /T /F.
+3. **Publish rebuild loop** — replace the rebase retry wholesale:
+   ```python
+   for attempt in range(3):
+       if attempt:
+           time.sleep(random.uniform(0.5, 2.0))
+       if git("fetch", "origin", "ops").returncode != 0:
+           continue
+       if wt.exists():
+           git("reset", "--hard", "origin/ops", cwd=wt)
+       elif git("worktree", "add", "--detach", str(wt), "origin/ops").returncode != 0:
+           continue
+       card_path = cards.save(card, wt / "queue")
+       led_path = ledger.append(wt, "cost", WRITER, record)
+       git("add", "--", str(card_path), str(led_path), cwd=wt)
+       if git("commit", "-m", f"chore(codex-direct): record {card.meta['id']}",
+              cwd=wt).returncode != 0:
+           continue
+       local = git("rev-parse", "HEAD", cwd=wt).stdout.strip()
+       if git("push", "origin", "HEAD:refs/heads/ops", cwd=wt).returncode != 0:
+           continue
+       remote = git("ls-remote", "origin", "refs/heads/ops").stdout.split()
+       if remote and remote[0] == local:
+           return True, "pushed"
+   return False, _spool_note(card, "publish failed after 3 rebuilt attempts")
+   ```
+   NO `pull --rebase` anywhere. `import random` at top. Tests: (a) push rejected once →
+   second attempt resets to fresh ops, re-appends, succeeds only when ls-remote matches
+   rev-parse; (b) ls-remote ≠ local → NOT reported pushed (the silent-destruction regression
+   test — this is the load-bearing test of the wave); (c) `pull` never appears in any
+   issued command.
+4. **`done`-always records**: `walk_state(card)` (drop the `final` param) walks
+   `working → done` only; failure lives in the Result text (`FAILED: ...`) + ledger
+   `codex_exit`. Delete the halted path and its tests; update `build_record` call sites and
+   the failure-state test to assert `state == "done"` with `FAILED` in body.
+5. **Follow-up honesty**: refuse `--worktree`, `--sandbox`, `--cwd` on `--follow-up` (loud,
+   exit 2; `--sandbox` needs `default=None` sentinel, applied post-parse). ALLOW `--model`:
+   resolve it and append `["-c", f"model={model}"]` to the resume command (CLI accepts
+   `-c model=`; a resumed session otherwise silently uses the CLI default — live-proven).
+   Default `--model codex` resolves to terra, pinned the same way. Effort `-c` unchanged.
+   Tests: resume cmd contains `-c model=gpt-5.6-terra` by default; refusals for the three
+   flags; `--model codex-deep --follow-up X` accepted and pins sol.
+6. **Delete `ran_model`** and its uses: record/footer model = the resolved model (now always
+   pinned, so it is the truth). Delete its test.
+7. **Heading escape**: `_inert(text) = re.sub(r"(?m)^(#{1,6} )", r"\\\1", text)` applied to
+   both prompt and result before embedding in the card body — an embedded `## Result` heading
+   can no longer confuse section parsers. Test: a prompt containing `## Result` yields a body
+   whose only unescaped `## ` headings are the card's own two.
+8. **Worktree target truth**: card `target` = the actual cwd the worker ran in (set after the
+   `--worktree` branch), not `args.cwd or repo_root`.
+9. **Budget-cost gate deleted**: `preamble.check(repo_root)` (STOP + ANTHROPIC key only) with
+   a comment: every dispatch cost row is structurally $0.0 subscription, so a cost gate here
+   measures nothing; API spend is governed per-run by card authorization.
+
+Acceptance: full file green; no `pull --rebase` string anywhere in the script; net script
+line count within +40 of current (deletions offset additions).
+
+### Task F2: skill truth + MCP guard + spec integration (sonnet)
+
+**Files:** `skills/curated/dispatch-codex/SKILL.md` (+ mirrors via `py -3 scripts/sync_skills.py`),
+`scripts/codex_mcp_guard.py` (new), `.mcp.json`,
+`docs/specs/2026-07-30-codex-subagent-dispatch-design.md`.
+
+1. **SKILL.md rewrite** (integrate, don't append; keep ≤ current length):
+   - Invocation: `py -3 "$(git rev-parse --show-toplevel)/scripts/codex_dispatch.py" ...`
+     (works from any cwd inside the repo — the relative path broke FYT-rooted terminals).
+   - Iterating section: repeat `--model <tier>` from the dispatch footer on follow-ups (the
+     session does NOT keep its model — the script pins it); `--sandbox`/`--cwd`/`--worktree`
+     are refused on follow-ups; a follow-up into a swept `--worktree` resumes into a deleted
+     directory — follow up first, sweep last.
+   - Failures: failed runs are `done` cards whose Result starts with `FAILED`; timeout default
+     45 min (`--timeout` to change); if the footer reports publish FAILED the card is spooled
+     under `%LOCALAPPDATA%\kb-codex-dispatch\spool\` — surface it.
+   - Reality notes (one line each): workers under `workspace-write` can write anything below
+     `--cwd` including governance/ — scope `--cwd` down for untrusted briefs; sandbox has no
+     network — web-research briefs degrade silently, don't dispatch them; MCP lane writes no
+     card and suits only throwaway asks.
+2. **`scripts/codex_mcp_guard.py`** (~15 lines, stdlib): refuse (exit 2, message to stderr)
+   if `OPENAI_API_KEY`/`CODEX_API_KEY` set; else `sys.exit(subprocess.run(["codex.cmd"
+   resolved via shutil.which, "mcp-server", *sys.argv[1:]]).returncode)` with stdio inherited.
+   `.mcp.json` becomes `{"command": "py", "args": ["-3", "scripts/codex_mcp_guard.py"]}`
+   (project-relative — Claude Code launches project MCP servers from the project root).
+   Test: `tests/test_codex_mcp_guard.py` — refusal with key set; exec path invoked without.
+3. **Spec integration** (edit sections in place, no appendix): publish algorithm = rebuild+verify;
+   states = done-always; follow-up = model pinned via `-c model=`; gates list drops the budget
+   line (with the one-sentence why); components gain the MCP guard. Delete the now-false
+   "halted" rows from the error table.
+
+### Task F3 (boss): ops hygiene
+
+Resolve the stale halted smoke card `queue/working/6a6bc3dd-5494006b.md` on ops (append
+`Resolved by operator (boss): known resume --cd defect, fixed in PR #103` to its Result and
+move it to done — one ops commit), and sweep the hung probe's local debris
+(spool `6a6bc449-1f100b70.json` + its log + any orphaned codex process).
+
+### Task F4 (boss): live re-analysis
+
+1. Isolated repro repo: re-run the two-appenders race against the NEW publish algorithm —
+   both records must land, no conflict, no false "pushed".
+2. Live: `--model codex-cheap` dispatch → follow-up; JSONL must contain NO model-mismatch
+   warning; both cards `done` on ops with pinned models recorded.
+3. Live: brief instructing the worker to reply with `✓ → ✅ 完了` — notification must carry
+   the glyphs, not a traceback.
+4. Live: `--timeout 30` on a long brief → FAILED-done card, tree dead, notification says
+   timeout.
+5. Delta-focused opus re-review of the fix commits only; then update PR #103 (including the
+   correction of the earlier "race absorbed" claim).
