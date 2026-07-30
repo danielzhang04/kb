@@ -67,6 +67,30 @@
       "costume": "PINNED canonical form: beige boxy home-computer case with the cast's cartoon eyes and mouth set into the front panel, short stubby arms and legs. NOTE: a personified OBJECT \u2014 never seed a human torso POSE frame onto it (bleeds a human body); expression frames route to the face panel and stance is carried in words.",
       "base": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
       "no_hands": true
+    },
+    "qt-wiles": {
+      "role": "Q.T. Wiles \u2014 the 'turnaround chairman', 'Dr Fix-It'; severe, older cast member installed to run MiniScribe. Appears across the bricks-fresh video from L45.",
+      "head_tone": "#d3a878",
+      "costume": "PINNED canonical outfit: steel-grey three-piece suit, silver-grey hair swept straight back, a stethoscope draped loosely round the neck over the lapel (his 'Dr Fix-It' identity tag); severe, older executive bearing carried as linework (brow creases), never a reshaped head. A white doctor's coat worn OVER this suit is an authored costume delta for the doctor-fixit-clinic beat only. Renders in the plain steel-grey suit unless a shot authors the coat.",
+      "base": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png"
+    },
+    "hq-banker": {
+      "role": "Hambrecht & Quist personified \u2014 the bank's own institutional actor; installs Wiles, recurs at the verdict beat. Appears from L45.",
+      "head_tone": "#e6c69c",
+      "costume": "PINNED canonical outfit: rich chocolate-brown pinstripe three-piece suit, a gold pocket-watch chain looped at the waistcoat (his one identity tag), silver hair combed neatly back. Renders in this unless a shot authors a change.",
+      "base": "channels/the-second-take/visual-kit/refs/hq-banker/hq-banker.png"
+    },
+    "brick-foreman": {
+      "role": "A recurring MiniScribe middle manager \u2014 the ground-level executor of the escalating fraud across the quota, lockbox, brick and packing beats. Appears from L60.",
+      "head_tone": "#cf8f5c",
+      "costume": "PINNED canonical outfit: pale short-sleeve button shirt with a black clip-on tie, plain trousers, plain brown side-parted hair, an ordinary working build. Renders in this unless a shot authors a change.",
+      "base": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png"
+    },
+    "auditor-rep": {
+      "role": "Coopers & Lybrand personified \u2014 the outside accounting firm's own institutional actor; recurs through the test-count and verdict beats. Appears from L76.",
+      "head_tone": "#a67c52",
+      "costume": "PINNED canonical outfit: charcoal three-piece suit, a slim leather ledger case under one arm (his one identity tag), half-moon spectacles pushed up on his forehead, trim precise build. Renders in this unless a shot authors a change.",
+      "base": "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png"
     }
   },
   "assets": [
@@ -623,6 +647,54 @@
       "kind": "identity",
       "tag": "base",
       "seed_frame": "channels/the-second-take/visual-kit/refs/terry-johnson/terry-johnson.png"
+    },
+    {
+      "name": "qt-wiles",
+      "file": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
+      "character": "qt-wiles",
+      "kind": "identity",
+      "tag": "base",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png"
+    },
+    {
+      "name": "hq-banker",
+      "file": "channels/the-second-take/visual-kit/refs/hq-banker/hq-banker.png",
+      "character": "hq-banker",
+      "kind": "identity",
+      "tag": "base",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/hq-banker/hq-banker.png"
+    },
+    {
+      "name": "brick-foreman",
+      "file": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
+      "character": "brick-foreman",
+      "kind": "identity",
+      "tag": "base",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png"
+    },
+    {
+      "name": "auditor-rep",
+      "file": "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
+      "character": "auditor-rep",
+      "kind": "identity",
+      "tag": "base",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png"
+    },
+    {
+      "name": "recline",
+      "file": "channels/the-second-take/visual-kit/refs/base/recline.png",
+      "character": "base",
+      "kind": "pose",
+      "tag": "recline",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "lie-supine",
+      "file": "channels/the-second-take/visual-kit/refs/base/lie-supine.png",
+      "character": "base",
+      "kind": "pose",
+      "tag": "lie-supine",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
     }
   ]
 }

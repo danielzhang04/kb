@@ -832,9 +832,7 @@
         "source": "ai-gen",
         "still_prompt": "The same wrecked plant-office floor, same locked framing: the toppled cash bales split and scattered, the overturned metal desk, the high window's cool daylight, faded banknote green and cold office grey. Only this changes: a single torn ledger page now hangs pinned to the bare wall above the wreckage, every column of it struck through with one heavy ruled line in dense red #d7402b; everything else exactly as established.",
         "notes": "Red accent — alarm on a company's own books, not a person. No digits lettered; the ruled-through columns carry the fact without a supplied number this beat's ledger entry doesn't need.",
-        "assets": {
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
-        }
+        "assets": {}
       },
       {
         "id": "L45",
@@ -849,6 +847,7 @@
         "still_prompt": "`hq-banker` — a silver-haired figure in a rich chocolate-brown pinstripe suit with a gold pocket-watch chain looped at the waistcoat, the bank's own institutional actor — stands `expr-deadpan`, `action-armscrossed`, behind a polished wood desk in a plush high-rise office, floor-to-ceiling windows behind him showing a hazy city skyline. Deep-red leather chair, brass desk lamp, a stack of folders squared on the blotter. Palette is chocolate brown, brass and hazy city grey. Wide three-quarter medium at desk height so the figure and the skyline share the frame; depth reads desk foreground, figure mid-ground, window and skyline background. Every folder spine and window pane is blank and unlettered.",
         "notes": "New cast slug `hq-banker` — Hambrecht & Quist [F-27] personified, one identity tag (the pocket-watch chain), recurring at the verdict beat later in the video.",
         "assets": {
+          "hq-banker": "channels/the-second-take/visual-kit/refs/hq-banker/hq-banker.png",
           "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
           "action-armscrossed": "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png"
         }
@@ -869,9 +868,9 @@
         "still_prompt": "The same high-rise office, same locked framing: `hq-banker` (`expr-deadpan`, `action-armscrossed`) behind the polished desk, the red leather chair, brass lamp, folders squared on the blotter, the hazy skyline through the windows, chocolate brown and brass. Only this changes: one thick banded stack of banknotes now sits square on the blotter in front of him, a plain paper band round it lettered '20 MILLION'; everything else exactly as established.",
         "notes": "[F-27] Hambrecht & Quist invested about $20 million. Supplied literal '20 MILLION' (2 words), word form per L-4, the ledger's own figure, sitting as the delta's one change.",
         "assets": {
+          "hq-banker": "channels/the-second-take/visual-kit/refs/hq-banker/hq-banker.png",
           "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
-          "action-armscrossed": "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png",
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+          "action-armscrossed": "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png"
         }
       },
       {
@@ -890,6 +889,7 @@
         "still_prompt": "The same high-rise office, same locked framing: `hq-banker` (`expr-smug`) behind the desk with the '20 MILLION' band still on the blotter, the red leather chair, brass lamp, hazy skyline, chocolate brown and brass. Only this changes: `hq-banker` now leans forward, `action-offering`, holding one slim folder out over a plain empty visitor's chair drawn up on the near side of the desk, the chair still unoccupied; everything else exactly as established.",
         "notes": "[F-27] Wiles installed as the turnaround hire. The chair is left deliberately empty rather than teased with a silhouette — the reveal lands whole on the naming line at L48, not obscured beforehand (disclosure order).",
         "assets": {
+          "hq-banker": "channels/the-second-take/visual-kit/refs/hq-banker/hq-banker.png",
           "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
           "action-offering": "channels/the-second-take/visual-kit/refs/base/action-offering.png"
         }
@@ -905,6 +905,8 @@
         "still_prompt": "`qt-wiles` — Q.T. Wiles, a lean sharp figure with silver hair swept straight back, a steel-grey three-piece suit, and one stethoscope draped loosely round his neck over the lapel — stands `action-powerstance`, `expr-smug`, filling the doorway of the same high-rise office, backlit by a wide corridor behind him so his silhouette is crisp and his face still reads clearly in the office light. `hq-banker` sits small at the desk beyond him, `expr-deadpan`. Palette holds chocolate brown and brass with one cool corridor-white behind the doorway. Low wide framing from floor height at the doorway's threshold so Wiles fills the near two-thirds of the frame and the desk sits small beyond; depth reads doorway foreground, Wiles mid-ground, desk and windows background.",
         "notes": "New cast slug `qt-wiles` [F-02, F-27] — the reveal lands whole on his naming line, low angle for the arrival the grammar calls for on a big character introduction.",
         "assets": {
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
+          "hq-banker": "channels/the-second-take/visual-kit/refs/hq-banker/hq-banker.png",
           "action-powerstance": "channels/the-second-take/visual-kit/refs/base/action-powerstance.png",
           "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
           "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png"
@@ -968,6 +970,7 @@
         "still_prompt": "`qt-wiles` (`expr-smug`, `action-armscrossed`) stands planted in the middle of the MiniScribe plant floor, the pale-green conveyor running behind him, an oversized white chef's toque sitting incongruously on his head over his swept-back silver hair, his steel-grey suit and stethoscope unchanged beneath it. Plant-floor daylight from the tall windows, pale green and steel grey with the toque's bright white standing out. Wide medium at chest height square to the belt so the toque reads immediately against the factory behind him; depth reads plant apron foreground, Wiles mid-ground, conveyor and windows background — the toque itself the whole joke.",
         "notes": "The simile literalized as a visual pun (a chef's hat on a factory floor) rather than restaging the restaurant a second time — bridges the analogy back to the real subject.",
         "assets": {
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
           "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
           "action-armscrossed": "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png"
         }
@@ -985,6 +988,8 @@
         "still_prompt": "`qt-wiles`, now in a crisp white doctor's coat worn open over his steel-grey suit with the stethoscope now worn properly at his collar, stands `expr-smug`, `hold-paper-by-sides`, beside a raised examination table in a plain clinic room. `miniscribe-rep` (`expr-worried`) lies flat on the table in his tan blazer, a paper drape pulled to his chest. A single overhead exam lamp, pale clinic-green walls, a wheeled instruments tray beside the table. Wide medium at table height so both figures read across the frame; depth reads tray foreground, table and figures mid-ground, plain wall background. Every wall surface and chart is blank and unlettered.",
         "notes": "'Doctor Fix It' literalized as an actual clinic scene, the company itself as the patient — the strongest version of the idiom, reserved for the base establishing frame. No registry pose covers lying supine on a table; described in prose as a Pass-1 mint candidate.",
         "assets": {
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
+          "miniscribe-rep": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
           "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
           "hold-paper-by-sides": "channels/the-second-take/visual-kit/refs/base/hold-paper-by-sides.png",
           "expr-worried": "channels/the-second-take/visual-kit/refs/base/expr-worried.png"
@@ -1006,6 +1011,8 @@
         "still_prompt": "The same clinic room, same locked framing: `qt-wiles` (`expr-smug`, `hold-paper-by-sides`) beside the table, `miniscribe-rep` (`expr-worried`) lying under the paper drape, the exam lamp, pale clinic-green walls, the instruments tray. Only this changes: a single plated dish of food now sits pushed to the far edge of a rolling side tray, untouched and cooling, well clear of the table; everything else exactly as established.",
         "notes": "The restaurant-critique half of the joke handled by the dish's presence and neglect, never the profanity itself — analysis, not the word.",
         "assets": {
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
+          "miniscribe-rep": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
           "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
           "hold-paper-by-sides": "channels/the-second-take/visual-kit/refs/base/hold-paper-by-sides.png",
           "expr-worried": "channels/the-second-take/visual-kit/refs/base/expr-worried.png"
@@ -1027,10 +1034,10 @@
         "still_prompt": "The same clinic room, same locked framing: `qt-wiles` (`expr-smug`) beside the table, `miniscribe-rep` (`expr-worried`) under the drape, the pushed-aside dish on the tray, the exam lamp, pale clinic-green walls. Only this changes: the paper he holds is now a hospital-style clipboard chart, one jagged red #d7402b line plunging steeply across its grid from top-left to bottom-right; everything else exactly as established.",
         "notes": "The chart's plunging line carries the beat without a supplied number — a heart-rate readout standing in for a quarterly figure.",
         "assets": {
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
+          "miniscribe-rep": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
           "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
-          "hold-paper-by-sides": "channels/the-second-take/visual-kit/refs/base/hold-paper-by-sides.png",
-          "expr-worried": "channels/the-second-take/visual-kit/refs/base/expr-worried.png",
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+          "expr-worried": "channels/the-second-take/visual-kit/refs/base/expr-worried.png"
         }
       },
       {
@@ -1063,6 +1070,7 @@
         "still_prompt": "The same dark stage, same locked framing: the row of five ordinary glowing doorways, deep indigo void. Only this changes: `qt-wiles`, in his white coat over the steel-grey suit and stethoscope, `expr-smug`, now stands at the centre of the row, one hand raised toward the doorways; everything else exactly as established.",
         "notes": "The gag lands by substitution: Wiles inherits the conjuring pose the previous frame established.",
         "assets": {
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
           "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png"
         }
       },
@@ -1081,7 +1089,10 @@
         "source": "ai-gen",
         "still_prompt": "The same dark stage, same locked framing: `qt-wiles` (`expr-smug`) centred among the three portals, deep indigo void. Only this changes: the stage-right portal now burns brighter than the other two, its glow warmer, and through it the pale-green MiniScribe conveyor belt is plainly visible; everything else exactly as established.",
         "notes": "'This one' singled out by brightness and the recognisable plant interior, no lettering needed.",
-        "assets": {}
+        "assets": {
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
+          "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png"
+        }
       },
       {
         "id": "L58",
@@ -1094,6 +1105,7 @@
         "still_prompt": "A sunlit high-rise office stands with a palm-lined skyline filling its wide window, three small glowing portal-windows still hanging in the air near the glass, one of them showing the pale-green MiniScribe conveyor. `qt-wiles` (`expr-smug`), white coat over his steel-grey suit, stands at the room's centre, one hand raised toward the portals. Warm California daylight, palette of glass blue, warm tan and clear sky. Wide framing at standing height with Wiles and the portals sharing the frame; depth reads office floor foreground, Wiles mid-ground, palm skyline background — the grounded real office the payload of this hard cut.",
         "notes": "[F-03] Wiles ran MiniScribe largely remotely from LA. Re-authored as a hard-cut BASE, not a delta of multi-office-portals — a world/register change (dark conjuring stage to a real sunlit office) is a hard cut per the grammar, never a delta.",
         "assets": {
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
           "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png"
         }
       },
@@ -1108,6 +1120,7 @@
         "still_prompt": "`qt-wiles` (`expr-smug`), white coat traded back for the steel-grey suit alone, reclines with his feet up on a glass-topped desk in the same sunlit LA high-rise office, palm-lined skyline filling the window behind him, a single small period rotary phone at his elbow. Warm California daylight, palette of glass blue, warm tan and clear sky. Wide flat framing at desk height with Wiles low and relaxed across the lower half of frame and the skyline filling the upper half; depth reads desk foreground, Wiles mid-ground, skyline background — the propped feet against the plant a thousand miles away the whole joke.",
         "notes": "Closes the LA-remote beat before the hard cut to the boardroom's fear regime. No registry pose covers a reclining desk posture; described in prose as a Pass-1 mint candidate rather than forcing an ill-fitting existing pose.",
         "assets": {
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
           "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png"
         }
       },
@@ -1127,10 +1140,11 @@
         },
         "notes": "New cast slug `brick-foreman` — a recurring MiniScribe middle manager, the ground-level executor of the escalating fraud across the quota, lockbox, brick, and packing beats. Fear staged as a single interrogation lamp rather than an invented cruelty.",
         "assets": {
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
           "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
           "action-powerstance": "channels/the-second-take/visual-kit/refs/base/action-powerstance.png",
-          "expr-worried": "channels/the-second-take/visual-kit/refs/base/expr-worried.png",
-          "crowd-exemplar": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+          "expr-worried": "channels/the-second-take/visual-kit/refs/base/expr-worried.png"
         }
       },
       {
@@ -1149,9 +1163,10 @@
         "still_prompt": "The same shadowed boardroom, same locked framing: `qt-wiles` (`expr-deadpan`, `action-powerstance`) at the table's head under the harsh lamp cone, `brick-foreman` and the seated crowd tense down the table. Only this changes: a plain concentric archery target now hangs mounted on the dark wall directly behind Wiles, its rings barely visible in the gloom; everything else exactly as established.",
         "notes": "The target rendered as an object, not a number — the countable-number law prefers a drawable arrangement over a bare digit, and no figure carries a lettered quota here.",
         "assets": {
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
           "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
-          "action-powerstance": "channels/the-second-take/visual-kit/refs/base/action-powerstance.png",
-          "crowd-exemplar": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+          "action-powerstance": "channels/the-second-take/visual-kit/refs/base/action-powerstance.png"
         }
       },
       {
@@ -1170,10 +1185,11 @@
         "still_prompt": "The same shadowed boardroom, same locked framing: the archery target behind `qt-wiles` (`expr-smug`), `brick-foreman` at the table's near end, the seated crowd, the harsh lamp cone. Only this changes: `brick-foreman` (`expr-delighted`, `hold-both-hands`) now holds one fat bulging envelope of banknotes already landed in both hands on the table before him, fully caught; everything else exactly as established.",
         "notes": "",
         "assets": {
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
           "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
           "expr-delighted": "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
-          "hold-both-hands": "channels/the-second-take/visual-kit/refs/base/hold-both-hands.png",
-          "crowd-exemplar": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+          "hold-both-hands": "channels/the-second-take/visual-kit/refs/base/hold-both-hands.png"
         }
       },
       {
@@ -1192,8 +1208,9 @@
         "still_prompt": "The same shadowed boardroom, same locked framing: the archery target behind `qt-wiles` (`expr-deadpan`), `brick-foreman` with his envelope, the seated crowd, the harsh lamp cone. Only this changes: at the table's far end an ordinary wooden chopping block now sits with a plain cleaver laid flat across it, the chair that faced it pushed back and empty; everything else exactly as established.",
         "notes": "The idiom drawn literally but bloodless — an empty chair and a still cleaver, analysis not gore.",
         "assets": {
-          "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
-          "crowd-exemplar": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
+          "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png"
         }
       },
       {
@@ -1209,9 +1226,10 @@
         "still_prompt": "The same shadowed MiniScribe boardroom under its single harsh lamp cone, `qt-wiles` (`expr-smug`, `point-at-thing`) at the table's head, `brick-foreman` and the seated crowd tense along its length, the wooden chopping block still at the far end. A plain concentric archery target now hangs mounted on the dark wall behind Wiles, its rim brushing the ceiling line. Palette holds near-black shadow and the one harsh white cone. Wide flat framing at table height, the target's high rim catching the very top of the lamp's light; depth reads table foreground, seated figures mid-ground, the high target background.",
         "notes": "Re-based rather than a fourth delta (the prior chain's cap of 3 is reached) — the target's absolute new position (rim at the ceiling) stated self-contained rather than compared to an earlier frame.",
         "assets": {
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
           "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
-          "point-at-thing": "channels/the-second-take/visual-kit/refs/base/point-at-thing.png",
-          "crowd-exemplar": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+          "point-at-thing": "channels/the-second-take/visual-kit/refs/base/point-at-thing.png"
         }
       },
       {
@@ -1230,8 +1248,9 @@
         "still_prompt": "The same shadowed boardroom, same locked framing: `qt-wiles` (`expr-smug`) at the table's head, the raised target on the dark wall, `brick-foreman` and the seated crowd, the chopping block at the far end. Only this changes: the target has climbed again, its top rim now brushing the ceiling line, and the nearest seated figure leans back craning to see it; everything else exactly as established.",
         "notes": "",
         "assets": {
-          "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
-          "crowd-exemplar": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
+          "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png"
         }
       },
       {
@@ -1253,10 +1272,10 @@
         },
         "notes": "Two anon foreground figures under the >3 high-risk threshold; the seated onlookers stay on the crowd tier as a mass.",
         "assets": {
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
           "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
           "point-at-thing": "channels/the-second-take/visual-kit/refs/base/point-at-thing.png",
-          "expr-fear": "channels/the-second-take/visual-kit/refs/base/expr-fear.png",
-          "crowd-exemplar": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+          "expr-fear": "channels/the-second-take/visual-kit/refs/base/expr-fear.png"
         }
       },
       {
@@ -1281,8 +1300,8 @@
         },
         "notes": "Echoes the box motif from Terry Johnson's own exit (L42) without restaging his identity — a visual rhyme across the video's own history.",
         "assets": {
-          "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
-          "crowd-exemplar": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
+          "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png"
         }
       },
       {
@@ -1304,9 +1323,9 @@
         },
         "notes": "",
         "assets": {
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
           "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
-          "action-armscrossed": "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png",
-          "crowd-exemplar": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+          "action-armscrossed": "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png"
         }
       },
       {
@@ -1320,6 +1339,7 @@
         "still_prompt": "`brick-foreman`, in his short-sleeve button shirt and clip-on tie, sits alone at the boardroom table, `expr-deadpan`, `sit`, looking straight out to the viewer, one snapped pen held loosely between two fingers. The rest of the frame behind him drops to flat near-black. Palette is near-black and one warm skin tone. Tight straight-on medium close at table height with the figure filling the middle third and dark air around him — the deadpan look itself the whole picture.",
         "notes": "The aside lands as a held look-to-camera per style-bible 1, not an on-screen narrator.",
         "assets": {
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
           "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
           "sit": "channels/the-second-take/visual-kit/refs/base/sit.png"
         }
@@ -1370,9 +1390,7 @@
         "source": "ai-gen",
         "still_prompt": "The same fluorescent office, same locked framing: the ring overhead, the short conveyor falling short of its light, the empty desks. Only this changes: a plain wall calendar now hangs beside the door, four identical marks circled in dense red #d7402b down its page, evenly spaced; everything else exactly as established.",
         "notes": "The quarterly rhythm staged as four countable circled marks rather than a bare 'four times a year'.",
-        "assets": {
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
-        }
+        "assets": {}
       },
       {
         "id": "L73",
@@ -1392,9 +1410,7 @@
           "crowd": true
         },
         "notes": "[F-04, F-23] the quota-driven middle managers. Crowd tier — a mass of interchangeable roles, not individuals; `brick-foreman` is introduced separately once the fraud itself begins.",
-        "assets": {
-          "crowd-exemplar": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
-        }
+        "assets": {}
       },
       {
         "id": "L74",
@@ -1409,6 +1425,7 @@
         "still_prompt": "`brick-foreman`, in his short-sleeve shirt and clip-on tie, sits alone at one of the fluorescent office's grey desks, `expr-worried`, `sit`, a pen hovering just off the paper over a completely blank order pad, staring at it. The colossal glowing target-ring still hangs overhead in the background, out of focus. Palette is fluorescent white, grey steel and pale cream. Tight three-quarter medium close at desk height with the blank pad filling the lower third and the ring's glow soft behind him; depth reads pad foreground, brick-foreman mid-ground, blurred ring background.",
         "notes": "Re-based (the prior chain's 3-delta cap is reached); the blank pad is authored as a positive deliberately-empty surface, not a negation list.",
         "assets": {
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
           "expr-worried": "channels/the-second-take/visual-kit/refs/base/expr-worried.png",
           "sit": "channels/the-second-take/visual-kit/refs/base/sit.png"
         }
@@ -1429,6 +1446,7 @@
         "still_prompt": "The same fluorescent desk, same locked framing: `brick-foreman` at the pad, the blurred target-ring behind him. Only this changes: his pen now rests down on the pad mid-stroke, his expression shifted to `expr-deadpan`, grim rather than worried; everything else exactly as established.",
         "notes": "No digit is shown being written — the pad stays out of legible focus so no invented number reaches the frame.",
         "assets": {
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
           "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png"
         }
       },
@@ -1445,9 +1463,9 @@
         "still_prompt": "`auditor-rep` — a trim precise figure in a charcoal three-piece suit with a slim leather ledger case under one arm and half-moon spectacles pushed up on his forehead, the outside accounting firm's own institutional actor — stands `expr-deadpan`, `action-powerstance`, at the threshold of a MiniScribe warehouse loading door, a plain desk calendar propped on a crate beside him. A grey overcast morning outside, the warehouse's racked shelving stretching away behind the open door. Palette is charcoal, concrete grey and pale morning light. Wide flat framing at the threshold, the figure and the calendar sharing the near third; depth reads calendar and figure foreground, open door mid-ground, racked warehouse background. The calendar's page is lettered '1987'.",
         "notes": "New cast slug `auditor-rep` — Coopers & Lybrand [F-11] personified, one identity tag (the ledger case), recurring through the test-count and verdict beats. Supplied literal '1987' (1 word), the script's own date [F-12].",
         "assets": {
+          "auditor-rep": "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
           "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
-          "action-powerstance": "channels/the-second-take/visual-kit/refs/base/action-powerstance.png",
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+          "action-powerstance": "channels/the-second-take/visual-kit/refs/base/action-powerstance.png"
         }
       },
       {
@@ -1466,8 +1484,8 @@
         "still_prompt": "The same warehouse threshold, same locked framing: the '1987' calendar, the racked shelving beyond the door, charcoal and concrete grey. Only this changes: `auditor-rep` (`expr-deadpan`) now stands well inside the warehouse beside the near end of the racking, his ledger case open in one hand, a pen in the other; everything else exactly as established.",
         "notes": "'1987' re-quoted per L-1 (the calendar is still in frame, unchanged).",
         "assets": {
-          "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+          "auditor-rep": "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
+          "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png"
         }
       },
       {
@@ -1495,8 +1513,8 @@
         "still_prompt": "The same MiniScribe warehouse interior, the racked shelving stretching away, cold overhead light, concrete floor. `auditor-rep` (`expr-skeptical`), his ledger case open in one hand, stands squarely facing the shelving, his open ledger held up beside it at shelf height, comparing page to shelf directly. A small desk calendar propped on a nearby crate is lettered '1987'. Palette holds charcoal, concrete grey and cold overhead light. Wide flat framing at shelf height with the ledger and the shelving sharing the frame; depth reads calendar foreground, auditor-rep and ledger mid-ground, racked shelving background.",
         "notes": "Re-based (a new stage id) rather than a delta of 'audit-arrival': the register-shift infographic at L78 breaks contiguity, so this restarts the chain instead of claiming a non-contiguous delta. '1987' re-quoted per L-1 [F-12].",
         "assets": {
-          "expr-skeptical": "channels/the-second-take/visual-kit/refs/base/expr-skeptical.png",
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+          "auditor-rep": "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
+          "expr-skeptical": "channels/the-second-take/visual-kit/refs/base/expr-skeptical.png"
         }
       },
       {
@@ -1514,9 +1532,7 @@
           "crowd": true
         },
         "notes": "Callback to the L21 pallet-canyon vocabulary, restaged with counters rather than the sealed unopened pallets — the same warehouse now being checked.",
-        "assets": {
-          "crowd-exemplar": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
-        }
+        "assets": {}
       },
       {
         "id": "L81",
@@ -1534,8 +1550,8 @@
         "still_prompt": "The same warehouse aisle, same locked framing: the evenly spaced anonymous auditors bent to the shelves, the racking receding to its vanishing point. Only this changes: `auditor-rep` (`expr-skeptical`) now stands at the aisle's near mouth, ledger raised, tallying the others' progress; everything else exactly as established.",
         "notes": "",
         "assets": {
-          "expr-skeptical": "channels/the-second-take/visual-kit/refs/base/expr-skeptical.png",
-          "crowd-exemplar": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+          "auditor-rep": "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
+          "expr-skeptical": "channels/the-second-take/visual-kit/refs/base/expr-skeptical.png"
         }
       },
       {
@@ -1554,8 +1570,9 @@
         "still_prompt": "The same warehouse aisle, same locked framing: the spaced auditors, `auditor-rep` tallying at the near mouth. Only this changes: `brick-foreman` (`expr-worried`) now stands at the aisle's far end where it recedes into shadow, his own order pad held loosely at his side; everything else exactly as established.",
         "notes": "brick-foreman placed at the vanishing point — the two forces of the story (the count and the fiction) meet down one corridor.",
         "assets": {
-          "expr-worried": "channels/the-second-take/visual-kit/refs/base/expr-worried.png",
-          "crowd-exemplar": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+          "auditor-rep": "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
+          "expr-worried": "channels/the-second-take/visual-kit/refs/base/expr-worried.png"
         }
       },
       {
@@ -1569,6 +1586,7 @@
         "still_prompt": "`auditor-rep` (`expr-skeptical`, `hold-paper-by-sides`) holds one open ledger page up beside a warehouse shelf at the same height, side by side: the page's ruled rows sit dense and full, while the shelf behind it stands mostly bare, only a few boxes scattered where a full row should run. Grey concrete warehouse behind, cold fluorescent light. Palette is concrete grey and pale ledger cream. Tight three-quarter medium at shelf height so the full page and the sparse shelf read as one direct comparison; depth reads page and hand foreground, auditor-rep mid-ground, bare shelf background — the gap between the two the whole picture.",
         "notes": "The unmasking move (ironic-counterpoint) staged as a literal side-by-side rather than a number.",
         "assets": {
+          "auditor-rep": "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
           "expr-skeptical": "channels/the-second-take/visual-kit/refs/base/expr-skeptical.png",
           "hold-paper-by-sides": "channels/the-second-take/visual-kit/refs/base/hold-paper-by-sides.png"
         }
@@ -1583,9 +1601,7 @@
         "source": "ai-gen",
         "still_prompt": "A single bare warehouse shelf bay stands at eye level, its boards ruled and empty from end to end, one plain chalk outline drawn on the shelf boards marking where a stacked block of boxes should sit, empty air inside the outline. A small card propped at the shelf's edge, square to camera, is lettered '4 MILLION'. Cold fluorescent light, concrete grey and pale chalk white. Straight-on flat framing at shelf height with the outline filling the centre of the frame and shelf air either side. Every other shelf surface is blank and unlettered.",
         "notes": "[F-08] about $4 million of product missing from inventory. Supplied literal '4 MILLION' (2 words), word form per L-4. The empty chalk outline stages the absence positively rather than as a negation list.",
-        "assets": {
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
-        }
+        "assets": {}
       },
       {
         "id": "L85",
@@ -1598,6 +1614,7 @@
         "still_prompt": "`brick-foreman`, in his short-sleeve shirt, stands frozen at the mouth of the same bare shelf bay, `expr-caught`, one hand still half-raised toward the empty chalk outline. The rest of the warehouse behind him drops out of focus. Palette holds concrete grey and pale chalk white. Tight three-quarter medium close at shelf height with the figure filling the frame's centre — the caught look itself the whole picture.",
         "notes": "The aside lands as a held reaction on the payload word, per style-bible 1.",
         "assets": {
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
           "expr-caught": "channels/the-second-take/visual-kit/refs/base/expr-caught.png"
         }
       },
@@ -1614,6 +1631,7 @@
         "still_prompt": "A cramped back office stands beside the warehouse floor: a single plain steel cabinet of locked boxes stands against the wall, each box front stamped with a simple padlock icon, `brick-foreman` (`expr-fear`) frozen in the doorway looking at them, and behind him down the corridor a wooden chopping block sits waiting, echoing the earlier boardroom. Cold fluorescent light, concrete grey and steel. Wide flat framing at doorway height with the locked cabinet filling the near third and the distant chopping block small down the corridor; depth reads doorway foreground, cabinet mid-ground, corridor and block background.",
         "notes": "Callback to the fear-boardroom's chopping block, held small and distant rather than restaged large — the consequence still looms without repeating the earlier composition.",
         "assets": {
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
           "expr-fear": "channels/the-second-take/visual-kit/refs/base/expr-fear.png"
         }
       },
@@ -1633,6 +1651,7 @@
         "still_prompt": "The same back office, same locked framing: the locked steel cabinet, the distant chopping block down the corridor. Only this changes: `brick-foreman` (`expr-deadpan`, `sit`) now sits at a small desk beside the cabinet, pen to a fresh blank order pad; everything else exactly as established.",
         "notes": "The written number stays unshown, per the earlier absence law — no digit invented.",
         "assets": {
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
           "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
           "sit": "channels/the-second-take/visual-kit/refs/base/sit.png"
         }
@@ -1652,7 +1671,9 @@
         "source": "ai-gen",
         "still_prompt": "The same back office, same locked framing: `brick-foreman` at the desk with his fresh pad, the locked steel cabinet. Only this changes: one box in the cabinet now stands apart from the rest, closed with a single thick disc of dense red #d7402b wax over its padlock icon; everything else exactly as established.",
         "notes": "Red accent — ownership, the real sheets marked apart from every other box.",
-        "assets": {}
+        "assets": {
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png"
+        }
       },
       {
         "id": "L89",
@@ -1665,6 +1686,7 @@
         "still_prompt": "`brick-foreman`, `expr-deadpan`, kneels before the same wax-sealed box, now pried open a crack, working the lock plate with an Allen wrench and a straightened paper clip. The rest of the cabinet sits blurred behind him. Palette holds concrete grey, steel and the broken wax's dull red. Medium shot at body scale, brick-foreman's whole kneeling figure filling the frame with the cracked box before him; depth reads the box and tools foreground, brick-foreman mid-ground, blurred cabinet background — the cracked lid the payload, his hands incidental to it.",
         "notes": "[F-12] the lockbox break-in with Allen wrenches and paper clips. A concrete physical action — the honest literal beat of this sequence.",
         "assets": {
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
           "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png"
         }
       },
@@ -1679,6 +1701,7 @@
         "still_prompt": "`brick-foreman` (`expr-deadpan`) crouches beside the same open box, the clean fake sheet now seated in the gap where the real one sat, the real sheet — a thin page marked with a single red-inked line — already set aside on the floor beside him. Palette holds concrete grey and steel with the one red-marked page standing out. Tight three-quarter medium close at box height with both pages in frame; depth reads the box foreground, brick-foreman mid-ground, cabinet background.",
         "notes": "The swap staged as a completed geometric exchange (both sheets level, mid-transfer) rather than a freeze of motion.",
         "assets": {
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
           "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png"
         }
       },
@@ -1693,6 +1716,7 @@
         "still_prompt": "`brick-foreman`, `expr-smug`, `action-shrug`, stands upright now beside the closed cabinet, palms half-open in a small practiced shrug toward an unseen listener. The corridor and chopping block sit distant behind him. Palette holds concrete grey and steel. Tight three-quarter medium at chest height with the shrug filling the frame's centre.",
         "notes": "",
         "assets": {
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
           "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
           "action-shrug": "channels/the-second-take/visual-kit/refs/base/action-shrug.png"
         }
@@ -1708,6 +1732,7 @@
         "still_prompt": "`auditor-rep` (`expr-deadpan`, `sign-with-pen`) stands at the warehouse threshold once more, signing a single clean page held flat against the wall, one plain dark rubber-stamp mark already pressed at its foot in flat matte ink. The racked shelving stands behind him, unchanged. Palette holds charcoal, concrete grey and pale morning light. Wide flat framing at threshold height, the signed page filling the near third; depth reads page and auditor-rep foreground, threshold mid-ground, racking background.",
         "notes": "The clean pass staged plainly, dark ink only, no red — the deception's success is not itself an alarm beat.",
         "assets": {
+          "auditor-rep": "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
           "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
           "sign-with-pen": "channels/the-second-take/visual-kit/refs/base/sign-with-pen.png"
         }
@@ -1728,9 +1753,8 @@
         },
         "notes": "The lineup staged as an arrangement (an unbroken planted row) rather than a stated headcount; a held stance, not a freeze of mid-stride motion. Routed to anon_foreground (LARGE/foreground tier) rather than crowd.",
         "assets": {
-          "action-powerstance": "channels/the-second-take/visual-kit/refs/base/action-powerstance.png",
-          "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
-          "crowd-exemplar": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
+          "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png"
         }
       },
       {
@@ -1806,6 +1830,7 @@
         "still_prompt": "`auditor-rep` (`expr-skeptical`, `hold-one-hand`) stands beside the same sealed carton on its bare concrete floor, one hand resting flat on its lid, testing its weight and solidity. Palette holds corrugated tan, concrete grey and cool light. Wide medium at box height with `auditor-rep` and the carton sharing the frame's centre; depth reads carton foreground, auditor-rep mid-ground, bare concrete background.",
         "notes": "",
         "assets": {
+          "auditor-rep": "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
           "expr-skeptical": "channels/the-second-take/visual-kit/refs/base/expr-skeptical.png",
           "hold-one-hand": "channels/the-second-take/visual-kit/refs/base/hold-one-hand.png"
         },
@@ -1826,6 +1851,7 @@
         "still_prompt": "`auditor-rep` (`expr-deadpan`, `hold-paper-by-sides`) stands beside the same sealed carton, a single checklist page held up beside it, one clean tick mark already struck through its first line in plain dark ink. Palette holds corrugated tan, concrete grey and cool light. Tight three-quarter medium close at box height with the checklist and carton filling the frame together — the single tick mark the whole picture.",
         "notes": "Closes Act 2 on the exact requirement Act 3 answers: something to touch and tick off.",
         "assets": {
+          "auditor-rep": "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
           "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
           "hold-paper-by-sides": "channels/the-second-take/visual-kit/refs/base/hold-paper-by-sides.png"
         },
@@ -1853,6 +1879,7 @@
         },
         "notes": "Two anon foreground figures under the high-risk threshold.",
         "assets": {
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
           "expr-thinking": "channels/the-second-take/visual-kit/refs/base/expr-thinking.png"
         }
       },
@@ -1877,6 +1904,7 @@
         },
         "notes": "The plan itself (the brick) enters their sightline, rather than the dead-metaphor lightbulb icon — reclassified from a stock idiom-image to the object the beat is actually about.",
         "assets": {
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
           "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png"
         }
       },
@@ -1890,9 +1918,7 @@
         "source": "ai-gen",
         "still_prompt": "A flat top-down site plan on plain cream card: a plain square building icon labelled 'HQ' sits at the centre, and one short straight dashed line runs from its edge to a second, slightly smaller square building icon just off to the side, a small key symbol drawn beside the second icon's door. Ochre and cream palette, ink-brown lines only. Straight top-down framing, both icons and the connecting line filling the frame's centre. Every road and label besides 'HQ' is blank and unlettered.",
         "notes": "Supplied literal 'HQ' (1 word), a plain map label rather than a full word — under the char/word caps and load-bearing for the plan-view's own legibility.",
-        "assets": {
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
-        }
+        "assets": {}
       },
       {
         "id": "L103",
@@ -1907,6 +1933,7 @@
         "still_prompt": "`brick-foreman`, `expr-delighted`, `action-powerstance`, stands at the gated entrance of an open brickyard, stacks of red clay bricks banded on pallets stretching back in rows behind a low chain-link fence. A weathered wooden sign arches over the gate. Palette is terracotta red, weathered wood brown and open sky blue. Wide flat framing at gate height with brick-foreman and the arched sign sharing the near third; depth reads gate foreground, brick-foreman mid-ground, pallet rows and open sky background.",
         "notes": "Bricks already disclosed at L23; this act freely elaborates the mechanism already teased.",
         "assets": {
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
           "expr-delighted": "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
           "action-powerstance": "channels/the-second-take/visual-kit/refs/base/action-powerstance.png"
         }
@@ -1927,7 +1954,7 @@
         "still_prompt": "The same brickyard gate, same locked framing: `brick-foreman` at the entrance, the pallet rows of red clay bricks behind the chain-link fence, terracotta and weathered wood. Only this changes: the arched wooden sign over the gate is now clearly lettered 'COLORADO BRICK CO'; everything else exactly as established.",
         "notes": "[F-06] the Colorado Brick Co. Supplied literal 'COLORADO BRICK CO' (3 words, 17 characters) — a company the story genuinely transacts with, lettered per the L18-established rule (party to the story's own transactions, not an analogy).",
         "assets": {
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png"
         }
       },
       {
@@ -1946,7 +1973,7 @@
         "still_prompt": "The same brickyard, same locked framing: `brick-foreman` at the gate, the 'COLORADO BRICK CO' sign, the pallet rows behind the fence. Only this changes: a flatbed truck now waits just inside the yard, its bed stacked with banded brick pallets right to the rail, ready to move; everything else exactly as established.",
         "notes": "[F-05] roughly 26,000 bricks. The count stays a countable mass (a loaded truck bed) rather than a lettered digit.",
         "assets": {
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png"
         }
       },
       {
@@ -1978,7 +2005,9 @@
           ]
         },
         "notes": "The mid-video re-arm opens here — the packing line is the video's most elaborate staging, held across a long chain. A concrete physical action, the honest literal choice.",
-        "assets": {}
+        "assets": {
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png"
+        }
       },
       {
         "id": "L108",
@@ -2001,6 +2030,7 @@
         },
         "notes": "[F-05] fake serial numbers on the boxes. The stamp mark stays a generic mark rather than a specific invented serial string — no fabricated digit sequence.",
         "assets": {
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
           "hold-one-hand": "channels/the-second-take/visual-kit/refs/base/hold-one-hand.png"
         }
       },
@@ -2024,7 +2054,9 @@
           ]
         },
         "notes": "The real drive box placed beside the fakes to make the indistinguishability visible, not stated.",
-        "assets": {}
+        "assets": {
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png"
+        }
       },
       {
         "id": "L110",
@@ -2109,8 +2141,8 @@
         },
         "notes": "Callback and payoff to L93 — brick-foreman now genuinely fits the lineup. Routed to anon_foreground, matching L93's tier.",
         "assets": {
-          "action-powerstance": "channels/the-second-take/visual-kit/refs/base/action-powerstance.png",
-          "crowd-exemplar": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
+          "action-powerstance": "channels/the-second-take/visual-kit/refs/base/action-powerstance.png"
         }
       },
       {
@@ -2145,9 +2177,9 @@
         "still_prompt": "The same top-down world plan, same locked framing: the parked pallet icon at the warehouse-square, ochre landmasses on pale blue water. Only this changes: a tiny `qt-wiles` (`expr-annoyed`, `action-armscrossed`) now stands on the map beside the still-parked pallet icon, dwarfed by the continent beneath him; everything else exactly as established.",
         "notes": "",
         "assets": {
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
           "expr-annoyed": "channels/the-second-take/visual-kit/refs/base/expr-annoyed.png",
-          "action-armscrossed": "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png",
-          "env-map-parchment": "channels/the-second-take/visual-kit/refs/env/env-map-parchment.png"
+          "action-armscrossed": "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png"
         }
       },
       {
@@ -2166,8 +2198,7 @@
         "still_prompt": "The same top-down world plan, same locked framing: tiny `qt-wiles` beside the warehouse-square, ochre landmasses on pale blue water. Only this changes: the pallet icon has left the warehouse-square, now riding one thin arcing route line out across the water; everything else exactly as established.",
         "notes": "",
         "assets": {
-          "expr-annoyed": "channels/the-second-take/visual-kit/refs/base/expr-annoyed.png",
-          "env-map-parchment": "channels/the-second-take/visual-kit/refs/env/env-map-parchment.png"
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png"
         }
       },
       {
@@ -2186,8 +2217,7 @@
         "still_prompt": "The same top-down world plan, same locked framing: tiny `qt-wiles`, the ochre landmasses on pale blue water. Only this changes: the arcing route line now runs its full length to a small marked dock icon on a far southeastern coast, the pallet icon sitting right at its end; everything else exactly as established.",
         "notes": "[F-09] shipped overseas, including to Singapore. Delta cap reached for this chain.",
         "assets": {
-          "expr-annoyed": "channels/the-second-take/visual-kit/refs/base/expr-annoyed.png",
-          "env-map-parchment": "channels/the-second-take/visual-kit/refs/env/env-map-parchment.png"
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png"
         }
       },
       {
@@ -2232,6 +2262,7 @@
         "still_prompt": "`qt-wiles` (`expr-smug`, `hold-one-hand`) leans casually against the same loading dock's low wall, one hand extended in an open, easy gesture, entirely at ease. Concrete apron, cold overhead light. Palette holds steel-grey suit against concrete grey. Wide medium at dock height with Wiles filling the frame's centre; depth reads dock foreground, Wiles mid-ground, plain wall background.",
         "notes": "",
         "assets": {
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
           "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
           "hold-one-hand": "channels/the-second-take/visual-kit/refs/base/hold-one-hand.png"
         }
@@ -2265,9 +2296,7 @@
         "source": "ai-gen",
         "still_prompt": "A single shrink-wrapped pallet sits centred on a plain ledger page laid flat on a bare desk, the page's printed column beneath it struck through with one clean tick in dark ink under a hand-lettered word 'SALE'. Palette is wrap white, ledger cream and ink-brown. Wide flat framing at desk height with the pallet and the ledger sharing the frame; depth reads ledger foreground, pallet mid-ground, bare desk background.",
         "notes": "Re-authored as a staged tabletop beat rather than a second crude marker diagram — the grammar keeps the explainer-diagram class to one exception per video (reserved for L78). Supplied literal 'SALE' (1 word).",
-        "assets": {
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
-        }
+        "assets": {}
       },
       {
         "id": "L125",
@@ -2282,9 +2311,7 @@
         "source": "ai-gen",
         "still_prompt": "The same pallet, now shown a second time seated on a second plain ledger page beside the first, this one struck through with a matching tick under a hand-lettered word 'STOCK'. Both pages sit side by side on the same bare desk. Palette is wrap white, ledger cream and ink-brown. Wide flat framing at desk height with both pages and the twinned pallet filling the frame.",
         "notes": "'SALE' re-quoted per L-1 (the neighbouring page). Supplied literal 'STOCK' (1 word) [F-24] — the identical unit counted twice, staged as the same pallet appearing on two ledger pages side by side rather than a diagram.",
-        "assets": {
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
-        }
+        "assets": {}
       },
       {
         "id": "L126",
@@ -2297,6 +2324,7 @@
         "still_prompt": "`auditor-rep` (`expr-confused`, `hold-paper-by-sides`) stands alone at the mouth of the same pallet-canyon warehouse aisle from earlier, his ledger held up, looking down its full receding length of stacked pallets with open puzzlement. Cold fluorescent light, concrete grey and pallet-wrap white. Wide one-point framing down the aisle from floor height, auditor-rep small at the near mouth; depth reads auditor-rep foreground, receding pallets background.",
         "notes": "Rhetorical-question line staged as a genuine reaction rather than an on-screen narrator.",
         "assets": {
+          "auditor-rep": "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
           "expr-confused": "channels/the-second-take/visual-kit/refs/base/expr-confused.png",
           "hold-paper-by-sides": "channels/the-second-take/visual-kit/refs/base/hold-paper-by-sides.png"
         }
@@ -2314,9 +2342,9 @@
         "still_prompt": "`auditor-rep`, `expr-deadpan`, `action-powerstance`, stands at the head of the same pallet-canyon aisle, ledger case open, a small brass plaque mounted on the wall beside him. Cold fluorescent light, concrete grey and pallet-wrap white. Wide flat framing at aisle-mouth height with auditor-rep and the plaque sharing the near third; depth reads plaque foreground, auditor-rep mid-ground, receding pallets background. The plaque is lettered 'COOPERS & LYBRAND'.",
         "notes": "[F-11] Coopers & Lybrand, the outside auditor. Supplied literal 'COOPERS & LYBRAND' (2 words per lettering law's word-count, ampersand not counted as a word; 17 characters) — the firm the story transacts with, lettered per the established rule.",
         "assets": {
+          "auditor-rep": "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
           "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
-          "action-powerstance": "channels/the-second-take/visual-kit/refs/base/action-powerstance.png",
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+          "action-powerstance": "channels/the-second-take/visual-kit/refs/base/action-powerstance.png"
         }
       },
       {
@@ -2330,8 +2358,9 @@
         "still_prompt": "`auditor-rep` (`expr-deadpan`, `action-powerstance`) stands small at the foot of a towering 'COOPERS & LYBRAND' plaque, several times his own height, mounted at the mouth of the same pallet-canyon aisle, the endless pallet rows receding behind him. Cold fluorescent light, concrete grey and pallet-wrap white. Wide low framing at floor height so the plaque dwarfs auditor-rep against the endless rows; depth reads auditor-rep foreground, the towering plaque mid-ground, receding pallets background.",
         "notes": "Re-based as its own composition (the plaque's grown scale is a new set-up, not a delta) and auditor-rep is carried by name into the restatement so his identity isn't re-invented. [F-11] Coopers & Lybrand, one of the giants. Supplied literal 'COOPERS & LYBRAND' re-quoted per L-1.",
         "assets": {
+          "auditor-rep": "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
           "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+          "action-powerstance": "channels/the-second-take/visual-kit/refs/base/action-powerstance.png"
         },
         "stage": "test-count-scale",
         "stage_role": "base"
@@ -2352,8 +2381,8 @@
         "still_prompt": "The same pallet canyon, same locked framing: the towering 'COOPERS & LYBRAND' plaque, the receding rows. Only this changes: `auditor-rep` (`expr-deadpan`) now stands beside one single pallet, pulled slightly forward and apart from the unbroken row beside it; everything else exactly as established.",
         "notes": "'COOPERS & LYBRAND' re-quoted per L-1. Delta cap reached for this chain.",
         "assets": {
-          "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+          "auditor-rep": "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
+          "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png"
         }
       },
       {
@@ -2369,6 +2398,7 @@
         "still_prompt": "`auditor-rep` (`expr-deadpan`, `hold-one-hand`) stands in the same pallet canyon, one single carton now pulled from the nearest pallet and held out at chest height, its flap open toward the viewer. The unbroken row of identical pallets stretches away behind him, untouched. Cold fluorescent light, concrete grey and pallet-wrap white. Wide medium at chest height with the single held carton dominating the frame; depth reads carton foreground, auditor-rep mid-ground, untouched row background.",
         "notes": "Re-based; the single pulled carton against the whole untouched row is the sampling method drawn plainly.",
         "assets": {
+          "auditor-rep": "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
           "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
           "hold-one-hand": "channels/the-second-take/visual-kit/refs/base/hold-one-hand.png"
         }
@@ -2389,8 +2419,8 @@
         "still_prompt": "The same pallet canyon, same locked framing: `auditor-rep` (`expr-deadpan`) with the single held carton, the untouched row behind. Only this changes: a single ledger page is now held up beside the carton at the same height, one plain checkmark struck across its face in dark ink; everything else exactly as established.",
         "notes": "",
         "assets": {
-          "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
-          "hold-one-hand": "channels/the-second-take/visual-kit/refs/base/hold-one-hand.png"
+          "auditor-rep": "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
+          "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png"
         }
       },
       {
@@ -2408,10 +2438,7 @@
         "source": "ai-gen",
         "still_prompt": "The same pallet canyon, same locked framing: the single carton and checked ledger held at chest height, the row receding behind. Only this changes: one plain dark rubber-stamp mark now presses onto the nearest pallet's face, and the same mark repeats faintly down every pallet after it, receding with the row; everything else exactly as established.",
         "notes": "The single-sample-clears-everything logic staged as one stamp covering the whole row.",
-        "assets": {
-          "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
-          "hold-one-hand": "channels/the-second-take/visual-kit/refs/base/hold-one-hand.png"
-        }
+        "assets": {}
       },
       {
         "id": "L133",
@@ -2493,6 +2520,7 @@
         "still_prompt": "The same wall-mounted gauge, same locked framing: the needle pinned in the shaded danger arc. Only this changes: `qt-wiles` (`expr-smug`, `hold-one-hand`) now stands beside the gauge, one hand resting on its outer rim, having just turned it further; everything else exactly as established.",
         "notes": "",
         "assets": {
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
           "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
           "hold-one-hand": "channels/the-second-take/visual-kit/refs/base/hold-one-hand.png"
         }
@@ -2508,6 +2536,7 @@
         "still_prompt": "A plain circular gauge dial mounted on a bare wall, its needle turned deep into a shaded danger arc. `brick-foreman` (`expr-thinking`) stands below it, a blank sketch pad open in one hand, studying the dial. A deserted room around them, one soft overhead light. Palette is steel grey, danger-arc shadow and pale wall cream. Wide medium framing at standing height with brick-foreman and the gauge sharing the frame — the two of them, the whole picture.",
         "notes": "Re-authored as its own hard-cut composition (the wider two-figure framing is a new set-up, not a delta of the tight single-dial base).",
         "assets": {
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
           "expr-thinking": "channels/the-second-take/visual-kit/refs/base/expr-thinking.png"
         }
       },
@@ -2588,9 +2617,7 @@
           ]
         },
         "notes": "[F-10] an executive brought family in to help pack. Staged as soft silhouettes at a warm, quiet table rather than detailed faces — restrained treatment of a real documented but unnamed family beat. Routed to anon_foreground (LARGE/foreground tier, the shot's whole subject).",
-        "assets": {
-          "crowd-exemplar": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
-        }
+        "assets": {}
       },
       {
         "id": "L144",
@@ -2612,9 +2639,7 @@
           ]
         },
         "notes": "",
-        "assets": {
-          "crowd-exemplar": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
-        }
+        "assets": {}
       },
       {
         "id": "L145",
@@ -2644,10 +2669,9 @@
         },
         "notes": "[F-28] named the best managed company in the disk drive industry in 1988. Supplied literal '1988' (1 word), the script's own date.",
         "assets": {
+          "miniscribe-rep": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
           "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
-          "crowd-exemplar": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-          "hold-both-hands": "channels/the-second-take/visual-kit/refs/base/hold-both-hands.png"
+          "action-powerstance": "channels/the-second-take/visual-kit/refs/base/action-powerstance.png"
         }
       },
       {
@@ -2666,9 +2690,8 @@
         "still_prompt": "The same awards stage, same locked framing: `miniscribe-rep` (`expr-smug`) holding the trophy under the spotlight, '1988' on the podium card, the navy curtain, the dark seated audience. Only this changes: the trophy's small plaque is now clearly lettered 'BEST MANAGED'; everything else exactly as established.",
         "notes": "'1988' re-quoted per L-1. [F-28] Supplied literal 'BEST MANAGED' (2 words, 12 characters), the award named in the ledger.",
         "assets": {
-          "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
-          "crowd-exemplar": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+          "miniscribe-rep": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+          "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png"
         }
       },
       {
@@ -2687,9 +2710,7 @@
         "still_prompt": "The same awards stage, same locked framing: `miniscribe-rep` with the 'BEST MANAGED' trophy, '1988' on the podium, the dark seated audience. Only this changes: a narrow gap has opened in the navy curtain behind him, and through it, small and distant, the familiar rows of shrink-wrapped pallets from the brick warehouse are just visible; everything else exactly as established.",
         "notes": "'1988' and 'BEST MANAGED' both re-quoted per L-1. The unmasking move: the fraud visible right behind the celebration.",
         "assets": {
-          "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
-          "crowd-exemplar": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+          "miniscribe-rep": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png"
         }
       },
       {
@@ -2715,6 +2736,7 @@
         "still_prompt": "`auditor-rep`, `expr-deadpan`, stands alone in the pallet-canyon warehouse aisle, arms at his sides, doing nothing, the receding rows of pallets stretching untouched behind him. Cold fluorescent light, concrete grey and pallet-wrap white. Wide flat framing at aisle height with auditor-rep small and still at the centre; depth reads near aisle foreground, auditor-rep mid-ground, receding pallets background — his stillness itself the whole picture.",
         "notes": "The negative claim staged as inaction rather than a negation list.",
         "assets": {
+          "auditor-rep": "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
           "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png"
         }
       },
@@ -2762,9 +2784,7 @@
           "crowd": true
         },
         "notes": "",
-        "assets": {
-          "crowd-exemplar": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
-        }
+        "assets": {}
       },
       {
         "id": "L154",
@@ -2785,8 +2805,8 @@
         },
         "notes": "",
         "assets": {
-          "expr-crestfallen": "channels/the-second-take/visual-kit/refs/base/expr-crestfallen.png",
-          "crowd-exemplar": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
+          "expr-crestfallen": "channels/the-second-take/visual-kit/refs/base/expr-crestfallen.png"
         }
       },
       {
@@ -2800,6 +2820,7 @@
         "still_prompt": "`brick-foreman` (`expr-crestfallen`, `carry-by-handle`) stands alone at a bus stop in the cold outside the plant, his box at his feet, and behind him through the plant's loading-bay door the familiar shrink-wrapped brick pallets sit stacked, small and distant but plainly recognisable. Cold overcast daylight, palette of steel grey and terracotta hint in the distance. Wide flat framing at standing height with brick-foreman foreground and the pallets small in the background; depth reads bus-stop foreground, brick-foreman mid-ground, loading bay and pallets background.",
         "notes": "The unmasking move: the very warehouse he built is visible over his shoulder as he leaves it for good.",
         "assets": {
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
           "expr-crestfallen": "channels/the-second-take/visual-kit/refs/base/expr-crestfallen.png",
           "carry-by-handle": "channels/the-second-take/visual-kit/refs/base/carry-by-handle.png"
         }
@@ -2817,6 +2838,7 @@
         "still_prompt": "`brick-foreman`, `expr-deadpan`, `sit`, sits at a small kitchen table at home in the evening, a period rotary telephone's receiver already lifted to his ear, his other hand resting on the dial. A plain warm kitchen behind him, one hanging lamp. Palette is warm domestic amber and cream. Wide medium at table height with brick-foreman and the phone filling the frame's centre; depth reads table foreground, brick-foreman mid-ground, kitchen background.",
         "notes": "A concrete physical action, the literal beat of this sequence.",
         "assets": {
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
           "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
           "sit": "channels/the-second-take/visual-kit/refs/base/sit.png"
         }
@@ -2837,8 +2859,8 @@
         "still_prompt": "The same warm kitchen table, same locked framing: `brick-foreman` (`expr-deadpan`) with the phone at his ear. Only this changes: a folded newspaper now sits on the table beside him, its visible masthead panel lettered 'DENVER'; everything else exactly as established.",
         "notes": "[F-14] the Denver newspapers. Supplied literal 'DENVER' (1 word), the script's own place name.",
         "assets": {
-          "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
+          "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png"
         }
       },
       {
@@ -2852,8 +2874,8 @@
         "still_prompt": "`brick-foreman` (`expr-smug`), the phone receiver now set gently back in its cradle on the same kitchen table, sits back in his chair, arms loosely crossed, satisfied. The 'DENVER' newspaper still on the table beside him. Palette holds warm domestic amber and cream. Wide medium at table height with brick-foreman filling the frame's centre — the settled satisfaction itself the whole picture.",
         "notes": "'DENVER' re-quoted per L-1 (still visible in frame).",
         "assets": {
-          "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
+          "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png"
         },
         "stage": "phone-call-newspaper",
         "stage_role": "delta",
@@ -2894,8 +2916,7 @@
         "notes": "[F-15] Richard Rifenburgh's new management team, Feb 1989. Kept anonymous rather than minted as cast — a single appearance, no recurring identity. Supplied literal '1989' (1 word) [F-15].",
         "assets": {
           "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
-          "action-powerstance": "channels/the-second-take/visual-kit/refs/base/action-powerstance.png",
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+          "action-powerstance": "channels/the-second-take/visual-kit/refs/base/action-powerstance.png"
         }
       },
       {
@@ -2918,10 +2939,7 @@
           ]
         },
         "notes": "'1989' re-quoted per L-1. Wiles's absence staged as the empty chair rather than naming him again in prose.",
-        "assets": {
-          "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
-        }
+        "assets": {}
       },
       {
         "id": "L162",
@@ -2943,10 +2961,7 @@
           ]
         },
         "notes": "'1989' re-quoted per L-1. Delta cap reached for this chain.",
-        "assets": {
-          "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
-        }
+        "assets": {}
       },
       {
         "id": "L163",
@@ -2993,9 +3008,7 @@
         "source": "ai-gen",
         "still_prompt": "A long table stands stacked with ledger books, each spine facing the viewer in an even row. The nearest spine is lettered '1986'; every other spine in the row is plain and unmarked, ruled but blank. Cold desk-lamp light, palette of ledger cream, spine ink and cool grey. Wide flat framing at spine height with the row filling the frame edge to edge; depth reads near spine foreground, the row receding into mid-ground, plain wall background.",
         "notes": "[F-15] restated results back to 1986. Supplied literal '1986' (1 word) on the nearest spine only; the rest of the row stays deliberately blank rather than fabricating a run of invented years.",
-        "assets": {
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
-        }
+        "assets": {}
       },
       {
         "id": "L166",
@@ -3012,9 +3025,7 @@
         "source": "ai-gen",
         "still_prompt": "The same table of ledger spines, same locked framing: the row from '1986' forward, cold desk-lamp light. Only this changes: one page has been pulled from the row and now lies open on the table in front, its header lettered '1988'; everything else exactly as established.",
         "notes": "'1986' re-quoted per L-1. Supplied literal '1988' (1 word) [F-16].",
-        "assets": {
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
-        }
+        "assets": {}
       },
       {
         "id": "L167",
@@ -3031,9 +3042,7 @@
         "source": "ai-gen",
         "still_prompt": "The same table, same locked framing: the open '1988' page, the ledger row behind. Only this changes: the open page's bottom total line is now lettered '14 MILLION' in plain dark ink; everything else exactly as established.",
         "notes": "'1986' and '1988' both re-quoted per L-1. Supplied literal '14 MILLION' (2 words) [F-16] — the reported figure.",
-        "assets": {
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
-        }
+        "assets": {}
       },
       {
         "id": "L168",
@@ -3045,9 +3054,7 @@
         "source": "ai-gen",
         "still_prompt": "The same open '1988' ledger page lies alone on the table under the desk lamp, its '14 MILLION' total line struck through with one heavy ruled line in dense red #d7402b, and beneath it a new total is lettered '40 MILLION' in the same plain dark ink. Palette holds ledger cream, red strike-through and ink black. Tight straight-on close at page height, the corrected total filling the frame's lower half.",
         "notes": "'14 MILLION' re-quoted per L-1 before the strike; supplied literal '40 MILLION' (2 words) [F-16]. Red accent — the correction itself the alarm.",
-        "assets": {
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
-        }
+        "assets": {}
       },
       {
         "id": "L169",
@@ -3110,9 +3117,7 @@
         "source": "ai-gen",
         "still_prompt": "A single official document lies flat on a bare desk, a heavy dark rubber-stamp mark already pressed across its centre in flat matte ink. A small desk calendar propped beside it is lettered 'SEPTEMBER'. Cool office light, palette of paper cream and steel grey. Straight-on flat framing at desk height, the stamped document filling the frame's centre.",
         "notes": "[F-17] filed for bankruptcy that September. Supplied literal 'SEPTEMBER' (1 word, 9 characters), the script's own month.",
-        "assets": {
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
-        }
+        "assets": {}
       },
       {
         "id": "L173",
@@ -3129,9 +3134,7 @@
           "crowd": true
         },
         "notes": "",
-        "assets": {
-          "crowd-exemplar": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
-        }
+        "assets": {}
       },
       {
         "id": "L174",
@@ -3151,9 +3154,7 @@
           "crowd": true
         },
         "notes": "",
-        "assets": {
-          "crowd-exemplar": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
-        }
+        "assets": {}
       },
       {
         "id": "L175",
@@ -3170,9 +3171,7 @@
         "source": "ai-gen",
         "still_prompt": "The same corridor, same locked framing: the lawyers filing in, the bondholder cluster near the front. Only this changes: the nearest bondholder's certificate page now carries one ragged crack of dense red #d7402b ink running through its printed field, held tight in both hands; everything else exactly as established.",
         "notes": "Red accent — alarm, the certificate's promise cracking.",
-        "assets": {
-          "crowd-exemplar": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
-        }
+        "assets": {}
       },
       {
         "id": "L176",
@@ -3200,9 +3199,7 @@
         },
         "notes": "[F-18] the February 1992 verdict — the video's withheld peak, reserved for this beat. Supplied literal '1992' (1 word).",
         "assets": {
-          "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
-          "crowd-exemplar": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+          "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png"
         }
       },
       {
@@ -3216,9 +3213,7 @@
         "still_prompt": "A grand, empty courtroom stands lit by a colossal glowing banknote-green figure that fills the entire ceiling, radiant light spilling down over the whole room, lettered '550 MILLION'. Below it, in the jury box, twelve anonymous jurors stand ranked in two rows, `expr-deadpan`, facing the bench. Dark polished wood panelling fills the room, a small dateline plaque set into the bench rail lettered '1992'. Palette is deep courtroom brown and radiant banknote green. Wide symmetrical framing at gallery height with the ranked jury and the glowing ceiling sharing the frame; depth reads gallery foreground, jury box mid-ground, dark panelled bench background.",
         "notes": "[F-18] the February 1992 verdict — the video's withheld peak. Re-authored as its own full hard-cut composition (the courtroom fully re-lit is a world/register change, not a one-element delta) so 'everything else exactly as established' is never claimed against a wholesale relighting. '1992' and the jury re-quoted/restated. Supplied literal '550 MILLION' (2 words, 11 characters), the jury's own award — the most striking single staging in the video, earned by every dwarfed/scaled beat before it.",
         "assets": {
-          "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
-          "crowd-exemplar": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+          "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png"
         },
         "figures": {
           "crowd": true
@@ -3269,6 +3264,7 @@
         "still_prompt": "`auditor-rep`, `expr-fear`, `action-recoil`, stands braced on his back foot as the sharp red wedge of glowing figure from above lands squarely on the floor in front of him, its red light washing hard across his charcoal suit. Deep courtroom shadow around him. Palette is alarm red against near-black and charcoal. Wide low framing at floor height with the landed red light and auditor-rep sharing the frame's centre.",
         "notes": "",
         "assets": {
+          "auditor-rep": "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
           "expr-fear": "channels/the-second-take/visual-kit/refs/base/expr-fear.png",
           "action-recoil": "channels/the-second-take/visual-kit/refs/base/action-recoil.png"
         },
@@ -3289,6 +3285,7 @@
         "still_prompt": "`auditor-rep` (`expr-fear`) stands still lit by the hard red wash, and beside him, small and distant through a gap in the dark courtroom wall, the familiar shrink-wrapped brick pallets from the warehouse sit stacked, faint but plainly recognisable. Palette holds alarm red, near-black and a hint of terracotta in the distance. Wide flat framing at floor height with auditor-rep foreground and the pallets small in the background.",
         "notes": "Callback to the warehouse imagery, closing the loop on the mechanism auditor-rep failed to catch.",
         "assets": {
+          "auditor-rep": "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
           "expr-fear": "channels/the-second-take/visual-kit/refs/base/expr-fear.png"
         },
         "stage": "verdict-punitive",
@@ -3308,6 +3305,7 @@
         "still_prompt": "`hq-banker`, `expr-fear`, `action-recoil`, stands in the same dark courtroom, caught in a second, smaller wash of the same alarm-red light falling from above. His chocolate-brown pinstripe suit and gold watch chain still clear in the red wash. Deep courtroom shadow around him. Palette is alarm red against near-black and chocolate brown.",
         "notes": "",
         "assets": {
+          "hq-banker": "channels/the-second-take/visual-kit/refs/hq-banker/hq-banker.png",
           "expr-fear": "channels/the-second-take/visual-kit/refs/base/expr-fear.png",
           "action-recoil": "channels/the-second-take/visual-kit/refs/base/action-recoil.png"
         },
@@ -3325,6 +3323,8 @@
         "still_prompt": "The same dark courtroom, same locked framing: `hq-banker` (`expr-fear`) in the red wash. Only this changes: beside him, small and pale, a faint ghostly outline of the same high-rise office doorway from his first appearance hangs superimposed in the dark air, `qt-wiles`'s silhouette just visible stepping through it once more; everything else exactly as established.",
         "notes": "The full-circle callback to L45-L48 staged as a faint ghosted memory rather than restaging the scene solidly.",
         "assets": {
+          "hq-banker": "channels/the-second-take/visual-kit/refs/hq-banker/hq-banker.png",
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
           "expr-fear": "channels/the-second-take/visual-kit/refs/base/expr-fear.png"
         },
         "stage": "verdict-punitive-2",
@@ -3417,9 +3417,7 @@
         "source": "ai-gen",
         "still_prompt": "A plain conference table stands with three separate stacks of banknotes set out in a row, each a different height, side by side at its centre. Cool office light, palette of banknote green and pale table wood. Wide flat framing at table height with the three stacks filling the frame's centre; depth reads table foreground, the three stacks mid-ground, plain wall background. A single card propped in front of the row is lettered '128 MILLION'.",
         "notes": "[F-19] the ~$128M settlement. Supplied literal '128 MILLION' (2 words, 11 characters).",
-        "assets": {
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
-        }
+        "assets": {}
       },
       {
         "id": "L191",
@@ -3437,8 +3435,9 @@
         "still_prompt": "The same conference table, same locked framing: the three stacks, the '128 MILLION' card. Only this changes: three figures now stand behind the table, one each behind a stack — a plain anonymous cufflinked executive behind the first, `hq-banker` (`expr-deadpan`) behind the second, `auditor-rep` (`expr-deadpan`) behind the third — each at body scale with a hand resting lightly on their own stack; everything else exactly as established.",
         "notes": "'128 MILLION' re-quoted per L-1. Three payers staged countably, one hand each, rather than named in a list.",
         "assets": {
-          "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+          "hq-banker": "channels/the-second-take/visual-kit/refs/hq-banker/hq-banker.png",
+          "auditor-rep": "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
+          "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png"
         },
         "figures": {
           "anon_foreground": [
@@ -3459,8 +3458,8 @@
         "still_prompt": "`qt-wiles`, `expr-crestfallen`, stands alone at a defendant's table in a plain courtroom, his steel-grey suit rumpled, the stethoscope gone from his neck entirely. A dateline plaque on the bench rail behind him is lettered '1994'. Cool flat courtroom light, palette of pale wood and cool grey. Wide medium at table height with Wiles filling the frame's centre; depth reads table foreground, Wiles mid-ground, bench background.",
         "notes": "[F-20] 1994 conviction. Supplied literal '1994' (1 word). The stethoscope's absence marks his fall from 'Doctor Fix It' as a positive costume change.",
         "assets": {
-          "expr-crestfallen": "channels/the-second-take/visual-kit/refs/base/expr-crestfallen.png",
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
+          "expr-crestfallen": "channels/the-second-take/visual-kit/refs/base/expr-crestfallen.png"
         }
       },
       {
@@ -3479,8 +3478,8 @@
         "still_prompt": "The same courtroom, same locked framing: `qt-wiles` (`expr-crestfallen`) at the table, '1994' on the bench rail. Only this changes: two plain closed document folders now sit stacked before him, each stamped once in plain dark ink; everything else exactly as established.",
         "notes": "'1994' re-quoted per L-1. Two folders staged countably for the two counts, no invented charge text.",
         "assets": {
-          "expr-crestfallen": "channels/the-second-take/visual-kit/refs/base/expr-crestfallen.png",
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
+          "expr-crestfallen": "channels/the-second-take/visual-kit/refs/base/expr-crestfallen.png"
         }
       },
       {
@@ -3494,6 +3493,7 @@
         "still_prompt": "`qt-wiles`, `expr-crestfallen`, `action-walk`, stands turned three-quarters toward a single plain barred door standing ajar in an otherwise bare grey corridor, stepping toward it. Cold institutional light, palette of pale grey and shadow. Wide flat framing at corridor height with Wiles and the open barred door sharing the frame.",
         "notes": "A held threshold tableau, restrained, no invented cruelty.",
         "assets": {
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
           "expr-crestfallen": "channels/the-second-take/visual-kit/refs/base/expr-crestfallen.png",
           "action-walk": "channels/the-second-take/visual-kit/refs/base/action-walk.png"
         }
@@ -3509,6 +3509,7 @@
         "still_prompt": "`brick-foreman`, `expr-smug`, `sit`, `action-armscrossed`, sits back at the same near-black table from his earlier deadpan aside, looking straight out to the viewer once more. The rest of the frame drops to flat near-black. Palette holds near-black and warm skin tone.",
         "notes": "Direct callback to L69's 'What a dick.' reaction shot — the same held look-to-camera, now satisfied rather than deadpan.",
         "assets": {
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
           "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
           "sit": "channels/the-second-take/visual-kit/refs/base/sit.png",
           "action-armscrossed": "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png"
@@ -3527,6 +3528,7 @@
         "still_prompt": "`qt-wiles`, `expr-pleading`, `surrender`, stands stage-left at a witness stand, both palms raised open toward the room in a blameless gesture. A tall blank wall fills the frame behind him, otherwise bare. Cool courtroom light, palette of pale grey and shadow. Wide flat framing at stand height with Wiles occupying the near half of the frame, the bare wall filling the far half.",
         "notes": "The bare far half of the wall is left deliberately empty, awaiting the delta's testimony crowd.",
         "assets": {
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
           "expr-pleading": "channels/the-second-take/visual-kit/refs/base/expr-pleading.png",
           "surrender": "channels/the-second-take/visual-kit/refs/base/surrender.png"
         }
@@ -3550,9 +3552,9 @@
         },
         "notes": "",
         "assets": {
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
           "expr-pleading": "channels/the-second-take/visual-kit/refs/base/expr-pleading.png",
-          "surrender": "channels/the-second-take/visual-kit/refs/base/surrender.png",
-          "crowd-exemplar": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+          "surrender": "channels/the-second-take/visual-kit/refs/base/surrender.png"
         }
       },
       {
@@ -3574,9 +3576,8 @@
         },
         "notes": "Delta cap reached for this chain.",
         "assets": {
-          "expr-crestfallen": "channels/the-second-take/visual-kit/refs/base/expr-crestfallen.png",
-          "hold-both-hands": "channels/the-second-take/visual-kit/refs/base/hold-both-hands.png",
-          "crowd-exemplar": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
+          "expr-crestfallen": "channels/the-second-take/visual-kit/refs/base/expr-crestfallen.png"
         }
       },
       {
@@ -3597,6 +3598,7 @@
         },
         "notes": "[F-21] Wiles sold a block of shares. A quiet, unremarkable transaction — its wrongness is only visible in hindsight, staged plainly rather than furtively.",
         "assets": {
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
           "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
           "hold-one-hand": "channels/the-second-take/visual-kit/refs/base/hold-one-hand.png"
         }
@@ -3622,9 +3624,7 @@
         },
         "notes": "Supplied literal '1988' (1 word) [F-21]. The crack foreshadows the collapse to come, staged as a property of the counter itself.",
         "assets": {
-          "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
-          "hold-one-hand": "channels/the-second-take/visual-kit/refs/base/hold-one-hand.png",
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png"
         }
       },
       {
@@ -3643,7 +3643,7 @@
         },
         "notes": "brick-foreman folded into the row rather than singled out. Routed to anon_foreground (LARGE/foreground tier).",
         "assets": {
-          "crowd-exemplar": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png"
         }
       },
       {
@@ -3658,9 +3658,7 @@
         "source": "ai-gen",
         "still_prompt": "The MiniScribe plant floor stands completely empty and dim, the pale-green conveyor still and dark, every machine housing bare, a single 'FOR LEASE' sign propped in the nearest window. Cold flat daylight through the tall windows. Palette is faded pale green, cold grey and pale window light. Wide flat framing matching the plant's earlier establishing shot, the whole floor drained of its former warmth.",
         "notes": "Closes the plant chain that opened at L26 and closed once already at L42 — now the building itself is empty. Supplied literal 'FOR LEASE' (2 words), a plain generic sign, no fabricated agent name.",
-        "assets": {
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
-        }
+        "assets": {}
       },
       {
         "id": "L203",
@@ -3677,9 +3675,7 @@
         "source": "ai-gen",
         "still_prompt": "The same dim plant floor, same locked framing: the still conveyor, the bare machine housings. Only this changes: the window's 'FOR LEASE' sign is now covered by a fresh sign lettered 'MAXTOR'; everything else exactly as established.",
         "notes": "[F-17] Maxtor bought the remains. Supplied literal 'MAXTOR' (1 word, 6 characters).",
-        "assets": {
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
-        }
+        "assets": {}
       },
       {
         "id": "L204",
@@ -3691,7 +3687,9 @@
         "source": "ai-gen",
         "still_prompt": "The same white doctor's coat from `qt-wiles`'s earlier clinic scene hangs alone on a bare wall hook, empty, its stethoscope draped over the hook beside it rather than worn by anyone. A plain grey wall behind, cool flat light. Palette is coat white, cool grey and steel stethoscope. Tight three-quarter medium at hook height, the empty coat filling the frame's centre — the vacancy itself the whole picture.",
         "notes": "The costume's absence, positively staged, carries the lost title.",
-        "assets": {}
+        "assets": {
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png"
+        }
       },
       {
         "id": "L205",
@@ -3715,9 +3713,7 @@
         "source": "ai-gen",
         "still_prompt": "The same conference table from the settlement, the three banded stacks still set out in a row, the '128 MILLION' card in front of them. Only now a fourth, much smaller stack sits apart from the three, roughly a quarter the height of the shortest of them, with a small card of its own propped beside it left completely blank. Palette holds banknote green and pale table wood. Wide flat framing at table height with the small fourth stack plainly dwarfed beside the settled three.",
         "notes": "[F-19] investors recovered about a quarter of the promised figure. Staged against the settlement's own established stacks (L190/L191) rather than reviving the courtroom's '550 MILLION' shape, which L187 already showed evaporating to nothing.",
-        "assets": {
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
-        }
+        "assets": {}
       },
       {
         "id": "L207",
@@ -3731,9 +3727,7 @@
         "source": "ai-gen",
         "still_prompt": "The same brickyard gate from earlier stands under bright open sky, the arched wooden sign still lettered 'COLORADO BRICK CO', but the pallet rows behind the fence now rise a full head above the fence line itself and run back in a dozen dense ranks, spilling past both edges of the gate. Terracotta red, weathered wood and open sky blue. Wide flat framing matching the earlier gate composition, the yard now plainly thriving.",
         "notes": "'COLORADO BRICK CO' re-quoted per L-1 (a genuinely different frame of the same sign, still owed the requoting rule).",
-        "assets": {
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
-        }
+        "assets": {}
       },
       {
         "id": "L208",
@@ -3750,9 +3744,7 @@
         "source": "ai-gen",
         "still_prompt": "The same thriving brickyard gate, same locked framing: the 'COLORADO BRICK CO' sign, the tall pallet rows. Only this changes: one fat banded stack of banknotes now sits propped against the gatepost at the yard's entrance, tied off with a plain ribbon bow like a gift; everything else exactly as established.",
         "notes": "'COLORADO BRICK CO' re-quoted per L-1. The video's own dry closing joke on this thread — an ordinary supplier turned out to be the story's real winner.",
-        "assets": {
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
-        }
+        "assets": {}
       },
       {
         "id": "L209",
@@ -3812,9 +3804,7 @@
         "source": "ai-gen",
         "still_prompt": "A small, plain, unremarkable office cubicle stands alone, a single ordinary desk with one modest nameplate holder, a filing cabinet, a potted plant. Ordinary fluorescent light. Palette is fluorescent white and pale office cream, entirely unremarkable beside the boxing ring's drama. Wide flat framing at desk height with the cubicle filling the frame plainly; depth reads desk foreground, cabinet mid-ground, plain wall background. The nameplate holder is lettered 'HR'.",
         "notes": "Supplied literal 'HR' (1 word, 2 characters), the script's own initialism. The anticlimax staged through sheer ordinariness against the previous shot's grand arena.",
-        "assets": {
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
-        }
+        "assets": {}
       },
       {
         "id": "L213",
