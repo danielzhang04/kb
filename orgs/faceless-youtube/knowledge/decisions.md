@@ -3985,3 +3985,38 @@ it, and fixes two defects an adversarial review of that work found. All in
     `#detectReplReadiness`; `rosterSessions.test.ts`; `rosterSessions.live.test.ts`. The orphaned
     roster-directory sweep is deliberately NOT done — see `TODO(roster-boot-sweep)` in `retireRun` for
     the seam it needs and the re-entrancy hazard that makes a naive boot sweep worse than the leak.
+
+**2026-07-30 — CORRECTION: the autonomous mode is `permissions.defaultMode: "auto"`, not
+`bypassPermissions` (Daniel).**
+Does not revisit the two full-auto rulings above (the per-run settings-file mechanism, the enforced
+restriction floor, and the positive-readiness delivery gate all stand unchanged) — it corrects only WHICH
+mode value those rulings were built on. The prior entries emitted `defaultMode: "bypassPermissions"`. That
+was the wrong instrument: `bypassPermissions` opens a one-time interactive "WARNING: … Bypass Permissions
+mode … Yes, I accept" ACCEPTANCE MODAL, and an unattended pty has no one to answer it — it is exactly what
+stalled the idea stage (a terminal sitting "running" with zero transcript). The fix is Claude Code's `auto`
+mode: the terminal proceeds without routine tool prompts because auto interposes a background safety
+CLASSIFIER, but it shows NO acceptance modal, and `permissions.deny` + `ask` rules + PreToolUse hooks are
+evaluated BEFORE that classifier, so the enforcing floor is untouched. `auto` is strictly MORE governed than
+bypass (bypass skips the ask step for everything and effectively ignores deny; auto keeps a guardrail on top
+of our deny floor and the G0–G4 gates). Only `buildRosterPermissionSettings`'s emitted `defaultMode` string
+changed (`bypassPermissions` → `auto`) plus the now-false justification comments/tests it invalidated; no new
+config-writing machinery was added, and `defaultLaunchLine` is still unchanged.
+  - **Verified LIVE (empirical over docs — this surface misled the project once already).** Against the
+    installed CLI (claude.exe 2.1.220), a fresh interactive pty launched with only `defaultMode: "auto"` in
+    `--settings`: NO acceptance modal, boots straight to the REPL, footer reads `⏵⏵ auto mode on
+    (shift+tab to cycle)` (so `detectReplReadiness` still returns `ready`). A headless `-p` run under the
+    same settings had its `git config --get user.name` Bash call DENIED by the floor — the deny half still
+    enforces under auto. The independent CLI-docs check confirms auto is a valid `defaultMode`, that deny /
+    ask / hooks run before the classifier, and that only bypass carries an acceptance modal.
+  - **Model requirement (operational caveat).** `auto` is model-gated: the CLI enables it only on an
+    auto-capable model and otherwise SILENTLY falls back to manual mode, which prompts. Verified live: the
+    daemon's default model kept `auto mode on`; `claude-sonnet-4-5` reported `auto mode unavailable for this
+    model` and dropped to manual. Roster agents must therefore be ASSIGNED an auto-capable model for the
+    terminal to run autonomously — a non-auto model degrades to prompting (the delivery gate then parks on
+    the tool-permission modal rather than hanging; the silent-stall protection still holds). This is an
+    assignment concern, outside `buildRosterPermissionSettings`; the deny floor and readiness gate are
+    model-independent and hold regardless.
+  - **Cross-reference.** `rosterSessions.ts#buildRosterPermissionSettings` (docstring rewritten),
+    `#MODAL_MARKERS` (the bypass-modal marker kept as DEFENSIVE, off the happy path), `#READY_MARKERS`,
+    `#detectReplReadiness`; `rosterSessions.test.ts` (`defaultMode` assertions → `auto`, idle footer
+    fixtures → `auto mode on`); `rosterSessions.live.test.ts` (interactive case asserts the auto-mode boot).

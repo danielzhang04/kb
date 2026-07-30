@@ -42,7 +42,7 @@ Permission deny rule (..\settings-copy.json): Write(**/.aws/**) is not matched b
 
   ⚠ Transcript saving is off — inherited CLAUDE_CODE_CHILD_SESSION marker · restart with CLAUDE_CODE_FORCE_SESSION_PERS…
 
-  ⏵⏵ bypass permissions on (shift+tab to cycle)Not logged in · Run /login  
+  ⏵⏵ auto mode on (shift+tab to cycle)Not logged in · Run /login  
 
 [>0qVisualStudioCodedisconnected
 

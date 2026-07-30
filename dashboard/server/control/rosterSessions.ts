@@ -420,17 +420,15 @@ const MODAL_MARKERS: readonly RegExp[] = [
   /^[\s│|>]*[❯>]?\s*[1-9]\.\s+(?:Yes|No)\b/im,
   /\bpress enter to (?:continue|confirm|accept)\b/i,
   /\b(?:accept|trust) (?:edits|files) in this folder\b/i,
-  // The FIRST-LAUNCH BYPASS-PERMISSIONS ACCEPTANCE MODAL — the production blocker this fix reproduced.
-  // A terminal booted with `permissions.defaultMode: "bypassPermissions"` (this pipeline's default, per
-  // Daniel's 2026-07-30 full-auto ruling) shows a one-time `WARNING: … Bypass Permissions mode … 1. No,
-  // exit 2. Yes, I accept` menu until the config records acceptance. Its numbered options render as
-  // `1.No,exit` / `2.Yes,Iaccept` — the columns are ANSI cursor moves, so there is NO literal whitespace
-  // and the generic `[1-9]\.\s+(?:Yes|No)` marker above never matches. Whitespace here is therefore
-  // OPTIONAL (`\s*`), which also survives the same word-boundary loss on `Bypass Permissions mode`.
-  // Recognising it turns the modal into a NAMED `roster-delivery-not-ready` park with a clear reason,
-  // never a swallowed order. (Suppressing the modal entirely requires recording
-  // `bypassPermissionsModeAccepted` in the operator's `<HOME>/.claude.json`, a personal-config mutation
-  // gated on a human decision — see the fix report.) Captured off a real pty (claude.exe 2.1.220).
+  // DEFENSIVE: the FIRST-LAUNCH BYPASS-PERMISSIONS ACCEPTANCE MODAL. Roster terminals now boot
+  // `permissions.defaultMode: "auto"`, which shows NO acceptance modal (verified live, claude.exe 2.1.220),
+  // so this marker is no longer on the happy path. It is KEPT because a terminal must never hang silently
+  // on ANY modal: if some config/mode path ever surfaces the bypass dialog, its `WARNING: … Bypass
+  // Permissions mode … 1. No, exit 2. Yes, I accept` menu renders its numbered options as `1.No,exit` /
+  // `2.Yes,Iaccept` — the columns are ANSI cursor moves, so there is NO literal whitespace and the generic
+  // `[1-9]\.\s+(?:Yes|No)` marker above never matches. Whitespace here is therefore OPTIONAL (`\s*`), which
+  // also survives the same word-boundary loss on `Bypass Permissions mode`. Recognising it turns any such
+  // modal into a NAMED `roster-delivery-not-ready` park with a clear reason, never a swallowed order.
   /Bypass\s*Permissions\s*mode/i,
 ];
 /**
@@ -462,10 +460,11 @@ const BUSY_MARKERS: readonly RegExp[] = [
 
 /**
  * POSITIVE proof the interactive REPL is up and its input line is live. This is the permission-mode
- * cycler footer the CLI renders on EVERY in-REPL frame — idle and mid-turn alike — e.g.
- * `⏵⏵ bypass permissions on (shift+tab to cycle)`. It is ABSENT on every PRE-REPL screen: the
- * first-launch bypass-permissions acceptance modal, the theme picker, the "trust this folder" dialog, and
- * the login screen. That absence is exactly what distinguishes "a settled REPL waiting for a command" from
+ * cycler footer the CLI renders on EVERY in-REPL frame — idle and mid-turn alike — captured live under
+ * `auto` mode as `⏵⏵ auto mode on (shift+tab to cycle)` (claude.exe 2.1.220). The `shift+tab to cycle`
+ * tail is stable across modes, so the marker matches whatever mode the footer names. It is ABSENT on every
+ * PRE-REPL screen: the theme picker, the "trust this folder" dialog, the login screen, and any acceptance
+ * modal. That absence is exactly what distinguishes "a settled REPL waiting for a command" from
  * "a splash screen that will eat the keystrokes" — a distinction the old menu-absence heuristic could not
  * draw, which is how the acceptance modal's non-empty, busy-marker-free frame classified `ready` and
  * swallowed the work order (see {@link detectReplReadiness}).
@@ -508,16 +507,17 @@ function currentFrame(tail: string): string {
  * PROMPT-PRESENCE, NOT MENU-ABSENCE (reversed 2026-07-30 after the failure below). This now REQUIRES
  * positive evidence that the live REPL input line is on screen — a {@link READY_MARKERS} match — before it
  * will call a frame `ready`. The old rule ("non-empty AND no recognised menu ⇒ ready") swallowed a work
- * order: a terminal booted in `bypassPermissions` mode opens on a `WARNING: … Bypass Permissions mode …
- * 1. No, exit 2. Yes, I accept` acceptance modal whose columns are ANSI cursor moves, so the frame is
+ * order: under the prior `bypassPermissions` posture a terminal opened on a `WARNING: … Bypass Permissions
+ * mode … 1. No, exit 2. Yes, I accept` acceptance modal whose columns are ANSI cursor moves, so the frame is
  * non-empty, carries no whitespace the numbered-menu marker needs, and — when the `Esc to cancel` footer
  * collapses onto the menu line — carries no busy marker either. It classified `ready`, the order was typed
  * into the menu, the keystrokes were consumed, no turn began, and the stage sat "running" for 36 min with
- * zero transcript. The first-launch theme picker slips through the same hole. A positive input-line marker
- * is the only thing that separates those splash screens from a settled prompt.
+ * zero transcript. The `auto` posture this pipeline now boots shows no such modal, but the theme picker,
+ * the "trust this folder" dialog, and a still-starting REPL slip through the same hole — so the positive
+ * input-line marker is what separates every one of those splash screens from a settled prompt, mode-independent.
  *
  * The precedence still refines the answer for a KNOWN blocker so the park message is specific: a recognised
- * MODAL menu (incl. the bypass acceptance modal) reports `modal`; a mid-turn frame reports `busy`. Only
+ * MODAL menu (incl. any acceptance modal) reports `modal`; a mid-turn frame reports `busy`. Only
  * after neither matches AND the REPL footer IS present do we return `ready`.
  *
  * EVERY OTHER NON-EMPTY FRAME IS NOT READY. An empty frame is a shell that has not yet booted `claude`
@@ -552,11 +552,11 @@ export function detectReplReadiness(tail: string): ReplReadiness {
  * still absent from this list: a Bash rule matches a COMMAND PREFIX, never a path, so "Bash strictly
  * within scope" was never expressible as a rule and a bare `Bash` entry would have been a blanket
  * allow-all. That containment question is now moot for these sessions — Daniel's 2026-07-30 ruling
- * (`orgs/faceless-youtube/knowledge/decisions.md`) put roster terminals under full-auto
- * (`permissions.defaultMode: "bypassPermissions"`, see below) with governance carried by bindings, repo
- * hooks, and the server-side workflow gates instead of a scoped tool allow-list. The rules built from
- * this list are kept in the settings file regardless — harmless, and useful as a legible record of what
- * each agent was actually scoped to do.
+ * (`orgs/faceless-youtube/knowledge/decisions.md`) put roster terminals under autonomous operation
+ * (`permissions.defaultMode: "auto"`, see below) with routine tool use cleared by auto mode's classifier
+ * and governance carried by the `deny` floor, PreToolUse hooks, bindings, and the server-side workflow
+ * gates instead of a scoped tool allow-list. The rules built from this list are kept in the settings file
+ * regardless — harmless, and useful as a legible record of what each agent was actually scoped to do.
  */
 const SCOPED_READ_TOOLS: readonly string[] = ['Read', 'Glob', 'Grep'];
 const SCOPED_WRITE_TOOLS: readonly string[] = ['Write', 'Edit'];
@@ -689,22 +689,28 @@ export interface RosterPermissionSettings {
  * `--settings <path>` (the CLI accepts a file path or an inline JSON string; `claude --help`:
  * "Path to a settings JSON file or a JSON string to load additional settings from").
  *
- * FULL-AUTO, PER DANIEL'S 2026-07-30 RULING (`orgs/faceless-youtube/knowledge/decisions.md`): roster
- * terminals run with NO tool prompts at all, the same as a `claude` terminal on full auto — governance
- * is carried by bindings, repo hooks, and the server-side workflow gates, not by a per-session allow
- * list. The settings file therefore sets `permissions.defaultMode: "bypassPermissions"` — the exact
- * schema key/value `claude --help` and the installed binary's own strings confirm (`n.permissions?.
- * defaultMode`, feeding the session's initial permission-mode resolution; the runtime's "Cannot set
- * permission mode to bypassPermissions" refusal and its `--dangerously-skip-permissions`-required and
- * disclaimer-acceptance gates apply only to `/permission-mode` mid-session switches and to `--bg`
- * background jobs respectively — NEITHER applies to a plain interactive `claude` launch, and this was
- * confirmed live: a headless `claude -p` run with ONLY `defaultMode: "bypassPermissions"` in
- * `--settings` executed a Bash file write with no prompt, while the same run with that key absent
- * correctly asked permission and did not write the file). No extra CLI flag, `--permission-mode`
- * argument, or environment variable is required or added — see `defaultLaunchLine` below, unchanged.
+ * AUTONOMOUS BUT GOVERNED — `permissions.defaultMode: "auto"`. A roster terminal must proceed without a
+ * human at the keyboard, but it must NOT be ungoverned. `auto` is the mode that gives both: it interposes
+ * a background safety CLASSIFIER that clears routine tool use without a prompt while still blocking
+ * escalation / unrecognised-infra / hostile-content-driven actions — and, crucially, the `permissions.deny`
+ * floor, `ask` rules, and PreToolUse hooks are all evaluated BEFORE that classifier, so they still ENFORCE
+ * exactly as under the interactive default mode. This is strictly MORE governed than `bypassPermissions`,
+ * which skips the ask step for everything and (almost) ignores deny — and, unlike bypass, `auto` shows NO
+ * first-launch acceptance modal, so an unattended pty boots straight to the live REPL instead of stalling
+ * on a "WARNING: … Bypass Permissions mode … Yes, I accept" dialog it can never answer. Confirmed live
+ * against the installed CLI (claude.exe 2.1.220): an interactive launch with `defaultMode: "auto"` in
+ * `--settings` came up with NO modal and the `⏵⏵ auto mode on (shift+tab to cycle)` REPL footer, and a
+ * headless `-p` run under the same settings had its `git config` Bash call DENIED by the floor.
  *
- * WHAT IT ALSO WRITES, NOW AS DECLARED INTENT RATHER THAN CONTAINMENT (harmless under bypass, since
- * `defaultMode` supersedes them — kept for legibility of what each agent was actually scoped to do):
+ * MODEL REQUIREMENT — `auto` is model-gated. The CLI enables it only on an auto-capable model (verified
+ * live: the daemon's default Fable 5 kept `auto mode on`; `claude-sonnet-4-5` reported `auto mode
+ * unavailable for this model` and fell back to manual mode). No extra CLI flag, `--permission-mode`
+ * argument, or environment variable is added — see `defaultLaunchLine` below, unchanged — so the launched
+ * model (`assignment.model`) must be auto-capable, or the terminal degrades to prompting (the delivery
+ * gate then parks on the tool-permission modal via {@link detectReplReadiness} rather than hanging).
+ *
+ * WHAT IT ALSO WRITES, NOW AS DECLARED INTENT RATHER THAN CONTAINMENT (the classifier, not this allow
+ * list, is what clears routine tool use under `auto` — kept for legibility of what each agent was scoped to do):
  *  - `permissions.allow` rules for the scoped file tools, over the stage's ALREADY-DECLARED
  *    `scope.read ∪ scope.write` (reads) and `scope.write` (writes), each rule anchored at the canonical
  *    repo root in the pathspec grammar the installed CLI actually matches (see
@@ -755,7 +761,7 @@ export function buildRosterPermissionSettings(input: RosterPermissionInput): Ros
   // auto `defaultMode`, and it is not derived from the proposal — no scope, no stage and no tool cap can
   // add to it or take from it. See {@link RESTRICTION_FLOOR}, including its named residual.
   const deny = [...RESTRICTION_FLOOR];
-  const permissions = { defaultMode: 'bypassPermissions', deny, allow, additionalDirectories };
+  const permissions = { defaultMode: 'auto', deny, allow, additionalDirectories };
   return {
     allow,
     deny,

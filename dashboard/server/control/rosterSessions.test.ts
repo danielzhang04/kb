@@ -281,7 +281,7 @@ function fakeFs(existing: string[] = [], seed: { directories?: string[]; content
  * evidence the input line is live (a `shift+tab to cycle` match), not merely a non-empty, menu-free frame —
  * the acceptance-modal/onboarding frames that swallowed a work order were exactly non-empty and menu-free.
  */
-const IDLE_FRAME = '╭───╮\r\n│ >  │\r\n╰───╯\r\n  ⏵⏵ bypass permissions on (shift+tab to cycle)\r\n';
+const IDLE_FRAME = '╭───╮\r\n│ >  │\r\n╰───╯\r\n  ⏵⏵ auto mode on (shift+tab to cycle)\r\n';
 
 function harness(options: {
   plan?: PlanProposal;
@@ -1186,12 +1186,13 @@ describe('roster scoped per-run permissions', () => {
     // grant this file exists to avoid.
     expect(settings.allow).not.toContain('Bash');
     expect(settings.allow.some((rule) => /^[A-Za-z]+$/.test(rule) || rule.includes('(*') || rule === '*')).toBe(false);
-    // Daniel's 2026-07-30 ruling: roster terminals run full-auto, no tool prompts at all — the settings
+    // Daniel's 2026-07-30 ruling: roster terminals run autonomously under `auto` mode — routine tool use
+    // is cleared by the classifier, no prompts, but the deny floor + hooks still enforce. The settings
     // file carries the mode value below. The scoped allow rules above stay in the file as declared
     // intent; they are harmless once that mode is in effect.
     expect(JSON.parse(settings.json)).toEqual({
       permissions: {
-        defaultMode: 'bypassPermissions',
+        defaultMode: 'auto',
         deny: settings.deny,
         allow: settings.allow,
         additionalDirectories: settings.additionalDirectories,
@@ -1306,8 +1307,9 @@ describe('roster scoped per-run permissions', () => {
     const parsed = JSON.parse(raw as string) as {
       permissions: { defaultMode: string; deny: string[]; allow: string[]; additionalDirectories: string[] };
     };
-    // Full-auto per Daniel's 2026-07-30 ruling: no tool prompts at all in a roster terminal.
-    expect(parsed.permissions.defaultMode).toBe('bypassPermissions');
+    // Autonomous per Daniel's 2026-07-30 ruling: `auto` mode clears routine tool use via its classifier
+    // with no prompts, while the deny floor + hooks still enforce.
+    expect(parsed.permissions.defaultMode).toBe('auto');
     // …and the restriction floor rides in the SAME file, which is what still enforces under that mode.
     expect(parsed.permissions.deny).toContain('Bash(git push *)');
     expect(parsed.permissions.deny).toContain('Read(**/.env)');
@@ -1368,7 +1370,7 @@ describe('roster REPL-readiness gate', () => {
     // prompt ALONE is no longer enough \u2014 the acceptance modal and theme picker are also non-empty and
     // menu-free, and that is exactly how a work order was swallowed.
     const idle = '\u256d\u2500\u2500\u2500\u256e\n\u2502 >  \u2502\n\u2570\u2500\u2500\u2500\u256f'
-      + '\n  \u23f5\u23f5 bypass permissions on (shift+tab to cycle)';
+      + '\n  \u23f5\u23f5 auto mode on (shift+tab to cycle)';
     expect(detectReplReadiness(idle)).toEqual({ state: 'ready' });
     // The same box WITHOUT the footer is NOT ready \u2014 it is a splash/onboarding/login screen or a REPL that
     // has not finished starting. It parks, it does not get typed into.
@@ -1380,7 +1382,7 @@ describe('roster REPL-readiness gate', () => {
     expect(detectReplReadiness('\r\n   \r\n')).toMatchObject({ state: 'silent' });
     // An answered menu stops matching once the REPL has redrawn past it to its idle prompt AND footer.
     const scrolled = `Do you want to proceed?\n${Array.from({ length: 40 }, (_, index) => `line ${index}`).join('\n')}`
-      + '\n> \n  \u23f5\u23f5 bypass permissions on (shift+tab to cycle)';
+      + '\n> \n  \u23f5\u23f5 auto mode on (shift+tab to cycle)';
     expect(detectReplReadiness(scrolled)).toEqual({ state: 'ready' });
   });
 
@@ -1436,7 +1438,7 @@ describe('roster REPL-readiness gate', () => {
           const redraw = Array.from({ length: 30 }, (_, index) => `read binding.md line ${index}`).join('\r\n');
           // The REPL redraws its idle prompt AND its mode-cycler footer over the answered menu — the footer
           // is the positive evidence the readiness gate now requires.
-          liveHost.emit(sessionId, `${redraw}\r\n> \r\n  ⏵⏵ bypass permissions on (shift+tab to cycle)\r\n`);
+          liveHost.emit(sessionId, `${redraw}\r\n> \r\n  ⏵⏵ auto mode on (shift+tab to cycle)\r\n`);
         }
       },
     });

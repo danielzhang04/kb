@@ -29,6 +29,13 @@ const LIVE = process.env.ROSTER_LIVE_PERM_TEST === '1';
 // NOT via a shell: on Windows `shell: true` concatenates argv without quoting, which truncates the
 // prompt at its first space and produces a turn that answers a fragment instead of the test's question.
 const CLAUDE = process.env.ROSTER_LIVE_CLAUDE_BIN ?? (process.platform === 'win32' ? 'claude.exe' : 'claude');
+/**
+ * `auto` mode is model-gated: the CLI enables it only on an auto-capable model and otherwise falls back to
+ * manual (verified live — the account default was auto-capable, `claude-sonnet-4-5` was not). The interactive
+ * case below wants to observe the REAL auto-mode boot, so it launches on an auto-capable model. Left unset it
+ * uses the account default (auto-capable in the daemon's own environment); override if that default changes.
+ */
+const AUTO_MODEL = process.env.ROSTER_LIVE_CLAUDE_MODEL;
 /** Each `-p` turn is a real model call: generous, and still bounded so a hung CLI cannot wedge CI. */
 const TURN_TIMEOUT_MS = 240_000;
 
@@ -136,22 +143,24 @@ describe.skipIf(!LIVE)('roster permission settings against a live claude (gated)
 
   /**
    * THE INTERACTIVE REGRESSION — the one the `-p` cases structurally cannot catch. Headless mode skips
-   * every interactive prompt, so it never sees the first-launch Bypass-Permissions acceptance modal that
-   * stalled the idea stage: the roster substrate is an INTERACTIVE REPL, delivery TYPES a line into it,
-   * and the bug was `detectReplReadiness` green-lighting that type into the acceptance modal (whose menu
-   * columns are cursor moves, so it read as a non-empty, menu-free, busy-marker-free "ready" frame). The
-   * order was consumed by the menu and no turn began.
+   * every interactive prompt, so it never sees an acceptance modal: the roster substrate is an INTERACTIVE
+   * REPL, delivery TYPES a line into it, and the original bug was `detectReplReadiness` green-lighting that
+   * type into the first-launch Bypass-Permissions acceptance modal (whose menu columns are cursor moves, so
+   * it read as a non-empty, menu-free, busy-marker-free "ready" frame). The order was consumed by the menu
+   * and no turn began — 36 min of silent "running".
    *
-   * This drives a REAL `claude` under a pty with the verbatim generated settings in a FRESH project dir
-   * and feeds its actual output through the same `stripTerminalControl` + `detectReplReadiness` the daemon
-   * uses. The invariant, whichever config state the box is in:
-   *   - If the acceptance modal appears (config has not recorded acceptance), readiness must NEVER reach
-   *     `ready` while it is up — the gate must refuse to type, so the delivery parks instead of swallowing.
-   *   - If the modal does NOT appear (acceptance already recorded — the pipeline's normal state), the REPL
-   *     comes up and readiness MUST reach `ready`, proving the launch lands directly at the input line.
+   * The pipeline now boots `defaultMode: "auto"`, which shows NO acceptance modal at all — so the direct
+   * assertion here is the AUTO-MODE guarantee: an unattended pty launched on the verbatim generated settings
+   * comes up straight at the live REPL with no modal to stall on. This drives a REAL `claude` under a pty in
+   * a FRESH project dir and feeds its output through the same `stripTerminalControl` + `detectReplReadiness`
+   * the daemon uses. The invariants, whatever the box's config:
+   *   - The Bypass-Permissions acceptance modal must NEVER appear under `auto` (bypass is not in play).
+   *   - Readiness MUST reach `ready` — the launch lands directly at the input line, footer and all.
+   *   - The defensive gate still holds: if any modal ever DID surface, readiness must not be `ready` while
+   *     it is up. That arm is exercised by the committed `bypass-accept-modal.txt` fixture in the pure suite.
    * Either way the classifier reaches a DECIDED state — never an indefinite silent "running" stall.
    */
-  it('never green-lights a type into the first-launch acceptance modal (interactive)', async () => {
+  it('boots straight to the live REPL under auto mode with no acceptance modal (interactive)', async () => {
     const pty = loadPty();
     if (!pty) return; // native ConPTY addon absent — the headless cases still cover the rule grammar.
     const { repoRoot, agentDir, settingsPath } = fixture();
@@ -160,35 +169,31 @@ describe.skipIf(!LIVE)('roster permission settings against a live claude (gated)
       read: ['orgs/faceless-youtube'], write: ['orgs/faceless-youtube/channels'],
       tools: ['Read', 'Write', 'Edit', 'Glob', 'Grep'],
     });
-    // Verbatim: the exact bytes a roster session boots with, `defaultMode: bypassPermissions` included.
+    // Verbatim: the exact bytes a roster session boots with, `defaultMode: "auto"` included.
     writeFileSync(settingsPath, settings.json);
 
-    const term = pty.spawn(CLAUDE, ['--model', 'claude-sonnet-4-5', '--settings', settingsPath], {
+    // Launch on an auto-capable model so auto mode actually engages (see AUTO_MODEL); default = account default.
+    const args = AUTO_MODEL ? ['--model', AUTO_MODEL, '--settings', settingsPath] : ['--settings', settingsPath];
+    const term = pty.spawn(CLAUDE, args, {
       name: 'xterm-color', cols: 120, rows: 40, cwd: repoRoot, env: process.env,
     });
     let screen = '';
     let everReady = false;
     let sawModal = false;
-    let sawFooter = false;
     term.onData((chunk) => {
       screen = (screen + stripTerminalControl(chunk)).slice(-8000);
-      const state = detectReplReadiness(screen).state;
-      if (state === 'ready') everReady = true;
+      if (detectReplReadiness(screen).state === 'ready') everReady = true;
       if (/Bypass\s*Permissions\s*mode/i.test(screen)) sawModal = true;
-      if (/shift\s*\+?\s*tab\s*to\s*cycle/i.test(screen)) sawFooter = true;
     });
-    // Long enough for the modal to draw or the REPL to come up; the CLI is never sent a keystroke.
+    // Long enough for the REPL to come up; the CLI is never sent a keystroke.
     await delay(20_000);
     term.kill();
 
     // Something rendered — otherwise the assertions below are vacuous.
     expect(screen.length, `claude produced no interactive output; screen=${JSON.stringify(screen.slice(-400))}`).toBeGreaterThan(0);
-    if (sawModal && !sawFooter) {
-      // The acceptance modal is up and unanswered: the gate MUST NOT have called it ready.
-      expect(everReady, 'readiness reached READY while the acceptance modal was on screen — a delivered order would be swallowed').toBe(false);
-    } else {
-      // Acceptance already recorded: the REPL came up, so readiness MUST have reached ready.
-      expect(everReady, `no acceptance modal, but readiness never reached READY; screen=${JSON.stringify(screen.slice(-400))}`).toBe(true);
-    }
+    // Auto mode carries no acceptance modal — the stall that motivated this whole gate cannot recur.
+    expect(sawModal, `the Bypass-Permissions acceptance modal appeared under auto mode; screen=${JSON.stringify(screen.slice(-400))}`).toBe(false);
+    // The REPL came up: readiness reached ready, proving the launch lands directly at the input line.
+    expect(everReady, `readiness never reached READY under auto mode; screen=${JSON.stringify(screen.slice(-400))}`).toBe(true);
   }, 30_000);
 });
