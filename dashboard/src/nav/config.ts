@@ -37,6 +37,7 @@ export type DestinationId =
   | 'terminal'
   | 'workflows'
   | 'pipeline'
+  | 'runCanvas'
   | 'agents'
   | 'tasks'
   | 'projects'
@@ -86,6 +87,10 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { id: 'workflows', label: 'Workflows', icon: '⧉', status: 'live' },
       { id: 'pipeline', label: 'Runs', icon: '⋔', status: 'live' },
+      // FYT gated-pipeline Task 5 — the live roster canvas for one selected run (mini-terminal tiles on
+      // artifact-flow lanes). Sits right after Runs: it is a monitoring/engagement view OVER a run, not
+      // a distinct entity type of its own.
+      { id: 'runCanvas', label: 'Run Canvas', icon: '⊞', status: 'live' },
       { id: 'agents', label: 'Agents', icon: '◉', status: 'live' },
       { id: 'tasks', label: 'Tasks', icon: '☰', status: 'live' },
       { id: 'projects', label: 'Projects', icon: '▤', status: 'live' },
