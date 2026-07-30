@@ -36,6 +36,7 @@ Usage:
   python lint_shots.py <path-to/shots.json> [--write]
 Exit 0 = clean (safe to render); 1 = HARD violations (fix before handoff).
 """
+import difflib
 import json
 import re
 import sys
@@ -681,6 +682,17 @@ _CONTROL_LEAK = re.compile(
 # signal. The literal must be re-quoted on EVERY frame that redraws it.
 _TRACKABLE_LITERAL = re.compile(r"^[A-Za-z][A-Za-z '&/-]{3,}$")
 
+# (3) THE LETTERING BUDGET — three ceilings on how much text one prompt asks for.
+# shots-schema §4 already states the principle ("Author fewer strings — the
+# highest-leverage lever there is; a string you do not author cannot garble"), and
+# numeral_form_check's measurement is where it comes from: controlling for supply,
+# the per-literal garble RATE is indistinguishable between the two videos (~6% vs
+# ~7%), so what drives a file's absolute defect count is VOLUME. These three caps
+# make that mechanical.
+LETTERING_CHAR_CAP = 25          # glyphs in ONE literal (vendor-documented ceiling)
+LETTERING_COUNT_CAP = 3          # distinct literals in ONE prompt (the 3-phrase ceiling)
+LONG_LITERAL_WORD = 9            # chars in one lettered WORD before it draws a heads-up
+
 
 def quoted_literals(prompt, suffix=""):
     """Every value this prompt SUPPLIES as a quoted literal, in order.
@@ -697,14 +709,26 @@ def quoted_literals(prompt, suffix=""):
     return out
 
 
-def word_cap_check(label, prompts, suffix, hard, cap=4):
+def word_cap_check(label, prompts, suffix, hard, cap=4, char_cap=LETTERING_CHAR_CAP):
     """HARD. SKILL rule 9 caps authored in-image lettering at 1-4 words ("1-4 words
     proven"), and the measurement backs it: across 250 authored literals in the two
     videos, the single string that exceeds the cap — Poyais L97's 7-word 'Official
     Shoemaker to the Princess of Poyais' — is also a documented lettering defect
     (logged in that video's manifest under the serif-register drift cluster). Long
     strings are where the engine's per-glyph error rate compounds into an unreadable
-    render. The cap was previously prose-only; it is now enforced."""
+    render. The cap was previously prose-only; it is now enforced.
+
+    TWO caps, because the engine redraws GLYPHS and the word count can hide them.
+    `TRANS CONTINENTAL AIRLINES` (_pearlman-test-act1 L04/L14/L19/L22) is THREE
+    words — legal under the word cap — and 26 characters, longer than Poyais L97's
+    first four words put together. The word cap alone waves it through four times.
+    The char cap is the vendor-documented ~25-glyph lettering ceiling and it catches
+    exactly this shape: few words, many glyphs.
+    What the char cap deliberately does NOT flag: anything at or under 25 chars, so
+    every literal in the bricks segment (longest: '125 MILLION', 11) and every
+    correctly-rendered Wells Fargo string ('PRODUCTS PER HOUSEHOLD', 22) stays
+    silent. It is a second, independent ceiling on the same rule — not a tightening
+    of the word cap, which stays at 4."""
     for pid, field, prompt in prompts:
         for lit, _s, _e in quoted_literals(prompt, suffix):
             n = len(lit.split())
@@ -714,6 +738,170 @@ def word_cap_check(label, prompts, suffix, hard, cap=4):
                     f"In-image lettering is redrawn glyph by glyph; past ~4 words the render garbles. "
                     f"Shorten it to the load-bearing words, or carry the meaning in the composition "
                     f"instead of in text.")
+            elif len(lit) > char_cap:
+                hard.append(
+                    f"[{label}] {pid}.{field}: authored lettering {lit!r} is {len(lit)} characters "
+                    f"(cap {char_cap}) - under the {cap}-word cap but over the glyph ceiling. The "
+                    f"engine's error rate compounds per GLYPH, not per word, so a short-word string "
+                    f"this long garbles like a long one. Shorten it, split the meaning across the "
+                    f"composition, or drop the least load-bearing word.")
+
+
+def literal_count_check(label, prompts, suffix, hard, cap=LETTERING_COUNT_CAP):
+    """HARD. One prompt may author at most 3 DISTINCT quoted literals.
+
+    Rare by construction, which is why it can be hard: across the two complete
+    videos (~230 shots) exactly four prompts exceed it — Poyais L47 (four city
+    plaques: 'POYAIS OFFICE'/'LONDON'/'EDINBURGH'/'PARIS'), Poyais L94, Wells Fargo
+    L111 (a sentencing card carrying '3 YRS PROBATION', '6 MO HOME', '$100K FINE',
+    '120 HRS SERVICE') and Wells Fargo S02-03 (the four product cards of the CHECKIG
+    chain, collapsed into ONE short frame). Every one of them is a frame asking the
+    engine to letter a whole document, which is where per-glyph error compounds into
+    a visibly wrong image, and L111's four-item card is exactly the saturation
+    shots-schema §4 warns about. The fix is always available: stage the list across
+    the delta chain that the long-form already uses (L11-L14 authored the same four
+    product labels one per frame and three of the four rendered clean).
+
+    DISTINCT, not occurrences — load-bearing. L-1 (carried_literal_check) REQUIRES a
+    delta frame to re-quote every literal it redraws, so Wells Fargo L36's two
+    mentions of '125 MILLION' and '600 MILLION' are four quotes of two strings.
+    Counting occurrences would punish the file for obeying the rule above it."""
+    for pid, field, prompt in prompts:
+        lits = []
+        for lit, _s, _e in quoted_literals(prompt, suffix):
+            if lit not in lits:
+                lits.append(lit)
+        if len(lits) > cap:
+            hard.append(
+                f"[{label}] {pid}.{field}: authors {len(lits)} distinct literals (cap {cap}) -> "
+                f"{lits!r}. A frame lettering a whole document compounds per-glyph error until "
+                f"something in it is visibly wrong. Stage them across a delta chain (one literal "
+                f"per frame, the way L11-L14 did), or carry the list in the composition and letter "
+                f"only the load-bearing value.")
+
+
+def script_vocab(md_path):
+    """Every word the SCRIPT itself uses, lowercased — the video's own vocabulary.
+
+    Used by long_literal_word_check to tell a word the author CHOSE for the image
+    from one the video is simply about. Whole file, not just the narration span: a
+    proper noun in the header or the source list is still the video's vocabulary."""
+    try:
+        txt = Path(md_path).read_text(encoding="utf-8")
+    except OSError:
+        return set()
+    return {w.lower() for w in re.findall(r"[A-Za-z][A-Za-z'-]*", txt)}
+
+
+def long_literal_word_check(label, prompts, suffix, soft, vocab=(), floor=LONG_LITERAL_WORD):
+    """Heads-up, NOT hard — and it fires only where the author had a CHOICE.
+
+    A long word is more glyphs to get right, but length alone is a weak signal and a
+    guard built on it alone is a firehose: >=9 chars raw hits 16 distinct words in
+    Wells Fargo and 8 in Poyais, and a lint that fires 24 times across two files is
+    a lint that gets ignored.
+
+    The discriminator is the SCRIPT. A long word the narration already says is the
+    video's own vocabulary — 'MINISCRIBE' (the bricks segment's subject, 6 frames),
+    'MacGregor', 'CROSS-SELLING' — and there is no shorter synonym for a proper
+    noun, so the advice "pick a shorter word" is unactionable noise on it. A long
+    word the author invented FOR the image is a real choice, and the exemption
+    strips the population down to those: 8 -> 0 on Poyais, 1 -> 0 on the bricks
+    segment, 16 -> 3 on Wells Fargo. Those three survivors are the case the guard
+    exists for — 'TERMINATED' (L69) and 'REINSTATED' (L72) are author-chosen stamp
+    faces on a video that elsewhere authored 'FIRED' for the same concept, five
+    glyphs instead of ten, and that one rendered clean.
+
+    What it deliberately does NOT flag: any word under 9 chars, so 'CHECKING' (8) is
+    silent here BY DESIGN even though CHECKIG is the file's headline garble. That
+    defect was a non-re-quoted carried literal (L-1) and carried_literal_check owns
+    it; pulling the floor down to catch it would flag most of both files. This guard
+    is a risk heads-up about glyph count, not a defect detector.
+
+    NO SCRIPT, NO CHECK. The whole guard is the script comparison, so an empty
+    vocabulary (a file whose script.md is missing or unreadable) is not a licence to
+    flag every long word — it is the absence of the discriminator, and firing then
+    would report the loudest on exactly the file we know the least about. lint_piece
+    already says so out loud for the VO stream; this stays silent the same way."""
+    vocab = set(vocab or ())
+    if not vocab:
+        return
+    for pid, field, prompt in prompts:
+        seen = set()
+        for lit, _s, _e in quoted_literals(prompt, suffix):
+            for w in re.findall(r"[A-Za-z][A-Za-z'-]*", lit):
+                key = w.lower()
+                if len(w) < floor or key in vocab or key in seen:
+                    continue
+                seen.add(key)
+                soft.append(
+                    f"[{label}] {pid}.{field}: lettered word {w!r} ({len(w)} chars) in {lit!r} is "
+                    f"long and the script never uses it, so it is a wording CHOICE. Every glyph is "
+                    f"redrawn and the error rate compounds across them - prefer a shorter, more "
+                    f"common word where the beat allows it ('FIRED' over 'TERMINATED').")
+
+
+# --- EXCLUSIONS: a negation LIST is the wrong way to author an absence -------
+# The engine has no reliable negation operator; an absence lands only when it is
+# authored as a POSITIVE property of the surface. The bricks segment gets this
+# right almost everywhere — "Every surface in the room is completely blank and
+# unlettered" (L01), "left COMPLETELY BLANK" (L16/L20) — and wrong in exactly the
+# shape this guard names: L07's "The glass carries no signs and no words." That is
+# the tuning counter-example. L09's "No prices, no words and no labels anywhere on
+# the boxes" and L26's "no borders drawn and no place names" are the same defect.
+#
+# WHAT IT DELIBERATELY DOES NOT FLAG
+# ----------------------------------
+#  * a SINGLE absence. "The building carries no signage on this side" (L42), "No
+#    lettering on any machine" (L15), "no shadows" (L43) all read cleanly and land;
+#    one negation is a statement, a pile of them is a wish list. Five such
+#    sentences in the segment stay silent.
+#  * RIG ANATOMY. shots-schema L-2 explicitly blesses "round heads, dot eyes, NO
+#    noses, NO ears" as the LEGAL form — it states properties of a depicted body,
+#    which is the positive-state rule already satisfied, just spelled with `no`.
+#    The style-bible §2c/§2d/§2e clauses are built out of it, so flagging it would
+#    fire on every character-bearing prompt in the project. Anatomy-only sentences
+#    are exempt; a sentence mixing anatomy with surface nouns still reports.
+_NEG_NOUN = re.compile(r"\b(?:no|without)\s+((?:[a-z]+-)?[a-z]+)\b", re.IGNORECASE)
+# `no` as an intensifier or comparative, never an absence: "no longer lit", "no
+# more than three", "no other figure". Without this the phrase "no longer" pairs
+# with any real negation in the same sentence and invents a list of two.
+_NEG_STOP = frozenset(
+    "longer more other less better worse further fewer sooner else matter way "
+    "doubt bigger smaller taller wider".split())
+_ANATOMY = frozenset(
+    "nose noses nostril nostrils ear ears tooth teeth eyebrow eyebrows lash lashes "
+    "eyelash eyelashes pupil pupils iris irises finger fingers thumb thumbs toe toes "
+    "lip lips tongue chin chins neck necks wrinkle wrinkles freckle freckles "
+    "detail details face faces".split())
+_SENTENCE = re.compile(r"(?<=[.;])\s+")
+
+
+def negation_list_check(label, prompts, suffix, soft):
+    """Heads-up. Two or more `no <noun>` clauses in ONE sentence -> author the
+    absence as a positive property of the surface instead."""
+    for pid, field, prompt in prompts:
+        body = strip_suffix(prompt or "", suffix)
+        reported = set()
+        for sent in _SENTENCE.split(body):
+            nouns = []
+            for m in _NEG_NOUN.finditer(sent):
+                n = m.group(1).lower()
+                if n in _NEG_STOP or n.endswith("ly") or n in nouns:
+                    continue
+                nouns.append(n)
+            if len(nouns) < 2 or all(n in _ANATOMY for n in nouns):
+                continue
+            key = tuple(nouns)
+            if key in reported:
+                continue
+            reported.add(key)
+            soft.append(
+                f"[{label}] {pid}.{field}: authors an absence as a list of {len(nouns)} negations "
+                f"({', '.join('no ' + n for n in nouns)}) -> {sent.strip()[:90]!r}. The engine has "
+                f"no reliable negation operator; each `no X` can just as easily put an X in frame. "
+                f"State the positive property of the surface instead - 'completely blank and "
+                f"unlettered', 'an empty street' - the way L01 and L16 do.")
 
 
 def numeral_form_check(label, prompts, suffix, soft):
@@ -821,6 +1009,211 @@ def carried_literal_check(label, shots, suffix, hard):
                     established.append(lit)
 
 
+# ---------------------------------------------------------------------------
+# SHOT-CLASS ENUM + THE `figures` MIGRATION — the Class-D guards.
+#
+# WHAT CHANGED, AND WHY LINT IS THE ENFORCER
+# ------------------------------------------
+# Until 2026-07-29, VPW pasted the style-bible §2d (CROWD-RIG) and §2e (BASE-RIG)
+# clauses verbatim into `still_prompt`. The bricks-segment critic found 5 of its 15
+# findings were defects of that arrangement: ~350 characters of rig boilerplate,
+# identical on 20 of 44 shots, sitting between the scene and its payload — burying
+# the ordering law, pushing the real content past the point where long-prompt
+# adherence measurably degrades, and (because the clause says "give them a
+# distinct outfit") re-inventing a held figure on delta frames that were supposed
+# to hold it.
+#
+# The clauses did not go away; OWNERSHIP moved. VPW now DECLARES the figures in a
+# structured `figures` field and `forge.py` expands the template at generation
+# time, where it can pluralize over the list and swap in held-figure wording on a
+# delta. Two consequences this file has to enforce:
+#   * the clause TEXT is now a regression — if it is in a prompt, the migration
+#     was skipped for that shot and forge will append a SECOND copy (guard 6);
+#   * the `figures` field is machine-read by forge, so its shape is a contract and
+#     a malformed one silently drops a rig clause from a generation (guard 7).
+# ---------------------------------------------------------------------------
+
+# The closed enum, copied from shots-schema.md §1's `shot_class` line. Copied, not
+# imported: the schema is prose documentation with no parseable list, and a lint
+# that parses its own docs breaks when a sentence is reworded. Keep in sync by hand
+# — the guard's message names the file, so a drift shows up as a wrong suggestion.
+SHOT_CLASSES = frozenset((
+    "personified-character", "staged-interaction", "symbolic-stand-in-object",
+    "number-glued-to-object", "diegetic-device", "map-plan-view",
+    "physicalized-imbalance", "register-shift-infographic", "ironic-counterpoint",
+    "reaction-shot", "idiom-pun", "aftermath-palette-turn", "crowd-multiplication",
+    "literal"))
+
+
+def shot_class_check(label, shots, hard, soft, strict=True):
+    """A `shot_class` outside the closed enum is a typo, and a silent one: no consumer
+    reads the field, so nothing downstream ever complains, and the class variety the
+    drift self-audit counts is computed off a bucket that doesn't exist.
+    'symbolic-stand-in' for 'symbolic-stand-in-object' is the real instance — it sat
+    in this lint's own v2 test fixture, unnoticed, for as long as the fixture existed.
+
+    HARD on a v2 file, a heads-up on a v1 one (`strict`), for the reason schema_check
+    and legacy_field_check give: the field is not engine-read, so hard-failing an
+    ARCHIVED video over a vocabulary change breaks it for nothing. This is not
+    hypothetical — the published 2026-07-19 Wells Fargo file (v1) classes three shots
+    as 'comparison', a value the table never had. v2 is the contract VPW writes from
+    now on, and there the list is closed.
+
+    ABSENT is never flagged, either way: a v1 file may predate the field entirely,
+    and a missing value cannot be a typo."""
+    sink = hard if strict else soft
+    tail = ("" if strict else " (a heads-up only: this is a v1 file and nothing reads the "
+                              "field - author v2 files to the closed list)")
+    for sh in shots:
+        sc = sh.get("shot_class")
+        if sc is None or (isinstance(sc, str) and not sc.strip()):
+            continue
+        if not isinstance(sc, str):
+            sink.append(f"[{label}] {sh.get('id','?')}: shot_class is {type(sc).__name__}, "
+                        f"expected a string from shots-schema.md's closed list.{tail}")
+            continue
+        if sc not in SHOT_CLASSES:
+            near = difflib.get_close_matches(sc, sorted(SHOT_CLASSES), n=1, cutoff=0.6)
+            hint = f" Did you mean {near[0]!r}?" if near else ""
+            sink.append(
+                f"[{label}] {sh.get('id','?')}: shot_class {sc!r} is not in shots-schema.md's "
+                f"closed list.{hint} The list is closed because the narration->shot-class table in "
+                f"visual-grammar.md is what routes a beat to a staging, and a class off that table "
+                f"routes nowhere.{tail}")
+
+
+# The fingerprints of the two clauses VPW must no longer paste. Anchored on the
+# distinctive spans of the style-bible §2d/§2e blockquotes and on the lead-in
+# sentence VPW wrote to introduce them ("The stall keeper is drawn as follows.") —
+# which is itself a reliable tell, because the lead-in exists ONLY to hand off to a
+# pasted clause and reads as an unfinished sentence without one.
+#
+# THE DELIBERATE DISAGREEMENT WITH control_leak_check
+# ---------------------------------------------------
+# test_lettering_fidelity asserts that "on the CROWD RIG: round cream-family heads,
+# DOT EYES ..." is CLEAN, and it still is *for that guard*: it never leaked into a
+# render as lettering, which is the only question control_leak_check asks. This
+# guard asks a different one — does this prompt still carry text forge now owns —
+# and the same span answers yes. Both are right; they are not the same check.
+#
+# What it deliberately does NOT flag: the rig VOCABULARY used as prose about a body
+# ("a base-rig anonymous teller in a teal uniform", "figures on the crowd rig"),
+# because that is a legal property of a depicted figure and banning the word `rig`
+# would fire on most of the file. Only the clause's own distinctive spans match.
+_RIG_CLAUSE = re.compile(
+    r"FULL base family rig"
+    r"|CROWD RIG\s*:"
+    r"|non-recurring person"
+    r"|drawn as follows"
+    r"|the identical rig the named cast holds",
+    re.IGNORECASE)
+
+
+def rig_clause_check(label, prompts, suffix, hard):
+    """HARD. The §2d/§2e clause text (or its lead-in) still sitting in a prompt —
+    the regression guard for the figures migration.
+
+    ONE report per prompt, listing every fingerprint it found. The alternative —
+    one per distinct fingerprint, the way control_leak_check reports — turned the
+    bricks segment into 78 messages for 20 shots, because a single pasted §2e
+    clause matches four of them at once. They are not four defects; they are one
+    un-migrated shot."""
+    for pid, field, prompt in prompts:
+        body = strip_suffix(prompt or "", suffix)
+        found = []
+        for m in _RIG_CLAUSE.finditer(body):
+            if m.group().lower() not in [f.lower() for f in found]:
+                found.append(m.group())
+        if not found:
+            continue
+        hard.append(
+            f"[{label}] {pid}.{field}: carries rig-clause text {', '.join(repr(f) for f in found)}. "
+            f"The style-bible section 2d/2e clauses are no longer authored into prompts - declare the "
+            f"figures in the shot's `figures` field ({{\"anon_foreground\": [\"<the exact phrase "
+            f"this prompt uses>\"], \"crowd\": true}}) and forge.py expands the template at "
+            f"generation time, with held-figure wording on a delta. Left in, the prompt gets the "
+            f"clause TWICE and the delta gets told to re-invent a figure it should be holding.")
+
+
+FIGURES_KEYS = ("anon_foreground", "crowd")
+
+
+def figures_check(label, objs, hard, soft):
+    """`figures` shape + declaration/prompt agreement. `objs` is [(id, shot-dict)].
+
+    HARD on shape, because forge READS this field: an unknown key or a wrong type
+    means a rig clause is silently dropped from a generation and the defect only
+    shows up as an off-rig figure in a finished image, which is the most expensive
+    place to find it. SOFT on a declared figure the prompt never stages, because
+    the phrase match is a heuristic and the cost of being wrong is a wasted read.
+
+    THE SUBSTRING RULE, AND WHY IT SKIPS DELTAS
+    -------------------------------------------
+    Plan §1 makes each entry "the exact phrase the prompt uses for that figure",
+    and forge's base template opens by naming the entries VERBATIM ("The following
+    figures — X; Y — are anonymous ..."). So an entry the prompt never contains
+    produces a clause binding to a phrase the model cannot find, and the clause
+    lands on whatever figure it likes. That is the defect.
+    On a DELTA it is not a defect. A delta prompt is a compact restatement of the
+    held scene plus the one change, and forge emits held-figure wording for it
+    ("the anonymous figure(s) [list] are unchanged, exactly as established"), so
+    the phrase is carried from the base and the delta is not required to re-stage
+    it. Checking deltas would fire on almost every one of them: 10 of the bricks
+    segment's 17 anon-figure shots are deltas whose prose never says "anonymous"
+    at all ("The same den, same locked camera. ...").
+    Match is case-INSENSITIVE: an entry that opens its sentence is capitalized
+    ("Two anonymous business figures ..."). Deliberately unlike
+    carried_literal_check, where case IS the discriminator — there the case is part
+    of the glyph run being redrawn; here it is grammar."""
+    for pid, sh in objs:
+        if "figures" not in sh:
+            continue
+        fig = sh.get("figures")
+        if not isinstance(fig, dict):
+            hard.append(f"[{label}] {pid}: `figures` is {type(fig).__name__}, expected an object "
+                        f"like {{\"anon_foreground\": [\"...\"], \"crowd\": true}}.")
+            continue
+        unknown = [k for k in fig if k not in FIGURES_KEYS]
+        if unknown:
+            hard.append(f"[{label}] {pid}: `figures` has unknown key(s) {unknown!r}. The field is "
+                        f"closed: {list(FIGURES_KEYS)!r} (shots-schema.md). forge.py ignores "
+                        f"anything else, so a misspelled key drops the rig clause silently.")
+        if "crowd" in fig:
+            if not isinstance(fig["crowd"], bool):
+                hard.append(f"[{label}] {pid}: `figures.crowd` is {fig['crowd']!r}, expected true "
+                            f"or false (it gates the section 2d CROWD-RIG clause).")
+            elif fig["crowd"] is False:
+                soft.append(f"[{label}] {pid}: `figures.crowd` is false - omit the key instead; "
+                            f"the spec says present-and-true or absent.")
+        if "anon_foreground" not in fig:
+            continue
+        entries = fig["anon_foreground"]
+        if not isinstance(entries, list):
+            hard.append(f"[{label}] {pid}: `figures.anon_foreground` is "
+                        f"{type(entries).__name__}, expected a list of phrase strings (one per "
+                        f"anonymous foreground figure).")
+            continue
+        if not entries:
+            soft.append(f"[{label}] {pid}: `figures.anon_foreground` is empty - omit the key "
+                        f"instead, or forge emits a section 2e clause naming no figure.")
+        bad = [e for e in entries if not isinstance(e, str) or not e.strip()]
+        if bad:
+            hard.append(f"[{label}] {pid}: `figures.anon_foreground` has non-string/empty "
+                        f"entr{'y' if len(bad) == 1 else 'ies'} {bad!r}; each entry is the exact "
+                        f"phrase the prompt uses for that figure.")
+        if sh.get("stage_role") == "delta":
+            continue
+        body = (sh.get("still_prompt") or "").lower()
+        for e in entries:
+            if isinstance(e, str) and e.strip() and e.strip().lower() not in body:
+                soft.append(
+                    f"[{label}] {pid}: `figures.anon_foreground` declares {e!r} but the "
+                    f"still_prompt never contains that phrase. forge names the entries VERBATIM "
+                    f"when it opens the section 2e clause, so a phrase the prompt doesn't use gives the "
+                    f"clause nothing to bind to and it lands on whichever figure it likes. Copy "
+                    f"the phrase the prompt actually uses, or stage the figure you declared.")
+
+
 def _shot_prompts(shots):
     return [(sh.get("id", "?"), "still_prompt", sh.get("still_prompt") or "") for sh in shots]
 
@@ -882,20 +1275,35 @@ def main(argv):
     stage_check("long-form", lf_shots, hard, soft)
     suffix = data.get("global_prompt_suffix") or ""
     lf_prompts = _shot_prompts(lf_shots)
+    lf_vocab = script_vocab(script_md)
     text_supply_check("long-form", lf_prompts, suffix, hard)
     word_cap_check("long-form", lf_prompts, suffix, hard)
+    literal_count_check("long-form", lf_prompts, suffix, hard)
     control_leak_check("long-form", lf_prompts, suffix, hard)
+    rig_clause_check("long-form", lf_prompts, suffix, hard)
+    strict_schema = data.get("schema") == SCHEMA_V2
+    shot_class_check("long-form", lf_shots, hard, soft, strict_schema)
+    figures_check("long-form", [(sh.get("id", "?"), sh) for sh in lf_shots], hard, soft)
     numeral_form_check("long-form", lf_prompts, suffix, soft)
+    long_literal_word_check("long-form", lf_prompts, suffix, soft, lf_vocab)
+    negation_list_check("long-form", lf_prompts, suffix, soft)
     carried_literal_check("long-form", lf_shots, suffix, hard)
     # The thumbnail is the single most-seen frame of the video — its prompts get
-    # the same guard as the shot list.
+    # the same guard as the shot list. The one exception is rig_clause_check: the
+    # `figures` field is a per-SHOT key, so the thumbnail has no way to declare an
+    # anonymous figure and banning the clause there would leave the rig
+    # unexpressible on the most-seen frame in the video. §2c's auto-append covers
+    # a character-bearing thumbnail already.
     th = data.get("thumbnail") or {}
     th_prompts = [("thumbnail.primary", "gen_prompt", (th.get("primary") or {}).get("gen_prompt") or "")]
     th_prompts += [(f"thumbnail.challengers[{i}]", "gen_prompt", (c or {}).get("gen_prompt") or "")
                    for i, c in enumerate(th.get("challengers") or [])]
     text_supply_check("thumbnail", th_prompts, suffix, hard)
     word_cap_check("thumbnail", th_prompts, suffix, hard)
+    literal_count_check("thumbnail", th_prompts, suffix, hard)
     control_leak_check("thumbnail", th_prompts, suffix, hard)
+    long_literal_word_check("thumbnail", th_prompts, suffix, soft, lf_vocab)
+    negation_list_check("thumbnail", th_prompts, suffix, soft)
     ordered += lf_shots
     if lf_text:
         id2text_all.update(lf_text)
@@ -911,13 +1319,28 @@ def main(argv):
         sprompts = _shot_prompts(sshots)
         # The first_frame IS the short's thumbnail; it carries baked caption text
         # more often than any other prompt in the file, so it must be covered.
-        ff = (short.get("first_frame") or {}).get("still_prompt") or ""
+        ff_obj = short.get("first_frame") or {}
+        ff = ff_obj.get("still_prompt") or ""
         if ff:
             sprompts.append(("first_frame", "still_prompt", ff))
+        # A short is DERIVED from the long-form script, so both vocabularies are the
+        # video's own — union, not either alone. Its own md alone would make every
+        # long word the long-form established a heads-up on the short (Wells Fargo's
+        # 'OBSTRUCTION' appears on three short frames); the long-form alone would
+        # miss what the short names for itself. A missing short md degrades to the
+        # long-form set rather than to empty, which would flag everything.
+        svocab = script_vocab(smd) | lf_vocab
         text_supply_check(slabel, sprompts, suffix, hard)
         word_cap_check(slabel, sprompts, suffix, hard)
+        literal_count_check(slabel, sprompts, suffix, hard)
         control_leak_check(slabel, sprompts, suffix, hard)
+        rig_clause_check(slabel, sprompts, suffix, hard)
+        shot_class_check(slabel, sshots, hard, soft, strict_schema)
+        figures_check(slabel, [(sh.get("id", "?"), sh) for sh in sshots]
+                      + ([("first_frame", ff_obj)] if ff_obj else []), hard, soft)
         numeral_form_check(slabel, sprompts, suffix, soft)
+        long_literal_word_check(slabel, sprompts, suffix, soft, svocab)
+        negation_list_check(slabel, sprompts, suffix, soft)
         carried_literal_check(slabel, sshots, suffix, hard)
         ordered += sshots
         if st:

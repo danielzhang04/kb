@@ -33,22 +33,36 @@ vocabulary) + `example-shots.md` (the depiction bar) · the charter below, verba
 >
 > **Read first:** `visual-grammar.md` (the class table, the literal/non-literal bar, chain logic, staging,
 > policy), `example-shots.md` (the bar), `registry.json` (the vocabulary). Then walk `shots.json` shot by
-> shot against `script.md` and answer FIVE questions per shot — and only these:
+> shot against `script.md` and answer FIVE questions per shot — and only these. Judge each shot at TWO
+> granularities and keep them apart: **whole-scene** (does the frame as written read as this beat?) and
+> **per-element** (does every named entity, each of its attributes, and each stated relation survive as
+> written?). A shot routinely passes one and fails the other, and collapsing both into a single gut verdict
+> is how per-element defects go unflagged.
 >
 > 1. **Scene logic and facts.** Do the stated facts make sense, and are the load-bearing ones present —
 >    geography, spatial layout, orientation (a vehicle faces where it goes; interacting characters face
->    each other), causality? Would a viewer who knows the story spot a wrongness?
+>    each other), causality? On a multi-figure shot, is the geometry actually PINNED — relative scale, who
+>    looks where, what touches what — or left for the generator to guess? Would a viewer who knows the
+>    story spot a wrongness?
 > 2. **Literal-check against the bar.** Does the shot merely draw the WORDS of its line where the grammar
 >    wants its meaning? Non-literal is the default and skews harder than a competent first idea; literal
 >    is correct only for a concrete physical action or object. Judge against `example-shots.md`.
-> 3. **Vocabulary resolution.** Does every backticked name in the prompt exist in `registry.json`? Flag
->    each one that does not — not automatically an error (image-gen's Pass-1 gate can approve a new
->    asset), but an unflagged typo or a silently invented slug is.
-> 4. **Renderability.** Does the shot's *meaning* depend on animation the pipeline cannot render (element
->    motion inside a frame — walking, peeling, pouring)? The renderable set is the still + word-anchored
->    cutout layers + changes arriving AT cuts + baked diegetic text; a beat that *needs* in-frame motion
->    must be restaged. A freeze of continuous motion is the same defect — a held pose carrying the
->    action's meaning is correct.
+> 3. **Prompt construction.** Does every backticked name exist in `registry.json`? Flag each one that does
+>    not — not automatically an error (image-gen's Pass-1 gate can approve a new asset), but an unflagged
+>    typo or a silently invented slug is. Then: is body pose, finger mechanics, or facial expression
+>    written as PROSE where a registry name is the authoring act? Do the three zones hold — identity, then
+>    scene, then the payload (the quoted lettering, or a delta's one change) as the FINAL clause? Is any
+>    absence written as a "no X, no Y" list instead of a positive state of the surface? Is any style-bible
+>    §2d/§2e rig-clause text sitting in the prompt where the shot should just declare `figures`?
+> 4. **Renderability and generator risk.** Does the shot's *meaning* depend on animation the pipeline
+>    cannot render (element motion inside a frame — walking, peeling, pouring)? The renderable set is the
+>    still + word-anchored cutout layers + changes arriving AT cuts + baked diegetic text; a beat that
+>    *needs* in-frame motion must be restaged. A freeze of continuous motion is the same defect — a held
+>    pose carrying the action's meaning is correct. Then the risks that make a prompt generate wrong even
+>    when it reads right: the grammar §2 **figure cap** and its interaction flag, honored; figures described
+>    so similarly that one's attributes will bleed onto another; a **countable element at n≥3** left as a
+>    bare number instead of staged countably (a named arrangement — a row of four, three in a line — that
+>    the generator can actually draw).
 > 5. **Disclosure order.** Does the script **deliberately withhold** a payload for a later beat (an
 >    identity, a fate, a twist object/number/place)? If so, flag the **earliest** shot that visually
 >    discloses it before the narration does; the fix is to **re-author** that shot (or its chain) with the
@@ -70,6 +84,9 @@ vocabulary) + `example-shots.md` (the depiction bar) · the charter below, verba
 >   withholding. Disclosure order fires ONLY on deliberate withholding.
 > - A held pose as "static" — stillness is the medium; flag only a *freeze of motion* or a dead
 >   compositional idea.
+> - A shot merely for HAVING several figures. The cap fires above the budget, or where interaction geometry
+>   is genuinely unpinned — never on a populated scene as such, and never on crowd-rig figures, which are a
+>   mass rather than identities. A `figures` declaration you would have worded differently is not a finding.
 >
 > **Output** a ranked list, most-damaging first. Each finding: the shot `id` · the question # · the defect
 > in ONE sentence, quoting the offending prompt text · a one-line fix *direction* (do NOT write the new

@@ -210,7 +210,8 @@ def _entry_review_reason(entry: dict):
 
 
 def resolve_scene_files(scenes_dir: Path, piece: str, shots: list, is_short: bool,
-                        allow_missing: bool, layered_ids=None):
+                        allow_missing: bool, layered_ids=None,
+                        preview_parked=False, previewed_out=None):
     """Per-shot Path-or-None list for scenes mode. Naming convention (the image-generation
     output contract): long-form -> scenes/<shot-id>.png; shorts -> scenes/<piece>-<shot-id>.png.
 
@@ -227,7 +228,14 @@ def resolve_scene_files(scenes_dir: Path, piece: str, shots: list, is_short: boo
     a manifest entry is gated exactly like any other (the fyt-run-001 hole was exempting them
     from S2 too, so a manifest in which nothing was verified still passed). Deliberate
     compatibility carve-out: a manifest with NO entry at all for a layered/fallback shot passes
-    (legacy manifests never listed layered shots; stamp_review.py writes entries for new runs)."""
+    (legacy manifests never listed layered shots; stamp_review.py writes entries for new runs).
+
+    `preview_parked` (opt-in, HUMAN EYE-GATE ONLY) shows a PARKED shot's actual best-attempt PNG
+    instead of a placeholder card, and appends its id to `previewed_out`. It is scoped strictly to
+    `review_status == "parked"` WITH a valid PNG: "missing" and "gate" (unreviewed/unverified) are
+    never rescued, and no status is rewritten. Previewed shots are reported SEPARATELY from the
+    allow-missing `allowed` list so the caller can stamp a non-shippable manifest state — a render
+    built this way is a review artifact, never a publishable one."""
     manifest = _load_scene_manifest(scenes_dir)   # S2
     layered_ids = layered_ids or set()
     files, missing, gate_failed, parked = [], [], [], []
@@ -251,6 +259,14 @@ def resolve_scene_files(scenes_dir: Path, piece: str, shots: list, is_short: boo
         # S1-B — PNG existence. layered_ids / fallback sources are exempt from THIS check only.
         if reason is None and not is_fallback and not png_ok:
             reason = "missing"
+        # Opt-in preview of PARKED pixels for the human eye-gate. Deliberately narrow: only a
+        # "parked: …" reason qualifies (never "missing"/"gate") and only with real pixels on disk,
+        # so nothing is invented and no review_status is touched. Tracked apart from `allowed`.
+        if preview_parked and png_ok and isinstance(reason, str) and reason.startswith("parked"):
+            files.append(p)
+            if previewed_out is not None:
+                previewed_out.append(sid or "?")
+            continue
         if reason is None:
             files.append(p if png_ok else None)
             continue

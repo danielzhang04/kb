@@ -22,6 +22,11 @@ prompt (no "flat cel", "clean vector", "even outline", "hand-lettered marker sty
 `style-bible.md`'s forge descriptors already inject every one of them, and repeating them spends the
 prompt's weight on the look instead of on the scene.
 
+**Author absence as a positive STATE of the surface, never as a "no X" list.** "Every surface blank and
+unlettered", "an empty street", "a bare desk" — not "no signs, no words, no labels". Our generator reads a
+negation list as content and draws the very nouns it was told to omit, so each "no X" raises the odds of
+an X. One clean positive description of what the surface IS replaces the whole list.
+
 ## 1. What to depict — classify, then invent
 
 Read the line → name its narration TYPE → pick the shot CLASS → **INVENT a fresh, on-style shot in
@@ -56,8 +61,13 @@ Record the class by its canonical name from the `shot_class` enum (`shots-schema
 
 **Chain logic:** one idea per FRAME. Consecutive shots on ONE set share a `stage` — the `base` establishes
 it, each `delta` changes exactly ONE element, **≤3 deltas**, then a re-base or a hard cut. A world,
-setting, subject, or register change is a **hard cut**, never a delta. **Disclosure order:** an image never
-shows what the VO has not yet said — a withheld entity is absent entirely from every earlier shot.
+setting, subject, or register change is a **hard cut**, never a delta. **A delta PROMPT is a compact
+restatement of the held scene, then the change as its FINAL clause** — the base's identity and
+load-bearing facts carried over tightened, never re-invented or paraphrased into different nouns, closing
+on the one change plus "only this changes; everything else exactly as established". A delta regenerates
+the whole image, so whatever goes unstated gets re-invented, and the change stated last is read as the
+edit rather than as one more scene fact (§2 ordering law). **Disclosure order:** an image never shows
+what the VO has not yet said — a withheld entity is absent entirely from every earlier shot.
 
 ## 2. Staging conventions (our cast on screen)
 
@@ -92,10 +102,33 @@ shows what the VO has not yet said — a withheld entity is absent entirely from
 - **A character reveal lands on the naming moment** — the entrance anchors to the VO line that names
   them, staged sized to the beat (a big reveal: spotlight / low angle / arrival; a minor one: a clean
   introduction), in its canonical expression unless the beat authors otherwise.
-- **A recurring identifiable GROUP is cast, not a crowd** — one name, reused every appearance.
-  Anonymous figures stay prose and route by SIZE (`style-bible.md`'s three-tier rig model):
-  small/many/background → the **§2d crowd-rig clause** written verbatim into the prompt;
-  LARGE/foreground → the **§2e base-rig clause**. A group member acting alone is staged as an individual.
+- **A recurring identifiable GROUP is cast, not a crowd** — one name, reused every appearance. A group
+  member acting alone is staged as an individual.
+- **Anonymous figures are DECLARED, never described in rig prose.** Route each by SIZE
+  (`style-bible.md §1`'s three-tier model) and record it in the shot's **`figures`** field
+  (`shots-schema.md §2`): small/many/background → `"crowd": true`; LARGE/foreground → one
+  `anon_foreground` entry per figure, each entry the **exact phrase the prompt uses for that figure**
+  ("the worker at the dock edge"), so the declaration and the prose point at the same body.
+  **The anon-vs-cast test is the backticked slug, not recurrence:** a foreground figure with no slug is
+  declared here on EVERY shot it appears in; a role that recurs and must hold one identity gets a new
+  backticked slug instead (Pass 1 mints it) — never a prose costume re-described shot to shot. The prose
+  still stages them — where they stand, what they do, what they wear — but the RIG wording is
+  `forge.py`'s: it expands each declaration into the style-bible §2d/§2e clause at gen time, in
+  establishment or held wording per `stage_role`. **Never write that clause text into a `still_prompt`**
+  (lint HARD-fails its fingerprint): the reference frames already carry the rig, ~600–1,100 chars of
+  boilerplate per shot pushes the prompt into measured adherence decay, and generic figure wording
+  sitting ahead of a named character is what bleeds one figure's attributes onto another.
+- **Figure cap — plan ≤5 must-stay-distinct figures per shot.** Five is the generator's
+  character-reference budget; past it, figures that must read as different people collapse into each
+  other. Interaction is harder than mere co-presence, so **>3 figures in physical interaction** (touching,
+  handing over, grappling) is flagged high-risk in `notes` and restaged as co-presence where the beat
+  allows. Crowd-rig figures are a mass, not identities, and don't count against the cap.
+- **Prompt ordering — three zones, in this order.** (1) **Identity first:** the named cast, their
+  backticked registry names, and any pinned trait the shot depends on. (2) **Scene second:** setting,
+  staging, framing, palette, light, depth. (3) **Payload LAST, as the final clause:** the quoted lettering,
+  or on a delta the one change (§1 chain logic). The generator weights earliest mentions heaviest for
+  identity and reads the closing instruction most literally, so leading with boilerplate costs identity
+  and burying the payload mid-prompt costs the payload.
 
 ## 3. Composition — a decision, driven by the payload
 

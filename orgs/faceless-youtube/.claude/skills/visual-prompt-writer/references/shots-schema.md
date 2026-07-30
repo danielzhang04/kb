@@ -22,6 +22,7 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
         "shot_class": "the canonical closed list (picked from visual-grammar.md's narration→shot-class table): personified-character, staged-interaction, symbolic-stand-in-object, number-glued-to-object, diegetic-device, map-plan-view, physicalized-imbalance, register-shift-infographic, ironic-counterpoint, reaction-shot, idiom-pun, aftermath-palette-turn, crowd-multiplication, literal",
         "source": "ai-gen | stock | hybrid | chart | screencap | archival (§3)",
         "still_prompt": "the image-gen prompt: subject, composition/framing + scale, lighting, palette, and the shot's load-bearing scene FACTS. Cast, poses, and expressions are named INLINE by their registry vocabulary name, backticked. In-video text is DIEGETIC + baked here, quoted VERBATIM and kept SHORT (1–4 words)",
+        "figures": { "anon_foreground": ["the worker at the dock edge"], "crowd": true },
         "stock_query": "search terms — only when source is stock|hybrid|archival, else omit",
         "notes": "policy/accuracy flags (analysis-not-gore, YMYL, borderline) + the [F-NN] ledger ids behind any supplied literal"
       }
@@ -55,6 +56,16 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
   the scene's architecture) stays a delta frame; a DISCRETE one (a character enters, a stamp slams onto a
   page) is promoted downstream by `motion-planner` to a moving cutout LAYER. Lint enforces exactly one
   `base`, first, per stage · **≤3 deltas** per chain · contiguity.
+- **`figures` — anonymous figures are DECLARED here, never described in rig prose.** Optional; omit the
+  whole key when a shot has none. **`anon_foreground`**: one entry per anonymous LARGE/foreground figure
+  (style-bible §2e tier), each entry **the exact phrase the `still_prompt` uses for that figure** ("the
+  worker at the dock edge") — omit the key if there are none. **`crowd`**: `true` when the shot stages
+  background/crowd figures (§2d tier); omit when false. `forge.py` expands each declaration into the
+  style-bible §2d/§2e clause at gen time — establishment wording on a `base`, held wording on a `delta` —
+  so **no prompt ever contains that clause text**: `lint_shots.py` HARD-fails its fingerprint, HARD-fails a
+  wrong shape or unknown key, and SOFT-flags an `anon_foreground` entry that appears nowhere in its shot's
+  prompt. Named/recurring cast are never declared here (they are inline registry names, next bullet).
+  Routing by figure size + the ≤5-must-stay-distinct cap: `visual-grammar.md §2`.
 - **Casting is PROSE, by vocabulary name.** Every recurring figure, pose, expression, and already-built
   prop is named inline in the `still_prompt` by its exact `registry.json` name, backticked — there are no
   structured cast/pose/expression arrays. A prop making its FIRST appearance has no entry to name and is
@@ -106,8 +117,9 @@ wrong:
   those glyphs back to the engine and garbles them. Case is the discriminator.
 - **L-2. State a constraint as a property of the depicted thing (HARD).** The engine cannot always tell
   an instruction from a label and letters a bare noun phrase naming a production rule into the artwork.
-  "Figures on the CROWD RIG: round heads, dot eyes, NO noses, NO ears" is legal; the one-sentence
-  editorial gloss goes in `notes`, never in the prompt.
+  "the ledger's columns ruled but blank and unlettered" is legal; a production-rule name ("CROWD RIG") or
+  a bare directive ("NO TEXT") is not — it gets drawn. Rig wording belongs in `figures`, never in the
+  prose; the one-sentence editorial gloss goes in `notes`, never in the prompt.
 - **L-3. Authored lettering is capped at 4 words (HARD)** — past roughly four the per-glyph error rate
   compounds into an unreadable render. The cap is **uniform**, including a short's `first_frame` caption.
 - **L-4. Prefer the word form for big numbers (advisory).** `'8 MILLION'` over `'8,000,000'` where the

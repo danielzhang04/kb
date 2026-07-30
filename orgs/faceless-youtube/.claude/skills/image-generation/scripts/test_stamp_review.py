@@ -8,6 +8,8 @@ Fixtures mirror the REAL schemas pinned from the wells-fargo run:
       {id, n, worst, f, s, r, why, fault}
     where `worst` and each axis (f=fidelity, s=style, r=rig) is either "clean"
     or a severity ("LOW"|"MEDIUM"|"HIGH"|"BLOCKING"). `why` is a (possibly empty) narrative.
+    An optional `dsg: [{id, parent, q, verdict, note}]` carries the DSG-lite per-item adherence
+    results; any `verdict: "fail"` parks the shot regardless of the axis/aggregate severities.
   * `scenes/manifest.json` is {video_slug, generated, notes, shots: [entry, ...]} where each
     entry is keyed by `shot_id`. Task-2 (df0c18e) added `review_status`
     ("unreviewed"|"verified"|"parked") + `parked_reasons: [str]`, which render.py's gate reads.
@@ -93,6 +95,43 @@ def test_classify_low_worst_is_parked_not_verified():
     status, reasons = stamp_review.classify(_ruling("L26", "LOW", f="LOW", s="LOW", r="clean"))
     assert status == "parked", status
     assert reasons, reasons
+
+
+def test_failed_dsg_item_parks_even_when_the_aggregate_says_clean():
+    """The DSG-lite hole this closes: the fidelity judge writes the per-item checklist AND the axis
+    severities in one pass, so a ruling can carry a failed adherence item under a `worst: "clean"`
+    summary. Trusting the summary would ship a frame whose own evidence says it missed a fact."""
+    r = _ruling("L14", "clean")
+    r["dsg"] = [
+        {"id": "e1", "parent": None, "q": "a brick wall is present", "verdict": "pass"},
+        {"id": "a1", "parent": "e1", "q": "the wall is unlettered", "verdict": "fail",
+         "note": "reads BRIKS in marker capitals"},
+        {"id": "r1", "parent": "a1", "q": "the sign faces the worker", "verdict": "skipped"},
+    ]
+    status, reasons = stamp_review.classify(r)
+    assert status == "parked", (status, reasons)
+    assert any("the wall is unlettered" in x for x in reasons), reasons
+    assert any("BRIKS" in x for x in reasons), reasons
+    # a short-circuited CHILD is not itself a defect (its parent already carries one)
+    assert not any("faces the worker" in x for x in reasons), reasons
+
+
+def test_all_passing_dsg_items_still_verify():
+    r = _ruling("L15", "clean")
+    r["dsg"] = [{"id": "e1", "q": "one clerk at the wicket", "verdict": "pass"},
+                {"id": "a1", "parent": "e1", "q": "clerk in a green eyeshade", "verdict": "pass"}]
+    status, reasons = stamp_review.classify(r)
+    assert status == "verified", (status, reasons)
+    assert reasons == [], reasons
+
+
+def test_dsg_absent_or_malformed_changes_nothing():
+    # every pre-DSG ruling shape keeps its old verdict — the field is additive
+    assert stamp_review.classify(_ruling("L16", "clean"))[0] == "verified"
+    r = _ruling("L17", "clean"); r["dsg"] = "not a list"
+    assert stamp_review.classify(r)[0] == "verified"
+    r2 = _ruling("L18", "clean"); r2["dsg"] = [{"id": "e1", "q": "x"}]  # no verdict key
+    assert stamp_review.classify(r2)[0] == "verified"
 
 
 def test_classify_defect_with_empty_axes_and_why_still_has_a_reason():

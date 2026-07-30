@@ -3641,3 +3641,58 @@ review fixes → a full deep review (5 root causes, 24 r2 directives, 11 pipelin
 
 **Source:** `channels/the-second-take/videos/2026-07-29-nikola-fresh/deep-review.md` §V ("Daniel rulings
 (2026-07-29) — BINDING, these override §II/§III above"). Commit 771fca5.
+## 2026-07-29 - render-builder gains --preview-parked (the human eye-gate can see parked frames)
+
+- **Problem.** The bricks segment preview rendered 22 verified frames plus **20 placeholder cards**,
+  because `render.py:resolve_scene_files` resolves any non-shippable shot to `None`, and
+  `--allow-missing` only downgrades the hard error to a placeholder. A placeholder teaches the human
+  nothing about the defect it stands in for, so the eye-gate could not judge the parked work at all:
+  almost half the cut was a card reading MISSING SCENE.
+- **Decision: an explicit, opt-in `--preview-parked` flag.** When passed it resolves a `parked`
+  shot's real best-attempt PNG. It is scoped hard: only `review_status == "parked"` WITH a valid PNG
+  qualifies. `missing` and `gate` (unreviewed/unverified) are never rescued, and no `review_status`
+  or scene manifest is ever rewritten. Previewed ids are tracked separately from the
+  `--allow-missing` placeholder list and recorded as `preview_parked_shots` in the manifest.
+- **The stamp is load-bearing, not decorative.** `state` was already the registered success marker
+  that `compliance_check.check_render_manifest` hard-requires to equal `"rendered"`, so a preview run
+  stamps `state: "preview-parked-included"` and therefore **fails Gate-3 by construction**, with no
+  change to compliance-check. Verified empirically: Gate-3 reports
+  `state='preview-parked-included' (expected 'rendered')`.
+- **A preview run touches only `preview*` siblings.** It writes `assets/preview.mp4`,
+  `assets/preview.render.manifest.json`, and `assets/motion/<piece>.preview.motion.json`. This was a
+  correction made mid-build: the first cut wrote the shared `render.manifest.json` and the shared
+  motion spec, which destroyed the shippable render's record and provenance, exactly the outcome the
+  flag exists to avoid. Default (no-flag) behaviour is unchanged, pinned by a regression test and by
+  re-deriving the no-flag manifest (`out` still `assets/final.mp4`, 22 from scenes / 20 placeholder,
+  no `preview_parked_shots` key).
+- **Alternatives rejected.** (1) *Editing `review_status` or `manifest.json` to mark parked frames
+  verified* - rejected outright: it falsifies the honest three-state review record, the one thing the
+  gate exists to protect. (2) *Hiding `scenes/manifest.json` so the S2 gate is skipped entirely*
+  (render.py treats an absent manifest as no gate) - technically works with zero code change,
+  rejected because it is smuggling by another name and silently disables the gate for every shot, not
+  just parked ones. (3) *Making `--allow-missing` include parked pixels* - rejected: it would change
+  the meaning of an existing flag and let a test-slice convenience quietly put known-defective frames
+  into a render that still stamps `state: "rendered"`.
+- **Lesson routed.** The general rule: a review gate that hides the artifact behind a placeholder
+  blocks the very human judgement it was built to serve. Non-shippable must stay non-shippable in the
+  MANIFEST (the machine's channel) while remaining VISIBLE to the human (the eye-gate's channel) -
+  separate the two channels rather than conflating them.
+
+## 2026-07-30 — Chris is the default voice for BOTH channels, at hot dials (0.10/0.75)
+
+- **Decision (Daniel, ear gate).** ElevenLabs premade "Chris" (`iP95p4xoKVk53GoZ742B`), eleven_v3,
+  stability 0.10, style 0.75, similarity 0.85, speed 1.0 is now the locked default voice for
+  the-second-take AND the-hidden-machine. Supersedes Miles (`vSjOBQp24DUB2COr2xI9`) on ST and the
+  ST-adopted 0.20/0.6 dials on HM.
+- **Evidence.** Full 103s bricks-slice VO on Chris at 0.10/0.75 (clean single take, ~171 wpm,
+  measured sentence-gap law passing), then a 9-clip re-audition board (same 30s excerpt: Chris at
+  style 0.75/0.70/0.65 + six profile-matched library challengers — Marcus K, Caelan Oris, Ben,
+  Bytafa, PJ, Fletcher — at 0.10/0.70). Daniel: Chris "almost perfect" at 0.75; challengers and
+  softer style dials declined. Board + spend ledger: `channels/the-second-take/videos/_bricks-seg/
+  voice-audition/` (gitignored, disk).
+- **Alternatives rejected.** (1) Any of the six challengers — none beat the incumbent by ear.
+  (2) style 0.70 / 0.65 — auditioned, declined. (3) Keeping per-channel voices (Miles/Chris split) —
+  Daniel chose one voice for both channels at identical dials.
+- **Caveats carried.** Chris consistency proof still owed (variance across takes: F0/wpm/pause%);
+  premade-voice fingerprint caveat on record in HM voice-lab.md §Round 1. ST's next real VO render
+  is the re-proof point.

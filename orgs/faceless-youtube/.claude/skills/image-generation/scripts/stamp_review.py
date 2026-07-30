@@ -16,6 +16,7 @@ rulings. **Generating agents never run it; the conductor/orchestrator runs it AF
 Ruling -> status map:
   * a fully-clean ruling  -> `verified`   (parked_reasons: [])
   * ANY defect ruling     -> `parked`     with the ruling's defect strings as parked_reasons
+  * ANY failed DSG-lite checklist item (`dsg`) -> `parked`, whatever the axis severities say
 
 It never writes the legacy `verified: {scene, rig}` boolean shape. Entries the review did not
 cover are left byte-identical. Layered shots reviewed via their plate/cutout (present in
@@ -40,10 +41,36 @@ def _ruling_id(ruling: dict):
     return ruling.get("id") or ruling.get("shot_id")
 
 
+def _dsg_failures(ruling: dict):
+    """The FAILED items of a ruling's DSG-lite checklist — the dependency-ordered decomposition of
+    the assembled prompt into atomic facts (entities -> attributes -> relations -> lettering) that
+    the fidelity judge answers one by one. Each item is
+    `{id, parent, q, verdict: "pass"|"fail"|"skipped", note}`; only "fail" is a defect, because a
+    "skipped" child was short-circuited by a parent that already carries one."""
+    items = ruling.get("dsg")
+    if not isinstance(items, list):
+        return []
+    out = []
+    for it in items:
+        if not isinstance(it, dict) or str(it.get("verdict", "")).lower() != "fail":
+            continue
+        label = it.get("q") or it.get("id") or "unnamed check"
+        note = it.get("note")
+        out.append(f"dsg {it.get('id', '?')}: {label}" + (f" — {note}" if note else ""))
+    return out
+
+
 def _is_clean(ruling: dict) -> bool:
     """A ruling is clean iff it carries no defect. `worst` is authoritative when present
     (aggregate of the axes); "clean" is the no-defect sentinel. Absent `worst` -> all axes clean.
-    Conservative by design: only a fully-clean ruling verifies — any severity (even LOW) parks."""
+    Conservative by design: only a fully-clean ruling verifies — any severity (even LOW) parks.
+
+    A failed DSG-lite item overrides a clean aggregate. The per-item checklist and the axis
+    severities are written by the same judge in one pass, so the aggregate can lag the items it was
+    summarizing — and a frame whose adherence check FAILED must never reach the render gate because
+    a summary field said `clean`. The items are the evidence; the aggregate is the opinion."""
+    if _dsg_failures(ruling):
+        return False
     worst = ruling.get("worst")
     if worst is not None:
         return worst == "clean"
@@ -51,7 +78,8 @@ def _is_clean(ruling: dict) -> bool:
 
 
 def _reasons(ruling: dict):
-    """Defect strings for a parked ruling: one `"<axis>: <SEVERITY>"` per non-clean axis, then the
+    """Defect strings for a parked ruling: one `"<axis>: <SEVERITY>"` per non-clean axis, then each
+    FAILED DSG-lite item (named, so the gate prints which atomic fact the image missed), then the
     review narrative (`why`) if any. Never empty for a defect — falls back to the worst severity so
     the render gate always has something to print."""
     reasons = []
@@ -59,6 +87,7 @@ def _reasons(ruling: dict):
         v = ruling.get(key)
         if isinstance(v, str) and v and v != "clean":
             reasons.append(f"{label}: {v}")
+    reasons.extend(_dsg_failures(ruling))
     why = ruling.get("why")
     if isinstance(why, str) and why.strip():
         reasons.append(why.strip())

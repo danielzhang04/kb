@@ -46,7 +46,9 @@ def _shot(i, **extra):
         "id": f"L{i + 1:02d}",
         "vo_ref": ANCHORS[i],
         "duration_s": 5,
-        "shot_class": "symbolic-stand-in",
+        # The canonical enum value (shots-schema.md §1). It read "symbolic-stand-in"
+        # until shot_class_check started validating the closed list and caught it.
+        "shot_class": "symbolic-stand-in-object",
         "source": "ai-gen",
         "still_prompt": "a plain cartoon scene with no lettering at all",
         "synthetic": False,
