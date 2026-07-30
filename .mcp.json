@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "codex": {
+      "command": "py",
+      "args": ["-3", "scripts/codex_mcp_guard.py"]
+    }
+  }
+}
+

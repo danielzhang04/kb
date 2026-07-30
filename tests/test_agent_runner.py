@@ -367,3 +367,22 @@ def test_runner_asserts_runtime_before_work():
     assert re.search(r"runtime-mismatch", text), (
         "must file a wake-me and refuse on a runtime mismatch"
     )
+
+
+def test_claim_filter_is_exact_string_arbitration():
+    """Task 3 -- exact-string arbitration (queueBridge.ts pattern): this legacy
+    runner must claim ONLY cards with NO execution-controller value at all.
+    Both "dashboard" cards (governed engine) and "terminal" cards (direct
+    dispatch records from scripts/codex_dispatch.py, already executed) must
+    become unclaimable -- the old `!= "dashboard"` comparison would have
+    double-executed the latter.
+    """
+    text = _text()
+
+    assert 'not card.meta.get("execution-controller")' in text, (
+        "must claim only cards with no execution-controller value at all"
+    )
+    assert '!= "dashboard"' not in text, (
+        "the old substring-comparison filter must be fully replaced, not left "
+        "alongside the new one"
+    )
