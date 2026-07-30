@@ -3792,3 +3792,81 @@ review fixes → a full deep review (5 root causes, 24 r2 directives, 11 pipelin
   shipped green. The lesson is about trusting a declared "known failures, ignore" baseline without
   re-deriving why it's declared — not about the specific model name — because a stale baseline like
   this can hide a live regression indefinitely.
+
+## 2026-07-30 — Three rulings on the gated-pipeline build (Daniel)
+
+- **(a) Roster terminals get a scoped per-run settings file at `ensureRoster`, granting only the
+  stage's declared `scope.read ∪ scope.write`.**
+  - **Decision.** Each roster agent's pty terminal is handed a per-run settings file, minted when
+    the roster spawns, whose permitted paths are exactly the union of the read and write scopes the
+    launched definition already declares for that agent's stages — nothing broader.
+  - **Alternatives rejected.** A blanket allow (any roster terminal reads/writes anywhere in the
+    project tree once spawned) — rejected as strictly wider than any stage's declared need, and a
+    silent widening the moment a new stage is added to any agent's roster position. Pre-trusted
+    static paths per agent (a fixed allowlist baked into the agent declaration, independent of the
+    actual run) — rejected because it drifts from the compiled definition's real scope the first
+    time a definition changes shape, and re-introduces exactly the kind of capability grant that
+    isn't re-derived per launch the way the compiled proposal's own `scope.read`/`scope.write`
+    already is.
+  - **Implementation note.** This lands in `dashboard/server/control/rosterSessions.ts` and
+    `canonicalResultIntegrator.ts`, owned by a parallel worker on this same branch; not touched by
+    this entry's author.
+
+- **(b) Merge-node execution: ruled TOWARD SPEC (`fyt-runner` executes `shots-merge` and
+  `audio-plan-merge`) — ruling recorded, implementation BLOCKED, not applied this pass.**
+  - **Decision (direction only).** Daniel ruled that the approved spec's original assignment —
+    `fyt-runner` executes the two staging→root merge nodes — is what he wants, superseding the
+    2026-07-30 "fyt-checker, not fyt-runner" entry above on the question of WHICH READING IS
+    BETTER. That entry's "Pending Daniel's ruling" line is resolved: Daniel has ruled, in favor of
+    the spec's original text.
+  - **Why it is not yet code.** `compile.ts#resolveAssignment` requires the ASSIGNED agent's own
+    declared *default* execution profile to already carry the role a given assignment context
+    requires: `'worker'` for a stage assignment, `'manager'` for the workflow-level `manager:`
+    assignment `fyt-runner` also holds on this same definition. `fyt-runner` has exactly one default
+    profile (`manager:claude:claude-fable-5`); one default-profile role cannot satisfy both checks
+    on the same definition at once. Setting `agentId: fyt-runner` on either merge node fails
+    compile with `assigned-default-profile-role-mismatch` under the code as it stands today —
+    verified by reading `compile.ts:130-137` and the existing `compile.videoRun.test.ts` coverage of
+    exactly this constraint, not merely asserted.
+  - **Alternatives considered for unblocking, none applied.** (1) Loosen `resolveAssignment`'s role
+    check so only the per-stage ASSIGNED profile's role needs to match, not the agent's own default
+    — rejected for this pass because it removes a hard capability separation (manager-role profiles
+    carry no write capability) that holds project-wide, for every agent, not only `fyt-runner`; a
+    change with that blast radius is a further decision, not an implicit consequence of "runner
+    executes the merge nodes." (2) Mint `fyt-runner` a second, worker-role identity so the manager
+    identity keeps conducting while a sibling identity executes the two stages — rejected as the
+    "multiplying agent identities" pattern this project has ruled against elsewhere. (3) Flip
+    `fyt-runner`'s own default profile to worker-role — rejected because it breaks the OTHER check:
+    the workflow-level `manager:` assignment on the same definition requires a manager-role default,
+    so this trades one failure for the other rather than resolving it.
+  - **Self-governance note.** Independent of the code block: both merge nodes already carry
+    `governedBy: fyt-runner` today. Adding `agentId: fyt-runner` on top would put one identity in
+    both the seat that decides the run's flow around a node (sequencing it, routing its BLOCKED
+    verdict back as rework, reporting its status at the gate that follows) and the seat that
+    performs the node's own check and reports whether it passed — collapsing the governor/executor
+    split the spec's `fyt-checker` assignment exists to hold apart. This was flagged, not resolved,
+    and is reported rather than papered over.
+  - **State left in the repo.** No code changed on this axis. `shots-merge` and `audio-plan-merge`
+    remain exactly as before: `governedBy: fyt-runner`, `agentId: fyt-checker`, in
+    `orgs/faceless-youtube/workflows/video-run.md`, `agents/fyt-runner.md`, and
+    `agents/fyt-checker.md` — the only assignment that compiles and passes the existing suite today.
+    The PENDING flags in `docs/specs/2026-07-30-fyt-gated-pipeline-design.md` §As-built deviations #3
+    and `orgs/faceless-youtube/docs/STATUS.md` are updated to say Daniel has ruled the direction and
+    that a further decision — which of the three unblocking mechanisms above, or accepting the
+    current arrangement as the practical settlement — is owed back to him.
+
+- **(c) `publicationAuthorization` is RATIFIED as-built.**
+  - **Decision.** The net-new `publicationAuthorization` disposition in `control/policy.ts` — a
+    human approval at `g4-publish-private` releases the private-upload T3 stage, where an undeclared
+    T3 stage still fails closed exactly as before — is ratified as the mechanism carrying that
+    release. `RESTRICTED_INTENT_RULES` in `execution.ts` stays untouched, unchanged from as-built.
+  - **Alternatives rejected.** Reverting to the approved spec's silence on this axis, which would
+    leave `g4-publish-private` permanently unable to release the T3 upload stage under this control
+    plane regardless of approval (a spend/publish-gate design that cannot ever fire is not a gate,
+    it is a permanent refuse) — rejected as strictly worse than the ratified mechanism. Designing a
+    different release mechanism from scratch — rejected for this pass: no alternative was proposed
+    that carries the release more narrowly than "one human approval on the one declared T3 gate,"
+    and the built mechanism is already scoped to exactly that.
+  - **Cross-reference.** `docs/specs/2026-07-30-fyt-gated-pipeline-design.md` §As-built deviations
+    #4; supersedes the "PENDING DANIEL'S RULING" language there and in
+    `orgs/faceless-youtube/docs/STATUS.md`.

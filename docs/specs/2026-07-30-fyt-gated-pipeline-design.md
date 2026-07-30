@@ -3,9 +3,10 @@
 2026-07-30 · Approved by Daniel in boss session (rev 2: terminal substrate) · Status: approved and
 implemented on `claude/fyt-pipeline-boss` (PR #102, unmerged, Daniel's review pending). Six real
 deviations from this text surfaced during the build — corrected in place below, and cataloged with
-their reasoning in *As-built deviations* near the end of this document. Two of them are genuine
-open questions for Daniel's ruling, not settled by the build; the rest were mechanical necessities
-or safety-positive changes. Nothing below has been ruled on by Daniel yet.
+their reasoning in *As-built deviations* near the end of this document. Two of them were flagged as
+open questions for Daniel's ruling; **both are now ruled on, 2026-07-30** — see the updated #3 and
+#4 below and the same-dated entry in `orgs/faceless-youtube/knowledge/decisions.md` logging all of
+today's rulings. The rest were mechanical necessities or safety-positive changes.
 
 ## Goal
 
@@ -201,8 +202,8 @@ to do) would have called a paid API with no authorization recorded anywhere agai
 restates the same G2 decision at the point where the call happens. No ruling needed — this closes
 an ungated-spend path the spend law was already meant to prevent.
 
-**3. `fyt-checker` executes the two merge nodes, not `fyt-runner` — PENDING DANIEL'S RULING.**
-This is the one deviation that directly contradicts this spec's text: the "single-writer staging
+**3. `fyt-checker` executes the two merge nodes, not `fyt-runner` — RULED TOWARD SPEC, BLOCKED ON
+IMPLEMENTATION (Daniel, 2026-07-30).** This is the one deviation that directly contradicts this spec's text: the "single-writer staging
 survives (agents write `staging/`, runner merges + re-lints)" line above, and the roster table's
 listing of "single-writer staging merges" under `fyt-runner`'s responsibilities. Reason it
 happened: `compile.ts#resolveAssignment` requires a stage's assigned agent to have a *worker*-role
@@ -219,13 +220,51 @@ is a verification act, and `fyt-checker` authors none of the plans it promotes �
 identity re-linting the root file `fyt-visuals` (or `fyt-audio-render`) staged strengthens
 author-never-grades rather than bending it, and the single-writer law is still satisfied (exactly
 one identity writes each root file — it is now the checker instead of the runner, a change of WHO
-writes it, not a loosening of the ONE-writer rule). The counter-argument Daniel should weigh: this
+writes it, not a loosening of the ONE-writer rule). The counter-argument Daniel weighed: this
 spec explicitly locked the merge as the runner's job, and reassigning it to the gate-service agent
-blurs the conductor/inspector split this spec was written to enforce. Both readings are live until
-Daniel rules.
+blurs the conductor/inspector split this spec was written to enforce.
 
-**4. `publicationAuthorization` is net-new and not in the approved design — the highest-stakes
-deviation, PENDING DANIEL'S RULING.** This spec's policy row (`control/policy.ts`) covers only the
+**Daniel's ruling (2026-07-30): rework to spec — `fyt-runner` should execute the two merge nodes.**
+This rework pass attempted it and stopped: flipping `agentId` to `fyt-runner` on `shots-merge` /
+`audio-plan-merge` does not merely reopen the "which reading is better" question above, it collides
+with the hard code constraint that *caused* the deviation in the first place. `compile.ts#resolveAssignment`
+checks the ASSIGNED agent's OWN declared *default* profile's role against the role the assignment
+context requires — for a stage assignment that is `'worker'`, and for the workflow-level manager
+assignment (which `fyt-runner` also holds, unconditionally, on this same definition) it is
+`'manager'`. `fyt-runner` has exactly one default profile, `manager:claude:claude-fable-5`, and one
+default-profile role cannot satisfy both checks on the same definition. Concretely, this is not
+implementable without doing one of three things this rework pass did NOT do on its own authority,
+because each is itself a decision with a blast radius beyond these two stages:
+1. **Loosen `resolveAssignment`'s role check** so a stage assignment no longer requires the agent's
+   own *default* profile to already be worker-role (only the *assigned* profile for that stage would
+   need to be). This removes a hard capability separation (`manager:*` profiles carry no write
+   capability, project-wide) that currently holds for every agent in the roster, not only
+   `fyt-runner` — a security-relevant architecture change, not a two-stage fix.
+2. **Mint `fyt-runner` a second, worker-role identity** so the manager identity keeps its manager
+   profile while a sibling identity executes the two stages. This is the "multiplying agent
+   identities" pattern the project has ruled against elsewhere (see this same file's roster table
+   and `fyt-runner.md`).
+3. **Change `fyt-runner`'s own default profile to worker-role.** This satisfies the stage-assignment
+   check but then fails the *other* check: the workflow-level `manager:` assignment on this same
+   definition (`video-run.md`'s `manager:` block) requires `fyt-runner`'s declared default to be
+   manager-role. One identity, one default profile, cannot be both at once under today's code.
+Separately, and independent of the code block: setting `agentId: fyt-runner` on a stage `fyt-runner`
+already carries as `governedBy` (both merge nodes do, today) puts the same identity in both the
+seat that decides the run's flow around the node (sequencing, routing a BLOCKED verdict back as
+rework, reporting the node's status at the gate that follows) and the seat that performs the node's
+own mechanical check and reports whether it passed — the exact governor/executor split this spec's
+`fyt-checker` assignment exists to hold apart, restated here as a straight self-governance loop
+rather than a values tradeoff. No path here is a "just do it" edit; each is a further decision only
+Daniel can make. **No code changed on this axis in this rework pass** — `shots-merge` and
+`audio-plan-merge` remain `governedBy: fyt-runner` / `agentId: fyt-checker` exactly as before,
+because that is the only assignment that compiles and passes the existing test suite today. This
+conflict — not the original "which is better" question, which Daniel has now answered — is the open
+item returned to Daniel: which of the three unblocking mechanisms above (or accepting the current
+`fyt-checker`-executes arrangement as the practical settlement of a ruling code cannot yet carry
+out) does he want.
+
+**4. `publicationAuthorization` is net-new and not in the approved design — RATIFIED AS-BUILT
+(Daniel, 2026-07-30).** This spec's policy row (`control/policy.ts`) covers only the
 spend disposition: a declared spend gate yields `waiting-human` instead of a hard refuse. The
 build added a second, parallel disposition of the same shape for publication: a T3 stage
 (`publish-private`) whose own declared gate (`g4-publish-private`, `publicationAuthorization:
@@ -235,10 +274,13 @@ confirmed by diff across the full commit range — but the *effect* of its publi
 is now something a human approval can release, where before this build no path released it at
 all. This is required for `g4` to function as an approvable gate rather than a permanent refuse;
 without it the T3 upload stage could never run under this control plane regardless of approval.
-The reason to flag it as highest-stakes: this is a new axis of authority this spec never
-described, sitting exactly on the boundary the restricted-intent rules exist to hold, and Daniel
-should decide whether this is the mechanism he wants carrying that release, not just whether the
-code is correct.
+The reason it was flagged as highest-stakes: this is a new axis of authority this spec never
+described, sitting exactly on the boundary the restricted-intent rules exist to hold.
+
+**Daniel's ruling (2026-07-30): RATIFIED as-built.** `publicationAuthorization` is the mechanism he
+wants carrying that release: a human approval at `g4-publish-private` releases the private upload;
+`RESTRICTED_INTENT_RULES` in `execution.ts` stays untouched, unchanged from as-built. No code change
+follows from this ruling — the axis already works as intended.
 
 **5. The DAG is a strict linear chain, not the spec's `packaging ∥ visual-plan` parallel
 branch.** Safety-positive — a parallel branch would have let `visual-plan` (and everything behind
