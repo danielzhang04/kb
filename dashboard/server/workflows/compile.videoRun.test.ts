@@ -55,10 +55,11 @@ const SOURCE = loadOrgDef(DEF_PATH);
 const VIDEO_RUN_DEF = SOURCE.text;
 
 /**
- * The definition is now EXECUTABLE: every stage names a declared agent, so compiling it requires the
- * binding inputs. Routing/profile data stays synthetic (this file must not drift with the live model
- * registry), but the declarations come from the SAME worktree the definition came from — proving the
- * checked-out `agents/*.md` roster is what the definition actually binds to.
+ * The definition is EXECUTABLE: every stage but the two runner-owned merge nodes names a declared
+ * agent, so compiling it requires the binding inputs. Routing/profile data stays synthetic (this file
+ * must not drift with the live model registry), but the declarations come from the SAME worktree the
+ * definition came from — proving the checked-out `agents/*.md` roster is what the definition actually
+ * binds to.
  */
 const REPO_ROOT = SOURCE.origin.slice(0, SOURCE.origin.length - DEF_PATH.split('/').join(sep).length);
 const PROFILES: ExecutionProfile[] = [
@@ -73,20 +74,36 @@ const BINDING_ENVIRONMENT: CompileWorkflowEnvironment = {
   availableRuntimes: new Set<'claude' | 'codex'>(['claude', 'codex']),
 };
 
-/** Stage order is the run's structure: a single chain, so no path can route around a gate. */
-const STAGES: Array<[string, string, string, string[], 'T2' | 'T3', string]> = [
-  ['idea', 'Generate ranked idea briefs', 'research:idea-briefs', [], 'T2', 'fyt-story'],
-  ['story', 'Research the picked idea and write the full long-form script', 'draft:long-form-script', ['idea'], 'T2', 'fyt-story'],
-  ['judge-gate', 'Fresh-context acceptance verdict on the script', 'review:script-verdict', ['story'], 'T2', 'fyt-checker'],
-  ['packaging', 'Derive the shorts bench and author the metadata', 'draft:packaging', ['judge-gate'], 'T2', 'fyt-story'],
-  ['visual-plan', 'Author the full shot list, motion plan, and lint', 'build:visual-plan', ['packaging'], 'T2', 'fyt-visuals'],
-  ['images', 'Generate the on-style stills for the slice', 'build:images', ['visual-plan'], 'T2', 'fyt-visuals'],
-  ['image-review', 'Review every generated still and build the shot board', 'review:image-board', ['images'], 'T2', 'fyt-checker'],
-  ['audio', 'Generate narration and author the audio plan for the slice', 'build:audio', ['image-review'], 'T2', 'fyt-audio-render'],
-  ['render', 'Assemble the finished cut for the slice', 'build:render', ['audio'], 'T2', 'fyt-audio-render'],
-  ['verify', 'Verify the render and run the compliance report', 'verify:render-compliance', ['render'], 'T2', 'fyt-checker'],
-  ['publish-private', 'Upload the finished cut as private', 'publish:private-upload', ['verify'], 'T3', 'fyt-publish'],
+/**
+ * Stage order is the run's structure: a single chain, so no path can route around a gate.
+ *
+ * The last two columns are deliberately separate. `governedBy` is the accountable owner of every
+ * stage; `agentId` is the EXECUTABLE binding, and it is `null` on the two merge nodes. That is not an
+ * oversight to be tidied away: `fyt-runner` owns the staging→root merge under the single-writer law,
+ * but it is declared with a MANAGER default execution profile and `compile.ts#resolveAssignment`
+ * requires a stage's agent to have a WORKER one (`assigned-default-profile-role-mismatch`), so one
+ * agent cannot be both this workflow's manager and one of its stage workers. Roster delivery fails
+ * closed on an unassigned stage inside a run that has a live roster (`rosterSessions.ts#deliver`:
+ * "has no verified agent assignment to deliver to"), so the halt is loud, not a silent fallback to a
+ * generic headless worker. Binding these two is an open ruling — see the note in video-run.md's
+ * single-writer section.
+ */
+const STAGES: Array<[string, string, string, string[], 'T2' | 'T3', string, string | null]> = [
+  ['idea', 'Generate ranked idea briefs', 'research:idea-briefs', [], 'T2', 'fyt-story', 'fyt-story'],
+  ['story', 'Research the picked idea and write the full long-form script', 'draft:long-form-script', ['idea'], 'T2', 'fyt-story', 'fyt-story'],
+  ['judge-gate', 'Fresh-context acceptance verdict on the script', 'review:script-verdict', ['story'], 'T2', 'fyt-checker', 'fyt-checker'],
+  ['packaging', 'Derive the shorts bench and author the metadata', 'draft:packaging', ['judge-gate'], 'T2', 'fyt-story', 'fyt-story'],
+  ['visual-plan', 'Author the full shot list, motion plan, and lint', 'build:visual-plan', ['packaging'], 'T2', 'fyt-visuals', 'fyt-visuals'],
+  ['shots-merge', 'Merge the staged shot and motion plans to the video root and re-lint there', 'build:shots-merge', ['visual-plan'], 'T2', 'fyt-runner', null],
+  ['images', 'Generate the on-style stills for the slice', 'build:images', ['shots-merge'], 'T2', 'fyt-visuals', 'fyt-visuals'],
+  ['image-review', 'Review every generated still and build the shot board', 'review:image-board', ['images'], 'T2', 'fyt-checker', 'fyt-checker'],
+  ['audio', 'Generate narration and author the audio plan for the slice', 'build:audio', ['image-review'], 'T2', 'fyt-audio-render', 'fyt-audio-render'],
+  ['audio-plan-merge', 'Merge the staged audio plan to the video root and re-lint there', 'build:audio-plan-merge', ['audio'], 'T2', 'fyt-runner', null],
+  ['render', 'Assemble the finished cut for the slice', 'build:render', ['audio-plan-merge'], 'T2', 'fyt-audio-render', 'fyt-audio-render'],
+  ['verify', 'Verify the render and run the compliance report', 'verify:render-compliance', ['render'], 'T2', 'fyt-checker', 'fyt-checker'],
+  ['publish-private', 'Upload the finished cut as private', 'publish:private-upload', ['verify'], 'T3', 'fyt-publish', 'fyt-publish'],
 ];
+const STAGE_COUNT = STAGES.length;
 
 describe('video-run workflow definition (compile-proof)', () => {
   it('is loaded from the real org file on disk, never from an inline copy', () => {
@@ -115,7 +132,7 @@ describe('video-run workflow definition (compile-proof)', () => {
     // profile onto the proposal — see the compiled-proposal assertion further down, which is the one
     // that actually guards `compile.ts`'s `profile: def.profile`.
     expect(parsed.value.profile).toBe('producer');
-    expect(parsed.value.stages).toHaveLength(11);
+    expect(parsed.value.stages).toHaveLength(STAGE_COUNT);
     expect(parsed.value.parameters).toEqual(['channel', 'slug', 'slice']);
     expect(parsed.value.manager).toEqual({ agentId: 'fyt-runner', profileId: 'manager:claude:claude-fable-5' });
   });
@@ -129,10 +146,18 @@ describe('video-run workflow definition (compile-proof)', () => {
     if (!parsed.ok) return;
     expect(parsed.value.stages.map((s) => [s.id, s.title, s.action]))
       .toEqual(STAGES.map(([id, title, action]) => [id, title, action]));
-    // Every stage is executable, not merely governed: an agent id plus the worker profile it binds
-    // through. `governedBy` remains, for display continuity only.
-    expect(parsed.value.stages.map((s) => [s.id, s.agentId, s.profileId, s.governedBy]))
-      .toEqual(STAGES.map(([id, , , , , agent]) => [id, agent, 'worker:claude:claude-fable-5', agent]));
+    // Every stage is governed; every stage EXCEPT the two runner-owned merge nodes is also executable
+    // (an agent id plus the worker profile it binds through). See the STAGES comment for why those two
+    // cannot carry a binding today.
+    expect(parsed.value.stages.map((s) => [s.id, s.governedBy, s.agentId ?? null, s.profileId ?? null]))
+      .toEqual(STAGES.map(([id, , , , , owner, agent]) => [
+        id, owner, agent, agent === null ? null : 'worker:claude:claude-fable-5',
+      ]));
+    // The merge nodes are exactly the unbound set, and they are exactly the stages fyt-runner governs.
+    expect(parsed.value.stages.filter((s) => s.agentId === undefined).map((s) => s.id))
+      .toEqual(['shots-merge', 'audio-plan-merge']);
+    expect(parsed.value.stages.filter((s) => s.governedBy === 'fyt-runner').map((s) => s.id))
+      .toEqual(['shots-merge', 'audio-plan-merge']);
   });
 
   it('rejects the definition when `producer` is not a server-owned profile', () => {
@@ -173,6 +198,100 @@ describe('video-run workflow definition (compile-proof)', () => {
       .filter((gate) => gate.spendAuthorization === true)
       .map((gate) => `${s.id}:${gate.id}`))).toEqual(['images:g2-visual-plan', 'audio:g3b-narration-cost']);
     expect(parsed.value.stages.flatMap((s) => s.humanGates ?? []).every((gate) => gate.kind === 'approval')).toBe(true);
+
+    // GATE-COVERAGE WALK. `deps` above pins the chain shape; this walks it and asserts, per stage, the
+    // FULL set of gates every path to that stage must pass. Inserting the two merge nodes must not have
+    // opened a route around anything, and the ordering of the sets is what proves it: g2 still gates
+    // everything from `images` down, g3/g3b everything from `audio` down, g4 the upload.
+    const byId = new Map(parsed.value.stages.map((s) => [s.id, s]));
+    const blockingGates = (stageId: string): string[] => {
+      const seen = new Set<string>();
+      const gates = new Set<string>();
+      const walk = (id: string): void => {
+        if (seen.has(id)) return;
+        seen.add(id);
+        const stage = byId.get(id);
+        if (!stage) throw new Error(`unknown stage '${id}'`);
+        for (const gate of stage.humanGates ?? []) gates.add(gate.id);
+        for (const dep of stage.dependsOn) walk(dep);
+      };
+      walk(stageId);
+      return [...gates].sort();
+    };
+    expect(Object.fromEntries(parsed.value.stages.map((s) => [s.id, blockingGates(s.id)]))).toEqual({
+      idea: [],
+      story: ['g0-idea-pick'],
+      'judge-gate': ['g0-idea-pick'],
+      packaging: ['g0-idea-pick', 'g1-script'],
+      'visual-plan': ['g0-idea-pick', 'g1-script'],
+      // The merge runs BEFORE g2 by design — that is what makes the merged root file exist by the time
+      // a human is asked to read it — so it is gated by g0+g1 and not by g2.
+      'shots-merge': ['g0-idea-pick', 'g1-script'],
+      images: ['g0-idea-pick', 'g1-script', 'g2-visual-plan'],
+      'image-review': ['g0-idea-pick', 'g1-script', 'g2-visual-plan'],
+      audio: ['g0-idea-pick', 'g1-script', 'g2-visual-plan', 'g3-image-board', 'g3b-narration-cost'],
+      'audio-plan-merge': ['g0-idea-pick', 'g1-script', 'g2-visual-plan', 'g3-image-board', 'g3b-narration-cost'],
+      render: ['g0-idea-pick', 'g1-script', 'g2-visual-plan', 'g3-image-board', 'g3b-narration-cost'],
+      verify: ['g0-idea-pick', 'g1-script', 'g2-visual-plan', 'g3-image-board', 'g3b-narration-cost'],
+      'publish-private': ['g0-idea-pick', 'g1-script', 'g2-visual-plan', 'g3-image-board', 'g3b-narration-cost', 'g4-publish-private'],
+    });
+  });
+
+  it('makes the staging→root merge a real node between the plan author and its first reader', () => {
+    // THE STRUCTURAL GAP THIS CLOSES. The single-writer law says a stage agent stages its plan and
+    // fyt-runner copies it to the video root and re-lints before it counts. In the roster model the
+    // STAGE AGENT prints the completion marker and is not the writer of the root files, so folding the
+    // merge into `visual-plan`/`audio` left those stages held only to their `staging/` artifacts and
+    // NOTHING server-side verified the merged root `shots.json` / `shots.motion.json` /
+    // `audio-plan.json` — which is what `images`, `image-review` and `render` actually read, and what a
+    // human is told to read at g2. As their own nodes, the merges declare the ROOT paths, so
+    // `rosterSessions.ts#deliver` verifies them against the working tree before the run advances.
+    const parsed = parseWorkflowDef(VIDEO_RUN_DEF, { knownProfiles: KNOWN_PROFILES });
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const stage = (id: string) => parsed.value.stages.find((s) => s.id === id);
+    const video = 'orgs/faceless-youtube/channels/<channel>/videos/<slug>';
+
+    // The reader depends on the MERGE, never on the author directly — otherwise the merge is skippable.
+    expect(stage('images')?.dependsOn).toEqual(['shots-merge']);
+    expect(stage('render')?.dependsOn).toEqual(['audio-plan-merge']);
+    expect(stage('shots-merge')?.dependsOn).toEqual(['visual-plan']);
+    expect(stage('audio-plan-merge')?.dependsOn).toEqual(['audio']);
+
+    // Declared artifacts are the ROOT files, not the staged ones. The staged/root split across the two
+    // stages is the whole point: neither claim covers for the other.
+    expect(stage('shots-merge')?.artifacts?.map((a) => a.path))
+      .toEqual([`${video}/shots.json`, `${video}/shots.motion.json`]);
+    expect(stage('audio-plan-merge')?.artifacts?.map((a) => a.path)).toEqual([`${video}/audio-plan.json`]);
+    expect(stage('visual-plan')?.artifacts?.map((a) => a.path))
+      .toEqual([`${video}/staging/shots.json`, `${video}/staging/shots.motion.json`]);
+    expect(stage('audio')?.artifacts?.some((a) => a.path === `${video}/staging/audio-plan.json`)).toBe(true);
+
+    // The merge nodes carry no gate: a gate here would be a second G2 asking a human to approve the
+    // copy, and it would push the merge to the far side of the gate it exists to make honest.
+    expect(stage('shots-merge')?.humanGates).toBeUndefined();
+    expect(stage('audio-plan-merge')?.humanGates).toBeUndefined();
+
+    // The work order must name the real lint CLI and the honest three-state verdict. A merge that
+    // absorbs a HARD violation and reports DONE is the exact failure this node exists to prevent.
+    const shotsOrder = stage('shots-merge')?.workOrder ?? '';
+    expect(shotsOrder).toContain('visual-prompt-writer/scripts/lint_shots.py');
+    expect(shotsOrder).toContain('motion-planner/scripts/lint_motion_plan.py');
+    expect(shotsOrder).toContain('HARD violations: none');
+    expect(shotsOrder).toContain('BLOCKED, never DONE');
+    // Schema strictness is fail-closed: a missing or misspelled `schema` lints at full v2 strictness and
+    // only an explicit v1 declaration earns the legacy heads-up, so "fixing" the key to quiet the lint
+    // is a real, available cheat that the work order must forbid by name.
+    expect(shotsOrder).toContain('faceless-youtube/shots@1');
+    expect(shotsOrder).toMatch(/never (?:add, edit or remove|edit or add) a plan's `schema` key/i);
+    const audioOrder = stage('audio-plan-merge')?.workOrder ?? '';
+    expect(audioOrder).toContain('render-builder/scripts/lint_audio_plan.py');
+    expect(audioOrder).toContain('audio-tokens.json');
+    expect(audioOrder).toContain('0 error(s)');
+    expect(audioOrder).toContain('BLOCKED, never DONE');
+    // Both must say the re-lint happens at the ROOT, since that is the only run of it that resolves
+    // this video's script, measured narration timings, and the channel's audio pools.
+    for (const order of [shotsOrder, audioOrder]) expect(order).toContain('AT THE ROOT PATH');
   });
 
   it('keeps every stage at or above its classified floor, with only the upload at T3', () => {
@@ -205,7 +324,7 @@ describe('video-run workflow definition (compile-proof)', () => {
     const compiled = compileWorkflowDef(parsed.value, BINDING_ENVIRONMENT);
     expect(compiled.ok).toBe(true);
     if (!compiled.ok) return;
-    expect(compiled.value.stages).toHaveLength(11);
+    expect(compiled.value.stages).toHaveLength(STAGE_COUNT);
     expect(compiled.value.project).toBe('faceless-youtube');
     expect(compiled.value.proposalId).toMatch(/^wf-[a-f0-9]{48}$/);
     expect(compiled.value.governanceRefs).toContain('orgs/faceless-youtube/contract.md');
@@ -213,8 +332,14 @@ describe('video-run workflow definition (compile-proof)', () => {
     // manages on Fable 5, every stage worker runs Fable 5 through its declared worker profile.
     expect(compiled.value.manager.model).toBe('claude-fable-5');
     expect(compiled.value.manager.assignment?.agentId).toBe('fyt-runner');
-    expect(compiled.value.stages.every((s) => s.worker.model === 'claude-fable-5')).toBe(true);
-    expect(compiled.value.stages.map((s) => s.assignment?.agentId)).toEqual(STAGES.map(([, , , , , agent]) => agent));
+    // Every BOUND stage routes Fable 5 through its declared worker profile. The two unbound merge nodes
+    // fall back to the compiler's default worker pick (`pickModel(claudeModels, 'sonnet')`) — asserted
+    // rather than glossed, because that fallback model is precisely why the binding is still owed: a
+    // generic sonnet worker is not the single writer of the video root.
+    expect(compiled.value.stages.filter((s) => s.assignment).every((s) => s.worker.model === 'claude-fable-5')).toBe(true);
+    expect(compiled.value.stages.filter((s) => !s.assignment).map((s) => [s.id, s.worker.model]))
+      .toEqual([['shots-merge', 'claude-sonnet-5'], ['audio-plan-merge', 'claude-sonnet-5']]);
+    expect(compiled.value.stages.map((s) => s.assignment?.agentId ?? null)).toEqual(STAGES.map(([, , , , , , agent]) => agent));
     // The declared gates must reach the COMPILED stages: `compile.ts` hardcoded `humanGates: []` for
     // its whole life, which made an org definition's declared halt structure unenforceable.
     expect(compiled.value.stages.flatMap((s) => s.humanGates.map((gate) => [s.id, gate.id, gate.spendAuthorization ?? false]))).toEqual([
@@ -337,7 +462,8 @@ describe('video-run workflow definition (compile-proof)', () => {
       // Only the upload stage may trip it (its action declares the intent); every other work order
       // must state the gate without the trigger word, or the run parks permanently on a false
       // positive (the PR #58 self-lint-report failure mode).
-      const gatedStages = ['idea', 'story', 'judge-gate', 'packaging', 'visual-plan', 'images', 'image-review', 'audio', 'render', 'verify'];
+      const gatedStages = ['idea', 'story', 'judge-gate', 'packaging', 'visual-plan', 'shots-merge',
+        'images', 'image-review', 'audio', 'audio-plan-merge', 'render', 'verify'];
       for (const id of gatedStages) {
         expect(order(id), `${id} work order must not trip the restricted-intent prose scan`)
           .not.toMatch(/\b(?:publish|publication|deploy|purchase|spend|payment|buy|credential|secret|api key|access token)\b/i);
@@ -366,12 +492,15 @@ describe('video-run workflow definition (compile-proof)', () => {
         'judge-gate': [`${video}/judge-verdict.md`],
         packaging: [`${video}/metadata.json`],
         // The three shared JSON plans are single-writer: the stage agent produces them under `staging/`
-        // and fyt-runner alone merges them to the video root. The stage can therefore only be held to the
-        // STAGED path — the merge is not a DAG node, so nothing here verifies the merged root file.
+        // and fyt-runner alone merges them to the video root. The AUTHORING stage is therefore held to
+        // the STAGED path, and the merge node that follows it is held to the ROOT path — the merged file
+        // everything downstream reads. Both claims are declared; neither substitutes for the other.
         'visual-plan': [`${video}/staging/shots.json`, `${video}/staging/shots.motion.json`],
+        'shots-merge': [`${video}/shots.json`, `${video}/shots.motion.json`],
         images: [`${video}/assets/scenes/manifest.json`],
         'image-review': [`${video}/assets/_review/merged.json`, `${video}/assets/board.html`],
         audio: [`${video}/assets/voiceover.manifest.json`, `${video}/staging/audio-plan.json`],
+        'audio-plan-merge': [`${video}/audio-plan.json`],
         render: [`${video}/assets/final.mp4`, `${video}/assets/render.manifest.json`],
         verify: [`${video}/render-verify.md`, `${video}/compliance-report.md`],
         'publish-private': [`${video}/publish-record.json`],
@@ -402,7 +531,7 @@ describe('video-run workflow definition (compile-proof)', () => {
       expect(compiled.ok).toBe(true);
       if (!compiled.ok) return;
       const all = compiled.value.stages.flatMap((s) => s.artifacts.map((a) => a.path));
-      expect(all).toHaveLength(17);
+      expect(all).toHaveLength(20);
       // An unsubstituted placeholder is a path no file can ever have — every run would park at every
       // stage — and `unresolved-parameter-` is the compiler's stand-in for a RAW compile, which a launch
       // must never produce.
@@ -426,7 +555,7 @@ describe('video-run workflow definition (compile-proof)', () => {
       expect(compiled.ok).toBe(true);
       if (!compiled.ok) return;
       expect(validateServerCompiledPlanProposal(compiled.value as unknown, REGISTRY)).toMatchObject({ ok: true });
-      expect(compiled.value.stages.flatMap((s) => s.artifacts)).toHaveLength(17);
+      expect(compiled.value.stages.flatMap((s) => s.artifacts)).toHaveLength(20);
       expect(compiled.value.stages.find((s) => s.id === 'story')?.artifacts[1].path)
         .toBe('orgs/faceless-youtube/channels/unresolved-parameter-channel/videos/unresolved-parameter-slug/script.md');
     });

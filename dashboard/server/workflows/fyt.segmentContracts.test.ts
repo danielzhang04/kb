@@ -97,28 +97,34 @@ describe('checked-out FYT segment static contracts', () => {
   it('parses the exact video-run chain, its gates, and the private-only upload boundary', () => {
     const { workflow, definition } = parsedVideoRun();
     expect(definition.parameters).toEqual(['channel', 'slug', 'slice']);
-    expect(definition.stages).toHaveLength(11);
+    expect(definition.stages).toHaveLength(13);
     expect(definition.stages.map((candidate) => ({
       id: candidate.id,
       action: candidate.action,
       dependsOn: candidate.dependsOn,
       riskTier: candidate.riskTier,
       agentId: candidate.agentId,
+      governedBy: candidate.governedBy,
       gates: (candidate.humanGates ?? []).map((gate) => gate.id),
     }))).toEqual([
-      { id: 'idea', action: 'research:idea-briefs', dependsOn: [], riskTier: 'T2', agentId: 'fyt-story', gates: [] },
-      { id: 'story', action: 'draft:long-form-script', dependsOn: ['idea'], riskTier: 'T2', agentId: 'fyt-story', gates: ['g0-idea-pick'] },
-      { id: 'judge-gate', action: 'review:script-verdict', dependsOn: ['story'], riskTier: 'T2', agentId: 'fyt-checker', gates: [] },
-      { id: 'packaging', action: 'draft:packaging', dependsOn: ['judge-gate'], riskTier: 'T2', agentId: 'fyt-story', gates: ['g1-script'] },
-      { id: 'visual-plan', action: 'build:visual-plan', dependsOn: ['packaging'], riskTier: 'T2', agentId: 'fyt-visuals', gates: [] },
-      { id: 'images', action: 'build:images', dependsOn: ['visual-plan'], riskTier: 'T2', agentId: 'fyt-visuals', gates: ['g2-visual-plan'] },
-      { id: 'image-review', action: 'review:image-board', dependsOn: ['images'], riskTier: 'T2', agentId: 'fyt-checker', gates: [] },
+      { id: 'idea', action: 'research:idea-briefs', dependsOn: [], riskTier: 'T2', agentId: 'fyt-story', governedBy: 'fyt-story', gates: [] },
+      { id: 'story', action: 'draft:long-form-script', dependsOn: ['idea'], riskTier: 'T2', agentId: 'fyt-story', governedBy: 'fyt-story', gates: ['g0-idea-pick'] },
+      { id: 'judge-gate', action: 'review:script-verdict', dependsOn: ['story'], riskTier: 'T2', agentId: 'fyt-checker', governedBy: 'fyt-checker', gates: [] },
+      { id: 'packaging', action: 'draft:packaging', dependsOn: ['judge-gate'], riskTier: 'T2', agentId: 'fyt-story', governedBy: 'fyt-story', gates: ['g1-script'] },
+      { id: 'visual-plan', action: 'build:visual-plan', dependsOn: ['packaging'], riskTier: 'T2', agentId: 'fyt-visuals', governedBy: 'fyt-visuals', gates: [] },
+      // The staging→root merge is its own node, owned by fyt-runner, sitting between the plan's author
+      // and its first reader. It is unbound (`agentId: undefined`) because fyt-runner is declared with a
+      // manager default profile and a stage requires a worker one — see compile.videoRun.test.ts.
+      { id: 'shots-merge', action: 'build:shots-merge', dependsOn: ['visual-plan'], riskTier: 'T2', agentId: undefined, governedBy: 'fyt-runner', gates: [] },
+      { id: 'images', action: 'build:images', dependsOn: ['shots-merge'], riskTier: 'T2', agentId: 'fyt-visuals', governedBy: 'fyt-visuals', gates: ['g2-visual-plan'] },
+      { id: 'image-review', action: 'review:image-board', dependsOn: ['images'], riskTier: 'T2', agentId: 'fyt-checker', governedBy: 'fyt-checker', gates: [] },
       // Two gates: the shot-board approval that releases this stage, plus the recorded cost
       // authorization for the paid narration call the stage itself makes.
-      { id: 'audio', action: 'build:audio', dependsOn: ['image-review'], riskTier: 'T2', agentId: 'fyt-audio-render', gates: ['g3-image-board', 'g3b-narration-cost'] },
-      { id: 'render', action: 'build:render', dependsOn: ['audio'], riskTier: 'T2', agentId: 'fyt-audio-render', gates: [] },
-      { id: 'verify', action: 'verify:render-compliance', dependsOn: ['render'], riskTier: 'T2', agentId: 'fyt-checker', gates: [] },
-      { id: 'publish-private', action: 'publish:private-upload', dependsOn: ['verify'], riskTier: 'T3', agentId: 'fyt-publish', gates: ['g4-publish-private'] },
+      { id: 'audio', action: 'build:audio', dependsOn: ['image-review'], riskTier: 'T2', agentId: 'fyt-audio-render', governedBy: 'fyt-audio-render', gates: ['g3-image-board', 'g3b-narration-cost'] },
+      { id: 'audio-plan-merge', action: 'build:audio-plan-merge', dependsOn: ['audio'], riskTier: 'T2', agentId: undefined, governedBy: 'fyt-runner', gates: [] },
+      { id: 'render', action: 'build:render', dependsOn: ['audio-plan-merge'], riskTier: 'T2', agentId: 'fyt-audio-render', governedBy: 'fyt-audio-render', gates: [] },
+      { id: 'verify', action: 'verify:render-compliance', dependsOn: ['render'], riskTier: 'T2', agentId: 'fyt-checker', governedBy: 'fyt-checker', gates: [] },
+      { id: 'publish-private', action: 'publish:private-upload', dependsOn: ['verify'], riskTier: 'T3', agentId: 'fyt-publish', governedBy: 'fyt-publish', gates: ['g4-publish-private'] },
     ]);
     // Author-never-grades, read straight off the graph: no checker stage may follow work it authored.
     for (const checker of definition.stages.filter((candidate) => candidate.agentId === 'fyt-checker')) {
@@ -142,6 +148,17 @@ describe('checked-out FYT segment static contracts', () => {
     };
     expect([...ancestors('audio')]).toContain('images');
     expect([...ancestors('render')]).toContain('images');
+    // The staging→root merge is not bypassable: every reader of a shared root plan has the merge node
+    // that writes it among its ancestors, so no stage can reach a root file nothing produced or linted.
+    for (const reader of ['images', 'image-review', 'audio', 'render', 'verify', 'publish-private']) {
+      expect([...ancestors(reader)], `${reader} must be downstream of shots-merge`).toContain('shots-merge');
+    }
+    for (const reader of ['render', 'verify', 'publish-private']) {
+      expect([...ancestors(reader)], `${reader} must be downstream of audio-plan-merge`).toContain('audio-plan-merge');
+    }
+    // And each merge is downstream of exactly the stage that staged the file it moves.
+    expect([...ancestors('shots-merge')]).toContain('visual-plan');
+    expect([...ancestors('audio-plan-merge')]).toContain('audio');
     // Exactly one stage may upload, it is T3, it is gated, and it is private-only.
     expect(definition.stages.filter((candidate) => /(?:publish|upload)/i.test(candidate.id)
       || /(?:publish|upload)/i.test(candidate.action)).map((candidate) => candidate.id)).toEqual(['publish-private']);

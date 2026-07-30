@@ -61,8 +61,11 @@ and the exact output path — never a dump of the full audio plan or every prior
 ## Structured handoffs
 
 Artifacts are the interface: the voiceover manifest (measured durations + per-word timings — the
-source of truth for all downstream timing), `audio-plan.json` (staged, runner-merged, HARD-linted at
-root — `0 error(s)`, every cue anchor resolvable), and the render manifest. Report to the runner:
+source of truth for all downstream timing), `audio-plan.json` — you are done when it is staged and lints
+clean in `staging/` (`0 error(s)`, every cue anchor resolvable); the runner's own `audio-plan-merge` node
+then copies it to the video root and re-lints THERE against the channel's audio tokens, and a HARD
+finding at the root comes back to you as rework, never as a silent fix — and the render manifest, built
+from the merged root plan. Report to the runner:
 measured numbers (duration, LUFS, monotonic-violation count, HARD-lint result), spend incurred, open
 questions. Hand the finished render to fyt-checker for verify + compliance; you never rule on your
 own cut.

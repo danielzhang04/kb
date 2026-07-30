@@ -39,10 +39,22 @@ it — `parked` — so nothing is ever falsified to make progress.
 - **Work-order delivery:** hand a phase agent its work order only when its declared inputs exist on
   disk AND every upstream gate is approved. Until then it idles at `waiting` — the structural halt.
   This withholding, not a request to the agent to "wait," is what makes a gate real.
-- **Single-writer staging merges:** every stage agent writes to `<video_dir>/staging/`, never the
-  video root. You alone copy `staging/<file>` → the root path, then **re-run that artifact's lint at
-  the root path**, and only then declare the stage done. A lint that passed in staging proves nothing
-  about what actually landed at the root.
+- **Single-writer staging merges — your own DAG nodes, not a step inside someone else's stage:** every
+  stage agent writes to `<video_dir>/staging/`, never the video root. You alone copy `staging/<file>` →
+  the root path, then **re-run that artifact's lint at the root path**. In `video-run.md` this is two
+  real stages you own — `shots-merge` (after `visual-plan`, before the G2-gated `images`) and
+  `audio-plan-merge` (after `audio`, before `render`) — whose declared artifacts are the ROOT
+  `shots.json` / `shots.motion.json` / `audio-plan.json`. It has to be its own node: the stage agent
+  prints its own completion marker and is not the writer of the root files, so a merge folded into the
+  authoring stage could only ever be checked at the `staging/` path and nothing would verify the merged
+  root file everything downstream reads. You declare **that merge node** done — never the authoring
+  stage, which is done at its staged artifacts. A lint that passed in staging proves nothing about what
+  landed at the root, and for `shots.json` it is not even the same check: `lint_shots.py` resolves
+  `script.md` and `assets/voiceover.manifest.json` as siblings of the file it is handed.
+- **Merge verdicts are three-state too:** a HARD violation at the root means the merge node reports
+  **BLOCKED**, never DONE. Route the finding to the authoring phase agent as rework and re-run the merge
+  on the re-staged plan; never hand-edit plan content, and never touch a plan's `schema` key, to make a
+  lint pass.
 - **Targeted repairs:** "regen shots 12+43 and re-review only those" — you scope the repair, re-open
   every gate downstream of the changed artifact, and never let a partial fix skip a gate that a full
   run would have to pass.
@@ -86,10 +98,13 @@ launch (mechanical: unlock check if locked)
   → research + script (fyt-story) → judge-gate (fyt-checker, fresh context, ACCEPT/revise/reject)
   → GATE 1 — SCRIPT (Daniel): nothing heavyweight starts before this
   → [ shorts + metadata (fyt-story) ∥ shots + motion + lint (fyt-visuals) ]
+  → shots-merge: staging → root + root lints (YOU)
   → GATE 2 — VISUAL PLAN (Daniel): approval = the run's SPEND AUTHORIZATION for images + voiceover
   → images, slice-scoped (fyt-visuals) → image-review + honest stamp (fyt-checker)
   → GATE 3 — IMAGE BOARD (Daniel, iteration loop): approve the stills or send frames back
-  → audio-plan + render, slice-scoped (fyt-audio-render) → verify + compliance (fyt-checker)
+  → voiceover + audio-plan, slice-scoped (fyt-audio-render)
+  → audio-plan-merge: staging → root + root lint (YOU)
+  → render, slice-scoped (fyt-audio-render) → verify + compliance (fyt-checker)
   → GATE 4 — PUBLISH (Daniel): watch-through + compliance-report.md = the publish-private approval
   → publish-private (fyt-publish) → Studio manual steps (human) → analytics (fyt-publish, read-only)
 ```
@@ -103,8 +118,9 @@ For each gate: **who holds it, what it reads, what unblocks it, what "parked" me
 - **GATE 1 — script (Daniel).** Reads `script.md` + the ACCEPT verdict. Nothing heavyweight (spend,
   image/voice gen) starts before this. A proxied-but-unconfirmed script never advances into a paid
   stage.
-- **HARD lints at root (you, post-merge).** `shots.json`, `shots.motion.json`, later
-  `audio-plan.json` — each must lint clean at the root path, not just in staging.
+- **HARD lints at root (you, in your own merge node).** `shots.json` + `shots.motion.json` at
+  `shots-merge`, `audio-plan.json` at `audio-plan-merge` — each must lint clean at the root path, not
+  just in staging, and the node reports BLOCKED rather than DONE when it does not.
 - **GATE 2 — visual plan / spend authorization (Daniel).** Reads the shot list + motion plan. This
   approval IS the recorded spend authorization for images + voiceover (spend law — see Money below);
   no separate spend card is needed once G2 is approved, but an undeclared/uncarded spend still
@@ -166,7 +182,8 @@ phase agent as a rework request, never as a silent edit you make yourself.
 
 ## Subagent dispatch policy
 
-- **haiku** — mechanical sweeps: staging-to-root copies (post-lint), state-store bookkeeping.
+- **haiku** — mechanical sweeps: the staging-to-root copy inside a merge node, state-store bookkeeping.
+  You still run the root lint yourself and own its verdict — a copy is delegable, a verdict is not.
 - **sonnet** — standard coordination work: drafting a run report, summarizing roster status.
 - **opus** — reserve for a judgment call on how to sequence a repair or resume, not routine merges.
 - **codex** — only via a queue card on `ops`, per `governance/card-schema.md`; never self-claimed.

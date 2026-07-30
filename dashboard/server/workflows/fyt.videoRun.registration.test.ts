@@ -20,10 +20,19 @@ import { registerWorkflows } from './routes.ts';
 const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url));
 const SESSION_SECRET = Buffer.from('fyt-registration-test-secret-32bytes');
 const STAGE_IDS = [
-  'idea', 'story', 'judge-gate', 'packaging', 'visual-plan', 'images', 'image-review',
-  'audio', 'render', 'verify', 'publish-private',
+  'idea', 'story', 'judge-gate', 'packaging', 'visual-plan', 'shots-merge', 'images', 'image-review',
+  'audio', 'audio-plan-merge', 'render', 'verify', 'publish-private',
 ];
-/** Every stage is executable: a declared agent id plus the worker execution profile it binds through. */
+/**
+ * Every stage is executable — a declared agent id plus the worker execution profile it binds through —
+ * EXCEPT the two runner-owned staging→root merge nodes, which are absent from this map on purpose.
+ * `fyt-runner` owns those writes under the single-writer law but is declared with a MANAGER default
+ * execution profile, and `compile.ts#resolveAssignment` requires a stage's agent to have a WORKER one,
+ * so this workflow's manager cannot also be one of its stage workers. Roster delivery refuses an
+ * unassigned stage in a run that has a live roster rather than falling back to a headless worker, so the
+ * gap is a loud halt awaiting a binding ruling — not a silent bypass. See video-run.md's single-writer
+ * section.
+ */
 const ASSIGNMENTS: Record<string, string> = {
   idea: 'fyt-story',
   story: 'fyt-story',
@@ -37,6 +46,7 @@ const ASSIGNMENTS: Record<string, string> = {
   verify: 'fyt-checker',
   'publish-private': 'fyt-publish',
 };
+const UNBOUND_STAGE_IDS = ['shots-merge', 'audio-plan-merge'];
 const WORKER_PROFILE = 'worker:claude:claude-fable-5';
 /**
  * Gate placement. `execution.ts#stageBoundary` evaluates a stage's declared gates BEFORE preparing
@@ -63,9 +73,12 @@ const GOVERNANCE = {
     'judge-gate': 'fyt-checker',
     packaging: 'fyt-story',
     'visual-plan': 'fyt-visuals',
+    // The two merge nodes are governed by the conductor: it alone writes the video root.
+    'shots-merge': 'fyt-runner',
     images: 'fyt-visuals',
     'image-review': 'fyt-checker',
     audio: 'fyt-audio-render',
+    'audio-plan-merge': 'fyt-runner',
     render: 'fyt-audio-render',
     verify: 'fyt-checker',
     'publish-private': 'fyt-publish',
@@ -115,7 +128,7 @@ describe('checked-out FYT video-run registry acceptance', () => {
         profile: 'producer',
         governedBy: GOVERNANCE.workflow,
         governanceProblems: [],
-        stageCount: 11,
+        stageCount: STAGE_IDS.length,
         parameters: ['channel', 'slug', 'slice'],
         manager: { agentId: 'fyt-runner', profileId: 'manager:claude:claude-fable-5' },
         pendingAmendment: null,
@@ -125,8 +138,14 @@ describe('checked-out FYT video-run registry acceptance', () => {
       // `governedBy` is retained for display continuity only; `declaredAssignment` is what executes.
       expect(Object.fromEntries(listedStages.map((stage) => [stage.id, stage.governedBy]))).toEqual(GOVERNANCE.stages);
       expect(Object.fromEntries(listedStages.map((stage) => [stage.id, stage.declaredAssignment]))).toEqual(
-        Object.fromEntries(STAGE_IDS.map((id) => [id, { agentId: ASSIGNMENTS[id], profileId: WORKER_PROFILE }])),
+        Object.fromEntries(STAGE_IDS.map((id) => [
+          id,
+          // `null` is what the route emits for a stage with no authored binding — the two merge nodes.
+          ASSIGNMENTS[id] ? { agentId: ASSIGNMENTS[id], profileId: WORKER_PROFILE } : null,
+        ])),
       );
+      expect(listedStages.filter((stage) => stage.declaredAssignment === null).map((stage) => stage.id))
+        .toEqual(UNBOUND_STAGE_IDS);
       // A single chain: no path routes around a gate, so every stage downstream of an unapproved gate
       // is structurally unreachable rather than merely discouraged.
       expect(Object.fromEntries(listedStages.map((stage) => [stage.id, stage.dependsOn]))).toEqual(
@@ -150,18 +169,22 @@ describe('checked-out FYT video-run registry acceptance', () => {
         profile: 'producer', governedBy: GOVERNANCE.workflow, parameters: ['channel', 'slug', 'slice'],
         manager: { agentId: 'fyt-runner', profileId: 'manager:claude:claude-fable-5' },
       });
-      expect(body.definition.stages).toHaveLength(11);
+      expect(body.definition.stages).toHaveLength(STAGE_IDS.length);
       expect(body.compiled.ok).toBe(true);
-      expect(body.compiled.stages).toHaveLength(11);
+      expect(body.compiled.stages).toHaveLength(STAGE_IDS.length);
       expect(body.compiled.manager).toMatchObject({
         runtime: 'claude', model: 'claude-fable-5',
         assignment: { agentId: 'fyt-runner', profileId: 'manager:claude:claude-fable-5' },
       });
-      // Every stage resolves to an immutable declaration binding, on Fable 5, through a worker profile.
+      // Every bound stage resolves to an immutable declaration binding, on Fable 5, through a worker
+      // profile. The two merge nodes resolve to no binding at all — see the ASSIGNMENTS note.
       expect(body.compiled.stages.map((stage) => [stage.id, stage.assignment?.agentId, stage.assignment?.profileId])).toEqual(
-        STAGE_IDS.map((id) => [id, ASSIGNMENTS[id], WORKER_PROFILE]),
+        STAGE_IDS.map((id) => (ASSIGNMENTS[id] ? [id, ASSIGNMENTS[id], WORKER_PROFILE] : [id, undefined, undefined])),
       );
-      expect(body.compiled.stages.every((stage) => stage.assignment?.model === 'claude-fable-5')).toBe(true);
+      expect(body.compiled.stages.filter((stage) => stage.assignment)
+        .every((stage) => stage.assignment?.model === 'claude-fable-5')).toBe(true);
+      expect(body.compiled.stages.filter((stage) => !stage.assignment).map((stage) => stage.id))
+        .toEqual(UNBOUND_STAGE_IDS);
 
       // The gates: at the spec's positions, all approval-kind, all threaded through the compiler
       // (a hardcoded `humanGates: []` would make every one of these assertions fail).
