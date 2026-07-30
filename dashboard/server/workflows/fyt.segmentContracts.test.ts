@@ -113,7 +113,9 @@ describe('checked-out FYT segment static contracts', () => {
       { id: 'visual-plan', action: 'build:visual-plan', dependsOn: ['packaging'], riskTier: 'T2', agentId: 'fyt-visuals', gates: [] },
       { id: 'images', action: 'build:images', dependsOn: ['visual-plan'], riskTier: 'T2', agentId: 'fyt-visuals', gates: ['g2-visual-plan'] },
       { id: 'image-review', action: 'review:image-board', dependsOn: ['images'], riskTier: 'T2', agentId: 'fyt-checker', gates: [] },
-      { id: 'audio', action: 'build:audio', dependsOn: ['image-review'], riskTier: 'T2', agentId: 'fyt-audio-render', gates: ['g3-image-board'] },
+      // Two gates: the shot-board approval that releases this stage, plus the recorded cost
+      // authorization for the paid narration call the stage itself makes.
+      { id: 'audio', action: 'build:audio', dependsOn: ['image-review'], riskTier: 'T2', agentId: 'fyt-audio-render', gates: ['g3-image-board', 'g3b-narration-cost'] },
       { id: 'render', action: 'build:render', dependsOn: ['audio'], riskTier: 'T2', agentId: 'fyt-audio-render', gates: [] },
       { id: 'verify', action: 'verify:render-compliance', dependsOn: ['render'], riskTier: 'T2', agentId: 'fyt-checker', gates: [] },
       { id: 'publish-private', action: 'publish:private-upload', dependsOn: ['verify'], riskTier: 'T3', agentId: 'fyt-publish', gates: ['g4-publish-private'] },

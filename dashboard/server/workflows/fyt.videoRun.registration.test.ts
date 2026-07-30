@@ -43,13 +43,18 @@ const WORKER_PROFILE = 'worker:claude:claude-fable-5';
  * any attempt for it, so a gate is declared on the stage it must hold back — the stage AFTER the work
  * being judged. This map is the acceptance statement of that decision.
  */
-const GATES: Record<string, string> = {
-  story: 'g0-idea-pick',
-  packaging: 'g1-script',
-  images: 'g2-visual-plan',
-  audio: 'g3-image-board',
-  'publish-private': 'g4-publish-private',
+const GATES: Record<string, string[]> = {
+  story: ['g0-idea-pick'],
+  packaging: ['g1-script'],
+  images: ['g2-visual-plan'],
+  // `audio` declares TWO: the shot-board approval that releases it, and the recorded cost authorization
+  // for the paid narration call it makes. `stageBoundary` raises a stage's gates one at a time and holds
+  // the stage until every one is recorded approved.
+  audio: ['g3-image-board', 'g3b-narration-cost'],
+  'publish-private': ['g4-publish-private'],
 };
+/** Every gate that IS a recorded cost authorization — one per paid stage, and only on paid stages. */
+const SPEND_GATES = ['images:g2-visual-plan', 'audio:g3b-narration-cost'];
 const GOVERNANCE = {
   workflow: 'fyt-runner',
   stages: {
@@ -158,25 +163,28 @@ describe('checked-out FYT video-run registry acceptance', () => {
       );
       expect(body.compiled.stages.every((stage) => stage.assignment?.model === 'claude-fable-5')).toBe(true);
 
-      // The gates: exactly five, at the spec's positions, all approval-kind, all threaded through the
-      // compiler (a hardcoded `humanGates: []` would make every one of these assertions fail).
+      // The gates: at the spec's positions, all approval-kind, all threaded through the compiler
+      // (a hardcoded `humanGates: []` would make every one of these assertions fail).
       expect(Object.fromEntries(
         body.compiled.stages.filter((stage) => stage.humanGates.length > 0).map((stage) => [stage.id, stage.humanGates]),
-      )).toEqual(Object.fromEntries(Object.entries(GATES).map(([stageId, gateId]) => [stageId, [expect.objectContaining({
+      )).toEqual(Object.fromEntries(Object.entries(GATES).map(([stageId, gateIds]) => [stageId, gateIds.map((gateId) => expect.objectContaining({
         id: gateId, kind: 'approval', prompt: expect.any(String),
-      })]])));
+      }))])));
       expect(body.compiled.stages.filter((stage) => stage.humanGates.length > 0).map((stage) => stage.id))
         .toEqual(STAGE_IDS.filter((id) => id in GATES));
 
-      // Exactly ONE gate carries the run's spend authorization, and it is G2 on the paid-generation
-      // stage. Every other gate authorizes nothing paid — approving G0/G1/G3/G4 must never read as
-      // a cost authorization.
+      // EVERY paid stage carries its own recorded cost authorization, and only paid stages do. G2 is the
+      // one human decision; `audio` restates it as `g3b-narration-cost` because the control plane
+      // authorizes cost PER STAGE, so a targeted single-stage re-run of narration would otherwise call a
+      // paid API with no authorization recorded against the stage that called it. Approving G0/G1/G3/G4
+      // must still never read as a cost authorization.
       const spendGates = body.compiled.stages.flatMap((stage) => stage.humanGates
         .filter((gate) => gate.spendAuthorization === true)
         .map((gate) => `${stage.id}:${gate.id}`));
-      expect(spendGates).toEqual(['images:g2-visual-plan']);
+      expect(spendGates).toEqual(SPEND_GATES);
+      const spendGateIds = new Set(SPEND_GATES.map((entry) => entry.split(':')[1]));
       expect(body.compiled.stages.flatMap((stage) => stage.humanGates)
-        .filter((gate) => gate.id !== 'g2-visual-plan')
+        .filter((gate) => !spendGateIds.has(gate.id as string))
         .every((gate) => gate.spendAuthorization === undefined)).toBe(true);
     } finally {
       await app.close();

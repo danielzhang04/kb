@@ -311,6 +311,133 @@ describe('parseWorkflowDef', () => {
       );
       expect(parseWorkflowDef(md(sameStage), { knownProfiles: KNOWN })).toMatchObject({ ok: false });
     });
+
+    it('counts a completionGate id in the same one gate-id namespace', () => {
+      // A completionGate is answered in the same Inbox under the same title shape, so a collision with a
+      // humanGates id makes "ship-it is approved" ambiguous exactly as two humanGates would.
+      const fm = (completionGateId: string) => [
+        'id: checker', 'project: kb-ops', 'title: Checker', 'profile: research', 'stages:',
+        '  - id: create', '    title: Create', '    action: implement:thing', '    target: orgs/kb-ops/output', '    workOrder: Create',
+        '    humanGates:', '      - id: ship-it', '        kind: approval', '        prompt: Approve.',
+        '  - id: check', '    title: Check', '    action: review:thing', '    target: orgs/kb-ops/output', '    workOrder: Check', '    dependsOn: [create]',
+        '    agentId: fyt-checker', '    profileId: worker:claude:claude-sonnet-5', '    workflowProfile: checker-readonly',
+        '    review:', '      subjectStageId: create', '      maxCreatorReworks: 1',
+        '      criteria:', '        - id: safety', '          description: Safe',
+        '    completionGate:', `      id: ${completionGateId}`, '      kind: approval',
+        '      prompt: Approve the reviewed result.', '      requiresReview: pass',
+      ].join('\n');
+      expect(parseWorkflowDef(md(fm('accept-result')), { knownProfiles: KNOWN })).toMatchObject({ ok: true });
+      expect(parseWorkflowDef(md(fm('ship-it')), { knownProfiles: KNOWN }))
+        .toMatchObject({ ok: false, detail: expect.stringMatching(/duplicate human gate id 'ship-it'/) });
+    });
+  });
+
+  describe('declared artifacts', () => {
+    const withArtifacts = (...lines: string[]) => SINGLE.replace('    riskTier: T2', ['    riskTier: T2', ...lines].join('\n'));
+
+    it('parses a closed artifact list and omits the key entirely when a stage declares none', () => {
+      const result = parseWorkflowDef(md(withArtifacts(
+        '    artifacts:',
+        '      - id: brief',
+        '        path: orgs/kb-ops/output/brief.md',
+        '        description: The written brief.',
+        '      - id: sources',
+        '        path: orgs/kb-ops/output/sources.json',
+        '        description: Every source cited.',
+      )), { knownProfiles: KNOWN });
+      expect(result).toMatchObject({ ok: true, value: { stages: [{ artifacts: [
+        { id: 'brief', path: 'orgs/kb-ops/output/brief.md', description: 'The written brief.' },
+        { id: 'sources', path: 'orgs/kb-ops/output/sources.json', description: 'Every source cited.' },
+      ] }] } });
+      // Absent (not `[]`), so a definition without artifacts hashes and compiles byte-identically.
+      const none = parseWorkflowDef(md(SINGLE), { knownProfiles: KNOWN });
+      expect(none.ok && none.value.stages[0]).not.toHaveProperty('artifacts');
+    });
+
+    it('rejects a malformed artifact: unknown field, unsafe path, duplicate, or empty list', () => {
+      const cases: Array<[string[], RegExp]> = [
+        [['    artifacts:', '      - id: brief', '        path: orgs/kb-ops/output/brief.md', '        description: Brief.', '        optional: true'], /unknown field 'optional'/],
+        [['    artifacts:', '      - id: brief', '        path: ../../etc/passwd', '        description: Brief.'], /canonical safe repo-relative path/],
+        [['    artifacts:', '      - id: brief', '        path: orgs/kb-ops/output/../../../secrets', '        description: Brief.'], /canonical safe repo-relative path/],
+        [['    artifacts:', '      - id: ../brief', '        path: orgs/kb-ops/output/brief.md', '        description: Brief.'], /id must be a safe identifier/],
+        [['    artifacts:', '      - id: brief', '        path: orgs/kb-ops/output/brief.md', '        description: ""'], /description must be a non-empty string/],
+        [['    artifacts: []'], /must contain 1-32 artifacts/],
+        [['    artifacts: brief.md'], /must be a list of artifact mappings/],
+        [[
+          '    artifacts:',
+          '      - id: brief', '        path: orgs/kb-ops/output/brief.md', '        description: Brief.',
+          '      - id: brief', '        path: orgs/kb-ops/output/other.md', '        description: Other.',
+        ], /duplicate artifact id 'brief'/],
+        [[
+          '    artifacts:',
+          '      - id: brief', '        path: orgs/kb-ops/output/brief.md', '        description: Brief.',
+          '      - id: again', '        path: orgs/kb-ops/output/brief.md', '        description: Same file.',
+        ], /duplicate artifact path/],
+      ];
+      for (const [lines, detail] of cases) {
+        expect(parseWorkflowDef(md(withArtifacts(...lines)), { knownProfiles: KNOWN }))
+          .toMatchObject({ ok: false, detail: expect.stringMatching(detail) });
+      }
+    });
+
+    it("refuses an artifact outside the stage's own target tree", () => {
+      // compile.ts derives the stage's write scope FROM its target, so a stage promising a file elsewhere
+      // is promising something it has no authority to write.
+      expect(parseWorkflowDef(md(withArtifacts(
+        '    artifacts:', '      - id: elsewhere', '        path: orgs/kb-ops/other/brief.md', '        description: Brief.',
+      )), { knownProfiles: KNOWN })).toMatchObject({
+        ok: false, detail: expect.stringMatching(/must sit inside this stage's own target tree/),
+      });
+      expect(parseWorkflowDef(md(withArtifacts(
+        '    artifacts:', '      - id: policy', '        path: dashboard/server/control/policy.ts', '        description: Nope.',
+      )), { knownProfiles: KNOWN })).toMatchObject({ ok: false, detail: expect.stringMatching(/target tree/) });
+    });
+
+    it('substitutes launch parameters inside artifact paths, and refuses undeclared placeholders', () => {
+      const parameterised = SINGLE
+        .replace('profile: research', 'profile: research\nparameters: [channel, slug]')
+        .replace('    riskTier: T2', [
+          '    riskTier: T2',
+          '    workOrder: Write the brief for <channel>/<slug>.',
+          '    artifacts:',
+          '      - id: brief',
+          '        path: orgs/kb-ops/output/<channel>/<slug>/brief.md',
+          '        description: The brief for this run.',
+        ].join('\n'));
+      const parsed = parseWorkflowDef(md(parameterised), { knownProfiles: KNOWN });
+      expect(parsed.ok).toBe(true);
+      if (!parsed.ok) return;
+      // The PARSED path keeps its placeholders; only a launch substitutes them.
+      expect(parsed.value.stages[0].artifacts?.[0].path).toBe('orgs/kb-ops/output/<channel>/<slug>/brief.md');
+      const instantiated = instantiateWorkflowDef(parsed.value, { channel: 'the-second-take', slug: 'st-042' });
+      expect(instantiated).toMatchObject({ ok: true, value: { stages: [{ artifacts: [
+        { id: 'brief', path: 'orgs/kb-ops/output/the-second-take/st-042/brief.md' },
+      ] }] } });
+      // An undeclared placeholder would survive substitution as a literal `<name>` — a path no file can
+      // ever have, so every run would park. Refused at parse, where the message can name it.
+      const undeclared = parameterised.replace('<slug>/brief.md', '<episode>/brief.md');
+      expect(parseWorkflowDef(md(undeclared), { knownProfiles: KNOWN }))
+        .toMatchObject({ ok: false, detail: expect.stringMatching(/undeclared parameter '<episode>'/) });
+    });
+
+    it('counts an artifact path as USE of a launch parameter', () => {
+      // `slice` scopes only an output path here; that is still a use, so the launch must not be refused.
+      const pathOnly = SINGLE
+        .replace('profile: research', 'profile: research\nparameters: [slice]')
+        .replace('    riskTier: T2', [
+          '    riskTier: T2',
+          '    artifacts:',
+          '      - id: brief',
+          '        path: orgs/kb-ops/output/<slice>/brief.md',
+          '        description: The brief for this slice.',
+        ].join('\n'));
+      const parsed = parseWorkflowDef(md(pathOnly), { knownProfiles: KNOWN });
+      expect(parsed.ok).toBe(true);
+      if (!parsed.ok) return;
+      expect(instantiateWorkflowDef(parsed.value, { slice: 'act-1' })).toMatchObject({
+        ok: true, value: { stages: [{ artifacts: [{ path: 'orgs/kb-ops/output/act-1/brief.md' }] }] },
+      });
+    });
   });
 
   it('parses a closed assigned review checker with readonly override and completion gate', () => {

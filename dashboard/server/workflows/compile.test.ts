@@ -237,6 +237,62 @@ describe('compileWorkflowDef', () => {
     });
   });
 
+  describe('declared artifacts', () => {
+    const WITH_ARTIFACTS = def([
+      'id: artifact-run', 'project: kb-ops', 'title: Artifact run', 'profile: research', 'stages:',
+      '  - id: draft', '    title: Draft', '    action: draft:thing', '    target: orgs/kb-ops/output', '    workOrder: Draft it.',
+      '    artifacts:',
+      '      - id: script', '        path: orgs/kb-ops/output/script.md', '        description: The script.',
+      '      - id: notes', '        path: orgs/kb-ops/output/notes.md', '        description: The notes.',
+      '  - id: after', '    title: After', '    action: implement:after', '    target: orgs/kb-ops/output', '    workOrder: Continue.', '    dependsOn: [draft]',
+    ].join('\n'));
+
+    it('threads the DECLARED artifacts onto the compiled stages instead of a hardcoded empty list', () => {
+      // The `artifacts: []` hardcode made the server-side declared-artifact check in
+      // rosterSessions.ts#deliver iterate nothing, so a bare completion marker with no files on disk was
+      // accepted as `succeeded`.
+      const compiled = compileWorkflowDef(WITH_ARTIFACTS, { registry: REGISTRY });
+      expect(compiled.ok).toBe(true);
+      if (!compiled.ok) return;
+      expect(compiled.value.stages.map((stage) => [stage.id, stage.artifacts])).toEqual([
+        ['draft', [
+          { id: 'script', path: 'orgs/kb-ops/output/script.md', description: 'The script.' },
+          { id: 'notes', path: 'orgs/kb-ops/output/notes.md', description: 'The notes.' },
+        ]],
+        ['after', []],
+      ]);
+      expect(validateServerCompiledPlanProposal(JSON.parse(JSON.stringify(compiled.value)), REGISTRY)).toMatchObject({ ok: true });
+      // Compiled artifacts are copies, never aliases of the def's own objects.
+      expect(compiled.value.stages[0].artifacts[0]).not.toBe(WITH_ARTIFACTS.stages[0].artifacts?.[0]);
+    });
+
+    it('binds artifacts into proposal identity so weakening the success bar forces re-approval', () => {
+      const compiled = compileWorkflowDef(WITH_ARTIFACTS, { registry: REGISTRY });
+      const dropped = compileWorkflowDef(
+        { ...WITH_ARTIFACTS, stages: WITH_ARTIFACTS.stages.map(({ artifacts: _gone, ...stage }) => stage as WorkflowStageDef) },
+        { registry: REGISTRY },
+      );
+      const narrowed = compileWorkflowDef(
+        {
+          ...WITH_ARTIFACTS,
+          stages: WITH_ARTIFACTS.stages.map((stage) => (stage.id === 'draft'
+            ? { ...stage, artifacts: stage.artifacts?.slice(0, 1) }
+            : stage)),
+        },
+        { registry: REGISTRY },
+      );
+      expect(compiled.ok && dropped.ok && narrowed.ok).toBe(true);
+      if (!compiled.ok || !dropped.ok || !narrowed.ok) return;
+      expect(dropped.value.proposalId).not.toBe(compiled.value.proposalId);
+      expect(narrowed.value.proposalId).not.toBe(compiled.value.proposalId);
+      // ...while a definition that declares no artifacts keeps its historical identity exactly.
+      const legacy = compileWorkflowDef(SINGLE, { registry: REGISTRY });
+      expect(legacy.ok).toBe(true);
+      if (!legacy.ok) return;
+      expect(legacy.value.proposalId).toBe('wf-5497530df05dc94e5ba8b528c2738d84e47666f60b52a076');
+    });
+  });
+
   it('keeps ownership out of compiled routing, proposal identity, and canonical proposal bytes', () => {
     const governed = {
       ...SINGLE,

@@ -21,7 +21,7 @@
 import { existsSync } from 'node:fs';
 import { sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parseWorkflowDef } from './defs.ts';
+import { instantiateWorkflowDef, parseWorkflowDef } from './defs.ts';
 import { compileWorkflowDef, type CompileWorkflowEnvironment } from './compile.ts';
 import { loadOrgDef } from './orgDefSource.ts';
 import { validateServerCompiledPlanProposal } from '../control/proposal.ts';
@@ -160,13 +160,18 @@ describe('video-run workflow definition (compile-proof)', () => {
       story: ['g0-idea-pick'],
       packaging: ['g1-script'],
       images: ['g2-visual-plan'],
-      audio: ['g3-image-board'],
+      // A stage may declare more than one gate; `stageBoundary` raises them one at a time, in
+      // declaration order, and holds the stage until every one is recorded approved.
+      audio: ['g3-image-board', 'g3b-narration-cost'],
       'publish-private': ['g4-publish-private'],
     });
-    // Exactly ONE gate authorizes cost, and it sits on the paid-generation stage itself.
+    // EVERY paid stage carries its own recorded cost authorization, and only paid stages do. Reachability
+    // through the G2-gated images stage is not a record: the control plane authorizes spend PER STAGE, so
+    // a targeted single-stage re-run of narration (which fyt-runner owns) would otherwise have called a
+    // paid API with no authorization recorded against the stage that called it.
     expect(parsed.value.stages.flatMap((s) => (s.humanGates ?? [])
       .filter((gate) => gate.spendAuthorization === true)
-      .map((gate) => `${s.id}:${gate.id}`))).toEqual(['images:g2-visual-plan']);
+      .map((gate) => `${s.id}:${gate.id}`))).toEqual(['images:g2-visual-plan', 'audio:g3b-narration-cost']);
     expect(parsed.value.stages.flatMap((s) => s.humanGates ?? []).every((gate) => gate.kind === 'approval')).toBe(true);
   });
 
@@ -217,6 +222,7 @@ describe('video-run workflow definition (compile-proof)', () => {
       ['packaging', 'g1-script', false],
       ['images', 'g2-visual-plan', true],
       ['audio', 'g3-image-board', false],
+      ['audio', 'g3b-narration-cost', true],
       ['publish-private', 'g4-publish-private', false],
     ]);
     // The real definition's `producer` profile must land on the PROPOSAL, not merely in the parsed
@@ -265,13 +271,19 @@ describe('video-run workflow definition (compile-proof)', () => {
       expect(VIDEO_RUN_DEF).toMatch(/ElevenLabs/);
       expect(VIDEO_RUN_DEF).toMatch(/single authorization for both/i);
       expect(VIDEO_RUN_DEF).toMatch(/spendAuthorization: true/);
-      // The audio stage spends too, and carries no gate of its own: the body must state exactly why
-      // that is safe, namely that it is reachable only through the G2-gated images stage.
+      // The audio stage calls a paid API too. It is ONE human decision, taken at G2 — and the body must
+      // say why that decision is nonetheless restated on the audio stage: reachability is not a record,
+      // and the control plane authorizes cost per stage, so a single-stage re-run needs its own.
+      expect(VIDEO_RUN_DEF).toMatch(/reachability is\s+not a record/);
+      expect(VIDEO_RUN_DEF).toMatch(/g3b-narration-cost/);
       const parsed = parseWorkflowDef(VIDEO_RUN_DEF, { knownProfiles: KNOWN_PROFILES });
       expect(parsed.ok).toBe(true);
       if (!parsed.ok) return;
-      expect(parsed.value.stages.find((s) => s.id === 'audio')?.workOrder)
-        .toMatch(/SAME recorded g2-visual-plan authorization/);
+      const audio = parsed.value.stages.find((s) => s.id === 'audio');
+      expect(audio?.workOrder).toMatch(/SAME recorded g2-visual-plan authorization/);
+      expect(audio?.workOrder).toMatch(/g3b-narration-cost records that one decision against this stage/);
+      expect(audio?.humanGates?.find((gate) => gate.id === 'g3b-narration-cost'))
+        .toEqual(expect.objectContaining({ kind: 'approval', spendAuthorization: true }));
     });
 
     it('states where each gate is declared and what the machine pre-vet is', () => {
@@ -315,6 +327,12 @@ describe('video-run workflow definition (compile-proof)', () => {
       expect(order('visual-plan')).toContain('shots.motion.json');
       expect(order('audio')).toContain('audio-plan.json');
       expect(order('verify')).toContain('compliance-report.md');
+      // render-builder writes into `assets/`, not the video root: `assets/final.mp4`,
+      // `assets/shorts/short-NN.mp4`, `assets/render.manifest.json` (skill contract + the
+      // 2026-07-19-wells-fargo run's own render.manifest.json, whose piece `out` is `assets/final.mp4`).
+      expect(order('render')).toContain('assets/final.mp4');
+      expect(order('render')).toContain('assets/render.manifest.json');
+      expect(order('render')).not.toMatch(/videos\/<slug>\/final\.mp4/);
       // The restricted-intent scanner in execution.ts parks any stage whose PROSE says `publish`.
       // Only the upload stage may trip it (its action declares the intent); every other work order
       // must state the gate without the trigger word, or the run parks permanently on a false
@@ -322,8 +340,95 @@ describe('video-run workflow definition (compile-proof)', () => {
       const gatedStages = ['idea', 'story', 'judge-gate', 'packaging', 'visual-plan', 'images', 'image-review', 'audio', 'render', 'verify'];
       for (const id of gatedStages) {
         expect(order(id), `${id} work order must not trip the restricted-intent prose scan`)
-          .not.toMatch(/(?:publish|publication|deploy|purchase|spend|payment|buy|credential|secret|api key|access token)/i);
+          .not.toMatch(/\b(?:publish|publication|deploy|purchase|spend|payment|buy|credential|secret|api key|access token)\b/i);
       }
+    });
+
+    // ---------------------------------------------------------------------
+    // Declared artifacts. `compile.ts` hardcoded `artifacts: []` and `WorkflowStageDef` had no
+    // `artifacts` key, so the server-side declared-artifact verification in rosterSessions.ts#deliver
+    // iterated an empty list on all eleven stages: a bare `FYT-STAGE-DONE story <token>` with nothing on
+    // disk was accepted as `succeeded`, and the run advanced to G1 asking a human to approve a script
+    // that did not exist. The filenames below are the ones the SKILLS actually write, checked against
+    // channels/the-second-take/videos/2026-07-19-wells-fargo (and channels/the-second-take/videos/
+    // _bricks-seg for the gitignored assets/board.html + assets/final.mp4).
+    // ---------------------------------------------------------------------
+    it("declares the load-bearing output of EVERY stage, so no stage succeeds on an agent's word alone", () => {
+      const parsed = parseWorkflowDef(VIDEO_RUN_DEF, { knownProfiles: KNOWN_PROFILES });
+      expect(parsed.ok).toBe(true);
+      if (!parsed.ok) return;
+      expect(parsed.value.stages.filter((s) => (s.artifacts ?? []).length === 0).map((s) => s.id)).toEqual([]);
+      const paths = Object.fromEntries(parsed.value.stages.map((s) => [s.id, (s.artifacts ?? []).map((a) => a.path)]));
+      const video = 'orgs/faceless-youtube/channels/<channel>/videos/<slug>';
+      expect(paths).toEqual({
+        idea: [`${video}/brief.md`],
+        story: [`${video}/research.md`, `${video}/script.md`],
+        'judge-gate': [`${video}/judge-verdict.md`],
+        packaging: [`${video}/metadata.json`],
+        // The three shared JSON plans are single-writer: the stage agent produces them under `staging/`
+        // and fyt-runner alone merges them to the video root. The stage can therefore only be held to the
+        // STAGED path — the merge is not a DAG node, so nothing here verifies the merged root file.
+        'visual-plan': [`${video}/staging/shots.json`, `${video}/staging/shots.motion.json`],
+        images: [`${video}/assets/scenes/manifest.json`],
+        'image-review': [`${video}/assets/_review/merged.json`, `${video}/assets/board.html`],
+        audio: [`${video}/assets/voiceover.manifest.json`, `${video}/staging/audio-plan.json`],
+        render: [`${video}/assets/final.mp4`, `${video}/assets/render.manifest.json`],
+        verify: [`${video}/render-verify.md`, `${video}/compliance-report.md`],
+        'publish-private': [`${video}/publish-record.json`],
+      });
+      // Every declared path sits inside its own stage's target tree (the defs.ts containment rule),
+      // carries an operator-facing description, and has a workflow-unique id, so a park message names
+      // exactly one missing file.
+      for (const stage of parsed.value.stages) {
+        for (const artifact of stage.artifacts ?? []) {
+          expect(artifact.path.startsWith(`${stage.target}/`)).toBe(true);
+          expect(artifact.description.trim().length).toBeGreaterThan(0);
+        }
+      }
+      const ids = parsed.value.stages.flatMap((s) => (s.artifacts ?? []).map((a) => a.id));
+      expect(new Set(ids).size).toBe(ids.length);
+    });
+
+    it('interpolates channel and slug into every declared artifact path at launch', () => {
+      const parsed = parseWorkflowDef(VIDEO_RUN_DEF, { knownProfiles: KNOWN_PROFILES });
+      expect(parsed.ok).toBe(true);
+      if (!parsed.ok) return;
+      const launched = instantiateWorkflowDef(parsed.value, {
+        channel: 'the-second-take', slug: '2026-07-19-wells-fargo', slice: '2min',
+      });
+      expect(launched.ok).toBe(true);
+      if (!launched.ok) return;
+      const compiled = compileWorkflowDef(launched.value, BINDING_ENVIRONMENT);
+      expect(compiled.ok).toBe(true);
+      if (!compiled.ok) return;
+      const all = compiled.value.stages.flatMap((s) => s.artifacts.map((a) => a.path));
+      expect(all).toHaveLength(17);
+      // An unsubstituted placeholder is a path no file can ever have — every run would park at every
+      // stage — and `unresolved-parameter-` is the compiler's stand-in for a RAW compile, which a launch
+      // must never produce.
+      expect(all.every((path) => !path.includes('<') && !path.includes('unresolved-parameter-'))).toBe(true);
+      expect(all.every((path) => path.startsWith('orgs/faceless-youtube/channels/the-second-take/videos/2026-07-19-wells-fargo/'))).toBe(true);
+      expect(validateServerCompiledPlanProposal(compiled.value as unknown, REGISTRY)).toMatchObject({ ok: true });
+      // The declared bar reaches the object the roster adapter re-derives delivery from — the compiled
+      // stage — not merely the parsed definition.
+      expect(compiled.value.stages.find((s) => s.id === 'story')?.artifacts.map((a) => a.id)).toEqual(['research', 'script']);
+    });
+
+    it('still compiles to a VALID proposal uninstantiated, as the list preview and amendment routes do', () => {
+      // `compiledPreview` (workflows list `launchable`) and the assignment/governance amendment route
+      // both compile the RAW definition, and the amendment route runs the result through the real
+      // validator. A placeholder path would fail it, so the compiler renders one as a path-safe
+      // symbolic segment rather than emptying the artifact list.
+      const parsed = parseWorkflowDef(VIDEO_RUN_DEF, { knownProfiles: KNOWN_PROFILES });
+      expect(parsed.ok).toBe(true);
+      if (!parsed.ok) return;
+      const compiled = compileWorkflowDef(parsed.value, BINDING_ENVIRONMENT);
+      expect(compiled.ok).toBe(true);
+      if (!compiled.ok) return;
+      expect(validateServerCompiledPlanProposal(compiled.value as unknown, REGISTRY)).toMatchObject({ ok: true });
+      expect(compiled.value.stages.flatMap((s) => s.artifacts)).toHaveLength(17);
+      expect(compiled.value.stages.find((s) => s.id === 'story')?.artifacts[1].path)
+        .toBe('orgs/faceless-youtube/channels/unresolved-parameter-channel/videos/unresolved-parameter-slug/script.md');
     });
   });
 });

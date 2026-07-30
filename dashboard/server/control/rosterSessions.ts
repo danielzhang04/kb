@@ -45,7 +45,7 @@
  * Strip-only floor: no TS enums, parameter properties, or namespaces. ESM with `.ts` specifiers.
  */
 import { randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { PtyHost } from '../pty/host.ts';
 import type { PersistentSessionRegistry } from '../pty/persistentSessions.ts';
@@ -65,8 +65,43 @@ const SCAN_WINDOW_CHARS = 16_000;
 const MAX_SUMMARY_CHARS = 400;
 const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const SAFE_AGENT_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
-/** Marker verdict + stage + per-delivery token, anchored at a line start after ANSI stripping. */
-const MARKER = /^FYT-STAGE-(DONE|BLOCKED|FAILED)[ \t]+([A-Za-z0-9._:-]{1,128})[ \t]+([a-f0-9]{32})[ \t]*(.*)$/;
+/**
+ * Marker verdict + stage + per-delivery token, anchored at a line start after ANSI stripping.
+ *
+ * LEADING DECORATION IS PART OF THE FORMAT. The substrate is an INTERACTIVE `claude` REPL, and a REPL
+ * frames what it prints: a gutter glyph (`⏺` U+23FA), a box-drawing rail (`│` U+2502), a list bullet
+ * (`- `), a quote marker (`> `), plus whatever indentation the renderer chose. `stripTerminalControl`
+ * removes ANSI/OSC/C0 but not printable glyphs, so an anchor of `^FYT-STAGE-` matched a bare line and
+ * essentially nothing the real REPL emits — the completion would never arrive. The prefix is therefore a
+ * bounded run of NON-ALPHANUMERIC characters, deliberately general instead of a whitelist of the two
+ * glyphs observed today, because the next CLI release will render a third.
+ *
+ * It stays ANCHORED, and that is the anti-smuggling property: a single alphanumeric character ahead of
+ * the marker (i.e. any prose at all — "I will print FYT-STAGE-DONE when finished") kills the match, so a
+ * marker cannot be hidden mid-sentence. Combined with the per-delivery token and the stage-id check in
+ * `scan`, and with the order file spelling only {@link VERDICT_PLACEHOLDER}, an agent still cannot
+ * fabricate or replay a completion.
+ */
+const MARKER = /^[^A-Za-z0-9]{0,32}FYT-STAGE-(DONE|BLOCKED|FAILED)[ \t]+([A-Za-z0-9._:-]{1,128})[ \t]+([a-f0-9]{32})[ \t]*(.*)$/;
+/**
+ * Bound on how long ONE delivery may sit unanswered before it settles as a human wait. Deliberately
+ * generous: the longest real stage is a whole long-form script or a 130-200 call image batch — hours,
+ * not minutes — and this exists to police NOTHING about pace. It exists because `settled` is otherwise
+ * reachable only from a marker match, a session exit, or a retire, so ONE missed marker (a REPL that
+ * never came up and a delivery line typed into a bare shell prompt, a renderer this scanner does not
+ * recognise, an agent that simply never printed) held the engine's single worker slot forever, until an
+ * operator noticed and ran `stop`. Overridable per stage and per delivery; clamped so no caller can set
+ * it to zero or to "never".
+ */
+const DEFAULT_DELIVERY_TIMEOUT_MS = 4 * 60 * 60 * 1_000;
+const MIN_DELIVERY_TIMEOUT_MS = 60 * 1_000;
+const MAX_DELIVERY_TIMEOUT_MS = 24 * 60 * 60 * 1_000;
+/** Named, greppable settle reason so an operator can find every timed-out delivery in the event log. */
+export const DELIVERY_TIMEOUT_REASON = 'roster-delivery-timeout';
+/** Durable activity mirror written by `record` and read back by `state` after a daemon restart. */
+const ROSTER_ACTIVITY = /^roster:([a-z0-9][a-z0-9-]{0,63}) (.+)$/;
+/** Page size for the INCREMENTAL durable-event read behind `state` (bounded by the store's own cap). */
+const EVENT_PAGE = 500;
 /**
  * The order file spells the verdict as this PLACEHOLDER, never as a literal `FYT-STAGE-DONE`. An agent
  * that `cat`s its own order file into the terminal therefore cannot fabricate a completion by echo — the
@@ -101,6 +136,11 @@ export interface RosterFileSystem {
   ensureDir(path: string): void;
   writeFile(path: string, contents: string): void;
   exists(path: string): boolean;
+  /**
+   * Recursive delete of a retired run's roster directory. Optional so an implementation that cannot
+   * delete simply keeps the files — never so a caller can silently skip the cleanup.
+   */
+  removeDir?(path: string): void;
 }
 
 export interface RosterSessionsOptions {
@@ -124,6 +164,13 @@ export interface RosterSessionsOptions {
   launchLine?: (input: { model: string; bindingPath: string; runRef: string; agentId: string }) => string;
   /** The single line that hands a stage's order file to a live session. */
   deliveryLine?: (input: { orderPath: string; stageId: string }) => string;
+  /**
+   * Marker deadline per delivery, in ms. A number applies to every stage; a function is consulted per
+   * delivery, so a long stage (a full image batch) can be given more room than a short one. Clamped to
+   * [{@link MIN_DELIVERY_TIMEOUT_MS}, {@link MAX_DELIVERY_TIMEOUT_MS}]; absent or non-finite falls back
+   * to {@link DEFAULT_DELIVERY_TIMEOUT_MS}.
+   */
+  deliveryTimeoutMs?: number | ((input: { runRef: string; stageId: string; agentId: string }) => number);
 }
 
 export interface RosterEnsureInput {
@@ -144,6 +191,8 @@ export interface RosterDeliveryInput {
   project: string;
   /** Present only when the engine's resolver verified this stage's declaration. */
   assignedAgent?: ResolvedAssignedAgent;
+  /** Per-delivery marker deadline override, in ms. Clamped exactly like the manager-level option. */
+  timeoutMs?: number;
 }
 
 export interface RosterSessionManager {
@@ -176,6 +225,11 @@ interface PendingDelivery {
   stageId: string;
   token: string;
   settle: (result: WorkerExecutionResult) => void;
+  /**
+   * The marker deadline for THIS delivery. Cleared on every settle path (marker, session exit, retire),
+   * so a delivery that already landed can never be re-settled by a late timer.
+   */
+  timer: ReturnType<typeof setTimeout> | null;
 }
 
 interface RosterRunEntry {
@@ -193,6 +247,7 @@ const defaultFileSystem: RosterFileSystem = {
   ensureDir: (path) => { mkdirSync(path, { recursive: true }); },
   writeFile: (path, contents) => { writeFileSync(path, contents, { encoding: 'utf8' }); },
   exists: (path) => existsSync(path),
+  removeDir: (path) => { rmSync(path, { recursive: true, force: true }); },
 };
 
 /** Drop ANSI/OSC control sequences and bare carriage returns so marker scanning sees plain lines. */
@@ -207,6 +262,29 @@ export function stripTerminalControl(chunk: string): string {
     .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')
     .replace(/\r/g, '\n');
   /* eslint-enable no-control-regex */
+}
+
+export interface CompletionMarker {
+  verdict: 'DONE' | 'BLOCKED' | 'FAILED';
+  stageId: string;
+  token: string;
+  summary: string;
+}
+
+/**
+ * Parse ONE control-stripped line as a completion marker, or `null`. The single reader of {@link MARKER}
+ * — `scan` delegates here — and exported so every accepted CLI rendering and every rejected forgery is
+ * testable without driving a whole pty session.
+ */
+export function matchCompletionMarker(line: string): CompletionMarker | null {
+  const match = MARKER.exec(line.trim());
+  if (!match) return null;
+  return {
+    verdict: match[1] as CompletionMarker['verdict'],
+    stageId: match[2],
+    token: match[3],
+    summary: match[4] ?? '',
+  };
 }
 
 /** Bound and flatten an agent-reported summary before it becomes canonical result content. */
@@ -313,6 +391,13 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
   const launchLine = options.launchLine ?? defaultLaunchLine;
   const deliveryLine = options.deliveryLine ?? defaultDeliveryLine;
   const runs = new Map<string, RosterRunEntry>();
+  /**
+   * Activity lines recovered from the durable event mirror, plus the event cursor they were read up to.
+   * `state` is polled by the canvas, so it reads only what is NEW each time: the previous code asked for
+   * the FIRST 400 events on every poll, which re-read the same page forever and went permanently stale
+   * once a run passed 400 events — which every real multi-day run does.
+   */
+  const recoveredActivity = new Map<string, { cursor: number; lines: Map<string, string> }>();
 
   const runDir = (runRef: string): string => join(options.stateRoot, 'control', 'roster', runRef);
 
@@ -393,6 +478,7 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
   const orderMarkdown = (input: {
     runRef: string;
     stageId: string;
+    attemptRef: string;
     token: string;
     proposalStage: ProposalStage;
     parameters: RosterRunParameters;
@@ -404,6 +490,9 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
     return [
       `# Work order — stage ${input.stageId} (run ${input.runRef})`,
       '',
+      // The attempt this order belongs to. An order file is overwritten per attempt, so without it a
+      // re-delivery after a repair is indistinguishable from the original in the file itself.
+      `- attempt: ${input.attemptRef}`,
       `- title: ${input.proposalStage.title}`,
       `- action: ${input.proposalStage.action}`,
       `- target: ${input.proposalStage.target}`,
@@ -433,6 +522,29 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
     ].join('\n');
   };
 
+  /**
+   * The ONE settle path. Every outcome (marker, missed-marker timeout, session exit, retire) goes
+   * through here so the pending slot and its deadline timer are always released together — a delivery
+   * that settled twice would resolve the engine's promise once and leak a timer that later fired
+   * against a slot a NEW delivery owns.
+   */
+  const resolvePending = (entry: RosterSessionEntry, result: WorkerExecutionResult): void => {
+    const pending = entry.pending;
+    if (!pending) return;
+    entry.pending = null;
+    if (pending.timer) clearTimeout(pending.timer);
+    pending.settle(result);
+  };
+
+  const resolveDeliveryTimeout = (input: { runRef: string; stageId: string; agentId: string; timeoutMs?: number }): number => {
+    const configured = typeof options.deliveryTimeoutMs === 'function'
+      ? options.deliveryTimeoutMs({ runRef: input.runRef, stageId: input.stageId, agentId: input.agentId })
+      : options.deliveryTimeoutMs;
+    const candidate = input.timeoutMs ?? configured ?? DEFAULT_DELIVERY_TIMEOUT_MS;
+    if (typeof candidate !== 'number' || !Number.isFinite(candidate)) return DEFAULT_DELIVERY_TIMEOUT_MS;
+    return Math.min(MAX_DELIVERY_TIMEOUT_MS, Math.max(MIN_DELIVERY_TIMEOUT_MS, Math.round(candidate)));
+  };
+
   const scan = (entry: RosterSessionEntry, chunk: string): void => {
     const pending = entry.pending;
     if (!pending) {
@@ -445,29 +557,21 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
     // Keep the trailing partial line for the next chunk; a marker is only acted on once complete.
     entry.buffer = lines.pop() ?? '';
     for (const line of lines) {
-      const match = MARKER.exec(line.trim());
-      if (!match) continue;
-      const [, verdict, stageId, token, rest] = match;
+      const marker = matchCompletionMarker(line);
+      if (!marker) continue;
+      const { verdict, stageId, token } = marker;
       if (stageId !== pending.stageId || token !== pending.token) continue;
-      entry.pending = null;
-      const summary = safeSummary(rest ?? '', `stage ${stageId} reported ${verdict.toLowerCase()}`);
-      if (verdict === 'DONE') {
-        pending.settle({ state: 'succeeded', summary, usage: zeroUsage(), artifacts: [], checkpoints: [] });
-      } else if (verdict === 'BLOCKED') {
-        pending.settle({ state: 'waiting-human', summary, usage: zeroUsage(), artifacts: [], checkpoints: [] });
-      } else {
-        pending.settle({ state: 'failed', summary, usage: zeroUsage(), artifacts: [], checkpoints: [] });
-      }
+      const summary = safeSummary(marker.summary, `stage ${stageId} reported ${verdict.toLowerCase()}`);
+      const state = verdict === 'DONE' ? 'succeeded' : verdict === 'BLOCKED' ? 'waiting-human' : 'failed';
+      resolvePending(entry, { state, summary, usage: zeroUsage(), artifacts: [], checkpoints: [] });
       return;
     }
   };
 
   const settlePending = (run: RosterRunEntry, runRef: string, entry: RosterSessionEntry, summary: string): void => {
-    const pending = entry.pending;
-    if (!pending) return;
-    entry.pending = null;
+    if (!entry.pending) return;
     record(run.subject, runRef, entry.agentId, summary, 'interrupted');
-    pending.settle({ state: 'waiting-human', summary, usage: zeroUsage(), artifacts: [], checkpoints: [] });
+    resolvePending(entry, { state: 'waiting-human', summary, usage: zeroUsage(), artifacts: [], checkpoints: [] });
   };
 
   const spawnSession = (run: RosterRunEntry, runRef: string, agentId: string, verified: ResolvedAssignedAgent): RosterSessionEntry => {
@@ -521,6 +625,12 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
     }
     run.sessions.clear();
     runs.delete(runRef);
+    recoveredActivity.delete(runRef);
+    // Order files and binding contexts carry this run's completion tokens in plaintext. A retired
+    // roster's tokens are already dead (every pending delivery settled above, every session closed), so
+    // keeping the directory is a needless durable copy of them. A resume re-authors both from the
+    // immutable proposal, so nothing here is load-bearing state.
+    try { fs.removeDir?.(runDir(runRef)); } catch { /* a locked file must never block the reap */ }
     return retired;
   };
 
@@ -607,16 +717,40 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
       const orderPath = join(runDir(input.runRef), agentId, 'orders', `${input.stageId}.md`);
       fs.ensureDir(join(runDir(input.runRef), agentId, 'orders'));
       fs.writeFile(orderPath, orderMarkdown({
-        runRef: input.runRef, stageId: input.stageId, token, proposalStage: input.proposalStage,
-        parameters: run.parameters, workDir: run.workDir,
+        runRef: input.runRef, stageId: input.stageId, attemptRef: input.attemptRef, token,
+        proposalStage: input.proposalStage, parameters: run.parameters, workDir: run.workDir,
       }));
 
-      const settled = new Promise<WorkerExecutionResult>((resolve) => {
-        entry.pending = { stageId: input.stageId, token, settle: resolve };
-      });
+      const pending: PendingDelivery = { stageId: input.stageId, token, settle: () => {}, timer: null };
+      // The executor runs synchronously, so `settle` is the real resolver before anything can settle.
+      const settled = new Promise<WorkerExecutionResult>((resolve) => { pending.settle = resolve; });
+      entry.pending = pending;
       entry.buffer = '';
+      // THE MARKER DEADLINE. `settled` is otherwise reachable only from a marker match, a session exit,
+      // or a retire, so one missed marker held the engine's single worker slot until an operator ran
+      // `stop`. Armed against THIS delivery only: a slot that a later delivery owns is left alone.
+      const timeoutMs = resolveDeliveryTimeout({
+        runRef: input.runRef, stageId: input.stageId, agentId,
+        ...(input.timeoutMs === undefined ? {} : { timeoutMs: input.timeoutMs }),
+      });
+      const timer = setTimeout(() => {
+        if (entry.pending !== pending) return;
+        const summary = `delivery abandoned: stage ${input.stageId} printed no completion marker within `
+          + `${Math.round(timeoutMs / 60_000)} min (${DELIVERY_TIMEOUT_REASON}) — open the ${agentId} `
+          + 'terminal to see what it is doing, then re-run the stage';
+        record(run.subject, input.runRef, agentId, summary, 'waiting', input.stageRef);
+        resolvePending(entry, {
+          state: 'waiting-human', summary: summary.slice(0, MAX_SUMMARY_CHARS), usage: zeroUsage(), artifacts: [], checkpoints: [],
+        });
+      }, timeoutMs);
+      // The deadline must never be the reason a daemon cannot exit.
+      if (typeof timer.unref === 'function') timer.unref();
+      pending.timer = timer;
       const wrote = options.registry.write(entry.owner, entry.sessionId, `${deliveryLine({ orderPath, stageId: input.stageId })}\r`);
       if (!wrote) {
+        // `settled` is discarded with this early return, so releasing the slot and the deadline together
+        // is the whole cleanup.
+        clearTimeout(timer);
         entry.pending = null;
         const summary = `work order could not be written into session ${entry.sessionId}`;
         record(run.subject, input.runRef, agentId, summary, 'interrupted', input.stageRef);
@@ -659,11 +793,21 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
       const run = runs.get(runRef);
       const detail = options.store.getRun(subject, runRef);
       if (!detail.ok) return [];
+      const recovered = recoveredActivity.get(runRef) ?? { cursor: 0, lines: new Map<string, string>() };
+      recoveredActivity.set(runRef, recovered);
+      const events = options.store.listEvents(subject, runRef, recovered.cursor, EVENT_PAGE);
+      if (events.ok) {
+        for (const event of events.value) {
+          if (event.cursor > recovered.cursor) recovered.cursor = event.cursor;
+          const match = ROSTER_ACTIVITY.exec(event.summary ?? '');
+          if (match) recovered.lines.set(match[1], match[2]);
+        }
+      }
       return projectRosterState(detail.value, {
         sessions: run ? new Map([...run.sessions].map(([agentId, entry]) => [agentId, entry.sessionId])) : new Map(),
         working: run ? new Set([...run.sessions.values()].filter((entry) => entry.pending !== null).map((entry) => entry.agentId)) : new Set(),
         activity: run?.activity ?? new Map(),
-        events: options.store.listEvents(subject, runRef, 0, 400),
+        durableActivity: recovered.lines,
       });
     },
   };
@@ -681,8 +825,12 @@ export interface RosterStateProjectionInput {
   working: ReadonlySet<string>;
   /** In-memory activity lines (authoritative while the daemon lives). */
   activity: ReadonlyMap<string, string>;
-  /** Durable event mirror, used to recover activity lines after a restart. */
-  events: ReturnType<ControlPlaneStore['listEvents']>;
+  /**
+   * agentId → the last activity line recovered from the durable event mirror, used after a restart.
+   * The CALLER accumulates this across incremental event reads (see `state`), because a projection that
+   * re-derived it from one fixed page of events went stale on any run long enough to matter.
+   */
+  durableActivity: ReadonlyMap<string, string>;
 }
 
 /**
@@ -707,14 +855,6 @@ export function projectRosterState(detail: RunDetail, input: RosterStateProjecti
   for (const stage of detail.stages) {
     if (stage.assignment?.agentId) ownerOf.set(stage.stageId, stage.assignment.agentId);
   }
-  const durableActivity = new Map<string, string>();
-  if (input.events.ok) {
-    for (const event of input.events.value) {
-      const match = /^roster:([a-z0-9][a-z0-9-]{0,63}) (.+)$/.exec(event.summary ?? '');
-      if (match) durableActivity.set(match[1], match[2]);
-    }
-  }
-
   return agentIds.map((agentId) => {
     const stages = detail.stages.filter((stage) => stage.assignment?.agentId === agentId);
     const openRequests = detail.humanRequests.filter((request) =>
@@ -738,7 +878,7 @@ export function projectRosterState(detail: RunDetail, input: RosterStateProjecti
           ? 'waiting'
           : 'idle';
     const activity = input.activity.get(agentId)
-      ?? durableActivity.get(agentId)
+      ?? input.durableActivity.get(agentId)
       ?? (status === 'blocked'
         ? `blocked: ${openRequests.map((request) => gateIdOf(request.title)).join(', ')} awaiting your approval`
         : status === 'active' ? 'working' : status === 'waiting' ? `waiting on ${waitingOnAgents.join(', ')}` : 'idle');
@@ -763,9 +903,9 @@ function gateIdOf(title: string): string {
 export interface RosterWorkerAdapterOptions {
   sessions: RosterSessionManager;
   /**
-   * The proven headless adapter, used for every run WITHOUT a live roster (Wave-A kb-ops workflows).
-   * This is a routing seam, not a second implementation of delivery: exactly one of the two adapters
-   * handles a given run, decided by whether that run has a roster.
+   * The proven headless adapter, used for every stage that declares NO agent assignment (Wave-A kb-ops
+   * workflows). This is a routing seam, not a second implementation of delivery: exactly one of the two
+   * adapters handles a given stage, decided by whether that stage is a roster stage at all.
    */
   fallback: WorkerAdapter;
 }
@@ -778,7 +918,22 @@ export interface RosterWorkerAdapterOptions {
 export function createRosterWorkerAdapter(options: RosterWorkerAdapterOptions): WorkerAdapter {
   return {
     async execute(input) {
-      if (!options.sessions.hasRoster(input.runRef)) return options.fallback.execute(input);
+      // ROUTING IS BY STAGE DECLARATION, NOT BY LIVE STATE. `hasRoster` reads an in-memory map that
+      // `retireAll` clears, and `retireAll` is exactly what an operator `lock()` calls: routing on it
+      // meant a locked daemon's in-flight run kept iterating, saw `hasRoster === false`, and fell
+      // through to the headless adapter — spawning a `claude` subprocess AFTER the lock, which is the
+      // one thing the INERT invariant exists to prevent. A stage that DECLARES a roster assignment is a
+      // roster stage forever; if its roster is gone, the only correct answer is to refuse.
+      const declaresRoster = Boolean(input.proposalStage?.assignment ?? input.assignment);
+      if (!options.sessions.hasRoster(input.runRef)) {
+        if (declaresRoster) {
+          throw new RosterSessionError(
+            `stage '${input.proposalStage?.id ?? input.stageRef}' declares a roster agent but run `
+            + `'${input.runRef}' has no live roster (retired, locked, or drained): refusing to run it headless`,
+          );
+        }
+        return options.fallback.execute(input);
+      }
       // Fail closed: roster delivery is defined by the compiled stage (its gates, dependencies and
       // declared artifacts). Without that immutable object there is nothing to gate delivery against,
       // and reconstructing it from the loose fields would be exactly the guessing this design forbids.
