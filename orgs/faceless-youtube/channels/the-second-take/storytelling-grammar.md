@@ -29,7 +29,9 @@ the viewer may not know is glossed in the same breath or cut, never assumed. Bes
 is also the joke: "wrote the gap off as a transposition error, which is accountant for oops, I typed it
 wrong." Still a money-*story*, not a finance tutorial: deliver the amazing fact, skip the mechanics
 lesson. **Spoken grammar beats written grammar every time:** "none of them are" is what a person says
-out loud, so it is what gets written. Contractions and the stock idiom a friend already has are the
+out loud, so it is what gets written, and compression comes out of clauses and beats, never the small
+words a speaker says: dropped subjects, dropped "that", dropped connectives ("Son of a Texas oil
+billionaire, and...") are a written tic; a friend says "He was the son of...". Contractions and the stock idiom a friend already has are the
 default reach (§1.6); a fresh image survives only where it parses instantly as talk, and a phrase that
 sounds written ("everything went into reverse," "this bleeding thing") is the defect. **The story's plain object-word repeats
 without shame:** bricks stay bricks in every beat, never "masonry"; reaching for a fancier synonym to
@@ -57,8 +59,11 @@ monotone this pipeline defaults to: every line gets identical weight, so nothing
 **Tense: past is the storytelling default.** The story already happened, so tell it in the past ("They
 bought 26,000 bricks from the Colorado Brick Company"). Present tense is for framing the viewer into a
 period ("We're in the 1980s"), for mechanics still true today, and, where the energy wants it, for a
-scheme's hottest stretch. What is banned is the present-tense still life: a scene with nobody doing
-anything in it. Put people in the sentence, doing something.
+scheme's hottest stretch. What is banned is the still life in any tense: a sentence with nobody
+doing anything in it ("The guards were cowboys." reads clean and is still the defect: "To guard their
+silver, the Hunts hired cowboys."), and a scale figure gets an agent and a verb too ("They could've
+built an Eiffel Tower with all that silver."), never an appositive fragment. Put people in the
+sentence, doing something.
 
 **1.2 — Land the point inside the telling; no grandeur buttons.** The recurring failure is ending a beat
 on a summary or profound line ("the mania did the work"). **The check:** the last sentence of every block
@@ -72,21 +77,27 @@ block is the normal running density, and two consecutive blocks with neither is 
 decay zones are the aftermath, where the narrator turns into a court reporter, and any
 mechanism-exposition stretch (taste #13). **Bits are short.** The banter that lands is a clause or a
 line ("What a dick." / "Or so they said." / "Next level."), so when a stretch reads flat the fix is
-another short bit, never a longer metaphor: length is what kills a joke, and a limp line gets cut or
-swapped, never extended. **The register is warm, irreverent, and loaded with pop culture:** a narrator
+another short bit, never a longer metaphor: length is what kills a joke, and a limp line or a bare
+interest-assertion ("which is its own kind of insane") gets cut or swapped for a better-worded
+reaction or reference, never extended. **The register is warm, irreverent, and loaded with pop culture:** a narrator
 plainly enjoying this. Dry irony is welcome where it lands, but smirking distance as the house register
 is out. Not everything is a joke, and the flat sentence between two funny ones is what makes them funny.
 Every piece of wit still rides a fact: delete the joke and the fact survives; delete the fact and the
-joke collapses. The §6 toolbox is the bank of shapes; §1.6 carries the loud moves.
+joke collapses, and a reaction is sized to its fact: "crazy, right?" on an unremarkable number is
+the miss. The §6 toolbox is the bank of shapes; §1.6 carries the loud moves.
 
 **1.4 — Analogies are the explanatory engine.** At a mechanism, a scale, or an absurdity, the **first
 reach is a named cultural or institutional pull that carries the explanation** ("It's the TSA."); prose
 explanation is the fallback, what you write when the reach failed, and it stays inside the same breath
-bar. Runs are welcome, and a good one can recur as a callback. **The pulls skew heavily to named
+bar; between the pull and the prose sits the norm-then-violation frame: the normal behavior, then the
+break, two short sentences ("Now normally, people who trade futures sell the contract for money. But
+the Hunts? They demanded payment in silver."). Runs are welcome, and a good one can recur as a callback. **The pulls skew heavily to named
 cultural references** (Ramsay, Doctor Strange, Samsung against Apple, Ocean's Eleven); generic
 situational comparisons are the minority, and every comparison is measured in **breath, not sentence
 count**: one may play where it lands inside a short clause, and a long one is the defect however it is
-punctuated, a single sentence spent building it out included. **Setup-then-apply is licensed:** hand the
+punctuated, a single sentence spent building it out included; the "X, except Y" build-out is dead as
+a structure, and a comparison has to make instant sense in the context of its beat ("It's Ticketmaster,
+except they owned every seat in the building" failed on both counts). **Setup-then-apply is licensed:** hand the
 viewer the reference first, then apply it ("You know that Gordon Ramsay show where he goes around
 reinventing failing restaurants? Q.T. Wiles was the Gordon Ramsay of the business world."). Setup is
 for references that need handing over; a famous event is asserted flat ("Robinhood did the same thing
@@ -127,7 +138,7 @@ trailing after it. But a whole script reaching for none of the four has drifted 
 its own (taste #13) even where every ban below is honored.
 **The boundary is credibility padding, not volume.** Banned: "that part is real," "he actually did," "he
 really did," "seriously," "the maddening thing," "genuinely audacious" — state the insane fact plainly
-and let the *viewer* be the one amazed; the identity aside is exactly "Yeah, that's his real name."
+and let the *viewer* be the one amazed; the identity aside ("Yeah, that's his real name.") fires only when the name is itself the joke, never as a reflex on an ordinary name.
 Dead too is every written move that manufactures heat on the page: trailer drama, the clipped fragment
 carrying no joke and no new fact ("Everything changed."), the dramatic uncontracted punch ("That is one
 year."), and the paired parallel aphorism. A single dry ironic capper stays correct ("Or so they said.").
@@ -184,11 +195,10 @@ lines, model numbers, and logistics enter only when load-bearing.
 > "And at their peak in 1988, they were making over 600 million dollars a year. Accounting for
 > inflation, that's almost as much money as Reddit makes today. Or so they said."
 
-**2.3 — Let the story set the length inside the 8–10 minute band, natural center near the top of it.**
+**2.3 — 8–10 minutes is the average, not a target.**
 Word target follows the **channel voice's measured wpm** (in `dna.md`; Miles runs ~175 gross, the
 narrator's pausing already inside it), so runtime is words ÷ that rate, computed by `lint_script.py`.
-Landing well under means beats are starved of color, not that filler is missing; running long means
-dwell (§2.5), and length is added only as a genuine cut *thread*, never padding.
+The cut sets the length; running long means dwell (§2.5), and length is never added back as padding.
 
 **2.4 — Motifs and callbacks carry the telling.** Plant a phrase and reuse it so it pays off ("eight
 million acres of land" → "those eight million acres was swampland"). A recurring analogy is a callback
@@ -218,7 +228,10 @@ a second scheme); hold the best fact for the final stretch.
 
 **2.7 — A company story tells the rise before the fall, and motivates every step out loud.** The
 collapse only hurts if the viewer watched the climb first: who they were, how fast they got big, and
-how big "big" was, before anything goes wrong (the §1.1 rise block is the model). **One climb owns the
+how big "big" was, before anything goes wrong (the §1.1 rise block is the model). The rise is also
+where the context lands: who these people are, what the company actually sold, and where the money
+came from, told as story, because fresh eyes follow the fall only if they held the world before it
+broke. **One climb owns the
 numbers:** the rise is told once, with its figures, and every later beat escalates the *object* and the
 stakes instead of re-climbing the revenue. A second pass at how big they got is dwell (§2.5).
 

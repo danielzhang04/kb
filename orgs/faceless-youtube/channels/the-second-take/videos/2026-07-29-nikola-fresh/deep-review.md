@@ -213,6 +213,34 @@ surgical edits. No new files, no new sections.
 
 ---
 
+## V. Daniel rulings (2026-07-29) — BINDING, these override §II/§III above
+
+Script directives:
+- **Dir 1 MODIFIED — no pusher gloss anywhere.** No reference or term that needs explaining may carry a
+  beat. The hook keeps the scene and the plant WITHOUT the word "pusher": "This is a real truck, he says."
+  is the plant; the ending callback cashes it with zero gloss (e.g. "This is a real truck, he said. It
+  never drove a day in its life." — writer's call on the line, but it must need no explanation).
+- **Dir 2 MODIFIED — keep "works the room like a ___ salesman"**, but replace "timeshare" with a current
+  reference, not a dated one. And the whole hook paragraph must be rebuilt for SENSE — it currently reads
+  as a pile-up; a fresh viewer has to track it in one listen.
+- **Dir 5 EXPANDED — context is the law, generally.** Not just Milton: the company, what it actually sold,
+  where the money came from, and what the fraud actually was must each be trackable by fresh eyes, easily,
+  established early as story. (Now codified in grammar §2.7.)
+- All other §II directives stand as written.
+
+Pipeline deltas as applied (all committed before this regen):
+- P1 generalized: no special-case field — critics.md now routes ANY additive remedy to the writer pass;
+  editor stays subtractive. Taste #13 counts back-half blocks one by one.
+- P2 generalized: grammar §2.7 got one context sentence (world before it breaks), not an enumerated list.
+- P3, P5, P6, P10, P11 applied as proposed.
+- P4 restated per Daniel: the "X, except Y" build-out is dead as a *structure*, and a comparison must make
+  instant sense in context — not my contrast-vs-frame theory.
+- P7 slimmed to a removal: §2.3 now reads "8–10 minutes is the average, not a target"; no added rules about
+  deviation.
+- P8 applied + §1.3 gained: a reaction is sized to its fact.
+- P9 softened per Daniel: interest-assertions are swapped for better-worded reactions/references, not
+  banned; folded into §1.3's existing limp-line rule.
+
 ## IV. Judgment notes (cold-reader suggestions NOT adopted as-is)
 
 - Exact Hindenburg title quote: last round I made it byte-exact; the cold read is right that it's dead air

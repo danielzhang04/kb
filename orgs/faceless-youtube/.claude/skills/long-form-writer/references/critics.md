@@ -16,7 +16,8 @@ draft script.md
   → route on the coherence critic's [LOCAL]/[STRUCTURAL] tags:
       • only line-level findings (taste + leash + [LOCAL] coherence):
           → editor             (one subagent: applies fixes IN VOICE → revised script + changelog)
-      • any [STRUCTURAL] coherence finding:
+      • any [STRUCTURAL] coherence finding, or any finding whose remedy ADDS material (the flat
+        stretch owed a short bit is the standing case):
           → writer structural revision  (one subagent: reworks the sequence/framing of the flagged spans,
             from ALL FOUR findings lists at once, leashed → revised script + changelog)
           → re-verify once     (leash re-read: no invented facts; coherence re-read: the confusion is gone)
@@ -27,12 +28,15 @@ draft script.md
 Run the four critics **in parallel**, then route on the coherence critic's severity tags. **One cycle only for
 line-level edits, and at most ONE structural bounce for coherence** — never loop critic→edit→critic; if the
 re-verify still finds the structure confusing, or a changelog flags something unresolved, **surface it to the
-human** instead of spinning. **Taste and leash are subtractive; coherence is the one additive lane** — a gap
-is fixed by building the connection in or resequencing, so its structural findings go to the *writer*.
+human** instead of spinning. **The editor is subtractive; every additive remedy belongs to the writer** — a coherence gap
+is fixed by building the connection in or resequencing, a flat stretch by the writer adding the short
+bit, leashed; an additive remedy left with the editor dies there.
 
 **The verdict overlay (regen runs only).** When a `videos/<slug>/verdict.rN.md` exists (skill Step 0), every
-blockquoted line in it is **Daniel-verbatim and LOCKED**: the writer places them, and every agent below plus
-the humanizer **preserves them byte-for-byte** and never files a finding against one. A locked line may be
+blockquoted line in it is **Daniel-verbatim and LOCKED for the regen that sheet drives**: the writer places
+them, and every agent below plus the humanizer **preserves them byte-for-byte** and never files a finding
+against one. A lock binds one round only: a later Daniel hand-edit outranks an earlier verdict, and a line
+locked in a previous round is ordinary text again. A locked line may be
 *moved* if the sheet's structure directive requires it, never reworded or trimmed; a conflict with a critic's
 mandate goes to the human, unresolved.
 
@@ -124,7 +128,8 @@ that company; an echo of them is neither defect nor virtue, so judge the paragra
 >     #9, and the slow open is the same drift measured at the front: no named pull by the end of the second
 >     block, filed against the door (§2.1). **Two decay zones:** the aftermath (lawsuits, verdict, settlement, sentence, fates), where the
 >     narrator turns into a court reporter, and any **mechanism-exposition stretch**, where he turns into a
->     lecturer. Fire the tripwire in both; the fix is a short bit, never a longer metaphor. **The global
+>     lecturer. Fire the tripwire in both, and count the back-half blocks one by one (the miss on record
+>     is a three-block dry aftermath shipped unflagged); the fix is a short bit, never a longer metaphor. **The global
 >     form:** a whole script reaching for none of the heat mechanisms (no caps on a leaned-on word, no knowing
 >     stock build-up, no stock-idiom reach, no sanctioned profanity) is register drift even when no two
 >     adjacent blocks are flat; file it as one finding against the script (§1.6). Also a money-absurdity beat
@@ -344,7 +349,8 @@ that company; an echo of them is neither defect nor virtue, so judge the paragra
 - On a channel **without** subagents, run taste, leash, and coherence as three deliberate separate fresh
   re-reads against the prompts above, then edit, and do the one writer structural pass if a structural hole
   surfaced. Prefer real subagents; the fresh context is the whole point.
-- **Taste and leash are subtractive by design.** If they start flattening the voice (cutting good color or
+- **Taste and leash are subtractive by design** (their additive remedies route to the writer, never
+  the editor). If they start flattening the voice (cutting good color or
   wit), that's the taste critic over-triggering — loosen its "never flag" list, don't add more flaws to hunt.
 - **Coherence is the one additive/structural exception**, and it over-triggers the same way: if it flags
   non-linearity, cross-cuts, mystery order, or designed suspense as "confusion," tighten its never-flag list.
