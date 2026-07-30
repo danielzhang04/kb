@@ -3,7 +3,7 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSyn
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { redactSensitiveText } from '../composer/publicTimeline.ts';
 import { defaultGitRunner, prepareCoordination, type GitRunner } from '../write/branch.ts';
-import { withOpsTransaction } from '../write/asyncGit.ts';
+import { resolveCheckedOutBranch, withOpsTransaction } from '../write/asyncGit.ts';
 import { defaultPyRunner, type PyRunner } from '../write/launch.ts';
 import { workflowCardId } from '../write/workflowRun.ts';
 import type { CanonicalStageResult, CanonicalStageResultPayload, ResultIntegrator, WorkerArtifactResult } from './execution.ts';
@@ -16,6 +16,10 @@ const SHA = /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/;
 const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const MAX_STATE_BYTES = 32 * 1024 * 1024;
 const MAX_RESULT_BYTES = 256 * 1024;
+/** The one branch a coordination write may ever run git against (CLAUDE.md's Branch rules). */
+const COORDINATION_BRANCH = 'ops';
+/** Named, greppable refusal so every guarded coordination call is findable in the daemon log. */
+export const COORDINATION_GIT_GUARD_REASON = 'canonical-coordination-git-guard';
 
 export class CanonicalResultIntegrationError extends Error {}
 
@@ -53,6 +57,15 @@ export interface CanonicalGitResultIntegratorOptions {
   gitRunner?: GitCommandRunner;
   coordinationGit?: GitRunner;
   runPy?: PyRunner;
+  /**
+   * READ-ONLY branch resolution for the coordination checkout, injected as its OWN seam — deliberately
+   * NOT the mutating `coordinationGit` runner, exactly as `audit/log.ts` keeps `resolveCheckedOutBranch`
+   * outside its `OpsGitRunner` (commit 2fdb2ca). Faking the mutating runner therefore cannot neuter the
+   * guard: a test that wants a coordination git call to happen has to say so through this seam, and a
+   * test that proves the refusal can assert the mutating runner was invoked zero times. Production never
+   * passes it, so the daemon always gets the real `git symbolic-ref --short HEAD` resolution.
+   */
+  resolveCoordinationBranch?: (root: string) => Promise<string | null>;
 }
 
 // Mirrors the repository's existing exact-byte card-section grammar: only `## Result` at column 0,
@@ -428,7 +441,44 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
     '-c', 'core.longpaths=true',
     '-c', `core.hooksPath=${coordinationHooksPath}`, '-c', 'commit.gpgsign=false', '--literal-pathspecs',
   ];
-  const opsGit: GitRunner = (cwd, args) => rawOpsGit(cwd, [...coordinationPrefix, ...args]);
+  const resolveCoordinationBranch = options.resolveCoordinationBranch ?? resolveCheckedOutBranch;
+  /**
+   * THE COORDINATION-GIT GUARD. Every coordination git invocation — fetch, pull, rebase, add, commit and
+   * both `push origin ops` calls — funnels through here, and NONE of them runs until the checkout at
+   * `cwd` has been proven, read-only and outside the mutating seam, to be exactly `ops`.
+   *
+   * Why this exists even though `integrate` already compared `rev-parse --abbrev-ref HEAD` to `'ops'`:
+   * that comparison sat BELOW `prepareCoordination`, which had already run `pull --rebase origin ops`
+   * against whatever checkout it was handed, and it asked the INJECTABLE mutating runner — the same seam
+   * a caller fakes — so it proved nothing about the real directory. `verifyCanonical` fetched with no
+   * branch check at all, and it is reachable from `lookup`/`resolveBase` at run activation. That is the
+   * shape of the 2026-07-30 incident (a daemon booted with `DASHBOARD_REPO_ROOT` on a feature-branch
+   * worktree ran `pull --rebase origin ops` against it and jammed a 549-step rebase); see commit 2fdb2ca,
+   * which fixed the identical hazard in `audit/log.ts`.
+   *
+   * Unlike the audit ledger there is no degraded local-only path here: a canonical stage result is only
+   * meaningful once it is durably published to `ops`, so ambiguity — a feature branch, a detached HEAD, a
+   * non-git directory, an unresolvable or timed-out check — REFUSES. The run parks; nothing is pushed.
+   */
+  const opsGit: GitRunner = async (cwd, args) => {
+    const branch = await resolveCoordinationBranch(cwd);
+    if (branch !== COORDINATION_BRANCH) {
+      const resolved = branch === null
+        ? 'UNRESOLVED (detached HEAD, not a git repo, or git failed/timed out)'
+        : `"${branch}"`;
+      // eslint-disable-next-line no-console -- deliberately loud: a misconfigured coordination root is a
+      // misconfiguration, not a normal condition, and must be unmistakable when grepping daemon logs.
+      console.error(
+        `CANONICAL-GIT-GUARD: coordination git REFUSED for coordinationRoot="${cwd}" — checked-out branch `
+        + `is ${resolved}, not "${COORDINATION_BRANCH}". No git command ran (no fetch/pull/rebase/add/`
+        + `commit/push). This almost certainly means DASHBOARD_REPO_ROOT points at the wrong checkout.`,
+      );
+      throw new CanonicalResultIntegrationError(
+        `${COORDINATION_GIT_GUARD_REASON}: coordination checkout '${cwd}' is on ${resolved}, not '${COORDINATION_BRANCH}'`,
+      );
+    }
+    return rawOpsGit(cwd, [...coordinationPrefix, ...args]);
+  };
   let tail: Promise<unknown> = Promise.resolve();
 
   const gitRaw = (args: string[], cwd: string) => git.run([...gitPrefix, ...args], cwd);
