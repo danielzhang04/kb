@@ -22,9 +22,10 @@ every reference frame was generated against it, so `image-generation` proposes c
   mass changes), age/reaction linework — never enough to break the layout; costume always comes from the
   generation delta.
 - **Three tiers of figure — by SIZE + RECURRENCE, per figure per shot:** named/recurring foreground → seeded
-  from its canonical, §2c auto-appends the form · anonymous LARGE/foreground → the **§2e** clause in the prompt
+  from its canonical, §2c auto-appends the form · anonymous LARGE/foreground → the **§2e** clause
   (full rig, generic outfit + hair, no seed) · anonymous small/many/background → the **§2d CROWD RIG**
-  (simplified features — dot eyes + one mouth — because fine features drift into noses on tiny faces). A crowd
+  (simplified features — dot eyes + one mouth — because fine features drift into noses on tiny faces). Both
+  anonymous tiers are DECLARED per shot, never described in rig prose (`visual-grammar.md §2`). A crowd
   is never a locked identity; a recurring identifiable GROUP is cast.
 
 ## 2. LOCKED STYLE descriptor (verbatim — prepend to every generation)
@@ -61,7 +62,7 @@ For a **new character** the delta supplies only identity-VARYING traits (hair / 
 It holds **form, not identity**, so it is safe on any seeded gen; `forge.py` auto-appends it on every
 character-bearing seed (non-identity mode). The wording exempts crowds, so both rigs coexist in one frame.
 
-## 2d. CROWD-RIG clause (verbatim — write INTO a crowd scene's prompt)
+## 2d. CROWD-RIG clause (verbatim template — `forge.py` expands it at gen time)
 
 > The background / crowd figures are on the CROWD RIG: round cream-family heads, DOT EYES, one simple
 > consistent mouth (neutral / smile / downturn only), NO noses, NO ears, NO teeth, the **EXACT same
@@ -70,20 +71,34 @@ character-bearing seed (non-identity mode). The wording exempts crowds, so both 
 > do not give them individual detailed faces.
 
 The crowd rig differs from the full rig **ONLY in the FACE** — proportion is IDENTICAL to the base rig, and
-taller/lankier figures are the standing drift and a review axis (§3). **VPW authors §2d into the
-`still_prompt`**; `refs/base/crowd-exemplar.png` seeds every crowd-bearing gen.
+taller/lankier figures are the standing drift and a review axis (§3). **No prompt ever carries this
+text:** the shot declares `figures.crowd: true` (`visual-grammar.md §2`) and `forge.py` appends the
+clause at gen time. `refs/base/crowd-exemplar.png` seeds every crowd-bearing gen — the seed already
+carries the look, so re-describing it in the prompt buys nothing and bleeds crowd wording onto the
+foreground figures.
 
-## 2e. BASE-RIG clause (verbatim — write INTO the prompt for an anonymous FOREGROUND figure)
+## 2e. BASE-RIG clause (verbatim template — `forge.py` expands it at gen time)
 
 > This prominent foreground figure is an anonymous, non-recurring person drawn on the FULL base family
 > rig — SAME round near-circle head (only slightly taller than wide, NOT an egg/oval), SAME eye
 > style/size/position, NO nose, NO ears, SAME classic cartoon hands (exactly THREE fingers plus ONE thumb,
 > four digits total, never five), SAME even medium-thick dark warm brown-black (#241a12) outline, SAME
-> clean FLAT cel render — the identical rig the named cast holds, just NOT a specific person. Give them a
-> distinct, era-appropriate outfit and hair so they read as an individual; hold ONLY this form.
+> clean FLAT cel render — the identical rig the named cast holds, just NOT a specific identity. Give each
+> figure its own distinct, era-appropriate outfit and hair so it reads as an individual; hold ONLY this
+> form.
 
-A large / foreground anonymous figure needs the FULL rig but has no canonical to seed, so §2c's auto-append
-never fires and §2d is too simplified. Like §2d, **VPW authors §2e into the `still_prompt`**.
+A large / foreground anonymous figure needs the FULL rig but has no canonical to seed, so §2c's
+auto-append never fires and §2d is too simplified. Like §2d, **no prompt carries this text** — the shot
+lists each such figure in `figures.anon_foreground` (`visual-grammar.md §2`) and `forge.py` expands it:
+
+- **Everything from `FULL base family rig` onward is the LAW and is kept verbatim.** That phrase is the
+  split anchor (and lint's rig-clause fingerprint); forge writes the opening itself, naming the shot's
+  declared figures, and appends its own binding sentence confining the clause to them — so keep the tail
+  number-NEUTRAL ("each figure … it reads"), because one clause serves one figure or four.
+- **Delta mode (`stage_role: "delta"`) gets HELD wording instead, never this establishment wording** — "the
+  anonymous figure(s) … are unchanged, exactly as established", and none of the tail. Re-issuing
+  give-each-a-distinct-outfit on a delta tells the engine to redesign the very figure the chain exists to
+  hold; it is a first-establishment instruction only.
 
 ## 3. The rig checklist — channel invariants (values only)
 

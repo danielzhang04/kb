@@ -59,6 +59,12 @@ py -3 .claude/skills/render-builder/scripts/build_motion.py channels/<name>/vide
 #   --max-shots 6        cap shots/piece for a fast test slice
 #   --allow-missing      placeholder-card shots whose scene file is missing instead of failing
 #                        (test slices ONLY — the hard error is the style-lock guarantee)
+#   --preview-parked     HUMAN EYE-GATE ONLY: render `parked` shots' real best-attempt pixels
+#                        instead of placeholder cards, so the human judges the actual defects.
+#                        Writes a separate assets/preview.mp4 + preview.render.manifest.json
+#                        stamped `state: "preview-parked-included"` (so it FAILS compliance-check
+#                        by construction and never overwrites the shippable final.mp4). Rewrites
+#                        no review_status; unreviewed/missing shots stay hard errors.
 #   --no-captions        skip the word-highlight caption track
 ```
 
@@ -91,7 +97,9 @@ timing/scene semantics serves both; there is no second render engine.
   missing scene file for an ai-gen/hybrid shot is a **hard error** (run image-generation pass 2), never
   a silent fallback; chart/screencap/stock/archival shots (which image-generation deliberately skips)
   render as a **visible placeholder card**, counted in the manifest (`scenes_from_files` /
-  `inline_fallback`). `still_prompt` stays authored on every shot — image-generation's input upstream.
+  `inline_fallback`). A **`parked`** shot (reviewed, defects known) is likewise not shippable — and
+  because a placeholder teaches the human nothing about the defect, `--preview-parked` renders its
+  real pixels into a clearly-marked non-shippable `preview.mp4` for the eye-gate instead. `still_prompt` stays authored on every shot — image-generation's input upstream.
 - **Camera is furniture; the cuts carry the life.** The camera is **locked by default** (`move: none`);
   only a motion-plan stage start may author restrained `push`/`pull` punctuation (mapped to engine
   `push-in`/`pull-back`). Baseline life is opt-in too: top-level `baseline_life:true` uses the channel's

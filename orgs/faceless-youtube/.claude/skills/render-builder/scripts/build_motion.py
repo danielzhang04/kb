@@ -461,8 +461,11 @@ def build_piece_spec(piece, shots, res, is_short, video_dir, vo_manifest, args, 
     mp = getattr(args, "motion_plan", None)
     motion_plan = json.load(open(mp, encoding="utf-8")) if mp and Path(mp).exists() else None
     layered_ids = cutout_layer_ids(motion_plan)   # {} when no plan → no exemption
+    previewed_parked = []      # --preview-parked: parked shots shown as their real pixels
     scene_files, missing = resolve_scene_files(scenes_dir, piece, shots, is_short, allow_missing,
-                                               layered_ids=layered_ids)
+                                               layered_ids=layered_ids,
+                                               preview_parked=getattr(args, "preview_parked", False),
+                                               previewed_out=previewed_parked)
     tokens = baseline_life_tokens(load_tokens(video_dir), motion_plan)
     # Channel caption dial (measured law: the studied 16:9 grade burns zero word-captions;
     # shorts keep them). Data in motion-tokens.json; absent key = enabled (other channels).
@@ -668,6 +671,9 @@ def build_piece_spec(piece, shots, res, is_short, video_dir, vo_manifest, args, 
     }
     if missing:
         meta["allowed_missing_scene_shots"] = missing
+    if previewed_parked:
+        # Named honestly so the manifest records WHICH known-defective frames the viewer saw.
+        meta["preview_parked_shots"] = previewed_parked
     return spec, meta, captions_on   # Q11: hand back the REAL caption state for the manifest
 
 
@@ -731,6 +737,11 @@ def main():
     ap.add_argument("--no-captions", action="store_true")
     ap.add_argument("--allow-missing", action="store_true",
                     help="Placeholder-card shots whose scene file is missing instead of failing (test slices).")
+    ap.add_argument("--preview-parked", action="store_true",
+                    help="HUMAN EYE-GATE ONLY: show parked shots' real best-attempt pixels instead of "
+                         "placeholder cards. Renders to assets/preview.mp4 and stamps the manifest "
+                         "state 'preview-parked-included', which FAILS compliance-check by design. "
+                         "Never rewrites review_status; unreviewed/missing shots are still hard errors.")
     ap.add_argument("--max-shots", type=int, default=0, help="Cap shots per piece for a test slice.")
     ap.add_argument("--no-audio", action="store_true", help="Skip the music+SFX audio layer.")
     ap.add_argument("--motion-plan", help="optional shots.motion.json: merge cutout layers into the spec.")
@@ -755,7 +766,10 @@ def main():
     only = {p.strip() for p in args.only.split(",") if p.strip()}
     work = []
     if (not only or "long-form" in only) and shots.get("long_form", {}).get("shots"):
-        work.append(("long-form", shots["long_form"]["shots"], RES_LONG, False, "assets/final.mp4"))
+        # --preview-parked writes a SEPARATE file: the honest final.mp4 is never overwritten by a
+        # review render that deliberately contains known-defective frames.
+        work.append(("long-form", shots["long_form"]["shots"], RES_LONG, False,
+                     "assets/preview.mp4" if args.preview_parked else "assets/final.mp4"))
     for sh in shots.get("shorts", []):
         piece = Path(sh.get("file", "")).stem
         if only and piece not in only and "shorts" not in only:
@@ -763,7 +777,8 @@ def main():
         if not args.all_shorts and sh.get("status") != "publish":
             continue
         if sh.get("shots"):
-            work.append((piece, sh["shots"], RES_SHORT, True, f"assets/shorts/{piece}.mp4"))
+            work.append((piece, sh["shots"], RES_SHORT, True,
+                         f"assets/shorts/{piece}{'.preview' if args.preview_parked else ''}.mp4"))
     if args.chapter:   # chapters are a long-form concept — render only that piece
         work = [w for w in work if w[0] == "long-form"]
         if not work:
@@ -792,7 +807,10 @@ def main():
                 raise SystemExit(f"--chapter {args.chapter} out of range (1..{len(chs)}).")
             frame_range = (round(sel["start_s"] * FPS), round(sel["end_s"] * FPS) - 1)
             out_rel = f"assets/final-ch{sel['n']:02d}-{_slug(sel['label'])}.mp4"
-        motion_path = video_dir / "assets" / "motion" / f"{piece}.motion.json"
+        # Preview keeps its own derived spec too, so a preview run never invalidates the shippable
+        # render's provenance: every preview artifact is a `preview*` sibling, nothing is shared.
+        motion_name = f"{piece}.preview.motion.json" if args.preview_parked else f"{piece}.motion.json"
+        motion_path = video_dir / "assets" / "motion" / motion_name
         motion_path.parent.mkdir(parents=True, exist_ok=True)
         motion_path.write_text(json.dumps(spec, indent=2), encoding="utf-8")
         rec = {
@@ -830,7 +848,11 @@ def main():
                 if not audio_report["ok"]:
                     for w in audio_report["warnings"]:
                         print(f"  ! audio-check: {w}")
-            rec["state"] = "rendered"
+            # `state` is the success marker compliance-check hard-requires to be exactly "rendered".
+            # A preview-parked cut knowingly contains defective frames, so it gets its own state and
+            # therefore FAILS Gate-3 by construction — it cannot be mistaken for a shippable render.
+            rec["state"] = ("preview-parked-included" if args.preview_parked
+                            and meta.get("preview_parked_shots") else "rendered")
         results.append(rec)
 
     manifest = {
@@ -845,7 +867,10 @@ def main():
         "dry_run": args.dry_run,
         "pieces": results,
     }
-    out = video_dir / "assets" / "render.manifest.json"
+    # A preview-parked run writes its OWN manifest: clobbering render.manifest.json would destroy the
+    # shippable render's record and leave the honest final.mp4 unverifiable by compliance-check.
+    out = video_dir / "assets" / ("preview.render.manifest.json" if args.preview_parked
+                                  else "render.manifest.json")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     print(f"manifest -> {out}")

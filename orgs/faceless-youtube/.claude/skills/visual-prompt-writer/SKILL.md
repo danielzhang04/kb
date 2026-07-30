@@ -47,6 +47,12 @@ named, the most recently scripted, or ask. **No `script.md` → stop** and say t
    body pose, finger mechanics, or facial expression in words — naming the asset IS the authoring act. A
    name the registry lacks may still be written; `image-generation`'s Pass-1 gate surfaces it for the
    human's pre-gen approval, and a veto comes back to you as a restage.
+   **Then DECLARE every anonymous figure in the shot's `figures` field** — route by size per the grammar
+   §2: background/crowd tier → `"crowd": true`; each LARGE/foreground anonymous figure → one
+   `anon_foreground` entry holding the exact phrase your prompt uses for that figure. Stage them in prose
+   as normal, but the style-bible §2d/§2e rig-clause TEXT never appears in a prompt — you declare, and
+   `forge.py` expands it at gen time (lint HARD-fails the clause fingerprint). Stay inside the grammar's
+   figure cap and flag its high-risk case in `notes`. Field spec: `shots-schema.md §2`.
 4. **State the scene facts the beat needs — CONTENT only** — layout, orientation (who faces whom; a
    vehicle points where it travels), the action, what a gesture or highlight targets ("the northern half
    of South America", not "the continent"), framing + scale, the committed scene palette,
@@ -58,13 +64,41 @@ named, the most recently scripted, or ask. **No `script.md` → stop** and say t
    **Supplied-text law (HARD):** never name a text element without supplying its value verbatim, inline,
    beside its own element — quote the literal from the fact ledger and cite `[F-NN]` in `notes`, or omit
    the element, or author it deliberately blank. Rule + lettering laws L-1…L-4: `shots-schema.md §4`.
+   **Then ORDER the finished prompt in the grammar's three zones** — identity, scene, payload as the final
+   clause (`visual-grammar.md §2` ordering law; on a delta the final clause is its one change, §1 chain
+   logic). Absence is authored as a positive state of the surface, never a "no X, no Y" list (same file,
+   header block).
 5. **Group into stages/chains per the grammar's chain logic** — consecutive shots on one set share a
    `stage`, one `base` first, each `delta` changing exactly ONE element in `changed_elements`, ≤3 deltas,
    then a re-base or a hard cut. Disclosure order holds throughout.
 6. **Tag a `source`** per the schema's taxonomy (`stock`/`hybrid`/`archival` get a `stock_query`), and
    set `synthetic: true` on any photoreal AI shot.
 
-## Step 3 — Walk the script, then densify
+## Step 3 (staged) — plan the video, then author act by act
+
+A shot list is authored in ACTS, never in one continuous pass. Depiction register decays across a long
+pass: the back half of a one-pass file drifts literal, reuses the same two or three classes, and settles
+into the centered eye-level medium. The plan-first / re-read-between-acts shape is what holds the last act
+at the first act's level.
+
+### 3a — Split + plan (before authoring a single shot)
+- **Split `script.md` into its acts** — the story's own turns (setup / scheme / unraveling / aftermath;
+  usually 2–4), never equal word counts.
+- **Stages + environments:** decide now which sets recur and carry held `stage` chains and which are
+  one-frame standalones. A set invented twice mid-pass gets described twice differently and renders twice.
+- **The three peaks:** reserve the most striking staging for the opening, the mid-video re-arm (55–65%),
+  and the withheld peak in the final 20%. A character enters on the line that NAMES them.
+- **Density budget, written down per act:** read the runtime AND the rate off the script header ("N words
+  ÷ M wpm"), never a fixed 150 — the header's rate is the channel's MEASURED voice, and sizing off a
+  slower one buys shots for a video that doesn't exist. Then split the whole-file limits
+  (`shots-schema.md §5` — cadence band, the `runtime ÷ 4s` floor, Σ `duration_s` ≈ runtime, hold lengths)
+  into a per-act shot target, **weighted heaviest in the first 60s**; never a static ambient shot under the
+  first 3–5s. A short-summing list gets stretched at render, leaving one visual dead 15–25s: **densify,
+  never lengthen holds.** 3c audits each act against its number.
+
+### 3b — Author act by act
+**Before each act, re-read `example-shots.md` + `visual-grammar.md` §1–3.** Skipping the re-read is how the
+back half goes literal. Then run Step 2 on every line of that act, in narration order.
 - **Anchor every shot with a `vo_ref`** copied VERBATIM from `script.md` — that VO line's opening words,
   **≥4 where the sentence has them; a shorter sentence anchors on its full text** (a `[PAUSE]`-bounded
   "The audit passed." is a legal 3-word anchor) — exact wording and order, never reworded or
@@ -72,17 +106,18 @@ named, the most recently scripted, or ask. **No `script.md` → stop** and say t
   shot's script position. `render-builder` times each cut off the first 4 normalized words (all of them
   when there are fewer), so a bad anchor mis-places the shot. Anchor only on SPOKEN text: an italic
   authoring note in the script is not narration and matches nothing.
-- **Cadence + coverage (lint-enforced):** 1.5–3s per shot (up to 4s only where the beat earns it), at
-  least `Estimated runtime ÷ 4s` shots, and Σ `duration_s` ≈ `Estimated runtime` — read the runtime and
-  the rate off the script header ("N words ÷ M wpm"), never a fixed 150; the header's rate is the
-  channel's MEASURED voice, and sizing off a slower one buys shots for a video that doesn't exist. A
-  short-summing list gets stretched at render, leaving one visual dead 15–25s — **densify, never
-  lengthen holds.**
-- **Weight the density heaviest in the first 60s**; never leave a static ambient shot under the first
-  3–5s. A shot covering more than ~8s of VO means densify there, never widen the image's scope.
-- **Reserve the most striking staging** for the opening, the mid-video re-arm (55–65%), and the withheld
-  peak in the final 20%. A character enters on the line that NAMES them.
-- Deltas run 1.5–3s; a base or hold frame 4–12s.
+- A shot covering more than ~8s of VO means densify there, never widen the image's scope.
+
+### 3c — Close each act: lint the partial file, then self-audit for drift
+Run the Step 7 lint command on the partial file. **Two HARD findings are EXPECTED until the file is
+complete** — the duration-sum and shot-floor checks measure the whole runtime — and are judged only at
+Step 7; **every other HARD finding is a real defect, fixed now**, while the act is fresh.
+Then write yourself ONE paragraph on the act just closed: **non-literal share** (any shot merely drawing
+its line's words?), **class variety** (which `shot_class` values repeated, and has one become a reflex?),
+**red-ink count** (red is the one semantic accent — alarm / prohibition / ownership / the punch element —
+so a rising count means it is turning into decoration), and **cadence vs the 3a budget** (shot count and Σ
+`duration_s` against this act's target). A drifting act is re-authored here, not left for the critic:
+Step 8 is whole-file and one cycle only.
 
 ## Step 4 — Thumbnails (primary + 2 challengers, derived from script + dna)
 Derive the concept yourself from `script.md`'s hook and withheld peak plus `dna.md`'s thumbnail grammar,

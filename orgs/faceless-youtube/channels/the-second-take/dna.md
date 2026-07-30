@@ -110,17 +110,19 @@ long_form: staged       # writers-room: outline → section drafts → accuracy/
 
 ### Voiceover config (machine-read by the `voiceover` skill)
 ```yaml
-voice_id: vSjOBQp24DUB2COr2xI9   # LOCKED 2026-07-06 — ElevenLabs library "Miles". Replaces Jake (hxPRa8HUuKYsm1kiWDEi).
-                                 # In-gate ~148 Hz (D3), bright/young. Consistency PROVEN at stability 0.25:
-                                 # F0 148.1/148.1/144.1 across 2 rolls + a 2nd passage; ~175 wpm; ~18% pause.
+voice_id: iP95p4xoKVk53GoZ742B   # LOCKED 2026-07-30 (Daniel ear gate) — ElevenLabs premade "Chris"
+                                 # (Charming, Down-to-Earth). Replaces Miles (vSjOBQp24DUB2COr2xI9; locked
+                                 # 2026-07-06, superseded after the bricks-slice A/B + 9-clip re-audition:
+                                 # Chris beat Miles and 6 library challengers at the dials below).
+                                 # Premade fingerprint caveat on record (HM voice-lab.md §Round 1).
 model_id: eleven_v3              # v3 = expressive; verified working with /with-timestamps (render-sync intact)
-stability: 0.20                   # LOWERED 2026-07-28 (Daniel) — more variance + vocal emphasis, supersedes
-                                 # the 0.25 lock. The 0.25-era consistency proof above does NOT cover this
-                                 # value; re-proof by ear on the next real VO render before trusting it.
+stability: 0.10                   # LOWERED 2026-07-30 (Daniel) — max variance/creativity on Chris; proven on
+                                 # the full 103s bricks-slice VO (clean single-take, ~171 wpm measured)
 similarity_boost: 0.85
-style: 0.6                        # RAISED 2026-07-28 (Daniel) — more vocal emphasis, was 0.4 light-expressive
+style: 0.75                       # RAISED 2026-07-30 (Daniel) — "almost perfect" at this level; 0.70/0.65
+                                 # auditioned and declined
 use_speaker_boost: true           # v3 ignores this flag; harmless to leave
-speed: 1.0                        # runs the liked pace natively (~175 gross wpm) — do NOT slow
+speed: 1.0
 output_format: mp3_44100_128
 ```
 

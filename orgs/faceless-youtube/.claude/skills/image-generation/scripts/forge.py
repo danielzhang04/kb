@@ -6,12 +6,14 @@ checklist, the retry/escalate loop). This script owns the mechanics: read the bi
 seed off the right reference frame, call the image engine, stage the output, and index verified assets.
 
 Reads (per channel visual-kit):
-  <kit>/style-bible.md          §2 identity descriptor + §2b style-only descriptor (blockquotes)
+  <kit>/style-bible.md          §2 identity + §2b style-only descriptors, §2c rig-hold, §2d crowd-rig
+                                and §2e base-rig clauses (all read as blockquotes, never retyped)
   <kit>/registry/registry.json  characters + assets (seed frames, reuse index)
   <kit>/refs/<character>/...     canonical reference frames to seed from
 
 Subcommands:
-  gen      generate one or a --batch of assets into <kit>/_staging/  (does NOT auto-register)
+  gen      generate one or a --batch of assets into <kit>/_staging/  (does NOT auto-register);
+           --dry-run assembles + prints every prompt and calls nothing (batch pre-flight)
   montage  build a QC contact sheet of a directory for Claude to open
   register move a VERIFIED staged frame into refs/ and add it to registry.json
   lookup   reuse-before-regenerate: print an existing asset's file for (character, tag) if present
@@ -37,9 +39,20 @@ def ctx():
     except Exception:
         return ssl.create_default_context()
 
-def nano(url, parts, aspect, context):
+# Engine resolution tiers (`imageConfig.imageSize`): "1K" | "2K" | "4K". UNSET means 1K, which is
+# what every generation before 2026-07-29 silently got — below the 1920x1080 long-form delivery
+# frame (1K at 16:9 is ~1344x768), so full-frame scenes were being upscaled at render and the crop
+# battery zoomed 3-4x into interpolated pixels. 2K is the first tier that clears delivery with
+# headroom to zoom; 4K is the top tier at ~6x the 1K price, so it is a per-run spend decision
+# (`--image-size 4K`), never a silent default.
+IMAGE_SIZES = ("1K", "2K", "4K")
+IMAGE_SIZE_DEFAULT = "2K"
+
+
+def nano(url, parts, aspect, context, image_size=IMAGE_SIZE_DEFAULT):
     payload = {"contents": [{"parts": parts}],
-               "generationConfig": {"responseModalities": ["IMAGE"], "imageConfig": {"aspectRatio": aspect}}}
+               "generationConfig": {"responseModalities": ["IMAGE"],
+                                    "imageConfig": {"aspectRatio": aspect, "imageSize": image_size}}}
     req = urllib.request.Request(url, data=json.dumps(payload).encode(),
                                  headers={"Content-Type": "application/json"}, method="POST")
     for a in range(5):
@@ -175,22 +188,138 @@ def depicts_figures(prompt):
     return bool(_FIGURE_RE.search(p))
 
 
-def should_hold(mode, resolved_seeds, delta=""):
+def should_hold(mode, resolved_seeds, delta="", figures=None):
     """Append the §2c RIG-HOLD block when a figure is in frame AND the mode isn't `identity`
     (identity gens already carry the full rig via the §2 descriptor, so re-appending is redundant).
 
     "A figure is in frame" is decided by CONTENT first — the prompt says what the image depicts —
     with the character-bearing seed list kept as a second, independent signal so a terse delta on
-    a seeded character (e.g. "him, seated") still holds. Either signal is sufficient."""
+    a seeded character (e.g. "him, seated") still holds. A `figures` declaration is a THIRD signal
+    and the most explicit of the three: the shot states outright that anonymous figures are staged.
+    Any signal is sufficient."""
     if mode not in ("new_character", "environment", "style"):
         return False
+    if figures:
+        return True
     if depicts_figures(delta):
         return True
     return any(_is_char_seed(s) for s in resolved_seeds)
 
 
+# --- `figures` expansion: a shot's DECLARATION -> the bible's §2d/§2e clause text ----------------
+# VPW declares anonymous-figure TIERS in the shot's `figures` field
+# (`{"anon_foreground": ["the worker at the dock edge"], "crowd": true}`) and forge expands them at
+# gen time from the bible's §2d/§2e blockquotes — the same source-of-truth move as the §2c
+# auto-append above. Before this, VPW pasted the clause text into `still_prompt` by hand and 5 of
+# the 15 defects the bricks-segment critic found were rig-clause defects of exactly the kinds
+# hand-pasting produces: the clause dropped from a shot that needed it, the simplified §2d crowd
+# clause worn by a foreground figure, and §2e's invent-a-distinct-outfit sentence repeated onto a
+# DELTA shot whose whole job was holding that figure unchanged. Expanding from one place, with the
+# stage_role deciding base-vs-held wording, removes the class rather than the instances.
+_FIG_KEYS = ("anon_foreground", "crowd")
+
+# §2e is written for ONE figure ("This prominent foreground figure is an anonymous, non-recurring
+# person drawn on the FULL base family rig — ..."). The expansion keeps its rig TAIL verbatim (that
+# tail IS the law) and replaces only the leading clause with the named list, so the bible stays the
+# single source of the invariants. The anchor is also `lint_shots.py`'s rig-clause fingerprint, so
+# a bible rewording that moved it would be caught at lint, not silently here.
+_BASE_RIG_ANCHOR = "FULL base family rig"
+
+# The clause must not leak onto the rest of the cast: an unbounded "anonymous, non-recurring person"
+# paragraph invites the engine to re-draw a NAMED figure as a generic one. The bible's §2e template
+# may already END in that binding, so the append is IDEMPOTENT (`_has_binding`) — stating it twice in
+# one prompt is the redundancy the measured long-prompt degradation punishes.
+_FIG_BINDING = ("This clause binds ONLY the figure(s) named above — no other figure in this image "
+                "takes it, and every named cast member keeps its canonical description.")
+
+
+def _has_binding(text):
+    """True when a clause already carries the named-cast protection binding (both halves of it:
+    the no-other-figure scope AND the canonical-description carve-out for named cast)."""
+    t = (text or "").lower()
+    return "other figure in" in t and "canonical descri" in t
+
+
+def _fig_declared(figures):
+    """Normalize + validate one shot's `figures` field -> `(anon_foreground: [str], crowd: bool)`.
+    A malformed field HARD-ERRORS instead of degrading to no clause: a large anonymous figure with
+    no rig clause is an off-rig frame that gets paid for twice (lint enforces the same shape
+    upstream, so reaching here malformed means the shot bypassed lint)."""
+    if not figures:
+        return [], False
+    if not isinstance(figures, dict):
+        raise SystemExit('`figures` must be an object like {"anon_foreground": ["the clerk"], "crowd": true}')
+    unknown = sorted(k for k in figures if k not in _FIG_KEYS)
+    if unknown:
+        raise SystemExit(f"`figures` has unknown key(s): {', '.join(unknown)} "
+                         f"(allowed: {', '.join(_FIG_KEYS)})")
+    anon = figures.get("anon_foreground") or []
+    if isinstance(anon, str) or not isinstance(anon, (list, tuple)):
+        raise SystemExit("`figures.anon_foreground` must be a LIST of phrases — one per anonymous "
+                         "foreground figure, each the exact phrase the prompt uses for it")
+    anon = [str(a).strip() for a in anon if str(a).strip()]
+    crowd = figures.get("crowd", False)
+    if not isinstance(crowd, bool):
+        raise SystemExit("`figures.crowd` must be true or false")
+    return anon, crowd
+
+
+def _rig_tail(base_rig):
+    """§2e from the base-rig anchor onward — the rig invariants, verbatim. A bible reworded past the
+    anchor falls back to the WHOLE clause: a clumsy sentence beats a frame with no rig law."""
+    i = base_rig.find(_BASE_RIG_ANCHOR)
+    if i < 0:
+        return base_rig
+    return base_rig[i + len(_BASE_RIG_ANCHOR):].lstrip()
+
+
+def figures_expansion(figures, base_rig, crowd_rig, stage_role=None):
+    """The §2d/§2e clause text for one shot's `figures` declaration.
+
+    BASE / standalone shot: §2e pluralized over `anon_foreground`, opening by naming the entries
+    VERBATIM — they are the phrases the prompt itself stages, so the engine can bind clause to
+    figure — and closing with the named-cast protection binding.
+    DELTA shot (`stage_role == "delta"`): held-figure wording instead. §2e's tail ends in "Give them
+    a distinct, era-appropriate outfit and hair", which is a FIRST-ESTABLISHMENT instruction; on a
+    delta it asks the engine to redesign the exact figure the chain exists to hold.
+    `crowd: true` appends the §2d CROWD-RIG clause unchanged — it states a simplified rig rather
+    than inventing anything, so it is correct on a base and a delta alike.
+    Returns "" when nothing is declared, so a shot with no `figures` field assembles byte-identically
+    to before this field existed."""
+    anon, crowd = _fig_declared(figures)
+    blocks = []
+    if anon:
+        named = "; ".join(anon)
+        one = len(anon) == 1
+        if str(stage_role).lower() == "delta":
+            head = (f"The anonymous figure — {named} — is unchanged, exactly as established" if one
+                    else f"The anonymous figures — {named} — are unchanged, exactly as established")
+            blocks.append(f"{head}: hold the established outfit, hair, face and rig exactly as the "
+                          f"previous frame in this stage, and do not redesign. {_FIG_BINDING}")
+        elif base_rig:
+            head = (f"The following figure — {named} — is an anonymous, non-recurring person drawn "
+                    f"on the {_BASE_RIG_ANCHOR}" if one else
+                    f"The following figures — {named} — are anonymous, non-recurring people drawn "
+                    f"on the {_BASE_RIG_ANCHOR}")
+            tail = _rig_tail(base_rig)
+            blocks.append(f"{head} {tail}" if _has_binding(tail) else
+                          f"{head} {tail} {_FIG_BINDING}")
+    if crowd and crowd_rig:
+        blocks.append(crowd_rig)
+    return "\n\n".join(blocks)
+
+
+def assemble_prompt(descriptor, delta, figures_text="", righold=""):
+    """Prompt assembly, ONE place, in order: [bible descriptor] + [still_prompt/delta] + [figures
+    expansion] + [§2c RIG-HOLD]. The figures clauses precede §2c so that its crowd exemption
+    ("crowd figures instead follow the §2d CROWD-RIG clause when the prompt states it") reads a
+    clause the prompt has already stated. The shot's `global_prompt_suffix` rides inside the
+    still_prompt (VPW bakes it in), so it is not a separate slot here."""
+    return "\n\n".join(p for p in (descriptor, delta, figures_text, righold) if p)
+
+
 class Kit:
-    def __init__(self, kit):
+    def __init__(self, kit, dry=False):
         self.kit = os.path.abspath(kit)
         # repo root = two levels above channels/<name>/visual-kit -> walk up to find .env
         d = self.kit
@@ -207,12 +336,19 @@ class Kit:
         self.desc_identity = blockquote_after(md, "LOCKED STYLE descriptor")
         self.desc_style = blockquote_after(md, "STYLE-ONLY descriptor")
         self.desc_righold = blockquote_after(md, "RIG-HOLD descriptor")
+        self.desc_crowdrig = blockquote_after(md, "CROWD-RIG clause")   # §2d, expanded from `figures`
+        self.desc_baserig = blockquote_after(md, "BASE-RIG clause")     # §2e, expanded from `figures`
         self.reg = json.load(open(self.reg_path, encoding="utf-8"))
-        env = load_env(self.root)
-        self.key = env["GEMINI_API_KEY"]
         self.model = self.reg.get("engine", "gemini-3-pro-image")
-        self.url = self.url_for()
-        self.ctx = ctx()
+        self.dry = dry
+        if dry:
+            # A dry assembly reads the bible + registry and nothing else: no key is loaded and no
+            # request URL exists, so a pre-flight check cannot reach the engine even by mistake.
+            self.key, self.url, self.ctx = "", None, None
+        else:
+            self.key = load_env(self.root)["GEMINI_API_KEY"]
+            self.url = self.url_for()
+            self.ctx = ctx()
 
     def url_for(self):
         # ONE engine for every generation: the registry `engine` (gemini-3-pro-image). No tiers.
@@ -233,22 +369,28 @@ class Kit:
             if os.path.exists(cand): return cand
         raise SystemExit(f"seed frame not found: {s}")
 
-    def prompt_for(self, mode, delta, hold=False):
+    def prompt_for(self, mode, delta, hold=False, figures=None, stage_role=None):
         if mode == "identity":
-            text = self.desc_identity + "\n\n" + delta
+            descriptor = self.desc_identity
         elif mode in ("new_character", "environment", "style"):
-            text = self.desc_style + "\n\n" + delta
+            descriptor = self.desc_style
         else:
             raise SystemExit(f"unknown mode '{mode}'")
-        if hold and self.desc_righold:
-            text = text + "\n\n" + self.desc_righold
-        return text
+        return assemble_prompt(
+            descriptor, delta,
+            figures_expansion(figures, self.desc_baserig, self.desc_crowdrig, stage_role),
+            self.desc_righold if hold else "")
 
-def cmd_gen(k, reqs, force):
+def cmd_gen(k, reqs, force, image_size=IMAGE_SIZE_DEFAULT, dry=False):
     # Results are reported AS THEY LAND, not buffered to the end of the batch. A 20-scene batch
     # is otherwise ~15 minutes of total silence, which (a) trips agent stream watchdogs and
     # (b) hides a systematic per-gen failure until every call has already been paid for — a
     # missing Pillow install once burned a batch's worth of API calls before the first line printed.
+    #
+    # `dry=True` runs the whole request path except the call itself and PRINTS each assembled prompt:
+    # the batch pre-flight for "confirm the step is correctly configured before a batch run". It
+    # still resolves seeds (so a missing seed is caught for free) and ignores skip-if-exists, since
+    # the point is to read every prompt, not to see which files already landed.
     os.makedirs(k.staging, exist_ok=True)
     results = []
     total = len(reqs)
@@ -260,7 +402,7 @@ def cmd_gen(k, reqs, force):
     for r in reqs:
         name = r["name"]; mode = r.get("mode", "identity")
         out = os.path.join(k.staging, name + ".png")
-        if os.path.exists(out) and not force:
+        if os.path.exists(out) and not force and not dry:
             report(name, "skip (exists in staging)"); continue
         seeds = r.get("seed")
         if not seeds:
@@ -277,12 +419,27 @@ def cmd_gen(k, reqs, force):
                     "back to a stock-clipart prior")
         else:
             seeds = [k.resolve_seed(s) for s in seeds]
-        hold = should_hold(mode, seeds, r["delta"])
-        parts = [ip(s) for s in seeds] + [{"text": k.prompt_for(mode, r["delta"], hold=hold)}]
+        figures = r.get("figures")
+        hold = should_hold(mode, seeds, r["delta"], figures)
+        text = k.prompt_for(mode, r["delta"], hold=hold, figures=figures,
+                            stage_role=r.get("stage_role"))
+        aspect = r.get("aspect", "2:3")
+        size = r.get("image_size") or image_size
+        if size not in IMAGE_SIZES:
+            raise SystemExit(f"{name}: unknown image_size '{size}' (allowed: {', '.join(IMAGE_SIZES)})")
+        if dry:
+            report(name, f"DRY (no API call) mode={mode} aspect={aspect} size={size}")
+            print(f"      seeds: {[os.path.relpath(s, k.root).replace(chr(92), '/') for s in seeds]}")
+            print("      ----- assembled prompt -----")
+            for ln in text.splitlines():
+                print("      " + ln)
+            print("      ----- end -----", flush=True)
+            continue
+        parts = [ip(s) for s in seeds] + [{"text": text}]
         try:
             # S1-A: compute + validate the bytes BEFORE opening the file, so a failed/empty gen can
             # never truncate `out` to a 0-byte survivor that skip-if-exists + render then treat as done.
-            data = nano(k.url, parts, r.get("aspect", "2:3"), k.ctx)
+            data = nano(k.url, parts, aspect, k.ctx, size)
             data = to_png_bytes(data)  # engine returns JPEG; normalize to the pipeline's PNG contract
             validate_png(data)
             with open(out, "wb") as f:
@@ -290,6 +447,9 @@ def cmd_gen(k, reqs, force):
             report(name, "OK -> _staging/" + name + ".png")
         except Exception as e:
             report(name, "ERR " + str(e)[:160])
+    if dry:
+        print(f"  == DRY RUN: {len(results)} prompts assembled, 0 API calls, 0 files written ==", flush=True)
+        return
     ok = sum(1 for _, s in results if s.startswith("OK"))
     err = sum(1 for _, s in results if s.startswith("ERR"))
     print(f"  == {ok} generated, {err} failed, {len(results) - ok - err} skipped ==", flush=True)
@@ -460,6 +620,15 @@ def main():
     ap.add_argument("--mode", default="identity"); ap.add_argument("--delta")
     ap.add_argument("--aspect", default="2:3"); ap.add_argument("--seed", help="comma-separated seed frames")
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--image-size", default=IMAGE_SIZE_DEFAULT, choices=list(IMAGE_SIZES),
+                    help=f"gen: engine resolution tier (default {IMAGE_SIZE_DEFAULT}; 4K is the top "
+                         f"tier at ~6x the 1K price, so it is a per-run spend call)")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="gen: assemble and PRINT every prompt, make NO API call (batch pre-flight)")
+    ap.add_argument("--figures", help="gen: one shot's `figures` field as JSON, e.g. "
+                                     "'{\"anon_foreground\": [\"the clerk\"], \"crowd\": true}'")
+    ap.add_argument("--stage-role", choices=["base", "delta"],
+                    help="gen: the shot's stage_role (delta -> held-figure `figures` wording)")
     ap.add_argument("--dir", help="montage: folder of PNGs (rel to kit or abs)")
     ap.add_argument("--out", help="montage: output png path"); ap.add_argument("--cols", type=int, default=4)
     ap.add_argument("--tag")
@@ -475,14 +644,17 @@ def main():
     ap.add_argument("--slug", help="manifest: video_slug for the envelope")
     ap.add_argument("--notes", help="manifest: free-text notes for the envelope")
     a = ap.parse_args()
-    k = Kit(a.kit)
+    dry = a.dry_run and a.cmd == "gen"
+    k = Kit(a.kit, dry=dry)
     if a.cmd == "gen":
         if a.batch:
             reqs = json.load(open(a.batch, encoding="utf-8"))
         else:
             reqs = [{"name": a.name, "character": a.character, "mode": a.mode, "delta": a.delta,
-                     "aspect": a.aspect, "seed": a.seed.split(",") if a.seed else None}]
-        cmd_gen(k, reqs, a.force)
+                     "aspect": a.aspect, "seed": a.seed.split(",") if a.seed else None,
+                     "figures": json.loads(a.figures) if a.figures else None,
+                     "stage_role": a.stage_role}]
+        cmd_gen(k, reqs, a.force, a.image_size, dry)
     elif a.cmd == "montage":
         cmd_montage(k, a.dir, a.out, a.cols)
     elif a.cmd == "register":
