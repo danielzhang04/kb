@@ -194,7 +194,13 @@ def test_kit_dry_true_loads_no_key_and_builds_no_url():
 
 
 def test_cmd_gen_dry_run_writes_zero_files_into_staging():
+    """MEDIUM-9 (audit follow-up): git does not track empty directories and there is no
+    `.gitkeep`, so `_staging/` may not exist yet on a fresh clone — `cmd_gen` itself is happy to
+    create it (`os.makedirs(..., exist_ok=True)`), but this test used to list the directory
+    BEFORE calling cmd_gen, raising FileNotFoundError before the assertion ever ran, on any clean
+    checkout, not just this one. Create it (matching what cmd_gen does) before the `before` snapshot."""
     k = Kit(str(KIT_ROOT), dry=True)
+    os.makedirs(k.staging, exist_ok=True)
     name = "zzz-audit-fix10-dry-run-guard"
     out_path = os.path.join(k.staging, name + ".png")
     if os.path.exists(out_path):

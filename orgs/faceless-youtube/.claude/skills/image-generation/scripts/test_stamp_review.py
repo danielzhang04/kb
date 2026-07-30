@@ -186,6 +186,55 @@ def test_classify_defect_with_empty_axes_and_why_still_has_a_reason():
 
 
 # --------------------------------------------------------------------------- #
+# MEDIUM-10 (audit follow-up) — a ruling that OMITS the dsg checklist entirely must not be
+# indistinguishable from a genuine pre-checklist ruling once `require_dsg` says the current
+# schema is in play; and a ruling with NO axis info at all must park, not default to clean.
+# --------------------------------------------------------------------------- #
+def test_missing_dsg_is_still_a_noop_when_not_required():
+    # the documented legacy behaviour, unchanged: require_dsg defaults False
+    r = _ruling("L30", "clean")
+    assert stamp_review.classify(r) == ("verified", [])
+    r2 = _ruling("L31", "clean"); r2["dsg"] = None
+    assert stamp_review.classify(r2) == ("verified", [])
+
+
+def test_missing_dsg_parks_when_required():
+    """The defect this closes: a fidelity judge that silently failed to emit its checklist used
+    to be indistinguishable from a genuine pre-checklist ruling — both verified. With
+    `require_dsg=True` (the video's shots.json declares the current schema), an absent OR
+    explicit-null `dsg` now parks instead."""
+    r = _ruling("L32", "clean")
+    status, reasons = stamp_review.classify(r, require_dsg=True)
+    assert status == "parked", (status, reasons)
+    assert any("dsg" in x for x in reasons), reasons
+
+    r2 = _ruling("L33", "clean"); r2["dsg"] = None
+    status2, reasons2 = stamp_review.classify(r2, require_dsg=True)
+    assert status2 == "parked", (status2, reasons2)
+
+
+def test_dsg_present_and_clean_still_verifies_when_required():
+    r = _ruling("L34", "clean")
+    r["dsg"] = [{"id": "e1", "q": "a wall is present", "verdict": "pass"}]
+    assert stamp_review.classify(r, require_dsg=True) == ("verified", [])
+
+
+def test_bare_ruling_with_no_axis_keys_at_all_parks_not_verifies():
+    """A ruling like `{"id": "L5"}` — no worst, no f/s/r, no dsg — used to default every axis to
+    "clean" and verify. That is silence, not evidence; the operating law disallows it."""
+    status, reasons = stamp_review.classify({"id": "L5"})
+    assert status == "parked", (status, reasons)
+    assert reasons, reasons
+
+
+def test_a_ruling_with_at_least_one_axis_still_gets_the_missing_axis_default():
+    """Only a TOTALLY bare ruling parks by default — one that names even a single clean axis
+    still gets the "missing axis defaults to clean" convenience for the others."""
+    status, reasons = stamp_review.classify({"id": "L6", "f": "clean"})
+    assert status == "verified", (status, reasons)
+
+
+# --------------------------------------------------------------------------- #
 # stamp()/main() — writing onto the manifest
 # --------------------------------------------------------------------------- #
 def test_clean_ruling_writes_verified_status():
@@ -305,6 +354,84 @@ def test_write_is_atomic_no_tmp_left_behind():
         stamp_review.main([str(base)])
         leftovers = [p.name for p in mpath.parent.iterdir() if p.suffix == ".tmp"]
         assert leftovers == [], leftovers
+
+
+# --------------------------------------------------------------------------- #
+# MEDIUM-10 end-to-end — main() reads <video_dir>/shots.json to decide `require_dsg`, the same
+# fail-closed law lint_shots.py's HIGH-5 fix uses: only an explicit v1 declaration is legacy.
+# --------------------------------------------------------------------------- #
+def _write_shots_json(base: Path, schema):
+    data = {"channel": "c", "video_slug": "t"}
+    if schema is not None:
+        data["schema"] = schema
+    (base / "shots.json").write_text(json.dumps(data), encoding="utf-8")
+
+
+def test_main_v2_shots_json_parks_a_ruling_with_no_dsg():
+    with tempfile.TemporaryDirectory() as td:
+        base = Path(td)
+        _write_shots_json(base, "faceless-youtube/shots@2")
+        mpath = _write_video_dir(
+            base, [_ruling("L01", "clean")],
+            {"video_slug": "t", "generated": "2026", "notes": "", "shots": [_entry("L01")]})
+        stamp_review.main([str(base)])
+        e = _read(mpath)["shots"][0]
+        assert e["review_status"] == "parked", e
+        assert any("dsg" in x for x in e["parked_reasons"]), e
+
+
+def test_main_explicit_v1_shots_json_keeps_missing_dsg_a_noop():
+    """The real 2026-07-19-wells-fargo shots.json declares itself v1 explicitly, and its 119
+    rulings genuinely predate the DSG-lite checklist. That must keep verifying."""
+    with tempfile.TemporaryDirectory() as td:
+        base = Path(td)
+        _write_shots_json(base, "faceless-youtube/shots@1")
+        mpath = _write_video_dir(
+            base, [_ruling("L01", "clean")],
+            {"video_slug": "t", "generated": "2026", "notes": "", "shots": [_entry("L01")]})
+        stamp_review.main([str(base)])
+        e = _read(mpath)["shots"][0]
+        assert e["review_status"] == "verified", e
+
+
+def test_main_missing_schema_key_in_shots_json_requires_dsg():
+    """Fail-closed, same as HIGH-5: a shots.json present but with no `schema` key at all is NOT
+    treated as legacy — it requires dsg like an explicit v2 file."""
+    with tempfile.TemporaryDirectory() as td:
+        base = Path(td)
+        _write_shots_json(base, None)
+        mpath = _write_video_dir(
+            base, [_ruling("L01", "clean")],
+            {"video_slug": "t", "generated": "2026", "notes": "", "shots": [_entry("L01")]})
+        stamp_review.main([str(base)])
+        e = _read(mpath)["shots"][0]
+        assert e["review_status"] == "parked", e
+
+
+def test_main_typo_schema_in_shots_json_requires_dsg():
+    with tempfile.TemporaryDirectory() as td:
+        base = Path(td)
+        _write_shots_json(base, "faceless-youtube/shots@3")
+        mpath = _write_video_dir(
+            base, [_ruling("L01", "clean")],
+            {"video_slug": "t", "generated": "2026", "notes": "", "shots": [_entry("L01")]})
+        stamp_review.main([str(base)])
+        e = _read(mpath)["shots"][0]
+        assert e["review_status"] == "parked", e
+
+
+def test_main_no_shots_json_at_all_stays_a_noop():
+    """No shots.json is not a real pipeline state (VPW always writes one first) — only an
+    isolated/test invocation hits this, and it must not silently change behaviour for every
+    existing caller that never had an opinion on schema version."""
+    with tempfile.TemporaryDirectory() as td:
+        base = Path(td)
+        mpath = _write_video_dir(
+            base, [_ruling("L01", "clean")],
+            {"video_slug": "t", "generated": "2026", "notes": "", "shots": [_entry("L01")]})
+        stamp_review.main([str(base)])
+        e = _read(mpath)["shots"][0]
+        assert e["review_status"] == "verified", e
 
 
 # --------------------------------------------------------------------------- #

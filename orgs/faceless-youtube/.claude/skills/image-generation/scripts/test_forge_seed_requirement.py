@@ -118,6 +118,30 @@ def test_item_image_size_at_or_below_the_ceiling_passes():
         assert "DRY" in out.getvalue()
 
 
+def test_bad_ceiling_from_a_direct_caller_hard_errors_cleanly():
+    """LOW (audit follow-up): the CEILING itself (the `image_size` KEYWORD arg) was never
+    validated — only the per-item `size` was, and when NO per-item override is given `size`
+    defaults to the ceiling itself, which happened to route a bad ceiling through that same
+    check too (no per-item override -> `size == image_size`). The gap only opens with a VALID
+    per-item `image_size` (so the per-item check passes clean) alongside a BAD ceiling: control
+    then reaches `IMAGE_SIZE_RANK[image_size]` unguarded and raises a raw KeyError. Unreachable
+    via the documented CLI (argparse's `choices` already refuses this before cmd_gen ever runs),
+    but a direct caller hits it — this must now be a clean refusal, not a KeyError."""
+    tmp = tempfile.mkdtemp()
+    seed = _seed_file(tmp, "s.png", 1024)
+    k = _stub_kit(staging=tmp)
+    for bad_ceiling in ("3K", "", None):
+        req = {"name": "shot", "mode": "environment", "delta": "d", "seed": [seed], "image_size": "2K"}
+        try:
+            cmd_gen(k, [req], True, image_size=bad_ceiling, dry=True)
+        except KeyError:
+            assert False, f"a bad ceiling {bad_ceiling!r} raised a raw KeyError instead of a clean refusal"
+        except SystemExit as e:
+            assert "image-size" in str(e) or "image_size" in str(e), str(e)
+        else:
+            assert False, f"a bad ceiling {bad_ceiling!r} should have hard-errored"
+
+
 def test_success_log_line_prints_the_resolved_size():
     tmp = tempfile.mkdtemp()
     seed = _seed_file(tmp, "s.png", 1024)

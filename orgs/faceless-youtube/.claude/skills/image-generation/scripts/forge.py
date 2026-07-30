@@ -420,6 +420,14 @@ def cmd_gen(k, reqs, force, image_size=IMAGE_SIZE_DEFAULT, dry=False):
     # the batch pre-flight for "confirm the step is correctly configured before a batch run". It
     # still resolves seeds (so a missing seed is caught for free) and ignores skip-if-exists, since
     # the point is to read every prompt, not to see which files already landed.
+    # LOW (audit follow-up): the CEILING itself was never validated against IMAGE_SIZES/
+    # IMAGE_SIZE_RANK — only the per-item `size` was (line below). Unreachable through the
+    # documented CLI (argparse's `choices=list(IMAGE_SIZES)` on --image-size already refuses a bad
+    # value before cmd_gen ever runs), so this is hardening only: a direct (non-CLI) caller passing
+    # a bad or None ceiling used to get a raw `KeyError` out of `IMAGE_SIZE_RANK[image_size]` below
+    # instead of a clean, named refusal — the same shape the per-item check already gives.
+    if image_size not in IMAGE_SIZES:
+        raise SystemExit(f"unknown --image-size ceiling {image_size!r} (allowed: {', '.join(IMAGE_SIZES)})")
     os.makedirs(k.staging, exist_ok=True)
     results = []
     total = len(reqs)

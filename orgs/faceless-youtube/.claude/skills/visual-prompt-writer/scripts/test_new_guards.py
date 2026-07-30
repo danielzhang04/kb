@@ -279,13 +279,71 @@ def test_g6_the_house_suffix_alone_is_silent():
     assert _run(L.rig_clause_check, "a plain den with a console television") == []
 
 
-def test_g6_bare_drawn_as_follows_on_a_non_figure_subject_is_silent():
+def test_g6_bare_drawn_as_follows_on_a_non_figure_subject_is_soft_not_hard():
     """FIX 12 (audit follow-up): 'drawn as follows' is VPW's own habitual lead-in phrase, not
     style-bible text, so the fingerprint must anchor to a FIGURE subject the way the real
     lead-in ('The stall keeper is drawn as follows.') always has — ordinary prose describing a
-    non-person diagram must not HARD-fail."""
-    assert _run(L.rig_clause_check, "A wall chart of quarterly earnings is drawn as follows: "
-                "three bars rising left to right, tallest at the far right.") == []
+    non-person diagram must not HARD-fail.
+
+    HIGH-6 (audit follow-up): it is no longer perfectly silent either — every bare occurrence of
+    the phrase now produces a soft heads-up (never zero signal), it just never escalates to HARD
+    for an un-anchored subject."""
+    hard, soft = [], []
+    L.rig_clause_check("lf", _p("A wall chart of quarterly earnings is drawn as follows: "
+                                 "three bars rising left to right, tallest at the far right."),
+                        SUFFIX, hard, soft)
+    assert hard == [] and len(soft) == 1 and "drawn as follows" in soft[0], (hard, soft)
+
+
+# --- HIGH-6 (audit follow-up): _RIG_LEADIN_FIGURE_WORD is a closed noun list against an open
+# English word class. A real §2d/§2e lead-in phrased around an off-list noun (vendor, customer,
+# cashier, guard, ...) used to escape _RIG_CLAUSE and rig_clause_check returned ZERO hits — the
+# exact "silence is disallowed" failure the operating law forbids. These off-list nouns must now
+# always produce at least a SOFT hit. ------------------------------------------------------------
+def test_g6_offlist_noun_vendor_still_produces_a_soft_signal():
+    hard, soft = [], []
+    L.rig_clause_check("lf", _p("The vendor is drawn as follows: a stooped figure with a canvas "
+                                 "apron, restocking a fruit cart."), SUFFIX, hard, soft)
+    assert hard == [] and len(soft) == 1 and "drawn as follows" in soft[0], (hard, soft)
+
+
+def test_g6_offlist_noun_customer_still_produces_a_soft_signal():
+    hard, soft = [], []
+    L.rig_clause_check("lf", _p("The customer is drawn as follows: a hunched shape at the "
+                                 "counter, coat still buttoned."), SUFFIX, hard, soft)
+    assert hard == [] and len(soft) == 1, (hard, soft)
+
+
+def test_g6_offlist_noun_cashier_still_produces_a_soft_signal():
+    hard, soft = [], []
+    L.rig_clause_check("lf", _p("The cashier is drawn as follows: a narrow silhouette behind the "
+                                 "till, sleeves rolled."), SUFFIX, hard, soft)
+    assert hard == [] and len(soft) == 1, (hard, soft)
+
+
+def test_g6_offlist_noun_guard_still_produces_a_soft_signal():
+    hard, soft = [], []
+    L.rig_clause_check("lf", _p("The guard is drawn as follows: a squared-off shape by the door, "
+                                 "cap pulled low."), SUFFIX, hard, soft)
+    assert hard == [] and len(soft) == 1, (hard, soft)
+
+
+def test_g6_offlist_noun_merchant_still_produces_a_soft_signal():
+    hard, soft = [], []
+    L.rig_clause_check("lf", _p("The merchant is drawn as follows: a rounded shape behind the "
+                                 "stall, apron dusted with flour."), SUFFIX, hard, soft)
+    assert hard == [] and len(soft) == 1, (hard, soft)
+
+
+def test_g6_anchored_and_unanchored_in_the_same_prompt_report_both():
+    """An anchored figure-noun clause (HARD) and a separate off-list-noun clause (SOFT) in the
+    same prompt must not suppress each other."""
+    hard, soft = [], []
+    L.rig_clause_check(
+        "lf", _p("The stall keeper is drawn as follows: round head, no nose, no ears. Behind him "
+                 "the vendor is drawn as follows: a stooped figure with a canvas apron."),
+        SUFFIX, hard, soft)
+    assert len(hard) == 1 and len(soft) == 1, (hard, soft)
 
 
 # --- FIX 6 (audit follow-up): rig_clause_check gated on schema == SCHEMA_V2, same law as
@@ -399,7 +457,12 @@ ANCHORS = ["The founder walked into", "Investors emptied their savings", "The le
            "By December the scheme", "leaving four hundred families"]
 
 
-def _file(**shot_extra):
+def _file(schema=L.SCHEMA_V2, **shot_extra):
+    """HIGH-5 (audit follow-up): `schema` used to be hardcoded to SCHEMA_V2 here, which is exactly
+    why the missing-key/typo/wrong-version paths through `strict_schema` had ZERO test coverage —
+    every main()-level fixture in this file only ever exercised the one path. Now a caller can
+    override it (including omitting it: pass `schema=None` and it's left OUT of the dict below, the
+    same as a real file that never got the key written)."""
     shots = []
     for i, a in enumerate(ANCHORS):
         sh = {"id": f"L{i + 1:02d}", "vo_ref": a, "duration_s": 5,
@@ -409,12 +472,15 @@ def _file(**shot_extra):
         if i == 0:
             sh.update(shot_extra)
         shots.append(sh)
-    return {"schema": L.SCHEMA_V2, "channel": "the-second-take", "video_slug": "t",
+    data = {"channel": "the-second-take", "video_slug": "t",
             "generated": "2026-07-29", "status": "shots-drafted",
             "global_prompt_suffix": SUFFIX,
             "long_form": {"aspect_ratio": "16:9", "shots": shots},
             "thumbnail": {"primary": {"gen_prompt": "a plain cartoon poster"}, "challengers": []},
             "shorts": []}
+    if schema is not None:
+        data["schema"] = schema
+    return data
 
 
 def _main(data, *args):
@@ -449,3 +515,45 @@ def test_e2e_report_encodes_on_a_cp1252_console(capsys):
                              "no signs and no words. A sign 'TRANS CONTINENTAL AIRLINES' and "
                              "cards 'A LOT', 'B LOT', 'C LOT', 'D LOT' with 'TERMINATED'"))
     capsys.readouterr().out.encode("cp1252")   # must not raise
+
+
+# =========================================================================
+# HIGH-5 (audit follow-up) — a missing/typo'd `schema` key must fail CLOSED into strict, not
+# silently take the v1 lenient path. Only an EXPLICIT v1 declaration is legacy.
+# =========================================================================
+def test_e2e_missing_schema_key_lints_strict():
+    """No `schema` key at all — previously indistinguishable from an archived v1 file, so the
+    bogus shot_class below (a genuine HARD defect on a v2-shaped file) used to be silently
+    downgraded to a heads-up and the run exited 0. It must now exit 1."""
+    rc, _ = _main(_file(schema=None, shot_class="vibes-montage"))
+    assert rc == 1
+
+
+def test_e2e_typo_schema_version_lints_strict():
+    """A misspelled/wrong version string is not a v1 declaration either."""
+    rc, _ = _main(_file(schema="faceless-youtube/shots@3", shot_class="vibes-montage"))
+    assert rc == 1
+
+
+def test_e2e_explicit_v1_lints_lenient():
+    """An EXPLICIT v1 declaration is the only thing that earns the lenient path: the same bogus
+    shot_class is downgraded to a soft heads-up and the run exits 0 — a real archived file must
+    not break over a rule that postdates it."""
+    rc, _ = _main(_file(schema=L.SCHEMA_V1, shot_class="vibes-montage"))
+    assert rc == 0
+
+
+def test_e2e_explicit_v2_lints_strict():
+    rc, _ = _main(_file(schema=L.SCHEMA_V2, shot_class="vibes-montage"))
+    assert rc == 1
+
+
+def test_g5_missing_schema_key_shot_class_check_is_strict_directly():
+    """Unit-level companion to the e2e tests above, exercising shot_class_check directly the same
+    way test_g5_a_v1_file_gets_a_heads_up_not_a_failure does for the explicit-v1 case."""
+    hard, soft = [], []
+    strict_schema = {}.get("schema") != L.SCHEMA_V1
+    assert strict_schema is True
+    L.shot_class_check("lf", [{"id": "L01", "shot_class": "vibes-montage"}], hard, soft,
+                        strict_schema)
+    assert len(hard) == 1 and soft == [], (hard, soft)

@@ -270,7 +270,12 @@ def main():
     audio = Path(args.audio) if args.audio else (video_dir / "assets" / spec["audio"] if spec.get("audio") else None)
     if audio is None or not audio.exists():
         raise SystemExit(f"VO audio not found: {audio}")
-    print(f"sentence-gap verifier: {audio}  ({len(bounds)} boundaries, tol {args.tol:.2f}s)")
+    # LOW (audit follow-up): a pasted report used to say nothing about whether it came from a
+    # `--preview` run or the shippable final, or which spec file backed it — making a pasted report
+    # untrustworthy as final-vs-preview evidence. State both, prominently, every run.
+    tag = "[PREVIEW] " if args.preview else ""
+    print(f"{tag}sentence-gap verifier: {audio}  ({len(bounds)} boundaries, tol {args.tol:.2f}s)")
+    print(f"{tag}spec: {spec_path}")
     rep = check_sentence_gaps(audio, bounds, tol_s=args.tol)
     for r in rep.get("rows", []):
         mark = "  <-- SHORT" if r["measured_gap_s"] < r["target_s"] - args.tol else ""
