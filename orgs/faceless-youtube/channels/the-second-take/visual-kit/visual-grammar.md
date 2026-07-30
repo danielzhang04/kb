@@ -126,9 +126,11 @@ what the VO has not yet said — a withheld entity is absent entirely from every
 - **Prompt ordering — three zones, in this order.** (1) **Identity first:** the named cast, their
   backticked registry names, and any pinned trait the shot depends on. (2) **Scene second:** setting,
   staging, framing, palette, light, depth. (3) **Payload LAST, as the final clause:** the quoted lettering,
-  or on a delta the one change (§1 chain logic). The generator weights earliest mentions heaviest for
-  identity and reads the closing instruction most literally, so leading with boilerplate costs identity
-  and burying the payload mid-prompt costs the payload.
+  on a delta the one change (§1 chain logic), or — on a shot with **neither** lettering nor a delta —
+  the composition's dominant visual subject; an absence-as-positive-state sentence belongs in the scene
+  zone, never as the closing clause, which the generator weights heaviest. The generator weights earliest
+  mentions heaviest for identity and reads the closing instruction most literally, so leading with
+  boilerplate costs identity and burying the payload mid-prompt costs the payload.
 
 ## 3. Composition — a decision, driven by the payload
 
@@ -174,3 +176,9 @@ Full grammar + dial values: `universal.md §13a-iii` + `motion-tokens.json` / `a
 - **No defamatory depiction of a real named person** — stage the documented mechanism, never an invented humiliation.
 - **Analysis, not gore** — a grim beat renders as aftermath / witness / stylized-safe + a palette turn.
 - **Evergreen references only** — no memes, wojaks, anime cutaways, or dated internet imagery.
+- **Divergence from a famous or trademarked design is authored as POSITIVE alternative geometry and
+  palette, never as omission or prohibition.** "NO characters, NO creatures, NO ghosts" on an otherwise
+  unchanged maze-plus-dots screen re-summoned the trademarked sprite anyway — a negative constraint over
+  an unchanged affordance is close to a re-roll. State the generic archetype's own different shape and
+  palette (a period arcade cabinet, its own screen contents) instead of prohibiting the thing it must not
+  become.

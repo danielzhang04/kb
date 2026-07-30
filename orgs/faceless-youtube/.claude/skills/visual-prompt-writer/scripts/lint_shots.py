@@ -55,6 +55,7 @@ _ITALIC_META = re.compile(r"^\*[^*].*[^*]\*$")  # a WHOLE line in italics = a no
 _NORM = lambda w: re.sub(r"[^a-z0-9]+", "", w.lower())   # mirrors render.py::_NORM
 LONG_SPAN_WORDS = 20                            # V1 D13: ~>8s of VO on one anchor -> densify heads-up
 CADENCE_TARGET_S = 4.0                          # 2026-07-28 dial: the band is 1.5–3s, up to 4s earned
+SHORT_BASE_EXEMPT_S = 2.0                       # F-6 (bricks segment-test): see stage_check
 
 # The runtime a shot list is sized against comes from the SCRIPT HEADER's stated rate
 # ("1,728 words ÷ 175 wpm" / "Estimated runtime: 9:52"), never a project constant: the
@@ -284,7 +285,17 @@ def stage_check(label, shots, hard, soft):
     """Held-stage field checks. Q4: the structural caps of the delta-chain contract — exactly
     one base FIRST and at most 3 deltas — are HARD (they bound drift; lint owns the mechanical
     caps). Timing/changed_elements/contiguity remain SOFT heads-ups. Never touches the vo_ref
-    matcher — stage fields are optional metadata layered on top of the anchor contract."""
+    matcher — stage fields are optional metadata layered on top of the anchor contract.
+
+    F-6 (bricks segment-test friction): the "not longer than the base" delta-timing heads-up is
+    structurally unsatisfiable when a chain opens on a short sentence — `eighties-den` opened on
+    "We're in the 1980s." (4 words, 1.37s) and every one of its deltas legitimately covered more
+    narration than that, because `duration_s` approximates each anchor's REAL VO span
+    (shots-schema.md §5), not a free parameter the author can inflate to satisfy the guard. It
+    fired 5 times on that run and fixed none. A base under SHORT_BASE_EXEMPT_S is exempt from the
+    "not longer than the base" half of the check — the absolute 3.5s ceiling still applies — because
+    the only alternatives are lying about a duration the re-timer overwrites anyway, or refusing to
+    open a chain on a short sentence, which forces the set to be established twice."""
     runs = []  # contiguous runs of (stage_id, [shots])
     for sh in shots:
         sid = sh.get("stage")
@@ -308,7 +319,7 @@ def stage_check(label, shots, hard, soft):
         base_dur = _dur(grp[0])
         for s in grp[1:]:
             d = _dur(s)
-            if d and (d > 3.5 or (base_dur and d > base_dur)):
+            if d and (d > 3.5 or (base_dur and base_dur >= SHORT_BASE_EXEMPT_S and d > base_dur)):
                 soft.append(f"[{label}] {s.get('id','?')} (stage '{sid}' delta): {d}s — deltas should be fast (~1.5-3s) and not longer than the base.")
             if not s.get("changed_elements"):
                 soft.append(f"[{label}] {s.get('id','?')} (stage '{sid}' delta): no changed_elements — a delta must name what changed.")
@@ -435,6 +446,18 @@ _PROMINENCE = (r"prominent|large|big|giant|huge|oversized|bold|dominant|single"
 _SLOT = re.compile(
     r"\b(?:" + _PROMINENCE + r")\b(?:\s+[\w#'-]+){0,3}?\s+\b(?:" + _TEXT_NOUN + r")\b",
     re.IGNORECASE)
+
+# "identity tag" is visual-grammar.md's OWN doctrine phrase (§2: "personified character with
+# one identity tag (a flag necktie, a hat, an iconic building)") for a personified institution's
+# costume SIGNIFIER — never a request to letter actual glyphs. It still matches _SLOT ("one
+# identity tag") because "tag" is a legitimate _TEXT_NOUN elsewhere (a price tag, a name tag DO
+# want a supplied value), so the exclusion is scoped to this exact bigram, not to "tag" in
+# general. Real counter-example: bricks L26/L30 wrote the doctrine phrase itself into a
+# still_prompt ("as his single identity tag") and lint round 3 HARD-failed it as an unsupplied
+# text request — right that doctrine vocabulary does not belong in a prompt, wrong about why.
+# control_leak_check (below) now owns this shape — a production-rule noun phrase sitting in the
+# scene body — and gives the author the correct fix: describe the object instead.
+_IDENTITY_TAG_IDIOM = re.compile(r"\bidentity\s+tags?\b", re.IGNORECASE)
 
 # …but only when the text noun is the HEAD of that phrase. Used ATTRIBUTIVELY it is a
 # modifier and nothing is lettered: in "one red price rail" the count and the colour
@@ -588,6 +611,8 @@ def unsupplied_text_requests(prompt, suffix=""):
             # attributive one ("one red price rail") stages no value at all.
             if rx is _SLOT and not _PHRASE_END.match(body, m.end()):
                 continue
+            if rx is _SLOT and _IDENTITY_TAG_IDIOM.search(m.group()):
+                continue
             # The value must sit NEXT TO the construct that demands it, and the
             # lookbehind is deliberately TIGHT while the lookahead is generous,
             # because a supplied value follows its request ("a header 'OCC'") and
@@ -671,9 +696,18 @@ def text_supply_check(label, prompts, suffix, hard):
 # _TEXT_NOUN above is scoped. A general "abstract noun phrase" detector was not
 # attempted; it would fire on most of the file, and a lint that fires everywhere
 # is a lint that gets ignored.
+#
+# `identity tag` is the one entry here caught before a render, not after: bricks
+# L26/L30 wrote visual-grammar.md's own §2 phrase ("as his single identity tag")
+# into a still_prompt, and the OLD guard (the Class-A text-supply check) flagged
+# it as an unsupplied text request — a real HARD stop, just the wrong diagnosis.
+# It belongs here instead: "identity tag" is production vocabulary describing a
+# costume signifier, the exact shape `rig form`/`COMEDY OFF` are, and the fix is
+# the same one — describe the object (an enamel lapel badge, a folded pocket
+# square), never write the doctrine phrase itself into a prompt.
 _CONTROL_LEAK = re.compile(
     r"\b(?:rig\s+form|comedy\s+off|humou?r\s+off|gravity\s+register"
-    r"|palette\s+turn|register\s+off|style\s+token|shot\s+class)\b",
+    r"|palette\s+turn|register\s+off|style\s+token|shot\s+class|identity\s+tags?)\b",
     re.IGNORECASE)
 
 # (2) A CARRIED-FORWARD LITERAL RE-STATED AS A DESCRIPTION.

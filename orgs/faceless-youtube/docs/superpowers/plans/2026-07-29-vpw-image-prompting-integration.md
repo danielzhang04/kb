@@ -119,23 +119,40 @@ required on it after its `figures` retrofit in Phase 3 testing — see §4).
   fragment (figures field, ordering law, delta-final-change) — proves the doctrine teaches.
 - Dedup/single-home review across all edited files; model verification of every worker by transcript grep.
 
-## 4b. Post-slice iteration list (2026-07-29, from the live run — approved for the next wave, NOT yet applied)
+## 4b. Post-slice iteration list (2026-07-29) — APPLIED 2026-07-30 in the speed wave, residuals below
 Evidence: `_bricks-seg/gen-log.md` (systemic findings), `seg-log.md` (VPW friction F-1…F-14), boss review.
-1. Seed `base.png` on §2e anonymous figures (biggest park-count cause; prose-only rig enforcement fails).
-2. Registry `no_hands`/non-human-rig flag suppressing forge's §2c hands clause on personified objects.
-3. Two-gen identity pass MANDATORY on scene-heavy single-figure shots; SKIPPED for personified objects.
-4. Forge retry semantics: move-reject-to-`_rejected/`-then-regen becomes forge behavior (skip-if-in-staging
-   faked success), and `forge.py register` stays the durable path for canonicals.
-5. Famous-adjacent staging law: positive divergence required, never omission/prohibition (arcade sprite;
-   `pc-boxy`'s Macintosh-adjacent trade dress pending Daniel's board ruling).
-6. Rig-verify method: paired crops against the approved canonical, never isolated zooms.
-7. VPW doctrine batch: F-1 ordering-law third branch (no-lettering/no-delta shots), F-2 grammar's own
-   "identity tag" phrase trips the lint, F-3 slug-test discriminator, F-5 universal §13a-ii precedence
-   sentence, F-6 delta-timing on short-anchor chain opens, F-4/F-7…F-14 per seg-log.
-8. Skill ownership: image-generation §Report defers to shot-board + boss presentation (no worker Artifacts).
-9. SPEED (parked by Daniel until after the current arc): parallelize forge gen calls within a dependency
-   wave (~35s/gen × 91 serial ≈ 55 min of queue-wait) and batch/parallelize the crop battery — the two
-   dominant wall-clock costs of the slice run (~3h total).
+Applied (two-worker wave, boss-graded, tests green):
+1. `base.png` auto-seeded on §2e anonymous figures (forge; warns rather than exceeding the 4-seed cap;
+   never fires on identity passes).
+2. Registry `no_hands` flag suppresses forge's §2c hands clause when EVERY figure is flagged; fails
+   closed on any unflagged/unattributable figure. `pc-boxy` flagged.
+3. Two-gen identity pass MANDATORY on scene-heavy single-HUMAN-cast shots; SKIPPED for personified
+   objects (image-generation SKILL).
+4. Forge `reject` subcommand + `reject_first`: rejected frame moves to `_staging/_rejected/`
+   (timestamped, evidence preserved) then regens; `register` semantics untouched.
+5. Famous-adjacent staging LAW applied (grammar, next to evergreen-references): positive divergent
+   geometry/palette, never omission/prohibition.
+6. Rig-verify: paired crops against the approved canonical required for a flagged shape call to stand
+   (bible §3 + image-generation SKILL).
+7. VPW doctrine batch: F-1, F-2, F-3, F-4, F-5, F-6, F-8, F-13, F-14 applied (grammar third ordering
+   branch; lint identity-tag guard fixed with correct control-leak diagnosis; slug discriminator;
+   §13a-ii precedence; delta-timing bases <2.0s exempt; one-entry-per-body; density-conditioned
+   front-loading; re-attention wording).
+8. image-generation §Report defers to shot-board + boss presentation; worker Artifacts banned.
+9. SPEED: forge batch mode is now a dependency-aware topological scheduler (`after:` +
+   seed-derived edges, `--concurrency` default 4, cycle-detect fail-closed before spend, failure skips
+   descendants only, race-safe ledger/staging); crop battery parallelized (`--batch`). Review machinery
+   replaced by the ESCALATION MODEL (Daniel ruling 2026-07-30): judges rule at viewing scale in one
+   batched pass; crop battery only on flagged shots; a rig-DEFECT ruling is admissible only with a
+   paired crop vs the canonical (evidence to condemn, not acquit); DSG-lite scoped to lettering-bearing
+   + notes-flagged shots.
+
+Residuals (open):
+- `pc-boxy` Macintosh-adjacent trade-dress + prop-vs-character slug asymmetry (F-12): Daniel rules at
+  the full-video board gate.
+- Design-decision frictions skipped by the wave: F-7 (§2e deliberately-identical anon figures wording),
+  F-9 (accent-red collision dial), F-10 (universal.md "first 3–5s" ambiguity), F-11 (registry pose
+  vocabulary single-slot).
 
 ## 5. Phase 4/5 notes
 - Phase 4: full staged VPW on `2026-07-28-bricks-fresh` (thumbnails + `shorts: []`), new protocol,

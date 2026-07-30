@@ -13,7 +13,24 @@ Reads (per channel visual-kit):
 
 Subcommands:
   gen      generate one or a --batch of assets into <kit>/_staging/  (does NOT auto-register);
-           --dry-run assembles + prints every prompt and calls nothing (batch pre-flight)
+           --dry-run assembles + prints every prompt and calls nothing (batch pre-flight).
+           DEPENDENCY-AWARE PARALLEL BATCH: a batch entry may carry `"after": ["name", ...]`
+           naming other entries in the SAME batch it must wait on; a `seed` string whose basename
+           names another batch entry (the delta-seeds-its-parent-frame shape every chain uses) is
+           an automatic dependency too -- no need to also list it in `after`. `--concurrency N`
+           (default 1 = today's exact serial order) schedules entries topologically with up to N
+           running at once; a gen launches the moment every dependency has generated. A cycle, a
+           dependency on an unknown name, or a duplicate `name` in the batch fails the WHOLE batch
+           closed BEFORE any spend. A gen whose own API call fails is marked ERR; only ITS
+           descendants are skipped (reason recorded), the rest of the batch still runs, and the
+           process exits nonzero if anything failed or was skipped. Per-request `"reject_first":
+           true` (or `--reject-first` on a single request) moves a previously-generated
+           `_staging/<name>.png` into `_rejected/` before generating -- the retry path for a
+           reviewed-and-rejected frame (see `reject` below).
+  reject   move one or a --batch of names' `_staging/<name>.png` into `_staging/_rejected/`
+           (timestamp-suffixed, preserved as evidence) so a subsequent `gen` for that name is a
+           genuine regen rather than a skip-if-exists no-op. Does not touch refs/registry.json --
+           `register` stays the only durable promotion path.
   montage  build a QC contact sheet of a directory for Claude to open
   register move a VERIFIED staged frame into refs/ and add it to registry.json
   lookup   reuse-before-regenerate: print an existing asset's file for (character, tag) if present
@@ -22,7 +39,8 @@ Subcommands:
 
 Run with native `py -3` (msys python lacks a CA bundle). No pip deps except optional certifi/Pillow.
 """
-import json, os, re, ssl, sys, base64, urllib.request, urllib.error, time, argparse, shutil
+import json, os, re, ssl, sys, base64, urllib.request, urllib.error, time, argparse, shutil, threading
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 
 def load_env(root):
     env = {}
@@ -50,6 +68,14 @@ def ctx():
 IMAGE_SIZES = ("1K", "2K", "4K")
 IMAGE_SIZE_DEFAULT = "2K"
 IMAGE_SIZE_RANK = {s: i for i, s in enumerate(IMAGE_SIZES)}  # 1K < 2K < 4K, for the ceiling check
+PRICE_PER_IMAGE_SIZE = {"1K": 0.134, "2K": 0.134, "4K": 0.24}  # $/image, matches the tiers above
+
+# SKILL.md "Cap: <=4 seeds per gen" -- canonical + ONE pose primitive + ONE expression frame + one
+# anchor/exemplar; past four, dilution weakens every prior. This was previously enforced only ad
+# hoc by whichever driver script built a batch spec; forge enforces it itself now (fail-closed,
+# per gen, before the API call) so a batch that violates it can never spend, and so the base-rig
+# auto-seed below (SS4b item 1) has a real ceiling to respect rather than silently exceeding it.
+SEED_CAP = 4
 
 # The Gemini request-body cap is 20MB; this is a 1MB safety margin under it, so the CLI's own
 # hard-error lands before the engine's less legible one does.
@@ -347,6 +373,162 @@ def assemble_prompt(descriptor, delta, figures_text="", righold=""):
     return "\n\n".join(p for p in (descriptor, delta, figures_text, righold) if p)
 
 
+# --- SS4b item 1: seed the base rig on a declared anonymous foreground figure -------------------
+def base_rig_seed_needed(mode, figures):
+    """An anonymous SS2e foreground figure gets NO seed today -- the rig rests on prose alone, and
+    it is the weakest rig surface in the pipeline (fyt _bricks-seg L17/L18: an explicit "NO nose,
+    NO ears" clause did not survive one retry). Auto-add `refs/base/base.png` as a seed whenever
+    the shot's `figures` field declares one or more `anon_foreground` entries, so the no-nose /
+    no-ears / four-digit-hand invariants arrive as a SEED and not only as words.
+
+    Mirrors the SAME guard `figures_expansion` already uses (`_fig_declared` for the declaration,
+    a non-identity-mode check for the pass gate) so this can never fire on an identity pass, where
+    `figures` is always passed as `None` by construction (gen-log.md Pass 2: re-expanding SS2e on
+    an identity pass would re-invent the very figure gen A already staged)."""
+    if mode == "identity":
+        return False
+    anon, _crowd = _fig_declared(figures)
+    return bool(anon)
+
+
+# --- SS4b item 2: no_hands registry flag suppresses the SS2c hand clause ------------------------
+def _character_of_seed(path, characters):
+    """Best-effort registry character name for a character-bearing seed path, or None when the
+    seed cannot be attributed to exactly one figure. A chained scene/staging frame (a delta's
+    parent) may carry ANY number of cast members, so it is always ambiguous here -- the no_hands
+    suppression below must fail closed (clause stays) rather than guess."""
+    rp = str(path).replace("\\", "/")
+    if "/assets/scenes/" in rp or "/_staging/" in rp:
+        return None
+    m = re.search(r"/refs/([^/]+)/", rp)
+    if m and m.group(1) != "env" and m.group(1) in characters:
+        return m.group(1)
+    base = os.path.splitext(os.path.basename(rp))[0]
+    for cname in sorted(characters, key=len, reverse=True):
+        if base == cname or base.startswith(cname + "-") or base.startswith(cname + "_"):
+            return cname
+    return None
+
+
+def hands_clause_suppressed(mode, character, resolved_seeds, figures, characters):
+    """A registry `no_hands: true` character (e.g. `pc-boxy`, a personified OBJECT with NO hands
+    at all -- stub arms only) must not get the SS2c RIG-HOLD hand paragraph appended: forge was
+    instructing the engine to draw hands onto a handless character, and it did (fyt _bricks-seg
+    L01-L04, L16 -- four-fingered fists on a character whose canonical has no hands). Suppress the
+    clause ONLY when EVERY figure-bearing element of this gen's seed/name set is a flagged
+    character.
+
+    An anonymous SS2e/SS2d figure is never flagged (it is not a registry entry, by definition), so
+    a declared `anon_foreground`/`crowd` figure always keeps the clause. An unattributable seed
+    (a chained scene frame) fails closed -- the clause stays, per this file's own
+    when-in-doubt-HOLD law (see the `depicts_figures` module comment above)."""
+    anon, crowd = _fig_declared(figures)
+    if anon or crowd:
+        return False
+    names = set()
+    if mode in ("identity", "new_character") and character:
+        names.add(character)
+    for s in resolved_seeds:
+        if not _is_char_seed(s):
+            continue
+        cname = _character_of_seed(s, characters)
+        if cname is None:
+            return False  # ambiguous seed -> fail closed, clause stays
+        names.add(cname)
+    if not names:
+        return False
+    return all(characters.get(n, {}).get("no_hands") for n in names)
+
+
+# --- SS4b item 4: retry semantics -- reject a stale staged frame before regenerating -------------
+def reject_frame(staging_dir, name):
+    """Moves a previously-generated `_staging/<name>.png` into a `_rejected/` sibling dir,
+    timestamp-suffixed to avoid collisions, so the rejected frame survives as evidence and
+    `_staging/<name>.png` is genuinely ABSENT afterward -- the skip-if-exists idempotency check
+    (the whole point of which is safe batch re-runs) can no longer mistake a stale rejected frame
+    for a completed one and silently no-op the retry. A no-op (returns None) when nothing is
+    staged under that name: a first-time gen is not a retry, and `register` already MOVES a
+    verified frame out of staging, so there is nothing left here to reject."""
+    src = os.path.join(staging_dir, name + ".png")
+    if not os.path.exists(src):
+        return None
+    rej_dir = os.path.join(staging_dir, "_rejected")
+    os.makedirs(rej_dir, exist_ok=True)
+    stamp = time.strftime("%Y%m%dT%H%M%S")
+    dst = os.path.join(rej_dir, f"{name}--{stamp}.png")
+    i = 1
+    while os.path.exists(dst):
+        i += 1
+        dst = os.path.join(rej_dir, f"{name}--{stamp}-{i}.png")
+    shutil.move(src, dst)
+    return dst
+
+
+def cmd_reject(k, names):
+    for name in names:
+        if not name:
+            continue
+        dst = reject_frame(k.staging, name)
+        if dst:
+            print(f"  {name}: rejected -> {os.path.relpath(dst, k.root).replace(chr(92), '/')}", flush=True)
+        else:
+            print(f"  {name}: nothing staged under this name -- nothing to reject", flush=True)
+
+
+# --- dependency-aware parallel batch scheduling ---------------------------------------------
+def _batch_dependencies(reqs):
+    """Each request's dependency set: the union of its explicit `after` list and any OTHER batch
+    entry name that one of its (UNRESOLVED) seed strings names by basename -- the
+    delta-seeds-its-parent-frame shape every Pass-2 chain uses ("every delta seeds its parent
+    frame instead of an anchor"). Matching must work off the raw seed STRING, never a resolved
+    path: the parent's output does not exist on disk yet at dependency-analysis time, so
+    `Kit.resolve_seed` cannot be called here without raising on every real chain."""
+    names = {r["name"] for r in reqs if r.get("name")}
+    deps = {}
+    for r in reqs:
+        name = r["name"]
+        d = set(str(x) for x in (r.get("after") or []))
+        for s in (r.get("seed") or []):
+            stem = os.path.splitext(os.path.basename(str(s).replace("\\", "/")))[0]
+            if stem in names and stem != name:
+                d.add(stem)
+        d.discard(name)
+        deps[name] = d
+    return deps
+
+
+def _topo_check(names_in_order, deps):
+    """Pre-flight ONLY: cycle detection + unknown-dependency detection, fail-closed BEFORE any
+    spend (HARD REQUIREMENT). Kahn's algorithm, ties broken by original batch order -- this is
+    also what guarantees a batch with NO dependencies schedules in EXACTLY the order it was
+    written, so `--concurrency 1` on such a batch reproduces today's serial order exactly."""
+    idx = {n: i for i, n in enumerate(names_in_order)}
+    for n, d in deps.items():
+        unknown = d - set(names_in_order)
+        if unknown:
+            raise SystemExit(
+                f"{n}: `after`/seed dependency on unknown batch entr{'y' if len(unknown) == 1 else 'ies'} "
+                f"{sorted(unknown)} -- not present in this batch")
+    remaining = {n: set(d) for n, d in deps.items()}
+    ready = sorted((n for n in names_in_order if not remaining[n]), key=lambda n: idx[n])
+    done = set()
+    while ready:
+        ready.sort(key=lambda n: idx[n])
+        n = ready.pop(0)
+        done.add(n)
+        for m in names_in_order:
+            if m in done or m in ready:
+                continue
+            if n in remaining[m]:
+                remaining[m].discard(n)
+                if not remaining[m]:
+                    ready.append(m)
+    if len(done) != len(names_in_order):
+        cyclic = [n for n in names_in_order if n not in done]
+        raise SystemExit(
+            f"gen batch has a dependency CYCLE (fail closed before any spend): {cyclic}")
+
+
 class Kit:
     def __init__(self, kit, dry=False):
         self.kit = os.path.abspath(kit)
@@ -410,89 +592,207 @@ class Kit:
             figures_expansion(figures, self.desc_baserig, self.desc_crowdrig, stage_role),
             self.desc_righold if hold else "")
 
-def cmd_gen(k, reqs, force, image_size=IMAGE_SIZE_DEFAULT, dry=False):
-    # Results are reported AS THEY LAND, not buffered to the end of the batch. A 20-scene batch
-    # is otherwise ~15 minutes of total silence, which (a) trips agent stream watchdogs and
-    # (b) hides a systematic per-gen failure until every call has already been paid for — a
-    # missing Pillow install once burned a batch's worth of API calls before the first line printed.
-    #
-    # `dry=True` runs the whole request path except the call itself and PRINTS each assembled prompt:
-    # the batch pre-flight for "confirm the step is correctly configured before a batch run". It
-    # still resolves seeds (so a missing seed is caught for free) and ignores skip-if-exists, since
-    # the point is to read every prompt, not to see which files already landed.
-    os.makedirs(k.staging, exist_ok=True)
-    results = []
-    total = len(reqs)
+def _gen_single(k, r, force, image_size, dry):
+    """The single-gen body: reject-first (if asked), resolve seeds (incl. the SS4b base-rig
+    auto-seed + seed-cap enforcement), assemble the prompt (incl. SS4b no_hands suppression),
+    validate, and call the engine.
 
-    def report(name, status):
-        results.append((name, status))
-        print(f"  [{len(results)}/{total}] {name}: {status}", flush=True)
+    Config-shape problems -- missing style-anchor seed, an over-cap seed set, an oversized
+    payload, an item `image_size` above the batch ceiling, a malformed `figures` field -- raise
+    `SystemExit` exactly as this logic did when it lived inline in `cmd_gen`'s loop: fail closed,
+    the whole run aborts, nothing further spends. A RUNTIME failure (network/engine error, an
+    invalid returned image) is the ONLY class caught here and turned into a soft "err" outcome --
+    this is what lets a dependency scheduler skip just that gen's descendants and keep going.
 
-    for r in reqs:
-        name = r["name"]; mode = r.get("mode", "identity")
-        out = os.path.join(k.staging, name + ".png")
-        if os.path.exists(out) and not force and not dry:
-            report(name, "skip (exists in staging)"); continue
-        seeds = r.get("seed")
-        if not seeds:
-            # A5: identity / new-character gens auto-seed the character portrait. environment & style
-            # gens MUST carry an explicit style-anchor seed — an unseeded environment/style gen falls
-            # back to a stock-clipart prior (off the locked style, per the image-generation SKILL seed laws), so it is a
-            # HARD ERROR now rather than a silent off-recipe frame.
-            if mode in ("identity", "new_character"):
-                seeds = [k.base_frame(r.get("character", "base"))]
-            else:
-                raise SystemExit(
-                    f"{name}: environment/style gens must carry a style-anchor seed (a refs/env/ "
-                    "anchor, the target plate, or an approved on-style scene) — unseeded gens fall "
-                    "back to a stock-clipart prior")
+    Returns (status, message, price_or_None) where status is "ok" (generated, or a dry
+    assembly), "exists" (skip-if-in-staging, unchanged bytes), or "err"."""
+    name = r["name"]; mode = r.get("mode", "identity")
+    if r.get("reject_first"):
+        reject_frame(k.staging, name)
+    out = os.path.join(k.staging, name + ".png")
+    if os.path.exists(out) and not force and not dry:
+        return "exists", "skip (exists in staging)", None
+    seeds = r.get("seed")
+    if not seeds:
+        # A5: identity / new-character gens auto-seed the character portrait. environment & style
+        # gens MUST carry an explicit style-anchor seed — an unseeded environment/style gen falls
+        # back to a stock-clipart prior (off the locked style, per the image-generation SKILL seed laws), so it is a
+        # HARD ERROR now rather than a silent off-recipe frame.
+        if mode in ("identity", "new_character"):
+            seeds = [k.base_frame(r.get("character", "base"))]
         else:
-            seeds = [k.resolve_seed(s) for s in seeds]
-        figures = r.get("figures")
-        hold = should_hold(mode, seeds, r["delta"], figures)
-        text = k.prompt_for(mode, r["delta"], hold=hold, figures=figures,
-                            stage_role=r.get("stage_role"))
-        aspect = r.get("aspect", "2:3")
-        size = r.get("image_size") or image_size
-        if size not in IMAGE_SIZES:
-            raise SystemExit(f"{name}: unknown image_size '{size}' (allowed: {', '.join(IMAGE_SIZES)})")
-        # FIX 4 (audit follow-up): --image-size is a CEILING, not a per-item override that can go
-        # either way — a per-item tier ABOVE the batch ceiling is a silent up-spend, so it hard-errors
-        # naming the item rather than quietly generating at the higher (costlier) tier.
-        if IMAGE_SIZE_RANK[size] > IMAGE_SIZE_RANK[image_size]:
             raise SystemExit(
-                f"{name}: item image_size '{size}' exceeds the --image-size ceiling '{image_size}' "
-                f"(order: {' < '.join(IMAGE_SIZES)}) — raise the batch ceiling (--image-size) or "
-                f"lower this item's image_size")
-        if dry:
-            report(name, f"DRY (no API call) mode={mode} aspect={aspect} size={size}")
-            print(f"      seeds: {[os.path.relpath(s, k.root).replace(chr(92), '/') for s in seeds]}")
-            print("      ----- assembled prompt -----")
-            for ln in text.splitlines():
-                print("      " + ln)
-            print("      ----- end -----", flush=True)
-            continue
-        # FIX 2 (audit follow-up): hard-error on an oversized request BEFORE it is ever assembled or
-        # sent — never auto-downscale a seed to make it fit.
-        check_payload_size(name, seeds, text)
-        parts = [ip(s) for s in seeds] + [{"text": text}]
+                f"{name}: environment/style gens must carry a style-anchor seed (a refs/env/ "
+                "anchor, the target plate, or an approved on-style scene) — unseeded gens fall "
+                "back to a stock-clipart prior")
+    else:
+        seeds = [k.resolve_seed(s) for s in seeds]
+    figures = r.get("figures")
+    # SS4b item 1 — auto-add the base-rig seed on a declared anon_foreground figure, respecting
+    # the seed cap: never exceed it, never silently drop the seed without a WARNING naming the gen.
+    if base_rig_seed_needed(mode, figures):
+        base_seed = os.path.join(k.refs, "base", "base.png")
+        already = any(os.path.abspath(s) == os.path.abspath(base_seed) for s in seeds)
+        if not already:
+            if len(seeds) + 1 > SEED_CAP:
+                print(f"  WARNING: {name}: declares anon_foreground figure(s) but adding "
+                     f"refs/base/base.png would exceed the {SEED_CAP}-seed cap ({len(seeds)} "
+                     f"seed(s) already) — NOT added; the SS2e rig rests on prose only for this gen",
+                     flush=True)
+            else:
+                seeds = seeds + [base_seed]
+    if len(seeds) > SEED_CAP:
+        raise SystemExit(f"{name}: {len(seeds)} seeds exceeds the {SEED_CAP}-seed cap "
+                         f"(SKILL.md 'Cap: <=4 seeds per gen') — trim the seed set")
+    hold = should_hold(mode, seeds, r["delta"], figures)
+    if hold and hands_clause_suppressed(mode, r.get("character"), seeds, figures,
+                                        k.reg.get("characters", {})):
+        hold = False  # SS4b item 2 — every figure-bearing element is a flagged no_hands character
+    text = k.prompt_for(mode, r["delta"], hold=hold, figures=figures,
+                        stage_role=r.get("stage_role"))
+    aspect = r.get("aspect", "2:3")
+    size = r.get("image_size") or image_size
+    if size not in IMAGE_SIZES:
+        raise SystemExit(f"{name}: unknown image_size '{size}' (allowed: {', '.join(IMAGE_SIZES)})")
+    # FIX 4 (audit follow-up): --image-size is a CEILING, not a per-item override that can go
+    # either way — a per-item tier ABOVE the batch ceiling is a silent up-spend, so it hard-errors
+    # naming the item rather than quietly generating at the higher (costlier) tier.
+    if IMAGE_SIZE_RANK[size] > IMAGE_SIZE_RANK[image_size]:
+        raise SystemExit(
+            f"{name}: item image_size '{size}' exceeds the --image-size ceiling '{image_size}' "
+            f"(order: {' < '.join(IMAGE_SIZES)}) — raise the batch ceiling (--image-size) or "
+            f"lower this item's image_size")
+    if dry:
+        lines = [f"DRY (no API call) mode={mode} aspect={aspect} size={size}",
+                f"      seeds: {[os.path.relpath(s, k.root).replace(chr(92), '/') for s in seeds]}",
+                "      ----- assembled prompt -----"]
+        lines += ["      " + ln for ln in text.splitlines()]
+        lines.append("      ----- end -----")
+        return "ok", "\n".join(lines), None
+    # FIX 2 (audit follow-up): hard-error on an oversized request BEFORE it is ever assembled or
+    # sent — never auto-downscale a seed to make it fit.
+    check_payload_size(name, seeds, text)
+    parts = [ip(s) for s in seeds] + [{"text": text}]
+    try:
+        # S1-A: compute + validate the bytes BEFORE opening the file, so a failed/empty gen can
+        # never truncate `out` to a 0-byte survivor that skip-if-exists + render then treat as done.
+        data = nano(k.url, parts, aspect, k.ctx, size)
+        data = to_png_bytes(data)  # engine returns JPEG; normalize to the pipeline's PNG contract
+        validate_png(data)
+        with open(out, "wb") as f:
+            f.write(data)
+        return "ok", f"OK size={size} -> _staging/" + name + ".png", PRICE_PER_IMAGE_SIZE.get(size, 0.0)
+    except Exception as e:
+        return "err", "ERR " + str(e)[:160], None
+
+
+def cmd_gen(k, reqs, force, image_size=IMAGE_SIZE_DEFAULT, dry=False, concurrency=1):
+    """Dependency-aware parallel batch scheduler. `concurrency=1` (the default, and every existing
+    caller before this feature) walks the batch in exactly the order `_topo_check` would order a
+    dependency-free batch — i.e. list order — one gen at a time: BYTE-IDENTICAL to the old strictly
+    serial loop. `concurrency>1` runs up to N gens at once via a bounded thread pool; a gen is
+    launched the moment every dependency (declared `after` or seed-derived) has itself resolved
+    "ok". A dependency that resolved "err" propagates a "skip" to everything downstream of it —
+    marked with a reason, never silently dropped — while the REST of the batch still completes.
+
+    Results are reported AS THEY LAND (not buffered), each report line locked so concurrent
+    completions can never interleave/corrupt/drop an entry in the in-memory run ledger this
+    function keeps (`results`/`state`) — the closest thing forge has to a spend ledger, since no
+    persisted ledger file exists in this pipeline; the running-total suffix on every line and the
+    final summary are both read from that same locked state.
+
+    Returns an int: 0 if every gen ended "ok"/"exists" (or this was a dry run), else the count of
+    err+skip entries — callers that care about exit codes should propagate it (`sys.exit`)."""
+    os.makedirs(k.staging, exist_ok=True)
+    names_in_order = [r.get("name") for r in reqs]
+    if any(not n for n in names_in_order):
+        raise SystemExit("every gen request needs a `name`")
+    # HARD REQUIREMENT (d): pre-validate unique output names BEFORE any launch — two concurrent
+    # gens must never be able to target the same `_staging/<name>.png`.
+    counts = {}
+    for n in names_in_order:
+        counts[n] = counts.get(n, 0) + 1
+    dupes = sorted(n for n, c in counts.items() if c > 1)
+    if dupes:
+        raise SystemExit(f"batch has duplicate gen name(s), each must target a unique output: {dupes}")
+
+    deps = _batch_dependencies(reqs)
+    # HARD REQUIREMENT (a): cycle / unknown-dependency detection fails the WHOLE batch closed,
+    # before any spend — checked once, up front, for every entry.
+    _topo_check(names_in_order, deps)
+
+    by_name = {r["name"]: r for r in reqs}
+    total = len(reqs)
+    results = []                    # (name, msg) — append-only, lock-protected
+    lock = threading.Lock()
+    state = {"ok": 0, "exists": 0, "err": 0, "skip": 0, "spend": 0.0, "running": 0}
+
+    def report(name, outcome_status, msg):
+        with lock:
+            results.append((name, msg))
+            state[outcome_status] += 1
+            n = len(results)
+            print(f"  [{n}/{total}] {name}: {msg}  "
+                 f"(running: {state['ok']} ok / {state['exists']} exists / {state['err']} err / "
+                 f"{state['skip']} skip, ${state['spend']:.2f} spent)", flush=True)
+
+    def gen_one(name):
+        with lock:
+            state["running"] += 1
+            print(f"  -> start {name} (running: {state['running']})", flush=True)
         try:
-            # S1-A: compute + validate the bytes BEFORE opening the file, so a failed/empty gen can
-            # never truncate `out` to a 0-byte survivor that skip-if-exists + render then treat as done.
-            data = nano(k.url, parts, aspect, k.ctx, size)
-            data = to_png_bytes(data)  # engine returns JPEG; normalize to the pipeline's PNG contract
-            validate_png(data)
-            with open(out, "wb") as f:
-                f.write(data)
-            report(name, f"OK size={size} -> _staging/" + name + ".png")
-        except Exception as e:
-            report(name, "ERR " + str(e)[:160])
+            outcome_status, msg, price = _gen_single(k, by_name[name], force, image_size, dry)
+        finally:
+            with lock:
+                state["running"] -= 1
+        if outcome_status == "ok" and price:
+            with lock:
+                state["spend"] += price
+        report(name, outcome_status, msg)
+        return outcome_status
+
+    pending = set(names_in_order)
+    resolved = {}                   # name -> "ok" | "exists" | "err" | "skip"
+    futures = {}
+
+    with ThreadPoolExecutor(max_workers=max(1, concurrency)) as ex:
+        def launch_ready():
+            for n in sorted(pending, key=names_in_order.index):
+                if n in futures:
+                    continue
+                dset = deps[n]
+                if not dset.issubset(resolved.keys()):
+                    continue  # a dependency hasn't resolved yet
+                bad = [d for d in sorted(dset) if resolved[d] not in ("ok", "exists")]
+                if bad:
+                    # HARD REQUIREMENT (b): a failed/skipped parent skips ONLY this descendant —
+                    # marked with the reason — never the rest of the batch.
+                    reason = ("skipped-with-reason: parent " + ", ".join(bad) +
+                             " did not complete (err/skip)")
+                    report(n, "skip", reason)
+                    resolved[n] = "skip"
+                    pending.discard(n)
+                    continue
+                futures[n] = ex.submit(gen_one, n)
+
+        launch_ready()
+        while futures:
+            done, _ = wait(list(futures.values()), return_when=FIRST_COMPLETED)
+            for fut in done:
+                n = next(nm for nm, f in futures.items() if f is fut)
+                futures.pop(n)
+                outcome_status = fut.result()  # re-raises SystemExit / any worker exception here
+                resolved[n] = outcome_status
+                pending.discard(n)
+            launch_ready()
+
     if dry:
         print(f"  == DRY RUN: {len(results)} prompts assembled, 0 API calls, 0 files written ==", flush=True)
-        return
-    ok = sum(1 for _, s in results if s.startswith("OK"))
-    err = sum(1 for _, s in results if s.startswith("ERR"))
-    print(f"  == {ok} generated, {err} failed, {len(results) - ok - err} skipped ==", flush=True)
+        return 0
+    generated = state["ok"]; skipped = state["exists"] + state["skip"]; err = state["err"]
+    print(f"  == {generated} generated, {err} failed, {skipped} skipped == "
+         f"(${state['spend']:.2f} spent)", flush=True)
+    return err + state["skip"]
 
 def cmd_montage(k, folder, out, cols):
     try:
@@ -653,7 +953,7 @@ def cmd_cutout(in_path, out_path, lo, hi, allow_wide=False):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["gen", "montage", "register", "lookup", "place", "manifest", "cutout"])
+    ap.add_argument("cmd", choices=["gen", "reject", "montage", "register", "lookup", "place", "manifest", "cutout"])
     ap.add_argument("--kit", required=True, help="path to the channel's visual-kit dir")
     ap.add_argument("--batch", help="gen/register/place/manifest: JSON file with a list of requests/entries/names")
     ap.add_argument("--name"); ap.add_argument("--character", default="base")
@@ -666,6 +966,17 @@ def main():
                          f"real up-spend at ~1.8x the 1K/2K price, so it is a per-run spend call)")
     ap.add_argument("--dry-run", action="store_true",
                     help="gen: assemble and PRINT every prompt, make NO API call (batch pre-flight)")
+    ap.add_argument("--concurrency", type=int, default=1,
+                    help="gen: bounded concurrency for the dependency-aware parallel batch "
+                         "scheduler (default 1 = today's exact serial order/behavior). A batch "
+                         "entry may declare `\"after\": [\"name\", ...]`, and any `seed` string "
+                         "naming another entry's `name` is an automatic dependency too; a gen "
+                         "launches the moment every dependency has generated. Cycles and unknown "
+                         "dependencies fail the whole batch before any spend.")
+    ap.add_argument("--reject-first", action="store_true",
+                    help="gen (single-request only; use \"reject_first\": true per-entry in a "
+                         "--batch): move any existing _staging/<name>.png into _rejected/ before "
+                         "generating — the reviewed-and-rejected retry path")
     ap.add_argument("--figures", help="gen: one shot's `figures` field as JSON, e.g. "
                                      "'{\"anon_foreground\": [\"the clerk\"], \"crowd\": true}'")
     ap.add_argument("--stage-role", choices=["base", "delta"],
@@ -694,8 +1005,13 @@ def main():
             reqs = [{"name": a.name, "character": a.character, "mode": a.mode, "delta": a.delta,
                      "aspect": a.aspect, "seed": a.seed.split(",") if a.seed else None,
                      "figures": json.loads(a.figures) if a.figures else None,
-                     "stage_role": a.stage_role}]
-        cmd_gen(k, reqs, a.force, a.image_size, dry)
+                     "stage_role": a.stage_role, "reject_first": a.reject_first}]
+        rc = cmd_gen(k, reqs, a.force, a.image_size, dry, a.concurrency)
+        if rc:
+            sys.exit(rc)
+    elif a.cmd == "reject":
+        names = json.load(open(a.batch, encoding="utf-8")) if a.batch else [a.name]
+        cmd_reject(k, names)
     elif a.cmd == "montage":
         cmd_montage(k, a.dir, a.out, a.cols)
     elif a.cmd == "register":

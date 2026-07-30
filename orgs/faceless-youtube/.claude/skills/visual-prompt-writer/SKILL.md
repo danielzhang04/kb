@@ -46,13 +46,23 @@ named, the most recently scripted, or ask. **No `script.md` → stop** and say t
    prompt prose ("MacGregor, `expr-smug`, `action-salute`, stage-left, facing right"). Never describe
    body pose, finger mechanics, or facial expression in words — naming the asset IS the authoring act. A
    name the registry lacks may still be written; `image-generation`'s Pass-1 gate surfaces it for the
-   human's pre-gen approval, and a veto comes back to you as a restage.
+   human's pre-gen approval, and a veto comes back to you as a restage. **On a fresh script nothing has a
+   slug yet, so decide cast-vs-anonymous by what the shot itself authors:** a figure whose costume the
+   shot gives a specific signifier (a badge, a named suit colour, a prop) is cast and earns a new
+   backticked slug; a figure whose dress stays generic and unspecified is anonymous and belongs in
+   `figures` instead. And "recurs" (the cast test above) means across separate STAGES — a figure held
+   only within one delta chain doesn't need a slug just because it appears on more than one shot inside
+   it, since the base's phrase already carries it forward automatically.
    **Then DECLARE every anonymous figure in the shot's `figures` field** — route by size per the grammar
    §2: background/crowd tier → `"crowd": true`; each LARGE/foreground anonymous figure → one
-   `anon_foreground` entry holding the exact phrase your prompt uses for that figure. Stage them in prose
-   as normal, but the style-bible §2d/§2e rig-clause TEXT never appears in a prompt — you declare, and
-   `forge.py` expands it at gen time (lint HARD-fails the clause fingerprint). Stay inside the grammar's
-   figure cap and flag its high-risk case in `notes`. Field spec: `shots-schema.md §2`.
+   `anon_foreground` entry holding the exact phrase your prompt uses for that figure — **when several
+   anonymous figures share one descriptive clause, give each body its own individually-referable phrase
+   and its own entry** ("the rival stage-left" / "the rival stage-right"), never one entry meant to cover
+   a pair; the field is matched by substring per entry, so a shared phrase silently under-declares one of
+   them. Stage them in prose as normal, but the style-bible §2d/§2e rig-clause TEXT never appears in a
+   prompt — you declare, and `forge.py` expands it at gen time (lint HARD-fails the clause fingerprint).
+   Stay inside the grammar's figure cap and flag its high-risk case in `notes`. Field spec:
+   `shots-schema.md §2`.
 4. **State the scene facts the beat needs — CONTENT only** — layout, orientation (who faces whom; a
    vehicle points where it travels), the action, what a gesture or highlight targets ("the northern half
    of South America", not "the continent"), framing + scale, the committed scene palette,
@@ -90,15 +100,22 @@ at the first act's level.
   and the withheld peak in the final 20%. A character enters on the line that NAMES them.
 - **Density budget, written down per act:** read the runtime AND the rate off the script header ("N words
   ÷ M wpm"), never a fixed 150 — the header's rate is the channel's MEASURED voice, and sizing off a
-  slower one buys shots for a video that doesn't exist. Then split the whole-file limits
-  (`shots-schema.md §5` — cadence band, the `runtime ÷ 4s` floor, Σ `duration_s` ≈ runtime, hold lengths)
-  into a per-act shot target, **weighted heaviest in the first 60s**; never a static ambient shot under the
-  first 3–5s. A short-summing list gets stretched at render, leaving one visual dead 15–25s: **densify,
-  never lengthen holds.** 3c audits each act against its number.
+  slower one buys shots for a video that doesn't exist. **`universal.md` §13a-ii's slower cadence figures
+  are superseded here** — `visual-grammar.md`'s own header states the precedence ("This channel's cut
+  cadence is the dial on top of them"), so size against THIS channel's 1.5–3s band, not the universal
+  default. Then split the whole-file limits (`shots-schema.md §5` — cadence band, the `runtime ÷ 4s`
+  floor, Σ `duration_s` ≈ runtime, hold lengths) into a per-act shot target, **weighted heaviest in the
+  first 60s where the script's own clause density allows it without breaching the 1.5s anchor floor** — a
+  script whose clause density runs near-uniform lands its acts flat, and that is the honest answer, not a
+  defect to force; never a static ambient shot under the first 3–5s. A short-summing list gets stretched
+  at render, leaving one visual dead 15–25s: **densify, never lengthen holds.** 3c audits each act against
+  its number.
 
 ### 3b — Author act by act
-**Before each act, re-read `example-shots.md` + `visual-grammar.md` §1–3.** Skipping the re-read is how the
-back half goes literal. Then run Step 2 on every line of that act, in narration order.
+**Before each act, re-read `example-shots.md` + `visual-grammar.md` §1–3 — even inside one continuous
+context where the text already sits in the window, this is a deliberate re-ATTENTION act, not a reload of
+new information.** Skipping it because the file is "already in context" is how the back half goes literal
+anyway. Then run Step 2 on every line of that act, in narration order.
 - **Anchor every shot with a `vo_ref`** copied VERBATIM from `script.md` — that VO line's opening words,
   **≥4 where the sentence has them; a shorter sentence anchors on its full text** (a `[PAUSE]`-bounded
   "The audit passed." is a legal 3-word anchor) — exact wording and order, never reworded or

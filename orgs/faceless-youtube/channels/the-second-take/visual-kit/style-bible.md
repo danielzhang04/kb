@@ -61,6 +61,9 @@ For a **new character** the delta supplies only identity-VARYING traits (hair / 
 
 It holds **form, not identity**, so it is safe on any seeded gen; `forge.py` auto-appends it on every
 character-bearing seed (non-identity mode). The wording exempts crowds, so both rigs coexist in one frame.
+A registry character flagged `no_hands` (a personified object whose canonical deliberately has no hand rig
+at all) is exempt from this auto-append too — the clause would otherwise instruct hands onto a character
+built to have none.
 
 ## 2d. CROWD-RIG clause (verbatim template — `forge.py` expands it at gen time)
 
@@ -104,7 +107,10 @@ lists each such figure in `figures.anon_foreground` (`visual-grammar.md §2`) an
 
 The **WHAT** every generation is built to and every post-gen judge rules against — ONE rule set, both ends.
 Judge against the **approved canonical** (`refs/<char>/<char>-base.png`), never an idealized pure-circle rig.
-**In doubt, set the asset beside the canonical — if it reads "same channel", it passes.**
+**In doubt, set the asset beside the canonical — if it reads "same channel", it passes; a FLAGGED shape
+call (nose, ear, digit count) is admissible only as a PAIRED crop against the canonical in the same
+normalized zone, never an isolated zoom** — an isolated crop is what let a real ear pass as "hair with
+strand texture" once, and only a paired crop against another character's hair exposed it.
 
 - **Head** — round near-circle, only slightly taller than wide, not reshaped, same head-to-body proportion as
   the base. **Facial layout** — same eye style/size/position, brows and mouth in place. **No nose, no ears**; on

@@ -155,12 +155,17 @@ REMOVES a transient element seeds the pre-transient ancestor**, since the immedi
 **LAYER when the change is DISCRETE** (a character enters, a stamp slams onto a page): keep the plate, composite a
 seeded cutout. Art style, proportions and period never switch mid-chain.
 
-- **Two-gen identity pass — the DEFAULT for a scene-heavy single-character shot** (exactly ONE seeded figure in a
-  `still_prompt` dominated by environment content), not a fallback: the heavy delta **starves the lone character
-  seed** and renders the blank base template, which passes every §3 FORM check and is still the wrong character.
+- **Two-gen identity pass — MANDATORY for a scene-heavy single-HUMAN-CHARACTER shot** (exactly ONE seeded figure,
+  a human cast member, in a `still_prompt` dominated by environment content), never optional even when an approved
+  same-character frame is available to anchor the set: the heavy delta **starves the lone character seed** and
+  renders the blank base template, which passes every §3 FORM check and is still the wrong character — measured at
+  2 of 3 single-gen attempts on a real run, because an approved scene frame anchors the SET, not the IDENTITY.
   **Gen A** composes the scene ((b)/(d)); **gen B** seeds `[gen-A frame + character canonical + expression frame]`
-  and changes ONLY identity (head tone + hair + face), holding gen A's environment. Multi-character and
-  character-light shots are unchanged.
+  and changes ONLY identity (head tone + hair + face), holding gen A's environment. **SKIPPED for a personified
+  OBJECT** (a case, a machine, a money-object with a face) whose entire identity is fully expressible in the
+  `still_prompt` and already anchored by its own object seed — measured mean-abs-diff 3.45 / 0.4% of pixels changed
+  on a run where the ladder ran anyway, confirming the second gen bought nothing; compose it single-gen ((b)/(d))
+  instead. Multi-character and character-light shots are unchanged.
 - **De-nose / de-ear fix — a targeted identity pass budgeted for TWO gens.** Seed `[current frame + base-rig
   exemplar]`, change ONLY the faces; the engine re-draws a sticky ear or residual nose about half the time, so the
   reliable shape is a **SECOND targeted pass seeded off the already-fixed frame**. A fix TECHNIQUE, not a loosening
@@ -212,32 +217,48 @@ per shot its `still_prompt`, `vo_text` (the full narrated span — facts often l
 bible **§3**, the **§5 recipe** and the channel's `visual-grammar.md` (`vo_ref` is only the render timing anchor,
 never a fidelity source).
 
+**The escalation model — rule at viewing scale first, spend evidence only on what a judge flags.** Each judge rules
+the WHOLE batch at ordinary viewing scale in ONE pass — still one round, never gated mid-run. An unflagged full-frame
+PASS **stands**; nothing further is generated for it. Only a shot a judge FLAGS earns the crop battery: evidence
+exists to help CONDEMN a suspected defect, never to manufacture confidence in a clean one.
+
 1. **Identity/rig** — a **FORCED PASS/FAIL verdict on each §3 invariant**, never a silent pass, for **every seeded
    figure AND every anonymous LARGE/foreground (§2e) figure**, each judged against the tier §3 assigns it (seeded and
    §2e → FULL rig, against that character's approved canonical, not an idealized rig; anonymous small/background →
    CROWD rig). A chain-delta frame adds a **held-set** line (set + identities consistent with this stage's `base`?).
-   On any FAIL name the shot id and quote the offending pixel; a hand PASS is never worded as certified, because the
-   human board is the final finger authority. **Rig review runs on the CROP BATTERY, not full-frame eyeballing:**
-   (i) a **localizer** agent returns per-figure face + each-visible-hand boxes as JSON (it never rules);
-   (ii) **`scripts/crop_battery.py`** (PIL, deterministic) cuts them at 3–4× into per-shot contact sheets + crops;
-   (iii) THIS judge rules per crop per invariant with the **crop file path cited as evidence** — a prose "zoomed,
-   verified" claim with **no crop artifact is inadmissible**. A fix pass re-enters the battery on the before AND after
-   frames, all figures; silence on a seeded or §2e figure is not allowed. **This FRESH-EYES review is the rig
-   authority — a GENERATING agent's self-verification does NOT substitute for it** (a generator under-reports its own
-   defects, anchored on the prompt it wrote). **Never downgrade a fresh-eyes nose/ear FAIL to "minor".**
-2. **Fidelity — run it as DSG-lite, two calls per still.** Does the image assert **exactly the shot's load-bearing
-   facts** (layout, geography, orientation, gesture + highlight targets, casting/costume) and **nothing extra that
-   changes the read**? Answer that as a checklist, not as free-form claim-hunting: **(a) one call decomposes** the
-   **ASSEMBLED prompt** — what forge actually sent, which `gen --dry-run` prints, not the `still_prompt` alone — into a
-   small **dependency-ordered list of atomic facts**, `entities → their attributes → relations between them →
-   lettering`, each item naming its `parent` (≈6–12 items; you still judge which facts are load-bearing).
+   A figure the judge does not suspect on any invariant PASSES on the viewing-scale read — no crop required. A
+   figure the judge suspects (nose, ear, digit count, proportion) **escalates**:
+   (i) a **localizer** agent returns its face + each-visible-hand boxes as JSON (it never rules); (ii)
+   **`scripts/crop_battery.py`** (PIL, deterministic) cuts them at 3–4× into per-shot contact sheets + crops; (iii)
+   THIS judge rules the escalated figure per crop per invariant. **A rig-DEFECT ruling is admissible only backed by a
+   crop PAIRED against that figure's approved canonical in the same normalized zone — an isolated crop is not
+   sufficient evidence to CONDEMN.** (An isolated crop is exactly what let a real ear on one canonical pass at Pass 1
+   as "hair with strand texture" — only a crop paired against another character's hair exposed the shape, so the
+   paired standard exists to correctly condemn, not to let a judge rubber-stamp a PASS.) On any FAIL name the shot id
+   and quote the offending pixel with the paired-crop path cited as evidence; a hand PASS is never worded as
+   certified, because the human board is the final finger authority. **Full-frame reads on this rig err in BOTH
+   directions** — a lower-lip shape has read as a nose, hair strand-texture as an ear, a palm crease as a fifth
+   digit, and (the counter-example above) an unpaired crop has produced a false PASS — which is exactly why a
+   flagged call escalates to a PAIRED crop rather than being trusted on the first look either way. A fix pass
+   re-enters the battery on the before AND after frames for every figure the retry touched; silence on an escalated
+   figure is not allowed. **This FRESH-EYES review is the rig authority — a GENERATING agent's self-verification
+   does NOT substitute for it** (a generator under-reports its own defects, anchored on the prompt it wrote). **Never
+   downgrade a fresh-eyes nose/ear FAIL to "minor".**
+2. **Fidelity — a claim-by-claim read at viewing scale; DSG-lite escalation scoped to lettering + flagged
+   high-risk.** Does the image assert **exactly the shot's load-bearing facts** (layout, geography, orientation,
+   gesture + highlight targets, casting/costume) and **nothing extra that changes the read**? Run the full DSG-lite
+   checklist — **(a) one call decomposes** the **ASSEMBLED prompt** (what forge actually sent, which `gen --dry-run`
+   prints, not the `still_prompt` alone) into a small **dependency-ordered list of atomic facts**,
+   `entities → their attributes → relations between them → lettering`, each item naming its `parent` (≈6–12 items);
    **(b) one multimodal call answers them in that order**, and **short-circuits the children of any failed parent**
-   (`verdict: "skipped"`) — an attribute of an absent entity is not a second defect, and asking anyway invents an
-   answer. **Lettering items transcribe LETTER-BY-LETTER** against the words the `still_prompt` quotes; a garbled,
-   misspelled or partial render is **blocking** (§3 sets which text is legal). Log every item into the shot's ruling as
-   `dsg: [{id, parent, q, verdict: pass|fail|skipped, note}]`; **`stamp_review.py` parks any shot carrying a failed
-   item even when the axis severities came back clean** — the items are the evidence, the axis severity only its
-   summary. This is an ADHERENCE check that runs alongside the §3 rig judge above; it never substitutes for it.
+   (`verdict: "skipped"`) — ONLY on **every lettering-bearing shot** and **any shot flagged high-risk in `notes`**;
+   every other shot gets the ordinary claim read above, no per-item checklist. **Lettering items transcribe
+   LETTER-BY-LETTER** against the words the `still_prompt` quotes; a garbled, misspelled or partial render is
+   **blocking** (§3 sets which text is legal). Log DSG-lite items into the shot's ruling as
+   `dsg: [{id, parent, q, verdict: pass|fail|skipped, note}]`; **`stamp_review.py` parks any DSG-lite-covered shot
+   carrying a failed item even when the axis severities came back clean** — the items are the evidence, the axis
+   severity only its summary. This is an ADHERENCE check that runs alongside the §3 rig judge above; it never
+   substitutes for it.
 3. **Style/taste** — does it read as its `shot_class` at a glance, on-recipe per §5 **AND rich — committed scene
    palette, fore/mid/background depth, light/atmosphere, filled edge-to-edge** — or is it slop: generic, cluttered,
    off-register, drifting to the detailed middle, thin, sparse? **Check expression register per beat** (§3).
@@ -262,14 +283,15 @@ flagged ships as-is. **Then fix flagged frames — ONE re-authored retry, then s
   failing after that one retry → STOP:** keep the best attempt, mark it `flagged` in `assets/scenes/manifest.json` with
   the reason, surface it in the deliverable. A systematic failure (the same invariant missing both times) that looks
   like a bible value being off → surface a proposed fix, never self-apply.
-- **Stamp the gate — generating agents NEVER stamp; the ORCHESTRATOR alone does**, and only after the crop battery +
-  fresh-eyes review pass. It merges every agent's structured verdict into `assets/_review/merged.json` (one ruling per
+- **Stamp the gate — generating agents NEVER stamp; the ORCHESTRATOR alone does**, and only after the fresh-eyes
+  review pass (viewing-scale ruling on every shot, the crop battery escalated onto whichever ones a judge flagged) is
+  complete. It merges every agent's structured verdict into `assets/_review/merged.json` (one ruling per
   shot id, per-axis severities + `why`, plus the fidelity agent's `dsg` checklist), then runs `py -3
   .claude/skills/image-generation/scripts/stamp_review.py <video_dir>` — the **ONLY writer** of the render gate's
   verdict. It writes **`review_status` + `parked_reasons`** onto each `scenes/manifest.json` entry in three honest
-  states: **`verified`** (a fully-clean ruling on every axis AND no failed `dsg` item — the ONLY state render-builder
-  ships), **`parked`** (ANY defect ruling, even LOW, or any failed `dsg` item: reviewed, defects known, honestly not
-  shippable — its defect strings become
+  states: **`verified`** (a fully-clean ruling on every axis AND, on any shot DSG-lite covered, no failed `dsg` item —
+  the ONLY state render-builder ships), **`parked`** (ANY defect ruling, even LOW, or any failed `dsg` item: reviewed,
+  defects known, honestly not shippable — its defect strings become
   `parked_reasons`, which the gate prints, and the entry hard-errors the render), **`unreviewed`** (no ruling covered
   the shot — hard-errors like a missing scene). Uncovered entries are untouched; it never writes a `verified: true`.
 
@@ -302,9 +324,9 @@ flagged ships as-is. **Then fix flagged frames — ONE re-authored retry, then s
 
 What shipped (library counts, scenes by technique), what was reused, what the review caught per category and what it
 regenerated, any frames still **flagged** after the one retry (with their reason), anything escalated for approval,
-and the render-wiring caveat. Publish the images via an Artifact link — full frames, flagged ones marked with their
-reason, and the **crop-battery sheets embedded (collapsible per card)** so the human finger gate rules on evidence at
-seconds per shot.
+and the render-wiring caveat. **The review surface is the `shot-board` skill's `board.html`, built locally in the
+video folder — never a worker-published Artifact.** This worker STOPS at the board; presenting it to the human is
+the boss's call, not the generating worker's (a full-resolution batch also blows any Artifact size budget).
 
 **Present it neutrally — the human calibrates the bar, not you.** Never declare the output "works" or "clears the
 bar": the bar is the reference grade the human holds, and a premature success claim skips real problems and burns
