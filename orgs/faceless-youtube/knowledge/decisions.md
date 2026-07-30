@@ -3595,3 +3595,22 @@ run brief binds nobody — a fresh terminal reads the style-bible and skill docs
   blocks the very human judgement it was built to serve. Non-shippable must stay non-shippable in the
   MANIFEST (the machine's channel) while remaining VISIBLE to the human (the eye-gate's channel) -
   separate the two channels rather than conflating them.
+
+## 2026-07-30 — Chris is the default voice for BOTH channels, at hot dials (0.10/0.75)
+
+- **Decision (Daniel, ear gate).** ElevenLabs premade "Chris" (`iP95p4xoKVk53GoZ742B`), eleven_v3,
+  stability 0.10, style 0.75, similarity 0.85, speed 1.0 is now the locked default voice for
+  the-second-take AND the-hidden-machine. Supersedes Miles (`vSjOBQp24DUB2COr2xI9`) on ST and the
+  ST-adopted 0.20/0.6 dials on HM.
+- **Evidence.** Full 103s bricks-slice VO on Chris at 0.10/0.75 (clean single take, ~171 wpm,
+  measured sentence-gap law passing), then a 9-clip re-audition board (same 30s excerpt: Chris at
+  style 0.75/0.70/0.65 + six profile-matched library challengers — Marcus K, Caelan Oris, Ben,
+  Bytafa, PJ, Fletcher — at 0.10/0.70). Daniel: Chris "almost perfect" at 0.75; challengers and
+  softer style dials declined. Board + spend ledger: `channels/the-second-take/videos/_bricks-seg/
+  voice-audition/` (gitignored, disk).
+- **Alternatives rejected.** (1) Any of the six challengers — none beat the incumbent by ear.
+  (2) style 0.70 / 0.65 — auditioned, declined. (3) Keeping per-channel voices (Miles/Chris split) —
+  Daniel chose one voice for both channels at identical dials.
+- **Caveats carried.** Chris consistency proof still owed (variance across takes: F0/wpm/pause%);
+  premade-voice fingerprint caveat on record in HM voice-lab.md §Round 1. ST's next real VO render
+  is the re-proof point.
