@@ -1,5 +1,5 @@
 # Executive Dashboard
-_Generated: 2026-07-29T06:10Z by dispatcher-cloud_
+_Generated: 2026-07-30T06:09Z by dispatcher-cloud_
 
 ## Action required
 No cards in `queue/approvals/`. Items owned by / addressed to a human that cannot move without Daniel:
@@ -13,49 +13,52 @@ No cards in `queue/approvals/`. Items owned by / addressed to a human that canno
 The engagement-fold wake asks Daniel to pick one of three paths (wire the queue bridge /
 passkey+UI / claude-subagent fallback) to unpark the six staged `eng-fold-*` cards. The
 budget-gate decision, delivery-gate flip, and the daemon-dir wake are all carried unchanged
-from prior nights — none has moved. The daemon-dir wake is now half-stale: its drift half is
+from prior nights — none has moved. The daemon-dir wake stays half-stale: its drift half is
 clean again this run (see Anomalies), only the missing-script half remains. Project gates also
 awaiting Daniel: faceless-youtube PR #41 (READY TO MERGE, must merge with
-`claude/fyt-video-run-test`), Poyais GATE 3 (thumbnail / L17 / publish), and the Atlas V2
-"Trust" go/no-go.
+`claude/fyt-video-run-test`) plus the `claude/fyt-writer-grammar-slim` scripting-doctrine
+branch (UNMERGED, Daniel's review gates it), Poyais GATE 3 (thumbnail / L17 / publish), and the
+Atlas V2 "Trust" go/no-go.
 
 ## Queue
 | state | count |
 |-------|-------|
 | inbox | 13 |
 | working | 1 |
-| done | 75 |
+| done | 76 |
 | approvals | 0 |
 
 (`queue/inbox/` holds 17 files: 13 truly at `state:inbox` + 4 `state:done` nightly cards
 physically stranded there — see Anomalies. The 13 = 4 human/unassigned items above + 6
 `eng-fold-*` cards owned by `dashboard-engine` awaiting the governed-worker bridge + 2 `wf-*`
 self-lint cards owned by `worker-desktop` + the weekly-audit follow-up `6a645395-d5322124`.
-working = tonight's `nightly-review` card, in-flight. done 75 = 71 in `queue/done/` + 4 stranded
+working = tonight's `nightly-review` card, in-flight. done 76 = 72 in `queue/done/` + 4 stranded
 in `inbox/`.)
 
 ## Last 24h
-- **Cadences:** `nightly-review` dispatched tonight (2026-07-29, card `6a6998eb-da760811`,
+- **Cadences:** `nightly-review` dispatched tonight (2026-07-30, card `6a6aea62-9fbf6365`,
   executed by dispatcher-cloud this run — cloud self-executing carve-out). Yesterday
-  (2026-07-28): `nightly-review` (card `6a68483c-7832ea5f`, 1 dispatch + 1 cost row; card moved
-  to `queue/done/` correctly, lifting the done-dir count 70→71).
+  (2026-07-29): `nightly-review` (card `6a6998eb-da760811`, 1 dispatch + 1 cost row; card moved
+  to `queue/done/` correctly, lifting the done-dir count 71→72).
 - **Cost:** $0.00 API-billed today vs **$5.00/day** cap → $5.00 remaining. All steps
   subscription-billed (logged 0.0).
 - **Health:** preamble OK; `sync_skills --check` clean; `sync_daemon_dirs --check` clean —
   ops matches main for all daemon-read dirs (`agents/`, `orgs/*/workflows/`), run from a main
   copy in refs-fallback (script still absent on ops). The `self-lint-report.md` drift the open
-  wake-me card recorded on 2026-07-22 is now reconciled.
+  wake-me card recorded on 2026-07-22 stays reconciled.
 - **Notable:** no new approvals, no new drift, no stale working cards.
 
 ## Projects
 - **atlas** — V1 "Hands" wave COMPLETE (2026-07-21): all three gates passed at the desk; PR #44
   MERGED + prod rolled out, Atlas view LIVE on 127.0.0.1:5317 with live worker passthrough. V2
   "Trust" planning awaits Daniel's go/no-go.
-- **faceless-youtube** — PR #41 open (post-render tail + run-001 gate fixes + fyt-runner),
-  reviewed READY TO MERGE, must merge with `claude/fyt-video-run-test`. Poyais parked at GATE 3
-  awaiting Daniel (thumbnail, L17, publish approval). Engagement-doctrine fold staged (6
-  `eng-fold-*` cards) but PARKED pending Daniel's bridge decision. fyt-run-001 (wells-fargo)
-  fully parked (0 verified / 119 parked).
+- **faceless-youtube** — Scripting-doctrine arc COMPLETE (2026-07-29) on
+  `claude/fyt-writer-grammar-slim` — first accepted script (bricks, 4 rounds) + doctrine-hardening
+  wave; branch UNMERGED, Daniel's review gates it. PR #41 open (post-render tail + run-001 gate
+  fixes + fyt-runner), reviewed READY TO MERGE, must merge with `claude/fyt-video-run-test`.
+  Poyais parked at GATE 3 awaiting Daniel (thumbnail, L17, publish approval). Engagement-doctrine
+  fold staged (6 `eng-fold-*` cards) but PARKED pending Daniel's bridge decision. fyt-run-001
+  (wells-fargo) fully parked (0 verified / 119 parked).
 - **kb-ops** — Wave A COMPLETE (2026-07-21): governed executor proven live (self-lint-report
   run-7b0b8de8, all 4 checks). Daemon inert; daily `self-lint-report` cadence DORMANT (no
   scheduler; launches manual via dashboard Workflows UI in a watched session).
@@ -64,12 +67,12 @@ in `inbox/`.)
 - **Missing script on ops:** `scripts/sync_daemon_dirs.py` exists on `origin/main` but not on
   the `ops` branch, so the routine's literal step-2b invocation fails file-not-found on ops; ran
   from a main copy this run (result clean). Already filed in wake-me card `6a605ebb-d86dff79` —
-  its drift half is now clean; the missing-script half remains and needs a desktop
+  its drift half is clean; the missing-script half remains and needs a desktop
   `sync_daemon_dirs.py --sync`/script-mirror (or amend step 2b). No new card filed — the existing
   wake-me still covers it.
 - **Stale done-in-inbox:** four `nightly-review` cards (`6a5dbb3e-295a9d2b`, `6a5f0cef-53d31df4`,
   `6a605e40-ca81f0c8`, `6a65a3cd-dabf5d57`) sit in `queue/inbox/` at `state:done`, never moved to
-  `queue/done/`. Same four as the last several nights (yesterday's card `6a68483c` did not join
+  `queue/done/`. Same four as the last several nights (yesterday's card `6a6998eb` did not join
   them — it moved to `queue/done/` correctly). Recurring pattern; candidate for a housekeeping
   sweep (outside the nightly-review carve-out allow-list, so not fixed here).
 - No stale cards in `queue/working/` (only tonight's in-flight card). No preamble failures, no

@@ -1,9 +1,9 @@
 # System Handover
-_Generated: 2026-07-29T06:10Z_
+_Generated: 2026-07-30T06:09Z_
 
 Overnight was quiet and healthy. The `nightly-review` cadence ran on the cloud dispatcher
-(card `6a6998eb-da760811`): preamble passed, skills are in sync, and the daemon-dir check came
-back clean — the `self-lint-report.md` drift flagged back on 2026-07-22 is now reconciled. Both
+(card `6a6aea62-9fbf6365`): preamble passed, skills are in sync, and the daemon-dir check came
+back clean — the `self-lint-report.md` drift flagged back on 2026-07-22 stays reconciled. Both
 dashboards were regenerated. $0.00 of the $5.00 daily API budget was spent (everything is
 subscription-billed). Nothing new broke, and no fleet work ran unattended.
 
@@ -11,15 +11,16 @@ What's waiting on you is all carried over. The biggest is the faceless-youtube e
 six delta cards are staged and ready, but nothing polls them until you pick one of three launch
 paths (wire the queue bridge / passkey+UI / claude-subagent fallback). Also open, all unchanged:
 faceless-youtube PR #41 (reviewed READY TO MERGE — must merge together with
-`claude/fyt-video-run-test`), Poyais GATE 3 (thumbnail decision needs your paid-gen
-authorization, plus L17 and publish approval), the Atlas V2 "Trust" go/no-go, and two standing
-kb-ops decisions — the T3 budget-gate question (`6a5e482a`) and the delivery-gate warn→block flip
-(`6a5c7274-635d84bf`).
+`claude/fyt-video-run-test`), the `claude/fyt-writer-grammar-slim` scripting-doctrine branch
+(the arc is complete but the branch is UNMERGED, gated on your review), Poyais GATE 3 (thumbnail
+decision needs your paid-gen authorization, plus L17 and publish approval), the Atlas V2 "Trust"
+go/no-go, and two standing kb-ops decisions — the T3 budget-gate question (`6a5e482a`) and the
+delivery-gate warn→block flip (`6a5c7274-635d84bf`).
 
-The daemon-dir wake-me (`6a605ebb`) is now down to a single open item: `scripts/sync_daemon_dirs.py`
-lives on `main` but is still missing from the `ops` branch, so tonight's step-2b check again ran
-from a `main` copy. Its drift half has cleared, so all that's owed is mirroring the script onto
-`ops` (or amending routine step 2b) from a desk session — the cloud routine only reports it. One
+The daemon-dir wake-me (`6a605ebb`) is still down to a single open item: `scripts/sync_daemon_dirs.py`
+lives on `main` but is missing from the `ops` branch, so tonight's step-2b check again ran from a
+`main` copy. Its drift half stays cleared, so all that's owed is mirroring the script onto `ops`
+(or amending routine step 2b) from a desk session — the cloud routine only reports it. One
 cosmetic quirk persists: four already-done nightly cards sit stranded in `queue/inbox/` at
 `state:done` (same four as recent nights); harmless, worth a one-time sweep from the desk.
 

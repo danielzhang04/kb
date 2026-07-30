@@ -231,3 +231,18 @@
   queue/done/ correctly (done dir 70→71). Both are human-desk housekeeping, outside my carve-out.
 - Nothing new broke; all pending items already carry wake/decision cards. DIRECT-PUSH expected;
   PR fallback if branch-restricted.
+
+## 2026-07-30 nightly (dispatcher-cloud)
+- WORKED: clean nightly. preamble OK, sync_skills --check clean, sync_daemon_dirs --check clean
+  (ran origin/main copy in refs-fallback — script STILL absent on ops). Dispatcher emitted 1 card
+  (nightly-review 6a6aea62-9fbf6365); executed inbox→working→done via cards.transition, cost step
+  logged, both dashboards rewritten.
+- CONFIRMED steady state: daemon-dir drift half of wake 6a605ebb stays reconciled (clean), only
+  missing-script-on-ops half remains open. Did NOT file a duplicate wake card — 6a605ebb already
+  covers it. Same 4 legacy done-in-inbox strays (6a5dbb3e, 6a5f0cef, 6a605e40, 6a65a3cd), count
+  held at 4. Yesterday's card 6a6998eb landed in queue/done/ correctly (done dir 71→72).
+- GOTCHA reconfirmed: Edit/Write on dashboards requires a prior Read even when rewriting in full
+  (harness state tracking). Read both dashboards before Write.
+- Pending human items unchanged (engagement-fold bridge, PR #41, fyt-writer-grammar-slim branch,
+  Poyais GATE 3, Atlas V2 go/no-go, budget-gate 6a5e482a, delivery-gate flip 6a5c7274). Nothing
+  new broke. DIRECT-PUSH expected; PR fallback if branch-restricted.
