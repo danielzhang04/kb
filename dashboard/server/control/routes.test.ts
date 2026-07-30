@@ -19,7 +19,7 @@ const ORIGIN = 'http://localhost:5317';
 const proposal: PlanProposal = {
   schema: 'kb.plan-proposal/v1', proposalId: 'control-route', project: 'kb-ops', title: 'Control route',
   summary: 'Import and review an immutable proposal.',
-  manager: { runtime: 'claude', model: 'claude-opus-4-8', requiredSkills: [] },
+  manager: { runtime: 'claude', model: 'claude-opus-5', requiredSkills: [] },
   scope: { read: ['dashboard'], write: ['dashboard'] },
   governanceRefs: ['CLAUDE.md', 'governance/agent-rules.md', 'governance/risk-tiers.md', 'orgs/kb-ops/contract.md'],
   stages: [{
@@ -37,7 +37,7 @@ const proposal: PlanProposal = {
 
 function model(value: PlanProposal = proposal): TimelineModel {
   return { turns: [{
-    index: 0, model: 'claude-opus-4-8', timestamp: null, usage: null,
+    index: 0, model: 'claude-opus-5', timestamp: null, usage: null,
     steps: [{ kind: 'text', text: `Proposal follows.\n\n\`\`\`kb.plan-proposal/v1\n${JSON.stringify(value)}\n\`\`\`` }],
   }] };
 }
@@ -532,7 +532,7 @@ describe('control proposal routes', () => {
         ...proposal.manager,
         assignment: {
           agentId: 'forged-manager', declarationPath: 'agents/forged-manager.md', declarationHash: 'a'.repeat(64),
-          profileId: 'manager:claude:claude-opus-4-8', runtime: 'claude', model: 'claude-opus-4-8',
+          profileId: 'manager:claude:claude-opus-5', runtime: 'claude', model: 'claude-opus-5',
         },
       },
     };
@@ -783,7 +783,7 @@ describe('control proposal routes', () => {
     });
     expect(broker.start({
       runRef: running.value.runRef, sessionRef: running.value.managerSessionRef, role: 'manager',
-      profileId: 'manager:claude:claude-opus-4-8', approvedPrompt: 'approved',
+      profileId: 'manager:claude:claude-opus-5', approvedPrompt: 'approved',
     })).toMatchObject({ ok: true, started: true });
     const managerApp = Fastify();
     registerWriteSurface(managerApp, makeSurfaceContext({
@@ -822,7 +822,7 @@ describe('control proposal routes', () => {
   it('keeps an unassigned stage reroutable in a mixed assigned workflow and creates durable successor lineage', async () => {
     const managerAssignment = {
       agentId: 'assigned-manager', declarationPath: 'agents/assigned-manager.md', declarationHash: 'a'.repeat(64),
-      profileId: 'manager:claude:claude-opus-4-8', runtime: 'claude' as const, model: 'claude-opus-4-8',
+      profileId: 'manager:claude:claude-opus-5', runtime: 'claude' as const, model: 'claude-opus-5',
     };
     const workerAssignment = {
       agentId: 'assigned-worker', declarationPath: 'agents/assigned-worker.md', declarationHash: 'b'.repeat(64),
@@ -956,7 +956,7 @@ describe('control proposal routes', () => {
   it('refuses mismatched assigned Manager successors before audit/store mutation, then permits the exact immutable route', async () => {
     const managerAssignment = {
       agentId: 'assigned-manager', declarationPath: 'agents/assigned-manager.md', declarationHash: 'd'.repeat(64),
-      profileId: 'manager:claude:claude-opus-4-8', runtime: 'claude' as const, model: 'claude-opus-4-8',
+      profileId: 'manager:claude:claude-opus-5', runtime: 'claude' as const, model: 'claude-opus-5',
     };
     const assigned = { ...proposal, manager: { ...proposal.manager, assignment: managerAssignment } };
     const stored = controlStore.createProposalRevision('operator', {
@@ -1587,7 +1587,7 @@ describe('control proposal routes', () => {
   it('accepts stored assigned snapshots through publication reconciliation and activation validation', async () => {
     const managerAssignment = {
       agentId: 'assigned-manager', declarationPath: 'agents/assigned-manager.md', declarationHash: 'e'.repeat(64),
-      profileId: 'manager:claude:claude-opus-4-8', runtime: 'claude' as const, model: 'claude-opus-4-8',
+      profileId: 'manager:claude:claude-opus-5', runtime: 'claude' as const, model: 'claude-opus-5',
     };
     const workerAssignment = {
       agentId: 'assigned-worker', declarationPath: 'agents/assigned-worker.md', declarationHash: 'f'.repeat(64),
