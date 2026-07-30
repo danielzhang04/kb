@@ -251,6 +251,45 @@ export function runTrackedProcess(
   });
 }
 
+/** Cap for {@link resolveCheckedOutBranch} — a local, read-only ref lookup must never sit anywhere
+ *  near the 60s default git-network timeout; if it doesn't answer almost immediately, something is
+ *  already wrong and the caller should fail closed rather than wait. */
+const BRANCH_RESOLVE_TIMEOUT_MS = 5_000;
+
+/**
+ * Read-only: resolve the branch currently checked out at `repoRoot`, or `null` if it cannot be
+ * determined for ANY reason — detached HEAD, `repoRoot` is not a git repository, `repoRoot` doesn't
+ * exist, or the git invocation itself errors or times out. Every failure mode collapses to `null` so
+ * callers can fail closed uniformly instead of branching on error shape.
+ *
+ * Deliberately shells `git symbolic-ref --short HEAD` directly via {@link runTrackedProcess} — NOT
+ * through an {@link OpsGitRunner} — so this check never touches the injectable seam a caller uses for
+ * its mutating git calls. That separation is load-bearing for tests: a test can assert "the (mutating)
+ * git runner was never invoked" for a non-`ops` repo root while this resolution still runs for real
+ * against a real repo root the test constructs (per this repo's convention of controlling test state via
+ * real fixtures rather than backdoor seams). `symbolic-ref` (unlike `rev-parse --abbrev-ref`, which
+ * prints the literal string `HEAD` when detached) simply fails on a detached HEAD, which the catch below
+ * turns into `null` — a detached HEAD can never be misread as a branch name.
+ */
+export async function resolveCheckedOutBranch(repoRoot: string): Promise<string | null> {
+  try {
+    const out = await runTrackedProcess(
+      'git',
+      ['symbolic-ref', '--short', 'HEAD'],
+      repoRoot,
+      'symbolic-ref',
+      { timeoutMs: BRANCH_RESOLVE_TIMEOUT_MS },
+    );
+    const branch = out.trim();
+    return branch.length > 0 ? branch : null;
+  } catch {
+    // Not a git repo, repoRoot doesn't exist, detached HEAD, git missing/erroring, or the timeout above
+    // — all of it is "cannot confirm this is ops", so all of it is null. Never let a resolution error
+    // propagate to the caller as anything other than "unresolved".
+    return null;
+  }
+}
+
 /**
  * The shared async git runner. Shells `git -c commit.gpgsign=false <args>` under `repoRoot` (gpg
  * signing off; the repo's active pre-commit hook still runs — `--no-verify` is never passed). This is
