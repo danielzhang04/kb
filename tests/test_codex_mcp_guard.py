@@ -26,17 +26,18 @@ def test_execs_codex_mcp_server_when_env_clean(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("CODEX_API_KEY", raising=False)
     monkeypatch.setattr(codex_mcp_guard.shutil, "which", lambda _: "C:/npm/codex.cmd")
-    seen = {}
+    calls = []
 
     def fake_run(cmd, **kw):
-        seen["cmd"] = cmd
+        calls.append(cmd)
         class R: returncode = 0
         return R()
 
     monkeypatch.setattr(codex_mcp_guard.subprocess, "run", fake_run)
     rc = codex_mcp_guard.main([])
     assert rc == 0
-    assert seen["cmd"] == ["C:/npm/codex.cmd", "mcp-server"]
+    assert calls[0] == ["C:/npm/codex.cmd", "login", "status"]
+    assert calls[1] == ["C:/npm/codex.cmd", "mcp-server"]
 
 
 def test_refuses_when_codex_not_on_path(monkeypatch, capsys):
@@ -46,3 +47,32 @@ def test_refuses_when_codex_not_on_path(monkeypatch, capsys):
     rc = codex_mcp_guard.main([])
     assert rc == 2
     assert "not on PATH" in capsys.readouterr().err
+
+
+def test_refuses_when_login_status_nonzero(monkeypatch, capsys):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("CODEX_API_KEY", raising=False)
+    monkeypatch.setattr(codex_mcp_guard.shutil, "which", lambda _: "C:/npm/codex.cmd")
+
+    def fake_run(cmd, **kw):
+        class R: returncode = 1
+        return R()
+
+    monkeypatch.setattr(codex_mcp_guard.subprocess, "run", fake_run)
+    rc = codex_mcp_guard.main([])
+    assert rc == 2
+    assert "login status exited 1" in capsys.readouterr().err
+
+
+def test_refuses_when_login_status_times_out(monkeypatch, capsys):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("CODEX_API_KEY", raising=False)
+    monkeypatch.setattr(codex_mcp_guard.shutil, "which", lambda _: "C:/npm/codex.cmd")
+
+    def fake_run(cmd, **kw):
+        raise codex_mcp_guard.subprocess.TimeoutExpired(cmd, kw.get("timeout"))
+
+    monkeypatch.setattr(codex_mcp_guard.subprocess, "run", fake_run)
+    rc = codex_mcp_guard.main([])
+    assert rc == 2
+    assert "timed out after 15s" in capsys.readouterr().err

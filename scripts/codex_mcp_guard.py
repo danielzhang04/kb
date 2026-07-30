@@ -23,6 +23,17 @@ def main(argv: list[str] | None = None) -> int:
     if not exe:
         print("codex-mcp-guard: codex CLI not on PATH", file=sys.stderr)
         return 2
+    try:
+        rc = subprocess.run([exe, "login", "status"],
+                             capture_output=True, timeout=15).returncode
+    except subprocess.TimeoutExpired:
+        print("codex-mcp-guard: refused — codex login status timed out after "
+              "15s (auth check wedged)", file=sys.stderr)
+        return 2
+    if rc != 0:
+        print(f"codex-mcp-guard: refused — codex login status exited {rc} "
+              "(subscription auth missing/stale)", file=sys.stderr)
+        return 2
     return subprocess.run([exe, "mcp-server", *argv]).returncode
 
 
