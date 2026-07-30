@@ -134,7 +134,7 @@ there, the f-word is not the channel, and profanity is the rarest reach of the s
 word verdict fragment that carries a judgment, which is what separates it from the banned empty
 fragment below. No quota attaches: pick the beats where the voice would actually
 get loud, and a loud move is its block's exit: nuance and qualifiers land before the punch, never
-trailing after it. But a whole script reaching for none of the four has drifted quiet, and that is a defect of
+trailing after it. But a whole script reaching for none of the five has drifted quiet, and that is a defect of
 its own (taste #13) even where every ban below is honored.
 **The boundary is credibility padding, not volume.** Banned: "that part is real," "he actually did," "he
 really did," "seriously," "the maddening thing," "genuinely audacious" — state the insane fact plainly
@@ -357,7 +357,7 @@ The taste defects the pipeline reliably produces, as transformations (what criti
 | Unstaged reveal / pre-authorization: the mechanism, rule, or procedure lectured before the act it explains (the test-count explainer ahead of the bricks), so the title object walks in unmotivated | Pressure, the corner, the decision as a moment, the act, then the mechanism as the punchline to "how did nobody notice?" (§3.2) |
 | Orphaned callback: a wink at a scene the script has not built yet ("as long as nobody counts the inventory") | Cut the wink, or move it after the scene it points at (§2.4) |
 | Elegant variation: the plain object-word swapped for a fancier synonym ("masonry" for bricks) | Repeat the plain word; a friend telling the story says "bricks" every time (§1.1) |
-| Literary/essayist phrasing, the uncontracted punch ("That is one year."), the paired parallel aphorism — or the quiet script: no caps, no knowing build-up, no idiom reach, no sanctioned profanity anywhere in it | Plain and short, the way it would be said aloud; heat is the four licensed loud moves, used where the voice would actually get loud (§1.6) |
+| Literary/essayist phrasing, the uncontracted punch ("That is one year."), the paired parallel aphorism — or the quiet script: no caps, no knowing build-up, no idiom reach, no sanctioned profanity anywhere in it | Plain and short, the way it would be said aloud; heat is the five licensed loud moves, used where the voice would actually get loud (§1.6) |
 | Grandeur button ending a beat, or an essay/moral close ("That's a workday") | End on the fact/action; stop the way a friend stops: the fates, then a last laugh (§1.2, §3.5) |
 | Dwell: restating a landed point, re-restating the premise, a triple-build of one idea, or re-climbing revenue already told because the draft runs in calendar order | Say it once, on the sharpest image, then move; impose a shape, and one climb owns the numbers (§2.5, §2.7, §3.1) |
 | Generic metaphor run long (a whole sentence built out, the Super Bowl TV bit) where a named pull would land | One named cultural reference, or a generic one held to a short clause ("It's the TSA.") (§1.4) |

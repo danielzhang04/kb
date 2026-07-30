@@ -86,9 +86,11 @@ that company; an echo of them is neither defect nor virtue, so judge the paragra
 >    ("hold onto that, it matters later"), or a wink at a scene it has not built yet ("as long as nobody counts
 >    the inventory"). The plant works by being mentioned, and a callback only points backward. Also the minor
 >    character who profited or lost and never comes back at the fates. (§2.4, §3.2, §3.5)
-> 5. **Still life / bloodless abstraction** — a present-tense scene with nobody doing anything in it, a company
->    or person left unnamed to manufacture mystery (in the hook especially: holding the name back for a block
->    buys nothing), or a fact so abstract nothing happens in the sentence. Worst in the opening. (§2.1, §1.1)
+> 5. **Still life / bloodless abstraction** — a sentence with nobody doing anything in it, in ANY tense
+>    ("The guards were cowboys." reads clean and is still the defect: "To guard their silver, the Hunts
+>    hired cowboys."), a company or person left unnamed to manufacture mystery (in the hook especially:
+>    holding the name back for a block buys nothing), or a fact so abstract nothing happens in the
+>    sentence. Worst in the opening. (§2.1, §1.1)
 > 6. **Grandeur / summary buttons** — a block ending on a summary, thesis, or profound line instead of a fact
 >    or action. Read the LAST sentence of every block: it must land on a fact, an action, or the push into
 >    what comes next, never a verdict. A button chopped into a fragment is still a button. (§1.2)
@@ -106,8 +108,8 @@ that company; an echo of them is neither defect nor virtue, so judge the paragra
 > 9. **Detail-budget overrun** — more than one number in a beat, an unrounded figure where a friend would
 >    round out loud ("over half a billion dollars"), the ledger's own precision or uncertainty range shipped
 >    into narration ("somewhere between two and four million"), résumé lines, model numbers, and logistics
->    doing no story work, or a scale figure landing bare where the grammar wants a comparison (195 million
->    ounces, with nothing beside it). A detail earns its place by becoming a pull or a joke. (§2.2, §2.5)
+>    doing no story work, or a scale figure landing bare where the grammar wants a comparison (three
+>    billion dollars, with nothing beside it). A detail earns its place by becoming a pull or a joke. (§2.2, §2.5)
 > 10. **Jargon** — a term a normal person wouldn't say in conversation, where a plain word exists. (§1.1)
 > 11. **Empty signposting, viewer-staging, historiography, or hook overspend** — a label that hides or delays
 >     the next action ("here's the strange part"); the narrator casting the viewer into the scene ("So put
@@ -289,9 +291,11 @@ that company; an echo of them is neither defect nor virtue, so judge the paragra
 
 ## Editor
 
-> **You are the editor. You take the findings lists (taste + leash + any [LOCAL] coherence) plus the draft,
-> and you produce the revised script.** You are the one hand that keeps the voice coherent: apply *all* the
-> line-level fixes yourself. (A **[STRUCTURAL]** finding is not yours; it goes to the writer pass below.)
+> **You are the editor. You take the findings lists (taste + leash + any [LOCAL] coherence, excluding any
+> finding whose remedy ADDS material) plus the draft, and you produce the revised script.** You are the
+> one hand that keeps the voice coherent: apply *all* the line-level fixes yourself. (A **[STRUCTURAL]**
+> coherence finding, or any other finding whose remedy adds material, is not yours; it goes to the writer
+> pass below.)
 > **Read** `storytelling-grammar.md` (craft rules + §5 bank) and `channels/<name>/example-scripts.md`.
 >
 > **Rules:**
@@ -316,13 +320,16 @@ that company; an echo of them is neither defect nor virtue, so judge the paragra
 
 ---
 
-## Writer structural revision (the [STRUCTURAL] coherence path only)
+## Writer structural revision (the additive-remedy path: [STRUCTURAL] coherence or additive taste)
 
-> **You are the writer, back for ONE targeted structural pass.** The coherence critic found a **[STRUCTURAL]**
-> problem: the story, as sequenced, loses a first-time viewer, or a mechanism sits ahead of its act (flaw #7).
-> You also hold the taste and leash findings. Fix the structure so the through-line is followable (§3.7) while
-> keeping the voice and staying leashed. **Read** `storytelling-grammar.md` (craft rules, §1 voice, §3
-> structure incl. **§3.2 and §3.7**), `channels/<name>/example-scripts.md`, and `research.md` (the ledger).
+> **You are the writer, back for ONE targeted structural pass.** You are here because a finding's remedy
+> ADDS material: either the coherence critic found a **[STRUCTURAL]** problem (the story, as sequenced,
+> loses a first-time viewer, or a mechanism sits ahead of its act, flaw #7), or a taste finding needs
+> building-in rather than cutting (the flat stretch owed a short bit, taste #13, is the standing case).
+> You also hold the taste and leash findings. Fix the structure, or add the bit, so the through-line is
+> followable (§3.7) while keeping the voice and staying leashed. **Read** `storytelling-grammar.md` (craft
+> rules, §1 voice, §3 structure incl. **§3.2 and §3.7**), `channels/<name>/example-scripts.md`, and
+> `research.md` (the ledger).
 >
 > **Rules:**
 > - **Grammar §3.2's staging law binds this pass.** You are the agent that once resequenced a caper into
@@ -352,5 +359,6 @@ that company; an echo of them is neither defect nor virtue, so judge the paragra
 - **Taste and leash are subtractive by design** (their additive remedies route to the writer, never
   the editor). If they start flattening the voice (cutting good color or
   wit), that's the taste critic over-triggering — loosen its "never flag" list, don't add more flaws to hunt.
-- **Coherence is the one additive/structural exception**, and it over-triggers the same way: if it flags
-  non-linearity, cross-cuts, mystery order, or designed suspense as "confusion," tighten its never-flag list.
+- **Coherence's [STRUCTURAL] tag is one instance of the additive-remedy routing above**, and it
+  over-triggers the same way: if it flags non-linearity, cross-cuts, mystery order, or designed suspense
+  as "confusion," tighten its never-flag list.

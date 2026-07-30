@@ -25,7 +25,7 @@ premise, no famous name · **C** = pure-obscure anchor (hold/repackage while the
 | --- | --- | --- | --- | --- | --- | --- |
 | 1 | ST-033 | 95 | A | A Bank Opened 3.5 Million Accounts Nobody Asked For | long + shorts | scripted |
 | 2 | ST-013 | 94 | A | Diamonds Are Worthless. One Ad Made Them Forever. | long + shorts | idea |
-| 3 | ST-029 | 94 | A | The $30 Billion Truck That Only Rolled Downhill | long + shorts | idea |
+| 3 | ST-029 | 94 | A | The $30 Billion Truck That Only Rolled Downhill | long + shorts | **scripted** |
 | 4 | ST-017 | 93 | A | Europe's Hottest Company Had $2 Billion That Didn't Exist | long + shorts | idea |
 | 5 | ST-025 | 93 | B | Ireland Lost Its Banks for Six Months. It Was Fine. | long + shorts | idea |
 | 6 | ST-030 | 92 | A | China's Starbucks Killer Faked a Third of Its Sales | long + shorts | idea |
@@ -598,7 +598,8 @@ premise, no famous name · **C** = pure-obscure anchor (hold/repackage while the
 - **Score:** 94/100 (payload 18, hook 15, lever 9, demand 14, monetization 15, diff 14, fit 4, feasibility 5)
 - **Candidate shorts (provisional):** • "This 'self-driving' truck was just rolling downhill" → the gravity reveal, closed in 30s • a company worth more than Ford with no product • how a SPAC let it skip the hard questions
 - **Sources:** justice.gov/usao-sdny (Milton sentencing) · cnbc.com Nikola–SEC $125M settlement (2021-12-21) · cnbc.com Trump pardon (2025-03-28) · cnn.com Milton sentencing / $660M loss (2023-12-18)
-- **Status:** idea
+- **Status:** scripted (2026-07-29 — fresh-story live test through the hardened pipeline; blind pass-1 →
+  pass-1 review fixes → deep-review r2 per Daniel rulings; slug `2026-07-29-nikola-fresh`)
 
 ### ST-030 — China's Starbucks Killer Faked a Third of Its Sales
 - **Format:** long-form (~11–14 min) + shorts bench (provisional)

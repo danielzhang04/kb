@@ -3602,3 +3602,42 @@ be synthesized into doctrine and five blocks banked to the voice bar. What lande
 
 **Next:** run the updated doctrine on another fresh script (Daniel's directive) — that run tests whether
 these learnings transmit blind.
+
+## 2026-07-29 — Nikola deep-review doctrine wave (771fca5)
+
+**Context.** ST-029 (Trevor Milton / Nikola) ran as the next fresh-story live test: blind pass-1 → pass-1
+review fixes → a full deep review (5 root causes, 24 r2 directives, 11 pipeline deltas, opus-verified)
+→ Daniel's rulings on the sheet, recorded as **binding** and overriding the reviewer's own proposals
+(`channels/the-second-take/videos/2026-07-29-nikola-fresh/deep-review.md` §V). What landed as doctrine:
+
+- **Additive remedies route to the writer, generalized.** `critics.md`'s routing dropped its
+  coherence-only special case: ANY finding whose remedy adds material (not just [STRUCTURAL] coherence)
+  now goes to the writer structural pass; the editor stays strictly subtractive. Taste #13 (flat stretch)
+  now counts back-half blocks one by one instead of spot-checking.
+- **Context-before-collapse folded into the rise law (§2.7), generalized.** Not an enumerated checklist:
+  one context sentence — who these people are, what the company sold, where the money came from — so
+  fresh eyes hold the world before it breaks.
+- **Compression spares function words (§1.1).** Cutting for brevity trims clauses and beats, never the
+  small words a speaker actually says; a dropped subject, dropped "that," or dropped connective reads as
+  a written tic, not compression.
+- **The "X, except Y" build-out is dead as a structure (§1.4)**, restated per Daniel: a comparison must
+  make instant sense in its beat's context, not rely on a contrast-vs-frame theory.
+- **Verdict locks expire per round (`critics.md`).** A lock binds only the regen round it was written
+  for: a later Daniel hand-edit outranks an earlier verdict, and a line locked in a previous round is
+  ordinary text again.
+- **Still life banned in any tense, not just present (§1.1)** — the ruling behind the critics.md taste #5
+  and grammar §1.1 wording fixed alongside this entry.
+- **§2.3 slimmed to a removal:** "8–10 minutes is the average, not a target" — no added rules about
+  deviation; the cut sets the length.
+- **Reaction sized to its fact (§1.3):** "crazy, right?" on an unremarkable number is the miss.
+- **The norm-then-violation frame named (§1.4):** the normal behavior stated, then the break, in two
+  short sentences, sitting between a named pull and its prose fallback.
+- **Interest-assertions softened, not banned (§1.3):** a limp line or bare interest-assertion is swapped
+  for a better-worded reaction or reference, never simply extended — folded into the existing limp-line
+  rule.
+- **Post-hand-edit sweep added to the skill (`SKILL.md`).** Where a regen's prior round carries Daniel
+  hand-edits, run one coherence + leash re-read over the edited text before outlining; a fact he added
+  gets a targeted verification, never a hedge or a cut.
+
+**Source:** `channels/the-second-take/videos/2026-07-29-nikola-fresh/deep-review.md` §V ("Daniel rulings
+(2026-07-29) — BINDING, these override §II/§III above"). Commit 771fca5.
