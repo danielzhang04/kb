@@ -16,13 +16,18 @@ import type { PlanProposal, ProposalStage, ResolvedAgentAssignment } from './pro
 import type { ExecutionProfile } from './policy.ts';
 import type { AssignedAgentResolver } from './agentAssignmentResolver.ts';
 import {
+  buildRosterPermissionSettings,
   createRosterSessionManager,
   createRosterWorkerAdapter,
+  detectReplReadiness,
   matchCompletionMarker,
   projectRosterState,
   resolveRosterWorkDir,
   rosterAgentIds,
+  rosterAgentScope,
+  rosterAgentTools,
   stripTerminalControl,
+  DELIVERY_NOT_READY_REASON,
   DELIVERY_TIMEOUT_REASON,
   type RosterFileSystem,
   type RosterSessionManager,
@@ -273,6 +278,11 @@ function harness(options: {
   plan?: PlanProposal;
   existingPaths?: string[];
   deliveryTimeoutMs?: number;
+  replReadyTimeoutMs?: number;
+  /** The server-owned workflow tool cap the per-run permission settings are built from. */
+  workflowTools?: (workflowProfileId: string | null) => readonly string[];
+  /** Runs on every readiness-backoff sleep, so a test can change what is on screen between polls. */
+  onSleep?: (elapsedMs: number) => void;
   seed?: { directories?: string[]; contents?: Record<string, string> };
 } = {}) {
   const plan = options.plan ?? proposalFixture();
@@ -286,6 +296,10 @@ function harness(options: {
     instructionMarkdown: `# ${input.assignment.agentId}\n\nYou own your phase.`,
   }));
   let token = 0;
+  // A fake clock the injected backoff sleep advances, so readiness polling is deterministic and the
+  // suite never waits on a real timer.
+  let clock = 0;
+  const sleeps: number[] = [];
   const sessions = createRosterSessionManager({
     store,
     repoRoot: '/repo',
@@ -296,9 +310,13 @@ function harness(options: {
     resolveProfiles: () => PROFILES,
     fs,
     mintToken: () => `${(token += 1)}`.padStart(32, '0').replace(/[^0-9a-f]/g, '0'),
+    now: () => clock,
+    sleep: async (ms) => { sleeps.push(ms); clock += ms; options.onSleep?.(clock); },
+    resolveWorkflowTools: options.workflowTools ?? (() => ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep']),
     ...(options.deliveryTimeoutMs === undefined ? {} : { deliveryTimeoutMs: options.deliveryTimeoutMs }),
+    ...(options.replReadyTimeoutMs === undefined ? {} : { replReadyTimeoutMs: options.replReadyTimeoutMs }),
   });
-  return { plan, store, runRef, registry, host, fs, sessions, resolve };
+  return { plan, store, runRef, registry, host, fs, sessions, resolve, sleeps };
 }
 
 function stageOf(plan: PlanProposal, stageId: string): ProposalStage {
@@ -1090,5 +1108,246 @@ describe('roster helpers', () => {
   it('strips terminal control sequences so a coloured marker still scans', () => {
     expect(stripTerminalControl('\u001b[32mready\u001b[0m\r\n')).toBe('ready\n\n');
     expect(stripTerminalControl('\u001b]0;title\u0007plain')).toBe('plain');
+  });
+});
+
+/**
+ * Scoped per-run tool permissions. The defect: a spawned roster terminal's FIRST act â€” reading its own
+ * `binding.md` â€” parked on Claude Code's interactive "Do you want to proceed?" tool-permission menu, so
+ * the run went nowhere. Folder trust does not answer that menu and a remembered allowlist does not
+ * either; it is a per-session decision, and the sanctioned channel for answering it ahead of time is a
+ * settings file passed to `claude --settings`.
+ */
+describe('roster scoped per-run permissions', () => {
+  it('grants exactly the declared scope plus its own order channel, and nothing else', () => {
+    const settings = buildRosterPermissionSettings({
+      repoRoot: 'C:\\Users\\danie\\kb',
+      agentDir: 'C:\\state\\control\\roster\\run-7\\fyt-visuals',
+      read: ['orgs/faceless-youtube'],
+      write: ['orgs/faceless-youtube/channels'],
+      tools: ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep'],
+    });
+    expect(settings.allow).toEqual([
+      'Read(//C:/state/control/roster/run-7/fyt-visuals/**)',
+      'Read(//C:/Users/danie/kb/orgs/faceless-youtube/**)',
+      'Read(//C:/Users/danie/kb/orgs/faceless-youtube/channels/**)',
+      'Glob(//C:/Users/danie/kb/orgs/faceless-youtube/**)',
+      'Glob(//C:/Users/danie/kb/orgs/faceless-youtube/channels/**)',
+      'Grep(//C:/Users/danie/kb/orgs/faceless-youtube/**)',
+      'Grep(//C:/Users/danie/kb/orgs/faceless-youtube/channels/**)',
+      'Write(//C:/Users/danie/kb/orgs/faceless-youtube/channels/**)',
+      'Edit(//C:/Users/danie/kb/orgs/faceless-youtube/channels/**)',
+    ]);
+    expect(settings.additionalDirectories).toEqual([
+      'C:/state/control/roster/run-7/fyt-visuals',
+      'C:/Users/danie/kb/orgs/faceless-youtube',
+      'C:/Users/danie/kb/orgs/faceless-youtube/channels',
+    ]);
+    // No wildcard allow-all, and Bash is NEVER granted: a Bash rule matches a command prefix, not a
+    // path, so it cannot be bounded by the approved scope and a bare entry would be exactly the blanket
+    // grant this file exists to avoid.
+    expect(settings.allow).not.toContain('Bash');
+    expect(settings.allow.some((rule) => /^[A-Za-z]+$/.test(rule) || rule.includes('(*') || rule === '*')).toBe(false);
+    expect(JSON.parse(settings.json)).toEqual({
+      permissions: { allow: settings.allow, additionalDirectories: settings.additionalDirectories },
+    });
+  });
+
+  it('emits no rule for a tool the server-owned profile withholds', () => {
+    const settings = buildRosterPermissionSettings({
+      repoRoot: '/repo',
+      agentDir: '/state/control/roster/run-7/fyt-checker',
+      read: ['orgs/faceless-youtube'],
+      write: [],
+      tools: ['Read', 'Glob', 'Grep'],
+    });
+    expect(settings.allow).toEqual([
+      'Read(//state/control/roster/run-7/fyt-checker/**)',
+      'Read(//repo/orgs/faceless-youtube/**)',
+      'Glob(//repo/orgs/faceless-youtube/**)',
+      'Grep(//repo/orgs/faceless-youtube/**)',
+    ]);
+    expect(settings.allow.some((rule) => rule.startsWith('Write(') || rule.startsWith('Edit('))).toBe(false);
+  });
+
+  it('refuses to interpolate a scope entry that is not a safe repo-relative path', () => {
+    const settings = buildRosterPermissionSettings({
+      repoRoot: '/repo',
+      agentDir: '/state/agent',
+      read: ['../../etc', '/absolute', 'orgs/faceless-youtube'],
+      write: ['orgs/../../escape'],
+      tools: ['Read', 'Write'],
+    });
+    expect(settings.allow).toEqual([
+      'Read(//state/agent/**)',
+      'Read(//repo/orgs/faceless-youtube/**)',
+    ]);
+  });
+
+  it("unions only the stages an agent owns â€” another agent's stage never widens the grant", () => {
+    const plan = proposalFixture();
+    plan.stages[2].scope = { read: ['orgs/faceless-youtube', 'knowledge'], write: ['orgs/faceless-youtube/library'] };
+    expect(rosterAgentScope(plan, 'fyt-story')).toEqual({
+      read: ['orgs/faceless-youtube'], write: ['orgs/faceless-youtube/channels'],
+    });
+    expect(rosterAgentScope(plan, 'fyt-visuals')).toEqual({
+      read: ['orgs/faceless-youtube', 'knowledge'], write: ['orgs/faceless-youtube/library'],
+    });
+    // The manager additionally carries the proposal-level scope.
+    expect(rosterAgentScope(plan, 'fyt-runner')).toEqual({
+      read: ['orgs/faceless-youtube'], write: ['orgs/faceless-youtube/channels'],
+    });
+  });
+
+  it("caps an agent at the INTERSECTION of its stages' server-owned tool profiles", () => {
+    const plan = proposalFixture();
+    plan.profile = 'producer';
+    plan.stages[1].workflowProfile = 'checker-readonly';
+    const resolveTools = (id: string | null): readonly string[] =>
+      id === 'checker-readonly' ? ['Read', 'Glob', 'Grep'] : ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep'];
+    // fyt-story owns `idea` (producer) and `story` (checker-readonly): it gets what BOTH allow.
+    expect(rosterAgentTools(plan, 'fyt-story', resolveTools)).toEqual(['Read', 'Glob', 'Grep']);
+    expect(rosterAgentTools(plan, 'fyt-visuals', resolveTools)).toEqual(['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep']);
+    // An agent with no resolvable cap gets none â€” no rules, i.e. today's interactive behaviour.
+    expect(rosterAgentTools(plan, 'nobody', resolveTools)).toEqual([]);
+  });
+
+  it('writes the per-run settings file BEFORE the launch line and points --settings at it', () => {
+    const { plan, sessions, runRef, fs, host } = harness();
+    sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    const settingsPath = `/state/control/roster/${runRef}/fyt-story/settings.json`;
+    const raw = fs.files.get(settingsPath);
+    expect(raw).toBeDefined();
+    const parsed = JSON.parse(raw as string) as { permissions: { allow: string[]; additionalDirectories: string[] } };
+    expect(parsed.permissions.allow).toContain(`Read(//state/control/roster/${runRef}/fyt-story/**)`);
+    expect(parsed.permissions.allow).toContain('Read(//repo/orgs/faceless-youtube/**)');
+    expect(parsed.permissions.allow).toContain('Edit(//repo/orgs/faceless-youtube/channels/**)');
+    // Nothing outside the canonical repo root or this agent's own roster directory.
+    for (const rule of parsed.permissions.allow) {
+      expect(rule).toMatch(new RegExp(`\\(//(repo/orgs/faceless-youtube|state/control/roster/${runRef}/fyt-story)`));
+    }
+    const launch = host.writes.get(sessionIdFor(sessions, runRef, 'fyt-story'))?.[0] ?? '';
+    expect(norm(launch)).toContain(`--settings "/state/control/roster/${runRef}/fyt-story/settings.json"`);
+    expect(launch).not.toContain('--dangerously-skip-permissions');
+    expect(launch).not.toContain('--allow-dangerously-skip-permissions');
+    expect(launch).not.toContain('--permission-mode');
+  });
+
+  it('gives each agent its OWN settings file, scoped to its own order channel', () => {
+    const { plan, sessions, runRef, fs } = harness();
+    sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    const storyAllow = (JSON.parse(fs.files.get(`/state/control/roster/${runRef}/fyt-story/settings.json`) as string) as
+      { permissions: { allow: string[] } }).permissions.allow;
+    expect(storyAllow.some((rule) => rule.includes('fyt-visuals'))).toBe(false);
+  });
+
+  it('deletes the per-run settings file when the roster retires', () => {
+    const { plan, sessions, runRef, fs } = harness();
+    sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    expect(fs.files.has(`/state/control/roster/${runRef}/fyt-story/settings.json`)).toBe(true);
+    sessions.retire(runRef, 'run succeeded');
+    // The grant cannot outlive the run it was minted for.
+    expect(fs.files.has(`/state/control/roster/${runRef}/fyt-story/settings.json`)).toBe(false);
+  });
+});
+
+/**
+ * The REPL-readiness gate. The defect: the delivery line was typed unconditionally, interleaved
+ * character-by-character with an open tool-permission menu, and was swallowed â€” the stage then sat
+ * toward the 4h marker deadline with nothing delivered.
+ */
+describe('roster REPL-readiness gate', () => {
+  it('classifies a permission menu, a mid-turn frame, and an idle prompt', () => {
+    expect(detectReplReadiness('\u256d\u2500 Do you want to proceed? \u2500\u256e\n\u2502 \u276f 1. Yes')).toMatchObject({ state: 'modal' });
+    expect(detectReplReadiness("  2. Yes, and don't ask again for Read commands")).toMatchObject({ state: 'modal' });
+    expect(detectReplReadiness('\u2502   3. No, and tell Claude what to do differently')).toMatchObject({ state: 'modal' });
+    expect(detectReplReadiness('* Pondering\u2026 (12s \u00b7 esc to interrupt)')).toMatchObject({ state: 'busy' });
+    expect(detectReplReadiness('\u256d\u2500\u2500\u2500\u256e\n\u2502 >  \u2502\n\u2570\u2500\u2500\u2500\u256f')).toEqual({ state: 'ready' });
+    expect(detectReplReadiness('')).toEqual({ state: 'ready' });
+    // An answered menu stops matching once the REPL has redrawn past it.
+    const scrolled = `Do you want to proceed?\n${Array.from({ length: 40 }, (_, index) => `line ${index}`).join('\n')}\n> `;
+    expect(detectReplReadiness(scrolled)).toEqual({ state: 'ready' });
+  });
+
+  it('never types a work order into an open permission menu, and parks with a named reason', async () => {
+    const { plan, store, sessions, runRef, host, fs } = harness({ replReadyTimeoutMs: 60_000 });
+    sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    const sessionId = sessionIdFor(sessions, runRef, 'fyt-story');
+    succeedStage(store, runRef, 'idea');
+    resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
+    host.emit(sessionId, 'Do you want to proceed?\r\n1. Yes\r\n3. No, and tell Claude what to do differently\r\n');
+    const written = host.writes.get(sessionId)?.length ?? 0;
+
+    const result = await sessions.deliver(deliverInput(store, runRef, plan, 'story'));
+
+    expect(result.state).toBe('waiting-human');
+    expect(result.summary).toContain(DELIVERY_NOT_READY_REASON);
+    expect(result.summary).toContain('Do you want to');
+    // NOTHING was typed and NOTHING was authored: the order never left the control plane.
+    expect(host.writes.get(sessionId)).toHaveLength(written);
+    expect(fs.files.has(`/state/control/roster/${runRef}/fyt-story/orders/story.md`)).toBe(false);
+    // It settles as a human wait â€” it does not hang, and it is not a silent success.
+    const events = store.listEvents('operator', runRef, 0, 500);
+    expect(events.ok && events.value.some((event) => (event.summary ?? '').includes(DELIVERY_NOT_READY_REASON))).toBe(true);
+  });
+
+  it('waits with backoff and delivers once the menu is answered', async () => {
+    let sessionId = '';
+    let liveHost: ReturnType<typeof fakeHost> | null = null;
+    const item = harness({
+      replReadyTimeoutMs: 60_000,
+      onSleep: (elapsed) => {
+        // The operator answers the menu after the second poll and the REPL redraws past it — which is
+        // what actually clears a menu from the current frame: real content scrolling it out, not blanks.
+        if (elapsed >= 700 && liveHost && sessionId) {
+          const redraw = Array.from({ length: 30 }, (_, index) => `read binding.md line ${index}`).join('\r\n');
+          liveHost.emit(sessionId, `${redraw}\r\n> \r\n`);
+        }
+      },
+    });
+    liveHost = item.host;
+    item.sessions.ensureRoster({ subject: 'operator', runRef: item.runRef, proposal: item.plan });
+    sessionId = sessionIdFor(item.sessions, item.runRef, 'fyt-story');
+    succeedStage(item.store, item.runRef, 'idea');
+    resolveGate(item.store, item.runRef, 'story', 'g0-idea-pick', 'approved');
+    item.host.emit(sessionId, 'Do you want to proceed?\r\n1. Yes\r\n');
+
+    const pending = item.sessions.deliver(deliverInput(item.store, item.runRef, item.plan, 'story'));
+    const orderPath = `/state/control/roster/${item.runRef}/fyt-story/orders/story.md`;
+    await vi.waitFor(() => { expect(item.fs.files.has(orderPath)).toBe(true); });
+    expect(item.sleeps.length).toBeGreaterThan(1);
+    // Backoff, not a busy-loop: each wait is at least as long as the one before it.
+    expect(item.sleeps.every((ms, index) => index === 0 || ms >= item.sleeps[index - 1])).toBe(true);
+    expect(item.host.writes.get(sessionId)?.some((chunk) => chunk.includes('read '))).toBe(true);
+    item.host.emit(sessionId, `FYT-STAGE-DONE story ${'0'.repeat(31)}1 delivered after the menu cleared\r\n`);
+    await expect(pending).resolves.toMatchObject({ state: 'succeeded' });
+  });
+
+  it('withholds delivery from a terminal that is still mid-turn', async () => {
+    const { plan, store, sessions, runRef, host } = harness({ replReadyTimeoutMs: 30_000 });
+    sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    const sessionId = sessionIdFor(sessions, runRef, 'fyt-story');
+    succeedStage(store, runRef, 'idea');
+    resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
+    host.emit(sessionId, 'Reading binding.md\u2026\r\n* Thinking\u2026 (43s \u00b7 esc to interrupt)\r\n');
+    const result = await sessions.deliver(deliverInput(store, runRef, plan, 'story'));
+    expect(result.state).toBe('waiting-human');
+    expect(result.summary).toContain('mid-turn');
+    expect(result.summary).toContain(DELIVERY_NOT_READY_REASON);
+  });
+
+  it('keeps the marker deadline as the OUTER bound on the readiness wait', async () => {
+    // A 60s delivery timeout must clamp a 5-minute readiness budget, not the other way round.
+    const { plan, store, sessions, runRef, host, sleeps } = harness({
+      deliveryTimeoutMs: 60_000, replReadyTimeoutMs: 5 * 60_000,
+    });
+    sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    const sessionId = sessionIdFor(sessions, runRef, 'fyt-story');
+    succeedStage(store, runRef, 'idea');
+    resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
+    host.emit(sessionId, 'Do you want to proceed?\r\n');
+    const result = await sessions.deliver(deliverInput(store, runRef, plan, 'story'));
+    expect(result.state).toBe('waiting-human');
+    expect(sleeps.reduce((total, ms) => total + ms, 0)).toBeLessThanOrEqual(60_000);
   });
 });

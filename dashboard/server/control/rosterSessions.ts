@@ -51,7 +51,8 @@ import type { PtyHost } from '../pty/host.ts';
 import type { PersistentSessionRegistry } from '../pty/persistentSessions.ts';
 import type { AssignedAgentResolver, ResolvedAssignedAgent } from './agentAssignmentResolver.ts';
 import type { ExecutionProfile } from './policy.ts';
-import { isSafeRepoRelativePath, type PlanProposal, type ProposalStage, type ResolvedAgentAssignment } from './proposal.ts';
+import { createWorkflowToolPolicyResolver } from './claudeWorkerAdapter.ts';
+import { isSafeRepoRelativePath, type PlanProposal, type ProposalScope, type ProposalStage, type ResolvedAgentAssignment } from './proposal.ts';
 import type { ControlPlaneStore } from './store.ts';
 import type { RunDetail } from './types.ts';
 import type { WorkerAdapter, WorkerExecutionResult } from './execution.ts';
@@ -119,6 +120,32 @@ const MIN_DELIVERY_TIMEOUT_MS = 60 * 1_000;
 const MAX_DELIVERY_TIMEOUT_MS = 24 * 60 * 60 * 1_000;
 /** Named, greppable settle reason so an operator can find every timed-out delivery in the event log. */
 export const DELIVERY_TIMEOUT_REASON = 'roster-delivery-timeout';
+/**
+ * Named, greppable settle reason for a delivery that was NEVER TYPED because the target terminal was not
+ * at a plain REPL prompt. Deliberately distinct from {@link DELIVERY_TIMEOUT_REASON}: that one means the
+ * order landed and no marker came back; this one means the order never left the control plane.
+ */
+export const DELIVERY_NOT_READY_REASON = 'roster-delivery-not-ready';
+/**
+ * How long ONE delivery may wait for its terminal to reach a plain REPL prompt before it settles as a
+ * human wait. Generous, because the legitimate wait is real: a freshly spawned session is still booting
+ * `claude` and then reading its binding context, and an agent mid-turn on operator conversation must be
+ * allowed to finish. Clamped into [{@link MIN_REPL_READY_TIMEOUT_MS}, the delivery timeout] — the marker
+ * deadline stays the OUTER bound, so this can never extend how long a stage may sit.
+ */
+const DEFAULT_REPL_READY_TIMEOUT_MS = 5 * 60 * 1_000;
+const MIN_REPL_READY_TIMEOUT_MS = 5 * 1_000;
+/** Readiness poll backoff: quick first re-checks (a menu is usually answered fast), then patient. */
+const REPL_POLL_MIN_MS = 250;
+const REPL_POLL_MAX_MS = 5_000;
+/**
+ * Rolling window of terminal output kept for readiness detection, separate from the marker buffer (which
+ * is consumed line-by-line and reset per delivery). Small on purpose: an interactive REPL redraws its
+ * whole frame continuously and `stripTerminalControl` cannot collapse those redraws, so only the tail is
+ * the CURRENT screen — a large window would keep an already-answered menu "visible" forever.
+ */
+const SCREEN_WINDOW_CHARS = 4_000;
+const SCREEN_WINDOW_LINES = 20;
 /** Durable activity mirror written by `record` and read back by `state` after a daemon restart. */
 const ROSTER_ACTIVITY = /^roster:([a-z0-9][a-z0-9-]{0,63}) (.+)$/;
 /** Page size for the INCREMENTAL durable-event read behind `state` (bounded by the store's own cap). */
@@ -218,9 +245,23 @@ export interface RosterSessionsOptions {
   cols?: number;
   rows?: number;
   /** The single line that boots the interactive agent terminal. */
-  launchLine?: (input: { model: string; bindingPath: string; runRef: string; agentId: string }) => string;
+  launchLine?: (input: { model: string; bindingPath: string; settingsPath: string; runRef: string; agentId: string }) => string;
   /** The single line that hands a stage's order file to a live session. */
   deliveryLine?: (input: { orderPath: string; stageId: string }) => string;
+  /**
+   * Resolves a workflow execution profile id to its server-owned `allowedTools`. The per-run permission
+   * settings are built from THIS and nothing else, so the roster can never grant a tool the profile
+   * tables withhold. Defaults to the production resolver; an unresolvable/absent profile yields an empty
+   * cap (no rules emitted) rather than a wider one.
+   */
+  resolveWorkflowTools?: (workflowProfileId: string | null) => readonly string[];
+  /**
+   * How long a delivery may wait for its terminal to reach a plain REPL prompt. Clamped to
+   * [{@link MIN_REPL_READY_TIMEOUT_MS}, this delivery's marker deadline].
+   */
+  replReadyTimeoutMs?: number;
+  /** Backoff sleep between readiness polls. Injected so the suite never waits on a real timer. */
+  sleep?: (ms: number) => Promise<void>;
   /**
    * Marker deadline per delivery, in ms. A number applies to every stage; a function is consulted per
    * delivery, so a long stage (a full image batch) can be given more room than a short one. Clamped to
@@ -272,7 +313,15 @@ interface RosterSessionEntry {
   owner: string;
   model: string;
   bindingPath: string;
+  settingsPath: string;
   buffer: string;
+  /**
+   * Rolling tail of this terminal's output, kept independently of {@link RosterSessionEntry.buffer}
+   * (which is line-consumed and reset per delivery). This is what the REPL-readiness gate reads, so it
+   * must survive across deliveries and must keep accumulating while the session is idle — the whole point
+   * is to know what is on screen BEFORE a work order is typed.
+   */
+  screen: string;
   unobserve: () => void;
   /** At most one outstanding delivery per agent session (a terminal runs one order at a time). */
   pending: PendingDelivery | null;
@@ -350,6 +399,204 @@ export function stripTerminalControl(chunk: string): string {
   /* eslint-enable no-control-regex */
 }
 
+/**
+ * A modal prompt is on screen: the REPL is NOT accepting a line of input, it is waiting for a keystroke
+ * against a menu. Typing a work order here does not queue it — the characters are consumed by the menu's
+ * own key handling and the order is silently destroyed. That is the observed defect: a delivery line
+ * interleaved character-by-character with a tool-permission menu and vanished, and the stage then sat
+ * against the 4h marker deadline.
+ *
+ * These match what the CLI renders around a decision, not what an agent might SAY. They are evaluated
+ * only over the last {@link SCREEN_WINDOW_LINES} non-empty lines of the current frame, so an answered
+ * menu stops matching as soon as the REPL redraws over it. A false positive costs a bounded wait and
+ * then a named `waiting-human` park; a false negative costs a swallowed work order — so this errs toward
+ * waiting.
+ */
+const MODAL_MARKERS: readonly RegExp[] = [
+  /\bDo you want to\b/i,
+  /\bWould you like to\b/i,
+  /\bNo, and tell Claude\b/i,
+  /\bYes, and (?:don't ask again|approve)\b/i,
+  /^[\s│|>]*[❯>]?\s*[1-9]\.\s+(?:Yes|No)\b/im,
+  /\bpress enter to (?:continue|confirm|accept)\b/i,
+  /\b(?:accept|trust) (?:edits|files) in this folder\b/i,
+];
+/**
+ * The REPL is mid-turn. Input typed now is buffered by the CLI in a way that races its own re-render,
+ * and delivering a second order on top of an unfinished one is exactly the "one order at a time"
+ * invariant `entry.pending` exists to hold. Wait for the turn to end.
+ */
+const BUSY_MARKERS: readonly RegExp[] = [
+  /\b(?:esc|escape) to interrupt\b/i,
+  /\(ctrl\+?-?c to (?:cancel|stop|interrupt)\)/i,
+];
+
+export type ReplReadiness =
+  | { state: 'ready' }
+  | { state: 'modal'; marker: string }
+  | { state: 'busy'; marker: string };
+
+/** The current frame: the last non-empty lines of the tail, which is all a redrawing REPL leaves true. */
+function currentFrame(tail: string): string {
+  return tail
+    .slice(-SCREEN_WINDOW_CHARS)
+    .split('\n')
+    .map((line) => line.trimEnd())
+    .filter((line) => line.trim() !== '')
+    .slice(-SCREEN_WINDOW_LINES)
+    .join('\n');
+}
+
+/**
+ * Classify a roster terminal's recent output as safe-to-type-into or not. Pure, so every accepted and
+ * refused frame is testable without driving a pty.
+ *
+ * MENU-ABSENCE, NOT PROMPT-PRESENCE. This deliberately does NOT require a positive prompt glyph. The
+ * REPL's idle frame is a box-drawn input widget whose exact glyphs change between CLI releases, and a
+ * detector that must recognise it would refuse every delivery the day the box changes — trading a rare
+ * swallowed order for a total outage. Refusing on a RECOGNISED blocker and defaulting to ready is the
+ * safe direction: an unrecognised idle frame behaves exactly as it does today, and every blocker this
+ * pipeline has actually hit is recognised.
+ */
+export function detectReplReadiness(tail: string): ReplReadiness {
+  const frame = currentFrame(tail);
+  for (const pattern of MODAL_MARKERS) {
+    const match = pattern.exec(frame);
+    if (match) return { state: 'modal', marker: match[0].trim().slice(0, 80) };
+  }
+  for (const pattern of BUSY_MARKERS) {
+    const match = pattern.exec(frame);
+    if (match) return { state: 'busy', marker: match[0].trim().slice(0, 80) };
+  }
+  return { state: 'ready' };
+}
+
+/**
+ * Tools whose Claude Code permission rules carry a PATH pathspec, i.e. the only tools an approved scope
+ * can actually bound. `Bash` is deliberately absent: a Bash rule matches a COMMAND PREFIX, never a path,
+ * so "Bash strictly within scope" is inexpressible and a bare `Bash` entry would be the blanket
+ * allow-all this grant is forbidden to be. Shell approvals therefore stay with the human sitting at the
+ * terminal — and, since the readiness gate below now refuses to type into an open menu, a stage parked on
+ * a Bash prompt parks VISIBLY instead of losing its work order.
+ */
+const SCOPED_READ_TOOLS: readonly string[] = ['Read', 'Glob', 'Grep'];
+const SCOPED_WRITE_TOOLS: readonly string[] = ['Write', 'Edit'];
+
+/** One absolute directory, forward-slashed and de-duplicated of separators. Not a rule — a real path. */
+function absoluteDir(root: string, relative?: string): string {
+  const base = root.replace(/\\/g, '/').replace(/\/+$/, '');
+  if (relative === undefined) return base;
+  return `${base}/${relative.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')}`;
+}
+
+/**
+ * Anchor an absolute directory as a filesystem-ABSOLUTE Claude Code rule pathspec: a leading `//` marks a
+ * pathspec filesystem-absolute (a single leading `/` anchors at the settings source instead), Windows
+ * backslashes become forward slashes, and the drive letter is preserved — the grammar
+ * `claudeWorkerAdapter.ts#absoluteReadDenyRule` already emits, verified against
+ * code.claude.com/docs/en/permissions.md. The path's own leading separator is folded into the marker, so
+ * a POSIX root `/repo` yields `//repo/...` rather than a meaningless `///repo/...`; a Windows root
+ * `C:/Users/danie/kb` has no leading separator and is byte-identical to the existing helper's output.
+ */
+function absoluteRulePath(root: string, relative?: string): string {
+  return `//${absoluteDir(root, relative).replace(/^\/+/, '')}`;
+}
+
+export interface RosterPermissionInput {
+  /** Canonical checkout the repo-relative scope entries resolve against. */
+  repoRoot: string;
+  /** `<stateRoot>/control/roster/<runRef>/<agentId>` — this agent's own binding + work-order channel. */
+  agentDir: string;
+  /** Repo-relative read scope, unioned across the stages this agent owns. */
+  read: readonly string[];
+  /** Repo-relative write scope, unioned across the stages this agent owns. */
+  write: readonly string[];
+  /** The server-owned workflow tool cap this run executes under. Nothing outside it is ever granted. */
+  tools: readonly string[];
+}
+
+export interface RosterPermissionSettings {
+  allow: string[];
+  additionalDirectories: string[];
+  /** The exact bytes written to the per-run settings file and handed to `claude --settings`. */
+  json: string;
+}
+
+/**
+ * Build ONE roster session's scoped permission settings.
+ *
+ * WHY THIS EXISTS. A spawned roster terminal's FIRST act is to read its own `binding.md`, and that read
+ * parked on Claude Code's interactive "Do you want to proceed?" tool-permission menu — a per-session,
+ * modal decision that folder trust (`hasTrustDialogAccepted`) does not answer and that no remembered
+ * `allowedTools` list covers. The run then went nowhere. The fix is a per-run settings file passed with
+ * `--settings <path>` (the CLI accepts a file path or an inline JSON string; `claude --help`:
+ * "Path to a settings JSON file or a JSON string to load additional settings from").
+ *
+ * WHAT IT GRANTS, AND NOTHING MORE:
+ *  - `permissions.allow` rules for the scoped file tools, over the stage's ALREADY-DECLARED
+ *    `scope.read ∪ scope.write` (reads) and `scope.write` (writes), each rule anchored `//`-absolute at
+ *    the canonical repo root. A tool the server-owned workflow profile does not grant produces no rule.
+ *  - `Read` over this agent's own roster directory — the control plane's order channel (`binding.md`
+ *    plus `orders/*.md`). This is the one grant that is not repo scope, and it is the narrowest possible
+ *    form of it: one agent, one run, read-only, deleted when the roster retires.
+ *  - `permissions.additionalDirectories` for exactly those same directories, because a scope root or the
+ *    roster directory can sit outside the session cwd, and an allow rule alone does not extend the
+ *    working set.
+ *
+ * There is no wildcard, no `defaultMode` change, no deny-list override, and no path that is not either a
+ * declared scope entry or this agent's own order channel. An entry that is not a safe repo-relative path
+ * is dropped rather than interpolated.
+ */
+export function buildRosterPermissionSettings(input: RosterPermissionInput): RosterPermissionSettings {
+  const allow: string[] = [];
+  const additionalDirectories: string[] = [];
+  const addAllow = (rule: string): void => { if (!allow.includes(rule)) allow.push(rule); };
+  const addDir = (dir: string): void => { if (!additionalDirectories.includes(dir)) additionalDirectories.push(dir); };
+
+  // The order channel first: without it the session cannot read the binding context it is booted on.
+  addAllow(`Read(${absoluteRulePath(input.agentDir)}/**)`);
+  addDir(absoluteDir(input.agentDir));
+
+  const granted = new Set(input.tools);
+  const safe = (paths: readonly string[]): string[] => paths.filter((path) => isSafeRepoRelativePath(path));
+  const readPaths = [...new Set([...safe(input.read), ...safe(input.write)])];
+  const writePaths = [...new Set(safe(input.write))];
+
+  for (const tool of SCOPED_READ_TOOLS) {
+    if (!granted.has(tool)) continue;
+    for (const path of readPaths) addAllow(`${tool}(${absoluteRulePath(input.repoRoot, path)}/**)`);
+  }
+  for (const tool of SCOPED_WRITE_TOOLS) {
+    if (!granted.has(tool)) continue;
+    for (const path of writePaths) addAllow(`${tool}(${absoluteRulePath(input.repoRoot, path)}/**)`);
+  }
+  for (const path of readPaths) addDir(absoluteDir(input.repoRoot, path));
+
+  return {
+    allow,
+    additionalDirectories,
+    json: `${JSON.stringify({ permissions: { allow, additionalDirectories } }, null, 2)}\n`,
+  };
+}
+
+/**
+ * The declared scope ONE roster agent works under: the union over every stage that agent owns, plus the
+ * proposal-level scope when it is also the manager. An agent that owns several stages gets the union of
+ * exactly those stages' scopes and nothing else — a stage's grant is never widened by a stage some other
+ * agent owns.
+ */
+export function rosterAgentScope(proposal: PlanProposal, agentId: string): ProposalScope {
+  const read: string[] = [];
+  const write: string[] = [];
+  const merge = (scope: ProposalScope | undefined): void => {
+    for (const path of scope?.read ?? []) if (!read.includes(path)) read.push(path);
+    for (const path of scope?.write ?? []) if (!write.includes(path)) write.push(path);
+  };
+  if (proposal.manager.assignment?.agentId === agentId) merge(proposal.scope);
+  for (const stage of proposal.stages) if (stage.assignment?.agentId === agentId) merge(stage.scope);
+  return { read, write };
+}
+
 export interface CompletionMarker {
   verdict: 'DONE' | 'BLOCKED' | 'FAILED';
   stageId: string;
@@ -377,6 +624,29 @@ export function matchCompletionMarker(line: string): CompletionMarker | null {
 function safeSummary(raw: string, fallback: string): string {
   const flattened = raw.replace(/\s+/g, ' ').trim().slice(0, MAX_SUMMARY_CHARS);
   return flattened === '' ? fallback : flattened;
+}
+
+/**
+ * The server-owned tool cap ONE roster agent runs under: the INTERSECTION of the caps of every stage it
+ * owns (a stage may name its own `workflowProfile`; otherwise the run's). Intersection, not union, is the
+ * fail-closed direction — an agent that owns both a `producer` stage and a `checker-readonly` stage is
+ * capped at what BOTH allow, so no stage's session is ever handed a capability another stage's profile
+ * withheld. An agent with no resolvable cap gets none, which simply means no permission rules are
+ * emitted and its tool uses fall back to the interactive prompt (today's behaviour).
+ */
+export function rosterAgentTools(
+  proposal: PlanProposal,
+  agentId: string,
+  resolveTools: (workflowProfileId: string | null) => readonly string[],
+): string[] {
+  const caps: string[][] = [];
+  if (proposal.manager.assignment?.agentId === agentId) caps.push([...resolveTools(proposal.profile ?? null)]);
+  for (const stage of proposal.stages) {
+    if (stage.assignment?.agentId !== agentId) continue;
+    caps.push([...resolveTools(stage.workflowProfile ?? proposal.profile ?? null)]);
+  }
+  if (caps.length === 0) return [];
+  return caps.reduce((left, right) => left.filter((tool) => right.includes(tool)));
 }
 
 /** Every distinct agent id in the compiled proposal — worker stages plus the manager. */
@@ -416,8 +686,11 @@ export function resolveRosterWorkDir(repoRoot: string, project: string): string 
   return join(repoRoot, 'orgs', project);
 }
 
-function defaultLaunchLine(input: { model: string; bindingPath: string; runRef: string; agentId: string }): string {
-  return `claude --model ${input.model} "Read ${input.bindingPath} now. It is your binding context for run `
+function defaultLaunchLine(input: { model: string; bindingPath: string; settingsPath: string; runRef: string; agentId: string }): string {
+  // `--settings` takes a file path (or inline JSON). The path is quoted because the dashboard state root
+  // is an absolute OS path that may contain spaces.
+  return `claude --model ${input.model} --settings "${input.settingsPath}" `
+    + `"Read ${input.bindingPath} now. It is your binding context for run `
     + `${input.runRef} as ${input.agentId}: follow it exactly, then wait — work orders arrive in this terminal `
     + `as file paths, one at a time."`;
 }
@@ -467,6 +740,27 @@ export function rosterDeliveryRefusal(detail: RunDetail, input: {
   return null;
 }
 
+/**
+ * Production tool-cap resolution. Fail-closed by SHAPE: `createWorkflowToolPolicyResolver` throws for an
+ * absent, unknown, empty, malformed or forbidden-tool-bearing profile, and the catch turns every one of
+ * those into an EMPTY cap — no permission rules, so the session behaves exactly as it does today. A
+ * refusal here must never widen a grant, and it must never take down a spawn either: the tool cap that
+ * actually GOVERNS a headless attempt is still resolved (and still throws) in `claudeWorkerAdapter.ts`.
+ */
+const defaultWorkflowTools = (workflowProfileId: string | null): readonly string[] => {
+  try {
+    return createWorkflowToolPolicyResolver()(workflowProfileId).allowedTools;
+  } catch {
+    return [];
+  }
+};
+
+const defaultSleep = (ms: number): Promise<void> => new Promise((resolve) => {
+  const timer = setTimeout(resolve, ms);
+  // A readiness backoff must never be the reason a daemon cannot exit.
+  if (typeof timer.unref === 'function') timer.unref();
+});
+
 /** Create the run-roster session manager. Nothing spawns until `ensureRoster` is called. */
 export function createRosterSessionManager(options: RosterSessionsOptions): RosterSessionManager {
   const fs = options.fs ?? defaultFileSystem;
@@ -476,6 +770,8 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
   const rows = options.rows ?? DEFAULT_ROWS;
   const launchLine = options.launchLine ?? defaultLaunchLine;
   const deliveryLine = options.deliveryLine ?? defaultDeliveryLine;
+  const resolveWorkflowTools = options.resolveWorkflowTools ?? defaultWorkflowTools;
+  const sleep = options.sleep ?? defaultSleep;
   const runs = new Map<string, RosterRunEntry>();
   /**
    * Activity lines recovered from the durable event mirror, plus the event cursor they were read up to.
@@ -705,14 +1001,38 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
     return Math.min(MAX_DELIVERY_TIMEOUT_MS, Math.max(MIN_DELIVERY_TIMEOUT_MS, Math.round(candidate)));
   };
 
+  /**
+   * Wait for a terminal to leave a modal menu / stop being mid-turn, polling its own output stream with
+   * exponential backoff. Returns the readiness that was true when it gave up, so the caller can name it.
+   *
+   * The FAST PATH IS SYNCHRONOUS BY DESIGN: an already-ready terminal never awaits, so `deliver` keeps
+   * authoring and typing its order in the same synchronous prefix it always did. Only a genuinely blocked
+   * terminal pays a suspension.
+   */
+  const waitForRepl = async (entry: RosterSessionEntry, budgetMs: number): Promise<ReplReadiness> => {
+    const started = now();
+    let delay = REPL_POLL_MIN_MS;
+    let readiness = detectReplReadiness(entry.screen);
+    while (readiness.state !== 'ready') {
+      if (now() - started >= budgetMs) return readiness;
+      await sleep(Math.min(delay, Math.max(0, budgetMs - (now() - started))));
+      delay = Math.min(REPL_POLL_MAX_MS, delay * 2);
+      readiness = detectReplReadiness(entry.screen);
+    }
+    return readiness;
+  };
+
   const scan = (entry: RosterSessionEntry, chunk: string): void => {
+    const stripped = stripTerminalControl(chunk);
+    // The readiness window accumulates ALWAYS — idle output is exactly what the delivery gate reads.
+    entry.screen = (entry.screen + stripped).slice(-SCREEN_WINDOW_CHARS);
     const pending = entry.pending;
     if (!pending) {
       // Keep the window bounded even while idle so a chatty session cannot grow memory.
-      entry.buffer = (entry.buffer + stripTerminalControl(chunk)).slice(-SCAN_WINDOW_CHARS);
+      entry.buffer = (entry.buffer + stripped).slice(-SCAN_WINDOW_CHARS);
       return;
     }
-    entry.buffer = (entry.buffer + stripTerminalControl(chunk)).slice(-SCAN_WINDOW_CHARS);
+    entry.buffer = (entry.buffer + stripped).slice(-SCAN_WINDOW_CHARS);
     const lines = entry.buffer.split('\n');
     // Keep the trailing partial line for the next chunk; a marker is only acted on once complete.
     entry.buffer = lines.pop() ?? '';
@@ -734,13 +1054,33 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
     resolvePending(entry, { state: 'waiting-human', summary, usage: zeroUsage(), artifacts: [], checkpoints: [] });
   };
 
-  const spawnSession = (run: RosterRunEntry, runRef: string, agentId: string, verified: ResolvedAssignedAgent): RosterSessionEntry => {
+  const spawnSession = (
+    run: RosterRunEntry,
+    runRef: string,
+    agentId: string,
+    verified: ResolvedAssignedAgent,
+    proposal: PlanProposal,
+  ): RosterSessionEntry => {
     const agentDir = join(runDir(runRef), agentId);
     fs.ensureDir(join(agentDir, 'orders'));
     const bindingPath = join(agentDir, 'binding.md');
     fs.writeFile(bindingPath, bindingMarkdown({
       runRef, agentId, verified, project: run.project, parameters: run.parameters, workDir: run.workDir,
     }));
+    // THE SCOPED PER-RUN PERMISSIONS. Written BEFORE the launch line is typed, from the compiled
+    // proposal's own declared scope and the server-owned tool cap — never a blanket flag, never a
+    // pre-trusted path, never anything outside `scope.read ∪ scope.write` plus this agent's own order
+    // channel. It lives inside the roster run directory, so `retireRun`'s `removeDir` is already its
+    // cleanup: the grant cannot outlive the run it was minted for.
+    const scope = rosterAgentScope(proposal, agentId);
+    const settingsPath = join(agentDir, 'settings.json');
+    fs.writeFile(settingsPath, buildRosterPermissionSettings({
+      repoRoot: options.repoRoot,
+      agentDir,
+      read: scope.read,
+      write: scope.write,
+      tools: rosterAgentTools(proposal, agentId, resolveWorkflowTools),
+    }).json);
     const created = options.registry.create(run.owner, options.host, {
       requestId: '', cwd: run.workDir, cols, rows,
     });
@@ -750,7 +1090,9 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
       owner: run.owner,
       model: verified.assignment.model,
       bindingPath,
+      settingsPath,
       buffer: '',
+      screen: '',
       unobserve: () => {},
       pending: null,
     };
@@ -763,7 +1105,7 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
       () => settlePending(run, runRef, entry, `delivery abandoned: session ${created.sessionId} ended`),
     );
     options.registry.write(run.owner, created.sessionId, `${launchLine({
-      model: verified.assignment.model, bindingPath, runRef, agentId,
+      model: verified.assignment.model, bindingPath, settingsPath, runRef, agentId,
     })}\r`);
     run.sessions.set(agentId, entry);
     record(run.subject, runRef, agentId, `session ${created.sessionId} spawned at ${new Date(now()).toISOString()}`, 'pending');
@@ -834,7 +1176,7 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
         const verified = options.assignedAgents.resolve({
           assignment: found.assignment, role: found.role, project: input.proposal.project, profiles,
         });
-        spawnSession(run, input.runRef, agentId, verified);
+        spawnSession(run, input.runRef, agentId, verified, input.proposal);
         spawned.push(agentId);
       }
       return { runRef: input.runRef, spawned, existing };
@@ -872,6 +1214,41 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
         return { state: 'waiting-human', summary: `roster delivery withheld: ${refusal}`, usage: zeroUsage(), artifacts: [], checkpoints: [] };
       }
 
+      const timeoutMs = resolveDeliveryTimeout({
+        runRef: input.runRef, stageId: input.stageId, agentId,
+        ...(input.timeoutMs === undefined ? {} : { timeoutMs: input.timeoutMs }),
+      });
+
+      // THE REPL-READINESS GATE. The delivery line used to be typed unconditionally, and that is how a
+      // work order was lost: it interleaved character-by-character with an open tool-permission menu,
+      // which consumed the keystrokes as menu input, and the stage then sat against the marker deadline
+      // with nothing delivered and nothing to report. A terminal is written into only when its own output
+      // stream says it is at a plain REPL prompt — not in a modal menu and not mid-turn.
+      //
+      // The fast path costs nothing: `detectReplReadiness` over an idle frame returns `ready` and the
+      // code below runs synchronously exactly as before. Only a blocked terminal suspends, and it does so
+      // under a bound that never exceeds this delivery's own marker deadline.
+      const readinessBudget = Math.min(
+        timeoutMs,
+        Math.max(MIN_REPL_READY_TIMEOUT_MS, options.replReadyTimeoutMs ?? DEFAULT_REPL_READY_TIMEOUT_MS),
+      );
+      let readiness = detectReplReadiness(entry.screen);
+      if (readiness.state !== 'ready') readiness = await waitForRepl(entry, readinessBudget);
+      if (readiness.state !== 'ready') {
+        // NOTHING was authored and NOTHING was typed: no order file, no token, no bytes into the pty.
+        // This settles as a named human wait, never as a hang and never as a silent success.
+        const detail = readiness.state === 'modal'
+          ? `an interactive prompt is open ("${readiness.marker}")`
+          : `it is still mid-turn ("${readiness.marker}")`;
+        const summary = `work order withheld: the ${agentId} terminal was not at a REPL prompt within `
+          + `${Math.max(1, Math.round(readinessBudget / 60_000))} min — ${detail} (${DELIVERY_NOT_READY_REASON}); `
+          + 'answer or clear it in that terminal, then re-run the stage';
+        record(run.subject, input.runRef, agentId, summary, 'waiting', input.stageRef);
+        return {
+          state: 'waiting-human', summary: summary.slice(0, MAX_SUMMARY_CHARS), usage: zeroUsage(), artifacts: [], checkpoints: [],
+        };
+      }
+
       // THE PRE-DELIVERY BASELINE. Taken before the order file exists, so the agent cannot have acted
       // yet: this is what "the stage changed its declared artifacts" is measured against on completion.
       const snapshots = snapshotDeclaredArtifacts(input.proposalStage);
@@ -893,10 +1270,6 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
       // THE MARKER DEADLINE. `settled` is otherwise reachable only from a marker match, a session exit,
       // or a retire, so one missed marker held the engine's single worker slot until an operator ran
       // `stop`. Armed against THIS delivery only: a slot that a later delivery owns is left alone.
-      const timeoutMs = resolveDeliveryTimeout({
-        runRef: input.runRef, stageId: input.stageId, agentId,
-        ...(input.timeoutMs === undefined ? {} : { timeoutMs: input.timeoutMs }),
-      });
       const timer = setTimeout(() => {
         if (entry.pending !== pending) return;
         const summary = `delivery abandoned: stage ${input.stageId} printed no completion marker within `
