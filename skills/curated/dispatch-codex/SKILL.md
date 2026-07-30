@@ -35,6 +35,21 @@ result arrives as a task notification.
 - Any concrete id in `governance/model-routing.yaml` `runtimes.codex.known_models`
   also works; unknown names refuse loudly before spawning.
 
+## Iterating with your worker
+
+Each dispatch footer names the worker's session id. To reprompt, add advice, or change scope —
+the SendMessage equivalent, worker context intact — write the follow-up brief to a file and:
+
+```
+py -3 scripts/codex_dispatch.py --prompt-file <followup.md> --follow-up <thread-id>
+```
+
+Same background call, same notification return. Do not pass `--model`/`--worktree` on a
+follow-up (the session keeps its own). Each turn writes its own card, linked by the shared
+`workflow: <thread-id>` field. To stop a running worker: stop the background shell task
+(kills the worker; no card is published — the spool trace under
+`%LOCALAPPDATA%\kb-codex-dispatch\spool\` is the only record of a killed run).
+
 ## Rules
 
 - Parallel dispatches are fine — each is its own process, card, and notification.
