@@ -1655,3 +1655,244 @@ describe('control proposal routes', () => {
     } finally { await auditFailApp.close(); }
   });
 });
+
+/**
+ * The runtime execution latch routes. The daemon boots LOCKED, so a launch refusal must be distinct
+ * enough for the UI to raise an unlock prompt, unlock must require a fresh purpose-bound passkey
+ * assertion (a session bearer alone is never enough), and Lock must be reachable with the session only.
+ */
+describe('control execution latch routes', () => {
+  const TEST_WEBAUTHN = () => ({ rpID: 'localhost', rpName: 'test', origin: ORIGIN });
+
+  function fakeLatch(initial: 'locked' | 'unlocked') {
+    let state = initial === 'locked'
+      ? { state: 'locked' as const, source: null, unlockedAt: null, unlockedBy: null }
+      : { state: 'unlocked' as const, source: 'passkey' as const, unlockedAt: '2026-07-30T00:00:00.000Z', unlockedBy: 'operator' };
+    const unlock = vi.fn(() => ({ ok: true as const, state }));
+    const lock = vi.fn(() => {
+      state = { state: 'locked' as const, source: null, unlockedAt: null, unlockedBy: null };
+      return state;
+    });
+    return {
+      latch: {
+        snapshot: () => state,
+        current: () => null,
+        unlock,
+        lock,
+      },
+      unlock,
+      lock,
+    };
+  }
+
+  function buildApp(overrides: Record<string, unknown> = {}) {
+    const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `latch-${++n}`; })() });
+    const audit: Array<Record<string, unknown>> = [];
+    const app = Fastify();
+    const ctx = makeSurfaceContext({
+      repoRoot: fileURLToPath(new URL('../../../', import.meta.url)),
+      sessionConfig: SESSION,
+      allowedOrigins: [ORIGIN],
+      controlStore: store,
+      webAuthnConfig: TEST_WEBAUTHN,
+      credentials: () => [],
+      appendAudit: (_root: string, event: Record<string, unknown>) => {
+        audit.push(event);
+        return { ts: '2026-07-30T00:00:00.000Z', action: String(event.action) } as never;
+      },
+      opsGit: () => ({ stdout: '', stderr: '', exitCode: 0 }),
+      ...overrides,
+    } as never);
+    registerWriteSurface(app, ctx);
+    return { app, ctx, store, audit, token: mintSession('operator', SESSION).token };
+  }
+
+  /** Seed one approved run in the store so a route reaches its execution-posture check. */
+  function seedRun(store: ReturnType<typeof createInMemoryControlPlaneStore>, key: string): string {
+    const created = store.createProposalRevision('operator', {
+      sourceComposerRef: 'composer-1', sourceTurnId: 'video-run', title: `Run ${key}`,
+      snapshot: proposal as unknown as JsonObject,
+    });
+    if (!created.ok) throw new Error(created.detail);
+    if (!store.decideProposal('operator', created.value.proposalRef, 1, {
+      expectedHash: created.value.hash, expectedApprovalRevision: 0, decision: 'approved', idempotencyKey: `${key}-approve`,
+    }).ok) throw new Error('approval failed');
+    const run = store.createRun('operator', {
+      title: `Run ${key}`, proposalRef: created.value.proposalRef, proposalRevision: 1,
+      expectedProposalHash: created.value.hash, managerRuntime: 'claude', managerModel: 'claude-fable-5',
+      idempotencyKey: `${key}-launch`,
+      stages: proposal.stages.map((item) => ({ stageId: item.id, title: item.title, dependsOn: item.dependsOn })),
+    });
+    if (!run.ok) throw new Error(run.detail);
+    return run.value.run.runRef;
+  }
+
+  it('boots LOCKED and reports the posture with the unlock route to call', async () => {
+    const { app, token } = buildApp();
+    try {
+      const posture = await app.inject({ method: 'GET', url: '/api/control/execution', headers: headers(token) });
+      expect(posture.statusCode).toBe(200);
+      expect(posture.json()).toMatchObject({
+        execution: { state: 'locked', source: null, unlockRoute: '/api/control/execution/unlock' },
+      });
+      // Unauthenticated callers learn nothing about the posture.
+      const anonymous = await app.inject({ method: 'GET', url: '/api/control/execution', headers: { origin: ORIGIN, host: 'localhost:5317' } });
+      expect(anonymous.statusCode).toBe(401);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('refuses a launch/activate while locked with the distinct unlock-prompt refusal', async () => {
+    const { app, token, store } = buildApp();
+    try {
+      const runRef = seedRun(store, 'locked-activate');
+      const activate = await app.inject({
+        method: 'POST', url: `/api/control/runs/${runRef}/activate`, headers: headers(token),
+        payload: { idempotencyKey: 'k', expectedRunVersion: 1, expectedManagerGeneration: 1 },
+      });
+      expect(activate.statusCode).toBe(409);
+      expect(activate.json()).toMatchObject({
+        error: 'execution-locked',
+        execution: { state: 'locked', unlockRoute: '/api/control/execution/unlock' },
+      });
+      const stop = await app.inject({
+        method: 'POST', url: `/api/control/runs/${runRef}/manager/stop`, headers: headers(token),
+        payload: { idempotencyKey: 'k', expectedRunVersion: 1, expectedManagerGeneration: 1 },
+      });
+      expect(stop.statusCode).toBe(409);
+      expect(stop.json()).toMatchObject({ error: 'execution-locked' });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('issues a PURPOSE-BOUND unlock ceremony and refuses a sign-in ceremony at the unlock route', async () => {
+    const { app, token } = buildApp();
+    try {
+      const options = await app.inject({
+        method: 'POST', url: '/api/control/execution/unlock/options', headers: headers(token), payload: {},
+      });
+      expect(options.statusCode).toBe(200);
+      const body = options.json() as { ceremonyId: string; options: { challenge: string; userVerification: string } };
+      expect(typeof body.ceremonyId).toBe('string');
+      // The authenticator signs over "unlock execution for THIS operator", not a bare login nonce.
+      const preimage = Buffer.from(body.options.challenge, 'base64url').toString('utf8');
+      expect(preimage.startsWith('kb.execution-unlock:operator:')).toBe(true);
+      expect(body.options.userVerification).toBe('required');
+
+      // A LOGIN ceremony cannot be redeemed at the unlock route even though it is fresh and single-use.
+      const login = await app.inject({ method: 'POST', url: '/api/auth/assert/options', headers: headers(token), payload: {} });
+      const loginCeremony = (login.json() as { ceremonyId: string }).ceremonyId;
+      const crossed = await app.inject({
+        method: 'POST', url: '/api/control/execution/unlock', headers: headers(token),
+        payload: { ceremonyId: loginCeremony, response: { id: 'cred-1' } },
+      });
+      expect(crossed.statusCode).toBe(400);
+      expect(crossed.json()).toMatchObject({ error: 'bad-ceremony' });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('never unlocks without a verified assertion: no credential, unknown ceremony, or replay all fail closed', async () => {
+    const { latch, unlock } = fakeLatch('locked');
+    const { app, token } = buildApp({ executionLatch: latch });
+    try {
+      // Unknown ceremony → refused before any credential lookup.
+      const unknown = await app.inject({
+        method: 'POST', url: '/api/control/execution/unlock', headers: headers(token),
+        payload: { ceremonyId: 'never-issued', response: { id: 'cred-1' } },
+      });
+      expect(unknown.statusCode).toBe(400);
+
+      // Real ceremony, but the credential store is fail-closed empty (the pre-passkey reality).
+      const options = await app.inject({
+        method: 'POST', url: '/api/control/execution/unlock/options', headers: headers(token), payload: {},
+      });
+      const ceremonyId = (options.json() as { ceremonyId: string }).ceremonyId;
+      const attempt = await app.inject({
+        method: 'POST', url: '/api/control/execution/unlock', headers: headers(token),
+        payload: { ceremonyId, response: { id: 'cred-1' } },
+      });
+      expect(attempt.statusCode).toBe(401);
+      expect(attempt.json()).toMatchObject({ error: 'unauthenticated' });
+
+      // The same ceremony cannot be replayed (single-use), and the latch was never asked to unlock.
+      const replay = await app.inject({
+        method: 'POST', url: '/api/control/execution/unlock', headers: headers(token),
+        payload: { ceremonyId, response: { id: 'cred-1' } },
+      });
+      expect(replay.statusCode).toBe(400);
+      expect(unlock).not.toHaveBeenCalled();
+      expect(latch.snapshot().state).toBe('locked');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('locks on request, audits the transition, and reports the new posture', async () => {
+    const { latch, lock } = fakeLatch('unlocked');
+    const { app, token, audit } = buildApp({ executionLatch: latch });
+    try {
+      const before = await app.inject({ method: 'GET', url: '/api/control/execution', headers: headers(token) });
+      expect(before.json()).toMatchObject({ execution: { state: 'unlocked', source: 'passkey', unlockedBy: 'operator' } });
+
+      const locked = await app.inject({ method: 'POST', url: '/api/control/execution/lock', headers: headers(token), payload: {} });
+      expect(locked.statusCode).toBe(200);
+      expect(locked.json()).toMatchObject({ ok: true, execution: { state: 'locked' } });
+      expect(lock).toHaveBeenCalledWith({ subject: 'operator' });
+      expect(audit.map((row) => row.action)).toContain('control-execution-lock-authorize');
+
+      // Session required, like every other control write.
+      const anonymous = await app.inject({
+        method: 'POST', url: '/api/control/execution/lock', headers: { origin: ORIGIN, host: 'localhost:5317' }, payload: {},
+      });
+      expect(anonymous.statusCode).toBe(401);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('serves roster state and the execution posture on the run detail the canvas reads', async () => {
+    const roster = [{ agentId: 'fyt-visuals', sessionId: 'pty-roster-2', status: 'blocked', activity: 'blocked: g2 awaiting approval', waitingOn: ['g2-visual-plan'] }];
+    const { latch } = fakeLatch('unlocked');
+    const { app, token, store } = buildApp({
+      executionLatch: latch,
+      rosterSessions: { state: () => roster, hasRoster: () => true, ensureRoster: () => ({ runRef: 'r', spawned: [], existing: [] }), deliver: async () => ({}), retire: () => [], retireAll: () => [] },
+    });
+    try {
+      const runRef = seedRun(store, 'roster');
+
+      const detail = await app.inject({
+        method: 'GET', url: `/api/control/runs/${runRef}`, headers: headers(token),
+      });
+      expect(detail.statusCode).toBe(200);
+      expect(detail.json()).toMatchObject({
+        ok: true,
+        roster,
+        execution: { state: 'unlocked' },
+        value: { run: { runRef } },
+      });
+
+      // A missing run still 404s (the roster projection never invents a run).
+      const missing = await app.inject({ method: 'GET', url: '/api/control/runs/run-absent', headers: headers(token) });
+      expect(missing.statusCode).toBe(404);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('reports an empty roster while execution is locked', async () => {
+    const { app, token, store } = buildApp();
+    try {
+      const runRef = seedRun(store, 'locked-roster');
+      const detail = await app.inject({
+        method: 'GET', url: `/api/control/runs/${runRef}`, headers: headers(token),
+      });
+      expect(detail.json()).toMatchObject({ roster: [], execution: { state: 'locked' } });
+    } finally {
+      await app.close();
+    }
+  });
+});

@@ -35,7 +35,9 @@ import { drainAsyncGit } from '../write/asyncGit.ts';
 import { createFileControlPlaneStore } from '../control/store.ts';
 import { createFileDefinitionAmendmentStore } from '../workflows/amendmentStore.ts';
 import { registerControlRoutes } from '../control/routes.ts';
-import { buildActivatedExecution } from '../control/activation.ts';
+import { buildActivatedExecution, createExecutionLatch } from '../control/activation.ts';
+import { createPtyHost } from '../pty/host.ts';
+import { createPersistentSessionRegistry } from '../pty/persistentSessions.ts';
 import { RunControlTransactions } from '../control/runTransactions.ts';
 import { DEFAULT_MANAGER_START_ACK_TIMEOUT_MS } from '../control/execution.ts';
 
@@ -80,11 +82,12 @@ export function makeSurfaceContext(
     || overrides.containManagerStart !== undefined
     || overrides.verifyCanonicalResult !== undefined;
   const build = activation.build ?? buildActivatedExecution;
-  const activated = activationOverridden
-    ? null
-    : build({ env: activation.env, controlStore, repoRoot, stateRoot });
+  // The daemon's single pty stack, shared by `/api/pty` (browser terminals) and the run roster, so a
+  // roster session IS an attachable terminal. Constructing a host spawns nothing; only `open` does.
+  const ptyHost = overrides.ptyHost ?? createPtyHost({ shell: 'powershell.exe' });
+  const ptySessions = overrides.ptySessions ?? createPersistentSessionRegistry();
   const definitionAmendmentStore = overrides.definitionAmendmentStore ?? createFileDefinitionAmendmentStore(stateRoot);
-  return {
+  const ctx: SurfaceContext = {
     repoRoot,
     stateRoot,
     definitionAmendmentStore,
@@ -116,11 +119,16 @@ export function makeSurfaceContext(
         protector: createProviderIdProtector(sessionConfig.secret),
       }),
     controlStore,
-    controlBroker: overrides.controlBroker ?? activated?.controlBroker,
-    runAutomatic: overrides.runAutomatic ?? activated?.runAutomatic,
-    cancelAutomatic: overrides.cancelAutomatic ?? activated?.cancelAutomatic,
-    containManagerStart: overrides.containManagerStart ?? activated?.containManagerStart,
-    verifyCanonicalResult: overrides.verifyCanonicalResult ?? activated?.verifyCanonicalResult,
+    ptyHost,
+    ptySessions,
+    // Executor fields start UNBOUND: with the latch locked (the boot posture) nothing is constructed, so
+    // every control route observes exactly the pre-activation refusals. The latch below rebinds them in
+    // place on unlock and clears them on lock.
+    controlBroker: overrides.controlBroker,
+    runAutomatic: overrides.runAutomatic,
+    cancelAutomatic: overrides.cancelAutomatic,
+    containManagerStart: overrides.containManagerStart,
+    verifyCanonicalResult: overrides.verifyCanonicalResult,
     runControlTransactions: overrides.runControlTransactions ?? new RunControlTransactions(),
     managerStartAckTimeoutMs: overrides.managerStartAckTimeoutMs ?? DEFAULT_MANAGER_START_ACK_TIMEOUT_MS,
     triggerRunner: overrides.triggerRunner,
@@ -129,6 +137,30 @@ export function makeSurfaceContext(
     // fresh per test context so schtasks probe results never leak between tests.
     livenessCache: overrides.livenessCache ?? new Map(),
   };
+
+  // The latch owns construction from here on. An explicitly injected latch or roster (tests, or a future
+  // direct wiring) stands as given; when executor fields are injected directly no latch is created at all;
+  // otherwise the daemon boots locked — or, with the headless override set, unlocks itself immediately
+  // inside `createExecutionLatch`, which is the pre-latch behaviour.
+  if (overrides.rosterSessions !== undefined) ctx.rosterSessions = overrides.rosterSessions;
+  if (overrides.executionLatch !== undefined) {
+    ctx.executionLatch = overrides.executionLatch;
+  } else if (!activationOverridden) {
+    ctx.executionLatch = createExecutionLatch({
+      build,
+      env: activation.env,
+      buildOptions: { controlStore, repoRoot, stateRoot, ptyHost, ptySessions },
+      onChange: (execution) => {
+        ctx.controlBroker = execution?.controlBroker;
+        ctx.runAutomatic = execution?.runAutomatic;
+        ctx.cancelAutomatic = execution?.cancelAutomatic;
+        ctx.containManagerStart = execution?.containManagerStart;
+        ctx.verifyCanonicalResult = execution?.verifyCanonicalResult;
+        ctx.rosterSessions = execution?.rosterSessions;
+      },
+    });
+  }
+  return ctx;
 }
 
 /** Register the governed write surface (auth + write + vibe + approvals) as one guarded child scope. */
@@ -136,6 +168,9 @@ export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext =
   // preClose runs before Fastify waits for long-lived streaming requests to finish. Draining in
   // onClose would deadlock shutdown behind the very Composer children it was meant to stop.
   app.addHook('preClose', async () => {
+    // A shutdown re-locks by construction; retire the roster terminals with it so no agent REPL is
+    // orphaned by a daemon restart.
+    ctx.rosterSessions?.retireAll('daemon shutdown');
     ctx.controlBroker?.drain();
     drainVibeProcesses();
     // Kill any in-flight (possibly network-stalled) coordination git/gh child so shutdown never blocks

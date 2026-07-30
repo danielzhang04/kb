@@ -201,6 +201,56 @@ describe('kb.plan-proposal/v1 validation', () => {
     });
   });
 
+  it('admits a publication-authorization gate only from the compiler, and only on an approval gate', () => {
+    const publishGate = { id: 'g4-publish-private', kind: 'approval' as const, prompt: 'Approve the upload.', publicationAuthorization: true };
+    const withGate = (gate: Record<string, unknown>) => ({
+      ...proposal,
+      stages: [{ ...proposal.stages[0], humanGates: [gate] }, proposal.stages[1]],
+    });
+    // Compiler-only: an assistant/browser proposal cannot mint its own T3 content-bound authorization.
+    expect(validatePlanProposal(withGate(publishGate), REGISTRY)).toEqual({
+      ok: false,
+      detail: "stages[0].humanGates[0]: unknown field 'publicationAuthorization'",
+    });
+    expect(validateServerCompiledPlanProposal(withGate(publishGate), REGISTRY)).toMatchObject({ ok: true });
+    for (const kind of ['input', 'review', 'intervention'] as const) {
+      expect(validateServerCompiledPlanProposal(withGate({ ...publishGate, kind }), REGISTRY)).toEqual({
+        ok: false,
+        detail: "stages[0].humanGates[0].publicationAuthorization requires kind 'approval'",
+      });
+    }
+    expect(validateServerCompiledPlanProposal(withGate({ ...publishGate, publicationAuthorization: 'please' }), REGISTRY)).toEqual({
+      ok: false,
+      detail: 'stages[0].humanGates[0].publicationAuthorization must be a boolean when present',
+    });
+  });
+
+  it('admits compiler-only launch parameters as safe path segments and never from the browser', () => {
+    const withParameters = (parameters: unknown) => ({ ...proposal, parameters });
+    expect(validatePlanProposal(withParameters({ channel: 'the-second-take' }), REGISTRY)).toEqual({
+      ok: false, detail: "unknown field 'parameters'",
+    });
+    expect(validateServerCompiledPlanProposal(withParameters({ channel: 'the-second-take', slug: 'st-042', slice: '2min' }), REGISTRY))
+      .toMatchObject({ ok: true, value: { parameters: { channel: 'the-second-take', slug: 'st-042', slice: '2min' } } });
+    // Values become path fragments downstream (the roster's work directory), so every traversal,
+    // separator, device name, and non-string is refused here rather than sanitized later.
+    for (const value of ['../etc', 'a/b', 'a\\b', '.', '..', 'CON', 'nul.txt', '', 42, null]) {
+      expect(validateServerCompiledPlanProposal(withParameters({ channel: value }), REGISTRY)).toMatchObject({
+        ok: false, detail: expect.stringMatching(/must be a safe path segment/),
+      });
+    }
+    expect(validateServerCompiledPlanProposal(withParameters({ 'bad key': 'x' }), REGISTRY)).toMatchObject({
+      ok: false, detail: expect.stringMatching(/is not a safe id/),
+    });
+    expect(validateServerCompiledPlanProposal(withParameters(['channel']), REGISTRY)).toMatchObject({
+      ok: false, detail: 'parameters must be an object',
+    });
+    // A proposal without the key stays byte-identical, so stored proposals keep their content hash.
+    expect(validateServerCompiledPlanProposal(proposal, REGISTRY)).toMatchObject({ ok: true });
+    const validated = validateServerCompiledPlanProposal(proposal, REGISTRY);
+    expect(validated.ok && validated.value).not.toHaveProperty('parameters');
+  });
+
   it('rejects governanceRefs missing the project contract', () => {
     expect(validatePlanProposal({
       ...proposal,

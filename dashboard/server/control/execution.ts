@@ -8,6 +8,7 @@ import {
   policyScopeForStage,
   type ExecutionProfile,
   type PolicyEnvironment,
+  type PublicationAuthorizationState,
   type SpendAuthorizationState,
 } from './policy.ts';
 import { isSafeRepoRelativePath, proposalContentHash, type PlanProposal, type ProposalStage, type ResolvedAgentAssignment } from './proposal.ts';
@@ -147,6 +148,15 @@ export interface WorkerAdapter {
     assignment?: ResolvedAgentAssignment;
     /** Exact bounded declaration Markdown, never browser/prompt input. */
     instructionMarkdown?: string;
+    /**
+     * The immutable compiled stage and its project, for adapters that must re-derive a stage's own halt
+     * structure (declared human gates, dependencies, declared artifacts) at delivery time — the run-roster
+     * pty adapter does. The loose `action`/`target`/`workOrder`/scope fields above stay the interface for
+     * every adapter that does not; an adapter that needs this must REFUSE when it is absent rather than
+     * reconstruct it. Never browser input: it comes from the approved proposal the run is bound to.
+     */
+    proposalStage?: ProposalStage;
+    project?: string;
   }): Promise<WorkerExecutionResult>;
 }
 
@@ -560,14 +570,58 @@ function stageSpendAuthorization(
   stage: Stage,
   proposalStage: ProposalStage,
 ): SpendAuthorizationState {
-  const spendGates = proposalStage.humanGates.filter((gate) => gate.spendAuthorization === true);
-  if (spendGates.length === 0) return 'none';
-  const approved = spendGates.every((gate) => {
+  return declaredGateAuthorization(detail, stage, proposalStage, (gate) => gate.spendAuthorization === true);
+}
+
+/**
+ * Resolve the CONTENT-BOUND T3/publication authorization state of ONE stage, from its own compiled gates
+ * and this run's own resolved human requests — the same three scoping properties as
+ * {@link stageSpendAuthorization} (stage-scoped by title, gate-scoped by the declared flag, kind-scoped to
+ * an `approved` approval), and the same fail-closed default of `'none'`.
+ *
+ * This is what gives a `publish:`/T3 stage a releasing path at all. Before it, a T3 stage recomputed
+ * `t3-content-bound-approval-required` on every engine pass and re-parked forever, because nothing told
+ * the server which human decision was the content-bound approval. A gate declaring
+ * `publicationAuthorization` names exactly that decision, in a committed workflow definition a human
+ * reviewed, and the boundary created for such a gate carries the stage's full work order (see
+ * `gateBoundaryPrompt`) so the approver sees the prose they are authorizing — the standing constraint on
+ * ever making the publication branch releasable.
+ */
+function stagePublicationAuthorization(
+  detail: RunDetail,
+  stage: Stage,
+  proposalStage: ProposalStage,
+): PublicationAuthorizationState {
+  return declaredGateAuthorization(detail, stage, proposalStage, (gate) => gate.publicationAuthorization === true);
+}
+
+/** Shared resolution for the declared-gate authorizations: none / pending / approved, stage-scoped. */
+function declaredGateAuthorization(
+  detail: RunDetail,
+  stage: Stage,
+  proposalStage: ProposalStage,
+  selects: (gate: ProposalStage['humanGates'][number]) => boolean,
+): 'none' | 'pending' | 'approved' {
+  const gates = proposalStage.humanGates.filter(selects);
+  if (gates.length === 0) return 'none';
+  const approved = gates.every((gate) => {
     const title = stableHumanTitle('gate', stage.stageId, gate.id);
     const request = detail.humanRequests.find((candidate) => candidate.stageRef === stage.stageRef && candidate.title === title);
     return request?.state === 'resolved' && request.kind === 'approval' && request.response?.decision === 'approved';
   });
   return approved ? 'approved' : 'pending';
+}
+
+/**
+ * The prompt a declared gate's boundary carries. A gate that authorizes its stage's T3 publication must
+ * show the operator the work order they are releasing — the reviewer must never approve prose they cannot
+ * see. Bounded so a long work order cannot overflow the human-request prompt limit.
+ */
+export function gateBoundaryPrompt(gate: ProposalStage['humanGates'][number], proposalStage: ProposalStage): string {
+  if (gate.publicationAuthorization !== true) return gate.prompt;
+  const order = proposalStage.workOrder.replace(/\s+/g, ' ').trim().slice(0, 1_200);
+  return `${gate.prompt}\n\nWork order this approval releases (stage '${proposalStage.id}', `
+    + `${proposalStage.riskTier}, action ${proposalStage.action}):\n${order}`.slice(0, 2_000);
 }
 
 function getCurrentAttempt(detail: RunDetail, stage: Stage): Attempt | null {
@@ -1272,7 +1326,7 @@ export class AutomaticExecutionEngine {
       const title = stableHumanTitle('gate', stage.stageId, gate.id);
       const existing = detail.humanRequests.find((request) => request.stageRef === stage.stageRef && request.title === title);
       if (!existing) {
-        this.createBoundary(input, stage, gate.kind, title, gate.prompt);
+        this.createBoundary(input, stage, gate.kind, title, gateBoundaryPrompt(gate, proposalStage));
         return 'waiting';
       }
       if (existing.state === 'open') {
@@ -1300,8 +1354,18 @@ export class AutomaticExecutionEngine {
       }
       return 'refused';
     }
+    // Resolved once and shared by the restricted-intent scan and the policy call below, so a stage cannot
+    // clear one and park on the other.
+    const publicationAuthorization = stagePublicationAuthorization(this.detail(input), stage, proposalStage);
     const restricted = restrictedIntent(proposalStage);
-    if (restricted) {
+    // A stage whose declared publication gate is RECORDED APPROVED has already been through the exact
+    // human decision the publication rule exists to force, with its work order shown in that boundary.
+    // Every other restricted-intent disposition — credential and spending vocabulary, and publication
+    // language on a stage that declared NO publication gate — is untouched and still parks or refuses.
+    const restrictedReleased = restricted !== null
+      && restricted.reason === 'external-publication-intent-requires-human-approval'
+      && publicationAuthorization === 'approved';
+    if (restricted && !restrictedReleased) {
       const title = stableHumanTitle('policy', stage.stageId, restricted.reason);
       if (!detail.humanRequests.some((request) => request.stageRef === stage.stageRef && request.title === title)) {
         this.createBoundary(
@@ -1335,6 +1399,9 @@ export class AutomaticExecutionEngine {
       proposalHash: this.detail(input).run.proposalHash,
       approvedHash: this.detail(input).run.proposalHash,
       ...(spendAuthorization === 'none' ? {} : { requestsSpending: true, spendAuthorization }),
+      // Symmetric to spend: declaring a publication gate SUBMITS the stage as a publishing stage and
+      // clears only on that gate's own recorded approval. Declaring it therefore never widens anything.
+      ...(publicationAuthorization === 'none' ? {} : { requestsPublication: true, publicationAuthorization }),
     }, policy);
     if (decision.disposition !== 'allow') {
       const title = stableHumanTitle('policy', stage.stageId, decision.reason);
@@ -1693,6 +1760,8 @@ export class AutomaticExecutionEngine {
         readScope: proposalStage.scope.read,
         writeScope: proposalStage.scope.write,
         checkpoints: proposalStage.checkpoints.map((checkpoint) => checkpoint.id),
+        proposalStage,
+        project: input.proposal.project,
         ...(proposalStage.review ? { reviewContract: { review: proposalStage.review } } : {}),
         ...(assignedAgent ? { assignment: assignedAgent.assignment, instructionMarkdown: assignedAgent.instructionMarkdown } : {}),
       });

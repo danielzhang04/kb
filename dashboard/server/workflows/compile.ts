@@ -243,6 +243,7 @@ export function compileWorkflowDef(def: WorkflowDef, env: CompileWorkflowEnviron
         kind: gate.kind,
         prompt: gate.prompt,
         ...(gate.spendAuthorization === undefined ? {} : { spendAuthorization: gate.spendAuthorization }),
+        ...(gate.publicationAuthorization === undefined ? {} : { publicationAuthorization: gate.publicationAuthorization }),
       })),
       ...(assignment ? { assignment } : {}),
       ...(stage.workflowProfile ? { workflowProfile: stage.workflowProfile } : {}),
@@ -275,6 +276,11 @@ export function compileWorkflowDef(def: WorkflowDef, env: CompileWorkflowEnviron
     // `def.profile` is required by the def schema and already validated against the server-owned
     // closed set (defs.ts:227), so an unresolvable profile refuses the spawn rather than widening it.
     profile: def.profile,
+    // The substituted launch values, as data. `instantiateWorkflowDef` is the only writer; a definition
+    // without parameters emits nothing here and keeps its existing proposal identity.
+    ...(def.launchParameters && Object.keys(def.launchParameters).length > 0
+      ? { parameters: { ...def.launchParameters } }
+      : {}),
   };
   return { ok: true, value: proposal };
 }

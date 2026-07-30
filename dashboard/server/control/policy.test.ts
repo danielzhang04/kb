@@ -107,6 +107,79 @@ describe('evaluateExecutionPolicy', () => {
     });
   });
 
+  // The T3/publication gate is the second approvable boundary, and the only thing that releases a
+  // `publish:` stage. Exercised from the attacker's side exactly like the spend gate above: every way of
+  // reaching `allow` WITHOUT that stage's own recorded approval must still park or refuse.
+  describe('declared publication (content-bound T3) authorization', () => {
+    it('keeps an UNDECLARED publication or T3 stage a permanent human wait', () => {
+      for (const patch of [
+        { requestsPublication: true },
+        { requestsPublication: true, publicationAuthorization: 'none' as const },
+        { requestsPublication: true, publicationAuthorization: 'approved ' as unknown as 'approved' },
+        { requestsPublication: true, publicationAuthorization: true as unknown as 'approved' },
+      ]) {
+        expect(evaluateExecutionPolicy({ ...request, ...patch }, environment)).toMatchObject({
+          disposition: 'waiting-human', reason: 'external-publication-requires-t3-approval',
+        });
+      }
+      for (const patch of [
+        { riskTier: 'T3' as const },
+        { riskTier: 'T3' as const, publicationAuthorization: 'none' as const },
+        { riskTier: 'T3' as const, publicationAuthorization: 'pending' as const },
+      ]) {
+        expect(evaluateExecutionPolicy({ ...request, ...patch }, environment)).toMatchObject({
+          disposition: 'waiting-human',
+        });
+      }
+    });
+
+    it('names the declared gate while it is unapproved instead of refusing it', () => {
+      expect(evaluateExecutionPolicy({ ...request, requestsPublication: true, publicationAuthorization: 'pending' }, environment))
+        .toMatchObject({ disposition: 'waiting-human', reason: 'declared-publication-gate-awaiting-human-authorization' });
+      expect(evaluateExecutionPolicy({
+        ...request, riskTier: 'T3', publicationAuthorization: 'pending',
+      }, environment)).toMatchObject({ disposition: 'waiting-human', reason: 't3-content-bound-approval-required' });
+    });
+
+    it('releases a T3 publishing stage ONLY on the recorded approval, still inside the ordinary envelope', () => {
+      // This is the G4 path: the approval recorded against the publish stage's own declared gate IS the
+      // content-bound T3 approval the policy has always demanded.
+      expect(evaluateExecutionPolicy({
+        ...request, riskTier: 'T3', requestsPublication: true, publicationAuthorization: 'approved',
+      }, environment)).toMatchObject({ disposition: 'allow', reason: 'inside-approved-envelope' });
+
+      // An approved publication gate is not a skeleton key: every other boundary still fires beneath it.
+      for (const [patch, expected] of [
+        [{ requestsCredentials: true }, { disposition: 'refuse', reason: 'credentials-as-objects-forbidden' }],
+        [{ requestsSpending: true }, { disposition: 'refuse', reason: 'real-spending-forbidden' }],
+        [{ target: 'orgs/other/output' }, { disposition: 'waiting-human', reason: 'target-outside-approved-write-scope' }],
+        [{ approvedHash: 'older' }, { disposition: 'waiting-human', reason: 'proposal-revision-not-approved' }],
+        [{ requiredSkills: ['learned-unreviewed'] }, { disposition: 'refuse', reason: 'skill-not-curated:learned-unreviewed' }],
+        [{ model: 'browser-supplied-model' }, { disposition: 'refuse', reason: 'runtime-model-profile-not-allowed' }],
+      ] as const) {
+        expect(evaluateExecutionPolicy({
+          ...request, riskTier: 'T3', requestsPublication: true, publicationAuthorization: 'approved', ...patch,
+        } as PolicyRequest, environment)).toMatchObject(expected);
+      }
+    });
+
+    it('leaves a non-publishing stage untouched whatever its authorization state claims', () => {
+      for (const publicationAuthorization of ['none', 'pending', 'approved'] as const) {
+        expect(evaluateExecutionPolicy({ ...request, publicationAuthorization }, environment))
+          .toMatchObject({ disposition: 'allow', reason: 'inside-approved-envelope' });
+      }
+    });
+
+    it('does not let a publication approval stand in for a spend approval, or the reverse', () => {
+      expect(evaluateExecutionPolicy({
+        ...request, requestsSpending: true, publicationAuthorization: 'approved',
+      }, environment)).toMatchObject({ disposition: 'refuse', reason: 'real-spending-forbidden' });
+      expect(evaluateExecutionPolicy({
+        ...request, riskTier: 'T3', requestsPublication: true, spendAuthorization: 'approved',
+      }, environment)).toMatchObject({ disposition: 'waiting-human', reason: 'external-publication-requires-t3-approval' });
+    });
+  });
+
   it('requires the global and project governance references to be present and loaded', () => {
     expect(evaluateExecutionPolicy({ ...request, governanceRefs: ['CLAUDE.md'] }, environment)).toMatchObject({
       disposition: 'waiting-human', reason: 'missing-executable-governance-reference',

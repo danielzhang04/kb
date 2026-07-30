@@ -1,5 +1,8 @@
+import { randomBytes } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { requireSession, verifiedSession } from '../http/middleware.ts';
+import { assertionForChallenge, verifyAssertion } from '../auth/webauthn.ts';
+import { consumeChallenge, findCredential, rememberChallenge } from '../auth/credentialStore.ts';
 import { auditFn, type SurfaceContext } from '../http/context.ts';
 import { visibleAssistantText } from '../composer/publicTimeline.ts';
 import { defaultGitRunner, prepareCoordination } from '../write/branch.ts';
@@ -43,6 +46,39 @@ function sendResult<T>(reply: FastifyReply, result: ControlResult<T>, success = 
 
 function subject(req: FastifyRequest): string | null {
   return verifiedSession(req)?.claims.sub ?? null;
+}
+
+/** Challenge purpose prefix that separates an execution-unlock ceremony from a sign-in one. */
+const EXECUTION_UNLOCK_PURPOSE = 'kb.execution-unlock';
+
+/** The latch posture every execution-touching response carries, so the UI never has to guess. */
+function executionPosture(ctx: SurfaceContext): {
+  state: 'locked' | 'unlocked' | 'injected';
+  source: 'passkey' | 'env-override' | null;
+  unlockedAt: string | null;
+  unlockedBy: string | null;
+  unlockRoute?: string;
+} {
+  const snapshot = ctx.executionLatch?.snapshot();
+  if (!snapshot) {
+    // No latch: an explicitly injected executor (tests / future direct wiring). Reported honestly rather
+    // than as "unlocked", because nothing here can lock it.
+    return { state: 'injected', source: null, unlockedAt: null, unlockedBy: null };
+  }
+  return {
+    ...snapshot,
+    ...(snapshot.state === 'locked' ? { unlockRoute: '/api/control/execution/unlock' } : {}),
+  };
+}
+
+/** The distinct launch-time refusal a locked daemon returns, so the UI can raise an unlock prompt. */
+function executionLockedRefusal(ctx: SurfaceContext): { error: string; detail: string; execution: ReturnType<typeof executionPosture> } | null {
+  if (!ctx.executionLatch || ctx.executionLatch.snapshot().state !== 'locked') return null;
+  return {
+    error: 'execution-locked',
+    detail: 'execution is locked; unlock it with your passkey before launching a run',
+    execution: executionPosture(ctx),
+  };
 }
 
 class CompletedRootProvenanceError extends Error {}
@@ -208,6 +244,102 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     return reply.code(outcome.status).send(outcome.body);
   });
 
+  // ── EXECUTION UNLOCK LATCH ─────────────────────────────────────────────────────────────────────────
+  // The daemon boots LOCKED: no broker, no engine, no roster terminals. Construction is authorized by a
+  // fresh WebAuthn passkey assertion over a purpose-bound challenge — a login token alone is not enough,
+  // so a stolen/replayed bearer cannot turn execution on. Lock is the fail-safe direction and needs only
+  // the session. Both transitions are audited like every other consequential control action.
+  scope.get('/api/control/execution', { preHandler }, async (req, reply) => {
+    const sub = subject(req);
+    if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
+    return reply.send({ execution: executionPosture(ctx) });
+  });
+
+  scope.post('/api/control/execution/unlock/options', { preHandler }, async (req, reply) => {
+    const sub = subject(req);
+    if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
+    if (!ctx.executionLatch) return reply.code(409).send({ error: 'execution-latch-unavailable' });
+    let config;
+    try {
+      config = ctx.webAuthnConfig();
+    } catch {
+      return reply.code(503).send({ error: 'webauthn-unconfigured', reason: 'DASHBOARD_RP_ORIGIN is not set' });
+    }
+    // Purpose-bound challenge: the authenticator signs over "unlock execution for THIS subject", never a
+    // generic login nonce, so an assertion captured on the sign-in path cannot be presented here.
+    const challenge = `${EXECUTION_UNLOCK_PURPOSE}:${sub}:${randomBytes(18).toString('base64url')}`;
+    const options = await assertionForChallenge(challenge, { credentials: ctx.credentials() }, config);
+    const { ceremonyId } = rememberChallenge(options.challenge);
+    return reply.send({ ceremonyId, options });
+  });
+
+  scope.post('/api/control/execution/unlock', { preHandler }, async (req, reply) => {
+    const sub = subject(req);
+    if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
+    const latch = ctx.executionLatch;
+    if (!latch) return reply.code(409).send({ error: 'execution-latch-unavailable' });
+    const body = record(req.body);
+    const expectedChallenge = consumeChallenge(string(body.ceremonyId));
+    if (!expectedChallenge) {
+      return reply.code(400).send({ error: 'bad-ceremony', reason: 'unknown or expired unlock ceremony' });
+    }
+    // The ceremony must be an UNLOCK ceremony minted for THIS operator. A login ceremony's challenge, or
+    // another subject's, is refused here even though both are single-use and unexpired.
+    const preimage = Buffer.from(expectedChallenge, 'base64url').toString('utf8');
+    if (!preimage.startsWith(`${EXECUTION_UNLOCK_PURPOSE}:${sub}:`)) {
+      return reply.code(400).send({ error: 'bad-ceremony', reason: 'challenge is not an execution-unlock challenge for this operator' });
+    }
+    const response = record(body.response);
+    const credential = findCredential(ctx.credentials(), string(response.id));
+    if (!credential) {
+      // Fail closed: no registered passkey means execution cannot be unlocked at all. That is the correct
+      // posture, not a bug — the operator provisions a credential out of band first.
+      return reply.code(401).send({ error: 'unauthenticated', reason: 'no registered credential for this assertion' });
+    }
+    let config;
+    try {
+      config = ctx.webAuthnConfig();
+    } catch {
+      return reply.code(503).send({ error: 'webauthn-unconfigured', reason: 'DASHBOARD_RP_ORIGIN is not set' });
+    }
+    let verification;
+    try {
+      verification = await verifyAssertion(body.response as never, { expectedChallenge, credential, config });
+    } catch (error) {
+      return reply.code(401).send({ error: 'unauthenticated', reason: error instanceof Error ? error.message : 'assertion failed' });
+    }
+    if (!verification.verified) return reply.code(401).send({ error: 'unauthenticated', reason: 'assertion not verified' });
+    // Audit BEFORE constructing anything: an unlock that cannot be recorded does not happen.
+    try {
+      await auditFn(ctx)(ctx.repoRoot, {
+        action: 'control-execution-unlock-authorize', owner: sub, target: 'execution', riskTier: 'T3',
+        result: 'authorized:unlock', detail: { method: 'webauthn-passkey' },
+      }, { runGit: ctx.opsGit, now: ctx.now });
+    } catch {
+      return reply.code(500).send({ error: 'execution-unlock-audit-required' });
+    }
+    const unlocked = latch.unlock({ subject: sub });
+    if (!unlocked.ok) return reply.code(409).send({ error: 'execution-unlock-failed', detail: unlocked.reason });
+    return reply.send({ ok: true, execution: executionPosture(ctx) });
+  });
+
+  scope.post('/api/control/execution/lock', { preHandler }, async (req, reply) => {
+    const sub = subject(req);
+    if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
+    const latch = ctx.executionLatch;
+    if (!latch) return reply.code(409).send({ error: 'execution-latch-unavailable' });
+    try {
+      await auditFn(ctx)(ctx.repoRoot, {
+        action: 'control-execution-lock-authorize', owner: sub, target: 'execution', riskTier: 'T2',
+        result: 'authorized:lock', detail: { previous: latch.snapshot().state },
+      }, { runGit: ctx.opsGit, now: ctx.now });
+    } catch {
+      return reply.code(500).send({ error: 'execution-lock-audit-required' });
+    }
+    latch.lock({ subject: sub });
+    return reply.send({ ok: true, execution: executionPosture(ctx) });
+  });
+
   scope.get('/api/control/runs', { preHandler }, async (req, reply) => {
     const sub = subject(req);
     return sub ? reply.send({ runs: ctx.controlStore.listRuns(sub) }) : reply.code(401).send({ error: 'unauthenticated' });
@@ -216,7 +348,18 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
   scope.get('/api/control/runs/:runRef', { preHandler }, async (req, reply) => {
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
-    return sendResult(reply, ctx.controlStore.getRun(sub, (req.params as { runRef: string }).runRef));
+    const runRef = (req.params as { runRef: string }).runRef;
+    const detail = ctx.controlStore.getRun(sub, runRef);
+    if (!detail.ok) return sendResult(reply, detail);
+    // Roster state for the canvas: derived per request from durable run state plus the live session map —
+    // no polling loop, and an empty array while execution is locked or the run has no roster.
+    return reply.send({
+      ok: true,
+      value: detail.value,
+      replayed: detail.replayed ?? false,
+      roster: ctx.rosterSessions?.state(sub, runRef) ?? [],
+      execution: executionPosture(ctx),
+    });
   });
 
   scope.get('/api/control/runs/:runRef/events', { preHandler }, async (req, reply) => {
@@ -606,7 +749,10 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     return ctx.runControlTransactions.run(sub, runRef, async () => {
     const detail = ctx.controlStore.getRun(sub, runRef);
     if (!detail.ok) return sendResult(reply, detail);
-    if (!ctx.cancelAutomatic) return reply.code(409).send({ error: 'automatic-stop-not-activated' });
+    if (!ctx.cancelAutomatic) {
+      const locked = executionLockedRefusal(ctx);
+      return reply.code(409).send(locked ?? { error: 'automatic-stop-not-activated' });
+    }
     if (detail.value.run.version !== integer(body.expectedRunVersion)
       || detail.value.run.managerGeneration !== integer(body.expectedManagerGeneration)) {
       return reply.code(409).send({ error: 'run-state-changed' });
@@ -715,7 +861,10 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       return reply.code(409).send({ error: 'activation-failed' });
     }
     if (!ctx.controlBroker || !ctx.runAutomatic || !ctx.containManagerStart) {
-      return reply.code(409).send({ error: 'automatic-runtime-not-activated' });
+      // A locked daemon gets its OWN refusal, which the UI turns into an unlock prompt; anything else
+      // (an injected-but-incomplete executor) keeps the original not-activated answer.
+      const locked = executionLockedRefusal(ctx);
+      return reply.code(409).send(locked ?? { error: 'automatic-runtime-not-activated' });
     }
     // Captured before the span closure: the handler's early activation gate proved it non-null, but
     // control-flow narrowing does not cross the closure boundary.

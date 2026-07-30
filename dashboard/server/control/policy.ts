@@ -41,6 +41,27 @@ export function policyScopeForStage(scope: ApprovedScope, readOnly: boolean): Ap
  */
 export type SpendAuthorizationState = 'none' | 'pending' | 'approved';
 
+/**
+ * Whether the stage under evaluation carries a DECLARED, server-compiled content-bound approval gate for
+ * its own T3 / external-publication action, and whether that gate has been approved by a human.
+ *
+ * Same three states and the same guarantees as {@link SpendAuthorizationState} (stage-scoped, gate-scoped,
+ * approval-kind-only), applied to the OTHER approvable boundary this control plane has: a T3 action.
+ *
+ * - `none` (the default whenever absent) — no declared gate. `requestsPublication` and `riskTier: 'T3'`
+ *   behave exactly as before: a permanent `waiting-human` that no approval releases, because nothing tells
+ *   the server WHICH human decision was supposed to authorize this content.
+ * - `pending` — declared but unapproved: still `waiting-human`, now with a reason that names the gate.
+ * - `approved` — the gate's own approval is recorded against this stage, so the T3 content-bound approval
+ *   the policy has always demanded actually exists and the stage clears.
+ *
+ * This is not a widening: a stage with no declared publication gate is refused/parked byte-for-byte as
+ * before, and a declared gate only ADDS a blocking boundary in front of its own stage. The gate's prompt
+ * is human-authored in the committed workflow definition, and the engine puts the stage's full work order
+ * in the boundary it creates, so the approver sees exactly the prose they are authorizing.
+ */
+export type PublicationAuthorizationState = 'none' | 'pending' | 'approved';
+
 export interface PolicyRequest {
   project: string;
   riskTier: 'T1' | 'T2' | 'T3';
@@ -58,6 +79,8 @@ export interface PolicyRequest {
   requestsCredentials?: boolean;
   /** Defaults to `'none'` when absent — undeclared spend stays a hard refuse. */
   spendAuthorization?: SpendAuthorizationState;
+  /** Defaults to `'none'` when absent — an undeclared T3/publication stage stays a permanent wait. */
+  publicationAuthorization?: PublicationAuthorizationState;
 }
 
 export interface PolicyEnvironment {
@@ -179,14 +202,29 @@ export function evaluateExecutionPolicy(request: PolicyRequest, environment: Pol
         return decide('refuse', 'real-spending-forbidden');
     }
   }
-  if (request.requestsPublication) return decide('waiting-human', 'external-publication-requires-t3-approval');
+  if (request.requestsPublication) {
+    // Fail-closed by construction, exactly like the spend branch above: only the explicit `'approved'`
+    // state falls through. Absent / malformed / `'none'` all land on the original permanent wait.
+    switch (request.publicationAuthorization) {
+      case 'approved':
+        break;
+      case 'pending':
+        return decide('waiting-human', 'declared-publication-gate-awaiting-human-authorization');
+      default:
+        return decide('waiting-human', 'external-publication-requires-t3-approval');
+    }
+  }
 
   const requiredRefs = [...REQUIRED_GLOBAL_REFS, `orgs/${request.project}/contract.md`];
   if (requiredRefs.some((ref) => !request.governanceRefs.includes(ref) || typeof environment.governanceContents[ref] !== 'string')) {
     return decide('waiting-human', 'missing-executable-governance-reference');
   }
   if (!environment.contractText.trim()) return decide('waiting-human', 'project-contract-unavailable');
-  if (request.riskTier === 'T3') return decide('waiting-human', 't3-content-bound-approval-required');
+  // A T3 stage demands a content-bound human approval. The ONLY thing that can satisfy it is that stage's
+  // own declared, recorded publication-gate approval; every other T3 stage still parks here as before.
+  if (request.riskTier === 'T3' && request.publicationAuthorization !== 'approved') {
+    return decide('waiting-human', 't3-content-bound-approval-required');
+  }
   if (!request.approvedHash || request.approvedHash !== request.proposalHash) {
     return decide('waiting-human', 'proposal-revision-not-approved');
   }

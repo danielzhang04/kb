@@ -246,3 +246,85 @@ describe('createPersistentSessionRegistry — lifecycle', () => {
     expect(registry.list('op-b')).toHaveLength(1);
   });
 });
+
+/**
+ * `observe` — the non-exclusive server-side output tap the run roster's completion-marker watcher uses.
+ * It must coexist with the browser's single sink, survive an attach/evict, and never be able to write.
+ */
+describe('server-side output observers', () => {
+  it('receives every chunk without competing with the browser sink', () => {
+    const fh = fakeHost();
+    const registry = createPersistentSessionRegistry();
+    const { sessionId } = registry.create('op', fh.host, OPEN_REQ);
+    const seen: string[] = [];
+    registry.observe('op', sessionId, (chunk) => seen.push(chunk));
+    const sink = recordingSink();
+    registry.attach('op', sessionId, sink);
+
+    fh.emitData(sessionId, 'first');
+    fh.emitData(sessionId, 'second');
+    expect(seen).toEqual(['first', 'second']);
+    expect(sink.received).toEqual(['first', 'second']);
+
+    // A second socket attaching EVICTS the first sink; the observer is untouched.
+    const newer = recordingSink();
+    registry.attach('op', sessionId, newer);
+    fh.emitData(sessionId, 'third');
+    expect(seen).toEqual(['first', 'second', 'third']);
+    // The newly attached sink also gets the ring REPLAY, which observers deliberately never receive —
+    // replaying scrollback into a marker scanner would re-fire completions.
+    expect(newer.received).toEqual(['first', 'second', 'third']);
+  });
+
+  it('unsubscribes exactly one observer and contains an observer that throws', () => {
+    const fh = fakeHost();
+    const registry = createPersistentSessionRegistry();
+    const { sessionId } = registry.create('op', fh.host, OPEN_REQ);
+    const quiet: string[] = [];
+    registry.observe('op', sessionId, () => { throw new Error('watcher bug'); });
+    const stop = registry.observe('op', sessionId, (chunk) => quiet.push(chunk));
+    const sink = recordingSink();
+    registry.attach('op', sessionId, sink);
+
+    expect(() => fh.emitData(sessionId, 'a')).not.toThrow();
+    expect(quiet).toEqual(['a']);
+    expect(sink.received).toEqual(['a']);
+    stop();
+    fh.emitData(sessionId, 'b');
+    expect(quiet).toEqual(['a']);
+    expect(sink.received).toEqual(['a', 'b']);
+  });
+
+  it('refuses another owner, an unknown id, and an exited session with an inert unsubscribe', () => {
+    const fh = fakeHost();
+    const registry = createPersistentSessionRegistry();
+    const { sessionId } = registry.create('op', fh.host, OPEN_REQ);
+    const foreign: string[] = [];
+    const stopForeign = registry.observe('other', sessionId, (chunk) => foreign.push(chunk));
+    registry.observe('op', 'pty-nope', (chunk) => foreign.push(chunk));
+    fh.emitData(sessionId, 'private');
+    expect(foreign).toEqual([]);
+    expect(() => stopForeign()).not.toThrow();
+
+    fh.emitExit(sessionId, 0);
+    const afterExit: string[] = [];
+    expect(() => registry.observe('op', sessionId, (chunk) => afterExit.push(chunk))()).not.toThrow();
+    expect(afterExit).toEqual([]);
+  });
+
+  it('drops observers when the session is closed or the registry is cleared', () => {
+    const fh = fakeHost();
+    const registry = createPersistentSessionRegistry();
+    const closed = registry.create('op', fh.host, OPEN_REQ);
+    const cleared = registry.create('op', fh.host, OPEN_REQ);
+    const seen: string[] = [];
+    registry.observe('op', closed.sessionId, (chunk) => seen.push(`closed:${chunk}`));
+    registry.observe('op', cleared.sessionId, (chunk) => seen.push(`cleared:${chunk}`));
+
+    registry.close('op', closed.sessionId);
+    registry.clear();
+    fh.emitData(closed.sessionId, 'x');
+    fh.emitData(cleared.sessionId, 'y');
+    expect(seen).toEqual([]);
+  });
+});

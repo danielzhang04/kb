@@ -138,6 +138,7 @@ stages:
       - id: g4-publish-private
         kind: approval
         prompt: "GATE 4 — render and compliance approved. Read channels/<channel>/videos/<slug>/render-verify.md and compliance-report.md, watch the cut, then approve to authorize the PRIVATE upload. This approval covers a private upload only: the public flip and the thumbnail set stay human-only in YouTube Studio and are not part of this run."
+        publicationAuthorization: true
     workOrder: "Invoke the publish-queue skill to upload the finished <slice> cut for channels/<channel>/videos/<slug>/ to YouTube as PRIVATE, only after gate g4-publish-private is approved and compliance-report.md reads PASS. Record the resulting video id and its private state back into the video folder. Flipping a video public and setting its thumbnail are Studio actions a human performs — this stage never performs them. Analytics is fyt-publish's standing duty outside this DAG, not a stage here."
 ---
 

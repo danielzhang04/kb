@@ -168,6 +168,46 @@ describe('compileWorkflowDef', () => {
       expect(validateServerCompiledPlanProposal(JSON.parse(JSON.stringify(compiled.value)), REGISTRY)).toMatchObject({ ok: true });
     });
 
+    it('threads publicationAuthorization into the compiled gate and into proposal identity', () => {
+      const PUBLISHED = def([
+        'id: publish-run', 'project: kb-ops', 'title: Publish run', 'profile: research', 'stages:',
+        '  - id: verify', '    title: Verify', '    action: verify:cut', '    target: orgs/kb-ops/output', '    workOrder: Verify.',
+        '  - id: publish', '    title: Publish', '    action: publish:private-upload', '    target: orgs/kb-ops/output',
+        '    workOrder: Upload privately.', '    riskTier: T3', '    dependsOn: [verify]',
+        '    humanGates:', '      - id: g4-publish', '        kind: approval', '        prompt: Approve the upload.',
+        '        publicationAuthorization: true',
+      ].join('\n'));
+      const compiled = compileWorkflowDef(PUBLISHED, { registry: REGISTRY });
+      expect(compiled.ok).toBe(true);
+      if (!compiled.ok) return;
+      expect(compiled.value.stages.find((stage) => stage.id === 'publish')?.humanGates).toEqual([
+        { id: 'g4-publish', kind: 'approval', prompt: 'Approve the upload.', publicationAuthorization: true },
+      ]);
+      expect(validateServerCompiledPlanProposal(JSON.parse(JSON.stringify(compiled.value)), REGISTRY)).toMatchObject({ ok: true });
+      // Silently clearing the flag must change the approved identity: it decides whether that stage can
+      // ever be released at all.
+      const dropped = compileWorkflowDef({
+        ...PUBLISHED,
+        stages: PUBLISHED.stages.map((stage) => (stage.id === 'publish'
+          ? { ...stage, humanGates: stage.humanGates?.map(({ publicationAuthorization: _gone, ...gate }) => gate) }
+          : stage)),
+      }, { registry: REGISTRY });
+      expect(dropped.ok).toBe(true);
+      if (!dropped.ok) return;
+      expect(dropped.value.proposalId).not.toBe(compiled.value.proposalId);
+    });
+
+    it('carries the launch parameters onto the compiled proposal as data', () => {
+      const compiled = compileWorkflowDef({ ...GATED, launchParameters: { channel: 'the-second-take', slug: 'st-042' } }, { registry: REGISTRY });
+      expect(compiled.ok).toBe(true);
+      if (!compiled.ok) return;
+      expect(compiled.value.parameters).toEqual({ channel: 'the-second-take', slug: 'st-042' });
+      expect(validateServerCompiledPlanProposal(JSON.parse(JSON.stringify(compiled.value)), REGISTRY)).toMatchObject({ ok: true });
+      // A definition with no launch values emits no key, so pre-existing proposals hash unchanged.
+      const bare = compileWorkflowDef(GATED, { registry: REGISTRY });
+      expect(bare.ok && bare.value).not.toHaveProperty('parameters');
+    });
+
     it('binds the gates into proposal identity so a gate edit forces re-approval', () => {
       const compiled = compileWorkflowDef(GATED, { registry: REGISTRY });
       const ungated = compileWorkflowDef(

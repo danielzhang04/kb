@@ -148,12 +148,17 @@ export interface WorkflowStageDef {
   humanGates?: WorkflowHumanGateDef[];
 }
 
-/** Declaration-side human gate. `spendAuthorization` is admissible only on an `approval` gate. */
+/**
+ * Declaration-side human gate. `spendAuthorization` and `publicationAuthorization` are each admissible
+ * only on an `approval` gate: they say WHICH recorded human decision authorizes their own stage's paid
+ * generation / T3 publication, and a non-approval response can never stand in for either.
+ */
 export interface WorkflowHumanGateDef {
   id: string;
   kind: 'approval' | 'input' | 'review';
   prompt: string;
   spendAuthorization?: boolean;
+  publicationAuthorization?: boolean;
 }
 
 export interface WorkflowReviewCriterionDef { id: string; description: string; }
@@ -187,6 +192,12 @@ export interface WorkflowDef {
   manager?: WorkflowManagerAssignment;
   /** Explicit launch-time path-segment inputs. Only these placeholders are substituted. */
   parameters?: string[];
+  /**
+   * The VALUES a launch substituted, set only by `instantiateWorkflowDef` (never parsed from the file).
+   * The compiler carries them into the proposal as structured data so a run's identity keeps its channel /
+   * slug / slice instead of leaving them recoverable only from substituted prose.
+   */
+  launchParameters?: Record<string, string>;
   /**
    * Optional declared read roots beyond the def's own `orgs/<project>` tree. Validated against the
    * closed `SHAREABLE_READ_ROOTS` allowlist. Empty when the frontmatter omits `readScope`, which
@@ -270,7 +281,7 @@ function validateHumanGates(
   if (raw.length === 0 || raw.length > MAX_STAGE_HUMAN_GATES) {
     return { ok: false, detail: `${label} must contain 1-${MAX_STAGE_HUMAN_GATES} gates` };
   }
-  const allowed = new Set(['id', 'kind', 'prompt', 'spendAuthorization']);
+  const allowed = new Set(['id', 'kind', 'prompt', 'spendAuthorization', 'publicationAuthorization']);
   const kinds = new Set(['approval', 'input', 'review']);
   const value: WorkflowHumanGateDef[] = [];
   const seen = new Set<string>();
@@ -304,11 +315,22 @@ function validateHumanGates(
       }
       spendAuthorization = entry.spendAuthorization;
     }
+    let publicationAuthorization: boolean | undefined;
+    if (hasOwn(entry, 'publicationAuthorization')) {
+      if (typeof entry.publicationAuthorization !== 'boolean') {
+        return { ok: false, detail: `${itemLabel}.publicationAuthorization must be a boolean when present` };
+      }
+      if (entry.publicationAuthorization && kind !== 'approval') {
+        return { ok: false, detail: `${itemLabel}.publicationAuthorization requires kind 'approval'` };
+      }
+      publicationAuthorization = entry.publicationAuthorization;
+    }
     value.push({
       id,
       kind: kind as WorkflowHumanGateDef['kind'],
       prompt,
       ...(spendAuthorization === undefined ? {} : { spendAuthorization }),
+      ...(publicationAuthorization === undefined ? {} : { publicationAuthorization }),
     });
   }
   return { ok: true, value };
@@ -649,5 +671,15 @@ export function instantiateWorkflowDef(def: WorkflowDef, input: Record<string, s
   const sourceFields = [def.description, ...def.stages.flatMap((stage) => [stage.workOrder, stage.target])];
   for (const key of expected) if (!sourceFields.some((value) => value.includes(`<${key}>`))) return { ok: false, detail: `parameter '${key}' is declared but not used by the workflow` };
   const replace = (value: string) => expected.reduce((next, key) => next.replaceAll(`<${key}>`, input[key]), value);
-  return { ok: true, value: { ...def, description: replace(def.description), stages: def.stages.map((stage) => ({ ...stage, workOrder: replace(stage.workOrder), target: replace(stage.target) })) } };
+  return {
+    ok: true,
+    value: {
+      ...def,
+      description: replace(def.description),
+      stages: def.stages.map((stage) => ({ ...stage, workOrder: replace(stage.workOrder), target: replace(stage.target) })),
+      // Emitted only when the def actually declares parameters, so a parameterless definition compiles to
+      // the byte-identical proposal it did before this field existed.
+      ...(expected.length === 0 ? {} : { launchParameters: Object.fromEntries(expected.map((key) => [key, input[key]])) }),
+    },
+  };
 }

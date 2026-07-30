@@ -262,6 +262,36 @@ describe('parseWorkflowDef', () => {
       )), { knownProfiles: KNOWN })).toMatchObject({ ok: false, detail: expect.stringMatching(/spendAuthorization must be a boolean/) });
     });
 
+    it('admits publicationAuthorization ONLY on an approval gate', () => {
+      expect(parseWorkflowDef(md(gated(
+        '    humanGates:', '      - id: g4-publish-private', '        kind: approval',
+        '        prompt: Approve the private upload.', '        publicationAuthorization: true',
+      )), { knownProfiles: KNOWN })).toMatchObject({ ok: true, value: { stages: [{ humanGates: [
+        { id: 'g4-publish-private', kind: 'approval', publicationAuthorization: true },
+      ] }] } });
+      // An input/review response is not an approval, so neither may ever read as authorizing a T3
+      // publication — the same rule the spend flag carries.
+      for (const kind of ['input', 'review']) {
+        expect(parseWorkflowDef(md(gated(
+          '    humanGates:', '      - id: g4-publish-private', `        kind: ${kind}`,
+          '        prompt: Approve the private upload.', '        publicationAuthorization: true',
+        )), { knownProfiles: KNOWN })).toMatchObject({
+          ok: false, detail: expect.stringMatching(/publicationAuthorization requires kind 'approval'/),
+        });
+      }
+      expect(parseWorkflowDef(md(gated(
+        '    humanGates:', '      - id: g4', '        kind: approval',
+        '        prompt: Approve.', '        publicationAuthorization: sure',
+      )), { knownProfiles: KNOWN })).toMatchObject({
+        ok: false, detail: expect.stringMatching(/publicationAuthorization must be a boolean/),
+      });
+      // The gate mapping stays closed: an unknown neighbour is still refused.
+      expect(parseWorkflowDef(md(gated(
+        '    humanGates:', '      - id: g4', '        kind: approval',
+        '        prompt: Approve.', '        publishAuthorisation: true',
+      )), { knownProfiles: KNOWN })).toMatchObject({ ok: false, detail: expect.stringMatching(/unknown field/) });
+    });
+
     it('requires gate ids to be unique across the whole workflow, not merely per stage', () => {
       const twoStages = [
         'id: gated', 'project: kb-ops', 'title: Gated', 'profile: research', 'stages:',
@@ -410,6 +440,22 @@ describe('parseWorkflowDef', () => {
     const unused = parseWorkflowDef(md(source.replace('[channel, slug]', '[channel, unused]')), { knownProfiles: KNOWN });
     if (!unused.ok) throw new Error(unused.detail);
     expect(instantiateWorkflowDef(unused.value, { channel: 'a', unused: 'b' })).toMatchObject({ ok: false, detail: expect.stringMatching(/not used/) });
+  });
+
+  it('records the substituted launch values on the instantiated definition', () => {
+    const source = SINGLE.replace('profile: research', 'profile: research\nparameters: [channel, slug]')
+      .replace('riskTier: T2', 'riskTier: T2\n    workOrder: Write <channel>/<slug>.');
+    const parsed = parseWorkflowDef(md(source), { knownProfiles: KNOWN });
+    if (!parsed.ok) throw new Error(parsed.detail);
+    // The parsed definition never carries values (they are launch input, not file content).
+    expect(parsed.value).not.toHaveProperty('launchParameters');
+    const instantiated = instantiateWorkflowDef(parsed.value, { channel: 'the-second-take', slug: 'st-042' });
+    expect(instantiated).toMatchObject({ ok: true, value: { launchParameters: { channel: 'the-second-take', slug: 'st-042' } } });
+    // A parameterless definition stays byte-identical: no key is emitted at all.
+    const plain = parseWorkflowDef(md(SINGLE), { knownProfiles: KNOWN });
+    if (!plain.ok) throw new Error(plain.detail);
+    const untouched = instantiateWorkflowDef(plain.value, {});
+    expect(untouched.ok && untouched.value).not.toHaveProperty('launchParameters');
   });
 
   describe('readScope declaration (Layer A)', () => {

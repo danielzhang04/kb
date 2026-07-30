@@ -108,6 +108,14 @@ export interface ProposalHumanGate {
    * satisfy a spend requirement.
    */
   spendAuthorization?: boolean;
+  /**
+   * COMPILER-ONLY. When true, the human approval recorded against this gate IS the content-bound T3
+   * approval for the gate's own stage (`policy.ts` `publicationAuthorization`) — the entry-gate model's
+   * "approve the finished artefact, then the publishing stage may run". Admitted only on a server-compiled
+   * proposal, only on `kind: 'approval'`, and it authorizes nothing on any other stage or run. Without it
+   * a T3 / publication stage parks forever exactly as it did before this field existed.
+   */
+  publicationAuthorization?: boolean;
 }
 
 /** Compiler-only checker review contract. Browser proposals cannot carry this field. */
@@ -161,6 +169,14 @@ export interface PlanProposal {
    * back-compatibility affordance, never a capability default: see `createWorkflowToolPolicyResolver`.
    */
   profile?: string;
+  /**
+   * COMPILER-ONLY. The launch parameters this proposal was instantiated with (`channel`, `slug`, `slice`,
+   * …) as structured data, so the run's own approved identity carries them instead of leaving them
+   * recoverable only from substituted prose. Each value already passed the launch route's safe-path-segment
+   * validation. Emitted only when the definition declared parameters, so proposals compiled before this
+   * field existed still validate and still hash identically.
+   */
+  parameters?: Record<string, string>;
 }
 
 export interface ProposalChange {
@@ -199,6 +215,9 @@ const TOP_REQUIRED_FIELDS = [
   'schema', 'proposalId', 'project', 'title', 'summary', 'manager', 'scope', 'governanceRefs', 'stages',
 ] as const;
 const TOP_FIELDS = new Set<string>([...TOP_REQUIRED_FIELDS, 'profile']);
+/** `parameters` is compiler-only: an assistant/browser proposal that declares it is refused. */
+const COMPILED_TOP_FIELDS = new Set<string>([...TOP_FIELDS, 'parameters']);
+const MAX_PARAMETERS = 16;
 const MANAGER_FIELDS = new Set(['runtime', 'model', 'requiredSkills']);
 const COMPILED_MANAGER_FIELDS = new Set([...MANAGER_FIELDS, 'assignment']);
 const ROUTING_FIELDS = new Set(['runtime', 'model']);
@@ -213,7 +232,7 @@ const ARTIFACT_FIELDS = new Set(['id', 'path', 'description']);
 const CHECKPOINT_FIELDS = new Set(['id', 'label']);
 const HUMAN_GATE_FIELDS = new Set(['id', 'kind', 'prompt']);
 /** `spendAuthorization` is compiler-only; browser/assistant gates are held to HUMAN_GATE_FIELDS. */
-const COMPILED_HUMAN_GATE_FIELDS = new Set([...HUMAN_GATE_FIELDS, 'spendAuthorization']);
+const COMPILED_HUMAN_GATE_FIELDS = new Set([...HUMAN_GATE_FIELDS, 'spendAuthorization', 'publicationAuthorization']);
 const REVIEW_FIELDS = new Set(['subjectStageId', 'maxCreatorReworks', 'criteria']);
 const REVIEW_CRITERION_FIELDS = new Set(['id', 'description']);
 const COMPLETION_GATE_FIELDS = new Set(['id', 'kind', 'prompt', 'requiresReview']);
@@ -480,11 +499,23 @@ function validateHumanGates(
       }
       spendAuthorization = raw.spendAuthorization;
     }
+    let publicationAuthorization: boolean | undefined;
+    if (Object.prototype.hasOwnProperty.call(raw, 'publicationAuthorization')) {
+      if (typeof raw.publicationAuthorization !== 'boolean') {
+        return { ok: false, detail: `${itemLabel}.publicationAuthorization must be a boolean when present` };
+      }
+      // Same rule as spend: a non-approval response can never read as a content-bound T3 approval.
+      if (raw.publicationAuthorization && raw.kind !== 'approval') {
+        return { ok: false, detail: `${itemLabel}.publicationAuthorization requires kind 'approval'` };
+      }
+      publicationAuthorization = raw.publicationAuthorization;
+    }
     result.push({
       id: id.value,
       kind: raw.kind as HumanGateKind,
       prompt: prompt.value,
       ...(spendAuthorization === undefined ? {} : { spendAuthorization }),
+      ...(publicationAuthorization === undefined ? {} : { publicationAuthorization }),
     });
   }
   return { ok: true, value: result };
@@ -636,7 +667,11 @@ function validatePlanProposalInternal(
   } catch {
     return { ok: false, detail: 'proposal must be a JSON-compatible object' };
   }
-  const fields = exactFields(input, TOP_FIELDS, [...TOP_REQUIRED_FIELDS]);
+  const fields = exactFields(
+    input,
+    allowResolvedAssignments ? COMPILED_TOP_FIELDS : TOP_FIELDS,
+    [...TOP_REQUIRED_FIELDS],
+  );
   if (fields) return { ok: false, detail: fields };
   if (input.schema !== PLAN_PROPOSAL_SCHEMA) {
     return { ok: false, detail: `schema must be '${PLAN_PROPOSAL_SCHEMA}'` };
@@ -683,6 +718,26 @@ function validatePlanProposalInternal(
       return { ok: false, detail: `profile '${parsed.value}' is not a server-owned workflow execution profile` };
     }
     profile = parsed.value;
+  }
+  // Compiler-only launch parameters. Keys are safe ids; values must be the SAME safe path segment the
+  // launch route validated before substitution, so nothing here can widen a path later derived from them.
+  let parameters: Record<string, string> | undefined;
+  if (Object.prototype.hasOwnProperty.call(input, 'parameters')) {
+    if (!allowResolvedAssignments) return { ok: false, detail: 'parameters is a compiler-only field' };
+    if (!isRecord(input.parameters)) return { ok: false, detail: 'parameters must be an object' };
+    const keys = Object.keys(input.parameters);
+    if (keys.length > MAX_PARAMETERS) return { ok: false, detail: `parameters must contain at most ${MAX_PARAMETERS} keys` };
+    const collected: Record<string, string> = {};
+    for (const key of keys) {
+      if (!SAFE_ID_RE.test(key)) return { ok: false, detail: `parameters key '${key}' is not a safe id` };
+      const raw = (input.parameters as Record<string, unknown>)[key];
+      if (typeof raw !== 'string' || !SAFE_PATH_SEGMENT_RE.test(raw) || raw.length > MAX_ID_CHARS * 2
+        || raw === '.' || raw === '..' || WINDOWS_DEVICE_SEGMENT_RE.test(raw)) {
+        return { ok: false, detail: `parameters['${key}'] must be a safe path segment` };
+      }
+      collected[key] = raw;
+    }
+    parameters = collected;
   }
   const scope = validateScope(input.scope, 'scope');
   if (!scope.ok) return scope;
@@ -765,8 +820,9 @@ function validatePlanProposalInternal(
     stages,
   };
   // Emit the key ONLY when declared. `profile: undefined` would both break canonical JSON and change the
-  // content hash of every pre-existing profile-less proposal.
+  // content hash of every pre-existing profile-less proposal. Same rule for `parameters`.
   if (profile !== undefined) value.profile = profile;
+  if (parameters !== undefined) value.parameters = parameters;
   return { ok: true, value };
 }
 
