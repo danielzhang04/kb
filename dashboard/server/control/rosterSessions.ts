@@ -425,10 +425,27 @@ const MODAL_MARKERS: readonly RegExp[] = [
  * The REPL is mid-turn. Input typed now is buffered by the CLI in a way that races its own re-render,
  * and delivering a second order on top of an unfinished one is exactly the "one order at a time"
  * invariant `entry.pending` exists to hold. Wait for the turn to end.
+ *
+ * WHAT THE CLI ACTUALLY RENDERS, CAPTURED OFF A REAL PTY (2.1.220), not inferred from its strings:
+ *   `✽ Whatchamacalliting… ❯ esc to interrupt` … `(3s · thinking)` … `↓ 25 tokens · thinking)`
+ * The interrupt hint is NOT a literal in the binary — `grep -a "to interrupt"` over `claude.exe` finds
+ * ZERO hits, and an earlier review read that as proof this whole arm was dead. It is not: the hint is
+ * COMPOSED at render time as `<chord> to <action>` (`Ue({chord, action:'interrupt'})` renders
+ * `[chordLabel, ' to ', action]`) from the `chat:cancel` keybinding, whose default label is `esc`. A
+ * string grep can never see it; a pty can, and did.
+ *
+ * That composition is also why the first pattern must not be the only one. The chord is user-rebindable
+ * and the action wording is CLI copy, so the two patterns after it key on the spinner footer's
+ * structure instead — an elapsed-seconds counter and a token counter, both of which a turn renders and
+ * an idle prompt does not. A false positive costs a bounded wait and a named `waiting-human` park; a
+ * false negative costs a swallowed work order.
  */
 const BUSY_MARKERS: readonly RegExp[] = [
-  /\b(?:esc|escape) to interrupt\b/i,
-  /\(ctrl\+?-?c to (?:cancel|stop|interrupt)\)/i,
+  /\b(?:esc|escape|ctrl\+?-?c) to (?:interrupt|cancel|stop)\b/i,
+  // `(3s · thinking)` — the spinner's elapsed-time footer, independent of every word around it.
+  /\(\d+s\s*[·|]/,
+  // `↓ 25 tokens` / `↑ 1.2k tokens` — the in-flight token counter, only ever rendered mid-turn.
+  /[↑↓]\s*[\d.,]+\s*[km]?\s*tokens\b/i,
 ];
 
 export type ReplReadiness =

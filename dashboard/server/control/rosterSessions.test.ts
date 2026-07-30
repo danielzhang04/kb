@@ -1280,7 +1280,17 @@ describe('roster REPL-readiness gate', () => {
     expect(detectReplReadiness('\u256d\u2500 Do you want to proceed? \u2500\u256e\n\u2502 \u276f 1. Yes')).toMatchObject({ state: 'modal' });
     expect(detectReplReadiness("  2. Yes, and don't ask again for Read commands")).toMatchObject({ state: 'modal' });
     expect(detectReplReadiness('\u2502   3. No, and tell Claude what to do differently')).toMatchObject({ state: 'modal' });
-    expect(detectReplReadiness('* Pondering\u2026 (12s \u00b7 esc to interrupt)')).toMatchObject({ state: 'busy' });
+    // VERBATIM off a real pty (CLI 2.1.220), not hand-written: the frame a live mid-turn session emits.
+    // The previous fixture here was invented, and an invented busy frame validates the regex against
+    // itself. `grep -a "to interrupt"` over `claude.exe` finds nothing because the hint is composed at
+    // render time from the `chat:cancel` chord label plus the action name \u2014 only a pty ever sees it.
+    const midTurn = '\u276f Count from 1 to 40, one number per line, no other text.'
+      + '  \u273dWhatchamacalliting\u2026 \u276f esc to interrupt';
+    expect(detectReplReadiness(midTurn)).toMatchObject({ state: 'busy', marker: 'esc to interrupt' });
+    // Copy-independent second and third signals, so a rebound chord or reworded action cannot revive
+    // the swallowed-order failure: the spinner's own elapsed-seconds and token counters.
+    expect(detectReplReadiness('\u273b Nebulizing\u2026 (3s \u00b7 thinking)')).toMatchObject({ state: 'busy' });
+    expect(detectReplReadiness('\u273b Herding\u2026 \u2193 25 tokens \u00b7 thinking)')).toMatchObject({ state: 'busy' });
     expect(detectReplReadiness('\u256d\u2500\u2500\u2500\u256e\n\u2502 >  \u2502\n\u2570\u2500\u2500\u2500\u256f')).toEqual({ state: 'ready' });
     expect(detectReplReadiness('')).toEqual({ state: 'ready' });
     // An answered menu stops matching once the REPL has redrawn past it.
@@ -1348,7 +1358,8 @@ describe('roster REPL-readiness gate', () => {
     const sessionId = sessionIdFor(sessions, runRef, 'fyt-story');
     succeedStage(store, runRef, 'idea');
     resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
-    host.emit(sessionId, 'Reading binding.md\u2026\r\n* Thinking\u2026 (43s \u00b7 esc to interrupt)\r\n');
+    // The real 2.1.220 mid-turn frame (captured off a pty), not a hand-written approximation of one.
+    host.emit(sessionId, 'Reading binding.md\u2026\r\n\u273dWhatchamacalliting\u2026 \u276f esc to interrupt\u273b (43s \u00b7 thinking)\r\n');
     const result = await sessions.deliver(deliverInput(store, runRef, plan, 'story'));
     expect(result.state).toBe('waiting-human');
     expect(result.summary).toContain('mid-turn');
