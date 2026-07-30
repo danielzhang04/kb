@@ -78,15 +78,15 @@ const BINDING_ENVIRONMENT: CompileWorkflowEnvironment = {
  * Stage order is the run's structure: a single chain, so no path can route around a gate.
  *
  * The last two columns are deliberately separate. `governedBy` is the accountable owner of every
- * stage; `agentId` is the EXECUTABLE binding, and it is `null` on the two merge nodes. That is not an
- * oversight to be tidied away: `fyt-runner` owns the staging→root merge under the single-writer law,
- * but it is declared with a MANAGER default execution profile and `compile.ts#resolveAssignment`
- * requires a stage's agent to have a WORKER one (`assigned-default-profile-role-mismatch`), so one
- * agent cannot be both this workflow's manager and one of its stage workers. Roster delivery fails
- * closed on an unassigned stage inside a run that has a live roster (`rosterSessions.ts#deliver`:
- * "has no verified agent assignment to deliver to"), so the halt is loud, not a silent fallback to a
- * generic headless worker. Binding these two is an open ruling — see the note in video-run.md's
- * single-writer section.
+ * stage; `agentId` is the EXECUTABLE binding. On the two merge nodes these now DIFFER: `fyt-runner`
+ * governs `shots-merge`/`audio-plan-merge` — they sit at their declared position in its gate spine —
+ * but `fyt-checker` is the executable `agentId`. That split is not incidental: `fyt-runner` is
+ * declared with a MANAGER default execution profile and `compile.ts#resolveAssignment` requires a
+ * stage's agent to have a WORKER one (`assigned-default-profile-role-mismatch`), so one agent cannot
+ * be both this workflow's manager and one of its stage workers. `fyt-checker` already declares a
+ * worker-role default profile, and the merge is a verification act — re-linting a plan it did not
+ * author — so assigning it there strengthens author-never-grades rather than bending it. See the
+ * ruling in video-run.md's single-writer section.
  */
 const STAGES: Array<[string, string, string, string[], 'T2' | 'T3', string, string | null]> = [
   ['idea', 'Generate ranked idea briefs', 'research:idea-briefs', [], 'T2', 'fyt-story', 'fyt-story'],
@@ -94,11 +94,11 @@ const STAGES: Array<[string, string, string, string[], 'T2' | 'T3', string, stri
   ['judge-gate', 'Fresh-context acceptance verdict on the script', 'review:script-verdict', ['story'], 'T2', 'fyt-checker', 'fyt-checker'],
   ['packaging', 'Derive the shorts bench and author the metadata', 'draft:packaging', ['judge-gate'], 'T2', 'fyt-story', 'fyt-story'],
   ['visual-plan', 'Author the full shot list, motion plan, and lint', 'build:visual-plan', ['packaging'], 'T2', 'fyt-visuals', 'fyt-visuals'],
-  ['shots-merge', 'Merge the staged shot and motion plans to the video root and re-lint there', 'build:shots-merge', ['visual-plan'], 'T2', 'fyt-runner', null],
+  ['shots-merge', 'Merge the staged shot and motion plans to the video root and re-lint there', 'build:shots-merge', ['visual-plan'], 'T2', 'fyt-runner', 'fyt-checker'],
   ['images', 'Generate the on-style stills for the slice', 'build:images', ['shots-merge'], 'T2', 'fyt-visuals', 'fyt-visuals'],
   ['image-review', 'Review every generated still and build the shot board', 'review:image-board', ['images'], 'T2', 'fyt-checker', 'fyt-checker'],
   ['audio', 'Generate narration and author the audio plan for the slice', 'build:audio', ['image-review'], 'T2', 'fyt-audio-render', 'fyt-audio-render'],
-  ['audio-plan-merge', 'Merge the staged audio plan to the video root and re-lint there', 'build:audio-plan-merge', ['audio'], 'T2', 'fyt-runner', null],
+  ['audio-plan-merge', 'Merge the staged audio plan to the video root and re-lint there', 'build:audio-plan-merge', ['audio'], 'T2', 'fyt-runner', 'fyt-checker'],
   ['render', 'Assemble the finished cut for the slice', 'build:render', ['audio-plan-merge'], 'T2', 'fyt-audio-render', 'fyt-audio-render'],
   ['verify', 'Verify the render and run the compliance report', 'verify:render-compliance', ['render'], 'T2', 'fyt-checker', 'fyt-checker'],
   ['publish-private', 'Upload the finished cut as private', 'publish:private-upload', ['verify'], 'T3', 'fyt-publish', 'fyt-publish'],
@@ -146,16 +146,17 @@ describe('video-run workflow definition (compile-proof)', () => {
     if (!parsed.ok) return;
     expect(parsed.value.stages.map((s) => [s.id, s.title, s.action]))
       .toEqual(STAGES.map(([id, title, action]) => [id, title, action]));
-    // Every stage is governed; every stage EXCEPT the two runner-owned merge nodes is also executable
-    // (an agent id plus the worker profile it binds through). See the STAGES comment for why those two
-    // cannot carry a binding today.
+    // Every stage is governed AND executable (an agent id plus the worker profile it binds through) —
+    // including the two merge nodes, whose `governedBy` (`fyt-runner`) and `agentId` (`fyt-checker`)
+    // now deliberately differ. See the STAGES comment for the ruling.
     expect(parsed.value.stages.map((s) => [s.id, s.governedBy, s.agentId ?? null, s.profileId ?? null]))
       .toEqual(STAGES.map(([id, , , , , owner, agent]) => [
         id, owner, agent, agent === null ? null : 'worker:claude:claude-fable-5',
       ]));
-    // The merge nodes are exactly the unbound set, and they are exactly the stages fyt-runner governs.
-    expect(parsed.value.stages.filter((s) => s.agentId === undefined).map((s) => s.id))
-      .toEqual(['shots-merge', 'audio-plan-merge']);
+    // No stage is unbound any more: every stage, including both merge nodes, carries an executable
+    // `agentId`.
+    expect(parsed.value.stages.filter((s) => s.agentId === undefined).map((s) => s.id)).toEqual([]);
+    // The merge nodes remain exactly the stages fyt-runner GOVERNS, even though fyt-checker executes them.
     expect(parsed.value.stages.filter((s) => s.governedBy === 'fyt-runner').map((s) => s.id))
       .toEqual(['shots-merge', 'audio-plan-merge']);
   });
@@ -332,13 +333,11 @@ describe('video-run workflow definition (compile-proof)', () => {
     // manages on Fable 5, every stage worker runs Fable 5 through its declared worker profile.
     expect(compiled.value.manager.model).toBe('claude-fable-5');
     expect(compiled.value.manager.assignment?.agentId).toBe('fyt-runner');
-    // Every BOUND stage routes Fable 5 through its declared worker profile. The two unbound merge nodes
-    // fall back to the compiler's default worker pick (`pickModel(claudeModels, 'sonnet')`) — asserted
-    // rather than glossed, because that fallback model is precisely why the binding is still owed: a
-    // generic sonnet worker is not the single writer of the video root.
+    // Every stage routes Fable 5 through its declared worker profile, including the two merge nodes:
+    // there is no more compiler-default fallback stage, because `fyt-checker`'s worker binding covers
+    // both — a generic sonnet worker is no longer standing in for the single writer of the video root.
     expect(compiled.value.stages.filter((s) => s.assignment).every((s) => s.worker.model === 'claude-fable-5')).toBe(true);
-    expect(compiled.value.stages.filter((s) => !s.assignment).map((s) => [s.id, s.worker.model]))
-      .toEqual([['shots-merge', 'claude-sonnet-5'], ['audio-plan-merge', 'claude-sonnet-5']]);
+    expect(compiled.value.stages.filter((s) => !s.assignment).map((s) => [s.id, s.worker.model])).toEqual([]);
     expect(compiled.value.stages.map((s) => s.assignment?.agentId ?? null)).toEqual(STAGES.map(([, , , , , , agent]) => agent));
     // The declared gates must reach the COMPILED stages: `compile.ts` hardcoded `humanGates: []` for
     // its whole life, which made an org definition's declared halt structure unenforceable.

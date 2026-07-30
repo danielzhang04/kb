@@ -112,16 +112,19 @@ describe('checked-out FYT segment static contracts', () => {
       { id: 'judge-gate', action: 'review:script-verdict', dependsOn: ['story'], riskTier: 'T2', agentId: 'fyt-checker', governedBy: 'fyt-checker', gates: [] },
       { id: 'packaging', action: 'draft:packaging', dependsOn: ['judge-gate'], riskTier: 'T2', agentId: 'fyt-story', governedBy: 'fyt-story', gates: ['g1-script'] },
       { id: 'visual-plan', action: 'build:visual-plan', dependsOn: ['packaging'], riskTier: 'T2', agentId: 'fyt-visuals', governedBy: 'fyt-visuals', gates: [] },
-      // The staging→root merge is its own node, owned by fyt-runner, sitting between the plan's author
-      // and its first reader. It is unbound (`agentId: undefined`) because fyt-runner is declared with a
-      // manager default profile and a stage requires a worker one — see compile.videoRun.test.ts.
-      { id: 'shots-merge', action: 'build:shots-merge', dependsOn: ['visual-plan'], riskTier: 'T2', agentId: undefined, governedBy: 'fyt-runner', gates: [] },
+      // The staging→root merge is its own node, governed by fyt-runner but EXECUTED by fyt-checker,
+      // sitting between the plan's author and its first reader. fyt-runner cannot hold the executable
+      // binding itself: it is declared with a manager default profile and a stage requires a worker
+      // one. The merge is a verification act (re-linting a plan neither merge node authored), which is
+      // exactly fyt-checker's existing shape — see compile.videoRun.test.ts and video-run.md's
+      // single-writer section for the ruling.
+      { id: 'shots-merge', action: 'build:shots-merge', dependsOn: ['visual-plan'], riskTier: 'T2', agentId: 'fyt-checker', governedBy: 'fyt-runner', gates: [] },
       { id: 'images', action: 'build:images', dependsOn: ['shots-merge'], riskTier: 'T2', agentId: 'fyt-visuals', governedBy: 'fyt-visuals', gates: ['g2-visual-plan'] },
       { id: 'image-review', action: 'review:image-board', dependsOn: ['images'], riskTier: 'T2', agentId: 'fyt-checker', governedBy: 'fyt-checker', gates: [] },
       // Two gates: the shot-board approval that releases this stage, plus the recorded cost
       // authorization for the paid narration call the stage itself makes.
       { id: 'audio', action: 'build:audio', dependsOn: ['image-review'], riskTier: 'T2', agentId: 'fyt-audio-render', governedBy: 'fyt-audio-render', gates: ['g3-image-board', 'g3b-narration-cost'] },
-      { id: 'audio-plan-merge', action: 'build:audio-plan-merge', dependsOn: ['audio'], riskTier: 'T2', agentId: undefined, governedBy: 'fyt-runner', gates: [] },
+      { id: 'audio-plan-merge', action: 'build:audio-plan-merge', dependsOn: ['audio'], riskTier: 'T2', agentId: 'fyt-checker', governedBy: 'fyt-runner', gates: [] },
       { id: 'render', action: 'build:render', dependsOn: ['audio-plan-merge'], riskTier: 'T2', agentId: 'fyt-audio-render', governedBy: 'fyt-audio-render', gates: [] },
       { id: 'verify', action: 'verify:render-compliance', dependsOn: ['render'], riskTier: 'T2', agentId: 'fyt-checker', governedBy: 'fyt-checker', gates: [] },
       { id: 'publish-private', action: 'publish:private-upload', dependsOn: ['verify'], riskTier: 'T3', agentId: 'fyt-publish', governedBy: 'fyt-publish', gates: ['g4-publish-private'] },

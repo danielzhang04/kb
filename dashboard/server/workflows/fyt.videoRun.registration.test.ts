@@ -25,13 +25,13 @@ const STAGE_IDS = [
 ];
 /**
  * Every stage is executable — a declared agent id plus the worker execution profile it binds through —
- * EXCEPT the two runner-owned staging→root merge nodes, which are absent from this map on purpose.
- * `fyt-runner` owns those writes under the single-writer law but is declared with a MANAGER default
- * execution profile, and `compile.ts#resolveAssignment` requires a stage's agent to have a WORKER one,
- * so this workflow's manager cannot also be one of its stage workers. Roster delivery refuses an
- * unassigned stage in a run that has a live roster rather than falling back to a headless worker, so the
- * gap is a loud halt awaiting a binding ruling — not a silent bypass. See video-run.md's single-writer
- * section.
+ * INCLUDING the two runner-governed staging→root merge nodes, which resolve to `fyt-checker`. `fyt-runner`
+ * owns those writes' place in the run under the single-writer law (see `GOVERNANCE.stages` below), but it
+ * is declared with a MANAGER default execution profile, and `compile.ts#resolveAssignment` requires a
+ * stage's agent to have a WORKER one, so this workflow's manager cannot also be one of its stage workers.
+ * The merge is a verification act — re-linting a plan neither merge node authored — which is exactly the
+ * shape `fyt-checker` already owns everywhere else in this DAG, so assigning it there strengthens
+ * author-never-grades rather than bending it. See video-run.md's single-writer section for the ruling.
  */
 const ASSIGNMENTS: Record<string, string> = {
   idea: 'fyt-story',
@@ -39,14 +39,16 @@ const ASSIGNMENTS: Record<string, string> = {
   'judge-gate': 'fyt-checker',
   packaging: 'fyt-story',
   'visual-plan': 'fyt-visuals',
+  'shots-merge': 'fyt-checker',
   images: 'fyt-visuals',
   'image-review': 'fyt-checker',
   audio: 'fyt-audio-render',
+  'audio-plan-merge': 'fyt-checker',
   render: 'fyt-audio-render',
   verify: 'fyt-checker',
   'publish-private': 'fyt-publish',
 };
-const UNBOUND_STAGE_IDS = ['shots-merge', 'audio-plan-merge'];
+const UNBOUND_STAGE_IDS: string[] = [];
 const WORKER_PROFILE = 'worker:claude:claude-fable-5';
 /**
  * Gate placement. `execution.ts#stageBoundary` evaluates a stage's declared gates BEFORE preparing
@@ -73,7 +75,8 @@ const GOVERNANCE = {
     'judge-gate': 'fyt-checker',
     packaging: 'fyt-story',
     'visual-plan': 'fyt-visuals',
-    // The two merge nodes are governed by the conductor: it alone writes the video root.
+    // The two merge nodes are governed by the conductor, which sequences and gates around them, even
+    // though `fyt-checker` is the identity that actually writes the video root (see ASSIGNMENTS above).
     'shots-merge': 'fyt-runner',
     images: 'fyt-visuals',
     'image-review': 'fyt-checker',
@@ -140,7 +143,9 @@ describe('checked-out FYT video-run registry acceptance', () => {
       expect(Object.fromEntries(listedStages.map((stage) => [stage.id, stage.declaredAssignment]))).toEqual(
         Object.fromEntries(STAGE_IDS.map((id) => [
           id,
-          // `null` is what the route emits for a stage with no authored binding — the two merge nodes.
+          // `null` is what the route emits for a stage with no authored binding. Every stage in this
+          // definition has one, including both merge nodes (bound to `fyt-checker`), so `UNBOUND_STAGE_IDS`
+          // is empty and this branch is exercised by no stage today.
           ASSIGNMENTS[id] ? { agentId: ASSIGNMENTS[id], profileId: WORKER_PROFILE } : null,
         ])),
       );
@@ -176,8 +181,8 @@ describe('checked-out FYT video-run registry acceptance', () => {
         runtime: 'claude', model: 'claude-fable-5',
         assignment: { agentId: 'fyt-runner', profileId: 'manager:claude:claude-fable-5' },
       });
-      // Every bound stage resolves to an immutable declaration binding, on Fable 5, through a worker
-      // profile. The two merge nodes resolve to no binding at all — see the ASSIGNMENTS note.
+      // Every stage resolves to an immutable declaration binding, on Fable 5, through a worker profile —
+      // including the two merge nodes, both bound to `fyt-checker` (see the ASSIGNMENTS note).
       expect(body.compiled.stages.map((stage) => [stage.id, stage.assignment?.agentId, stage.assignment?.profileId])).toEqual(
         STAGE_IDS.map((id) => (ASSIGNMENTS[id] ? [id, ASSIGNMENTS[id], WORKER_PROFILE] : [id, undefined, undefined])),
       );

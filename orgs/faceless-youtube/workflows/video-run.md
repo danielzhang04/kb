@@ -88,18 +88,20 @@ stages:
     artifacts:
       - id: staged-shots
         path: orgs/faceless-youtube/channels/<channel>/videos/<slug>/staging/shots.json
-        description: The full shot list, staged for fyt-runner to merge and re-lint at the video root.
+        description: The full shot list, staged for fyt-checker to merge and re-lint at the video root.
       - id: staged-motion
         path: orgs/faceless-youtube/channels/<channel>/videos/<slug>/staging/shots.motion.json
-        description: The derived motion plan, staged for fyt-runner to merge and re-lint at the video root.
+        description: The derived motion plan, staged for fyt-checker to merge and re-lint at the video root.
   - id: shots-merge
     title: Merge the staged shot and motion plans to the video root and re-lint there
     action: build:shots-merge
     target: orgs/faceless-youtube/channels
     riskTier: T2
     governedBy: fyt-runner
+    agentId: fyt-checker
+    profileId: worker:claude:claude-fable-5
     dependsOn: [visual-plan]
-    workOrder: "Copy channels/<channel>/videos/<slug>/staging/shots.json and staging/shots.motion.json to channels/<channel>/videos/<slug>/shots.json and channels/<channel>/videos/<slug>/shots.motion.json, then re-run both mechanical lints AT THE ROOT PATHS: `python orgs/faceless-youtube/.claude/skills/visual-prompt-writer/scripts/lint_shots.py channels/<channel>/videos/<slug>/shots.json` (clean is exit 0 and 'HARD violations: none') and `python orgs/faceless-youtube/.claude/skills/motion-planner/scripts/lint_motion_plan.py channels/<channel>/videos/<slug>/shots.motion.json channels/<channel>/videos/<slug>/shots.json` (clean is exit 0 and '0 error(s)'). The root run is not a repeat of the staging run: lint_shots.py resolves script.md and assets/voiceover.manifest.json as SIBLINGS of the file it is handed, so only the root copy is checked against this video's real script and measured narration timings. Never add, edit or remove a plan's `schema` key to soften a finding — a missing or misspelled value lints at full v2 strictness by design, and only an explicit `faceless-youtube/shots@1` earns the legacy heads-up. Record both verdict lines verbatim. A HARD violation means this stage reports BLOCKED, never DONE — the honest three-state stamp applies to a lint exactly as it does to a review; route the finding back to fyt-visuals as rework and re-run this node on the re-staged plan, and never hand-edit plan content to make a lint pass. Only the runner writes these two root files. The <slice> does not narrow this node: the whole plan is merged and the whole file is linted. Local file work only — no external call and no marginal API cost."
+    workOrder: "Copy channels/<channel>/videos/<slug>/staging/shots.json and staging/shots.motion.json to channels/<channel>/videos/<slug>/shots.json and channels/<channel>/videos/<slug>/shots.motion.json, then re-run both mechanical lints AT THE ROOT PATHS: `python orgs/faceless-youtube/.claude/skills/visual-prompt-writer/scripts/lint_shots.py channels/<channel>/videos/<slug>/shots.json` (clean is exit 0 and 'HARD violations: none') and `python orgs/faceless-youtube/.claude/skills/motion-planner/scripts/lint_motion_plan.py channels/<channel>/videos/<slug>/shots.motion.json channels/<channel>/videos/<slug>/shots.json` (clean is exit 0 and '0 error(s)'). The root run is not a repeat of the staging run: lint_shots.py resolves script.md and assets/voiceover.manifest.json as SIBLINGS of the file it is handed, so only the root copy is checked against this video's real script and measured narration timings. Never add, edit or remove a plan's `schema` key to soften a finding — a missing or misspelled value lints at full v2 strictness by design, and only an explicit `faceless-youtube/shots@1` earns the legacy heads-up. Record both verdict lines verbatim. A HARD violation means this stage reports BLOCKED, never DONE — the honest three-state stamp applies to a lint exactly as it does to a review; route the finding back to fyt-visuals as rework and re-run this node on the re-staged plan, and never hand-edit plan content to make a lint pass. Only fyt-checker writes these two root files — the merge is a verification act, re-linting a plan it did not author, never an authoring act, so this stage never grades work it produced. fyt-runner still governs this node's place in the run; fyt-checker executes it. The <slice> does not narrow this node: the whole plan is merged and the whole file is linted. Local file work only — no external call and no marginal API cost."
     artifacts:
       - id: merged-shots
         path: orgs/faceless-youtube/channels/<channel>/videos/<slug>/shots.json
@@ -167,19 +169,21 @@ stages:
         description: Every narration piece with its measured duration — the timing the render syncs visuals to.
       - id: staged-audio-plan
         path: orgs/faceless-youtube/channels/<channel>/videos/<slug>/staging/audio-plan.json
-        description: The unified SFX, pause, music-bed and dry-span plan, staged for fyt-runner to merge and re-lint at the video root.
+        description: The unified SFX, pause, music-bed and dry-span plan, staged for fyt-checker to merge and re-lint at the video root.
   - id: audio-plan-merge
     title: Merge the staged audio plan to the video root and re-lint there
     action: build:audio-plan-merge
     target: orgs/faceless-youtube/channels
     riskTier: T2
     governedBy: fyt-runner
+    agentId: fyt-checker
+    profileId: worker:claude:claude-fable-5
     dependsOn: [audio]
-    workOrder: "Copy channels/<channel>/videos/<slug>/staging/audio-plan.json to channels/<channel>/videos/<slug>/audio-plan.json, then re-run the mechanical lint AT THE ROOT PATH: `python orgs/faceless-youtube/.claude/skills/render-builder/scripts/lint_audio_plan.py channels/<channel>/videos/<slug>/audio-plan.json channels/<channel>/visual-kit/audio-tokens.json` (clean is exit 0 and '0 error(s)' — every cue kind, every required field, and every pool role valid against THIS channel's own audio tokens, which is a check the staged copy was never held to). Record the verdict line verbatim. A HARD finding means this stage reports BLOCKED, never DONE — the honest three-state stamp applies to a lint exactly as it does to a review; route the finding back to fyt-audio-render as rework and re-run this node on the re-staged plan, and never hand-edit cue content to make a lint pass. Only the runner writes this root file. The <slice> does not narrow this node: the whole plan is merged and the whole file is linted. Local file work only — no external call and no marginal API cost."
+    workOrder: "Copy channels/<channel>/videos/<slug>/staging/audio-plan.json to channels/<channel>/videos/<slug>/audio-plan.json, then re-run the mechanical lint AT THE ROOT PATH: `python orgs/faceless-youtube/.claude/skills/render-builder/scripts/lint_audio_plan.py channels/<channel>/videos/<slug>/audio-plan.json channels/<channel>/visual-kit/audio-tokens.json` (clean is exit 0 and '0 error(s)' — every cue kind, every required field, and every pool role valid against THIS channel's own audio tokens, which is a check the staged copy was never held to). Record the verdict line verbatim. A HARD finding means this stage reports BLOCKED, never DONE — the honest three-state stamp applies to a lint exactly as it does to a review; route the finding back to fyt-audio-render as rework and re-run this node on the re-staged plan, and never hand-edit cue content to make a lint pass. Only fyt-checker writes this root file — the merge is a verification act, re-linting a plan it did not author, never an authoring act, so this stage never grades work it produced. fyt-runner still governs this node's place in the run; fyt-checker executes it. The <slice> does not narrow this node: the whole plan is merged and the whole file is linted. Local file work only — no external call and no marginal API cost."
     artifacts:
       - id: merged-audio-plan
         path: orgs/faceless-youtube/channels/<channel>/videos/<slug>/audio-plan.json
-        description: The merged audio plan at the video root — the file render resolves cue anchors from, and the third of the three shared JSON plans the runner alone writes.
+        description: The merged audio plan at the video root — the file render resolves cue anchors from, and the third of the three shared JSON plans fyt-checker alone writes.
   - id: render
     title: Assemble the finished cut for the slice
     action: build:render
@@ -258,11 +262,13 @@ directory.
 
 ## The roster
 
-Six agents, each owning whole stages end to end: `fyt-runner` (conductor and single-writer merger),
-`fyt-story` (idea → script → shorts → metadata), `fyt-visuals` (shots → motion → stills),
-`fyt-audio-render` (narration → audio plan → render), `fyt-publish` (private upload), and
-`fyt-checker`, which is not a phase but the cross-cutting fresh-context gate service standing in
-front of every human gate.
+Six agents, each owning whole stages end to end: `fyt-runner` (conductor — launches, sequences,
+gates, and governs the two merge nodes without executing them), `fyt-story` (idea → script → shorts
+→ metadata), `fyt-visuals` (shots → motion → stills), `fyt-audio-render` (narration → audio plan →
+render), `fyt-publish` (private upload), and `fyt-checker`, which is not a phase but the
+cross-cutting fresh-context gate service standing in front of every human gate — and which also
+executes the two staging→root merge nodes (`shots-merge`, `audio-plan-merge`), since re-linting a
+plan it did not author is a verification act, not an authoring one.
 
 ## The gates (G0–G4) and where they are declared
 
@@ -324,20 +330,21 @@ Every other stage is language work or local compute and carries no marginal API 
 
 `shots.json`, `shots.motion.json` and `audio-plan.json` are **single-writer** files — the three shared
 JSON plans more than one stage reads. Stage agents do **not** write them directly at the video root:
-each writes its copy into `channels/<channel>/videos/<slug>/staging/`, and **only fyt-runner** merges
-staged output into the video root and then **re-lints** the merged result.
+each writes its copy into `channels/<channel>/videos/<slug>/staging/`, and **only fyt-checker** merges
+staged output into the video root and then **re-lints** the merged result, on `shots-merge` and
+`audio-plan-merge`, the two DAG nodes it executes under `fyt-runner`'s governance.
 
 This exists because parallel stages otherwise clobber each other's edits to the same shared JSON —
 two agents both writing `audio-plan.json` was an observed, real failure in this project. Skipping the
 merge-then-re-lint step ships plan-level logic errors straight into paid generation.
 
 **The merge is a DAG node, not a step inside another stage.** `shots-merge` and `audio-plan-merge` are
-real stages owned by `fyt-runner`, for one structural reason: in the roster model the *stage agent*
-prints its own completion marker, and the stage agent is not the writer of the root files. So a merge
-folded into `visual-plan` or `audio` could only ever be checked at the `staging/` paths, and the merged
-root files — the ones `images`, `image-review` and `render` actually read — would be verified by
-nothing. As their own nodes they carry the root paths as their declared artifacts, so the server
-verifies the merged file against the working tree before the run advances.
+real stages, governed by `fyt-runner` and executed by `fyt-checker`, for one structural reason: in the
+roster model the *stage agent* prints its own completion marker, and the stage agent is not the writer
+of the root files. So a merge folded into `visual-plan` or `audio` could only ever be checked at the
+`staging/` paths, and the merged root files — the ones `images`, `image-review` and `render` actually
+read — would be verified by nothing. As their own nodes they carry the root paths as their declared
+artifacts, so the server verifies the merged file against the working tree before the run advances.
 
 The re-lint is not a repeat of the staging lint, because two of these lints resolve their inputs
 relative to the file they are handed: `lint_shots.py` reads `script.md` and
@@ -348,12 +355,22 @@ violation at the root makes the merge node report **BLOCKED**, never DONE: the s
 vocabulary the review stamp uses, applied to a lint. The finding goes back to the authoring phase agent
 as rework — the merger never hand-edits plan content to make a lint pass.
 
-One binding gap to be aware of: both merge nodes carry `governedBy: fyt-runner` but no executable
-`agentId`/`profileId`, because `fyt-runner` is declared with a *manager* default execution profile and
-the compiler requires a stage's agent to have a *worker* one. Until that is resolved (either
-`fyt-runner` gains a worker binding or the merge is given its own worker-role identity) roster delivery
-refuses these two stages outright rather than routing them to a generic headless worker — the
-fail-closed halt, not a silent bypass.
+**Why `fyt-checker` executes these two nodes, and why that is not a loosening of the single-writer
+law.** `fyt-runner` is declared with a *manager* default execution profile, and the compiler requires a
+stage's agent to have a *worker* one (`compile.ts#resolveAssignment`), so `fyt-runner` cannot itself be
+an executable stage worker without either gaining a second, worker-role identity or having its own
+profile role changed — both of which this project has ruled against, to avoid multiplying agent
+identities and to keep `fyt-runner`'s profile as the manager role its conducting job actually needs.
+The merge is, on inspection, a **verification act**: it re-lints a plan neither merge node authored,
+exactly the shape of work `fyt-checker` already owns everywhere else in this DAG (judge-gate,
+image-review, render-verify, compliance). Assigning the merge to `fyt-checker` therefore strengthens
+author-never-grades rather than bending it — `fyt-visuals` authors `shots.json`, a different identity
+(`fyt-checker`) promotes and re-lints it, and `fyt-audio-render` authors `audio-plan.json` under the
+same split. The single-writer law is satisfied because exactly one identity writes each root file;
+that identity is now the checker rather than the runner, which is a change of WHO writes it, not a
+loosening of the ONE-writer rule itself. `fyt-runner` still governs both nodes — they sit at their
+declared position in its gate spine, and it still owns launch, sequencing, and gating around them —
+it simply does not execute them.
 
 Files with exactly ONE writer are outside this law and are written at their real paths directly:
 `brief.md`, `research.md`, `script.md`, `shorts/short-NN.md`, `metadata.json`, `judge-verdict.md`,
@@ -382,13 +399,16 @@ handing the next gate an artifact that does not exist. Three consequences worth 
 ## Author-never-grades
 
 No agent grades its own phase's output. `fyt-checker` owns all four machine gates — judge-gate,
-image-review, render-verify + compliance — and produces none of the artifacts it judges.
-`fyt-runner` conducts and merges but stamps nothing: a stage never holds the gate that blocks its
-own work, and neither does its dispatcher. Its two merge nodes record a *lint verdict* — a script's
-exit code over a file the runner did not author — which is why owning them breaks no law: nothing
-there is a judgement about craft, and a HARD result is reported as BLOCKED rather than absorbed.
-`image-review` and the two merge nodes are all real DAG nodes with declared artifacts, not prose
-steps inside the stages that feed them — PNG files or a staged plan existing on disk satisfy nothing.
+image-review, render-verify + compliance — plus the two staging→root merge nodes, and produces none
+of the artifacts it judges or merges: `fyt-visuals` authors `shots.json`/`shots.motion.json`,
+`fyt-audio-render` authors `audio-plan.json`, and `fyt-checker` re-lints all three at the root as a
+different identity from the one that wrote them. `fyt-runner` conducts and governs but neither
+executes the merge nor stamps anything: a stage never holds the gate that blocks its own work, and
+neither does its dispatcher. The merge nodes record a *lint verdict* — a script's exit code over a
+file `fyt-checker` did not author — which is why owning them breaks no law: nothing there is a
+judgement about craft, and a HARD result is reported as BLOCKED rather than absorbed. `image-review`
+and the two merge nodes are all real DAG nodes with declared artifacts, not prose steps inside the
+stages that feed them — PNG files or a staged plan existing on disk satisfy nothing.
 
 ## Boundaries
 
