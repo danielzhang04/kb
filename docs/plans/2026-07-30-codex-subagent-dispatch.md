@@ -722,3 +722,139 @@ Fire two dispatches in one message (two background Bash calls, different labels)
 - [ ] **Step 5: Record the result**
 
 Append the smoke evidence (card ids, durations) to the PR body / handoff; on FAIL, stop and debug via `%LOCALAPPDATA%\kb-codex-dispatch\logs\<id>.jsonl` — never ship on a failed smoke.
+
+---
+
+## Delta wave (Daniel-approved 2026-07-30, same session): worker iteration parity
+
+Goal: the SendMessage-equivalent — a boss terminal converses with a codex worker it spawned
+(reprompt / advise / rescope, worker context intact) with the same background+notification feel.
+Probed facts: `codex exec resume [SESSION_ID] [PROMPT]` accepts `-` (stdin) and `-c` overrides;
+the session id is the FIRST JSONL event: `{"type":"thread.started","thread_id":"<uuid>"}`.
+
+### Task 8: `codex_dispatch.py` — session capture + `--follow-up`
+
+**Files:**
+- Modify: `scripts/codex_dispatch.py`
+- Test: `tests/test_codex_dispatch.py` (append)
+
+**Interfaces:**
+- Produces: `parse_thread_id(log_file: Path) -> str | None` (first `thread.started` event's
+  `thread_id`); CLI gains `--follow-up <thread-id>` (mutually exclusive with `--worktree`;
+  `--model` is ignored on follow-up — the session's model persists — refuse the combination
+  loudly rather than silently dropping it).
+- Card linking: EVERY card (first turn and follow-ups) sets `meta["workflow"] = thread_id`
+  (already a schema field, null today). Footer appends `| session <thread_id> (follow up with
+  --follow-up <thread_id>)` when a thread id was parsed.
+
+- [ ] **Step 1: Failing tests (append to test file)**
+
+```python
+def test_parse_thread_id(tmp_path):
+    log = tmp_path / "l.jsonl"
+    log.write_text('{"type":"thread.started","thread_id":"019f-abc"}\n'
+                   '{"type":"turn.started"}\n', encoding="utf-8")
+    assert codex_dispatch.parse_thread_id(log) == "019f-abc"
+    log2 = tmp_path / "empty.jsonl"
+    log2.write_text("", encoding="utf-8")
+    assert codex_dispatch.parse_thread_id(log2) is None
+
+
+def test_spawn_follow_up_builds_resume_command(tmp_path, monkeypatch):
+    seen = {}
+
+    def fake_run(cmd, **kw):
+        seen["cmd"] = cmd
+        class R: returncode = 0
+        return R()
+
+    monkeypatch.setattr(codex_dispatch.shutil, "which", lambda _: "codex.cmd")
+    monkeypatch.setattr(codex_dispatch.subprocess, "run", fake_run)
+    out, log = tmp_path / "o.md", tmp_path / "l.jsonl"
+    rc = codex_dispatch.spawn("more work", None, None, tmp_path, "workspace-write",
+                              out, log, follow_up="019f-abc")
+    assert rc == 0
+    assert seen["cmd"][:5] == ["codex.cmd", "exec", "resume", "019f-abc", "-"]
+    assert "--json" in seen["cmd"] and "--output-last-message" in seen["cmd"]
+    assert "--model" not in seen["cmd"]
+
+
+def test_follow_up_refuses_model_and_worktree(repo, tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(codex_dispatch, "spawn", lambda *a, **k: 0)
+    prompt = tmp_path / "p.md"
+    prompt.write_text("hi", encoding="utf-8")
+    for extra in (["--model", "codex-deep"], ["--worktree"]):
+        rc = codex_dispatch.main(["--prompt-file", str(prompt), "--repo-root", str(repo),
+                                  "--follow-up", "019f-abc"] + extra)
+        assert rc == 2
+        assert "follow-up" in capsys.readouterr().out
+
+
+def test_build_record_stamps_workflow_thread(repo, tmp_path):
+    log = tmp_path / "l.jsonl"
+    log.write_text('{"type":"thread.started","thread_id":"019f-abc"}\n', encoding="utf-8")
+    card, _ = codex_dispatch.build_record(
+        _mk_args(), repo, "0000aaaa-11112222", "gpt-5.6-terra", 0, "P", "R", log)
+    assert card.meta["workflow"] == "019f-abc"
+```
+
+- [ ] **Step 2: Run — expect the 4 new tests FAIL** (`py -3 -m pytest tests/test_codex_dispatch.py -v`)
+
+- [ ] **Step 3: Implement**
+
+`spawn` gains keyword `follow_up: str | None = None`; when set, the command is
+`[codex_bin(), "exec", "resume", follow_up, "-", "--json", "--output-last-message",
+str(out_file), "--cd", str(cwd), "-s", sandbox]` (no `--model`; keep the effort `-c` when
+given). `parse_thread_id` scans the log line-by-line (`json.loads` per line, tolerate parse
+errors) for the first `thread.started` and returns its `thread_id`. `main`: validate up front —
+if `args.follow_up` and (`args.worktree` or `args.model != "codex"`) print
+`DISPATCH REFUSED: --follow-up keeps the worker's session; drop --model/--worktree` and return 2;
+on follow-up skip `resolve_model` (model = session's; record the read-back id) and pass
+`follow_up=args.follow_up` to `spawn`. After spawn: `thread_id = parse_thread_id(log_file) or
+args.follow_up`; `build_record` takes the log file as today and stamps
+`card.meta["workflow"] = parse_thread_id(log_file)` (None stays null); footer appends the
+session segment when thread_id is truthy.
+
+- [ ] **Step 4: Run full file — all pass** (15 expected)
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add scripts/codex_dispatch.py tests/test_codex_dispatch.py
+git commit -m "feat(dispatch): session capture + --follow-up — converse with a spawned worker"
+```
+
+### Task 9: skill section + live iteration smoke
+
+**Files:**
+- Modify: `skills/curated/dispatch-codex/SKILL.md` (+ regenerate mirrors via `py -3 scripts/sync_skills.py`)
+
+- [ ] **Step 1: Add to SKILL.md after the Models section:**
+
+````markdown
+## Iterating with your worker
+
+Each dispatch footer names the worker's session id. To reprompt, add advice, or change scope —
+the SendMessage equivalent, worker context intact — write the follow-up brief to a file and:
+
+```
+py -3 scripts/codex_dispatch.py --prompt-file <followup.md> --follow-up <thread-id>
+```
+
+Same background call, same notification return. Do not pass `--model`/`--worktree` on a
+follow-up (the session keeps its own). Each turn writes its own card, linked by the shared
+`workflow: <thread-id>` field. To stop a running worker: stop the background shell task
+(kills the worker; no card is published — the spool trace under
+`%LOCALAPPDATA%\kb-codex-dispatch\spool\` is the only record of a killed run).
+````
+
+- [ ] **Step 2: Sync mirrors, commit** (`git add skills/curated/dispatch-codex/ .claude/skills/ .agents/skills/`)
+
+- [ ] **Step 3: Live iteration smoke (boss runs):** dispatch a read-only task, then
+`--follow-up <thread-id>` with a question answerable ONLY from the first turn's context (e.g.
+"without re-reading any file, repeat the project names you reported, reversed"). PASS = correct
+answer + second card on ops with same `workflow` value.
+
+- [ ] **Step 4: Live TaskStop probe (boss runs):** dispatch a deliberately long task, TaskStop
+the background task, then verify no `codex` process survives (`Get-Process | findstr codex`)
+and the spool trace remains. Record the observed behavior in the PR body.
