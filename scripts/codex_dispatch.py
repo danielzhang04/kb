@@ -210,7 +210,7 @@ def main(argv: list[str] | None = None) -> int:
         spool_path.unlink(missing_ok=True)
 
     print(result_text)
-    print(f"\n--- codex-dispatch {dispatch_id} | model {ran_model(log_file, model)} | "
+    print(f"\n--- codex-dispatch card {card.meta['id']} | model {ran_model(log_file, model)} | "
           f"exit {rc} | {time.time() - started:.0f}s | ops publish: {publish_note}"
           + (f" | worktree: {cwd} (yours to sweep)" if args.worktree else "")
           + f" | log: {log_file}")
