@@ -420,6 +420,18 @@ const MODAL_MARKERS: readonly RegExp[] = [
   /^[\s│|>]*[❯>]?\s*[1-9]\.\s+(?:Yes|No)\b/im,
   /\bpress enter to (?:continue|confirm|accept)\b/i,
   /\b(?:accept|trust) (?:edits|files) in this folder\b/i,
+  // The FIRST-LAUNCH BYPASS-PERMISSIONS ACCEPTANCE MODAL — the production blocker this fix reproduced.
+  // A terminal booted with `permissions.defaultMode: "bypassPermissions"` (this pipeline's default, per
+  // Daniel's 2026-07-30 full-auto ruling) shows a one-time `WARNING: … Bypass Permissions mode … 1. No,
+  // exit 2. Yes, I accept` menu until the config records acceptance. Its numbered options render as
+  // `1.No,exit` / `2.Yes,Iaccept` — the columns are ANSI cursor moves, so there is NO literal whitespace
+  // and the generic `[1-9]\.\s+(?:Yes|No)` marker above never matches. Whitespace here is therefore
+  // OPTIONAL (`\s*`), which also survives the same word-boundary loss on `Bypass Permissions mode`.
+  // Recognising it turns the modal into a NAMED `roster-delivery-not-ready` park with a clear reason,
+  // never a swallowed order. (Suppressing the modal entirely requires recording
+  // `bypassPermissionsModeAccepted` in the operator's `<HOME>/.claude.json`, a personal-config mutation
+  // gated on a human decision — see the fix report.) Captured off a real pty (claude.exe 2.1.220).
+  /Bypass\s*Permissions\s*mode/i,
 ];
 /**
  * The REPL is mid-turn. Input typed now is buffered by the CLI in a way that races its own re-render,
@@ -448,6 +460,29 @@ const BUSY_MARKERS: readonly RegExp[] = [
   /[↑↓]\s*[\d.,]+\s*[km]?\s*tokens\b/i,
 ];
 
+/**
+ * POSITIVE proof the interactive REPL is up and its input line is live. This is the permission-mode
+ * cycler footer the CLI renders on EVERY in-REPL frame — idle and mid-turn alike — e.g.
+ * `⏵⏵ bypass permissions on (shift+tab to cycle)`. It is ABSENT on every PRE-REPL screen: the
+ * first-launch bypass-permissions acceptance modal, the theme picker, the "trust this folder" dialog, and
+ * the login screen. That absence is exactly what distinguishes "a settled REPL waiting for a command" from
+ * "a splash screen that will eat the keystrokes" — a distinction the old menu-absence heuristic could not
+ * draw, which is how the acceptance modal's non-empty, busy-marker-free frame classified `ready` and
+ * swallowed the work order (see {@link detectReplReadiness}).
+ *
+ * Whitespace is OPTIONAL: a redraw can position `shift+tab to cycle` with cursor moves rather than literal
+ * spaces, so a stripped frame may read `shift+tabtocycle`. Captured off a real pty (claude.exe 2.1.220):
+ * the string is stable CLI chrome, not composed per-turn like the interrupt hint.
+ *
+ * The trade this accepts (deliberately, and the inverse of the pre-fix comment): a CLI release that reworks
+ * this footer makes delivery REFUSE (a named `roster-delivery-not-ready` park the operator sees and the
+ * gated live test catches) rather than SWALLOW an order into a screen it cannot read. A loud park beats a
+ * silent stall that reads "running" forever.
+ */
+const READY_MARKERS: readonly RegExp[] = [
+  /shift\s*\+?\s*tab\s*to\s*cycle/i,
+];
+
 export type ReplReadiness =
   | { state: 'ready' }
   | { state: 'modal'; marker: string }
@@ -470,24 +505,27 @@ function currentFrame(tail: string): string {
  * Classify a roster terminal's recent output as safe-to-type-into or not. Pure, so every accepted and
  * refused frame is testable without driving a pty.
  *
- * MENU-ABSENCE, NOT PROMPT-PRESENCE. This deliberately does NOT require a positive prompt glyph. The
- * REPL's idle frame is a box-drawn input widget whose exact glyphs change between CLI releases, and a
- * detector that must recognise it would refuse every delivery the day the box changes — trading a rare
- * swallowed order for a total outage. Refusing on a RECOGNISED blocker and defaulting to ready is the
- * safe direction: an unrecognised idle frame behaves exactly as it does today, and every blocker this
- * pipeline has actually hit is recognised.
+ * PROMPT-PRESENCE, NOT MENU-ABSENCE (reversed 2026-07-30 after the failure below). This now REQUIRES
+ * positive evidence that the live REPL input line is on screen — a {@link READY_MARKERS} match — before it
+ * will call a frame `ready`. The old rule ("non-empty AND no recognised menu ⇒ ready") swallowed a work
+ * order: a terminal booted in `bypassPermissions` mode opens on a `WARNING: … Bypass Permissions mode …
+ * 1. No, exit 2. Yes, I accept` acceptance modal whose columns are ANSI cursor moves, so the frame is
+ * non-empty, carries no whitespace the numbered-menu marker needs, and — when the `Esc to cancel` footer
+ * collapses onto the menu line — carries no busy marker either. It classified `ready`, the order was typed
+ * into the menu, the keystrokes were consumed, no turn began, and the stage sat "running" for 36 min with
+ * zero transcript. The first-launch theme picker slips through the same hole. A positive input-line marker
+ * is the only thing that separates those splash screens from a settled prompt.
  *
- * WITH ONE EXCEPTION: AN EMPTY FRAME IS NOT AN IDLE FRAME. `entry.screen` starts empty and only fills
- * from `scan`, so "nothing at all" used to classify `ready` — and the window where that is true is
- * exactly the window this gate exists for. `ensureRoster` re-spawns the WHOLE roster on the
- * daemon-restart resume path, and a delivery that arrives in the same tick would be typed into a shell
- * that has not yet booted `claude`: the "a REPL that never came up and a delivery line typed into a bare
- * shell prompt" failure this module's header names. Silence is now not-ready, and the caller retries
- * under its existing bound, so the cost of the change is a few hundred ms of backoff on a cold session.
+ * The precedence still refines the answer for a KNOWN blocker so the park message is specific: a recognised
+ * MODAL menu (incl. the bypass acceptance modal) reports `modal`; a mid-turn frame reports `busy`. Only
+ * after neither matches AND the REPL footer IS present do we return `ready`.
  *
- * This is a FLOOR, not a proof: a pty echoes the launch line, so the first bytes back may be the shell's
- * own echo rather than a booted REPL. It closes the empty-screen hole and nothing more — a positive
- * "the REPL is up" detector is the thing this function deliberately refuses to become.
+ * EVERY OTHER NON-EMPTY FRAME IS NOT READY. An empty frame is a shell that has not yet booted `claude`
+ * (`ensureRoster` re-spawns the whole roster on the daemon-restart resume path, and a same-tick delivery
+ * would hit a bare shell). A non-empty frame with no REPL footer is a splash/onboarding/login screen (or a
+ * REPL still starting) — typing an order into it loses the order. Both classify `silent`, the caller waits
+ * under its existing bound, and if the prompt never appears the delivery parks with a named human wait
+ * rather than typing into the void.
  */
 export function detectReplReadiness(tail: string): ReplReadiness {
   const frame = currentFrame(tail);
@@ -500,7 +538,12 @@ export function detectReplReadiness(tail: string): ReplReadiness {
     const match = pattern.exec(frame);
     if (match) return { state: 'busy', marker: match[0].trim().slice(0, 80) };
   }
-  return { state: 'ready' };
+  for (const pattern of READY_MARKERS) {
+    if (pattern.test(frame)) return { state: 'ready' };
+  }
+  // Non-empty, not a recognised menu, not mid-turn — but the REPL input line has not appeared. A
+  // splash/onboarding/login screen, or a REPL that has printed banner output but not yet its prompt.
+  return { state: 'silent', marker: 'no REPL input prompt on screen yet' };
 }
 
 /**
@@ -1398,7 +1441,10 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
         const detail = readiness.state === 'modal'
           ? `an interactive prompt is open ("${readiness.marker}")`
           : readiness.state === 'silent'
-            ? 'it has produced no output at all — the REPL may never have come up'
+            ? readiness.marker === 'no output yet'
+              ? 'it has produced no output at all — the REPL may never have come up'
+              : 'no REPL input prompt is on screen — a first-run splash/onboarding screen may be open, '
+                + 'or the REPL has not finished starting'
             : `it is still mid-turn ("${readiness.marker}")`;
         const summary = `work order withheld: the ${agentId} terminal was not at a REPL prompt within `
           + `${Math.max(1, Math.round(readinessBudget / 60_000))} min — ${detail} (${DELIVERY_NOT_READY_REASON}); `

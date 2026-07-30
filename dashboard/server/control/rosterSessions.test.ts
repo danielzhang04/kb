@@ -7,6 +7,7 @@
  * unapproved, the session's input transcript must contain no work order at all.
  */
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import type { HostOpenRequest, PtyHandle, PtyHost, PtySession } from '../pty/host.ts';
 import { createPersistentSessionRegistry } from '../pty/persistentSessions.ts';
@@ -275,10 +276,12 @@ function fakeFs(existing: string[] = [], seed: { directories?: string[]; content
 }
 
 /**
- * A settled REPL frame: the idle input box, with no menu and no spinner on it. Emitted into every
- * freshly spawned test terminal because readiness now requires evidence that SOMETHING is alive there.
+ * A settled REPL frame: the idle input box AND the permission-mode cycler footer the CLI renders on every
+ * in-REPL frame. Emitted into every freshly spawned test terminal because readiness now requires POSITIVE
+ * evidence the input line is live (a `shift+tab to cycle` match), not merely a non-empty, menu-free frame —
+ * the acceptance-modal/onboarding frames that swallowed a work order were exactly non-empty and menu-free.
  */
-const IDLE_FRAME = '╭───╮\r\n│ >  │\r\n╰───╯\r\n';
+const IDLE_FRAME = '╭───╮\r\n│ >  │\r\n╰───╯\r\n  ⏵⏵ bypass permissions on (shift+tab to cycle)\r\n';
 
 function harness(options: {
   plan?: PlanProposal;
@@ -1361,14 +1364,42 @@ describe('roster REPL-readiness gate', () => {
     // the swallowed-order failure: the spinner's own elapsed-seconds and token counters.
     expect(detectReplReadiness('\u273b Nebulizing\u2026 (3s \u00b7 thinking)')).toMatchObject({ state: 'busy' });
     expect(detectReplReadiness('\u273b Herding\u2026 \u2193 25 tokens \u00b7 thinking)')).toMatchObject({ state: 'busy' });
-    expect(detectReplReadiness('\u256d\u2500\u2500\u2500\u256e\n\u2502 >  \u2502\n\u2570\u2500\u2500\u2500\u256f')).toEqual({ state: 'ready' });
+    // READY now requires POSITIVE evidence: the mode-cycler footer the live REPL renders. A box-drawn
+    // prompt ALONE is no longer enough \u2014 the acceptance modal and theme picker are also non-empty and
+    // menu-free, and that is exactly how a work order was swallowed.
+    const idle = '\u256d\u2500\u2500\u2500\u256e\n\u2502 >  \u2502\n\u2570\u2500\u2500\u2500\u256f'
+      + '\n  \u23f5\u23f5 bypass permissions on (shift+tab to cycle)';
+    expect(detectReplReadiness(idle)).toEqual({ state: 'ready' });
+    // The same box WITHOUT the footer is NOT ready \u2014 it is a splash/onboarding/login screen or a REPL that
+    // has not finished starting. It parks, it does not get typed into.
+    expect(detectReplReadiness('\u256d\u2500\u2500\u2500\u256e\n\u2502 >  \u2502\n\u2570\u2500\u2500\u2500\u256f'))
+      .toMatchObject({ state: 'silent', marker: 'no REPL input prompt on screen yet' });
     // An EMPTY screen is not an idle screen \u2014 it is a terminal that has said nothing at all, which is
     // what a shell that has not yet booted `claude` looks like. It used to classify `ready`.
-    expect(detectReplReadiness('')).toMatchObject({ state: 'silent' });
+    expect(detectReplReadiness('')).toMatchObject({ state: 'silent', marker: 'no output yet' });
     expect(detectReplReadiness('\r\n   \r\n')).toMatchObject({ state: 'silent' });
-    // An answered menu stops matching once the REPL has redrawn past it.
-    const scrolled = `Do you want to proceed?\n${Array.from({ length: 40 }, (_, index) => `line ${index}`).join('\n')}\n> `;
+    // An answered menu stops matching once the REPL has redrawn past it to its idle prompt AND footer.
+    const scrolled = `Do you want to proceed?\n${Array.from({ length: 40 }, (_, index) => `line ${index}`).join('\n')}`
+      + '\n> \n  \u23f5\u23f5 bypass permissions on (shift+tab to cycle)';
     expect(detectReplReadiness(scrolled)).toEqual({ state: 'ready' });
+  });
+
+  /**
+   * The DECISION-GRADE regression, driven by REAL frames captured off a live pty (claude.exe 2.1.220) and
+   * committed under __fixtures__/repl-frames. These are the exact screens that stalled the idea stage.
+   */
+  it('classifies real captured pre-REPL screens NOT-ready and a real idle frame ready', () => {
+    const fixture = (name: string) => readFileSync(
+      new URL(`./__fixtures__/repl-frames/${name}`, import.meta.url), 'utf8',
+    );
+    // The first-launch Bypass-Permissions acceptance modal \u2014 the production blocker. This is the
+    // collapsed-footer capture that classified `ready` under the old rule and swallowed the order.
+    expect(detectReplReadiness(fixture('bypass-accept-modal.txt')))
+      .toMatchObject({ state: 'modal', marker: expect.stringMatching(/Bypass\s*Permissions\s*mode/i) });
+    // The first-run theme picker \u2014 a different splash that also slipped through as `ready` before.
+    expect(detectReplReadiness(fixture('theme-picker.txt'))).toMatchObject({ state: 'silent' });
+    // The genuine idle REPL prompt carries the mode-cycler footer, so it \u2014 and only it \u2014 is `ready`.
+    expect(detectReplReadiness(fixture('idle-repl-prompt.txt'))).toEqual({ state: 'ready' });
   });
 
   it('never types a work order into an open permission menu, and parks with a named reason', async () => {
@@ -1403,7 +1434,9 @@ describe('roster REPL-readiness gate', () => {
         // what actually clears a menu from the current frame: real content scrolling it out, not blanks.
         if (elapsed >= 700 && liveHost && sessionId) {
           const redraw = Array.from({ length: 30 }, (_, index) => `read binding.md line ${index}`).join('\r\n');
-          liveHost.emit(sessionId, `${redraw}\r\n> \r\n`);
+          // The REPL redraws its idle prompt AND its mode-cycler footer over the answered menu — the footer
+          // is the positive evidence the readiness gate now requires.
+          liveHost.emit(sessionId, `${redraw}\r\n> \r\n  ⏵⏵ bypass permissions on (shift+tab to cycle)\r\n`);
         }
       },
     });
