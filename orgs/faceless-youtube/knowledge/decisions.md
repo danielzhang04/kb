@@ -3939,3 +3939,49 @@ is unchanged.
   - **Cross-reference.** `dashboard/server/control/rosterSessions.ts#buildRosterPermissionSettings`
     and its docstring; tests in `rosterSessions.test.ts` under `describe('roster scoped per-run
     permissions')` pin the mode value in the emitted JSON.
+
+**2026-07-30 — Full-auto keeps an ENFORCED restriction floor, and the roster's permission strings are
+now verified against a running CLI rather than against themselves (Daniel).**
+Does not revisit the full-auto ruling above — it stands. It adds the floor Daniel asked for on top of
+it, and fixes two defects an adversarial review of that work found. All in
+`dashboard/server/control/rosterSessions.ts`.
+  - **The floor.** `buildRosterPermissionSettings` now emits a constant `permissions.deny` array
+    alongside the mode key: `git push` / `git config` by Bash prefix, dotenv secret files at the repo
+    root and at any depth through Read/Edit/Write, and the ambient credential stores (ssh and cloud
+    CLI key directories, the CLI's own stored credentials, git/npm credential files, bare private
+    keys). It is a CONSTANT — no proposal, scope or tool cap can widen or shrink it — because
+    `deny`/`ask`/`allow` evaluate in that fixed order whatever the permission mode is: full auto skips
+    the ASK step, never the DENY step, so this array is the only part of the settings file that still
+    enforces. Rationale: a stage PROPOSES work and the server-side integrator publishes it, so a
+    terminal that can push bypasses every gate in the pipeline; nothing in the video pipeline reads a
+    secret file.
+  - **Verified live, paired.** Each rule was run against the installed CLI (2.1.220) alongside an
+    `allow` that would otherwise let the action through, so a denial proves the RULE matched and not
+    the absence of a grant. A Bash-prefix deny refuses the command (the same command executes without
+    it). A file-path deny ALSO refuses a Bash command that opens that path — the CLI resolves the
+    files a command touches — so the floor covers the shell, not only the built-in file tools.
+  - **Known residual, recorded in code.** A script the agent writes and then runs is opaque to command
+    parsing; stopping it is OS-level sandboxing, not a permission rule. Pre-existing — identical under
+    the interactive default mode — and NOT introduced by full auto.
+  - **Defect 1 (the allow rules granted nothing).** The rules were emitted with a `//`-absolute
+    pathspec. A/B against the live CLI with an identical target: `Read(//C:/…/**)` DENIED,
+    `Read(C:/…/**)` ALLOWED. Every allow rule was therefore inert, and the reads that appeared to work
+    were `additionalDirectories` doing the work alone. The prefix is dropped; a rule's pathspec is now
+    byte-identical to the `additionalDirectories` entry for the same directory.
+  - **Defect 2 (a review finding that did not survive measurement).** The readiness gate's busy arm was
+    reported dead because `grep -a "to interrupt"` over `claude.exe` returns ZERO hits. It is not dead:
+    the hint is composed at RENDER time as `<chord> to <action>` from the `chat:cancel` keybinding
+    (default label `esc`), so no such literal can exist in the binary. Captured off a real pty, a live
+    mid-turn frame reads `✽Whatchamacalliting… ❯ esc to interrupt … (3s · thinking) … ↓ 25 tokens`.
+    **Lesson for this project: a string grep over the binary is evidence about the binary's strings,
+    never about what it renders.** The arm was hardened anyway with two copy-independent patterns
+    (elapsed-seconds and token counters), since the chord is user-rebindable.
+  - **Also.** A terminal that has produced NO output is no longer classified ready (it was — the
+    daemon-restart resume path could type a work order into a shell that had not yet booted `claude`);
+    and one gated live test (`rosterSessions.live.test.ts`, `ROSTER_LIVE_PERM_TEST=1`) now runs the
+    generated settings file through a real `claude`, closing the gap that let a grammar the CLI ignores
+    ship green past a suite that only compared rule strings to rule strings.
+  - **Cross-reference.** `rosterSessions.ts#RESTRICTION_FLOOR`, `#absoluteRulePath`, `#BUSY_MARKERS`,
+    `#detectReplReadiness`; `rosterSessions.test.ts`; `rosterSessions.live.test.ts`. The orphaned
+    roster-directory sweep is deliberately NOT done — see `TODO(roster-boot-sweep)` in `retireRun` for
+    the seam it needs and the re-entrancy hazard that makes a naive boot sweep worse than the leak.
