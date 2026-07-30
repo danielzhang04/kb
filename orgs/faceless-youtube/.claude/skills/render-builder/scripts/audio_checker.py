@@ -230,14 +230,24 @@ def check_audio(audio_spec, shots, loudnorm, master_target, lufs_tol=1.0, tp_tol
     return {"ok": not warnings, "warnings": warnings, "measured": measured}
 
 
+def motion_spec_name(piece: str, preview: bool) -> str:
+    """The motion-spec filename to read for a piece (audit FIX 8). A `--preview` check must read
+    the preview-parked spec `build_motion --preview-parked` wrote (`<piece>.preview.motion.json`) —
+    mirroring build_motion's own naming — never the shippable final's spec, which a preview render
+    never touches."""
+    return f"{piece}.preview.motion.json" if preview else f"{piece}.motion.json"
+
+
 def main():
     """Standalone sentence-gap (+ splice-continuity) verifier over a saved motion spec.
 
-        py -3 audio_checker.py <video_dir> [--piece long-form] [--tol 0.10] [--audio PATH]
+        py -3 audio_checker.py <video_dir> [--piece long-form] [--tol 0.10] [--audio PATH] [--preview]
 
     Reads assets/motion/<piece>.motion.json (boundaries + which VO the render played), measures every
     sentence boundary's real acoustic gap, prints the per-boundary table, and exits 1 when any boundary
-    is below target - tol (0 otherwise)."""
+    is below target - tol (0 otherwise). `--preview` reads the `--preview-parked` run's own spec
+    (`<piece>.preview.motion.json`) instead, so checking a preview render never reads (or is silently
+    satisfied by) the shippable final's spec."""
     import argparse
     import json
     ap = argparse.ArgumentParser(description="Post-render sentence-gap verifier (R11).")
@@ -245,9 +255,12 @@ def main():
     ap.add_argument("--piece", default="long-form")
     ap.add_argument("--tol", type=float, default=0.10)
     ap.add_argument("--audio", default="", help="override the VO file to measure (default: spec['audio'])")
+    ap.add_argument("--preview", action="store_true",
+                    help="check the --preview-parked run's spec (<piece>.preview.motion.json) "
+                         "instead of the shippable final's")
     args = ap.parse_args()
     video_dir = Path(args.video_dir)
-    spec_path = video_dir / "assets" / "motion" / f"{args.piece}.motion.json"
+    spec_path = video_dir / "assets" / "motion" / motion_spec_name(args.piece, args.preview)
     if not spec_path.exists():
         raise SystemExit(f"motion spec not found: {spec_path} (run build_motion first)")
     spec = json.loads(spec_path.read_text(encoding="utf-8"))

@@ -125,13 +125,56 @@ def test_all_passing_dsg_items_still_verify():
     assert reasons == [], reasons
 
 
-def test_dsg_absent_or_malformed_changes_nothing():
-    # every pre-DSG ruling shape keeps its old verdict — the field is additive
+def test_dsg_absent_is_noop_but_malformed_now_hard_errors():
+    # absent dsg key is the documented additive-field contract -> no-op, old verdict stands
     assert stamp_review.classify(_ruling("L16", "clean"))[0] == "verified"
+    # a non-list dsg container is MALFORMED, not absent — a judge that returned garbage instead
+    # of a checklist must be loud, not silently treated as "no checklist ran"
     r = _ruling("L17", "clean"); r["dsg"] = "not a list"
-    assert stamp_review.classify(r)[0] == "verified"
+    try:
+        stamp_review.classify(r)
+        assert False, "expected a non-list dsg field to raise"
+    except ValueError as e:
+        assert "L17" in str(e), str(e)
+    # an item with no verdict key at all is a malformed judge output, not a passing check
     r2 = _ruling("L18", "clean"); r2["dsg"] = [{"id": "e1", "q": "x"}]  # no verdict key
-    assert stamp_review.classify(r2)[0] == "verified"
+    try:
+        stamp_review.classify(r2)
+        assert False, "expected a missing verdict to raise"
+    except ValueError as e:
+        assert "e1" in str(e) or "L18" in str(e), str(e)
+
+
+def test_dsg_verdict_pass_and_skipped_are_not_defects_case_insensitive():
+    for spelling in ("pass", "PASS", "Pass", "skipped", "SKIPPED", "Skipped"):
+        r = _ruling("L19", "clean")
+        r["dsg"] = [{"id": "a1", "q": "some atomic fact", "verdict": spelling}]
+        status, reasons = stamp_review.classify(r)
+        assert status == "verified", (spelling, status, reasons)
+
+
+def test_dsg_verdict_fail_spellings_are_defects_case_insensitive():
+    for spelling in ("fail", "FAIL", "Fail"):
+        r = _ruling("L20", "clean")
+        r["dsg"] = [{"id": "a1", "q": "some atomic fact", "verdict": spelling}]
+        status, reasons = stamp_review.classify(r)
+        assert status == "parked", (spelling, status)
+
+
+def test_dsg_verdict_malformed_spellings_hard_error_naming_the_item():
+    # a judge's malformed output (a near-miss spelling, a boolean, a missing key) must be LOUD,
+    # never silently treated as pass/fail
+    for bad_verdict in ("failed", "no", "false", None):
+        r = _ruling("L21", "clean")
+        item = {"id": "z9", "q": "some atomic fact"}
+        if bad_verdict is not None:
+            item["verdict"] = bad_verdict
+        r["dsg"] = [item]
+        try:
+            stamp_review.classify(r)
+            assert False, f"expected verdict={bad_verdict!r} to raise"
+        except ValueError as e:
+            assert "z9" in str(e), (bad_verdict, str(e))
 
 
 def test_classify_defect_with_empty_axes_and_why_still_has_a_reason():
@@ -232,6 +275,25 @@ def test_summary_line_counts_verified_and_parked():
             capture_output=True, text=True)
         assert proc.returncode == 0, proc.stderr
         assert "stamped: 2 verified, 1 parked" in proc.stdout, proc.stdout
+
+
+def test_main_exits_nonzero_and_names_the_item_on_malformed_dsg():
+    # end-to-end: the CLI must exit nonzero and print which item was malformed, never crash
+    # silently or write a partial manifest
+    with tempfile.TemporaryDirectory() as td:
+        base = Path(td)
+        bad_ruling = _ruling("L09", "clean")
+        bad_ruling["dsg"] = [{"id": "zz9", "q": "some fact", "verdict": "maybe"}]
+        mpath = _write_video_dir(
+            base, [bad_ruling],
+            {"video_slug": "t", "generated": "2026", "notes": "", "shots": [_entry("L09")]})
+        proc = subprocess.run(
+            [sys.executable, str(Path(__file__).parent / "stamp_review.py"), str(base)],
+            capture_output=True, text=True)
+        assert proc.returncode != 0, proc.stdout
+        assert "zz9" in proc.stderr, proc.stderr
+        # the manifest is left untouched — no partial/dishonest stamp written
+        assert _read(mpath)["shots"][0]["review_status"] == "unreviewed"
 
 
 def test_write_is_atomic_no_tmp_left_behind():

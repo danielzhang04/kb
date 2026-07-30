@@ -43,10 +43,17 @@ def ctx():
 # what every generation before 2026-07-29 silently got — below the 1920x1080 long-form delivery
 # frame (1K at 16:9 is ~1344x768), so full-frame scenes were being upscaled at render and the crop
 # battery zoomed 3-4x into interpolated pixels. 2K is the first tier that clears delivery with
-# headroom to zoom; 4K is the top tier at ~6x the 1K price, so it is a per-run spend decision
-# (`--image-size 4K`), never a silent default.
+# headroom to zoom. PRICING (2026-07-30 correction): 1K and 2K are the SAME price — $0.134/image,
+# 1120 output tokens — so the 2K default is spend-NEUTRAL, not an up-spend. 4K is a real up-spend
+# at $0.24/image (~1.8x 1K/2K), so it stays a per-run spend decision (`--image-size 4K`), never a
+# silent default.
 IMAGE_SIZES = ("1K", "2K", "4K")
 IMAGE_SIZE_DEFAULT = "2K"
+IMAGE_SIZE_RANK = {s: i for i, s in enumerate(IMAGE_SIZES)}  # 1K < 2K < 4K, for the ceiling check
+
+# The Gemini request-body cap is 20MB; this is a 1MB safety margin under it, so the CLI's own
+# hard-error lands before the engine's less legible one does.
+REQUEST_SIZE_SAFETY_CAP = 19 * 1024 * 1024
 
 
 def nano(url, parts, aspect, context, image_size=IMAGE_SIZE_DEFAULT):
@@ -77,6 +84,28 @@ def nano(url, parts, aspect, context, image_size=IMAGE_SIZE_DEFAULT):
 
 def b64(p): return base64.b64encode(open(p, "rb").read()).decode()
 def ip(p): return {"inlineData": {"mimeType": "image/png", "data": b64(p)}}
+
+def _b64_encoded_size(path):
+    """The BASE64-encoded byte size of a seed file without holding the encoded string in memory —
+    base64 inflates by exactly 4/3, rounded up to the next multiple of 4."""
+    n = os.path.getsize(path)
+    return ((n + 2) // 3) * 4
+
+def check_payload_size(name, seeds, text):
+    """FIX 2 (audit follow-up): hard-error BEFORE the API call — never auto-downscale — when the
+    assembled request (every inline seed, base64-encoded, plus the prompt text) would exceed
+    REQUEST_SIZE_SAFETY_CAP, a 1MB margin under Google's 20MB request cap. Auto-downscaling would
+    silently change what the engine sees; a loud, itemized error lets a human choose what to trim."""
+    sizes = [(s, _b64_encoded_size(s)) for s in seeds]
+    text_size = len(text.encode("utf-8"))
+    total = sum(n for _, n in sizes) + text_size
+    if total > REQUEST_SIZE_SAFETY_CAP:
+        listing = "\n".join(f"    {s}: {n:,} bytes (base64)" for s, n in sizes)
+        raise SystemExit(
+            f"{name}: assembled request would be {total:,} bytes, over the "
+            f"{REQUEST_SIZE_SAFETY_CAP:,}-byte safety margin (Google's request cap is 20MB):\n"
+            f"{listing}\n    prompt text: {text_size:,} bytes\n"
+            f"Trim the seed set or split the batch — this does NOT auto-downscale.")
 
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 JPEG_MAGIC = b"\xff\xd8\xff"
@@ -427,6 +456,14 @@ def cmd_gen(k, reqs, force, image_size=IMAGE_SIZE_DEFAULT, dry=False):
         size = r.get("image_size") or image_size
         if size not in IMAGE_SIZES:
             raise SystemExit(f"{name}: unknown image_size '{size}' (allowed: {', '.join(IMAGE_SIZES)})")
+        # FIX 4 (audit follow-up): --image-size is a CEILING, not a per-item override that can go
+        # either way — a per-item tier ABOVE the batch ceiling is a silent up-spend, so it hard-errors
+        # naming the item rather than quietly generating at the higher (costlier) tier.
+        if IMAGE_SIZE_RANK[size] > IMAGE_SIZE_RANK[image_size]:
+            raise SystemExit(
+                f"{name}: item image_size '{size}' exceeds the --image-size ceiling '{image_size}' "
+                f"(order: {' < '.join(IMAGE_SIZES)}) — raise the batch ceiling (--image-size) or "
+                f"lower this item's image_size")
         if dry:
             report(name, f"DRY (no API call) mode={mode} aspect={aspect} size={size}")
             print(f"      seeds: {[os.path.relpath(s, k.root).replace(chr(92), '/') for s in seeds]}")
@@ -435,6 +472,9 @@ def cmd_gen(k, reqs, force, image_size=IMAGE_SIZE_DEFAULT, dry=False):
                 print("      " + ln)
             print("      ----- end -----", flush=True)
             continue
+        # FIX 2 (audit follow-up): hard-error on an oversized request BEFORE it is ever assembled or
+        # sent — never auto-downscale a seed to make it fit.
+        check_payload_size(name, seeds, text)
         parts = [ip(s) for s in seeds] + [{"text": text}]
         try:
             # S1-A: compute + validate the bytes BEFORE opening the file, so a failed/empty gen can
@@ -444,7 +484,7 @@ def cmd_gen(k, reqs, force, image_size=IMAGE_SIZE_DEFAULT, dry=False):
             validate_png(data)
             with open(out, "wb") as f:
                 f.write(data)
-            report(name, "OK -> _staging/" + name + ".png")
+            report(name, f"OK size={size} -> _staging/" + name + ".png")
         except Exception as e:
             report(name, "ERR " + str(e)[:160])
     if dry:
@@ -621,8 +661,9 @@ def main():
     ap.add_argument("--aspect", default="2:3"); ap.add_argument("--seed", help="comma-separated seed frames")
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--image-size", default=IMAGE_SIZE_DEFAULT, choices=list(IMAGE_SIZES),
-                    help=f"gen: engine resolution tier (default {IMAGE_SIZE_DEFAULT}; 4K is the top "
-                         f"tier at ~6x the 1K price, so it is a per-run spend call)")
+                    help=f"gen: engine resolution tier / CEILING (default {IMAGE_SIZE_DEFAULT}; 1K "
+                         f"and 2K are the SAME price, so the 2K default is spend-neutral; 4K is a "
+                         f"real up-spend at ~1.8x the 1K/2K price, so it is a per-run spend call)")
     ap.add_argument("--dry-run", action="store_true",
                     help="gen: assemble and PRINT every prompt, make NO API call (batch pre-flight)")
     ap.add_argument("--figures", help="gen: one shot's `figures` field as JSON, e.g. "

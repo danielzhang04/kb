@@ -5,12 +5,11 @@ Every guard gets: one plant it MUST catch, and at least one near-miss it must st
 silent on. Run from the scripts/ dir:  py -3 -m pytest <this file> -q
 """
 import json
-import re
 import sys
 import tempfile
 from pathlib import Path
 
-SCRIPTS = Path(r"C:\Users\danie\kb\orgs\faceless-youtube\.claude\skills\visual-prompt-writer\scripts")
+SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
 import lint_shots as L  # noqa: E402
 
@@ -79,8 +78,29 @@ def test_g2_thumbnail_prompts_are_covered():
     out = []
     L.literal_count_check("thumbnail", [("thumbnail.primary", "gen_prompt",
                                         "cards 'A LOT', 'B LOT', 'C LOT', 'D LOT' " + SUFFIX)],
-                          SUFFIX, out)
+                          SUFFIX, out, [])
     assert len(out) == 1
+
+
+# --- FIX 6 (audit follow-up): literal_count_check gated on schema == SCHEMA_V2, same law as
+# shot_class_check — the 3-literal cap postdates plenty of archived v1 files, so failing them over
+# a rule that did not exist when they were authored breaks a video for nothing. ---------------------
+def _lit(prompt, strict=True):
+    hard, soft = [], []
+    L.literal_count_check("lf", _p(prompt), SUFFIX, hard, soft, strict)
+    return hard, soft
+
+
+def test_g2_v1_file_gets_a_heads_up_not_a_hard_failure():
+    hard, soft = _lit(
+        "a wall of four brass plaques: 'POYAIS OFFICE', 'LONDON', 'EDINBURGH', 'PARIS'", strict=False)
+    assert hard == [] and len(soft) == 1 and "v1 file" in soft[0], (hard, soft)
+
+
+def test_g2_v2_file_still_hard_fails():
+    hard, soft = _lit(
+        "a wall of four brass plaques: 'POYAIS OFFICE', 'LONDON', 'EDINBURGH', 'PARIS'", strict=True)
+    assert len(hard) == 1 and soft == [], (hard, soft)
 
 
 # =========================================================================
@@ -158,6 +178,14 @@ def test_g4_no_longer_is_not_an_absence():
     assert _run(L.negation_list_check, "The sign is no longer lit and carries no words.") == []
 
 
+def test_g4_no_one_is_not_a_counted_negation():
+    """FIX 12 (audit follow-up): 'no one' is the idiom for 'nobody', not an authored absence of a
+    noun called 'one' — before the fix, 'no one' + one real negation miscounted as TWO negations
+    and fired; it must stay silent the same way a lone real negation does."""
+    assert _run(L.negation_list_check,
+                "No one stands at the counter, and no words appear on the sign.") == []
+
+
 def test_g4_the_positive_form_is_silent():
     """The form the guard tells you to use — _bricks-seg L01/L16."""
     assert _run(L.negation_list_check,
@@ -209,9 +237,12 @@ def test_g5_the_committed_enum_matches_the_schema_doc():
     shots-schema.md's shot_class line, and vice versa."""
     doc = (SCRIPTS.parent / "references" / "shots-schema.md").read_text(encoding="utf-8")
     line = [l for l in doc.splitlines() if '"shot_class"' in l][0]
-    listed = set(re.findall(r"[a-z]+(?:-[a-z]+)+", line.split("table):")[1]))
-    assert listed == set(L.SHOT_CLASSES) - {"literal"} | (listed & {"literal"}) or True
-    assert set(L.SHOT_CLASSES) - {"literal"} <= listed, set(L.SHOT_CLASSES) - listed
+    # split on commas rather than a hyphenated-word regex: a hyphen-only pattern silently can
+    # never match the single-word entry 'literal', which is exactly the gap the old (vacuous)
+    # `... or True` assertion papered over instead of fixing.
+    tail = line.split("table):")[1].split('"')[0]
+    listed = {w.strip() for w in tail.split(",") if w.strip()}
+    assert listed == set(L.SHOT_CLASSES), (listed - set(L.SHOT_CLASSES), set(L.SHOT_CLASSES) - listed)
 
 
 # =========================================================================
@@ -246,6 +277,40 @@ def test_g6_rig_vocabulary_as_prose_about_a_body_is_silent():
 
 def test_g6_the_house_suffix_alone_is_silent():
     assert _run(L.rig_clause_check, "a plain den with a console television") == []
+
+
+def test_g6_bare_drawn_as_follows_on_a_non_figure_subject_is_silent():
+    """FIX 12 (audit follow-up): 'drawn as follows' is VPW's own habitual lead-in phrase, not
+    style-bible text, so the fingerprint must anchor to a FIGURE subject the way the real
+    lead-in ('The stall keeper is drawn as follows.') always has — ordinary prose describing a
+    non-person diagram must not HARD-fail."""
+    assert _run(L.rig_clause_check, "A wall chart of quarterly earnings is drawn as follows: "
+                "three bars rising left to right, tallest at the far right.") == []
+
+
+# --- FIX 6 (audit follow-up): rig_clause_check gated on schema == SCHEMA_V2, same law as
+# shot_class_check — a v1 file predates the `figures`-field migration entirely, so hard-failing an
+# archived video over vocabulary the migration retired breaks it for nothing. -----------------------
+def _rig(prompt, strict=True):
+    hard, soft = [], []
+    L.rig_clause_check("lf", _p(prompt), SUFFIX, hard, soft, strict)
+    return hard, soft
+
+
+def test_g6_v1_file_gets_a_heads_up_not_a_hard_failure():
+    hard, soft = _rig(
+        "One anonymous worker at the dock. This prominent foreground figure is an anonymous, "
+        "non-recurring person drawn on the FULL base family rig - SAME round near-circle head, "
+        "NO nose, NO ears.", strict=False)
+    assert hard == [] and len(soft) == 1 and "v1 file" in soft[0], (hard, soft)
+
+
+def test_g6_v2_file_still_hard_fails():
+    hard, soft = _rig(
+        "One anonymous worker at the dock. This prominent foreground figure is an anonymous, "
+        "non-recurring person drawn on the FULL base family rig - SAME round near-circle head, "
+        "NO nose, NO ears.", strict=True)
+    assert len(hard) == 1 and soft == [], (hard, soft)
 
 
 # =========================================================================

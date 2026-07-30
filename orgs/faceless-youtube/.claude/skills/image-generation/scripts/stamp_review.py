@@ -45,18 +45,40 @@ def _dsg_failures(ruling: dict):
     """The FAILED items of a ruling's DSG-lite checklist — the dependency-ordered decomposition of
     the assembled prompt into atomic facts (entities -> attributes -> relations -> lettering) that
     the fidelity judge answers one by one. Each item is
-    `{id, parent, q, verdict: "pass"|"fail"|"skipped", note}`; only "fail" is a defect, because a
-    "skipped" child was short-circuited by a parent that already carries one."""
+    `{id, parent, q, verdict: "pass"|"fail"|"skipped", note}`.
+
+    FAIL-CLOSED (2026-07-30): "pass"/"skipped" (case-insensitive) is not a defect; "fail"
+    (case-insensitive) is a defect; ANY other value — a near-miss spelling ("failed"), a
+    boolean, or a missing `verdict` key entirely — is a malformed judge output and HARD-ERRORS
+    naming the item, rather than being waved through as a pass. The old contract silently
+    treated everything but exactly "fail" as clean, which means a judge that returned garbage
+    shipped the frame anyway. `dsg` itself is genuinely additive: a ruling with NO `dsg` key
+    (or `dsg: None`) predates the checklist and stays a no-op, but once the field is present it
+    must be well-formed — a non-list `dsg`, or a non-dict item, is malformed the same way."""
     items = ruling.get("dsg")
-    if not isinstance(items, list):
+    if items is None:
         return []
+    rid = _ruling_id(ruling) or "?"
+    if not isinstance(items, list):
+        raise ValueError(f"malformed dsg field on ruling {rid!r}: expected a list, "
+                         f"got {type(items).__name__}: {items!r}")
     out = []
     for it in items:
-        if not isinstance(it, dict) or str(it.get("verdict", "")).lower() != "fail":
+        if not isinstance(it, dict):
+            raise ValueError(f"malformed dsg item on ruling {rid!r}: expected an object, "
+                             f"got {type(it).__name__}: {it!r}")
+        item_id = it.get("id", "?")
+        verdict_raw = it.get("verdict")
+        verdict = str(verdict_raw).lower() if verdict_raw is not None else ""
+        if verdict in ("pass", "skipped"):
             continue
-        label = it.get("q") or it.get("id") or "unnamed check"
-        note = it.get("note")
-        out.append(f"dsg {it.get('id', '?')}: {label}" + (f" — {note}" if note else ""))
+        if verdict == "fail":
+            label = it.get("q") or item_id or "unnamed check"
+            note = it.get("note")
+            out.append(f"dsg {item_id}: {label}" + (f" — {note}" if note else ""))
+            continue
+        raise ValueError(f"malformed dsg verdict on item {item_id!r} of ruling {rid!r}: "
+                         f"{verdict_raw!r} (expected pass|fail|skipped)")
     return out
 
 
@@ -185,7 +207,12 @@ def main(argv=None) -> int:
 
     rulings = json.loads(merged_path.read_text(encoding="utf-8"))
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    n_verified, m_parked = stamp(manifest, rulings)
+    try:
+        n_verified, m_parked = stamp(manifest, rulings)
+    except ValueError as e:
+        # fail-closed: a malformed DSG-lite item must be loud, never silently waved through
+        print(f"malformed review data — {e}", file=sys.stderr)
+        return 1
     _atomic_write_json(manifest_path, manifest)
     print(f"stamped: {n_verified} verified, {m_parked} parked")
     return 0

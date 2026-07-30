@@ -120,8 +120,18 @@ wrong:
   "the ledger's columns ruled but blank and unlettered" is legal; a production-rule name ("CROWD RIG") or
   a bare directive ("NO TEXT") is not — it gets drawn. Rig wording belongs in `figures`, never in the
   prose; the one-sentence editorial gloss goes in `notes`, never in the prompt.
-- **L-3. Authored lettering is capped at 4 words (HARD)** — past roughly four the per-glyph error rate
-  compounds into an unreadable render. The cap is **uniform**, including a short's `first_frame` caption.
+- **L-3. Authored lettering is capped at 4 words AND 25 characters (both HARD)** — past roughly four
+  words, or past 25 glyphs even under the word cap, the per-glyph error rate compounds into an
+  unreadable render. TWO independent caps because the engine redraws GLYPHS, not words:
+  `'TRANS CONTINENTAL AIRLINES'` is 3 words (legal under the word cap) and 26 characters (over the
+  glyph ceiling) — the word cap alone waves it through. Both caps are **uniform**, including a
+  short's `first_frame` caption, and apply regardless of `schema` version.
+- **L-3b. At most 3 DISTINCT authored literals per prompt (HARD on a v2 file; a heads-up on an
+  archived v1 one, which may predate this cap).** A frame lettering a whole document — four or
+  more signs/cards/plaques in one image — compounds per-glyph error until something in it is
+  visibly wrong. DISTINCT, not occurrences: L-1 requires re-quoting a carried literal on every
+  frame that redraws it, so two strings quoted twice each is 2, not 4. Stage the list across a
+  delta chain instead — one new literal introduced per frame — rather than lettering it all at once.
 - **L-4. Prefer the word form for big numbers (advisory).** `'8 MILLION'` over `'8,000,000'` where the
   beat allows. Only a numeral carrying **two or more separators in one digit run** draws a heads-up.
 

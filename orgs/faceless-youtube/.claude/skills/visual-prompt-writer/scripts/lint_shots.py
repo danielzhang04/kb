@@ -747,8 +747,12 @@ def word_cap_check(label, prompts, suffix, hard, cap=4, char_cap=LETTERING_CHAR_
                     f"composition, or drop the least load-bearing word.")
 
 
-def literal_count_check(label, prompts, suffix, hard, cap=LETTERING_COUNT_CAP):
-    """HARD. One prompt may author at most 3 DISTINCT quoted literals.
+def literal_count_check(label, prompts, suffix, hard, soft=None, strict=True, cap=LETTERING_COUNT_CAP):
+    """HARD on a v2 file, a heads-up on a v1 one (`strict`) — the SAME gate and rationale as
+    `shot_class_check` (audit FIX 6): the 3-distinct-literal cap is a rule introduced after plenty
+    of archived v1 files were authored and locked, so hard-failing one of them over a cap it
+    predates breaks it for nothing. v2 is the contract VPW writes from now on, and there it is
+    closed at 3. One prompt may author at most 3 DISTINCT quoted literals.
 
     Rare by construction, which is why it can be hard: across the two complete
     videos (~230 shots) exactly four prompts exceed it — Poyais L47 (four city
@@ -766,18 +770,21 @@ def literal_count_check(label, prompts, suffix, hard, cap=LETTERING_COUNT_CAP):
     delta frame to re-quote every literal it redraws, so Wells Fargo L36's two
     mentions of '125 MILLION' and '600 MILLION' are four quotes of two strings.
     Counting occurrences would punish the file for obeying the rule above it."""
+    sink = hard if strict else (soft if soft is not None else hard)
+    tail = ("" if strict else " (a heads-up only: this is a v1 file and nothing enforced this cap "
+                              "when it was authored - author v2 files to the 3-literal limit)")
     for pid, field, prompt in prompts:
         lits = []
         for lit, _s, _e in quoted_literals(prompt, suffix):
             if lit not in lits:
                 lits.append(lit)
         if len(lits) > cap:
-            hard.append(
+            sink.append(
                 f"[{label}] {pid}.{field}: authors {len(lits)} distinct literals (cap {cap}) -> "
                 f"{lits!r}. A frame lettering a whole document compounds per-glyph error until "
                 f"something in it is visibly wrong. Stage them across a delta chain (one literal "
                 f"per frame, the way L11-L14 did), or carry the list in the composition and letter "
-                f"only the load-bearing value.")
+                f"only the load-bearing value.{tail}")
 
 
 def script_vocab(md_path):
@@ -868,7 +875,10 @@ _NEG_NOUN = re.compile(r"\b(?:no|without)\s+((?:[a-z]+-)?[a-z]+)\b", re.IGNORECA
 # with any real negation in the same sentence and invents a list of two.
 _NEG_STOP = frozenset(
     "longer more other less better worse further fewer sooner else matter way "
-    "doubt bigger smaller taller wider".split())
+    "doubt bigger smaller taller wider one".split())
+# `one` (FIX 12, audit follow-up): "no one" is the idiom for "nobody", not an authored absence of
+# a noun called "one" — before this, "no one" plus a single real negation miscounted as TWO
+# negations and fired on a sentence that states only one actual absence.
 _ANATOMY = frozenset(
     "nose noses nostril nostrils ear ears tooth teeth eyebrow eyebrows lash lashes "
     "eyelash eyelashes pupil pupils iris irises finger fingers thumb thumbs toe toes "
@@ -1100,24 +1110,46 @@ def shot_class_check(label, shots, hard, soft, strict=True):
 # ("a base-rig anonymous teller in a teal uniform", "figures on the crowd rig"),
 # because that is a legal property of a depicted figure and banning the word `rig`
 # would fire on most of the file. Only the clause's own distinctive spans match.
+#
+# FIX 12 (audit follow-up): the bare phrase "drawn as follows" is VPW's own habitual lead-in
+# idiom, not style-bible text — unlike the other four spans it is ordinary English that shows up
+# in unrelated prose ("A wall chart of quarterly earnings is drawn as follows: ..."). The real
+# lead-in ALWAYS hands off from naming a FIGURE ("The stall keeper is drawn as follows."), so the
+# fingerprint is anchored to a person/figure noun appearing earlier in the same clause — a
+# non-figure subject (a chart, a diagram, a table) no longer HARD-fails.
+_RIG_LEADIN_FIGURE_WORD = (
+    r"figure|figures|keeper|keepers|clerk|clerks|teller|tellers|worker|workers|employee|"
+    r"employees|staffer|staffers|banker|bankers|character|characters|person|people|senator|"
+    r"senators|investor|investors|official|officials|judge|judges|foreman|man|men|woman|women"
+)
 _RIG_CLAUSE = re.compile(
     r"FULL base family rig"
     r"|CROWD RIG\s*:"
     r"|non-recurring person"
-    r"|drawn as follows"
+    r"|(?:" + _RIG_LEADIN_FIGURE_WORD + r")\b[^.]{0,40}\bdrawn as follows"
     r"|the identical rig the named cast holds",
     re.IGNORECASE)
 
 
-def rig_clause_check(label, prompts, suffix, hard):
-    """HARD. The §2d/§2e clause text (or its lead-in) still sitting in a prompt —
-    the regression guard for the figures migration.
+def rig_clause_check(label, prompts, suffix, hard, soft=None, strict=True):
+    """HARD on a v2 file, a heads-up on a v1 one (`strict`) — the SAME gate and rationale as
+    `shot_class_check` (audit FIX 6): a v1 file predates the `figures`-field migration entirely, so
+    a pasted §2d/§2e clause is not a regression there, it is simply how every prompt was written
+    before the migration existed. Hard-failing an archived video over vocabulary the migration
+    retired breaks it for nothing. v2 is the contract VPW writes from now on, and there the clause
+    text is banned outright.
+
+    The §2d/§2e clause text (or its lead-in) still sitting in a prompt — the regression guard for
+    the figures migration.
 
     ONE report per prompt, listing every fingerprint it found. The alternative —
     one per distinct fingerprint, the way control_leak_check reports — turned the
     bricks segment into 78 messages for 20 shots, because a single pasted §2e
     clause matches four of them at once. They are not four defects; they are one
     un-migrated shot."""
+    sink = hard if strict else (soft if soft is not None else hard)
+    tail = ("" if strict else " (a heads-up only: this is a v1 file that predates the `figures` "
+                              "migration - author v2 files with the clause declared, not pasted)")
     for pid, field, prompt in prompts:
         body = strip_suffix(prompt or "", suffix)
         found = []
@@ -1126,13 +1158,13 @@ def rig_clause_check(label, prompts, suffix, hard):
                 found.append(m.group())
         if not found:
             continue
-        hard.append(
+        sink.append(
             f"[{label}] {pid}.{field}: carries rig-clause text {', '.join(repr(f) for f in found)}. "
             f"The style-bible section 2d/2e clauses are no longer authored into prompts - declare the "
             f"figures in the shot's `figures` field ({{\"anon_foreground\": [\"<the exact phrase "
             f"this prompt uses>\"], \"crowd\": true}}) and forge.py expands the template at "
             f"generation time, with held-figure wording on a delta. Left in, the prompt gets the "
-            f"clause TWICE and the delta gets told to re-invent a figure it should be holding.")
+            f"clause TWICE and the delta gets told to re-invent a figure it should be holding.{tail}")
 
 
 FIGURES_KEYS = ("anon_foreground", "crowd")
@@ -1269,6 +1301,10 @@ def main(argv):
 
     schema_check(data, soft)
     legacy_field_check(data, soft)
+    # computed up front: several guards below (literal_count_check, rig_clause_check,
+    # shot_class_check) gate HARD-vs-heads-up on v2-vs-v1, per FIX 6 — an archived v1 file must not
+    # fail on a rule/vocabulary change that postdates it.
+    strict_schema = data.get("schema") == SCHEMA_V2
 
     lf_text = lint_piece("long-form", lf_shots, script_md, hard, soft,
                          word_timings=word_timings_for(vo_manifest, "long-form"))
@@ -1278,10 +1314,9 @@ def main(argv):
     lf_vocab = script_vocab(script_md)
     text_supply_check("long-form", lf_prompts, suffix, hard)
     word_cap_check("long-form", lf_prompts, suffix, hard)
-    literal_count_check("long-form", lf_prompts, suffix, hard)
+    literal_count_check("long-form", lf_prompts, suffix, hard, soft, strict_schema)
     control_leak_check("long-form", lf_prompts, suffix, hard)
-    rig_clause_check("long-form", lf_prompts, suffix, hard)
-    strict_schema = data.get("schema") == SCHEMA_V2
+    rig_clause_check("long-form", lf_prompts, suffix, hard, soft, strict_schema)
     shot_class_check("long-form", lf_shots, hard, soft, strict_schema)
     figures_check("long-form", [(sh.get("id", "?"), sh) for sh in lf_shots], hard, soft)
     numeral_form_check("long-form", lf_prompts, suffix, soft)
@@ -1300,7 +1335,7 @@ def main(argv):
                    for i, c in enumerate(th.get("challengers") or [])]
     text_supply_check("thumbnail", th_prompts, suffix, hard)
     word_cap_check("thumbnail", th_prompts, suffix, hard)
-    literal_count_check("thumbnail", th_prompts, suffix, hard)
+    literal_count_check("thumbnail", th_prompts, suffix, hard, soft, strict_schema)
     control_leak_check("thumbnail", th_prompts, suffix, hard)
     long_literal_word_check("thumbnail", th_prompts, suffix, soft, lf_vocab)
     negation_list_check("thumbnail", th_prompts, suffix, soft)
@@ -1332,9 +1367,9 @@ def main(argv):
         svocab = script_vocab(smd) | lf_vocab
         text_supply_check(slabel, sprompts, suffix, hard)
         word_cap_check(slabel, sprompts, suffix, hard)
-        literal_count_check(slabel, sprompts, suffix, hard)
+        literal_count_check(slabel, sprompts, suffix, hard, soft, strict_schema)
         control_leak_check(slabel, sprompts, suffix, hard)
-        rig_clause_check(slabel, sprompts, suffix, hard)
+        rig_clause_check(slabel, sprompts, suffix, hard, soft, strict_schema)
         shot_class_check(slabel, sshots, hard, soft, strict_schema)
         figures_check(slabel, [(sh.get("id", "?"), sh) for sh in sshots]
                       + ([("first_frame", ff_obj)] if ff_obj else []), hard, soft)

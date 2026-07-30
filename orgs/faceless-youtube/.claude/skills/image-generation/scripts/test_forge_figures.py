@@ -8,15 +8,20 @@ written — so it is safe to run at any time and proves the expansion without a 
 Run:  py -3 .claude/skills/image-generation/scripts/test_forge_figures.py
       py -3 .claude/skills/image-generation/scripts/test_forge_figures.py --show   (print the prompts)
 """
+import base64
+import json
+import os
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from forge import (IMAGE_SIZES, IMAGE_SIZE_DEFAULT, assemble_prompt, blockquote_after,
-                   figures_expansion, should_hold)
+import forge
+from forge import (IMAGE_SIZES, IMAGE_SIZE_DEFAULT, Kit, assemble_prompt, blockquote_after,
+                   cmd_gen, figures_expansion, should_hold)
 
 BIBLE = (Path(__file__).resolve().parents[4]
          / "channels" / "the-second-take" / "visual-kit" / "style-bible.md")
+KIT_ROOT = BIBLE.parent
 _MD = BIBLE.read_text(encoding="utf-8")
 DESC_STYLE = blockquote_after(_MD, "STYLE-ONLY descriptor")
 DESC_RIGHOLD = blockquote_after(_MD, "RIG-HOLD descriptor")
@@ -175,6 +180,62 @@ def test_resolution_tier_default_clears_the_delivery_frame():
     """1K (the engine default when `imageSize` is unset) is below the 1920x1080 delivery frame."""
     assert IMAGE_SIZES == ("1K", "2K", "4K")
     assert IMAGE_SIZE_DEFAULT in ("2K", "4K") and IMAGE_SIZE_DEFAULT != "1K"
+
+
+# --------------------------------------------------------------------------- #
+# FIX 10 (audit follow-up) — dry-run evidence: Kit(dry=True) touches neither key nor network,
+# cmd_gen's --dry-run writes nothing, and the real request body carries the resolved imageSize.
+# --------------------------------------------------------------------------- #
+def test_kit_dry_true_loads_no_key_and_builds_no_url():
+    k = Kit(str(KIT_ROOT), dry=True)
+    assert k.key == "", k.key
+    assert k.url is None, k.url
+    assert k.ctx is None, k.ctx
+
+
+def test_cmd_gen_dry_run_writes_zero_files_into_staging():
+    k = Kit(str(KIT_ROOT), dry=True)
+    name = "zzz-audit-fix10-dry-run-guard"
+    out_path = os.path.join(k.staging, name + ".png")
+    if os.path.exists(out_path):
+        os.remove(out_path)
+    before = set(os.listdir(k.staging))
+    cmd_gen(k, [{"name": name, "mode": "identity", "character": "base",
+                "delta": "a plain test render, unchanged rig"}], True, dry=True)
+    after = set(os.listdir(k.staging))
+    assert after == before, after - before
+    assert not os.path.exists(out_path)
+
+
+def test_nano_request_body_carries_the_resolved_image_size():
+    """`nano()` assembles the ONE request body the engine reads; this asserts `imageConfig.imageSize`
+    in that JSON body actually IS the tier the caller resolved, for every tier (not just the default)."""
+    for size in IMAGE_SIZES:
+        captured = {}
+
+        class _FakeResp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def read(self):
+                blob = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"\0" * 2000).decode()
+                body = {"candidates": [{"content": {"parts": [{"inlineData": {"data": blob}}]}}]}
+                return json.dumps(body).encode()
+
+        def _fake_urlopen(req, context=None, timeout=None):
+            captured["payload"] = json.loads(req.data.decode())
+            return _FakeResp()
+
+        orig = forge.urllib.request.urlopen
+        forge.urllib.request.urlopen = _fake_urlopen
+        try:
+            forge.nano("https://example.invalid/", [{"text": "hi"}], "16:9", None, size)
+        finally:
+            forge.urllib.request.urlopen = orig
+        assert captured["payload"]["generationConfig"]["imageConfig"]["imageSize"] == size, captured
 
 
 def _show():

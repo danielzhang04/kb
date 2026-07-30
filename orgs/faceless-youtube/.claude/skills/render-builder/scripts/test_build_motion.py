@@ -12,6 +12,7 @@ from build_motion import (
     apply_motion_plan,
     authored_camera_ids,
     baseline_life_tokens,
+    chapter_out_rel,
     locked_camera,
     resolve_plan_camera,
 )
@@ -108,6 +109,20 @@ def test_legacy_layered_bob_does_not_request_new_baseline_wrapper():
         assert shot["idle"] == "bob" and "baseline_life" not in shot and shot["layers"], (flag, shot)
 
 
+# --------------------------------------------------------------------------- #
+# FIX 7 (audit follow-up): --chapter N with --preview-parked must keep the preview marker.
+# Before the fix, a chapter render's out_rel was always "assets/final-ch{n}-{slug}.mp4",
+# overwriting the shippable final's naming even on a --preview-parked run.
+# --------------------------------------------------------------------------- #
+def test_chapter_out_rel_names_final_by_default():
+    assert chapter_out_rel(2, "Investors gather", False) == "assets/final-ch02-investors-gather.mp4"
+
+
+def test_chapter_out_rel_names_preview_when_preview_parked():
+    assert (chapter_out_rel(2, "Investors gather", True)
+            == "assets/preview-ch02-investors-gather.mp4")
+
+
 if __name__ == "__main__":
     print("running")
     test_camera_default_locked()
@@ -119,4 +134,6 @@ if __name__ == "__main__":
     test_baseline_life_is_opt_in_and_legacy_tokens_stay_identical()
     test_baseline_life_marks_layered_tableau_live()
     test_legacy_layered_bob_does_not_request_new_baseline_wrapper()
+    test_chapter_out_rel_names_final_by_default()
+    test_chapter_out_rel_names_preview_when_preview_parked()
     print("PASS")

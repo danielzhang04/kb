@@ -1,7 +1,7 @@
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
-from audio_checker import check_audio, check_sentence_gaps
+from audio_checker import check_audio, check_sentence_gaps, motion_spec_name
 
 MT = {"lufs": -14.5, "true_peak_max_dbfs": -1.0, "lra": 4.0}
 LN = {"audio_lufs": -14.3, "audio_true_peak": -1.1}
@@ -152,6 +152,19 @@ def test_check_audio_wires_sentence_gap_verifier():
     assert r2["ok"] is True and "sentence_gaps" not in r2["measured"], r2
 
 
+# --------------------------------------------------------------------------- #
+# FIX 8 (audit follow-up): --preview must read the preview-parked spec build_motion wrote
+# (<piece>.preview.motion.json), mirroring build_motion's own --preview-parked naming, instead of
+# always reading the shippable final's spec.
+# --------------------------------------------------------------------------- #
+def test_motion_spec_name_reads_final_by_default():
+    assert motion_spec_name("long-form", False) == "long-form.motion.json"
+
+
+def test_motion_spec_name_reads_preview_spec_when_preview_flag_set():
+    assert motion_spec_name("long-form", True) == "long-form.preview.motion.json"
+
+
 print("running")
 test_clean_render_passes(); test_missing_sfx_warns(); test_missing_music_warns()
 test_loudness_off_target_warns(); test_true_peak_over_warns(); test_loudnorm_soft_failed_warns()
@@ -162,4 +175,6 @@ test_sentence_gap_verifier_passes_when_gaps_meet_target()
 test_sentence_gap_verifier_flags_short_boundary_with_timestamp()
 test_sentence_gap_verifier_skips_cleanly_without_inputs()
 test_check_audio_wires_sentence_gap_verifier()
+test_motion_spec_name_reads_final_by_default()
+test_motion_spec_name_reads_preview_spec_when_preview_flag_set()
 print("PASS")
