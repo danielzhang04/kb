@@ -5,8 +5,7 @@ description: Delegate a task from this Claude terminal to a background OpenAI Co
 
 # dispatch-codex
 
-Spawn a codex worker like an Agent-tool subagent: dispatch, keep working, the
-result arrives as a task notification.
+Spawn a codex worker like an Agent-tool subagent: dispatch, keep working, the result arrives as a task notification.
 
 ## Convention
 
@@ -14,10 +13,11 @@ result arrives as a task notification.
    prompt: name the exact files/functions in scope, the norms to follow, what
    NOT to touch, acceptance criteria. The worker starts cold — the brief is all
    it knows.
-2. Dispatch via Bash with `run_in_background: true` — NEVER foreground:
+2. Dispatch via Bash with `run_in_background: true` — NEVER foreground, using the
+   absolute script path (an FYT-rooted terminal breaks on a relative one):
 
    ```
-   py -3 scripts/codex_dispatch.py --prompt-file <brief.md> --model <tier> [--effort xhigh] [--cwd <dir>] [--sandbox read-only] [--worktree]
+   py -3 "$(git rev-parse --show-toplevel)/scripts/codex_dispatch.py" --prompt-file <brief.md> --model <tier> [--effort xhigh] [--timeout <seconds>] [--cwd <dir>] [--sandbox read-only] [--worktree]
    ```
 
 3. Keep working. The completion notification carries the worker's final message
@@ -37,27 +37,32 @@ result arrives as a task notification.
 
 ## Iterating with your worker
 
-Each dispatch footer names the worker's session id. To reprompt, add advice, or change scope —
-the SendMessage equivalent, worker context intact — write the follow-up brief to a file and:
+Each footer names the worker's session id — the SendMessage equivalent, worker context intact:
 
 ```
-py -3 scripts/codex_dispatch.py --prompt-file <followup.md> --follow-up <thread-id>
+py -3 "$(git rev-parse --show-toplevel)/scripts/codex_dispatch.py" --prompt-file <followup.md> --follow-up <thread-id> --model <tier>
 ```
 
-Same background call, same notification return. Do not pass `--model`/`--worktree` on a
-follow-up (the session keeps its own). Each turn writes its own card, linked by the shared
-`workflow: <thread-id>` field. To stop a running worker: stop the background shell task
-(kills the worker; no card is published — the spool trace under
-`%LOCALAPPDATA%\kb-codex-dispatch\spool\` is the only record of a killed run).
+Repeat the footer's `--model <tier>` — a follow-up does NOT keep the session's own model, the
+script re-pins it every turn. `--sandbox`/`--cwd`/`--worktree` are refused on a follow-up; follow
+up before you sweep a `--worktree` (a follow-up into a removed one resumes into a deleted dir).
+Each turn writes its own card, linked by the shared `workflow: <thread-id>` field. To stop a
+worker: stop the background shell task (no card is published; the spool trace under
+`%LOCALAPPDATA%\kb-codex-dispatch\spool\` is the only record).
 
 ## Rules
 
 - Parallel dispatches are fine — each is its own process, card, and notification.
-- Default cwd is the repo root with `workspace-write`; pass `--sandbox read-only`
-  for pure research, `--worktree` when the task writes broadly or another writer
-  shares the tree.
-- The dispatch refuses on: STOP file, daily budget breach, `OPENAI_API_KEY`/
-  `CODEX_API_KEY` in env, stale codex login, unknown model. Fix the cause; never
-  work around a refusal.
-- If the footer says ops publish FAILED, the card is spooled under
+- Default cwd is the repo root with `workspace-write` (writes anywhere under `--cwd`, incl.
+  `governance/` — scope it down for untrusted briefs); `--sandbox read-only` for research (no
+  network — web-research briefs degrade silently, don't dispatch); `--worktree` when the task
+  writes broadly or another writer shares the tree.
+- Refuses on: STOP file, `OPENAI_API_KEY`/`CODEX_API_KEY` in env, stale codex login, unknown
+  model. Fix the cause; never work around a refusal.
+- Failed runs still land as a `done` card, Result starting `FAILED: ...` (footer names the
+  JSONL log); default timeout 2700s (45 min), `--timeout <seconds>` to change — a timeout kills
+  the worker and records the same shape.
+- Ops publish FAILED in the footer means the card is spooled under
   `%LOCALAPPDATA%\kb-codex-dispatch\spool\` — surface that to the human.
+- The MCP lane (`codex` server in `.mcp.json`, billing-guarded the same way) writes no card —
+  throwaway inline asks only.
