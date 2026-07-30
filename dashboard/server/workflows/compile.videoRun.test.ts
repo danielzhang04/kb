@@ -22,14 +22,16 @@ import { existsSync } from 'node:fs';
 import { sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parseWorkflowDef } from './defs.ts';
-import { compileWorkflowDef } from './compile.ts';
+import { compileWorkflowDef, type CompileWorkflowEnvironment } from './compile.ts';
 import { loadOrgDef } from './orgDefSource.ts';
-import { validatePlanProposal } from '../control/proposal.ts';
+import { validateServerCompiledPlanProposal } from '../control/proposal.ts';
+import { readDeclaredAgentDetails } from '../agents/roster.ts';
+import type { ExecutionProfile } from '../control/policy.ts';
 import type { RuntimeSkillRegistry } from '../control/environment.ts';
 
 const REGISTRY: RuntimeSkillRegistry = {
   runtimes: {
-    claude: ['claude-opus-4-8', 'claude-sonnet-5', 'claude-haiku-4-5'],
+    claude: ['claude-fable-5', 'claude-opus-4-8', 'claude-sonnet-5', 'claude-haiku-4-5'],
     codex: ['gpt-5.6-sol'],
   },
   skills: [],
@@ -51,6 +53,40 @@ const DEF_PATH = 'orgs/faceless-youtube/workflows/video-run.md';
 // silently-defaulted test is what let the old fixture rot.
 const SOURCE = loadOrgDef(DEF_PATH);
 const VIDEO_RUN_DEF = SOURCE.text;
+
+/**
+ * The definition is now EXECUTABLE: every stage names a declared agent, so compiling it requires the
+ * binding inputs. Routing/profile data stays synthetic (this file must not drift with the live model
+ * registry), but the declarations come from the SAME worktree the definition came from — proving the
+ * checked-out `agents/*.md` roster is what the definition actually binds to.
+ */
+const REPO_ROOT = SOURCE.origin.slice(0, SOURCE.origin.length - DEF_PATH.split('/').join(sep).length);
+const PROFILES: ExecutionProfile[] = [
+  { id: 'manager:claude:claude-fable-5', role: 'manager', runtime: 'claude', model: 'claude-fable-5', capabilities: ['read', 'emit-events'] },
+  { id: 'worker:claude:claude-fable-5', role: 'worker', runtime: 'claude', model: 'claude-fable-5', capabilities: ['read', 'write-approved-scope', 'run-approved-commands', 'emit-events'] },
+  { id: 'worker:claude:claude-sonnet-5', role: 'worker', runtime: 'claude', model: 'claude-sonnet-5', capabilities: ['read', 'write-approved-scope', 'run-approved-commands', 'emit-events'] },
+];
+const BINDING_ENVIRONMENT: CompileWorkflowEnvironment = {
+  registry: REGISTRY,
+  declaredAgents: readDeclaredAgentDetails(REPO_ROOT),
+  executionProfiles: PROFILES,
+  availableRuntimes: new Set<'claude' | 'codex'>(['claude', 'codex']),
+};
+
+/** Stage order is the run's structure: a single chain, so no path can route around a gate. */
+const STAGES: Array<[string, string, string, string[], 'T2' | 'T3', string]> = [
+  ['idea', 'Generate ranked idea briefs', 'research:idea-briefs', [], 'T2', 'fyt-story'],
+  ['story', 'Research the picked idea and write the full long-form script', 'draft:long-form-script', ['idea'], 'T2', 'fyt-story'],
+  ['judge-gate', 'Fresh-context acceptance verdict on the script', 'review:script-verdict', ['story'], 'T2', 'fyt-checker'],
+  ['packaging', 'Derive the shorts bench and author the metadata', 'draft:packaging', ['judge-gate'], 'T2', 'fyt-story'],
+  ['visual-plan', 'Author the full shot list, motion plan, and lint', 'build:visual-plan', ['packaging'], 'T2', 'fyt-visuals'],
+  ['images', 'Generate the on-style stills for the slice', 'build:images', ['visual-plan'], 'T2', 'fyt-visuals'],
+  ['image-review', 'Review every generated still and build the shot board', 'review:image-board', ['images'], 'T2', 'fyt-checker'],
+  ['audio', 'Generate narration and author the audio plan for the slice', 'build:audio', ['image-review'], 'T2', 'fyt-audio-render'],
+  ['render', 'Assemble the finished cut for the slice', 'build:render', ['audio'], 'T2', 'fyt-audio-render'],
+  ['verify', 'Verify the render and run the compliance report', 'verify:render-compliance', ['render'], 'T2', 'fyt-checker'],
+  ['publish-private', 'Upload the finished cut as private', 'publish:private-upload', ['verify'], 'T3', 'fyt-publish'],
+];
 
 describe('video-run workflow definition (compile-proof)', () => {
   it('is loaded from the real org file on disk, never from an inline copy', () => {
@@ -79,7 +115,9 @@ describe('video-run workflow definition (compile-proof)', () => {
     // profile onto the proposal — see the compiled-proposal assertion further down, which is the one
     // that actually guards `compile.ts`'s `profile: def.profile`.
     expect(parsed.value.profile).toBe('producer');
-    expect(parsed.value.stages).toHaveLength(14);
+    expect(parsed.value.stages).toHaveLength(11);
+    expect(parsed.value.parameters).toEqual(['channel', 'slug', 'slice']);
+    expect(parsed.value.manager).toEqual({ agentId: 'fyt-runner', profileId: 'manager:claude:claude-fable-5' });
   });
 
   it('pins every stage id and title the dashboard launches from', () => {
@@ -89,22 +127,12 @@ describe('video-run workflow definition (compile-proof)', () => {
     const parsed = parseWorkflowDef(VIDEO_RUN_DEF, { knownProfiles: KNOWN_PROFILES });
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
-    expect(parsed.value.stages.map((s) => [s.id, s.title])).toEqual([
-      ['idea', 'Pick and brief one video idea'],
-      ['research', 'Research the picked idea into a sourced dossier'],
-      ['script', 'Write the long-form voiceover script'],
-      ['judge-gate', 'Fresh-eyes acceptance gate on the script'],
-      ['shorts', 'Derive the short-form bench'],
-      ['metadata', 'Author publishing metadata (no upload)'],
-      ['shots', 'Build the visual shot list and prompts'],
-      ['motion', 'Plan the per-shot motion layers'],
-      ['images', 'Generate the on-style stills (SPENDS REAL MONEY)'],
-      ['image-review', 'Batched review of every generated still (the image gate)'],
-      ['voiceover', 'Generate the narration audio (paid TTS)'],
-      ['audio-plan', 'Author the unified audio plan'],
-      ['render', 'Assemble the finished cut (heavyweight)'],
-      ['verify', 'Verify the render against the manifests'],
-    ]);
+    expect(parsed.value.stages.map((s) => [s.id, s.title, s.action]))
+      .toEqual(STAGES.map(([id, title, action]) => [id, title, action]));
+    // Every stage is executable, not merely governed: an agent id plus the worker profile it binds
+    // through. `governedBy` remains, for display continuity only.
+    expect(parsed.value.stages.map((s) => [s.id, s.agentId, s.profileId, s.governedBy]))
+      .toEqual(STAGES.map(([id, , , , , agent]) => [id, agent, 'worker:claude:claude-fable-5', agent]));
   });
 
   it('rejects the definition when `producer` is not a server-owned profile', () => {
@@ -114,40 +142,40 @@ describe('video-run workflow definition (compile-proof)', () => {
     expect(parsed.detail).toContain("profile 'producer'");
   });
 
-  it('has the expected dependency graph shape (fan-out at judge-gate, convergence at render)', () => {
+  it('is a single gated chain, so no path can route around a human gate', () => {
     const parsed = parseWorkflowDef(VIDEO_RUN_DEF, { knownProfiles: KNOWN_PROFILES });
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
     const deps = Object.fromEntries(parsed.value.stages.map((s) => [s.id, [...s.dependsOn].sort()]));
-    expect(deps.idea).toEqual([]);
-    expect(deps.research).toEqual(['idea']);
-    expect(deps.script).toEqual(['research']);
-    expect(deps['judge-gate']).toEqual(['script']);
-    // judge-gate fans out to the short bench, the metadata, the shot list, and the voiceover
-    expect(deps.shorts).toEqual(['judge-gate']);
-    expect(deps.metadata).toEqual(['judge-gate']);
-    expect(deps.shots).toEqual(['judge-gate']);
-    expect(deps.voiceover).toEqual(['judge-gate']);
-    // shots -> motion + images
-    expect(deps.motion).toEqual(['shots']);
-    expect(deps.images).toEqual(['shots']);
-    expect(deps['image-review']).toEqual(['images', 'motion']);
-    // audio-plan converges script + shots + voiceover: the audio-director skill reads script.md and
-    // shots.json as well as the voiceover, so depending on voiceover alone under-declared its inputs.
-    expect(deps['audio-plan']).toEqual(['script', 'shots', 'voiceover']);
-    // render converges the production artifacts; verify follows render
-    expect(deps.render).toEqual(['audio-plan', 'image-review', 'metadata', 'motion', 'shorts']);
-    expect(deps.verify).toEqual(['render']);
+    // The spec draws packaging ∥ visual-plan; they are deliberately serialized here because a
+    // parallel branch out of judge-gate would run visual-plan WITHOUT passing the G1 script gate
+    // (gates block only the stage that declares them). visual-prompt-writer runs after metadata
+    // anyway, so the serialization costs nothing and buys the structural halt.
+    expect(deps).toEqual(Object.fromEntries(STAGES.map(([id, , , dependsOn]) => [id, [...dependsOn].sort()])));
+    // Gates are declared on the stage they must hold back — the stage AFTER the judged work, because
+    // `execution.ts#stageBoundary` evaluates a stage's gates before it prepares any attempt for it.
+    expect(Object.fromEntries(parsed.value.stages
+      .filter((s) => s.humanGates?.length)
+      .map((s) => [s.id, s.humanGates?.map((gate) => gate.id)]))).toEqual({
+      story: ['g0-idea-pick'],
+      packaging: ['g1-script'],
+      images: ['g2-visual-plan'],
+      audio: ['g3-image-board'],
+      'publish-private': ['g4-publish-private'],
+    });
+    // Exactly ONE gate authorizes cost, and it sits on the paid-generation stage itself.
+    expect(parsed.value.stages.flatMap((s) => (s.humanGates ?? [])
+      .filter((gate) => gate.spendAuthorization === true)
+      .map((gate) => `${s.id}:${gate.id}`))).toEqual(['images:g2-visual-plan']);
+    expect(parsed.value.stages.flatMap((s) => s.humanGates ?? []).every((gate) => gate.kind === 'approval')).toBe(true);
   });
 
-  it('classifies every stage to a T2 floor and never lowers it (all actions in registry namespaces)', () => {
+  it('keeps every stage at or above its classified floor, with only the upload at T3', () => {
     const parsed = parseWorkflowDef(VIDEO_RUN_DEF, { knownProfiles: KNOWN_PROFILES });
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
-    for (const stage of parsed.value.stages) {
-      expect(stage.classifiedFloor).toBe('T2');
-      expect(stage.riskTier).toBe('T2');
-    }
+    expect(parsed.value.stages.map((s) => [s.id, s.classifiedFloor, s.riskTier]))
+      .toEqual(STAGES.map(([id, , , , riskTier]) => [id, riskTier, riskTier]));
   });
 
   it('lifts an under-declared render stage back to its T2 floor (floor preserved through parse)', () => {
@@ -169,21 +197,33 @@ describe('video-run workflow definition (compile-proof)', () => {
     const parsed = parseWorkflowDef(VIDEO_RUN_DEF, { knownProfiles: KNOWN_PROFILES });
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
-    const compiled = compileWorkflowDef(parsed.value, { registry: REGISTRY });
+    const compiled = compileWorkflowDef(parsed.value, BINDING_ENVIRONMENT);
     expect(compiled.ok).toBe(true);
     if (!compiled.ok) return;
-    expect(compiled.value.stages).toHaveLength(14);
+    expect(compiled.value.stages).toHaveLength(11);
     expect(compiled.value.project).toBe('faceless-youtube');
     expect(compiled.value.proposalId).toMatch(/^wf-[a-f0-9]{48}$/);
     expect(compiled.value.governanceRefs).toContain('orgs/faceless-youtube/contract.md');
-    // manager routes to opus, workers to sonnet, from the registry
-    expect(compiled.value.manager.model).toBe('claude-opus-4-8');
-    expect(compiled.value.stages.every((s) => s.worker.model === 'claude-sonnet-5')).toBe(true);
+    // Routing comes from the AUTHORED assignments now, not the compiler's default picks: the runner
+    // manages on Fable 5, every stage worker runs Fable 5 through its declared worker profile.
+    expect(compiled.value.manager.model).toBe('claude-fable-5');
+    expect(compiled.value.manager.assignment?.agentId).toBe('fyt-runner');
+    expect(compiled.value.stages.every((s) => s.worker.model === 'claude-fable-5')).toBe(true);
+    expect(compiled.value.stages.map((s) => s.assignment?.agentId)).toEqual(STAGES.map(([, , , , , agent]) => agent));
+    // The declared gates must reach the COMPILED stages: `compile.ts` hardcoded `humanGates: []` for
+    // its whole life, which made an org definition's declared halt structure unenforceable.
+    expect(compiled.value.stages.flatMap((s) => s.humanGates.map((gate) => [s.id, gate.id, gate.spendAuthorization ?? false]))).toEqual([
+      ['story', 'g0-idea-pick', false],
+      ['packaging', 'g1-script', false],
+      ['images', 'g2-visual-plan', true],
+      ['audio', 'g3-image-board', false],
+      ['publish-private', 'g4-publish-private', false],
+    ]);
     // The real definition's `producer` profile must land on the PROPOSAL, not merely in the parsed
     // def. Without `compile.ts`'s `profile: def.profile`, this workflow's workers spawn with no
     // --allowedTools at all, and every assertion above still passes.
     expect(compiled.value.profile).toBe('producer');
-    const validated = validatePlanProposal(compiled.value as unknown, REGISTRY);
+    const validated = validateServerCompiledPlanProposal(compiled.value as unknown, REGISTRY);
     expect(validated.ok).toBe(true);
     if (!validated.ok) return;
     expect(validated.value.profile).toBe('producer');
@@ -202,22 +242,43 @@ describe('video-run workflow definition (compile-proof)', () => {
       expect(VIDEO_RUN_DEF).not.toContain('Heavyweight local generation only');
     });
 
-    it('declares the images stage as paid, API-backed, and human-authorized per run', () => {
+    it('declares the images stage as paid, API-backed, ceilinged, and gated on G2', () => {
       const parsed = parseWorkflowDef(VIDEO_RUN_DEF, { knownProfiles: KNOWN_PROFILES });
       expect(parsed.ok).toBe(true);
       if (!parsed.ok) return;
       const images = parsed.value.stages.find((s) => s.id === 'images');
       expect(images).toBeDefined();
       const order = images?.workOrder ?? '';
-      expect(order).toContain('SPENDS REAL MONEY');
+      expect(order).toMatch(/cost-bearing/i);
       expect(order).toMatch(/Gemini image API/i);
-      expect(order).toMatch(/per-run human authorization recorded on a queue card/i);
+      expect(order).toMatch(/130-200 generation calls/);
+      expect(order).toMatch(/call ceiling/i);
+      // The authorization is the recorded G2 approval now, not a queue card — and the work order must
+      // say so, because the operator reads it to know what releases this stage.
+      expect(order).toMatch(/recorded approval of gate g2-visual-plan/i);
+      // The gate lives on THIS stage, so approving it and starting the paid work are the same event.
+      expect(images?.humanGates).toEqual([expect.objectContaining({ id: 'g2-visual-plan', spendAuthorization: true })]);
     });
 
-    it('documents spend and the queue-card authorization in the prose body', () => {
-      expect(VIDEO_RUN_DEF).toMatch(/## Spend/);
+    it('documents the cost law and the single G2 authorization in the prose body', () => {
+      expect(VIDEO_RUN_DEF).toMatch(/## Cost law/);
       expect(VIDEO_RUN_DEF).toMatch(/ElevenLabs/);
-      expect(VIDEO_RUN_DEF).toMatch(/authorization recorded on a queue card/i);
+      expect(VIDEO_RUN_DEF).toMatch(/single authorization for both/i);
+      expect(VIDEO_RUN_DEF).toMatch(/spendAuthorization: true/);
+      // The audio stage spends too, and carries no gate of its own: the body must state exactly why
+      // that is safe, namely that it is reachable only through the G2-gated images stage.
+      const parsed = parseWorkflowDef(VIDEO_RUN_DEF, { knownProfiles: KNOWN_PROFILES });
+      expect(parsed.ok).toBe(true);
+      if (!parsed.ok) return;
+      expect(parsed.value.stages.find((s) => s.id === 'audio')?.workOrder)
+        .toMatch(/SAME recorded g2-visual-plan authorization/);
+    });
+
+    it('states where each gate is declared and what the machine pre-vet is', () => {
+      expect(VIDEO_RUN_DEF).toMatch(/g0-idea-pick/);
+      expect(VIDEO_RUN_DEF).toMatch(/g4-publish-private/);
+      expect(VIDEO_RUN_DEF).toMatch(/before\*? it prepares any attempt/i);
+      expect(VIDEO_RUN_DEF).toMatch(/author-never-grades/i);
     });
 
     it('documents the single-writer staging rule the conductor enforces', () => {
@@ -246,9 +307,23 @@ describe('video-run workflow definition (compile-proof)', () => {
       // The run wrote judge-verdict.md, not judge.md.
       expect(order('judge-gate')).toContain('judge-verdict.md');
       expect(order('judge-gate')).not.toMatch(/[^-]judge\.md/);
-      // The run wrote shorts/short-01.md ... short-05.md, not a single shorts.md.
-      expect(order('shorts')).toContain('shorts/short-01.md');
-      expect(order('shorts')).not.toContain('shorts.md');
+      // The run wrote shorts/short-NN.md, one file per short, not a single shorts.md.
+      expect(order('packaging')).toContain('shorts/short-NN.md');
+      expect(order('packaging')).not.toMatch(/[^-]shorts\.md/);
+      expect(order('packaging')).toContain('metadata.json');
+      expect(order('visual-plan')).toContain('shots.json');
+      expect(order('visual-plan')).toContain('shots.motion.json');
+      expect(order('audio')).toContain('audio-plan.json');
+      expect(order('verify')).toContain('compliance-report.md');
+      // The restricted-intent scanner in execution.ts parks any stage whose PROSE says `publish`.
+      // Only the upload stage may trip it (its action declares the intent); every other work order
+      // must state the gate without the trigger word, or the run parks permanently on a false
+      // positive (the PR #58 self-lint-report failure mode).
+      const gatedStages = ['idea', 'story', 'judge-gate', 'packaging', 'visual-plan', 'images', 'image-review', 'audio', 'render', 'verify'];
+      for (const id of gatedStages) {
+        expect(order(id), `${id} work order must not trip the restricted-intent prose scan`)
+          .not.toMatch(/(?:publish|publication|deploy|purchase|spend|payment|buy|credential|secret|api key|access token)/i);
+      }
     });
   });
 });

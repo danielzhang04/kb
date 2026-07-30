@@ -86,9 +86,15 @@ describe('patchWorkflowAssignment', () => {
   it('handles the committed faceless-youtube video-run definition without altering non-target bytes', () => {
     const path = fileURLToPath(new URL('../../../orgs/faceless-youtube/workflows/video-run.md', import.meta.url));
     const actual = readFileSync(path, 'utf8');
-    const patched = patchWorkflowAssignment(actual, { kind: 'stage', stageId: 'research' }, { agentId: 'writer', profileId: 'worker:claude:claude-sonnet-5' });
+    // The committed definition now assigns every stage, so this exercises REPLACEMENT of an existing
+    // pair rather than insertion — the same byte-exactness claim, on the shape that actually ships.
+    const patched = patchWorkflowAssignment(actual, { kind: 'stage', stageId: 'idea' }, { agentId: 'writer', profileId: 'worker:claude:claude-sonnet-5' });
     expect(patched).not.toBeNull();
-    expect(patched!.source.replace(/    agentId: writer\r?\n    profileId: worker:claude:claude-sonnet-5\r?\n/, '')).toBe(actual);
+    expect(patched!.oldAssignment).toEqual({ agentId: 'fyt-story', profileId: 'worker:claude:claude-fable-5' });
+    expect(patched!.source.replace(
+      /    agentId: writer(\r?\n)    profileId: worker:claude:claude-sonnet-5(\r?\n)/,
+      '    agentId: fyt-story$1    profileId: worker:claude:claude-fable-5$2',
+    )).toBe(actual);
   });
 });
 

@@ -4,175 +4,237 @@ project: faceless-youtube
 title: Produce one video (faceless pipeline)
 profile: producer
 governedBy: fyt-runner
-parameters: [channel, slug]
+manager:
+  agentId: fyt-runner
+  profileId: manager:claude:claude-fable-5
+parameters: [channel, slug, slice]
 stages:
   - id: idea
-    governedBy: fyt-preproduction
-    title: Pick and brief one video idea
-    action: research:idea
+    title: Generate ranked idea briefs
+    action: research:idea-briefs
     target: orgs/faceless-youtube/channels
     riskTier: T2
-    workOrder: "Invoke the idea-generator skill for this channel. Read dna.md + performance.md + idea-backlog.md, then write a ranked idea brief for one video into channels/<channel>/videos/<slug>/brief.md and pick the single idea to produce. No external calls, no spend."
-  - id: research
-    governedBy: fyt-preproduction
-    title: Research the picked idea into a sourced dossier
-    action: research:dossier
-    target: orgs/faceless-youtube/channels
-    riskTier: T2
-    dependsOn: [idea]
-    workOrder: "Invoke the researcher skill on the picked idea brief. Produce a sourced, verified dossier at channels/<channel>/videos/<slug>/research.md that the scriptwriter writes from. WebSearch/WebFetch only; cite every claim; take no external action."
-  - id: script
-    governedBy: fyt-preproduction
-    title: Write the long-form voiceover script
+    governedBy: fyt-story
+    agentId: fyt-story
+    profileId: worker:claude:claude-fable-5
+    workOrder: "Invoke the idea-generator skill for the <channel> channel. Read its dna.md, performance.md and idea-backlog.md, then write ranked, differentiated idea briefs for this run into channels/<channel>/videos/<slug>/brief.md. Author briefs only — the human picks and edits one at gate g0-idea-pick, which blocks the next stage until it is approved. Read-only local work; no external calls and no API cost. Ignore the <slice> parameter here: it scopes generation downstream, never planning."
+  - id: story
+    title: Research the picked idea and write the full long-form script
     action: draft:long-form-script
     target: orgs/faceless-youtube/channels
     riskTier: T2
-    dependsOn: [research]
-    workOrder: "Invoke the long-form-writer skill. Turn brief.md + research.md into the long-form voiceover script at channels/<channel>/videos/<slug>/script.md, following the channel storytelling grammar. Draft only. Stage under staging/ and let the conductor merge, per the single-writer rule below."
+    governedBy: fyt-story
+    agentId: fyt-story
+    profileId: worker:claude:claude-fable-5
+    dependsOn: [idea]
+    humanGates:
+      - id: g0-idea-pick
+        kind: approval
+        prompt: "GATE 0 — pick the idea. Read the ranked briefs in channels/<channel>/videos/<slug>/brief.md, edit the one you want produced, then approve to release research and scripting. Iterate in the fyt-story terminal first if the briefs are not there yet."
+    workOrder: "Invoke the researcher skill on the picked brief, then long-form-writer. Produce the sourced dossier at channels/<channel>/videos/<slug>/research.md (read-only web access, every claim cited) and the long-form voiceover script at channels/<channel>/videos/<slug>/script.md, following the channel storytelling grammar. Script the WHOLE video regardless of the <slice> the downstream stages will realize. Draft into channels/<channel>/videos/<slug>/staging/ and let fyt-runner merge, per the single-writer law in the body below. fyt-story never grades its own script."
   - id: judge-gate
+    title: Fresh-context acceptance verdict on the script
+    action: review:script-verdict
+    target: orgs/faceless-youtube/channels
+    riskTier: T2
     governedBy: fyt-checker
-    title: Fresh-eyes acceptance gate on the script
-    action: review:script-gate
+    agentId: fyt-checker
+    profileId: worker:claude:claude-fable-5
+    dependsOn: [story]
+    workOrder: "Invoke the proxy-judge skill as a fresh-context acceptance verdict on channels/<channel>/videos/<slug>/script.md, judged against the channel storytelling grammar and its calibration set. Write accept/revise/reject with reasons to channels/<channel>/videos/<slug>/judge-verdict.md. This is the machine pre-vet standing in front of gate g1-script: the human reads this verdict before approving. fyt-checker never reviews an artifact it authored and never converts an inconclusive read into a pass. The <slice> is irrelevant here — the whole script is judged."
+  - id: packaging
+    title: Derive the shorts bench and author the metadata
+    action: draft:packaging
     target: orgs/faceless-youtube/channels
     riskTier: T2
-    dependsOn: [script]
-    workOrder: "Invoke the proxy-judge skill as a fresh-context acceptance gate on script.md. Emit an accept/revise/reject verdict to channels/<channel>/videos/<slug>/judge-verdict.md. This gate stands where the human stands; a reject halts the run for a human decision BEFORE the images stage spends real money."
-  - id: shorts
-    governedBy: fyt-preproduction
-    title: Derive the short-form bench
-    action: draft:shorts
-    target: orgs/faceless-youtube/channels
-    riskTier: T2
+    governedBy: fyt-story
+    agentId: fyt-story
+    profileId: worker:claude:claude-fable-5
     dependsOn: [judge-gate]
-    workOrder: "Invoke the shorts-writer skill. Derive the self-contained vertical shorts bench from the accepted long-form script into ONE FILE PER SHORT at channels/<channel>/videos/<slug>/shorts/short-01.md, short-02.md, ... Draft only."
-  - id: metadata
-    governedBy: fyt-preproduction
-    title: Author publishing metadata (no upload)
-    action: draft:metadata
+    humanGates:
+      - id: g1-script
+        kind: approval
+        prompt: "GATE 1 — approve the script. Read channels/<channel>/videos/<slug>/script.md against fyt-checker's judge-verdict.md. Approving releases packaging and, behind it, the visual plan. Iterate with fyt-story in its terminal before approving if the script needs work."
+    workOrder: "Invoke the shorts-writer skill, then metadata-writer, against the approved script. Write one file per short to channels/<channel>/videos/<slug>/shorts/short-NN.md and the YouTube metadata (title plus challengers, description, tags, hashtags, chapters, pinned-comment copy) for the long-form and each short to channels/<channel>/videos/<slug>/metadata.json. Authoring only — this stage never uploads anything anywhere. Draft into channels/<channel>/videos/<slug>/staging/ for fyt-runner to merge. The <slice> does not narrow this stage: metadata covers the whole video."
+  - id: visual-plan
+    title: Author the full shot list, motion plan, and lint
+    action: build:visual-plan
     target: orgs/faceless-youtube/channels
     riskTier: T2
-    dependsOn: [judge-gate]
-    workOrder: "Invoke the metadata-writer skill. Write the YouTube publishing metadata (titles, description, tags, chapters, thumbnail concepts) for the long-form and each scripted short into channels/<channel>/videos/<slug>/metadata.json. This authors metadata only; it does NOT publish or upload."
-  - id: shots
-    governedBy: fyt-preproduction
-    title: Build the visual shot list and prompts
-    action: build:shot-list
-    target: orgs/faceless-youtube/channels
-    riskTier: T2
-    dependsOn: [judge-gate]
-    workOrder: "Invoke the visual-prompt-writer skill. Build the B-roll shot list + thumbnail generation prompts into channels/<channel>/videos/<slug>/shots.json from the accepted script, then re-lint. No pixel generation here. Stage under staging/shots.json; the conductor merges — shots.json is a single-writer file."
-  - id: motion
-    governedBy: fyt-preproduction
-    title: Plan the per-shot motion layers
-    action: build:motion-plan
-    target: orgs/faceless-youtube/channels
-    riskTier: T2
-    dependsOn: [shots]
-    workOrder: "Invoke the motion-planner skill. Read shots.json and emit the derived per-shot layer/motion plan at channels/<channel>/videos/<slug>/shots.motion.json. Planning only; no rendering. Stage under staging/shots.motion.json; the conductor merges — shots.motion.json is a single-writer file."
+    governedBy: fyt-visuals
+    agentId: fyt-visuals
+    profileId: worker:claude:claude-fable-5
+    dependsOn: [packaging]
+    workOrder: "Invoke the visual-prompt-writer skill, then motion-planner, then re-run the shot lint. visual-prompt-writer authors the FULL video's plan — never only the <slice>; the slice scopes what gets generated downstream, never what gets planned. Write channels/<channel>/videos/<slug>/shots.json and channels/<channel>/videos/<slug>/shots.motion.json into channels/<channel>/videos/<slug>/staging/ for fyt-runner to merge and re-lint — both are single-writer files. No pixels are generated here and no API is called."
   - id: images
-    governedBy: fyt-production
-    title: Generate the on-style stills (SPENDS REAL MONEY)
+    title: Generate the on-style stills for the slice
     action: build:images
     target: orgs/faceless-youtube/channels
     riskTier: T2
-    dependsOn: [shots]
-    workOrder: "Invoke the image-generation skill against the locked style bible. Materialize every plate/cutout still for shots.json into the video asset library. THIS STAGE SPENDS REAL MONEY on the paid Gemini image API (gemini-3-pro-image, billed per generated image) — a full long-form video runs roughly 130-200 generation calls, on the order of twenty US dollars. It therefore requires explicit per-run human authorization recorded on a queue card BEFORE it starts; without that recorded authorization, halt and ask. Honour the run's call ceiling and log actual spend."
+    governedBy: fyt-visuals
+    agentId: fyt-visuals
+    profileId: worker:claude:claude-fable-5
+    dependsOn: [visual-plan]
+    humanGates:
+      - id: g2-visual-plan
+        kind: approval
+        prompt: "GATE 2 — approve the visual plan, and with it this run's paid-generation authorization. Read the merged shots.json and shots.motion.json plus the lint result. Approving is the ONLY thing that releases paid image generation on this run, and it is also the recorded authorization for the narration API in the audio stage further down this same path. It authorizes nothing on any other run and nothing outside this run's declared call ceiling."
+        spendAuthorization: true
+    workOrder: "Invoke the image-generation skill against the channel's locked style bible, for the shots inside <slice> only. This is the run's one cost-bearing generation node: it calls the paid Gemini image API, billed per generated image. A full long-form video measures roughly 130-200 generation calls including retries; a two-minute slice is a small fraction of that. Honour the run's declared call ceiling, log the actual cost, and stop and ask rather than exceed it. This stage runs only on the recorded approval of gate g2-visual-plan above. fyt-visuals never reviews or stamps its own frames."
   - id: image-review
-    governedBy: fyt-runner
-    title: Batched review of every generated still (the image gate)
-    action: review:image-gate
+    title: Review every generated still and build the shot board
+    action: review:image-board
     target: orgs/faceless-youtube/channels
     riskTier: T2
-    dependsOn: [images, motion]
-    workOrder: "Run the batched image review that image-generation/SKILL.md specifies as prose — now a real DAG node, not an optional prose step. Open EVERY scene PNG under channels/<channel>/videos/<slug>/assets/scenes/ AND every layered shot's plate + cutouts, enumerating the full reviewable surface from the motion plan's cutout_layer_ids so nothing renders unreviewed (never just scenes/<shot-id>.png). Dispatch the three concurrent review mandates (identity/rig, fidelity, style) over the whole batch; transcribe every authored in-image line LETTER-BY-LETTER against the still_prompt and treat a garbled, misspelled or partial render as blocking; silence on any seeded or foreground figure is disallowed — each gets a forced PASS/FAIL. Write the shard rulings + merged.json under channels/<channel>/videos/<slug>/assets/_review/, then END by stamping channels/<channel>/videos/<slug>/assets/scenes/manifest.json review_status per shot — verified, or parked with its reasons — via image-generation/scripts/stamp_review.py. The artifact of this stage is the honestly-stamped manifest; the DAG is NOT satisfied by PNG files merely existing on disk. fyt-run-001 law: a stage never holds the gate that blocks its own work — this node is run by the conductor/orchestrator, NEVER by the generating agent, which grades its own frames leniently."
-  - id: voiceover
-    governedBy: fyt-production
-    title: Generate the narration audio (paid TTS)
-    action: build:voiceover
+    governedBy: fyt-checker
+    agentId: fyt-checker
+    profileId: worker:claude:claude-fable-5
+    dependsOn: [images]
+    workOrder: "Open EVERY still generated for the <slice> under channels/<channel>/videos/<slug>/assets/scenes/, plus every layered shot's plate and cutouts enumerated from the motion plan's cutout_layer_ids, so nothing reaches a render unreviewed. Run the three review mandates (identity/rig, fidelity, style) across the batch; transcribe every authored in-image line letter-by-letter against its still_prompt and treat a garbled, misspelled or partial render as blocking; every seeded or foreground figure gets a forced PASS or FAIL — silence is disallowed. Write the shard rulings and merged.json under channels/<channel>/videos/<slug>/assets/_review/, stamp channels/<channel>/videos/<slug>/assets/scenes/manifest.json review_status per shot (verified, or parked with its reasons) via image-generation/scripts/stamp_review.py, then build the human-facing board with the shot-board skill. The artifact of this stage is the honestly-stamped manifest plus board.html — PNGs merely existing on disk satisfy nothing. A stage never holds the gate that blocks its own work: fyt-visuals generated these frames and never grades them."
+  - id: audio
+    title: Generate narration and author the audio plan for the slice
+    action: build:audio
     target: orgs/faceless-youtube/channels
     riskTier: T2
-    dependsOn: [judge-gate]
-    workOrder: "Invoke the voiceover skill. Turn script.md (and each publish-tagged short) into narration audio plus a manifest under channels/<channel>/videos/<slug>/ that render-builder syncs visuals to. This calls the paid ElevenLabs TTS API and is covered by the same per-run authorization as the images stage. Heavyweight TTS; no publish."
-  - id: audio-plan
-    governedBy: fyt-production
-    title: Author the unified audio plan
-    action: build:audio-plan
-    target: orgs/faceless-youtube/channels
-    riskTier: T2
-    dependsOn: [script, shots, voiceover]
-    workOrder: "Invoke the audio-director skill. It reads script.md AND shots.json AND the voiceover manifest — placement is a judgment grounded in all three. Author the unified audio plan (SFX, pauses, music beds, dry spans) at channels/<channel>/videos/<slug>/audio-plan.json. Planning only. Stage under staging/audio-plan.json; the conductor merges — audio-plan.json is a single-writer file."
+    governedBy: fyt-audio-render
+    agentId: fyt-audio-render
+    profileId: worker:claude:claude-fable-5
+    dependsOn: [image-review]
+    humanGates:
+      - id: g3-image-board
+        kind: approval
+        prompt: "GATE 3 — approve the shot board. Open channels/<channel>/videos/<slug>/assets/board.html and read fyt-checker's stamped manifest: verified versus parked, shot by shot. Approving releases narration and the audio plan. Send parked shots back to fyt-visuals for regeneration before approving."
+    workOrder: "Invoke the voiceover skill, then audio-director, for the <slice>. Turn the script's slice range into narration audio plus channels/<channel>/videos/<slug>/assets/voiceover.manifest.json that the render syncs visuals to, then author the unified SFX, pause, music-bed and dry-span plan at channels/<channel>/videos/<slug>/audio-plan.json. The paid narration API called here is covered by the SAME recorded g2-visual-plan authorization: this stage is reachable only through the g2-gated images stage, and it carries no separate authorization of its own. audio-plan.json is a single-writer file — stage it under channels/<channel>/videos/<slug>/staging/ for fyt-runner to merge and re-lint."
   - id: render
-    governedBy: fyt-production
-    title: Assemble the finished cut (heavyweight)
+    title: Assemble the finished cut for the slice
     action: build:render
     target: orgs/faceless-youtube/channels
     riskTier: T2
-    dependsOn: [metadata, shorts, motion, image-review, audio-plan]
-    workOrder: "Invoke the render-builder skill. Assemble the finished MP4(s) for the long-form and each publish-tagged short via the local Remotion engine from shots.json + the verified stills + the voiceover audio + the audio plan into channels/<channel>/videos/<slug>/. Local render, no API spend; first runs stay orchestrator-driven. Produces local files only; it does NOT upload or publish."
+    governedBy: fyt-audio-render
+    agentId: fyt-audio-render
+    profileId: worker:claude:claude-fable-5
+    dependsOn: [audio]
+    workOrder: "Invoke the render-builder skill to assemble the <slice> into channels/<channel>/videos/<slug>/final.mp4 and each short MP4, via the local Remotion engine, from the merged shots.json, the verified stills, the narration audio and audio-plan.json. Local compute only — no external API is called and no cost is incurred. Write channels/<channel>/videos/<slug>/render.manifest.json. This produces local files; it never uploads them. fyt-audio-render does not verify its own cut."
   - id: verify
-    governedBy: fyt-checker
-    title: Verify the render against the manifests
-    action: verify:render
+    title: Verify the render and run the compliance report
+    action: verify:render-compliance
     target: orgs/faceless-youtube/channels
     riskTier: T2
+    governedBy: fyt-checker
+    agentId: fyt-checker
+    profileId: worker:claude:claude-fable-5
     dependsOn: [render]
-    workOrder: "Invoke render-builder's verification pass on the rendered output: confirm the MP4(s) exist, match the shot/audio manifests, and clear the no-slop bar. Write a pass/fail note to channels/<channel>/videos/<slug>/render-verify.md. No publish; a human reviews before any upload, which is out of this workflow."
+    workOrder: "Run render-builder's verification pass over the rendered <slice>: confirm the MP4s exist, match the shot and audio manifests, and clear the no-slop bar; write the pass/fail note to channels/<channel>/videos/<slug>/render-verify.md. Then invoke the compliance-check skill for the mechanical and provenance report at channels/<channel>/videos/<slug>/compliance-report.md (PASS or FAIL, with the failing checks named). fyt-audio-render built this cut and does not verify it. These two reports are the machine pre-vet the human reads at GATE 4 before the private upload is authorized."
+  - id: publish-private
+    title: Upload the finished cut as private
+    action: publish:private-upload
+    target: orgs/faceless-youtube/channels
+    riskTier: T3
+    governedBy: fyt-publish
+    agentId: fyt-publish
+    profileId: worker:claude:claude-fable-5
+    dependsOn: [verify]
+    humanGates:
+      - id: g4-publish-private
+        kind: approval
+        prompt: "GATE 4 — render and compliance approved. Read channels/<channel>/videos/<slug>/render-verify.md and compliance-report.md, watch the cut, then approve to authorize the PRIVATE upload. This approval covers a private upload only: the public flip and the thumbnail set stay human-only in YouTube Studio and are not part of this run."
+    workOrder: "Invoke the publish-queue skill to upload the finished <slice> cut for channels/<channel>/videos/<slug>/ to YouTube as PRIVATE, only after gate g4-publish-private is approved and compliance-report.md reads PASS. Record the resulting video id and its private state back into the video folder. Flipping a video public and setting its thumbnail are Studio actions a human performs — this stage never performs them. Analytics is fyt-publish's standing duty outside this DAG, not a stage here."
 ---
 
 # video-run — produce one faceless-YouTube video
 
-Runs this project's pipeline to produce ONE video from a picked idea through a verified render. The
-channel and the video slug are supplied at launch time (like the research-brief template's topic);
-wherever a work order says channels/<channel>/videos/<slug>/, substitute the launch-supplied values.
+Runs this project's pipeline to produce ONE video, from a fresh idea through a private upload. The
+channel, the video slug, and the slice are supplied at launch; wherever a work order says
+`channels/<channel>/videos/<slug>/`, substitute the launch-supplied values.
 
-The real on-disk tree is channels/<channel>/videos/<slug>/ — for example
-channels/the-second-take/videos/2026-07-19-wells-fargo/. There is no orgs/faceless-youtube/videos
-directory; an earlier revision of this definition claimed one and was wrong.
+The real on-disk tree is `channels/<channel>/videos/<slug>/` — for example
+`channels/the-second-take/videos/2026-07-19-wells-fargo/`. There is no `orgs/faceless-youtube/videos`
+directory.
 
-The DAG mirrors the pipeline skills: idea -> research -> script -> judge-gate, then the accepted script
-fans out into the short-form bench, the publishing metadata, and the visual shot list; shots feed the
-motion plan and the still generation; the generated stills then pass the batched image-review gate
-(which reads the motion plan to enumerate every plate + cutout) before anything renders; the script
-feeds the voiceover; the audio plan converges the script, the shot list and the voiceover; and
-everything converges on render + verify.
+## Launch parameters
 
-## Spend
+- `channel` — the channel folder under `channels/`. Agents carry no channel doctrine; they load
+  `channels/<channel>/dna.md`, its grammar and its style data as DATA at spawn. Any agent runs
+  equivalently on any channel.
+- `slug` — the video folder, `YYYY-MM-DD-topic`.
+- `slice` — the shot/time subrange that gets *realized*. Planning stages (idea, story, judge-gate,
+  packaging, visual-plan) always cover the WHOLE video; only images, audio, render and the private
+  upload are scoped to the slice. A maiden or trial run uses about two minutes.
 
-**This workflow is not free.** Two stages call paid external APIs on the project's ambient keys:
+## The roster
 
-- **images** — the paid Gemini image API (gemini-3-pro-image), billed per generated image. A full
-  8-15 minute long-form video runs roughly 130-200 generation calls including retries, which comes to
-  roughly seventeen US dollars for a typical run and about twenty-seven at the 200-call working
-  ceiling. Measured evidence: the 2026-07-19 wells-fargo run's image-generation lab notes.
-- **voiceover** — the paid ElevenLabs TTS API.
+Six agents, each owning whole stages end to end: `fyt-runner` (conductor and single-writer merger),
+`fyt-story` (idea → script → shorts → metadata), `fyt-visuals` (shots → motion → stills),
+`fyt-audio-render` (narration → audio plan → render), `fyt-publish` (private upload), and
+`fyt-checker`, which is not a phase but the cross-cutting fresh-context gate service standing in
+front of every human gate.
 
-Both stages require **explicit per-run human authorization recorded on a queue card** before they
-start. An agent that reaches the images stage without such a card on the run's parent must halt and
-ask, not proceed. Log actual spend; do not rely on the daily budget gate to catch it, because image
-spend is not currently written to the cost ledger.
+## The gates (G0–G4) and where they are declared
 
-Every other stage is language or local compute and carries no marginal API cost.
+A stage's `humanGates` block **that stage**: the control plane evaluates a stage's declared gates
+*before* it prepares any attempt for it. So each gate is declared on the stage it must hold back —
+which is the stage AFTER the work being judged, never the stage producing it. Read the table as
+"approving X releases Y":
 
-## Single-writer staging rule (load-bearing)
+| Gate | Judges the output of | Declared on (and therefore blocks) |
+| --- | --- | --- |
+| `g0-idea-pick` | idea | story |
+| `g1-script` | story + judge-gate | packaging |
+| `g2-visual-plan` | visual-plan | images |
+| `g3-image-board` | image-review | audio |
+| `g4-publish-private` | verify | publish-private |
+
+The DAG is deliberately a single chain, so no path routes around a gate: every stage downstream of
+an unapproved gate is unreachable, not merely discouraged. Each gate is pre-vetted by a machine
+check first — `fyt-checker`'s judge verdict, stamped manifest, render-verify and compliance report —
+so the human is always approving a reviewed artifact, never a raw one. Gates surface in the
+dashboard Inbox; iterate with the owning agent in its terminal, then approve there.
+
+## Cost law
+
+**This workflow is not free.** Two nodes call paid external APIs on the project's ambient keys:
+
+- **images** — the paid Gemini image API (`gemini-3-pro-image`), billed per generated image. A full
+  8–15 minute long-form video measures roughly 130–200 generation calls including retries, which is
+  on the order of seventeen US dollars for a typical run and about twenty-seven at the 200-call
+  working ceiling (measured: the 2026-07-19 wells-fargo run's image-generation lab notes). A
+  two-minute slice is a small fraction of that.
+- **audio** — the paid ElevenLabs TTS API for narration.
+
+**`g2-visual-plan` is the single authorization for both.** It is the only gate in this definition
+carrying `spendAuthorization: true`, it is declared on the `images` stage, and the `audio` stage is
+reachable only by passing through it. No second card, no second gate, no per-stage exception:
+approving any other gate authorizes nothing paid. Log actual cost — the daily budget guard will not
+catch image cost, because image cost is not written to the cost ledger today.
+
+Every other stage is language work or local compute and carries no marginal API cost.
+
+## Single-writer staging law (load-bearing)
 
 `shots.json`, `shots.motion.json`, `audio-plan.json` and the asset manifests are **single-writer**
 files. Stage agents do **not** write them directly. Each stage agent writes its output into
-`channels/<channel>/videos/<slug>/staging/`, and **only the conductor/orchestrator** merges staged
-output into the video root and then **re-lints** the merged result.
+`channels/<channel>/videos/<slug>/staging/`, and **only fyt-runner** merges staged output into the
+video root and then **re-lints** the merged result.
 
 This exists because parallel stages otherwise clobber each other's edits to the same shared JSON —
 two agents both writing `audio-plan.json` was an observed, real failure in this project. Skipping the
 merge-then-re-lint step ships plan-level logic errors straight into paid generation.
 
+## Author-never-grades
+
+No agent grades its own phase's output. `fyt-checker` owns all four machine gates — judge-gate,
+image-review, render-verify + compliance — and produces none of the artifacts it judges.
+`fyt-runner` conducts and merges but stamps nothing: a stage never holds the gate that blocks its
+own work, and neither does its dispatcher. `image-review` is a real DAG node with a stamped manifest
+as its artifact, not a prose step inside image generation — PNG files existing on disk satisfy
+nothing.
+
 ## Boundaries
 
-- **Publishing / upload is NOT a stage.** This workflow ends at a verified local render. Uploading to
-  YouTube is a separate, human-gated T3 step that does not exist in this definition, and the producer
-  profile carries no upload tool.
-- **Render + image + voiceover stages are heavyweight.** First runs stay orchestrator-driven; the
-  definition exists so the dashboard can launch later runs once the pipeline is warm.
-- **The judge-gate is a real gate.** A reject halts the run for a human decision before any
-  heavyweight production spends time, local resources, or money.
-- Handle no credentials as objects. Spend money ONLY on the images and voiceover stages, ONLY within
-  a per-run authorization recorded on a queue card, and never beyond that run's declared ceiling.
-  Take no external action beyond the researcher's read-only web access and those two authorized APIs.
+- **The upload is PRIVATE only.** Flipping a video public and setting its thumbnail are human-only
+  Studio actions outside this definition.
+- **Analytics is not a stage.** It is `fyt-publish`'s standing duty outside this DAG.
+- Handle no credentials as objects. Incur paid-API cost ONLY on the `images` and `audio` stages,
+  ONLY under the recorded `g2-visual-plan` approval, and never beyond that run's declared ceiling.
+  Take no external action beyond the researcher's read-only web access, those two paid APIs, and the
+  gated private upload.

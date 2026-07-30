@@ -145,6 +145,58 @@ describe('compileWorkflowDef', () => {
     expect(canonicalProposal(compiled.value)).toContain('"proposalId":"wf-5497530df05dc94e5ba8b528c2738d84e47666f60b52a076"');
   });
 
+  describe('declared human gates', () => {
+    const GATED = def([
+      'id: gated-run', 'project: kb-ops', 'title: Gated run', 'profile: research', 'stages:',
+      '  - id: draft', '    title: Draft', '    action: draft:thing', '    target: orgs/kb-ops/output', '    workOrder: Draft it.',
+      '  - id: spend', '    title: Spend', '    action: build:images', '    target: orgs/kb-ops/output', '    workOrder: Generate.', '    dependsOn: [draft]',
+      '    humanGates:', '      - id: g2-plan', '        kind: approval', '        prompt: Approve the plan.', '        spendAuthorization: true',
+      '  - id: after', '    title: After', '    action: implement:after', '    target: orgs/kb-ops/output', '    workOrder: Continue.', '    dependsOn: [spend]',
+      '    humanGates:', '      - id: g3-board', '        kind: approval', '        prompt: Approve the board.',
+    ].join('\n'));
+
+    it('threads the DECLARED gates onto the compiled stages instead of a hardcoded empty list', () => {
+      const compiled = compileWorkflowDef(GATED, { registry: REGISTRY });
+      expect(compiled.ok).toBe(true);
+      if (!compiled.ok) return;
+      expect(compiled.value.stages.map((stage) => [stage.id, stage.humanGates])).toEqual([
+        ['draft', []],
+        ['spend', [{ id: 'g2-plan', kind: 'approval', prompt: 'Approve the plan.', spendAuthorization: true }]],
+        ['after', [{ id: 'g3-board', kind: 'approval', prompt: 'Approve the board.' }]],
+      ]);
+      // The gates must survive the SERVER-COMPILED validator (the browser one refuses the field).
+      expect(validateServerCompiledPlanProposal(JSON.parse(JSON.stringify(compiled.value)), REGISTRY)).toMatchObject({ ok: true });
+    });
+
+    it('binds the gates into proposal identity so a gate edit forces re-approval', () => {
+      const compiled = compileWorkflowDef(GATED, { registry: REGISTRY });
+      const ungated = compileWorkflowDef(
+        { ...GATED, stages: GATED.stages.map(({ humanGates: _dropped, ...stage }) => stage as WorkflowStageDef) },
+        { registry: REGISTRY },
+      );
+      const spendDropped = compileWorkflowDef(
+        {
+          ...GATED,
+          stages: GATED.stages.map((stage) => (stage.id === 'spend'
+            ? { ...stage, humanGates: stage.humanGates?.map(({ spendAuthorization: _dropped, ...gate }) => gate) }
+            : stage)),
+        },
+        { registry: REGISTRY },
+      );
+      expect(compiled.ok && ungated.ok && spendDropped.ok).toBe(true);
+      if (!compiled.ok || !ungated.ok || !spendDropped.ok) return;
+      // Deleting a gate, or silently clearing its spend flag, must change the approved identity —
+      // otherwise the run's halt structure could be edited under an existing approval.
+      expect(ungated.value.proposalId).not.toBe(compiled.value.proposalId);
+      expect(spendDropped.value.proposalId).not.toBe(compiled.value.proposalId);
+      // ...while a definition that declares no gates keeps its historical identity exactly.
+      const legacy = compileWorkflowDef(SINGLE, { registry: REGISTRY });
+      expect(legacy.ok).toBe(true);
+      if (!legacy.ok) return;
+      expect(legacy.value.proposalId).toBe('wf-5497530df05dc94e5ba8b528c2738d84e47666f60b52a076');
+    });
+  });
+
   it('keeps ownership out of compiled routing, proposal identity, and canonical proposal bytes', () => {
     const governed = {
       ...SINGLE,

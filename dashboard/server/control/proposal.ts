@@ -98,6 +98,16 @@ export interface ProposalHumanGate {
   id: string;
   kind: HumanGateKind;
   prompt: string;
+  /**
+   * COMPILER-ONLY. When true, the human approval recorded against this gate IS the run's spend
+   * authorization for the gate's own stage (`policy.ts` `spendAuthorization`). Admitted only on a
+   * server-compiled proposal — an assistant- or browser-authored proposal that declares it is
+   * refused, exactly like `review`/`completionGate`. It is never a capability grant on its own: it
+   * ADDS a blocking approval boundary to the stage that carries it, and it authorizes nothing on any
+   * other stage. Only `kind: 'approval'` may carry it — an `input`/`review` response can never
+   * satisfy a spend requirement.
+   */
+  spendAuthorization?: boolean;
 }
 
 /** Compiler-only checker review contract. Browser proposals cannot carry this field. */
@@ -202,6 +212,8 @@ const ASSIGNMENT_FIELDS = new Set(['agentId', 'declarationPath', 'declarationHas
 const ARTIFACT_FIELDS = new Set(['id', 'path', 'description']);
 const CHECKPOINT_FIELDS = new Set(['id', 'label']);
 const HUMAN_GATE_FIELDS = new Set(['id', 'kind', 'prompt']);
+/** `spendAuthorization` is compiler-only; browser/assistant gates are held to HUMAN_GATE_FIELDS. */
+const COMPILED_HUMAN_GATE_FIELDS = new Set([...HUMAN_GATE_FIELDS, 'spendAuthorization']);
 const REVIEW_FIELDS = new Set(['subjectStageId', 'maxCreatorReworks', 'criteria']);
 const REVIEW_CRITERION_FIELDS = new Set(['id', 'description']);
 const COMPLETION_GATE_FIELDS = new Set(['id', 'kind', 'prompt', 'requiresReview']);
@@ -426,7 +438,11 @@ function validateCheckpoints(value: unknown, label: string): ProposalValidation<
   return { ok: true, value: result };
 }
 
-function validateHumanGates(value: unknown, label: string): ProposalValidation<ProposalHumanGate[]> {
+function validateHumanGates(
+  value: unknown,
+  label: string,
+  allowResolvedAssignments: boolean,
+): ProposalValidation<ProposalHumanGate[]> {
   if (!Array.isArray(value) || value.length > MAX_HUMAN_GATES) {
     return { ok: false, detail: `${label} must contain 0-${MAX_HUMAN_GATES} items` };
   }
@@ -437,7 +453,11 @@ function validateHumanGates(value: unknown, label: string): ProposalValidation<P
     const raw = value[index];
     const itemLabel = `${label}[${index}]`;
     if (!isRecord(raw)) return { ok: false, detail: `${itemLabel} must be an object` };
-    const fields = exactFields(raw, HUMAN_GATE_FIELDS, [...HUMAN_GATE_FIELDS]);
+    const fields = exactFields(
+      raw,
+      allowResolvedAssignments ? COMPILED_HUMAN_GATE_FIELDS : HUMAN_GATE_FIELDS,
+      [...HUMAN_GATE_FIELDS],
+    );
     if (fields) return { ok: false, detail: `${itemLabel}: ${fields}` };
     const id = validateId(raw.id, `${itemLabel}.id`);
     if (!id.ok) return id;
@@ -448,7 +468,24 @@ function validateHumanGates(value: unknown, label: string): ProposalValidation<P
     }
     const prompt = validateText(raw.prompt, `${itemLabel}.prompt`, 2_000);
     if (!prompt.ok) return prompt;
-    result.push({ id: id.value, kind: raw.kind as HumanGateKind, prompt: prompt.value });
+    let spendAuthorization: boolean | undefined;
+    if (Object.prototype.hasOwnProperty.call(raw, 'spendAuthorization')) {
+      if (typeof raw.spendAuthorization !== 'boolean') {
+        return { ok: false, detail: `${itemLabel}.spendAuthorization must be a boolean when present` };
+      }
+      // A non-approval response ('responded' on an input gate) must never read as a spend
+      // authorization, so the flag is only expressible on an approval gate.
+      if (raw.spendAuthorization && raw.kind !== 'approval') {
+        return { ok: false, detail: `${itemLabel}.spendAuthorization requires kind 'approval'` };
+      }
+      spendAuthorization = raw.spendAuthorization;
+    }
+    result.push({
+      id: id.value,
+      kind: raw.kind as HumanGateKind,
+      prompt: prompt.value,
+      ...(spendAuthorization === undefined ? {} : { spendAuthorization }),
+    });
   }
   return { ok: true, value: result };
 }
@@ -489,7 +526,7 @@ function validateStage(
   if (!artifacts.ok) return artifacts;
   const checkpoints = validateCheckpoints(value.checkpoints, `${label}.checkpoints`);
   if (!checkpoints.ok) return checkpoints;
-  const humanGates = validateHumanGates(value.humanGates, `${label}.humanGates`);
+  const humanGates = validateHumanGates(value.humanGates, `${label}.humanGates`, allowResolvedAssignments);
   if (!humanGates.ok) return humanGates;
   let assignment: ResolvedAgentAssignment | undefined;
   if (allowResolvedAssignments && Object.prototype.hasOwnProperty.call(value, 'assignment')) {

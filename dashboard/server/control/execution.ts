@@ -8,6 +8,7 @@ import {
   policyScopeForStage,
   type ExecutionProfile,
   type PolicyEnvironment,
+  type SpendAuthorizationState,
 } from './policy.ts';
 import { isSafeRepoRelativePath, proposalContentHash, type PlanProposal, type ProposalStage, type ResolvedAgentAssignment } from './proposal.ts';
 import type { AssignedAgentResolver, ResolvedAssignedAgent } from './agentAssignmentResolver.ts';
@@ -537,6 +538,36 @@ function restrictedIntent(stage: ProposalStage): { kind: 'refuse' | 'waiting'; r
     if (rule.pattern.test(prose)) return rule.prose;
   }
   return null;
+}
+
+/**
+ * Resolve the spend-authorization state of ONE stage from its own compiled gates and the run's own
+ * resolved human requests.
+ *
+ * Three properties this must keep, and how:
+ * - Stage-scoped: the request is matched by `stableHumanTitle('gate', stage.stageId, gate.id)`, so an
+ *   approval recorded on a DIFFERENT stage's gate can never authorize this one.
+ * - Gate-scoped: only gates carrying `spendAuthorization === true` are consulted, so approving an
+ *   unrelated (non-spend) gate on the SAME stage authorizes nothing.
+ * - Kind-scoped: only an `approved` decision counts. `responded` (the `input`-gate outcome) does not,
+ *   and the compiler already refuses `spendAuthorization` on any non-approval kind.
+ *
+ * Absent any declared spend gate the answer is `'none'` — the caller then passes no spend request at
+ * all and `evaluateExecutionPolicy` behaves exactly as it did before this existed.
+ */
+function stageSpendAuthorization(
+  detail: RunDetail,
+  stage: Stage,
+  proposalStage: ProposalStage,
+): SpendAuthorizationState {
+  const spendGates = proposalStage.humanGates.filter((gate) => gate.spendAuthorization === true);
+  if (spendGates.length === 0) return 'none';
+  const approved = spendGates.every((gate) => {
+    const title = stableHumanTitle('gate', stage.stageId, gate.id);
+    const request = detail.humanRequests.find((candidate) => candidate.stageRef === stage.stageRef && candidate.title === title);
+    return request?.state === 'resolved' && request.kind === 'approval' && request.response?.decision === 'approved';
+  });
+  return approved ? 'approved' : 'pending';
 }
 
 function getCurrentAttempt(detail: RunDetail, stage: Stage): Attempt | null {
@@ -1286,6 +1317,11 @@ export class AutomaticExecutionEngine {
       return restricted.kind === 'refuse' ? 'refused' : 'waiting';
     }
     const routing = effectiveWorkerRouting(detail, stage, proposalStage);
+    // A stage that declares a spend-authorization gate IS a spending stage: it is submitted to policy
+    // as one, and it clears only on that gate's own recorded approval. Declaring the gate therefore
+    // never widens anything — it adds a blocking boundary and then returns the stage to the same
+    // envelope it would have had with no declaration at all.
+    const spendAuthorization = stageSpendAuthorization(this.detail(input), stage, proposalStage);
     const decision = evaluateExecutionPolicy({
       project: input.proposal.project,
       riskTier: proposalStage.riskTier,
@@ -1298,6 +1334,7 @@ export class AutomaticExecutionEngine {
       governanceRefs: input.proposal.governanceRefs,
       proposalHash: this.detail(input).run.proposalHash,
       approvedHash: this.detail(input).run.proposalHash,
+      ...(spendAuthorization === 'none' ? {} : { requestsSpending: true, spendAuthorization }),
     }, policy);
     if (decision.disposition !== 'allow') {
       const title = stableHumanTitle('policy', stage.stageId, decision.reason);

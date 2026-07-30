@@ -203,6 +203,86 @@ describe('parseWorkflowDef', () => {
     });
   });
 
+  describe('declared human gates', () => {
+    const gated = (...lines: string[]) => SINGLE.replace('    riskTier: T2', ['    riskTier: T2', ...lines].join('\n'));
+
+    it('parses a closed gate list and omits the key entirely when a stage declares none', () => {
+      const result = parseWorkflowDef(md(gated(
+        '    humanGates:',
+        '      - id: g0-idea-pick',
+        '        kind: approval',
+        '        prompt: Pick and edit the idea brief.',
+        '      - id: g0-note',
+        '        kind: input',
+        '        prompt: Anything the writer should know?',
+      )), { knownProfiles: KNOWN });
+      expect(result).toMatchObject({ ok: true, value: { stages: [{ humanGates: [
+        { id: 'g0-idea-pick', kind: 'approval', prompt: 'Pick and edit the idea brief.' },
+        { id: 'g0-note', kind: 'input', prompt: 'Anything the writer should know?' },
+      ] }] } });
+      if (!result.ok) return;
+      // Absent (not `[]`) so an ungated definition compiles and hashes byte-identically to before.
+      const ungated = parseWorkflowDef(md(SINGLE), { knownProfiles: KNOWN });
+      expect(ungated.ok && ungated.value.stages[0]).not.toHaveProperty('humanGates');
+    });
+
+    it('rejects a malformed gate: unknown field, bad kind, empty prompt, or empty list', () => {
+      const cases: Array<[string[], RegExp]> = [
+        [['    humanGates:', '      - id: g0', '        kind: approval', '        prompt: Pick.', '        escalate: true'], /unknown field 'escalate'/],
+        [['    humanGates:', '      - id: g0', '        kind: governance-refusal', '        prompt: Pick.'], /kind must be approval, input, or review/],
+        [['    humanGates:', '      - id: g0', '        kind: intervention', '        prompt: Pick.'], /kind must be approval, input, or review/],
+        [['    humanGates:', '      - id: g0', '        kind: approval', '        prompt: ""'], /prompt must be a non-empty string/],
+        [['    humanGates:', '      - id: ../g0', '        kind: approval', '        prompt: Pick.'], /id must be a safe identifier/],
+        [['    humanGates: []'], /must contain 1-16 gates/],
+        [['    humanGates: g0'], /must be a list of gate mappings/],
+      ];
+      for (const [lines, detail] of cases) {
+        expect(parseWorkflowDef(md(gated(...lines)), { knownProfiles: KNOWN })).toMatchObject({ ok: false, detail: expect.stringMatching(detail) });
+      }
+    });
+
+    it('admits spendAuthorization ONLY on an approval gate', () => {
+      expect(parseWorkflowDef(md(gated(
+        '    humanGates:', '      - id: g2-visual-plan', '        kind: approval',
+        '        prompt: Approve the visual plan.', '        spendAuthorization: true',
+      )), { knownProfiles: KNOWN })).toMatchObject({ ok: true, value: { stages: [{ humanGates: [
+        { id: 'g2-visual-plan', kind: 'approval', spendAuthorization: true },
+      ] }] } });
+      // An `input` gate resolves on a 'responded' decision, which is not an approval; a `review` gate
+      // is a verdict on someone else's work. Neither may ever read as authorizing money.
+      for (const kind of ['input', 'review']) {
+        expect(parseWorkflowDef(md(gated(
+          '    humanGates:', '      - id: g2-visual-plan', `        kind: ${kind}`,
+          '        prompt: Approve the visual plan.', '        spendAuthorization: true',
+        )), { knownProfiles: KNOWN })).toMatchObject({ ok: false, detail: expect.stringMatching(/spendAuthorization requires kind 'approval'/) });
+      }
+      expect(parseWorkflowDef(md(gated(
+        '    humanGates:', '      - id: g2', '        kind: approval',
+        '        prompt: Approve.', '        spendAuthorization: yes-please',
+      )), { knownProfiles: KNOWN })).toMatchObject({ ok: false, detail: expect.stringMatching(/spendAuthorization must be a boolean/) });
+    });
+
+    it('requires gate ids to be unique across the whole workflow, not merely per stage', () => {
+      const twoStages = [
+        'id: gated', 'project: kb-ops', 'title: Gated', 'profile: research', 'stages:',
+        '  - id: first', '    title: First', '    action: implement:thing', '    target: orgs/kb-ops/output', '    workOrder: First',
+        '    humanGates:', '      - id: g1', '        kind: approval', '        prompt: Approve first.',
+        '  - id: second', '    title: Second', '    action: implement:next', '    target: orgs/kb-ops/output', '    workOrder: Second', '    dependsOn: [first]',
+        '    humanGates:', '      - id: GATE_ID', '        kind: approval', '        prompt: Approve second.',
+      ].join('\n');
+      expect(parseWorkflowDef(md(twoStages.replace('GATE_ID', 'g2')), { knownProfiles: KNOWN })).toMatchObject({ ok: true });
+      // Two stages sharing a gate id would make "g1 is approved" ambiguous about which stage it
+      // released — and an ambiguous spend gate is exactly the bypass this forbids.
+      expect(parseWorkflowDef(md(twoStages.replace('GATE_ID', 'g1')), { knownProfiles: KNOWN }))
+        .toMatchObject({ ok: false, detail: expect.stringMatching(/duplicate human gate id 'g1'/) });
+      // Within one stage, too.
+      const sameStage = twoStages.replace(
+        '      - id: GATE_ID', '      - id: g1',
+      );
+      expect(parseWorkflowDef(md(sameStage), { knownProfiles: KNOWN })).toMatchObject({ ok: false });
+    });
+  });
+
   it('parses a closed assigned review checker with readonly override and completion gate', () => {
     const fm = [
       'id: checker', 'project: kb-ops', 'title: Checker', 'profile: research', 'stages:',

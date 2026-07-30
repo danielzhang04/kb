@@ -30,6 +30,8 @@ const MAX_WORK_ORDER_CHARS = 64 * 1024;
 const MAX_DESCRIPTION_CHARS = 64 * 1024;
 const MAX_GATE_PROMPT_CHARS = 2_000;
 const MAX_REVIEW_CRITERIA = 16;
+/** Bound mirrors proposal.ts MAX_HUMAN_GATES so a def can never compile to an over-budget stage. */
+const MAX_STAGE_HUMAN_GATES = 16;
 /** Read-scope list bound — mirrors proposal.ts MAX_LIST_ITEMS (64) so a def can never compile to an
  * over-budget `scope.read` the proposal validator would reject. */
 const MAX_READ_SCOPE_ITEMS = 64;
@@ -136,6 +138,22 @@ export interface WorkflowStageDef {
   workflowProfile?: string;
   review?: WorkflowReviewDef;
   completionGate?: WorkflowCompletionGateDef;
+  /**
+   * Declared human gates that BLOCK this stage. `execution.ts#stageBoundary` evaluates a stage's
+   * gates BEFORE any attempt is prepared, so a gate declared here halts the stage it is written on
+   * until a human resolves it — declare a gate on the stage that must not run, never on the stage
+   * whose output is being judged. Omitted (not `[]`) when the stage declares none, so existing
+   * definitions hash and compile byte-identically.
+   */
+  humanGates?: WorkflowHumanGateDef[];
+}
+
+/** Declaration-side human gate. `spendAuthorization` is admissible only on an `approval` gate. */
+export interface WorkflowHumanGateDef {
+  id: string;
+  kind: 'approval' | 'input' | 'review';
+  prompt: string;
+  spendAuthorization?: boolean;
 }
 
 export interface WorkflowReviewCriterionDef { id: string; description: string; }
@@ -237,6 +255,65 @@ function validateAgentProfileAssignment(
   return { ok: true, value: { agentId, profileId } };
 }
 
+/**
+ * Validate a stage's optional `humanGates` list: a closed mapping per entry, a bounded prompt, and a
+ * `kind` from the declaration-side enum. Cross-stage id uniqueness is enforced once in
+ * `parseWorkflowDef` (a gate id is the run-visible handle a human approves; two stages sharing one id
+ * would make an approval ambiguous). `spendAuthorization` is admissible ONLY on an approval gate:
+ * an `input`/`review` response is not an approval, and must never read as authorizing spend.
+ */
+function validateHumanGates(
+  raw: unknown,
+  label: string,
+): { ok: true; value: WorkflowHumanGateDef[] } | { ok: false; detail: string } {
+  if (!Array.isArray(raw)) return { ok: false, detail: `${label} must be a list of gate mappings` };
+  if (raw.length === 0 || raw.length > MAX_STAGE_HUMAN_GATES) {
+    return { ok: false, detail: `${label} must contain 1-${MAX_STAGE_HUMAN_GATES} gates` };
+  }
+  const allowed = new Set(['id', 'kind', 'prompt', 'spendAuthorization']);
+  const kinds = new Set(['approval', 'input', 'review']);
+  const value: WorkflowHumanGateDef[] = [];
+  const seen = new Set<string>();
+  for (let index = 0; index < raw.length; index += 1) {
+    const entry = raw[index];
+    const itemLabel = `${label}[${index}]`;
+    if (!isRecord(entry)) return { ok: false, detail: `${itemLabel} must be a mapping` };
+    const unknownKey = Object.keys(entry).find((key) => !allowed.has(key));
+    if (unknownKey) return { ok: false, detail: `${itemLabel} has unknown field '${unknownKey}'` };
+    const id = asString(entry.id);
+    if (id === null || !SAFE_ID_RE.test(id)) {
+      return { ok: false, detail: `${itemLabel}.id must be a safe identifier of 1-${MAX_ID_CHARS} characters` };
+    }
+    if (seen.has(id)) return { ok: false, detail: `${label} must not contain the duplicate gate id '${id}'` };
+    seen.add(id);
+    const kind = asString(entry.kind);
+    if (kind === null || !kinds.has(kind)) {
+      return { ok: false, detail: `${itemLabel}.kind must be approval, input, or review` };
+    }
+    const prompt = asString(entry.prompt);
+    if (prompt === null || prompt.trim() === '' || prompt.length > MAX_GATE_PROMPT_CHARS || prompt.includes('\0')) {
+      return { ok: false, detail: `${itemLabel}.prompt must be a non-empty string of at most ${MAX_GATE_PROMPT_CHARS} characters` };
+    }
+    let spendAuthorization: boolean | undefined;
+    if (hasOwn(entry, 'spendAuthorization')) {
+      if (typeof entry.spendAuthorization !== 'boolean') {
+        return { ok: false, detail: `${itemLabel}.spendAuthorization must be a boolean when present` };
+      }
+      if (entry.spendAuthorization && kind !== 'approval') {
+        return { ok: false, detail: `${itemLabel}.spendAuthorization requires kind 'approval'` };
+      }
+      spendAuthorization = entry.spendAuthorization;
+    }
+    value.push({
+      id,
+      kind: kind as WorkflowHumanGateDef['kind'],
+      prompt,
+      ...(spendAuthorization === undefined ? {} : { spendAuthorization }),
+    });
+  }
+  return { ok: true, value };
+}
+
 function validateStage(
   raw: unknown,
   index: number,
@@ -246,7 +323,7 @@ function validateStage(
 ): { ok: true; value: WorkflowStageDef } | { ok: false; detail: string } {
   const label = `stages[${index}]`;
   if (!isRecord(raw)) return { ok: false, detail: `${label} must be a mapping` };
-  const allowed = new Set(['id', 'title', 'action', 'target', 'workOrder', 'dependsOn', 'riskTier', 'governedBy', 'agentId', 'profileId', 'workflowProfile', 'review', 'completionGate']);
+  const allowed = new Set(['id', 'title', 'action', 'target', 'workOrder', 'dependsOn', 'riskTier', 'governedBy', 'agentId', 'profileId', 'workflowProfile', 'review', 'completionGate', 'humanGates']);
   const unknownKey = Object.keys(raw).find((key) => !allowed.has(key));
   if (unknownKey) return { ok: false, detail: `${label} has unknown field '${unknownKey}'` };
 
@@ -399,6 +476,12 @@ function validateStage(
     }
     completionGate = { id: gateId, kind: 'approval', prompt, requiresReview: 'pass' };
   }
+  let humanGates: WorkflowHumanGateDef[] | undefined;
+  if (hasOwn(raw, 'humanGates')) {
+    const validated = validateHumanGates(raw.humanGates, `${label}.humanGates`);
+    if (!validated.ok) return validated;
+    humanGates = validated.value;
+  }
   return {
     ok: true,
     value: {
@@ -416,6 +499,7 @@ function validateStage(
       ...(workflowProfile ? { workflowProfile } : {}),
       ...(review ? { review } : {}),
       ...(completionGate ? { completionGate } : {}),
+      ...(humanGates ? { humanGates } : {}),
     },
   };
 }
@@ -484,11 +568,19 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
   }
   const stages: WorkflowStageDef[] = [];
   const ids = new Set<string>();
+  // A human gate id is the run-visible handle a person approves. Uniqueness is enforced across the
+  // WHOLE workflow, not per stage: two stages sharing a gate id would make "g2 is approved"
+  // ambiguous about which stage it released — and a spend gate must never be ambiguous.
+  const gateIds = new Set<string>();
   for (let index = 0; index < rawStages.length; index += 1) {
     const stage = validateStage(rawStages[index], index, description, project, options.knownProfiles);
     if (!stage.ok) return stage;
     if (ids.has(stage.value.id)) return { ok: false, detail: `duplicate stage id '${stage.value.id}'` };
     ids.add(stage.value.id);
+    for (const gate of stage.value.humanGates ?? []) {
+      if (gateIds.has(gate.id)) return { ok: false, detail: `duplicate human gate id '${gate.id}'` };
+      gateIds.add(gate.id);
+    }
     stages.push(stage.value);
   }
 
