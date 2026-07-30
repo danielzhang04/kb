@@ -1127,17 +1127,25 @@ describe('roster scoped per-run permissions', () => {
       write: ['orgs/faceless-youtube/channels'],
       tools: ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep'],
     });
+    // The pathspec grammar the installed CLI actually matches: bare absolute, drive letter kept, NO `//`
+    // prefix. A/B-verified against CLI 2.1.220 with an identical target — `Read(//C:/…/**)` is DENIED,
+    // `Read(C:/…/**)` is ALLOWED — so the `//` form these rules used to carry granted nothing at all.
     expect(settings.allow).toEqual([
-      'Read(//C:/state/control/roster/run-7/fyt-visuals/**)',
-      'Read(//C:/Users/danie/kb/orgs/faceless-youtube/**)',
-      'Read(//C:/Users/danie/kb/orgs/faceless-youtube/channels/**)',
-      'Glob(//C:/Users/danie/kb/orgs/faceless-youtube/**)',
-      'Glob(//C:/Users/danie/kb/orgs/faceless-youtube/channels/**)',
-      'Grep(//C:/Users/danie/kb/orgs/faceless-youtube/**)',
-      'Grep(//C:/Users/danie/kb/orgs/faceless-youtube/channels/**)',
-      'Write(//C:/Users/danie/kb/orgs/faceless-youtube/channels/**)',
-      'Edit(//C:/Users/danie/kb/orgs/faceless-youtube/channels/**)',
+      'Read(C:/state/control/roster/run-7/fyt-visuals/**)',
+      'Read(C:/Users/danie/kb/orgs/faceless-youtube/**)',
+      'Read(C:/Users/danie/kb/orgs/faceless-youtube/channels/**)',
+      'Glob(C:/Users/danie/kb/orgs/faceless-youtube/**)',
+      'Glob(C:/Users/danie/kb/orgs/faceless-youtube/channels/**)',
+      'Grep(C:/Users/danie/kb/orgs/faceless-youtube/**)',
+      'Grep(C:/Users/danie/kb/orgs/faceless-youtube/channels/**)',
+      'Write(C:/Users/danie/kb/orgs/faceless-youtube/channels/**)',
+      'Edit(C:/Users/danie/kb/orgs/faceless-youtube/channels/**)',
     ]);
+    // One grammar: the rule pathspec for a directory is byte-identical to its `additionalDirectories`
+    // entry, so a rule can never disagree with the working set it is supposed to describe.
+    for (const dir of settings.additionalDirectories) {
+      expect(settings.allow.some((rule) => rule.includes(`(${dir}/**)`))).toBe(true);
+    }
     expect(settings.additionalDirectories).toEqual([
       'C:/state/control/roster/run-7/fyt-visuals',
       'C:/Users/danie/kb/orgs/faceless-youtube',
@@ -1169,10 +1177,10 @@ describe('roster scoped per-run permissions', () => {
       tools: ['Read', 'Glob', 'Grep'],
     });
     expect(settings.allow).toEqual([
-      'Read(//state/control/roster/run-7/fyt-checker/**)',
-      'Read(//repo/orgs/faceless-youtube/**)',
-      'Glob(//repo/orgs/faceless-youtube/**)',
-      'Grep(//repo/orgs/faceless-youtube/**)',
+      'Read(/state/control/roster/run-7/fyt-checker/**)',
+      'Read(/repo/orgs/faceless-youtube/**)',
+      'Glob(/repo/orgs/faceless-youtube/**)',
+      'Grep(/repo/orgs/faceless-youtube/**)',
     ]);
     expect(settings.allow.some((rule) => rule.startsWith('Write(') || rule.startsWith('Edit('))).toBe(false);
   });
@@ -1186,8 +1194,8 @@ describe('roster scoped per-run permissions', () => {
       tools: ['Read', 'Write'],
     });
     expect(settings.allow).toEqual([
-      'Read(//state/agent/**)',
-      'Read(//repo/orgs/faceless-youtube/**)',
+      'Read(/state/agent/**)',
+      'Read(/repo/orgs/faceless-youtube/**)',
     ]);
   });
 
@@ -1230,12 +1238,12 @@ describe('roster scoped per-run permissions', () => {
     };
     // Full-auto per Daniel's 2026-07-30 ruling: no tool prompts at all in a roster terminal.
     expect(parsed.permissions.defaultMode).toBe('bypassPermissions');
-    expect(parsed.permissions.allow).toContain(`Read(//state/control/roster/${runRef}/fyt-story/**)`);
-    expect(parsed.permissions.allow).toContain('Read(//repo/orgs/faceless-youtube/**)');
-    expect(parsed.permissions.allow).toContain('Edit(//repo/orgs/faceless-youtube/channels/**)');
+    expect(parsed.permissions.allow).toContain(`Read(/state/control/roster/${runRef}/fyt-story/**)`);
+    expect(parsed.permissions.allow).toContain('Read(/repo/orgs/faceless-youtube/**)');
+    expect(parsed.permissions.allow).toContain('Edit(/repo/orgs/faceless-youtube/channels/**)');
     // Nothing outside the canonical repo root or this agent's own roster directory.
     for (const rule of parsed.permissions.allow) {
-      expect(rule).toMatch(new RegExp(`\\(//(repo/orgs/faceless-youtube|state/control/roster/${runRef}/fyt-story)`));
+      expect(rule).toMatch(new RegExp(`\\(/(repo/orgs/faceless-youtube|state/control/roster/${runRef}/fyt-story)`));
     }
     const launch = host.writes.get(sessionIdFor(sessions, runRef, 'fyt-story'))?.[0] ?? '';
     expect(norm(launch)).toContain(`--settings "/state/control/roster/${runRef}/fyt-story/settings.json"`);

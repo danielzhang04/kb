@@ -494,16 +494,24 @@ function absoluteDir(root: string, relative?: string): string {
 }
 
 /**
- * Anchor an absolute directory as a filesystem-ABSOLUTE Claude Code rule pathspec: a leading `//` marks a
- * pathspec filesystem-absolute (a single leading `/` anchors at the settings source instead), Windows
- * backslashes become forward slashes, and the drive letter is preserved — the grammar
- * `claudeWorkerAdapter.ts#absoluteReadDenyRule` already emits, verified against
- * code.claude.com/docs/en/permissions.md. The path's own leading separator is folded into the marker, so
- * a POSIX root `/repo` yields `//repo/...` rather than a meaningless `///repo/...`; a Windows root
- * `C:/Users/danie/kb` has no leading separator and is byte-identical to the existing helper's output.
+ * Anchor an absolute directory as a Claude Code rule pathspec — the SAME string this file hands to
+ * `additionalDirectories` for the same directory, so there is exactly one path grammar here.
+ *
+ * THIS USED TO PREFIX `//` and every rule it built was silently inert. The `//` marker is what
+ * code.claude.com/docs/en/permissions.md describes for a filesystem-absolute pathspec, and it is what
+ * `claudeWorkerAdapter.ts#absoluteReadDenyRule` emits — but that helper's rules are documented there as
+ * dormant deny-only future-proofing, so nothing ever load-bore them. Here they were load-bearing, and an
+ * A/B against the installed CLI (2.1.220, identical target and prompt, only the prefix differing) proved
+ * the form never matches on Windows: `Read(//C:/…/**)` DENIED, `Read(C:/…/**)` ALLOWED. The drive letter
+ * already makes a Windows pathspec unambiguous, so the marker buys nothing and costs everything.
+ *
+ * A POSIX root (`/repo`) is emitted the same way, as the plain absolute path. If some host's CLI were to
+ * resolve that single leading `/` relative to the settings source instead of the filesystem root, the
+ * rule degrades to inert — the fail-CLOSED direction, and identical to today's behaviour on every
+ * platform. It can never widen a grant. This daemon runs on Windows, which is the verified case.
  */
 function absoluteRulePath(root: string, relative?: string): string {
-  return `//${absoluteDir(root, relative).replace(/^\/+/, '')}`;
+  return absoluteDir(root, relative);
 }
 
 export interface RosterPermissionInput {
@@ -553,8 +561,10 @@ export interface RosterPermissionSettings {
  * WHAT IT ALSO WRITES, NOW AS DECLARED INTENT RATHER THAN CONTAINMENT (harmless under bypass, since
  * `defaultMode` supersedes them — kept for legibility of what each agent was actually scoped to do):
  *  - `permissions.allow` rules for the scoped file tools, over the stage's ALREADY-DECLARED
- *    `scope.read ∪ scope.write` (reads) and `scope.write` (writes), each rule anchored `//`-absolute at
- *    the canonical repo root. A tool the server-owned workflow profile does not grant produces no rule.
+ *    `scope.read ∪ scope.write` (reads) and `scope.write` (writes), each rule anchored at the canonical
+ *    repo root in the pathspec grammar the installed CLI actually matches (see
+ *    {@link absoluteRulePath} — the `//`-prefixed form these rules used to carry matched NOTHING on
+ *    Windows). A tool the server-owned workflow profile does not grant produces no rule.
  *  - `Read` over this agent's own roster directory — the control plane's order channel (`binding.md`
  *    plus `orders/*.md`). This is the one grant that is not repo scope, and it is the narrowest possible
  *    form of it: one agent, one run, read-only, deleted when the roster retires.
