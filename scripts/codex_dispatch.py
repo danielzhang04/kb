@@ -60,15 +60,40 @@ def resolve_model(repo_root: Path, model_arg: str) -> str:
     return routed.model
 
 
-def spawn(prompt_text: str, model: str, effort: str | None, cwd: Path,
-          sandbox: str, out_file: Path, log_file: Path) -> int:
-    cmd = [codex_bin(), "exec", "-", "--model", model, "--json",
-           "--output-last-message", str(out_file), "--cd", str(cwd), "-s", sandbox]
+def spawn(prompt_text: str, model: str | None, effort: str | None, cwd: Path,
+          sandbox: str, out_file: Path, log_file: Path,
+          follow_up: str | None = None) -> int:
+    if follow_up:
+        cmd = [codex_bin(), "exec", "resume", follow_up, "-", "--json",
+               "--output-last-message", str(out_file), "--cd", str(cwd), "-s", sandbox]
+    else:
+        cmd = [codex_bin(), "exec", "-", "--model", model, "--json",
+               "--output-last-message", str(out_file), "--cd", str(cwd), "-s", sandbox]
     if effort:
         cmd += ["-c", f"model_reasoning_effort={effort}"]
     with open(log_file, "wb") as log:
         return subprocess.run(cmd, input=prompt_text.encode("utf-8"),
                               stdout=log, stderr=subprocess.STDOUT).returncode
+
+
+def parse_thread_id(log_file: Path) -> str | None:
+    """Scan a dispatch's JSONL log for the first `thread.started` event and
+    return its thread_id, tolerating unparsable lines. None if never found."""
+    try:
+        text = log_file.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if event.get("type") == "thread.started" and event.get("thread_id"):
+            return event["thread_id"]
+    return None
 
 
 def ran_model(log_file: Path, fallback: str) -> str:
@@ -107,6 +132,7 @@ def build_record(args, repo_root: Path, dispatch_id: str, model: str, rc: int,
     cards.claim(card, "codex-worker")
     cards.stamp_session(card, os.environ.get("CLAUDE_SESSION_ID", dispatch_id))
     cards.stamp_routing(card, "codex", model)
+    card.meta["workflow"] = parse_thread_id(log_file)
     walk_state(card, "done" if rc == 0 else "halted")
     record = {"usd": 0.0, "billing": "subscription",
               "model": ran_model(log_file, model),
@@ -162,7 +188,14 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--project", default="kb-ops")
     ap.add_argument("--label", default="codex-dispatch")
     ap.add_argument("--repo-root", default=None, help="tests only")
+    ap.add_argument("--follow-up", default=None,
+                    help="thread id from a prior dispatch's footer; resumes that session")
     args = ap.parse_args(argv)
+
+    if args.follow_up and (args.worktree or args.model != "codex"):
+        print("DISPATCH REFUSED: --follow-up keeps the worker's session; "
+              "drop --model/--worktree")
+        return 2
 
     repo_root = Path(args.repo_root) if args.repo_root else Path(__file__).resolve().parents[1]
     # preamble.check only runs the budget gate when handed a cost function
@@ -173,11 +206,14 @@ def main(argv: list[str] | None = None) -> int:
     if problems:
         print("DISPATCH REFUSED: " + "; ".join(problems))
         return 2
-    try:
-        model = resolve_model(repo_root, args.model)
-    except routing.RoutingError as err:
-        print(f"DISPATCH REFUSED: {err}")
-        return 2
+    if args.follow_up:
+        model = None  # session's own model persists; read back post-spawn
+    else:
+        try:
+            model = resolve_model(repo_root, args.model)
+        except routing.RoutingError as err:
+            print(f"DISPATCH REFUSED: {err}")
+            return 2
 
     dispatch_id = cards.new_id()
     for sub in ("spool", "logs", "worktrees"):
@@ -199,21 +235,26 @@ def main(argv: list[str] | None = None) -> int:
 
     out_file = STATE_ROOT / "logs" / f"{dispatch_id}.last.md"
     log_file = STATE_ROOT / "logs" / f"{dispatch_id}.jsonl"
-    rc = spawn(prompt_text, model, args.effort, cwd, args.sandbox, out_file, log_file)
+    rc = spawn(prompt_text, model, args.effort, cwd, args.sandbox, out_file, log_file,
+              follow_up=args.follow_up)
     result_text = (out_file.read_text(encoding="utf-8") if rc == 0 and out_file.exists()
                    else f"FAILED: codex exec exit {rc}; JSONL log: {log_file}")
 
-    card, record = build_record(args, repo_root, dispatch_id, model, rc,
+    record_model = model or args.follow_up
+    card, record = build_record(args, repo_root, dispatch_id, record_model, rc,
                                 prompt_text, result_text, log_file)
     published, publish_note = publish_ops(repo_root, card, record)
     if published:
         spool_path.unlink(missing_ok=True)
 
+    thread_id = card.meta.get("workflow")
     print(result_text)
-    print(f"\n--- codex-dispatch card {card.meta['id']} | model {ran_model(log_file, model)} | "
+    print(f"\n--- codex-dispatch card {card.meta['id']} | model {ran_model(log_file, record_model)} | "
           f"exit {rc} | {time.time() - started:.0f}s | ops publish: {publish_note}"
           + (f" | worktree: {cwd} (yours to sweep)" if args.worktree else "")
-          + f" | log: {log_file}")
+          + f" | log: {log_file}"
+          + (f" | session {thread_id} (follow up with --follow-up {thread_id})"
+             if thread_id else ""))
     return rc
 
 

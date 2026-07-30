@@ -150,3 +150,51 @@ def test_publish_ops_sequence_and_spool_fallback(repo, monkeypatch, tmp_path):
     assert "push" in verbs and "add" in verbs and "commit" in verbs
     add_call = next(c for c in calls if c[0][1] == "add")
     assert add_call[0][2] == "--"                      # exact-path staging only
+
+
+def test_parse_thread_id(tmp_path):
+    log = tmp_path / "l.jsonl"
+    log.write_text('{"type":"thread.started","thread_id":"019f-abc"}\n'
+                   '{"type":"turn.started"}\n', encoding="utf-8")
+    assert codex_dispatch.parse_thread_id(log) == "019f-abc"
+    log2 = tmp_path / "empty.jsonl"
+    log2.write_text("", encoding="utf-8")
+    assert codex_dispatch.parse_thread_id(log2) is None
+
+
+def test_spawn_follow_up_builds_resume_command(tmp_path, monkeypatch):
+    seen = {}
+
+    def fake_run(cmd, **kw):
+        seen["cmd"] = cmd
+        class R: returncode = 0
+        return R()
+
+    monkeypatch.setattr(codex_dispatch.shutil, "which", lambda _: "codex.cmd")
+    monkeypatch.setattr(codex_dispatch.subprocess, "run", fake_run)
+    out, log = tmp_path / "o.md", tmp_path / "l.jsonl"
+    rc = codex_dispatch.spawn("more work", None, None, tmp_path, "workspace-write",
+                              out, log, follow_up="019f-abc")
+    assert rc == 0
+    assert seen["cmd"][:5] == ["codex.cmd", "exec", "resume", "019f-abc", "-"]
+    assert "--json" in seen["cmd"] and "--output-last-message" in seen["cmd"]
+    assert "--model" not in seen["cmd"]
+
+
+def test_follow_up_refuses_model_and_worktree(repo, tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(codex_dispatch, "spawn", lambda *a, **k: 0)
+    prompt = tmp_path / "p.md"
+    prompt.write_text("hi", encoding="utf-8")
+    for extra in (["--model", "codex-deep"], ["--worktree"]):
+        rc = codex_dispatch.main(["--prompt-file", str(prompt), "--repo-root", str(repo),
+                                  "--follow-up", "019f-abc"] + extra)
+        assert rc == 2
+        assert "follow-up" in capsys.readouterr().out
+
+
+def test_build_record_stamps_workflow_thread(repo, tmp_path):
+    log = tmp_path / "l.jsonl"
+    log.write_text('{"type":"thread.started","thread_id":"019f-abc"}\n', encoding="utf-8")
+    card, _ = codex_dispatch.build_record(
+        _mk_args(), repo, "0000aaaa-11112222", "gpt-5.6-terra", 0, "P", "R", log)
+    assert card.meta["workflow"] == "019f-abc"
