@@ -43,16 +43,17 @@ design never named — required for G4 to be approvable at all rather than a per
 Gates are born at the stage boundary they block, never pre-registered at launch. Full stage/gate
 table: `orgs/faceless-youtube/workflows/video-run.md`. Full as-built-vs-designed deviation catalog,
 with reasoning, is at `docs/specs/2026-07-30-fyt-gated-pipeline-design.md` §As-built deviations. Its
-two flagged items are both **ruled, 2026-07-30**: the `publicationAuthorization` axis is RATIFIED
-as-built (no code change); fyt-checker executing the two merge nodes is ruled TOWARD SPEC
-(fyt-runner should execute) but that could not be mechanically applied this pass — it collides with
+two flagged items are both **RESOLVED, 2026-07-30**: the `publicationAuthorization` axis is RATIFIED
+as-built (no code change); fyt-checker executing the two merge nodes is also **RATIFIED as-built**
+after a first ruling toward the spec's original "runner merges" reading collided with
 `compile.ts#resolveAssignment`'s role check (an agent's own default profile must already carry the
 role a given assignment requires, and `fyt-runner`'s manager-role default can't satisfy that AND its
-separate manager assignment on the same definition at once). Code is unchanged on this axis
-(`shots-merge`/`audio-plan-merge` remain `governedBy: fyt-runner` / `agentId: fyt-checker`); the open
-item returned to Daniel is which of three unblocking mechanisms he wants (loosen the role check,
-mint fyt-runner a second worker-role identity, or accept the current arrangement as the practical
-settlement) — see the spec's #3 for the full argument and `knowledge/decisions.md`'s 2026-07-30 entry.
+separate manager assignment on the same definition at once) and no unblocking mechanism cleared that
+without a blast radius beyond these two stages. Daniel's final ruling: accept the arrangement as
+built — `fyt-checker` executes `shots-merge`/`audio-plan-merge` as a verification act, `fyt-runner`
+governs them, and the spec's original "runner merges" line is superseded by the role system. Code is
+unchanged (`shots-merge`/`audio-plan-merge` remain `governedBy: fyt-runner` / `agentId: fyt-checker`)
+— see the spec's #3 for the full argument and `knowledge/decisions.md`'s 2026-07-30 entries.
 
 - **Proven, on a live daemon with an isolated state root:** inert boot; the execution-locked launch
   refusal; launch compiling to a runnable workflow; roster spawn of six real pty sessions; G0's
@@ -61,11 +62,10 @@ settlement) — see the spec's #3 for the full argument and `knowledge/decisions
 - **NOT yet proven at time of writing:** the completion-marker round-trip through a real
   interactive Claude terminal, and expand-to-interact on a live session. A run is in flight to
   establish both — pending, no result claimed here yet.
-- **Owed:** Daniel's PR review and merge (PR #102, unmerged); a follow-up decision on HOW to unblock
-  the merge-node execution ruling above (his direction is ruled, the mechanism to carry it out is
-  not); the maiden run itself (fresh idea → full script → 2-minute slice → G0–G4/G3b live-fired in
-  order → publish-private). Real image/voiceover spend (G2/`g3b`) and the private upload (G4) are
-  human authorizations no agent can self-grant.
+- **Owed:** Daniel's PR review and merge (PR #102, unmerged); the maiden run itself (fresh idea →
+  full script → 2-minute slice → G0–G4/G3b live-fired in order → publish-private). Real
+  image/voiceover spend (G2/`g3b`) and the private upload (G4) are human authorizations no agent can
+  self-grant.
 - **Test state:** `dashboard/` suite 207 files / 2336 passed / 0 failed with `tsc` clean; 158
   Python tests across the three touched skills (`visual-prompt-writer`, `image-generation`,
   `render-builder`).

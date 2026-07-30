@@ -3870,3 +3870,27 @@ review fixes → a full deep review (5 root causes, 24 r2 directives, 11 pipelin
   - **Cross-reference.** `docs/specs/2026-07-30-fyt-gated-pipeline-design.md` §As-built deviations
     #4; supersedes the "PENDING DANIEL'S RULING" language there and in
     `orgs/faceless-youtube/docs/STATUS.md`.
+
+**2026-07-30 — Merge-node execution ruling CLOSED: accept as-built (Daniel).**
+Follow-up to the (b) entry above: a rework pass tried to carry out the "runner should execute"
+direction and confirmed it is structurally blocked, not merely unimplemented — `fyt-runner`'s single
+default profile cannot simultaneously satisfy `compile.ts#resolveAssignment`'s worker-role check for
+a stage assignment and its manager-role check for the workflow-level `manager:` assignment it also
+holds on the same definition. Having seen the conflict laid out, Daniel closed the question: **accept
+the as-built arrangement** — `fyt-checker` executes `shots-merge` and `audio-plan-merge` as a
+verification act (re-linting a plan it did not author), `fyt-runner` governs their place in the run,
+and this spec's original "runner merges" line is superseded by the role system rather than reworked
+against it. No code changes follow; `shots-merge`/`audio-plan-merge` keep `governedBy: fyt-runner` /
+`agentId: fyt-checker` exactly as they already stood.
+  - **Alternatives rejected (same ones weighed in the unblocking pass above).** Minting `fyt-runner` a
+    second, worker-role identity so a sibling identity executes the two stages — rejected as a
+    cosmetic separation: it would satisfy the role check but multiply agent identities for a split
+    that buys nothing the checker-executes arrangement doesn't already provide, and this project has
+    ruled against multiplying identities elsewhere. Loosening `resolveAssignment`'s role check so a
+    stage assignment only needs the per-stage ASSIGNED profile's role, not the agent's own default —
+    rejected because it would remove a hard capability separation (manager-role profiles carry no
+    write capability) project-wide, for every agent and every workflow, not only this one; a
+    security-relevant architecture change out of proportion to two merge nodes.
+  - **Cross-reference.** Closes the open item left by entry (b) above and by
+    `docs/specs/2026-07-30-fyt-gated-pipeline-design.md` §As-built deviations #3 (now marked RESOLVED
+    2026-07-30: as-built ratified) and `orgs/faceless-youtube/docs/STATUS.md`.
