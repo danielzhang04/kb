@@ -175,6 +175,32 @@ describe('kb.plan-proposal/v1 validation', () => {
     }, registry)).toMatchObject({ ok: false, detail: expect.stringMatching(/cannot review review stage/) });
   });
 
+  it('admits a spend-authorization gate only from the compiler, and only on an approval gate', () => {
+    const spendGate = { id: 'g2-visual-plan', kind: 'approval' as const, prompt: 'Approve the plan.', spendAuthorization: true };
+    const withSpendGate = (gate: Record<string, unknown>) => ({
+      ...proposal,
+      stages: [{ ...proposal.stages[0], humanGates: [gate] }, proposal.stages[1]],
+    });
+    // An assistant/browser proposal cannot mint its own spend authorization: the field is
+    // compiler-only, exactly like `review`/`completionGate`.
+    expect(validatePlanProposal(withSpendGate(spendGate), REGISTRY)).toEqual({
+      ok: false,
+      detail: "stages[0].humanGates[0]: unknown field 'spendAuthorization'",
+    });
+    expect(validateServerCompiledPlanProposal(withSpendGate(spendGate), REGISTRY)).toMatchObject({ ok: true });
+    // A non-approval response ('responded' on an input gate) must never read as authorizing spend.
+    for (const kind of ['input', 'review', 'intervention'] as const) {
+      expect(validateServerCompiledPlanProposal(withSpendGate({ ...spendGate, kind }), REGISTRY)).toEqual({
+        ok: false,
+        detail: "stages[0].humanGates[0].spendAuthorization requires kind 'approval'",
+      });
+    }
+    expect(validateServerCompiledPlanProposal(withSpendGate({ ...spendGate, spendAuthorization: 'yes' }), REGISTRY)).toEqual({
+      ok: false,
+      detail: 'stages[0].humanGates[0].spendAuthorization must be a boolean when present',
+    });
+  });
+
   it('rejects governanceRefs missing the project contract', () => {
     expect(validatePlanProposal({
       ...proposal,

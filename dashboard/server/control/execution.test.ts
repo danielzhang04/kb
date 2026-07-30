@@ -1385,6 +1385,77 @@ describe('AutomaticExecutionEngine', () => {
     expect(fake.executionOrder).toEqual([]);
   });
 
+  it('never lets an unrelated gate approval satisfy a declared spend authorization', async () => {
+    const store = createStore();
+    const plain = stage('plain');
+    plain.humanGates = [{ id: 'g1-script', kind: 'approval', prompt: 'Approve the script.' }];
+    const spending = stage('spending', ['plain']);
+    spending.humanGates = [{ id: 'g2-plan', kind: 'approval', prompt: 'Approve the plan.', spendAuthorization: true }];
+    const plan = proposal([plain, spending]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
+
+    const approve = (title: string, key: string) => {
+      const detail = store.getRun('operator', run.runRef);
+      if (!detail.ok) throw new Error(detail.detail);
+      const request = detail.value.humanRequests.find((candidate) => candidate.title === title);
+      if (!request) throw new Error(`missing human request ${title}`);
+      expect(store.respondHumanRequest('operator', request.requestRef, {
+        expectedRevision: request.revision, decision: 'approved', idempotencyKey: key, response: 'Approved.',
+      }).ok).toBe(true);
+    };
+
+    // Pass 1: the first stage's own gate opens; nothing has run.
+    expect((await engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan })).state).toBe('waiting-human');
+    expect(fake.executionOrder).toEqual([]);
+
+    // Approving g1 releases ONLY its own stage. The spending stage then opens its own gate and stays
+    // parked: an approval recorded on another stage's gate is not this stage's spend authorization.
+    approve('automatic:gate:plain:g1-script', 'approve-g1');
+    expect((await engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan })).state).toBe('waiting-human');
+    expect(fake.executionOrder).toEqual(['plain']);
+    const parked = store.getRun('operator', run.runRef);
+    if (!parked.ok) throw new Error(parked.detail);
+    expect(parked.value.humanRequests.map((request) => [request.title, request.state])).toEqual([
+      ['automatic:gate:plain:g1-script', 'resolved'],
+      ['automatic:gate:spending:g2-plan', 'open'],
+    ]);
+    expect(parked.value.stages.find((item) => item.stageId === 'spending')?.state).toBe('waiting-human');
+
+    // Only the spend gate's OWN recorded approval releases it — and it then clears policy rather than
+    // hitting the hard spend refuse.
+    approve('automatic:gate:spending:g2-plan', 'approve-g2');
+    const completed = await engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
+    expect(completed.state).toBe('succeeded');
+    expect(fake.executionOrder).toEqual(['plain', 'spending']);
+  });
+
+  it('parks a declared spend stage for its own approval and never refuses it outright', async () => {
+    const store = createStore();
+    const spending = stage('spending');
+    spending.humanGates = [{ id: 'g2-plan', kind: 'approval', prompt: 'Approve the plan.', spendAuthorization: true }];
+    const plan = proposal([spending]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
+
+    const first = await engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
+    expect(first.state).toBe('waiting-human');
+    expect(fake.executionOrder).toEqual([]);
+    const detail = store.getRun('operator', run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    // Approvable, not a governance-refusal: the declared gate is the surface, not a dead end.
+    expect(detail.value.humanRequests).toMatchObject([{ kind: 'approval', title: 'automatic:gate:spending:g2-plan', state: 'open' }]);
+    // A merely-responded decision is not an approval, so the spend stage must stay parked.
+    const request = detail.value.humanRequests[0];
+    expect(store.respondHumanRequest('operator', request.requestRef, {
+      expectedRevision: request.revision, decision: 'responded', idempotencyKey: 'text-only', response: 'Seems fine.',
+    }).ok).toBe(true);
+    expect((await engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan })).state).toBe('waiting-human');
+    expect(fake.executionOrder).toEqual([]);
+  });
+
   it('contains adapter exceptions durably instead of leaving a running attempt wedged', async () => {
     const store = createStore();
     const plan = proposal([stage('adapter-failure')]);

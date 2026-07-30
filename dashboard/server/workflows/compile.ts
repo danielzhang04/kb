@@ -79,6 +79,11 @@ function deriveProposalId(def: WorkflowDef, effectiveRead: readonly string[]): s
       ...(stage.workflowProfile ? { workflowProfile: stage.workflowProfile } : {}),
       ...(stage.review ? { review: stage.review } : {}),
       ...(stage.completionGate ? { completionGate: stage.completionGate } : {}),
+      // Declared gates are part of the approved proposal identity: editing, renaming, or deleting a
+      // gate (or flipping `spendAuthorization`) must change the proposalId and force re-approval,
+      // or the halt structure would be tamper-silent. Emitted only when present, so definitions
+      // without gates keep their existing proposalId exactly.
+      ...(stage.humanGates?.length ? { humanGates: stage.humanGates } : {}),
     })),
     ...(def.manager ? { manager: { agentId: def.manager.agentId, profileId: def.manager.profileId } } : {}),
   });
@@ -231,7 +236,14 @@ export function compileWorkflowDef(def: WorkflowDef, env: CompileWorkflowEnviron
       scope: { read: readScope, write: stage.review ? [] : [stage.target] },
       artifacts: [],
       checkpoints: [],
-      humanGates: [],
+      // The declared gates ARE the compiled gates. Anything hardcoded here would make an org
+      // definition's declared halt structure unenforceable at `execution.ts#stageBoundary`.
+      humanGates: (stage.humanGates ?? []).map((gate) => ({
+        id: gate.id,
+        kind: gate.kind,
+        prompt: gate.prompt,
+        ...(gate.spendAuthorization === undefined ? {} : { spendAuthorization: gate.spendAuthorization }),
+      })),
       ...(assignment ? { assignment } : {}),
       ...(stage.workflowProfile ? { workflowProfile: stage.workflowProfile } : {}),
       ...(stage.review ? { review: structuredClone(stage.review) } : {}),

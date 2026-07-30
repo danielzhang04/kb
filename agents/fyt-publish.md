@@ -3,8 +3,8 @@ id: fyt-publish
 role: work
 runtime: claude
 model: claude-fable-5
-default-profile: manager:claude:claude-fable-5
-allowed-profiles: [manager:claude:claude-fable-5, manager:claude:claude-sonnet-5]
+default-profile: worker:claude:claude-fable-5
+allowed-profiles: [worker:claude:claude-fable-5, worker:claude:claude-sonnet-5]
 projects: [faceless-youtube]
 runner-bound: true
 description: Publish-phase orchestrator for one faceless-youtube video run — private-only publish and the read-only analytics loop. A persistent Fable-5 terminal that drives publish-queue and analytics-reporter, reading fyt-checker's compliance-report.md as its gating input. Net-new agent; never flips a video public and never touches the thumbnail Studio step.

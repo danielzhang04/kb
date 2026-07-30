@@ -254,24 +254,24 @@ describe('workflow definition routes', () => {
     const firstWorkspace = composerStore.create('operator', 'FYT planning', agent);
     const secondWorkspace = composerStore.create('operator', 'FYT planning fork', agent);
     const first = await app.inject({ method: 'POST', url: '/api/workflows/video-run/launch', headers: headers(token),
-      payload: await launchPayload(app, 'video-run', 'workspace-key', { composerRef: firstWorkspace.composerRef, parameters: { channel: 'the-second-take', slug: '2026-07-19-wells-fargo' } }) });
+      payload: await launchPayload(app, 'video-run', 'workspace-key', { composerRef: firstWorkspace.composerRef, parameters: { channel: 'the-second-take', slug: '2026-07-19-wells-fargo', slice: 'act-1' } }) });
     expect(first.statusCode).toBe(202);
     const replay = await app.inject({ method: 'POST', url: '/api/workflows/video-run/launch', headers: headers(token),
-      payload: await launchPayload(app, 'video-run', 'workspace-key', { composerRef: firstWorkspace.composerRef, parameters: { channel: 'the-second-take', slug: '2026-07-19-wells-fargo' } }) });
+      payload: await launchPayload(app, 'video-run', 'workspace-key', { composerRef: firstWorkspace.composerRef, parameters: { channel: 'the-second-take', slug: '2026-07-19-wells-fargo', slice: 'act-1' } }) });
     expect(replay.statusCode).toBe(200);
     expect(replay.json().runRef).toBe(first.json().runRef);
     const changedParameters = await app.inject({ method: 'POST', url: '/api/workflows/video-run/launch', headers: headers(token),
-      payload: await launchPayload(app, 'video-run', 'workspace-key', { composerRef: firstWorkspace.composerRef, parameters: { channel: 'the-second-take', slug: '2026-07-20-other' } }) });
+      payload: await launchPayload(app, 'video-run', 'workspace-key', { composerRef: firstWorkspace.composerRef, parameters: { channel: 'the-second-take', slug: '2026-07-20-other', slice: 'act-1' } }) });
     expect(changedParameters.statusCode).toBe(409);
     const run = controlStore.getRun('operator', first.json().runRef);
     expect(run.ok && run.value.run.agentWorkspaceLaunch).toEqual({
       composerRef: firstWorkspace.composerRef, agentId: 'fyt-runner', declarationPath: 'agents/fyt-runner.md', declarationHash: 'b'.repeat(64),
     });
     const conflict = await app.inject({ method: 'POST', url: '/api/workflows/video-run/launch', headers: headers(token),
-      payload: await launchPayload(app, 'video-run', 'workspace-key', { composerRef: secondWorkspace.composerRef, parameters: { channel: 'the-second-take', slug: '2026-07-19-wells-fargo' } }) });
+      payload: await launchPayload(app, 'video-run', 'workspace-key', { composerRef: secondWorkspace.composerRef, parameters: { channel: 'the-second-take', slug: '2026-07-19-wells-fargo', slice: 'act-1' } }) });
     expect(conflict.statusCode).toBe(409);
     const crossOwner = await app.inject({ method: 'POST', url: '/api/workflows/video-run/launch', headers: headers(token),
-      payload: await launchPayload(app, 'video-run', 'other-key', { composerRef: composerStore.create('mallory', 'Foreign', agent).composerRef, parameters: { channel: 'the-second-take', slug: '2026-07-19-wells-fargo' } }) });
+      payload: await launchPayload(app, 'video-run', 'other-key', { composerRef: composerStore.create('mallory', 'Foreign', agent).composerRef, parameters: { channel: 'the-second-take', slug: '2026-07-19-wells-fargo', slice: 'act-1' } }) });
     expect(crossOwner.statusCode).toBe(404);
   });
 

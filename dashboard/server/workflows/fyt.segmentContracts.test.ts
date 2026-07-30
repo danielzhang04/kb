@@ -94,76 +94,79 @@ describe('checked-out FYT segment static contracts', () => {
     }
   });
 
-  it('parses the exact video-run DAG, paid stages, and no-publish boundary', () => {
+  it('parses the exact video-run chain, its gates, and the private-only upload boundary', () => {
     const { workflow, definition } = parsedVideoRun();
-    expect(definition.parameters).toEqual(['channel', 'slug']);
-    expect(definition.stages).toHaveLength(14);
+    expect(definition.parameters).toEqual(['channel', 'slug', 'slice']);
+    expect(definition.stages).toHaveLength(11);
     expect(definition.stages.map((candidate) => ({
       id: candidate.id,
-      title: candidate.title,
       action: candidate.action,
       dependsOn: candidate.dependsOn,
       riskTier: candidate.riskTier,
+      agentId: candidate.agentId,
+      gates: (candidate.humanGates ?? []).map((gate) => gate.id),
     }))).toEqual([
-      { id: 'idea', title: 'Pick and brief one video idea', action: 'research:idea', dependsOn: [], riskTier: 'T2' },
-      { id: 'research', title: 'Research the picked idea into a sourced dossier', action: 'research:dossier', dependsOn: ['idea'], riskTier: 'T2' },
-      { id: 'script', title: 'Write the long-form voiceover script', action: 'draft:long-form-script', dependsOn: ['research'], riskTier: 'T2' },
-      { id: 'judge-gate', title: 'Fresh-eyes acceptance gate on the script', action: 'review:script-gate', dependsOn: ['script'], riskTier: 'T2' },
-      { id: 'shorts', title: 'Derive the short-form bench', action: 'draft:shorts', dependsOn: ['judge-gate'], riskTier: 'T2' },
-      { id: 'metadata', title: 'Author publishing metadata (no upload)', action: 'draft:metadata', dependsOn: ['judge-gate'], riskTier: 'T2' },
-      { id: 'shots', title: 'Build the visual shot list and prompts', action: 'build:shot-list', dependsOn: ['judge-gate'], riskTier: 'T2' },
-      { id: 'motion', title: 'Plan the per-shot motion layers', action: 'build:motion-plan', dependsOn: ['shots'], riskTier: 'T2' },
-      { id: 'images', title: 'Generate the on-style stills (SPENDS REAL MONEY)', action: 'build:images', dependsOn: ['shots'], riskTier: 'T2' },
-      { id: 'image-review', title: 'Batched review of every generated still (the image gate)', action: 'review:image-gate', dependsOn: ['images', 'motion'], riskTier: 'T2' },
-      { id: 'voiceover', title: 'Generate the narration audio (paid TTS)', action: 'build:voiceover', dependsOn: ['judge-gate'], riskTier: 'T2' },
-      { id: 'audio-plan', title: 'Author the unified audio plan', action: 'build:audio-plan', dependsOn: ['script', 'shots', 'voiceover'], riskTier: 'T2' },
-      { id: 'render', title: 'Assemble the finished cut (heavyweight)', action: 'build:render', dependsOn: ['metadata', 'shorts', 'motion', 'image-review', 'audio-plan'], riskTier: 'T2' },
-      { id: 'verify', title: 'Verify the render against the manifests', action: 'verify:render', dependsOn: ['render'], riskTier: 'T2' },
+      { id: 'idea', action: 'research:idea-briefs', dependsOn: [], riskTier: 'T2', agentId: 'fyt-story', gates: [] },
+      { id: 'story', action: 'draft:long-form-script', dependsOn: ['idea'], riskTier: 'T2', agentId: 'fyt-story', gates: ['g0-idea-pick'] },
+      { id: 'judge-gate', action: 'review:script-verdict', dependsOn: ['story'], riskTier: 'T2', agentId: 'fyt-checker', gates: [] },
+      { id: 'packaging', action: 'draft:packaging', dependsOn: ['judge-gate'], riskTier: 'T2', agentId: 'fyt-story', gates: ['g1-script'] },
+      { id: 'visual-plan', action: 'build:visual-plan', dependsOn: ['packaging'], riskTier: 'T2', agentId: 'fyt-visuals', gates: [] },
+      { id: 'images', action: 'build:images', dependsOn: ['visual-plan'], riskTier: 'T2', agentId: 'fyt-visuals', gates: ['g2-visual-plan'] },
+      { id: 'image-review', action: 'review:image-board', dependsOn: ['images'], riskTier: 'T2', agentId: 'fyt-checker', gates: [] },
+      { id: 'audio', action: 'build:audio', dependsOn: ['image-review'], riskTier: 'T2', agentId: 'fyt-audio-render', gates: ['g3-image-board'] },
+      { id: 'render', action: 'build:render', dependsOn: ['audio'], riskTier: 'T2', agentId: 'fyt-audio-render', gates: [] },
+      { id: 'verify', action: 'verify:render-compliance', dependsOn: ['render'], riskTier: 'T2', agentId: 'fyt-checker', gates: [] },
+      { id: 'publish-private', action: 'publish:private-upload', dependsOn: ['verify'], riskTier: 'T3', agentId: 'fyt-publish', gates: ['g4-publish-private'] },
     ]);
-    const imageReview = stage(definition, 'image-review');
-    const render = stage(definition, 'render');
-    const audioPlan = stage(definition, 'audio-plan');
-    const verify = stage(definition, 'verify');
+    // Author-never-grades, read straight off the graph: no checker stage may follow work it authored.
+    for (const checker of definition.stages.filter((candidate) => candidate.agentId === 'fyt-checker')) {
+      const subjects = checker.dependsOn.map((id) => stage(definition, id).agentId);
+      expect(subjects).not.toContain('fyt-checker');
+    }
     const images = stage(definition, 'images');
-    const voiceover = stage(definition, 'voiceover');
-    expect(imageReview.action).toBe('review:image-gate');
-    expect(imageReview.dependsOn).toEqual(['images', 'motion']);
-    expect(render.dependsOn).toContain('image-review');
-    expect(render.dependsOn).not.toContain('images');
-    expect(audioPlan.dependsOn).toEqual(['script', 'shots', 'voiceover']);
-    expect(verify.dependsOn).toEqual(['render']);
-    expect(images.workOrder).toContain('SPENDS REAL MONEY');
+    const audio = stage(definition, 'audio');
     expect(images.workOrder).toContain('paid Gemini image API');
-    expect(images.workOrder).toContain('explicit per-run human authorization recorded on a queue card');
-    expect(images.workOrder).toContain("run's call ceiling");
-    expect(images.workOrder).toContain('log actual spend');
-    expect(voiceover.workOrder).toContain('paid ElevenLabs TTS API');
-    expect(voiceover.workOrder).toContain('same per-run authorization as the images stage');
-    // Metadata says it does not upload; no stage identity or action can publish/upload. The single
-    // title mention is the explicit non-upload disclosure, not a hidden publish stage.
+    expect(images.workOrder).toContain('130-200 generation calls');
+    expect(images.workOrder).toContain("run's declared call ceiling");
+    expect(images.workOrder).toContain('recorded approval of gate g2-visual-plan');
+    expect(images.humanGates).toEqual([expect.objectContaining({ id: 'g2-visual-plan', kind: 'approval', spendAuthorization: true })]);
+    expect(audio.workOrder).toContain('paid narration API');
+    expect(audio.workOrder).toContain('SAME recorded g2-visual-plan authorization');
+    // The audio stage spends and carries no gate of its own; that is safe ONLY because it is
+    // reachable exclusively through the g2-gated images stage. Prove the reachability, do not assume.
+    const ancestors = (id: string, seen = new Set<string>()): Set<string> => {
+      for (const dep of stage(definition, id).dependsOn) if (!seen.has(dep)) { seen.add(dep); ancestors(dep, seen); }
+      return seen;
+    };
+    expect([...ancestors('audio')]).toContain('images');
+    expect([...ancestors('render')]).toContain('images');
+    // Exactly one stage may upload, it is T3, it is gated, and it is private-only.
     expect(definition.stages.filter((candidate) => /(?:publish|upload)/i.test(candidate.id)
-      || /(?:publish|upload)/i.test(candidate.action))).toEqual([]);
-    expect(definition.stages.filter((candidate) => /(?:publish|upload)/i.test(candidate.title)).map((candidate) => ({
-      id: candidate.id, title: candidate.title,
-    }))).toEqual([{ id: 'metadata', title: 'Author publishing metadata (no upload)' }]);
-    expect(workflow).toContain('Publishing / upload is NOT a stage.');
-    expect(workflow).toContain('separate, human-gated T3 step');
+      || /(?:publish|upload)/i.test(candidate.action)).map((candidate) => candidate.id)).toEqual(['publish-private']);
+    expect(stage(definition, 'publish-private').workOrder).toContain('as PRIVATE');
+    expect(workflow).toContain('The upload is PRIVATE only.');
+    expect(workflow).toContain('Analytics is not a stage.');
   });
 
   it('pins the complete independent full-surface image-review contract', () => {
     const { definition } = parsedVideoRun();
-    const order = stage(definition, 'image-review').workOrder;
-    expect(order).toContain('Open EVERY scene PNG');
-    expect(order).toContain("every layered shot's plate + cutouts");
+    const reviewStage = stage(definition, 'image-review');
+    const order = reviewStage.workOrder;
+    expect(order).toContain('Open EVERY still generated');
+    expect(order).toContain("every layered shot's plate and cutouts");
     expect(order).toContain("motion plan's cutout_layer_ids");
-    expect(order).toContain('three concurrent review mandates (identity/rig, fidelity, style)');
-    expect(order).toContain('LETTER-BY-LETTER');
-    expect(order).toContain('forced PASS/FAIL');
+    expect(order).toContain('three review mandates (identity/rig, fidelity, style)');
+    expect(order).toContain('letter-by-letter');
+    expect(order).toContain('forced PASS or FAIL');
     expect(order).toContain('seeded or foreground figure');
     expect(order).toContain('merged.json');
     expect(order).toContain('stamp_review.py');
     expect(order).toContain('verified, or parked');
-    expect(order).toContain('conductor/orchestrator, NEVER by the generating agent');
+    expect(order).toContain('board.html');
+    // The reviewer is now the cross-cutting checker, never the generating agent and never its
+    // dispatcher: the law moved from prose-only to the stage's own binding.
+    expect(reviewStage.agentId).toBe('fyt-checker');
+    expect(order).toContain('never grades them');
   });
 
   it('keeps segment A ordered and fail-stopped through the terminal judge gate', () => {

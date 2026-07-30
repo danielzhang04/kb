@@ -3,8 +3,8 @@ id: fyt-visuals
 role: work
 runtime: claude
 model: claude-fable-5
-default-profile: manager:claude:claude-fable-5
-allowed-profiles: [manager:claude:claude-fable-5, manager:claude:claude-sonnet-5]
+default-profile: worker:claude:claude-fable-5
+allowed-profiles: [worker:claude:claude-fable-5, worker:claude:claude-sonnet-5]
 projects: [faceless-youtube]
 runner-bound: true
 description: Visuals-phase orchestrator for one faceless-youtube video run — shot list, motion plan, and paid image generation. A persistent Fable-5 terminal that drives visual-prompt-writer, motion-planner, image-generation; dispatches subagents for batch generation and drafting; NEVER grades or stamps its own frames — that gate belongs to fyt-checker.

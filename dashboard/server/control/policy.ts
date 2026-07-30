@@ -24,6 +24,23 @@ export function policyScopeForStage(scope: ApprovedScope, readOnly: boolean): Ap
   return readOnly ? { read: [...scope.read], write: [...scope.read] } : scope;
 }
 
+/**
+ * Whether the stage under evaluation carries a DECLARED, server-compiled spend-authorization gate,
+ * and whether that gate has actually been approved by a human.
+ *
+ * - `none` (the default whenever the field is absent) — no declared gate. Spend is the pre-existing
+ *   non-overridable refusal. Every caller that does not opt in keeps today's exact behaviour.
+ * - `pending` — a gate is declared but not yet approved. The stage waits for a human; it is
+ *   approvable, not refused. This is the ONLY thing this type adds to the refusal posture.
+ * - `approved` — the gate's own approval is recorded. The stage's spend is authorized.
+ *
+ * The value is computed by the engine from immutable compiled proposal content plus the run's
+ * resolved human requests, per stage and per gate id. It is never read from prose, from a proposal
+ * field a stage can set about ITSELF at runtime, or from browser input; and an approval recorded
+ * against any other gate or any other stage can never produce `approved` here.
+ */
+export type SpendAuthorizationState = 'none' | 'pending' | 'approved';
+
 export interface PolicyRequest {
   project: string;
   riskTier: 'T1' | 'T2' | 'T3';
@@ -39,6 +56,8 @@ export interface PolicyRequest {
   requestsPublication?: boolean;
   requestsSpending?: boolean;
   requestsCredentials?: boolean;
+  /** Defaults to `'none'` when absent — undeclared spend stays a hard refuse. */
+  spendAuthorization?: SpendAuthorizationState;
 }
 
 export interface PolicyEnvironment {
@@ -147,7 +166,19 @@ export function evaluateExecutionPolicy(request: PolicyRequest, environment: Pol
     return decide('refuse', 'human-owned-governance-target');
   }
   if (request.requestsCredentials) return decide('refuse', 'credentials-as-objects-forbidden');
-  if (request.requestsSpending) return decide('refuse', 'real-spending-forbidden');
+  if (request.requestsSpending) {
+    // Fail-closed by construction: only the explicit `'approved'` state falls through, and only
+    // `'pending'` softens to a wait. Absent, malformed, or `'none'` all land on the original refuse,
+    // so a stage that never declared a spend gate is refused exactly as before.
+    switch (request.spendAuthorization) {
+      case 'approved':
+        break;
+      case 'pending':
+        return decide('waiting-human', 'declared-spend-gate-awaiting-human-authorization');
+      default:
+        return decide('refuse', 'real-spending-forbidden');
+    }
+  }
   if (request.requestsPublication) return decide('waiting-human', 'external-publication-requires-t3-approval');
 
   const requiredRefs = [...REQUIRED_GLOBAL_REFS, `orgs/${request.project}/contract.md`];
