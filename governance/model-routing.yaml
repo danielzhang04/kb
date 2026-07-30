@@ -21,12 +21,10 @@ runtimes:
   codex:
     default_worker: codex-worker  # the identity agent_runner.ps1 -Agent codex-worker owns
     aliases:
-      codex: gpt-5.6-sol          # observed in ~/.codex/config.toml model_availability_nux on this box
-                                  #  (codex-cli 0.144.5, 2026-07-17); the codex runner does NOT pass
-                                  #  --model today, so for codex-runtime cards `model` is a RECORDED
-                                  #  INTENT the routed-vs-ran audit checks against the read-back id,
-                                  #  not a hard input.
-    known_models: [gpt-5.6-sol]
+      codex-cheap: gpt-5.6-luna   # fast/affordable tier (haiku analog)
+      codex: gpt-5.6-terra        # everyday worker tier (sonnet analog) — dispatch default
+      codex-deep: gpt-5.6-sol     # frontier tier (opus analog)
+    known_models: [gpt-5.6-luna, gpt-5.6-terra, gpt-5.6-sol]
   # gemini: deferred. Add a block here when it onboards; no code change needed beyond listing its
   #   known_models — resolve() is data-driven off this registry.
 
