@@ -1148,8 +1148,15 @@ describe('roster scoped per-run permissions', () => {
     // grant this file exists to avoid.
     expect(settings.allow).not.toContain('Bash');
     expect(settings.allow.some((rule) => /^[A-Za-z]+$/.test(rule) || rule.includes('(*') || rule === '*')).toBe(false);
+    // Daniel's 2026-07-30 ruling: roster terminals run full-auto, no tool prompts at all — the settings
+    // file carries the mode value below. The scoped allow rules above stay in the file as declared
+    // intent; they are harmless once that mode is in effect.
     expect(JSON.parse(settings.json)).toEqual({
-      permissions: { allow: settings.allow, additionalDirectories: settings.additionalDirectories },
+      permissions: {
+        defaultMode: 'bypassPermissions',
+        allow: settings.allow,
+        additionalDirectories: settings.additionalDirectories,
+      },
     });
   });
 
@@ -1218,7 +1225,11 @@ describe('roster scoped per-run permissions', () => {
     const settingsPath = `/state/control/roster/${runRef}/fyt-story/settings.json`;
     const raw = fs.files.get(settingsPath);
     expect(raw).toBeDefined();
-    const parsed = JSON.parse(raw as string) as { permissions: { allow: string[]; additionalDirectories: string[] } };
+    const parsed = JSON.parse(raw as string) as {
+      permissions: { defaultMode: string; allow: string[]; additionalDirectories: string[] };
+    };
+    // Full-auto per Daniel's 2026-07-30 ruling: no tool prompts at all in a roster terminal.
+    expect(parsed.permissions.defaultMode).toBe('bypassPermissions');
     expect(parsed.permissions.allow).toContain(`Read(//state/control/roster/${runRef}/fyt-story/**)`);
     expect(parsed.permissions.allow).toContain('Read(//repo/orgs/faceless-youtube/**)');
     expect(parsed.permissions.allow).toContain('Edit(//repo/orgs/faceless-youtube/channels/**)');

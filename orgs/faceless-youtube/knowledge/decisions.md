@@ -3894,3 +3894,48 @@ against it. No code changes follow; `shots-merge`/`audio-plan-merge` keep `gover
   - **Cross-reference.** Closes the open item left by entry (b) above and by
     `docs/specs/2026-07-30-fyt-gated-pipeline-design.md` §As-built deviations #3 (now marked RESOLVED
     2026-07-30: as-built ratified) and `orgs/faceless-youtube/docs/STATUS.md`.
+
+**2026-07-30 — Roster terminals run FULL-AUTO, no tool prompts at all (Daniel).**
+Supersedes the CONTAINMENT aspect of the same-day "(a) Roster terminals get a scoped per-run settings
+file" ruling above — the per-run settings-file MECHANISM it introduced is kept unchanged. Daniel ruled
+that roster terminals should behave like a `claude` terminal on full auto: no interactive
+tool-permission prompts of any kind, ever, with governance carried instead by each agent's binding
+(what it's told to do), repo hooks, and the server-side workflow gates (stage compilation, gate
+approvals, artifact verification) — not by a per-session tool allow-list. The per-run settings file at
+`<stateRoot>/control/roster/<runRef>/<agentId>/settings.json`, booted via `claude --settings
+"<path>"` and deleted at retire, now sets the permission-mode key described below in addition to the
+previously-built allow rules and additional-directories list — the allow rules stay in the file as
+declared intent (a legible record of each agent's actual stage scope) but no longer do the containing
+work; the mode key supersedes them for real. No CLI flag, mode-selecting argument, or environment
+variable was added alongside it — `defaultLaunchLine` in `dashboard/server/control/rosterSessions.ts`
+is unchanged.
+  - **Verification of the schema key/value.** `claude --help` documents a permission-mode CLI flag
+    with the target mode name as a valid choice, and confirms the settings-file flag loads additional
+    settings from a JSON file. Grepping the installed `claude.exe` (`grep -a` over the binary, same
+    technique the original per-run-settings worker used) surfaced the actual JSON path the runtime
+    reads at startup: `permissions.defaultMode`, fed into the session's initial permission-mode
+    candidate list. The same grep surfaced two runtime refusals gating that mode elsewhere in the
+    code — one requiring a matching CLI launch flag, one requiring an interactive disclaimer — but
+    both are scoped to code paths that do not apply here: the first fires only on a mid-session
+    `/permission-mode`-style switch attempt, not on the initial settings-driven mode resolution; the
+    second is gated behind a background-job check that is false for any plain interactive `claude`
+    process — which is what a pty-spawned roster terminal is. This was then confirmed LIVE, not just
+    read from strings: a headless `claude -p` run given ONLY the settings file with that one mode key
+    set (empty allow list, no CLI flag, no env var) executed a Bash file-write with zero prompt; the
+    identical run with that key removed from the settings file correctly stopped and asked for the
+    write permission, and the file was not created. That paired test is the empirical proof that the
+    settings-file key alone — with nothing else added — is both necessary and sufficient for
+    full-auto in this launch shape.
+  - **Alternatives rejected.** No-shell scoped-allow, park-on-prompt (the arrangement this entry
+    replaces) — rejected because shell use is unavoidable across real stages (git, ffmpeg, node
+    scripts, the render pipeline) and a rule keyed on a command PREFIX can never express "any shell
+    command strictly within this agent's scope," so every shell-using stage was structurally destined
+    to hit an un-covered prompt and park, not merely occasionally. Command-prefix allow rules naming
+    the specific shell invocations each stage is expected to run — rejected: the rule matches a
+    literal prefix with no argument-level constraint (it cannot say "only within this directory" or
+    "only these flags"), so it is both under-expressive for anything with real arguments and still
+    prompts the instant a stage runs a command whose prefix wasn't anticipated — the same stall this
+    ruling exists to remove, just deferred to whichever command was missed.
+  - **Cross-reference.** `dashboard/server/control/rosterSessions.ts#buildRosterPermissionSettings`
+    and its docstring; tests in `rosterSessions.test.ts` under `describe('roster scoped per-run
+    permissions')` pin the mode value in the emitted JSON.

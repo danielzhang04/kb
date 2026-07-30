@@ -472,12 +472,16 @@ export function detectReplReadiness(tail: string): ReplReadiness {
 }
 
 /**
- * Tools whose Claude Code permission rules carry a PATH pathspec, i.e. the only tools an approved scope
- * can actually bound. `Bash` is deliberately absent: a Bash rule matches a COMMAND PREFIX, never a path,
- * so "Bash strictly within scope" is inexpressible and a bare `Bash` entry would be the blanket
- * allow-all this grant is forbidden to be. Shell approvals therefore stay with the human sitting at the
- * terminal — and, since the readiness gate below now refuses to type into an open menu, a stage parked on
- * a Bash prompt parks VISIBLY instead of losing its work order.
+ * Tools whose Claude Code permission rules carry a PATH pathspec — the file-scoped rules below, listed
+ * here for when they are read as declared intent (see {@link buildRosterPermissionSettings}). `Bash` is
+ * still absent from this list: a Bash rule matches a COMMAND PREFIX, never a path, so "Bash strictly
+ * within scope" was never expressible as a rule and a bare `Bash` entry would have been a blanket
+ * allow-all. That containment question is now moot for these sessions — Daniel's 2026-07-30 ruling
+ * (`orgs/faceless-youtube/knowledge/decisions.md`) put roster terminals under full-auto
+ * (`permissions.defaultMode: "bypassPermissions"`, see below) with governance carried by bindings, repo
+ * hooks, and the server-side workflow gates instead of a scoped tool allow-list. The rules built from
+ * this list are kept in the settings file regardless — harmless, and useful as a legible record of what
+ * each agent was actually scoped to do.
  */
 const SCOPED_READ_TOOLS: readonly string[] = ['Read', 'Glob', 'Grep'];
 const SCOPED_WRITE_TOOLS: readonly string[] = ['Write', 'Edit'];
@@ -523,7 +527,7 @@ export interface RosterPermissionSettings {
 }
 
 /**
- * Build ONE roster session's scoped permission settings.
+ * Build ONE roster session's permission settings.
  *
  * WHY THIS EXISTS. A spawned roster terminal's FIRST act is to read its own `binding.md`, and that read
  * parked on Claude Code's interactive "Do you want to proceed?" tool-permission menu — a per-session,
@@ -532,7 +536,22 @@ export interface RosterPermissionSettings {
  * `--settings <path>` (the CLI accepts a file path or an inline JSON string; `claude --help`:
  * "Path to a settings JSON file or a JSON string to load additional settings from").
  *
- * WHAT IT GRANTS, AND NOTHING MORE:
+ * FULL-AUTO, PER DANIEL'S 2026-07-30 RULING (`orgs/faceless-youtube/knowledge/decisions.md`): roster
+ * terminals run with NO tool prompts at all, the same as a `claude` terminal on full auto — governance
+ * is carried by bindings, repo hooks, and the server-side workflow gates, not by a per-session allow
+ * list. The settings file therefore sets `permissions.defaultMode: "bypassPermissions"` — the exact
+ * schema key/value `claude --help` and the installed binary's own strings confirm (`n.permissions?.
+ * defaultMode`, feeding the session's initial permission-mode resolution; the runtime's "Cannot set
+ * permission mode to bypassPermissions" refusal and its `--dangerously-skip-permissions`-required and
+ * disclaimer-acceptance gates apply only to `/permission-mode` mid-session switches and to `--bg`
+ * background jobs respectively — NEITHER applies to a plain interactive `claude` launch, and this was
+ * confirmed live: a headless `claude -p` run with ONLY `defaultMode: "bypassPermissions"` in
+ * `--settings` executed a Bash file write with no prompt, while the same run with that key absent
+ * correctly asked permission and did not write the file). No extra CLI flag, `--permission-mode`
+ * argument, or environment variable is required or added — see `defaultLaunchLine` below, unchanged.
+ *
+ * WHAT IT ALSO WRITES, NOW AS DECLARED INTENT RATHER THAN CONTAINMENT (harmless under bypass, since
+ * `defaultMode` supersedes them — kept for legibility of what each agent was actually scoped to do):
  *  - `permissions.allow` rules for the scoped file tools, over the stage's ALREADY-DECLARED
  *    `scope.read ∪ scope.write` (reads) and `scope.write` (writes), each rule anchored `//`-absolute at
  *    the canonical repo root. A tool the server-owned workflow profile does not grant produces no rule.
@@ -543,9 +562,9 @@ export interface RosterPermissionSettings {
  *    roster directory can sit outside the session cwd, and an allow rule alone does not extend the
  *    working set.
  *
- * There is no wildcard, no `defaultMode` change, no deny-list override, and no path that is not either a
- * declared scope entry or this agent's own order channel. An entry that is not a safe repo-relative path
- * is dropped rather than interpolated.
+ * There is no wildcard, no deny-list override, and no path that is not either a declared scope entry or
+ * this agent's own order channel. An entry that is not a safe repo-relative path is dropped rather than
+ * interpolated.
  */
 export function buildRosterPermissionSettings(input: RosterPermissionInput): RosterPermissionSettings {
   const allow: string[] = [];
@@ -572,10 +591,11 @@ export function buildRosterPermissionSettings(input: RosterPermissionInput): Ros
   }
   for (const path of readPaths) addDir(absoluteDir(input.repoRoot, path));
 
+  const permissions = { defaultMode: 'bypassPermissions', allow, additionalDirectories };
   return {
     allow,
     additionalDirectories,
-    json: `${JSON.stringify({ permissions: { allow, additionalDirectories } }, null, 2)}\n`,
+    json: `${JSON.stringify({ permissions }, null, 2)}\n`,
   };
 }
 
