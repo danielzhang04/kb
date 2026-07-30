@@ -76,3 +76,77 @@ def test_main_unknown_model_refuses_before_spawn(repo, tmp_path, monkeypatch, ca
                               "--repo-root", str(repo)])
     assert rc == 2 and not called
     assert "nope" in capsys.readouterr().out
+
+
+def _mk_args(**over):
+    import argparse
+    base = dict(prompt_file="p.md", model="codex", effort=None, cwd=None,
+                sandbox="workspace-write", worktree=False, project="kb-ops",
+                label="codex-dispatch", repo_root=None)
+    base.update(over)
+    return argparse.Namespace(**base)
+
+
+def test_walk_state_done_and_halted():
+    import cards
+    for final, expect in (("done", "done"), ("halted", "halted")):
+        card = cards.new_card("kb-ops", "codex-dispatch", "x", "T1")
+        cards.claim(card, "codex-worker")
+        codex_dispatch.walk_state(card, final)
+        assert card.meta["state"] == expect
+
+
+def test_walk_state_unowned_refuses():
+    import cards
+    card = cards.new_card("kb-ops", "codex-dispatch", "x", "T1")
+    with pytest.raises(cards.ValidationError):
+        codex_dispatch.walk_state(card, "done")
+
+
+def test_build_record_card_shape(repo, tmp_path):
+    log = tmp_path / "l.jsonl"
+    log.write_text('{"model":"gpt-5.6-sol"}\n', encoding="utf-8")
+    card, record = codex_dispatch.build_record(
+        _mk_args(), repo, "0000aaaa-11112222", "gpt-5.6-sol", 0,
+        "PROMPT BODY", "RESULT BODY", log)
+    m = card.meta
+    assert (m["runtime"], m["model"]) == ("codex", "gpt-5.6-sol")
+    assert m["owner"] == "codex-worker" and m["risk-tier"] == "T1"
+    assert m["execution-controller"] == "terminal" and m["state"] == "done"
+    assert "## Work order" in card.body and "PROMPT BODY" in card.body
+    assert "## Result" in card.body and "RESULT BODY" in card.body
+    assert record["usd"] == 0.0 and record["billing"] == "subscription"
+    assert record["card_id"] == m["id"] and record["codex_exit"] == 0
+
+
+def test_build_record_failure_is_halted(repo, tmp_path):
+    log = tmp_path / "l.jsonl"
+    log.write_text("", encoding="utf-8")
+    card, _ = codex_dispatch.build_record(
+        _mk_args(), repo, "0000aaaa-11112222", "gpt-5.6-sol", 1,
+        "P", "FAILED: exit 1", log)
+    assert card.meta["state"] == "halted"
+
+
+def test_publish_ops_sequence_and_spool_fallback(repo, monkeypatch, tmp_path):
+    import cards
+    calls = []
+
+    def fake_run(cmd, **kw):
+        calls.append((tuple(cmd), kw.get("cwd")))
+        class R: returncode = 0 if cmd[1] != "push" else 1
+        return R()
+
+    monkeypatch.setattr(codex_dispatch.subprocess, "run", fake_run)
+    monkeypatch.setattr(codex_dispatch, "STATE_ROOT", tmp_path / "state")
+    (tmp_path / "state" / "spool").mkdir(parents=True)
+    card = cards.new_card("kb-ops", "codex-dispatch", "x", "T1")
+    cards.claim(card, "codex-worker")
+    codex_dispatch.walk_state(card, "done")
+    ok, note = codex_dispatch.publish_ops(repo, card, {"usd": 0.0})
+    assert not ok and "push" in note
+    verbs = [c[0][1] for c in calls]
+    assert verbs[:2] == ["fetch", "worktree"]          # fetch ops, then temp worktree
+    assert "push" in verbs and "add" in verbs and "commit" in verbs
+    add_call = next(c for c in calls if c[0][1] == "add")
+    assert add_call[0][2] == "--"                      # exact-path staging only

@@ -81,12 +81,73 @@ def ran_model(log_file: Path, fallback: str) -> str:
         return fallback
 
 
-def build_record(*a, **k):  # implemented in Task 2 (same file, replaced wholesale)
-    raise NotImplementedError
+def walk_state(card: cards.Card, final: str) -> None:
+    """Walk the card to its final state through cards.LEGAL, in memory (one
+    save happens later, in the publish worktree). Legality is asserted per
+    hop so the record can never claim a transition the queue forbids."""
+    path = {"done": ("working", "done"),
+            "halted": ("working", "stop-requested", "halting", "halted")}[final]
+    for nxt in path:
+        cur = card.meta["state"]
+        if nxt not in cards.LEGAL[cur]:
+            raise cards.ValidationError(f"illegal transition {cur} -> {nxt}")
+        if nxt == "working" and not card.meta.get("owner"):
+            raise cards.ValidationError("cannot start working an unowned card")
+        card.meta["state"] = nxt
 
 
-def publish_ops(*a, **k):  # implemented in Task 2
-    raise NotImplementedError
+def build_record(args, repo_root: Path, dispatch_id: str, model: str, rc: int,
+                 prompt_text: str, result_text: str, log_file: Path):
+    """The audit card + cost row for one finished dispatch. Post-hoc record —
+    built after codex exits, never gating anything."""
+    body = (f"## Work order\n\n{prompt_text.strip()}\n\n"
+            f"## Result\n\n{result_text.strip()}\n")
+    card = cards.new_card(args.project, args.label, str(args.cwd or repo_root), "T1",
+                          body=body, **{"execution-controller": "terminal"})
+    cards.claim(card, "codex-worker")
+    cards.stamp_session(card, os.environ.get("CLAUDE_SESSION_ID", dispatch_id))
+    cards.stamp_routing(card, "codex", model)
+    walk_state(card, "done" if rc == 0 else "halted")
+    record = {"usd": 0.0, "billing": "subscription",
+              "model": ran_model(log_file, model),
+              "card_id": card.meta["id"], "codex_exit": rc}
+    return card, record
+
+
+def publish_ops(repo_root: Path, card: cards.Card, record: dict):
+    """One best-effort commit to ops: card + cost row, via a temp detached
+    worktree (never touches the caller's checkout or branch). Failure spools
+    the card locally and reports — it NEVER fails the dispatch."""
+    def git(*a, cwd=repo_root):
+        return subprocess.run(["git", *a], cwd=str(cwd), capture_output=True, text=True)
+
+    wt = Path(tempfile.mkdtemp(prefix="codex-dispatch-")) / "wt"
+    try:
+        if git("fetch", "origin", "ops").returncode != 0:
+            return False, _spool_note(card, "fetch origin ops failed")
+        if git("worktree", "add", "--detach", str(wt), "origin/ops").returncode != 0:
+            return False, _spool_note(card, "worktree add failed")
+        card_path = cards.save(card, wt / "queue")
+        led_path = ledger.append(wt, "cost", WRITER, record)
+        git("add", "--", str(card_path), str(led_path), cwd=wt)
+        if git("commit", "-m", f"chore(codex-direct): record {card.meta['id']}",
+               cwd=wt).returncode != 0:
+            return False, _spool_note(card, "commit failed")
+        for _ in range(2):
+            if git("push", "origin", "HEAD:refs/heads/ops", cwd=wt).returncode == 0:
+                return True, "pushed"
+            git("pull", "--rebase", "origin", "ops", cwd=wt)
+        return False, _spool_note(card, "push rejected twice")
+    finally:
+        git("worktree", "remove", "--force", str(wt))
+        shutil.rmtree(wt.parent, ignore_errors=True)
+
+
+def _spool_note(card: cards.Card, why: str) -> str:
+    dest = STATE_ROOT / "spool" / f"card-{card.meta['id']}.md"
+    fm = "\n".join(f"{k}: {v}" for k, v in card.meta.items())
+    dest.write_text(f"---\n{fm}\n---\n\n{card.body}", encoding="utf-8")
+    return f"FAILED ({why}) — card spooled at {dest}; re-publish it manually"
 
 
 def main(argv: list[str] | None = None) -> int:
