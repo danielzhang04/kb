@@ -21,7 +21,11 @@ import { withOpsTransaction } from './asyncGit.ts';
 
 export const MAX_WORKFLOW_STAGES = 32;
 
-export type WorkflowRiskTier = 'T1' | 'T2';
+/**
+ * T3 is representable but is admitted ONLY on the managed approvals path — see
+ * `validateWorkflowRunRequest`'s `admitApprovalBoundT3` option. Untrusted input still stops at T2.
+ */
+export type WorkflowRiskTier = 'T1' | 'T2' | 'T3';
 export type WorkflowCardState = 'inbox' | 'blocked';
 
 export interface WorkflowRunStageRequest {
@@ -75,7 +79,11 @@ export interface WorkflowRunDeps {
   makeRunId?: () => string;
   /** Reconcile ops only after every gate, schema check, owner check, and routing resolution succeeds. */
   prepareWrite?: (repoRoot: string) => void | Promise<void>;
-  /** Internal managed-run mode: publish every card blocked and mark it dashboard-owned. Never wire input. */
+  /**
+   * Internal managed-run mode: publish every card blocked and mark it dashboard-owned. Never wire input.
+   * This IS the approvals path, so it is also what admits an approval-bound T3 stage
+   * (`validateWorkflowRunRequest`'s `admitApprovalBoundT3`).
+   */
   publishBlocked?: boolean;
 }
 
@@ -282,10 +290,20 @@ function boundedText(value: unknown, label: string, max: number): string | null 
   return null;
 }
 
-/** Parse the closed v1 wire format. No coercion and no unknown fields. */
-export function validateWorkflowRunRequest(input: unknown):
+/**
+ * Parse the closed v1 wire format. No coercion and no unknown fields.
+ *
+ * `admitApprovalBoundT3` is the managed approvals path's opt-in for a T3 stage. It is set from
+ * `deps.publishBlocked` in `launchWorkflowRun` and nothing else: that flag is only ever set by
+ * `control/launch.ts`, after `compileApprovedProposal` bound the stage to an exact approved revision AND
+ * to the stage's own declared `publicationAuthorization` gate, whose approval `execution.ts` demands
+ * before the stage may start. Every other caller — and every HTTP body — leaves it unset and still gets
+ * the original "T3 requires the approvals path" refusal.
+ */
+export function validateWorkflowRunRequest(input: unknown, options: { admitApprovalBoundT3?: boolean } = {}):
   | { ok: true; value: WorkflowRunRequest }
   | { ok: false; detail: string } {
+  const admitApprovalBoundT3 = options.admitApprovalBoundT3 === true;
   if (!isRecord(input)) return { ok: false, detail: 'request body must be an object' };
   const topError = exactFields(input, TOP_LEVEL_FIELDS, ['name', 'project', 'stages']);
   if (topError) return { ok: false, detail: topError };
@@ -322,7 +340,7 @@ export function validateWorkflowRunRequest(input: unknown):
     if (targetError) return { ok: false, detail: targetError };
     const workOrderError = boundedText(raw.workOrder, `stages[${index}].workOrder`, MAX_WORK_ORDER_LENGTH);
     if (workOrderError) return { ok: false, detail: workOrderError };
-    if (raw.riskTier !== 'T1' && raw.riskTier !== 'T2') {
+    if (raw.riskTier !== 'T1' && raw.riskTier !== 'T2' && !(admitApprovalBoundT3 && raw.riskTier === 'T3')) {
       return { ok: false, detail: `stages[${index}].riskTier must be T1 or T2; T3 requires the approvals path` };
     }
     const ownerError = safeId(raw.owner, `stages[${index}].owner`);
@@ -504,7 +522,7 @@ export async function launchWorkflowRun(input: unknown, session: SessionInput, d
     if (!verified.ok) return { ok: false, reason: 'unauthenticated', detail: verified.reason };
   }
 
-  const validated = validateWorkflowRunRequest(input);
+  const validated = validateWorkflowRunRequest(input, { admitApprovalBoundT3: deps.publishBlocked === true });
   if (!validated.ok) return { ok: false, reason: 'invalid-workflow', detail: validated.detail };
 
   const assignable = (deps.assignableOwners ?? readAssignableOwners)(deps.repoRoot);

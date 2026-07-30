@@ -607,33 +607,56 @@ describe('control proposal routes', () => {
     }
   });
 
-  it('commits a Human Request response before releasing the exact launch into canonical publication', async () => {
-    const gatedProposal: PlanProposal = {
-      ...proposal,
-      proposalId: 'control-route-gated',
-      stages: proposal.stages.map((stage, index) => index === 0 ? {
-        ...stage,
-        humanGates: [{ id: 'review-before-publication', kind: 'approval', prompt: 'Approve the synthetic publication.' }],
-      } : stage),
+  /**
+   * ENTRY-GATE LAUNCH FIXTURES.
+   *
+   * A launch-shaped proposal whose runtime/model pairs exist in the SERVER-OWNED registry this suite
+   * really compiles against (`governance/model-routing.yaml`), so the launch compiler resolves live
+   * profiles instead of refusing the manager. `uploadGates` decides whether the T3 upload stage declares
+   * its own content-bound publication authorization — the one difference between a launchable run and the
+   * original fail-closed park.
+   */
+  function launchProposal(proposalId: string, uploadGates: PlanProposal['stages'][number]['humanGates']): PlanProposal {
+    return {
+      schema: 'kb.plan-proposal/v1', proposalId, project: 'kb-ops', title: 'Gated control launch',
+      summary: 'A gated two-stage run ending in a private upload.',
+      manager: { runtime: 'claude', model: 'claude-opus-5', requiredSkills: [] },
+      scope: { read: ['dashboard'], write: ['dashboard/server/control'] },
+      governanceRefs: ['CLAUDE.md', 'governance/agent-rules.md', 'governance/risk-tiers.md', 'orgs/kb-ops/contract.md'],
+      stages: [
+        {
+          id: 'build', title: 'Build', action: 'build:asset', target: 'dashboard/server/control',
+          workOrder: 'Build the asset.', riskTier: 'T2', dependsOn: [],
+          worker: { runtime: 'codex', model: 'gpt-5.6-sol' }, requiredSkills: [],
+          scope: { read: ['dashboard'], write: ['dashboard/server/control'] }, artifacts: [], checkpoints: [],
+          humanGates: [{ id: 'g1-plan', kind: 'approval', prompt: 'Approve the plan.' }],
+        },
+        {
+          id: 'upload', title: 'Upload', action: 'publish:private-upload', target: 'dashboard/server/control',
+          workOrder: 'Upload the finished asset as private.', riskTier: 'T3', dependsOn: ['build'],
+          worker: { runtime: 'codex', model: 'gpt-5.6-sol' }, requiredSkills: [],
+          scope: { read: ['dashboard'], write: ['dashboard/server/control'] }, artifacts: [], checkpoints: [],
+          humanGates: uploadGates,
+        },
+      ],
     };
-    const workspace = composerStore.create('operator', 'Gated control');
-    const lease = composerStore.acquireWriter('operator', workspace.composerRef);
-    if (!lease.ok) throw new Error('lease failed');
-    const begun = composerStore.beginTurn('operator', workspace.composerRef, lease.lease, 'Compile the gated plan.');
-    if (!begun.ok) throw new Error('turn failed');
-    composerStore.updateTurn('operator', workspace.composerRef, lease.lease, begun.workspace.turnId, {
-      state: 'complete', model: model(gatedProposal), endedAt: new Date().toISOString(),
+  }
+
+  async function approvedLaunchRevision(snapshot: PlanProposal, idempotencySuffix: string) {
+    const stored = controlStore.createProposalRevision('operator', {
+      sourceComposerRef: `launch-${idempotencySuffix}`, sourceTurnId: `turn-${idempotencySuffix}`, title: snapshot.title,
+      snapshot: snapshot as unknown as import('./types.ts').JsonObject,
     });
-    composerStore.releaseWriter('operator', workspace.composerRef, lease.lease);
-    const imported = await app.inject({
-      method: 'POST', url: '/api/control/proposals/import', headers: headers(token),
-      payload: { composerRef: workspace.composerRef, turnId: begun.workspace.turnId },
+    if (!stored.ok) throw new Error(stored.detail);
+    const approved = controlStore.decideProposal('operator', stored.value.proposalRef, 1, {
+      expectedHash: stored.value.hash, expectedApprovalRevision: 0, decision: 'approved',
+      idempotencyKey: `approve-${idempotencySuffix}`,
     });
-    const revision = imported.json().value as { proposalRef: string; revision: number; hash: string };
-    await app.inject({
-      method: 'POST', url: `/api/control/proposals/${revision.proposalRef}/revisions/1/decision`, headers: headers(token),
-      payload: { expectedHash: revision.hash, expectedApprovalRevision: 0, decision: 'approved', idempotencyKey: 'approve-gated' },
-    });
+    if (!approved.ok) throw new Error(approved.detail);
+    return stored.value;
+  }
+
+  async function launchSurface() {
     const opsGit = (_repoRoot: string, args: string[]): string => {
       if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
       if (args.join(' ') === 'rev-parse HEAD') return 'b'.repeat(40);
@@ -659,30 +682,77 @@ describe('control proposal routes', () => {
       runPreamble: () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }),
     }));
     await launchApp.ready();
+    return launchApp;
+  }
+
+  it('launches a gated T3 run without minting one gate boundary, so nothing at launch can authorize it', async () => {
+    // The upload declares its OWN publication-authorization gate, so the T3 wait is releasable at that
+    // stage's entry boundary and the run is launchable. Every gate — including the one that authorizes the
+    // upload — must still be absent from the Inbox until `execution.ts#stageBoundary` reaches its stage.
+    const revision = await approvedLaunchRevision(launchProposal('control-route-entry-gate', [
+      { id: 'g4-publish', kind: 'approval', prompt: 'Approve the private upload.', publicationAuthorization: true },
+    ]), 'entry-gate');
+    const launchApp = await launchSurface();
     try {
       const url = `/api/control/proposals/${revision.proposalRef}/revisions/1/launch`;
       const payload = { expectedHash: revision.hash, idempotencyKey: `launch:${revision.hash}` };
-      const gated = await launchApp.inject({ method: 'POST', url, headers: headers(token), payload });
-      expect(gated.statusCode, gated.body).toBe(202);
-      let detail = controlStore.getRun('operator', gated.json().runRef as string);
+      const launched = await launchApp.inject({ method: 'POST', url, headers: headers(token), payload });
+      expect(launched.statusCode, launched.body).toBe(202);
+      expect(launched.json()).toMatchObject({ ok: true, waitingHuman: true, activationGated: true });
+      const detail = controlStore.getRun('operator', launched.json().runRef as string);
       if (!detail.ok) throw new Error(detail.detail);
-      expect(detail.value.run.publicationState).toBe('waiting-human');
+      // Runnable and published: the T3 stage is in the card DAG, so the roster has something to run.
+      expect(detail.value.run.publicationState).toBe('published');
+      expect(detail.value.stages.map((stage) => [stage.stageId, stage.canonicalCardRef !== null]))
+        .toEqual([['build', true], ['upload', true]]);
+      // The ONLY boundary is the post-publication runtime-activation refusal. No gate, no governance
+      // refusal for the T3 stage, and — decisively — nothing of kind `approval`: a launch-time approval
+      // that could authorize spend or publication does not exist to be given.
+      expect(detail.value.humanRequests.map((request) => [request.kind, request.title])).toEqual([
+        ['governance-refusal', 'Automatic execution activation is gated'],
+      ]);
+      // Neither the bare gate id (what launch used to mint) nor the stage-scoped title the engine matches
+      // (`stableHumanTitle('gate', stageId, gateId)` = `automatic:gate:<stageId>:<gateId>`) exists yet.
+      for (const title of ['g1-plan', 'g4-publish', 'automatic:gate:build:g1-plan', 'automatic:gate:upload:g4-publish']) {
+        expect(detail.value.humanRequests.some((request) => request.title === title)).toBe(false);
+      }
+    } finally { await launchApp.close(); }
+  });
+
+  it('keeps a T3 stage with no publication gate parked at launch, publishing no cards on any replay', async () => {
+    // The pre-existing fail-closed guarantee for every other workflow in the repo: nothing names the human
+    // decision that would release this upload, so the run parks before a single card is written and no
+    // response can release it.
+    const revision = await approvedLaunchRevision(launchProposal('control-route-ungated-t3', []), 'ungated-t3');
+    const launchApp = await launchSurface();
+    try {
+      const url = `/api/control/proposals/${revision.proposalRef}/revisions/1/launch`;
+      const payload = { expectedHash: revision.hash, idempotencyKey: `launch:${revision.hash}` };
+      const parked = await launchApp.inject({ method: 'POST', url, headers: headers(token), payload });
+      expect(parked.statusCode, parked.body).toBe(202);
+      expect(parked.json()).toMatchObject({ ok: true, waitingHuman: true });
+      expect(parked.json().activationGated).toBeUndefined();
+      expect(parked.json().cards).toBeUndefined();
+      const runRef = parked.json().runRef as string;
+      let detail = controlStore.getRun('operator', runRef);
+      if (!detail.ok) throw new Error(detail.detail);
+      expect(detail.value.run).toMatchObject({ publicationState: 'waiting-human', state: 'waiting-human' });
       expect(detail.value.stages.every((stage) => stage.canonicalCardRef === null)).toBe(true);
+      expect(detail.value.humanRequests.map((request) => [request.kind, request.title, request.prompt])).toEqual([
+        ['governance-refusal', 'Governance review: upload', 't3-content-bound-approval-required'],
+      ]);
+      // Responding to a governance refusal never releases canonical publication: a plan amendment does.
       const request = detail.value.humanRequests[0];
-      const responded = await launchApp.inject({
+      await launchApp.inject({
         method: 'POST', url: `/api/control/human-requests/${request.requestRef}/respond`, headers: headers(token),
-        payload: { expectedRevision: request.revision, decision: 'approved', idempotencyKey: 'accept-gated' },
+        payload: { expectedRevision: request.revision, decision: 'approved', idempotencyKey: 'accept-refusal' },
       });
-      expect(responded.statusCode, responded.body).toBe(200);
-      const released = await launchApp.inject({ method: 'POST', url, headers: headers(token), payload });
-      expect(released.statusCode, released.body).toBe(202);
-      expect(released.json()).toMatchObject({ activationGated: true, waitingHuman: true });
-      detail = controlStore.getRun('operator', gated.json().runRef as string);
-      expect(detail.ok && detail.value.run).toMatchObject({ publicationState: 'published', state: 'waiting-human' });
-      expect(detail.ok && detail.value.humanRequests).toEqual(expect.arrayContaining([
-        expect.objectContaining({ state: 'resolved', response: expect.objectContaining({ decision: 'approved' }) }),
-        expect.objectContaining({ state: 'open', title: 'Automatic execution activation is gated' }),
-      ]));
+      const replayed = await launchApp.inject({ method: 'POST', url, headers: headers(token), payload });
+      expect(replayed.statusCode, replayed.body).toBe(200);
+      expect(replayed.json()).toMatchObject({ ok: true, runRef, replayed: true, waitingHuman: true });
+      detail = controlStore.getRun('operator', runRef);
+      expect(detail.ok && detail.value.run.publicationState).toBe('waiting-human');
+      expect(detail.ok && detail.value.stages.every((stage) => stage.canonicalCardRef === null)).toBe(true);
     } finally { await launchApp.close(); }
   });
 

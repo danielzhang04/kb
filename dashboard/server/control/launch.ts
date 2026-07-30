@@ -161,8 +161,7 @@ export async function executeApprovedLaunch(
     });
     if (!created.ok) return failure(created);
     const runRef = created.value.run.runRef;
-    let launchRun = created.value.run;
-    let gatesAlreadySatisfied = false;
+    const launchRun = created.value.run;
     if (created.replayed) {
       if (created.value.run.publicationState === 'published') {
         return {
@@ -177,21 +176,12 @@ export async function executeApprovedLaunch(
           },
         };
       }
+      // `waiting-human` publication means the launch compile hit a governance refusal (below), never a
+      // human gate: the only boundaries this path creates are `governance-refusal`, which no response can
+      // accept. Such a run is parked until the plan itself is amended and re-approved, so a replay
+      // truthfully reports the park instead of pretending an approval could release it.
       if (created.value.run.publicationState === 'waiting-human') {
-        const requests = created.value.humanRequests;
-        const accepted = requests.length > 0 && requests.every(acceptsBoundary);
-        if (!accepted) return { status: 200, body: { ok: true, runRef, replayed: true, waitingHuman: true } };
-        const released = ctx.controlStore.transitionPublication(
-          sub, runRef, created.value.run.version, 'pending',
-        );
-        if (!released.ok) return failure(released);
-        const planned = ctx.controlStore.transitionRun(sub, runRef, released.value.version, 'planned');
-        if (!planned.ok) return failure(planned);
-        launchRun = planned.value;
-        gatesAlreadySatisfied = true;
-        ctx.controlStore.appendEvent(sub, runRef, {
-          kind: 'governance', source: 'system', status: 'success', summary: 'all launch gates resolved; canonical publication released',
-        });
+        return { status: 200, body: { ok: true, runRef, replayed: true, waitingHuman: true } };
       }
       if (launchRun.publicationState !== 'pending') {
         return {
@@ -204,8 +194,22 @@ export async function executeApprovedLaunch(
         };
       }
     }
-    const waitingPolicies = compiled.value.stagePolicies.filter((item) => item.decision.disposition === 'waiting-human');
-    if (!gatesAlreadySatisfied && (compiled.value.humanGates.length > 0 || waitingPolicies.length > 0)) {
+    // ENTRY-GATE MODEL — launch NEVER creates a boundary for a stage's declared `humanGates`.
+    // A gate is born at its own stage boundary (`execution.ts#stageBoundary`, titled
+    // `stableHumanTitle('gate', stageId, gateId)`) at the moment that stage is about to start, so the
+    // operator judges the artifact the gate exists to judge. Minting them here produced every gate at
+    // launch — before any script, shot list, board, or cut existed — under titles the engine does not
+    // recognise, so each gate then had to be approved a second time at its real boundary. That trained
+    // rubber-stamping of exactly the two gates that release money and perform an upload. Launch's job is
+    // to reconcile, compile, publish cards, audit, and activate; it authorizes nothing.
+    //
+    // What remains here is the governance refusal: a `waiting-human` policy that NO stage-boundary human
+    // decision can release (see `CompiledStagePolicy.releasableByStageGate`). That is a plan defect, not
+    // an approvable boundary, so it parks the run's canonical publication before any card is written.
+    const waitingPolicies = compiled.value.stagePolicies.filter(
+      (item) => item.decision.disposition === 'waiting-human' && !item.releasableByStageGate,
+    );
+    if (waitingPolicies.length > 0) {
       const requests: CreateHumanRequestInput[] = waitingPolicies.map((pending) => {
         const stage = created.value.stages.find((item) => item.stageId === pending.stageId);
         return {
@@ -215,15 +219,8 @@ export async function executeApprovedLaunch(
           prompt: pending.decision.reason,
         };
       });
-      requests.push(...compiled.value.humanGates.map((pending) => {
-        const stage = created.value.stages.find((item) => item.stageId === pending.stageId);
-        return {
-          stageRef: stage?.stageRef ?? null,
-          kind: pending.gate.kind,
-          title: pending.gate.id,
-          prompt: pending.gate.prompt,
-        };
-      }));
+      // The `:gates` suffix is a durable idempotency identity, not a description: renaming it would make
+      // an in-flight relaunch mint a second refusal set for the same run.
       const requested = ctx.controlStore.createHumanRequests(sub, runRef, {
         idempotencyKey: `${idempotencyKey}:gates`, requests,
       });
@@ -237,8 +234,12 @@ export async function executeApprovedLaunch(
       return { status: 202, body: { ok: true, runRef, waitingHuman: true } };
     }
 
+    // Fail-closed invariant, not a live branch: the compiler only withholds the card DAG for a T3 stage
+    // with no releasing gate, and that stage always carries a non-releasable `waiting-human` policy, so
+    // the park above already returned. Reaching here means the compiler dropped the DAG for a reason this
+    // path cannot name — publish nothing.
     if (!compiled.value.workflow) {
-      return { status: 409, body: { error: 't3-approval-release-not-implemented', runRef } };
+      return { status: 409, body: { error: 'compiled-workflow-withheld-without-boundary', runRef } };
     }
     const workflow = compiled.value.workflow;
     const publishing = ctx.controlStore.transitionPublication(sub, runRef, launchRun.version, 'publishing');
