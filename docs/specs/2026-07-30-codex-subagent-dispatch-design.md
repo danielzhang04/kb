@@ -58,15 +58,17 @@ py -3 scripts/codex_dispatch.py --prompt-file <path> [--model <alias|id>] [--eff
 
 Flow, in order:
 
-1. **Gates** (all before any spawn): `STOP` file absent; billing guard — refuse if
-   `OPENAI_API_KEY` or `CODEX_API_KEY` is set in the environment, and require
+1. **Gates** (all before any spawn): `STOP` file absent; `ANTHROPIC_API_KEY` set (preamble's own
+   refusal); billing guard — refuse if `OPENAI_API_KEY` or `CODEX_API_KEY` is set in the
+   environment, and require
    `codex login status` exit 0 within 15s (subscription only, never metered fallback; same law
    as `agent_runner.ps1:167-194`). No budget-cost gate: every dispatch's cost row is
    structurally `usd 0.0` (subscription billing), so a cost check here would measure nothing;
    API spend is governed per-run by card authorization, not this script.
 2. **Model resolution** via `scripts/routing.py` (`known_models` + aliases,
    `governance/model-routing.yaml` precedence). Unknown model/alias → exit non-zero with the
-   routing error, nothing spawned. `--model` omitted → runtime codex default. `--effort` is a
+   routing error, nothing spawned. `--model` omitted → alias `codex` → `gpt-5.6-terra` (the
+   dispatch default). `--effort` is a
    script-layer dial passed as `-c model_reasoning_effort=...`; it never enters routing. On
    `--follow-up <thread-id>`, `--worktree`/`--sandbox`/`--cwd` refuse loudly (the resumed
    session keeps its own); `--model` is still resolved and pinned onto the resumed session via
@@ -114,7 +116,7 @@ Flow, in order:
 Teaches the convention, nothing more: write the prompt to a scratchpad file (deep, structured
 brief — same standard as Agent-tool prompts); run the script via Bash `run_in_background`; keep
 working; the notification carries the result. Model menu with the tier guidance (cheap =
-gpt-5.4-mini / default = gpt-5.6-sol / deep = gpt-5.6-sol `--effort xhigh`); parallel dispatches
+gpt-5.6-luna / default = gpt-5.6-terra / deep = gpt-5.6-sol `--effort xhigh`); parallel dispatches
 are just parallel background calls (one card each); `--worktree` when the task writes broadly or
 another writer shares the tree; caller reviews diffs and commits — the worker never does; caller
 sweeps any worktree after harvest.
@@ -135,19 +137,14 @@ refuse (exit 2) if `OPENAI_API_KEY`/`CODEX_API_KEY` is set, else exec `codex mcp
 stdio inherited. Blocking inline lane for short asks, writes no card; documented in the skill's
 "when NOT to dispatch" line.
 
-### 5. HUMAN GATE — governance edits (Daniel applies)
+### 5. Governance edits (`governance/` is human-edited only)
 
-`governance/` is human-edited only. Exact diff to be handed at the gate:
-
-- `governance/model-routing.yaml`: `known_models` += `gpt-5.6-terra, gpt-5.6-luna, gpt-5.5,
-  gpt-5.4, gpt-5.4-mini, gpt-5.3-codex-spark`; aliases += `codex-cheap: gpt-5.4-mini`,
-  `codex-deep: gpt-5.6-sol`; delete the stale "codex runner does NOT pass `--model` today"
-  note (contradicted by `agent_runner.ps1:378-383`).
-- `governance/card-schema.md`: document `execution-controller: terminal` (direct dispatch,
-  record-only) alongside `dashboard`.
-
-Until applied, the script works with `gpt-5.6-sol` only (fail-loud on the rest) — buildable and
-testable before the gate.
+- `governance/model-routing.yaml`: APPLIED. Live file carries `known_models: [gpt-5.6-luna,
+  gpt-5.6-terra, gpt-5.6-sol]` and aliases `codex-cheap: gpt-5.6-luna`, `codex: gpt-5.6-terra`
+  (dispatch default), `codex-deep: gpt-5.6-sol` — the three tiers the script and skill route
+  against.
+- `governance/card-schema.md`: still pending — document `execution-controller: terminal`
+  (direct dispatch, record-only) alongside `dashboard`.
 
 ## Data flow
 

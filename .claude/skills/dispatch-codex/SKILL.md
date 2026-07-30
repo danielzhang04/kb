@@ -44,11 +44,14 @@ py -3 "$(git rev-parse --show-toplevel)/scripts/codex_dispatch.py" --prompt-file
 ```
 
 Repeat the footer's `--model <tier>` — a follow-up does NOT keep the session's own model, the
-script re-pins it every turn. `--sandbox`/`--cwd`/`--worktree` are refused on a follow-up; follow
-up before you sweep a `--worktree` (a follow-up into a removed one resumes into a deleted dir).
-Each turn writes its own card, linked by the shared `workflow: <thread-id>` field. To stop a
-worker: stop the background shell task (no card is published; the spool trace under
-`%LOCALAPPDATA%\kb-codex-dispatch\spool\` is the only record).
+script re-pins it every turn; omit it and a `codex-deep` session silently drops back to the
+`codex` default tier (terra), not its own model. `--sandbox`/`--cwd`/`--worktree` are refused on a
+follow-up; follow up before you sweep a `--worktree` (a follow-up into a removed one resumes into
+a deleted dir). Each turn writes its own card, linked by the shared `workflow: <thread-id>` field.
+To stop a worker: stopping the background shell task orphans the codex child (no job object) —
+find the python parent's pid and `taskkill /PID <pid> /T /F` (the `/T` kills the tree). Either way
+the spool trace under `%LOCALAPPDATA%\kb-codex-dispatch\spool\` is the only record; no card is
+published.
 
 ## Rules
 
@@ -57,8 +60,8 @@ worker: stop the background shell task (no card is published; the spool trace un
   `governance/` — scope it down for untrusted briefs); `--sandbox read-only` for research (no
   network — web-research briefs degrade silently, don't dispatch); `--worktree` when the task
   writes broadly or another writer shares the tree.
-- Refuses on: STOP file, `OPENAI_API_KEY`/`CODEX_API_KEY` in env, stale codex login, unknown
-  model. Fix the cause; never work around a refusal.
+- Refuses on: STOP file, `ANTHROPIC_API_KEY` set (preamble gate), `OPENAI_API_KEY`/`CODEX_API_KEY`
+  in env, stale codex login, unknown model. Fix the cause; never work around a refusal.
 - Failed runs still land as a `done` card, Result starting `FAILED: ...` (footer names the
   JSONL log); default timeout 2700s (45 min), `--timeout <seconds>` to change — a timeout kills
   the worker and records the same shape.
