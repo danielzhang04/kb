@@ -30,7 +30,9 @@ the story exists (Steps 3a–3c). The facts never shape the voice; the voice car
    the archive again), then treat the sheet as a **binding overlay** on the normal flow: its
    **blockquoted lines are Daniel-verbatim, locked deliverables** the writer places and no downstream
    agent rewrites (`references/critics.md`, verdict overlay), and its directives steer the outline at
-   3a. **Generalizable lessons must already be in doctrine before the regen runs** — fix the skill,
+   3a. Where the prior round carries Daniel hand-edits, run one coherence + leash re-read over the
+   edited text before outlining (relative-time phrases, referents, superlative bounds; a fact he added
+   gets a targeted verification, never a hedge or a cut). **Generalizable lessons must already be in doctrine before the regen runs** — fix the skill,
    never the artifact. If the sheet implies a grammar or critic rule that is not written down yet,
    **stop and surface the doctrine gap** instead of hand-patching this one script.
 

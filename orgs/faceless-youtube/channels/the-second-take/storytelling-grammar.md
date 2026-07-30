@@ -29,7 +29,9 @@ the viewer may not know is glossed in the same breath or cut, never assumed. Bes
 is also the joke: "wrote the gap off as a transposition error, which is accountant for oops, I typed it
 wrong." Still a money-*story*, not a finance tutorial: deliver the amazing fact, skip the mechanics
 lesson. **Spoken grammar beats written grammar every time:** "none of them are" is what a person says
-out loud, so it is what gets written. Contractions and the stock idiom a friend already has are the
+out loud, so it is what gets written, and compression comes out of clauses and beats, never the small
+words a speaker says: dropped subjects, dropped "that", dropped connectives ("Son of a Texas oil
+billionaire, and...") are a written tic; a friend says "He was the son of...". Contractions and the stock idiom a friend already has are the
 default reach (§1.6); a fresh image survives only where it parses instantly as talk, and a phrase that
 sounds written ("everything went into reverse," "this bleeding thing") is the defect. **The story's plain object-word repeats
 without shame:** bricks stay bricks in every beat, never "masonry"; reaching for a fancier synonym to
@@ -57,8 +59,11 @@ monotone this pipeline defaults to: every line gets identical weight, so nothing
 **Tense: past is the storytelling default.** The story already happened, so tell it in the past ("They
 bought 26,000 bricks from the Colorado Brick Company"). Present tense is for framing the viewer into a
 period ("We're in the 1980s"), for mechanics still true today, and, where the energy wants it, for a
-scheme's hottest stretch. What is banned is the present-tense still life: a scene with nobody doing
-anything in it. Put people in the sentence, doing something.
+scheme's hottest stretch. What is banned is the still life in any tense: a sentence with nobody
+doing anything in it ("The guards were cowboys." reads clean and is still the defect: "To guard their
+silver, the Hunts hired cowboys."), and a scale figure gets an agent and a verb too ("They could've
+built an Eiffel Tower with all that silver."), never an appositive fragment. Put people in the
+sentence, doing something.
 
 **1.2 — Land the point inside the telling; no grandeur buttons.** The recurring failure is ending a beat
 on a summary or profound line ("the mania did the work"). **The check:** the last sentence of every block
@@ -72,23 +77,33 @@ block is the normal running density, and two consecutive blocks with neither is 
 decay zones are the aftermath, where the narrator turns into a court reporter, and any
 mechanism-exposition stretch (taste #13). **Bits are short.** The banter that lands is a clause or a
 line ("What a dick." / "Or so they said." / "Next level."), so when a stretch reads flat the fix is
-another short bit, never a longer metaphor: length is what kills a joke, and a limp line gets cut or
-swapped, never extended. **The register is warm, irreverent, and loaded with pop culture:** a narrator
+another short bit, never a longer metaphor: length is what kills a joke, and a limp line or a bare
+interest-assertion ("which is its own kind of insane") gets cut or swapped for a better-worded
+reaction or reference, never extended. **The register is warm, irreverent, and loaded with pop culture:** a narrator
 plainly enjoying this. Dry irony is welcome where it lands, but smirking distance as the house register
 is out. Not everything is a joke, and the flat sentence between two funny ones is what makes them funny.
 Every piece of wit still rides a fact: delete the joke and the fact survives; delete the fact and the
-joke collapses. The §6 toolbox is the bank of shapes; §1.6 carries the loud moves.
+joke collapses, and a reaction is sized to its fact: "crazy, right?" on an unremarkable number is
+the miss. The §6 toolbox is the bank of shapes; §1.6 carries the loud moves.
 
 **1.4 — Analogies are the explanatory engine.** At a mechanism, a scale, or an absurdity, the **first
 reach is a named cultural or institutional pull that carries the explanation** ("It's the TSA."); prose
 explanation is the fallback, what you write when the reach failed, and it stays inside the same breath
-bar. Runs are welcome, and a good one can recur as a callback. **The pulls skew heavily to named
+bar; between the pull and the prose sits the norm-then-violation frame: the normal behavior, then the
+break, two short sentences ("Now normally, people who trade futures sell the contract for money. But
+the Hunts? They demanded payment in silver."). Runs are welcome, and a good one can recur as a callback. **The pulls skew heavily to named
 cultural references** (Ramsay, Doctor Strange, Samsung against Apple, Ocean's Eleven); generic
 situational comparisons are the minority, and every comparison is measured in **breath, not sentence
 count**: one may play where it lands inside a short clause, and a long one is the defect however it is
-punctuated, a single sentence spent building it out included. **Setup-then-apply is licensed:** hand the
+punctuated, a single sentence spent building it out included; the "X, except Y" build-out is dead as
+a structure, and a comparison has to make instant sense in the context of its beat ("It's Ticketmaster,
+except they owned every seat in the building" failed on both counts). **Setup-then-apply is licensed:** hand the
 viewer the reference first, then apply it ("You know that Gordon Ramsay show where he goes around
-reinventing failing restaurants? Q.T. Wiles was the Gordon Ramsay of the business world.").
+reinventing failing restaurants? Q.T. Wiles was the Gordon Ramsay of the business world."). Setup is
+for references that need handing over; a famous event is asserted flat ("Robinhood did the same thing
+to GameStop in 2021"), never wound up with "if that sounds familiar." And the named skew is the means,
+not the goal: the target is the instantest picture in the fewest words, which an everyday grievance
+sometimes wins ("worse than concert ticket scalpers").
 > Scale: "Accounting for inflation, they were making as much money as Reddit." · Era: "It was the
 > dot-com bubble of the 1820s." · Situation: "This was Ocean's Eleven level stuff." · Generic, held to
 > one clause: "It's like reading a textbook, you know?" · Character: "the Bernie Madoff of the 1820s."
@@ -108,18 +123,22 @@ manager…"): talk to the viewer, never cast them. Where the research supports a
 scheme, the narrator may announce **Step N** ("**Step 1: Create the Fake Country.**") — it exposes a
 mechanism, never bare chronology, and runs as a complete sequential set.
 
-**1.6 — Heat is carried by the delivery, so use the loud moves.** Four are licensed, and they are the
+**1.6 — Heat is carried by the delivery, so use the loud moves.** Five are licensed, and they are the
 moves rather than permissions: **capitals on a word the voice would lean on** ("And they were HOT.");
 **the knowing stock build-up at a major introduction** ("they brought in the man, the myth, the legend:
 Q.T. Wiles"); **the stock idiom as the default reach** ("a fat bonus," "your head was on the chopping
 block," "fell off a cliff," "raking it in"); and **profanity at the sanctioned grade, where the
 absurdity peaks** ("shitting on your risotto," "What a dick.") — the grade is "ass" and "shit" and stops
-there, the f-word is not the channel. No quota attaches: pick the beats where the voice would actually
-get loud. But a whole script reaching for none of the four has drifted quiet, and that is a defect of
+there, the f-word is not the channel, and profanity is the rarest reach of the set, never owed; and
+**the deadpan noun-punch capping a beat** ("The embarrassment." / "A shell company."), a two-or-three
+word verdict fragment that carries a judgment, which is what separates it from the banned empty
+fragment below. No quota attaches: pick the beats where the voice would actually
+get loud, and a loud move is its block's exit: nuance and qualifiers land before the punch, never
+trailing after it. But a whole script reaching for none of the five has drifted quiet, and that is a defect of
 its own (taste #13) even where every ban below is honored.
 **The boundary is credibility padding, not volume.** Banned: "that part is real," "he actually did," "he
 really did," "seriously," "the maddening thing," "genuinely audacious" — state the insane fact plainly
-and let the *viewer* be the one amazed; the identity aside is exactly "Yeah, that's his real name."
+and let the *viewer* be the one amazed; the identity aside ("Yeah, that's his real name.") fires only when the name is itself the joke, never as a reflex on an ordinary name.
 Dead too is every written move that manufactures heat on the page: trailer drama, the clipped fragment
 carrying no joke and no new fact ("Everything changed."), the dramatic uncontracted punch ("That is one
 year."), and the paired parallel aphorism. A single dry ironic capper stays correct ("Or so they said.").
@@ -150,6 +169,10 @@ name them within two sentences (teasing an unknown name buys nothing); the stake
 turn, it does not vanish.
 > "So there was this guy, Gregor MacGregor. Yeah, that's his real name."
 
+**The door is fast:** between the cold open and the first turn into the engine ("So why silver?",
+"Now rewind four years.") there is room for at most one block beyond the hook, and every front block
+still earns its pull (§1.3); a front stretch of bare numbers is a textbook open however short it runs.
+
 **2.2 — Select by story value; develop what you keep.** `research.md` is a pool, not a checklist. Cut
 the beats that don't carry the story; give the ones that do their real color: the scene, the concrete
 detail, the telling number. Three inert research paragraphs collapse to one beat, but racing through the
@@ -158,21 +181,24 @@ beat that carries the story is as real a miss as stuffing in facts because they'
 > number, because hard drives have serial numbers, and shrink wrapped them onto pallets."
 
 **A fact enters when the story needs it, and not one beat earlier.** Sourced material has no claim on a
-position; put each fact where it does work. **Scale is the exception worth planning for: it lands early,
+position; put each fact where it does work — the title's own qualifier included: it enters where it
+powers a beat, never as an early caveat block apologizing for the title, and it compresses to the
+fewest words that keep it true ("tradeable silver", not a relative clause). **Scale is the exception worth planning for: it lands early,
 and as a comparison**, because a revenue figure means nothing alone and a company the viewer has a feel
 for means everything. **The ledger's precision has no claim on the narration.** The detail budget is one
 number per beat, and a figure enters friend-rounded ("over half a billion dollars") unless precision IS
 the story (26,000 bricks). A ledger range resolves to one flat number in selection, never a spoken
-range, and a comedic scale pull the ledger calls approximate is committed flat, never qualified. Résumé
+range, and a comedic scale pull the ledger calls approximate is committed flat, never qualified. Dates are
+numbers too: one dated beat anchors a stretch and its neighbors ride relative ("Two weeks later"),
+never a spelled-out date in block after block. Résumé
 lines, model numbers, and logistics enter only when load-bearing.
 > "And at their peak in 1988, they were making over 600 million dollars a year. Accounting for
 > inflation, that's almost as much money as Reddit makes today. Or so they said."
 
-**2.3 — Let the story set the length inside the 8–10 minute band, natural center near the top of it.**
+**2.3 — 8–10 minutes is the average, not a target.**
 Word target follows the **channel voice's measured wpm** (in `dna.md`; Miles runs ~175 gross, the
 narrator's pausing already inside it), so runtime is words ÷ that rate, computed by `lint_script.py`.
-Landing well under means beats are starved of color, not that filler is missing; running long means
-dwell (§2.5), and length is added only as a genuine cut *thread*, never padding.
+The cut sets the length; running long means dwell (§2.5), and length is never added back as padding.
 
 **2.4 — Motifs and callbacks carry the telling.** Plant a phrase and reuse it so it pays off ("eight
 million acres of land" → "those eight million acres was swampland"). A recurring analogy is a callback
@@ -189,7 +215,9 @@ hear it against, and the real scene arrives pre-spoiled when it finally shows up
 **2.5 — Color, not dwell.** *Color* is a new, concrete, specific detail that makes a beat vivid: the
 bricks came from the Colorado Brick Company; each box got a serial number; the guidebook ran 355 pages.
 It earns its place by becoming a pull or a joke ("ran it from LA" survives as the Doctor Strange bit);
-the same fact as bare logistics is clutter. *Dwell* is restating a point after it landed. **The test:
+the same fact as bare logistics is clutter. *Dwell* is restating a point after it landed. The mirrored mechanism is dwell too: a mechanism is
+taught once at first use, and its later reversal or consequence rides one plain causal line ("the
+creditors demanded their money back"), never a block re-teaching it in the other direction. **The test:
 does the line add a new fact or image, or re-emphasize one already said?** Add the first, cut the
 second, and lean toward color: the miss we correct most is a draft gone too terse.
 
@@ -200,7 +228,10 @@ a second scheme); hold the best fact for the final stretch.
 
 **2.7 — A company story tells the rise before the fall, and motivates every step out loud.** The
 collapse only hurts if the viewer watched the climb first: who they were, how fast they got big, and
-how big "big" was, before anything goes wrong (the §1.1 rise block is the model). **One climb owns the
+how big "big" was, before anything goes wrong (the §1.1 rise block is the model). The rise is also
+where the context lands: who these people are, what the company actually sold, and where the money
+came from, told as story, because fresh eyes follow the fall only if they held the world before it
+broke. **One climb owns the
 numbers:** the rise is told once, with its figures, and every later beat escalates the *object* and the
 stakes instead of re-climbing the revenue. A second pass at how big they got is dwell (§2.5).
 
@@ -218,10 +249,15 @@ Each quarter, Wiles raised sales targets and management came up with better ways
 **3.1 — Impose a shape; refuse flat chronology.** Design the sequence in the outline before drafting,
 and name the shape you are imposing: the calendar is never the answer. The proven shape for a company
 rise-and-fall is the **peak-first rewind** — tell the whole climb once, at its peak, with the ironic
-capper on top ("Or so they said."), then rewind to the cause of the fall ("Now rewind four years."). It
-satisfies §2.7's one-climb rule and §2.2's scale-lands-early by construction, which is exactly what a
+capper on top ("Or so they said."), then rewind to the cause of the fall ("Now rewind four years.").
+The peak block holds the peak alone, how big and how fast, as comparisons; the origin (when it
+started, the first buys) belongs to the rewind, or the rewind arrives with its facts already spent and
+the shape shows its seams. It satisfies §2.7's one-climb rule and §2.2's scale-lands-early by construction, which is exactly what a
 chronological draft breaks. It is a default, not a mandate: a cold open on the act with a rewind to how
-they got there, or a cross-cut between two threads (§3.3), are peers. Having no shape is not.
+they got there, a cross-cut between two threads (§3.3), or the hook-tease chronology — the hook spends
+the peak tease and the start date, then the body just walks forward from the origin — are peers; when
+the hook already anchors the start, the announced rewind ("Now rewind…") is scaffolding, so skip the
+announcement and walk. Having no shape is not.
 
 **3.2 — Spoil the reveal in the hook; STAGE it in the body.** Open on the sharpest contradiction as a
 settled fact with the mechanism withheld ("one of those companies packed 26,000... red clay bricks into
@@ -250,7 +286,9 @@ the main engine (§3.6).
 
 **3.4 — Casual transitions, question turns, and forward-promise seams.** The question-answered-casually
 move ("So how does a warehouse full of bricks pass an audit?", asked once the bricks are on the pallets,
-§3.2) is the spoken connective tissue. What is dead is the literary connector ("which brings us to,"
+§3.2) is the spoken connective tissue. Its best answer is the shortest true one, delivered before the
+unpacking ("So how do two guys buy up half a market? Credit."), and a seam never earns sentences of its
+own: the turn is the bridge. What is dead is the literary connector ("which brings us to,"
 "little did they know") and the announced category ("here's the strange part"): **deliver the moment,
 don't announce its category**. A plain spoken doorway ("Here is the story of that company.") is normal
 speech. A beat exits on an open loop, and escalation is honest ("it gets worse" is followed by worse).
@@ -319,7 +357,7 @@ The taste defects the pipeline reliably produces, as transformations (what criti
 | Unstaged reveal / pre-authorization: the mechanism, rule, or procedure lectured before the act it explains (the test-count explainer ahead of the bricks), so the title object walks in unmotivated | Pressure, the corner, the decision as a moment, the act, then the mechanism as the punchline to "how did nobody notice?" (§3.2) |
 | Orphaned callback: a wink at a scene the script has not built yet ("as long as nobody counts the inventory") | Cut the wink, or move it after the scene it points at (§2.4) |
 | Elegant variation: the plain object-word swapped for a fancier synonym ("masonry" for bricks) | Repeat the plain word; a friend telling the story says "bricks" every time (§1.1) |
-| Literary/essayist phrasing, the uncontracted punch ("That is one year."), the paired parallel aphorism — or the quiet script: no caps, no knowing build-up, no idiom reach, no sanctioned profanity anywhere in it | Plain and short, the way it would be said aloud; heat is the four licensed loud moves, used where the voice would actually get loud (§1.6) |
+| Literary/essayist phrasing, the uncontracted punch ("That is one year."), the paired parallel aphorism — or the quiet script: no caps, no knowing build-up, no idiom reach, no sanctioned profanity anywhere in it | Plain and short, the way it would be said aloud; heat is the five licensed loud moves, used where the voice would actually get loud (§1.6) |
 | Grandeur button ending a beat, or an essay/moral close ("That's a workday") | End on the fact/action; stop the way a friend stops: the fates, then a last laugh (§1.2, §3.5) |
 | Dwell: restating a landed point, re-restating the premise, a triple-build of one idea, or re-climbing revenue already told because the draft runs in calendar order | Say it once, on the sharpest image, then move; impose a shape, and one climb owns the numbers (§2.5, §2.7, §3.1) |
 | Generic metaphor run long (a whole sentence built out, the Super Bowl TV bit) where a named pull would land | One named cultural reference, or a generic one held to a short clause ("It's the TSA.") (§1.4) |
@@ -354,6 +392,13 @@ All fact-riding, and used **often** (§1.3 — abundance is the default, flatnes
 - **Narrator at his own expense:** "My Peloton bike is a scam but these guys? Next level."
 - **Genre re-label** (name the movie the story has turned into): "This was Ocean's Eleven level stuff."
 - **Historical irony where the real fact is the punchline:** the bricks had serial numbers.
+- **The observational one-liner:** a wry general truth riding the fact: "Conspiracy theorists with
+  means are the scariest kind."
+- **The counterfactual gag:** the cheaper or smarter alternative the subject ignored: "He could've been
+  a high stakes poker player and not lost that much money." Behavior-contrast is its cousin: "At least
+  when Belfort went to Switzerland, he acted like a businessman."
+- **The intensity comparison:** want or degree measured against a universal obsession: "This guy wanted
+  silver more badly than Argentines wanted to win the World Cup."
 
 **The humor bar:** a joke ships only if it clears the universality bar (§1.4), stays short (§1.3), and
 the words are plain. It also has to land: warm or dry, a swing that misses costs energy and returns

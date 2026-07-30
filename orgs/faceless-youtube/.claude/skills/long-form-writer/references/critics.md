@@ -16,7 +16,8 @@ draft script.md
   → route on the coherence critic's [LOCAL]/[STRUCTURAL] tags:
       • only line-level findings (taste + leash + [LOCAL] coherence):
           → editor             (one subagent: applies fixes IN VOICE → revised script + changelog)
-      • any [STRUCTURAL] coherence finding:
+      • any [STRUCTURAL] coherence finding, or any finding whose remedy ADDS material (the flat
+        stretch owed a short bit is the standing case):
           → writer structural revision  (one subagent: reworks the sequence/framing of the flagged spans,
             from ALL FOUR findings lists at once, leashed → revised script + changelog)
           → re-verify once     (leash re-read: no invented facts; coherence re-read: the confusion is gone)
@@ -27,12 +28,15 @@ draft script.md
 Run the four critics **in parallel**, then route on the coherence critic's severity tags. **One cycle only for
 line-level edits, and at most ONE structural bounce for coherence** — never loop critic→edit→critic; if the
 re-verify still finds the structure confusing, or a changelog flags something unresolved, **surface it to the
-human** instead of spinning. **Taste and leash are subtractive; coherence is the one additive lane** — a gap
-is fixed by building the connection in or resequencing, so its structural findings go to the *writer*.
+human** instead of spinning. **The editor is subtractive; every additive remedy belongs to the writer** — a coherence gap
+is fixed by building the connection in or resequencing, a flat stretch by the writer adding the short
+bit, leashed; an additive remedy left with the editor dies there.
 
 **The verdict overlay (regen runs only).** When a `videos/<slug>/verdict.rN.md` exists (skill Step 0), every
-blockquoted line in it is **Daniel-verbatim and LOCKED**: the writer places them, and every agent below plus
-the humanizer **preserves them byte-for-byte** and never files a finding against one. A locked line may be
+blockquoted line in it is **Daniel-verbatim and LOCKED for the regen that sheet drives**: the writer places
+them, and every agent below plus the humanizer **preserves them byte-for-byte** and never files a finding
+against one. A lock binds one round only: a later Daniel hand-edit outranks an earlier verdict, and a line
+locked in a previous round is ordinary text again. A locked line may be
 *moved* if the sheet's structure directive requires it, never reworded or trimmed; a conflict with a critic's
 mandate goes to the human, unresolved.
 
@@ -82,24 +86,30 @@ that company; an echo of them is neither defect nor virtue, so judge the paragra
 >    ("hold onto that, it matters later"), or a wink at a scene it has not built yet ("as long as nobody counts
 >    the inventory"). The plant works by being mentioned, and a callback only points backward. Also the minor
 >    character who profited or lost and never comes back at the fates. (§2.4, §3.2, §3.5)
-> 5. **Still life / bloodless abstraction** — a present-tense scene with nobody doing anything in it, a company
->    or person left unnamed to manufacture mystery (in the hook especially: holding the name back for a block
->    buys nothing), or a fact so abstract nothing happens in the sentence. Worst in the opening. (§2.1, §1.1)
+> 5. **Still life / bloodless abstraction** — a sentence with nobody doing anything in it, in ANY tense
+>    ("The guards were cowboys." reads clean and is still the defect: "To guard their silver, the Hunts
+>    hired cowboys."), a company or person left unnamed to manufacture mystery (in the hook especially:
+>    holding the name back for a block buys nothing), or a fact so abstract nothing happens in the
+>    sentence. Worst in the opening. (§2.1, §1.1)
 > 6. **Grandeur / summary buttons** — a block ending on a summary, thesis, or profound line instead of a fact
 >    or action. Read the LAST sentence of every block: it must land on a fact, an action, or the push into
 >    what comes next, never a verdict. A button chopped into a fragment is still a button. (§1.2)
 > 7. **Dwell / harping** — a point restated after it landed, a triple-build restating one idea three ways,
->    circling back to an irony already made, the core premise recurring past two or three times, or a revenue
->    climb told a second time when the rise beat already owns the numbers. Flag the weakest repeats. (§2.5, §2.7)
+>    circling back to an irony already made, the core premise recurring past two or three times, a revenue
+>    climb told a second time when the rise beat already owns the numbers, or the mirrored mechanism: a block
+>    re-teaching in reverse a mechanism the story already taught, where one causal consequence line does the
+>    job (§2.5). Flag the weakest repeats. (§2.5, §2.7)
 > 8. **Writerly / literary** — clever-convoluted sentences, aphorisms written to sound deep, any line no real
 >    person would say aloud to a friend: the uncontracted fragment-punch ("That is one year."), the paired
->    parallel aphorism, the fresh image that does not parse as talk, and **elegant variation** — the plain
+>    parallel aphorism, the fresh image that does not parse as talk, the sentence too long to say in one
+>    breath, and **elegant variation** — the plain
 >    object-word swapped for a fancier synonym ("masonry" for bricks). The plain word repeats; flag the
 >    synonym, not the repetition. An image that parses instantly is NOT this defect. (§1.1, §1.6)
 > 9. **Detail-budget overrun** — more than one number in a beat, an unrounded figure where a friend would
 >    round out loud ("over half a billion dollars"), the ledger's own precision or uncertainty range shipped
->    into narration ("somewhere between two and four million"), or résumé lines, model numbers, and logistics
->    doing no story work. A detail earns its place by becoming a pull or a joke. (§2.2, §2.5)
+>    into narration ("somewhere between two and four million"), résumé lines, model numbers, and logistics
+>    doing no story work, or a scale figure landing bare where the grammar wants a comparison (three
+>    billion dollars, with nothing beside it). A detail earns its place by becoming a pull or a joke. (§2.2, §2.5)
 > 10. **Jargon** — a term a normal person wouldn't say in conversation, where a plain word exists. (§1.1)
 > 11. **Empty signposting, viewer-staging, historiography, or hook overspend** — a label that hides or delays
 >     the next action ("here's the strange part"); the narrator casting the viewer into the scene ("So put
@@ -117,9 +127,11 @@ that company; an echo of them is neither defect nor virtue, so judge the paragra
 >     clause-sized; never file an analogy-count quota. (§1.4, §6)
 > 13. **Flat stretch / too deadpan, or a quiet script** — the countable tripwire is two consecutive blocks
 >     with no pull or reaction (§1.3: one or two per block is the running density); its number-pile cousin is
->     #9. **Two decay zones:** the aftermath (lawsuits, verdict, settlement, sentence, fates), where the
+>     #9, and the slow open is the same drift measured at the front: no named pull by the end of the second
+>     block, filed against the door (§2.1). **Two decay zones:** the aftermath (lawsuits, verdict, settlement, sentence, fates), where the
 >     narrator turns into a court reporter, and any **mechanism-exposition stretch**, where he turns into a
->     lecturer. Fire the tripwire in both; the fix is a short bit, never a longer metaphor. **The global
+>     lecturer. Fire the tripwire in both, and count the back-half blocks one by one (the miss on record
+>     is a three-block dry aftermath shipped unflagged); the fix is a short bit, never a longer metaphor. **The global
 >     form:** a whole script reaching for none of the heat mechanisms (no caps on a leaned-on word, no knowing
 >     stock build-up, no stock-idiom reach, no sanctioned profanity) is register drift even when no two
 >     adjacent blocks are flat; file it as one finding against the script (§1.6). Also a money-absurdity beat
@@ -153,6 +165,9 @@ that company; an echo of them is neither defect nor virtue, so judge the paragra
 >   equally correct. Phrasing echoing the voice bar is not a finding: judge the paragraph, not its ancestry.
 > - **Fact-riding deadpan buttons and the single ironic capper** ("Or so they said.") — the GOOD kind (§1.3).
 >   Only flag buttons that *summarize or moralize*, never a dry factual aside.
+> - **Repeat anchors and compression moves** — a cultural anchor recurring with a NEW joke on it (§2.4); a
+>   question turn answered in one word ("Credit."); the deadpan noun-punch verdict fragment ("The
+>   embarrassment.") — all licensed (§1.6, §3.4).
 > - **Concrete-detail color** — a name, a number, a vivid image is what makes a beat live; keep it. Flag
 >   *repetition*, never *detail* (§2.5).
 >
@@ -276,9 +291,11 @@ that company; an echo of them is neither defect nor virtue, so judge the paragra
 
 ## Editor
 
-> **You are the editor. You take the findings lists (taste + leash + any [LOCAL] coherence) plus the draft,
-> and you produce the revised script.** You are the one hand that keeps the voice coherent: apply *all* the
-> line-level fixes yourself. (A **[STRUCTURAL]** finding is not yours; it goes to the writer pass below.)
+> **You are the editor. You take the findings lists (taste + leash + any [LOCAL] coherence, excluding any
+> finding whose remedy ADDS material) plus the draft, and you produce the revised script.** You are the
+> one hand that keeps the voice coherent: apply *all* the line-level fixes yourself. (A **[STRUCTURAL]**
+> coherence finding, or any other finding whose remedy adds material, is not yours; it goes to the writer
+> pass below.)
 > **Read** `storytelling-grammar.md` (craft rules + §5 bank) and `channels/<name>/example-scripts.md`.
 >
 > **Rules:**
@@ -303,13 +320,16 @@ that company; an echo of them is neither defect nor virtue, so judge the paragra
 
 ---
 
-## Writer structural revision (the [STRUCTURAL] coherence path only)
+## Writer structural revision (the additive-remedy path: [STRUCTURAL] coherence or additive taste)
 
-> **You are the writer, back for ONE targeted structural pass.** The coherence critic found a **[STRUCTURAL]**
-> problem: the story, as sequenced, loses a first-time viewer, or a mechanism sits ahead of its act (flaw #7).
-> You also hold the taste and leash findings. Fix the structure so the through-line is followable (§3.7) while
-> keeping the voice and staying leashed. **Read** `storytelling-grammar.md` (craft rules, §1 voice, §3
-> structure incl. **§3.2 and §3.7**), `channels/<name>/example-scripts.md`, and `research.md` (the ledger).
+> **You are the writer, back for ONE targeted structural pass.** You are here because a finding's remedy
+> ADDS material: either the coherence critic found a **[STRUCTURAL]** problem (the story, as sequenced,
+> loses a first-time viewer, or a mechanism sits ahead of its act, flaw #7), or a taste finding needs
+> building-in rather than cutting (the flat stretch owed a short bit, taste #13, is the standing case).
+> You also hold the taste and leash findings. Fix the structure, or add the bit, so the through-line is
+> followable (§3.7) while keeping the voice and staying leashed. **Read** `storytelling-grammar.md` (craft
+> rules, §1 voice, §3 structure incl. **§3.2 and §3.7**), `channels/<name>/example-scripts.md`, and
+> `research.md` (the ledger).
 >
 > **Rules:**
 > - **Grammar §3.2's staging law binds this pass.** You are the agent that once resequenced a caper into
@@ -336,7 +356,9 @@ that company; an echo of them is neither defect nor virtue, so judge the paragra
 - On a channel **without** subagents, run taste, leash, and coherence as three deliberate separate fresh
   re-reads against the prompts above, then edit, and do the one writer structural pass if a structural hole
   surfaced. Prefer real subagents; the fresh context is the whole point.
-- **Taste and leash are subtractive by design.** If they start flattening the voice (cutting good color or
+- **Taste and leash are subtractive by design** (their additive remedies route to the writer, never
+  the editor). If they start flattening the voice (cutting good color or
   wit), that's the taste critic over-triggering — loosen its "never flag" list, don't add more flaws to hunt.
-- **Coherence is the one additive/structural exception**, and it over-triggers the same way: if it flags
-  non-linearity, cross-cuts, mystery order, or designed suspense as "confusion," tighten its never-flag list.
+- **Coherence's [STRUCTURAL] tag is one instance of the additive-remedy routing above**, and it
+  over-triggers the same way: if it flags non-linearity, cross-cuts, mystery order, or designed suspense
+  as "confusion," tighten its never-flag list.
