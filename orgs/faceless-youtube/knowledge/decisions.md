@@ -3696,3 +3696,99 @@ review fixes → a full deep review (5 root causes, 24 r2 directives, 11 pipelin
 - **Caveats carried.** Chris consistency proof still owed (variance across takes: F0/wpm/pause%);
   premade-voice fingerprint caveat on record in HM voice-lab.md §Round 1. ST's next real VO render
   is the re-proof point.
+
+## 2026-07-30 — Gates are born at stage boundary, never at launch
+
+- **Context.** The adversarial pre-PR review on the gated-pipeline build (`claude/fyt-pipeline-boss`)
+  proved `video-run` could not launch at all once stage-declared `humanGates` were threaded into the
+  compiled proposal: launch minted a boundary request per gate — titled with the bare gate id, which
+  `stageBoundary`'s stage-scoped title never matches — plus a governance-refusal for the T3
+  publish-private stage, and `acceptsBoundary` refuses a governance-refusal unconditionally. Every
+  launch parked at `waiting-human` forever; the roster never spawned.
+- **Decision.** A stage's declared gates are evaluated when the coordination layer reaches that
+  stage's boundary, never pre-registered at launch. `CompiledStagePolicy.releasableByStageGate`
+  marks the content-bound wait a stage's own gate clears at its entry boundary; `runnableWorkflow`
+  withholds only a T3 stage with NO declared gate; launch mints boundaries only for non-releasable
+  plan defects. `CompiledPlan.humanGates` — whose only consumer was the premature-boundary code —
+  was deleted rather than patched around.
+- **Reason.** Launch-time materialization can't distinguish "this gate will be satisfied when the
+  run gets there" from "this gate is already failing" — nothing has executed yet at launch.
+  Conflating the two meant a single future gate anywhere in the chain made the whole run
+  unlaunchable.
+
+## 2026-07-30 — Byte-identical stage output parks rather than passes
+
+- **Decision.** A stage's declared artifacts are snapshotted (stat + streamed sha256) before its
+  work order is written; a completion marker only counts as DONE if every declared artifact is a
+  regular, non-empty file that DIFFERS from its snapshot. Byte-identical output parks as
+  `waiting-human` instead of passing.
+- **Reason.** `existsSync` is true for a 0-byte file, a directory, and a leftover file from a
+  previous failed attempt — "the artifact exists" proves nothing, and every video folder in the
+  repo already has a root `shots.json` that would satisfy a bare existence check. At the artifact
+  layer a stage that did nothing is indistinguishable from one that reproduced its input
+  byte-for-byte, so the tie breaks fail-closed: a park is a `waiting-human` an operator can read
+  and release, never a silent false pass into a gate that authorizes real spend.
+
+## 2026-07-30 — fyt-checker, not fyt-runner, executes the staging→root merge nodes
+
+- **Decision.** `shots-merge` (between `visual-plan` and `images`) and `audio-plan-merge` (between
+  `audio` and `render`) are real DAG stages with declared root-path artifacts, executed by
+  `fyt-checker`, governed by `fyt-runner`.
+- **Reason.** The single-writer law's staging→root merge existed only in prose: nothing verified
+  the root `shots.json` / `shots.motion.json` / `audio-plan.json` that every downstream stage
+  reads, while gate G2's prompt told a human to "read the merged shots.json" as an already-checked
+  fact. The merge could not resolve to `fyt-runner` as executor: `compile.ts#resolveAssignment`
+  requires a stage's agent to carry a worker-role default profile, while the workflow-level manager
+  assignment requires a manager-role one, and `fyt-runner` — kept manager-role so conducting never
+  blurs with executing — cannot declare both. `fyt-checker` gets the two nodes instead of loosening
+  the role check or minting a seventh identity: re-linting a plan neither merge node authored is a
+  verification act, exactly `fyt-checker`'s existing shape of work, so this strengthens
+  author-never-grades rather than bending it.
+- **Pending Daniel's ruling.** This contradicts the approved spec's text, which named the runner as
+  the merge executor. Full both-sides argument: `docs/specs/2026-07-30-fyt-gated-pipeline-design.md`
+  §As-built deviations #3.
+
+## 2026-07-30 — T3 admission is a hard opt-in, named at the launch call site
+
+- **Decision.** `admitApprovalBoundT3` requires `=== true`, not `!== false`, alongside
+  `publishBlocked`, for a managed run to admit a T3 (real-upload) stage.
+- **Reason.** Opt-out was the wrong default for the flag deciding whether a stage performing a real
+  upload may enter a run at all — a future managed-mode caller that merely forgot to disable
+  publication would have inherited T3 admission for free. Both flags are required now, so an
+  unmanaged caller still cannot reach T3 either way.
+
+## 2026-07-30 — Coordination writes refuse to run git off the ops branch
+
+- **Context.** An incident, not a hypothetical. A test harness booted the dashboard daemon with
+  `DASHBOARD_REPO_ROOT` pointed at this feature-branch worktree (`fyt-pipeline-boss`); one unfaked
+  audit sink reached the real `appendAudit`, which implements CLAUDE.md's coordination-write rule
+  (`git pull --rebase --autostash origin ops`, commit, push). It ran that against
+  `claude/fyt-pipeline-boss`, starting a 549-step rebase onto `origin/ops` that jammed on a
+  conflict in the audit ledger and left the worktree mid-rebase with seven commits of work on the
+  branch.
+- **Decision.** `appendAudit` now resolves the repo root's checked-out branch (read-only
+  symbolic-ref) before touching git. Anything but exactly `ops` — a feature branch, detached HEAD,
+  a non-repo directory, an unresolvable or timed-out check — takes a local-only path: the audit row
+  is still appended (never silently lost), one greppable `AUDIT-GIT-GUARD` line names the root and
+  resolved branch, and no fetch/pull/rebase/add/commit/push runs at all.
+- **Reason.** CLAUDE.md says coordination writes happen on `ops` and nowhere else; the code trusted
+  its caller to have arranged that instead of checking. Production is unaffected — pm2 points at
+  `kb-worktrees/dashboard-ops`, which is on `ops`, so the guard is a structural no-op there.
+- **Known gap, not closed by this decision.** `canonicalResultIntegrator.ts` still performs a real
+  `git push origin ops` behind `createResults` and is NOT guarded by this fix — the identical
+  incident class remains reproducible on that path. See `orgs/faceless-youtube/docs/STATUS.md`
+  §Gated multi-agent pipeline.
+
+## 2026-07-30 — Retire the "30 pre-existing failures" baseline
+
+- **Decision.** The dashboard suite's long-standing "30 pre-existing failures, ignore them"
+  baseline is deleted; fixtures naming the retired manager model were updated to `claude-opus-5`.
+- **Reason.** The baseline was never environmental. Two files exercising the real launch path
+  validate proposals against the real, human-edited `governance/model-routing.yaml`, whose
+  `known_models` no longer lists the model those fixtures named — every fixture got
+  `400 stored-proposal-invalid / launchable:false`, which is exactly why the launch path's own
+  regression signal had been dead for weeks. That dead signal is how two CRITICAL launch bugs (the
+  premature-boundary parking bug and the artifact-verification gap, both fixed on this same branch)
+  shipped green. The lesson is about trusting a declared "known failures, ignore" baseline without
+  re-deriving why it's declared — not about the specific model name — because a stale baseline like
+  this can hide a live regression indefinitely.
