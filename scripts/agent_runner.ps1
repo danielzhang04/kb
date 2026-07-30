@@ -213,9 +213,12 @@ if queue_root.exists():
                 card = cards.parse(path)
             except Exception:
                 continue
-            # Dashboard-managed cards are owned exclusively by the governed execution engine.
-            # Legacy runners must never pick them up, even after canonical activation releases them.
-            if (card.meta.get("execution-controller") != "dashboard"
+            # Exact-string arbitration (queueBridge.ts pattern): this legacy runner
+            # claims ONLY cards no other executor has stamped. "dashboard" cards belong
+            # to the governed engine; "terminal" cards are direct-dispatch records
+            # (scripts/codex_dispatch.py) that were already executed — re-running
+            # either would double-execute.
+            if (not card.meta.get("execution-controller")
                     and card.meta.get("owner") == agent
                     and card.meta.get("state") in ("inbox", "working")):
                 owned.append({"id": card.meta["id"], "path": str(path)})
