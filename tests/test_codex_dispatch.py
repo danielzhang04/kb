@@ -179,6 +179,8 @@ def test_spawn_follow_up_builds_resume_command(tmp_path, monkeypatch):
     assert seen["cmd"][:5] == ["codex.cmd", "exec", "resume", "019f-abc", "-"]
     assert "--json" in seen["cmd"] and "--output-last-message" in seen["cmd"]
     assert "--model" not in seen["cmd"]
+    # resume restores the session's own cwd/sandbox and REJECTS these (live-verified):
+    assert "--cd" not in seen["cmd"] and "-s" not in seen["cmd"]
 
 
 def test_follow_up_refuses_model_and_worktree(repo, tmp_path, monkeypatch, capsys):

@@ -64,8 +64,10 @@ def spawn(prompt_text: str, model: str | None, effort: str | None, cwd: Path,
           sandbox: str, out_file: Path, log_file: Path,
           follow_up: str | None = None) -> int:
     if follow_up:
+        # `resume` restores the session's own cwd/sandbox; it REJECTS --cd/-s
+        # (verified live: "error: unexpected argument '--cd' found", exit 2).
         cmd = [codex_bin(), "exec", "resume", follow_up, "-", "--json",
-               "--output-last-message", str(out_file), "--cd", str(cwd), "-s", sandbox]
+               "--output-last-message", str(out_file)]
     else:
         cmd = [codex_bin(), "exec", "-", "--model", model, "--json",
                "--output-last-message", str(out_file), "--cd", str(cwd), "-s", sandbox]
@@ -240,7 +242,7 @@ def main(argv: list[str] | None = None) -> int:
     result_text = (out_file.read_text(encoding="utf-8") if rc == 0 and out_file.exists()
                    else f"FAILED: codex exec exit {rc}; JSONL log: {log_file}")
 
-    record_model = model or args.follow_up
+    record_model = model or "resumed-session"  # ran_model read-back replaces this when present
     card, record = build_record(args, repo_root, dispatch_id, record_model, rc,
                                 prompt_text, result_text, log_file)
     published, publish_note = publish_ops(repo_root, card, record)
