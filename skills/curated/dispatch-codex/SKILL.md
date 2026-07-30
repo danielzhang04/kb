@@ -29,9 +29,9 @@ result arrives as a task notification.
 
 ## Models
 
-- `codex-cheap` (gpt-5.4-mini) — mechanical/bulk work
-- `codex` (gpt-5.6-sol, default) — standard build/review work
-- `codex-deep` (gpt-5.6-sol + `--effort xhigh`) — hard design/debugging
+- `codex-cheap` (gpt-5.6-luna) — mechanical/bulk work
+- `codex` (gpt-5.6-terra, default) — standard build/review work
+- `codex-deep` (gpt-5.6-sol) — hard design/debugging; add `--effort xhigh` for the hardest
 - Any concrete id in `governance/model-routing.yaml` `runtimes.codex.known_models`
   also works; unknown names refuse loudly before spawning.
 
