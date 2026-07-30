@@ -3558,3 +3558,40 @@ run brief binds nobody — a fresh terminal reads the style-bible and skill docs
   goal, but identical reach across runs means the same line can surface in video after video: the
   preamble quarry-guard now covers doctrine examples, and cross-video repetition of an unprompted pull
   is a thing to check at review, not a thing doctrine can prevent.
+
+## 2026-07-29 - render-builder gains --preview-parked (the human eye-gate can see parked frames)
+
+- **Problem.** The bricks segment preview rendered 22 verified frames plus **20 placeholder cards**,
+  because `render.py:resolve_scene_files` resolves any non-shippable shot to `None`, and
+  `--allow-missing` only downgrades the hard error to a placeholder. A placeholder teaches the human
+  nothing about the defect it stands in for, so the eye-gate could not judge the parked work at all:
+  almost half the cut was a card reading MISSING SCENE.
+- **Decision: an explicit, opt-in `--preview-parked` flag.** When passed it resolves a `parked`
+  shot's real best-attempt PNG. It is scoped hard: only `review_status == "parked"` WITH a valid PNG
+  qualifies. `missing` and `gate` (unreviewed/unverified) are never rescued, and no `review_status`
+  or scene manifest is ever rewritten. Previewed ids are tracked separately from the
+  `--allow-missing` placeholder list and recorded as `preview_parked_shots` in the manifest.
+- **The stamp is load-bearing, not decorative.** `state` was already the registered success marker
+  that `compliance_check.check_render_manifest` hard-requires to equal `"rendered"`, so a preview run
+  stamps `state: "preview-parked-included"` and therefore **fails Gate-3 by construction**, with no
+  change to compliance-check. Verified empirically: Gate-3 reports
+  `state='preview-parked-included' (expected 'rendered')`.
+- **A preview run touches only `preview*` siblings.** It writes `assets/preview.mp4`,
+  `assets/preview.render.manifest.json`, and `assets/motion/<piece>.preview.motion.json`. This was a
+  correction made mid-build: the first cut wrote the shared `render.manifest.json` and the shared
+  motion spec, which destroyed the shippable render's record and provenance, exactly the outcome the
+  flag exists to avoid. Default (no-flag) behaviour is unchanged, pinned by a regression test and by
+  re-deriving the no-flag manifest (`out` still `assets/final.mp4`, 22 from scenes / 20 placeholder,
+  no `preview_parked_shots` key).
+- **Alternatives rejected.** (1) *Editing `review_status` or `manifest.json` to mark parked frames
+  verified* - rejected outright: it falsifies the honest three-state review record, the one thing the
+  gate exists to protect. (2) *Hiding `scenes/manifest.json` so the S2 gate is skipped entirely*
+  (render.py treats an absent manifest as no gate) - technically works with zero code change,
+  rejected because it is smuggling by another name and silently disables the gate for every shot, not
+  just parked ones. (3) *Making `--allow-missing` include parked pixels* - rejected: it would change
+  the meaning of an existing flag and let a test-slice convenience quietly put known-defective frames
+  into a render that still stamps `state: "rendered"`.
+- **Lesson routed.** The general rule: a review gate that hides the artifact behind a placeholder
+  blocks the very human judgement it was built to serve. Non-shippable must stay non-shippable in the
+  MANIFEST (the machine's channel) while remaining VISIBLE to the human (the eye-gate's channel) -
+  separate the two channels rather than conflating them.

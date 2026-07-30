@@ -119,6 +119,24 @@ required on it after its `figures` retrofit in Phase 3 testing — see §4).
   fragment (figures field, ordering law, delta-final-change) — proves the doctrine teaches.
 - Dedup/single-home review across all edited files; model verification of every worker by transcript grep.
 
+## 4b. Post-slice iteration list (2026-07-29, from the live run — approved for the next wave, NOT yet applied)
+Evidence: `_bricks-seg/gen-log.md` (systemic findings), `seg-log.md` (VPW friction F-1…F-14), boss review.
+1. Seed `base.png` on §2e anonymous figures (biggest park-count cause; prose-only rig enforcement fails).
+2. Registry `no_hands`/non-human-rig flag suppressing forge's §2c hands clause on personified objects.
+3. Two-gen identity pass MANDATORY on scene-heavy single-figure shots; SKIPPED for personified objects.
+4. Forge retry semantics: move-reject-to-`_rejected/`-then-regen becomes forge behavior (skip-if-in-staging
+   faked success), and `forge.py register` stays the durable path for canonicals.
+5. Famous-adjacent staging law: positive divergence required, never omission/prohibition (arcade sprite;
+   `pc-boxy`'s Macintosh-adjacent trade dress pending Daniel's board ruling).
+6. Rig-verify method: paired crops against the approved canonical, never isolated zooms.
+7. VPW doctrine batch: F-1 ordering-law third branch (no-lettering/no-delta shots), F-2 grammar's own
+   "identity tag" phrase trips the lint, F-3 slug-test discriminator, F-5 universal §13a-ii precedence
+   sentence, F-6 delta-timing on short-anchor chain opens, F-4/F-7…F-14 per seg-log.
+8. Skill ownership: image-generation §Report defers to shot-board + boss presentation (no worker Artifacts).
+9. SPEED (parked by Daniel until after the current arc): parallelize forge gen calls within a dependency
+   wave (~35s/gen × 91 serial ≈ 55 min of queue-wait) and batch/parallelize the crop battery — the two
+   dominant wall-clock costs of the slice run (~3h total).
+
 ## 5. Phase 4/5 notes
 - Phase 4: full staged VPW on `2026-07-28-bricks-fresh` (thumbnails + `shorts: []`), new protocol,
   critic, lint, boss judgment vs the seg baseline, Daniel gate.
