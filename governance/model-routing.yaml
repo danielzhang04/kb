@@ -13,10 +13,11 @@ runtimes:
   claude:
     default_worker: worker-desktop
     aliases:
-      opus:   claude-opus-4-8     # manager / inspector / consolidate tier
+      fable:  claude-fable-5      # manager / boss terminal / orchestrator
+      opus:   claude-opus-5       # critical worker / inspector
       sonnet: claude-sonnet-5     # worker (volume) tier
       haiku:  claude-haiku-4-5    # scout (cheap fan-out) tier
-    known_models: [claude-opus-4-8, claude-sonnet-5, claude-haiku-4-5]
+    known_models: [claude-fable-5, claude-opus-5, claude-sonnet-5, claude-haiku-4-5]
   codex:
     default_worker: codex-worker  # the identity agent_runner.ps1 -Agent codex-worker owns
     aliases:
