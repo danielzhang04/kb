@@ -42,6 +42,30 @@
       "head_tone": "#f5ead6",
       "role": "The wife of James Hastie \u2014 a Poyais settler survivor at his side; quiet grief on the grey British quay. Appears L104.",
       "costume": "PINNED canonical outfit (human-picked cand-1, 2026-07-16): long muted-earth wool dress, dark shawl, apron, worn boots, cream linen mob cap, front-facing neutral. Renders in this unless a shot authors a change."
+    },
+    "miniscribe-rep": {
+      "role": "MiniScribe personified \u2014 the disk-drive company as an actor; the bricks story's lead. Appears L26-L35, L39, L40.",
+      "head_tone": "#e2b78c",
+      "costume": "PINNED canonical outfit: boxy tan blazer worn open over a brown open-collar shirt, plain dark trousers and dark shoes, and ONE small steel-grey drive-shaped enamel badge pinned at the left lapel (its single identity tag); short dark-brown side-parted hair, stocky build. Renders in this unless a shot authors a change.",
+      "base": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png"
+    },
+    "ibm-suit": {
+      "role": "IBM personified \u2014 the customer institution as an actor; MiniScribe's PC/XT contract buyer. Appears L30, L39.",
+      "head_tone": "#7a4f33",
+      "costume": "PINNED canonical outfit: crisp navy pinstripe three-piece suit (jacket, matching waistcoat, trousers) over a white shirt with a plain dark tie, ONE plain white pocket square folded at the breast pocket (its single identity tag), polished dark shoes; close-cropped grey hair, broad heavy mass on the squat base proportion. Renders in this unless a shot authors a change.",
+      "base": "channels/the-second-take/visual-kit/refs/ibm-suit/ibm-suit.png"
+    },
+    "terry-johnson": {
+      "role": "Terry Johnson \u2014 MiniScribe's founder; depicted at work and at his late-1984 departure. Appears L28, L42.",
+      "head_tone": "#f5ead6",
+      "costume": "PINNED canonical outfit: white business shirt in shirtsleeves with both cuffs turned back to the forearm, a thin dark tie, plain dark trousers and dark shoes, no jacket; thinning fair hair combed back with the side hair filling the ear gap, one small trimmed fair moustache, lean build. Renders in this unless a shot authors a change.",
+      "base": "channels/the-second-take/visual-kit/refs/terry-johnson/terry-johnson.png"
+    },
+    "pc-boxy": {
+      "role": "Personified beige boxy 1980s home computer \u2014 a FACED machine character (not a human). The cast's cartoon eyes and mouth sit in its front panel; short stubby arms and legs, NO hands. Appears L01-L04, L16.",
+      "head_tone": "#e8dcc0",
+      "costume": "PINNED canonical form: beige boxy home-computer case with the cast's cartoon eyes and mouth set into the front panel, short stubby arms and legs. NOTE: a personified OBJECT \u2014 never seed a human torso POSE frame onto it (bleeds a human body); expression frames route to the face panel and stance is carried in words.",
+      "base": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png"
     }
   },
   "assets": [
@@ -68,7 +92,7 @@
       "kind": "crowd-anchor",
       "tag": "crowd",
       "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png",
-      "note": "Human-gated 2026-07-16 (candidate C). The CROWD-RIG anchor: seeded into EVERY crowd-bearing generation so anonymous background figures inherit the exact squat base proportion + dot-eye simple-mouth face (bible §2d)."
+      "note": "Human-gated 2026-07-16 (candidate C). The CROWD-RIG anchor: seeded into EVERY crowd-bearing generation so anonymous background figures inherit the exact squat base proportion + dot-eye simple-mouth face (bible \u00a72d)."
     },
     {
       "name": "expr-deadpan",
@@ -520,6 +544,84 @@
       "character": null,
       "kind": "environment",
       "tag": "stamp"
+    },
+    {
+      "name": "env-interior-warm",
+      "file": "channels/the-second-take/visual-kit/refs/env/env-interior-warm.png",
+      "character": null,
+      "kind": "environment",
+      "tag": "interior-warm"
+    },
+    {
+      "name": "env-interior-cool",
+      "file": "channels/the-second-take/visual-kit/refs/env/env-interior-cool.png",
+      "character": null,
+      "kind": "environment",
+      "tag": "interior-cool"
+    },
+    {
+      "name": "action-tugofwar",
+      "file": "channels/the-second-take/visual-kit/refs/base/action-tugofwar.png",
+      "character": "base",
+      "kind": "interaction",
+      "tag": "tug-of-war",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "action-recoil",
+      "file": "channels/the-second-take/visual-kit/refs/base/action-recoil.png",
+      "character": "base",
+      "kind": "pose",
+      "tag": "recoil",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
+    },
+    {
+      "name": "miniscribe-rep",
+      "file": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+      "character": "miniscribe-rep",
+      "kind": "identity",
+      "tag": "base",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png"
+    },
+    {
+      "name": "ibm-suit",
+      "file": "channels/the-second-take/visual-kit/refs/ibm-suit/ibm-suit.png",
+      "character": "ibm-suit",
+      "kind": "identity",
+      "tag": "base",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/ibm-suit/ibm-suit.png"
+    },
+    {
+      "name": "prop-beige-pc",
+      "file": "channels/the-second-take/visual-kit/refs/env/prop-beige-pc.png",
+      "character": null,
+      "kind": "prop",
+      "tag": "prop-beige-pc",
+      "note": "Recurring PROP canonical minted at Pass 1 for the bricks story; every later appearance seeds this exact frame (match-prop). Lives under refs/env/ because it is character-free and tracked there; `_is_char_seed` excludes both refs/env/ and the prop- prefix, so seeding it never triggers the \u00a72c rig-hold."
+    },
+    {
+      "name": "prop-drive",
+      "file": "channels/the-second-take/visual-kit/refs/env/prop-drive.png",
+      "character": null,
+      "kind": "prop",
+      "tag": "prop-drive",
+      "note": "Recurring PROP canonical minted at Pass 1 for the bricks story; every later appearance seeds this exact frame (match-prop). Lives under refs/env/ because it is character-free and tracked there; `_is_char_seed` excludes both refs/env/ and the prop- prefix, so seeding it never triggers the \u00a72c rig-hold."
+    },
+    {
+      "name": "pc-boxy",
+      "file": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+      "character": "pc-boxy",
+      "kind": "identity",
+      "tag": "base",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png"
+    },
+    {
+      "name": "terry-johnson",
+      "file": "channels/the-second-take/visual-kit/refs/terry-johnson/terry-johnson.png",
+      "character": "terry-johnson",
+      "kind": "identity",
+      "tag": "base",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/terry-johnson/terry-johnson.png"
     }
   ]
 }
