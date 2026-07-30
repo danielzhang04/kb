@@ -136,18 +136,21 @@ long_form: single       # staged = long-form writers-room (outline → section d
      points. Only voice_id is required; omit any knob to accept the project default. -->
 ```yaml
 voice_id: iP95p4xoKVk53GoZ742B    # LOCKED 2026-07-29 (Daniel ear gate, "for now" — revocable) — ElevenLabs
-                                  # premade "Chris" (Charming, Down-to-Earth). Beat Eric in round 2 at these
-                                  # dials. Premade fingerprint caveat on record (voice-lab.md §Round 1).
+                                  # premade "Chris" (Charming, Down-to-Earth). Beat Eric in round 2, then
+                                  # held the lock in the 2026-07-30 bricks-slice re-audition (6 library
+                                  # challengers). Premade fingerprint caveat on record (voice-lab.md §Round 1).
 model_id: eleven_v3               # matches the dials below; v3 ignores use_speaker_boost
-stability: 0.20                   # ST's 2026-07-28 creative-leaning level, adopted here per Daniel
+stability: 0.10                   # LOWERED 2026-07-30 (Daniel) — max variance/creativity; supersedes the
+                                  # ST-adopted 0.20. Proven on the full 103s bricks-slice VO (clean single take)
 similarity_boost: 0.85
-style: 0.6                        # ST's 2026-07-28 level — vocal emphasis over calm-narration default
+style: 0.75                       # RAISED 2026-07-30 (Daniel) — "almost perfect" here; 0.70/0.65 auditioned
+                                  # and declined. Supersedes the ST-adopted 0.6
 use_speaker_boost: true
 speed: 1.0
 output_format: mp3_44100_128
 ```
-<!-- Consistency proof owed (spec §7.7): dials adopted from ST, not yet variance-proofed on Chris —
-     measure F0/wpm/pause% across takes at first real script before treating the lock as final. -->
+<!-- Consistency proof owed (spec §7.7): dials not yet variance-proofed on Chris across takes —
+     measure F0/wpm/pause% at first real HM script before treating the lock as final. -->
 
 - **Script rules:** hook in first 0–5s (Shorts: 1.3–1.8s); establish value in 7s; second-gate
   structure through 30s; micro-interrupt every 30–45s; macro re-hook every 2–3 min; **mandatory
