@@ -1,7 +1,7 @@
 # The Company That Shipped Bricks and Called Them Hard Drives
 
 - **Source idea:** ST-006
-- **Target length:** 8 to 10 min (channel norm) · **Estimated runtime:** 9:20 (1,632 words ÷ 175 wpm)
+- **Target length:** 8 to 10 min (channel norm) · **Estimated runtime:** 9:31 (1,628 words ÷ 171 wpm — the channel's measured voice rate, Chris, per the slice VO)
 - **Voice:** Miles (`vSjOBQp24DUB2COr2xI9`) · eleven_v3 · stability 0.20 · style 0.6
 - **Leashed to:** `research.md` (fact ledger F-01 to F-31)
 - **Register:** casual friend telling an unbelievable true story; humor dial HOT (money absurdity, systemic farce), easing off for the layoffs and the investor losses. Past tense, narrator reported speech, no quotes, no em or en dashes.
