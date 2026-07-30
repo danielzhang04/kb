@@ -67,8 +67,10 @@ def resolve_model(repo_root: Path, model_arg: str) -> str:
 
 
 def spawn(prompt_text: str, model: str | None, effort: str | None, cwd: Path,
-          sandbox: str, out_file: Path, log_file: Path,
-          follow_up: str | None = None, timeout: int = DEFAULT_TIMEOUT) -> int:
+          sandbox: str, out_file: Path, log_file: Path, follow_up: str | None = None,
+          timeout: int = DEFAULT_TIMEOUT) -> tuple[int, bool]:
+    """Run one codex exec; returns (exit code, timed_out). The flag is the ONLY
+    timeout signal — a worker may genuinely exit 124 (coreutils convention)."""
     if follow_up:
         # `resume` restores the session's own cwd/sandbox; it REJECTS --cd/-s
         # (verified live: "error: unexpected argument '--cd' found", exit 2).
@@ -89,12 +91,20 @@ def spawn(prompt_text: str, model: str | None, effort: str | None, cwd: Path,
         try:
             proc.communicate(input=prompt_text.encode("utf-8"), timeout=timeout)
         except subprocess.TimeoutExpired:
-            # /T kills the whole tree: codex spawns children that outlive it.
-            subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"],
-                           capture_output=True)
-            proc.wait()
-            return 124  # coreutils timeout convention
-        return proc.returncode
+            try:  # /T kills the whole tree: codex spawns children that outlive it
+                kill = subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                                      capture_output=True, timeout=30)
+                if kill.returncode != 0:
+                    print(f"taskkill exited {kill.returncode} for pid {proc.pid} — "
+                          "the worker tree may have outlived the dispatch", file=sys.stderr)
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                proc.kill()  # no taskkill (non-Windows) or it wedged: kill what we own
+            try:
+                proc.wait(timeout=30)  # bounded: a wedged reap must not hang the dispatch
+            except subprocess.TimeoutExpired:
+                pass
+            return 124, True  # coreutils timeout convention
+        return proc.returncode, False
 
 
 def parse_thread_id(log_file: Path) -> str | None:
@@ -119,8 +129,12 @@ def parse_thread_id(log_file: Path) -> str | None:
 
 def _inert(text: str) -> str:
     """Escape headings in embedded text: a `## Result` inside a brief or answer
-    must never masquerade as one of the card's own sections."""
-    return re.sub(r"(?m)^(#{1,6} )", r"\\\1", text)
+    must never masquerade as one of the card's own sections. Matched as LAXLY as
+    the real consumers parse — sentinel.extract_result uses `^\\s*##\\s+Result`
+    and brief._section_text compares the STRIPPED line — so leading indent, a
+    tab separator and trailing spaces are all escaped (leading whitespace is
+    preserved; only the `#` run is defanged)."""
+    return re.sub(r"(?m)^([ \t]*)(#{1,6}[ \t])", r"\1\\\2", text)
 
 
 def walk_state(card: cards.Card) -> None:
@@ -142,10 +156,13 @@ def build_record(args, cwd: Path, dispatch_id: str, model: str, rc: int,
                  prompt_text: str, result_text: str, log_file: Path):
     """The audit card + cost row for one finished dispatch. Post-hoc record —
     built after codex exits, never gating anything. `cwd` is the directory the
-    worker ACTUALLY ran in (a --worktree run is not the caller's repo root)."""
+    worker ACTUALLY ran in (a --worktree run is not the caller's repo root); a
+    RESUMED session runs in its own recorded cwd, which this process does not
+    know, so its target names the session rather than lying about a directory."""
     body = (f"## Work order\n\n{_inert(prompt_text.strip())}\n\n"
             f"## Result\n\n{_inert(result_text.strip())}\n")
-    card = cards.new_card(args.project, args.label, str(cwd), "T1",
+    target = f"resumed-session:{args.follow_up}" if args.follow_up else str(cwd)
+    card = cards.new_card(args.project, args.label, target, "T1",
                           body=body, **{"execution-controller": "terminal"})
     cards.claim(card, "codex-worker")
     cards.stamp_session(card, os.environ.get("CLAUDE_SESSION_ID", dispatch_id))
@@ -165,18 +182,32 @@ def publish_ops(repo_root: Path, card: cards.Card, record: dict):
     Contention is handled by REBUILDING, never rebasing: each attempt resets to
     freshly fetched origin/ops and re-derives the card + row on top, so a racing
     appender's rows can never be dropped by a conflicted rebase. Success is
-    claimed only once origin/ops actually carries the commit — an `Everything
-    up-to-date` push after a lost rebase is a failure, not a landing."""
+    claimed only once origin/ops actually CONTAINS the commit — tested by
+    ancestry, never by head equality: a third party pushing on top of our landed
+    commit moves the head, and reading that as failure re-lands the same record
+    once per attempt (live-confirmed triple publish)."""
     def git(*a, cwd=repo_root):
-        return subprocess.run(["git", *a], cwd=str(cwd), capture_output=True, text=True)
+        try:  # a wedged origin must not make a bounded dispatch unbounded
+            return subprocess.run(["git", *a], cwd=str(cwd), capture_output=True,
+                                  text=True, timeout=120)
+        except subprocess.TimeoutExpired:
+            return subprocess.CompletedProcess(a, 1, "", "git timed out after 120s")
+
+    def landed(sha):
+        return bool(sha) and git("merge-base", "--is-ancestor", sha,
+                                 "FETCH_HEAD").returncode == 0
 
     wt = Path(tempfile.mkdtemp(prefix="codex-dispatch-")) / "wt"
+    local = ""
     try:
         for attempt in range(3):
             if attempt:
                 time.sleep(random.uniform(0.5, 2.0))  # de-sync racing appenders
             if git("fetch", "origin", "ops").returncode != 0:
                 continue
+            # a push the server accepted but whose rc we lost is already done
+            if landed(local):
+                return True, "pushed"
             if wt.exists():
                 git("reset", "--hard", "origin/ops", cwd=wt)
                 git("clean", "-fdq", cwd=wt)  # drop the discarded attempt's files
@@ -191,20 +222,29 @@ def publish_ops(repo_root: Path, card: cards.Card, record: dict):
             local = git("rev-parse", "HEAD", cwd=wt).stdout.strip()
             if git("push", "origin", "HEAD:refs/heads/ops", cwd=wt).returncode != 0:
                 continue
-            remote = git("ls-remote", "origin", "refs/heads/ops").stdout.split()
-            if remote and remote[0] == local:
+            if git("fetch", "origin", "ops").returncode == 0 and landed(local):
                 return True, "pushed"
         return False, _spool_note(card, "publish failed after 3 rebuilt attempts")
     finally:
         git("worktree", "remove", "--force", str(wt))
+        # a failed remove leaves the registration under .git/worktrees forever
+        git("worktree", "prune")
         shutil.rmtree(wt.parent, ignore_errors=True)
 
 
 def _spool_note(card: cards.Card, why: str) -> str:
-    dest = STATE_ROOT / "spool" / f"card-{card.meta['id']}.md"
-    fm = "\n".join(f"{k}: {v}" for k, v in card.meta.items())
-    dest.write_text(f"---\n{fm}\n---\n\n{card.body}", encoding="utf-8")
+    """Park an unpublished card on disk as a REAL card (cards.save, so it parses
+    back), for a human to re-publish by copying it into the ops queue."""
+    dest = cards.save(card, STATE_ROOT / "spool")
     return f"FAILED ({why}) — card spooled at {dest}; re-publish it manually"
+
+
+def _positive_seconds(value: str) -> int:
+    """`--timeout 0` (or negative) times every dispatch out instantly."""
+    seconds = int(value)
+    if seconds <= 0:
+        raise argparse.ArgumentTypeError("--timeout must be a positive number of seconds")
+    return seconds
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -223,7 +263,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--repo-root", default=None, help="tests only")
     ap.add_argument("--follow-up", default=None,
                     help="thread id from a prior dispatch's footer; resumes that session")
-    ap.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT,
+    ap.add_argument("--timeout", type=_positive_seconds, default=DEFAULT_TIMEOUT,
                     help="seconds before the worker's process tree is killed (exit 124)")
     args = ap.parse_args(argv)
 
@@ -243,8 +283,11 @@ def main(argv: list[str] | None = None) -> int:
     # STOP + ANTHROPIC-key only: no cost_today_fn, deliberately. Every dispatch
     # cost row is structurally $0.0 subscription, so a daily-budget gate here
     # measures nothing; API spend is governed per-run by card authorization.
+    # The login check is waived ONLY under the test env var — --repo-root is a
+    # path argument, never an auth waiver (a prod caller passing it stays checked).
     problems = (preamble.check(repo_root)
-                + billing_guard(os.environ, login_check=args.repo_root is None))
+                + billing_guard(os.environ,
+                                login_check=os.environ.get("KB_DISPATCH_TEST") != "1"))
     if problems:
         print("DISPATCH REFUSED: " + "; ".join(problems))
         return 2
@@ -274,23 +317,32 @@ def main(argv: list[str] | None = None) -> int:
 
     out_file = STATE_ROOT / "logs" / f"{dispatch_id}.last.md"
     log_file = STATE_ROOT / "logs" / f"{dispatch_id}.jsonl"
-    rc = spawn(prompt_text, model, args.effort, cwd, sandbox, out_file, log_file,
-              follow_up=args.follow_up, timeout=args.timeout)
-    if rc == 0 and out_file.exists():
-        result_text = out_file.read_text(encoding="utf-8")
-    elif rc == 124:
+    rc, timed_out = spawn(prompt_text, model, args.effort, cwd, sandbox, out_file,
+                          log_file, follow_up=args.follow_up, timeout=args.timeout)
+    if timed_out:  # never rc == 124: a worker may genuinely exit with that code
         result_text = f"FAILED: timeout after {args.timeout}s; JSONL log: {log_file}"
+    elif rc == 0 and out_file.exists():
+        result_text = out_file.read_text(encoding="utf-8")
     else:
         result_text = f"FAILED: codex exec exit {rc}; JSONL log: {log_file}"
 
     card, record = build_record(args, cwd, dispatch_id, model, rc,
                                 prompt_text, result_text, log_file)
-    published, publish_note = publish_ops(repo_root, card, record)
+    # stdout is the ONLY channel the answer reaches the caller on: print it
+    # BEFORE the audit publish, which is best-effort and may raise.
+    print(result_text)
+    try:
+        published, publish_note = publish_ops(repo_root, card, record)
+    except Exception as err:
+        published = False
+        try:
+            publish_note = _spool_note(card, f"publish raised {type(err).__name__}: {err}")
+        except Exception:
+            publish_note = f"FAILED (publish raised {type(err).__name__}; unspooled)"
     if published:
         spool_path.unlink(missing_ok=True)
 
     thread_id = card.meta.get("workflow")
-    print(result_text)
     print(f"\n--- codex-dispatch card {card.meta['id']} | model {model} | "
           f"exit {rc} | {time.time() - started:.0f}s | ops publish: {publish_note}"
           + (f" | worktree: {cwd} (yours to sweep)" if args.worktree else "")

@@ -35,12 +35,14 @@ def prompt_file(tmp_path):
     return p
 
 
-def _main_env(monkeypatch, tmp_path, result="ok", rc=0):
+def _main_env(monkeypatch, tmp_path, result="ok", rc=0, timed_out=None):
     """Run main() fully offline: STATE_ROOT redirected, spawn + publish faked.
 
     Returns the dict the fake spawn records its arguments into."""
     seen = {}
+    monkeypatch.setenv("KB_DISPATCH_TEST", "1")  # the ONLY login-check bypass
     monkeypatch.setattr(codex_dispatch, "STATE_ROOT", tmp_path / "state")
+    timeout_flag = (rc == 124) if timed_out is None else timed_out
 
     def fake_spawn(prompt_text, model, effort, cwd, sandbox, out_file, log_file,
                    follow_up=None, timeout=None):
@@ -49,7 +51,7 @@ def _main_env(monkeypatch, tmp_path, result="ok", rc=0):
         log_file.write_text("", encoding="utf-8")
         if rc == 0:
             out_file.write_text(result, encoding="utf-8")
-        return rc
+        return rc, timeout_flag
 
     monkeypatch.setattr(codex_dispatch, "spawn", fake_spawn)
     monkeypatch.setattr(codex_dispatch, "publish_ops", lambda *a, **k: (True, "pushed"))
@@ -135,9 +137,8 @@ def test_main_has_no_budget_cost_gate(repo, prompt_file, tmp_path, monkeypatch):
     assert "cost_today_fn" not in seen
 
 
-def test_spawn_timeout_kills_tree_and_returns_124(tmp_path, monkeypatch):
-    killed = {}
-
+def _timing_out_proc(monkeypatch, killed, wait_raises=False):
+    """A codex process whose communicate() always times out."""
     class FakeProc:
         pid = 4242
         returncode = None
@@ -146,24 +147,89 @@ def test_spawn_timeout_kills_tree_and_returns_124(tmp_path, monkeypatch):
             killed["input"], killed["timeout"] = input, timeout
             raise codex_dispatch.subprocess.TimeoutExpired(cmd="codex", timeout=timeout)
 
-        def wait(self):
+        def wait(self, timeout=None):
+            killed["wait_timeout"] = timeout
+            if wait_raises:
+                raise codex_dispatch.subprocess.TimeoutExpired(cmd="codex", timeout=timeout)
             killed["waited"] = True
+
+        def kill(self):
+            killed["killed"] = True
+
+    monkeypatch.setattr(codex_dispatch.shutil, "which", lambda _: "codex.cmd")
+    monkeypatch.setattr(codex_dispatch.subprocess, "Popen", lambda *a, **k: FakeProc())
+
+
+def _spawn_timeout(tmp_path):
+    return codex_dispatch.spawn("x", "gpt-5.6-terra", None, tmp_path, "workspace-write",
+                                tmp_path / "o.md", tmp_path / "l.jsonl", timeout=17)
+
+
+def test_login_check_is_skipped_only_by_the_test_env_var(repo, prompt_file, tmp_path,
+                                                         monkeypatch):
+    """--repo-root is a path argument, not an auth waiver: a production caller
+    that passes it must still get the `codex login status` subscription check."""
+    seen = []
+    _main_env(monkeypatch, tmp_path)
+    monkeypatch.setattr(codex_dispatch, "billing_guard",
+                        lambda env, login_check=True: seen.append(login_check) or [])
+    argv = ["--prompt-file", str(prompt_file), "--repo-root", str(repo)]
+
+    monkeypatch.delenv("KB_DISPATCH_TEST", raising=False)
+    assert codex_dispatch.main(argv) == 0
+    assert seen == [True]                              # --repo-root does NOT disable it
+
+    monkeypatch.setenv("KB_DISPATCH_TEST", "1")
+    assert codex_dispatch.main(argv) == 0
+    assert seen == [True, False]
+
+
+def test_spawn_timeout_kills_tree_and_returns_124(tmp_path, monkeypatch):
+    killed = {}
+    _timing_out_proc(monkeypatch, killed)
 
     def fake_run(cmd, **kw):
         killed["kill_cmd"] = cmd
         class R: returncode = 0
         return R()
 
-    monkeypatch.setattr(codex_dispatch.shutil, "which", lambda _: "codex.cmd")
-    monkeypatch.setattr(codex_dispatch.subprocess, "Popen", lambda *a, **k: FakeProc())
     monkeypatch.setattr(codex_dispatch.subprocess, "run", fake_run)
-    rc = codex_dispatch.spawn("x", "gpt-5.6-terra", None, tmp_path, "workspace-write",
-                              tmp_path / "o.md", tmp_path / "l.jsonl", timeout=17)
-    assert rc == 124
+    assert _spawn_timeout(tmp_path) == (124, True)
     assert killed["timeout"] == 17 and killed["input"] == b"x" and killed["waited"]
     assert killed["kill_cmd"][:2] == ["taskkill", "/PID"]
     assert "4242" in killed["kill_cmd"]
     assert "/T" in killed["kill_cmd"] and "/F" in killed["kill_cmd"]
+    assert killed["wait_timeout"] == 30            # the reap is BOUNDED, never open-ended
+
+
+def test_spawn_timeout_without_taskkill_falls_back_to_proc_kill(tmp_path, monkeypatch):
+    """Non-Windows has no taskkill: the reaper must not die on FileNotFoundError."""
+    killed = {}
+    _timing_out_proc(monkeypatch, killed)
+
+    def fake_run(cmd, **kw):
+        raise FileNotFoundError(cmd[0])
+
+    monkeypatch.setattr(codex_dispatch.subprocess, "run", fake_run)
+    assert _spawn_timeout(tmp_path) == (124, True)
+    assert killed["killed"] and killed["waited"]
+
+
+def test_spawn_timeout_survives_a_failing_taskkill_and_a_wedged_wait(tmp_path, monkeypatch,
+                                                                    capsys):
+    """taskkill exiting non-zero is reported, and a reap that never returns is
+    bounded — the dispatch still reports the timeout instead of hanging."""
+    killed = {}
+    _timing_out_proc(monkeypatch, killed, wait_raises=True)
+
+    def fake_run(cmd, **kw):
+        class R: returncode = 128
+        return R()
+
+    monkeypatch.setattr(codex_dispatch.subprocess, "run", fake_run)
+    assert _spawn_timeout(tmp_path) == (124, True)
+    assert "waited" not in killed and killed["wait_timeout"] == 30
+    assert "taskkill" in capsys.readouterr().err
 
 
 def test_main_timeout_reports_failure(repo, prompt_file, tmp_path, monkeypatch, capsys):
@@ -172,6 +238,27 @@ def test_main_timeout_reports_failure(repo, prompt_file, tmp_path, monkeypatch, 
                               "--timeout", "30"])
     assert rc == 124 and seen["timeout"] == 30
     assert "FAILED: timeout after 30s" in capsys.readouterr().out
+
+
+def test_main_genuine_exit_124_is_not_reported_as_our_timeout(repo, prompt_file, tmp_path,
+                                                              monkeypatch, capsys):
+    """A worker that genuinely exits 124 collides with the coreutils timeout
+    convention; only spawn's timed_out flag may claim a timeout."""
+    _main_env(monkeypatch, tmp_path, rc=124, timed_out=False)
+    assert codex_dispatch.main(["--prompt-file", str(prompt_file),
+                                "--repo-root", str(repo)]) == 124
+    out = capsys.readouterr().out
+    assert "FAILED: codex exec exit 124" in out and "timeout after" not in out
+
+
+def test_timeout_argument_rejects_zero_and_negative(repo, prompt_file, tmp_path, monkeypatch):
+    """--timeout 0 (or negative) would time every dispatch out instantly."""
+    _main_env(monkeypatch, tmp_path)
+    for bad in ("0", "-30"):
+        with pytest.raises(SystemExit) as exc:
+            codex_dispatch.main(["--prompt-file", str(prompt_file), "--repo-root", str(repo),
+                                 "--timeout", bad])
+        assert exc.value.code == 2
 
 
 def test_main_timeout_defaults_to_45_minutes(repo, prompt_file, tmp_path, monkeypatch):
@@ -214,7 +301,7 @@ def test_spawn_builds_exact_command(tmp_path, monkeypatch):
     out, log = tmp_path / "out.md", tmp_path / "run.jsonl"
     rc = codex_dispatch.spawn("do the thing", "gpt-5.6-sol", "xhigh",
                               tmp_path, "workspace-write", out, log)
-    assert rc == 0
+    assert rc == (0, False)
     assert seen["cmd"][:4] == ["C:/npm/codex.cmd", "exec", "-", "--model"]
     assert "gpt-5.6-sol" in seen["cmd"] and "--json" in seen["cmd"]
     assert "--output-last-message" in seen["cmd"] and str(out) in seen["cmd"]
@@ -226,7 +313,8 @@ def test_spawn_builds_exact_command(tmp_path, monkeypatch):
 
 def test_main_unknown_model_refuses_before_spawn(repo, tmp_path, monkeypatch, capsys):
     called = []
-    monkeypatch.setattr(codex_dispatch, "spawn", lambda *a, **k: called.append(1) or 0)
+    monkeypatch.setenv("KB_DISPATCH_TEST", "1")
+    monkeypatch.setattr(codex_dispatch, "spawn", lambda *a, **k: called.append(1) or (0, False))
     prompt = tmp_path / "p.md"
     prompt.write_text("hi", encoding="utf-8")
     rc = codex_dispatch.main(["--prompt-file", str(prompt), "--model", "nope",
@@ -239,7 +327,7 @@ def _mk_args(**over):
     import argparse
     base = dict(prompt_file="p.md", model="codex", effort=None, cwd=None,
                 sandbox="workspace-write", worktree=False, project="kb-ops",
-                label="codex-dispatch", repo_root=None)
+                label="codex-dispatch", repo_root=None, follow_up=None)
     base.update(over)
     return argparse.Namespace(**base)
 
@@ -288,16 +376,25 @@ def test_build_record_failure_is_a_done_record(repo, tmp_path):
 
 
 class _FakeGit:
-    """A git that models ops as a single remote sha, so `publish_ops` can be
-    judged on what it actually LANDED rather than on push's exit code."""
+    """A git that models ops as a HISTORY, not a single sha, so `publish_ops` is
+    judged on whether our commit is reachable from origin/ops — the only honest
+    definition of landed once third parties push between our push and our check.
 
-    def __init__(self, push_failures=0, remote_lands=True):
+    `third_party` advances the remote head after every accepted push (our commit
+    still an ancestor); `land_on_failed_push` models a push the server ACCEPTED
+    but whose exit code we lost."""
+
+    def __init__(self, push_failures=0, remote_lands=True, third_party=False,
+                 land_on_failed_push=False):
         self.calls, self.push_failures, self.remote_lands = [], push_failures, remote_lands
-        self.head = 0
+        self.third_party, self.land_on_failed_push = third_party, land_on_failed_push
+        self.head, self.others = 0, 0
+        self.landed = set()          # shas reachable from origin/ops
+        self.remote_head = "sha-base"
 
     def __call__(self, cmd, **kw):
         cwd = kw.get("cwd")
-        self.calls.append((tuple(cmd), cwd))
+        self.calls.append((tuple(cmd), cwd, kw.get("timeout")))
         verb, out, rc = cmd[1], "", 0
         if verb == "worktree" and cmd[2] == "add":
             Path(cmd[-2]).mkdir(parents=True, exist_ok=True)
@@ -306,12 +403,21 @@ class _FakeGit:
         elif verb == "rev-parse":
             out = f"sha{self.head}\n"
         elif verb == "push":
+            accepted = True
             if self.push_failures:
                 self.push_failures -= 1
-                rc = 1
+                rc, accepted = 1, self.land_on_failed_push
+            if accepted and self.remote_lands:
+                self.landed.add(f"sha{self.head}")
+                self.remote_head = f"sha{self.head}"
+                if self.third_party:                 # someone else pushes on top
+                    self.others += 1
+                    self.remote_head = f"other{self.others}"
+                    self.landed.add(self.remote_head)
+        elif verb == "merge-base":                   # merge-base --is-ancestor X FETCH_HEAD
+            rc = 0 if cmd[3] in self.landed else 1
         elif verb == "ls-remote":
-            landed = f"sha{self.head}" if self.remote_lands else "sha-someone-else"
-            out = f"{landed}\trefs/heads/ops\n"
+            out = f"{self.remote_head}\trefs/heads/ops\n"
 
         class R:
             returncode, stdout, stderr = rc, out, ""
@@ -342,9 +448,39 @@ def test_publish_ops_happy_path_verifies_the_landing(repo, monkeypatch, tmp_path
     assert git.verbs[:2] == ["fetch", "worktree"]      # fetch ops, then temp worktree
     assert "push" in git.verbs and "commit" in git.verbs
     # the landing is CONFIRMED against the remote, not assumed from push's rc
-    assert git.verbs.index("rev-parse") < git.verbs.index("push") < git.verbs.index("ls-remote")
+    assert git.verbs.index("rev-parse") < git.verbs.index("push") < git.verbs.index("merge-base")
     add_call = next(c for c in git.calls if c[0][1] == "add")
     assert add_call[0][2] == "--"                      # exact-path staging only
+    # M1: no git call in the publish path may block forever on a wedged origin
+    assert all(c[2] == 120 for c in git.calls)
+
+
+def test_publish_ops_landing_is_ancestry_not_head_equality(repo, monkeypatch, tmp_path):
+    """REGRESSION (live-confirmed triple-publish): a third party pushing to ops
+    between our accepted push and our check leaves origin/ops HEAD != our sha.
+    Head-equality read that as failure and re-landed the SAME record three
+    times while reporting FAILED. Ancestry is the honest test."""
+    git = _FakeGit(third_party=True)
+    appends, real_append = [], codex_dispatch.ledger.append
+    monkeypatch.setattr(codex_dispatch.ledger, "append",
+                        lambda *a, **k: appends.append(a[0]) or real_append(*a, **k))
+    ok, note = _publish(monkeypatch, tmp_path, repo, git)
+    assert (ok, note) == (True, "pushed")
+    assert git.verbs.count("commit") == 1              # exactly ONE record built
+    assert git.verbs.count("push") == 1                # and landed once
+    assert len(appends) == 1                           # one cost row, not three
+    assert "reset" not in git.verbs                    # never rebuilt
+
+
+def test_publish_ops_claims_a_push_whose_exit_code_was_lost(repo, monkeypatch, tmp_path):
+    """The server accepted the push but git reported failure (dropped connection):
+    the next attempt must SEE the landed commit and stop, not publish it twice."""
+    git = _FakeGit(push_failures=1, land_on_failed_push=True)
+    ok, note = _publish(monkeypatch, tmp_path, repo, git)
+    assert (ok, note) == (True, "pushed")
+    assert git.verbs.count("commit") == 1              # no second record
+    assert git.verbs.count("push") == 1                # no second push
+    assert git.verbs.count("fetch") == 2               # attempt 2 re-fetched, then bailed out
 
 
 def test_publish_ops_rebuilds_on_rejected_push(repo, monkeypatch, tmp_path):
@@ -354,7 +490,8 @@ def test_publish_ops_rebuilds_on_rejected_push(repo, monkeypatch, tmp_path):
     ok, note = _publish(monkeypatch, tmp_path, repo, git)
     assert (ok, note) == (True, "pushed")
     assert git.verbs.count("push") == 2
-    assert git.verbs.count("fetch") == 2               # each attempt re-fetches ops
+    # 2 attempt fetches + the confirming fetch that precedes the ancestry test
+    assert git.verbs.count("fetch") == 3
     assert ("reset", "--hard", "origin/ops") == next(
         c[0][1:4] for c in git.calls if c[0][1] == "reset")
     # a rebuild is FRESH: the discarded attempt's untracked card/row files are
@@ -373,9 +510,37 @@ def test_publish_ops_unlanded_push_is_never_reported_pushed(repo, monkeypatch, t
     assert not ok
     assert "3 rebuilt attempts" in note and "spooled" in note
     assert git.verbs.count("push") == 3                # tried thrice, believed none
-    spooled = list((tmp_path / "state" / "spool").glob("card-*.md"))
-    assert len(spooled) == 1 and "## Work order" not in ""  # record survives on disk
+    spooled = list((tmp_path / "state" / "spool").glob("**/*.md"))
+    assert len(spooled) == 1                           # record survives on disk
     assert spooled[0].read_text(encoding="utf-8").startswith("---")
+
+
+def test_publish_ops_prunes_the_worktree_registration(repo, monkeypatch, tmp_path):
+    """`worktree remove` can fail (locked file); without a prune the stale
+    registration under .git/worktrees lives forever."""
+    git = _FakeGit()
+    _publish(monkeypatch, tmp_path, repo, git)
+    worktree_ops = [c[0][2] for c in git.calls if c[0][1] == "worktree"]
+    assert worktree_ops == ["add", "remove", "prune"]
+
+
+def test_spool_note_writes_a_card_that_round_trips(repo, monkeypatch, tmp_path):
+    """The spool file is a re-publishable CARD, so it must parse: hand-rolled
+    `f"{k}: {v}"` frontmatter turned None into the string 'None' and a label
+    containing ': ' produced an unparseable file."""
+    import cards
+    monkeypatch.setattr(codex_dispatch, "STATE_ROOT", tmp_path / "state")
+    card = cards.new_card("kb-ops", "fix: the thing", "x", "T1",
+                          body="## Work order\n\nbody: with colons\n")
+    cards.claim(card, "codex-worker")
+    codex_dispatch.walk_state(card)
+    note = codex_dispatch._spool_note(card, "because")
+    spooled = list((tmp_path / "state" / "spool").glob("**/*.md"))
+    assert len(spooled) == 1 and str(spooled[0]) in note
+    back = cards.parse(spooled[0])
+    assert back.meta["approval"] is None and back.meta["workflow"] is None
+    assert back.meta["action"] == "fix: the thing" and back.meta["state"] == "done"
+    assert back.meta["id"] == card.meta["id"] and "body: with colons" in back.body
 
 
 def test_publish_ops_never_rebases(repo, monkeypatch, tmp_path):
@@ -402,7 +567,7 @@ def test_spawn_follow_up_builds_resume_command(tmp_path, monkeypatch):
     out, log = tmp_path / "o.md", tmp_path / "l.jsonl"
     rc = codex_dispatch.spawn("more work", None, None, tmp_path, "workspace-write",
                               out, log, follow_up="019f-abc")
-    assert rc == 0
+    assert rc == (0, False)
     assert seen["cmd"][:5] == ["codex.cmd", "exec", "resume", "019f-abc", "-"]
     assert "--json" in seen["cmd"] and "--output-last-message" in seen["cmd"]
     assert "--model" not in seen["cmd"]
@@ -439,7 +604,7 @@ def test_main_follow_up_refuses_session_shape_flags(repo, prompt_file, tmp_path,
     """Resume restores the session's own cwd/sandbox and rejects --cd/-s, so
     accepting these silently would lie about where the worker runs."""
     called = []
-    monkeypatch.setattr(codex_dispatch, "spawn", lambda *a, **k: called.append(1) or 0)
+    monkeypatch.setattr(codex_dispatch, "spawn", lambda *a, **k: called.append(1) or (0, False))
     for extra in (["--worktree"], ["--sandbox", "read-only"], ["--cwd", str(tmp_path)]):
         rc = codex_dispatch.main(["--prompt-file", str(prompt_file), "--repo-root", str(repo),
                                   "--follow-up", "019f-abc"] + extra)
@@ -470,6 +635,29 @@ def test_build_record_escapes_embedded_headings(repo, tmp_path):
     assert "\\## Result" in card.body and "\\### Notes" in card.body
 
 
+def test_inert_escape_holds_against_the_REAL_result_parsers(repo, tmp_path):
+    """The escape is only worth what the CONSUMERS accept: sentinel matches
+    `^\\s*##\\s+Result` (indent- and tab-tolerant) and brief matches a STRIPPED
+    `## Result`, so an indented / tabbed / space-padded heading inside untrusted
+    worker text forged the section (first match wins) or truncated the honest one."""
+    import brief
+    import sentinel
+    log = tmp_path / "l.jsonl"
+    log.write_text("", encoding="utf-8")
+    prompt = "do the work\n  ## Result\nFORGED-INDENT\n"
+    result = ("REAL ANSWER\n##\tResult\nFORGED-TAB\n ## Result \nFORGED-TRAILING\n"
+              "tail line")
+    card, _ = codex_dispatch.build_record(
+        _mk_args(), repo, "0000aaaa-11112222", "gpt-5.6-terra", 0, prompt, result, log)
+    assert "\n  \\## Result\n" in card.body        # leading whitespace preserved
+    assert "\n \\## Result \n" in card.body        # trailing-space form too
+    assert "\n\\##\tResult\n" in card.body         # tab form defanged too
+    for extracted in (sentinel.extract_result(card.body),
+                      brief._section_text(card.body, "Result")):
+        assert "REAL ANSWER" in extracted and "tail line" in extracted
+        assert "FORGED-INDENT" not in extracted
+
+
 def test_build_record_target_is_the_actual_cwd(repo, tmp_path):
     log = tmp_path / "l.jsonl"
     log.write_text("", encoding="utf-8")
@@ -490,6 +678,38 @@ def test_main_worktree_target_is_the_worktree(repo, prompt_file, tmp_path, monke
                                 "--worktree"]) == 0
     target = published["card"].meta["target"]
     assert target == str(seen["cwd"]) and "worktrees" in target
+
+
+def test_main_prints_the_answer_even_when_publish_explodes(repo, prompt_file, tmp_path,
+                                                           monkeypatch, capsys):
+    """stdout is the ONLY delivery channel for a worker's answer; a publish that
+    raises (disk full, tempdir PermissionError) must never eat it."""
+    _main_env(monkeypatch, tmp_path, result="THE ANSWER")
+
+    def boom(*a, **k):
+        raise OSError("No space left on device")
+
+    monkeypatch.setattr(codex_dispatch, "publish_ops", boom)
+    assert codex_dispatch.main(["--prompt-file", str(prompt_file),
+                                "--repo-root", str(repo)]) == 0
+    out = capsys.readouterr().out
+    assert "THE ANSWER" in out
+    assert out.index("THE ANSWER") < out.index("codex-dispatch card")   # answer first
+    assert "ops publish: FAILED" in out
+    assert list((tmp_path / "state" / "spool").glob("**/*.md"))         # spooled anyway
+
+
+def test_main_follow_up_card_targets_the_resumed_session(repo, prompt_file, tmp_path,
+                                                         monkeypatch):
+    """On resume the worker runs in ITS session's cwd, not the caller's repo
+    root — stamping repo_root as the target would be a lie."""
+    _main_env(monkeypatch, tmp_path)
+    published = {}
+    monkeypatch.setattr(codex_dispatch, "publish_ops",
+                        lambda root, card, rec: published.update(card=card) or (True, "pushed"))
+    assert codex_dispatch.main(["--prompt-file", str(prompt_file), "--repo-root", str(repo),
+                                "--follow-up", "019f-abc"]) == 0
+    assert published["card"].meta["target"] == "resumed-session:019f-abc"
 
 
 def test_build_record_stamps_workflow_thread(repo, tmp_path):
