@@ -6,6 +6,7 @@
  * the filesystem is a recording map. The load-bearing test is the STRUCTURAL HALT: with a gate
  * unapproved, the session's input transcript must contain no work order at all.
  */
+import { createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import type { HostOpenRequest, PtyHandle, PtyHost, PtySession } from '../pty/host.ts';
 import { createPersistentSessionRegistry } from '../pty/persistentSessions.ts';
@@ -217,33 +218,69 @@ function fakeHost(): FakeHost {
   };
 }
 
-function fakeFs(existing: string[] = []): RosterFileSystem & { files: Map<string, string>; dirs: string[]; removed: string[] } {
+/**
+ * Recording filesystem. `stat`/`hashFile` replace the old `exists`, because `existsSync` was true for a
+ * DIRECTORY named `shots.json` and for a 0-byte file — both of which satisfied a declared artifact.
+ * `putDir` and a 0-byte `put` let a test stand exactly those two things where an artifact belongs.
+ */
+function fakeFs(existing: string[] = [], seed: { directories?: string[]; contents?: Record<string, string> } = {}): RosterFileSystem & {
+  files: Map<string, string>;
+  dirs: string[];
+  removed: string[];
+  /** Every `hashFile` call, in order — the cost assertion (a big artifact must not be hashed twice). */
+  hashed: string[];
+  /** Write real bytes at a path, the way a stage producing its artifact would. */
+  put(path: string, contents: string): void;
+  /** Stand a DIRECTORY where an artifact is declared. */
+  putDir(path: string): void;
+} {
   const files = new Map<string, string>();
   const dirs: string[] = [];
   const removed: string[] = [];
-  const present = new Set(existing);
+  const hashed: string[] = [];
+  const directories = new Set((seed.directories ?? []).map((path) => norm(path)));
+  for (const path of existing) files.set(norm(path), `seed:${norm(path)}`);
+  for (const [path, value] of Object.entries(seed.contents ?? {})) files.set(norm(path), value);
   return {
     files,
     dirs,
     removed,
+    hashed,
     ensureDir(path) { dirs.push(path); },
-    writeFile(path, contents) { files.set(path.replace(/\\/g, '/'), contents); },
-    exists(path) { return present.has(path.replace(/\\/g, '/')) || files.has(path.replace(/\\/g, '/')); },
+    writeFile(path, contents) { files.set(norm(path), contents); },
+    stat(path) {
+      const key = norm(path);
+      if (directories.has(key)) return { regularFile: false, size: 0 };
+      const value = files.get(key);
+      return value === undefined ? null : { regularFile: true, size: Buffer.byteLength(value, 'utf8') };
+    },
+    hashFile(path) {
+      const key = norm(path);
+      hashed.push(key);
+      return createHash('sha256').update(files.get(key) ?? '').digest('hex');
+    },
     removeDir(path) {
-      const prefix = `${path.replace(/\\/g, '/')}/`;
-      removed.push(path.replace(/\\/g, '/'));
+      const prefix = `${norm(path)}/`;
+      removed.push(norm(path));
       for (const key of [...files.keys()]) if (key.startsWith(prefix)) files.delete(key);
     },
+    put(path, contents) { files.set(norm(path), contents); },
+    putDir(path) { directories.add(norm(path)); },
   };
 }
 
-function harness(options: { plan?: PlanProposal; existingPaths?: string[]; deliveryTimeoutMs?: number } = {}) {
+function harness(options: {
+  plan?: PlanProposal;
+  existingPaths?: string[];
+  deliveryTimeoutMs?: number;
+  seed?: { directories?: string[]; contents?: Record<string, string> };
+} = {}) {
   const plan = options.plan ?? proposalFixture();
   const store = createInMemoryControlPlaneStore({ newId: () => `id-${++sequence}` });
   const runRef = createApprovedRun(store, plan);
   const registry = createPersistentSessionRegistry();
   const host = fakeHost();
-  const fs = fakeFs(options.existingPaths ?? ['/repo/orgs/faceless-youtube']);
+  const fs = fakeFs(options.existingPaths ?? [], options.seed ?? {});
   const resolve = vi.fn((input: Parameters<AssignedAgentResolver['resolve']>[0]) => ({
     assignment: { ...input.assignment },
     instructionMarkdown: `# ${input.assignment.agentId}\n\nYou own your phase.`,
@@ -401,7 +438,7 @@ describe('roster spawn lifecycle', () => {
     const restartedHost = fakeHost();
     const restarted = createRosterSessionManager({
       store, repoRoot: '/repo', stateRoot: '/state', host: restartedHost.host,
-      registry: createPersistentSessionRegistry(), fs: fakeFs(['/repo/orgs/faceless-youtube']),
+      registry: createPersistentSessionRegistry(), fs: fakeFs(),
       assignedAgents: { resolve: (input) => ({ assignment: { ...input.assignment }, instructionMarkdown: '# agent' }) },
       resolveProfiles: () => PROFILES,
     });
@@ -514,9 +551,112 @@ describe('gated work-order delivery', () => {
     }
   });
 
-  it('refuses a completion whose declared artifacts are not on disk', async () => {
+  /**
+   * SERVER-VERIFIED DECLARED ARTIFACTS. The gate this protects (G2 on `images`) promises an operator that
+   * `shots-merge` really ran before authorizing ~$17-27 of image generation. The old check was
+   * `existsSync` alone, compared against nothing, so it was satisfied by a directory wearing the
+   * artifact's name, by a 0-byte file, and — the case that actually bites — by the PREVIOUS attempt's
+   * file, since every video under `channels/<c>/videos/` already carries a root `shots.json`. The engine's
+   * own digest cross-check cannot cover this: the roster adapter reports `artifacts: []`, so it iterates
+   * nothing.
+   */
+  const SCRIPT_PATH = 'orgs/faceless-youtube/channels/x/videos/y/script.md';
+
+  /** A run whose `story` stage declares one artifact, delivered and awaiting its marker. */
+  async function artifactHarness(options: { seed?: { directories?: string[]; contents?: Record<string, string> } } = {}) {
     const plan = proposalFixture();
-    plan.stages[1].artifacts = [{ id: 'script', path: 'orgs/faceless-youtube/channels/x/script.md', description: 'the script' }];
+    plan.stages[1].artifacts = [{ id: 'script', path: SCRIPT_PATH, description: 'the script' }];
+    const { store, sessions, runRef, fs, host } = harness({ plan, ...(options.seed ? { seed: options.seed } : {}) });
+    sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    const sessionId = sessionIdFor(sessions, runRef, 'fyt-story');
+    succeedStage(store, runRef, 'idea');
+    resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
+    const pending = sessions.deliver(deliverInput(store, runRef, plan, 'story'));
+    const order = fs.files.get(`/state/control/roster/${runRef}/fyt-story/orders/story.md`) ?? '';
+    // The order file NAMES the declared artifact, so the agent knows what it is being held to.
+    expect(order).toContain(SCRIPT_PATH);
+    const token = /completion token: ([0-9a-f]{32})/.exec(order)?.[1] as string;
+    return {
+      fs,
+      /** Emit the honest marker and await the server's verdict on the artifact. */
+      async complete() {
+        host.emit(sessionId, `FYT-STAGE-DONE story ${token} all done honest\r\n`);
+        return pending;
+      },
+    };
+  }
+
+  it('refuses a completion whose declared artifact is not on disk', async () => {
+    const run = await artifactHarness();
+    const result = await run.complete();
+    expect(result.state).toBe('waiting-human');
+    expect(result.summary).toContain('declared artifacts are not satisfied');
+    expect(result.summary).toContain(`${SCRIPT_PATH} (missing)`);
+  });
+
+  it('accepts the completion when the stage actually WROTE the declared artifact', async () => {
+    const run = await artifactHarness();
+    run.fs.put(`/repo/${SCRIPT_PATH}`, '# the script\n\nreal content the stage produced.\n');
+    expect(await run.complete()).toMatchObject({ state: 'succeeded', summary: 'all done honest' });
+  });
+
+  it('CANNOT succeed on a pre-existing artifact it did not write', async () => {
+    // The hollow completion: the file was already there when the order was delivered (a retry, or a slug
+    // that already carries root plan files) and the stage touched nothing. Existence alone said PASS.
+    const run = await artifactHarness({ seed: { contents: { [`/repo/${SCRIPT_PATH}`]: 'the PREVIOUS attempt\'s script' } } });
+    const result = await run.complete();
+    expect(result.state).toBe('waiting-human');
+    expect(result.summary).toContain('byte-identical to the file already there');
+    expect(result.summary).toContain(SCRIPT_PATH);
+  });
+
+  it('accepts a pre-existing artifact the stage genuinely REWROTE', async () => {
+    // The other half of the bar: this is change detection, not novelty detection. A stage that edits an
+    // inherited file has done its work and must pass.
+    const run = await artifactHarness({ seed: { contents: { [`/repo/${SCRIPT_PATH}`]: 'the PREVIOUS attempt\'s script' } } });
+    run.fs.put(`/repo/${SCRIPT_PATH}`, 'a genuinely rewritten script');
+    expect(await run.complete()).toMatchObject({ state: 'succeeded' });
+  });
+
+  it('detects a rewrite that kept the byte SIZE identical', async () => {
+    // Size is only the cheap discriminator; equal size falls through to the content hash. Without that,
+    // an in-place edit of the same length would read as "unchanged" and park a stage that did its work.
+    const before = 'aaaaaaaaaaaaaaaaaaaa';
+    const run = await artifactHarness({ seed: { contents: { [`/repo/${SCRIPT_PATH}`]: before } } });
+    run.fs.put(`/repo/${SCRIPT_PATH}`, 'bbbbbbbbbbbbbbbbbbbb');
+    expect(before).toHaveLength(20);
+    expect(await run.complete()).toMatchObject({ state: 'succeeded' });
+  });
+
+  it('parks on a 0-byte file and on a DIRECTORY standing where the artifact belongs', async () => {
+    // `existsSync` returned true for both of these.
+    const empty = await artifactHarness();
+    empty.fs.put(`/repo/${SCRIPT_PATH}`, '');
+    const emptyResult = await empty.complete();
+    expect(emptyResult.state).toBe('waiting-human');
+    expect(emptyResult.summary).toContain(`${SCRIPT_PATH} (empty)`);
+
+    const directory = await artifactHarness({ seed: { directories: [`/repo/${SCRIPT_PATH}`] } });
+    const directoryResult = await directory.complete();
+    expect(directoryResult.state).toBe('waiting-human');
+    expect(directoryResult.summary).toContain(`${SCRIPT_PATH} (not a regular file)`);
+  });
+
+  it('hashes a declared artifact at most once per delivery phase, and not at all when the size moved', async () => {
+    // The biggest declared artifact in this pipeline is `final.mp4`. One hash at snapshot time is
+    // unavoidable (the old bytes are gone by verification time); the verification-side hash is skipped
+    // whenever the size already proves the file changed.
+    const run = await artifactHarness({ seed: { contents: { [`/repo/${SCRIPT_PATH}`]: 'short' } } });
+    expect(run.fs.hashed).toEqual([`/repo/${SCRIPT_PATH}`]); // exactly one: the pre-delivery baseline
+    run.fs.put(`/repo/${SCRIPT_PATH}`, 'a longer rewritten script that changes the size');
+    expect(await run.complete()).toMatchObject({ state: 'succeeded' });
+    // Still one: the size moved, so the bytes never had to be compared.
+    expect(run.fs.hashed).toEqual([`/repo/${SCRIPT_PATH}`]);
+  });
+
+  it('parks a stage whose declared artifact path is not repo-relative-safe', async () => {
+    const plan = proposalFixture();
+    plan.stages[1].artifacts = [{ id: 'escape', path: '../../etc/passwd', description: 'nope' }];
     const { store, sessions, runRef, fs, host } = harness({ plan });
     sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
     const sessionId = sessionIdFor(sessions, runRef, 'fyt-story');
@@ -525,33 +665,10 @@ describe('gated work-order delivery', () => {
     const pending = sessions.deliver(deliverInput(store, runRef, plan, 'story'));
     const order = fs.files.get(`/state/control/roster/${runRef}/fyt-story/orders/story.md`) ?? '';
     const token = /completion token: ([0-9a-f]{32})/.exec(order)?.[1] as string;
-    host.emit(sessionId, `FYT-STAGE-DONE story ${token} all done honest\r\n`);
+    host.emit(sessionId, `FYT-STAGE-DONE story ${token} done\r\n`);
     const result = await pending;
     expect(result.state).toBe('waiting-human');
-    expect(result.summary).toContain('declared artifacts are missing');
-  });
-
-  it('accepts the SAME completion once the declared artifact really is on disk', async () => {
-    // The other half of the bar: the check must be existence, not pessimism. Together these two tests
-    // are the property `compile.ts`'s `artifacts: []` hardcode made unreachable — with an empty declared
-    // list the verification loop iterated nothing and a bare marker always won.
-    const plan = proposalFixture();
-    const scriptPath = 'orgs/faceless-youtube/channels/x/videos/y/script.md';
-    plan.stages[1].artifacts = [{ id: 'script', path: scriptPath, description: 'the script' }];
-    const { store, sessions, runRef, fs, host } = harness({
-      plan, existingPaths: ['/repo/orgs/faceless-youtube', `/repo/${scriptPath}`],
-    });
-    sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
-    const sessionId = sessionIdFor(sessions, runRef, 'fyt-story');
-    succeedStage(store, runRef, 'idea');
-    resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
-    const pending = sessions.deliver(deliverInput(store, runRef, plan, 'story'));
-    const order = fs.files.get(`/state/control/roster/${runRef}/fyt-story/orders/story.md`) ?? '';
-    // The order file NAMES the declared artifact, so the agent knows what it is being held to.
-    expect(order).toContain(scriptPath);
-    const token = /completion token: ([0-9a-f]{32})/.exec(order)?.[1] as string;
-    host.emit(sessionId, `FYT-STAGE-DONE story ${token} script written\r\n`);
-    expect(await pending).toMatchObject({ state: 'succeeded', summary: 'script written' });
+    expect(result.summary).toContain('not a safe repo-relative path');
   });
 
   it('settles a delivery that never sees a marker as a human wait, releasing the worker slot', async () => {
@@ -851,6 +968,21 @@ describe('completion marker recognition', () => {
     ['forged token', `FYT-STAGE-DONE story ${FOREIGN} forged`, 'token-mismatch'],
     ['another stage\'s marker', `FYT-STAGE-DONE images ${TOKEN} wrong stage`, 'stage-mismatch'],
     ['a PRIOR stage\'s marker', `⏺ FYT-STAGE-DONE idea ${TOKEN} earlier stage`, 'stage-mismatch'],
+    // QUOTING AND FENCING. An agent restating the line it is ABOUT to print is completely normal
+    // behaviour, and under the old `[^A-Za-z0-9]{0,32}` prefix every one of these MATCHED — a stage could
+    // complete itself by talking about completing.
+    ['inline code span', `\`FYT-STAGE-DONE story ${TOKEN} ok\``, 'no-match'],
+    ['bullet plus backticks', `- \`FYT-STAGE-DONE story ${TOKEN} ok\``, 'no-match'],
+    ['comment / markdown heading', `# FYT-STAGE-DONE story ${TOKEN} ok`, 'no-match'],
+    ['fence run-on', `\`\`\`FYT-STAGE-DONE story ${TOKEN} ok`, 'no-match'],
+    ['JSON with an empty key', `{"": "FYT-STAGE-DONE story ${TOKEN} ok"`, 'no-match'],
+    // Neighbours of the above, kept explicit so a future widening of the prefix has to break a test.
+    ['double-quoted line', `"FYT-STAGE-DONE story ${TOKEN} ok"`, 'no-match'],
+    ['single-quoted line', `'FYT-STAGE-DONE story ${TOKEN} ok'`, 'no-match'],
+    ['curly-quoted line', `“FYT-STAGE-DONE story ${TOKEN} ok”`, 'no-match'],
+    ['JSON array element', `["FYT-STAGE-DONE story ${TOKEN} ok"]`, 'no-match'],
+    ['yaml-ish key', `marker: FYT-STAGE-DONE story ${TOKEN} ok`, 'no-match'],
+    ['shell comment with slashes', `// FYT-STAGE-DONE story ${TOKEN} ok`, 'no-match'],
   ];
 
   it.each(ACCEPTED)('accepts %s', (_name, raw, verdict) => {
@@ -861,27 +993,72 @@ describe('completion marker recognition', () => {
     expect(outcomeOf(raw)).toBe(reason);
   });
 
-  it('keeps the anchor: a prefix is decoration only, never prose', () => {
-    // Generality, not a whitelist of the two glyphs seen today — but bounded, and killed by one
-    // alphanumeric character ahead of the marker.
+  it('keeps the anchor: a prefix is decoration only, never prose or quoting', () => {
+    // Generality, not a whitelist of the glyphs seen today — the prefix admits whole Unicode decoration
+    // bands, so the next CLI release's gutter glyph still scans — but bounded, killed by one alphanumeric
+    // character ahead of the marker, and closed to every quoting/fencing character.
     expect(outcomeOf(`${'│'.repeat(8)} FYT-STAGE-DONE story ${TOKEN} ok`)).toBe('DONE');
+    // Decoration glyphs this scanner has never seen, from the bands terminal framing lives in.
+    for (const glyph of ['▌', '●', '→', '•', '❯', '⎿', '⬤']) {
+      expect(outcomeOf(`${glyph} FYT-STAGE-DONE story ${TOKEN} ok`)).toBe('DONE');
+    }
     expect(outcomeOf(`${'.'.repeat(40)} FYT-STAGE-DONE story ${TOKEN} ok`)).toBe('no-match');
     expect(outcomeOf(`x FYT-STAGE-DONE story ${TOKEN} ok`)).toBe('no-match');
+    // A single quoting character is enough, at any depth of otherwise-legal decoration.
+    expect(outcomeOf(`   │ ⏺  \`FYT-STAGE-DONE story ${TOKEN} ok`)).toBe('no-match');
     expect(matchCompletionMarker(`FYT-STAGE-DONE story ${TOKEN}   trailing summary  `)?.summary.trim())
       .toBe('trailing summary');
   });
 });
 
 describe('roster helpers', () => {
-  it('resolves the deepest existing work directory and never trusts an unsafe segment', () => {
-    const exists = (path: string) => ['/repo/orgs/p', '/repo/orgs/p/channels/c'].includes(path.replace(/\\/g, '/'));
-    expect(resolveRosterWorkDir('/repo', 'p', { channel: 'c', slug: 's' }, exists).replace(/\\/g, '/'))
-      .toBe('/repo/orgs/p/channels/c');
-    expect(resolveRosterWorkDir('/repo', 'p', { channel: 'c' }, exists).replace(/\\/g, '/'))
-      .toBe('/repo/orgs/p/channels/c');
-    expect(resolveRosterWorkDir('/repo', 'p', { channel: '../etc', slug: 'x' }, exists).replace(/\\/g, '/'))
-      .toBe('/repo/orgs/p');
-    expect(resolveRosterWorkDir('/repo', 'q', {}, () => false)).toBe('/repo');
+  /**
+   * The work directory is PINNED to `orgs/<project>` — the root every work order's org-relative paths
+   * (`channels/<channel>/videos/<slug>/brief.md`) are written against.
+   *
+   * It used to return the DEEPEST EXISTING candidate, which broke both ways: on a fresh slug the video dir
+   * did not exist but the channel dir did, so the stated root became the CHANNEL dir and that same
+   * relative path resolved to `channels/<c>/channels/<c>/videos/<slug>/brief.md`; and because `workDir` is
+   * recomputed whenever the in-memory run entry is absent — after every daemon restart — the stated root
+   * silently moved one level deeper as soon as `idea` created the video dir.
+   */
+  it('pins the work directory to orgs/<project>, whatever exists on disk', () => {
+    expect(norm(resolveRosterWorkDir('/repo', 'p'))).toBe('/repo/orgs/p');
+    expect(norm(resolveRosterWorkDir('/repo', 'faceless-youtube'))).toBe('/repo/orgs/faceless-youtube');
+    // The only fallback is the traversal guard: a project that is not one safe path segment is never
+    // interpolated into a path.
+    expect(norm(resolveRosterWorkDir('/repo', '../etc'))).toBe('/repo');
+    expect(norm(resolveRosterWorkDir('/repo', ''))).toBe('/repo');
+    expect(norm(resolveRosterWorkDir('/repo', 'a/b'))).toBe('/repo');
+  });
+
+  it('opens every roster session at orgs/<project> for a fresh slug, an existing video dir, and after a restart', () => {
+    const videoDir = '/repo/orgs/faceless-youtube/channels/the-second-take/videos/st-042';
+    const channelDir = '/repo/orgs/faceless-youtube/channels/the-second-take';
+    const expected = '/repo/orgs/faceless-youtube';
+
+    // 1. FRESH SLUG: the video dir does not exist, only the channel dir does — the shape that used to
+    //    resolve to the channel dir and mis-root every org-relative order path.
+    const fresh = harness({ seed: { directories: [channelDir] } });
+    fresh.sessions.ensureRoster({ subject: 'operator', runRef: fresh.runRef, proposal: fresh.plan });
+    expect(fresh.host.opened.map((req) => norm(req.cwd))).toEqual([expected, expected, expected]);
+
+    // 2. EXISTING VIDEO DIR: the deepest candidate is now real, and the answer must not change.
+    const existing = harness({ seed: { directories: [channelDir, videoDir] } });
+    existing.sessions.ensureRoster({ subject: 'operator', runRef: existing.runRef, proposal: existing.plan });
+    expect(existing.host.opened.map((req) => norm(req.cwd))).toEqual([expected, expected, expected]);
+
+    // 3. ACROSS A DAEMON RESTART, with the video dir created in between (what stage `idea` does): a fresh
+    //    manager over the same durable store re-derives the SAME root instead of moving one level deeper.
+    const restartedHost = fakeHost();
+    const restarted = createRosterSessionManager({
+      store: existing.store, repoRoot: '/repo', stateRoot: '/state', host: restartedHost.host,
+      registry: createPersistentSessionRegistry(), fs: fakeFs([], { directories: [channelDir, videoDir] }),
+      assignedAgents: { resolve: (input) => ({ assignment: { ...input.assignment }, instructionMarkdown: '# agent' }) },
+      resolveProfiles: () => PROFILES,
+    });
+    restarted.ensureRoster({ subject: 'operator', runRef: existing.runRef, proposal: existing.plan });
+    expect(restartedHost.opened.map((req) => norm(req.cwd))).toEqual([expected, expected, expected]);
   });
 
   it('recovers a durable activity line written PAST the first event page', () => {

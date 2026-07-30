@@ -129,6 +129,80 @@ describe('compileApprovedProposal', () => {
     expect(upload?.releasableByStageGate).toBe(false);
   });
 
+  /**
+   * LAUNCH-TIME FAIL-FAST FOR A GATED T3 STAGE. `evaluateExecutionPolicy` tests `riskTier === 'T3'` before
+   * the approved-revision, write-scope, skill-curation and profile checks, so a T3 stage carrying a
+   * publication gate returned its releasable wait first and those four checks never ran at compile time.
+   * The stage entered the card DAG, and the run launched and executed the PAID `images` and `audio` stages
+   * before `stageBoundary` re-ran the same policy after the gate approval, reached the skipped check, and
+   * re-parked. Authorization was never bypassed — `stageBoundary` still refuses — but the money was
+   * already spent on a stage that was structurally impossible all along.
+   */
+  describe('a gated T3 stage is re-checked as if its gate were already approved', () => {
+    it('A1: refuses at compile time when the target is outside the stage write scope', () => {
+      const outside = withUpload(PUBLICATION_GATE);
+      outside.stages[1] = { ...outside.stages[1], target: 'dashboard/server', scope: { read: ['dashboard'], write: ['dashboard/src'] } };
+      expect(compileApprovedProposal(outside, 'abc', 'abc', environment)).toMatchObject({
+        ok: false,
+        reason: 'gated-stage-unreachable',
+        detail: "stage 'upload' declares a publication gate but is unreachable even once approved: target-outside-approved-write-scope",
+      });
+    });
+
+    it('A2: refuses at compile time when a required skill is not curated', () => {
+      const uncurated = withUpload(PUBLICATION_GATE);
+      uncurated.stages[1] = { ...uncurated.stages[1], requiredSkills: ['not-curated'] };
+      expect(compileApprovedProposal(uncurated, 'abc', 'abc', environment)).toMatchObject({
+        ok: false,
+        reason: 'gated-stage-unreachable',
+        detail: "stage 'upload' declares a publication gate but is unreachable even once approved: skill-not-curated:not-curated",
+      });
+    });
+
+    it('A3: refuses at compile time when the worker model has no server-owned profile', () => {
+      const unknownModel = withUpload(PUBLICATION_GATE);
+      unknownModel.stages[1] = { ...unknownModel.stages[1], worker: { runtime: 'codex', model: 'codex-invented' } };
+      expect(compileApprovedProposal(unknownModel, 'abc', 'abc', environment)).toMatchObject({
+        ok: false,
+        reason: 'gated-stage-unreachable',
+        detail: "stage 'upload' declares a publication gate but is unreachable even once approved: runtime-model-profile-not-allowed",
+      });
+    });
+
+    it('refuses at compile time when the approved revision does not match', () => {
+      // The revision wait is not something approving the publication gate resolves either.
+      expect(compileApprovedProposal(withUpload(PUBLICATION_GATE), 'new', 'old', environment)).toMatchObject({
+        ok: false,
+        reason: 'gated-stage-unreachable',
+        detail: "stage 'upload' declares a publication gate but is unreachable even once approved: proposal-revision-not-approved",
+      });
+    });
+
+    it('does not probe, and does not disturb, a stage with no releasing gate', () => {
+      // `releasableByStageGate` is false here, so the probe never runs and the pre-existing fail-closed
+      // park is untouched — a T3 stage without a publication gate must still yield NO card DAG, never a
+      // compile refusal that would change how the launch path reports it.
+      const result = compileApprovedProposal(withUpload([]), 'abc', 'abc', environment);
+      expect(result).toMatchObject({ ok: true });
+      expect(result.ok && result.value.workflow).toBeNull();
+    });
+
+    it('leaves the RECORDED decision (and its policyHash) as the pending-authorization one', () => {
+      // The probe's decision is discarded. Only the `'pending'` evaluation is ever recorded, so the
+      // compile-time `policyHash` still equals the one `execution.ts` recomputes at the stage boundary.
+      const baseline = compileApprovedProposal(withUpload(PUBLICATION_GATE), 'abc', 'abc', environment);
+      expect(baseline).toMatchObject({ ok: true });
+      if (!baseline.ok) return;
+      const upload = baseline.value.stagePolicies.find((policy) => policy.stageId === 'upload');
+      expect(upload?.decision).toMatchObject({ disposition: 'waiting-human', reason: 't3-content-bound-approval-required' });
+      expect(upload?.releasableByStageGate).toBe(true);
+      // Same inputs, same hash: the probe added no observable evaluation.
+      const again = compileApprovedProposal(withUpload(PUBLICATION_GATE), 'abc', 'abc', environment);
+      expect(again.ok && again.value.stagePolicies.find((policy) => policy.stageId === 'upload')?.decision.policyHash)
+        .toBe(upload?.decision.policyHash);
+    });
+  });
+
   it('classifies a read-only review target against read scope without granting worker writes', () => {
     const reviewProposal: PlanProposal = {
       ...proposal,

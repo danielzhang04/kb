@@ -44,8 +44,8 @@
  *
  * Strip-only floor: no TS enums, parameter properties, or namespaces. ESM with `.ts` specifiers.
  */
-import { randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash, randomBytes } from 'node:crypto';
+import { closeSync, mkdirSync, openSync, readSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { PtyHost } from '../pty/host.ts';
 import type { PersistentSessionRegistry } from '../pty/persistentSessions.ts';
@@ -65,6 +65,8 @@ const SCAN_WINDOW_CHARS = 16_000;
 const MAX_SUMMARY_CHARS = 400;
 const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const SAFE_AGENT_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
+/** One path segment, no separators and no `..` — the traversal guard on any interpolated path fragment. */
+const SAFE_PATH_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 /**
  * Marker verdict + stage + per-delivery token, anchored at a line start after ANSI stripping.
  *
@@ -72,17 +74,36 @@ const SAFE_AGENT_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
  * frames what it prints: a gutter glyph (`⏺` U+23FA), a box-drawing rail (`│` U+2502), a list bullet
  * (`- `), a quote marker (`> `), plus whatever indentation the renderer chose. `stripTerminalControl`
  * removes ANSI/OSC/C0 but not printable glyphs, so an anchor of `^FYT-STAGE-` matched a bare line and
- * essentially nothing the real REPL emits — the completion would never arrive. The prefix is therefore a
- * bounded run of NON-ALPHANUMERIC characters, deliberately general instead of a whitelist of the two
- * glyphs observed today, because the next CLI release will render a third.
+ * essentially nothing the real REPL emits — the completion would never arrive.
  *
- * It stays ANCHORED, and that is the anti-smuggling property: a single alphanumeric character ahead of
- * the marker (i.e. any prose at all — "I will print FYT-STAGE-DONE when finished") kills the match, so a
- * marker cannot be hidden mid-sentence. Combined with the per-delivery token and the stage-id check in
- * `scan`, and with the order file spelling only {@link VERDICT_PLACEHOLDER}, an agent still cannot
- * fabricate or replay a completion.
+ * WHY THE PREFIX IS AN ALLOWLIST, NOT "ANY NON-ALPHANUMERIC RUN". The previous prefix was
+ * `[^A-Za-z0-9]{0,32}`, which is decoration-tolerant but also QUOTING-tolerant, and an agent restating
+ * the line it is ABOUT to print is completely normal behaviour. All of these matched and must not:
+ *
+ *     `FYT-STAGE-DONE images <tok> ok`        an inline code span
+ *     - `FYT-STAGE-DONE images <tok> ok`      a bullet plus backticks
+ *     # FYT-STAGE-DONE images <tok> ok        a comment / markdown heading
+ *     ```FYT-STAGE-DONE images <tok> ok       a fence that ran on into the line
+ *     {"": "FYT-STAGE-DONE images <tok> ok"   JSON with an empty key
+ *
+ * Each is a stage completing itself by TALKING about completing. So the prefix now admits only
+ * characters a terminal uses to FRAME a line — space/tab, `-`, `*`, `>`, and the Unicode bands terminal
+ * decoration actually lives in (dashes, bullets, arrows, misc-technical incl. `⏺`, box-drawing/block/
+ * geometric/dingbats incl. `│`, misc symbols-and-arrows). That keeps the generality the substrate needs
+ * — the next CLI release will render a fourth glyph, and it will be in one of those bands — while every
+ * quoting, fencing and structural character (backtick, `#`, `"`, `'`, `{`, `[`, `:`, `.`, `/`, `\`) is
+ * excluded. The curly-quote block U+2018-U+201F is deliberately NOT in range for the same reason.
+ *
+ * It stays ANCHORED and BOUNDED, and that is the anti-smuggling property: a single alphanumeric
+ * character ahead of the marker (i.e. any prose at all — "I will print FYT-STAGE-DONE when finished")
+ * kills the match, so a marker cannot be hidden mid-sentence. Combined with the per-delivery token and
+ * the stage-id check in `scan`, and with the order file spelling only {@link VERDICT_PLACEHOLDER}, an
+ * agent still cannot fabricate or replay a completion.
  */
-const MARKER = /^[^A-Za-z0-9]{0,32}FYT-STAGE-(DONE|BLOCKED|FAILED)[ \t]+([A-Za-z0-9._:-]{1,128})[ \t]+([a-f0-9]{32})[ \t]*(.*)$/;
+const MARKER = new RegExp(
+  '^[ \\t*>\\u2010-\\u2015\\u2022\\u2023\\u2190-\\u21FF\\u2200-\\u23FF\\u2500-\\u27BF\\u2B00-\\u2BFF-]{0,32}'
+  + 'FYT-STAGE-(DONE|BLOCKED|FAILED)[ \\t]+([A-Za-z0-9._:-]{1,128})[ \\t]+([a-f0-9]{32})[ \\t]*(.*)$',
+);
 /**
  * Bound on how long ONE delivery may sit unanswered before it settles as a human wait. Deliberately
  * generous: the longest real stage is a whole long-form script or a 130-200 call image batch — hours,
@@ -131,16 +152,52 @@ export interface RosterEnsureResult {
   existing: string[];
 }
 
+/** What one declared artifact path is on disk. `null` from `stat` means "nothing there at all". */
+export interface RosterFileStat {
+  /**
+   * True ONLY for a regular file. `existsSync` — the check this replaced — was also true for a DIRECTORY
+   * named `shots.json`, so a stage could satisfy a declared artifact by creating a folder with its name.
+   */
+  regularFile: boolean;
+  size: number;
+}
+
 /** Injectable filesystem seam — tests never touch a real disk. */
 export interface RosterFileSystem {
   ensureDir(path: string): void;
   writeFile(path: string, contents: string): void;
-  exists(path: string): boolean;
+  /** Regular-file-ness and size for one absolute path; `null` when the path does not exist. */
+  stat(path: string): RosterFileStat | null;
+  /**
+   * sha256 of one absolute file's bytes. Called at most ONCE per artifact per delivery phase, and on the
+   * verification side only when the size is unchanged and a content comparison is therefore unavoidable.
+   */
+  hashFile(path: string): string;
   /**
    * Recursive delete of a retired run's roster directory. Optional so an implementation that cannot
    * delete simply keeps the files — never so a caller can silently skip the cleanup.
    */
   removeDir?(path: string): void;
+}
+
+/**
+ * What a declared artifact looked like at DELIVERY time — the baseline the completion is judged against.
+ * Captured before the order file exists, so before the agent can have touched anything.
+ */
+interface ArtifactSnapshot {
+  /** The declared repo-relative path, as written in the work order. */
+  path: string;
+  absolute: string;
+  /**
+   * True when the declared path is not a safe repo-relative path. Such a stage can never be verified, so
+   * it can never succeed — recorded here rather than thrown so the run parks with a named reason.
+   */
+  unsafe: boolean;
+  /**
+   * The pre-existing content baseline, or `null` when there was nothing usable there (absent, a
+   * directory, or a 0-byte file). `null` means any real file the stage writes counts as new work.
+   */
+  before: { size: number; hash: string } | null;
 }
 
 export interface RosterSessionsOptions {
@@ -243,10 +300,39 @@ interface RosterRunEntry {
   activity: Map<string, string>;
 }
 
+/**
+ * Chunk size for {@link defaultFileSystem}'s hash. Streaming in bounded chunks rather than
+ * `readFileSync` keeps memory flat over the biggest declared artifact in this pipeline (`final.mp4`,
+ * hundreds of MB), which a whole-file read would pull into the daemon's heap.
+ */
+const HASH_CHUNK_BYTES = 1024 * 1024;
+
 const defaultFileSystem: RosterFileSystem = {
   ensureDir: (path) => { mkdirSync(path, { recursive: true }); },
   writeFile: (path, contents) => { writeFileSync(path, contents, { encoding: 'utf8' }); },
-  exists: (path) => existsSync(path),
+  stat: (path) => {
+    try {
+      const stats = statSync(path);
+      return { regularFile: stats.isFile(), size: stats.size };
+    } catch {
+      return null;
+    }
+  },
+  hashFile: (path) => {
+    const hash = createHash('sha256');
+    const fd = openSync(path, 'r');
+    try {
+      const buffer = Buffer.allocUnsafe(HASH_CHUNK_BYTES);
+      for (;;) {
+        const read = readSync(fd, buffer, 0, HASH_CHUNK_BYTES, null);
+        if (read <= 0) break;
+        hash.update(buffer.subarray(0, read));
+      }
+    } finally {
+      closeSync(fd);
+    }
+    return hash.digest('hex');
+  },
   removeDir: (path) => { rmSync(path, { recursive: true, force: true }); },
 };
 
@@ -306,28 +392,28 @@ export function rosterAgentIds(proposal: PlanProposal): string[] {
 }
 
 /**
- * The directory a run's agents work in: the video/work directory when the launch parameters name one,
- * else the project tree, else the repo root — always the DEEPEST existing candidate, so a run whose
- * work directory does not exist yet still opens in a real place (its first stage creates the rest).
- * Never accepts a parameter value as a path fragment without the safe-segment shape the launch route
- * already enforced.
+ * The directory a run's agents work in: PINNED to the project root the work orders are written against.
+ *
+ * WHY IT IS PINNED AND NOT DISCOVERED. This used to return the DEEPEST EXISTING candidate — video dir,
+ * else channel dir, else project root — which broke the work orders in two ways:
+ *
+ *  1. It disagreed with the orders. Every work order in `video-run.md` states ORG-RELATIVE paths like
+ *     `channels/<channel>/videos/<slug>/brief.md`. On a fresh slug the video dir does not exist but the
+ *     channel dir does, so the workDir became the CHANNEL dir and that same relative path resolved to
+ *     `channels/<c>/channels/<c>/videos/<slug>/brief.md`. Declared artifacts are repo-relative and
+ *     correct, so the server looked in the right place, found nothing, and the stage parked.
+ *  2. It MOVED. `workDir` is recomputed whenever the in-memory run entry is absent — i.e. after every
+ *     daemon restart — so once `idea` created the video dir, a restart silently re-rooted every
+ *     subsequent agent one level deeper than the run had been using.
+ *
+ * `orgs/<project>` is the root those org-relative order paths are written against, it exists for any
+ * project that can compile at all (policy requires `orgs/<project>/contract.md` to be readable), and it
+ * is the same value before and after any restart. The only fallback is the traversal guard: a project
+ * that is not a single safe path segment is never interpolated into a path.
  */
-export function resolveRosterWorkDir(
-  repoRoot: string,
-  project: string,
-  parameters: RosterRunParameters,
-  exists: (path: string) => boolean,
-): string {
-  const candidates: string[] = [];
-  const safeSegment = (value: string | undefined): string | null =>
-    typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(value) ? value : null;
-  const channel = safeSegment(parameters.channel);
-  const slug = safeSegment(parameters.slug);
-  if (channel && slug) candidates.push(join(repoRoot, 'orgs', project, 'channels', channel, 'videos', slug));
-  if (channel) candidates.push(join(repoRoot, 'orgs', project, 'channels', channel));
-  candidates.push(join(repoRoot, 'orgs', project));
-  for (const candidate of candidates) if (exists(candidate)) return candidate;
-  return repoRoot;
+export function resolveRosterWorkDir(repoRoot: string, project: string): string {
+  if (!SAFE_PATH_SEGMENT.test(project)) return repoRoot;
+  return join(repoRoot, 'orgs', project);
 }
 
 function defaultLaunchLine(input: { model: string; bindingPath: string; runRef: string; agentId: string }): string {
@@ -536,6 +622,80 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
     pending.settle(result);
   };
 
+  /**
+   * Baseline every declared artifact BEFORE the order file is authored — i.e. before the agent can have
+   * touched anything — so the completion is judged against what the stage INHERITED, not against mere
+   * existence. A 0-byte file or a directory standing where the artifact belongs is treated as no baseline
+   * at all: whatever real file the stage writes over it is new work.
+   */
+  const snapshotDeclaredArtifacts = (proposalStage: ProposalStage): ArtifactSnapshot[] =>
+    proposalStage.artifacts.map((artifact) => {
+      if (!isSafeRepoRelativePath(artifact.path)) {
+        return { path: artifact.path, absolute: '', unsafe: true, before: null };
+      }
+      const absolute = join(options.repoRoot, artifact.path);
+      const stat = fs.stat(absolute);
+      const usable = stat !== null && stat.regularFile && stat.size > 0;
+      return {
+        path: artifact.path,
+        absolute,
+        unsafe: false,
+        before: usable ? { size: stat.size, hash: fs.hashFile(absolute) } : null,
+      };
+    });
+
+  /**
+   * Why each declared artifact still fails its promise, or an empty list when every one of them is a
+   * regular, non-empty file that DIFFERS from what was there at delivery time.
+   *
+   * The old check was `existsSync` alone, with nothing compared against the pre-delivery state, so a
+   * stage was marked `succeeded` on the PREVIOUS attempt's files on any retry — and on any run against a
+   * slug that already carries root plan files, which every video under `channels/<c>/videos/` does. The
+   * engine's own digest cross-check (`execution.ts#resultIsSafe`) cannot cover this: the roster adapter
+   * reports `artifacts: []` (see the completion-receipt note in the module header), so that check
+   * iterates nothing. This IS the roster path's substitute for it.
+   *
+   * BYTE-IDENTICAL OUTPUT PARKS, IT DOES NOT PASS. A stage whose artifact is bit-for-bit what was
+   * already there is indistinguishable, at the artifact layer, from a stage that did nothing at all —
+   * which is the exact hollow completion this check exists to catch. The gate downstream of `shots-merge`
+   * promises an operator that the merge really ran before authorizing $17-27 of image generation, so the
+   * tie breaks fail-closed. Parking is cheap and recoverable: it is a `waiting-human`, not a failure, and
+   * the summary names the artifact and the reason, so an operator looking at a genuinely idempotent
+   * re-run can read what happened and release it. A false PASS here spends real money on an unverified
+   * promise; a false PARK costs one human glance.
+   */
+  const unsatisfiedArtifacts = (snapshots: readonly ArtifactSnapshot[]): string[] => {
+    const problems: string[] = [];
+    for (const snapshot of snapshots) {
+      if (snapshot.unsafe) {
+        problems.push(`${snapshot.path} (not a safe repo-relative path)`);
+        continue;
+      }
+      const after = fs.stat(snapshot.absolute);
+      if (after === null) {
+        problems.push(`${snapshot.path} (missing)`);
+        continue;
+      }
+      // Both of these satisfied the old `existsSync`: a directory wearing the artifact's name, and a
+      // 0-byte file.
+      if (!after.regularFile) {
+        problems.push(`${snapshot.path} (not a regular file)`);
+        continue;
+      }
+      if (after.size === 0) {
+        problems.push(`${snapshot.path} (empty)`);
+        continue;
+      }
+      if (snapshot.before === null) continue; // nothing usable was inherited: this file is new work
+      // Size is the cheap discriminator, so the big artifacts (`final.mp4`) are hashed on the
+      // verification side ONLY when their size did not move and the bytes must actually be compared.
+      if (after.size !== snapshot.before.size) continue;
+      if (fs.hashFile(snapshot.absolute) !== snapshot.before.hash) continue;
+      problems.push(`${snapshot.path} (byte-identical to the file already there when the order was delivered)`);
+    }
+    return problems;
+  };
+
   const resolveDeliveryTimeout = (input: { runRef: string; stageId: string; agentId: string; timeoutMs?: number }): number => {
     const configured = typeof options.deliveryTimeoutMs === 'function'
       ? options.deliveryTimeoutMs({ runRef: input.runRef, stageId: input.stageId, agentId: input.agentId })
@@ -648,7 +808,7 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
           owner,
           project: input.proposal.project,
           parameters,
-          workDir: resolveRosterWorkDir(options.repoRoot, input.proposal.project, parameters, fs.exists),
+          workDir: resolveRosterWorkDir(options.repoRoot, input.proposal.project),
           sessions: new Map(),
           activity: new Map(),
         };
@@ -712,6 +872,10 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
         return { state: 'waiting-human', summary: `roster delivery withheld: ${refusal}`, usage: zeroUsage(), artifacts: [], checkpoints: [] };
       }
 
+      // THE PRE-DELIVERY BASELINE. Taken before the order file exists, so the agent cannot have acted
+      // yet: this is what "the stage changed its declared artifacts" is measured against on completion.
+      const snapshots = snapshotDeclaredArtifacts(input.proposalStage);
+
       const token = mintToken();
       if (!/^[a-f0-9]{32}$/.test(token)) throw new RosterSessionError('roster completion token is malformed');
       const orderPath = join(runDir(input.runRef), agentId, 'orders', `${input.stageId}.md`);
@@ -760,12 +924,10 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
       const result = await settled;
       if (result.state === 'succeeded') {
         // Declared artifacts are verified SERVER-SIDE before the completion is accepted; a marker alone
-        // never satisfies a stage that promised files.
-        const missing = input.proposalStage.artifacts
-          .map((artifact) => artifact.path)
-          .filter((path) => !isSafeRepoRelativePath(path) || !fs.exists(join(options.repoRoot, path)));
-        if (missing.length > 0) {
-          const summary = `stage ${input.stageId} reported done but declared artifacts are missing: ${missing.join(', ')}`;
+        // never satisfies a stage that promised files, and neither does a file the stage did not write.
+        const problems = unsatisfiedArtifacts(snapshots);
+        if (problems.length > 0) {
+          const summary = `stage ${input.stageId} reported done but its declared artifacts are not satisfied: ${problems.join(', ')}`;
           record(run.subject, input.runRef, agentId, summary, 'waiting', input.stageRef);
           return { state: 'waiting-human', summary: summary.slice(0, MAX_SUMMARY_CHARS), usage: zeroUsage(), artifacts: [], checkpoints: [] };
         }

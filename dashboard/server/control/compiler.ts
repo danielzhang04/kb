@@ -6,6 +6,7 @@ import {
   policyScopeForStage,
   type PolicyDecision,
   type PolicyEnvironment,
+  type PolicyRequest,
 } from './policy.ts';
 
 export interface CompileEnvironment {
@@ -114,7 +115,10 @@ export function compileApprovedProposal(
     // state, so it can only say that the naming decision EXISTS. Only `execution.ts` — reading the run's
     // own resolved, stage-scoped, gate-scoped approval — may ever produce `approved`.
     const publicationGate = declaresPublicationGate(stage);
-    const decision = evaluateExecutionPolicy({
+    // The key order of this object is load-bearing: `policyDigest` hashes the request, and the compiled
+    // `policyHash` must equal the one `execution.ts` recomputes at the stage boundary. Build it ONCE and
+    // derive the probe below by spread, which preserves insertion order.
+    const policyRequest: PolicyRequest = {
       project: proposal.project,
       riskTier: stage.riskTier,
       role: 'worker',
@@ -127,13 +131,38 @@ export function compileApprovedProposal(
       proposalHash,
       approvedHash,
       ...(publicationGate ? { publicationAuthorization: 'pending' as const } : {}),
-    }, environment.policy);
+    };
+    const decision = evaluateExecutionPolicy(policyRequest, environment.policy);
     const releasableByStageGate = publicationGate
       && decision.disposition === 'waiting-human'
       && PUBLICATION_GATE_RELEASABLE_WAITS.has(decision.reason);
     stagePolicies.push({ stageId: stage.id, decision, releasableByStageGate });
     if (decision.disposition === 'refuse') {
       return { ok: false, reason: 'governance-refused', detail: `stage '${stage.id}': ${decision.reason}` };
+    }
+    // LAUNCH-TIME FAIL-FAST FOR A GATED T3 STAGE. `evaluateExecutionPolicy` tests `riskTier === 'T3'`
+    // BEFORE the approved-revision, write-scope, skill-curation and profile checks, so a T3 stage with a
+    // publication gate returned its releasable wait first and those four checks never ran at compile
+    // time. The stage then entered the card DAG, and the run launched and executed the PAID `images` and
+    // `audio` stages before `stageBoundary` — re-running the same policy after the gate approval — first
+    // reached the skipped check and re-parked. Authorization was never at risk; money was.
+    //
+    // So ask the one question the T3 branch was shadowing: with this stage's own gate hypothetically
+    // approved, is it structurally reachable at all? Anything the gate's approval cannot clear is a defect
+    // the operator must see BEFORE the run spends, so it refuses the compile instead of launching. The
+    // probe's own decision (and its policyHash) is deliberately discarded: only the `'pending'` decision
+    // above is ever recorded, so the compile-time and execute-time hashes still match byte for byte.
+    if (releasableByStageGate) {
+      const authorized = evaluateExecutionPolicy({ ...policyRequest, publicationAuthorization: 'approved' }, environment.policy);
+      const blocked = authorized.disposition === 'refuse'
+        || (authorized.disposition === 'waiting-human' && !PUBLICATION_GATE_RELEASABLE_WAITS.has(authorized.reason));
+      if (blocked) {
+        return {
+          ok: false,
+          reason: 'gated-stage-unreachable',
+          detail: `stage '${stage.id}' declares a publication gate but is unreachable even once approved: ${authorized.reason}`,
+        };
+      }
     }
     // A T3 stage with no releasing gate keeps the original posture: no card DAG at all, so nothing of
     // this run is ever published. A T3 stage whose own gate releases it falls through and is published
