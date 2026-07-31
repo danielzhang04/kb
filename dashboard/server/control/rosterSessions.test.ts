@@ -21,6 +21,8 @@ import {
   createRosterSessionManager,
   createRosterWorkerAdapter,
   detectReplReadiness,
+  detectReplReadinessFresh,
+  STALE_BUSY_QUIET_MS,
   matchCompletionMarker,
   projectRosterState,
   resolveRosterWorkDir,
@@ -1404,6 +1406,45 @@ describe('roster REPL-readiness gate', () => {
     expect(detectReplReadiness(fixture('idle-repl-prompt.txt'))).toEqual({ state: 'ready' });
   });
 
+  /**
+   * The FROZEN-BUSY stall (2026-07-30, decision-grade). `entry.screen` is a linear concat of stripped
+   * output, so when a turn ENDS the idle terminal goes silent and the last-window slice stays frozen
+   * holding that turn's spinner tail (`(2s \u00b7`). `detectReplReadiness` tests BUSY before READY and returns
+   * `busy` forever \u2014 every post-turn delivery parks and no budget bump ever flips it. The captured shape:
+   * the pre-turn idle footer (`shift+tab to cycle`) AND the finished turn's `(2s \u00b7` fragment both sit in the
+   * window. {@link detectReplReadinessFresh} gates the busy class on quiescence.
+   */
+  it('freshness-gates a FROZEN busy frame: stale spinner + quiet => ready, live spinner => busy, modal always parks', () => {
+    // Mirrors the real post-boot-turn capture (cwd=orgs/faceless-youtube, claude.exe 2.1.220): the pre-turn
+    // mode-cycler footer is still in the window, a finished turn's `(2s \u00b7` spinner tail is frozen below it,
+    // and the terminal has fallen silent at its idle prompt.
+    const frozenBusy = '\u23f5\u23f5 auto mode on (shift+tab to cycle)'
+      + '\n\u273b Embellishing\u2026 (2s \u00b7 thinking)'
+      + '\n\u276f \u2190 4 agents';
+    // Base classifier (no freshness) is the bug: it matches the dead `(2s \u00b7` and calls it busy.
+    expect(detectReplReadiness(frozenBusy)).toMatchObject({ state: 'busy', marker: '(2s \u00b7' });
+    // Gated, and quiet past the threshold: the spinner is stale, so it re-classifies to the idle marker.
+    expect(detectReplReadinessFresh(frozenBusy, STALE_BUSY_QUIET_MS)).toEqual({ state: 'ready' });
+    expect(detectReplReadinessFresh(frozenBusy, 3_000)).toEqual({ state: 'ready' });
+    // A LIVE turn emits a spinner heartbeat \u2014 quiet for only 500ms means the busy is real, stays not-ready.
+    expect(detectReplReadinessFresh(frozenBusy, 500)).toMatchObject({ state: 'busy', marker: '(2s \u00b7' });
+    // Just under the threshold is still busy (boundary is >=).
+    expect(detectReplReadinessFresh(frozenBusy, STALE_BUSY_QUIET_MS - 1)).toMatchObject({ state: 'busy' });
+    // A MODAL is NEVER typed into, however long it has sat: even quiet past the threshold, a menu still
+    // parks. This is the never-swallow property \u2014 the gate touches ONLY the busy class, never modal.
+    const frozenModalWithStaleBusy = '\u256d\u2500 Do you want to proceed? \u2500\u256e'
+      + '\n\u2502 \u276f 1. Yes'
+      + '\n\u2502   2. No'
+      + '\n\u273b (2s \u00b7 thinking)'
+      + '\n\u23f5\u23f5 auto mode on (shift+tab to cycle)';
+    expect(detectReplReadinessFresh(frozenModalWithStaleBusy, 10_000)).toMatchObject({ state: 'modal' });
+    // A theme/trust/login splash never carries the idle marker, so quiescence never makes it ready either.
+    const frozenSplashBusy = '  Syntax theme: Monokai Extended (ctrl+t to disable)'
+      + '\n\u273b (2s \u00b7 thinking)';
+    expect(detectReplReadinessFresh(frozenSplashBusy, 10_000))
+      .toMatchObject({ state: 'silent', marker: 'no REPL input prompt on screen yet' });
+  });
+
   it('never types a work order into an open permission menu, and parks with a named reason', async () => {
     const { plan, store, sessions, runRef, host, fs } = harness({ replReadyTimeoutMs: 60_000 });
     sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
@@ -1460,10 +1501,22 @@ describe('roster REPL-readiness gate', () => {
     await expect(pending).resolves.toMatchObject({ state: 'succeeded' });
   });
 
-  it('withholds delivery from a terminal that is still mid-turn', async () => {
-    const { plan, store, sessions, runRef, host } = harness({ replReadyTimeoutMs: 30_000 });
+  it('withholds delivery from a terminal that is still mid-turn (live spinner heartbeat)', async () => {
+    // A LIVE turn repaints its spinner every poll \u2014 the elapsed-seconds counter ticks at least once a
+    // second \u2014 so the freshness gate ({@link detectReplReadinessFresh}) never sees the ~2s of silence it
+    // needs to treat the busy marker as stale. That heartbeat is what separates a running turn from a
+    // FINISHED one whose spinner tail is merely frozen in the window, so the mid-turn frame must keep
+    // arriving for this to test the real invariant (an unheartbeated single emit would go stale, which is
+    // exactly the post-turn case the fix is FOR).
+    let sessionId = '';
+    let live: ReturnType<typeof fakeHost> | null = null;
+    const { plan, store, sessions, runRef, host } = harness({
+      replReadyTimeoutMs: 30_000,
+      onSleep: () => { if (live && sessionId) live.emit(sessionId, '\u273b Whatchamacalliting\u2026 \u276f esc to interrupt (44s \u00b7 thinking)\r\n'); },
+    });
+    live = host;
     sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
-    const sessionId = sessionIdFor(sessions, runRef, 'fyt-story');
+    sessionId = sessionIdFor(sessions, runRef, 'fyt-story');
     succeedStage(store, runRef, 'idea');
     resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
     // The real 2.1.220 mid-turn frame (captured off a pty), not a hand-written approximation of one.

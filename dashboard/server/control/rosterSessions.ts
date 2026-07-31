@@ -322,6 +322,13 @@ interface RosterSessionEntry {
    * is to know what is on screen BEFORE a work order is typed.
    */
   screen: string;
+  /**
+   * `now()` of the last output chunk appended to {@link RosterSessionEntry.screen}. The readiness gate
+   * reads it to tell a LIVE turn (which repaints its spinner ≥1×/s) from a FINISHED turn whose spinner tail
+   * is merely frozen in the window because the idle terminal has gone silent — see the freshness gate in
+   * {@link detectReplReadinessFresh} and `waitForRepl`.
+   */
+  lastChunkAt: number;
   unobserve: () => void;
   /** At most one outstanding delivery per agent session (a terminal runs one order at a time). */
   pending: PendingDelivery | null;
@@ -528,15 +535,26 @@ function currentFrame(tail: string): string {
  * rather than typing into the void.
  */
 export function detectReplReadiness(tail: string): ReplReadiness {
+  return classifyFrame(tail, false);
+}
+
+/**
+ * The classifier core. `skipBusy` is the ONE lever the freshness gate pulls — see
+ * {@link detectReplReadinessFresh}. MODAL precedence is unconditional (a menu is never typed into, however
+ * long it has sat), so it is honoured even when busy markers are skipped; only the BUSY class is gateable.
+ */
+function classifyFrame(tail: string, skipBusy: boolean): ReplReadiness {
   const frame = currentFrame(tail);
   if (frame === '') return { state: 'silent', marker: 'no output yet' };
   for (const pattern of MODAL_MARKERS) {
     const match = pattern.exec(frame);
     if (match) return { state: 'modal', marker: match[0].trim().slice(0, 80) };
   }
-  for (const pattern of BUSY_MARKERS) {
-    const match = pattern.exec(frame);
-    if (match) return { state: 'busy', marker: match[0].trim().slice(0, 80) };
+  if (!skipBusy) {
+    for (const pattern of BUSY_MARKERS) {
+      const match = pattern.exec(frame);
+      if (match) return { state: 'busy', marker: match[0].trim().slice(0, 80) };
+    }
   }
   for (const pattern of READY_MARKERS) {
     if (pattern.test(frame)) return { state: 'ready' };
@@ -544,6 +562,39 @@ export function detectReplReadiness(tail: string): ReplReadiness {
   // Non-empty, not a recognised menu, not mid-turn — but the REPL input line has not appeared. A
   // splash/onboarding/login screen, or a REPL that has printed banner output but not yet its prompt.
   return { state: 'silent', marker: 'no REPL input prompt on screen yet' };
+}
+
+/**
+ * How long the terminal must have been SILENT before a `busy` classification is treated as stale spinner
+ * text rather than a live turn. A running turn repaints its spinner footer at least once a second (the
+ * elapsed-seconds counter ticks), so ~2s of no output means the turn has ended and whatever
+ * `(3s ·` / token-counter / `esc to interrupt` fragment the window still holds was painted over long ago.
+ */
+export const STALE_BUSY_QUIET_MS = 2_000;
+
+/**
+ * Freshness-gated readiness — the fix for the frozen-busy stall (2026-07-30).
+ *
+ * `entry.screen` is a LINEAR concatenation of stripped output (a redrawing REPL's in-place repaints cannot
+ * be collapsed — see {@link stripTerminalControl}). So when a turn FINISHES the terminal falls silent and
+ * the last-window slice stays frozen holding that turn's spinner tail. {@link detectReplReadiness} tests
+ * BUSY before READY, matches the DEAD `(Ns ·` fragment, and returns `busy` forever: `waitForRepl` then
+ * parks at its budget with "still mid-turn" even though the terminal is idle and typeable, and every
+ * post-turn delivery — not just the first — hits it. A bigger budget never flips a frozen frame.
+ *
+ * The gate: if the base classification is `busy` BUT the terminal has been quiet for
+ * {@link STALE_BUSY_QUIET_MS}, re-classify skipping ONLY the busy markers. MODAL is still honoured first
+ * (a frozen menu still parks — the catastrophic swallow was always the menu case) and READY still REQUIRES
+ * the `shift+tab to cycle` marker (so a theme/trust/login splash, which never carries it, stays not-ready).
+ * The only path to `ready` is therefore: quiet ≥ threshold AND idle marker present AND not a modal. A live
+ * turn is never quiet that long, and a mistimed type into one queues rather than being swallowed.
+ *
+ * PURE: `quietMs` is passed in (no clock read here), so the whole decision is unit-testable without a pty.
+ */
+export function detectReplReadinessFresh(tail: string, quietMs: number): ReplReadiness {
+  const base = classifyFrame(tail, false);
+  if (base.state === 'busy' && quietMs >= STALE_BUSY_QUIET_MS) return classifyFrame(tail, true);
+  return base;
 }
 
 /**
@@ -1203,12 +1254,15 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
   const waitForRepl = async (entry: RosterSessionEntry, budgetMs: number): Promise<ReplReadiness> => {
     const started = now();
     let delay = REPL_POLL_MIN_MS;
-    let readiness = detectReplReadiness(entry.screen);
+    // Freshness-gated: a `busy` frame whose spinner tail is merely frozen (idle terminal gone silent for
+    // >= STALE_BUSY_QUIET_MS) re-classifies to its underlying idle state, so a finished turn no longer
+    // parks delivery. See {@link detectReplReadinessFresh}.
+    let readiness = detectReplReadinessFresh(entry.screen, now() - entry.lastChunkAt);
     while (readiness.state !== 'ready') {
       if (now() - started >= budgetMs) return readiness;
       await sleep(Math.min(delay, Math.max(0, budgetMs - (now() - started))));
       delay = Math.min(REPL_POLL_MAX_MS, delay * 2);
-      readiness = detectReplReadiness(entry.screen);
+      readiness = detectReplReadinessFresh(entry.screen, now() - entry.lastChunkAt);
     }
     return readiness;
   };
@@ -1217,6 +1271,9 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
     const stripped = stripTerminalControl(chunk);
     // The readiness window accumulates ALWAYS — idle output is exactly what the delivery gate reads.
     entry.screen = (entry.screen + stripped).slice(-SCREEN_WINDOW_CHARS);
+    // Stamp the arrival: the freshness gate uses the quiet-since-last-chunk duration to distinguish a live
+    // turn (spinner heartbeat) from a finished one whose spinner tail is merely frozen in the window.
+    entry.lastChunkAt = now();
     const pending = entry.pending;
     if (!pending) {
       // Keep the window bounded even while idle so a chatty session cannot grow memory.
@@ -1284,6 +1341,7 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
       settingsPath,
       buffer: '',
       screen: '',
+      lastChunkAt: now(),
       unobserve: () => {},
       pending: null,
     };
@@ -1432,14 +1490,14 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
       // with nothing delivered and nothing to report. A terminal is written into only when its own output
       // stream says it is at a plain REPL prompt — not in a modal menu and not mid-turn.
       //
-      // The fast path costs nothing: `detectReplReadiness` over an idle frame returns `ready` and the
+      // The fast path costs nothing: `detectReplReadinessFresh` over an idle frame returns `ready` and the
       // code below runs synchronously exactly as before. Only a blocked terminal suspends, and it does so
       // under a bound that never exceeds this delivery's own marker deadline.
       const readinessBudget = Math.min(
         timeoutMs,
         Math.max(MIN_REPL_READY_TIMEOUT_MS, options.replReadyTimeoutMs ?? DEFAULT_REPL_READY_TIMEOUT_MS),
       );
-      let readiness = detectReplReadiness(entry.screen);
+      let readiness = detectReplReadinessFresh(entry.screen, now() - entry.lastChunkAt);
       if (readiness.state !== 'ready') readiness = await waitForRepl(entry, readinessBudget);
       if (readiness.state !== 'ready') {
         // NOTHING was authored and NOTHING was typed: no order file, no token, no bytes into the pty.
