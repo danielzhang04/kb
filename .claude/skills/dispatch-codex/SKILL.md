@@ -59,7 +59,8 @@ leg. Until a next dispatch runs, its JSONL log and its pending marker under
 `%LOCALAPPDATA%\kb-codex-dispatch\pending\` are the only records.
 To check whether a worker is still alive, read that marker (`pid` = the dispatch parent,
 `codex_pid` = the worker tree) plus the JSONL log's mtime — NEVER match on the `codex.exe`
-process name, the Codex desktop app collides with it.
+process name, the Codex desktop app collides with it. A marker renamed `…sweeping-<pid>-<t>.json`
+is one a sweep has claimed and is publishing.
 
 ## Rules
 

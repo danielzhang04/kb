@@ -30,7 +30,8 @@ WRITER = "codex-direct"
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 DEFAULT_TIMEOUT = 2700  # 45 min — past this a dispatch is hung, not thinking
 DEFAULT_MODEL = "codex"  # applied post-parse: --model absent must stay distinguishable
-ORPHAN_SLACK = 600  # grace past a pidless marker's own timeout before it is presumed dead
+ORPHAN_SLACK = 600  # grace past a marker's own timeout before its dispatch is presumed dead
+SWEEP_BUDGET = 60  # seconds — the sweep serves a dead leg; the live dispatch comes first
 
 
 def codex_bin() -> str:
@@ -373,40 +374,89 @@ def pid_alive(pid: int) -> bool:
 
 
 def is_orphan(marker: dict, now: float, alive=None) -> bool:
-    """Did this marker outlive its dispatch? A live dispatch pid is the only
-    proof it did not — including a parallel dispatch's, which is why a live pid
-    always means SKIP. A marker with no pid never reached that write, so age is
-    the only evidence left: past its own timeout plus slack, nothing can still
-    be running."""
+    """Did this marker outlive its dispatch? A live dispatch pid is proof it did
+    not — including a PARALLEL dispatch's, which is why a live pid means skip.
+    But a pid is only believed inside the leg's own lifetime: Windows recycles
+    pids (a reboot hands 4242 to something else), and pid_alive deliberately
+    fails safe to alive, so an unbounded pid branch would pin an orphan
+    'running' forever. Past the leg's own timeout plus slack no dispatch can
+    still be in flight, and age overrides the probe.
+
+    The pidless branch covers corrupt or partially-written markers — every
+    marker this script writes carries a pid — and is the same age test."""
+    stale = (now - float(marker.get("started") or 0)
+             > (marker.get("timeout") or DEFAULT_TIMEOUT) + ORPHAN_SLACK)
     pid = marker.get("pid")
-    if pid:
+    if pid and not stale:
         return not (alive or pid_alive)(pid)
-    limit = marker.get("timeout") or DEFAULT_TIMEOUT
-    return now - float(marker.get("started") or 0) > limit + ORPHAN_SLACK
+    return stale
+
+
+def _claim(path: Path, now: float) -> Path | None:
+    """Take exclusive ownership of a marker by RENAMING it. Two dispatches
+    sweeping at once both see the file, but only one rename off a given source
+    can succeed — the loser gets OSError and skips, so an orphan is published
+    once, not twice. None means someone else won it.
+
+    The claim keeps exactly one `.sweeping-<pid>-<t>` segment however often it
+    is re-claimed, so a claim abandoned by a sweeper that itself died is picked
+    up by a later one (`_claimed_recently` holds it until then)."""
+    base = path.name.split(".sweeping-", 1)[0]
+    try:
+        return path.rename(path.with_name(f"{base}.sweeping-{os.getpid()}-{int(now)}.json"))
+    except OSError:
+        return None
+
+
+def _claimed_recently(path: Path, now: float) -> bool:
+    """Is this claim still someone's? A publish takes as long as git takes, so a
+    claim is left alone until it has gone quiet for the same slack an orphan
+    gets. Only then may another sweeper conclude its owner died mid-publish."""
+    if ".sweeping-" not in path.name:
+        return False
+    try:
+        return now - path.stat().st_mtime <= ORPHAN_SLACK
+    except OSError:
+        return True  # vanished or unreadable: not ours to take
 
 
 def sweep_pending(repo_root: Path, now: float | None = None, alive=None,
-                  publish=None) -> list[str]:
+                  publish=None, clock=None) -> list[str]:
     """Publish the record every orphaned dispatch owes, at the START of the next
     dispatch. Best-effort throughout: this runs for a leg nobody is waiting on,
-    and must never fail or delay the dispatch that triggered it. A marker is
-    deleted only once publish_ops RETURNS — pushed or spooled, both durable; a
-    raised publish leaves the marker for the next sweep."""
-    publish, alive = publish or publish_ops, alive or pid_alive
-    now = time.time() if now is None else now
+    and must never fail or delay the dispatch that triggered it — hence the
+    SWEEP_BUDGET wall clock, past which the remaining markers simply wait for
+    the next dispatch. A claim is deleted only once publish_ops RETURNS —
+    pushed or spooled, both durable; a raised publish leaves the claim on disk
+    for a later sweep."""
+    publish, alive, clock = publish or publish_ops, alive or pid_alive, clock or time.time
+    now = clock() if now is None else now
+    deadline = clock() + SWEEP_BUDGET
     swept = []
     for path in sorted((STATE_ROOT / "pending").glob("*.json")):
+        if clock() >= deadline:
+            print(f"orphan sweep hit its {SWEEP_BUDGET}s budget — remaining markers "
+                  "wait for the next dispatch", file=sys.stderr)
+            break
+        if _claimed_recently(path, now):  # another sweeper is publishing it
+            continue
+        claimed = None
         try:
             marker = json.loads(path.read_text(encoding="utf-8"))
+            # decided BEFORE the claim: a live dispatch's marker must never be
+            # renamed out from under the process that owns it
             if not isinstance(marker, dict) or not is_orphan(marker, now, alive):
+                continue
+            claimed = _claim(path, now)
+            if claimed is None:
                 continue
             card, record = build_orphan_record(marker)
             publish(repo_root, card, record)
         except Exception as err:
-            print(f"orphan sweep left {path.name} pending: "
+            print(f"orphan sweep left {(claimed or path).name} pending: "
                   f"{type(err).__name__}: {err}", file=sys.stderr)
             continue
-        path.unlink(missing_ok=True)
+        claimed.unlink(missing_ok=True)
         swept.append(card.meta["id"])
     return swept
 

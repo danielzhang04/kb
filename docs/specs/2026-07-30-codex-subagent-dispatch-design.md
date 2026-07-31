@@ -74,8 +74,12 @@ Flow, in order:
    session keeps its own); `--model` is still resolved and pinned onto the resumed session via
    `-c model=<id>` — a `codex exec resume` otherwise silently keeps whatever model the CLI
    defaults to, not the original turn's.
-3. **Spool** a crash-trace JSON (dispatch id, model, prompt path, cwd, start time) to
-   `%LOCALAPPDATA%\kb-codex-dispatch\spool\<id>.json` (precedent: `kb-agent-runner.log`).
+3. **Pending marker**: an in-flight JSON (dispatch id, dispatch pid, model, prompt path, cwd,
+   sandbox, log/out paths, timeout, start time) written to
+   `%LOCALAPPDATA%\kb-codex-dispatch\pending\<id>.json` BEFORE the spawn and deleted once a
+   durable record exists. A marker outliving its dispatch is an orphan: the NEXT dispatch's
+   startup sweep publishes a `done` card whose Result starts `FAILED: orphaned` and deletes it.
+   (`spool\` now holds only spooled cards — see step 8.)
 4. **Worktree (opt-in):** `--worktree` creates `git worktree add --detach` from current HEAD
    under `%LOCALAPPDATA%\kb-codex-dispatch\worktrees\<id>` and uses it as cwd. The script never
    removes it; the calling terminal harvests and sweeps it (worktrees-are-leases law).
@@ -151,7 +155,7 @@ stdio inherited. Blocking inline lane for short asks, writes no card; documented
 ```
 Claude terminal                          codex_dispatch.py (background child)
   write brief → scratchpad file
-  Bash run_in_background ───────────────▶ gates → resolve model → spool
+  Bash run_in_background ───────────────▶ gates → resolve model → sweep orphans → marker
   … keeps working, talks to Daniel …      spawn codex exec (stdin prompt) → wait
                                           card + ledger → best-effort ops push
   ◀── task notification (stdout) ──────── print result + footer, exit
@@ -166,7 +170,7 @@ Claude terminal                          codex_dispatch.py (background child)
 | Unknown model or alias | Refuse pre-spawn with routing error (fail-loud, no substitute) |
 | `codex exec` non-zero exit, or timeout (124) | Card still `done`; Result = `FAILED: ...` + exit code/timeout + JSONL log path; notification says FAILED |
 | Ops push rebuilt 3x, none verified landed | Card + row stay spooled locally; loud warning in footer; dispatch still succeeds |
-| Machine dies mid-run | Spool file is the trace; no card (record-not-gate accepted trade-off) |
+| Dispatch parent dies mid-run (crash, session restart, taskkill) | The `pending\<id>.json` marker + JSONL log are the trace until the NEXT dispatch's startup sweep publishes a `done` card whose Result starts `FAILED: orphaned`; the sweep is claim-by-rename (one publisher per marker), budgeted, and can never fail the dispatch that runs it |
 | Parallel dispatches | Independent children, ids, cards, log files; no shared state |
 
 ## Testing

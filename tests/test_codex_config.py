@@ -60,6 +60,12 @@ def test_workspace_write_sandbox_posture_present():
 
 
 def test_conservative_approval_policy_present():
+    """The config's policy governs INTERACTIVE codex and stays conservative here;
+    the dispatch lane (scripts/codex_dispatch.py) pins `approval_policy=never`
+    per-command because `codex exec` cannot serve an approval prompt at all —
+    every file_change under an asking policy just fails — and the
+    workspace-write sandbox, not the prompt, is that lane's boundary.
+    """
     text = _text()
     data = _data()
 

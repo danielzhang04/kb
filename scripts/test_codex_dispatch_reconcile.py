@@ -80,10 +80,22 @@ def test_update_marker_tolerates_a_missing_or_corrupt_file(tmp_path, capsys):
 
 # --- orphan decision --------------------------------------------------------
 
-def test_live_pid_is_never_an_orphan(tmp_path):
-    """A live dispatch pid is the only proof the leg is still owned — including
-    a PARALLEL dispatch's, so a live pid always means skip."""
-    assert not codex_dispatch.is_orphan(_marker(tmp_path), now=9e9, alive=lambda p: True)
+def test_live_pid_inside_the_legs_lifetime_is_never_an_orphan(tmp_path):
+    """A live dispatch pid is proof the leg is still owned — including a
+    PARALLEL dispatch's, so inside its own lifetime a live pid means skip."""
+    marker = _marker(tmp_path, timeout=60)
+    fresh = 1000.0 + 60 + codex_dispatch.ORPHAN_SLACK
+    assert not codex_dispatch.is_orphan(marker, now=fresh, alive=lambda p: True)
+
+
+def test_age_overrides_a_pid_that_still_probes_alive(tmp_path):
+    """REGRESSION: Windows recycles pids across a reboot and pid_alive fails
+    safe to alive, so an unbounded pid branch pinned an orphan 'running'
+    forever and its card was never published."""
+    marker = _marker(tmp_path, timeout=60)
+    never = lambda pid: pytest.fail("a stale marker must not need the probe")  # noqa: E731
+    assert codex_dispatch.is_orphan(marker, now=1000.0 + 60 + codex_dispatch.ORPHAN_SLACK + 1,
+                                    alive=never)
 
 
 def test_dead_pid_is_an_orphan_however_young(tmp_path):
@@ -94,8 +106,9 @@ def test_dead_pid_is_an_orphan_however_young(tmp_path):
 
 
 def test_pidless_marker_waits_for_its_own_timeout_plus_slack(tmp_path):
-    """No pid means the marker never reached the Popen write, so age is the only
-    evidence — and the age that matters is the dispatch's OWN timeout."""
+    """Every marker this script writes carries a pid, so the pidless branch is
+    the corrupt/partial-marker case: age alone, against the dispatch's OWN
+    timeout rather than the default."""
     marker = _marker(tmp_path, pid=None, timeout=60)
     never = lambda pid: pytest.fail("pidless markers must not be probed")  # noqa: E731
     limit = 1000.0 + 60 + codex_dispatch.ORPHAN_SLACK
@@ -103,7 +116,7 @@ def test_pidless_marker_waits_for_its_own_timeout_plus_slack(tmp_path):
     assert codex_dispatch.is_orphan(marker, now=limit + 1, alive=never)
 
 
-def test_pidless_marker_falls_back_to_the_default_timeout(tmp_path):
+def test_marker_with_no_timeout_falls_back_to_the_default(tmp_path):
     marker = _marker(tmp_path, pid=None, timeout=None)
     horizon = 1000.0 + codex_dispatch.DEFAULT_TIMEOUT + codex_dispatch.ORPHAN_SLACK
     assert not codex_dispatch.is_orphan(marker, now=horizon, alive=lambda p: False)
@@ -223,15 +236,68 @@ def test_sweep_deletes_the_marker_when_publish_only_spooled(state, tmp_path, rep
 
 
 def test_sweep_keeps_the_marker_when_publish_raises(state, tmp_path, repo, capsys):
-    marker = _write_pending(state, "dead", _marker(tmp_path, pid=1))
+    _write_pending(state, "dead", _marker(tmp_path, pid=1))
 
     def boom(*a):
         raise OSError("No space left on device")
 
     assert codex_dispatch.sweep_pending(repo, now=2000.0, alive=lambda pid: False,
                                         publish=boom) == []
-    assert marker.exists()                             # retried by the next dispatch
-    assert "left dead.json pending" in capsys.readouterr().err
+    left = list((state / "pending").glob("*.json"))    # retried by a later dispatch
+    assert len(left) == 1 and ".sweeping-" in left[0].name
+    assert "left dead.json.sweeping-" in capsys.readouterr().err
+
+
+def test_sweep_claims_a_marker_and_the_loser_skips_it(state, tmp_path, repo, monkeypatch):
+    """Two dispatches sweeping at once both see the marker; only one rename off
+    it can succeed, so the orphan is published ONCE — a duplicate card AND a
+    duplicate ledger row is what the claim exists to prevent."""
+    _write_pending(state, "dead", _marker(tmp_path, pid=1))
+
+    def lost_the_race(self, target):
+        raise FileNotFoundError(str(self))             # the winner already moved it
+
+    monkeypatch.setattr(Path, "rename", lost_the_race)
+    assert codex_dispatch.sweep_pending(
+        repo, now=2000.0, alive=lambda pid: False,
+        publish=lambda *a: pytest.fail("the loser must not publish")) == []
+
+
+def test_sweep_leaves_a_fresh_claim_to_its_owner(state, tmp_path, repo):
+    """A claim is another sweeper's in-flight publish until it goes quiet for
+    ORPHAN_SLACK; touching it before that re-publishes what it is publishing."""
+    claim = state / "pending" / "dead.json.sweeping-999-1000.json"
+    claim.write_text(json.dumps(_marker(tmp_path, pid=1)), encoding="utf-8")
+    assert codex_dispatch.sweep_pending(
+        repo, now=claim.stat().st_mtime + codex_dispatch.ORPHAN_SLACK,
+        alive=lambda pid: False,
+        publish=lambda *a: pytest.fail("a live claim is not ours to take")) == []
+    assert claim.exists()
+
+
+def test_sweep_reclaims_a_claim_whose_owner_died(state, tmp_path, repo):
+    """A sweeper that died mid-publish leaves its claim behind; once quiet it is
+    re-claimable, and re-claiming keeps ONE suffix rather than growing one."""
+    claim = state / "pending" / "dead.json.sweeping-999-1000.json"
+    claim.write_text(json.dumps(_marker(tmp_path, pid=1)), encoding="utf-8")
+    swept = codex_dispatch.sweep_pending(
+        repo, now=claim.stat().st_mtime + codex_dispatch.ORPHAN_SLACK + 1,
+        alive=lambda pid: False, publish=lambda *a: (True, "pushed"))
+    assert len(swept) == 1 and not list((state / "pending").glob("*.json"))
+
+
+def test_sweep_stops_at_its_wall_clock_budget(state, tmp_path, repo, capsys):
+    """A slow publish must not hold the live dispatch hostage: the sweep is
+    budgeted, and whatever it did not reach waits for the next dispatch."""
+    for name in ("dead1", "dead2", "dead3"):
+        _write_pending(state, name, _marker(tmp_path, pid=1))
+    ticks = iter([0.0, 0.0, 100.0])                    # deadline, first check, second
+    swept = codex_dispatch.sweep_pending(
+        repo, now=2000.0, alive=lambda pid: False, clock=lambda: next(ticks),
+        publish=lambda *a: (True, "pushed"))
+    assert len(swept) == 1                             # stopped after the budget blew
+    assert len(list((state / "pending").glob("*.json"))) == 2
+    assert f"{codex_dispatch.SWEEP_BUDGET}s budget" in capsys.readouterr().err
 
 
 def test_sweep_survives_a_corrupt_marker(state, tmp_path, repo, capsys):
