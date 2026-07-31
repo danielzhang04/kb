@@ -56,6 +56,8 @@ function fixture(options: {
   pushFails?: boolean; cardFails?: boolean; lineagePushFails?: boolean; coordinationIndexDirty?: boolean;
   verifyFails?: boolean; failAfterAttemptCommit?: boolean; failAfterCherryPick?: boolean; failAfterCardMutation?: boolean;
   pushFailsOnce?: boolean; changedAsSymlink?: boolean; changedAsIrregular?: boolean; nonReview?: boolean;
+  /** What the READ-ONLY coordination-branch seam reports. Omitted => `ops` (a sane coordination checkout). */
+  coordinationBranch?: string | null;
 } = {}) {
   const workspace = root();
   const repoRoot = join(workspace, 'repo');
@@ -296,12 +298,18 @@ function fixture(options: {
     return { exitCode: 0, stdout: JSON.stringify({ oldPath: doneRel, resultPath: doneRel, changed: false }), stderr: '' };
   };
 
+  // The read-only branch seam is deliberately SEPARATE from `coordinationGit`: faking the mutating
+  // runner must never be able to neuter the guard, so a test that wants coordination git to run has to
+  // say so here, and the refusal test can assert `coordinationCalls` stayed empty.
+  const branchResolutions: string[] = [];
+  const coordinationBranch = options.coordinationBranch === undefined ? 'ops' : options.coordinationBranch;
   const integrator = createCanonicalGitResultIntegrator({
     repoRoot, coordinationRoot, integrationRoot, worktreeRoot, stateRoot, baseCommit: 'a'.repeat(40),
     gitRunner, coordinationGit, runPy,
+    resolveCoordinationBranch: async (path) => { branchResolutions.push(path); return coordinationBranch; },
   });
   return {
-    input, integrator, gitCalls, coordinationCalls, stateRoot, coordinationRoot, doneRel,
+    input, integrator, gitCalls, coordinationCalls, stateRoot, coordinationRoot, doneRel, branchResolutions,
     setPushFails(value: boolean) { pushFails = value; },
     setCardFails(value: boolean) { cardFails = value; },
     setLineagePushFails(value: boolean) { lineagePushFails = value; },
@@ -681,5 +689,47 @@ describe('canonical Git result integrator', () => {
     await expect(item.integrator.integrate(item.input)).resolves.toMatchObject({ status: 'integrated' });
     expect(item.coordinationCalls.filter((args) => args[0] === 'push')).toHaveLength(2);
     expect(item.coordinationCalls.some((args) => args.join(' ') === 'pull --rebase origin ops')).toBe(true);
+  });
+});
+
+/**
+ * The coordination-git guard, mirroring `audit/log.ts`'s (commit 2fdb2ca) on the integrator's push path.
+ * The incident it exists for: a daemon booted with `DASHBOARD_REPO_ROOT` on a feature-branch worktree ran
+ * `pull --rebase origin ops` against it and jammed a 549-step rebase. The pre-existing `rev-parse
+ * --abbrev-ref HEAD === 'ops'` check could not prevent that — it sat BELOW `prepareCoordination`'s pull
+ * and asked the injectable mutating runner rather than the real directory.
+ */
+describe('canonical integrator coordination-git guard', () => {
+  it('refuses every coordination git call — no pull, no commit, no push — off the ops branch', async () => {
+    const item = fixture({ coordinationBranch: 'claude/fyt-pipeline-boss' });
+    await expect(item.integrator.integrate(item.input)).rejects.toThrow(/canonical-coordination-git-guard/);
+    // THE PROOF: the mutating coordination runner was invoked zero times, so nothing was fetched,
+    // pulled, rebased, added, committed or pushed against the wrong checkout.
+    expect(item.coordinationCalls).toEqual([]);
+    expect(item.branchResolutions).toContain(item.coordinationRoot);
+  });
+
+  it('refuses on an unresolvable checkout (detached HEAD / not a git repo) rather than guessing', async () => {
+    const item = fixture({ coordinationBranch: null });
+    await expect(item.integrator.integrate(item.input)).rejects.toThrow(/UNRESOLVED/);
+    expect(item.coordinationCalls).toEqual([]);
+  });
+
+  it('never promotes a record to canonical-committed when the guard refused', async () => {
+    const item = fixture({ coordinationBranch: 'main' });
+    await expect(item.integrator.integrate(item.input)).rejects.toThrow(/not 'ops'/);
+    const state = JSON.parse(readFileSync(join(item.stateRoot, 'control', 'canonical-integration.json'), 'utf8')) as
+      { records: { state: string }[] };
+    expect(state.records.map((record) => record.state)).toEqual(['lineage-committed']);
+    // A second attempt still refuses: the guard has no retry-into-success path and no bypass flag.
+    await expect(item.integrator.integrate(item.input)).rejects.toThrow(/canonical-coordination-git-guard/);
+    expect(item.coordinationCalls).toEqual([]);
+  });
+
+  it('lets a lineage-only (cardRef null) generation finish — it never touches the coordination checkout', async () => {
+    const item = fixture({ coordinationBranch: 'claude/fyt-pipeline-boss' });
+    const input = { ...item.input, operationKey: 'result:run-1:stage-1:g2', canonicalCardRef: null };
+    await expect(item.integrator.integrate(input)).resolves.toMatchObject({ status: 'integrated' });
+    expect(item.coordinationCalls).toEqual([]);
   });
 });

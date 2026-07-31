@@ -396,6 +396,17 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
         registry: options.ptySessions,
         assignedAgents,
         resolveProfiles: () => deps.loadProfiles(repoRoot),
+        // The SAME server-owned tool cap the headless workers run under, so a roster session's scoped
+        // per-run permission settings can never grant a tool the workflow profile tables withhold.
+        // A profile that does not resolve refuses here exactly as it does there; the roster turns that
+        // refusal into "no permission rules" rather than a wider grant.
+        resolveWorkflowTools: (workflowProfileId) => {
+          try {
+            return deps.createToolPolicyResolver()(workflowProfileId).allowedTools;
+          } catch {
+            return [];
+          }
+        },
       })
     : null;
   const workers = rosterSessions

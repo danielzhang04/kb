@@ -51,7 +51,8 @@ import type { PtyHost } from '../pty/host.ts';
 import type { PersistentSessionRegistry } from '../pty/persistentSessions.ts';
 import type { AssignedAgentResolver, ResolvedAssignedAgent } from './agentAssignmentResolver.ts';
 import type { ExecutionProfile } from './policy.ts';
-import { isSafeRepoRelativePath, type PlanProposal, type ProposalStage, type ResolvedAgentAssignment } from './proposal.ts';
+import { createWorkflowToolPolicyResolver } from './claudeWorkerAdapter.ts';
+import { isSafeRepoRelativePath, type PlanProposal, type ProposalScope, type ProposalStage, type ResolvedAgentAssignment } from './proposal.ts';
 import type { ControlPlaneStore } from './store.ts';
 import type { RunDetail } from './types.ts';
 import type { WorkerAdapter, WorkerExecutionResult } from './execution.ts';
@@ -119,6 +120,68 @@ const MIN_DELIVERY_TIMEOUT_MS = 60 * 1_000;
 const MAX_DELIVERY_TIMEOUT_MS = 24 * 60 * 60 * 1_000;
 /** Named, greppable settle reason so an operator can find every timed-out delivery in the event log. */
 export const DELIVERY_TIMEOUT_REASON = 'roster-delivery-timeout';
+/**
+ * Named, greppable settle reason for a delivery that was NEVER TYPED because the target terminal was not
+ * at a plain REPL prompt. Deliberately distinct from {@link DELIVERY_TIMEOUT_REASON}: that one means the
+ * order landed and no marker came back; this one means the order never left the control plane.
+ */
+export const DELIVERY_NOT_READY_REASON = 'roster-delivery-not-ready';
+/**
+ * How long ONE delivery may wait for its terminal to reach a plain REPL prompt before it settles as a
+ * human wait. Generous, because the legitimate wait is real: a freshly spawned session is still booting
+ * `claude` and then reading its binding context, and an agent mid-turn on operator conversation must be
+ * allowed to finish. Clamped into [{@link MIN_REPL_READY_TIMEOUT_MS}, the delivery timeout] — the marker
+ * deadline stays the OUTER bound, so this can never extend how long a stage may sit.
+ */
+const DEFAULT_REPL_READY_TIMEOUT_MS = 5 * 60 * 1_000;
+const MIN_REPL_READY_TIMEOUT_MS = 5 * 1_000;
+/** Readiness poll backoff: quick first re-checks (a menu is usually answered fast), then patient. */
+const REPL_POLL_MIN_MS = 250;
+const REPL_POLL_MAX_MS = 5_000;
+/**
+ * The gap between typing the order TEXT and sending the submit Enter, as two SEPARATE pty writes.
+ *
+ * Claude Code's REPL detects a paste by input arriving as one chunk, and folds a carriage return that
+ * rides in the SAME chunk as the text into the pasted content as a newline instead of submitting it — so
+ * `text + '\r'` in a single write leaves the order sitting UNSENT in the composer and no turn ever starts
+ * (a stage that would then sit "running" with nothing delivered, the mirror of the readiness stall). The
+ * Enter must therefore arrive as its OWN pty read, which this delay guarantees by letting the paste window
+ * close first. Verified live off a faithful pty (claude.exe 2.1.220): a 250ms gap submitted reliably
+ * (transcript grew from the delivered order); this uses 2× that for headroom over ConPTY write-coalescing
+ * and paste-timing variance, and is negligible against a delivery that already spans seconds.
+ */
+const SUBMIT_ENTER_DELAY_MS = 500;
+/**
+ * OUTCOME-VERIFIED SUBMISSION (2026-07-30). The Enter at {@link SUBMIT_ENTER_DELAY_MS} is a WRITE, not a
+ * proof: a bytes-written Enter has been observed FOUR times to leave no turn started — a paste-folded CR, an
+ * open modal, a mistimed type into a splash, or an at/over-cap interactive block can each swallow it, and the
+ * stage then reads "working" until the 40-min marker deadline with nothing ever delivered. So after the
+ * Enter, delivery now POLLS the terminal's own output for POSITIVE evidence a turn engaged before it trusts
+ * the write, and re-submits (re-typing the line only if it is no longer on screen) up to {@link
+ * SUBMIT_VERIFY_RETRIES} times; if no turn ever engages it PARKS LOUDLY (never a false "working").
+ *
+ * THE SIGNAL, chosen off a live faithful pty capture (claude.exe 2.1.220): a started turn transitions the
+ * frame from the idle prompt to a BUSY frame within ~1-1.5s — the spinner footer ({@link BUSY_MARKERS}:
+ * `esc to interrupt` / `(Ns ·` / `[↑↓] N tokens`), fresh (last chunk < {@link STALE_BUSY_QUIET_MS} ago). The
+ * composer ECHO of the typed line carries no busy marker, so it never false-positives; a non-submitting
+ * Enter leaves an idle {@link READY_MARKERS} frame still holding the un-submitted line. A turn that finished
+ * so fast its marker already settled the delivery counts as engaged too (the pending is gone).
+ */
+const SUBMIT_VERIFY_RETRIES = 3;
+/** Per-attempt window to observe a turn engage. A real turn paints a matchable busy footer within ~1.5s. */
+const SUBMIT_VERIFY_WINDOW_MS = 4_000;
+/** Poll cadence inside a verify window. Injected `sleep` drives it, so the suite never waits on a real timer. */
+const SUBMIT_VERIFY_POLL_MS = 300;
+/** Named, greppable settle reason for a delivery whose Enter never started a turn across every retry. */
+export const DELIVERY_NOT_ENGAGED_REASON = 'roster-delivery-not-engaged';
+/**
+ * Rolling window of terminal output kept for readiness detection, separate from the marker buffer (which
+ * is consumed line-by-line and reset per delivery). Small on purpose: an interactive REPL redraws its
+ * whole frame continuously and `stripTerminalControl` cannot collapse those redraws, so only the tail is
+ * the CURRENT screen — a large window would keep an already-answered menu "visible" forever.
+ */
+const SCREEN_WINDOW_CHARS = 4_000;
+const SCREEN_WINDOW_LINES = 20;
 /** Durable activity mirror written by `record` and read back by `state` after a daemon restart. */
 const ROSTER_ACTIVITY = /^roster:([a-z0-9][a-z0-9-]{0,63}) (.+)$/;
 /** Page size for the INCREMENTAL durable-event read behind `state` (bounded by the store's own cap). */
@@ -218,9 +281,23 @@ export interface RosterSessionsOptions {
   cols?: number;
   rows?: number;
   /** The single line that boots the interactive agent terminal. */
-  launchLine?: (input: { model: string; bindingPath: string; runRef: string; agentId: string }) => string;
+  launchLine?: (input: { model: string; bindingPath: string; settingsPath: string; runRef: string; agentId: string }) => string;
   /** The single line that hands a stage's order file to a live session. */
   deliveryLine?: (input: { orderPath: string; stageId: string }) => string;
+  /**
+   * Resolves a workflow execution profile id to its server-owned `allowedTools`. The per-run permission
+   * settings are built from THIS and nothing else, so the roster can never grant a tool the profile
+   * tables withhold. Defaults to the production resolver; an unresolvable/absent profile yields an empty
+   * cap (no rules emitted) rather than a wider one.
+   */
+  resolveWorkflowTools?: (workflowProfileId: string | null) => readonly string[];
+  /**
+   * How long a delivery may wait for its terminal to reach a plain REPL prompt. Clamped to
+   * [{@link MIN_REPL_READY_TIMEOUT_MS}, this delivery's marker deadline].
+   */
+  replReadyTimeoutMs?: number;
+  /** Backoff sleep between readiness polls. Injected so the suite never waits on a real timer. */
+  sleep?: (ms: number) => Promise<void>;
   /**
    * Marker deadline per delivery, in ms. A number applies to every stage; a function is consulted per
    * delivery, so a long stage (a full image batch) can be given more room than a short one. Clamped to
@@ -272,7 +349,22 @@ interface RosterSessionEntry {
   owner: string;
   model: string;
   bindingPath: string;
+  settingsPath: string;
   buffer: string;
+  /**
+   * Rolling tail of this terminal's output, kept independently of {@link RosterSessionEntry.buffer}
+   * (which is line-consumed and reset per delivery). This is what the REPL-readiness gate reads, so it
+   * must survive across deliveries and must keep accumulating while the session is idle — the whole point
+   * is to know what is on screen BEFORE a work order is typed.
+   */
+  screen: string;
+  /**
+   * `now()` of the last output chunk appended to {@link RosterSessionEntry.screen}. The readiness gate
+   * reads it to tell a LIVE turn (which repaints its spinner ≥1×/s) from a FINISHED turn whose spinner tail
+   * is merely frozen in the window because the idle terminal has gone silent — see the freshness gate in
+   * {@link detectReplReadinessFresh} and `waitForRepl`.
+   */
+  lastChunkAt: number;
   unobserve: () => void;
   /** At most one outstanding delivery per agent session (a terminal runs one order at a time). */
   pending: PendingDelivery | null;
@@ -350,6 +442,463 @@ export function stripTerminalControl(chunk: string): string {
   /* eslint-enable no-control-regex */
 }
 
+/**
+ * A modal prompt is on screen: the REPL is NOT accepting a line of input, it is waiting for a keystroke
+ * against a menu. Typing a work order here does not queue it — the characters are consumed by the menu's
+ * own key handling and the order is silently destroyed. That is the observed defect: a delivery line
+ * interleaved character-by-character with a tool-permission menu and vanished, and the stage then sat
+ * against the 4h marker deadline.
+ *
+ * These match what the CLI renders around a decision, not what an agent might SAY. They are evaluated
+ * only over the last {@link SCREEN_WINDOW_LINES} non-empty lines of the current frame, so an answered
+ * menu stops matching as soon as the REPL redraws over it. A false positive costs a bounded wait and
+ * then a named `waiting-human` park; a false negative costs a swallowed work order — so this errs toward
+ * waiting.
+ */
+const MODAL_MARKERS: readonly RegExp[] = [
+  /\bDo you want to\b/i,
+  /\bWould you like to\b/i,
+  /\bNo, and tell Claude\b/i,
+  /\bYes, and (?:don't ask again|approve)\b/i,
+  /^[\s│|>]*[❯>]?\s*[1-9]\.\s+(?:Yes|No)\b/im,
+  /\bpress enter to (?:continue|confirm|accept)\b/i,
+  /\b(?:accept|trust) (?:edits|files) in this folder\b/i,
+  // DEFENSIVE: the FIRST-LAUNCH BYPASS-PERMISSIONS ACCEPTANCE MODAL. Roster terminals now boot
+  // `permissions.defaultMode: "auto"`, which shows NO acceptance modal (verified live, claude.exe 2.1.220),
+  // so this marker is no longer on the happy path. It is KEPT because a terminal must never hang silently
+  // on ANY modal: if some config/mode path ever surfaces the bypass dialog, its `WARNING: … Bypass
+  // Permissions mode … 1. No, exit 2. Yes, I accept` menu renders its numbered options as `1.No,exit` /
+  // `2.Yes,Iaccept` — the columns are ANSI cursor moves, so there is NO literal whitespace and the generic
+  // `[1-9]\.\s+(?:Yes|No)` marker above never matches. Whitespace here is therefore OPTIONAL (`\s*`), which
+  // also survives the same word-boundary loss on `Bypass Permissions mode`. Recognising it turns any such
+  // modal into a NAMED `roster-delivery-not-ready` park with a clear reason, never a swallowed order.
+  /Bypass\s*Permissions\s*mode/i,
+];
+/**
+ * The REPL is mid-turn. Input typed now is buffered by the CLI in a way that races its own re-render,
+ * and delivering a second order on top of an unfinished one is exactly the "one order at a time"
+ * invariant `entry.pending` exists to hold. Wait for the turn to end.
+ *
+ * WHAT THE CLI ACTUALLY RENDERS, CAPTURED OFF A REAL PTY (2.1.220), not inferred from its strings:
+ *   `✽ Whatchamacalliting… ❯ esc to interrupt` … `(3s · thinking)` … `↓ 25 tokens · thinking)`
+ * The interrupt hint is NOT a literal in the binary — `grep -a "to interrupt"` over `claude.exe` finds
+ * ZERO hits, and an earlier review read that as proof this whole arm was dead. It is not: the hint is
+ * COMPOSED at render time as `<chord> to <action>` (`Ue({chord, action:'interrupt'})` renders
+ * `[chordLabel, ' to ', action]`) from the `chat:cancel` keybinding, whose default label is `esc`. A
+ * string grep can never see it; a pty can, and did.
+ *
+ * That composition is also why the first pattern must not be the only one. The chord is user-rebindable
+ * and the action wording is CLI copy, so the two patterns after it key on the spinner footer's
+ * structure instead — an elapsed-seconds counter and a token counter, both of which a turn renders and
+ * an idle prompt does not. A false positive costs a bounded wait and a named `waiting-human` park; a
+ * false negative costs a swallowed work order.
+ */
+const BUSY_MARKERS: readonly RegExp[] = [
+  /\b(?:esc|escape|ctrl\+?-?c) to (?:interrupt|cancel|stop)\b/i,
+  // `(3s · thinking)` — the spinner's elapsed-time footer, independent of every word around it.
+  /\(\d+s\s*[·|]/,
+  // `↓ 25 tokens` / `↑ 1.2k tokens` — the in-flight token counter, only ever rendered mid-turn.
+  /[↑↓]\s*[\d.,]+\s*[km]?\s*tokens\b/i,
+];
+
+/**
+ * POSITIVE proof the interactive REPL is up and its input line is live. This is the permission-mode
+ * cycler footer the CLI renders on EVERY in-REPL frame — idle and mid-turn alike — captured live under
+ * `auto` mode as `⏵⏵ auto mode on (shift+tab to cycle)` (claude.exe 2.1.220). The `shift+tab to cycle`
+ * tail is stable across modes, so the marker matches whatever mode the footer names. It is ABSENT on every
+ * PRE-REPL screen: the theme picker, the "trust this folder" dialog, the login screen, and any acceptance
+ * modal. That absence is exactly what distinguishes "a settled REPL waiting for a command" from
+ * "a splash screen that will eat the keystrokes" — a distinction the old menu-absence heuristic could not
+ * draw, which is how the acceptance modal's non-empty, busy-marker-free frame classified `ready` and
+ * swallowed the work order (see {@link detectReplReadiness}).
+ *
+ * Whitespace is OPTIONAL: a redraw can position `shift+tab to cycle` with cursor moves rather than literal
+ * spaces, so a stripped frame may read `shift+tabtocycle`. Captured off a real pty (claude.exe 2.1.220):
+ * the string is stable CLI chrome, not composed per-turn like the interrupt hint.
+ *
+ * The trade this accepts (deliberately, and the inverse of the pre-fix comment): a CLI release that reworks
+ * this footer makes delivery REFUSE (a named `roster-delivery-not-ready` park the operator sees and the
+ * gated live test catches) rather than SWALLOW an order into a screen it cannot read. A loud park beats a
+ * silent stall that reads "running" forever.
+ */
+const READY_MARKERS: readonly RegExp[] = [
+  /shift\s*\+?\s*tab\s*to\s*cycle/i,
+];
+
+export type ReplReadiness =
+  | { state: 'ready' }
+  | { state: 'modal'; marker: string }
+  | { state: 'busy'; marker: string }
+  /** Nothing has come back from this terminal at all — see {@link detectReplReadiness}. */
+  | { state: 'silent'; marker: string };
+
+/** The current frame: the last non-empty lines of the tail, which is all a redrawing REPL leaves true. */
+function currentFrame(tail: string): string {
+  return tail
+    .slice(-SCREEN_WINDOW_CHARS)
+    .split('\n')
+    .map((line) => line.trimEnd())
+    .filter((line) => line.trim() !== '')
+    .slice(-SCREEN_WINDOW_LINES)
+    .join('\n');
+}
+
+/**
+ * Classify a roster terminal's recent output as safe-to-type-into or not. Pure, so every accepted and
+ * refused frame is testable without driving a pty.
+ *
+ * PROMPT-PRESENCE, NOT MENU-ABSENCE (reversed 2026-07-30 after the failure below). This now REQUIRES
+ * positive evidence that the live REPL input line is on screen — a {@link READY_MARKERS} match — before it
+ * will call a frame `ready`. The old rule ("non-empty AND no recognised menu ⇒ ready") swallowed a work
+ * order: under the prior `bypassPermissions` posture a terminal opened on a `WARNING: … Bypass Permissions
+ * mode … 1. No, exit 2. Yes, I accept` acceptance modal whose columns are ANSI cursor moves, so the frame is
+ * non-empty, carries no whitespace the numbered-menu marker needs, and — when the `Esc to cancel` footer
+ * collapses onto the menu line — carries no busy marker either. It classified `ready`, the order was typed
+ * into the menu, the keystrokes were consumed, no turn began, and the stage sat "running" for 36 min with
+ * zero transcript. The `auto` posture this pipeline now boots shows no such modal, but the theme picker,
+ * the "trust this folder" dialog, and a still-starting REPL slip through the same hole — so the positive
+ * input-line marker is what separates every one of those splash screens from a settled prompt, mode-independent.
+ *
+ * The precedence still refines the answer for a KNOWN blocker so the park message is specific: a recognised
+ * MODAL menu (incl. any acceptance modal) reports `modal`; a mid-turn frame reports `busy`. Only
+ * after neither matches AND the REPL footer IS present do we return `ready`.
+ *
+ * EVERY OTHER NON-EMPTY FRAME IS NOT READY. An empty frame is a shell that has not yet booted `claude`
+ * (`ensureRoster` re-spawns the whole roster on the daemon-restart resume path, and a same-tick delivery
+ * would hit a bare shell). A non-empty frame with no REPL footer is a splash/onboarding/login screen (or a
+ * REPL still starting) — typing an order into it loses the order. Both classify `silent`, the caller waits
+ * under its existing bound, and if the prompt never appears the delivery parks with a named human wait
+ * rather than typing into the void.
+ */
+export function detectReplReadiness(tail: string): ReplReadiness {
+  return classifyFrame(tail, false);
+}
+
+/**
+ * The classifier core. `skipBusy` is the ONE lever the freshness gate pulls — see
+ * {@link detectReplReadinessFresh}. MODAL precedence is unconditional (a menu is never typed into, however
+ * long it has sat), so it is honoured even when busy markers are skipped; only the BUSY class is gateable.
+ */
+function classifyFrame(tail: string, skipBusy: boolean): ReplReadiness {
+  const frame = currentFrame(tail);
+  if (frame === '') return { state: 'silent', marker: 'no output yet' };
+  for (const pattern of MODAL_MARKERS) {
+    const match = pattern.exec(frame);
+    if (match) return { state: 'modal', marker: match[0].trim().slice(0, 80) };
+  }
+  if (!skipBusy) {
+    for (const pattern of BUSY_MARKERS) {
+      const match = pattern.exec(frame);
+      if (match) return { state: 'busy', marker: match[0].trim().slice(0, 80) };
+    }
+  }
+  for (const pattern of READY_MARKERS) {
+    if (pattern.test(frame)) return { state: 'ready' };
+  }
+  // Non-empty, not a recognised menu, not mid-turn — but the REPL input line has not appeared. A
+  // splash/onboarding/login screen, or a REPL that has printed banner output but not yet its prompt.
+  return { state: 'silent', marker: 'no REPL input prompt on screen yet' };
+}
+
+/**
+ * How long the terminal must have been SILENT before a `busy` classification is treated as stale spinner
+ * text rather than a live turn. A running turn repaints its spinner footer at least once a second (the
+ * elapsed-seconds counter ticks), so ~2s of no output means the turn has ended and whatever
+ * `(3s ·` / token-counter / `esc to interrupt` fragment the window still holds was painted over long ago.
+ */
+export const STALE_BUSY_QUIET_MS = 2_000;
+
+/**
+ * Freshness-gated readiness — the fix for the frozen-busy stall (2026-07-30).
+ *
+ * `entry.screen` is a LINEAR concatenation of stripped output (a redrawing REPL's in-place repaints cannot
+ * be collapsed — see {@link stripTerminalControl}). So when a turn FINISHES the terminal falls silent and
+ * the last-window slice stays frozen holding that turn's spinner tail. {@link detectReplReadiness} tests
+ * BUSY before READY, matches the DEAD `(Ns ·` fragment, and returns `busy` forever: `waitForRepl` then
+ * parks at its budget with "still mid-turn" even though the terminal is idle and typeable, and every
+ * post-turn delivery — not just the first — hits it. A bigger budget never flips a frozen frame.
+ *
+ * The gate: if the base classification is `busy` BUT the terminal has been quiet for
+ * {@link STALE_BUSY_QUIET_MS}, re-classify skipping ONLY the busy markers. MODAL is still honoured first
+ * (a frozen menu still parks — the catastrophic swallow was always the menu case) and READY still REQUIRES
+ * the `shift+tab to cycle` marker (so a theme/trust/login splash, which never carries it, stays not-ready).
+ * The only path to `ready` is therefore: quiet ≥ threshold AND idle marker present AND not a modal. A live
+ * turn is never quiet that long, and a mistimed type into one queues rather than being swallowed.
+ *
+ * PURE: `quietMs` is passed in (no clock read here), so the whole decision is unit-testable without a pty.
+ */
+export function detectReplReadinessFresh(tail: string, quietMs: number): ReplReadiness {
+  const base = classifyFrame(tail, false);
+  if (base.state === 'busy' && quietMs >= STALE_BUSY_QUIET_MS) return classifyFrame(tail, true);
+  return base;
+}
+
+/**
+ * POSITIVE proof a submitted order actually STARTED A TURN — the outcome check {@link SUBMIT_VERIFY_RETRIES}
+ * keys on. True iff the current frame is a LIVE busy frame: a {@link BUSY_MARKERS} spinner footer that is
+ * FRESH (the terminal painted within {@link STALE_BUSY_QUIET_MS}, i.e. a turn is repainting its counter right
+ * now, not a frozen dead-spinner tail). The idle prompt, a modal, a splash, and the mere composer echo of the
+ * typed line all return false — none of them carry a busy marker. PURE: `quietMs` is passed in (no clock
+ * read), so a submit-verify unit test needs no pty.
+ */
+export function detectTurnEngaged(tail: string, quietMs: number): boolean {
+  if (quietMs >= STALE_BUSY_QUIET_MS) return false;
+  return classifyFrame(tail, false).state === 'busy';
+}
+
+/**
+ * Whether the delivery line is still sitting on screen (space-insensitively, because a redrawing REPL
+ * positions the composed line with cursor moves that {@link stripTerminalControl} cannot turn back into
+ * spaces). Used only to decide a retry's shape: if the line is gone the retry re-TYPES it, otherwise the
+ * retry just re-sends Enter. The stage id is the stable, unique fragment of {@link defaultDeliveryLine}.
+ */
+function frameHasDeliveryLine(tail: string, stageId: string): boolean {
+  const compact = currentFrame(tail).replace(/\s+/g, '').toLowerCase();
+  return compact.includes(`forstage${stageId.replace(/\s+/g, '').toLowerCase()}`);
+}
+
+/**
+ * Tools whose Claude Code permission rules carry a PATH pathspec — the file-scoped rules below, listed
+ * here for when they are read as declared intent (see {@link buildRosterPermissionSettings}). `Bash` is
+ * still absent from this list: a Bash rule matches a COMMAND PREFIX, never a path, so "Bash strictly
+ * within scope" was never expressible as a rule and a bare `Bash` entry would have been a blanket
+ * allow-all. That containment question is now moot for these sessions — Daniel's 2026-07-30 ruling
+ * (`orgs/faceless-youtube/knowledge/decisions.md`) put roster terminals under autonomous operation
+ * (`permissions.defaultMode: "auto"`, see below) with routine tool use cleared by auto mode's classifier
+ * and governance carried by the `deny` floor, PreToolUse hooks, bindings, and the server-side workflow
+ * gates instead of a scoped tool allow-list. The rules built from this list are kept in the settings file
+ * regardless — harmless, and useful as a legible record of what each agent was actually scoped to do.
+ */
+const SCOPED_READ_TOOLS: readonly string[] = ['Read', 'Glob', 'Grep'];
+const SCOPED_WRITE_TOOLS: readonly string[] = ['Write', 'Edit'];
+
+/** One absolute directory, forward-slashed and de-duplicated of separators. Not a rule — a real path. */
+function absoluteDir(root: string, relative?: string): string {
+  const base = root.replace(/\\/g, '/').replace(/\/+$/, '');
+  if (relative === undefined) return base;
+  return `${base}/${relative.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')}`;
+}
+
+/**
+ * Anchor an absolute directory as a Claude Code rule pathspec — the SAME string this file hands to
+ * `additionalDirectories` for the same directory, so there is exactly one path grammar here.
+ *
+ * THIS USED TO PREFIX `//` and every rule it built was silently inert. The `//` marker is what
+ * code.claude.com/docs/en/permissions.md describes for a filesystem-absolute pathspec, and it is what
+ * `claudeWorkerAdapter.ts#absoluteReadDenyRule` emits — but that helper's rules are documented there as
+ * dormant deny-only future-proofing, so nothing ever load-bore them. Here they were load-bearing, and an
+ * A/B against the installed CLI (2.1.220, identical target and prompt, only the prefix differing) proved
+ * the form never matches on Windows: `Read(//C:/…/**)` DENIED, `Read(C:/…/**)` ALLOWED. The drive letter
+ * already makes a Windows pathspec unambiguous, so the marker buys nothing and costs everything.
+ *
+ * A POSIX root (`/repo`) is emitted the same way, as the plain absolute path. If some host's CLI were to
+ * resolve that single leading `/` relative to the settings source instead of the filesystem root, the
+ * rule degrades to inert — the fail-CLOSED direction, and identical to today's behaviour on every
+ * platform. It can never widen a grant. This daemon runs on Windows, which is the verified case.
+ */
+function absoluteRulePath(root: string, relative?: string): string {
+  return absoluteDir(root, relative);
+}
+
+export interface RosterPermissionInput {
+  /** Canonical checkout the repo-relative scope entries resolve against. */
+  repoRoot: string;
+  /** `<stateRoot>/control/roster/<runRef>/<agentId>` — this agent's own binding + work-order channel. */
+  agentDir: string;
+  /** Repo-relative read scope, unioned across the stages this agent owns. */
+  read: readonly string[];
+  /** Repo-relative write scope, unioned across the stages this agent owns. */
+  write: readonly string[];
+  /** The server-owned workflow tool cap this run executes under. Nothing outside it is ever granted. */
+  tools: readonly string[];
+}
+
+/**
+ * THE RESTRICTION FLOOR: what an UNATTENDED terminal may never do, whatever else it was scoped to.
+ *
+ * WHY A DENY LIST IS THE RIGHT INSTRUMENT HERE. Roster terminals run under the auto `defaultMode`
+ * (Daniel's 2026-07-30 ruling), so the `allow` rules below are declared intent rather than containment —
+ * auto mode skips the ASK step. It does NOT skip the DENY step: `deny` / `ask` / `allow` evaluate in that
+ * fixed order regardless of mode, so these entries are the one part of this file that still ENFORCES.
+ * Verified live against the installed CLI (2.1.220), each case paired against an `allow` that would
+ * otherwise let the action through, so a denial proves the rule matched and not the absence of a grant:
+ *  - `Bash(git config *)` in `deny` → the Bash call is refused ("Permission to use Bash with command
+ *    git config --get user.name has been denied"); the same run without it executes and returns output.
+ *  - `Read(<path>)` in `deny` → a BASH command that reads that path is refused too ("permission to use
+ *    Bash with `cat marker.txt` was denied"). The CLI resolves the file a command touches and applies
+ *    file-path denies to it, so these entries cover the shell as well as the built-in file tools.
+ *
+ * WHAT IS ON THE LIST, AND WHY EACH ONE IS "NEVER" RATHER THAN "NOT NOW":
+ *  - Publication and identity. A roster stage PROPOSES work; the server-side integrator publishes it, on
+ *    the coordination checkout, under its own branch guard. A terminal that can `git push` can bypass
+ *    every gate in this file, and one that can `git config` can rewrite the identity the fleet's history
+ *    is attributed to. Neither is ever part of a stage's job.
+ *  - Secrets. `.env` at the repo root and at any depth, through the built-in file tools and (per the
+ *    verified behaviour above) through the shell. Nothing in the video pipeline reads a `.env`.
+ *  - Credential stores. The obvious ambient ones: ssh keys, cloud/CLI credential directories, the
+ *    CLI's own stored credentials, npm/git credential files, and bare private-key material.
+ *
+ * KNOWN RESIDUAL — the honest boundary. These rules plus the repo's PreToolUse hooks cover Claude's TOOL
+ * layer and the Bash commands the CLI can parse. A script the agent WRITES and then RUNS
+ * (`python fetch.py`, where `fetch.py` opens `.env` itself) is opaque to command parsing: nothing here
+ * sees that read, and stopping it is OS-level sandboxing, not a permission rule. That gap is pre-existing
+ * — it is the same under the interactive default mode — and is NOT introduced by the auto `defaultMode`.
+ * It is named here so no one mistakes this floor for containment of arbitrary code execution.
+ */
+const RESTRICTION_FLOOR: readonly string[] = [
+  // Publication and identity.
+  'Bash(git push *)',
+  'Bash(git config *)',
+  // `.env`, through the file tools and (verified) through any shell command that opens it.
+  'Read(.env)',
+  'Read(**/.env)',
+  'Read(**/.env.*)',
+  'Edit(.env)',
+  'Edit(**/.env)',
+  'Edit(**/.env.*)',
+  'Write(.env)',
+  'Write(**/.env)',
+  'Write(**/.env.*)',
+  // Shell shapes that move a `.env` wholesale rather than reading it in place.
+  'Bash(cp .env*)',
+  'Bash(mv .env*)',
+  // Credential stores.
+  'Read(**/.ssh/**)',
+  'Write(**/.ssh/**)',
+  'Edit(**/.ssh/**)',
+  'Read(**/.aws/**)',
+  'Write(**/.aws/**)',
+  'Edit(**/.aws/**)',
+  'Read(**/.config/gh/**)',
+  'Read(**/.claude/.credentials.json)',
+  'Read(**/.git-credentials)',
+  'Read(**/.npmrc)',
+  'Read(**/credentials.json)',
+  'Read(**/token.json)',
+  'Read(**/*.pem)',
+];
+
+export interface RosterPermissionSettings {
+  allow: string[];
+  /**
+   * The restriction floor actually emitted — {@link RESTRICTION_FLOOR}. Exposed so the ENFORCING half of
+   * this settings file is assertable, not only the declared-intent half.
+   */
+  deny: string[];
+  additionalDirectories: string[];
+  /** The exact bytes written to the per-run settings file and handed to `claude --settings`. */
+  json: string;
+}
+
+/**
+ * Build ONE roster session's permission settings.
+ *
+ * WHY THIS EXISTS. A spawned roster terminal's FIRST act is to read its own `binding.md`, and that read
+ * parked on Claude Code's interactive "Do you want to proceed?" tool-permission menu — a per-session,
+ * modal decision that folder trust (`hasTrustDialogAccepted`) does not answer and that no remembered
+ * `allowedTools` list covers. The run then went nowhere. The fix is a per-run settings file passed with
+ * `--settings <path>` (the CLI accepts a file path or an inline JSON string; `claude --help`:
+ * "Path to a settings JSON file or a JSON string to load additional settings from").
+ *
+ * AUTONOMOUS BUT GOVERNED — `permissions.defaultMode: "auto"`. A roster terminal must proceed without a
+ * human at the keyboard, but it must NOT be ungoverned. `auto` is the mode that gives both: it interposes
+ * a background safety CLASSIFIER that clears routine tool use without a prompt while still blocking
+ * escalation / unrecognised-infra / hostile-content-driven actions — and, crucially, the `permissions.deny`
+ * floor, `ask` rules, and PreToolUse hooks are all evaluated BEFORE that classifier, so they still ENFORCE
+ * exactly as under the interactive default mode. This is strictly MORE governed than `bypassPermissions`,
+ * which skips the ask step for everything and (almost) ignores deny — and, unlike bypass, `auto` shows NO
+ * first-launch acceptance modal, so an unattended pty boots straight to the live REPL instead of stalling
+ * on a "WARNING: … Bypass Permissions mode … Yes, I accept" dialog it can never answer. Confirmed live
+ * against the installed CLI (claude.exe 2.1.220): an interactive launch with `defaultMode: "auto"` in
+ * `--settings` came up with NO modal and the `⏵⏵ auto mode on (shift+tab to cycle)` REPL footer, and a
+ * headless `-p` run under the same settings had its `git config` Bash call DENIED by the floor.
+ *
+ * MODEL REQUIREMENT — `auto` is model-gated. The CLI enables it only on an auto-capable model (verified
+ * live: the daemon's default Fable 5 kept `auto mode on`; `claude-sonnet-4-5` reported `auto mode
+ * unavailable for this model` and fell back to manual mode). No extra CLI flag, `--permission-mode`
+ * argument, or environment variable is added — see `defaultLaunchLine` below, unchanged — so the launched
+ * model (`assignment.model`) must be auto-capable, or the terminal degrades to prompting (the delivery
+ * gate then parks on the tool-permission modal via {@link detectReplReadiness} rather than hanging).
+ *
+ * WHAT IT ALSO WRITES, NOW AS DECLARED INTENT RATHER THAN CONTAINMENT (the classifier, not this allow
+ * list, is what clears routine tool use under `auto` — kept for legibility of what each agent was scoped to do):
+ *  - `permissions.allow` rules for the scoped file tools, over the stage's ALREADY-DECLARED
+ *    `scope.read ∪ scope.write` (reads) and `scope.write` (writes), each rule anchored at the canonical
+ *    repo root in the pathspec grammar the installed CLI actually matches (see
+ *    {@link absoluteRulePath} — the `//`-prefixed form these rules used to carry matched NOTHING on
+ *    Windows). A tool the server-owned workflow profile does not grant produces no rule.
+ *  - `Read` over this agent's own roster directory — the control plane's order channel (`binding.md`
+ *    plus `orders/*.md`). This is the one grant that is not repo scope, and it is the narrowest possible
+ *    form of it: one agent, one run, read-only, deleted when the roster retires.
+ *  - `permissions.additionalDirectories` for exactly those same directories, because a scope root or the
+ *    roster directory can sit outside the session cwd, and an allow rule alone does not extend the
+ *    working set.
+ *
+ *  - `permissions.deny`: {@link RESTRICTION_FLOOR}, the one part of this file that still ENFORCES under
+ *    the auto `defaultMode` (deny/ask/allow evaluate in that fixed order, mode-independent — auto mode
+ *    skips only the ASK step). It is a constant: nothing in the proposal, the scope or the tool cap can
+ *    widen it or shrink it, so every roster terminal on every run carries the same floor.
+ *
+ * There is no wildcard and no path that is not either a declared scope entry or this agent's own order
+ * channel. An entry that is not a safe repo-relative path is dropped rather than interpolated. No allow
+ * rule can override the floor — a deny always wins, whatever the allow list or the mode says.
+ */
+export function buildRosterPermissionSettings(input: RosterPermissionInput): RosterPermissionSettings {
+  const allow: string[] = [];
+  const additionalDirectories: string[] = [];
+  const addAllow = (rule: string): void => { if (!allow.includes(rule)) allow.push(rule); };
+  const addDir = (dir: string): void => { if (!additionalDirectories.includes(dir)) additionalDirectories.push(dir); };
+
+  // The order channel first: without it the session cannot read the binding context it is booted on.
+  addAllow(`Read(${absoluteRulePath(input.agentDir)}/**)`);
+  addDir(absoluteDir(input.agentDir));
+
+  const granted = new Set(input.tools);
+  const safe = (paths: readonly string[]): string[] => paths.filter((path) => isSafeRepoRelativePath(path));
+  const readPaths = [...new Set([...safe(input.read), ...safe(input.write)])];
+  const writePaths = [...new Set(safe(input.write))];
+
+  for (const tool of SCOPED_READ_TOOLS) {
+    if (!granted.has(tool)) continue;
+    for (const path of readPaths) addAllow(`${tool}(${absoluteRulePath(input.repoRoot, path)}/**)`);
+  }
+  for (const tool of SCOPED_WRITE_TOOLS) {
+    if (!granted.has(tool)) continue;
+    for (const path of writePaths) addAllow(`${tool}(${absoluteRulePath(input.repoRoot, path)}/**)`);
+  }
+  for (const path of readPaths) addDir(absoluteDir(input.repoRoot, path));
+
+  // `deny` first, in the file as in the evaluation order: it is the half that still ENFORCES under the
+  // auto `defaultMode`, and it is not derived from the proposal — no scope, no stage and no tool cap can
+  // add to it or take from it. See {@link RESTRICTION_FLOOR}, including its named residual.
+  const deny = [...RESTRICTION_FLOOR];
+  const permissions = { defaultMode: 'auto', deny, allow, additionalDirectories };
+  return {
+    allow,
+    deny,
+    additionalDirectories,
+    json: `${JSON.stringify({ permissions }, null, 2)}\n`,
+  };
+}
+
+/**
+ * The declared scope ONE roster agent works under: the union over every stage that agent owns, plus the
+ * proposal-level scope when it is also the manager. An agent that owns several stages gets the union of
+ * exactly those stages' scopes and nothing else — a stage's grant is never widened by a stage some other
+ * agent owns.
+ */
+export function rosterAgentScope(proposal: PlanProposal, agentId: string): ProposalScope {
+  const read: string[] = [];
+  const write: string[] = [];
+  const merge = (scope: ProposalScope | undefined): void => {
+    for (const path of scope?.read ?? []) if (!read.includes(path)) read.push(path);
+    for (const path of scope?.write ?? []) if (!write.includes(path)) write.push(path);
+  };
+  if (proposal.manager.assignment?.agentId === agentId) merge(proposal.scope);
+  for (const stage of proposal.stages) if (stage.assignment?.agentId === agentId) merge(stage.scope);
+  return { read, write };
+}
+
 export interface CompletionMarker {
   verdict: 'DONE' | 'BLOCKED' | 'FAILED';
   stageId: string;
@@ -377,6 +926,29 @@ export function matchCompletionMarker(line: string): CompletionMarker | null {
 function safeSummary(raw: string, fallback: string): string {
   const flattened = raw.replace(/\s+/g, ' ').trim().slice(0, MAX_SUMMARY_CHARS);
   return flattened === '' ? fallback : flattened;
+}
+
+/**
+ * The server-owned tool cap ONE roster agent runs under: the INTERSECTION of the caps of every stage it
+ * owns (a stage may name its own `workflowProfile`; otherwise the run's). Intersection, not union, is the
+ * fail-closed direction — an agent that owns both a `producer` stage and a `checker-readonly` stage is
+ * capped at what BOTH allow, so no stage's session is ever handed a capability another stage's profile
+ * withheld. An agent with no resolvable cap gets none, which simply means no permission rules are
+ * emitted and its tool uses fall back to the interactive prompt (today's behaviour).
+ */
+export function rosterAgentTools(
+  proposal: PlanProposal,
+  agentId: string,
+  resolveTools: (workflowProfileId: string | null) => readonly string[],
+): string[] {
+  const caps: string[][] = [];
+  if (proposal.manager.assignment?.agentId === agentId) caps.push([...resolveTools(proposal.profile ?? null)]);
+  for (const stage of proposal.stages) {
+    if (stage.assignment?.agentId !== agentId) continue;
+    caps.push([...resolveTools(stage.workflowProfile ?? proposal.profile ?? null)]);
+  }
+  if (caps.length === 0) return [];
+  return caps.reduce((left, right) => left.filter((tool) => right.includes(tool)));
 }
 
 /** Every distinct agent id in the compiled proposal — worker stages plus the manager. */
@@ -416,8 +988,11 @@ export function resolveRosterWorkDir(repoRoot: string, project: string): string 
   return join(repoRoot, 'orgs', project);
 }
 
-function defaultLaunchLine(input: { model: string; bindingPath: string; runRef: string; agentId: string }): string {
-  return `claude --model ${input.model} "Read ${input.bindingPath} now. It is your binding context for run `
+function defaultLaunchLine(input: { model: string; bindingPath: string; settingsPath: string; runRef: string; agentId: string }): string {
+  // `--settings` takes a file path (or inline JSON). The path is quoted because the dashboard state root
+  // is an absolute OS path that may contain spaces.
+  return `claude --model ${input.model} --settings "${input.settingsPath}" `
+    + `"Read ${input.bindingPath} now. It is your binding context for run `
     + `${input.runRef} as ${input.agentId}: follow it exactly, then wait — work orders arrive in this terminal `
     + `as file paths, one at a time."`;
 }
@@ -467,6 +1042,27 @@ export function rosterDeliveryRefusal(detail: RunDetail, input: {
   return null;
 }
 
+/**
+ * Production tool-cap resolution. Fail-closed by SHAPE: `createWorkflowToolPolicyResolver` throws for an
+ * absent, unknown, empty, malformed or forbidden-tool-bearing profile, and the catch turns every one of
+ * those into an EMPTY cap — no permission rules, so the session behaves exactly as it does today. A
+ * refusal here must never widen a grant, and it must never take down a spawn either: the tool cap that
+ * actually GOVERNS a headless attempt is still resolved (and still throws) in `claudeWorkerAdapter.ts`.
+ */
+const defaultWorkflowTools = (workflowProfileId: string | null): readonly string[] => {
+  try {
+    return createWorkflowToolPolicyResolver()(workflowProfileId).allowedTools;
+  } catch {
+    return [];
+  }
+};
+
+const defaultSleep = (ms: number): Promise<void> => new Promise((resolve) => {
+  const timer = setTimeout(resolve, ms);
+  // A readiness backoff must never be the reason a daemon cannot exit.
+  if (typeof timer.unref === 'function') timer.unref();
+});
+
 /** Create the run-roster session manager. Nothing spawns until `ensureRoster` is called. */
 export function createRosterSessionManager(options: RosterSessionsOptions): RosterSessionManager {
   const fs = options.fs ?? defaultFileSystem;
@@ -476,6 +1072,8 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
   const rows = options.rows ?? DEFAULT_ROWS;
   const launchLine = options.launchLine ?? defaultLaunchLine;
   const deliveryLine = options.deliveryLine ?? defaultDeliveryLine;
+  const resolveWorkflowTools = options.resolveWorkflowTools ?? defaultWorkflowTools;
+  const sleep = options.sleep ?? defaultSleep;
   const runs = new Map<string, RosterRunEntry>();
   /**
    * Activity lines recovered from the durable event mirror, plus the event cursor they were read up to.
@@ -705,14 +1303,44 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
     return Math.min(MAX_DELIVERY_TIMEOUT_MS, Math.max(MIN_DELIVERY_TIMEOUT_MS, Math.round(candidate)));
   };
 
+  /**
+   * Wait for a terminal to leave a modal menu / stop being mid-turn, polling its own output stream with
+   * exponential backoff. Returns the readiness that was true when it gave up, so the caller can name it.
+   *
+   * The FAST PATH IS SYNCHRONOUS BY DESIGN: an already-ready terminal never awaits, so `deliver` keeps
+   * authoring and typing its order in the same synchronous prefix it always did. Only a genuinely blocked
+   * terminal pays a suspension.
+   */
+  const waitForRepl = async (entry: RosterSessionEntry, budgetMs: number): Promise<ReplReadiness> => {
+    const started = now();
+    let delay = REPL_POLL_MIN_MS;
+    // Freshness-gated: a `busy` frame whose spinner tail is merely frozen (idle terminal gone silent for
+    // >= STALE_BUSY_QUIET_MS) re-classifies to its underlying idle state, so a finished turn no longer
+    // parks delivery. See {@link detectReplReadinessFresh}.
+    let readiness = detectReplReadinessFresh(entry.screen, now() - entry.lastChunkAt);
+    while (readiness.state !== 'ready') {
+      if (now() - started >= budgetMs) return readiness;
+      await sleep(Math.min(delay, Math.max(0, budgetMs - (now() - started))));
+      delay = Math.min(REPL_POLL_MAX_MS, delay * 2);
+      readiness = detectReplReadinessFresh(entry.screen, now() - entry.lastChunkAt);
+    }
+    return readiness;
+  };
+
   const scan = (entry: RosterSessionEntry, chunk: string): void => {
+    const stripped = stripTerminalControl(chunk);
+    // The readiness window accumulates ALWAYS — idle output is exactly what the delivery gate reads.
+    entry.screen = (entry.screen + stripped).slice(-SCREEN_WINDOW_CHARS);
+    // Stamp the arrival: the freshness gate uses the quiet-since-last-chunk duration to distinguish a live
+    // turn (spinner heartbeat) from a finished one whose spinner tail is merely frozen in the window.
+    entry.lastChunkAt = now();
     const pending = entry.pending;
     if (!pending) {
       // Keep the window bounded even while idle so a chatty session cannot grow memory.
-      entry.buffer = (entry.buffer + stripTerminalControl(chunk)).slice(-SCAN_WINDOW_CHARS);
+      entry.buffer = (entry.buffer + stripped).slice(-SCAN_WINDOW_CHARS);
       return;
     }
-    entry.buffer = (entry.buffer + stripTerminalControl(chunk)).slice(-SCAN_WINDOW_CHARS);
+    entry.buffer = (entry.buffer + stripped).slice(-SCAN_WINDOW_CHARS);
     const lines = entry.buffer.split('\n');
     // Keep the trailing partial line for the next chunk; a marker is only acted on once complete.
     entry.buffer = lines.pop() ?? '';
@@ -734,13 +1362,33 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
     resolvePending(entry, { state: 'waiting-human', summary, usage: zeroUsage(), artifacts: [], checkpoints: [] });
   };
 
-  const spawnSession = (run: RosterRunEntry, runRef: string, agentId: string, verified: ResolvedAssignedAgent): RosterSessionEntry => {
+  const spawnSession = (
+    run: RosterRunEntry,
+    runRef: string,
+    agentId: string,
+    verified: ResolvedAssignedAgent,
+    proposal: PlanProposal,
+  ): RosterSessionEntry => {
     const agentDir = join(runDir(runRef), agentId);
     fs.ensureDir(join(agentDir, 'orders'));
     const bindingPath = join(agentDir, 'binding.md');
     fs.writeFile(bindingPath, bindingMarkdown({
       runRef, agentId, verified, project: run.project, parameters: run.parameters, workDir: run.workDir,
     }));
+    // THE SCOPED PER-RUN PERMISSIONS. Written BEFORE the launch line is typed, from the compiled
+    // proposal's own declared scope and the server-owned tool cap — never a blanket flag, never a
+    // pre-trusted path, never anything outside `scope.read ∪ scope.write` plus this agent's own order
+    // channel. It lives inside the roster run directory, so `retireRun`'s `removeDir` is already its
+    // cleanup: the grant cannot outlive the run it was minted for.
+    const scope = rosterAgentScope(proposal, agentId);
+    const settingsPath = join(agentDir, 'settings.json');
+    fs.writeFile(settingsPath, buildRosterPermissionSettings({
+      repoRoot: options.repoRoot,
+      agentDir,
+      read: scope.read,
+      write: scope.write,
+      tools: rosterAgentTools(proposal, agentId, resolveWorkflowTools),
+    }).json);
     const created = options.registry.create(run.owner, options.host, {
       requestId: '', cwd: run.workDir, cols, rows,
     });
@@ -750,7 +1398,10 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
       owner: run.owner,
       model: verified.assignment.model,
       bindingPath,
+      settingsPath,
       buffer: '',
+      screen: '',
+      lastChunkAt: now(),
       unobserve: () => {},
       pending: null,
     };
@@ -763,7 +1414,7 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
       () => settlePending(run, runRef, entry, `delivery abandoned: session ${created.sessionId} ended`),
     );
     options.registry.write(run.owner, created.sessionId, `${launchLine({
-      model: verified.assignment.model, bindingPath, runRef, agentId,
+      model: verified.assignment.model, bindingPath, settingsPath, runRef, agentId,
     })}\r`);
     run.sessions.set(agentId, entry);
     record(run.subject, runRef, agentId, `session ${created.sessionId} spawned at ${new Date(now()).toISOString()}`, 'pending');
@@ -790,6 +1441,22 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
     // roster's tokens are already dead (every pending delivery settled above, every session closed), so
     // keeping the directory is a needless durable copy of them. A resume re-authors both from the
     // immutable proposal, so nothing here is load-bearing state.
+    //
+    // TODO(roster-boot-sweep): this is the ONLY thing that deletes a roster directory, and it runs only
+    // on a graceful path — `retireAll` from daemon shutdown (`http/surface.ts`) and from an operator
+    // `lock()` (`activation.ts`). A SIGKILL or power loss therefore leaves `<stateRoot>/control/roster/
+    // <runRef>/<agentId>/{settings.json,binding.md,orders/*.md}` on disk indefinitely, tokens included.
+    // The close is a boot sweep of roster dirs with no live run, which needs three things this file does
+    // not have yet: (1) a `listDirs(path): string[]` member on {@link RosterFileSystem} (real impl:
+    // `readdirSync(path, { withFileTypes: true })`, absent dir → `[]`), so tests keep their disk-free
+    // seam; (2) a call in `createRosterSessionManager` — NOT unconditional: `runs` is empty at
+    // construction, so a naive sweep would delete a LIVE run's order channel if the manager is ever
+    // reconstructed while another instance holds sessions (`activateExecution` is re-entrant across an
+    // unlock). Gate it on the store: sweep a `<runRef>` only when `store.getRun` says the run is in a
+    // terminal state or is unknown. (3) One test per branch. Deliberately NOT done in this pass: the
+    // orphan itself is inert (a settings file is only read by a process launched with `--settings` at
+    // that exact path, and `scan` matches only the LIVE `pending.token`), and getting (2) wrong loses a
+    // running roster's orders — a strictly worse failure than the leak it closes.
     try { fs.removeDir?.(runDir(runRef)); } catch { /* a locked file must never block the reap */ }
     return retired;
   };
@@ -834,7 +1501,7 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
         const verified = options.assignedAgents.resolve({
           assignment: found.assignment, role: found.role, project: input.proposal.project, profiles,
         });
-        spawnSession(run, input.runRef, agentId, verified);
+        spawnSession(run, input.runRef, agentId, verified, input.proposal);
         spawned.push(agentId);
       }
       return { runRef: input.runRef, spawned, existing };
@@ -872,6 +1539,46 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
         return { state: 'waiting-human', summary: `roster delivery withheld: ${refusal}`, usage: zeroUsage(), artifacts: [], checkpoints: [] };
       }
 
+      const timeoutMs = resolveDeliveryTimeout({
+        runRef: input.runRef, stageId: input.stageId, agentId,
+        ...(input.timeoutMs === undefined ? {} : { timeoutMs: input.timeoutMs }),
+      });
+
+      // THE REPL-READINESS GATE. The delivery line used to be typed unconditionally, and that is how a
+      // work order was lost: it interleaved character-by-character with an open tool-permission menu,
+      // which consumed the keystrokes as menu input, and the stage then sat against the marker deadline
+      // with nothing delivered and nothing to report. A terminal is written into only when its own output
+      // stream says it is at a plain REPL prompt — not in a modal menu and not mid-turn.
+      //
+      // The fast path costs nothing: `detectReplReadinessFresh` over an idle frame returns `ready` and the
+      // code below runs synchronously exactly as before. Only a blocked terminal suspends, and it does so
+      // under a bound that never exceeds this delivery's own marker deadline.
+      const readinessBudget = Math.min(
+        timeoutMs,
+        Math.max(MIN_REPL_READY_TIMEOUT_MS, options.replReadyTimeoutMs ?? DEFAULT_REPL_READY_TIMEOUT_MS),
+      );
+      let readiness = detectReplReadinessFresh(entry.screen, now() - entry.lastChunkAt);
+      if (readiness.state !== 'ready') readiness = await waitForRepl(entry, readinessBudget);
+      if (readiness.state !== 'ready') {
+        // NOTHING was authored and NOTHING was typed: no order file, no token, no bytes into the pty.
+        // This settles as a named human wait, never as a hang and never as a silent success.
+        const detail = readiness.state === 'modal'
+          ? `an interactive prompt is open ("${readiness.marker}")`
+          : readiness.state === 'silent'
+            ? readiness.marker === 'no output yet'
+              ? 'it has produced no output at all — the REPL may never have come up'
+              : 'no REPL input prompt is on screen — a first-run splash/onboarding screen may be open, '
+                + 'or the REPL has not finished starting'
+            : `it is still mid-turn ("${readiness.marker}")`;
+        const summary = `work order withheld: the ${agentId} terminal was not at a REPL prompt within `
+          + `${Math.max(1, Math.round(readinessBudget / 60_000))} min — ${detail} (${DELIVERY_NOT_READY_REASON}); `
+          + 'answer or clear it in that terminal, then re-run the stage';
+        record(run.subject, input.runRef, agentId, summary, 'waiting', input.stageRef);
+        return {
+          state: 'waiting-human', summary: summary.slice(0, MAX_SUMMARY_CHARS), usage: zeroUsage(), artifacts: [], checkpoints: [],
+        };
+      }
+
       // THE PRE-DELIVERY BASELINE. Taken before the order file exists, so the agent cannot have acted
       // yet: this is what "the stage changed its declared artifacts" is measured against on completion.
       const snapshots = snapshotDeclaredArtifacts(input.proposalStage);
@@ -893,10 +1600,6 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
       // THE MARKER DEADLINE. `settled` is otherwise reachable only from a marker match, a session exit,
       // or a retire, so one missed marker held the engine's single worker slot until an operator ran
       // `stop`. Armed against THIS delivery only: a slot that a later delivery owns is left alone.
-      const timeoutMs = resolveDeliveryTimeout({
-        runRef: input.runRef, stageId: input.stageId, agentId,
-        ...(input.timeoutMs === undefined ? {} : { timeoutMs: input.timeoutMs }),
-      });
       const timer = setTimeout(() => {
         if (entry.pending !== pending) return;
         const summary = `delivery abandoned: stage ${input.stageId} printed no completion marker within `
@@ -910,17 +1613,73 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
       // The deadline must never be the reason a daemon cannot exit.
       if (typeof timer.unref === 'function') timer.unref();
       pending.timer = timer;
-      const wrote = options.registry.write(entry.owner, entry.sessionId, `${deliveryLine({ orderPath, stageId: input.stageId })}\r`);
-      if (!wrote) {
-        // `settled` is discarded with this early return, so releasing the slot and the deadline together
-        // is the whole cleanup.
-        clearTimeout(timer);
-        entry.pending = null;
-        const summary = `work order could not be written into session ${entry.sessionId}`;
-        record(run.subject, input.runRef, agentId, summary, 'interrupted', input.stageRef);
-        return { state: 'waiting-human', summary, usage: zeroUsage(), artifacts: [], checkpoints: [] };
+      // TWO SEPARATE WRITES, not `line + '\r'` in one. The REPL folds a same-write trailing CR into the
+      // paste instead of submitting it (see {@link SUBMIT_ENTER_DELAY_MS}), so the order text goes first,
+      // the paste window is allowed to close, then Enter is sent as its own read to actually fire the turn.
+      const typed = options.registry.write(entry.owner, entry.sessionId, deliveryLine({ orderPath, stageId: input.stageId }));
+      if (typed) await sleep(SUBMIT_ENTER_DELAY_MS);
+      // Submit the Enter and treat a write failure ONLY while this delivery is still ours. The session can
+      // be retired, its shell can die, or (in tests) a marker can land DURING the submit gap — any of which
+      // resolves `settled` and clears `entry.pending`. In that case skip the Enter (the outcome is already
+      // decided) and fall through to `await settled` below, so the retire/exit reason or the marker's own
+      // completion + artifact verification is what returns — never a spurious Enter-write failure.
+      if (entry.pending === pending) {
+        const wrote = typed && options.registry.write(entry.owner, entry.sessionId, '\r');
+        if (!wrote) {
+          // `settled` is discarded with this early return, so releasing the slot and the deadline together
+          // is the whole cleanup.
+          clearTimeout(timer);
+          entry.pending = null;
+          const summary = `work order could not be written into session ${entry.sessionId}`;
+          record(run.subject, input.runRef, agentId, summary, 'interrupted', input.stageRef);
+          return { state: 'waiting-human', summary, usage: zeroUsage(), artifacts: [], checkpoints: [] };
+        }
+        // OUTCOME-VERIFY THE SUBMISSION. Bytes written is not a turn started — see {@link
+        // SUBMIT_VERIFY_RETRIES}. Poll for positive evidence the turn engaged (a fresh busy spinner frame,
+        // or the delivery already settled by a fast marker), re-submitting up to SUBMIT_VERIFY_RETRIES —
+        // re-typing the line only when it has left the composer, otherwise just re-sending Enter. If no turn
+        // ever engages, PARK LOUDLY as a named human wait; NEVER record a "working" that reads as running
+        // while nothing was delivered and then dies at the 40-min marker deadline.
+        let engaged = false;
+        for (let attempt = 0; attempt <= SUBMIT_VERIFY_RETRIES; attempt += 1) {
+          const windowEnd = now() + SUBMIT_VERIFY_WINDOW_MS;
+          for (;;) {
+            if (entry.pending !== pending) { engaged = true; break; } // a marker/exit already settled us.
+            // A STARTED turn paints a fresh busy spinner — captured live off a real pty: the frame flips
+            // from the idle prompt to the interrupt-hint/elapsed/token footer within ~1-1.5s of the Enter,
+            // and stays busy while the turn runs. The readiness gate above guarantees the terminal was idle
+            // before we typed, so this busy is OUR turn. (A submitted order keeps its prompt TEXT visible on
+            // screen as the user message, so "the order line is gone" is NOT a usable engagement signal —
+            // proven live: it made a genuinely-running turn read as not-engaged.)
+            if (detectTurnEngaged(entry.screen, now() - entry.lastChunkAt)) { engaged = true; break; }
+            if (now() >= windowEnd) break;
+            await sleep(Math.min(SUBMIT_VERIFY_POLL_MS, Math.max(0, windowEnd - now())));
+          }
+          if (engaged || entry.pending !== pending) break;
+          if (attempt === SUBMIT_VERIFY_RETRIES) break;
+          // Re-submit. A missing line means the prior Enter cleared it WITHOUT starting a turn (submitted-
+          // then-errored, or typed into a transient state) — re-type before Enter; a present line is still
+          // sitting unsubmitted (a folded CR, or a block that has since cleared), so just re-send Enter.
+          if (!frameHasDeliveryLine(entry.screen, input.stageId)) {
+            if (!options.registry.write(entry.owner, entry.sessionId, deliveryLine({ orderPath, stageId: input.stageId }))) break;
+            await sleep(SUBMIT_ENTER_DELAY_MS);
+            if (entry.pending !== pending) { engaged = true; break; }
+          }
+          if (!options.registry.write(entry.owner, entry.sessionId, '\r')) break;
+        }
+        if (!engaged && entry.pending === pending) {
+          clearTimeout(timer);
+          entry.pending = null;
+          const summary = `work order was written into session ${entry.sessionId} but no turn engaged after `
+            + `${SUBMIT_VERIFY_RETRIES} submit retries (${DELIVERY_NOT_ENGAGED_REASON}) — open the ${agentId} `
+            + 'terminal to see whether it is blocked (an open prompt, a usage limit), clear it, then re-run the stage';
+          record(run.subject, input.runRef, agentId, summary, 'waiting', input.stageRef);
+          return { state: 'waiting-human', summary: summary.slice(0, MAX_SUMMARY_CHARS), usage: zeroUsage(), artifacts: [], checkpoints: [] };
+        }
+        if (entry.pending === pending) {
+          record(run.subject, input.runRef, agentId, `working stage ${input.stageId}`, 'pending', input.stageRef);
+        }
       }
-      record(run.subject, input.runRef, agentId, `working stage ${input.stageId}`, 'pending', input.stageRef);
       const result = await settled;
       if (result.state === 'succeeded') {
         // Declared artifacts are verified SERVER-SIDE before the completion is accepted; a marker alone

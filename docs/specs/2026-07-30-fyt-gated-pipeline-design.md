@@ -3,9 +3,10 @@
 2026-07-30 · Approved by Daniel in boss session (rev 2: terminal substrate) · Status: approved and
 implemented on `claude/fyt-pipeline-boss` (PR #102, unmerged, Daniel's review pending). Six real
 deviations from this text surfaced during the build — corrected in place below, and cataloged with
-their reasoning in *As-built deviations* near the end of this document. Two of them are genuine
-open questions for Daniel's ruling, not settled by the build; the rest were mechanical necessities
-or safety-positive changes. Nothing below has been ruled on by Daniel yet.
+their reasoning in *As-built deviations* near the end of this document. Two of them were flagged as
+open questions for Daniel's ruling; **both are now ruled on, 2026-07-30** — see the updated #3 and
+#4 below and the same-dated entry in `orgs/faceless-youtube/knowledge/decisions.md` logging all of
+today's rulings. The rest were mechanical necessities or safety-positive changes.
 
 ## Goal
 
@@ -82,7 +83,7 @@ condition is six gates firing in order, not five.**
 5. Phase agents dispatch subagents (haiku/sonnet/opus by stakes) or codex queue cards for grunt
    work; single-writer staging survives (agents write `staging/`; **as shipped, `fyt-checker` — not
    the runner — merges to root and re-lints, as its own DAG nodes; see *As-built deviations* #3,
-   pending Daniel's ruling**).
+   resolved 2026-07-30: as-built ratified**).
 6. Run ships → roster retires (terminals stop, worktrees swept per lease law).
 
 ### Workflow canvas (dashboard UI)
@@ -104,7 +105,7 @@ specifics. Any agent is spawnable standalone with a work order or as a run-roste
 
 | Agent | Owns | Notes |
 | --- | --- | --- |
-| `fyt-runner` | Entry-point conductor: run launch/monitoring, work-order delivery, targeted repairs | Loses image-review (goes to checker). No craft, no gate-grading, no spend, no publish. **As shipped, `fyt-runner` does not execute the single-writer staging merges — it governs their place in the run; `fyt-checker` executes them. See *As-built deviations* #3 (pending Daniel's ruling).** |
+| `fyt-runner` | Entry-point conductor: run launch/monitoring, work-order delivery, targeted repairs | Loses image-review (goes to checker). No craft, no gate-grading, no spend, no publish. **As shipped, `fyt-runner` does not execute the single-writer staging merges — it governs their place in the run; `fyt-checker` executes them. See *As-built deviations* #3 (resolved 2026-07-30: as-built ratified).** |
 | `fyt-story` | idea → research → script → shorts → metadata | Absorbs fyt-preproduction's text stages. Drives idea-generator, researcher, long-form-writer, shorts-writer, metadata-writer skills. |
 | `fyt-visuals` | VPW shots + motion planning + image-gen | Motion moves here from preproduction. Drives visual-prompt-writer, motion-planner, image-generation. Never grades its own frames. |
 | `fyt-audio-render` | voiceover, audio-plan, SFX, render | Drives voiceover, audio-director, render-builder (+ sfx/music pools as standing duty). |
@@ -201,31 +202,61 @@ to do) would have called a paid API with no authorization recorded anywhere agai
 restates the same G2 decision at the point where the call happens. No ruling needed — this closes
 an ungated-spend path the spend law was already meant to prevent.
 
-**3. `fyt-checker` executes the two merge nodes, not `fyt-runner` — PENDING DANIEL'S RULING.**
-This is the one deviation that directly contradicts this spec's text: the "single-writer staging
-survives (agents write `staging/`, runner merges + re-lints)" line above, and the roster table's
-listing of "single-writer staging merges" under `fyt-runner`'s responsibilities. Reason it
-happened: `compile.ts#resolveAssignment` requires a stage's assigned agent to have a *worker*-role
-default profile, while the workflow-level manager assignment requires a *manager*-role one —
-`fyt-runner` is declared manager-role (by this same spec's model policy) and cannot declare both
-roles at once without gaining a second identity or having its own role changed, both of which
-this project has ruled against elsewhere to avoid multiplying agent identities. So a stage-level
-merge node governed by `fyt-runner` cannot resolve to `fyt-runner` as its executor; it parks
-closed instead. `fyt-checker` was given the two nodes rather than the alternative of loosening
-the role check or minting a seventh agent. `fyt-runner` still governs the nodes' place in the run
-(sequencing, gating around them); it does not execute them.
-The argument for this being *right* rather than merely necessary: promoting and re-linting a plan
-is a verification act, and `fyt-checker` authors none of the plans it promotes — a different
-identity re-linting the root file `fyt-visuals` (or `fyt-audio-render`) staged strengthens
-author-never-grades rather than bending it, and the single-writer law is still satisfied (exactly
-one identity writes each root file — it is now the checker instead of the runner, a change of WHO
-writes it, not a loosening of the ONE-writer rule). The counter-argument Daniel should weigh: this
-spec explicitly locked the merge as the runner's job, and reassigning it to the gate-service agent
-blurs the conductor/inspector split this spec was written to enforce. Both readings are live until
-Daniel rules.
+**3. `fyt-checker` executes the two merge nodes, not `fyt-runner` — RESOLVED 2026-07-30: AS-BUILT
+RATIFIED.** This was the one deviation that directly contradicted this spec's text: the
+"single-writer staging survives (agents write `staging/`, runner merges + re-lints)" line above,
+and the roster table's listing of "single-writer staging merges" under `fyt-runner`'s
+responsibilities, both named the merge as the runner's job. Reason the build diverged:
+`compile.ts#resolveAssignment` requires a stage's assigned agent to have a *worker*-role default
+profile, while the workflow-level manager assignment requires a *manager*-role one — `fyt-runner`
+is declared manager-role (by this same spec's model policy) and cannot declare both roles at once
+without gaining a second identity or having its own role changed, both of which this project has
+ruled against elsewhere to avoid multiplying agent identities. So a stage-level merge node governed
+by `fyt-runner` cannot resolve to `fyt-runner` as its executor. `fyt-checker` was given the two
+nodes instead of loosening the role check or minting a seventh agent; `fyt-runner` still governs
+the nodes' place in the run (sequencing, gating around them) without executing them.
 
-**4. `publicationAuthorization` is net-new and not in the approved design — the highest-stakes
-deviation, PENDING DANIEL'S RULING.** This spec's policy row (`control/policy.ts`) covers only the
+Daniel's first ruling favored the spec's original text — `fyt-runner` should execute the merge
+nodes. A rework pass attempted the flip and hit a hard blocker, not a stylistic one:
+`compile.ts#resolveAssignment` checks the ASSIGNED agent's OWN declared *default* profile's role
+against the role the assignment context requires — `'worker'` for the stage assignment,
+`'manager'` for the workflow-level assignment `fyt-runner` also holds on this same definition.
+`fyt-runner` has exactly one default profile, `manager:claude:claude-fable-5`, and one
+default-profile role cannot satisfy both checks at once. Unblocking it required one of three
+separate decisions, each with a blast radius beyond these two stages: (1) loosen
+`resolveAssignment`'s role check project-wide, removing the hard capability separation that
+manager-role profiles carry no write capability, for every agent, not only `fyt-runner`; (2) mint
+`fyt-runner` a second, worker-role identity, the "multiplying agent identities" pattern this
+project has ruled against elsewhere; or (3) change `fyt-runner`'s own default profile to
+worker-role, which then fails the *other* check — the workflow-level `manager:` assignment on the
+same definition requires a manager-role default. None of these is a two-stage fix.
+
+**Daniel's final ruling (2026-07-30): ACCEPT AS-BUILT.** `fyt-checker` executes `shots-merge` and
+`audio-plan-merge`; `fyt-runner` governs them. This supersedes the earlier "rework to spec"
+direction: once the role-check conflict surfaced, the real choice was never "runner executes for
+free" versus "checker executes for free" — it was between the current arrangement and one of the
+three costly unblocking mechanisms above, and none of those costs buys anything the current
+arrangement lacks. The as-built arrangement is ratified on its own merits, not merely accepted for
+want of an alternative: promoting and re-linting a plan is a verification act, and `fyt-checker`
+authors none of the plans it promotes — a different identity re-linting the root file `fyt-visuals`
+(or `fyt-audio-render`) staged strengthens author-never-grades rather than bending it; the
+single-writer law is still satisfied (exactly one identity writes each root file — now the checker
+instead of the runner, a change of WHO writes it, not a loosening of the ONE-writer rule); and
+keeping `fyt-runner` as governor-only while `fyt-checker` executes preserves the governor/executor
+split this spec's `fyt-checker` assignment exists to hold, rather than collapsing conductor and
+inspector into one identity on a straight self-governance loop. Rejected alternatives: minting
+`fyt-runner` a second, worker-role identity — it would satisfy `resolveAssignment`, but only by
+multiplying agent identities for a separation that is otherwise cosmetic (the sibling identity
+would do nothing `fyt-checker` doesn't already do correctly); and loosening the role check
+project-wide — it would let `fyt-runner` execute the merges, but weakens the manager/worker
+capability separation for every agent and every workflow in the roster, not only these two stages.
+This spec's original "runner merges" line (above, and in the roster table) is superseded by the
+role system: `fyt-checker` executes, `fyt-runner` governs. **No code changed** — `shots-merge` and
+`audio-plan-merge` remain `governedBy: fyt-runner` / `agentId: fyt-checker`, the as-built state
+before this ruling and the ratified state after it.
+
+**4. `publicationAuthorization` is net-new and not in the approved design — RATIFIED AS-BUILT
+(Daniel, 2026-07-30).** This spec's policy row (`control/policy.ts`) covers only the
 spend disposition: a declared spend gate yields `waiting-human` instead of a hard refuse. The
 build added a second, parallel disposition of the same shape for publication: a T3 stage
 (`publish-private`) whose own declared gate (`g4-publish-private`, `publicationAuthorization:
@@ -235,10 +266,13 @@ confirmed by diff across the full commit range — but the *effect* of its publi
 is now something a human approval can release, where before this build no path released it at
 all. This is required for `g4` to function as an approvable gate rather than a permanent refuse;
 without it the T3 upload stage could never run under this control plane regardless of approval.
-The reason to flag it as highest-stakes: this is a new axis of authority this spec never
-described, sitting exactly on the boundary the restricted-intent rules exist to hold, and Daniel
-should decide whether this is the mechanism he wants carrying that release, not just whether the
-code is correct.
+The reason it was flagged as highest-stakes: this is a new axis of authority this spec never
+described, sitting exactly on the boundary the restricted-intent rules exist to hold.
+
+**Daniel's ruling (2026-07-30): RATIFIED as-built.** `publicationAuthorization` is the mechanism he
+wants carrying that release: a human approval at `g4-publish-private` releases the private upload;
+`RESTRICTED_INTENT_RULES` in `execution.ts` stays untouched, unchanged from as-built. No code change
+follows from this ruling — the axis already works as intended.
 
 **5. The DAG is a strict linear chain, not the spec's `packaging ∥ visual-plan` parallel
 branch.** Safety-positive — a parallel branch would have let `visual-plan` (and everything behind

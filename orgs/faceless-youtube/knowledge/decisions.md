@@ -3792,3 +3792,231 @@ review fixes → a full deep review (5 root causes, 24 r2 directives, 11 pipelin
   shipped green. The lesson is about trusting a declared "known failures, ignore" baseline without
   re-deriving why it's declared — not about the specific model name — because a stale baseline like
   this can hide a live regression indefinitely.
+
+## 2026-07-30 — Three rulings on the gated-pipeline build (Daniel)
+
+- **(a) Roster terminals get a scoped per-run settings file at `ensureRoster`, granting only the
+  stage's declared `scope.read ∪ scope.write`.**
+  - **Decision.** Each roster agent's pty terminal is handed a per-run settings file, minted when
+    the roster spawns, whose permitted paths are exactly the union of the read and write scopes the
+    launched definition already declares for that agent's stages — nothing broader.
+  - **Alternatives rejected.** A blanket allow (any roster terminal reads/writes anywhere in the
+    project tree once spawned) — rejected as strictly wider than any stage's declared need, and a
+    silent widening the moment a new stage is added to any agent's roster position. Pre-trusted
+    static paths per agent (a fixed allowlist baked into the agent declaration, independent of the
+    actual run) — rejected because it drifts from the compiled definition's real scope the first
+    time a definition changes shape, and re-introduces exactly the kind of capability grant that
+    isn't re-derived per launch the way the compiled proposal's own `scope.read`/`scope.write`
+    already is.
+  - **Implementation note.** This lands in `dashboard/server/control/rosterSessions.ts` and
+    `canonicalResultIntegrator.ts`, owned by a parallel worker on this same branch; not touched by
+    this entry's author.
+
+- **(b) Merge-node execution: ruled TOWARD SPEC (`fyt-runner` executes `shots-merge` and
+  `audio-plan-merge`) — ruling recorded, implementation BLOCKED, not applied this pass.**
+  - **Decision (direction only).** Daniel ruled that the approved spec's original assignment —
+    `fyt-runner` executes the two staging→root merge nodes — is what he wants, superseding the
+    2026-07-30 "fyt-checker, not fyt-runner" entry above on the question of WHICH READING IS
+    BETTER. That entry's "Pending Daniel's ruling" line is resolved: Daniel has ruled, in favor of
+    the spec's original text.
+  - **Why it is not yet code.** `compile.ts#resolveAssignment` requires the ASSIGNED agent's own
+    declared *default* execution profile to already carry the role a given assignment context
+    requires: `'worker'` for a stage assignment, `'manager'` for the workflow-level `manager:`
+    assignment `fyt-runner` also holds on this same definition. `fyt-runner` has exactly one default
+    profile (`manager:claude:claude-fable-5`); one default-profile role cannot satisfy both checks
+    on the same definition at once. Setting `agentId: fyt-runner` on either merge node fails
+    compile with `assigned-default-profile-role-mismatch` under the code as it stands today —
+    verified by reading `compile.ts:130-137` and the existing `compile.videoRun.test.ts` coverage of
+    exactly this constraint, not merely asserted.
+  - **Alternatives considered for unblocking, none applied.** (1) Loosen `resolveAssignment`'s role
+    check so only the per-stage ASSIGNED profile's role needs to match, not the agent's own default
+    — rejected for this pass because it removes a hard capability separation (manager-role profiles
+    carry no write capability) that holds project-wide, for every agent, not only `fyt-runner`; a
+    change with that blast radius is a further decision, not an implicit consequence of "runner
+    executes the merge nodes." (2) Mint `fyt-runner` a second, worker-role identity so the manager
+    identity keeps conducting while a sibling identity executes the two stages — rejected as the
+    "multiplying agent identities" pattern this project has ruled against elsewhere. (3) Flip
+    `fyt-runner`'s own default profile to worker-role — rejected because it breaks the OTHER check:
+    the workflow-level `manager:` assignment on the same definition requires a manager-role default,
+    so this trades one failure for the other rather than resolving it.
+  - **Self-governance note.** Independent of the code block: both merge nodes already carry
+    `governedBy: fyt-runner` today. Adding `agentId: fyt-runner` on top would put one identity in
+    both the seat that decides the run's flow around a node (sequencing it, routing its BLOCKED
+    verdict back as rework, reporting its status at the gate that follows) and the seat that
+    performs the node's own check and reports whether it passed — collapsing the governor/executor
+    split the spec's `fyt-checker` assignment exists to hold apart. This was flagged, not resolved,
+    and is reported rather than papered over.
+  - **State left in the repo.** No code changed on this axis. `shots-merge` and `audio-plan-merge`
+    remain exactly as before: `governedBy: fyt-runner`, `agentId: fyt-checker`, in
+    `orgs/faceless-youtube/workflows/video-run.md`, `agents/fyt-runner.md`, and
+    `agents/fyt-checker.md` — the only assignment that compiles and passes the existing suite today.
+    The PENDING flags in `docs/specs/2026-07-30-fyt-gated-pipeline-design.md` §As-built deviations #3
+    and `orgs/faceless-youtube/docs/STATUS.md` are updated to say Daniel has ruled the direction and
+    that a further decision — which of the three unblocking mechanisms above, or accepting the
+    current arrangement as the practical settlement — is owed back to him.
+
+- **(c) `publicationAuthorization` is RATIFIED as-built.**
+  - **Decision.** The net-new `publicationAuthorization` disposition in `control/policy.ts` — a
+    human approval at `g4-publish-private` releases the private-upload T3 stage, where an undeclared
+    T3 stage still fails closed exactly as before — is ratified as the mechanism carrying that
+    release. `RESTRICTED_INTENT_RULES` in `execution.ts` stays untouched, unchanged from as-built.
+  - **Alternatives rejected.** Reverting to the approved spec's silence on this axis, which would
+    leave `g4-publish-private` permanently unable to release the T3 upload stage under this control
+    plane regardless of approval (a spend/publish-gate design that cannot ever fire is not a gate,
+    it is a permanent refuse) — rejected as strictly worse than the ratified mechanism. Designing a
+    different release mechanism from scratch — rejected for this pass: no alternative was proposed
+    that carries the release more narrowly than "one human approval on the one declared T3 gate,"
+    and the built mechanism is already scoped to exactly that.
+  - **Cross-reference.** `docs/specs/2026-07-30-fyt-gated-pipeline-design.md` §As-built deviations
+    #4; supersedes the "PENDING DANIEL'S RULING" language there and in
+    `orgs/faceless-youtube/docs/STATUS.md`.
+
+**2026-07-30 — Merge-node execution ruling CLOSED: accept as-built (Daniel).**
+Follow-up to the (b) entry above: a rework pass tried to carry out the "runner should execute"
+direction and confirmed it is structurally blocked, not merely unimplemented — `fyt-runner`'s single
+default profile cannot simultaneously satisfy `compile.ts#resolveAssignment`'s worker-role check for
+a stage assignment and its manager-role check for the workflow-level `manager:` assignment it also
+holds on the same definition. Having seen the conflict laid out, Daniel closed the question: **accept
+the as-built arrangement** — `fyt-checker` executes `shots-merge` and `audio-plan-merge` as a
+verification act (re-linting a plan it did not author), `fyt-runner` governs their place in the run,
+and this spec's original "runner merges" line is superseded by the role system rather than reworked
+against it. No code changes follow; `shots-merge`/`audio-plan-merge` keep `governedBy: fyt-runner` /
+`agentId: fyt-checker` exactly as they already stood.
+  - **Alternatives rejected (same ones weighed in the unblocking pass above).** Minting `fyt-runner` a
+    second, worker-role identity so a sibling identity executes the two stages — rejected as a
+    cosmetic separation: it would satisfy the role check but multiply agent identities for a split
+    that buys nothing the checker-executes arrangement doesn't already provide, and this project has
+    ruled against multiplying identities elsewhere. Loosening `resolveAssignment`'s role check so a
+    stage assignment only needs the per-stage ASSIGNED profile's role, not the agent's own default —
+    rejected because it would remove a hard capability separation (manager-role profiles carry no
+    write capability) project-wide, for every agent and every workflow, not only this one; a
+    security-relevant architecture change out of proportion to two merge nodes.
+  - **Cross-reference.** Closes the open item left by entry (b) above and by
+    `docs/specs/2026-07-30-fyt-gated-pipeline-design.md` §As-built deviations #3 (now marked RESOLVED
+    2026-07-30: as-built ratified) and `orgs/faceless-youtube/docs/STATUS.md`.
+
+**2026-07-30 — Roster terminals run FULL-AUTO, no tool prompts at all (Daniel).**
+Supersedes the CONTAINMENT aspect of the same-day "(a) Roster terminals get a scoped per-run settings
+file" ruling above — the per-run settings-file MECHANISM it introduced is kept unchanged. Daniel ruled
+that roster terminals should behave like a `claude` terminal on full auto: no interactive
+tool-permission prompts of any kind, ever, with governance carried instead by each agent's binding
+(what it's told to do), repo hooks, and the server-side workflow gates (stage compilation, gate
+approvals, artifact verification) — not by a per-session tool allow-list. The per-run settings file at
+`<stateRoot>/control/roster/<runRef>/<agentId>/settings.json`, booted via `claude --settings
+"<path>"` and deleted at retire, now sets the permission-mode key described below in addition to the
+previously-built allow rules and additional-directories list — the allow rules stay in the file as
+declared intent (a legible record of each agent's actual stage scope) but no longer do the containing
+work; the mode key supersedes them for real. No CLI flag, mode-selecting argument, or environment
+variable was added alongside it — `defaultLaunchLine` in `dashboard/server/control/rosterSessions.ts`
+is unchanged.
+  - **Verification of the schema key/value.** `claude --help` documents a permission-mode CLI flag
+    with the target mode name as a valid choice, and confirms the settings-file flag loads additional
+    settings from a JSON file. Grepping the installed `claude.exe` (`grep -a` over the binary, same
+    technique the original per-run-settings worker used) surfaced the actual JSON path the runtime
+    reads at startup: `permissions.defaultMode`, fed into the session's initial permission-mode
+    candidate list. The same grep surfaced two runtime refusals gating that mode elsewhere in the
+    code — one requiring a matching CLI launch flag, one requiring an interactive disclaimer — but
+    both are scoped to code paths that do not apply here: the first fires only on a mid-session
+    `/permission-mode`-style switch attempt, not on the initial settings-driven mode resolution; the
+    second is gated behind a background-job check that is false for any plain interactive `claude`
+    process — which is what a pty-spawned roster terminal is. This was then confirmed LIVE, not just
+    read from strings: a headless `claude -p` run given ONLY the settings file with that one mode key
+    set (empty allow list, no CLI flag, no env var) executed a Bash file-write with zero prompt; the
+    identical run with that key removed from the settings file correctly stopped and asked for the
+    write permission, and the file was not created. That paired test is the empirical proof that the
+    settings-file key alone — with nothing else added — is both necessary and sufficient for
+    full-auto in this launch shape.
+  - **Alternatives rejected.** No-shell scoped-allow, park-on-prompt (the arrangement this entry
+    replaces) — rejected because shell use is unavoidable across real stages (git, ffmpeg, node
+    scripts, the render pipeline) and a rule keyed on a command PREFIX can never express "any shell
+    command strictly within this agent's scope," so every shell-using stage was structurally destined
+    to hit an un-covered prompt and park, not merely occasionally. Command-prefix allow rules naming
+    the specific shell invocations each stage is expected to run — rejected: the rule matches a
+    literal prefix with no argument-level constraint (it cannot say "only within this directory" or
+    "only these flags"), so it is both under-expressive for anything with real arguments and still
+    prompts the instant a stage runs a command whose prefix wasn't anticipated — the same stall this
+    ruling exists to remove, just deferred to whichever command was missed.
+  - **Cross-reference.** `dashboard/server/control/rosterSessions.ts#buildRosterPermissionSettings`
+    and its docstring; tests in `rosterSessions.test.ts` under `describe('roster scoped per-run
+    permissions')` pin the mode value in the emitted JSON.
+
+**2026-07-30 — Full-auto keeps an ENFORCED restriction floor, and the roster's permission strings are
+now verified against a running CLI rather than against themselves (Daniel).**
+Does not revisit the full-auto ruling above — it stands. It adds the floor Daniel asked for on top of
+it, and fixes two defects an adversarial review of that work found. All in
+`dashboard/server/control/rosterSessions.ts`.
+  - **The floor.** `buildRosterPermissionSettings` now emits a constant `permissions.deny` array
+    alongside the mode key: `git push` / `git config` by Bash prefix, dotenv secret files at the repo
+    root and at any depth through Read/Edit/Write, and the ambient credential stores (ssh and cloud
+    CLI key directories, the CLI's own stored credentials, git/npm credential files, bare private
+    keys). It is a CONSTANT — no proposal, scope or tool cap can widen or shrink it — because
+    `deny`/`ask`/`allow` evaluate in that fixed order whatever the permission mode is: full auto skips
+    the ASK step, never the DENY step, so this array is the only part of the settings file that still
+    enforces. Rationale: a stage PROPOSES work and the server-side integrator publishes it, so a
+    terminal that can push bypasses every gate in the pipeline; nothing in the video pipeline reads a
+    secret file.
+  - **Verified live, paired.** Each rule was run against the installed CLI (2.1.220) alongside an
+    `allow` that would otherwise let the action through, so a denial proves the RULE matched and not
+    the absence of a grant. A Bash-prefix deny refuses the command (the same command executes without
+    it). A file-path deny ALSO refuses a Bash command that opens that path — the CLI resolves the
+    files a command touches — so the floor covers the shell, not only the built-in file tools.
+  - **Known residual, recorded in code.** A script the agent writes and then runs is opaque to command
+    parsing; stopping it is OS-level sandboxing, not a permission rule. Pre-existing — identical under
+    the interactive default mode — and NOT introduced by full auto.
+  - **Defect 1 (the allow rules granted nothing).** The rules were emitted with a `//`-absolute
+    pathspec. A/B against the live CLI with an identical target: `Read(//C:/…/**)` DENIED,
+    `Read(C:/…/**)` ALLOWED. Every allow rule was therefore inert, and the reads that appeared to work
+    were `additionalDirectories` doing the work alone. The prefix is dropped; a rule's pathspec is now
+    byte-identical to the `additionalDirectories` entry for the same directory.
+  - **Defect 2 (a review finding that did not survive measurement).** The readiness gate's busy arm was
+    reported dead because `grep -a "to interrupt"` over `claude.exe` returns ZERO hits. It is not dead:
+    the hint is composed at RENDER time as `<chord> to <action>` from the `chat:cancel` keybinding
+    (default label `esc`), so no such literal can exist in the binary. Captured off a real pty, a live
+    mid-turn frame reads `✽Whatchamacalliting… ❯ esc to interrupt … (3s · thinking) … ↓ 25 tokens`.
+    **Lesson for this project: a string grep over the binary is evidence about the binary's strings,
+    never about what it renders.** The arm was hardened anyway with two copy-independent patterns
+    (elapsed-seconds and token counters), since the chord is user-rebindable.
+  - **Also.** A terminal that has produced NO output is no longer classified ready (it was — the
+    daemon-restart resume path could type a work order into a shell that had not yet booted `claude`);
+    and one gated live test (`rosterSessions.live.test.ts`, `ROSTER_LIVE_PERM_TEST=1`) now runs the
+    generated settings file through a real `claude`, closing the gap that let a grammar the CLI ignores
+    ship green past a suite that only compared rule strings to rule strings.
+  - **Cross-reference.** `rosterSessions.ts#RESTRICTION_FLOOR`, `#absoluteRulePath`, `#BUSY_MARKERS`,
+    `#detectReplReadiness`; `rosterSessions.test.ts`; `rosterSessions.live.test.ts`. The orphaned
+    roster-directory sweep is deliberately NOT done — see `TODO(roster-boot-sweep)` in `retireRun` for
+    the seam it needs and the re-entrancy hazard that makes a naive boot sweep worse than the leak.
+
+**2026-07-30 — CORRECTION: the autonomous mode is `permissions.defaultMode: "auto"`, not
+`bypassPermissions` (Daniel).**
+Does not revisit the two full-auto rulings above (the per-run settings-file mechanism, the enforced
+restriction floor, and the positive-readiness delivery gate all stand unchanged) — it corrects only WHICH
+mode value those rulings were built on. The prior entries emitted `defaultMode: "bypassPermissions"`. That
+was the wrong instrument: `bypassPermissions` opens a one-time interactive "WARNING: … Bypass Permissions
+mode … Yes, I accept" ACCEPTANCE MODAL, and an unattended pty has no one to answer it — it is exactly what
+stalled the idea stage (a terminal sitting "running" with zero transcript). The fix is Claude Code's `auto`
+mode: the terminal proceeds without routine tool prompts because auto interposes a background safety
+CLASSIFIER, but it shows NO acceptance modal, and `permissions.deny` + `ask` rules + PreToolUse hooks are
+evaluated BEFORE that classifier, so the enforcing floor is untouched. `auto` is strictly MORE governed than
+bypass (bypass skips the ask step for everything and effectively ignores deny; auto keeps a guardrail on top
+of our deny floor and the G0–G4 gates). Only `buildRosterPermissionSettings`'s emitted `defaultMode` string
+changed (`bypassPermissions` → `auto`) plus the now-false justification comments/tests it invalidated; no new
+config-writing machinery was added, and `defaultLaunchLine` is still unchanged.
+  - **Verified LIVE (empirical over docs — this surface misled the project once already).** Against the
+    installed CLI (claude.exe 2.1.220), a fresh interactive pty launched with only `defaultMode: "auto"` in
+    `--settings`: NO acceptance modal, boots straight to the REPL, footer reads `⏵⏵ auto mode on
+    (shift+tab to cycle)` (so `detectReplReadiness` still returns `ready`). A headless `-p` run under the
+    same settings had its `git config --get user.name` Bash call DENIED by the floor — the deny half still
+    enforces under auto. The independent CLI-docs check confirms auto is a valid `defaultMode`, that deny /
+    ask / hooks run before the classifier, and that only bypass carries an acceptance modal.
+  - **Model requirement (operational caveat).** `auto` is model-gated: the CLI enables it only on an
+    auto-capable model and otherwise SILENTLY falls back to manual mode, which prompts. Verified live: the
+    daemon's default model kept `auto mode on`; `claude-sonnet-4-5` reported `auto mode unavailable for this
+    model` and dropped to manual. Roster agents must therefore be ASSIGNED an auto-capable model for the
+    terminal to run autonomously — a non-auto model degrades to prompting (the delivery gate then parks on
+    the tool-permission modal rather than hanging; the silent-stall protection still holds). This is an
+    assignment concern, outside `buildRosterPermissionSettings`; the deny floor and readiness gate are
+    model-independent and hold regardless.
+  - **Cross-reference.** `rosterSessions.ts#buildRosterPermissionSettings` (docstring rewritten),
+    `#MODAL_MARKERS` (the bypass-modal marker kept as DEFENSIVE, off the happy path), `#READY_MARKERS`,
+    `#detectReplReadiness`; `rosterSessions.test.ts` (`defaultMode` assertions → `auto`, idle footer
+    fixtures → `auto mode on`); `rosterSessions.live.test.ts` (interactive case asserts the auto-mode boot).
