@@ -47,31 +47,17 @@ weekly-cap reset.
 | whole `orgs/faceless-youtube/` pipeline | DONE | 13 stages / 6 agents / 6 gates, in main |
 | the dry-check harness | READY (prepped 2026-07-31) | at `…/161e0c0f-…/scratchpad/dry-check/run-dry-check.mjs`; operand worktree RECREATED at its pinned path `…/161e0c0f-…/scratchpad/dry-check-repo` detached @ `6c359ca`, `dashboard/node_modules` junctioned from `C:/Users/danie/kb/dashboard/node_modules`, server-module imports verified resolving |
 
-### Exact Next Step (prep DONE 2026-07-31 — run is turnkey)
-After **Aug 1 9pm** (weekly cap reset), from `…/161e0c0f-…/scratchpad/dry-check/`:
+### Exact Next Step (UPDATED 2026-07-31 late: Facts 4 & 5 CLOSED — 7/7 PROVEN)
 
-    node .\run-dry-check.mjs --fresh --slug dry-check-2026-08-01
-
-Preconditions (codex drift-audit verified, card 6a6c2973-5a13a31b on ops): port 4519 free;
-**`DASHBOARD_EXECUTION_ACTIVATED` must be UNSET in the launching shell** (proc.mjs spreads
-`process.env` into the daemon child and activation.ts:129 treats `"1"` as activated — would fail
-Fact 1's locked-state assertion); node_modules junction intact; claude CLI cap reset. `--fresh` is
-REQUIRED (wipes stale `state/` from the failed 07-30 run; without it only `proceed-to-retire.flag`
-self-resets). No `--repo-root`/`--state-root`/`--port` args — defaults are correct and server
-imports are hard-pinned to the sibling `dry-check-repo`. Audit found NO API drift harness↔`6c359ca`
-(all four delivery fixes compatible; fakes cover every git/py/audit/queue seam; new delivery-fix
-writes are contained under `DASHBOARD_STATE_ROOT`).
-
-Pass = Facts 4 & 5 close: fyt-story transcript GROWS + `brief.md` round-trips + DAG halts at G0. If
-it stalls, read the `roster-delivery-not-engaged` park reason. Then propose the maiden run to Daniel
-(his spend/publish gates). Do NOT point any test daemon's `DASHBOARD_REPO_ROOT` at a live
-work-branch worktree. Boss task list this arc: worktree `kb-worktrees/boss-fyt-run`
-(`claude/fyt-full-run`).
-
-### Load list
-- `handoffs/2026-07-31-fyt-pipeline-shipped.md` (this file)
-- personal memory `fyt-gated-pipeline-arc` (PRIMARY resume point), `verify-pr-remote-equals-local`,
-  `verify-run-health-by-transcript-growth`
-- `orgs/faceless-youtube/docs/STATUS.md`, `orgs/faceless-youtube/workflows/video-run.md`
-- `dashboard/server/control/rosterSessions.ts` (the delivery seam ~1500-1680)
-- `memory/claude-boss.md` (lessons)
+Dry-check run 6 (`run-3776411c`, operand @ 9d0e3bc): idea stage succeeded in 140.6s — marker matched
+via the real production matcher, brief.md artifact-delta verified server-side, DAG halted at G0,
+spend gates untouched, clean retire. Five roster-delivery fixes were found live and are on
+**PR #109** (`claude/fyt-full-run`, 5 commits: MCP-server disable + deny-floor Edit() repair,
+marker line reconstruction, split scan/screen streams, settled delivery readiness, skills-manifest
+chore). Remaining:
+1. Daniel merges PR #109.
+2. Maiden video run (Daniel's G2/G3b spend + G4 publish gates) — fresh the-second-take idea through
+   the real daemon, ~2-min slice.
+3. Arc-close hygiene: sweep `kb-worktrees/boss-fyt-run` + the 161e0c0f scratchpad `dry-check-repo`
+   worktree once #109 is in `origin/main` (rev-list==0 check first).
+Do NOT point any test daemon's `DASHBOARD_REPO_ROOT` at a live work-branch worktree.
