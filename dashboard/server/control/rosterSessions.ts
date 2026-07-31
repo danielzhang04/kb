@@ -4,16 +4,16 @@
  * WHAT THIS IS. The design's execution substrate is a small roster of PERSISTENT, INTERACTIVE Claude
  * terminals — one per distinct agent id in the compiled workflow — spawned when a run is activated and
  * retired when it ships. Stages do not spawn anything: a stage executes by having its work order
- * DELIVERED into the owning agent's live session, and completes when that session prints the run-scoped
- * completion marker its order file names.
+ * DELIVERED into the owning agent's live session, and completes when that session writes the run-scoped
+ * status file its order names.
  *
  * WHY NOT `claudeSessionAdapter.ts` (the reuse evaluation the spec mandates). That adapter is a
  * ONE-SHOT headless transport: it spawns `claude` with `--output-format stream-json`, writes exactly one
  * approved prompt to stdin and then calls `endStdin()`, parses the transcript, and reports `onExit`. It
  * has no input channel after the first turn, no tty, and its lifetime is one prompt — the three
  * properties a persistent interactive roster session is defined by. Extending it would mean deleting the
- * stdin close, replacing stream-json with terminal bytes, and replacing exit-based completion with a
- * marker scanner, i.e. replacing the module while keeping its name. It stays untouched and still serves
+ * stdin close and replacing stream-json with terminal bytes, i.e. replacing the module while keeping its
+ * name. It stays untouched and still serves
  * the broker's managed-session path. What IS reused here is the pty stack it never touched:
  * `pty/host.ts` (the single node-pty spawner, credential-stripping env allowlist, process-group kill)
  * and `pty/persistentSessions.ts` (owner-bound sessions, output ring, attach/detach) — the same
@@ -37,9 +37,9 @@
  * the canonical checkout, spawned only after a passkey unlock (`activation.ts`), owned by the operator
  * `sub` that launched the run, with the pty host's credential denylist applied to its environment. It is
  * NOT sandboxed the way a headless attempt worktree is: the agent works where the project's
- * single-writer staging law says it must. The completion marker is therefore a COORDINATION signal, not
- * a security boundary — the per-delivery token proves the order file was read, not that an agent is
- * honest. The canonical stage result recorded for a delivered stage is a completion receipt (summary +
+ * single-writer staging law says it must. Completion is accepted only through a freshly cleared,
+ * server-owned status path bound to the delivery token; terminal output is never an authorization
+ * channel. The canonical stage result recorded for a delivered stage is a completion receipt (summary +
  * server-verified declared artifacts), never a worktree diff.
  *
  * Strip-only floor: no TS enums, parameter properties, or namespaces. ESM with `.ts` specifiers.
@@ -60,8 +60,6 @@ import type { WorkerAdapter, WorkerExecutionResult } from './execution.ts';
 /** Terminal geometry for a roster session until the browser attaches and resizes it. */
 const DEFAULT_COLS = 120;
 const DEFAULT_ROWS = 40;
-/** Rolling scan window for completion markers (marker lines are short; this covers wrapped output). */
-const SCAN_WINDOW_CHARS = 16_000;
 /** Bound on the agent-reported completion summary carried into the canonical result. */
 const MAX_SUMMARY_CHARS = 400;
 const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -69,49 +67,12 @@ const SAFE_AGENT_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 /** One path segment, no separators and no `..` — the traversal guard on any interpolated path fragment. */
 const SAFE_PATH_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 /**
- * Marker verdict + stage + per-delivery token, anchored at a line start after ANSI stripping.
- *
- * LEADING DECORATION IS PART OF THE FORMAT. The substrate is an INTERACTIVE `claude` REPL, and a REPL
- * frames what it prints: a gutter glyph (`⏺` U+23FA), a box-drawing rail (`│` U+2502), a list bullet
- * (`- `), a quote marker (`> `), plus whatever indentation the renderer chose. `stripTerminalControl`
- * removes ANSI/OSC/C0 but not printable glyphs, so an anchor of `^FYT-STAGE-` matched a bare line and
- * essentially nothing the real REPL emits — the completion would never arrive.
- *
- * WHY THE PREFIX IS AN ALLOWLIST, NOT "ANY NON-ALPHANUMERIC RUN". The previous prefix was
- * `[^A-Za-z0-9]{0,32}`, which is decoration-tolerant but also QUOTING-tolerant, and an agent restating
- * the line it is ABOUT to print is completely normal behaviour. All of these matched and must not:
- *
- *     `FYT-STAGE-DONE images <tok> ok`        an inline code span
- *     - `FYT-STAGE-DONE images <tok> ok`      a bullet plus backticks
- *     # FYT-STAGE-DONE images <tok> ok        a comment / markdown heading
- *     ```FYT-STAGE-DONE images <tok> ok       a fence that ran on into the line
- *     {"": "FYT-STAGE-DONE images <tok> ok"   JSON with an empty key
- *
- * Each is a stage completing itself by TALKING about completing. So the prefix now admits only
- * characters a terminal uses to FRAME a line — space/tab, `-`, `*`, `>`, and the Unicode bands terminal
- * decoration actually lives in (dashes, bullets, arrows, misc-technical incl. `⏺`, box-drawing/block/
- * geometric/dingbats incl. `│`, misc symbols-and-arrows). That keeps the generality the substrate needs
- * — the next CLI release will render a fourth glyph, and it will be in one of those bands — while every
- * quoting, fencing and structural character (backtick, `#`, `"`, `'`, `{`, `[`, `:`, `.`, `/`, `\`) is
- * excluded. The curly-quote block U+2018-U+201F is deliberately NOT in range for the same reason.
- *
- * It stays ANCHORED and BOUNDED, and that is the anti-smuggling property: a single alphanumeric
- * character ahead of the marker (i.e. any prose at all — "I will print FYT-STAGE-DONE when finished")
- * kills the match, so a marker cannot be hidden mid-sentence. Combined with the per-delivery token and
- * the stage-id check in `scan`, and with the order file spelling only {@link VERDICT_PLACEHOLDER}, an
- * agent still cannot fabricate or replay a completion.
- */
-const MARKER = new RegExp(
-  '^[ \\t*>\\u2010-\\u2015\\u2022\\u2023\\u2190-\\u21FF\\u2200-\\u23FF\\u2500-\\u27BF\\u2B00-\\u2BFF-]{0,32}'
-  + 'FYT-STAGE-(DONE|BLOCKED|FAILED)[ \\t]+([A-Za-z0-9._:-]{1,128})[ \\t]+([a-f0-9]{32})[ \\t]*(.*)$',
-);
-/**
  * Bound on how long ONE delivery may sit unanswered before it settles as a human wait. Deliberately
  * generous: the longest real stage is a whole long-form script or a 130-200 call image batch — hours,
  * not minutes — and this exists to police NOTHING about pace. It exists because `settled` is otherwise
- * reachable only from a marker match, a session exit, or a retire, so ONE missed marker (a REPL that
- * never came up and a delivery line typed into a bare shell prompt, a renderer this scanner does not
- * recognise, an agent that simply never printed) held the engine's single worker slot forever, until an
+ * reachable only from a valid status file, a session exit, or a retire, so ONE missed status (a REPL that
+ * never came up, a delivery line swallowed before a turn, or an agent that simply never wrote it) held the
+ * engine's single worker slot forever, until an
  * operator noticed and ran `stop`. Overridable per stage and per delivery; clamped so no caller can set
  * it to zero or to "never".
  */
@@ -123,14 +84,14 @@ export const DELIVERY_TIMEOUT_REASON = 'roster-delivery-timeout';
 /**
  * Named, greppable settle reason for a delivery that was NEVER TYPED because the target terminal was not
  * at a plain REPL prompt. Deliberately distinct from {@link DELIVERY_TIMEOUT_REASON}: that one means the
- * order landed and no marker came back; this one means the order never left the control plane.
+ * order landed and no status came back; this one means the order never left the control plane.
  */
 export const DELIVERY_NOT_READY_REASON = 'roster-delivery-not-ready';
 /**
  * How long ONE delivery may wait for its terminal to reach a plain REPL prompt before it settles as a
  * human wait. Generous, because the legitimate wait is real: a freshly spawned session is still booting
  * `claude` and then reading its binding context, and an agent mid-turn on operator conversation must be
- * allowed to finish. Clamped into [{@link MIN_REPL_READY_TIMEOUT_MS}, the delivery timeout] — the marker
+ * allowed to finish. Clamped into [{@link MIN_REPL_READY_TIMEOUT_MS}, the delivery timeout] — the completion
  * deadline stays the OUTER bound, so this can never extend how long a stage may sit.
  */
 const DEFAULT_REPL_READY_TIMEOUT_MS = 5 * 60 * 1_000;
@@ -155,7 +116,7 @@ const SUBMIT_ENTER_DELAY_MS = 500;
  * OUTCOME-VERIFIED SUBMISSION (2026-07-30). The Enter at {@link SUBMIT_ENTER_DELAY_MS} is a WRITE, not a
  * proof: a bytes-written Enter has been observed FOUR times to leave no turn started — a paste-folded CR, an
  * open modal, a mistimed type into a splash, or an at/over-cap interactive block can each swallow it, and the
- * stage then reads "working" until the 40-min marker deadline with nothing ever delivered. So after the
+ * stage then reads "working" until the delivery deadline with nothing ever delivered. So after the
  * Enter, delivery now POLLS the terminal's own output for POSITIVE evidence a turn engaged before it trusts
  * the write, and re-submits (re-typing the line only if it is no longer on screen) up to {@link
  * SUBMIT_VERIFY_RETRIES} times; if no turn ever engages it PARKS LOUDLY (never a false "working").
@@ -164,19 +125,19 @@ const SUBMIT_ENTER_DELAY_MS = 500;
  * frame from the idle prompt to a BUSY frame within ~1-1.5s — the spinner footer ({@link BUSY_MARKERS}:
  * `esc to interrupt` / `(Ns ·` / `[↑↓] N tokens`), fresh (last chunk < {@link STALE_BUSY_QUIET_MS} ago). The
  * composer ECHO of the typed line carries no busy marker, so it never false-positives; a non-submitting
- * Enter leaves an idle {@link READY_MARKERS} frame still holding the un-submitted line. A turn that finished
- * so fast its marker already settled the delivery counts as engaged too (the pending is gone).
+ * Enter leaves an idle {@link READY_MARKERS} frame still holding the un-submitted line.
  */
 const SUBMIT_VERIFY_RETRIES = 3;
 /** Per-attempt window to observe a turn engage. A real turn paints a matchable busy footer within ~1.5s. */
 const SUBMIT_VERIFY_WINDOW_MS = 4_000;
 /** Poll cadence inside a verify window. Injected `sleep` drives it, so the suite never waits on a real timer. */
 const SUBMIT_VERIFY_POLL_MS = 300;
+/** Poll cadence for the server-owned completion status file. */
+const COMPLETION_STATUS_POLL_MS = SUBMIT_VERIFY_POLL_MS;
 /** Named, greppable settle reason for a delivery whose Enter never started a turn across every retry. */
 export const DELIVERY_NOT_ENGAGED_REASON = 'roster-delivery-not-engaged';
 /**
- * Rolling window of terminal output kept for readiness detection, separate from the marker buffer (which
- * is consumed line-by-line and reset per delivery). Small on purpose: an interactive REPL redraws its
+ * Rolling window of terminal output kept for readiness detection. Small on purpose: an interactive REPL redraws its
  * whole frame continuously and `stripTerminalControl` cannot collapse those redraws, so only the tail is
  * the CURRENT screen — a large window would keep an already-answered menu "visible" forever.
  */
@@ -186,13 +147,6 @@ const SCREEN_WINDOW_LINES = 20;
 const ROSTER_ACTIVITY = /^roster:([a-z0-9][a-z0-9-]{0,63}) (.+)$/;
 /** Page size for the INCREMENTAL durable-event read behind `state` (bounded by the store's own cap). */
 const EVENT_PAGE = 500;
-/**
- * The order file spells the verdict as this PLACEHOLDER, never as a literal `FYT-STAGE-DONE`. An agent
- * that `cat`s its own order file into the terminal therefore cannot fabricate a completion by echo — the
- * placeholder can never match {@link MARKER}.
- */
-const VERDICT_PLACEHOLDER = 'FYT-STAGE-<VERDICT>';
-
 export class RosterSessionError extends Error {}
 
 /** Resolved launch parameters (`channel`, `slug`, `slice`, …) carried by the compiled proposal. */
@@ -231,6 +185,8 @@ export interface RosterFileSystem {
   /** UTF-8 file contents, or `null` when the path cannot be read. */
   readFile(path: string): string | null;
   writeFile(path: string, contents: string): void;
+  /** Delete one file if it exists. */
+  removeFile(path: string): void;
   /** Regular-file-ness and size for one absolute path; `null` when the path does not exist. */
   stat(path: string): RosterFileStat | null;
   /**
@@ -283,7 +239,14 @@ export interface RosterSessionsOptions {
   cols?: number;
   rows?: number;
   /** The single line that boots the interactive agent terminal. */
-  launchLine?: (input: { model: string; bindingPath: string; settingsPath: string; runRef: string; agentId: string }) => string;
+  launchLine?: (input: {
+    model: string;
+    bindingPath: string;
+    settingsPath: string;
+    mcpConfigPath: string;
+    runRef: string;
+    agentId: string;
+  }) => string;
   /** The single line that hands a stage's order file to a live session. */
   deliveryLine?: (input: { orderPath: string; stageId: string }) => string;
   /**
@@ -295,13 +258,13 @@ export interface RosterSessionsOptions {
   resolveWorkflowTools?: (workflowProfileId: string | null) => readonly string[];
   /**
    * How long a delivery may wait for its terminal to reach a plain REPL prompt. Clamped to
-   * [{@link MIN_REPL_READY_TIMEOUT_MS}, this delivery's marker deadline].
+   * [{@link MIN_REPL_READY_TIMEOUT_MS}, this delivery's completion deadline].
    */
   replReadyTimeoutMs?: number;
   /** Backoff sleep between readiness polls. Injected so the suite never waits on a real timer. */
   sleep?: (ms: number) => Promise<void>;
   /**
-   * Marker deadline per delivery, in ms. A number applies to every stage; a function is consulted per
+   * Completion-status deadline per delivery, in ms. A number applies to every stage; a function is consulted per
    * delivery, so a long stage (a full image batch) can be given more room than a short one. Clamped to
    * [{@link MIN_DELIVERY_TIMEOUT_MS}, {@link MAX_DELIVERY_TIMEOUT_MS}]; absent or non-finite falls back
    * to {@link DEFAULT_DELIVERY_TIMEOUT_MS}.
@@ -327,7 +290,7 @@ export interface RosterDeliveryInput {
   project: string;
   /** Present only when the engine's resolver verified this stage's declaration. */
   assignedAgent?: ResolvedAssignedAgent;
-  /** Per-delivery marker deadline override, in ms. Clamped exactly like the manager-level option. */
+  /** Per-delivery completion-status deadline override, in ms. Clamped exactly like the manager-level option. */
   timeoutMs?: number;
 }
 
@@ -335,7 +298,7 @@ export interface RosterSessionManager {
   /** Idempotent: spawn one session per distinct agent id (manager included); resume-safe. */
   ensureRoster(input: RosterEnsureInput): RosterEnsureResult;
   hasRoster(runRef: string): boolean;
-  /** Gate-checked delivery; resolves when the session reports the delivery's own marker. */
+  /** Gate-checked delivery; resolves when the session writes the delivery's own status file. */
   deliver(input: RosterDeliveryInput): Promise<WorkerExecutionResult>;
   /** Graceful stop + reap for one run's roster (run terminal, operator stop, or Lock). */
   retire(runRef: string, reason: string): string[];
@@ -352,21 +315,24 @@ interface RosterSessionEntry {
   model: string;
   bindingPath: string;
   settingsPath: string;
-  buffer: string;
   /**
-   * Rolling tail of this terminal's output, kept independently of {@link RosterSessionEntry.buffer}
-   * (which is line-consumed and reset per delivery). This is what the REPL-readiness gate reads, so it
-   * must survive across deliveries and must keep accumulating while the session is idle — the whole point
-   * is to know what is on screen BEFORE a work order is typed.
+   * Rolling tail of this terminal's output. This is what the REPL-readiness gate reads, so it must survive
+   * across deliveries and must keep accumulating while the session is idle — the whole point is to know
+   * what is on screen BEFORE a work order is typed.
    */
   screen: string;
   /**
-   * `now()` of the last output chunk appended to {@link RosterSessionEntry.screen}. The readiness gate
+   * `now()` of the last semantic output appended to {@link RosterSessionEntry.screen}. The readiness gate
    * reads it to tell a LIVE turn (which repaints its spinner ≥1×/s) from a FINISHED turn whose spinner tail
-   * is merely frozen in the window because the idle terminal has gone silent — see the freshness gate in
-   * {@link detectReplReadinessFresh} and `waitForRepl`.
+   * is merely frozen in the window. Control-only repaints do not update it.
    */
-  lastChunkAt: number;
+  lastSemanticAt: number;
+  /** When the terminal began continuously classifying ready; reset only by a non-ready semantic frame. */
+  readySince: number | null;
+  /** Incomplete trailing CSI/OSC bytes retained until the next pty chunk completes the sequence. */
+  controlSuffix: string;
+  /** Advances only when newly decoded bytes contain a busy transition. */
+  busyObservationGeneration: number;
   unobserve: () => void;
   /** At most one outstanding delivery per agent session (a terminal runs one order at a time). */
   pending: PendingDelivery | null;
@@ -377,10 +343,12 @@ interface PendingDelivery {
   token: string;
   settle: (result: WorkerExecutionResult) => void;
   /**
-   * The marker deadline for THIS delivery. Cleared on every settle path (marker, session exit, retire),
+   * The completion deadline for THIS delivery. Cleared on every settle path (status, session exit, retire),
    * so a delivery that already landed can never be re-settled by a late timer.
    */
   timer: ReturnType<typeof setTimeout> | null;
+  /** The next server-owned status-file poll, if one is armed. */
+  pollTimer: ReturnType<typeof setTimeout> | null;
 }
 
 interface RosterRunEntry {
@@ -407,6 +375,7 @@ const defaultFileSystem: RosterFileSystem = {
     try { return readFileSync(path, 'utf8'); } catch { return null; }
   },
   writeFile: (path, contents) => { writeFileSync(path, contents, { encoding: 'utf8' }); },
+  removeFile: (path) => { rmSync(path, { force: true }); },
   stat: (path) => {
     try {
       const stats = statSync(path);
@@ -433,13 +402,7 @@ const defaultFileSystem: RosterFileSystem = {
   removeDir: (path) => { rmSync(path, { recursive: true, force: true }); },
 };
 
-/**
- * Drop ANSI/OSC control sequences and bare carriage returns so marker scanning sees plain lines.
- * CUP/HVP becomes a line boundary and CUF one space before the CSI catch-all: `scan` can then split painted
- * rows, while `entry.screen`'s non-empty-line frame classifier/freshness gate is unchanged and
- * `frameHasDeliveryLine` is already whitespace-insensitive. A renderer-wrapped quote can therefore reach a
- * line start (as it already could after `\r\n`); the per-delivery stage id and token in `scan` remain the guard.
- */
+/** Drop ANSI/OSC control sequences and bare carriage returns from terminal text. */
 export function stripTerminalControl(chunk: string): string {
   /* eslint-disable no-control-regex */
   return chunk
@@ -456,15 +419,67 @@ export function stripTerminalControl(chunk: string): string {
 }
 
 /**
+ * Split off an incomplete trailing escape sequence. PTY chunk boundaries are arbitrary, so stripping each
+ * chunk independently can leak the second half of a CSI/OSC sequence into the semantic screen.
+ */
+export function splitTerminalControlSuffix(chunk: string): { complete: string; suffix: string } {
+  let state: 'text' | 'escape' | 'csi' | 'osc' | 'osc-escape' = 'text';
+  let sequenceStart = -1;
+  for (let index = 0; index < chunk.length; index += 1) {
+    const code = chunk.charCodeAt(index);
+    if (state === 'text') {
+      if (code === 0x1b) {
+        state = 'escape';
+        sequenceStart = index;
+      }
+      continue;
+    }
+    if (state === 'escape') {
+      if (chunk[index] === '[') state = 'csi';
+      else if (chunk[index] === ']') state = 'osc';
+      else {
+        state = 'text';
+        sequenceStart = -1;
+      }
+      continue;
+    }
+    if (state === 'csi') {
+      if (code >= 0x40 && code <= 0x7e) {
+        state = 'text';
+        sequenceStart = -1;
+      }
+      continue;
+    }
+    if (state === 'osc') {
+      if (code === 0x07) {
+        state = 'text';
+        sequenceStart = -1;
+      } else if (code === 0x1b) {
+        state = 'osc-escape';
+      }
+      continue;
+    }
+    if (chunk[index] === '\\') {
+      state = 'text';
+      sequenceStart = -1;
+    } else if (code !== 0x1b) {
+      state = 'osc';
+    }
+  }
+  if (state === 'text' || sequenceStart < 0) return { complete: chunk, suffix: '' };
+  return { complete: chunk.slice(0, sequenceStart), suffix: chunk.slice(sequenceStart) };
+}
+
+/**
  * Reconstruct terminal output for the bounded readiness frame, where cursor-positioning sequences must
- * disappear instead of becoming line boundaries or spaces. The marker scan needs CUP/HVP-painted rows
- * split into searchable lines, but the frame classifier was calibrated on the pre-054e8ab glued stream:
- * making every repaint fragment a line floods its 20-line window and pushed the READY footer out in run 3.
+ * disappear instead of becoming line boundaries. CUF is different: it is horizontal spacing inside a
+ * rendered sentence and must become one literal space or modal words glue together and evade classification.
  */
 function stripForScreenWindow(chunk: string): string {
   /* eslint-disable no-control-regex */
   return chunk
     .replace(/\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g, '')
+    .replace(/\u001b\[[0-9;]*[ -/]*C/g, ' ')
     .replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, '')
     .replace(/\u001b[@-Z\\-_]/g, '')
     .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')
@@ -477,7 +492,7 @@ function stripForScreenWindow(chunk: string): string {
  * against a menu. Typing a work order here does not queue it — the characters are consumed by the menu's
  * own key handling and the order is silently destroyed. That is the observed defect: a delivery line
  * interleaved character-by-character with a tool-permission menu and vanished, and the stage then sat
- * against the 4h marker deadline.
+ * against the delivery deadline.
  *
  * These match what the CLI renders around a decision, not what an agent might SAY. They are evaluated
  * only over the last {@link SCREEN_WINDOW_LINES} non-empty lines of the current frame, so an answered
@@ -666,7 +681,7 @@ export function detectReplReadinessFresh(tail: string, quietMs: number): ReplRea
 }
 
 /**
- * Delivery-only readiness: the REPL must both classify `ready` AND have held that frame quietly for
+ * Delivery-only readiness: the REPL must both classify `ready` AND have classified continuously ready for
  * {@link STALE_BUSY_QUIET_MS}. The stronger pre-type guarantee — "the terminal was idle before we typed" —
  * is what makes a FRESH busy frame inside the submit-verification window evidence that OUR order engaged.
  * A ready footer is rendered on every in-REPL frame, including while a boot initial-prompt turn is only
@@ -675,27 +690,33 @@ export function detectReplReadinessFresh(tail: string, quietMs: number): ReplRea
  * keeps polling and can name the real condition if its readiness budget expires.
  *
  * Non-ready frames retain {@link detectReplReadinessFresh}'s result exactly, including its stale-busy
- * reclassification. PURE: `quietMs` is supplied by the caller.
+ * reclassification. PURE: both durations are supplied by the caller; the continuously-ready duration
+ * defaults to semantic quiet for callers that have only one clock.
  */
-export function detectReplReadinessSettled(tail: string, quietMs: number): ReplReadiness {
-  const readiness = detectReplReadinessFresh(tail, quietMs);
-  if (readiness.state === 'ready' && quietMs < STALE_BUSY_QUIET_MS) {
+export function detectReplReadinessSettled(
+  tail: string,
+  semanticQuietMs: number,
+  continuouslyReadyMs = semanticQuietMs,
+): ReplReadiness {
+  const readiness = detectReplReadinessFresh(tail, semanticQuietMs);
+  if (readiness.state === 'ready' && continuouslyReadyMs < STALE_BUSY_QUIET_MS) {
     return { state: 'settling', marker: 'REPL input prompt is visible but the screen is still painting' };
   }
   return readiness;
 }
 
+/** Whether newly decoded bytes contain a busy transition rendered by the live turn. */
+function hasBusyTransition(decoded: string): boolean {
+  return BUSY_MARKERS.some((pattern) => pattern.test(decoded));
+}
+
 /**
- * POSITIVE proof a submitted order actually STARTED A TURN — the outcome check {@link SUBMIT_VERIFY_RETRIES}
- * keys on. True iff the current frame is a LIVE busy frame: a {@link BUSY_MARKERS} spinner footer that is
- * FRESH (the terminal painted within {@link STALE_BUSY_QUIET_MS}, i.e. a turn is repainting its counter right
- * now, not a frozen dead-spinner tail). The idle prompt, a modal, a splash, and the mere composer echo of the
- * typed line all return false — none of them carry a busy marker. PURE: `quietMs` is passed in (no clock
- * read), so a submit-verify unit test needs no pty.
+ * POSITIVE proof a submitted order actually STARTED A TURN. A generation snapshot is taken immediately
+ * before Enter; only a busy transition decoded after that snapshot can engage the delivery. Retained spinner
+ * text plus a fresh composer echo therefore cannot be mistaken for a new turn.
  */
-export function detectTurnEngaged(tail: string, quietMs: number): boolean {
-  if (quietMs >= STALE_BUSY_QUIET_MS) return false;
-  return classifyFrame(tail, false).state === 'busy';
+export function detectTurnEngaged(observedGeneration: number, generationAtEnter: number): boolean {
+  return observedGeneration > generationAtEnter;
 }
 
 /**
@@ -757,6 +778,8 @@ export interface RosterPermissionInput {
   repoRoot: string;
   /** `<stateRoot>/control/roster/<runRef>/<agentId>` — this agent's own binding + work-order channel. */
   agentDir: string;
+  /** Exact server-owned completion status files this agent may write. */
+  statusPaths?: readonly string[];
   /** Repo-relative read scope, unioned across the stages this agent owns. */
   read: readonly string[];
   /** Repo-relative write scope, unioned across the stages this agent owns. */
@@ -877,8 +900,8 @@ export interface RosterPermissionSettings {
  *    {@link absoluteRulePath} — the `//`-prefixed form these rules used to carry matched NOTHING on
  *    Windows). A tool the server-owned workflow profile does not grant produces no rule.
  *  - `Read` over this agent's own roster directory — the control plane's order channel (`binding.md`
- *    plus `orders/*.md`). This is the one grant that is not repo scope, and it is the narrowest possible
- *    form of it: one agent, one run, read-only, deleted when the roster retires.
+ *    plus `orders/*.md`) — and `Edit` over each exact server-designated completion status file. These are
+ *    the only grants that are not repo scope: one agent, one run, deleted when the roster retires.
  *  - `permissions.additionalDirectories` for exactly those same directories, because a scope root or the
  *    roster directory can sit outside the session cwd, and an allow rule alone does not extend the
  *    working set.
@@ -901,6 +924,15 @@ export function buildRosterPermissionSettings(input: RosterPermissionInput): Ros
   // The order channel first: without it the session cannot read the binding context it is booted on.
   addAllow(`Read(${absoluteRulePath(input.agentDir)}/**)`);
   addDir(absoluteDir(input.agentDir));
+  for (const statusPath of input.statusPaths ?? []) {
+    const normalized = absoluteDir(statusPath);
+    const statusRoot = `${absoluteDir(input.agentDir)}/status/`;
+    const fileName = normalized.startsWith(statusRoot) ? normalized.slice(statusRoot.length) : '';
+    const stageId = fileName.endsWith('.json') ? fileName.slice(0, -'.json'.length) : '';
+    if (SAFE_PATH_SEGMENT.test(stageId)) {
+      addAllow(`Edit(${absoluteRulePath(normalized)})`);
+    }
+  }
 
   const granted = new Set(input.tools);
   const safe = (paths: readonly string[]): string[] => paths.filter((path) => isSafeRepoRelativePath(path));
@@ -924,7 +956,6 @@ export function buildRosterPermissionSettings(input: RosterPermissionInput): Ros
   const disabledMcpjsonServers = [...new Set(input.disabledMcpjsonServers ?? [])];
   const permissions = {
     defaultMode: 'auto',
-    ...(disabledMcpjsonServers.length > 0 ? { disabledMcpjsonServers } : {}),
     deny,
     allow,
     additionalDirectories,
@@ -933,7 +964,10 @@ export function buildRosterPermissionSettings(input: RosterPermissionInput): Ros
     allow,
     deny,
     additionalDirectories,
-    json: `${JSON.stringify({ permissions }, null, 2)}\n`,
+    json: `${JSON.stringify({
+      ...(disabledMcpjsonServers.length > 0 ? { disabledMcpjsonServers } : {}),
+      permissions,
+    }, null, 2)}\n`,
   };
 }
 
@@ -973,27 +1007,29 @@ export function rosterAgentScope(proposal: PlanProposal, agentId: string): Propo
   return { read, write };
 }
 
-export interface CompletionMarker {
+interface CompletionStatus {
   verdict: 'DONE' | 'BLOCKED' | 'FAILED';
-  stageId: string;
   token: string;
   summary: string;
 }
 
-/**
- * Parse ONE control-stripped line as a completion marker, or `null`. The single reader of {@link MARKER}
- * — `scan` delegates here — and exported so every accepted CLI rendering and every rejected forgery is
- * testable without driving a whole pty session.
- */
-export function matchCompletionMarker(line: string): CompletionMarker | null {
-  const match = MARKER.exec(line.trim());
-  if (!match) return null;
-  return {
-    verdict: match[1] as CompletionMarker['verdict'],
-    stageId: match[2],
-    token: match[3],
-    summary: match[4] ?? '',
-  };
+/** Parse one server-owned status file for this delivery. Invalid, partial, and replayed files are ignored. */
+function parseCompletionStatus(raw: string | null, token: string): CompletionStatus | null {
+  if (raw === null) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
+    const status = parsed as Record<string, unknown>;
+    if (status.token !== token) return null;
+    if (status.verdict !== 'DONE' && status.verdict !== 'BLOCKED' && status.verdict !== 'FAILED') return null;
+    return {
+      token,
+      verdict: status.verdict,
+      summary: typeof status.summary === 'string' ? status.summary : '',
+    };
+  } catch {
+    return null;
+  }
 }
 
 /** Bound and flatten an agent-reported summary before it becomes canonical result content. */
@@ -1062,18 +1098,26 @@ export function resolveRosterWorkDir(repoRoot: string, project: string): string 
   return join(repoRoot, 'orgs', project);
 }
 
-function defaultLaunchLine(input: { model: string; bindingPath: string; settingsPath: string; runRef: string; agentId: string }): string {
+function defaultLaunchLine(input: {
+  model: string;
+  bindingPath: string;
+  settingsPath: string;
+  mcpConfigPath: string;
+  runRef: string;
+  agentId: string;
+}): string {
   // `--settings` takes a file path (or inline JSON). The path is quoted because the dashboard state root
   // is an absolute OS path that may contain spaces.
   return `claude --model ${input.model} --settings "${input.settingsPath}" `
+    + `--strict-mcp-config --mcp-config "${input.mcpConfigPath}" `
     + `"Read ${input.bindingPath} now. It is your binding context for run `
     + `${input.runRef} as ${input.agentId}: follow it exactly, then wait — work orders arrive in this terminal `
     + `as file paths, one at a time."`;
 }
 
 function defaultDeliveryLine(input: { orderPath: string; stageId: string }): string {
-  return `Work order for stage ${input.stageId}: read ${input.orderPath} and execute it now, then print the `
-    + `completion marker exactly as that file specifies.`;
+  return `Work order for stage ${input.stageId}: read ${input.orderPath} and execute it now, then write the `
+    + `completion status exactly as that file specifies.`;
 }
 
 /** Human-request title shape the engine uses for a declared gate (`execution.ts#stableHumanTitle`). */
@@ -1226,8 +1270,8 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
       'upstream stages have landed. Until a path arrives you are idle by design: do not start downstream',
       'work, do not approve anything, and do not spend.',
       '',
-      'Each order file names the exact completion marker to print when the stage is genuinely finished,',
-      'including a token that only that file carries. Print it on its own line, once, at the end.',
+      'Each order file names the exact server-owned status path to write when the stage is genuinely',
+      'finished, including a token that only that file carries. Do not signal completion in terminal text.',
       '',
       'The human may talk to you in this terminal at any time. Answer, iterate, and keep waiting.',
     ].join('\n');
@@ -1238,6 +1282,7 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
     stageId: string;
     attemptRef: string;
     token: string;
+    statusPath: string;
     proposalStage: ProposalStage;
     parameters: RosterRunParameters;
     workDir: string;
@@ -1272,16 +1317,17 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
       '## Completion protocol',
       '',
       `- completion token: ${input.token}`,
-      `- when the stage is finished, print ONE line: ${VERDICT_PLACEHOLDER} ${input.stageId} ${input.token} <one-line summary>`,
-      '- replace <VERDICT> with DONE (finished), BLOCKED (needs a human), or FAILED (cannot finish).',
-      '- print it once, at a line start, after the work is really on disk. The control plane is watching',
-      '  this terminal for exactly that line and advances the run on it.',
-      '- never print the marker for a stage or token other than the ones above.',
+      `- completion status path: ${input.statusPath}`,
+      `- when the stage is finished, write EXACTLY this JSON (and nothing else) to ${input.statusPath}:`,
+      `  {"token":"${input.token}","verdict":"DONE|BLOCKED|FAILED","summary":"<one line>"}`,
+      '- replace DONE|BLOCKED|FAILED with exactly one verdict: DONE (finished), BLOCKED (needs a human),',
+      '  or FAILED (cannot finish). Write it only after the work is really on disk.',
+      '- Do NOT print any completion marker to the terminal; the control plane reads that file, not your terminal.',
     ].join('\n');
   };
 
   /**
-   * The ONE settle path. Every outcome (marker, missed-marker timeout, session exit, retire) goes
+   * The ONE settle path. Every outcome (status, missed-status timeout, session exit, retire) goes
    * through here so the pending slot and its deadline timer are always released together — a delivery
    * that settled twice would resolve the engine's promise once and leak a timer that later fired
    * against a slot a NEW delivery owns.
@@ -1291,7 +1337,37 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
     if (!pending) return;
     entry.pending = null;
     if (pending.timer) clearTimeout(pending.timer);
+    if (pending.pollTimer) clearTimeout(pending.pollTimer);
     pending.settle(result);
+  };
+
+  /** Read one delivery's server-owned status path until it contains a valid token-bound verdict. */
+  const pollCompletionStatus = (
+    entry: RosterSessionEntry,
+    pending: PendingDelivery,
+    statusPath: string,
+  ): void => {
+    const poll = (): void => {
+      if (entry.pending !== pending) return;
+      const status = parseCompletionStatus(fs.readFile(statusPath), pending.token);
+      if (status) {
+        const summary = safeSummary(
+          status.summary,
+          `stage ${pending.stageId} reported ${status.verdict.toLowerCase()}`,
+        );
+        const state = status.verdict === 'DONE'
+          ? 'succeeded'
+          : status.verdict === 'BLOCKED'
+            ? 'waiting-human'
+            : 'failed';
+        resolvePending(entry, { state, summary, usage: zeroUsage(), artifacts: [], checkpoints: [] });
+        return;
+      }
+      const timer = setTimeout(poll, COMPLETION_STATUS_POLL_MS);
+      if (typeof timer.unref === 'function') timer.unref();
+      pending.pollTimer = timer;
+    };
+    poll();
   };
 
   /**
@@ -1378,56 +1454,58 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
   };
 
   /**
-   * Wait for a terminal to leave a modal menu / stop being mid-turn, polling its own output stream with
-   * exponential backoff. Returns the readiness that was true when it gave up, so the caller can name it.
-   *
-   * The FAST PATH IS SYNCHRONOUS BY DESIGN: an already-ready terminal never awaits, so `deliver` keeps
-   * authoring and typing its order in the same synchronous prefix it always did. Only a genuinely blocked
-   * terminal pays a suspension.
+   * Classify settled readiness from semantic terminal state. Settlement is how long the terminal has
+   * continuously classified ready, not how long raw PTY bytes have been quiet; control-only repaints cannot
+   * hold an otherwise idle session in `settling`.
    */
+  const settledReadiness = (entry: RosterSessionEntry): ReplReadiness => {
+    const observedAt = now();
+    if (entry.controlSuffix !== '') {
+      return { state: 'settling', marker: 'the terminal is in the middle of a control-sequence repaint' };
+    }
+    const readiness = detectReplReadinessFresh(entry.screen, observedAt - entry.lastSemanticAt);
+    if (readiness.state !== 'ready') {
+      entry.readySince = null;
+      return readiness;
+    }
+    if (entry.readySince === null) entry.readySince = observedAt;
+    return detectReplReadinessSettled(
+      entry.screen,
+      observedAt - entry.lastSemanticAt,
+      observedAt - entry.readySince,
+    );
+  };
+
+  /** Wait for a terminal to leave a modal menu / stop being mid-turn, with exponential backoff. */
   const waitForRepl = async (entry: RosterSessionEntry, budgetMs: number): Promise<ReplReadiness> => {
     const started = now();
     let delay = REPL_POLL_MIN_MS;
-    // Settled delivery gate: stale busy still re-classifies through detectReplReadinessFresh, but even a
-    // visible idle footer must stay quiet for the threshold before it is safe to type into.
-    let readiness = detectReplReadinessSettled(entry.screen, now() - entry.lastChunkAt);
+    let readiness = settledReadiness(entry);
     while (readiness.state !== 'ready') {
       if (now() - started >= budgetMs) return readiness;
       await sleep(Math.min(delay, Math.max(0, budgetMs - (now() - started))));
       delay = Math.min(REPL_POLL_MAX_MS, delay * 2);
-      readiness = detectReplReadinessSettled(entry.screen, now() - entry.lastChunkAt);
+      readiness = settledReadiness(entry);
     }
     return readiness;
   };
 
   const scan = (entry: RosterSessionEntry, chunk: string): void => {
-    const scanStripped = stripTerminalControl(chunk);
-    const screenStripped = stripForScreenWindow(chunk);
+    const decoded = splitTerminalControlSuffix(entry.controlSuffix + chunk);
+    entry.controlSuffix = decoded.suffix;
+    const screenStripped = stripForScreenWindow(decoded.complete);
     // The readiness window accumulates ALWAYS — idle output is exactly what the delivery gate reads.
     entry.screen = (entry.screen + screenStripped).slice(-SCREEN_WINDOW_CHARS);
-    // Stamp the arrival: the freshness gate uses the quiet-since-last-chunk duration to distinguish a live
-    // turn (spinner heartbeat) from a finished one whose spinner tail is merely frozen in the window.
-    entry.lastChunkAt = now();
-    const pending = entry.pending;
-    if (!pending) {
-      // Keep the window bounded even while idle so a chatty session cannot grow memory.
-      entry.buffer = (entry.buffer + scanStripped).slice(-SCAN_WINDOW_CHARS);
-      return;
+    if (screenStripped.trim() !== '') {
+      entry.lastSemanticAt = now();
+      const readiness = detectReplReadinessFresh(entry.screen, 0);
+      if (readiness.state === 'ready') {
+        if (entry.readySince === null) entry.readySince = entry.lastSemanticAt;
+      } else {
+        entry.readySince = null;
+      }
     }
-    entry.buffer = (entry.buffer + scanStripped).slice(-SCAN_WINDOW_CHARS);
-    const lines = entry.buffer.split('\n');
-    // Keep the trailing partial line for the next chunk; a marker is only acted on once complete.
-    entry.buffer = lines.pop() ?? '';
-    for (const line of lines) {
-      const marker = matchCompletionMarker(line);
-      if (!marker) continue;
-      const { verdict, stageId, token } = marker;
-      if (stageId !== pending.stageId || token !== pending.token) continue;
-      const summary = safeSummary(marker.summary, `stage ${stageId} reported ${verdict.toLowerCase()}`);
-      const state = verdict === 'DONE' ? 'succeeded' : verdict === 'BLOCKED' ? 'waiting-human' : 'failed';
-      resolvePending(entry, { state, summary, usage: zeroUsage(), artifacts: [], checkpoints: [] });
-      return;
-    }
+    if (hasBusyTransition(screenStripped)) entry.busyObservationGeneration += 1;
   };
 
   const settlePending = (run: RosterRunEntry, runRef: string, entry: RosterSessionEntry, summary: string): void => {
@@ -1445,25 +1523,32 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
   ): RosterSessionEntry => {
     const agentDir = join(runDir(runRef), agentId);
     fs.ensureDir(join(agentDir, 'orders'));
+    fs.ensureDir(join(agentDir, 'status'));
     const bindingPath = join(agentDir, 'binding.md');
     fs.writeFile(bindingPath, bindingMarkdown({
       runRef, agentId, verified, project: run.project, parameters: run.parameters, workDir: run.workDir,
     }));
     // THE SCOPED PER-RUN PERMISSIONS. Written BEFORE the launch line is typed, from the compiled
     // proposal's own declared scope and the server-owned tool cap — never a blanket flag, never a
-    // pre-trusted path, never anything outside `scope.read ∪ scope.write` plus this agent's own order
-    // channel. It lives inside the roster run directory, so `retireRun`'s `removeDir` is already its
+    // pre-trusted path, never anything outside `scope.read ∪ scope.write` plus this agent's own order/status
+    // channels. It lives inside the roster run directory, so `retireRun`'s `removeDir` is already its
     // cleanup: the grant cannot outlive the run it was minted for.
     const scope = rosterAgentScope(proposal, agentId);
     const settingsPath = join(agentDir, 'settings.json');
+    const statusPaths = proposal.stages
+      .filter((stage) => stage.assignment?.agentId === agentId)
+      .map((stage) => join(agentDir, 'status', `${stage.id}.json`));
     fs.writeFile(settingsPath, buildRosterPermissionSettings({
       repoRoot: options.repoRoot,
       agentDir,
+      statusPaths,
       read: scope.read,
       write: scope.write,
       tools: rosterAgentTools(proposal, agentId, resolveWorkflowTools),
       disabledMcpjsonServers: disabledProjectMcpjsonServers(fs, options.repoRoot),
     }).json);
+    const mcpConfigPath = join(agentDir, 'mcp.json');
+    fs.writeFile(mcpConfigPath, `${JSON.stringify({ mcpServers: {} }, null, 2)}\n`);
     const created = options.registry.create(run.owner, options.host, {
       requestId: '', cwd: run.workDir, cols, rows,
     });
@@ -1474,9 +1559,11 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
       model: verified.assignment.model,
       bindingPath,
       settingsPath,
-      buffer: '',
       screen: '',
-      lastChunkAt: now(),
+      lastSemanticAt: now(),
+      readySince: null,
+      controlSuffix: '',
+      busyObservationGeneration: 0,
       unobserve: () => {},
       pending: null,
     };
@@ -1489,7 +1576,7 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
       () => settlePending(run, runRef, entry, `delivery abandoned: session ${created.sessionId} ended`),
     );
     options.registry.write(run.owner, created.sessionId, `${launchLine({
-      model: verified.assignment.model, bindingPath, settingsPath, runRef, agentId,
+      model: verified.assignment.model, bindingPath, settingsPath, mcpConfigPath, runRef, agentId,
     })}\r`);
     run.sessions.set(agentId, entry);
     record(run.subject, runRef, agentId, `session ${created.sessionId} spawned at ${new Date(now()).toISOString()}`, 'pending');
@@ -1621,66 +1708,96 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
 
       // THE REPL-READINESS GATE. The delivery line used to be typed unconditionally, and that is how a
       // work order was lost: it interleaved character-by-character with an open tool-permission menu,
-      // which consumed the keystrokes as menu input, and the stage then sat against the marker deadline
+      // which consumed the keystrokes as menu input, and the stage then sat against the delivery deadline
       // with nothing delivered and nothing to report. A terminal is written into only when its own output
       // stream says it is at a plain REPL prompt — not in a modal menu and not mid-turn.
       //
       // The fast path costs nothing once an idle frame has been quiet for the settle threshold. A fresh
       // ready footer still polls: it may belong to the spin-up gap of the boot binding turn, and only a
       // settled pre-type screen makes submit verification's later fresh-busy signal attributable to OUR
-      // order. Every wait remains bounded by this delivery's own marker deadline.
+      // order. Every wait remains bounded by this delivery's own completion deadline.
       const readinessBudget = Math.min(
         timeoutMs,
         Math.max(MIN_REPL_READY_TIMEOUT_MS, options.replReadyTimeoutMs ?? DEFAULT_REPL_READY_TIMEOUT_MS),
       );
-      let readiness = detectReplReadinessSettled(entry.screen, now() - entry.lastChunkAt);
-      if (readiness.state !== 'ready') readiness = await waitForRepl(entry, readinessBudget);
-      if (readiness.state !== 'ready') {
-        // NOTHING was authored and NOTHING was typed: no order file, no token, no bytes into the pty.
-        // This settles as a named human wait, never as a hang and never as a silent success.
+      const withholdForReadiness = (readiness: Exclude<ReplReadiness, { state: 'ready' }>): WorkerExecutionResult => {
         const detail = readiness.state === 'modal'
           ? `an interactive prompt is open ("${readiness.marker}")`
           : readiness.state === 'settling'
-            ? 'a REPL prompt is visible, but the screen never stayed quiet long enough to prove it was idle'
-          : readiness.state === 'silent'
-            ? readiness.marker === 'no output yet'
-              ? 'it has produced no output at all — the REPL may never have come up'
-              : 'no REPL input prompt is on screen — a first-run splash/onboarding screen may be open, '
-                + 'or the REPL has not finished starting'
-            : `it is still mid-turn ("${readiness.marker}")`;
+            ? 'a REPL prompt is visible, but it never stayed continuously ready long enough to prove it was idle'
+            : readiness.state === 'silent'
+              ? readiness.marker === 'no output yet'
+                ? 'it has produced no output at all — the REPL may never have come up'
+                : 'no REPL input prompt is on screen — a first-run splash/onboarding screen may be open, '
+                  + 'or the REPL has not finished starting'
+              : `it is still mid-turn ("${readiness.marker}")`;
         const summary = `work order withheld: the ${agentId} terminal was not at a REPL prompt within `
           + `${Math.max(1, Math.round(readinessBudget / 60_000))} min — ${detail} (${DELIVERY_NOT_READY_REASON}); `
           + 'answer or clear it in that terminal, then re-run the stage';
         record(run.subject, input.runRef, agentId, summary, 'waiting', input.stageRef);
         return {
-          state: 'waiting-human', summary: summary.slice(0, MAX_SUMMARY_CHARS), usage: zeroUsage(), artifacts: [], checkpoints: [],
+          state: 'waiting-human',
+          summary: summary.slice(0, MAX_SUMMARY_CHARS),
+          usage: zeroUsage(),
+          artifacts: [],
+          checkpoints: [],
         };
+      };
+      let readiness = settledReadiness(entry);
+      if (readiness.state !== 'ready') readiness = await waitForRepl(entry, readinessBudget);
+      if (readiness.state !== 'ready') {
+        // NOTHING was authored and NOTHING was typed: no order file, no token, no bytes into the pty.
+        // This settles as a named human wait, never as a hang and never as a silent success.
+        return withholdForReadiness(readiness);
       }
 
       // THE PRE-DELIVERY BASELINE. Taken before the order file exists, so the agent cannot have acted
       // yet: this is what "the stage changed its declared artifacts" is measured against on completion.
       const snapshots = snapshotDeclaredArtifacts(input.proposalStage);
-
       const token = mintToken();
       if (!/^[a-f0-9]{32}$/.test(token)) throw new RosterSessionError('roster completion token is malformed');
       const orderPath = join(runDir(input.runRef), agentId, 'orders', `${input.stageId}.md`);
-      fs.ensureDir(join(runDir(input.runRef), agentId, 'orders'));
-      fs.writeFile(orderPath, orderMarkdown({
-        runRef: input.runRef, stageId: input.stageId, attemptRef: input.attemptRef, token,
-        proposalStage: input.proposalStage, parameters: run.parameters, workDir: run.workDir,
-      }));
-
-      const pending: PendingDelivery = { stageId: input.stageId, token, settle: () => {}, timer: null };
-      // The executor runs synchronously, so `settle` is the real resolver before anything can settle.
+      const statusPath = join(runDir(input.runRef), agentId, 'status', `${input.stageId}.json`);
+      const pending: PendingDelivery = {
+        stageId: input.stageId,
+        token,
+        settle: () => {},
+        timer: null,
+        pollTimer: null,
+      };
       const settled = new Promise<WorkerExecutionResult>((resolve) => { pending.settle = resolve; });
+      // Reserve the one-order slot before yielding the event loop. A concurrent delivery, session exit, or
+      // roster retire during the post-snapshot drain must observe and settle this exact delivery.
       entry.pending = pending;
-      entry.buffer = '';
-      // THE MARKER DEADLINE. `settled` is otherwise reachable only from a marker match, a session exit,
-      // or a retire, so one missed marker held the engine's single worker slot until an operator ran
+      // Hashing a large inherited artifact is synchronous. Drain once so PTY output queued during that
+      // snapshot can update the screen, then re-check immediately before the first delivery write.
+      await sleep(0);
+      if (entry.pending !== pending) return settled;
+      readiness = settledReadiness(entry);
+      if (readiness.state !== 'ready') {
+        resolvePending(entry, withholdForReadiness(readiness));
+        return settled;
+      }
+
+      try {
+        fs.ensureDir(join(runDir(input.runRef), agentId, 'orders'));
+        fs.ensureDir(join(runDir(input.runRef), agentId, 'status'));
+        // Snapshot-and-clear: a prior attempt's status can never satisfy this delivery.
+        fs.removeFile(statusPath);
+        fs.writeFile(orderPath, orderMarkdown({
+          runRef: input.runRef, stageId: input.stageId, attemptRef: input.attemptRef, token,
+          statusPath, proposalStage: input.proposalStage, parameters: run.parameters, workDir: run.workDir,
+        }));
+      } catch (error) {
+        if (entry.pending === pending) entry.pending = null;
+        throw error;
+      }
+      // THE DELIVERY DEADLINE. `settled` is otherwise reachable only from a valid status, a session exit,
+      // or a retire, so one missed status held the engine's single worker slot until an operator ran
       // `stop`. Armed against THIS delivery only: a slot that a later delivery owns is left alone.
       const timer = setTimeout(() => {
         if (entry.pending !== pending) return;
-        const summary = `delivery abandoned: stage ${input.stageId} printed no completion marker within `
+        const summary = `delivery abandoned: stage ${input.stageId} wrote no completion status within `
           + `${Math.round(timeoutMs / 60_000)} min (${DELIVERY_TIMEOUT_REASON}) — open the ${agentId} `
           + 'terminal to see what it is doing, then re-run the stage';
         record(run.subject, input.runRef, agentId, summary, 'waiting', input.stageRef);
@@ -1697,11 +1814,12 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
       const typed = options.registry.write(entry.owner, entry.sessionId, deliveryLine({ orderPath, stageId: input.stageId }));
       if (typed) await sleep(SUBMIT_ENTER_DELAY_MS);
       // Submit the Enter and treat a write failure ONLY while this delivery is still ours. The session can
-      // be retired, its shell can die, or (in tests) a marker can land DURING the submit gap — any of which
+      // be retired or its shell can die DURING the submit gap — either of which
       // resolves `settled` and clears `entry.pending`. In that case skip the Enter (the outcome is already
-      // decided) and fall through to `await settled` below, so the retire/exit reason or the marker's own
-      // completion + artifact verification is what returns — never a spurious Enter-write failure.
+      // decided) and fall through to `await settled` below, so the retire/exit reason is what returns —
+      // never a spurious Enter-write failure.
       if (entry.pending === pending) {
+        const generationAtEnter = entry.busyObservationGeneration;
         const wrote = typed && options.registry.write(entry.owner, entry.sessionId, '\r');
         if (!wrote) {
           // `settled` is discarded with this early return, so releasing the slot and the deadline together
@@ -1713,23 +1831,20 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
           return { state: 'waiting-human', summary, usage: zeroUsage(), artifacts: [], checkpoints: [] };
         }
         // OUTCOME-VERIFY THE SUBMISSION. Bytes written is not a turn started — see {@link
-        // SUBMIT_VERIFY_RETRIES}. Poll for positive evidence the turn engaged (a fresh busy spinner frame,
-        // or the delivery already settled by a fast marker), re-submitting up to SUBMIT_VERIFY_RETRIES —
+        // SUBMIT_VERIFY_RETRIES}. Poll for positive evidence the turn engaged (a busy transition decoded
+        // after this delivery's Enter), re-submitting up to SUBMIT_VERIFY_RETRIES —
         // re-typing the line only when it has left the composer, otherwise just re-sending Enter. If no turn
         // ever engages, PARK LOUDLY as a named human wait; NEVER record a "working" that reads as running
-        // while nothing was delivered and then dies at the 40-min marker deadline.
+        // while nothing was delivered and then dies at the delivery deadline.
         let engaged = false;
         for (let attempt = 0; attempt <= SUBMIT_VERIFY_RETRIES; attempt += 1) {
           const windowEnd = now() + SUBMIT_VERIFY_WINDOW_MS;
           for (;;) {
-            if (entry.pending !== pending) { engaged = true; break; } // a marker/exit already settled us.
-            // A STARTED turn paints a fresh busy spinner — captured live off a real pty: the frame flips
-            // from the idle prompt to the interrupt-hint/elapsed/token footer within ~1-1.5s of the Enter,
-            // and stays busy while the turn runs. The readiness gate above guarantees the terminal was idle
-            // before we typed, so this busy is OUR turn. (A submitted order keeps its prompt TEXT visible on
-            // screen as the user message, so "the order line is gone" is NOT a usable engagement signal —
-            // proven live: it made a genuinely-running turn read as not-engaged.)
-            if (detectTurnEngaged(entry.screen, now() - entry.lastChunkAt)) { engaged = true; break; }
+            if (entry.pending !== pending) { engaged = true; break; } // an exit/retire already settled us.
+            if (detectTurnEngaged(entry.busyObservationGeneration, generationAtEnter)) {
+              engaged = true;
+              break;
+            }
             if (now() >= windowEnd) break;
             await sleep(Math.min(SUBMIT_VERIFY_POLL_MS, Math.max(0, windowEnd - now())));
           }
@@ -1756,11 +1871,12 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
         }
         if (entry.pending === pending) {
           record(run.subject, input.runRef, agentId, `working stage ${input.stageId}`, 'pending', input.stageRef);
+          pollCompletionStatus(entry, pending, statusPath);
         }
       }
       const result = await settled;
       if (result.state === 'succeeded') {
-        // Declared artifacts are verified SERVER-SIDE before the completion is accepted; a marker alone
+        // Declared artifacts are verified SERVER-SIDE before the completion is accepted; a status alone
         // never satisfies a stage that promised files, and neither does a file the stage did not write.
         const problems = unsatisfiedArtifacts(snapshots);
         if (problems.length > 0) {

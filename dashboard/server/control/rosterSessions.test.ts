@@ -25,12 +25,12 @@ import {
   detectReplReadinessSettled,
   detectTurnEngaged,
   STALE_BUSY_QUIET_MS,
-  matchCompletionMarker,
   projectRosterState,
   resolveRosterWorkDir,
   rosterAgentIds,
   rosterAgentScope,
   rosterAgentTools,
+  splitTerminalControlSuffix,
   stripTerminalControl,
   DELIVERY_NOT_READY_REASON,
   DELIVERY_NOT_ENGAGED_REASON,
@@ -238,6 +238,8 @@ function fakeFs(existing: string[] = [], seed: { directories?: string[]; content
   files: Map<string, string>;
   dirs: string[];
   removed: string[];
+  removedFiles: string[];
+  operations: string[];
   /** Every `hashFile` call, in order — the cost assertion (a big artifact must not be hashed twice). */
   hashed: string[];
   /** Write real bytes at a path, the way a stage producing its artifact would. */
@@ -248,6 +250,8 @@ function fakeFs(existing: string[] = [], seed: { directories?: string[]; content
   const files = new Map<string, string>();
   const dirs: string[] = [];
   const removed: string[] = [];
+  const removedFiles: string[] = [];
+  const operations: string[] = [];
   const hashed: string[] = [];
   const directories = new Set((seed.directories ?? []).map((path) => norm(path)));
   for (const path of existing) files.set(norm(path), `seed:${norm(path)}`);
@@ -256,10 +260,21 @@ function fakeFs(existing: string[] = [], seed: { directories?: string[]; content
     files,
     dirs,
     removed,
+    removedFiles,
+    operations,
     hashed,
     ensureDir(path) { dirs.push(path); },
     readFile(path) { return files.get(norm(path)) ?? null; },
-    writeFile(path, contents) { files.set(norm(path), contents); },
+    writeFile(path, contents) {
+      operations.push(`write:${norm(path)}`);
+      files.set(norm(path), contents);
+    },
+    removeFile(path) {
+      const key = norm(path);
+      removedFiles.push(key);
+      operations.push(`remove:${key}`);
+      files.delete(key);
+    },
     stat(path) {
       const key = norm(path);
       if (directories.has(key)) return { regularFile: false, size: 0 };
@@ -298,9 +313,6 @@ const IDLE_FRAME = '╭───╮\r\n│ >  │\r\n╰───╯\r\n  ⏵⏵
  */
 const BUSY_FRAME = '✻ Working… ❯ esc to interrupt (2s · thinking) ↓ 40 tokens\r\n';
 
-const LIVE_CAPTURE_MARKER_TOKEN = '56ce2c3254c75fdacfc1255a2f1bccf0';
-const LIVE_CAPTURE_MARKER_RAW = '[mpass was skipped and every\u001b[29;3Hsource is marked evergreen-verify, noted in the file header for the researcher.\u001b[K\u001b[30;3H-\u001b[1CHuman gate g0-idea-pick now blocks the next stage; no self-advancement.\u001b[K\u001b[31;6H\u001b[K\u001b[32;3HFYT-STAGE-DONE idea 56ce2c3254c75fdacfc1255a2f1bccf0 5 ranked deep-path\u001b[1Cidea\u001b[1Cbriefs\u001b[1Cwritten\u001b[1Cto\u001b[33;3Hchannel';
-
 function harness(options: {
   plan?: PlanProposal;
   existingPaths?: string[];
@@ -316,6 +328,8 @@ function harness(options: {
    * has not yet booted `claude` looks like. Off by default: see {@link IDLE_FRAME}.
    */
   coldTerminals?: boolean;
+  /** Disable the normal fake terminal's post-Enter busy transition. */
+  autoEngage?: boolean;
 } = {}) {
   const plan = options.plan ?? proposalFixture();
   const store = createInMemoryControlPlaneStore({ newId: () => `id-${++sequence}` });
@@ -349,6 +363,13 @@ function harness(options: {
       clock += ms;
       sleepElapsed += ms;
       options.onSleep?.(sleepElapsed);
+      if (options.onSleep === undefined && options.autoEngage !== false) {
+        for (const sessionId of host.writes.keys()) {
+          if ((host.writes.get(sessionId) ?? []).some((chunk) => chunk === '\r')) {
+            host.emit(sessionId, BUSY_FRAME);
+          }
+        }
+      }
     },
     resolveWorkflowTools: options.workflowTools ?? (() => ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep']),
     ...(options.deliveryTimeoutMs === undefined ? {} : { deliveryTimeoutMs: options.deliveryTimeoutMs }),
@@ -412,6 +433,42 @@ function sessionIdFor(sessions: RosterSessionManager, runRef: string, agentId: s
   return row.sessionId;
 }
 
+function completionPaths(runRef: string, stageId: string, agentId = 'fyt-story'): {
+  orderPath: string;
+  statusPath: string;
+} {
+  const base = `/state/control/roster/${runRef}/${agentId}`;
+  return {
+    orderPath: `${base}/orders/${stageId}.md`,
+    statusPath: `${base}/status/${stageId}.json`,
+  };
+}
+
+function completionToken(fs: ReturnType<typeof fakeFs>, runRef: string, stageId: string, agentId = 'fyt-story'): string {
+  const { orderPath } = completionPaths(runRef, stageId, agentId);
+  const token = /completion token: ([0-9a-f]{32})/.exec(fs.files.get(orderPath) ?? '')?.[1];
+  if (!token) throw new Error(`completion token missing from ${orderPath}`);
+  return token;
+}
+
+async function writeCompletionStatus(
+  fs: ReturnType<typeof fakeFs>,
+  runRef: string,
+  stageId: string,
+  verdict: 'DONE' | 'BLOCKED' | 'FAILED',
+  summary: string,
+  options: { agentId?: string; token?: string } = {},
+): Promise<void> {
+  const agentId = options.agentId ?? 'fyt-story';
+  const { orderPath, statusPath } = completionPaths(runRef, stageId, agentId);
+  await vi.waitFor(() => { expect(fs.files.has(orderPath)).toBe(true); });
+  fs.put(statusPath, JSON.stringify({
+    token: options.token ?? completionToken(fs, runRef, stageId, agentId),
+    verdict,
+    summary,
+  }));
+}
+
 describe('roster spawn lifecycle', () => {
   it('spawns exactly one session per DISTINCT agent id, manager included', () => {
     const { plan, sessions, runRef, registry, host } = harness();
@@ -447,6 +504,8 @@ describe('roster spawn lifecycle', () => {
     expect(binding).toContain('- slice: 2min');
     expect(norm(binding ?? '')).toContain('/repo/orgs/faceless-youtube');
     expect(binding).toContain('# fyt-story');
+    expect(binding).toContain('server-owned status path');
+    expect(binding).toContain('Do not signal completion in terminal text');
     // The only thing written into the terminal at spawn is the launch line pointing at that binding.
     const sessionId = sessionIdFor(sessions, runRef, 'fyt-story');
     expect(host.writes.get(sessionId)).toHaveLength(1);
@@ -471,6 +530,7 @@ describe('roster spawn lifecycle', () => {
     resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
     const pending = sessions.deliver(deliverInput(store, runRef, plan, 'story'));
     const orderPath = `/state/control/roster/${runRef}/fyt-story/orders/story.md`;
+    await vi.waitFor(() => { expect(fs.files.has(orderPath)).toBe(true); });
     expect(fs.files.get(orderPath)).toMatch(/completion token: [0-9a-f]{32}/);
     sessions.retire(runRef, 'run succeeded');
     await pending;
@@ -575,7 +635,7 @@ describe('gated work-order delivery', () => {
     expect(result.summary).toContain('open human request');
   });
 
-  it('delivers after approval and completes on the delivery\'s own marker', async () => {
+  it('delivers after approval and completes only from the delivery\'s server-owned status file', async () => {
     const { plan, store, sessions, runRef, fs, host } = harness();
     sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
     const sessionId = sessionIdFor(sessions, runRef, 'fyt-story');
@@ -583,16 +643,16 @@ describe('gated work-order delivery', () => {
     resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
 
     const pending = sessions.deliver(deliverInput(store, runRef, plan, 'story'));
-    // The submitted order starts a turn — the outcome-verified submit records "working" only once it sees
-    // that running-turn frame, so stand it up the way a real terminal would before the marker lands.
-    host.emit(sessionId, BUSY_FRAME);
     const orderPath = `/state/control/roster/${runRef}/fyt-story/orders/story.md`;
+    const statusPath = `/state/control/roster/${runRef}/fyt-story/status/story.json`;
+    await vi.waitFor(() => { expect(fs.files.has(orderPath)).toBe(true); });
     const order = fs.files.get(orderPath);
     expect(order).toBeDefined();
     expect(order).toContain('Do story for the slice.');
-    expect(order).toContain('FYT-STAGE-<VERDICT> story');
-    // The order file never spells a literal verdict, so echoing it cannot fabricate a completion.
-    expect(order).not.toContain('FYT-STAGE-DONE');
+    expect(norm(order ?? '')).toContain(`completion status path: ${statusPath}`);
+    expect(order).toContain(`{"token":"${completionToken(fs, runRef, 'story')}"`);
+    expect(order).toContain('"verdict":"DONE|BLOCKED|FAILED"');
+    expect(order).toContain('Do NOT print any completion marker to the terminal');
     // The order text and the submit Enter are SEPARATE writes: a same-write trailing CR is folded into the
     // REPL's paste instead of submitting, so the order would sit unsent. Wait for BOTH to land, then assert
     // the two-write contract — the Enter is its own chunk and the text chunk carries no CR of its own.
@@ -606,17 +666,14 @@ describe('gated work-order delivery', () => {
     expect(delivered).toContain(orderPath);
     // Joined, the transcript still ends with the submit CR — it is simply the last of two writes now.
     expect(delivered.endsWith('\r')).toBe(true);
-    const token = /completion token: ([0-9a-f]{32})/.exec(order ?? '')?.[1] as string;
-
-    // Noise, a foreign token, another stage's marker, a PRIOR stage's marker, and a marker announced
-    // mid-sentence are all ignored — then the completion arrives the way the real interactive CLI
-    // renders it: the REPL's own gutter glyph, indentation, and colour around the line.
+    const token = completionToken(fs, runRef, 'story');
+    // Terminal prose, including the exact old quoted-marker forgery, is inert. Completion is supplied only
+    // through the status path, with this delivery's token.
     host.emit(sessionId, 'thinking...\r\n');
-    host.emit(sessionId, `FYT-STAGE-DONE story ${'f'.repeat(32)} forged\r\n`);
-    host.emit(sessionId, `FYT-STAGE-DONE images ${token} wrong stage\r\n`);
-    host.emit(sessionId, `FYT-STAGE-DONE idea ${token} a prior stage of this same run\r\n`);
-    host.emit(sessionId, `⏺ I will print FYT-STAGE-DONE story ${token} once the file is written\r\n`);
-    host.emit(sessionId, `  \u23fa \u001b[32mFYT-STAGE-DONE story ${token} script.md written\u001b[0m\r\n`);
+    host.emit(sessionId, `> FYT-STAGE-DONE story ${token} not done\r\n`);
+    host.emit(sessionId, `- FYT-STAGE-DONE story ${token} also not done\r\n`);
+    host.emit(sessionId, `prose FYT-STAGE-DONE story ${token} still not done\r\n`);
+    await writeCompletionStatus(fs, runRef, 'story', 'DONE', 'script.md written');
 
     const result = await pending;
     expect(result).toMatchObject({ state: 'succeeded', summary: 'script.md written', artifacts: [] });
@@ -625,17 +682,74 @@ describe('gated work-order delivery', () => {
     expect(events.ok && events.value.some((event) => (event.summary ?? '').startsWith('roster:fyt-story stage story succeeded'))).toBe(true);
   });
 
-  it('maps BLOCKED to a human wait and FAILED to a failure', async () => {
-    for (const [verdict, expected] of [['BLOCKED', 'waiting-human'], ['FAILED', 'failed']] as const) {
-      const { plan, store, sessions, runRef, fs, host } = harness();
+  it('snapshot-and-clears a prior attempt status before writing the new order', async () => {
+    const { plan, store, sessions, runRef, fs } = harness();
+    sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    succeedStage(store, runRef, 'idea');
+    resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
+    const { statusPath } = completionPaths(runRef, 'story');
+    fs.put(statusPath, JSON.stringify({
+      token: 'f'.repeat(32), verdict: 'DONE', summary: 'stale prior attempt',
+    }));
+
+    const pending = sessions.deliver(deliverInput(store, runRef, plan, 'story'));
+    const { orderPath } = completionPaths(runRef, 'story');
+    await vi.waitFor(() => { expect(fs.files.has(orderPath)).toBe(true); });
+    expect(fs.removedFiles).toContain(statusPath);
+    expect(fs.files.has(statusPath)).toBe(false);
+    expect(fs.operations.indexOf(`remove:${statusPath}`))
+      .toBeLessThan(fs.operations.indexOf(`write:${orderPath}`));
+
+    await writeCompletionStatus(fs, runRef, 'story', 'DONE', 'fresh delivery');
+    await expect(pending).resolves.toMatchObject({ state: 'succeeded', summary: 'fresh delivery' });
+  });
+
+  it('keeps waiting through malformed and wrong-token status files, then accepts the valid delivery status', async () => {
+    vi.useFakeTimers();
+    try {
+      const { plan, store, sessions, runRef, fs } = harness();
       sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
-      const sessionId = sessionIdFor(sessions, runRef, 'fyt-story');
       succeedStage(store, runRef, 'idea');
       resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
       const pending = sessions.deliver(deliverInput(store, runRef, plan, 'story'));
-      const order = fs.files.get(`/state/control/roster/${runRef}/fyt-story/orders/story.md`) ?? '';
-      const token = /completion token: ([0-9a-f]{32})/.exec(order)?.[1] as string;
-      host.emit(sessionId, `FYT-STAGE-${verdict} story ${token} needs a human\r\n`);
+      for (let index = 0; index < 10; index += 1) await Promise.resolve();
+      const { orderPath, statusPath } = completionPaths(runRef, 'story');
+      expect(fs.files.has(orderPath)).toBe(true);
+
+      fs.put(statusPath, '{"token":');
+      await vi.advanceTimersByTimeAsync(300);
+      expect(sessions.state('operator', runRef).find((row) => row.agentId === 'fyt-story')?.status).toBe('active');
+
+      fs.put(statusPath, JSON.stringify({
+        token: 'f'.repeat(32), verdict: 'DONE', summary: 'wrong delivery',
+      }));
+      await vi.advanceTimersByTimeAsync(300);
+      expect(sessions.state('operator', runRef).find((row) => row.agentId === 'fyt-story')?.status).toBe('active');
+
+      fs.put(statusPath, JSON.stringify({
+        token: completionToken(fs, runRef, 'story'), verdict: 'OK', summary: 'invalid verdict',
+      }));
+      await vi.advanceTimersByTimeAsync(300);
+      expect(sessions.state('operator', runRef).find((row) => row.agentId === 'fyt-story')?.status).toBe('active');
+
+      fs.put(statusPath, JSON.stringify({
+        token: completionToken(fs, runRef, 'story'), verdict: 'DONE', summary: 'valid delivery',
+      }));
+      await vi.advanceTimersByTimeAsync(300);
+      await expect(pending).resolves.toMatchObject({ state: 'succeeded', summary: 'valid delivery' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('maps BLOCKED to a human wait and FAILED to a failure', async () => {
+    for (const [verdict, expected] of [['BLOCKED', 'waiting-human'], ['FAILED', 'failed']] as const) {
+      const { plan, store, sessions, runRef, fs } = harness();
+      sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+      succeedStage(store, runRef, 'idea');
+      resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
+      const pending = sessions.deliver(deliverInput(store, runRef, plan, 'story'));
+      await writeCompletionStatus(fs, runRef, 'story', verdict, 'needs a human');
       expect((await pending).state).toBe(expected);
     }
   });
@@ -651,25 +765,25 @@ describe('gated work-order delivery', () => {
    */
   const SCRIPT_PATH = 'orgs/faceless-youtube/channels/x/videos/y/script.md';
 
-  /** A run whose `story` stage declares one artifact, delivered and awaiting its marker. */
+  /** A run whose `story` stage declares one artifact, delivered and awaiting its status file. */
   async function artifactHarness(options: { seed?: { directories?: string[]; contents?: Record<string, string> } } = {}) {
     const plan = proposalFixture();
     plan.stages[1].artifacts = [{ id: 'script', path: SCRIPT_PATH, description: 'the script' }];
-    const { store, sessions, runRef, fs, host } = harness({ plan, ...(options.seed ? { seed: options.seed } : {}) });
+    const { store, sessions, runRef, fs } = harness({ plan, ...(options.seed ? { seed: options.seed } : {}) });
     sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
-    const sessionId = sessionIdFor(sessions, runRef, 'fyt-story');
     succeedStage(store, runRef, 'idea');
     resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
     const pending = sessions.deliver(deliverInput(store, runRef, plan, 'story'));
-    const order = fs.files.get(`/state/control/roster/${runRef}/fyt-story/orders/story.md`) ?? '';
+    const orderPath = `/state/control/roster/${runRef}/fyt-story/orders/story.md`;
+    await vi.waitFor(() => { expect(fs.files.has(orderPath)).toBe(true); });
+    const order = fs.files.get(orderPath) ?? '';
     // The order file NAMES the declared artifact, so the agent knows what it is being held to.
     expect(order).toContain(SCRIPT_PATH);
-    const token = /completion token: ([0-9a-f]{32})/.exec(order)?.[1] as string;
     return {
       fs,
-      /** Emit the honest marker and await the server's verdict on the artifact. */
+      /** Write the honest status and await the server's verdict on the artifact. */
       async complete() {
-        host.emit(sessionId, `FYT-STAGE-DONE story ${token} all done honest\r\n`);
+        await writeCompletionStatus(fs, runRef, 'story', 'DONE', 'all done honest');
         return pending;
       },
     };
@@ -746,24 +860,18 @@ describe('gated work-order delivery', () => {
   it('parks a stage whose declared artifact path is not repo-relative-safe', async () => {
     const plan = proposalFixture();
     plan.stages[1].artifacts = [{ id: 'escape', path: '../../etc/passwd', description: 'nope' }];
-    const { store, sessions, runRef, fs, host } = harness({ plan });
+    const { store, sessions, runRef, fs } = harness({ plan });
     sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
-    const sessionId = sessionIdFor(sessions, runRef, 'fyt-story');
     succeedStage(store, runRef, 'idea');
     resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
     const pending = sessions.deliver(deliverInput(store, runRef, plan, 'story'));
-    const order = fs.files.get(`/state/control/roster/${runRef}/fyt-story/orders/story.md`) ?? '';
-    const token = /completion token: ([0-9a-f]{32})/.exec(order)?.[1] as string;
-    host.emit(sessionId, `FYT-STAGE-DONE story ${token} done\r\n`);
+    await writeCompletionStatus(fs, runRef, 'story', 'DONE', 'done');
     const result = await pending;
     expect(result.state).toBe('waiting-human');
     expect(result.summary).toContain('not a safe repo-relative path');
   });
 
-  it('settles a delivery that never sees a marker as a human wait, releasing the worker slot', async () => {
-    // `settled` is otherwise reachable only from a marker match, a session exit, or a retire — so a
-    // rendering this scanner missed, or a launch line that never brought the REPL up (the delivery line
-    // typed into a bare shell prompt), held the engine's single worker slot until an operator ran `stop`.
+  it('settles a delivery that never sees a completion status as a human wait, releasing the worker slot', async () => {
     vi.useFakeTimers();
     try {
       const { plan, store, sessions, runRef, host } = harness({ deliveryTimeoutMs: 5 * 60_000 });
@@ -772,18 +880,17 @@ describe('gated work-order delivery', () => {
       succeedStage(store, runRef, 'idea');
       resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
       const pending = sessions.deliver(deliverInput(store, runRef, plan, 'story'));
-      // The turn engaged (submit is outcome-verified) but then goes silent without ever printing the
-      // marker — the exact case the marker deadline exists for. Stand the running turn, then never complete.
-      host.emit(sessionId, BUSY_FRAME);
-      // Chatter that is not the marker changes nothing, however much of it there is.
+      // Terminal chatter can never complete the delivery.
       host.emit(sessionId, 'PS C:\\Users\\danie> working on it...\r\n');
+      for (let index = 0; index < 10; index += 1) await Promise.resolve();
+      expect(sessions.state('operator', runRef).find((row) => row.agentId === 'fyt-story')?.status).toBe('active');
       await vi.advanceTimersByTimeAsync(4 * 60_000);
       expect(sessions.state('operator', runRef).find((row) => row.agentId === 'fyt-story')?.status).toBe('active');
       await vi.advanceTimersByTimeAsync(2 * 60_000);
       const result = await pending;
       expect(result.state).toBe('waiting-human');
       expect(result.summary).toContain(DELIVERY_TIMEOUT_REASON);
-      expect(result.summary).toContain('no completion marker');
+      expect(result.summary).toContain('no completion status');
       // The slot is released: the same agent can take a fresh order instead of throwing "already has an
       // outstanding work order" forever.
       expect(sessions.state('operator', runRef).find((row) => row.agentId === 'fyt-story')?.status).not.toBe('active');
@@ -798,15 +905,18 @@ describe('gated work-order delivery', () => {
   it('does not let a timeout fire against a delivery that already landed', async () => {
     vi.useFakeTimers();
     try {
-      const { plan, store, sessions, runRef, fs, host } = harness({ deliveryTimeoutMs: 60_000 });
+      const { plan, store, sessions, runRef, fs } = harness({ deliveryTimeoutMs: 60_000 });
       sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
-      const sessionId = sessionIdFor(sessions, runRef, 'fyt-story');
       succeedStage(store, runRef, 'idea');
       resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
       const pending = sessions.deliver(deliverInput(store, runRef, plan, 'story'));
-      const order = fs.files.get(`/state/control/roster/${runRef}/fyt-story/orders/story.md`) ?? '';
-      const token = /completion token: ([0-9a-f]{32})/.exec(order)?.[1] as string;
-      host.emit(sessionId, `⏺ FYT-STAGE-DONE story ${token} landed in time\r\n`);
+      for (let index = 0; index < 10; index += 1) await Promise.resolve();
+      const { orderPath, statusPath } = completionPaths(runRef, 'story');
+      expect(fs.files.has(orderPath)).toBe(true);
+      fs.put(statusPath, JSON.stringify({
+        token: completionToken(fs, runRef, 'story'), verdict: 'DONE', summary: 'landed in time',
+      }));
+      await vi.advanceTimersByTimeAsync(300);
       expect(await pending).toMatchObject({ state: 'succeeded', summary: 'landed in time' });
       // The deadline is cleared on settle, so nothing re-settles the slot a later delivery may own.
       await vi.advanceTimersByTimeAsync(10 * 60_000);
@@ -903,9 +1013,7 @@ describe('gated work-order delivery', () => {
 
     resolveGate(store, runRef, 'images', 'g2-visual-plan', 'approved');
     const pending = sessions.deliver(deliverInput(store, runRef, plan, 'images'));
-    expect(fs.files.has(`/state/control/roster/${runRef}/fyt-visuals/orders/images.md`)).toBe(true);
-    const order = fs.files.get(`/state/control/roster/${runRef}/fyt-visuals/orders/images.md`) ?? '';
-    host.emit(sessionId, `FYT-STAGE-DONE images ${/completion token: ([0-9a-f]{32})/.exec(order)?.[1]} frames generated\r\n`);
+    await writeCompletionStatus(fs, runRef, 'images', 'DONE', 'frames generated', { agentId: 'fyt-visuals' });
     expect((await pending).state).toBe('succeeded');
   });
 
@@ -1044,14 +1152,11 @@ describe('roster state projection (the canvas contract)', () => {
   });
 
   it('reports an agent as active while its work order is outstanding', async () => {
-    const { plan, store, sessions, runRef, host } = harness();
+    const { plan, store, sessions, runRef } = harness();
     sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
-    const sessionId = sessionIdFor(sessions, runRef, 'fyt-story');
     succeedStage(store, runRef, 'idea');
     resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
     const pending = sessions.deliver(deliverInput(store, runRef, plan, 'story'));
-    // The order starts a turn; the outcome-verified submit records "working" only after it observes that.
-    host.emit(sessionId, BUSY_FRAME);
     // The 'working stage story' activity is recorded once the order is SUBMITTED and its turn is verified
     // engaged — a tick after deliver() yields — so await it rather than reading synchronously mid-delivery.
     await vi.waitFor(() => {
@@ -1087,123 +1192,6 @@ describe('roster state projection (the canvas contract)', () => {
     });
     expect(rows.every((row) => row.sessionId === null)).toBe(true);
     expect(plan.stages).toHaveLength(3);
-  });
-});
-
-/**
- * The completion marker is the ONLY signal that advances a delivered stage, and the substrate is an
- * interactive `claude` REPL that frames its own output. An anchor of `^FYT-STAGE-` matched a bare line
- * and essentially nothing the real CLI prints, so the completion would never arrive and the delivery
- * would hang. Every string below is run through the REAL `stripTerminalControl` first, exactly as `scan`
- * does, and then matched against the pending delivery's own stage id and token.
- */
-describe('completion marker recognition', () => {
-  const TOKEN = 'a'.repeat(32);
-  const FOREIGN = 'f'.repeat(32);
-  const PENDING = { stageId: 'story', token: TOKEN };
-
-  /** What `scan` concludes for one raw terminal chunk: accepted verdict, or why it was rejected. */
-  function outcomeOf(raw: string): 'no-match' | 'stage-mismatch' | 'token-mismatch' | string {
-    const line = stripTerminalControl(raw).split('\n')[0];
-    const marker = matchCompletionMarker(line);
-    if (!marker) return 'no-match';
-    if (marker.stageId !== PENDING.stageId) return 'stage-mismatch';
-    if (marker.token !== PENDING.token) return 'token-mismatch';
-    return marker.verdict;
-  }
-
-  const ACCEPTED: Array<[string, string, string]> = [
-    ['bare line', `FYT-STAGE-DONE story ${TOKEN} script.md written`, 'DONE'],
-    ['ANSI-coloured line', `\u001b[32mFYT-STAGE-DONE story ${TOKEN} script.md written\u001b[0m`, 'DONE'],
-    ['two-space indent', `  FYT-STAGE-DONE story ${TOKEN} ok`, 'DONE'],
-    ['REPL gutter glyph U+23FA', `⏺ FYT-STAGE-DONE story ${TOKEN} ok`, 'DONE'],
-    ['box-drawing rail U+2502', `│ FYT-STAGE-DONE story ${TOKEN} ok`, 'DONE'],
-    ['list bullet', `- FYT-STAGE-DONE story ${TOKEN} ok`, 'DONE'],
-    ['quote marker', `> FYT-STAGE-DONE story ${TOKEN} ok`, 'DONE'],
-    ['indent + rail + gutter together', `   │ ⏺  FYT-STAGE-DONE story ${TOKEN} ok`, 'DONE'],
-    ['coloured gutter, then the marker', `\u001b[38;5;2m⏺\u001b[0m FYT-STAGE-DONE story ${TOKEN} ok`, 'DONE'],
-    ['no summary at all', `FYT-STAGE-DONE story ${TOKEN}`, 'DONE'],
-    ['BLOCKED with a gutter', `⏺ FYT-STAGE-BLOCKED story ${TOKEN} needs a human`, 'BLOCKED'],
-    ['FAILED with a gutter', `⏺ FYT-STAGE-FAILED story ${TOKEN} cannot finish`, 'FAILED'],
-  ];
-
-  const REJECTED: Array<[string, string, string]> = [
-    ['marker announced mid-sentence', `I will print FYT-STAGE-DONE story ${TOKEN} at the end`, 'no-match'],
-    ['gutter, prose, then marker', `⏺ When done I print FYT-STAGE-DONE story ${TOKEN}`, 'no-match'],
-    ['the order file\'s own placeholder, echoed', `FYT-STAGE-<VERDICT> story ${TOKEN} <one-line summary>`, 'no-match'],
-    ['unknown verdict', `FYT-STAGE-OK story ${TOKEN} nope`, 'no-match'],
-    ['no separator after the verdict', `FYT-STAGE-DONEstory ${TOKEN} nope`, 'no-match'],
-    ['token one character short', `FYT-STAGE-DONE story ${'a'.repeat(31)} nope`, 'no-match'],
-    ['uppercase token', `FYT-STAGE-DONE story ${'A'.repeat(32)} nope`, 'no-match'],
-    ['forged token', `FYT-STAGE-DONE story ${FOREIGN} forged`, 'token-mismatch'],
-    ['another stage\'s marker', `FYT-STAGE-DONE images ${TOKEN} wrong stage`, 'stage-mismatch'],
-    ['a PRIOR stage\'s marker', `⏺ FYT-STAGE-DONE idea ${TOKEN} earlier stage`, 'stage-mismatch'],
-    // QUOTING AND FENCING. An agent restating the line it is ABOUT to print is completely normal
-    // behaviour, and under the old `[^A-Za-z0-9]{0,32}` prefix every one of these MATCHED — a stage could
-    // complete itself by talking about completing.
-    ['inline code span', `\`FYT-STAGE-DONE story ${TOKEN} ok\``, 'no-match'],
-    ['bullet plus backticks', `- \`FYT-STAGE-DONE story ${TOKEN} ok\``, 'no-match'],
-    ['comment / markdown heading', `# FYT-STAGE-DONE story ${TOKEN} ok`, 'no-match'],
-    ['fence run-on', `\`\`\`FYT-STAGE-DONE story ${TOKEN} ok`, 'no-match'],
-    ['JSON with an empty key', `{"": "FYT-STAGE-DONE story ${TOKEN} ok"`, 'no-match'],
-    // Neighbours of the above, kept explicit so a future widening of the prefix has to break a test.
-    ['double-quoted line', `"FYT-STAGE-DONE story ${TOKEN} ok"`, 'no-match'],
-    ['single-quoted line', `'FYT-STAGE-DONE story ${TOKEN} ok'`, 'no-match'],
-    ['curly-quoted line', `“FYT-STAGE-DONE story ${TOKEN} ok”`, 'no-match'],
-    ['JSON array element', `["FYT-STAGE-DONE story ${TOKEN} ok"]`, 'no-match'],
-    ['yaml-ish key', `marker: FYT-STAGE-DONE story ${TOKEN} ok`, 'no-match'],
-    ['shell comment with slashes', `// FYT-STAGE-DONE story ${TOKEN} ok`, 'no-match'],
-  ];
-
-  it.each(ACCEPTED)('accepts %s', (_name, raw, verdict) => {
-    expect(outcomeOf(raw)).toBe(verdict);
-  });
-
-  it.each(REJECTED)('rejects %s', (_name, raw, reason) => {
-    expect(outcomeOf(raw)).toBe(reason);
-  });
-
-  it('keeps the anchor: a prefix is decoration only, never prose or quoting', () => {
-    // Generality, not a whitelist of the glyphs seen today — the prefix admits whole Unicode decoration
-    // bands, so the next CLI release's gutter glyph still scans — but bounded, killed by one alphanumeric
-    // character ahead of the marker, and closed to every quoting/fencing character.
-    expect(outcomeOf(`${'│'.repeat(8)} FYT-STAGE-DONE story ${TOKEN} ok`)).toBe('DONE');
-    // Decoration glyphs this scanner has never seen, from the bands terminal framing lives in.
-    for (const glyph of ['▌', '●', '→', '•', '❯', '⎿', '⬤']) {
-      expect(outcomeOf(`${glyph} FYT-STAGE-DONE story ${TOKEN} ok`)).toBe('DONE');
-    }
-    expect(outcomeOf(`${'.'.repeat(40)} FYT-STAGE-DONE story ${TOKEN} ok`)).toBe('no-match');
-    expect(outcomeOf(`x FYT-STAGE-DONE story ${TOKEN} ok`)).toBe('no-match');
-    // A single quoting character is enough, at any depth of otherwise-legal decoration.
-    expect(outcomeOf(`   │ ⏺  \`FYT-STAGE-DONE story ${TOKEN} ok`)).toBe('no-match');
-    expect(matchCompletionMarker(`FYT-STAGE-DONE story ${TOKEN}   trailing summary  `)?.summary.trim())
-      .toBe('trailing summary');
-  });
-
-  it('reconstructs cursor-positioned marker rows and CUF word gaps from the live PTY capture', () => {
-    const markers = stripTerminalControl(LIVE_CAPTURE_MARKER_RAW)
-      .split('\n')
-      .map((line) => matchCompletionMarker(line))
-      .filter((marker) => marker !== null);
-
-    expect(markers).toHaveLength(1);
-    expect(markers[0]).toMatchObject({
-      verdict: 'DONE',
-      stageId: 'idea',
-      token: LIVE_CAPTURE_MARKER_TOKEN,
-    });
-    expect(markers[0]?.summary).toMatch(/^5 ranked deep-path idea briefs written to/);
-  });
-
-  it('replaces CUF with one word gap', () => {
-    expect(stripTerminalControl('A\u001b[1CB')).toBe('A B');
-    expect(stripTerminalControl('A\u001b[2;4fB')).toBe('A\nB');
-  });
-
-  it('keeps anchoring when no cursor-position boundary precedes a quoted marker', () => {
-    // CUP can put renderer-wrapped quoted text at a line start, as \r\n wrapping already could. That is
-    // why scan also requires this delivery's stage id and token; absent a boundary, prose still cannot match.
-    expect(matchCompletionMarker(`prose then FYT-STAGE-DONE idea ${'b'.repeat(32)} x`)).toBeNull();
   });
 });
 
@@ -1297,10 +1285,11 @@ describe('roster helpers', () => {
  * settings file passed to `claude --settings`.
  */
 describe('roster scoped per-run permissions', () => {
-  it('grants exactly the declared scope plus its own order channel, and nothing else', () => {
+  it('grants exactly the declared scope plus its own order and status channels, and nothing else', () => {
     const settings = buildRosterPermissionSettings({
       repoRoot: 'C:\\Users\\danie\\kb',
       agentDir: 'C:\\state\\control\\roster\\run-7\\fyt-visuals',
+      statusPaths: ['C:\\state\\control\\roster\\run-7\\fyt-visuals\\status\\images.json'],
       read: ['orgs/faceless-youtube'],
       write: ['orgs/faceless-youtube/channels'],
       tools: ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep'],
@@ -1310,6 +1299,7 @@ describe('roster scoped per-run permissions', () => {
     // `Read(C:/…/**)` is ALLOWED — so the `//` form these rules used to carry granted nothing at all.
     expect(settings.allow).toEqual([
       'Read(C:/state/control/roster/run-7/fyt-visuals/**)',
+      'Edit(C:/state/control/roster/run-7/fyt-visuals/status/images.json)',
       'Read(C:/Users/danie/kb/orgs/faceless-youtube/**)',
       'Read(C:/Users/danie/kb/orgs/faceless-youtube/channels/**)',
       'Glob(C:/Users/danie/kb/orgs/faceless-youtube/**)',
@@ -1410,6 +1400,7 @@ describe('roster scoped per-run permissions', () => {
     const settings = buildRosterPermissionSettings({
       repoRoot: '/repo',
       agentDir: '/state/agent',
+      statusPaths: ['/state/agent/status/../escape.json'],
       read: ['../../etc', '/absolute', 'orgs/faceless-youtube'],
       write: ['orgs/../../escape'],
       tools: ['Read', 'Write'],
@@ -1468,6 +1459,8 @@ describe('roster scoped per-run permissions', () => {
       'Edit(.env)', 'Edit(**/.env)', 'Edit(**/.env.*)', 'Edit(**/.ssh/**)', 'Edit(**/.aws/**)',
     ]) expect(parsed.permissions.deny).toContain(rule);
     expect(parsed.permissions.allow).toContain(`Read(/state/control/roster/${runRef}/fyt-story/**)`);
+    expect(parsed.permissions.allow).toContain(`Edit(/state/control/roster/${runRef}/fyt-story/status/idea.json)`);
+    expect(parsed.permissions.allow).toContain(`Edit(/state/control/roster/${runRef}/fyt-story/status/story.json)`);
     expect(parsed.permissions.allow).toContain('Read(/repo/orgs/faceless-youtube/**)');
     expect(parsed.permissions.allow).toContain('Edit(/repo/orgs/faceless-youtube/channels/**)');
     // Nothing outside the canonical repo root or this agent's own roster directory.
@@ -1476,6 +1469,10 @@ describe('roster scoped per-run permissions', () => {
     }
     const launch = host.writes.get(sessionIdFor(sessions, runRef, 'fyt-story'))?.[0] ?? '';
     expect(norm(launch)).toContain(`--settings "/state/control/roster/${runRef}/fyt-story/settings.json"`);
+    expect(norm(launch)).toContain(`--strict-mcp-config`);
+    expect(norm(launch)).toContain(`--mcp-config "/state/control/roster/${runRef}/fyt-story/mcp.json"`);
+    expect(JSON.parse(fs.files.get(`/state/control/roster/${runRef}/fyt-story/mcp.json`) as string))
+      .toEqual({ mcpServers: {} });
     expect(launch).not.toContain('--dangerously-skip-permissions');
     expect(launch).not.toContain('--allow-dangerously-skip-permissions');
     expect(launch).not.toContain('--permission-mode');
@@ -1487,18 +1484,20 @@ describe('roster scoped per-run permissions', () => {
     });
     sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
     const settings = JSON.parse(fs.files.get(`/state/control/roster/${runRef}/fyt-story/settings.json`) as string) as {
+      disabledMcpjsonServers?: string[];
       permissions: { disabledMcpjsonServers?: string[] };
     };
-    expect(settings.permissions.disabledMcpjsonServers).toEqual(['codex', 'browser']);
+    expect(settings.disabledMcpjsonServers).toEqual(['codex', 'browser']);
+    expect(settings.permissions.disabledMcpjsonServers).toBeUndefined();
   });
 
   it('does not add MCP settings when the roster repo has no .mcp.json', () => {
     const { plan, sessions, runRef, fs } = harness();
     sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
     const settings = JSON.parse(fs.files.get(`/state/control/roster/${runRef}/fyt-story/settings.json`) as string) as {
-      permissions: { disabledMcpjsonServers?: string[] };
+      disabledMcpjsonServers?: string[];
     };
-    expect(settings.permissions.disabledMcpjsonServers).toBeUndefined();
+    expect(settings.disabledMcpjsonServers).toBeUndefined();
   });
 
   it('gives each agent its OWN settings file, scoped to its own order channel', () => {
@@ -1522,7 +1521,7 @@ describe('roster scoped per-run permissions', () => {
 /**
  * The REPL-readiness gate. The defect: the delivery line was typed unconditionally, interleaved
  * character-by-character with an open tool-permission menu, and was swallowed â€” the stage then sat
- * toward the 4h marker deadline with nothing delivered.
+ * toward the delivery deadline with nothing delivered.
  */
 describe('roster REPL-readiness gate', () => {
   it('classifies a permission menu, a mid-turn frame, and an idle prompt', () => {
@@ -1621,6 +1620,8 @@ describe('roster REPL-readiness gate', () => {
     expect(detectReplReadinessSettled(IDLE_FRAME, 0))
       .toMatchObject({ state: 'settling', marker: expect.stringContaining('still painting') });
     expect(detectReplReadinessSettled(IDLE_FRAME, STALE_BUSY_QUIET_MS)).toEqual({ state: 'ready' });
+    // A fresh benign repaint can make semantic quiet zero without breaking the continuously-ready run.
+    expect(detectReplReadinessSettled(IDLE_FRAME, 0, STALE_BUSY_QUIET_MS)).toEqual({ state: 'ready' });
 
     // With no idle footer underneath it, a stale busy-only frame reclassifies to `silent`, exactly as the
     // existing freshness gate does; the delivery-only helper must not invent readiness from quiescence.
@@ -1630,7 +1631,7 @@ describe('roster REPL-readiness gate', () => {
     expect(detectReplReadinessSettled(staleBusyOnly, STALE_BUSY_QUIET_MS)).toEqual(freshResult);
   });
 
-  it('keeps an idle REPL ready through a CUP repaint flood and still scans the live-capture marker', async () => {
+  it('keeps an idle REPL ready through a CUP repaint flood', async () => {
     const repaintFlood = Array.from(
       { length: 32 },
       (_, index) => `\u001b[${38 + (index % 3)};3H${index % 10}\u001b[?25h`,
@@ -1654,39 +1655,21 @@ describe('roster REPL-readiness gate', () => {
     // path at quietMs=2000 proves that stream still sees the footer as READY.
     const pending = sessions.deliver(deliverInput(store, runRef, plan, 'story'));
     const orderPath = `/state/control/roster/${runRef}/fyt-story/orders/story.md`;
-    const order = fs.files.get(orderPath) ?? '';
-    expect(order).not.toBe('');
-    const token = /completion token: ([0-9a-f]{32})/.exec(order)?.[1] as string;
-
-    host.emit(sessionId, BUSY_FRAME);
+    await vi.waitFor(() => { expect(fs.files.has(orderPath)).toBe(true); });
     await vi.waitFor(() => {
       expect(sessions.state('operator', runRef).find((row) => row.agentId === 'fyt-story'))
         .toMatchObject({ status: 'active', activity: 'working stage story' });
     });
-
-    // The other half of scan still uses stripTerminalControl: the real cursor-painted capture must resolve
-    // the pending delivery end-to-end, including its CUP row boundary and CUF word gaps.
-    host.emit(
-      sessionId,
-      LIVE_CAPTURE_MARKER_RAW.replace(`idea ${LIVE_CAPTURE_MARKER_TOKEN}`, `story ${token}`),
-    );
+    await writeCompletionStatus(fs, runRef, 'story', 'DONE', 'repaint-safe completion');
     await expect(pending).resolves.toMatchObject({
       state: 'succeeded',
-      summary: expect.stringMatching(/^5 ranked deep-path idea briefs written to/),
+      summary: 'repaint-safe completion',
     });
   });
 
-  it('detectTurnEngaged: a FRESH busy spinner is engaged; idle prompt, composer echo, and a stale spinner are not', () => {
-    // The positive signal the outcome-verified submit keys on: a running turn paints the spinner footer, and
-    // it is FRESH (the terminal repainted within STALE_BUSY_QUIET_MS). Captured shape of a live turn.
-    const runningTurn = '✻ Working… ❯ esc to interrupt (2s · thinking) ↓ 40 tokens';
-    expect(detectTurnEngaged(runningTurn, 300)).toBe(true);
-    // Stale: the same tail frozen after the turn ended (quiet >= threshold) is NOT a running turn.
-    expect(detectTurnEngaged(runningTurn, STALE_BUSY_QUIET_MS)).toBe(false);
-    // The idle prompt is not a turn — this is exactly the frame a non-submitting Enter leaves behind.
-    expect(detectTurnEngaged('╭───╮\n│ >  │\n╰───╯\n  ⏵⏵ auto mode on (shift+tab to cycle)', 100)).toBe(false);
-    // The mere COMPOSER ECHO of the typed order carries no busy marker, so it can never false-positive.
-    expect(detectTurnEngaged('❯ Work order for stage story: read /state/.../orders/story.md and execute it now\n  ⏵⏵ auto mode on (shift+tab to cycle)', 0)).toBe(false);
+  it('detectTurnEngaged requires a busy observation newer than this delivery Enter', () => {
+    expect(detectTurnEngaged(7, 7)).toBe(false);
+    expect(detectTurnEngaged(8, 7)).toBe(true);
   });
 
   it('never types a work order into an open permission menu, and parks with a named reason', async () => {
@@ -1711,6 +1694,165 @@ describe('roster REPL-readiness gate', () => {
     expect(events.ok && events.value.some((event) => (event.summary ?? '').includes(DELIVERY_NOT_READY_REASON))).toBe(true);
   });
 
+  it('maps CUF to spaces so the exact cursor-positioned modal cannot glue into a false-ready frame', async () => {
+    const { plan, store, sessions, runRef, host, fs } = harness({
+      replReadyTimeoutMs: 60_000,
+      onSleep: () => {},
+    });
+    sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    const sessionId = sessionIdFor(sessions, runRef, 'fyt-story');
+    succeedStage(store, runRef, 'idea');
+    resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
+    host.emit(sessionId, 'Do\u001b[1Cyou\u001b[1Cwant\u001b[1Cto\u001b[1Cproceed?\r\n1.\u001b[1CYes\r\n');
+    const written = host.writes.get(sessionId)?.length ?? 0;
+
+    const result = await sessions.deliver(deliverInput(store, runRef, plan, 'story'));
+
+    expect(result.state).toBe('waiting-human');
+    expect(result.summary).toContain(DELIVERY_NOT_READY_REASON);
+    expect(result.summary).toContain('Do you want to');
+    expect(host.writes.get(sessionId)).toHaveLength(written);
+    expect(fs.files.has(completionPaths(runRef, 'story').orderPath)).toBe(false);
+  });
+
+  it('retains a CSI split across pty chunks and classifies it exactly like the unsplit modal', async () => {
+    const split = splitTerminalControlSuffix('Do\u001b[1');
+    expect(split).toEqual({ complete: 'Do', suffix: '\u001b[1' });
+    expect(splitTerminalControlSuffix(`${split.suffix}Cyou`))
+      .toEqual({ complete: '\u001b[1Cyou', suffix: '' });
+
+    const runCase = async (chunks: string[]) => {
+      const item = harness({ replReadyTimeoutMs: 60_000, onSleep: () => {} });
+      item.sessions.ensureRoster({ subject: 'operator', runRef: item.runRef, proposal: item.plan });
+      const sessionId = sessionIdFor(item.sessions, item.runRef, 'fyt-story');
+      succeedStage(item.store, item.runRef, 'idea');
+      resolveGate(item.store, item.runRef, 'story', 'g0-idea-pick', 'approved');
+      for (const chunk of chunks) item.host.emit(sessionId, chunk);
+      return item.sessions.deliver(deliverInput(item.store, item.runRef, item.plan, 'story'));
+    };
+
+    const suffix = 'Cyou\u001b[1Cwant\u001b[1Cto\u001b[1Cproceed?\r\n1.\u001b[1CYes\r\n';
+    const unsplit = await runCase([`Do\u001b[1${suffix}`]);
+    const acrossChunks = await runCase(['Do\u001b[1', suffix]);
+    expect(unsplit.summary).toContain(DELIVERY_NOT_READY_REASON);
+    expect(acrossChunks.summary).toContain(DELIVERY_NOT_READY_REASON);
+    expect(unsplit.summary).toContain('Do you want to');
+    expect(acrossChunks.summary).toContain('Do you want to');
+  });
+
+  it('rechecks readiness after the synchronous artifact snapshot and before the first pty write', async () => {
+    const plan = proposalFixture();
+    const artifactPath = 'orgs/faceless-youtube/channels/x/videos/y/script.md';
+    plan.stages[1].artifacts = [{ id: 'script', path: artifactPath, description: 'script' }];
+    let item: ReturnType<typeof harness> | null = null;
+    let injectedModal = false;
+    item = harness({
+      plan,
+      seed: { contents: { [`/repo/${artifactPath}`]: 'inherited script' } },
+      onSleep: (elapsed) => {
+        if (!item || injectedModal || elapsed !== 0) return;
+        expect(item.fs.hashed).toEqual([`/repo/${artifactPath}`]);
+        injectedModal = true;
+        const sessionId = sessionIdFor(item.sessions, item.runRef, 'fyt-story');
+        item.host.emit(sessionId, 'Do you want to proceed?\r\n1. Yes\r\n');
+      },
+    });
+    item.sessions.ensureRoster({ subject: 'operator', runRef: item.runRef, proposal: plan });
+    const sessionId = sessionIdFor(item.sessions, item.runRef, 'fyt-story');
+    succeedStage(item.store, item.runRef, 'idea');
+    resolveGate(item.store, item.runRef, 'story', 'g0-idea-pick', 'approved');
+    const writesBefore = item.host.writes.get(sessionId)?.length ?? 0;
+
+    const result = await item.sessions.deliver(deliverInput(item.store, item.runRef, plan, 'story'));
+
+    expect(injectedModal).toBe(true);
+    expect(result.summary).toContain(DELIVERY_NOT_READY_REASON);
+    expect(item.host.writes.get(sessionId)).toHaveLength(writesBefore);
+    expect(item.fs.files.has(completionPaths(item.runRef, 'story').orderPath)).toBe(false);
+  });
+
+  it('settles on continuous ready classification despite periodic control-only repaints', async () => {
+    let item: ReturnType<typeof harness> | null = null;
+    let sessionId = '';
+    item = harness({
+      coldTerminals: true,
+      replReadyTimeoutMs: 60_000,
+      onSleep: () => {
+        if (!item || !sessionId) return;
+        const entered = (item.host.writes.get(sessionId) ?? []).some((chunk) => chunk === '\r');
+        item.host.emit(sessionId, entered ? BUSY_FRAME : '\u001b[?25h');
+      },
+    });
+    item.sessions.ensureRoster({ subject: 'operator', runRef: item.runRef, proposal: item.plan });
+    sessionId = sessionIdFor(item.sessions, item.runRef, 'fyt-story');
+    succeedStage(item.store, item.runRef, 'idea');
+    resolveGate(item.store, item.runRef, 'story', 'g0-idea-pick', 'approved');
+    item.host.emit(sessionId, IDLE_FRAME);
+
+    const pending = item.sessions.deliver(deliverInput(item.store, item.runRef, item.plan, 'story'));
+    await writeCompletionStatus(item.fs, item.runRef, 'story', 'DONE', 'ready through repaints');
+
+    await expect(pending).resolves.toMatchObject({ state: 'succeeded', summary: 'ready through repaints' });
+    expect(item.sleeps.reduce((total, ms) => total + ms, 0)).toBeGreaterThanOrEqual(STALE_BUSY_QUIET_MS);
+  });
+
+  it('does not call a stale spinner engaged when only the composer echo is new after Enter', async () => {
+    let item: ReturnType<typeof harness> | null = null;
+    let sessionId = '';
+    let seededPreEnterBusy = false;
+    item = harness({
+      onSleep: () => {
+        if (!item || !sessionId) return;
+        const writes = item.host.writes.get(sessionId) ?? [];
+        const hasOrder = writes.some((chunk) => chunk.includes('story.md'));
+        const enters = writes.filter((chunk) => chunk === '\r').length;
+        if (hasOrder && enters === 0 && !seededPreEnterBusy) {
+          seededPreEnterBusy = true;
+          item.host.emit(sessionId, BUSY_FRAME);
+        } else if (enters > 0) {
+          item.host.emit(
+            sessionId,
+            '❯ Work order for stage story: read /state/control/roster/orders/story.md and execute it now\r\n'
+              + '  ⏵⏵ auto mode on (shift+tab to cycle)\r\n',
+          );
+        }
+      },
+    });
+    item.sessions.ensureRoster({ subject: 'operator', runRef: item.runRef, proposal: item.plan });
+    sessionId = sessionIdFor(item.sessions, item.runRef, 'fyt-story');
+    succeedStage(item.store, item.runRef, 'idea');
+    resolveGate(item.store, item.runRef, 'story', 'g0-idea-pick', 'approved');
+
+    const result = await item.sessions.deliver(deliverInput(item.store, item.runRef, item.plan, 'story'));
+
+    expect(seededPreEnterBusy).toBe(true);
+    expect(result.summary).toContain(DELIVERY_NOT_ENGAGED_REASON);
+    const events = item.store.listEvents('operator', item.runRef, 0, 200);
+    expect(events.ok && events.value.some((event) => (event.summary ?? '').includes('working stage story'))).toBe(false);
+  });
+
+  it('accepts a real busy transition decoded after Enter as engagement', async () => {
+    let item: ReturnType<typeof harness> | null = null;
+    let sessionId = '';
+    item = harness({
+      onSleep: () => {
+        if (!item || !sessionId) return;
+        if ((item.host.writes.get(sessionId) ?? []).some((chunk) => chunk === '\r')) {
+          item.host.emit(sessionId, BUSY_FRAME);
+        }
+      },
+    });
+    item.sessions.ensureRoster({ subject: 'operator', runRef: item.runRef, proposal: item.plan });
+    sessionId = sessionIdFor(item.sessions, item.runRef, 'fyt-story');
+    succeedStage(item.store, item.runRef, 'idea');
+    resolveGate(item.store, item.runRef, 'story', 'g0-idea-pick', 'approved');
+
+    const pending = item.sessions.deliver(deliverInput(item.store, item.runRef, item.plan, 'story'));
+    await writeCompletionStatus(item.fs, item.runRef, 'story', 'DONE', 'fresh busy transition');
+
+    await expect(pending).resolves.toMatchObject({ state: 'succeeded', summary: 'fresh busy transition' });
+  });
+
   it('waits with backoff and delivers once the menu is answered', async () => {
     let sessionId = '';
     let liveHost: ReturnType<typeof fakeHost> | null = null;
@@ -1727,8 +1869,10 @@ describe('roster REPL-readiness gate', () => {
           liveHost.emit(sessionId, BUSY_FRAME);
           return;
         }
-        readinessSleeps.push(elapsed - lastReadinessElapsed);
-        lastReadinessElapsed = elapsed;
+        if (!emittedIdle) {
+          readinessSleeps.push(elapsed - lastReadinessElapsed);
+          lastReadinessElapsed = elapsed;
+        }
         // The operator answers the menu after the second poll and the REPL redraws past it — which is
         // what actually clears a menu from the current frame: real content scrolling it out, not blanks.
         if (elapsed >= 700 && !emittedIdle) {
@@ -1754,7 +1898,7 @@ describe('roster REPL-readiness gate', () => {
     // Backoff, not a busy-loop: each wait is at least as long as the one before it.
     expect(readinessSleeps.every((ms, index) => index === 0 || ms >= readinessSleeps[index - 1])).toBe(true);
     expect(item.host.writes.get(sessionId)?.some((chunk) => chunk.includes('read '))).toBe(true);
-    item.host.emit(sessionId, `FYT-STAGE-DONE story ${'0'.repeat(31)}1 delivered after the menu cleared\r\n`);
+    await writeCompletionStatus(item.fs, item.runRef, 'story', 'DONE', 'delivered after the menu cleared');
     await expect(pending).resolves.toMatchObject({ state: 'succeeded' });
   });
 
@@ -1804,7 +1948,7 @@ describe('roster REPL-readiness gate', () => {
     expect(item.sleeps.reduce((total, ms) => total + ms, 0)).toBeGreaterThanOrEqual(
       STALE_BUSY_QUIET_MS,
     );
-    item.host.emit(sessionId, `FYT-STAGE-DONE story ${'0'.repeat(31)}1 delivered after the boot turn settled\r\n`);
+    await writeCompletionStatus(item.fs, item.runRef, 'story', 'DONE', 'delivered after the boot turn settled');
     await expect(pending).resolves.toMatchObject({ state: 'succeeded' });
   });
 
@@ -1884,11 +2028,11 @@ describe('roster REPL-readiness gate', () => {
     const pending = item.sessions.deliver(deliverInput(item.store, item.runRef, item.plan, 'story'));
     const orderPath = `/state/control/roster/${item.runRef}/fyt-story/orders/story.md`;
     await vi.waitFor(() => { expect(item.fs.files.has(orderPath)).toBe(true); });
-    item.host.emit(sessionId, `FYT-STAGE-DONE story ${'0'.repeat(31)}1 delivered once the REPL came up\r\n`);
+    await writeCompletionStatus(item.fs, item.runRef, 'story', 'DONE', 'delivered once the REPL came up');
     await expect(pending).resolves.toMatchObject({ state: 'succeeded' });
   });
 
-  it('keeps the marker deadline as the OUTER bound on the readiness wait', async () => {
+  it('keeps the completion deadline as the OUTER bound on the readiness wait', async () => {
     // A 60s delivery timeout must clamp a 5-minute readiness budget, not the other way round.
     const { plan, store, sessions, runRef, host, sleeps } = harness({
       deliveryTimeoutMs: 60_000, replReadyTimeoutMs: 5 * 60_000,
