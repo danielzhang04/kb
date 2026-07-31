@@ -43,7 +43,9 @@ easy fallbacks in the same vein: "Second Take", "On Second Take", "Take Two".)*
 
 - **Primary format:** long-form is the earner; Shorts are a **first-class** viral engine (our edge over
   the model channels — each Short is a self-contained money-mechanism payload, §11-0, not a teaser).
-- **Target length:** 8–10 min primary (ruled 2026-07-28; **avoid the 16–24 min death zone**).
+- **Target length:** **hard 7:30–9:30** pre-render estimate (VO words ÷ the voice's measured wpm;
+  ruled 2026-07-30, hard floor AND ceiling, lint-enforced — supersedes the 2026-07-28 8–10 min
+  ruling); **avoid the 16–24 min death zone**.
 - **Shorts per long-form:** 3–5 (virality-forward; one surprising money fact each, closed in-short).
 - **Cadence:** 1 long-form/week + shorts staggered every 2–3 days after (long-form ships first).
 - **Recurring structure:** curiosity-gap cold-open (the surprising claim/number) → the setup (who/what/

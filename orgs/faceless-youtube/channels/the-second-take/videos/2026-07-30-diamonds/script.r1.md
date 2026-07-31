@@ -1,9 +1,9 @@
 # How Diamonds Became Forever
 
 Source idea: ST-013
-Target length: 7:30-9:30
+Target length: 8 to 10 min
 Voice: Chris
-Estimated runtime: 7:33 (1,290 words ÷ 171 wpm)
+Estimated runtime: 6:26 (1,100 words ÷ 171 wpm)
 
 ---
 
@@ -39,19 +39,9 @@ That test shows the gap between a retail price and what a trade buyer would pay 
 
 By 2000, De Beers announced that it would sell off stockpiles and move into retail. The old buyer-of-last-resort strategy was being retired, which matters because this isn't a story about the company running the exact same machine today. The vault was opening.
 
-In 2004, De Beers Centenary, another company in the De Beers group, pleaded guilty in the United States to conspiring to fix prices for certain industrial diamond products. It paid a criminal fine. Bring that plea to an engagement-ring argument and you've got the wrong case file. Consumer gemstones and engagement rings were outside the case.
-
-The fine was 10 million dollars. De Beers Centenary admitted it agreed to raise list prices worldwide for those products. The agreements covered 1991 and 1992.
-
 Then lab-grown diamonds showed up and made the old scarcity story even stranger. Mined and lab-grown stones are chemically identical carbon crystals, though a laboratory can tell them apart through structural signatures. Producers can make the lab stones in chosen sizes and qualities, and falling production costs pushed their prices down. Same sparkle, different birth certificate.
 
-Before that gap widened, lab-grown diamonds sold at a 20 percent discount to comparable natural stones. Both stones still had the same carbon-crystal chemistry, but the price gap was about to open like the Red Sea.
-
-After that discount snapshot, lab-grown prices kept falling. De Beers reported that wholesale and retail prices fell throughout 2024, and the drop sped up in the second half.
-
-By 2024, lab-grown diamonds were selling at about an 80 percent discount to comparable natural stones. Their average price had fallen while their average size got bigger. The champagne bottles were getting bigger while the menu price fell. Somewhere, the velvet rope was having a terrible year.
-
-Axios's industry numbers showed the size and price moving in opposite directions. In the earlier data Axios cited, the average lab-grown diamond was smaller. By the later snapshot, the average had grown to 1.9 carats. Bigger rock. The average price moved the other way from a higher earlier figure, falling to 2,657 dollars in the later snapshot.
+By 2024, lab-grown diamonds were selling at about an 80 percent discount to comparable natural stones. Their average price had fallen while their average size got bigger, which is usually not how luxury is supposed to behave. It was as if the champagne bottles kept growing while the menu price fell. Somewhere, the velvet rope was having a terrible year.
 
 None of that makes a natural diamond fake. It can still carry the cutting, the setting, the brand, and whatever a couple decided the moment meant to them. But lab-grown diamonds make the old machine easier to see. Carbon was never the whole price. Controlled supply, the retail channel, and a story powerful enough to make payroll sound romantic made up the rest.
 
@@ -63,8 +53,6 @@ S-1. Edward Jay Epstein, "Have You Ever Tried to Sell a Diamond?", The Atlantic,
 
 S-2. De Beers Group, "Our History and Heritage Since 1888," accessed July 30, 2026. https://www.debeersgroup.com/about-us/our-history
 
-S-3. US Department of Justice, "De Beers Centenary AG Pleads Guilty to Price-Fixing Indictment," July 13, 2004. https://www.justice.gov/archive/opa/pr/2004/July/04_at_476.htm
-
 S-4. E. Ben-Shahar and J. E. Schneider, "Autopsy of Cooperation: Diamond Dealers and the Limits of Trust-Based Exchange," Journal of Legal Analysis, 2017. https://academic.oup.com/jla/article/9/2/247/4430792
 
 S-5. European Commission, "Notice concerning De Beers and ALROSA arrangements," 2002. https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:52002XC1109(01)
@@ -72,8 +60,6 @@ S-5. European Commission, "Notice concerning De Beers and ALROSA arrangements," 
 S-7. McKinsey and Company, "The diamond industry is at an inflection point," 2024. https://www.mckinsey.com/industries/metals-and-mining/our-insights/the-diamond-industry-is-at-an-inflection-point
 
 S-8. Associated Press, "Lab-grown diamonds come with sparkling price tags, but many have cloudy sustainability claims," February 13, 2024. https://apnews.com/article/b7820e4633585ee24b51f6a30ee23b8e
-
-S-9. De Beers Group, "Preliminary Financial Results for 2024," 2025. https://www.debeersgroup.com/news-insights/latest-group-news/2025/preliminary-financial-results-for-2024
 
 S-10. Axios, "Rings get bigger as lab-grown diamonds catch up to naturals," October 12, 2024. https://www.axios.com/2024/10/12/lab-grown-diamond-vs-natual-popularity
 

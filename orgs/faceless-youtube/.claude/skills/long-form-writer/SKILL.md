@@ -141,7 +141,11 @@ The craft lives in the grammar — apply it, don't re-derive it. The execution c
 - **Runtime header:** **`Estimated runtime: MM:SS` is REQUIRED, never `TBD`** — words ÷ the **channel
   voice's measured wpm** from `dna.md` (fallback 150), a gross rate that already embeds the narrator's
   pausing. `lint_script.py --wpm <N>` prints the exact string to paste and hard-fails without it.
-  Header `Target length` is the channel norm (grammar §2.3), not the brief's aspirational band.
+  Header `Target length` is the channel norm (grammar §2.3), not the brief's aspirational band — where
+  the channel declares it a hard band (dna.md), copy it in a machine-parsable form (`M:SS-M:SS` or
+  `N-M min`): `lint_script.py --wpm <N>` then hard-fails (exit 1) on an estimate outside it, same class
+  as an em-dash. An under-floor script after editor cuts is an **additive** remedy — it routes back to
+  the writer's structural pass (Step 3a/3b), never to the editor padding lines to hit the number.
 - **Sources:** on research channels, the `[S#]` entries actually used go at the bottom of `script.md`.
 - **Policy gate:** apply the niche policy gate where one exists (business-money **defamation
   discipline** per grammar §4; micro-health ≥2 sources; engineering analysis-not-gore; AI-disclosure).

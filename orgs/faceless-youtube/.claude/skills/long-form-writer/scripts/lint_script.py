@@ -17,9 +17,17 @@ beat segmentation moves downstream entirely.
 The runtime suggestion is words-at-wpm only: the channel voice's measured gross
 wpm already embeds its natural pausing, so no separate cue-time math is added.
 
+If the header's `Target length:` line carries a parsable band (`M:SS-M:SS`,
+`N to M min`, or `N-M min`; hyphen or en dash) AND --wpm was passed on the
+command line, the words-at-wpm estimate falling outside that band is a HARD
+violation (same class as em-dashes) — the pre-render runtime band is a hard
+floor and ceiling, not advice (docs/superpowers/specs/2026-07-30-hard-runtime-
+band-design.md). A missing/unparsable band, or no --wpm given, leaves the
+runtime suggestion an advisory only, unchanged from before.
+
 Usage: python lint_script.py <path-to-script.md> [--wpm N]
 --wpm is the channel voice's measured words-per-minute from dna.md (default 150),
-used only for the runtime suggestion.
+used for the runtime suggestion and (when a header band parses) the hard band check.
 Exit code 0 = clean or advisory-only, 1 = hard violations found.
 """
 import re
@@ -54,6 +62,45 @@ UNCONTRACTED_PATTERN = re.compile(
     r"Was not|Were not|Is not|Are not|Cannot|Could not|Would not|Should not)\b",
     re.I,
 )
+
+# Hard pre-render runtime band: parsed from the header's "Target length:" line.
+# Accepted forms, checked in order (most specific first so "7:30-9:30" never
+# gets misread by the plain-minutes patterns): M:SS-M:SS, "N to M min", "N-M min".
+# Hyphen or en dash accepted throughout.
+TARGET_LENGTH_LINE = re.compile(r"target length", re.I)
+MMSS_BAND = re.compile(r"(\d+):(\d{2})\s*[-–]\s*(\d+):(\d{2})")
+PLAIN_MIN_TO_BAND = re.compile(r"(\d+)\s*to\s*(\d+)\s*min", re.I)
+PLAIN_MIN_HYPHEN_BAND = re.compile(r"(\d+)\s*[-–]\s*(\d+)\s*min", re.I)
+
+
+def parse_target_band(header_lines):
+    """Parse a hard runtime band (floor_s, ceiling_s, band_text) from the header's
+    'Target length:' line, or None if no line/no parsable band. band_text is the
+    matched substring, used verbatim in violation messages."""
+    line = next((ln for ln in header_lines if TARGET_LENGTH_LINE.search(ln)), None)
+    if line is None:
+        return None
+    m = MMSS_BAND.search(line)
+    if m:
+        floor_s = int(m.group(1)) * 60 + int(m.group(2))
+        ceiling_s = int(m.group(3)) * 60 + int(m.group(4))
+        return floor_s, ceiling_s, m.group(0)
+    m = PLAIN_MIN_TO_BAND.search(line)
+    if m:
+        floor_s = int(m.group(1)) * 60
+        ceiling_s = int(m.group(2)) * 60
+        return floor_s, ceiling_s, m.group(0)
+    m = PLAIN_MIN_HYPHEN_BAND.search(line)
+    if m:
+        floor_s = int(m.group(1)) * 60
+        ceiling_s = int(m.group(2)) * 60
+        return floor_s, ceiling_s, m.group(0)
+    return None
+
+
+def format_mmss(total_s):
+    mm, ss = divmod(total_s, 60)
+    return f"{mm}:{ss:02d}"
 
 
 def lint_step_sequences(lines, body_start, body_end, hard):
@@ -90,7 +137,7 @@ def lint_step_sequences(lines, body_start, body_end, hard):
             hard.append((lineno, f"skipped/out-of-order Step (expected {expected})", text))
 
 
-def main(path, wpm=150):
+def main(path, wpm=150, wpm_given=False):
     with open(path, encoding="utf-8") as f:
         lines = f.readlines()
 
@@ -124,6 +171,8 @@ def main(path, wpm=150):
     elif not re.search(r"estimated runtime[:*\s]*\d+:\d{2}", runtime_line, re.I):
         # present but unfilled (TBD / blank / not MM:SS)
         hard.append((0, "unfilled header runtime", runtime_line.strip()))
+
+    target_band = parse_target_band(header)
 
     vo_words = 0
     one_sentence_paragraphs = []   # line numbers of standalone one-sentence VO paragraphs
@@ -217,6 +266,30 @@ def main(path, wpm=150):
             f"forms (That is / It is / Do not / etc.); channel voice runs contracted ({refs})",
         ))
 
+    # Hard pre-render runtime band: only fires when the header band parsed AND
+    # --wpm was explicitly given (no band, or default wpm, stays advisory-only —
+    # unchanged behavior for channels/runs that haven't declared a band).
+    if target_band is not None and wpm_given:
+        floor_s, ceiling_s, band_text = target_band
+        estimate_s = round(vo_words / float(wpm) * 60)
+        if estimate_s < floor_s or estimate_s > ceiling_s:
+            floor_words = round(floor_s * wpm / 60.0)
+            ceiling_words = round(ceiling_s * wpm / 60.0)
+            if estimate_s < floor_s:
+                need = floor_words - vo_words
+                fix = f"add {need}w (need {floor_words:,}w+) for {format_mmss(floor_s)}"
+            else:
+                need = vo_words - ceiling_words
+                fix = f"cut {need}w (need {ceiling_words:,}w or fewer) for {format_mmss(ceiling_s)}"
+            # Kept short: the hard-violation print truncates each line's text at 100
+            # chars, and estimate + band + fix-words must all survive that.
+            hard.append((
+                0,
+                "runtime outside hard band",
+                f"{format_mmss(estimate_s)} estimate outside hard {band_text} band "
+                f"({vo_words:,}w @ {wpm}wpm); {fix}",
+            ))
+
     print(f"== lint: {path} ==")
     if hard:
         print(f"\nHARD violations ({len(hard)}) — must fix before ship:")
@@ -244,7 +317,8 @@ def main(path, wpm=150):
 if __name__ == "__main__":
     args = sys.argv[1:]
     wpm = 150
-    if "--wpm" in args:
+    wpm_given = "--wpm" in args
+    if wpm_given:
         i = args.index("--wpm")
         try:
             wpm = int(args[i + 1])
@@ -255,4 +329,4 @@ if __name__ == "__main__":
     if len(args) != 1:
         print("usage: python lint_script.py <path-to-script.md> [--wpm N]")
         sys.exit(2)
-    sys.exit(main(args[0], wpm))
+    sys.exit(main(args[0], wpm, wpm_given))
