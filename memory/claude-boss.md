@@ -34,3 +34,25 @@
 - PATTERN worth keeping: the roster delivery/engagement seam is the hardest part of the system — 5 bugs from live runs, then 9 more from two reviews (variadic --mcp-config swallowing the prompt; cross-agent status forgery under auto-mode bash; a same-agent Promise.all lease race; busy-marker split across pty chunks; junction-through-rmSync). When a seam keeps yielding HIGHs, stop patch-and-re-review (that spins) and go to a cleaner DESIGN: Daniel approved a server-minted boot-ready handshake to retire the footer-scraping engagement heuristics wholesale.
 - RULING (cross-agent forgery): ACCEPT as known limitation — cooperative same-user agents of ours, artifact-delta gate backstops it. Document the residual; do not build isolation/IPC. The altitude call: don't harden against an attacker in a threat model that doesn't have one.
 - GOTCHA (my own): `git checkout -q <path>` to "discard" restored an UNTRACKED handoff to 0 bytes (path existed on disk, not in the branch) — nearly lost the handoff. Never `git checkout <path>` to clean an untracked file; it truncates. Rewrote from context.
+
+## 2026-07-31 — roster native-handle wave and live-rerun preparation
+
+- WINDOWS PATH SECURITY: a component-by-component `lstat`/`realpath` check that returns a pathname is
+  still unsafe; the later read/write/delete can follow a junction swapped after validation. For
+  security-sensitive mutable paths, the useful primitive is a rooted `NtCreateFile` with
+  `OBJ_DONT_REPARSE`, followed by I/O and deletion through that same handle. Node-only retained leaf
+  descriptors cannot safely reopen atomically replaced receipts or verify initially absent artifacts.
+- REVIEW EVIDENCE: native filesystem calls can return `STATUS_ACCESS_DENIED` solely because the Codex
+  managed sandbox blocks traversal. Reproduce elevated before calling it an ABI/product defect. Here,
+  focused native+roster tests passed 88/88 and a direct elevated rooted-handle probe passed.
+- SUITE TRIAGE: when a broad parallel suite times out unrelated tests, rerun those files alone and
+  compare every failed test/target file to the patch baseline. Two timeout files passed 123/123 alone;
+  one unchanged baseline assertion remained. This preserved useful full-suite evidence without
+  expanding the repair wave.
+- HARNESS PINNING: a live harness that imports server code from a disposable worktree must verify the
+  exact clean reviewed HEAD before state mutation or daemon launch. `--preflight-only` caught the stale
+  `9d0e3bc` operand before spend; retarget/build then made the same preflight green at `051de9e`.
+- THREAT-BOUNDARY WORDING: artifact delta/link checks prove safe current filesystem state, not which
+  same-user process authored it. When the human accepts same-user cross-agent forgery, document that
+  attribution limit precisely; do not say artifact stages establish identity and do not silently grow
+  the wave into IPC/accounts/ACL isolation.

@@ -1,15 +1,18 @@
 # faceless-youtube — STATE
 
-_Updated: 2026-07-31 (gated pipeline shipped to main; note: a richer 2026-07-19 STATE.md exists on
-branch claude/faceless-live-import — reconcile to this one at merge, this is newer)_
+_Updated: 2026-07-31 (gated pipeline shipped to main; roster delivery hardening is approved and
+awaiting its post-cap-reset live rerun; note: a richer 2026-07-19 STATE.md exists on branch
+claude/faceless-live-import — reconcile to this one at merge, this is newer)_
 
 ## Now
-- **Gated multi-agent pipeline SHIPPED to `main` (2026-07-31):** 13 stages / 6 agents / 6 gates, plus the
-  four roster-terminal delivery fixes (auto permission mode, freshness-gated readiness, two-write submit,
-  outcome-verified submit). Merged via PR #106 (`6c359ca`) after #102 merged a stale tip. Suite 2361 passed,
-  tsc clean, adversarial review SHIP-WITH-NITS. **Only open item: the full end-to-end run (Facts 4 & 5 harness
-  + maiden video), DEFERRED for the Aug 1 9pm weekly-cap reset** (Fable-5 subscription was ~84%). Resume via
-  `handoffs/2026-07-31-fyt-pipeline-shipped.md`.
+- **Gated multi-agent pipeline SHIPPED to `main` (2026-07-31):** 13 stages / 6 agents / 6 gates. The
+  earlier harness proved Facts 1-7, including the first real stage and G0 halt, but two later adversarial
+  reviews found additional delivery races. PR #109 is OPEN/HELD at `claude/fyt-full-run` `051de9e`:
+  seven mechanical fixes, server-minted `ready.json` boot handshake, token-bound status completion, and
+  native rooted/no-reparse Windows I/O are built, pushed, 88/88 focused tests + tsc clean, and fresh
+  security review APPROVED. The disposable harness is rebuilt/pinned/preflight-green at `051de9e`.
+  **Only next action: live 7/7 rerun after the Aug 1 9pm weekly-cap reset.** Resume via
+  `handoffs/2026-07-31-fyt-roster-delivery-live-rerun.md`; do not merge PR #109 before Daniel's gate.
 - **Scripting doctrine arc COMPLETE (2026-07-29):** bricks round-4 script ACCEPTED (first accepted
   script, 4 rounds), then a blind-generation experiment (two uncontaminated pipeline samples vs the
   accepted ideal, 36 lenses) drove a doctrine-hardening wave: heat inversion, named story shapes
@@ -31,9 +34,10 @@ branch claude/faceless-live-import — reconcile to this one at merge, this is n
   deleted; remediation is a future card. Honest stamp recorded: 0 verified / 119 parked.
 
 ## Next
-- Daniel: merge PR #41 + companion; Gate 3 for poyais; paste analytics OAuth refresh token into
-  .env (10-min checklist in the tail design's one-time-setup section); first fresh A→C video under
-  a new spend card, run by fyt-runner.
+- After Aug 1 9pm ET: run the pinned `051de9e` harness and require 7/7; then rewrite PR #109 and bring
+  the held merge gate to Daniel. The maiden video remains a separate G2/G3b spend + G4 publish proposal.
+- Daniel: merge PR #41 + companion; Gate 3 for poyais; complete the one-time analytics credential setup;
+  first fresh A→C video under a new spend card, run by fyt-runner.
 
 ## Blocked
 - publish-queue live upload: behind Gate 3 + compliance green.
