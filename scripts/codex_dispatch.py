@@ -84,6 +84,12 @@ def spawn(prompt_text: str, model: str | None, effort: str | None, cwd: Path,
     else:
         cmd = [codex_bin(), "exec", "-", "--model", model, "--json",
                "--output-last-message", str(out_file), "--cd", str(cwd), "-s", sandbox]
+    # exec mode cannot serve approval prompts (live-proven 2026-07-30: the user
+    # config's `approval_policy = "untrusted"` made every file_change fail with
+    # "file change approval is not supported in exec mode"). Pin approvals off
+    # for dispatch; the sandbox stays the enforcement boundary. Applied on both
+    # paths — a resumed session re-reads config.toml, so resume needs it too.
+    cmd += ["-c", "approval_policy=never"]
     if effort:
         cmd += ["-c", f"model_reasoning_effort={effort}"]
     with open(log_file, "wb") as log:
