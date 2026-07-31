@@ -45,7 +45,7 @@
  * Strip-only floor: no TS enums, parameter properties, or namespaces. ESM with `.ts` specifiers.
  */
 import { createHash, randomBytes } from 'node:crypto';
-import { closeSync, mkdirSync, openSync, readSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { closeSync, mkdirSync, openSync, readFileSync, readSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { PtyHost } from '../pty/host.ts';
 import type { PersistentSessionRegistry } from '../pty/persistentSessions.ts';
@@ -228,6 +228,8 @@ export interface RosterFileStat {
 /** Injectable filesystem seam — tests never touch a real disk. */
 export interface RosterFileSystem {
   ensureDir(path: string): void;
+  /** UTF-8 file contents, or `null` when the path cannot be read. */
+  readFile(path: string): string | null;
   writeFile(path: string, contents: string): void;
   /** Regular-file-ness and size for one absolute path; `null` when the path does not exist. */
   stat(path: string): RosterFileStat | null;
@@ -401,6 +403,9 @@ const HASH_CHUNK_BYTES = 1024 * 1024;
 
 const defaultFileSystem: RosterFileSystem = {
   ensureDir: (path) => { mkdirSync(path, { recursive: true }); },
+  readFile: (path) => {
+    try { return readFileSync(path, 'utf8'); } catch { return null; }
+  },
   writeFile: (path, contents) => { writeFileSync(path, contents, { encoding: 'utf8' }); },
   stat: (path) => {
     try {
@@ -711,6 +716,8 @@ export interface RosterPermissionInput {
   write: readonly string[];
   /** The server-owned workflow tool cap this run executes under. Nothing outside it is ever granted. */
   tools: readonly string[];
+  /** Project MCP servers disabled for this unattended roster session. */
+  disabledMcpjsonServers?: readonly string[];
 }
 
 /**
@@ -756,18 +763,13 @@ const RESTRICTION_FLOOR: readonly string[] = [
   'Edit(.env)',
   'Edit(**/.env)',
   'Edit(**/.env.*)',
-  'Write(.env)',
-  'Write(**/.env)',
-  'Write(**/.env.*)',
   // Shell shapes that move a `.env` wholesale rather than reading it in place.
   'Bash(cp .env*)',
   'Bash(mv .env*)',
   // Credential stores.
   'Read(**/.ssh/**)',
-  'Write(**/.ssh/**)',
   'Edit(**/.ssh/**)',
   'Read(**/.aws/**)',
-  'Write(**/.aws/**)',
   'Edit(**/.aws/**)',
   'Read(**/.config/gh/**)',
   'Read(**/.claude/.credentials.json)',
@@ -872,13 +874,38 @@ export function buildRosterPermissionSettings(input: RosterPermissionInput): Ros
   // auto `defaultMode`, and it is not derived from the proposal — no scope, no stage and no tool cap can
   // add to it or take from it. See {@link RESTRICTION_FLOOR}, including its named residual.
   const deny = [...RESTRICTION_FLOOR];
-  const permissions = { defaultMode: 'auto', deny, allow, additionalDirectories };
+  const disabledMcpjsonServers = [...new Set(input.disabledMcpjsonServers ?? [])];
+  const permissions = {
+    defaultMode: 'auto',
+    ...(disabledMcpjsonServers.length > 0 ? { disabledMcpjsonServers } : {}),
+    deny,
+    allow,
+    additionalDirectories,
+  };
   return {
     allow,
     deny,
     additionalDirectories,
     json: `${JSON.stringify({ permissions }, null, 2)}\n`,
   };
+}
+
+/**
+ * Project MCP servers are disabled rather than approved: roster stages must not silently gain MCP
+ * execution, and disabling every declared server prevents Claude Code's first-seen project trust dialog.
+ */
+function disabledProjectMcpjsonServers(fs: RosterFileSystem, repoRoot: string): string[] {
+  const raw = fs.readFile(join(repoRoot, '.mcp.json'));
+  if (raw === null) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return [];
+    const servers = (parsed as Record<string, unknown>).mcpServers;
+    if (typeof servers !== 'object' || servers === null || Array.isArray(servers)) return [];
+    return Object.keys(servers);
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -1388,6 +1415,7 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
       read: scope.read,
       write: scope.write,
       tools: rosterAgentTools(proposal, agentId, resolveWorkflowTools),
+      disabledMcpjsonServers: disabledProjectMcpjsonServers(fs, options.repoRoot),
     }).json);
     const created = options.registry.create(run.owner, options.host, {
       requestId: '', cwd: run.workDir, cols, rows,

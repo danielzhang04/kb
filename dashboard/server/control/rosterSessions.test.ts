@@ -257,6 +257,7 @@ function fakeFs(existing: string[] = [], seed: { directories?: string[]; content
     removed,
     hashed,
     ensureDir(path) { dirs.push(path); },
+    readFile(path) { return files.get(norm(path)) ?? null; },
     writeFile(path, contents) { files.set(norm(path), contents); },
     stat(path) {
       const key = norm(path);
@@ -1327,8 +1328,10 @@ describe('roster scoped per-run permissions', () => {
     expect(settings.deny).toContain('Bash(git config *)');
     // `.env`, at the root and at any depth, through every built-in file tool.
     for (const rule of [
-      'Read(.env)', 'Read(**/.env)', 'Edit(.env)', 'Edit(**/.env)', 'Write(.env)', 'Write(**/.env)',
+      'Read(.env)', 'Read(**/.env)', 'Edit(.env)', 'Edit(**/.env)', 'Edit(**/.env.*)',
+      'Edit(**/.ssh/**)', 'Edit(**/.aws/**)',
     ]) expect(settings.deny).toContain(rule);
+    expect(settings.deny.some((rule) => /^Write\(/.test(rule))).toBe(false);
     // Credential stores.
     for (const rule of [
       'Read(**/.ssh/**)', 'Read(**/.aws/**)', 'Read(**/.claude/.credentials.json)',
@@ -1420,6 +1423,10 @@ describe('roster scoped per-run permissions', () => {
     // …and the restriction floor rides in the SAME file, which is what still enforces under that mode.
     expect(parsed.permissions.deny).toContain('Bash(git push *)');
     expect(parsed.permissions.deny).toContain('Read(**/.env)');
+    expect(parsed.permissions.deny.some((rule) => /^Write\(/.test(rule))).toBe(false);
+    for (const rule of [
+      'Edit(.env)', 'Edit(**/.env)', 'Edit(**/.env.*)', 'Edit(**/.ssh/**)', 'Edit(**/.aws/**)',
+    ]) expect(parsed.permissions.deny).toContain(rule);
     expect(parsed.permissions.allow).toContain(`Read(/state/control/roster/${runRef}/fyt-story/**)`);
     expect(parsed.permissions.allow).toContain('Read(/repo/orgs/faceless-youtube/**)');
     expect(parsed.permissions.allow).toContain('Edit(/repo/orgs/faceless-youtube/channels/**)');
@@ -1432,6 +1439,26 @@ describe('roster scoped per-run permissions', () => {
     expect(launch).not.toContain('--dangerously-skip-permissions');
     expect(launch).not.toContain('--allow-dangerously-skip-permissions');
     expect(launch).not.toContain('--permission-mode');
+  });
+
+  it('disables every MCP server declared by the roster repo before launching sessions', () => {
+    const { plan, sessions, runRef, fs } = harness({
+      seed: { contents: { '/repo/.mcp.json': JSON.stringify({ mcpServers: { codex: {}, browser: {} } }) } },
+    });
+    sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    const settings = JSON.parse(fs.files.get(`/state/control/roster/${runRef}/fyt-story/settings.json`) as string) as {
+      permissions: { disabledMcpjsonServers?: string[] };
+    };
+    expect(settings.permissions.disabledMcpjsonServers).toEqual(['codex', 'browser']);
+  });
+
+  it('does not add MCP settings when the roster repo has no .mcp.json', () => {
+    const { plan, sessions, runRef, fs } = harness();
+    sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    const settings = JSON.parse(fs.files.get(`/state/control/roster/${runRef}/fyt-story/settings.json`) as string) as {
+      permissions: { disabledMcpjsonServers?: string[] };
+    };
+    expect(settings.permissions.disabledMcpjsonServers).toBeUndefined();
   });
 
   it('gives each agent its OWN settings file, scoped to its own order channel', () => {
