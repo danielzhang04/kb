@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>bricks-fresh — dogfood slice board (2026-07-30)</title>
+<style>
+  :root { color-scheme: dark; }
+  body { background:#161412; color:#e8e2d8; font-family: -apple-system, Segoe UI, Arial, sans-serif;
+         margin:0; padding:32px 40px 80px; line-height:1.5; }
+  h1 { font-size:22px; margin-bottom:4px; }
+  .sub { color:#a89f8f; font-size:14px; margin-bottom:28px; }
+  .cost { background:#221f1a; border:1px solid #3a352c; border-radius:8px; padding:14px 18px;
+          margin-bottom:36px; font-size:14px; }
+  .cost b { color:#e8c98a; }
+  h2 { font-size:17px; border-bottom:1px solid #3a352c; padding-bottom:8px; margin-top:48px; }
+  .shot-meta { color:#a89f8f; font-size:13px; margin:6px 0 14px; max-width:1100px; }
+  .row { display:flex; gap:18px; flex-wrap:wrap; align-items:flex-start; margin-bottom:10px; }
+  figure { margin:0; width:420px; }
+  figure img { width:100%; height:auto; display:block; border-radius:6px; border:2px solid #3a352c; }
+  figcaption { font-size:12.5px; color:#c9c1b3; margin-top:6px; }
+  .badge { display:inline-block; font-size:11px; font-weight:600; letter-spacing:.03em;
+           text-transform:uppercase; padding:2px 8px; border-radius:4px; margin-left:6px; }
+  .badge.verified { background:#1f3d24; color:#8fe39a; }
+  .badge.parked { background:#4a2a17; color:#f0a862; }
+  .badge.shipped { background:#2a2620; color:#a89f8f; }
+  .badge.new { background:#25324a; color:#93b4ec; }
+  .verdict { max-width:1100px; font-size:13.5px; color:#d8d1c3; background:#1c1a16;
+             border-left:3px solid #5a5142; padding:10px 14px; border-radius:4px; margin-top:10px; }
+  .verdict.flag { border-left-color:#c97a3a; }
+  .figrow figure { width:260px; }
+  code { background:#221f1a; padding:1px 5px; border-radius:3px; font-size:12px; }
+</style>
+</head>
+<body>
+
+<h1>bricks-fresh — dogfood slice board</h1>
+<div class="sub">5-shot repair-wave slice (fix-design r3 law) — L45, L60, L61, L116, L143 — regenerated 2026-07-30 under
+Daniel's live-fire authorization (subagent run, HARD CAP $1.50). Shipped-vs-new pairs below; shipped frames are the
+ORIGINAL pre-fix gens sitting in <code>assets/scenes/</code>, byte-identical to what's on
+<code>claude/fyt-gated-pipeline</code>.</div>
+
+<div class="cost">
+  <b>Spend: $0.921 of the $1.50 cap.</b> 9 real gens — 3 STEP-1 figures @ 1K ($0.039 ea) + 6 scene/plate
+  gens @ 2K ($0.134 ea, including 2 L60 plate candidates). Full per-gen table: <code>dogfood-slice.md</code>
+  §7.2. No commits, no branch ops, no key printed or persisted.
+</div>
+
+<h2>STEP-1 figures vs their canonicals <span class="badge new">two-step law, fix 1</span></h2>
+<div class="shot-meta">Fix 1's whole mechanism: a fresh named-cast gen never composes identity and scene in one call
+— STEP 1 seeds canonical + pose + expression in isolation first. Compare each figure frame against the extracted
+canonical it was seeded from (read-only, <code>309b341</code>).</div>
+
+<div class="row figrow">
+  <figure><img src="board-assets/canon-hq-banker.png"><figcaption>canonical: <code>hq-banker</code></figcaption></figure>
+  <figure><img src="board-assets/step1-hq-banker.png"><figcaption>STEP-1: <code>fig-hq-banker--action-armscrossed--expr-deadpan</code></figcaption></figure>
+</div>
+<div class="row figrow">
+  <figure><img src="board-assets/canon-qt-wiles.png"><figcaption>canonical: <code>qt-wiles</code> ("Doctor Fix It" — deliberate, per script.md)</figcaption></figure>
+  <figure><img src="board-assets/step1-qt-wiles.png"><figcaption>STEP-1: <code>fig-qt-wiles--action-powerstance--expr-deadpan</code></figcaption></figure>
+</div>
+<div class="row figrow">
+  <figure><img src="board-assets/canon-brick-foreman.png"><figcaption>canonical: <code>brick-foreman</code></figcaption></figure>
+  <figure><img src="board-assets/step1-brick-foreman.png"><figcaption>STEP-1: <code>fig-brick-foreman--sit--expr-worried</code></figcaption></figure>
+</div>
+<div class="verdict">All three STEP-1 frames hold identity, costume, hair and head tone exactly from their
+canonical; pose and expression read as the named primitives; 4-digit cartoon hands, no nose, no ear notch on any.
+Clean.</div>
+
+<h2>L45 — hq-office, 1 cast, fresh <span class="badge verified">verified</span></h2>
+<div class="shot-meta">Board-verdict condemn: "L45-47 off rig + inconsistent character." vo_ref: "bankers at
+Hambrecht &amp; Quist put". PLACE-FIRST plate (hq-office's first frame), single gen, no candidates.</div>
+<div class="row">
+  <figure><img src="board-assets/shipped-L45.png"><figcaption><span class="badge shipped">shipped (old, pre-fix)</span></figcaption></figure>
+  <figure><img src="board-assets/new-L45.png"><figcaption><span class="badge new">new (two-step, this run)</span></figcaption></figure>
+</div>
+<div class="verdict">Identity, costume and pose held cleanly from the STEP-1 frame into the composed scene; desk,
+lamp, folder stack, red chair and skyline all present as prompted; blank folder spines/window panes as instructed.
+No rig invariant violated. Note in fairness: the SHIPPED frame also looks clean at this viewing scale — the
+improvement fix 1 buys here is a removed STRUCTURAL risk (single combined gen could have collapsed identity), not a
+visually obvious defect in this particular frame.</div>
+
+<h2>L60 — fear-boardroom, 2 cast + crowd, fresh <span class="badge verified">verified (2 candidates)</span></h2>
+<div class="shot-meta">Board-verdict condemn: "L60-68 many off rig." vo_ref: "Wiles ran MiniScribe with fear."
+PLACE-FIRST plate — 2-candidate batch generated and picked by eye per the dogfood's plate-candidate flow (all
+other places in this slice ran single-gen, per instruction).</div>
+<div class="row">
+  <figure><img src="board-assets/shipped-L60.png"><figcaption><span class="badge shipped">shipped (old, pre-fix)</span></figcaption></figure>
+  <figure><img src="board-assets/new-L60-cand-a.png"><figcaption><span class="badge new">candidate A</span></figcaption></figure>
+  <figure><img src="board-assets/new-L60-cand-b.png"><figcaption><span class="badge new">candidate B — PICKED</span></figcaption></figure>
+</div>
+<div class="verdict">Both candidates hold `qt-wiles` and `brick-foreman` identity exactly (confirmed via pixel
+crops); crowd figures correctly simplified (dot eyes, blank round faces), no identity bleed onto the two named
+leads. <b>Picked candidate B</b> — its framing puts the whole lamp fixture and cone in shot and reads the table as
+"one bright line down a dark room," matching the shot's own composition instruction more precisely than candidate
+A's more oblique three-quarter angle. Taste call, not a rig call — both were clean.</div>
+
+<h2>L61 — fear-boardroom delta (off the picked L60 plate) <span class="badge parked">parked — fidelity flag</span></h2>
+<div class="shot-meta">Board-verdict: part of "L60-68 many off rig." vo_ref: "He set sales targets." changed_elements:
+"+ a plain archery target mounted on the wall behind Wiles." Delta seeds canonical A + canonical B + the L60 parent
+plate (single gen, unchanged recipe per fix 1(b)).</div>
+<div class="row">
+  <figure><img src="board-assets/shipped-L61.png"><figcaption><span class="badge shipped">shipped (old, pre-fix)</span></figcaption></figure>
+  <figure><img src="board-assets/new-L61.png"><figcaption><span class="badge new">new (this run)</span></figcaption></figure>
+</div>
+<div class="verdict flag"><b>Identity/rig: clean</b> — both leads and the crowd hold from the parent plate with
+zero drift, exactly as expected for a same-parent delta. <b>Fidelity: FAIL.</b> The one new load-bearing fact — a
+concentric archery target mounted ON THE WALL behind Wiles — rendered instead as concentric rings glowing AROUND
+Wiles's own silhouette (an aura effect on the character, not a discrete wall object). <b>Notably, the SHIPPED
+(old) frame has the identical misread</b> — this is not a regression the two-step law introduced; it is a
+pre-existing composition/fidelity defect neither the old nor the new pipeline fixes, because it isn't a rig/identity
+defect fix 1 targets at all. Per SKILL.md review discipline this is reported as the honest first-pass result, not
+retried in this dogfood (one retry is inside the skill's own budget, out of scope for a cost-capped slice).</div>
+
+<h2>L116 — shipping-map, environment-only, fresh <span class="badge verified">verified</span></h2>
+<div class="shot-meta">Board-verdict continuity note: "L116-119 should be the same map." vo_ref: "Then they shipped
+it, because a pallet". PLACE-FIRST plate, zero seeds (the one carved-out exception — a place-first environment gen
+with no cast has nothing to seed from). This is the literal cross-video Poyais map-register asset fix 2 abolishes;
+content is now restated in prose and minted as this video's own plate.</div>
+<div class="row">
+  <figure><img src="board-assets/shipped-L116.png"><figcaption><span class="badge shipped">shipped (old, pre-fix — reused the cross-video Poyais map plate)</span></figcaption></figure>
+  <figure><img src="board-assets/new-L116.png"><figcaption><span class="badge new">new (this run — the video's own plate)</span></figcaption></figure>
+</div>
+<div class="verdict">Flat top-down parchment-cream map, warm ochre landmasses on pale blue water, exactly as
+prompted; one warehouse icon with a pallet parked inside it on the North American west coast; every landmass
+unlabelled. No figures, no rig axis applies. Clean replacement for the deleted cross-video plate, minted from
+prose alone at $0.134.</div>
+
+<h2>L143 — family-packing-night, crowd-only, fresh <span class="badge verified">verified</span></h2>
+<div class="shot-meta">Board-verdict explicit ruling: "L143-144 should be CROWD rig, not full rig." vo_ref: "One
+of the executives even brought his own family in at night". PLACE-FIRST plate, seeds the crowd exemplar only —
+`anon_foreground` re-routed to `crowd: true` per fix 3's abolished tier.</div>
+<div class="row">
+  <figure><img src="board-assets/shipped-L143.png"><figcaption><span class="badge shipped">shipped (old, pre-fix — anon_foreground tier, no crowd rig, ZERO facial features)</span></figcaption></figure>
+  <figure><img src="board-assets/new-L143.png"><figcaption><span class="badge new">new (this run — correct CROWD-RIG)</span></figcaption></figure>
+</div>
+<div class="verdict"><b>The clearest before/after in this slice.</b> All three family figures now render on the
+correct CROWD-RIG — round cream-family heads, dot eyes, one simple mouth line, no ears — softened/backlit by the
+warm desk lamp exactly as the still_prompt asks. The shipped (old) frame has ZERO facial features at all (blank
+ovals, not even dot eyes) on otherwise fully-detailed bodies — a direct, visible fix of the board-verdict's own
+ruling on this exact shot.</div>
+
+<h2>Slice verdict</h2>
+<div class="shot-meta" style="max-width:1100px;">4 of 5 shots VERIFIED clean on first pass (L45, L60, L116, L143);
+1 of 5 (L61) PARKED on a genuine fidelity defect (target-as-aura misread) that predates this fix wave and is not
+caused by it — confirmed identical on the shipped/old L61. Zero rig/identity defects across all 9 real gens; the
+seeding law and the two-step split held every named figure's identity, pose and expression through every
+composition this slice tested, including the hardest case (2 named cast + crowd in one scene, L60). Full cost
+table, friction list and the §3 registry-scope finding this dogfood originally set out to test: see
+<code>dogfood-slice.md</code>.</div>
+
+</body>
+</html>

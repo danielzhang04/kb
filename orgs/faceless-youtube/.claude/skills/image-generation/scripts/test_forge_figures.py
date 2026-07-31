@@ -71,7 +71,8 @@ def test_base_shot_names_figures_verbatim_and_binds_the_clause():
                           "the foreman with the clipboard — are anonymous, non-recurring people "
                           "drawn on the FULL base family rig"), fig[:200]
     # keeps §2e's rig tail verbatim (the invariants are the bible's, not retyped here)
-    assert "NO nose, NO ears" in fig and "THREE fingers plus ONE thumb" in fig
+    assert ("NO nose; on a haired character the hair reads as one continuous unbroken mass from "
+            "temple to jaw" in fig and "THREE fingers plus ONE thumb" in fig)
     # closes with the named-cast protection binding — present, and stated exactly ONCE whether it
     # comes from the bible's own §2e tail or from forge's append (a doubled binding is prompt bloat)
     low = fig.lower()
