@@ -1,7 +1,7 @@
 # Script: The $30 Billion Truck That Only Rolled Downhill
 
 - **Source idea:** ST-029
-- **Target length:** 8-10 min
+- **Target length:** 7:30-9:30
 - **Voice:** Miles (vSjOBQp24DUB2COr2xI9)
 - **Estimated runtime:** 9:42
 

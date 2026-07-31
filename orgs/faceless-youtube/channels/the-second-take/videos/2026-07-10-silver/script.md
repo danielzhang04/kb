@@ -1,7 +1,7 @@
 # How Two Brothers Bought Up Half the World's Silver
 
 - **Source idea:** ST-012
-- **Target length:** ~10 min center of gravity · **Estimated runtime:** 8:34 (1,286 words ÷ 150 wpm)
+- **Target length:** 7:30-9:30 · **Estimated runtime:** 8:34 (1,286 words ÷ 150 wpm)
 - **Voice:** Miles (`vSjOBQp24DUB2COr2xI9`) · eleven_v3 · stability 0.25
 - **Status:** scripted · Leashed to `research.md`
 - **Register:** casual-friend storytelling; topic-gravity dial runs HOT throughout (money-absurdity + billionaire hubris; a hubris story, not a tragedy); third-person, one narrator, no quotes, zero em/en dashes.

@@ -1,7 +1,7 @@
 # The Gambler Who Invented Paper Money and Broke France
 
 - **Source idea:** ST-028
-- **Target length:** ~10 min center of gravity · **Estimated runtime:** 8:22 (1,257 words ÷ 150 wpm)
+- **Target length:** 7:30-9:30 · **Estimated runtime:** 8:22 (1,257 words ÷ 150 wpm)
 - **Voice:** Miles (`vSjOBQp24DUB2COr2xI9`) · eleven_v3 · stability 0.25
 - **Status:** scripted · Leashed to `research.md`
 - **Register:** casual-friend storytelling; topic-gravity dial runs HOT throughout (audacity + billionaire-scale hubris; a hubris story, not a tragedy); third-person, one narrator, no quotes, zero em/en dashes.

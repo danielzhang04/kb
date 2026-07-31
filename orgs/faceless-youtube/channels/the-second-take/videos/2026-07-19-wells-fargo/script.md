@@ -1,7 +1,7 @@
 # A Bank Opened 3.5 Million Accounts Nobody Asked For
 
 - **Source idea:** ST-033
-- **Target length:** ~10 min center of gravity · **Estimated runtime:** 11:21 (1,703 words ÷ 150 wpm)
+- **Target length:** 7:30-9:30 · **Estimated runtime:** 11:21 (1,703 words ÷ 150 wpm)
 - **Voice:** Miles (`vSjOBQp24DUB2COr2xI9`) · eleven_v3 · stability 0.25
 - **Status:** scripted · Leashed to `research.md`
 - **Register:** casual-friend storytelling; topic-gravity dial hot on the rhyme and the incentive absurdity (eight is great, the PIN set to 0000), comedy OFF on the fired whistleblowers and the customers hit with fees; third-person, one narrator, no quotes, zero em/en dashes.

@@ -49,12 +49,14 @@ that company; an echo of them is neither defect nor virtue, so judge the paragra
 
 ## The mechanical lint (not an agent — a script)
 
-`scripts/lint_script.py <script.md>` deterministically flags only what needs no judgment:
+`scripts/lint_script.py <script.md> --wpm <measured VO wpm from the channel's dna.md>`
+deterministically flags only what needs no judgment:
 - **em/en dashes** (`—` / `–`) anywhere in the file — hard violation.
 - **bracketed cues in the voiceover body** — hard violation. `script.md` is pure prose; pauses belong to
   `audio-director` and visual segmentation to `visual-prompt-writer`.
 - **leftover `<!--F-NN-->` traces or outline comments** that must be stripped before ship.
-- **word count vs. target runtime** (words ÷ measured wpm vs. the header's band) — a heads-up, not a failure.
+- **word count vs. target runtime** (words ÷ measured wpm vs. the header's band) — hard when the
+  header declares a parsable band and `--wpm` is given, advisory otherwise.
 - **standalone one-sentence paragraphs**, by line number — non-blocking; a run of them is the staccato
   monotone (grammar §1.1), and the taste critic judges whether one earns it.
 - **Step cards** only for malformed, duplicate, skipped, or orphaned spoken `Step N:` sequences — hard

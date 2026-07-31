@@ -1,7 +1,7 @@
 # The Backstreet Boys Were Built to Hide a Fraud
 
 - **Source idea:** ST-004
-- **Target length:** ~10 min center of gravity · **Estimated runtime:** 9:45 (1,462 words ÷ 150 wpm; ≈8:21 at the locked voice's measured ~175 wpm, ≈9:10 with pauses)
+- **Target length:** 7:30-9:30 · **Estimated runtime:** 9:45 (1,462 words ÷ 150 wpm; ≈8:21 at the locked voice's measured ~175 wpm, ≈9:10 with pauses)
 - **Voice:** Miles (`vSjOBQp24DUB2COr2xI9`) · eleven_v3 · stability 0.25
 - **Status:** staged writers-room complete, fresh re-run through the coherence layer (spine → developed casual pass → leash → taste ∥ leash ∥ coherence → editor → humanize) + enriched research. Leashed to `research.md`.
 - **Register:** casual-friend storytelling; topic-gravity dial hot on the fake-airline and answering-machine absurdity, wry on Pearlman the "cultivator," comedy OFF on the retirees; third-person, one narrator, no quotes, zero em/en dashes.

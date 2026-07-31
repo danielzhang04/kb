@@ -1,7 +1,7 @@
 # The Company That Shipped Bricks and Called Them Hard Drives
 
 - **Source idea:** ST-006
-- **Target length:** ~10 min center of gravity · **Estimated runtime:** 9:12 (1,380 words ÷ 150 wpm)
+- **Target length:** 7:30-9:30 · **Estimated runtime:** 9:12 (1,380 words ÷ 150 wpm)
 - **Voice:** Miles (`vSjOBQp24DUB2COr2xI9`) · eleven_v3 · stability 0.25
 - **Status:** scripted · Leashed to `research.md`
 - **Register:** casual-friend storytelling; topic-gravity dial hot on the corporate-farce absurdity, wry on Wiles, plain on the money lost; third-person, one narrator, no quotes, zero em/en dashes.

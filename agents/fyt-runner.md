@@ -103,7 +103,8 @@ this file or of upstream artifacts the receiving agent doesn't need.
 ```
 launch (mechanical: unlock check if locked)
   → idea (fyt-story) → GATE 0 — IDEA PICK (Daniel; a run mandate may proxy this and log it)
-  → research + script (fyt-story) → judge-gate (fyt-checker, fresh context, ACCEPT/revise/reject)
+  → research + script (fyt-story) → HARD script lint (must exit clean, --wpm from channel dna.md)
+  → judge-gate (fyt-checker, fresh context, ACCEPT/revise/reject)
   → GATE 1 — SCRIPT (Daniel): nothing heavyweight starts before this
   → [ shorts + metadata (fyt-story) ∥ shots + motion + lint (fyt-visuals) ]
   → shots-merge: staging → root + root lints (fyt-checker; YOU govern, do not execute)
@@ -123,7 +124,10 @@ For each gate: **who holds it, what it reads, what unblocks it, what "parked" me
   human-owed review, never silently confirmed.
 - **judge-gate (fyt-checker, mechanical).** Reads `script.md`; writes `judge-verdict.md`. ACCEPT
   unblocks; `revise` allows at most 2 loops then parks for a human; `reject` halts the run.
-- **GATE 1 — script (Daniel).** Reads `script.md` + the ACCEPT verdict. Nothing heavyweight (spend,
+- **GATE 1 — script (Daniel).** Reads `script.md` + the ACCEPT verdict, after
+  `long-form-writer/scripts/lint_script.py <video_dir>/script.md --wpm <Measured VO wpm from the
+  channel's dna.md>` exits clean — the runtime band is hard at the measured rate, never a 150-wpm
+  fallback. Nothing heavyweight (spend,
   image/voice gen) starts before this. A proxied-but-unconfirmed script never advances into a paid
   stage.
 - **HARD lints at root (`fyt-checker`, in the two merge nodes you govern but do not execute).**
