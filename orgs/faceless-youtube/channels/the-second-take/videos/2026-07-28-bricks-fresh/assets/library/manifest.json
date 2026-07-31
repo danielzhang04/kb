@@ -1,755 +1,755 @@
 {
-  "video_slug": "2026-07-28-bricks-fresh",
-  "generated": "2026-07-30",
-  "notes": "Pass-1 library across the FULL 215-shot video. L01-L42's assets were minted by the _bricks-seg slice run and are reused here unchanged. L43-L215 introduced 4 new cast (qt-wiles, hq-banker, brick-foreman, auditor-rep) + 2 new pose primitives (recline, lie-supine), all registered to the shared channel refs/. 2K tier throughout.",
-  "assets": [
-    {
-      "name": "3q-turn-right",
-      "kind": "pose",
-      "file": "channels/the-second-take/visual-kit/refs/base/3q-turn-right.png",
-      "source": "reused",
-      "shots": [
-        "L40"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "action-accuse",
-      "kind": "action",
-      "file": "channels/the-second-take/visual-kit/refs/base/action-accuse.png",
-      "source": "reused",
-      "shots": [
-        "L49",
-        "L50"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "action-armscrossed",
-      "kind": "action",
-      "file": "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png",
-      "source": "reused",
-      "shots": [
-        "L29",
-        "L35",
-        "L45",
-        "L46",
-        "L51",
-        "L68",
-        "L117",
-        "L195"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "action-offering",
-      "kind": "action",
-      "file": "channels/the-second-take/visual-kit/refs/base/action-offering.png",
-      "source": "reused",
-      "shots": [
-        "L34",
-        "L47"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "action-powerstance",
-      "kind": "action",
-      "file": "channels/the-second-take/visual-kit/refs/base/action-powerstance.png",
-      "source": "reused",
-      "shots": [
-        "L26",
-        "L27",
-        "L28",
-        "L30",
-        "L31",
-        "L32",
-        "L33",
-        "L48",
-        "L60",
-        "L61",
-        "L76",
-        "L103",
-        "L115",
-        "L127",
-        "L128",
-        "L146",
-        "L160"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "action-recoil",
-      "kind": "pose",
-      "file": "channels/the-second-take/visual-kit/refs/base/action-recoil.png",
-      "source": "reused",
-      "shots": [
-        "L39",
-        "L181",
-        "L183"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "action-shrug",
-      "kind": "action",
-      "file": "channels/the-second-take/visual-kit/refs/base/action-shrug.png",
-      "source": "reused",
-      "shots": [
-        "L91",
-        "L179"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "action-slump",
-      "kind": "action",
-      "file": "channels/the-second-take/visual-kit/refs/base/action-slump.png",
-      "source": "reused",
-      "shots": [
-        "L170"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "action-tugofwar",
-      "kind": "interaction",
-      "file": "channels/the-second-take/visual-kit/refs/base/action-tugofwar.png",
-      "source": "reused",
-      "shots": [
-        "L17",
-        "L18"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "action-walk",
-      "kind": "action",
-      "file": "channels/the-second-take/visual-kit/refs/base/action-walk.png",
-      "source": "reused",
-      "shots": [
-        "L194"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "auditor-rep",
-      "kind": "identity",
-      "file": "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
-      "source": "generated (this run, Pass 1)",
-      "shots": [
-        "L76",
-        "L77",
-        "L79",
-        "L81",
-        "L82",
-        "L83",
-        "L92",
-        "L98",
-        "L99",
-        "L126",
-        "L127",
-        "L128",
-        "L129",
-        "L130",
-        "L131",
-        "L150",
-        "L181",
-        "L182",
-        "L191"
-      ],
-      "notes": "Minted 2026-07-30 for this video (dispatch-approved) and registered to the channel refs/."
-    },
-    {
-      "name": "brick-foreman",
-      "kind": "identity",
-      "file": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
-      "source": "generated (this run, Pass 1)",
-      "shots": [
-        "L60",
-        "L61",
-        "L62",
-        "L63",
-        "L64",
-        "L65",
-        "L69",
-        "L74",
-        "L75",
-        "L82",
-        "L85",
-        "L86",
-        "L87",
-        "L88",
-        "L89",
-        "L90",
-        "L91",
-        "L93",
-        "L100",
-        "L101",
-        "L103",
-        "L104",
-        "L105",
-        "L107",
-        "L108",
-        "L109",
-        "L115",
-        "L138",
-        "L154",
-        "L155",
-        "L156",
-        "L157",
-        "L158",
-        "L195",
-        "L201"
-      ],
-      "notes": "Minted 2026-07-30 for this video (dispatch-approved) and registered to the channel refs/."
-    },
-    {
-      "name": "carry-by-handle",
-      "kind": "pose",
-      "file": "channels/the-second-take/visual-kit/refs/base/carry-by-handle.png",
-      "source": "reused",
-      "shots": [
-        "L155"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "crowd-exemplar",
-      "kind": "crowd-anchor",
-      "file": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
-      "source": "reused",
-      "shots": [
-        "L07",
-        "L08",
-        "L10",
-        "L20",
-        "L30",
-        "L41"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "env-map-parchment",
-      "kind": "environment",
-      "file": "channels/the-second-take/visual-kit/refs/env/env-map-parchment.png",
-      "source": "reused",
-      "shots": [
-        "L24",
-        "L116"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "expr-annoyed",
-      "kind": "expression",
-      "file": "channels/the-second-take/visual-kit/refs/base/expr-annoyed.png",
-      "source": "reused",
-      "shots": [
-        "L17",
-        "L18",
-        "L49",
-        "L50",
-        "L117"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "expr-caught",
-      "kind": "expression",
-      "file": "channels/the-second-take/visual-kit/refs/base/expr-caught.png",
-      "source": "reused",
-      "shots": [
-        "L85"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "expr-confused",
-      "kind": "expression",
-      "file": "channels/the-second-take/visual-kit/refs/base/expr-confused.png",
-      "source": "reused",
-      "shots": [
-        "L126"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "expr-crestfallen",
-      "kind": "expression",
-      "file": "channels/the-second-take/visual-kit/refs/base/expr-crestfallen.png",
-      "source": "reused",
-      "shots": [
-        "L154",
-        "L155",
-        "L170",
-        "L192",
-        "L193",
-        "L194",
-        "L198"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "expr-deadpan",
-      "kind": "expression",
-      "file": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
-      "source": "reused",
-      "shots": [
-        "L20",
-        "L22",
-        "L30",
-        "L39",
-        "L45",
-        "L46",
-        "L48",
-        "L60",
-        "L61",
-        "L63",
-        "L69",
-        "L75",
-        "L76",
-        "L77",
-        "L87",
-        "L89",
-        "L90",
-        "L92",
-        "L93",
-        "L99",
-        "L127",
-        "L128",
-        "L129",
-        "L130",
-        "L131",
-        "L133",
-        "L150",
-        "L156",
-        "L157",
-        "L160",
-        "L169",
-        "L177",
-        "L178",
-        "L191",
-        "L199"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "expr-delighted",
-      "kind": "expression",
-      "file": "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
-      "source": "reused",
-      "shots": [
-        "L19",
-        "L28",
-        "L62",
-        "L103"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "expr-fear",
-      "kind": "expression",
-      "file": "channels/the-second-take/visual-kit/refs/base/expr-fear.png",
-      "source": "reused",
-      "shots": [
-        "L40",
-        "L66",
-        "L86",
-        "L181",
-        "L182",
-        "L183",
-        "L184"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "expr-greedy",
-      "kind": "expression",
-      "file": "channels/the-second-take/visual-kit/refs/base/expr-greedy.png",
-      "source": "reused",
-      "shots": [
-        "L35",
-        "L179"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "expr-pleading",
-      "kind": "expression",
-      "file": "channels/the-second-take/visual-kit/refs/base/expr-pleading.png",
-      "source": "reused",
-      "shots": [
-        "L196",
-        "L197"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "expr-shock",
-      "kind": "expression",
-      "file": "channels/the-second-take/visual-kit/refs/base/expr-shock.png",
-      "source": "reused",
-      "shots": [
-        "L39",
-        "L163"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "expr-skeptical",
-      "kind": "expression",
-      "file": "channels/the-second-take/visual-kit/refs/base/expr-skeptical.png",
-      "source": "reused",
-      "shots": [
-        "L21",
-        "L79",
-        "L81",
-        "L83",
-        "L98"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "expr-smug",
-      "kind": "expression",
-      "file": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
-      "source": "reused",
-      "shots": [
-        "L01",
-        "L02",
-        "L03",
-        "L26",
-        "L27",
-        "L28",
-        "L29",
-        "L31",
-        "L32",
-        "L33",
-        "L34",
-        "L47",
-        "L48",
-        "L51",
-        "L52",
-        "L53",
-        "L54",
-        "L56",
-        "L57",
-        "L58",
-        "L59",
-        "L62",
-        "L64",
-        "L65",
-        "L66",
-        "L67",
-        "L68",
-        "L91",
-        "L101",
-        "L122",
-        "L123",
-        "L137",
-        "L146",
-        "L147",
-        "L158",
-        "L195"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "expr-surprised",
-      "kind": "expression",
-      "file": "channels/the-second-take/visual-kit/refs/base/expr-surprised.png",
-      "source": "reused",
-      "shots": [
-        "L30"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "expr-thinking",
-      "kind": "expression",
-      "file": "channels/the-second-take/visual-kit/refs/base/expr-thinking.png",
-      "source": "reused",
-      "shots": [
-        "L100",
-        "L138"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "expr-worried",
-      "kind": "expression",
-      "file": "channels/the-second-take/visual-kit/refs/base/expr-worried.png",
-      "source": "reused",
-      "shots": [
-        "L16",
-        "L52",
-        "L53",
-        "L54",
-        "L60",
-        "L74",
-        "L82"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "hold-both-hands",
-      "kind": "pose",
-      "file": "channels/the-second-take/visual-kit/refs/base/hold-both-hands.png",
-      "source": "reused",
-      "shots": [
-        "L08",
-        "L19",
-        "L42",
-        "L62"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "hold-one-hand",
-      "kind": "pose",
-      "file": "channels/the-second-take/visual-kit/refs/base/hold-one-hand.png",
-      "source": "reused",
-      "shots": [
-        "L28",
-        "L98",
-        "L108",
-        "L122",
-        "L130",
-        "L137",
-        "L199"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "hold-paper-by-sides",
-      "kind": "pose",
-      "file": "channels/the-second-take/visual-kit/refs/base/hold-paper-by-sides.png",
-      "source": "reused",
-      "shots": [
-        "L21",
-        "L52",
-        "L53",
-        "L83",
-        "L99",
-        "L126"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "hq-banker",
-      "kind": "identity",
-      "file": "channels/the-second-take/visual-kit/refs/hq-banker/hq-banker.png",
-      "source": "generated (this run, Pass 1)",
-      "shots": [
-        "L45",
-        "L46",
-        "L47",
-        "L48",
-        "L183",
-        "L184",
-        "L191"
-      ],
-      "notes": "Minted 2026-07-30 for this video (dispatch-approved) and registered to the channel refs/."
-    },
-    {
-      "name": "ibm-suit",
-      "kind": "identity",
-      "file": "channels/the-second-take/visual-kit/refs/ibm-suit/ibm-suit.png",
-      "source": "reused",
-      "shots": [
-        "L30",
-        "L39"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "lettering-marker-italic",
-      "kind": "environment",
-      "file": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-      "source": "reused",
-      "shots": [
-        "L05",
-        "L06",
-        "L07",
-        "L08",
-        "L23",
-        "L30",
-        "L32",
-        "L33",
-        "L34",
-        "L35",
-        "L37",
-        "L39"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "miniscribe-rep",
-      "kind": "identity",
-      "file": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
-      "source": "reused",
-      "shots": [
-        "L26",
-        "L27",
-        "L28",
-        "L29",
-        "L30",
-        "L31",
-        "L32",
-        "L33",
-        "L34",
-        "L35",
-        "L39",
-        "L40",
-        "L52",
-        "L53",
-        "L54",
-        "L146",
-        "L147",
-        "L148"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "pc-boxy",
-      "kind": "identity",
-      "file": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
-      "source": "reused",
-      "shots": [
-        "L01",
-        "L02",
-        "L03",
-        "L04",
-        "L16"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "point-at-thing",
-      "kind": "pose",
-      "file": "channels/the-second-take/visual-kit/refs/base/point-at-thing.png",
-      "source": "reused",
-      "shots": [
-        "L64",
-        "L66"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "prop-beige-pc",
-      "kind": "prop",
-      "file": "channels/the-second-take/visual-kit/refs/env/prop-beige-pc.png",
-      "source": "reused",
-      "shots": [
-        "L05",
-        "L09",
-        "L17"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "prop-drive",
-      "kind": "prop",
-      "file": "channels/the-second-take/visual-kit/refs/env/prop-drive.png",
-      "source": "reused",
-      "shots": [
-        "L11",
-        "L12",
-        "L28",
-        "L40"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "qt-wiles",
-      "kind": "identity",
-      "file": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
-      "source": "generated (this run, Pass 1)",
-      "shots": [
-        "L48",
-        "L51",
-        "L52",
-        "L53",
-        "L54",
-        "L56",
-        "L57",
-        "L58",
-        "L59",
-        "L60",
-        "L61",
-        "L62",
-        "L63",
-        "L64",
-        "L65",
-        "L66",
-        "L67",
-        "L68",
-        "L117",
-        "L118",
-        "L119",
-        "L122",
-        "L137",
-        "L184",
-        "L192",
-        "L193",
-        "L194",
-        "L196",
-        "L197",
-        "L198",
-        "L199",
-        "L200",
-        "L204"
-      ],
-      "notes": "Minted 2026-07-30 for this video (dispatch-approved) and registered to the channel refs/. CORRECTED 2026-07-30 (Daniel's ruling): 'Dr. Fix-It' is a nickname only — Q.T. Wiles is a businessman, never a physician. Canonical costume, stated once here: a lean, silver-haired older man in a steel-grey three-piece suit with a gold tie clip catching the light. No stethoscope, no white coat, no scrubs, no medical prop, in any shot, ever — every shots.json still_prompt referencing him holds to this. The refs/qt-wiles/qt-wiles.png canonical itself is still the pre-correction mint and is STALE; re-minting it is repair-wave work, not this fix."
-    },
-    {
-      "name": "sign-with-pen",
-      "kind": "pose",
-      "file": "channels/the-second-take/visual-kit/refs/base/sign-with-pen.png",
-      "source": "reused",
-      "shots": [
-        "L39",
-        "L92"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "sit",
-      "kind": "pose",
-      "file": "channels/the-second-take/visual-kit/refs/base/sit.png",
-      "source": "reused",
-      "shots": [
-        "L20",
-        "L69",
-        "L74",
-        "L87",
-        "L156",
-        "L195"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "surrender",
-      "kind": "pose",
-      "file": "channels/the-second-take/visual-kit/refs/base/surrender.png",
-      "source": "reused",
-      "shots": [
-        "L196",
-        "L197"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    },
-    {
-      "name": "terry-johnson",
-      "kind": "identity",
-      "file": "channels/the-second-take/visual-kit/refs/terry-johnson/terry-johnson.png",
-      "source": "reused",
-      "shots": [
-        "L28",
-        "L42"
-      ],
-      "notes": "Reused from the channel registry; no generation."
-    }
-  ]
+ "video_slug": "2026-07-28-bricks-fresh",
+ "generated": "2026-07-30",
+ "notes": "Pass-1 library across the FULL 215-shot video. L01-L42's assets were minted by the _bricks-seg slice run and are reused here unchanged. L43-L215 introduced 4 new cast (qt-wiles, hq-banker, brick-foreman, auditor-rep) + 2 new pose primitives (recline, lie-supine), all registered to the shared channel refs/. 2K tier throughout.",
+ "assets": [
+  {
+   "name": "3q-turn-right",
+   "kind": "pose",
+   "file": "channels/the-second-take/visual-kit/refs/base/3q-turn-right.png",
+   "source": "reused",
+   "shots": [
+    "L40"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "action-accuse",
+   "kind": "action",
+   "file": "channels/the-second-take/visual-kit/refs/base/action-accuse.png",
+   "source": "reused",
+   "shots": [
+    "L49",
+    "L50"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "action-armscrossed",
+   "kind": "action",
+   "file": "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png",
+   "source": "reused",
+   "shots": [
+    "L29",
+    "L35",
+    "L45",
+    "L46",
+    "L51",
+    "L68",
+    "L117",
+    "L195"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "action-offering",
+   "kind": "action",
+   "file": "channels/the-second-take/visual-kit/refs/base/action-offering.png",
+   "source": "reused",
+   "shots": [
+    "L34",
+    "L47"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "action-powerstance",
+   "kind": "action",
+   "file": "channels/the-second-take/visual-kit/refs/base/action-powerstance.png",
+   "source": "reused",
+   "shots": [
+    "L26",
+    "L27",
+    "L28",
+    "L30",
+    "L31",
+    "L32",
+    "L33",
+    "L48",
+    "L60",
+    "L61",
+    "L76",
+    "L103",
+    "L115",
+    "L127",
+    "L128",
+    "L146",
+    "L160"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "action-recoil",
+   "kind": "pose",
+   "file": "channels/the-second-take/visual-kit/refs/base/action-recoil.png",
+   "source": "reused",
+   "shots": [
+    "L39",
+    "L181",
+    "L183"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "action-shrug",
+   "kind": "action",
+   "file": "channels/the-second-take/visual-kit/refs/base/action-shrug.png",
+   "source": "reused",
+   "shots": [
+    "L91",
+    "L179"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "action-slump",
+   "kind": "action",
+   "file": "channels/the-second-take/visual-kit/refs/base/action-slump.png",
+   "source": "reused",
+   "shots": [
+    "L170"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "action-tugofwar",
+   "kind": "interaction",
+   "file": "channels/the-second-take/visual-kit/refs/base/action-tugofwar.png",
+   "source": "reused",
+   "shots": [
+    "L17",
+    "L18"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "action-walk",
+   "kind": "action",
+   "file": "channels/the-second-take/visual-kit/refs/base/action-walk.png",
+   "source": "reused",
+   "shots": [
+    "L194"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "auditor-rep",
+   "kind": "identity",
+   "file": "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
+   "source": "generated (this run, Pass 1)",
+   "shots": [
+    "L76",
+    "L77",
+    "L79",
+    "L81",
+    "L82",
+    "L83",
+    "L92",
+    "L98",
+    "L99",
+    "L126",
+    "L127",
+    "L128",
+    "L129",
+    "L130",
+    "L131",
+    "L150",
+    "L181",
+    "L182",
+    "L191"
+   ],
+   "notes": "Minted 2026-07-30 for this video (dispatch-approved) and registered to the channel refs/."
+  },
+  {
+   "name": "brick-foreman",
+   "kind": "identity",
+   "file": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
+   "source": "generated (this run, Pass 1)",
+   "shots": [
+    "L60",
+    "L61",
+    "L62",
+    "L63",
+    "L64",
+    "L65",
+    "L69",
+    "L74",
+    "L75",
+    "L82",
+    "L85",
+    "L86",
+    "L87",
+    "L88",
+    "L89",
+    "L90",
+    "L91",
+    "L93",
+    "L100",
+    "L101",
+    "L103",
+    "L104",
+    "L105",
+    "L107",
+    "L108",
+    "L109",
+    "L115",
+    "L138",
+    "L154",
+    "L155",
+    "L156",
+    "L157",
+    "L158",
+    "L195",
+    "L201"
+   ],
+   "notes": "Minted 2026-07-30 for this video (dispatch-approved) and registered to the channel refs/."
+  },
+  {
+   "name": "carry-by-handle",
+   "kind": "pose",
+   "file": "channels/the-second-take/visual-kit/refs/base/carry-by-handle.png",
+   "source": "reused",
+   "shots": [
+    "L155"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "crowd-exemplar",
+   "kind": "crowd-anchor",
+   "file": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+   "source": "reused",
+   "shots": [
+    "L07",
+    "L08",
+    "L10",
+    "L20",
+    "L30",
+    "L41"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "env-map-parchment",
+   "kind": "environment",
+   "file": "channels/the-second-take/visual-kit/refs/env/env-map-parchment.png",
+   "source": "reused",
+   "shots": [
+    "L24",
+    "L116"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "expr-annoyed",
+   "kind": "expression",
+   "file": "channels/the-second-take/visual-kit/refs/base/expr-annoyed.png",
+   "source": "reused",
+   "shots": [
+    "L17",
+    "L18",
+    "L49",
+    "L50",
+    "L117"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "expr-caught",
+   "kind": "expression",
+   "file": "channels/the-second-take/visual-kit/refs/base/expr-caught.png",
+   "source": "reused",
+   "shots": [
+    "L85"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "expr-confused",
+   "kind": "expression",
+   "file": "channels/the-second-take/visual-kit/refs/base/expr-confused.png",
+   "source": "reused",
+   "shots": [
+    "L126"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "expr-crestfallen",
+   "kind": "expression",
+   "file": "channels/the-second-take/visual-kit/refs/base/expr-crestfallen.png",
+   "source": "reused",
+   "shots": [
+    "L154",
+    "L155",
+    "L170",
+    "L192",
+    "L193",
+    "L194",
+    "L198"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "expr-deadpan",
+   "kind": "expression",
+   "file": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+   "source": "reused",
+   "shots": [
+    "L20",
+    "L22",
+    "L30",
+    "L39",
+    "L45",
+    "L46",
+    "L48",
+    "L60",
+    "L61",
+    "L63",
+    "L69",
+    "L75",
+    "L76",
+    "L77",
+    "L87",
+    "L89",
+    "L90",
+    "L92",
+    "L93",
+    "L99",
+    "L127",
+    "L128",
+    "L129",
+    "L130",
+    "L131",
+    "L133",
+    "L150",
+    "L156",
+    "L157",
+    "L160",
+    "L169",
+    "L177",
+    "L178",
+    "L191",
+    "L199"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "expr-delighted",
+   "kind": "expression",
+   "file": "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
+   "source": "reused",
+   "shots": [
+    "L19",
+    "L28",
+    "L62",
+    "L103"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "expr-fear",
+   "kind": "expression",
+   "file": "channels/the-second-take/visual-kit/refs/base/expr-fear.png",
+   "source": "reused",
+   "shots": [
+    "L40",
+    "L66",
+    "L86",
+    "L181",
+    "L182",
+    "L183",
+    "L184"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "expr-greedy",
+   "kind": "expression",
+   "file": "channels/the-second-take/visual-kit/refs/base/expr-greedy.png",
+   "source": "reused",
+   "shots": [
+    "L35",
+    "L179"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "expr-pleading",
+   "kind": "expression",
+   "file": "channels/the-second-take/visual-kit/refs/base/expr-pleading.png",
+   "source": "reused",
+   "shots": [
+    "L196",
+    "L197"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "expr-shock",
+   "kind": "expression",
+   "file": "channels/the-second-take/visual-kit/refs/base/expr-shock.png",
+   "source": "reused",
+   "shots": [
+    "L39",
+    "L163"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "expr-skeptical",
+   "kind": "expression",
+   "file": "channels/the-second-take/visual-kit/refs/base/expr-skeptical.png",
+   "source": "reused",
+   "shots": [
+    "L21",
+    "L79",
+    "L81",
+    "L83",
+    "L98"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "expr-smug",
+   "kind": "expression",
+   "file": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
+   "source": "reused",
+   "shots": [
+    "L01",
+    "L02",
+    "L03",
+    "L26",
+    "L27",
+    "L28",
+    "L29",
+    "L31",
+    "L32",
+    "L33",
+    "L34",
+    "L47",
+    "L48",
+    "L51",
+    "L52",
+    "L53",
+    "L54",
+    "L56",
+    "L57",
+    "L58",
+    "L59",
+    "L62",
+    "L64",
+    "L65",
+    "L66",
+    "L67",
+    "L68",
+    "L91",
+    "L101",
+    "L122",
+    "L123",
+    "L137",
+    "L146",
+    "L147",
+    "L158",
+    "L195"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "expr-surprised",
+   "kind": "expression",
+   "file": "channels/the-second-take/visual-kit/refs/base/expr-surprised.png",
+   "source": "reused",
+   "shots": [
+    "L30"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "expr-thinking",
+   "kind": "expression",
+   "file": "channels/the-second-take/visual-kit/refs/base/expr-thinking.png",
+   "source": "reused",
+   "shots": [
+    "L100",
+    "L138"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "expr-worried",
+   "kind": "expression",
+   "file": "channels/the-second-take/visual-kit/refs/base/expr-worried.png",
+   "source": "reused",
+   "shots": [
+    "L16",
+    "L52",
+    "L53",
+    "L54",
+    "L60",
+    "L74",
+    "L82"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "hold-both-hands",
+   "kind": "pose",
+   "file": "channels/the-second-take/visual-kit/refs/base/hold-both-hands.png",
+   "source": "reused",
+   "shots": [
+    "L08",
+    "L19",
+    "L42",
+    "L62"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "hold-one-hand",
+   "kind": "pose",
+   "file": "channels/the-second-take/visual-kit/refs/base/hold-one-hand.png",
+   "source": "reused",
+   "shots": [
+    "L28",
+    "L98",
+    "L108",
+    "L122",
+    "L130",
+    "L137",
+    "L199"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "hold-paper-by-sides",
+   "kind": "pose",
+   "file": "channels/the-second-take/visual-kit/refs/base/hold-paper-by-sides.png",
+   "source": "reused",
+   "shots": [
+    "L21",
+    "L52",
+    "L53",
+    "L83",
+    "L99",
+    "L126"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "hq-banker",
+   "kind": "identity",
+   "file": "channels/the-second-take/visual-kit/refs/hq-banker/hq-banker.png",
+   "source": "generated (this run, Pass 1)",
+   "shots": [
+    "L45",
+    "L46",
+    "L47",
+    "L48",
+    "L183",
+    "L184",
+    "L191"
+   ],
+   "notes": "Minted 2026-07-30 for this video (dispatch-approved) and registered to the channel refs/."
+  },
+  {
+   "name": "ibm-suit",
+   "kind": "identity",
+   "file": "channels/the-second-take/visual-kit/refs/ibm-suit/ibm-suit.png",
+   "source": "reused",
+   "shots": [
+    "L30",
+    "L39"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "lettering-marker-italic",
+   "kind": "environment",
+   "file": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+   "source": "reused",
+   "shots": [
+    "L05",
+    "L06",
+    "L07",
+    "L08",
+    "L23",
+    "L30",
+    "L32",
+    "L33",
+    "L34",
+    "L35",
+    "L37",
+    "L39"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "miniscribe-rep",
+   "kind": "identity",
+   "file": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+   "source": "reused",
+   "shots": [
+    "L26",
+    "L27",
+    "L28",
+    "L29",
+    "L30",
+    "L31",
+    "L32",
+    "L33",
+    "L34",
+    "L35",
+    "L39",
+    "L40",
+    "L52",
+    "L53",
+    "L54",
+    "L146",
+    "L147",
+    "L148"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "pc-boxy",
+   "kind": "identity",
+   "file": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+   "source": "reused",
+   "shots": [
+    "L01",
+    "L02",
+    "L03",
+    "L04",
+    "L16"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "point-at-thing",
+   "kind": "pose",
+   "file": "channels/the-second-take/visual-kit/refs/base/point-at-thing.png",
+   "source": "reused",
+   "shots": [
+    "L64",
+    "L66"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "prop-beige-pc",
+   "kind": "prop",
+   "file": "channels/the-second-take/visual-kit/refs/env/prop-beige-pc.png",
+   "source": "reused",
+   "shots": [
+    "L05",
+    "L09",
+    "L17"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "prop-drive",
+   "kind": "prop",
+   "file": "channels/the-second-take/visual-kit/refs/env/prop-drive.png",
+   "source": "reused",
+   "shots": [
+    "L11",
+    "L12",
+    "L28",
+    "L40"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "qt-wiles",
+   "kind": "identity",
+   "file": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
+   "source": "generated (this run, Pass 1)",
+   "shots": [
+    "L48",
+    "L51",
+    "L52",
+    "L53",
+    "L54",
+    "L56",
+    "L57",
+    "L58",
+    "L59",
+    "L60",
+    "L61",
+    "L62",
+    "L63",
+    "L64",
+    "L65",
+    "L66",
+    "L67",
+    "L68",
+    "L117",
+    "L118",
+    "L119",
+    "L122",
+    "L137",
+    "L184",
+    "L192",
+    "L193",
+    "L194",
+    "L196",
+    "L197",
+    "L198",
+    "L199",
+    "L200",
+    "L204"
+   ],
+   "notes": "Minted 2026-07-30 for this video (dispatch-approved) and registered to the channel refs/. CORRECTED 2026-07-30 (Daniel's ruling): 'Dr. Fix-It' is a nickname only \u2014 Q.T. Wiles is a businessman, never a physician. Canonical costume, stated once here: a lean, silver-haired older man in a steel-grey three-piece suit with a gold tie clip catching the light. No stethoscope, no white coat, no scrubs, no medical prop, in any shot, ever \u2014 every shots.json still_prompt referencing him holds to this. RE-MINTED 2026-07-31 (repair wave, tranche A): refs/qt-wiles/qt-wiles.png is now the businessman canonical, human-approved by Daniel (remint-c as generated; known minor right-side hair junction accepted by ruling). Old stethoscope mint quarantined at visual-kit/_staging/_pre-fix-quarantine/."
+  },
+  {
+   "name": "sign-with-pen",
+   "kind": "pose",
+   "file": "channels/the-second-take/visual-kit/refs/base/sign-with-pen.png",
+   "source": "reused",
+   "shots": [
+    "L39",
+    "L92"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "sit",
+   "kind": "pose",
+   "file": "channels/the-second-take/visual-kit/refs/base/sit.png",
+   "source": "reused",
+   "shots": [
+    "L20",
+    "L69",
+    "L74",
+    "L87",
+    "L156",
+    "L195"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "surrender",
+   "kind": "pose",
+   "file": "channels/the-second-take/visual-kit/refs/base/surrender.png",
+   "source": "reused",
+   "shots": [
+    "L196",
+    "L197"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  },
+  {
+   "name": "terry-johnson",
+   "kind": "identity",
+   "file": "channels/the-second-take/visual-kit/refs/terry-johnson/terry-johnson.png",
+   "source": "reused",
+   "shots": [
+    "L28",
+    "L42"
+   ],
+   "notes": "Reused from the channel registry; no generation."
+  }
+ ]
 }
