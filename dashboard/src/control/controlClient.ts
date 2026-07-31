@@ -250,6 +250,29 @@ export interface RunDetailDto {
   reviewReceipts: ReviewReceiptDto[];
 }
 
+/**
+ * A run-roster agent's canvas-facing state (FYT gated-pipeline, Task 5), mirroring
+ * `server/control/rosterSessions.ts#RosterAgentState` — duplicated at this boundary like every other
+ * DTO here, never imported at runtime (that module reaches `node:crypto`/`node:fs`).
+ */
+export interface RosterAgentStateDto {
+  agentId: string;
+  /** The live pty session id (attachable at `/api/pty?session=<id>`), or null when not spawned. */
+  sessionId: string | null;
+  status: 'active' | 'waiting' | 'blocked' | 'idle';
+  /** One line, e.g. `image-gen batch 2/4`. */
+  activity: string;
+  /** Agent ids this agent is waiting on (status `waiting`), or gate ids blocking it (status `blocked`). */
+  waitingOn: string[];
+}
+
+/** `getRun`'s actual response shape: the run detail plus the roster projection the canvas reads. Kept
+ *  as an EXTENSION of {@link RunDetailDto}, never a fork, so every existing `getRun` caller (which reads
+ *  only the fields on `RunDetailDto`) keeps compiling and running unchanged. */
+export interface RunDetailWithRosterDto extends RunDetailDto {
+  roster: RosterAgentStateDto[];
+}
+
 export interface OperationalEventDto {
   cursor: number;
   runRef: string;
@@ -504,9 +527,13 @@ export async function listRuns(token: string, fetchImpl?: FetchLike): Promise<Ru
   return body.runs;
 }
 
-export async function getRun(runRef: string, token: string, fetchImpl?: FetchLike): Promise<RunDetailDto> {
-  const body = await read<{ ok: true; value: RunDetailDto }>(`/api/control/runs/${segment(runRef)}`, token, fetchImpl);
-  return body.value;
+export async function getRun(runRef: string, token: string, fetchImpl?: FetchLike): Promise<RunDetailWithRosterDto> {
+  const body = await read<{ ok: true; value: RunDetailDto; roster?: RosterAgentStateDto[] }>(
+    `/api/control/runs/${segment(runRef)}`, token, fetchImpl,
+  );
+  // `roster` is absent whenever execution is locked or the run has no live roster (see
+  // `server/control/routes.ts` — it always sends an array, but default to `[]` defensively).
+  return { ...body.value, roster: Array.isArray(body.roster) ? body.roster : [] };
 }
 
 export async function listRunEvents(

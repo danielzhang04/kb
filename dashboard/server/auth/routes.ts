@@ -40,6 +40,31 @@ function asRecord(body: unknown): Record<string, unknown> {
   return body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
 }
 
+/**
+ * LOW (audit follow-up): every purpose-bound ceremony minted elsewhere on this daemon (e.g.
+ * `control/routes.ts`'s execution-unlock, `EXECUTION_UNLOCK_PURPOSE = 'kb.execution-unlock'`)
+ * embeds its purpose as a `"kb.<purpose>:<subject>:<random>"` UTF-8 preimage in the challenge
+ * before base64url-encoding it, and stashes it in the SAME `credentialStore.ts` pending-challenge
+ * map these register/assert routes consume from — there is only one map, keyed by ceremonyId, not
+ * by purpose. A generic sign-in ceremony's challenge is always fresh, opaque, random bytes (never
+ * built from a "kb." UTF-8 preimage — see `webauthn.ts#assertionOptions`/`registrationOptions`,
+ * neither of which is ever given an explicit `challenge`), so this prefix is never legitimately
+ * seen here. Without this check, an unlock (or any future purpose-bound) ceremony's `ceremonyId`
+ * could be redeemed at these general login/registration routes instead of its intended one — a
+ * privilege DOWNGRADE (unlock -> mere sign-in), never an escalation, but still not the ceremony it
+ * was minted for. Reject it the same way an unknown/expired ceremony already is, before any
+ * credential lookup — this does not change the auth API's response shape.
+ */
+const NAMESPACED_CHALLENGE_PREFIX = 'kb.';
+
+function isNamespacedChallenge(base64urlChallenge: string): boolean {
+  try {
+    return Buffer.from(base64urlChallenge, 'base64url').toString('utf8').startsWith(NAMESPACED_CHALLENGE_PREFIX);
+  } catch {
+    return false;
+  }
+}
+
 /** Register the auth ceremony routes on an ALREADY-GUARDED scope (origin + rate-limit hooks applied). */
 export function registerAuthRoutes(scope: FastifyInstance, ctx: SurfaceContext): void {
   scope.post('/api/auth/register/options', async (_req, reply) => {
@@ -61,6 +86,11 @@ export function registerAuthRoutes(scope: FastifyInstance, ctx: SurfaceContext):
     const expectedChallenge = consumeChallenge(ceremonyId);
     if (!expectedChallenge) {
       return reply.code(400).send({ error: 'bad-ceremony', reason: 'unknown or expired registration ceremony' });
+    }
+    if (isNamespacedChallenge(expectedChallenge)) {
+      // A purpose-bound ceremony minted for a different route (e.g. execution-unlock) — never a
+      // plain registration challenge. See NAMESPACED_CHALLENGE_PREFIX above.
+      return reply.code(400).send({ error: 'bad-ceremony', reason: 'challenge is not a registration challenge' });
     }
     let config;
     try {
@@ -107,6 +137,13 @@ export function registerAuthRoutes(scope: FastifyInstance, ctx: SurfaceContext):
     const expectedChallenge = consumeChallenge(ceremonyId);
     if (!expectedChallenge) {
       return reply.code(400).send({ error: 'bad-ceremony', reason: 'unknown or expired assertion ceremony' });
+    }
+    if (isNamespacedChallenge(expectedChallenge)) {
+      // A purpose-bound ceremony minted for a different route (e.g. execution-unlock) redeemed
+      // here would mint a full sign-in session off a ceremony the operator approved for something
+      // narrower — a privilege downgrade, but not the ceremony it was minted for. Refuse it before
+      // any credential lookup, same as an unknown ceremony. See NAMESPACED_CHALLENGE_PREFIX above.
+      return reply.code(400).send({ error: 'bad-ceremony', reason: 'challenge is not a sign-in challenge' });
     }
     const response = body.response as { id?: unknown } | undefined;
     const credId = response && typeof response.id === 'string' ? response.id : '';

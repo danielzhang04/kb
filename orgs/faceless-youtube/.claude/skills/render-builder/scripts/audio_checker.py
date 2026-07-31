@@ -230,14 +230,24 @@ def check_audio(audio_spec, shots, loudnorm, master_target, lufs_tol=1.0, tp_tol
     return {"ok": not warnings, "warnings": warnings, "measured": measured}
 
 
+def motion_spec_name(piece: str, preview: bool) -> str:
+    """The motion-spec filename to read for a piece (audit FIX 8). A `--preview` check must read
+    the preview-parked spec `build_motion --preview-parked` wrote (`<piece>.preview.motion.json`) —
+    mirroring build_motion's own naming — never the shippable final's spec, which a preview render
+    never touches."""
+    return f"{piece}.preview.motion.json" if preview else f"{piece}.motion.json"
+
+
 def main():
     """Standalone sentence-gap (+ splice-continuity) verifier over a saved motion spec.
 
-        py -3 audio_checker.py <video_dir> [--piece long-form] [--tol 0.10] [--audio PATH]
+        py -3 audio_checker.py <video_dir> [--piece long-form] [--tol 0.10] [--audio PATH] [--preview]
 
     Reads assets/motion/<piece>.motion.json (boundaries + which VO the render played), measures every
     sentence boundary's real acoustic gap, prints the per-boundary table, and exits 1 when any boundary
-    is below target - tol (0 otherwise)."""
+    is below target - tol (0 otherwise). `--preview` reads the `--preview-parked` run's own spec
+    (`<piece>.preview.motion.json`) instead, so checking a preview render never reads (or is silently
+    satisfied by) the shippable final's spec."""
     import argparse
     import json
     ap = argparse.ArgumentParser(description="Post-render sentence-gap verifier (R11).")
@@ -245,9 +255,12 @@ def main():
     ap.add_argument("--piece", default="long-form")
     ap.add_argument("--tol", type=float, default=0.10)
     ap.add_argument("--audio", default="", help="override the VO file to measure (default: spec['audio'])")
+    ap.add_argument("--preview", action="store_true",
+                    help="check the --preview-parked run's spec (<piece>.preview.motion.json) "
+                         "instead of the shippable final's")
     args = ap.parse_args()
     video_dir = Path(args.video_dir)
-    spec_path = video_dir / "assets" / "motion" / f"{args.piece}.motion.json"
+    spec_path = video_dir / "assets" / "motion" / motion_spec_name(args.piece, args.preview)
     if not spec_path.exists():
         raise SystemExit(f"motion spec not found: {spec_path} (run build_motion first)")
     spec = json.loads(spec_path.read_text(encoding="utf-8"))
@@ -257,7 +270,12 @@ def main():
     audio = Path(args.audio) if args.audio else (video_dir / "assets" / spec["audio"] if spec.get("audio") else None)
     if audio is None or not audio.exists():
         raise SystemExit(f"VO audio not found: {audio}")
-    print(f"sentence-gap verifier: {audio}  ({len(bounds)} boundaries, tol {args.tol:.2f}s)")
+    # LOW (audit follow-up): a pasted report used to say nothing about whether it came from a
+    # `--preview` run or the shippable final, or which spec file backed it — making a pasted report
+    # untrustworthy as final-vs-preview evidence. State both, prominently, every run.
+    tag = "[PREVIEW] " if args.preview else ""
+    print(f"{tag}sentence-gap verifier: {audio}  ({len(bounds)} boundaries, tol {args.tol:.2f}s)")
+    print(f"{tag}spec: {spec_path}")
     rep = check_sentence_gaps(audio, bounds, tol_s=args.tol)
     for r in rep.get("rows", []):
         mark = "  <-- SHORT" if r["measured_gap_s"] < r["target_s"] - args.tol else ""

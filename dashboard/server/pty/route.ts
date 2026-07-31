@@ -49,8 +49,12 @@ import type { PersistentSessionRegistry, SessionSink } from './persistentSession
 export const PTY_SUBPROTOCOL = 'kb-pty.v1';
 
 /** Max simultaneous LIVE SESSIONS across the whole daemon — a hard backstop, not a per-request limit.
- *  Counted from `registry.liveCount()`; an attach to an existing session never consumes a slot. */
-export const MAX_CONCURRENT_PTY = 8;
+ *  Counted from `registry.liveCount()`; an attach to an existing session never consumes a slot.
+ *
+ *  Raised from 8 with the run roster (FYT gated-pipeline Task 4): roster agent terminals live in this same
+ *  registry, so one active run already holds ~6 slots and the old ceiling left an operator unable to open
+ *  a second terminal of their own. Opening a canvas tile is an ATTACH and still costs nothing. */
+export const MAX_CONCURRENT_PTY = 16;
 
 /** Initial shell geometry until the browser sends its first `{type:'resize'}` (matches xterm's default). */
 const DEFAULT_COLS = 80;

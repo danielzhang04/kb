@@ -203,6 +203,243 @@ describe('parseWorkflowDef', () => {
     });
   });
 
+  describe('declared human gates', () => {
+    const gated = (...lines: string[]) => SINGLE.replace('    riskTier: T2', ['    riskTier: T2', ...lines].join('\n'));
+
+    it('parses a closed gate list and omits the key entirely when a stage declares none', () => {
+      const result = parseWorkflowDef(md(gated(
+        '    humanGates:',
+        '      - id: g0-idea-pick',
+        '        kind: approval',
+        '        prompt: Pick and edit the idea brief.',
+        '      - id: g0-note',
+        '        kind: input',
+        '        prompt: Anything the writer should know?',
+      )), { knownProfiles: KNOWN });
+      expect(result).toMatchObject({ ok: true, value: { stages: [{ humanGates: [
+        { id: 'g0-idea-pick', kind: 'approval', prompt: 'Pick and edit the idea brief.' },
+        { id: 'g0-note', kind: 'input', prompt: 'Anything the writer should know?' },
+      ] }] } });
+      if (!result.ok) return;
+      // Absent (not `[]`) so an ungated definition compiles and hashes byte-identically to before.
+      const ungated = parseWorkflowDef(md(SINGLE), { knownProfiles: KNOWN });
+      expect(ungated.ok && ungated.value.stages[0]).not.toHaveProperty('humanGates');
+    });
+
+    it('rejects a malformed gate: unknown field, bad kind, empty prompt, or empty list', () => {
+      const cases: Array<[string[], RegExp]> = [
+        [['    humanGates:', '      - id: g0', '        kind: approval', '        prompt: Pick.', '        escalate: true'], /unknown field 'escalate'/],
+        [['    humanGates:', '      - id: g0', '        kind: governance-refusal', '        prompt: Pick.'], /kind must be approval, input, or review/],
+        [['    humanGates:', '      - id: g0', '        kind: intervention', '        prompt: Pick.'], /kind must be approval, input, or review/],
+        [['    humanGates:', '      - id: g0', '        kind: approval', '        prompt: ""'], /prompt must be a non-empty string/],
+        [['    humanGates:', '      - id: ../g0', '        kind: approval', '        prompt: Pick.'], /id must be a safe identifier/],
+        [['    humanGates: []'], /must contain 1-16 gates/],
+        [['    humanGates: g0'], /must be a list of gate mappings/],
+      ];
+      for (const [lines, detail] of cases) {
+        expect(parseWorkflowDef(md(gated(...lines)), { knownProfiles: KNOWN })).toMatchObject({ ok: false, detail: expect.stringMatching(detail) });
+      }
+    });
+
+    it('admits spendAuthorization ONLY on an approval gate', () => {
+      expect(parseWorkflowDef(md(gated(
+        '    humanGates:', '      - id: g2-visual-plan', '        kind: approval',
+        '        prompt: Approve the visual plan.', '        spendAuthorization: true',
+      )), { knownProfiles: KNOWN })).toMatchObject({ ok: true, value: { stages: [{ humanGates: [
+        { id: 'g2-visual-plan', kind: 'approval', spendAuthorization: true },
+      ] }] } });
+      // An `input` gate resolves on a 'responded' decision, which is not an approval; a `review` gate
+      // is a verdict on someone else's work. Neither may ever read as authorizing money.
+      for (const kind of ['input', 'review']) {
+        expect(parseWorkflowDef(md(gated(
+          '    humanGates:', '      - id: g2-visual-plan', `        kind: ${kind}`,
+          '        prompt: Approve the visual plan.', '        spendAuthorization: true',
+        )), { knownProfiles: KNOWN })).toMatchObject({ ok: false, detail: expect.stringMatching(/spendAuthorization requires kind 'approval'/) });
+      }
+      expect(parseWorkflowDef(md(gated(
+        '    humanGates:', '      - id: g2', '        kind: approval',
+        '        prompt: Approve.', '        spendAuthorization: yes-please',
+      )), { knownProfiles: KNOWN })).toMatchObject({ ok: false, detail: expect.stringMatching(/spendAuthorization must be a boolean/) });
+    });
+
+    it('admits publicationAuthorization ONLY on an approval gate', () => {
+      expect(parseWorkflowDef(md(gated(
+        '    humanGates:', '      - id: g4-publish-private', '        kind: approval',
+        '        prompt: Approve the private upload.', '        publicationAuthorization: true',
+      )), { knownProfiles: KNOWN })).toMatchObject({ ok: true, value: { stages: [{ humanGates: [
+        { id: 'g4-publish-private', kind: 'approval', publicationAuthorization: true },
+      ] }] } });
+      // An input/review response is not an approval, so neither may ever read as authorizing a T3
+      // publication — the same rule the spend flag carries.
+      for (const kind of ['input', 'review']) {
+        expect(parseWorkflowDef(md(gated(
+          '    humanGates:', '      - id: g4-publish-private', `        kind: ${kind}`,
+          '        prompt: Approve the private upload.', '        publicationAuthorization: true',
+        )), { knownProfiles: KNOWN })).toMatchObject({
+          ok: false, detail: expect.stringMatching(/publicationAuthorization requires kind 'approval'/),
+        });
+      }
+      expect(parseWorkflowDef(md(gated(
+        '    humanGates:', '      - id: g4', '        kind: approval',
+        '        prompt: Approve.', '        publicationAuthorization: sure',
+      )), { knownProfiles: KNOWN })).toMatchObject({
+        ok: false, detail: expect.stringMatching(/publicationAuthorization must be a boolean/),
+      });
+      // The gate mapping stays closed: an unknown neighbour is still refused.
+      expect(parseWorkflowDef(md(gated(
+        '    humanGates:', '      - id: g4', '        kind: approval',
+        '        prompt: Approve.', '        publishAuthorisation: true',
+      )), { knownProfiles: KNOWN })).toMatchObject({ ok: false, detail: expect.stringMatching(/unknown field/) });
+    });
+
+    it('requires gate ids to be unique across the whole workflow, not merely per stage', () => {
+      const twoStages = [
+        'id: gated', 'project: kb-ops', 'title: Gated', 'profile: research', 'stages:',
+        '  - id: first', '    title: First', '    action: implement:thing', '    target: orgs/kb-ops/output', '    workOrder: First',
+        '    humanGates:', '      - id: g1', '        kind: approval', '        prompt: Approve first.',
+        '  - id: second', '    title: Second', '    action: implement:next', '    target: orgs/kb-ops/output', '    workOrder: Second', '    dependsOn: [first]',
+        '    humanGates:', '      - id: GATE_ID', '        kind: approval', '        prompt: Approve second.',
+      ].join('\n');
+      expect(parseWorkflowDef(md(twoStages.replace('GATE_ID', 'g2')), { knownProfiles: KNOWN })).toMatchObject({ ok: true });
+      // Two stages sharing a gate id would make "g1 is approved" ambiguous about which stage it
+      // released — and an ambiguous spend gate is exactly the bypass this forbids.
+      expect(parseWorkflowDef(md(twoStages.replace('GATE_ID', 'g1')), { knownProfiles: KNOWN }))
+        .toMatchObject({ ok: false, detail: expect.stringMatching(/duplicate human gate id 'g1'/) });
+      // Within one stage, too.
+      const sameStage = twoStages.replace(
+        '      - id: GATE_ID', '      - id: g1',
+      );
+      expect(parseWorkflowDef(md(sameStage), { knownProfiles: KNOWN })).toMatchObject({ ok: false });
+    });
+
+    it('counts a completionGate id in the same one gate-id namespace', () => {
+      // A completionGate is answered in the same Inbox under the same title shape, so a collision with a
+      // humanGates id makes "ship-it is approved" ambiguous exactly as two humanGates would.
+      const fm = (completionGateId: string) => [
+        'id: checker', 'project: kb-ops', 'title: Checker', 'profile: research', 'stages:',
+        '  - id: create', '    title: Create', '    action: implement:thing', '    target: orgs/kb-ops/output', '    workOrder: Create',
+        '    humanGates:', '      - id: ship-it', '        kind: approval', '        prompt: Approve.',
+        '  - id: check', '    title: Check', '    action: review:thing', '    target: orgs/kb-ops/output', '    workOrder: Check', '    dependsOn: [create]',
+        '    agentId: fyt-checker', '    profileId: worker:claude:claude-sonnet-5', '    workflowProfile: checker-readonly',
+        '    review:', '      subjectStageId: create', '      maxCreatorReworks: 1',
+        '      criteria:', '        - id: safety', '          description: Safe',
+        '    completionGate:', `      id: ${completionGateId}`, '      kind: approval',
+        '      prompt: Approve the reviewed result.', '      requiresReview: pass',
+      ].join('\n');
+      expect(parseWorkflowDef(md(fm('accept-result')), { knownProfiles: KNOWN })).toMatchObject({ ok: true });
+      expect(parseWorkflowDef(md(fm('ship-it')), { knownProfiles: KNOWN }))
+        .toMatchObject({ ok: false, detail: expect.stringMatching(/duplicate human gate id 'ship-it'/) });
+    });
+  });
+
+  describe('declared artifacts', () => {
+    const withArtifacts = (...lines: string[]) => SINGLE.replace('    riskTier: T2', ['    riskTier: T2', ...lines].join('\n'));
+
+    it('parses a closed artifact list and omits the key entirely when a stage declares none', () => {
+      const result = parseWorkflowDef(md(withArtifacts(
+        '    artifacts:',
+        '      - id: brief',
+        '        path: orgs/kb-ops/output/brief.md',
+        '        description: The written brief.',
+        '      - id: sources',
+        '        path: orgs/kb-ops/output/sources.json',
+        '        description: Every source cited.',
+      )), { knownProfiles: KNOWN });
+      expect(result).toMatchObject({ ok: true, value: { stages: [{ artifacts: [
+        { id: 'brief', path: 'orgs/kb-ops/output/brief.md', description: 'The written brief.' },
+        { id: 'sources', path: 'orgs/kb-ops/output/sources.json', description: 'Every source cited.' },
+      ] }] } });
+      // Absent (not `[]`), so a definition without artifacts hashes and compiles byte-identically.
+      const none = parseWorkflowDef(md(SINGLE), { knownProfiles: KNOWN });
+      expect(none.ok && none.value.stages[0]).not.toHaveProperty('artifacts');
+    });
+
+    it('rejects a malformed artifact: unknown field, unsafe path, duplicate, or empty list', () => {
+      const cases: Array<[string[], RegExp]> = [
+        [['    artifacts:', '      - id: brief', '        path: orgs/kb-ops/output/brief.md', '        description: Brief.', '        optional: true'], /unknown field 'optional'/],
+        [['    artifacts:', '      - id: brief', '        path: ../../etc/passwd', '        description: Brief.'], /canonical safe repo-relative path/],
+        [['    artifacts:', '      - id: brief', '        path: orgs/kb-ops/output/../../../secrets', '        description: Brief.'], /canonical safe repo-relative path/],
+        [['    artifacts:', '      - id: ../brief', '        path: orgs/kb-ops/output/brief.md', '        description: Brief.'], /id must be a safe identifier/],
+        [['    artifacts:', '      - id: brief', '        path: orgs/kb-ops/output/brief.md', '        description: ""'], /description must be a non-empty string/],
+        [['    artifacts: []'], /must contain 1-32 artifacts/],
+        [['    artifacts: brief.md'], /must be a list of artifact mappings/],
+        [[
+          '    artifacts:',
+          '      - id: brief', '        path: orgs/kb-ops/output/brief.md', '        description: Brief.',
+          '      - id: brief', '        path: orgs/kb-ops/output/other.md', '        description: Other.',
+        ], /duplicate artifact id 'brief'/],
+        [[
+          '    artifacts:',
+          '      - id: brief', '        path: orgs/kb-ops/output/brief.md', '        description: Brief.',
+          '      - id: again', '        path: orgs/kb-ops/output/brief.md', '        description: Same file.',
+        ], /duplicate artifact path/],
+      ];
+      for (const [lines, detail] of cases) {
+        expect(parseWorkflowDef(md(withArtifacts(...lines)), { knownProfiles: KNOWN }))
+          .toMatchObject({ ok: false, detail: expect.stringMatching(detail) });
+      }
+    });
+
+    it("refuses an artifact outside the stage's own target tree", () => {
+      // compile.ts derives the stage's write scope FROM its target, so a stage promising a file elsewhere
+      // is promising something it has no authority to write.
+      expect(parseWorkflowDef(md(withArtifacts(
+        '    artifacts:', '      - id: elsewhere', '        path: orgs/kb-ops/other/brief.md', '        description: Brief.',
+      )), { knownProfiles: KNOWN })).toMatchObject({
+        ok: false, detail: expect.stringMatching(/must sit inside this stage's own target tree/),
+      });
+      expect(parseWorkflowDef(md(withArtifacts(
+        '    artifacts:', '      - id: policy', '        path: dashboard/server/control/policy.ts', '        description: Nope.',
+      )), { knownProfiles: KNOWN })).toMatchObject({ ok: false, detail: expect.stringMatching(/target tree/) });
+    });
+
+    it('substitutes launch parameters inside artifact paths, and refuses undeclared placeholders', () => {
+      const parameterised = SINGLE
+        .replace('profile: research', 'profile: research\nparameters: [channel, slug]')
+        .replace('    riskTier: T2', [
+          '    riskTier: T2',
+          '    workOrder: Write the brief for <channel>/<slug>.',
+          '    artifacts:',
+          '      - id: brief',
+          '        path: orgs/kb-ops/output/<channel>/<slug>/brief.md',
+          '        description: The brief for this run.',
+        ].join('\n'));
+      const parsed = parseWorkflowDef(md(parameterised), { knownProfiles: KNOWN });
+      expect(parsed.ok).toBe(true);
+      if (!parsed.ok) return;
+      // The PARSED path keeps its placeholders; only a launch substitutes them.
+      expect(parsed.value.stages[0].artifacts?.[0].path).toBe('orgs/kb-ops/output/<channel>/<slug>/brief.md');
+      const instantiated = instantiateWorkflowDef(parsed.value, { channel: 'the-second-take', slug: 'st-042' });
+      expect(instantiated).toMatchObject({ ok: true, value: { stages: [{ artifacts: [
+        { id: 'brief', path: 'orgs/kb-ops/output/the-second-take/st-042/brief.md' },
+      ] }] } });
+      // An undeclared placeholder would survive substitution as a literal `<name>` — a path no file can
+      // ever have, so every run would park. Refused at parse, where the message can name it.
+      const undeclared = parameterised.replace('<slug>/brief.md', '<episode>/brief.md');
+      expect(parseWorkflowDef(md(undeclared), { knownProfiles: KNOWN }))
+        .toMatchObject({ ok: false, detail: expect.stringMatching(/undeclared parameter '<episode>'/) });
+    });
+
+    it('counts an artifact path as USE of a launch parameter', () => {
+      // `slice` scopes only an output path here; that is still a use, so the launch must not be refused.
+      const pathOnly = SINGLE
+        .replace('profile: research', 'profile: research\nparameters: [slice]')
+        .replace('    riskTier: T2', [
+          '    riskTier: T2',
+          '    artifacts:',
+          '      - id: brief',
+          '        path: orgs/kb-ops/output/<slice>/brief.md',
+          '        description: The brief for this slice.',
+        ].join('\n'));
+      const parsed = parseWorkflowDef(md(pathOnly), { knownProfiles: KNOWN });
+      expect(parsed.ok).toBe(true);
+      if (!parsed.ok) return;
+      expect(instantiateWorkflowDef(parsed.value, { slice: 'act-1' })).toMatchObject({
+        ok: true, value: { stages: [{ artifacts: [{ path: 'orgs/kb-ops/output/act-1/brief.md' }] }] },
+      });
+    });
+  });
+
   it('parses a closed assigned review checker with readonly override and completion gate', () => {
     const fm = [
       'id: checker', 'project: kb-ops', 'title: Checker', 'profile: research', 'stages:',
@@ -330,6 +567,22 @@ describe('parseWorkflowDef', () => {
     const unused = parseWorkflowDef(md(source.replace('[channel, slug]', '[channel, unused]')), { knownProfiles: KNOWN });
     if (!unused.ok) throw new Error(unused.detail);
     expect(instantiateWorkflowDef(unused.value, { channel: 'a', unused: 'b' })).toMatchObject({ ok: false, detail: expect.stringMatching(/not used/) });
+  });
+
+  it('records the substituted launch values on the instantiated definition', () => {
+    const source = SINGLE.replace('profile: research', 'profile: research\nparameters: [channel, slug]')
+      .replace('riskTier: T2', 'riskTier: T2\n    workOrder: Write <channel>/<slug>.');
+    const parsed = parseWorkflowDef(md(source), { knownProfiles: KNOWN });
+    if (!parsed.ok) throw new Error(parsed.detail);
+    // The parsed definition never carries values (they are launch input, not file content).
+    expect(parsed.value).not.toHaveProperty('launchParameters');
+    const instantiated = instantiateWorkflowDef(parsed.value, { channel: 'the-second-take', slug: 'st-042' });
+    expect(instantiated).toMatchObject({ ok: true, value: { launchParameters: { channel: 'the-second-take', slug: 'st-042' } } });
+    // A parameterless definition stays byte-identical: no key is emitted at all.
+    const plain = parseWorkflowDef(md(SINGLE), { knownProfiles: KNOWN });
+    if (!plain.ok) throw new Error(plain.detail);
+    const untouched = instantiateWorkflowDef(plain.value, {});
+    expect(untouched.ok && untouched.value).not.toHaveProperty('launchParameters');
   });
 
   describe('readScope declaration (Layer A)', () => {

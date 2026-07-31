@@ -32,9 +32,24 @@ file's exact formatting:
     per the cadence rule, not to cram meaning into one image.
 It also STRIPS the retired `shot_counts` block from any v1 file it rewrites.
 
+WHAT IT ALSO DOES (--require-schema <value>)
+---------------------------------------------
+Refuses (a distinct exit code and message, never confusable with a HARD-violation
+finding) any file whose `schema` key is not EXACTLY <value>. This is the merge
+node's tool, not a change to this lint's own default strictness: an explicit v1
+declaration is a legitimate downgrade for a genuinely archived file (schema_check
+below still treats it that way when the flag is absent), but a shots-merge DAG
+node promoting a plan to the video root needs a way to refuse ANY schema other
+than the one it is promoting to — including a v1 file that lints perfectly
+clean under its own lenient rules. Only the caller that knows "this plan is
+being promoted right now" can draw that line; the flag lets it.
+
 Usage:
-  python lint_shots.py <path-to/shots.json> [--write]
-Exit 0 = clean (safe to render); 1 = HARD violations (fix before handoff).
+  python lint_shots.py <path-to/shots.json> [--write] [--require-schema <value>]
+Exit 0 = clean (safe to render); 1 = HARD violations (fix before handoff);
+2 = usage error; 3 = SCHEMA REFUSED (--require-schema mismatch — distinct from 1
+on purpose, since a schema refusal is not a claim that the plan's content is
+broken).
 """
 import difflib
 import json
@@ -326,16 +341,27 @@ def stage_check(label, shots, hard, soft):
 # named figure resolves is the post-VPW critic's question (references/critics.md),
 # not a deterministic one this lint can answer.
 def schema_check(data, soft):
+    """Heads-up only — this function never itself gates strictness. The gate lives at the
+    `strict_schema = data.get("schema") != SCHEMA_V1` call site in main(): fail-closed by design,
+    so only an EXPLICIT v1 declaration is treated as legacy. A missing key, `None`, a typo, or any
+    other value that isn't literally "faceless-youtube/shots@1" is NOT a free pass — it lints at
+    full v2 strictness (literal_count_check / rig_clause_check / shot_class_check all stay HARD), same as
+    an explicit v2 file. (Prior to the HIGH-5 fix this compared against SCHEMA_V2 instead, which
+    silently downgraded those three HARD guards to soft for anything that wasn't exactly v2 —
+    including a missing key or a typo; that is fixed.)"""
     schema = data.get("schema")
     if schema == SCHEMA_V2:
         return
     if schema == SCHEMA_V1:
-        soft.append(f"[file] schema is {SCHEMA_V1!r} — a LEGACY v1 file. It lints and renders "
-                    f"exactly as before (no engine-read field changed); author new files as "
-                    f"{SCHEMA_V2!r}.")
+        soft.append(f"[file] schema is {SCHEMA_V1!r} — a LEGACY v1 file. The render engine reads "
+                    f"it exactly as before (no engine-read field changed), and the literal/rig/"
+                    f"shot-class guards below stay soft for this file only, since they postdate it; "
+                    f"author new files as {SCHEMA_V2!r}.")
     else:
-        soft.append(f"[file] schema {schema!r} is not {SCHEMA_V2!r} — set it, so downstream can "
-                    f"tell a v2 file from a v1 one.")
+        soft.append(f"[file] schema {schema!r} is not {SCHEMA_V2!r} — set it explicitly. This is "
+                    f"NOT a legacy v1 file: a missing or unrecognized schema value lints at full v2 "
+                    f"strictness (fail-closed) — the literal/rig/shot-class guards below stay HARD, "
+                    f"they are not silently downgraded.")
 
 
 def legacy_field_check(data, soft):
@@ -747,8 +773,12 @@ def word_cap_check(label, prompts, suffix, hard, cap=4, char_cap=LETTERING_CHAR_
                     f"composition, or drop the least load-bearing word.")
 
 
-def literal_count_check(label, prompts, suffix, hard, cap=LETTERING_COUNT_CAP):
-    """HARD. One prompt may author at most 3 DISTINCT quoted literals.
+def literal_count_check(label, prompts, suffix, hard, soft=None, strict=True, cap=LETTERING_COUNT_CAP):
+    """HARD on a v2 file, a heads-up on a v1 one (`strict`) — the SAME gate and rationale as
+    `shot_class_check` (audit FIX 6): the 3-distinct-literal cap is a rule introduced after plenty
+    of archived v1 files were authored and locked, so hard-failing one of them over a cap it
+    predates breaks it for nothing. v2 is the contract VPW writes from now on, and there it is
+    closed at 3. One prompt may author at most 3 DISTINCT quoted literals.
 
     Rare by construction, which is why it can be hard: across the two complete
     videos (~230 shots) exactly four prompts exceed it — Poyais L47 (four city
@@ -766,18 +796,21 @@ def literal_count_check(label, prompts, suffix, hard, cap=LETTERING_COUNT_CAP):
     delta frame to re-quote every literal it redraws, so Wells Fargo L36's two
     mentions of '125 MILLION' and '600 MILLION' are four quotes of two strings.
     Counting occurrences would punish the file for obeying the rule above it."""
+    sink = hard if strict else (soft if soft is not None else hard)
+    tail = ("" if strict else " (a heads-up only: this is a v1 file and nothing enforced this cap "
+                              "when it was authored - author v2 files to the 3-literal limit)")
     for pid, field, prompt in prompts:
         lits = []
         for lit, _s, _e in quoted_literals(prompt, suffix):
             if lit not in lits:
                 lits.append(lit)
         if len(lits) > cap:
-            hard.append(
+            sink.append(
                 f"[{label}] {pid}.{field}: authors {len(lits)} distinct literals (cap {cap}) -> "
                 f"{lits!r}. A frame lettering a whole document compounds per-glyph error until "
                 f"something in it is visibly wrong. Stage them across a delta chain (one literal "
                 f"per frame, the way L11-L14 did), or carry the list in the composition and letter "
-                f"only the load-bearing value.")
+                f"only the load-bearing value.{tail}")
 
 
 def script_vocab(md_path):
@@ -868,7 +901,10 @@ _NEG_NOUN = re.compile(r"\b(?:no|without)\s+((?:[a-z]+-)?[a-z]+)\b", re.IGNORECA
 # with any real negation in the same sentence and invents a list of two.
 _NEG_STOP = frozenset(
     "longer more other less better worse further fewer sooner else matter way "
-    "doubt bigger smaller taller wider".split())
+    "doubt bigger smaller taller wider one".split())
+# `one` (FIX 12, audit follow-up): "no one" is the idiom for "nobody", not an authored absence of
+# a noun called "one" — before this, "no one" plus a single real negation miscounted as TWO
+# negations and fired on a sentence that states only one actual absence.
 _ANATOMY = frozenset(
     "nose noses nostril nostrils ear ears tooth teeth eyebrow eyebrows lash lashes "
     "eyelash eyelashes pupil pupils iris irises finger fingers thumb thumbs toe toes "
@@ -1100,39 +1136,120 @@ def shot_class_check(label, shots, hard, soft, strict=True):
 # ("a base-rig anonymous teller in a teal uniform", "figures on the crowd rig"),
 # because that is a legal property of a depicted figure and banning the word `rig`
 # would fire on most of the file. Only the clause's own distinctive spans match.
+#
+# FIX 12 (audit follow-up): the bare phrase "drawn as follows" is VPW's own habitual lead-in
+# idiom, not style-bible text — unlike the other four spans it is ordinary English that shows up
+# in unrelated prose ("A wall chart of quarterly earnings is drawn as follows: ..."). The real
+# lead-in ALWAYS hands off from naming a FIGURE ("The stall keeper is drawn as follows."), so the
+# fingerprint is anchored to a person/figure noun appearing earlier in the same clause — a
+# non-figure subject (a chart, a diagram, a table) no longer HARD-fails.
+#
+# HIGH-6 (audit follow-up): FIX 12's anchor is a CLOSED noun list against an OPEN English word
+# class (vendor, customer, guard, cashier, merchant, driver, tourist, shopper, farmer, boy,
+# girl... none of these made the list), so a real §2d/§2e lead-in phrased around an off-list noun
+# used to escape _RIG_CLAUSE entirely and rig_clause_check returned ZERO hits — indistinguishable
+# from a clean file. Silence is disallowed. Rather than keep enumerating nouns, any bare
+# "drawn as follows" NOT already covered by an anchored (HARD-eligible) match below is now always
+# surfaced as a SOFT heads-up — never zero signal, but never a HARD block either, since the same
+# idiom is also legitimate on a non-figure subject (FIX 12's chart/diagram case).
+_RIG_LEADIN_FIGURE_WORD = (
+    r"figure|figures|keeper|keepers|clerk|clerks|teller|tellers|worker|workers|employee|"
+    r"employees|staffer|staffers|banker|bankers|character|characters|person|people|senator|"
+    r"senators|investor|investors|official|officials|judge|judges|foreman|man|men|woman|women"
+)
 _RIG_CLAUSE = re.compile(
     r"FULL base family rig"
     r"|CROWD RIG\s*:"
     r"|non-recurring person"
-    r"|drawn as follows"
+    r"|(?:" + _RIG_LEADIN_FIGURE_WORD + r")\b[^.]{0,40}\bdrawn as follows"
     r"|the identical rig the named cast holds",
     re.IGNORECASE)
+# HIGH-6: catches EVERY "drawn as follows", anchored or not, so an off-vocabulary figure noun
+# never produces zero signal. Anything it finds that _RIG_CLAUSE already matched (the anchored,
+# HARD-eligible case) is de-duplicated in rig_clause_check below; what's left is reported SOFT.
+#
+# LOW-7 (audit follow-up): the literal single-space "drawn as follows" reached ZERO signal — not
+# even the soft heads-up above — on ordinary wording variants a real author produces without
+# thinking about it: a double space, a wrapped line (a newline where the space would be), "drawn
+# EXACTLY as follows", "RENDERED as follows" instead of "drawn". None of those are a different
+# defect; they are the same un-migrated §2d/§2e hand-off idiom in slightly different clothes, and
+# silence on them is the same "silence is disallowed" failure HIGH-6 already fixed for off-list
+# nouns. `\s+` (not a literal space) absorbs the double-space and the newline alike; `(?:\s+\w+){0,2}`
+# tolerates 0-2 filler words between the verb and "as follows" ("drawn exactly as follows"); the
+# verb alternation adds "rendered". This ONLY widens the SOFT catch-all, never `_RIG_CLAUSE` above:
+# the anchored, HARD-eligible case stays the exact literal single-space phrase it always was, so an
+# anchored occurrence written with one of these looser variants still falls through to soft, never
+# gets promoted to HARD — ordinary prose about a non-figure subject must never hard-block, whatever
+# its wording.
+_BARE_DRAWN_AS_FOLLOWS = re.compile(
+    r"\b(?:drawn|rendered)\b(?:\s+\w+){0,2}\s+as\s+follows\b", re.IGNORECASE)
 
 
-def rig_clause_check(label, prompts, suffix, hard):
-    """HARD. The §2d/§2e clause text (or its lead-in) still sitting in a prompt —
-    the regression guard for the figures migration.
+def rig_clause_check(label, prompts, suffix, hard, soft=None, strict=True):
+    """HARD on a v2 file, a heads-up on a v1 one (`strict`) — the SAME gate and rationale as
+    `shot_class_check` (audit FIX 6): a v1 file predates the `figures`-field migration entirely, so
+    a pasted §2d/§2e clause is not a regression there, it is simply how every prompt was written
+    before the migration existed. Hard-failing an archived video over vocabulary the migration
+    retired breaks it for nothing. v2 is the contract VPW writes from now on, and there the clause
+    text is banned outright.
+
+    The §2d/§2e clause text (or its lead-in) still sitting in a prompt — the regression guard for
+    the figures migration.
 
     ONE report per prompt, listing every fingerprint it found. The alternative —
     one per distinct fingerprint, the way control_leak_check reports — turned the
     bricks segment into 78 messages for 20 shots, because a single pasted §2e
     clause matches four of them at once. They are not four defects; they are one
-    un-migrated shot."""
+    un-migrated shot.
+
+    HIGH-6 (audit follow-up): a SECOND, always-soft pass catches any "drawn as follows" the
+    anchored fingerprint above missed because its figure noun isn't on `_RIG_LEADIN_FIGURE_WORD`
+    (vendor, customer, cashier, ...). That occurrence is never promoted to HARD — the idiom is also
+    legal on a non-figure subject (a chart, a diagram) — but it is never silent either; the author
+    reads the sentence and either declares the figure in `figures` or confirms it's not one."""
+    sink = hard if strict else (soft if soft is not None else hard)
+    soft_sink = soft if soft is not None else hard
+    tail = ("" if strict else " (a heads-up only: this is a v1 file that predates the `figures` "
+                              "migration - author v2 files with the clause declared, not pasted)")
     for pid, field, prompt in prompts:
         body = strip_suffix(prompt or "", suffix)
+        anchored_matches = list(_RIG_CLAUSE.finditer(body))
         found = []
-        for m in _RIG_CLAUSE.finditer(body):
+        for m in anchored_matches:
             if m.group().lower() not in [f.lower() for f in found]:
                 found.append(m.group())
-        if not found:
-            continue
-        hard.append(
-            f"[{label}] {pid}.{field}: carries rig-clause text {', '.join(repr(f) for f in found)}. "
-            f"The style-bible section 2d/2e clauses are no longer authored into prompts - declare the "
-            f"figures in the shot's `figures` field ({{\"anon_foreground\": [\"<the exact phrase "
-            f"this prompt uses>\"], \"crowd\": true}}) and forge.py expands the template at "
-            f"generation time, with held-figure wording on a delta. Left in, the prompt gets the "
-            f"clause TWICE and the delta gets told to re-invent a figure it should be holding.")
+        if found:
+            sink.append(
+                f"[{label}] {pid}.{field}: carries rig-clause text "
+                f"{', '.join(repr(f) for f in found)}. "
+                f"The style-bible section 2d/2e clauses are no longer authored into prompts - declare the "
+                f"figures in the shot's `figures` field ({{\"anon_foreground\": [\"<the exact phrase "
+                f"this prompt uses>\"], \"crowd\": true}}) and forge.py expands the template at "
+                f"generation time, with held-figure wording on a delta. Left in, the prompt gets the "
+                f"clause TWICE and the delta gets told to re-invent a figure it should be holding."
+                f"{tail}")
+        # HIGH-6: any bare "drawn as follows" not already accounted for by an anchored match
+        # above. Always soft, regardless of `strict` — this is a visibility floor, not a new
+        # HARD gate, so it does not need the v1/v2 distinction the anchored case gates on.
+        # Dedup is by POSITION (span containment), not by matched text: two distinct occurrences
+        # of the identical phrase in one prompt (one anchored, one not) would otherwise look like
+        # the same string and the real, un-anchored one would be wrongly swallowed.
+        anchored_spans = [m.span() for m in anchored_matches]
+        unanchored = []
+        for m in _BARE_DRAWN_AS_FOLLOWS.finditer(body):
+            s, e = m.span()
+            if any(a_s <= s and e <= a_e for a_s, a_e in anchored_spans):
+                continue
+            unanchored.append(m.group())
+        if unanchored:
+            soft_sink.append(
+                f"[{label}] {pid}.{field}: carries the bare phrase 'drawn as follows' without an "
+                f"enumerated figure noun (figure/keeper/clerk/teller/worker/.../man/woman) within 40 "
+                f"characters in front of it. This is either a genuine section 2d/2e lead-in for a "
+                f"figure whose noun isn't on that list (vendor, customer, cashier, guard, merchant, "
+                f"driver, shopper, farmer, ...), which should be declared in `figures` instead, or it "
+                f"is ordinary prose about a non-figure subject (a chart, a diagram) and is fine as-is. "
+                f"Read the sentence to tell which.")
 
 
 FIGURES_KEYS = ("anon_foreground", "crowd")
@@ -1228,11 +1345,46 @@ def main(argv):
     except (AttributeError, ValueError):
         pass                                     # captured/wrapped stdout — nothing to do
     if not argv or argv[0] in ("-h", "--help"):
-        print("usage: python lint_shots.py <path-to/shots.json> [--write]")
+        print("usage: python lint_shots.py <path-to/shots.json> [--write] [--require-schema <value>]")
         return 2
     path = argv[0]
-    do_write = "--write" in argv[1:]
+    rest = argv[1:]
+    do_write = "--write" in rest
+    # MEDIUM-3 (audit follow-up): `schema_check`'s fail-closed strictness (HIGH-5) still lets an
+    # author self-declare `"schema": "faceless-youtube/shots@1"` on a BRAND NEW file, which
+    # downgrades literal_count_check/rig_clause_check/shot_class_check from HARD to a heads-up —
+    # a real, available cheat, since every committed shots.json today happens to BE v1. That
+    # softening is legitimate for a genuinely archived file (nothing enforced v2's rules when it
+    # was authored) and illegitimate for a plan a merge node is about to promote to the video
+    # root. `schema_check`'s in-band heads-up cannot tell those apart; only the CALLER — the
+    # shots-merge DAG node, which knows "this plan is being promoted right now" — can. So the
+    # refusal is an opt-in CLI gate, not a change to the lint's own default strictness: a plain
+    # `lint_shots.py <path>` on an archived v1 file keeps working exactly as it always has.
+    require_schema = None
+    if "--require-schema" in rest:
+        i = rest.index("--require-schema")
+        if i + 1 >= len(rest):
+            print("--require-schema requires a value, e.g. --require-schema faceless-youtube/shots@2",
+                  file=sys.stderr)
+            return 2
+        require_schema = rest[i + 1]
     data = json.loads(Path(path).read_text(encoding="utf-8"))
+    if require_schema is not None:
+        schema = data.get("schema")
+        if schema != require_schema:
+            # Deliberately printed and coded DIFFERENTLY from a HARD-violation refusal below: this is
+            # not a claim that the plan's CONTENT is broken (it may lint perfectly clean), it is a
+            # refusal to promote a plan carrying the wrong schema declaration at all. A caller (the
+            # merge node) that greps the HARD-violations report for its BLOCKED reason must not
+            # confuse "this plan is unsafe to render" with "this plan is the wrong schema version" —
+            # they are different failures with different fixes (rework the shots vs. re-author to
+            # v2), so exit code 3 (never 0, 1, or 2) and the "SCHEMA REFUSED" prefix both signal it.
+            print(f"== lint_shots: {path} ==")
+            print(f"\nSCHEMA REFUSED (not a HARD-violation finding): schema is {schema!r}, but "
+                  f"--require-schema demands exactly {require_schema!r}. This plan may otherwise lint "
+                  f"clean — it is refused because a merge node may not promote a plan that is not "
+                  f"exactly the required schema, whatever its `schema` key currently says.")
+            return 3
     vdir = Path(path).parent
     script_md = vdir / "script.md"
 
@@ -1269,6 +1421,15 @@ def main(argv):
 
     schema_check(data, soft)
     legacy_field_check(data, soft)
+    # computed up front: several guards below (literal_count_check, rig_clause_check,
+    # shot_class_check) gate HARD-vs-heads-up on v2-vs-v1, per FIX 6 — an archived v1 file must not
+    # fail on a rule/vocabulary change that postdates it.
+    # HIGH-5 (audit follow-up): fail CLOSED into strict. Comparing against SCHEMA_V2 treated a
+    # missing key, None, a typo, or any wrong version identically to an intentionally-archived v1
+    # file — silently downgrading literal_count_check / rig_clause_check / shot_class_check from
+    # HARD to soft and letting real defects exit 0. Only an EXPLICIT v1 declaration earns the
+    # lenient path; everything else (including silence) lints at full v2 strictness.
+    strict_schema = data.get("schema") != SCHEMA_V1
 
     lf_text = lint_piece("long-form", lf_shots, script_md, hard, soft,
                          word_timings=word_timings_for(vo_manifest, "long-form"))
@@ -1278,10 +1439,9 @@ def main(argv):
     lf_vocab = script_vocab(script_md)
     text_supply_check("long-form", lf_prompts, suffix, hard)
     word_cap_check("long-form", lf_prompts, suffix, hard)
-    literal_count_check("long-form", lf_prompts, suffix, hard)
+    literal_count_check("long-form", lf_prompts, suffix, hard, soft, strict_schema)
     control_leak_check("long-form", lf_prompts, suffix, hard)
-    rig_clause_check("long-form", lf_prompts, suffix, hard)
-    strict_schema = data.get("schema") == SCHEMA_V2
+    rig_clause_check("long-form", lf_prompts, suffix, hard, soft, strict_schema)
     shot_class_check("long-form", lf_shots, hard, soft, strict_schema)
     figures_check("long-form", [(sh.get("id", "?"), sh) for sh in lf_shots], hard, soft)
     numeral_form_check("long-form", lf_prompts, suffix, soft)
@@ -1300,7 +1460,7 @@ def main(argv):
                    for i, c in enumerate(th.get("challengers") or [])]
     text_supply_check("thumbnail", th_prompts, suffix, hard)
     word_cap_check("thumbnail", th_prompts, suffix, hard)
-    literal_count_check("thumbnail", th_prompts, suffix, hard)
+    literal_count_check("thumbnail", th_prompts, suffix, hard, soft, strict_schema)
     control_leak_check("thumbnail", th_prompts, suffix, hard)
     long_literal_word_check("thumbnail", th_prompts, suffix, soft, lf_vocab)
     negation_list_check("thumbnail", th_prompts, suffix, soft)
@@ -1332,9 +1492,9 @@ def main(argv):
         svocab = script_vocab(smd) | lf_vocab
         text_supply_check(slabel, sprompts, suffix, hard)
         word_cap_check(slabel, sprompts, suffix, hard)
-        literal_count_check(slabel, sprompts, suffix, hard)
+        literal_count_check(slabel, sprompts, suffix, hard, soft, strict_schema)
         control_leak_check(slabel, sprompts, suffix, hard)
-        rig_clause_check(slabel, sprompts, suffix, hard)
+        rig_clause_check(slabel, sprompts, suffix, hard, soft, strict_schema)
         shot_class_check(slabel, sshots, hard, soft, strict_schema)
         figures_check(slabel, [(sh.get("id", "?"), sh) for sh in sshots]
                       + ([("first_frame", ff_obj)] if ff_obj else []), hard, soft)

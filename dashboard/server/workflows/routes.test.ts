@@ -254,24 +254,24 @@ describe('workflow definition routes', () => {
     const firstWorkspace = composerStore.create('operator', 'FYT planning', agent);
     const secondWorkspace = composerStore.create('operator', 'FYT planning fork', agent);
     const first = await app.inject({ method: 'POST', url: '/api/workflows/video-run/launch', headers: headers(token),
-      payload: await launchPayload(app, 'video-run', 'workspace-key', { composerRef: firstWorkspace.composerRef, parameters: { channel: 'the-second-take', slug: '2026-07-19-wells-fargo' } }) });
+      payload: await launchPayload(app, 'video-run', 'workspace-key', { composerRef: firstWorkspace.composerRef, parameters: { channel: 'the-second-take', slug: '2026-07-19-wells-fargo', slice: 'act-1' } }) });
     expect(first.statusCode).toBe(202);
     const replay = await app.inject({ method: 'POST', url: '/api/workflows/video-run/launch', headers: headers(token),
-      payload: await launchPayload(app, 'video-run', 'workspace-key', { composerRef: firstWorkspace.composerRef, parameters: { channel: 'the-second-take', slug: '2026-07-19-wells-fargo' } }) });
+      payload: await launchPayload(app, 'video-run', 'workspace-key', { composerRef: firstWorkspace.composerRef, parameters: { channel: 'the-second-take', slug: '2026-07-19-wells-fargo', slice: 'act-1' } }) });
     expect(replay.statusCode).toBe(200);
     expect(replay.json().runRef).toBe(first.json().runRef);
     const changedParameters = await app.inject({ method: 'POST', url: '/api/workflows/video-run/launch', headers: headers(token),
-      payload: await launchPayload(app, 'video-run', 'workspace-key', { composerRef: firstWorkspace.composerRef, parameters: { channel: 'the-second-take', slug: '2026-07-20-other' } }) });
+      payload: await launchPayload(app, 'video-run', 'workspace-key', { composerRef: firstWorkspace.composerRef, parameters: { channel: 'the-second-take', slug: '2026-07-20-other', slice: 'act-1' } }) });
     expect(changedParameters.statusCode).toBe(409);
     const run = controlStore.getRun('operator', first.json().runRef);
     expect(run.ok && run.value.run.agentWorkspaceLaunch).toEqual({
       composerRef: firstWorkspace.composerRef, agentId: 'fyt-runner', declarationPath: 'agents/fyt-runner.md', declarationHash: 'b'.repeat(64),
     });
     const conflict = await app.inject({ method: 'POST', url: '/api/workflows/video-run/launch', headers: headers(token),
-      payload: await launchPayload(app, 'video-run', 'workspace-key', { composerRef: secondWorkspace.composerRef, parameters: { channel: 'the-second-take', slug: '2026-07-19-wells-fargo' } }) });
+      payload: await launchPayload(app, 'video-run', 'workspace-key', { composerRef: secondWorkspace.composerRef, parameters: { channel: 'the-second-take', slug: '2026-07-19-wells-fargo', slice: 'act-1' } }) });
     expect(conflict.statusCode).toBe(409);
     const crossOwner = await app.inject({ method: 'POST', url: '/api/workflows/video-run/launch', headers: headers(token),
-      payload: await launchPayload(app, 'video-run', 'other-key', { composerRef: composerStore.create('mallory', 'Foreign', agent).composerRef, parameters: { channel: 'the-second-take', slug: '2026-07-19-wells-fargo' } }) });
+      payload: await launchPayload(app, 'video-run', 'other-key', { composerRef: composerStore.create('mallory', 'Foreign', agent).composerRef, parameters: { channel: 'the-second-take', slug: '2026-07-19-wells-fargo', slice: 'act-1' } }) });
     expect(crossOwner.statusCode).toBe(404);
   });
 
@@ -303,7 +303,7 @@ describe('workflow launch governance boundaries', () => {
   function assignedDefinition(id: string, managerId = 'assigned-manager', workerId = 'assigned-worker', workerProfile = 'worker:claude:claude-sonnet-5'): string {
     return [
       '---', `id: ${id}`, 'project: kb-ops', 'title: Assigned research', 'profile: research',
-      'manager:', `  agentId: ${managerId}`, '  profileId: manager:claude:claude-opus-4-8',
+      'manager:', `  agentId: ${managerId}`, '  profileId: manager:claude:claude-opus-5',
       'stages:', '  - id: brief', '    title: Research a topic', '    action: research:web-brief',
       '    target: orgs/kb-ops/output', '    workOrder: research it', `    agentId: ${workerId}`, `    profileId: ${workerProfile}`,
       '---', 'body', '',
@@ -341,8 +341,8 @@ describe('workflow launch governance boundaries', () => {
 
   it('previews and launches a valid immutable manager/stage assignment from server-owned bindings', async () => {
     writeAgent('assigned-manager', [
-      'runtime: claude', 'model: claude-opus-4-8', 'default-profile: manager:claude:claude-opus-4-8',
-      'allowed-profiles: [manager:claude:claude-opus-4-8]', 'projects: [kb-ops]', 'runner-bound: true', 'description: Manager.',
+      'runtime: claude', 'model: claude-opus-5', 'default-profile: manager:claude:claude-opus-5',
+      'allowed-profiles: [manager:claude:claude-opus-5]', 'projects: [kb-ops]', 'runner-bound: true', 'description: Manager.',
     ]);
     writeAgent('assigned-worker', [
       'runtime: claude', 'model: claude-sonnet-5', 'default-profile: worker:claude:claude-sonnet-5',
@@ -359,7 +359,7 @@ describe('workflow launch governance boundaries', () => {
     expect(preview.json()).toMatchObject({
       compiled: {
         ok: true,
-        manager: { runtime: 'claude', model: 'claude-opus-4-8', assignment: { agentId: 'assigned-manager', declarationHash: expect.stringMatching(/^[a-f0-9]{64}$/) } },
+        manager: { runtime: 'claude', model: 'claude-opus-5', assignment: { agentId: 'assigned-manager', declarationHash: expect.stringMatching(/^[a-f0-9]{64}$/) } },
         stages: [{ worker: { runtime: 'claude', model: 'claude-sonnet-5' }, assignment: { agentId: 'assigned-worker' } }],
       },
     });
@@ -371,8 +371,8 @@ describe('workflow launch governance boundaries', () => {
 
   it('keeps parser-valid assignments visible but returns the exact compiler refusal and creates no run', async () => {
     writeAgent('assigned-manager', [
-      'runtime: claude', 'model: claude-opus-4-8', 'default-profile: manager:claude:claude-opus-4-8',
-      'allowed-profiles: [manager:claude:claude-opus-4-8]', 'projects: [kb-ops]', 'runner-bound: true', 'description: Manager.',
+      'runtime: claude', 'model: claude-opus-5', 'default-profile: manager:claude:claude-opus-5',
+      'allowed-profiles: [manager:claude:claude-opus-5]', 'projects: [kb-ops]', 'runner-bound: true', 'description: Manager.',
     ]);
     writeAgent('assigned-worker', [
       'runtime: claude', 'model: claude-sonnet-5', 'default-profile: worker:claude:claude-sonnet-5',
@@ -629,7 +629,7 @@ describe('workflow assignment amendment route', () => {
 
   const definitionText = (): string => [
     '---', 'id: amendable', 'project: kb-ops', 'title: Assigned research', 'profile: research',
-    'manager:', '  agentId: assigned-manager', '  profileId: manager:claude:claude-opus-4-8',
+    'manager:', '  agentId: assigned-manager', '  profileId: manager:claude:claude-opus-5',
     'stages:', '  - id: brief', '    title: Research a topic', '    action: research:web-brief',
     '    target: orgs/kb-ops/output', '    workOrder: research it', '    agentId: assigned-worker', '    profileId: worker:claude:claude-sonnet-5',
     '---', 'body', '',
@@ -644,7 +644,7 @@ describe('workflow assignment amendment route', () => {
         if (existsSync(from)) { mkdirSync(join(root, rel, '..'), { recursive: true }); cpSync(from, join(root, rel), { recursive: true }); }
       }
       const agents = join(root, 'agents'); mkdirSync(agents, { recursive: true });
-      writeFileSync(join(agents, 'assigned-manager.md'), ['---', 'id: assigned-manager', 'runtime: claude', 'model: claude-opus-4-8', 'default-profile: manager:claude:claude-opus-4-8', 'allowed-profiles: [manager:claude:claude-opus-4-8]', 'projects: [kb-ops]', 'runner-bound: true', 'role: manager', '---', 'Manager.'].join('\n'));
+      writeFileSync(join(agents, 'assigned-manager.md'), ['---', 'id: assigned-manager', 'runtime: claude', 'model: claude-opus-5', 'default-profile: manager:claude:claude-opus-5', 'allowed-profiles: [manager:claude:claude-opus-5]', 'projects: [kb-ops]', 'runner-bound: true', 'role: manager', '---', 'Manager.'].join('\n'));
       writeFileSync(join(agents, 'assigned-worker.md'), ['---', 'id: assigned-worker', 'runtime: claude', 'model: claude-sonnet-5', 'default-profile: worker:claude:claude-sonnet-5', 'allowed-profiles: [worker:claude:claude-sonnet-5]', 'projects: [kb-ops]', 'runner-bound: true', 'role: worker', '---', 'Worker.'].join('\n'));
       writeFileSync(join(agents, 'unbound-worker.md'), ['---', 'id: unbound-worker', 'runtime: claude', 'model: claude-sonnet-5', 'default-profile: worker:claude:claude-sonnet-5', 'allowed-profiles: [worker:claude:claude-sonnet-5]', 'projects: [kb-ops]', 'runner-bound: false', 'role: worker', '---', 'Unbound worker.'].join('\n'));
       const dir = join(root, 'orgs', 'kb-ops', 'workflows'); mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, 'amendable.md'), definitionText());
@@ -742,7 +742,7 @@ describe('workflow assignment amendment route', () => {
     const detail = (await app.inject({ method: 'GET', url: '/api/workflows/amendable' })).json();
     expect(detail.assignmentOptions.manager.options).toContainEqual({
       agentId: 'assigned-manager',
-      profileId: 'manager:claude:claude-opus-4-8',
+      profileId: 'manager:claude:claude-opus-5',
     });
     writeFileSync(path, readFileSync(path, 'utf8').replace('role: manage', 'role: observer'), 'utf8');
     const refused = (await app.inject({ method: 'GET', url: '/api/workflows/amendable' })).json();

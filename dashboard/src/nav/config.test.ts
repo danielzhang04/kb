@@ -39,6 +39,7 @@ describe('nav/config', () => {
     expect(NAV_SECTIONS[1].items.map((d) => d.id)).toEqual([
       'workflows',
       'pipeline',
+      'runCanvas',
       'agents',
       'tasks',
       'projects',
@@ -107,6 +108,7 @@ describe('nav/config', () => {
       'activity',
       'workflows',
       'pipeline',
+      'runCanvas',
       'agents',
       'tasks',
       'projects',

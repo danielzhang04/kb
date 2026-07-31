@@ -48,6 +48,7 @@ import { Workflows } from './views/Workflows';
 import { Connectors } from './views/Connectors';
 import { Tasks } from './views/Tasks';
 import { Pipeline } from './views/Pipeline';
+import { RunCanvas } from './views/RunCanvas';
 import { Agents } from './views/Agents';
 import { Projects } from './views/Projects';
 import { Ledgers } from './views/Ledgers';
@@ -530,6 +531,12 @@ function ViewBody({
           onNavigate={onNavigateTarget}
         />
       );
+    case 'runCanvas':
+      // FYT gated-pipeline Task 5 — the live roster canvas: mini-terminal tiles on artifact-flow lanes
+      // for one selected run, click-to-expand into a full interactive terminal. Self-fetches the run
+      // list + polls the selected run's detail (which carries the roster projection); no new nav-stack
+      // focus kind is introduced, so a run opened elsewhere does not deep-link in here yet.
+      return <RunCanvas sessionToken={sessionToken} onRequestSession={onRequestSession} onNavigate={onNavigateTarget} />;
     case 'projects':
       return (
         <section aria-label="Projects view">

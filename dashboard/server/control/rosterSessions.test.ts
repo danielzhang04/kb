@@ -1,0 +1,1094 @@
+/**
+ * Hermetic tests for the run-roster pty sessions and gated work-order delivery.
+ *
+ * Nothing real is touched: a fake `PtyHost` (recording every byte written into each session, and able to
+ * emit output) drives the REAL persistent session registry, the control store is the in-memory one, and
+ * the filesystem is a recording map. The load-bearing test is the STRUCTURAL HALT: with a gate
+ * unapproved, the session's input transcript must contain no work order at all.
+ */
+import { createHash } from 'node:crypto';
+import { describe, expect, it, vi } from 'vitest';
+import type { HostOpenRequest, PtyHandle, PtyHost, PtySession } from '../pty/host.ts';
+import { createPersistentSessionRegistry } from '../pty/persistentSessions.ts';
+import { createInMemoryControlPlaneStore, type ControlPlaneStore } from './store.ts';
+import type { JsonObject, RunDetail } from './types.ts';
+import type { PlanProposal, ProposalStage, ResolvedAgentAssignment } from './proposal.ts';
+import type { ExecutionProfile } from './policy.ts';
+import type { AssignedAgentResolver } from './agentAssignmentResolver.ts';
+import {
+  createRosterSessionManager,
+  createRosterWorkerAdapter,
+  matchCompletionMarker,
+  projectRosterState,
+  resolveRosterWorkDir,
+  rosterAgentIds,
+  stripTerminalControl,
+  DELIVERY_TIMEOUT_REASON,
+  type RosterFileSystem,
+  type RosterSessionManager,
+} from './rosterSessions.ts';
+
+const PROFILES: ExecutionProfile[] = [
+  { id: 'manager:claude:claude-fable-5', role: 'manager', runtime: 'claude', model: 'claude-fable-5', capabilities: ['read', 'emit-events'] },
+  {
+    id: 'worker:claude:claude-fable-5', role: 'worker', runtime: 'claude', model: 'claude-fable-5',
+    capabilities: ['read', 'write-approved-scope', 'run-approved-commands', 'emit-events'],
+  },
+];
+
+function assignment(agentId: string, role: 'manager' | 'worker'): ResolvedAgentAssignment {
+  return {
+    agentId,
+    declarationPath: `agents/${agentId}.md`,
+    declarationHash: 'a'.repeat(64),
+    profileId: role === 'manager' ? 'manager:claude:claude-fable-5' : 'worker:claude:claude-fable-5',
+    runtime: 'claude',
+    model: 'claude-fable-5',
+  };
+}
+
+function stage(input: {
+  id: string;
+  agentId: string;
+  dependsOn?: string[];
+  gates?: ProposalStage['humanGates'];
+  artifacts?: ProposalStage['artifacts'];
+}): ProposalStage {
+  return {
+    id: input.id,
+    title: `Stage ${input.id}`,
+    action: `build:${input.id}`,
+    target: 'orgs/faceless-youtube/channels',
+    workOrder: `Do ${input.id} for the slice.`,
+    riskTier: 'T2',
+    dependsOn: input.dependsOn ?? [],
+    worker: { runtime: 'claude', model: 'claude-fable-5' },
+    requiredSkills: [],
+    scope: { read: ['orgs/faceless-youtube'], write: ['orgs/faceless-youtube/channels'] },
+    artifacts: input.artifacts ?? [],
+    checkpoints: [],
+    humanGates: input.gates ?? [],
+    assignment: assignment(input.agentId, 'worker'),
+  };
+}
+
+function proposalFixture(): PlanProposal {
+  return {
+    schema: 'kb.plan-proposal/v1',
+    proposalId: 'video-run-fixture',
+    project: 'faceless-youtube',
+    title: 'Produce one video',
+    summary: 'Roster fixture.',
+    manager: { runtime: 'claude', model: 'claude-fable-5', requiredSkills: [], assignment: assignment('fyt-runner', 'manager') },
+    scope: { read: ['orgs/faceless-youtube'], write: ['orgs/faceless-youtube/channels'] },
+    governanceRefs: ['CLAUDE.md', 'governance/agent-rules.md', 'governance/risk-tiers.md', 'orgs/faceless-youtube/contract.md'],
+    stages: [
+      stage({ id: 'idea', agentId: 'fyt-story' }),
+      stage({
+        id: 'story', agentId: 'fyt-story', dependsOn: ['idea'],
+        gates: [{ id: 'g0-idea-pick', kind: 'approval', prompt: 'GATE 0 — pick the idea.' }],
+      }),
+      stage({
+        id: 'images', agentId: 'fyt-visuals', dependsOn: ['story'],
+        gates: [{ id: 'g2-visual-plan', kind: 'approval', prompt: 'GATE 2 — approve the plan.', spendAuthorization: true }],
+      }),
+    ],
+    parameters: { channel: 'the-second-take', slug: 'st-042', slice: '2min' },
+  };
+}
+
+/** Normalize path separators so assertions read the same on Windows and POSIX. */
+function norm(value: string): string {
+  return value.split('\\').join('/');
+}
+
+/** The exact title `execution.ts#stableHumanTitle` gives a declared gate's boundary. */
+function gateTitle(stageId: string, gateId: string): string {
+  return `automatic:gate:${stageId}:${gateId}`;
+}
+
+let sequence = 0;
+
+function createApprovedRun(store: ControlPlaneStore, plan: PlanProposal): string {
+  const created = store.createProposalRevision('operator', {
+    sourceComposerRef: 'composer-1', sourceTurnId: 'video-run', title: plan.title,
+    snapshot: plan as unknown as JsonObject,
+  });
+  if (!created.ok) throw new Error(created.detail);
+  const approved = store.decideProposal('operator', created.value.proposalRef, 1, {
+    expectedHash: created.value.hash, expectedApprovalRevision: 0, decision: 'approved', idempotencyKey: 'approve-1',
+  });
+  if (!approved.ok) throw new Error(approved.detail);
+  const run = store.createRun('operator', {
+    title: plan.title,
+    proposalRef: created.value.proposalRef,
+    proposalRevision: 1,
+    expectedProposalHash: created.value.hash,
+    managerRuntime: plan.manager.runtime,
+    managerModel: plan.manager.model,
+    managerAssignment: plan.manager.assignment,
+    idempotencyKey: 'launch-1',
+    stages: plan.stages.map((item) => ({
+      stageId: item.id, title: item.title, dependsOn: item.dependsOn, assignment: item.assignment,
+    })),
+  });
+  if (!run.ok) throw new Error(run.detail);
+  return run.value.run.runRef;
+}
+
+function detailOf(store: ControlPlaneStore, runRef: string): RunDetail {
+  const detail = store.getRun('operator', runRef);
+  if (!detail.ok) throw new Error(detail.detail);
+  return detail.value;
+}
+
+/** Drive a stage to `succeeded` the way the engine does (ready → running → succeeded). */
+function succeedStage(store: ControlPlaneStore, runRef: string, stageId: string): void {
+  // blocked -> ready -> running -> succeeded; a stage already in one of those states replays harmlessly.
+  for (const next of ['ready', 'running', 'succeeded'] as const) {
+    const stageRow = detailOf(store, runRef).stages.find((item) => item.stageId === stageId);
+    if (!stageRow) throw new Error(`stage ${stageId} missing`);
+    const moved = store.transitionStage('operator', stageRow.stageRef, stageRow.version, next);
+    if (!moved.ok) throw new Error(`${stageId}->${next}: ${moved.detail}`);
+  }
+}
+
+/** Record the gate boundary the engine would create, and resolve it with a human decision. */
+function resolveGate(
+  store: ControlPlaneStore,
+  runRef: string,
+  stageId: string,
+  gateId: string,
+  decision: 'approved' | 'rejected',
+): void {
+  const stageRow = detailOf(store, runRef).stages.find((item) => item.stageId === stageId);
+  if (!stageRow) throw new Error(`stage ${stageId} missing`);
+  const created = store.createHumanRequest('operator', runRef, {
+    stageRef: stageRow.stageRef, kind: 'approval', title: gateTitle(stageId, gateId), prompt: 'gate',
+  });
+  if (!created.ok) throw new Error(created.detail);
+  const responded = store.respondHumanRequest('operator', created.value.requestRef, {
+    expectedRevision: created.value.revision, decision, idempotencyKey: `respond-${stageId}-${gateId}`,
+  });
+  if (!responded.ok) throw new Error(responded.detail);
+}
+
+interface FakeHost {
+  host: PtyHost;
+  /** Every byte written into a session, in order. */
+  writes: Map<string, string[]>;
+  killed: Set<string>;
+  emit(sessionId: string, chunk: string): void;
+  exit(sessionId: string): void;
+  opened: HostOpenRequest[];
+}
+
+function fakeHost(): FakeHost {
+  let counter = 0;
+  const writes = new Map<string, string[]>();
+  const killed = new Set<string>();
+  const opened: HostOpenRequest[] = [];
+  const data = new Map<string, Array<(chunk: string) => void>>();
+  const exits = new Map<string, Array<(evt: { exitCode: number; signal?: number }) => void>>();
+  const host: PtyHost = {
+    open(req: HostOpenRequest): PtySession {
+      opened.push(req);
+      const sessionId = `pty-roster-${(counter += 1)}`;
+      writes.set(sessionId, []);
+      data.set(sessionId, []);
+      exits.set(sessionId, []);
+      const handle: PtyHandle = {
+        pid: 5000 + counter,
+        onData(cb) { data.get(sessionId)?.push(cb); },
+        onExit(cb) { exits.get(sessionId)?.push(cb); },
+        write(chunk) { writes.get(sessionId)?.push(chunk); },
+        resize() {},
+        kill() { killed.add(sessionId); },
+      };
+      return { sessionId, handle };
+    },
+    stop(sessionId) { killed.add(sessionId); return true; },
+    stopAll() { for (const id of writes.keys()) killed.add(id); },
+    sessions() { return [...writes.keys()]; },
+  };
+  return {
+    host, writes, killed, opened,
+    emit(sessionId, chunk) { for (const cb of data.get(sessionId) ?? []) cb(chunk); },
+    exit(sessionId) { for (const cb of exits.get(sessionId) ?? []) cb({ exitCode: 0 }); },
+  };
+}
+
+/**
+ * Recording filesystem. `stat`/`hashFile` replace the old `exists`, because `existsSync` was true for a
+ * DIRECTORY named `shots.json` and for a 0-byte file — both of which satisfied a declared artifact.
+ * `putDir` and a 0-byte `put` let a test stand exactly those two things where an artifact belongs.
+ */
+function fakeFs(existing: string[] = [], seed: { directories?: string[]; contents?: Record<string, string> } = {}): RosterFileSystem & {
+  files: Map<string, string>;
+  dirs: string[];
+  removed: string[];
+  /** Every `hashFile` call, in order — the cost assertion (a big artifact must not be hashed twice). */
+  hashed: string[];
+  /** Write real bytes at a path, the way a stage producing its artifact would. */
+  put(path: string, contents: string): void;
+  /** Stand a DIRECTORY where an artifact is declared. */
+  putDir(path: string): void;
+} {
+  const files = new Map<string, string>();
+  const dirs: string[] = [];
+  const removed: string[] = [];
+  const hashed: string[] = [];
+  const directories = new Set((seed.directories ?? []).map((path) => norm(path)));
+  for (const path of existing) files.set(norm(path), `seed:${norm(path)}`);
+  for (const [path, value] of Object.entries(seed.contents ?? {})) files.set(norm(path), value);
+  return {
+    files,
+    dirs,
+    removed,
+    hashed,
+    ensureDir(path) { dirs.push(path); },
+    writeFile(path, contents) { files.set(norm(path), contents); },
+    stat(path) {
+      const key = norm(path);
+      if (directories.has(key)) return { regularFile: false, size: 0 };
+      const value = files.get(key);
+      return value === undefined ? null : { regularFile: true, size: Buffer.byteLength(value, 'utf8') };
+    },
+    hashFile(path) {
+      const key = norm(path);
+      hashed.push(key);
+      return createHash('sha256').update(files.get(key) ?? '').digest('hex');
+    },
+    removeDir(path) {
+      const prefix = `${norm(path)}/`;
+      removed.push(norm(path));
+      for (const key of [...files.keys()]) if (key.startsWith(prefix)) files.delete(key);
+    },
+    put(path, contents) { files.set(norm(path), contents); },
+    putDir(path) { directories.add(norm(path)); },
+  };
+}
+
+function harness(options: {
+  plan?: PlanProposal;
+  existingPaths?: string[];
+  deliveryTimeoutMs?: number;
+  seed?: { directories?: string[]; contents?: Record<string, string> };
+} = {}) {
+  const plan = options.plan ?? proposalFixture();
+  const store = createInMemoryControlPlaneStore({ newId: () => `id-${++sequence}` });
+  const runRef = createApprovedRun(store, plan);
+  const registry = createPersistentSessionRegistry();
+  const host = fakeHost();
+  const fs = fakeFs(options.existingPaths ?? [], options.seed ?? {});
+  const resolve = vi.fn((input: Parameters<AssignedAgentResolver['resolve']>[0]) => ({
+    assignment: { ...input.assignment },
+    instructionMarkdown: `# ${input.assignment.agentId}\n\nYou own your phase.`,
+  }));
+  let token = 0;
+  const sessions = createRosterSessionManager({
+    store,
+    repoRoot: '/repo',
+    stateRoot: '/state',
+    host: host.host,
+    registry,
+    assignedAgents: { resolve },
+    resolveProfiles: () => PROFILES,
+    fs,
+    mintToken: () => `${(token += 1)}`.padStart(32, '0').replace(/[^0-9a-f]/g, '0'),
+    ...(options.deliveryTimeoutMs === undefined ? {} : { deliveryTimeoutMs: options.deliveryTimeoutMs }),
+  });
+  return { plan, store, runRef, registry, host, fs, sessions, resolve };
+}
+
+function stageOf(plan: PlanProposal, stageId: string): ProposalStage {
+  const found = plan.stages.find((item) => item.id === stageId);
+  if (!found) throw new Error(`stage ${stageId} missing`);
+  return found;
+}
+
+function stageRefOf(store: ControlPlaneStore, runRef: string, stageId: string): string {
+  const found = detailOf(store, runRef).stages.find((item) => item.stageId === stageId);
+  if (!found) throw new Error(`stage ${stageId} missing`);
+  return found.stageRef;
+}
+
+function deliverInput(store: ControlPlaneStore, runRef: string, plan: PlanProposal, stageId: string) {
+  const proposalStage = stageOf(plan, stageId);
+  return {
+    subject: 'operator',
+    runRef,
+    stageRef: stageRefOf(store, runRef, stageId),
+    stageId,
+    attemptRef: `attempt-${stageId}`,
+    project: plan.project,
+    proposalStage,
+    assignedAgent: {
+      assignment: proposalStage.assignment as ResolvedAgentAssignment,
+      instructionMarkdown: '# agent',
+    },
+  };
+}
+
+function sessionIdFor(sessions: RosterSessionManager, runRef: string, agentId: string): string {
+  const row = sessions.state('operator', runRef).find((item) => item.agentId === agentId);
+  if (!row?.sessionId) throw new Error(`agent ${agentId} has no session`);
+  return row.sessionId;
+}
+
+describe('roster spawn lifecycle', () => {
+  it('spawns exactly one session per DISTINCT agent id, manager included', () => {
+    const { plan, sessions, runRef, registry, host } = harness();
+    expect(rosterAgentIds(plan)).toEqual(['fyt-runner', 'fyt-story', 'fyt-visuals']);
+    const ensured = sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    // Two stages share fyt-story: one session, not two.
+    expect(ensured.spawned).toEqual(['fyt-runner', 'fyt-story', 'fyt-visuals']);
+    expect(registry.list('operator')).toHaveLength(3);
+    expect(host.opened.every((req) => norm(req.cwd) === '/repo/orgs/faceless-youtube')).toBe(true);
+    // A second ensure is idempotent: nothing respawns.
+    const again = sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    expect(again).toMatchObject({ spawned: [], existing: ['fyt-runner', 'fyt-story', 'fyt-visuals'] });
+    expect(registry.list('operator')).toHaveLength(3);
+  });
+
+  it('boots each session with the verified declaration, run params, and work dir as binding context', () => {
+    const { plan, sessions, runRef, fs, host, resolve } = harness();
+    sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    // The SAME server-owned resolver the engine uses re-proves every declaration before a spawn.
+    expect(resolve).toHaveBeenCalledTimes(3);
+    expect(resolve.mock.calls.map(([input]) => [input.assignment.agentId, input.role, input.project])).toEqual([
+      ['fyt-runner', 'manager', 'faceless-youtube'],
+      ['fyt-story', 'worker', 'faceless-youtube'],
+      ['fyt-visuals', 'worker', 'faceless-youtube'],
+    ]);
+    const binding = fs.files.get('/state/control/roster/' + runRef + '/fyt-story/binding.md');
+    expect(binding).toBeDefined();
+    expect(binding).toContain('agents/fyt-story.md');
+    expect(binding).toContain('a'.repeat(64));
+    expect(binding).toContain('worker:claude:claude-fable-5');
+    expect(binding).toContain('- channel: the-second-take');
+    expect(binding).toContain('- slug: st-042');
+    expect(binding).toContain('- slice: 2min');
+    expect(norm(binding ?? '')).toContain('/repo/orgs/faceless-youtube');
+    expect(binding).toContain('# fyt-story');
+    // The only thing written into the terminal at spawn is the launch line pointing at that binding.
+    const sessionId = sessionIdFor(sessions, runRef, 'fyt-story');
+    expect(host.writes.get(sessionId)).toHaveLength(1);
+    expect(host.writes.get(sessionId)?.[0]).toContain('claude --model claude-fable-5');
+    expect(host.writes.get(sessionId)?.[0]).toContain('binding.md');
+  });
+
+  it('refuses to spawn an agent whose declaration no longer verifies', () => {
+    const { plan, store, runRef, registry, host, fs } = harness();
+    const sessions = createRosterSessionManager({
+      store, repoRoot: '/repo', stateRoot: '/state', host: host.host, registry, fs,
+      assignedAgents: { resolve: () => { throw new Error('assigned agent resolution refused: declaration hash changed'); } },
+      resolveProfiles: () => PROFILES,
+    });
+    expect(() => sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan })).toThrow(/declaration hash changed/);
+  });
+
+  it('deletes the retired run\'s order files and binding contexts (they carry live tokens)', async () => {
+    const { plan, store, sessions, runRef, fs } = harness();
+    sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    succeedStage(store, runRef, 'idea');
+    resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
+    const pending = sessions.deliver(deliverInput(store, runRef, plan, 'story'));
+    const orderPath = `/state/control/roster/${runRef}/fyt-story/orders/story.md`;
+    expect(fs.files.get(orderPath)).toMatch(/completion token: [0-9a-f]{32}/);
+    sessions.retire(runRef, 'run succeeded');
+    await pending;
+    // A retired roster's tokens are dead; keeping them on disk is a needless durable copy. Resume
+    // re-authors both files from the immutable proposal, so nothing load-bearing is lost.
+    expect(fs.removed).toContain(`/state/control/roster/${runRef}`);
+    expect([...fs.files.keys()].filter((path) => path.includes(`/roster/${runRef}/`))).toEqual([]);
+  });
+
+  it('retires the roster on completion and re-spawns it on a later ensure (resume)', () => {
+    const { plan, sessions, runRef, host, registry } = harness();
+    sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    const storySession = sessionIdFor(sessions, runRef, 'fyt-story');
+    const retired = sessions.retire(runRef, 'run succeeded');
+    expect(retired).toHaveLength(3);
+    expect(host.killed.has(storySession)).toBe(true);
+    // Graceful stop first, then the reap: the last byte written is an explicit exit.
+    expect(host.writes.get(storySession)?.at(-1)).toBe('/exit\r');
+    expect(registry.list('operator')).toHaveLength(0);
+    expect(sessions.hasRoster(runRef)).toBe(false);
+    const resumed = sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    expect(resumed.spawned).toEqual(['fyt-runner', 'fyt-story', 'fyt-visuals']);
+  });
+
+  it('re-spawns a session whose shell exited, instead of delivering into a corpse', () => {
+    const { plan, sessions, runRef, host } = harness();
+    sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    const dead = sessionIdFor(sessions, runRef, 'fyt-visuals');
+    host.exit(dead);
+    const ensured = sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    expect(ensured.spawned).toEqual(['fyt-visuals']);
+    expect(ensured.existing).toEqual(['fyt-runner', 'fyt-story']);
+    expect(sessionIdFor(sessions, runRef, 'fyt-visuals')).not.toBe(dead);
+  });
+
+  it('resumes a run after a simulated daemon restart from durable store state alone', () => {
+    const { plan, store, runRef, sessions } = harness();
+    sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    // A daemon restart loses every pty child AND the whole roster manager. A fresh one, over the same
+    // durable store, brings the roster back.
+    const restartedHost = fakeHost();
+    const restarted = createRosterSessionManager({
+      store, repoRoot: '/repo', stateRoot: '/state', host: restartedHost.host,
+      registry: createPersistentSessionRegistry(), fs: fakeFs(),
+      assignedAgents: { resolve: (input) => ({ assignment: { ...input.assignment }, instructionMarkdown: '# agent' }) },
+      resolveProfiles: () => PROFILES,
+    });
+    expect(restarted.hasRoster(runRef)).toBe(false);
+    const ensured = restarted.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    expect(ensured.spawned).toEqual(['fyt-runner', 'fyt-story', 'fyt-visuals']);
+    expect(restarted.hasRoster(runRef)).toBe(true);
+    // The recovered roster still reports state for the run.
+    expect(restarted.state('operator', runRef).map((row) => row.agentId))
+      .toEqual(['fyt-runner', 'fyt-story', 'fyt-visuals']);
+  });
+});
+
+describe('gated work-order delivery', () => {
+  it('THE STRUCTURAL HALT: an unapproved gate means the work order never reaches the session', async () => {
+    const { plan, store, sessions, runRef, fs, host } = harness();
+    sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    const sessionId = sessionIdFor(sessions, runRef, 'fyt-story');
+    const writesBefore = [...(host.writes.get(sessionId) ?? [])];
+    succeedStage(store, runRef, 'idea'); // dependency satisfied; ONLY the gate is missing
+
+    const result = await sessions.deliver(deliverInput(store, runRef, plan, 'story'));
+
+    expect(result.state).toBe('waiting-human');
+    expect(result.summary).toContain("human gate 'g0-idea-pick' is not approved");
+    // 1. No order file was authored anywhere.
+    expect([...fs.files.keys()].filter((path) => path.includes('/orders/'))).toEqual([]);
+    // 2. The session's INPUT TRANSCRIPT is byte-identical to what it was before the delivery attempt:
+    //    not one character of the work order was written into the terminal.
+    expect(host.writes.get(sessionId)).toEqual(writesBefore);
+    expect(norm(host.writes.get(sessionId)?.join('') ?? '')).not.toContain('Do story');
+    expect(norm(host.writes.get(sessionId)?.join('') ?? '')).not.toContain('orders/story.md');
+  });
+
+  it('withholds delivery while a gate is REJECTED, and while a dependency has not succeeded', async () => {
+    const { plan, store, sessions, runRef, host } = harness();
+    sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    const sessionId = sessionIdFor(sessions, runRef, 'fyt-story');
+
+    // Dependency not yet succeeded, gate approved → still withheld, and named as the dependency.
+    resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
+    const blockedByDependency = await sessions.deliver(deliverInput(store, runRef, plan, 'story'));
+    expect(blockedByDependency.summary).toContain("dependency stage 'idea' has not succeeded");
+
+    expect(norm(host.writes.get(sessionId)?.join('') ?? '')).not.toContain('orders/story.md');
+  });
+
+  it('an open (unanswered) request on the stage also withholds delivery', async () => {
+    const { plan, store, sessions, runRef } = harness();
+    sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    succeedStage(store, runRef, 'idea');
+    const stageRef = stageRefOf(store, runRef, 'story');
+    const created = store.createHumanRequest('operator', runRef, {
+      stageRef, kind: 'approval', title: gateTitle('story', 'g0-idea-pick'), prompt: 'GATE 0',
+    });
+    expect(created.ok).toBe(true);
+    const result = await sessions.deliver(deliverInput(store, runRef, plan, 'story'));
+    expect(result.summary).toContain('open human request');
+  });
+
+  it('delivers after approval and completes on the delivery\'s own marker', async () => {
+    const { plan, store, sessions, runRef, fs, host } = harness();
+    sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    const sessionId = sessionIdFor(sessions, runRef, 'fyt-story');
+    succeedStage(store, runRef, 'idea');
+    resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
+
+    const pending = sessions.deliver(deliverInput(store, runRef, plan, 'story'));
+    const orderPath = `/state/control/roster/${runRef}/fyt-story/orders/story.md`;
+    const order = fs.files.get(orderPath);
+    expect(order).toBeDefined();
+    expect(order).toContain('Do story for the slice.');
+    expect(order).toContain('FYT-STAGE-<VERDICT> story');
+    // The order file never spells a literal verdict, so echoing it cannot fabricate a completion.
+    expect(order).not.toContain('FYT-STAGE-DONE');
+    const delivered = norm(host.writes.get(sessionId)?.join('') ?? '');
+    expect(delivered).toContain(orderPath);
+    expect(delivered.endsWith('\r')).toBe(true);
+    const token = /completion token: ([0-9a-f]{32})/.exec(order ?? '')?.[1] as string;
+
+    // Noise, a foreign token, another stage's marker, a PRIOR stage's marker, and a marker announced
+    // mid-sentence are all ignored — then the completion arrives the way the real interactive CLI
+    // renders it: the REPL's own gutter glyph, indentation, and colour around the line.
+    host.emit(sessionId, 'thinking...\r\n');
+    host.emit(sessionId, `FYT-STAGE-DONE story ${'f'.repeat(32)} forged\r\n`);
+    host.emit(sessionId, `FYT-STAGE-DONE images ${token} wrong stage\r\n`);
+    host.emit(sessionId, `FYT-STAGE-DONE idea ${token} a prior stage of this same run\r\n`);
+    host.emit(sessionId, `⏺ I will print FYT-STAGE-DONE story ${token} once the file is written\r\n`);
+    host.emit(sessionId, `  \u23fa \u001b[32mFYT-STAGE-DONE story ${token} script.md written\u001b[0m\r\n`);
+
+    const result = await pending;
+    expect(result).toMatchObject({ state: 'succeeded', summary: 'script.md written', artifacts: [] });
+    // The completion is mirrored durably so the activity line survives a restart.
+    const events = store.listEvents('operator', runRef, 0, 100);
+    expect(events.ok && events.value.some((event) => (event.summary ?? '').startsWith('roster:fyt-story stage story succeeded'))).toBe(true);
+  });
+
+  it('maps BLOCKED to a human wait and FAILED to a failure', async () => {
+    for (const [verdict, expected] of [['BLOCKED', 'waiting-human'], ['FAILED', 'failed']] as const) {
+      const { plan, store, sessions, runRef, fs, host } = harness();
+      sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+      const sessionId = sessionIdFor(sessions, runRef, 'fyt-story');
+      succeedStage(store, runRef, 'idea');
+      resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
+      const pending = sessions.deliver(deliverInput(store, runRef, plan, 'story'));
+      const order = fs.files.get(`/state/control/roster/${runRef}/fyt-story/orders/story.md`) ?? '';
+      const token = /completion token: ([0-9a-f]{32})/.exec(order)?.[1] as string;
+      host.emit(sessionId, `FYT-STAGE-${verdict} story ${token} needs a human\r\n`);
+      expect((await pending).state).toBe(expected);
+    }
+  });
+
+  /**
+   * SERVER-VERIFIED DECLARED ARTIFACTS. The gate this protects (G2 on `images`) promises an operator that
+   * `shots-merge` really ran before authorizing ~$17-27 of image generation. The old check was
+   * `existsSync` alone, compared against nothing, so it was satisfied by a directory wearing the
+   * artifact's name, by a 0-byte file, and — the case that actually bites — by the PREVIOUS attempt's
+   * file, since every video under `channels/<c>/videos/` already carries a root `shots.json`. The engine's
+   * own digest cross-check cannot cover this: the roster adapter reports `artifacts: []`, so it iterates
+   * nothing.
+   */
+  const SCRIPT_PATH = 'orgs/faceless-youtube/channels/x/videos/y/script.md';
+
+  /** A run whose `story` stage declares one artifact, delivered and awaiting its marker. */
+  async function artifactHarness(options: { seed?: { directories?: string[]; contents?: Record<string, string> } } = {}) {
+    const plan = proposalFixture();
+    plan.stages[1].artifacts = [{ id: 'script', path: SCRIPT_PATH, description: 'the script' }];
+    const { store, sessions, runRef, fs, host } = harness({ plan, ...(options.seed ? { seed: options.seed } : {}) });
+    sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    const sessionId = sessionIdFor(sessions, runRef, 'fyt-story');
+    succeedStage(store, runRef, 'idea');
+    resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
+    const pending = sessions.deliver(deliverInput(store, runRef, plan, 'story'));
+    const order = fs.files.get(`/state/control/roster/${runRef}/fyt-story/orders/story.md`) ?? '';
+    // The order file NAMES the declared artifact, so the agent knows what it is being held to.
+    expect(order).toContain(SCRIPT_PATH);
+    const token = /completion token: ([0-9a-f]{32})/.exec(order)?.[1] as string;
+    return {
+      fs,
+      /** Emit the honest marker and await the server's verdict on the artifact. */
+      async complete() {
+        host.emit(sessionId, `FYT-STAGE-DONE story ${token} all done honest\r\n`);
+        return pending;
+      },
+    };
+  }
+
+  it('refuses a completion whose declared artifact is not on disk', async () => {
+    const run = await artifactHarness();
+    const result = await run.complete();
+    expect(result.state).toBe('waiting-human');
+    expect(result.summary).toContain('declared artifacts are not satisfied');
+    expect(result.summary).toContain(`${SCRIPT_PATH} (missing)`);
+  });
+
+  it('accepts the completion when the stage actually WROTE the declared artifact', async () => {
+    const run = await artifactHarness();
+    run.fs.put(`/repo/${SCRIPT_PATH}`, '# the script\n\nreal content the stage produced.\n');
+    expect(await run.complete()).toMatchObject({ state: 'succeeded', summary: 'all done honest' });
+  });
+
+  it('CANNOT succeed on a pre-existing artifact it did not write', async () => {
+    // The hollow completion: the file was already there when the order was delivered (a retry, or a slug
+    // that already carries root plan files) and the stage touched nothing. Existence alone said PASS.
+    const run = await artifactHarness({ seed: { contents: { [`/repo/${SCRIPT_PATH}`]: 'the PREVIOUS attempt\'s script' } } });
+    const result = await run.complete();
+    expect(result.state).toBe('waiting-human');
+    expect(result.summary).toContain('byte-identical to the file already there');
+    expect(result.summary).toContain(SCRIPT_PATH);
+  });
+
+  it('accepts a pre-existing artifact the stage genuinely REWROTE', async () => {
+    // The other half of the bar: this is change detection, not novelty detection. A stage that edits an
+    // inherited file has done its work and must pass.
+    const run = await artifactHarness({ seed: { contents: { [`/repo/${SCRIPT_PATH}`]: 'the PREVIOUS attempt\'s script' } } });
+    run.fs.put(`/repo/${SCRIPT_PATH}`, 'a genuinely rewritten script');
+    expect(await run.complete()).toMatchObject({ state: 'succeeded' });
+  });
+
+  it('detects a rewrite that kept the byte SIZE identical', async () => {
+    // Size is only the cheap discriminator; equal size falls through to the content hash. Without that,
+    // an in-place edit of the same length would read as "unchanged" and park a stage that did its work.
+    const before = 'aaaaaaaaaaaaaaaaaaaa';
+    const run = await artifactHarness({ seed: { contents: { [`/repo/${SCRIPT_PATH}`]: before } } });
+    run.fs.put(`/repo/${SCRIPT_PATH}`, 'bbbbbbbbbbbbbbbbbbbb');
+    expect(before).toHaveLength(20);
+    expect(await run.complete()).toMatchObject({ state: 'succeeded' });
+  });
+
+  it('parks on a 0-byte file and on a DIRECTORY standing where the artifact belongs', async () => {
+    // `existsSync` returned true for both of these.
+    const empty = await artifactHarness();
+    empty.fs.put(`/repo/${SCRIPT_PATH}`, '');
+    const emptyResult = await empty.complete();
+    expect(emptyResult.state).toBe('waiting-human');
+    expect(emptyResult.summary).toContain(`${SCRIPT_PATH} (empty)`);
+
+    const directory = await artifactHarness({ seed: { directories: [`/repo/${SCRIPT_PATH}`] } });
+    const directoryResult = await directory.complete();
+    expect(directoryResult.state).toBe('waiting-human');
+    expect(directoryResult.summary).toContain(`${SCRIPT_PATH} (not a regular file)`);
+  });
+
+  it('hashes a declared artifact at most once per delivery phase, and not at all when the size moved', async () => {
+    // The biggest declared artifact in this pipeline is `final.mp4`. One hash at snapshot time is
+    // unavoidable (the old bytes are gone by verification time); the verification-side hash is skipped
+    // whenever the size already proves the file changed.
+    const run = await artifactHarness({ seed: { contents: { [`/repo/${SCRIPT_PATH}`]: 'short' } } });
+    expect(run.fs.hashed).toEqual([`/repo/${SCRIPT_PATH}`]); // exactly one: the pre-delivery baseline
+    run.fs.put(`/repo/${SCRIPT_PATH}`, 'a longer rewritten script that changes the size');
+    expect(await run.complete()).toMatchObject({ state: 'succeeded' });
+    // Still one: the size moved, so the bytes never had to be compared.
+    expect(run.fs.hashed).toEqual([`/repo/${SCRIPT_PATH}`]);
+  });
+
+  it('parks a stage whose declared artifact path is not repo-relative-safe', async () => {
+    const plan = proposalFixture();
+    plan.stages[1].artifacts = [{ id: 'escape', path: '../../etc/passwd', description: 'nope' }];
+    const { store, sessions, runRef, fs, host } = harness({ plan });
+    sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    const sessionId = sessionIdFor(sessions, runRef, 'fyt-story');
+    succeedStage(store, runRef, 'idea');
+    resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
+    const pending = sessions.deliver(deliverInput(store, runRef, plan, 'story'));
+    const order = fs.files.get(`/state/control/roster/${runRef}/fyt-story/orders/story.md`) ?? '';
+    const token = /completion token: ([0-9a-f]{32})/.exec(order)?.[1] as string;
+    host.emit(sessionId, `FYT-STAGE-DONE story ${token} done\r\n`);
+    const result = await pending;
+    expect(result.state).toBe('waiting-human');
+    expect(result.summary).toContain('not a safe repo-relative path');
+  });
+
+  it('settles a delivery that never sees a marker as a human wait, releasing the worker slot', async () => {
+    // `settled` is otherwise reachable only from a marker match, a session exit, or a retire — so a
+    // rendering this scanner missed, or a launch line that never brought the REPL up (the delivery line
+    // typed into a bare shell prompt), held the engine's single worker slot until an operator ran `stop`.
+    vi.useFakeTimers();
+    try {
+      const { plan, store, sessions, runRef, host } = harness({ deliveryTimeoutMs: 5 * 60_000 });
+      sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+      const sessionId = sessionIdFor(sessions, runRef, 'fyt-story');
+      succeedStage(store, runRef, 'idea');
+      resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
+      const pending = sessions.deliver(deliverInput(store, runRef, plan, 'story'));
+      // Chatter that is not the marker changes nothing, however much of it there is.
+      host.emit(sessionId, 'PS C:\\Users\\danie> working on it...\r\n');
+      await vi.advanceTimersByTimeAsync(4 * 60_000);
+      expect(sessions.state('operator', runRef).find((row) => row.agentId === 'fyt-story')?.status).toBe('active');
+      await vi.advanceTimersByTimeAsync(2 * 60_000);
+      const result = await pending;
+      expect(result.state).toBe('waiting-human');
+      expect(result.summary).toContain(DELIVERY_TIMEOUT_REASON);
+      expect(result.summary).toContain('no completion marker');
+      // The slot is released: the same agent can take a fresh order instead of throwing "already has an
+      // outstanding work order" forever.
+      expect(sessions.state('operator', runRef).find((row) => row.agentId === 'fyt-story')?.status).not.toBe('active');
+      const retry = sessions.deliver(deliverInput(store, runRef, plan, 'story'));
+      sessions.retire(runRef, 'cleanup');
+      await retry;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not let a timeout fire against a delivery that already landed', async () => {
+    vi.useFakeTimers();
+    try {
+      const { plan, store, sessions, runRef, fs, host } = harness({ deliveryTimeoutMs: 60_000 });
+      sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+      const sessionId = sessionIdFor(sessions, runRef, 'fyt-story');
+      succeedStage(store, runRef, 'idea');
+      resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
+      const pending = sessions.deliver(deliverInput(store, runRef, plan, 'story'));
+      const order = fs.files.get(`/state/control/roster/${runRef}/fyt-story/orders/story.md`) ?? '';
+      const token = /completion token: ([0-9a-f]{32})/.exec(order)?.[1] as string;
+      host.emit(sessionId, `⏺ FYT-STAGE-DONE story ${token} landed in time\r\n`);
+      expect(await pending).toMatchObject({ state: 'succeeded', summary: 'landed in time' });
+      // The deadline is cleared on settle, so nothing re-settles the slot a later delivery may own.
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+      const events = store.listEvents('operator', runRef, 0, 200);
+      expect(events.ok && events.value.some((event) => (event.summary ?? '').includes(DELIVERY_TIMEOUT_REASON))).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('holds the SPEND gate: the images stage is undeliverable until G2 is approved', async () => {
+    const { plan, store, sessions, runRef, fs, host } = harness();
+    sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    const sessionId = sessionIdFor(sessions, runRef, 'fyt-visuals');
+    succeedStage(store, runRef, 'idea');
+    succeedStage(store, runRef, 'story');
+
+    const withheld = await sessions.deliver(deliverInput(store, runRef, plan, 'images'));
+    expect(withheld.state).toBe('waiting-human');
+    expect(withheld.summary).toContain("human gate 'g2-visual-plan' is not approved");
+    expect([...fs.files.keys()].some((path) => path.endsWith('/orders/images.md'))).toBe(false);
+    expect(norm(host.writes.get(sessionId)?.join('') ?? '')).not.toContain('orders/images.md');
+
+    resolveGate(store, runRef, 'images', 'g2-visual-plan', 'approved');
+    const pending = sessions.deliver(deliverInput(store, runRef, plan, 'images'));
+    expect(fs.files.has(`/state/control/roster/${runRef}/fyt-visuals/orders/images.md`)).toBe(true);
+    const order = fs.files.get(`/state/control/roster/${runRef}/fyt-visuals/orders/images.md`) ?? '';
+    host.emit(sessionId, `FYT-STAGE-DONE images ${/completion token: ([0-9a-f]{32})/.exec(order)?.[1]} frames generated\r\n`);
+    expect((await pending).state).toBe('succeeded');
+  });
+
+  it('settles an outstanding delivery as a human wait when the roster is retired under it', async () => {
+    const { plan, store, sessions, runRef } = harness();
+    sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    succeedStage(store, runRef, 'idea');
+    resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
+    const pending = sessions.deliver(deliverInput(store, runRef, plan, 'story'));
+    sessions.retire(runRef, 'operator stop');
+    const result = await pending;
+    expect(result.state).toBe('waiting-human');
+    expect(result.summary).toContain('roster retired');
+  });
+
+  it('settles an outstanding delivery when the agent\'s shell dies under it', async () => {
+    const { plan, store, sessions, runRef, host } = harness();
+    sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    const sessionId = sessionIdFor(sessions, runRef, 'fyt-story');
+    succeedStage(store, runRef, 'idea');
+    resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
+    const pending = sessions.deliver(deliverInput(store, runRef, plan, 'story'));
+
+    // A crashed REPL must not leave the engine awaiting a marker that can never arrive.
+    host.exit(sessionId);
+    const result = await pending;
+    expect(result.state).toBe('waiting-human');
+    expect(result.summary).toContain('session');
+    expect(result.summary).toContain('ended');
+  });
+
+  it('refuses a second concurrent order for the same agent session', async () => {
+    const { plan, store, sessions, runRef } = harness();
+    sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    succeedStage(store, runRef, 'idea');
+    resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
+    const pending = sessions.deliver(deliverInput(store, runRef, plan, 'story'));
+    await expect(sessions.deliver(deliverInput(store, runRef, plan, 'story')))
+      .rejects.toThrow(/already has an outstanding work order/);
+    sessions.retire(runRef, 'cleanup');
+    await pending;
+  });
+});
+
+describe('roster worker adapter (the engine seam)', () => {
+  const base = {
+    operationKey: 'op', subject: 'operator', runRef: 'run-x', stageRef: 'stage-1', attemptRef: 'attempt-1',
+    sessionRef: 'session-1', worktreePath: '/wt', profile: PROFILES[1], workflowProfile: 'producer',
+    skills: [] as readonly string[], action: 'build:story', target: 'orgs/faceless-youtube/channels',
+    workOrder: 'Do story.', readScope: [] as readonly string[], writeScope: [] as readonly string[],
+    checkpoints: [] as readonly string[],
+  };
+
+  it('delegates to the headless adapter for a stage that declares NO roster agent', async () => {
+    const fallback = { execute: vi.fn().mockResolvedValue({ state: 'succeeded', summary: 'headless', usage: { inputTokens: 0, outputTokens: 0, costUsdMicros: 0 }, artifacts: [], checkpoints: [] }) };
+    const sessions = { hasRoster: () => false, deliver: vi.fn() } as unknown as RosterSessionManager;
+    const adapter = createRosterWorkerAdapter({ sessions, fallback });
+    const result = await adapter.execute(base);
+    expect(result.summary).toBe('headless');
+    expect(fallback.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('REFUSES to go headless for a stage that declares a roster agent but has no live roster', async () => {
+    // `lock()` → `retireAll` → `runs.delete` makes `hasRoster` false while an in-flight `runToBoundary`
+    // keeps iterating. Routing on live state alone therefore spawned a headless `claude` subprocess AFTER
+    // the operator locked execution — exactly what the INERT invariant exists to prevent. Routing is by
+    // stage DECLARATION now, so the only answer here is a refusal.
+    const plan = proposalFixture();
+    const fallback = { execute: vi.fn() };
+    const sessions = { hasRoster: () => false, deliver: vi.fn() } as unknown as RosterSessionManager;
+    const adapter = createRosterWorkerAdapter({ sessions, fallback });
+    await expect(adapter.execute({
+      ...base,
+      proposalStage: stageOf(plan, 'story'),
+      project: 'faceless-youtube',
+      assignment: assignment('fyt-story', 'worker'),
+      instructionMarkdown: '# fyt-story',
+    })).rejects.toThrow(/declares a roster agent but run .* has no live roster/);
+    // The same refusal when only the engine-verified assignment is present.
+    await expect(adapter.execute({ ...base, assignment: assignment('fyt-story', 'worker') }))
+      .rejects.toThrow(/no live roster/);
+    expect(fallback.execute).not.toHaveBeenCalled();
+  });
+
+  it('refuses fail-closed when the engine did not supply the compiled stage', async () => {
+    const fallback = { execute: vi.fn() };
+    const sessions = { hasRoster: () => true, deliver: vi.fn() } as unknown as RosterSessionManager;
+    const adapter = createRosterWorkerAdapter({ sessions, fallback });
+    await expect(adapter.execute(base)).rejects.toThrow(/requires the compiled stage/);
+    expect(fallback.execute).not.toHaveBeenCalled();
+  });
+
+  it('delivers into the roster with the compiled stage and verified assignment', async () => {
+    const plan = proposalFixture();
+    const deliver = vi.fn().mockResolvedValue({ state: 'succeeded', summary: 'delivered', usage: { inputTokens: 0, outputTokens: 0, costUsdMicros: 0 }, artifacts: [], checkpoints: [] });
+    const sessions = { hasRoster: () => true, deliver } as unknown as RosterSessionManager;
+    const adapter = createRosterWorkerAdapter({ sessions, fallback: { execute: vi.fn() } });
+    const result = await adapter.execute({
+      ...base,
+      proposalStage: stageOf(plan, 'story'),
+      project: 'faceless-youtube',
+      assignment: assignment('fyt-story', 'worker'),
+      instructionMarkdown: '# fyt-story',
+    });
+    expect(result.summary).toBe('delivered');
+    expect(deliver.mock.calls[0][0]).toMatchObject({
+      stageId: 'story', project: 'faceless-youtube',
+      assignedAgent: { assignment: { agentId: 'fyt-story' } },
+    });
+  });
+});
+
+describe('roster state projection (the canvas contract)', () => {
+  it('reports blocked / waiting / idle with the edges the canvas draws', () => {
+    const { plan, store, sessions, runRef } = harness();
+    sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    succeedStage(store, runRef, 'idea');
+    const stageRef = stageRefOf(store, runRef, 'story');
+    const created = store.createHumanRequest('operator', runRef, {
+      stageRef, kind: 'approval', title: gateTitle('story', 'g0-idea-pick'), prompt: 'GATE 0',
+    });
+    expect(created.ok).toBe(true);
+
+    const rows = sessions.state('operator', runRef);
+    expect(rows.map((row) => row.agentId)).toEqual(['fyt-runner', 'fyt-story', 'fyt-visuals']);
+    const story = rows.find((row) => row.agentId === 'fyt-story');
+    expect(story).toMatchObject({ status: 'blocked', waitingOn: ['g0-idea-pick'] });
+    expect(story?.sessionId).toMatch(/^pty-roster-/);
+    const visuals = rows.find((row) => row.agentId === 'fyt-visuals');
+    expect(visuals).toMatchObject({ status: 'waiting', waitingOn: ['fyt-story'] });
+    // The manager owns no stages: it is idle, with a live session the operator can still open.
+    const runner = rows.find((row) => row.agentId === 'fyt-runner');
+    expect(runner?.status).toBe('idle');
+    expect(runner?.sessionId).toMatch(/^pty-roster-/);
+    expect(rows.every((row) => typeof row.activity === 'string' && row.activity.length > 0)).toBe(true);
+  });
+
+  it('reports an agent as active while its work order is outstanding', async () => {
+    const { plan, store, sessions, runRef } = harness();
+    sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    succeedStage(store, runRef, 'idea');
+    resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
+    const pending = sessions.deliver(deliverInput(store, runRef, plan, 'story'));
+    const story = sessions.state('operator', runRef).find((row) => row.agentId === 'fyt-story');
+    expect(story).toMatchObject({ status: 'active', activity: 'working stage story' });
+    sessions.retire(runRef, 'cleanup');
+    await pending;
+  });
+
+  it('projects an empty session map without a live roster, recovering activity from durable events', () => {
+    const { plan, store, runRef } = harness();
+    const detail = detailOf(store, runRef);
+    store.appendEvent('operator', runRef, {
+      kind: 'lifecycle', source: 'system', status: 'pending', summary: 'roster:fyt-story working stage story',
+    });
+    const events = store.listEvents('operator', runRef, 0, 100);
+    const durableActivity = new Map<string, string>();
+    if (events.ok) {
+      for (const event of events.value) {
+        const match = /^roster:([a-z0-9-]+) (.+)$/.exec(event.summary ?? '');
+        if (match) durableActivity.set(match[1], match[2]);
+      }
+    }
+    const rows = projectRosterState(detail, {
+      sessions: new Map(),
+      working: new Set(),
+      activity: new Map(),
+      durableActivity,
+    });
+    expect(rows.find((row) => row.agentId === 'fyt-story')).toMatchObject({
+      sessionId: null, activity: 'working stage story',
+    });
+    expect(rows.every((row) => row.sessionId === null)).toBe(true);
+    expect(plan.stages).toHaveLength(3);
+  });
+});
+
+/**
+ * The completion marker is the ONLY signal that advances a delivered stage, and the substrate is an
+ * interactive `claude` REPL that frames its own output. An anchor of `^FYT-STAGE-` matched a bare line
+ * and essentially nothing the real CLI prints, so the completion would never arrive and the delivery
+ * would hang. Every string below is run through the REAL `stripTerminalControl` first, exactly as `scan`
+ * does, and then matched against the pending delivery's own stage id and token.
+ */
+describe('completion marker recognition', () => {
+  const TOKEN = 'a'.repeat(32);
+  const FOREIGN = 'f'.repeat(32);
+  const PENDING = { stageId: 'story', token: TOKEN };
+
+  /** What `scan` concludes for one raw terminal chunk: accepted verdict, or why it was rejected. */
+  function outcomeOf(raw: string): 'no-match' | 'stage-mismatch' | 'token-mismatch' | string {
+    const line = stripTerminalControl(raw).split('\n')[0];
+    const marker = matchCompletionMarker(line);
+    if (!marker) return 'no-match';
+    if (marker.stageId !== PENDING.stageId) return 'stage-mismatch';
+    if (marker.token !== PENDING.token) return 'token-mismatch';
+    return marker.verdict;
+  }
+
+  const ACCEPTED: Array<[string, string, string]> = [
+    ['bare line', `FYT-STAGE-DONE story ${TOKEN} script.md written`, 'DONE'],
+    ['ANSI-coloured line', `\u001b[32mFYT-STAGE-DONE story ${TOKEN} script.md written\u001b[0m`, 'DONE'],
+    ['two-space indent', `  FYT-STAGE-DONE story ${TOKEN} ok`, 'DONE'],
+    ['REPL gutter glyph U+23FA', `⏺ FYT-STAGE-DONE story ${TOKEN} ok`, 'DONE'],
+    ['box-drawing rail U+2502', `│ FYT-STAGE-DONE story ${TOKEN} ok`, 'DONE'],
+    ['list bullet', `- FYT-STAGE-DONE story ${TOKEN} ok`, 'DONE'],
+    ['quote marker', `> FYT-STAGE-DONE story ${TOKEN} ok`, 'DONE'],
+    ['indent + rail + gutter together', `   │ ⏺  FYT-STAGE-DONE story ${TOKEN} ok`, 'DONE'],
+    ['coloured gutter, then the marker', `\u001b[38;5;2m⏺\u001b[0m FYT-STAGE-DONE story ${TOKEN} ok`, 'DONE'],
+    ['no summary at all', `FYT-STAGE-DONE story ${TOKEN}`, 'DONE'],
+    ['BLOCKED with a gutter', `⏺ FYT-STAGE-BLOCKED story ${TOKEN} needs a human`, 'BLOCKED'],
+    ['FAILED with a gutter', `⏺ FYT-STAGE-FAILED story ${TOKEN} cannot finish`, 'FAILED'],
+  ];
+
+  const REJECTED: Array<[string, string, string]> = [
+    ['marker announced mid-sentence', `I will print FYT-STAGE-DONE story ${TOKEN} at the end`, 'no-match'],
+    ['gutter, prose, then marker', `⏺ When done I print FYT-STAGE-DONE story ${TOKEN}`, 'no-match'],
+    ['the order file\'s own placeholder, echoed', `FYT-STAGE-<VERDICT> story ${TOKEN} <one-line summary>`, 'no-match'],
+    ['unknown verdict', `FYT-STAGE-OK story ${TOKEN} nope`, 'no-match'],
+    ['no separator after the verdict', `FYT-STAGE-DONEstory ${TOKEN} nope`, 'no-match'],
+    ['token one character short', `FYT-STAGE-DONE story ${'a'.repeat(31)} nope`, 'no-match'],
+    ['uppercase token', `FYT-STAGE-DONE story ${'A'.repeat(32)} nope`, 'no-match'],
+    ['forged token', `FYT-STAGE-DONE story ${FOREIGN} forged`, 'token-mismatch'],
+    ['another stage\'s marker', `FYT-STAGE-DONE images ${TOKEN} wrong stage`, 'stage-mismatch'],
+    ['a PRIOR stage\'s marker', `⏺ FYT-STAGE-DONE idea ${TOKEN} earlier stage`, 'stage-mismatch'],
+    // QUOTING AND FENCING. An agent restating the line it is ABOUT to print is completely normal
+    // behaviour, and under the old `[^A-Za-z0-9]{0,32}` prefix every one of these MATCHED — a stage could
+    // complete itself by talking about completing.
+    ['inline code span', `\`FYT-STAGE-DONE story ${TOKEN} ok\``, 'no-match'],
+    ['bullet plus backticks', `- \`FYT-STAGE-DONE story ${TOKEN} ok\``, 'no-match'],
+    ['comment / markdown heading', `# FYT-STAGE-DONE story ${TOKEN} ok`, 'no-match'],
+    ['fence run-on', `\`\`\`FYT-STAGE-DONE story ${TOKEN} ok`, 'no-match'],
+    ['JSON with an empty key', `{"": "FYT-STAGE-DONE story ${TOKEN} ok"`, 'no-match'],
+    // Neighbours of the above, kept explicit so a future widening of the prefix has to break a test.
+    ['double-quoted line', `"FYT-STAGE-DONE story ${TOKEN} ok"`, 'no-match'],
+    ['single-quoted line', `'FYT-STAGE-DONE story ${TOKEN} ok'`, 'no-match'],
+    ['curly-quoted line', `“FYT-STAGE-DONE story ${TOKEN} ok”`, 'no-match'],
+    ['JSON array element', `["FYT-STAGE-DONE story ${TOKEN} ok"]`, 'no-match'],
+    ['yaml-ish key', `marker: FYT-STAGE-DONE story ${TOKEN} ok`, 'no-match'],
+    ['shell comment with slashes', `// FYT-STAGE-DONE story ${TOKEN} ok`, 'no-match'],
+  ];
+
+  it.each(ACCEPTED)('accepts %s', (_name, raw, verdict) => {
+    expect(outcomeOf(raw)).toBe(verdict);
+  });
+
+  it.each(REJECTED)('rejects %s', (_name, raw, reason) => {
+    expect(outcomeOf(raw)).toBe(reason);
+  });
+
+  it('keeps the anchor: a prefix is decoration only, never prose or quoting', () => {
+    // Generality, not a whitelist of the glyphs seen today — the prefix admits whole Unicode decoration
+    // bands, so the next CLI release's gutter glyph still scans — but bounded, killed by one alphanumeric
+    // character ahead of the marker, and closed to every quoting/fencing character.
+    expect(outcomeOf(`${'│'.repeat(8)} FYT-STAGE-DONE story ${TOKEN} ok`)).toBe('DONE');
+    // Decoration glyphs this scanner has never seen, from the bands terminal framing lives in.
+    for (const glyph of ['▌', '●', '→', '•', '❯', '⎿', '⬤']) {
+      expect(outcomeOf(`${glyph} FYT-STAGE-DONE story ${TOKEN} ok`)).toBe('DONE');
+    }
+    expect(outcomeOf(`${'.'.repeat(40)} FYT-STAGE-DONE story ${TOKEN} ok`)).toBe('no-match');
+    expect(outcomeOf(`x FYT-STAGE-DONE story ${TOKEN} ok`)).toBe('no-match');
+    // A single quoting character is enough, at any depth of otherwise-legal decoration.
+    expect(outcomeOf(`   │ ⏺  \`FYT-STAGE-DONE story ${TOKEN} ok`)).toBe('no-match');
+    expect(matchCompletionMarker(`FYT-STAGE-DONE story ${TOKEN}   trailing summary  `)?.summary.trim())
+      .toBe('trailing summary');
+  });
+});
+
+describe('roster helpers', () => {
+  /**
+   * The work directory is PINNED to `orgs/<project>` — the root every work order's org-relative paths
+   * (`channels/<channel>/videos/<slug>/brief.md`) are written against.
+   *
+   * It used to return the DEEPEST EXISTING candidate, which broke both ways: on a fresh slug the video dir
+   * did not exist but the channel dir did, so the stated root became the CHANNEL dir and that same
+   * relative path resolved to `channels/<c>/channels/<c>/videos/<slug>/brief.md`; and because `workDir` is
+   * recomputed whenever the in-memory run entry is absent — after every daemon restart — the stated root
+   * silently moved one level deeper as soon as `idea` created the video dir.
+   */
+  it('pins the work directory to orgs/<project>, whatever exists on disk', () => {
+    expect(norm(resolveRosterWorkDir('/repo', 'p'))).toBe('/repo/orgs/p');
+    expect(norm(resolveRosterWorkDir('/repo', 'faceless-youtube'))).toBe('/repo/orgs/faceless-youtube');
+    // The only fallback is the traversal guard: a project that is not one safe path segment is never
+    // interpolated into a path.
+    expect(norm(resolveRosterWorkDir('/repo', '../etc'))).toBe('/repo');
+    expect(norm(resolveRosterWorkDir('/repo', ''))).toBe('/repo');
+    expect(norm(resolveRosterWorkDir('/repo', 'a/b'))).toBe('/repo');
+  });
+
+  it('opens every roster session at orgs/<project> for a fresh slug, an existing video dir, and after a restart', () => {
+    const videoDir = '/repo/orgs/faceless-youtube/channels/the-second-take/videos/st-042';
+    const channelDir = '/repo/orgs/faceless-youtube/channels/the-second-take';
+    const expected = '/repo/orgs/faceless-youtube';
+
+    // 1. FRESH SLUG: the video dir does not exist, only the channel dir does — the shape that used to
+    //    resolve to the channel dir and mis-root every org-relative order path.
+    const fresh = harness({ seed: { directories: [channelDir] } });
+    fresh.sessions.ensureRoster({ subject: 'operator', runRef: fresh.runRef, proposal: fresh.plan });
+    expect(fresh.host.opened.map((req) => norm(req.cwd))).toEqual([expected, expected, expected]);
+
+    // 2. EXISTING VIDEO DIR: the deepest candidate is now real, and the answer must not change.
+    const existing = harness({ seed: { directories: [channelDir, videoDir] } });
+    existing.sessions.ensureRoster({ subject: 'operator', runRef: existing.runRef, proposal: existing.plan });
+    expect(existing.host.opened.map((req) => norm(req.cwd))).toEqual([expected, expected, expected]);
+
+    // 3. ACROSS A DAEMON RESTART, with the video dir created in between (what stage `idea` does): a fresh
+    //    manager over the same durable store re-derives the SAME root instead of moving one level deeper.
+    const restartedHost = fakeHost();
+    const restarted = createRosterSessionManager({
+      store: existing.store, repoRoot: '/repo', stateRoot: '/state', host: restartedHost.host,
+      registry: createPersistentSessionRegistry(), fs: fakeFs([], { directories: [channelDir, videoDir] }),
+      assignedAgents: { resolve: (input) => ({ assignment: { ...input.assignment }, instructionMarkdown: '# agent' }) },
+      resolveProfiles: () => PROFILES,
+    });
+    restarted.ensureRoster({ subject: 'operator', runRef: existing.runRef, proposal: existing.plan });
+    expect(restartedHost.opened.map((req) => norm(req.cwd))).toEqual([expected, expected, expected]);
+  });
+
+  it('recovers a durable activity line written PAST the first event page', () => {
+    // `state` used to ask for the FIRST 400 events on every 4-second canvas poll: it re-read the same
+    // page forever, so activity went permanently stale once a run passed 400 events — which every real
+    // multi-day run does — while re-reading 400 rows per poll.
+    // No live roster: this is the post-restart path, where the durable mirror is the ONLY source of an
+    // activity line.
+    const { store, sessions, runRef } = harness();
+    // Read once so the reader's cursor is established, then bury the line under more than one page.
+    sessions.state('operator', runRef);
+    for (let index = 0; index < 700; index += 1) {
+      const appended = store.appendEvent('operator', runRef, {
+        kind: 'lifecycle', source: 'system', status: 'pending', summary: `noise ${index}`,
+      });
+      if (!appended.ok) throw new Error(appended.detail);
+    }
+    const appended = store.appendEvent('operator', runRef, {
+      kind: 'lifecycle', source: 'system', status: 'pending', summary: 'roster:fyt-visuals working stage images',
+    });
+    if (!appended.ok) throw new Error(appended.detail);
+    // One page (500) does not reach the line; the incremental reader advances its cursor and the next
+    // poll picks it up, so the canvas converges instead of going permanently stale.
+    expect(sessions.state('operator', runRef).find((row) => row.agentId === 'fyt-visuals')?.activity).not.toBe('working stage images');
+    const rows = sessions.state('operator', runRef);
+    expect(rows.find((row) => row.agentId === 'fyt-visuals')?.activity).toBe('working stage images');
+  });
+
+  it('strips terminal control sequences so a coloured marker still scans', () => {
+    expect(stripTerminalControl('\u001b[32mready\u001b[0m\r\n')).toBe('ready\n\n');
+    expect(stripTerminalControl('\u001b]0;title\u0007plain')).toBe('plain');
+  });
+});

@@ -145,6 +145,154 @@ describe('compileWorkflowDef', () => {
     expect(canonicalProposal(compiled.value)).toContain('"proposalId":"wf-5497530df05dc94e5ba8b528c2738d84e47666f60b52a076"');
   });
 
+  describe('declared human gates', () => {
+    const GATED = def([
+      'id: gated-run', 'project: kb-ops', 'title: Gated run', 'profile: research', 'stages:',
+      '  - id: draft', '    title: Draft', '    action: draft:thing', '    target: orgs/kb-ops/output', '    workOrder: Draft it.',
+      '  - id: spend', '    title: Spend', '    action: build:images', '    target: orgs/kb-ops/output', '    workOrder: Generate.', '    dependsOn: [draft]',
+      '    humanGates:', '      - id: g2-plan', '        kind: approval', '        prompt: Approve the plan.', '        spendAuthorization: true',
+      '  - id: after', '    title: After', '    action: implement:after', '    target: orgs/kb-ops/output', '    workOrder: Continue.', '    dependsOn: [spend]',
+      '    humanGates:', '      - id: g3-board', '        kind: approval', '        prompt: Approve the board.',
+    ].join('\n'));
+
+    it('threads the DECLARED gates onto the compiled stages instead of a hardcoded empty list', () => {
+      const compiled = compileWorkflowDef(GATED, { registry: REGISTRY });
+      expect(compiled.ok).toBe(true);
+      if (!compiled.ok) return;
+      expect(compiled.value.stages.map((stage) => [stage.id, stage.humanGates])).toEqual([
+        ['draft', []],
+        ['spend', [{ id: 'g2-plan', kind: 'approval', prompt: 'Approve the plan.', spendAuthorization: true }]],
+        ['after', [{ id: 'g3-board', kind: 'approval', prompt: 'Approve the board.' }]],
+      ]);
+      // The gates must survive the SERVER-COMPILED validator (the browser one refuses the field).
+      expect(validateServerCompiledPlanProposal(JSON.parse(JSON.stringify(compiled.value)), REGISTRY)).toMatchObject({ ok: true });
+    });
+
+    it('threads publicationAuthorization into the compiled gate and into proposal identity', () => {
+      const PUBLISHED = def([
+        'id: publish-run', 'project: kb-ops', 'title: Publish run', 'profile: research', 'stages:',
+        '  - id: verify', '    title: Verify', '    action: verify:cut', '    target: orgs/kb-ops/output', '    workOrder: Verify.',
+        '  - id: publish', '    title: Publish', '    action: publish:private-upload', '    target: orgs/kb-ops/output',
+        '    workOrder: Upload privately.', '    riskTier: T3', '    dependsOn: [verify]',
+        '    humanGates:', '      - id: g4-publish', '        kind: approval', '        prompt: Approve the upload.',
+        '        publicationAuthorization: true',
+      ].join('\n'));
+      const compiled = compileWorkflowDef(PUBLISHED, { registry: REGISTRY });
+      expect(compiled.ok).toBe(true);
+      if (!compiled.ok) return;
+      expect(compiled.value.stages.find((stage) => stage.id === 'publish')?.humanGates).toEqual([
+        { id: 'g4-publish', kind: 'approval', prompt: 'Approve the upload.', publicationAuthorization: true },
+      ]);
+      expect(validateServerCompiledPlanProposal(JSON.parse(JSON.stringify(compiled.value)), REGISTRY)).toMatchObject({ ok: true });
+      // Silently clearing the flag must change the approved identity: it decides whether that stage can
+      // ever be released at all.
+      const dropped = compileWorkflowDef({
+        ...PUBLISHED,
+        stages: PUBLISHED.stages.map((stage) => (stage.id === 'publish'
+          ? { ...stage, humanGates: stage.humanGates?.map(({ publicationAuthorization: _gone, ...gate }) => gate) }
+          : stage)),
+      }, { registry: REGISTRY });
+      expect(dropped.ok).toBe(true);
+      if (!dropped.ok) return;
+      expect(dropped.value.proposalId).not.toBe(compiled.value.proposalId);
+    });
+
+    it('carries the launch parameters onto the compiled proposal as data', () => {
+      const compiled = compileWorkflowDef({ ...GATED, launchParameters: { channel: 'the-second-take', slug: 'st-042' } }, { registry: REGISTRY });
+      expect(compiled.ok).toBe(true);
+      if (!compiled.ok) return;
+      expect(compiled.value.parameters).toEqual({ channel: 'the-second-take', slug: 'st-042' });
+      expect(validateServerCompiledPlanProposal(JSON.parse(JSON.stringify(compiled.value)), REGISTRY)).toMatchObject({ ok: true });
+      // A definition with no launch values emits no key, so pre-existing proposals hash unchanged.
+      const bare = compileWorkflowDef(GATED, { registry: REGISTRY });
+      expect(bare.ok && bare.value).not.toHaveProperty('parameters');
+    });
+
+    it('binds the gates into proposal identity so a gate edit forces re-approval', () => {
+      const compiled = compileWorkflowDef(GATED, { registry: REGISTRY });
+      const ungated = compileWorkflowDef(
+        { ...GATED, stages: GATED.stages.map(({ humanGates: _dropped, ...stage }) => stage as WorkflowStageDef) },
+        { registry: REGISTRY },
+      );
+      const spendDropped = compileWorkflowDef(
+        {
+          ...GATED,
+          stages: GATED.stages.map((stage) => (stage.id === 'spend'
+            ? { ...stage, humanGates: stage.humanGates?.map(({ spendAuthorization: _dropped, ...gate }) => gate) }
+            : stage)),
+        },
+        { registry: REGISTRY },
+      );
+      expect(compiled.ok && ungated.ok && spendDropped.ok).toBe(true);
+      if (!compiled.ok || !ungated.ok || !spendDropped.ok) return;
+      // Deleting a gate, or silently clearing its spend flag, must change the approved identity —
+      // otherwise the run's halt structure could be edited under an existing approval.
+      expect(ungated.value.proposalId).not.toBe(compiled.value.proposalId);
+      expect(spendDropped.value.proposalId).not.toBe(compiled.value.proposalId);
+      // ...while a definition that declares no gates keeps its historical identity exactly.
+      const legacy = compileWorkflowDef(SINGLE, { registry: REGISTRY });
+      expect(legacy.ok).toBe(true);
+      if (!legacy.ok) return;
+      expect(legacy.value.proposalId).toBe('wf-5497530df05dc94e5ba8b528c2738d84e47666f60b52a076');
+    });
+  });
+
+  describe('declared artifacts', () => {
+    const WITH_ARTIFACTS = def([
+      'id: artifact-run', 'project: kb-ops', 'title: Artifact run', 'profile: research', 'stages:',
+      '  - id: draft', '    title: Draft', '    action: draft:thing', '    target: orgs/kb-ops/output', '    workOrder: Draft it.',
+      '    artifacts:',
+      '      - id: script', '        path: orgs/kb-ops/output/script.md', '        description: The script.',
+      '      - id: notes', '        path: orgs/kb-ops/output/notes.md', '        description: The notes.',
+      '  - id: after', '    title: After', '    action: implement:after', '    target: orgs/kb-ops/output', '    workOrder: Continue.', '    dependsOn: [draft]',
+    ].join('\n'));
+
+    it('threads the DECLARED artifacts onto the compiled stages instead of a hardcoded empty list', () => {
+      // The `artifacts: []` hardcode made the server-side declared-artifact check in
+      // rosterSessions.ts#deliver iterate nothing, so a bare completion marker with no files on disk was
+      // accepted as `succeeded`.
+      const compiled = compileWorkflowDef(WITH_ARTIFACTS, { registry: REGISTRY });
+      expect(compiled.ok).toBe(true);
+      if (!compiled.ok) return;
+      expect(compiled.value.stages.map((stage) => [stage.id, stage.artifacts])).toEqual([
+        ['draft', [
+          { id: 'script', path: 'orgs/kb-ops/output/script.md', description: 'The script.' },
+          { id: 'notes', path: 'orgs/kb-ops/output/notes.md', description: 'The notes.' },
+        ]],
+        ['after', []],
+      ]);
+      expect(validateServerCompiledPlanProposal(JSON.parse(JSON.stringify(compiled.value)), REGISTRY)).toMatchObject({ ok: true });
+      // Compiled artifacts are copies, never aliases of the def's own objects.
+      expect(compiled.value.stages[0].artifacts[0]).not.toBe(WITH_ARTIFACTS.stages[0].artifacts?.[0]);
+    });
+
+    it('binds artifacts into proposal identity so weakening the success bar forces re-approval', () => {
+      const compiled = compileWorkflowDef(WITH_ARTIFACTS, { registry: REGISTRY });
+      const dropped = compileWorkflowDef(
+        { ...WITH_ARTIFACTS, stages: WITH_ARTIFACTS.stages.map(({ artifacts: _gone, ...stage }) => stage as WorkflowStageDef) },
+        { registry: REGISTRY },
+      );
+      const narrowed = compileWorkflowDef(
+        {
+          ...WITH_ARTIFACTS,
+          stages: WITH_ARTIFACTS.stages.map((stage) => (stage.id === 'draft'
+            ? { ...stage, artifacts: stage.artifacts?.slice(0, 1) }
+            : stage)),
+        },
+        { registry: REGISTRY },
+      );
+      expect(compiled.ok && dropped.ok && narrowed.ok).toBe(true);
+      if (!compiled.ok || !dropped.ok || !narrowed.ok) return;
+      expect(dropped.value.proposalId).not.toBe(compiled.value.proposalId);
+      expect(narrowed.value.proposalId).not.toBe(compiled.value.proposalId);
+      // ...while a definition that declares no artifacts keeps its historical identity exactly.
+      const legacy = compileWorkflowDef(SINGLE, { registry: REGISTRY });
+      expect(legacy.ok).toBe(true);
+      if (!legacy.ok) return;
+      expect(legacy.value.proposalId).toBe('wf-5497530df05dc94e5ba8b528c2738d84e47666f60b52a076');
+    });
+  });
+
   it('keeps ownership out of compiled routing, proposal identity, and canonical proposal bytes', () => {
     const governed = {
       ...SINGLE,
