@@ -24,7 +24,7 @@ premise, no famous name · **C** = pure-obscure anchor (hold/repackage while the
 | Rank | ID | Score | Anchor | Working title | Format | Status |
 | --- | --- | --- | --- | --- | --- | --- |
 | 1 | ST-033 | 95 | A | A Bank Opened 3.5 Million Accounts Nobody Asked For | long + shorts | scripted |
-| 2 | ST-013 | 94 | A | Diamonds Are Worthless. One Ad Made Them Forever. | long + shorts | idea |
+| 2 | ST-013 | 94 | A | Diamonds Are Worthless. One Ad Made Them Forever. | long + shorts | **scripted** |
 | 3 | ST-029 | 94 | A | The $30 Billion Truck That Only Rolled Downhill | long + shorts | **scripted** |
 | 4 | ST-017 | 93 | A | Europe's Hottest Company Had $2 Billion That Didn't Exist | long + shorts | idea |
 | 5 | ST-025 | 93 | B | Ireland Lost Its Banks for Six Months. It Was Fine. | long + shorts | idea |
@@ -251,7 +251,7 @@ premise, no famous name · **C** = pure-obscure anchor (hold/repackage while the
 - **Score:** 94/100 (payload 19, hook 15, lever 10, demand 14, monetization 14, diff 13, fit 5, feasibility 4)
 - **Candidate shorts (provisional):** • "Diamonds aren't rare. You just think they are." • the two-months'-salary rule was invented by an ad agency • try reselling your diamond
 - **Sources:** (evergreen — verify before scripting) The Atlantic, "Have You Ever Tried to Sell a Diamond?" (Epstein) · De Beers / N.W. Ayer "A Diamond Is Forever" campaign history · reporting on lab-grown diamond price collapse
-- **Status:** idea
+- **Status:** scripted (2026-07-30 — codex-worker pipeline test run; slug 2026-07-30-diamonds. Full staged flow via codex dispatch: research → writer → 4 critics → editor → humanize. Script 6:26, under the 8–10 band after leash cuts — Daniel GATE 1 pending. Title revised to "How Diamonds Became Forever" per research viability verification.)
 
 ### ST-014 — The $4 Billion Cryptocurrency That Never Existed
 - **Format:** long-form (~12–15 min) + shorts bench (provisional)
