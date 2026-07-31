@@ -45,8 +45,8 @@
  * Strip-only floor: no TS enums, parameter properties, or namespaces. ESM with `.ts` specifiers.
  */
 import { createHash, randomBytes } from 'node:crypto';
-import { closeSync, mkdirSync, openSync, readFileSync, readSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { basename, dirname, isAbsolute, join, parse, relative, resolve } from 'node:path';
 import type { PtyHost } from '../pty/host.ts';
 import type { PersistentSessionRegistry } from '../pty/persistentSessions.ts';
 import type { AssignedAgentResolver, ResolvedAssignedAgent } from './agentAssignmentResolver.ts';
@@ -87,11 +87,13 @@ export const DELIVERY_TIMEOUT_REASON = 'roster-delivery-timeout';
  * order landed and no status came back; this one means the order never left the control plane.
  */
 export const DELIVERY_NOT_READY_REASON = 'roster-delivery-not-ready';
+/** A spawned terminal did not prove it read and accepted its binding before the delivery deadline. */
+export const DELIVERY_BOOT_NOT_READY_REASON = 'roster-delivery-boot-not-ready';
 /**
  * How long ONE delivery may wait for its terminal to reach a plain REPL prompt before it settles as a
- * human wait. Generous, because the legitimate wait is real: a freshly spawned session is still booting
- * `claude` and then reading its binding context, and an agent mid-turn on operator conversation must be
- * allowed to finish. Clamped into [{@link MIN_REPL_READY_TIMEOUT_MS}, the delivery timeout] — the completion
+ * human wait. The server-minted boot sentinel separately proves a newly spawned terminal read its binding;
+ * this is the secondary safety gate that keeps a delivery out of a modal or an unrelated live turn. Clamped
+ * into [{@link MIN_REPL_READY_TIMEOUT_MS}, the delivery timeout] — the completion
  * deadline stays the OUTER bound, so this can never extend how long a stage may sit.
  */
 const DEFAULT_REPL_READY_TIMEOUT_MS = 5 * 60 * 1_000;
@@ -177,6 +179,8 @@ export interface RosterFileStat {
    */
   regularFile: boolean;
   size: number;
+  /** True for a symlink or Windows reparse point; these are never accepted as artifacts. */
+  linked?: boolean;
 }
 
 /** Injectable filesystem seam — tests never touch a real disk. */
@@ -194,6 +198,13 @@ export interface RosterFileSystem {
    * verification side only when the size is unchanged and a content comparison is therefore unavoidable.
    */
   hashFile(path: string): string;
+  /**
+   * Canonicalize one file beneath the server-owned roster channel, refusing links/reparse points in every
+   * existing component. The returned path has a verified canonical parent; optional for hermetic seams.
+   */
+  controlPath?(path: string): string;
+  /** Resolve one declared artifact only when it remains canonically beneath `repoRoot`, without links. */
+  artifactPath?(repoRoot: string, path: string): string | null;
   /**
    * Recursive delete of a retired run's roster directory. Optional so an implementation that cannot
    * delete simply keeps the files — never so a caller can silently skip the cleanup.
@@ -315,6 +326,11 @@ interface RosterSessionEntry {
   model: string;
   bindingPath: string;
   settingsPath: string;
+  /** Fresh server-minted capability proving this particular terminal completed its binding turn. */
+  bootToken: string;
+  readyPath: string;
+  /** Cached only on this entry; a replacement session must prove a new ready sentinel. */
+  bootReady: boolean;
   /**
    * Rolling tail of this terminal's output. This is what the REPL-readiness gate reads, so it must survive
    * across deliveries and must keep accumulating while the session is idle — the whole point is to know
@@ -331,6 +347,8 @@ interface RosterSessionEntry {
   readySince: number | null;
   /** Incomplete trailing CSI/OSC bytes retained until the next pty chunk completes the sequence. */
   controlSuffix: string;
+  /** Bounded plain-text tail used to recognize busy markers split across arbitrary PTY chunks. */
+  busyOverlap: string;
   /** Advances only when newly decoded bytes contain a busy transition. */
   busyObservationGeneration: number;
   unobserve: () => void;
@@ -369,8 +387,112 @@ interface RosterRunEntry {
  */
 const HASH_CHUNK_BYTES = 1024 * 1024;
 
+/**
+ * Resolve a path component-by-component without ever traversing a symlink or Windows reparse point.
+ * `lstat` is intentional: `stat` follows the very link this control channel must reject. Existing
+ * components are checked before a recursive mkdir/delete/read/write touches them; a canonical parent is
+ * returned only after that check, so lexical containment alone is never the safety claim.
+ */
+function sameCanonicalPath(left: string, right: string): boolean {
+  const normalize = (value: string): string => value.replace(/\\/g, '/').replace(/\/+$/, '');
+  const normalizedLeft = normalize(left);
+  const normalizedRight = normalize(right);
+  return process.platform === 'win32'
+    ? normalizedLeft.toLowerCase() === normalizedRight.toLowerCase()
+    : normalizedLeft === normalizedRight;
+}
+
+function verifiedControlPath(path: string): string {
+  const absolute = resolve(path);
+  const root = parse(absolute).root;
+  const parts = relative(root, absolute).split(/[\\/]/).filter(Boolean);
+  let current = root;
+  for (const part of parts) {
+    current = join(current, part);
+    try {
+      const stats = lstatSync(current);
+      // On Windows, Node reports directory junctions/reparse links through lstat's symbolic-link bit.
+      // Never follow one merely because its lexical spelling still begins with the roster root.
+      if (stats.isSymbolicLink()) throw new RosterSessionError(`roster control path contains a link/reparse point: ${current}`);
+      // Defensive for reparse forms a platform reports as directories: canonical resolution must still be
+      // exactly this component, never an external target reached through a junction.
+      if (!sameCanonicalPath(realpathSync(current), current)) {
+        throw new RosterSessionError(`roster control path resolves through a reparse point: ${current}`);
+      }
+    } catch (error) {
+      if (error instanceof RosterSessionError) throw error;
+      break; // The missing suffix will be created by the caller's verified parent operation.
+    }
+  }
+  const parent = dirname(absolute);
+  try {
+    const canonicalParent = realpathSync(parent);
+    return join(canonicalParent, basename(absolute));
+  } catch {
+    // A caller that needs the parent (all roster writes do) creates it through `ensureDir` first.
+    return absolute;
+  }
+}
+
+/** Make one directory one component at a time, checking every existing/new component without following it. */
+function ensureVerifiedControlDir(path: string): void {
+  const absolute = resolve(path);
+  const root = parse(absolute).root;
+  const parts = relative(root, absolute).split(/[\\/]/).filter(Boolean);
+  let current = root;
+  for (const part of parts) {
+    current = join(current, part);
+    try {
+      const stats = lstatSync(current);
+      if (stats.isSymbolicLink() || !stats.isDirectory()) {
+        throw new RosterSessionError(`roster control directory is not a real directory: ${current}`);
+      }
+      if (!sameCanonicalPath(realpathSync(current), current)) {
+        throw new RosterSessionError(`roster control directory resolves through a reparse point: ${current}`);
+      }
+    } catch (error) {
+      if (error instanceof RosterSessionError) throw error;
+      mkdirSync(current);
+      const created = lstatSync(current);
+      if (created.isSymbolicLink() || !created.isDirectory()) {
+        throw new RosterSessionError(`roster control directory could not be safely created: ${current}`);
+      }
+      if (!sameCanonicalPath(realpathSync(current), current)) {
+        throw new RosterSessionError(`roster control directory resolves through a reparse point: ${current}`);
+      }
+    }
+  }
+}
+
+/** Canonically constrain an artifact, refusing both link components and a final link/reparse file. */
+function verifiedArtifactPath(repoRoot: string, declared: string): string | null {
+  try {
+    const root = realpathSync(repoRoot);
+    const candidate = resolve(root, declared);
+    const inside = relative(root, candidate);
+    if (inside === '' || inside.startsWith('..') || isAbsolute(inside)) return null;
+    // Unlike the control path, artifact parents are not created by the server. Every existing component is
+    // lstat-checked; a missing suffix is a legitimate "artifact absent" baseline.
+    const parts = inside.split(/[\\/]/).filter(Boolean);
+    let current = root;
+    for (const part of parts) {
+      current = join(current, part);
+      try {
+        const stats = lstatSync(current);
+        if (stats.isSymbolicLink()) return null;
+        if (!sameCanonicalPath(realpathSync(current), current)) return null;
+      } catch {
+        break;
+      }
+    }
+    return candidate;
+  } catch {
+    return null;
+  }
+}
+
 const defaultFileSystem: RosterFileSystem = {
-  ensureDir: (path) => { mkdirSync(path, { recursive: true }); },
+  ensureDir: (path) => { ensureVerifiedControlDir(path); },
   readFile: (path) => {
     try { return readFileSync(path, 'utf8'); } catch { return null; }
   },
@@ -378,16 +500,24 @@ const defaultFileSystem: RosterFileSystem = {
   removeFile: (path) => { rmSync(path, { force: true }); },
   stat: (path) => {
     try {
-      const stats = statSync(path);
-      return { regularFile: stats.isFile(), size: stats.size };
+      const stats = lstatSync(path);
+      return { regularFile: stats.isFile() && !stats.isSymbolicLink(), size: stats.size, linked: stats.isSymbolicLink() };
     } catch {
       return null;
     }
   },
   hashFile: (path) => {
     const hash = createHash('sha256');
-    const fd = openSync(path, 'r');
+    const before = lstatSync(path);
+    if (before.isSymbolicLink() || !before.isFile()) throw new RosterSessionError(`declared artifact is not a regular no-link file: ${path}`);
+    // O_NOFOLLOW is honored on platforms that support it; the lstat/fstat identity check remains the
+    // portable fallback, so a symlink swap cannot turn a hash read into an arbitrary-target read.
+    const fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
     try {
+      const opened = fstatSync(fd);
+      if (!opened.isFile() || (before.ino !== 0 && opened.ino !== before.ino) || (before.dev !== 0 && opened.dev !== before.dev)) {
+        throw new RosterSessionError(`declared artifact changed while opening: ${path}`);
+      }
       const buffer = Buffer.allocUnsafe(HASH_CHUNK_BYTES);
       for (;;) {
         const read = readSync(fd, buffer, 0, HASH_CHUNK_BYTES, null);
@@ -399,7 +529,9 @@ const defaultFileSystem: RosterFileSystem = {
     }
     return hash.digest('hex');
   },
-  removeDir: (path) => { rmSync(path, { recursive: true, force: true }); },
+  controlPath: (path) => verifiedControlPath(path),
+  artifactPath: (repoRoot, path) => verifiedArtifactPath(repoRoot, path),
+  removeDir: (path) => { rmSync(verifiedControlPath(path), { recursive: true, force: true }); },
 };
 
 /** Drop ANSI/OSC control sequences and bare carriage returns from terminal text. */
@@ -422,6 +554,7 @@ export function stripTerminalControl(chunk: string): string {
  * Split off an incomplete trailing escape sequence. PTY chunk boundaries are arbitrary, so stripping each
  * chunk independently can leak the second half of a CSI/OSC sequence into the semantic screen.
  */
+const MAX_CONTROL_SUFFIX_CHARS = 1024;
 export function splitTerminalControlSuffix(chunk: string): { complete: string; suffix: string } {
   let state: 'text' | 'escape' | 'csi' | 'osc' | 'osc-escape' = 'text';
   let sequenceStart = -1;
@@ -467,7 +600,12 @@ export function splitTerminalControlSuffix(chunk: string): { complete: string; s
     }
   }
   if (state === 'text' || sequenceStart < 0) return { complete: chunk, suffix: '' };
-  return { complete: chunk.slice(0, sequenceStart), suffix: chunk.slice(sequenceStart) };
+  const suffix = chunk.slice(sequenceStart);
+  // A malformed `ESC [` followed by endless digit-only chunks used to be re-prepended and fully rescanned
+  // forever. Drop the malformed sequence at a hard cap: it is not semantic terminal text, bounded work is
+  // preserved, and the next valid frame can recover readiness instead of a stuck `settling` state.
+  if (suffix.length > MAX_CONTROL_SUFFIX_CHARS) return { complete: '', suffix: '' };
+  return { complete: chunk.slice(0, sequenceStart), suffix };
 }
 
 /**
@@ -705,9 +843,28 @@ export function detectReplReadinessSettled(
   return readiness;
 }
 
-/** Whether newly decoded bytes contain a busy transition rendered by the live turn. */
-function hasBusyTransition(decoded: string): boolean {
-  return BUSY_MARKERS.some((pattern) => pattern.test(decoded));
+const BUSY_OVERLAP_CHARS = 160;
+
+/**
+ * Detect a busy marker that ends in `decoded`, including one split across plain PTY chunks. A retained
+ * marker wholly inside `overlap` never re-counts, which keeps an old busy footer from becoming false
+ * post-Enter engagement. The returned tail is bounded and belongs to exactly one session entry.
+ */
+export function nextBusySemanticState(overlap: string, decoded: string): { busy: boolean; overlap: string } {
+  const combined = overlap + decoded;
+  const boundary = overlap.length;
+  const busy = BUSY_MARKERS.some((pattern) => {
+    const flags = pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`;
+    const scan = new RegExp(pattern.source, flags);
+    for (;;) {
+      const match = scan.exec(combined);
+      if (!match) return false;
+      if (match.index + match[0].length > boundary) return true;
+      // Guard a future zero-length pattern from looping even though today's markers are non-empty.
+      if (match[0] === '') scan.lastIndex += 1;
+    }
+  });
+  return { busy, overlap: combined.slice(-BUSY_OVERLAP_CHARS) };
 }
 
 /**
@@ -780,6 +937,8 @@ export interface RosterPermissionInput {
   agentDir: string;
   /** Exact server-owned completion status files this agent may write. */
   statusPaths?: readonly string[];
+  /** Exact server-owned boot-ready sentinel this freshly spawned terminal may write once. */
+  readyPath?: string;
   /** Repo-relative read scope, unioned across the stages this agent owns. */
   read: readonly string[];
   /** Repo-relative write scope, unioned across the stages this agent owns. */
@@ -932,6 +1091,10 @@ export function buildRosterPermissionSettings(input: RosterPermissionInput): Ros
     if (SAFE_PATH_SEGMENT.test(stageId)) {
       addAllow(`Edit(${absoluteRulePath(normalized)})`);
     }
+  }
+  if (input.readyPath) {
+    const normalized = absoluteDir(input.readyPath);
+    if (normalized === `${absoluteDir(input.agentDir)}/ready.json`) addAllow(`Edit(${absoluteRulePath(normalized)})`);
   }
 
   const granted = new Set(input.tools);
@@ -1109,7 +1272,9 @@ function defaultLaunchLine(input: {
   // `--settings` takes a file path (or inline JSON). The path is quoted because the dashboard state root
   // is an absolute OS path that may contain spaces.
   return `claude --model ${input.model} --settings "${input.settingsPath}" `
-    + `--strict-mcp-config --mcp-config "${input.mcpConfigPath}" `
+    // `--mcp-config <configs...>` is variadic. Its terminating strict flag MUST follow it, otherwise the
+    // binding prompt is consumed as a second config path and the terminal never performs its boot turn.
+    + `--mcp-config "${input.mcpConfigPath}" --strict-mcp-config `
     + `"Read ${input.bindingPath} now. It is your binding context for run `
     + `${input.runRef} as ${input.agentId}: follow it exactly, then wait — work orders arrive in this terminal `
     + `as file paths, one at a time."`;
@@ -1202,6 +1367,8 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
   const recoveredActivity = new Map<string, { cursor: number; lines: Map<string, string> }>();
 
   const runDir = (runRef: string): string => join(options.stateRoot, 'control', 'roster', runRef);
+  /** The real filesystem re-canonicalizes this on every channel operation; fake seams preserve its shape. */
+  const controlPath = (path: string): string => fs.controlPath ? fs.controlPath(path) : path;
 
   const record = (subject: string, runRef: string, agentId: string, activity: string, status: 'pending' | 'success' | 'failure' | 'waiting' | 'interrupted', stageRef?: string): void => {
     const entry = runs.get(runRef);
@@ -1231,6 +1398,8 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
     project: string;
     parameters: RosterRunParameters;
     workDir: string;
+    readyPath: string;
+    bootToken: string;
   }): string => {
     const params = Object.keys(input.parameters).sort()
       .map((key) => `- ${key}: ${input.parameters[key]}`)
@@ -1270,11 +1439,32 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
       'upstream stages have landed. Until a path arrives you are idle by design: do not start downstream',
       'work, do not approve anything, and do not spend.',
       '',
-      'Each order file names the exact server-owned status path to write when the stage is genuinely',
+       'Each order file names the exact server-owned status path to write when the stage is genuinely',
       'finished, including a token that only that file carries. Do not signal completion in terminal text.',
-      '',
-      'The human may talk to you in this terminal at any time. Answer, iterate, and keep waiting.',
+       '',
+       '## Required boot-ready handshake',
+       '',
+       'Before you accept ANY work order, read and accept this COMPLETE binding context. As your FINAL boot',
+       `action, atomically write exactly {"token":"${input.bootToken}"} to ${input.readyPath}.`,
+       'Write no other keys or text to that file. Only after that write has succeeded, return to an idle',
+       'REPL and wait for a work-order path. This sentinel is how the control plane proves this terminal',
+       'completed its binding turn; terminal prose and spinner text are never proof.',
+       '',
+       'The human may talk to you in this terminal at any time. Answer, iterate, and keep waiting.',
     ].join('\n');
+  };
+
+  /** A boot sentinel is deliberately smaller and stricter than a completion receipt. */
+  const bootReady = (raw: string | null, token: string): boolean => {
+    if (raw === null) return false;
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return false;
+      const ready = parsed as Record<string, unknown>;
+      return Object.keys(ready).length === 1 && ready.token === token;
+    } catch {
+      return false;
+    }
   };
 
   const orderMarkdown = (input: {
@@ -1341,28 +1531,54 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
     pending.settle(result);
   };
 
+  /** Inspect one token-bound completion receipt. Returns true when it settled or the channel is unsafe. */
+  const inspectCompletionStatus = (
+    entry: RosterSessionEntry,
+    pending: PendingDelivery,
+    statusPath: string,
+  ): boolean => {
+    if (entry.pending !== pending) return true;
+    let raw: string | null;
+    try {
+      raw = fs.readFile(controlPath(statusPath));
+    } catch (error) {
+      const summary = `delivery abandoned: completion channel is unsafe (${error instanceof Error ? error.message : 'unknown control-path error'})`;
+      resolvePending(entry, { state: 'waiting-human', summary: summary.slice(0, MAX_SUMMARY_CHARS), usage: zeroUsage(), artifacts: [], checkpoints: [] });
+      return true;
+    }
+    // Known limitation accepted by Daniel (2026-07-31): cooperative same-user agents can read a sibling
+    // bearer token/status path and forge a zero-artifact or gate-stage receipt. Artifact stages still need
+    // server-side delta/link verification below; authenticated IPC/OS isolation was rejected for this fleet.
+    const status = parseCompletionStatus(raw, pending.token);
+    if (!status) return false;
+    const summary = safeSummary(
+      status.summary,
+      `stage ${pending.stageId} reported ${status.verdict.toLowerCase()}`,
+    );
+    const state = status.verdict === 'DONE'
+      ? 'succeeded'
+      : status.verdict === 'BLOCKED'
+        ? 'waiting-human'
+        : 'failed';
+    resolvePending(entry, { state, summary, usage: zeroUsage(), artifacts: [], checkpoints: [] });
+    return true;
+  };
+
   /** Read one delivery's server-owned status path until it contains a valid token-bound verdict. */
   const pollCompletionStatus = (
     entry: RosterSessionEntry,
     pending: PendingDelivery,
     statusPath: string,
+    live: () => boolean,
+    settleLivenessLoss: () => void,
   ): void => {
     const poll = (): void => {
       if (entry.pending !== pending) return;
-      const status = parseCompletionStatus(fs.readFile(statusPath), pending.token);
-      if (status) {
-        const summary = safeSummary(
-          status.summary,
-          `stage ${pending.stageId} reported ${status.verdict.toLowerCase()}`,
-        );
-        const state = status.verdict === 'DONE'
-          ? 'succeeded'
-          : status.verdict === 'BLOCKED'
-            ? 'waiting-human'
-            : 'failed';
-        resolvePending(entry, { state, summary, usage: zeroUsage(), artifacts: [], checkpoints: [] });
+      if (!live()) {
+        settleLivenessLoss();
         return;
       }
+      if (inspectCompletionStatus(entry, pending, statusPath)) return;
       const timer = setTimeout(poll, COMPLETION_STATUS_POLL_MS);
       if (typeof timer.unref === 'function') timer.unref();
       pending.pollTimer = timer;
@@ -1381,9 +1597,12 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
       if (!isSafeRepoRelativePath(artifact.path)) {
         return { path: artifact.path, absolute: '', unsafe: true, before: null };
       }
-      const absolute = join(options.repoRoot, artifact.path);
+      const absolute = fs.artifactPath ? fs.artifactPath(options.repoRoot, artifact.path) : join(options.repoRoot, artifact.path);
+      if (absolute === null) {
+        return { path: artifact.path, absolute: '', unsafe: true, before: null };
+      }
       const stat = fs.stat(absolute);
-      const usable = stat !== null && stat.regularFile && stat.size > 0;
+      const usable = stat !== null && stat.regularFile && !stat.linked && stat.size > 0;
       return {
         path: artifact.path,
         absolute,
@@ -1419,15 +1638,25 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
         problems.push(`${snapshot.path} (not a safe repo-relative path)`);
         continue;
       }
-      const after = fs.stat(snapshot.absolute);
+      // Re-resolve from the declared path at completion. The artifact may have been absent at the
+      // delivery snapshot, so a parent component can become a junction after that snapshot; reading
+      // `snapshot.absolute` directly would then follow a path the server never verified for this phase.
+      const completedPath = fs.artifactPath
+        ? fs.artifactPath(options.repoRoot, snapshot.path)
+        : join(options.repoRoot, snapshot.path);
+      if (completedPath === null || !sameCanonicalPath(completedPath, snapshot.absolute)) {
+        problems.push(`${snapshot.path} (link or reparse point)`);
+        continue;
+      }
+      const after = fs.stat(completedPath);
       if (after === null) {
         problems.push(`${snapshot.path} (missing)`);
         continue;
       }
       // Both of these satisfied the old `existsSync`: a directory wearing the artifact's name, and a
       // 0-byte file.
-      if (!after.regularFile) {
-        problems.push(`${snapshot.path} (not a regular file)`);
+      if (!after.regularFile || after.linked) {
+        problems.push(`${snapshot.path} (${after.linked ? 'link or reparse point' : 'not a regular file'})`);
         continue;
       }
       if (after.size === 0) {
@@ -1438,7 +1667,7 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
       // Size is the cheap discriminator, so the big artifacts (`final.mp4`) are hashed on the
       // verification side ONLY when their size did not move and the bytes must actually be compared.
       if (after.size !== snapshot.before.size) continue;
-      if (fs.hashFile(snapshot.absolute) !== snapshot.before.hash) continue;
+      if (fs.hashFile(completedPath) !== snapshot.before.hash) continue;
       problems.push(`${snapshot.path} (byte-identical to the file already there when the order was delivered)`);
     }
     return problems;
@@ -1477,17 +1706,64 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
   };
 
   /** Wait for a terminal to leave a modal menu / stop being mid-turn, with exponential backoff. */
-  const waitForRepl = async (entry: RosterSessionEntry, budgetMs: number): Promise<ReplReadiness> => {
+  const waitForRepl = async (
+    entry: RosterSessionEntry,
+    budgetMs: number,
+    live: () => boolean,
+  ): Promise<ReplReadiness | null> => {
+    if (!live()) return null;
     const started = now();
     let delay = REPL_POLL_MIN_MS;
     let readiness = settledReadiness(entry);
     while (readiness.state !== 'ready') {
+      if (!live()) return null;
       if (now() - started >= budgetMs) return readiness;
       await sleep(Math.min(delay, Math.max(0, budgetMs - (now() - started))));
       delay = Math.min(REPL_POLL_MAX_MS, delay * 2);
+      if (!live()) return null;
       readiness = settledReadiness(entry);
     }
     return readiness;
+  };
+
+  /**
+   * Wait for this ENTRY's fresh server-minted boot sentinel, never terminal prose. The cache lives on the
+   * entry itself, so a replacement session starts false even if it reuses the same agent id/run directory.
+   */
+  const waitForBootReady = async (
+    entry: RosterSessionEntry,
+    budgetMs: number,
+    live: () => boolean,
+  ): Promise<'ready' | 'timed-out' | 'unsafe' | 'gone'> => {
+    if (entry.bootReady) return 'ready';
+    const started = now();
+    let delay = REPL_POLL_MIN_MS;
+    for (;;) {
+      if (!live()) return 'gone';
+      try {
+        if (bootReady(fs.readFile(controlPath(entry.readyPath)), entry.bootToken)) {
+          entry.bootReady = true;
+          return 'ready';
+        }
+      } catch {
+        return 'unsafe';
+      }
+      if (now() - started >= budgetMs) {
+        // One final synchronous read closes the write-at-deadline boundary without granting a stale token.
+        try {
+          if (bootReady(fs.readFile(controlPath(entry.readyPath)), entry.bootToken)) {
+            entry.bootReady = true;
+            return 'ready';
+          }
+        } catch {
+          return 'unsafe';
+        }
+        return 'timed-out';
+      }
+      await sleep(Math.min(delay, Math.max(0, budgetMs - (now() - started))));
+      delay = Math.min(REPL_POLL_MAX_MS, delay * 2);
+      if (!live()) return 'gone';
+    }
   };
 
   const scan = (entry: RosterSessionEntry, chunk: string): void => {
@@ -1505,7 +1781,9 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
         entry.readySince = null;
       }
     }
-    if (hasBusyTransition(screenStripped)) entry.busyObservationGeneration += 1;
+    const busy = nextBusySemanticState(entry.busyOverlap, screenStripped);
+    entry.busyOverlap = busy.overlap;
+    if (busy.busy) entry.busyObservationGeneration += 1;
   };
 
   const settlePending = (run: RosterRunEntry, runRef: string, entry: RosterSessionEntry, summary: string): void => {
@@ -1524,9 +1802,15 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
     const agentDir = join(runDir(runRef), agentId);
     fs.ensureDir(join(agentDir, 'orders'));
     fs.ensureDir(join(agentDir, 'status'));
-    const bindingPath = join(agentDir, 'binding.md');
+    const bindingPath = controlPath(join(agentDir, 'binding.md'));
+    const readyPath = controlPath(join(agentDir, 'ready.json'));
+    const bootToken = mintToken();
+    if (!/^[a-f0-9]{32}$/.test(bootToken)) throw new RosterSessionError('roster boot token is malformed');
+    // Stale readiness is as unsafe as stale completion: clear it before the launch exposes a new token.
+    fs.removeFile(readyPath);
     fs.writeFile(bindingPath, bindingMarkdown({
       runRef, agentId, verified, project: run.project, parameters: run.parameters, workDir: run.workDir,
+      readyPath, bootToken,
     }));
     // THE SCOPED PER-RUN PERMISSIONS. Written BEFORE the launch line is typed, from the compiled
     // proposal's own declared scope and the server-owned tool cap — never a blanket flag, never a
@@ -1534,7 +1818,7 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
     // channels. It lives inside the roster run directory, so `retireRun`'s `removeDir` is already its
     // cleanup: the grant cannot outlive the run it was minted for.
     const scope = rosterAgentScope(proposal, agentId);
-    const settingsPath = join(agentDir, 'settings.json');
+    const settingsPath = controlPath(join(agentDir, 'settings.json'));
     const statusPaths = proposal.stages
       .filter((stage) => stage.assignment?.agentId === agentId)
       .map((stage) => join(agentDir, 'status', `${stage.id}.json`));
@@ -1542,12 +1826,13 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
       repoRoot: options.repoRoot,
       agentDir,
       statusPaths,
+      readyPath,
       read: scope.read,
       write: scope.write,
       tools: rosterAgentTools(proposal, agentId, resolveWorkflowTools),
       disabledMcpjsonServers: disabledProjectMcpjsonServers(fs, options.repoRoot),
     }).json);
-    const mcpConfigPath = join(agentDir, 'mcp.json');
+    const mcpConfigPath = controlPath(join(agentDir, 'mcp.json'));
     fs.writeFile(mcpConfigPath, `${JSON.stringify({ mcpServers: {} }, null, 2)}\n`);
     const created = options.registry.create(run.owner, options.host, {
       requestId: '', cwd: run.workDir, cols, rows,
@@ -1559,10 +1844,14 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
       model: verified.assignment.model,
       bindingPath,
       settingsPath,
+      bootToken,
+      readyPath,
+      bootReady: false,
       screen: '',
       lastSemanticAt: now(),
       readySince: null,
       controlSuffix: '',
+      busyOverlap: '',
       busyObservationGeneration: 0,
       unobserve: () => {},
       pending: null,
@@ -1705,21 +1994,55 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
         runRef: input.runRef, stageId: input.stageId, agentId,
         ...(input.timeoutMs === undefined ? {} : { timeoutMs: input.timeoutMs }),
       });
+      // Reserve this agent's one-delivery lease BEFORE the first boot/readiness await. Two concurrent
+      // engine dispatches can therefore never both observe an empty slot and overwrite each other's
+      // promise; retire/exit sees this exact pending identity even while the terminal is still booting.
+      const token = mintToken();
+      if (!/^[a-f0-9]{32}$/.test(token)) throw new RosterSessionError('roster completion token is malformed');
+      const pending: PendingDelivery = {
+        stageId: input.stageId,
+        token,
+        settle: () => {},
+        timer: null,
+        pollTimer: null,
+      };
+      const settled = new Promise<WorkerExecutionResult>((resolve) => { pending.settle = resolve; });
+      entry.pending = pending;
+      const live = (): boolean => runs.get(input.runRef) === run
+        && run.sessions.get(agentId) === entry
+        && entry.pending === pending
+        && options.registry.canAttach(entry.owner, entry.sessionId).ok;
+      const settleLeaseError = (detail: string): Promise<WorkerExecutionResult> => {
+        if (entry.pending === pending) {
+          const summary = `work order withheld: ${detail}`;
+          record(run.subject, input.runRef, agentId, summary, 'waiting', input.stageRef);
+          resolvePending(entry, { state: 'waiting-human', summary: summary.slice(0, MAX_SUMMARY_CHARS), usage: zeroUsage(), artifacts: [], checkpoints: [] });
+        }
+        return settled;
+      };
+      const settleLivenessLoss = (phase: string): Promise<WorkerExecutionResult> =>
+        settleLeaseError(`the ${agentId} terminal is no longer attachable ${phase}`);
+      const writeSession = (text: string): boolean => {
+        try { return live() && options.registry.write(entry.owner, entry.sessionId, text); } catch { return false; }
+      };
 
-      // THE REPL-READINESS GATE. The delivery line used to be typed unconditionally, and that is how a
+      // THE REPL-READINESS GATE. The boot-ready sentinel above is the PRIMARY proof a fresh terminal read
+      // its binding; this remains the SECONDARY gate because even a booted terminal must not be typed into
+      // while a modal or an unrelated turn is live. The delivery line used to be typed unconditionally, and that is how a
       // work order was lost: it interleaved character-by-character with an open tool-permission menu,
       // which consumed the keystrokes as menu input, and the stage then sat against the delivery deadline
       // with nothing delivered and nothing to report. A terminal is written into only when its own output
       // stream says it is at a plain REPL prompt — not in a modal menu and not mid-turn.
       //
-      // The fast path costs nothing once an idle frame has been quiet for the settle threshold. A fresh
-      // ready footer still polls: it may belong to the spin-up gap of the boot binding turn, and only a
-      // settled pre-type screen makes submit verification's later fresh-busy signal attributable to OUR
-      // order. Every wait remains bounded by this delivery's own completion deadline.
+      // The fast path costs nothing once an idle frame has been quiet for the settle threshold. The
+      // token-bound boot sentinel, not this footer, closes the binding-spinner attribution race; the
+      // settled pre-type screen is retained only to avoid typing into modal/mid-turn state. Every wait
+      // remains bounded by this delivery's own completion deadline.
       const readinessBudget = Math.min(
         timeoutMs,
         Math.max(MIN_REPL_READY_TIMEOUT_MS, options.replReadyTimeoutMs ?? DEFAULT_REPL_READY_TIMEOUT_MS),
       );
+      const deliveryStartedAt = now();
       const withholdForReadiness = (readiness: Exclude<ReplReadiness, { state: 'ready' }>): WorkerExecutionResult => {
         const detail = readiness.state === 'modal'
           ? `an interactive prompt is open ("${readiness.marker}")`
@@ -1743,36 +2066,62 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
           checkpoints: [],
         };
       };
+      let boot: Awaited<ReturnType<typeof waitForBootReady>>;
+      try {
+        boot = await waitForBootReady(entry, readinessBudget, live);
+      } catch {
+        return settleLeaseError('boot readiness wait failed before the order channel was opened');
+      }
+      if (boot !== 'ready') {
+        if (boot === 'gone') return settleLivenessLoss('while waiting for boot readiness');
+        if (entry.pending !== pending) return settled;
+        const detail = boot === 'unsafe'
+          ? 'its server-owned boot-ready channel became unsafe'
+          : 'it did not write a valid token-bound ready sentinel after reading its binding';
+        const summary = `work order withheld: the ${agentId} terminal has not completed boot — ${detail} `
+          + `(${DELIVERY_BOOT_NOT_READY_REASON}); open the terminal, then re-run the stage`;
+        record(run.subject, input.runRef, agentId, summary, 'waiting', input.stageRef);
+        resolvePending(entry, { state: 'waiting-human', summary: summary.slice(0, MAX_SUMMARY_CHARS), usage: zeroUsage(), artifacts: [], checkpoints: [] });
+        return settled;
+      }
+      if (!live()) return settleLivenessLoss('after boot readiness');
       let readiness = settledReadiness(entry);
-      if (readiness.state !== 'ready') readiness = await waitForRepl(entry, readinessBudget);
+      const remainingReadinessBudget = Math.max(0, Math.min(readinessBudget, timeoutMs - (now() - deliveryStartedAt)));
+      try {
+        if (readiness.state !== 'ready') {
+          const waited = await waitForRepl(entry, remainingReadinessBudget, live);
+          if (waited === null) return settleLivenessLoss('while waiting for a REPL prompt');
+          readiness = waited;
+        }
+      } catch {
+        return settleLeaseError('REPL readiness wait failed before the order channel was opened');
+      }
+      if (!live()) return settleLivenessLoss('after REPL readiness');
       if (readiness.state !== 'ready') {
         // NOTHING was authored and NOTHING was typed: no order file, no token, no bytes into the pty.
         // This settles as a named human wait, never as a hang and never as a silent success.
-        return withholdForReadiness(readiness);
+        resolvePending(entry, withholdForReadiness(readiness));
+        return settled;
       }
 
       // THE PRE-DELIVERY BASELINE. Taken before the order file exists, so the agent cannot have acted
       // yet: this is what "the stage changed its declared artifacts" is measured against on completion.
-      const snapshots = snapshotDeclaredArtifacts(input.proposalStage);
-      const token = mintToken();
-      if (!/^[a-f0-9]{32}$/.test(token)) throw new RosterSessionError('roster completion token is malformed');
+      let snapshots: ArtifactSnapshot[];
+      try {
+        snapshots = snapshotDeclaredArtifacts(input.proposalStage);
+      } catch {
+        return settleLeaseError('declared-artifact snapshot could not be safely captured');
+      }
       const orderPath = join(runDir(input.runRef), agentId, 'orders', `${input.stageId}.md`);
       const statusPath = join(runDir(input.runRef), agentId, 'status', `${input.stageId}.json`);
-      const pending: PendingDelivery = {
-        stageId: input.stageId,
-        token,
-        settle: () => {},
-        timer: null,
-        pollTimer: null,
-      };
-      const settled = new Promise<WorkerExecutionResult>((resolve) => { pending.settle = resolve; });
-      // Reserve the one-order slot before yielding the event loop. A concurrent delivery, session exit, or
-      // roster retire during the post-snapshot drain must observe and settle this exact delivery.
-      entry.pending = pending;
       // Hashing a large inherited artifact is synchronous. Drain once so PTY output queued during that
       // snapshot can update the screen, then re-check immediately before the first delivery write.
-      await sleep(0);
-      if (entry.pending !== pending) return settled;
+      try {
+        await sleep(0);
+      } catch {
+        return settleLeaseError('pre-delivery drain failed before the order channel was opened');
+      }
+      if (!live()) return settleLivenessLoss('after the pre-delivery artifact snapshot');
       readiness = settledReadiness(entry);
       if (readiness.state !== 'ready') {
         resolvePending(entry, withholdForReadiness(readiness));
@@ -1780,23 +2129,40 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
       }
 
       try {
+        if (!live()) return settleLivenessLoss('before preparing the order channel');
         fs.ensureDir(join(runDir(input.runRef), agentId, 'orders'));
+        if (!live()) return settleLivenessLoss('while preparing the order channel');
         fs.ensureDir(join(runDir(input.runRef), agentId, 'status'));
         // Snapshot-and-clear: a prior attempt's status can never satisfy this delivery.
-        fs.removeFile(statusPath);
-        fs.writeFile(orderPath, orderMarkdown({
+        const safeStatusPath = controlPath(statusPath);
+        if (!live()) return settleLivenessLoss('before clearing the completion channel');
+        fs.removeFile(safeStatusPath);
+        const safeOrderPath = controlPath(orderPath);
+        if (!live()) return settleLivenessLoss('before writing the order channel');
+        fs.writeFile(safeOrderPath, orderMarkdown({
           runRef: input.runRef, stageId: input.stageId, attemptRef: input.attemptRef, token,
-          statusPath, proposalStage: input.proposalStage, parameters: run.parameters, workDir: run.workDir,
+          statusPath: safeStatusPath, proposalStage: input.proposalStage, parameters: run.parameters, workDir: run.workDir,
         }));
       } catch (error) {
-        if (entry.pending === pending) entry.pending = null;
-        throw error;
+        if (entry.pending === pending) {
+          const summary = `work order withheld: server-owned control channel could not be safely prepared (${error instanceof Error ? error.message : 'unknown error'})`;
+          record(run.subject, input.runRef, agentId, summary, 'waiting', input.stageRef);
+          resolvePending(entry, { state: 'waiting-human', summary: summary.slice(0, MAX_SUMMARY_CHARS), usage: zeroUsage(), artifacts: [], checkpoints: [] });
+        }
+        return settled;
       }
       // THE DELIVERY DEADLINE. `settled` is otherwise reachable only from a valid status, a session exit,
       // or a retire, so one missed status held the engine's single worker slot until an operator ran
       // `stop`. Armed against THIS delivery only: a slot that a later delivery owns is left alone.
       const timer = setTimeout(() => {
         if (entry.pending !== pending) return;
+        if (!live()) {
+          void settleLivenessLoss('while awaiting a completion receipt');
+          return;
+        }
+        // A receipt written immediately before the timer tick must win over timeout even if its scheduled
+        // poll was registered later than this deadline callback.
+        if (inspectCompletionStatus(entry, pending, statusPath)) return;
         const summary = `delivery abandoned: stage ${input.stageId} wrote no completion status within `
           + `${Math.round(timeoutMs / 60_000)} min (${DELIVERY_TIMEOUT_REASON}) — open the ${agentId} `
           + 'terminal to see what it is doing, then re-run the stage';
@@ -1811,25 +2177,35 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
       // TWO SEPARATE WRITES, not `line + '\r'` in one. The REPL folds a same-write trailing CR into the
       // paste instead of submitting it (see {@link SUBMIT_ENTER_DELAY_MS}), so the order text goes first,
       // the paste window is allowed to close, then Enter is sent as its own read to actually fire the turn.
-      const typed = options.registry.write(entry.owner, entry.sessionId, deliveryLine({ orderPath, stageId: input.stageId }));
-      if (typed) await sleep(SUBMIT_ENTER_DELAY_MS);
+      if (!live()) return settleLivenessLoss('before submitting the work order');
+      const typed = writeSession(deliveryLine({ orderPath, stageId: input.stageId }));
+      if (typed) {
+        try {
+          await sleep(SUBMIT_ENTER_DELAY_MS);
+        } catch {
+          return settleLeaseError('submit delay failed before Enter could be sent');
+        }
+      }
       // Submit the Enter and treat a write failure ONLY while this delivery is still ours. The session can
       // be retired or its shell can die DURING the submit gap — either of which
       // resolves `settled` and clears `entry.pending`. In that case skip the Enter (the outcome is already
       // decided) and fall through to `await settled` below, so the retire/exit reason is what returns —
       // never a spurious Enter-write failure.
-      if (entry.pending === pending) {
+      if (live()) {
         const generationAtEnter = entry.busyObservationGeneration;
-        const wrote = typed && options.registry.write(entry.owner, entry.sessionId, '\r');
+        const wrote = typed && writeSession('\r');
         if (!wrote) {
           // `settled` is discarded with this early return, so releasing the slot and the deadline together
           // is the whole cleanup.
           clearTimeout(timer);
-          entry.pending = null;
           const summary = `work order could not be written into session ${entry.sessionId}`;
           record(run.subject, input.runRef, agentId, summary, 'interrupted', input.stageRef);
-          return { state: 'waiting-human', summary, usage: zeroUsage(), artifacts: [], checkpoints: [] };
+          resolvePending(entry, { state: 'waiting-human', summary, usage: zeroUsage(), artifacts: [], checkpoints: [] });
+          return settled;
         }
+        // Completion polling starts after the first successful Enter, not after a busy repaint. A fast valid
+        // receipt is therefore accepted even when the terminal returns idle before any spinner is observed.
+        pollCompletionStatus(entry, pending, statusPath, live, () => { void settleLivenessLoss('while polling the completion channel'); });
         // OUTCOME-VERIFY THE SUBMISSION. Bytes written is not a turn started — see {@link
         // SUBMIT_VERIFY_RETRIES}. Poll for positive evidence the turn engaged (a busy transition decoded
         // after this delivery's Enter), re-submitting up to SUBMIT_VERIFY_RETRIES —
@@ -1840,39 +2216,48 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
         for (let attempt = 0; attempt <= SUBMIT_VERIFY_RETRIES; attempt += 1) {
           const windowEnd = now() + SUBMIT_VERIFY_WINDOW_MS;
           for (;;) {
-            if (entry.pending !== pending) { engaged = true; break; } // an exit/retire already settled us.
+            if (!live()) return settleLivenessLoss('during submission verification');
             if (detectTurnEngaged(entry.busyObservationGeneration, generationAtEnter)) {
               engaged = true;
               break;
             }
             if (now() >= windowEnd) break;
-            await sleep(Math.min(SUBMIT_VERIFY_POLL_MS, Math.max(0, windowEnd - now())));
+            try {
+              await sleep(Math.min(SUBMIT_VERIFY_POLL_MS, Math.max(0, windowEnd - now())));
+            } catch {
+              return settleLeaseError('submit verification wait failed');
+            }
           }
-          if (engaged || entry.pending !== pending) break;
+          if (engaged) break;
+          if (!live()) return settleLivenessLoss('during submission verification');
           if (attempt === SUBMIT_VERIFY_RETRIES) break;
           // Re-submit. A missing line means the prior Enter cleared it WITHOUT starting a turn (submitted-
           // then-errored, or typed into a transient state) — re-type before Enter; a present line is still
           // sitting unsubmitted (a folded CR, or a block that has since cleared), so just re-send Enter.
           if (!frameHasDeliveryLine(entry.screen, input.stageId)) {
-            if (!options.registry.write(entry.owner, entry.sessionId, deliveryLine({ orderPath, stageId: input.stageId }))) break;
-            await sleep(SUBMIT_ENTER_DELAY_MS);
-            if (entry.pending !== pending) { engaged = true; break; }
+            if (!writeSession(deliveryLine({ orderPath, stageId: input.stageId }))) break;
+            try {
+              await sleep(SUBMIT_ENTER_DELAY_MS);
+            } catch {
+              return settleLeaseError('retry submit delay failed before Enter could be sent');
+            }
+            if (!live()) return settleLivenessLoss('during retry submit delay');
           }
-          if (!options.registry.write(entry.owner, entry.sessionId, '\r')) break;
+          if (!writeSession('\r')) break;
         }
         if (!engaged && entry.pending === pending) {
-          clearTimeout(timer);
-          entry.pending = null;
           const summary = `work order was written into session ${entry.sessionId} but no turn engaged after `
             + `${SUBMIT_VERIFY_RETRIES} submit retries (${DELIVERY_NOT_ENGAGED_REASON}) — open the ${agentId} `
             + 'terminal to see whether it is blocked (an open prompt, a usage limit), clear it, then re-run the stage';
           record(run.subject, input.runRef, agentId, summary, 'waiting', input.stageRef);
-          return { state: 'waiting-human', summary: summary.slice(0, MAX_SUMMARY_CHARS), usage: zeroUsage(), artifacts: [], checkpoints: [] };
+          resolvePending(entry, { state: 'waiting-human', summary: summary.slice(0, MAX_SUMMARY_CHARS), usage: zeroUsage(), artifacts: [], checkpoints: [] });
+          return settled;
         }
         if (entry.pending === pending) {
           record(run.subject, input.runRef, agentId, `working stage ${input.stageId}`, 'pending', input.stageRef);
-          pollCompletionStatus(entry, pending, statusPath);
         }
+      } else {
+        return settleLivenessLoss('during the submit delay');
       }
       const result = await settled;
       if (result.state === 'succeeded') {

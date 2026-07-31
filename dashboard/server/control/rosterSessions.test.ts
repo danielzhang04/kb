@@ -24,6 +24,7 @@ import {
   detectReplReadinessFresh,
   detectReplReadinessSettled,
   detectTurnEngaged,
+  nextBusySemanticState,
   STALE_BUSY_QUIET_MS,
   projectRosterState,
   resolveRosterWorkDir,
@@ -33,6 +34,7 @@ import {
   splitTerminalControlSuffix,
   stripTerminalControl,
   DELIVERY_NOT_READY_REASON,
+  DELIVERY_BOOT_NOT_READY_REASON,
   DELIVERY_NOT_ENGAGED_REASON,
   DELIVERY_TIMEOUT_REASON,
   type RosterFileSystem,
@@ -111,6 +113,23 @@ function proposalFixture(): PlanProposal {
 /** Normalize path separators so assertions read the same on Windows and POSIX. */
 function norm(value: string): string {
   return value.split('\\').join('/');
+}
+
+/** Minimal shape of the CLI's variadic `--mcp-config <configs...>` parser, not a substring-order check. */
+function parseLaunchArgv(line: string): { mcpConfigs: string[]; strict: boolean; positional: string[] } {
+  const argv = (line.match(/"[^"]*"|\S+/g) ?? []).map((token) => token.replace(/^"|"$/g, ''));
+  const mcpConfigs: string[] = [];
+  const positional: string[] = [];
+  let strict = false;
+  for (let index = 1; index < argv.length; index += 1) {
+    if (argv[index] === '--mcp-config') {
+      for (index += 1; index < argv.length && !argv[index].startsWith('--'); index += 1) mcpConfigs.push(argv[index]);
+      index -= 1;
+    } else if (argv[index] === '--strict-mcp-config') strict = true;
+    else if (!argv[index].startsWith('--')) positional.push(argv[index]);
+    else index += 1; // options in this launch shape with one following value (--model/--settings)
+  }
+  return { mcpConfigs, strict, positional };
 }
 
 /** The exact title `execution.ts#stableHumanTitle` gives a declared gate's boundary. */
@@ -232,7 +251,8 @@ function fakeHost(): FakeHost {
 /**
  * Recording filesystem. `stat`/`hashFile` replace the old `exists`, because `existsSync` was true for a
  * DIRECTORY named `shots.json` and for a 0-byte file — both of which satisfied a declared artifact.
- * `putDir` and a 0-byte `put` let a test stand exactly those two things where an artifact belongs.
+ * `putDir` and a 0-byte `put` let a test stand exactly those two things where an artifact belongs. The
+ * reparse seam models a Windows junction/symlink without touching the host filesystem.
  */
 function fakeFs(existing: string[] = [], seed: { directories?: string[]; contents?: Record<string, string> } = {}): RosterFileSystem & {
   files: Map<string, string>;
@@ -246,6 +266,8 @@ function fakeFs(existing: string[] = [], seed: { directories?: string[]; content
   put(path: string, contents: string): void;
   /** Stand a DIRECTORY where an artifact is declared. */
   putDir(path: string): void;
+  /** Stand a link/reparse point at a path; control-channel access must reject it before removal/write. */
+  putLink(path: string, contents?: string): void;
 } {
   const files = new Map<string, string>();
   const dirs: string[] = [];
@@ -253,6 +275,7 @@ function fakeFs(existing: string[] = [], seed: { directories?: string[]; content
   const removedFiles: string[] = [];
   const operations: string[] = [];
   const hashed: string[] = [];
+  const links = new Set<string>();
   const directories = new Set((seed.directories ?? []).map((path) => norm(path)));
   for (const path of existing) files.set(norm(path), `seed:${norm(path)}`);
   for (const [path, value] of Object.entries(seed.contents ?? {})) files.set(norm(path), value);
@@ -277,6 +300,7 @@ function fakeFs(existing: string[] = [], seed: { directories?: string[]; content
     },
     stat(path) {
       const key = norm(path);
+      if (links.has(key)) return { regularFile: false, size: Buffer.byteLength(files.get(key) ?? '', 'utf8'), linked: true };
       if (directories.has(key)) return { regularFile: false, size: 0 };
       const value = files.get(key);
       return value === undefined ? null : { regularFile: true, size: Buffer.byteLength(value, 'utf8') };
@@ -286,6 +310,29 @@ function fakeFs(existing: string[] = [], seed: { directories?: string[]; content
       hashed.push(key);
       return createHash('sha256').update(files.get(key) ?? '').digest('hex');
     },
+    artifactPath(repoRoot, path) {
+      const root = norm(repoRoot).replace(/\/+$/, '');
+      const key = norm(`${root}/${path}`);
+      if (!key.startsWith(`${root}/`)) return null;
+      const components = key.split('/').filter(Boolean);
+      let current = key.startsWith('/') ? '' : components.shift() ?? '';
+      for (const component of components) {
+        current = current === '' ? `/${component}` : `${current}/${component}`;
+        if (links.has(current)) return null;
+      }
+      return key;
+    },
+    controlPath(path) {
+      const key = norm(path);
+      const components = key.split('/').filter(Boolean);
+      let current = key.startsWith('/') ? '' : components.shift() ?? '';
+      for (const component of components) {
+        current = current === '' ? `/${component}` : `${current}/${component}`;
+        if (links.has(current)) throw new Error(`roster control path contains a link/reparse point: ${current}`);
+      }
+      if (links.has(key)) throw new Error(`roster control path contains a link/reparse point: ${key}`);
+      return key;
+    },
     removeDir(path) {
       const prefix = `${norm(path)}/`;
       removed.push(norm(path));
@@ -293,6 +340,7 @@ function fakeFs(existing: string[] = [], seed: { directories?: string[]; content
     },
     put(path, contents) { files.set(norm(path), contents); },
     putDir(path) { directories.add(norm(path)); },
+    putLink(path, contents = 'linked target bytes') { const key = norm(path); links.add(key); files.set(key, contents); },
   };
 }
 
@@ -330,11 +378,18 @@ function harness(options: {
   coldTerminals?: boolean;
   /** Disable the normal fake terminal's post-Enter busy transition. */
   autoEngage?: boolean;
+  /** Simulate the binding-following agent writing its server-minted boot sentinel after spawn. */
+  autoBootReady?: boolean;
 } = {}) {
   const plan = options.plan ?? proposalFixture();
   const store = createInMemoryControlPlaneStore({ newId: () => `id-${++sequence}` });
   const runRef = createApprovedRun(store, plan);
   const registry = createPersistentSessionRegistry();
+  let attachable = true;
+  const registryCanAttach = registry.canAttach.bind(registry);
+  registry.canAttach = (owner, sessionId) => attachable
+    ? registryCanAttach(owner, sessionId)
+    : { ok: false, reason: 'exited' };
   const host = fakeHost();
   const fs = fakeFs(options.existingPaths ?? [], options.seed ?? {});
   const resolve = vi.fn((input: Parameters<AssignedAgentResolver['resolve']>[0]) => ({
@@ -383,6 +438,16 @@ function harness(options: {
     ...sessions,
     ensureRoster(input) {
       const result = sessions.ensureRoster(input);
+      if (options.autoBootReady !== false) {
+        for (const row of sessions.state(input.subject, input.runRef)) {
+          if (!row.sessionId) continue;
+          const base = `/state/control/roster/${input.runRef}/${row.agentId}`;
+          const binding = fs.files.get(`${base}/binding.md`) ?? '';
+          const token = /atomically write exactly \{"token":"([0-9a-f]{32})"\}/.exec(binding)?.[1];
+          if (!token) throw new Error(`boot token missing from ${row.agentId} binding`);
+          fs.put(`${base}/ready.json`, JSON.stringify({ token }));
+        }
+      }
       if (!options.coldTerminals) {
         for (const row of sessions.state(input.subject, input.runRef)) {
           if (row.sessionId) host.emit(row.sessionId, IDLE_FRAME);
@@ -394,6 +459,7 @@ function harness(options: {
   };
   return {
     plan, store, runRef, registry, host, fs, sessions: spawned, resolve, sleeps,
+    setAttachable: (value: boolean) => { attachable = value; },
     advanceClock: (ms: number) => { clock += ms; },
   };
 }
@@ -451,6 +517,17 @@ function completionToken(fs: ReturnType<typeof fakeFs>, runRef: string, stageId:
   return token;
 }
 
+function bootToken(fs: ReturnType<typeof fakeFs>, runRef: string, agentId = 'fyt-story'): string {
+  const binding = fs.files.get(`/state/control/roster/${runRef}/${agentId}/binding.md`) ?? '';
+  const token = /atomically write exactly \{"token":"([0-9a-f]{32})"\}/.exec(binding)?.[1];
+  if (!token) throw new Error(`boot token missing from ${agentId} binding`);
+  return token;
+}
+
+function writeBootReady(fs: ReturnType<typeof fakeFs>, runRef: string, agentId = 'fyt-story', token?: string): void {
+  fs.put(`/state/control/roster/${runRef}/${agentId}/ready.json`, JSON.stringify({ token: token ?? bootToken(fs, runRef, agentId) }));
+}
+
 async function writeCompletionStatus(
   fs: ReturnType<typeof fakeFs>,
   runRef: string,
@@ -506,6 +583,9 @@ describe('roster spawn lifecycle', () => {
     expect(binding).toContain('# fyt-story');
     expect(binding).toContain('server-owned status path');
     expect(binding).toContain('Do not signal completion in terminal text');
+    expect(binding).toContain('Required boot-ready handshake');
+    expect(binding).toContain(`/state/control/roster/${runRef}/fyt-story/ready.json`);
+    expect(binding).toContain(`{"token":"${bootToken(fs, runRef)}"}`);
     // The only thing written into the terminal at spawn is the launch line pointing at that binding.
     const sessionId = sessionIdFor(sessions, runRef, 'fyt-story');
     expect(host.writes.get(sessionId)).toHaveLength(1);
@@ -589,6 +669,139 @@ describe('roster spawn lifecycle', () => {
 });
 
 describe('gated work-order delivery', () => {
+  it('requires the server-minted boot-ready handshake before any first delivery or engagement', async () => {
+    let item: ReturnType<typeof harness> | null = null;
+    let sessionId = '';
+    let observedBeforeReady = false;
+    item = harness({
+      autoBootReady: false,
+      onSleep: () => {
+        if (!item || !sessionId) return;
+        if (observedBeforeReady) {
+          if ((item.host.writes.get(sessionId) ?? []).some((chunk) => chunk === '\r')) item.host.emit(sessionId, BUSY_FRAME);
+          return;
+        }
+        observedBeforeReady = true;
+        // This reproduces b965's binding-spinner attribution race: an idle footer alone must not make a
+        // first order typeable, nor may the boot turn's busy paint become engagement for that order.
+        expect(item.host.writes.get(sessionId)).toHaveLength(1);
+        expect(item.fs.files.has(completionPaths(item.runRef, 'story').orderPath)).toBe(false);
+        item.host.emit(sessionId, BUSY_FRAME);
+        writeBootReady(item.fs, item.runRef);
+        item.host.emit(sessionId, IDLE_FRAME);
+      },
+    });
+    item.sessions.ensureRoster({ subject: 'operator', runRef: item.runRef, proposal: item.plan });
+    sessionId = sessionIdFor(item.sessions, item.runRef, 'fyt-story');
+    succeedStage(item.store, item.runRef, 'idea');
+    resolveGate(item.store, item.runRef, 'story', 'g0-idea-pick', 'approved');
+
+    const pending = item.sessions.deliver(deliverInput(item.store, item.runRef, item.plan, 'story'));
+    await vi.waitFor(() => { expect(item?.fs.files.has(completionPaths(item!.runRef, 'story').orderPath)).toBe(true); });
+    expect(observedBeforeReady).toBe(true);
+    await writeCompletionStatus(item.fs, item.runRef, 'story', 'DONE', 'only after boot handshake');
+    await expect(pending).resolves.toMatchObject({ state: 'succeeded' });
+  });
+
+  it('fails closed for stale, wrong-token, torn, or absent boot-ready files without writing an order', async () => {
+    for (const ready of [
+      '{"token":',
+      JSON.stringify({ token: 'f'.repeat(32) }),
+      JSON.stringify({ token: 'f'.repeat(32), extra: true }),
+    ]) {
+      const { plan, store, sessions, runRef, fs, host } = harness({ autoBootReady: false, deliveryTimeoutMs: 60_000 });
+      const stalePath = `/state/control/roster/${runRef}/fyt-story/ready.json`;
+      fs.put(stalePath, ready);
+      sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+      // Spawn clears a stale file before exposing its fresh binding token; re-add invalid/torn content to
+      // prove it cannot be accepted as the new session's sentinel.
+      fs.put(stalePath, ready);
+      succeedStage(store, runRef, 'idea');
+      resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
+      const result = await sessions.deliver(deliverInput(store, runRef, plan, 'story'));
+      expect(result.summary).toContain(DELIVERY_BOOT_NOT_READY_REASON);
+      expect(fs.files.has(completionPaths(runRef, 'story').orderPath)).toBe(false);
+      expect((host.writes.get(sessionIdFor(sessions, runRef, 'fyt-story')) ?? []).filter((chunk) => chunk === '\r')).toHaveLength(0);
+    }
+  });
+
+  it('settles a boot wait on retire and never recreates order, status, or ready files beneath the dead run', async () => {
+    let item: ReturnType<typeof harness> | null = null;
+    let retired = false;
+    item = harness({
+      autoBootReady: false,
+      onSleep: () => {
+        if (item && !retired) {
+          retired = true;
+          item.sessions.retire(item.runRef, 'operator stop during boot');
+        }
+      },
+    });
+    item.sessions.ensureRoster({ subject: 'operator', runRef: item.runRef, proposal: item.plan });
+    succeedStage(item.store, item.runRef, 'idea');
+    resolveGate(item.store, item.runRef, 'story', 'g0-idea-pick', 'approved');
+    const result = await item.sessions.deliver(deliverInput(item.store, item.runRef, item.plan, 'story'));
+    expect(result.summary).toContain('roster retired');
+    expect(item.fs.files.has(completionPaths(item.runRef, 'story').orderPath)).toBe(false);
+    expect(item.fs.files.has(`/state/control/roster/${item.runRef}/fyt-story/ready.json`)).toBe(false);
+  });
+
+  it('settles a silent canAttach loss during secondary readiness without authoring an order or working event', async () => {
+    let item: ReturnType<typeof harness> | null = null;
+    let detached = false;
+    item = harness({
+      onSleep: () => {
+        if (item && !detached) {
+          detached = true;
+          // No host.exit(): this is the liveness gap where the registry becomes unattached without its
+          // usual exit observer settling the pending lease.
+          item.setAttachable(false);
+        }
+      },
+    });
+    item.sessions.ensureRoster({ subject: 'operator', runRef: item.runRef, proposal: item.plan });
+    const sessionId = sessionIdFor(item.sessions, item.runRef, 'fyt-story');
+    item.host.emit(sessionId, 'Do you want to proceed?\r\n1. Yes\r\n');
+    succeedStage(item.store, item.runRef, 'idea');
+    resolveGate(item.store, item.runRef, 'story', 'g0-idea-pick', 'approved');
+
+    const result = await item.sessions.deliver(deliverInput(item.store, item.runRef, item.plan, 'story'));
+    const { orderPath, statusPath } = completionPaths(item.runRef, 'story');
+    expect(result).toMatchObject({ state: 'waiting-human' });
+    expect(result.summary).toContain('no longer attachable');
+    expect(item.fs.files.has(orderPath)).toBe(false);
+    expect(item.fs.files.has(statusPath)).toBe(false);
+    const events = item.store.listEvents('operator', item.runRef, 0, 500);
+    expect(events.ok && events.value.some((event) => (event.summary ?? '').includes('working stage story'))).toBe(false);
+  });
+
+  it('settles a retire during secondary readiness without recreating order, status, or a working event', async () => {
+    let item: ReturnType<typeof harness> | null = null;
+    let retired = false;
+    item = harness({
+      onSleep: () => {
+        if (item && !retired) {
+          retired = true;
+          item.sessions.retire(item.runRef, 'operator stop during secondary readiness');
+        }
+      },
+    });
+    item.sessions.ensureRoster({ subject: 'operator', runRef: item.runRef, proposal: item.plan });
+    const sessionId = sessionIdFor(item.sessions, item.runRef, 'fyt-story');
+    item.host.emit(sessionId, 'Do you want to proceed?\r\n1. Yes\r\n');
+    succeedStage(item.store, item.runRef, 'idea');
+    resolveGate(item.store, item.runRef, 'story', 'g0-idea-pick', 'approved');
+
+    const result = await item.sessions.deliver(deliverInput(item.store, item.runRef, item.plan, 'story'));
+    const { orderPath, statusPath } = completionPaths(item.runRef, 'story');
+    expect(result).toMatchObject({ state: 'waiting-human' });
+    expect(result.summary).toContain('roster retired');
+    expect(item.fs.files.has(orderPath)).toBe(false);
+    expect(item.fs.files.has(statusPath)).toBe(false);
+    const events = item.store.listEvents('operator', item.runRef, 0, 500);
+    expect(events.ok && events.value.some((event) => (event.summary ?? '').includes('working stage story'))).toBe(false);
+  });
+
   it('THE STRUCTURAL HALT: an unapproved gate means the work order never reaches the session', async () => {
     const { plan, store, sessions, runRef, fs, host } = harness();
     sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
@@ -843,6 +1056,27 @@ describe('gated work-order delivery', () => {
     const directoryResult = await directory.complete();
     expect(directoryResult.state).toBe('waiting-human');
     expect(directoryResult.summary).toContain(`${SCRIPT_PATH} (not a regular file)`);
+  });
+
+  it('rejects a symlink/reparse artifact even when its target is nonempty and the artifact was absent at snapshot', async () => {
+    const run = await artifactHarness();
+    // This models an absent declared artifact replaced by a link to an arbitrary existing nonempty target.
+    // Following stat() would have called it a new regular file and let a zero-work stage pass.
+    run.fs.putLink(`/repo/${SCRIPT_PATH}`, 'outside target with nonempty bytes');
+    const result = await run.complete();
+    expect(result.state).toBe('waiting-human');
+    expect(result.summary).toContain(`${SCRIPT_PATH} (link or reparse point)`);
+  });
+
+  it('rechecks every artifact parent at completion, parking a post-snapshot junction without hashing its target', async () => {
+    const run = await artifactHarness();
+    // The file was absent when its snapshot was taken. Replacing an intermediate component afterwards is
+    // the actual reparse race: direct stat/hash of the old absolute spelling would follow this target.
+    run.fs.putLink('/repo/orgs/faceless-youtube/channels/x/videos', 'outside target with nonempty bytes');
+    const result = await run.complete();
+    expect(result.state).toBe('waiting-human');
+    expect(result.summary).toContain(`${SCRIPT_PATH} (link or reparse point)`);
+    expect(run.fs.hashed).toEqual([]);
   });
 
   it('hashes a declared artifact at most once per delivery phase, and not at all when the size moved', async () => {
@@ -1461,6 +1695,7 @@ describe('roster scoped per-run permissions', () => {
     expect(parsed.permissions.allow).toContain(`Read(/state/control/roster/${runRef}/fyt-story/**)`);
     expect(parsed.permissions.allow).toContain(`Edit(/state/control/roster/${runRef}/fyt-story/status/idea.json)`);
     expect(parsed.permissions.allow).toContain(`Edit(/state/control/roster/${runRef}/fyt-story/status/story.json)`);
+    expect(parsed.permissions.allow).toContain(`Edit(/state/control/roster/${runRef}/fyt-story/ready.json)`);
     expect(parsed.permissions.allow).toContain('Read(/repo/orgs/faceless-youtube/**)');
     expect(parsed.permissions.allow).toContain('Edit(/repo/orgs/faceless-youtube/channels/**)');
     // Nothing outside the canonical repo root or this agent's own roster directory.
@@ -1471,6 +1706,13 @@ describe('roster scoped per-run permissions', () => {
     expect(norm(launch)).toContain(`--settings "/state/control/roster/${runRef}/fyt-story/settings.json"`);
     expect(norm(launch)).toContain(`--strict-mcp-config`);
     expect(norm(launch)).toContain(`--mcp-config "/state/control/roster/${runRef}/fyt-story/mcp.json"`);
+    // This parser models the CLI's variadic `--mcp-config <configs...>` consumption. The strict flag
+    // terminates that variadic list, leaving the binding instruction as the sole positional prompt.
+    expect(parseLaunchArgv(norm(launch))).toEqual({
+      mcpConfigs: [`/state/control/roster/${runRef}/fyt-story/mcp.json`],
+      strict: true,
+      positional: [expect.stringContaining('Read /state/control/roster/')],
+    });
     expect(JSON.parse(fs.files.get(`/state/control/roster/${runRef}/fyt-story/mcp.json`) as string))
       .toEqual({ mcpServers: {} });
     expect(launch).not.toContain('--dangerously-skip-permissions');
@@ -1672,6 +1914,113 @@ describe('roster REPL-readiness gate', () => {
     expect(detectTurnEngaged(8, 7)).toBe(true);
   });
 
+  it('accepts a valid completion written before any busy paint, immediately after the first Enter', async () => {
+    let item: ReturnType<typeof harness> | null = null;
+    let sessionId = '';
+    let wroteFastStatus = false;
+    item = harness({
+      autoEngage: false,
+      onSleep: () => {
+        if (!item || !sessionId || wroteFastStatus) return;
+        const writes = item.host.writes.get(sessionId) ?? [];
+        // The order exists during the text-to-Enter gap; a very fast turn can finish before a spinner
+        // repaint. The first successful Enter must inspect this receipt before engagement verification.
+        if (writes.some((chunk) => chunk.includes('story.md')) && !writes.includes('\r')) {
+          wroteFastStatus = true;
+          item.fs.put(completionPaths(item.runRef, 'story').statusPath, JSON.stringify({
+            token: completionToken(item.fs, item.runRef, 'story'), verdict: 'DONE', summary: 'fast no-spinner completion',
+          }));
+        }
+      },
+    });
+    item.sessions.ensureRoster({ subject: 'operator', runRef: item.runRef, proposal: item.plan });
+    sessionId = sessionIdFor(item.sessions, item.runRef, 'fyt-story');
+    succeedStage(item.store, item.runRef, 'idea');
+    resolveGate(item.store, item.runRef, 'story', 'g0-idea-pick', 'approved');
+    await expect(item.sessions.deliver(deliverInput(item.store, item.runRef, item.plan, 'story')))
+      .resolves.toMatchObject({ state: 'succeeded', summary: 'fast no-spinner completion' });
+    expect(wroteFastStatus).toBe(true);
+  });
+
+  it('does one final synchronous status read at the delivery deadline', async () => {
+    vi.useFakeTimers();
+    try {
+      const { plan, store, sessions, runRef, fs } = harness({ deliveryTimeoutMs: 60_000 });
+      sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+      succeedStage(store, runRef, 'idea');
+      resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
+      const pending = sessions.deliver(deliverInput(store, runRef, plan, 'story'));
+      for (let index = 0; index < 10; index += 1) await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(59_900);
+      fs.put(completionPaths(runRef, 'story').statusPath, JSON.stringify({
+        token: completionToken(fs, runRef, 'story'), verdict: 'DONE', summary: 'receipt at deadline edge',
+      }));
+      await vi.advanceTimersByTimeAsync(100);
+      await expect(pending).resolves.toMatchObject({ state: 'succeeded', summary: 'receipt at deadline edge' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reserves the same-agent lease before the first boot/readiness await, so Promise.all cannot strand a delivery', async () => {
+    let item: ReturnType<typeof harness> | null = null;
+    let wroteReady = false;
+    item = harness({
+      autoBootReady: false,
+      onSleep: () => {
+        if (item && !wroteReady) {
+          wroteReady = true;
+          writeBootReady(item.fs, item.runRef);
+        } else if (item) {
+          const sessionId = sessionIdFor(item.sessions, item.runRef, 'fyt-story');
+          if ((item.host.writes.get(sessionId) ?? []).some((chunk) => chunk === '\r')) item.host.emit(sessionId, BUSY_FRAME);
+        }
+      },
+    });
+    item.sessions.ensureRoster({ subject: 'operator', runRef: item.runRef, proposal: item.plan });
+    succeedStage(item.store, item.runRef, 'idea');
+    resolveGate(item.store, item.runRef, 'story', 'g0-idea-pick', 'approved');
+    const first = item.sessions.deliver(deliverInput(item.store, item.runRef, item.plan, 'story'));
+    await expect(item.sessions.deliver(deliverInput(item.store, item.runRef, item.plan, 'story')))
+      .rejects.toThrow(/already has an outstanding work order/);
+    await vi.waitFor(() => { expect(item?.fs.files.has(completionPaths(item!.runRef, 'story').orderPath)).toBe(true); });
+    await writeCompletionStatus(item.fs, item.runRef, 'story', 'DONE', 'first lease settles');
+    await expect(first).resolves.toMatchObject({ state: 'succeeded' });
+  });
+
+  it('refuses a status-directory link before stale-status removal can escape the roster channel', async () => {
+    const { plan, store, sessions, runRef, fs } = harness();
+    sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    const statusDir = `/state/control/roster/${runRef}/fyt-story/status`;
+    fs.putLink(statusDir);
+    succeedStage(store, runRef, 'idea');
+    resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
+    const result = await sessions.deliver(deliverInput(store, runRef, plan, 'story'));
+    expect(result.state).toBe('waiting-human');
+    expect(result.summary).toContain('control channel could not be safely prepared');
+    expect(fs.removedFiles).not.toContain(`${statusDir}/story.json`);
+    expect(fs.files.has(completionPaths(runRef, 'story').orderPath)).toBe(false);
+  });
+
+  it('recognizes every BUSY marker rendering across every ordinary PTY split without re-counting an old footer', () => {
+    const renderings = [
+      '✽ Working… ❯ esc to interrupt',
+      '✽ Working… (2s · thinking)',
+      '✽ Working… ↓ 4 tokens',
+    ];
+    for (const rendering of renderings) {
+      for (let split = 1; split < rendering.length; split += 1) {
+        const first = nextBusySemanticState('', rendering.slice(0, split));
+        const second = nextBusySemanticState(first.overlap, rendering.slice(split));
+        expect(first.busy || second.busy, `${rendering} at ${split}`).toBe(true);
+      }
+      const full = nextBusySemanticState('', rendering);
+      expect(full.busy).toBe(true);
+      // A later harmless chunk must not re-attribute this retained busy marker to a new Enter.
+      expect(nextBusySemanticState(full.overlap, ' ordinary output').busy).toBe(false);
+    }
+  });
+
   it('never types a work order into an open permission menu, and parks with a named reason', async () => {
     const { plan, store, sessions, runRef, host, fs } = harness({ replReadyTimeoutMs: 60_000 });
     sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
@@ -1738,6 +2087,24 @@ describe('roster REPL-readiness gate', () => {
     expect(acrossChunks.summary).toContain(DELIVERY_NOT_READY_REASON);
     expect(unsplit.summary).toContain('Do you want to');
     expect(acrossChunks.summary).toContain('Do you want to');
+  });
+
+  it('caps an unterminated CSI suffix so digit-only chunks cannot grow or pin readiness forever', () => {
+    let suffix = '\u001b[';
+    let discarded = false;
+    for (let index = 0; index < 2_000; index += 1) {
+      const next = splitTerminalControlSuffix(`${suffix}1`);
+      expect(next.suffix.length).toBeLessThanOrEqual(1024);
+      if (suffix !== '' && next.suffix === '') {
+        discarded = true;
+        suffix = next.suffix;
+        break;
+      }
+      suffix = next.suffix;
+    }
+    expect(discarded).toBe(true);
+    // A valid frame after the drop is complete again instead of inheriting a permanent `settling` suffix.
+    expect(splitTerminalControlSuffix(`${suffix}${IDLE_FRAME}`)).toEqual({ complete: IDLE_FRAME, suffix: '' });
   });
 
   it('rechecks readiness after the synchronous artifact snapshot and before the first pty write', async () => {
@@ -1939,8 +2306,7 @@ describe('roster REPL-readiness gate', () => {
     writesBeforeDelivery = item.host.writes.get(sessionId)?.length ?? 0;
 
     const pending = item.sessions.deliver(deliverInput(item.store, item.runRef, item.plan, 'story'));
-    expect(emittedBusy).toBe(true);
-    expect(item.host.writes.get(sessionId)).toHaveLength(writesBeforeDelivery);
+    await vi.waitFor(() => { expect(emittedBusy).toBe(true); });
 
     const orderPath = `/state/control/roster/${item.runRef}/fyt-story/orders/story.md`;
     await vi.waitFor(() => { expect(item.fs.files.has(orderPath)).toBe(true); });

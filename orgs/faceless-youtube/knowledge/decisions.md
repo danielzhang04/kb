@@ -4020,3 +4020,20 @@ config-writing machinery was added, and `defaultLaunchLine` is still unchanged.
     `#MODAL_MARKERS` (the bypass-modal marker kept as DEFENSIVE, off the happy path), `#READY_MARKERS`,
     `#detectReplReadiness`; `rosterSessions.test.ts` (`defaultMode` assertions → `auto`, idle footer
     fixtures → `auto mode on`); `rosterSessions.live.test.ts` (interactive case asserts the auto-mode boot).
+
+**2026-07-31 — Accept same-user cross-agent completion forgery as a bounded roster limitation (Daniel).**
+The token-bound status-file channel proves that a receipt is fresh for one delivery; it does not prove which
+same-OS-user cooperative roster process authored the receipt. A sibling can read another agent's order file,
+learn its bearer token and status path, and forge a `DONE` for a **zero-artifact stage** or a stage whose
+downstream gate relies on that receipt. Daniel accepted that residual for this cooperative fleet rather than
+expanding this repair wave into an identity/isolation project.
+  - **Reason.** The server still rejects stale, torn, wrong-token and unsafe-path receipts, and every stage
+    declaring artifacts remains protected by the server-side artifact-delta, regular-file and link/reparse
+    checks. The remaining exposure is therefore explicit and narrow: zero-artifact/gate stages can be
+    falsely released by a malicious sibling running as the same user, not by terminal prose or an old receipt.
+  - **Alternatives rejected.** Authenticated per-session IPC would establish writer identity but adds a new
+    daemon/agent protocol and recovery surface; OS-level per-agent accounts/sandboxes would isolate the
+    writer but is operationally disproportionate for the present cooperative local fleet. Neither was built
+    as an implicit side effect of this delivery hardening.
+  - **Cross-reference.** `dashboard/server/control/rosterSessions.ts#inspectCompletionStatus` carries the
+    concise code-level trust-boundary comment so future changes cannot silently re-litigate the ruling.
