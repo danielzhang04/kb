@@ -1,0 +1,47 @@
+{
+  "tranche": ["L26", "L27", "L28", "L49", "L50", "L60", "L61", "L62", "L66", "L67", "L68", "L78", "L91", "L100", "L101", "L107", "L108", "L109", "L160", "L161", "L162", "L183", "L184", "L190", "L191", "L205", "L215"],
+  "vpw_repair_subset": ["L28", "L49", "L50", "L62", "L66", "L67", "L68", "L91", "L100", "L101", "L107", "L108", "L109", "L160", "L161", "L162", "L191"],
+  "places": {
+    "recurring": ["L26", "L49", "L66", "L100", "L107", "L160", "L183", "L190"],
+    "standalone": ["L78", "L91", "L205", "L215"]
+  },
+  "step1_figures": [
+    {"character": "miniscribe-rep", "pose": "action-powerstance", "expression": "expr-smug"},
+    {"character": "qt-wiles", "pose": "action-powerstance", "expression": "expr-deadpan"},
+    {"character": "qt-wiles", "pose": "point-at-thing", "expression": "expr-smug"},
+    {"character": "brick-foreman", "pose": "action-shrug", "expression": "expr-smug"},
+    {"character": "brick-foreman", "pose": null, "expression": "expr-thinking"},
+    {"character": "brick-foreman", "pose": null, "expression": null},
+    {"character": "hq-banker", "pose": "action-recoil", "expression": "expr-fear"}
+  ],
+  "chain_parents_included": ["L26", "L27", "L49", "L60", "L61", "L66", "L67", "L100", "L107", "L108", "L160", "L161", "L183", "L190"],
+  "gen_tally": {
+    "canonical_remint_qt_wiles": {"count": 1, "tier": "2K", "unit_usd": 0.134, "subtotal_usd": 0.134},
+    "step1_figure_gens": {"count": 7, "tier": "1K", "unit_usd": 0.039, "subtotal_usd": 0.273},
+    "recurring_place_candidate_batches": {"places": 8, "candidates_per_place": 2, "count": 16, "tier": "2K", "unit_usd": 0.134, "subtotal_usd": 2.144},
+    "standalone_place_single_gens": {"places": 4, "count": 4, "tier": "2K", "unit_usd": 0.134, "subtotal_usd": 0.536},
+    "delta_composed_scene_gens": {"count": 14, "tier": "2K", "unit_usd": 0.134, "subtotal_usd": 1.876},
+    "L60_remint_redo_composite": {"count": 1, "tier": "2K", "unit_usd": 0.134, "subtotal_usd": 0.134},
+    "total_requests": 43,
+    "subtotal_usd": 5.097,
+    "retry_contingency_15pct_usd": 0.765,
+    "recommended_cap_usd": 5.862
+  },
+  "excluded": {
+    "L97": "verify-only",
+    "word_sync": ["L02", "L03", "L197"]
+  },
+  "strata": {
+    "tranche_shots": 27,
+    "mandatory_dogfood": 2,
+    "anon_foreground_conversion": 13,
+    "over_cap_restage": 3,
+    "risk_2cast_crowd_shapes": 2,
+    "prose_vs_seed": 1,
+    "recurring_places": 8,
+    "standalone_places": 4,
+    "full_regenerated_chains": 3,
+    "vpw_repair_subset": 17,
+    "word_sync_reserved_final": 3
+  }
+}
