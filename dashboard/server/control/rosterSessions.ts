@@ -139,6 +139,19 @@ const MIN_REPL_READY_TIMEOUT_MS = 5 * 1_000;
 const REPL_POLL_MIN_MS = 250;
 const REPL_POLL_MAX_MS = 5_000;
 /**
+ * The gap between typing the order TEXT and sending the submit Enter, as two SEPARATE pty writes.
+ *
+ * Claude Code's REPL detects a paste by input arriving as one chunk, and folds a carriage return that
+ * rides in the SAME chunk as the text into the pasted content as a newline instead of submitting it — so
+ * `text + '\r'` in a single write leaves the order sitting UNSENT in the composer and no turn ever starts
+ * (a stage that would then sit "running" with nothing delivered, the mirror of the readiness stall). The
+ * Enter must therefore arrive as its OWN pty read, which this delay guarantees by letting the paste window
+ * close first. Verified live off a faithful pty (claude.exe 2.1.220): a 250ms gap submitted reliably
+ * (transcript grew from the delivered order); this uses 2× that for headroom over ConPTY write-coalescing
+ * and paste-timing variance, and is negligible against a delivery that already spans seconds.
+ */
+const SUBMIT_ENTER_DELAY_MS = 500;
+/**
  * Rolling window of terminal output kept for readiness detection, separate from the marker buffer (which
  * is consumed line-by-line and reset per delivery). Small on purpose: an interactive REPL redraws its
  * whole frame continuously and `stripTerminalControl` cannot collapse those redraws, so only the tail is
@@ -1553,17 +1566,29 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
       // The deadline must never be the reason a daemon cannot exit.
       if (typeof timer.unref === 'function') timer.unref();
       pending.timer = timer;
-      const wrote = options.registry.write(entry.owner, entry.sessionId, `${deliveryLine({ orderPath, stageId: input.stageId })}\r`);
-      if (!wrote) {
-        // `settled` is discarded with this early return, so releasing the slot and the deadline together
-        // is the whole cleanup.
-        clearTimeout(timer);
-        entry.pending = null;
-        const summary = `work order could not be written into session ${entry.sessionId}`;
-        record(run.subject, input.runRef, agentId, summary, 'interrupted', input.stageRef);
-        return { state: 'waiting-human', summary, usage: zeroUsage(), artifacts: [], checkpoints: [] };
+      // TWO SEPARATE WRITES, not `line + '\r'` in one. The REPL folds a same-write trailing CR into the
+      // paste instead of submitting it (see {@link SUBMIT_ENTER_DELAY_MS}), so the order text goes first,
+      // the paste window is allowed to close, then Enter is sent as its own read to actually fire the turn.
+      const typed = options.registry.write(entry.owner, entry.sessionId, deliveryLine({ orderPath, stageId: input.stageId }));
+      if (typed) await sleep(SUBMIT_ENTER_DELAY_MS);
+      // Submit the Enter and treat a write failure ONLY while this delivery is still ours. The session can
+      // be retired, its shell can die, or (in tests) a marker can land DURING the submit gap — any of which
+      // resolves `settled` and clears `entry.pending`. In that case skip the Enter (the outcome is already
+      // decided) and fall through to `await settled` below, so the retire/exit reason or the marker's own
+      // completion + artifact verification is what returns — never a spurious Enter-write failure.
+      if (entry.pending === pending) {
+        const wrote = typed && options.registry.write(entry.owner, entry.sessionId, '\r');
+        if (!wrote) {
+          // `settled` is discarded with this early return, so releasing the slot and the deadline together
+          // is the whole cleanup.
+          clearTimeout(timer);
+          entry.pending = null;
+          const summary = `work order could not be written into session ${entry.sessionId}`;
+          record(run.subject, input.runRef, agentId, summary, 'interrupted', input.stageRef);
+          return { state: 'waiting-human', summary, usage: zeroUsage(), artifacts: [], checkpoints: [] };
+        }
+        record(run.subject, input.runRef, agentId, `working stage ${input.stageId}`, 'pending', input.stageRef);
       }
-      record(run.subject, input.runRef, agentId, `working stage ${input.stageId}`, 'pending', input.stageRef);
       const result = await settled;
       if (result.state === 'succeeded') {
         // Declared artifacts are verified SERVER-SIDE before the completion is accepted; a marker alone

@@ -564,8 +564,18 @@ describe('gated work-order delivery', () => {
     expect(order).toContain('FYT-STAGE-<VERDICT> story');
     // The order file never spells a literal verdict, so echoing it cannot fabricate a completion.
     expect(order).not.toContain('FYT-STAGE-DONE');
+    // The order text and the submit Enter are SEPARATE writes: a same-write trailing CR is folded into the
+    // REPL's paste instead of submitting, so the order would sit unsent. Wait for BOTH to land, then assert
+    // the two-write contract — the Enter is its own chunk and the text chunk carries no CR of its own.
+    await vi.waitFor(() => {
+      const chunks = host.writes.get(sessionId) ?? [];
+      expect(chunks.at(-1)).toBe('\r');
+      expect(norm(chunks.at(-2) ?? '')).toContain(orderPath);
+      expect(chunks.at(-2)?.endsWith('\r')).toBe(false);
+    });
     const delivered = norm(host.writes.get(sessionId)?.join('') ?? '');
     expect(delivered).toContain(orderPath);
+    // Joined, the transcript still ends with the submit CR — it is simply the last of two writes now.
     expect(delivered.endsWith('\r')).toBe(true);
     const token = /completion token: ([0-9a-f]{32})/.exec(order ?? '')?.[1] as string;
 
@@ -936,8 +946,12 @@ describe('roster state projection (the canvas contract)', () => {
     succeedStage(store, runRef, 'idea');
     resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
     const pending = sessions.deliver(deliverInput(store, runRef, plan, 'story'));
-    const story = sessions.state('operator', runRef).find((row) => row.agentId === 'fyt-story');
-    expect(story).toMatchObject({ status: 'active', activity: 'working stage story' });
+    // The 'working stage story' activity is recorded once the order is SUBMITTED (after the two-write
+    // deliver), a tick after deliver() yields — await it rather than reading synchronously mid-delivery.
+    await vi.waitFor(() => {
+      const story = sessions.state('operator', runRef).find((row) => row.agentId === 'fyt-story');
+      expect(story).toMatchObject({ status: 'active', activity: 'working stage story' });
+    });
     sessions.retire(runRef, 'cleanup');
     await pending;
   });
