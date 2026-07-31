@@ -79,6 +79,16 @@ function deriveProposalId(def: WorkflowDef, effectiveRead: readonly string[]): s
       ...(stage.workflowProfile ? { workflowProfile: stage.workflowProfile } : {}),
       ...(stage.review ? { review: stage.review } : {}),
       ...(stage.completionGate ? { completionGate: stage.completionGate } : {}),
+      // Declared gates are part of the approved proposal identity: editing, renaming, or deleting a
+      // gate (or flipping `spendAuthorization`) must change the proposalId and force re-approval,
+      // or the halt structure would be tamper-silent. Emitted only when present, so definitions
+      // without gates keep their existing proposalId exactly.
+      ...(stage.humanGates?.length ? { humanGates: stage.humanGates } : {}),
+      // Declared artifacts are part of the approved identity for the same reason: they are the
+      // server-verified condition on a stage's success (`rosterSessions.ts#deliver`), so deleting or
+      // weakening one must force re-approval rather than silently lowering the bar on a live run.
+      // Emitted only when present, so definitions without artifacts keep their existing proposalId.
+      ...(stage.artifacts?.length ? { artifacts: stage.artifacts } : {}),
     })),
     ...(def.manager ? { manager: { agentId: def.manager.agentId, profileId: def.manager.profileId } } : {}),
   });
@@ -146,6 +156,25 @@ function resolveAssignment(
       model: selected.model,
     },
   };
+}
+
+/**
+ * Render a declared artifact path for the COMPILED proposal.
+ *
+ * A launch always substitutes first (`instantiateWorkflowDef` → `launchDefinition`), so a run's declared
+ * artifacts are the real files. But raw, uninstantiated definitions are also compiled — the workflows
+ * list builds a compile preview from one, and the assignment/governance amendment route compiles the
+ * before/after definition and runs it through `validateServerCompiledPlanProposal`. A path still holding
+ * `<channel>` fails that validator outright (`<` is not a safe path segment character), which would turn
+ * every parameterised definition into "compiled-proposal-invalid" the moment it declared an artifact.
+ *
+ * So an unsubstituted placeholder is rendered as a path-safe, obviously-symbolic segment instead. The
+ * artifact list is therefore never silently emptied — the declared success bar shows up in every compile
+ * — and if an uninstantiated definition ever were launched, its artifacts would point at paths that do
+ * not exist, so the stage parks for a human rather than succeeding on an unverifiable claim.
+ */
+function compiledArtifactPath(path: string): string {
+  return path.replace(/<([A-Za-z0-9][A-Za-z0-9._-]{0,63})>/g, 'unresolved-parameter-$1');
 }
 
 function firstLine(text: string, fallback: string): string {
@@ -229,9 +258,21 @@ export function compileWorkflowDef(def: WorkflowDef, env: CompileWorkflowEnviron
       requiredSkills: [],
       // Minimal-valid stage envelope: the stage reads its org and writes only its own declared target.
       scope: { read: readScope, write: stage.review ? [] : [stage.target] },
-      artifacts: [],
+      // The declared artifacts ARE the compiled artifacts. This was hardcoded `[]` for its whole life,
+      // which made the server-side declared-artifact verification in `rosterSessions.ts#deliver` iterate
+      // an empty list: a bare completion marker with nothing on disk was accepted as `succeeded`, and the
+      // run advanced to the next human gate asking for approval of a file that was never written.
+      artifacts: (stage.artifacts ?? []).map((artifact) => ({ ...artifact, path: compiledArtifactPath(artifact.path) })),
       checkpoints: [],
-      humanGates: [],
+      // The declared gates ARE the compiled gates. Anything hardcoded here would make an org
+      // definition's declared halt structure unenforceable at `execution.ts#stageBoundary`.
+      humanGates: (stage.humanGates ?? []).map((gate) => ({
+        id: gate.id,
+        kind: gate.kind,
+        prompt: gate.prompt,
+        ...(gate.spendAuthorization === undefined ? {} : { spendAuthorization: gate.spendAuthorization }),
+        ...(gate.publicationAuthorization === undefined ? {} : { publicationAuthorization: gate.publicationAuthorization }),
+      })),
       ...(assignment ? { assignment } : {}),
       ...(stage.workflowProfile ? { workflowProfile: stage.workflowProfile } : {}),
       ...(stage.review ? { review: structuredClone(stage.review) } : {}),
@@ -263,6 +304,11 @@ export function compileWorkflowDef(def: WorkflowDef, env: CompileWorkflowEnviron
     // `def.profile` is required by the def schema and already validated against the server-owned
     // closed set (defs.ts:227), so an unresolvable profile refuses the spawn rather than widening it.
     profile: def.profile,
+    // The substituted launch values, as data. `instantiateWorkflowDef` is the only writer; a definition
+    // without parameters emits nothing here and keeps its existing proposal identity.
+    ...(def.launchParameters && Object.keys(def.launchParameters).length > 0
+      ? { parameters: { ...def.launchParameters } }
+      : {}),
   };
   return { ok: true, value: proposal };
 }

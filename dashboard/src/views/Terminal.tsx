@@ -40,8 +40,12 @@ import type { TerminalSessionsClient } from '../lib/terminalClient';
  * xterm theme mapped ENTIRELY onto the house near-black palette (app.css tokens, resolved to literals
  * because xterm needs concrete colours, not CSS vars). Every ANSI slot is a warm neutral — there is no
  * terminal-green, no pure black, and no decorative accent. The cursor is a plain warm off-white.
+ *
+ * Exported (with {@link parseControlFrame} below) so `RunCanvas.tsx`'s roster tiles render the SAME
+ * xterm look and speak the SAME `/api/pty` control-frame protocol as this view, instead of forking a
+ * second theme/parser for what is the identical attach path against a different (roster) session id.
  */
-const HOUSE_XTERM_THEME = {
+export const HOUSE_XTERM_THEME = {
   background: '#1c1b19', // --bg-sunken (deepest)
   foreground: '#f5f4ef', // --fg-primary
   cursor: '#b8b5ad', // --fg-dim — a neutral cursor, never a bright accent
@@ -93,7 +97,7 @@ type PtyControlFrame = { type: 'error'; reason: string } | { type: 'session'; se
  * treat a frame as control when it parses AND carries an exact known shape, so ordinary shell output that
  * merely starts with `{` still streams.
  */
-function parseControlFrame(raw: string): PtyControlFrame | null {
+export function parseControlFrame(raw: string): PtyControlFrame | null {
   if (raw.length === 0 || raw[0] !== '{') return null;
   try {
     const parsed = JSON.parse(raw) as { type?: unknown; reason?: unknown; sessionId?: unknown } | null;

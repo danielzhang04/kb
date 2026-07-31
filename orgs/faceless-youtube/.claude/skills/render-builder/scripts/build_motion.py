@@ -370,6 +370,15 @@ def _slug(label: str) -> str:
     return s[:32].strip("-") or "section"   # cap THEN strip, so a truncation can't leave a trailing dash
 
 
+def chapter_out_rel(n: int, label: str, preview_parked: bool) -> str:
+    """The output path for a `--chapter N` clip (audit FIX 7). A chapter render must keep the SAME
+    preview/final naming distinction as a whole-video render: `--preview-parked` marks its output
+    with the `preview-` prefix so it never lands where compliance-check expects a shippable final,
+    and a plain chapter render keeps the existing `final-` name."""
+    prefix = "preview" if preview_parked else "final"
+    return f"assets/{prefix}-ch{n:02d}-{_slug(label)}.mp4"
+
+
 def chapter_ranges(chapters, shots):
     """Map metadata chapters (estimated timeline) onto the REAL retimed shot timeline by
     nearest shot start, enforcing strictly-increasing boundaries. A chapter that resolves past
@@ -806,7 +815,7 @@ def main():
             if sel is None:
                 raise SystemExit(f"--chapter {args.chapter} out of range (1..{len(chs)}).")
             frame_range = (round(sel["start_s"] * FPS), round(sel["end_s"] * FPS) - 1)
-            out_rel = f"assets/final-ch{sel['n']:02d}-{_slug(sel['label'])}.mp4"
+            out_rel = chapter_out_rel(sel["n"], sel["label"], args.preview_parked)
         # Preview keeps its own derived spec too, so a preview run never invalidates the shippable
         # render's provenance: every preview artifact is a `preview*` sibling, nothing is shared.
         motion_name = f"{piece}.preview.motion.json" if args.preview_parked else f"{piece}.motion.json"

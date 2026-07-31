@@ -35,32 +35,109 @@ from pathlib import Path
 # Ruling axes: manifest/review shorthand -> human label used in parked_reasons.
 _AXES = (("f", "fidelity"), ("s", "style"), ("r", "rig"))
 
+# The shots.json v1 marker (visual-prompt-writer/scripts/lint_shots.py:SCHEMA_V1). A shots.json
+# that explicitly declares this is the only thing that predates the DSG-lite checklist by
+# definition (the real 2026-07-19-wells-fargo shots.json does); anything else — an explicit v2,
+# a missing key, a typo — is the current schema and requires `dsg` on every ruling. Same
+# fail-closed law as HIGH-5's lint_shots.py fix; duplicated as a literal rather than imported
+# across the skill boundary (visual-prompt-writer vs image-generation are separate skills).
+_SHOTS_SCHEMA_V1 = "faceless-youtube/shots@1"
+
+
+def _require_dsg_for(video_dir: Path) -> bool:
+    """Whether every ruling for this video must carry a `dsg` checklist (MEDIUM-10). Reads
+    `<video_dir>/shots.json`'s `schema` field the same fail-closed way lint_shots.py's HIGH-5 fix
+    reads it: only an EXPLICIT `_SHOTS_SCHEMA_V1` earns the legacy no-op path.
+
+    MEDIUM-4 (audit follow-up): a missing or unreadable shots.json used to return False here —
+    "don't require the checklist" — which is FAILING OPEN on exactly the signal this function
+    exists to read. The prior rationale ("VPW always writes shots.json before image-generation
+    runs, so a missing file only happens in an isolated/test invocation with no opinion on schema
+    version") is true, but "no opinion" is not a reason to default to the LENIENT reading — the
+    same fail-closed law HIGH-5 applies to an unreadable/missing schema KEY applies one level up
+    to an unreadable/missing schema FILE: absent or unreadable means require the checklist, the
+    same as a present-but-wrong-or-missing `schema` value does. An isolated caller with no
+    shots.json now has its ruling(s) PARK for want of a `dsg` checklist rather than silently
+    verify — it can supply a real shots.json (or an explicit v1 one) if it wants the legacy path.
+
+    LOW-8 (audit follow-up): `UnicodeDecodeError` was missing from the except tuple, and this
+    call sits outside `main()`'s own try/except, so a mojibake'd (non-UTF-8) shots.json raised a
+    raw traceback instead of a named, controlled refusal. Folded into the same fail-closed
+    branch as a missing file: an unreadable plan gets the same conservative answer as an absent
+    one, and the caller never sees an unhandled exception."""
+    shots_path = video_dir / "shots.json"
+    if not shots_path.exists():
+        return True
+    try:
+        schema = json.loads(shots_path.read_text(encoding="utf-8")).get("schema")
+    except (json.JSONDecodeError, AttributeError, OSError, UnicodeDecodeError):
+        return True
+    return schema != _SHOTS_SCHEMA_V1
+
 
 def _ruling_id(ruling: dict):
     """The shot id a ruling addresses (merged.json uses `id`; tolerate `shot_id`)."""
     return ruling.get("id") or ruling.get("shot_id")
 
 
-def _dsg_failures(ruling: dict):
+def _dsg_failures(ruling: dict, require_dsg: bool = False):
     """The FAILED items of a ruling's DSG-lite checklist — the dependency-ordered decomposition of
     the assembled prompt into atomic facts (entities -> attributes -> relations -> lettering) that
     the fidelity judge answers one by one. Each item is
-    `{id, parent, q, verdict: "pass"|"fail"|"skipped", note}`; only "fail" is a defect, because a
-    "skipped" child was short-circuited by a parent that already carries one."""
+    `{id, parent, q, verdict: "pass"|"fail"|"skipped", note}`.
+
+    FAIL-CLOSED (2026-07-30): "pass"/"skipped" (case-insensitive) is not a defect; "fail"
+    (case-insensitive) is a defect; ANY other value — a near-miss spelling ("failed"), a
+    boolean, or a missing `verdict` key entirely — is a malformed judge output and HARD-ERRORS
+    naming the item, rather than being waved through as a pass. The old contract silently
+    treated everything but exactly "fail" as clean, which means a judge that returned garbage
+    shipped the frame anyway. `dsg` itself is genuinely additive: a ruling with NO `dsg` key
+    (or `dsg: None`) predates the checklist and stays a no-op, but once the field is present it
+    must be well-formed — a non-list `dsg`, or a non-dict item, is malformed the same way.
+
+    MEDIUM-10 (audit follow-up): `ruling.get("dsg")` is `None` for BOTH an absent key and an
+    explicit `dsg: null`, which made a fidelity judge that silently failed to emit its checklist
+    indistinguishable from a genuine pre-checklist ruling — both verified. `require_dsg` (set by
+    `main()` from the VIDEO's shots.json `schema`, fail-closed the same way HIGH-5 fixed
+    lint_shots.py: only an explicit `faceless-youtube/shots@1` earns the no-op path) tells them
+    apart: when False (a real legacy file, or no schema info at all), a missing/null `dsg` is
+    still the documented no-op; when True (the current schema), it is treated as a DEFECT — the
+    shot PARKS with a named reason, same as any other defect, never a hard error, since it is this
+    one shot's evidence that's incomplete, not the whole batch's data that's malformed."""
     items = ruling.get("dsg")
-    if not isinstance(items, list):
+    if items is None:
+        if require_dsg:
+            rid = _ruling_id(ruling) or "?"
+            return [f"dsg: ruling {rid!r} carries no DSG-lite checklist at all. This video's "
+                    f"shots.json declares the current schema, which requires one on every ruling "
+                    f"— either the fidelity judge silently failed to emit it, or this ruling is "
+                    f"stale from before the checklist ran. Parking rather than assuming clean."]
         return []
+    rid = _ruling_id(ruling) or "?"
+    if not isinstance(items, list):
+        raise ValueError(f"malformed dsg field on ruling {rid!r}: expected a list, "
+                         f"got {type(items).__name__}: {items!r}")
     out = []
     for it in items:
-        if not isinstance(it, dict) or str(it.get("verdict", "")).lower() != "fail":
+        if not isinstance(it, dict):
+            raise ValueError(f"malformed dsg item on ruling {rid!r}: expected an object, "
+                             f"got {type(it).__name__}: {it!r}")
+        item_id = it.get("id", "?")
+        verdict_raw = it.get("verdict")
+        verdict = str(verdict_raw).lower() if verdict_raw is not None else ""
+        if verdict in ("pass", "skipped"):
             continue
-        label = it.get("q") or it.get("id") or "unnamed check"
-        note = it.get("note")
-        out.append(f"dsg {it.get('id', '?')}: {label}" + (f" — {note}" if note else ""))
+        if verdict == "fail":
+            label = it.get("q") or item_id or "unnamed check"
+            note = it.get("note")
+            out.append(f"dsg {item_id}: {label}" + (f" — {note}" if note else ""))
+            continue
+        raise ValueError(f"malformed dsg verdict on item {item_id!r} of ruling {rid!r}: "
+                         f"{verdict_raw!r} (expected pass|fail|skipped)")
     return out
 
 
-def _is_clean(ruling: dict) -> bool:
+def _is_clean(ruling: dict, require_dsg: bool = False) -> bool:
     """A ruling is clean iff it carries no defect. `worst` is authoritative when present
     (aggregate of the axes); "clean" is the no-defect sentinel. Absent `worst` -> all axes clean.
     Conservative by design: only a fully-clean ruling verifies — any severity (even LOW) parks.
@@ -68,16 +145,34 @@ def _is_clean(ruling: dict) -> bool:
     A failed DSG-lite item overrides a clean aggregate. The per-item checklist and the axis
     severities are written by the same judge in one pass, so the aggregate can lag the items it was
     summarizing — and a frame whose adherence check FAILED must never reach the render gate because
-    a summary field said `clean`. The items are the evidence; the aggregate is the opinion."""
-    if _dsg_failures(ruling):
+    a summary field said `clean`. The items are the evidence; the aggregate is the opinion.
+
+    MEDIUM-4 (audit follow-up): `worst` used to be trusted ALONE and short-circuit the axes —
+    `{"id": "L5", "worst": "clean", "f": "HIGH"}` classified as clean, discarding an explicitly
+    HIGH fidelity axis the same ruling names. That is the louder version of the "silence is not
+    evidence" hole MEDIUM-10 closed for a ruling with NO axis info at all: here the evidence is
+    not silent, it is written down and ignored. `worst` and the per-axis fields are written by the
+    same judge pass and can disagree the same way `worst` and `dsg` can (see the DSG-lite
+    docstring above) — an aggregate that lags or misreports one axis must not outrank the axis
+    itself. A ruling now verifies only when the aggregate says clean AND every axis actually
+    present in the ruling says clean too; a present, non-clean axis parks regardless of `worst`.
+
+    MEDIUM-10 (audit follow-up): a ruling carrying NONE of `worst`/`f`/`s`/`r` at all (a bare
+    `{"id": "L5"}`) used to default every axis to "clean" and verify — that is silence, not
+    evidence, and the operating law disallows it. Only a ruling with at least one axis actually
+    present is eligible for the "missing axis defaults to clean" convenience below."""
+    if _dsg_failures(ruling, require_dsg):
         return False
+    axes_clean = all(ruling.get(k, "clean") == "clean" for k, _ in _AXES)
     worst = ruling.get("worst")
     if worst is not None:
-        return worst == "clean"
-    return all(ruling.get(k, "clean") == "clean" for k, _ in _AXES)
+        return worst == "clean" and axes_clean
+    if not any(k in ruling for k, _ in _AXES):
+        return False
+    return axes_clean
 
 
-def _reasons(ruling: dict):
+def _reasons(ruling: dict, require_dsg: bool = False):
     """Defect strings for a parked ruling: one `"<axis>: <SEVERITY>"` per non-clean axis, then each
     FAILED DSG-lite item (named, so the gate prints which atomic fact the image missed), then the
     review narrative (`why`) if any. Never empty for a defect — falls back to the worst severity so
@@ -87,7 +182,7 @@ def _reasons(ruling: dict):
         v = ruling.get(key)
         if isinstance(v, str) and v and v != "clean":
             reasons.append(f"{label}: {v}")
-    reasons.extend(_dsg_failures(ruling))
+    reasons.extend(_dsg_failures(ruling, require_dsg))
     why = ruling.get("why")
     if isinstance(why, str) and why.strip():
         reasons.append(why.strip())
@@ -97,12 +192,16 @@ def _reasons(ruling: dict):
     return reasons
 
 
-def classify(ruling: dict):
+def classify(ruling: dict, require_dsg: bool = False):
     """Map one merged ruling to `(review_status, parked_reasons)`.
-    clean -> ("verified", []);  any defect -> ("parked", [reason, ...])."""
-    if _is_clean(ruling):
+    clean -> ("verified", []);  any defect -> ("parked", [reason, ...]).
+
+    `require_dsg` (default False, preserving the schema-agnostic classification this function
+    always had) is threaded through by `stamp()`/`main()` from the video's shots.json — see
+    `_dsg_failures`."""
+    if _is_clean(ruling, require_dsg):
         return "verified", []
-    return "parked", _reasons(ruling)
+    return "parked", _reasons(ruling, require_dsg)
 
 
 def _entries(manifest):
@@ -119,12 +218,15 @@ def _rulings(data):
     return data
 
 
-def stamp(manifest, rulings):
+def stamp(manifest, rulings, require_dsg: bool = False):
     """Write `review_status` + `parked_reasons` onto every reviewed shot's entry, IN PLACE.
 
     Entries are matched to rulings by shot id. A ruling with no matching entry (a layered shot
     reviewed via its plate/cutout) gets a fresh minimal entry created. Entries with no ruling are
-    left untouched. Returns `(n_verified, m_parked)`."""
+    left untouched. Returns `(n_verified, m_parked)`.
+
+    `require_dsg` — see `_dsg_failures` — is computed once by `main()` from the video's
+    shots.json and applied uniformly to every ruling in this batch."""
     entries = _entries(manifest)
     by_id = {}
     for e in entries:
@@ -137,7 +239,7 @@ def stamp(manifest, rulings):
         rid = _ruling_id(ruling)
         if not rid:
             continue
-        status, reasons = classify(ruling)
+        status, reasons = classify(ruling, require_dsg)
         entry = by_id.get(rid)
         if entry is None:                      # layered shot absent from manifest -> create it
             entry = {"shot_id": rid}
@@ -185,7 +287,13 @@ def main(argv=None) -> int:
 
     rulings = json.loads(merged_path.read_text(encoding="utf-8"))
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    n_verified, m_parked = stamp(manifest, rulings)
+    require_dsg = _require_dsg_for(video_dir)
+    try:
+        n_verified, m_parked = stamp(manifest, rulings, require_dsg)
+    except ValueError as e:
+        # fail-closed: a malformed DSG-lite item must be loud, never silently waved through
+        print(f"malformed review data — {e}", file=sys.stderr)
+        return 1
     _atomic_write_json(manifest_path, manifest)
     print(f"stamped: {n_verified} verified, {m_parked} parked")
     return 0

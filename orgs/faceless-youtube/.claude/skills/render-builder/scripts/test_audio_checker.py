@@ -1,7 +1,7 @@
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
-from audio_checker import check_audio, check_sentence_gaps
+from audio_checker import check_audio, check_sentence_gaps, motion_spec_name
 
 MT = {"lufs": -14.5, "true_peak_max_dbfs": -1.0, "lra": 4.0}
 LN = {"audio_lufs": -14.3, "audio_true_peak": -1.1}
@@ -152,6 +152,91 @@ def test_check_audio_wires_sentence_gap_verifier():
     assert r2["ok"] is True and "sentence_gaps" not in r2["measured"], r2
 
 
+# --------------------------------------------------------------------------- #
+# FIX 8 (audit follow-up): --preview must read the preview-parked spec build_motion wrote
+# (<piece>.preview.motion.json), mirroring build_motion's own --preview-parked naming, instead of
+# always reading the shippable final's spec.
+# --------------------------------------------------------------------------- #
+def test_motion_spec_name_reads_final_by_default():
+    assert motion_spec_name("long-form", False) == "long-form.motion.json"
+
+
+def test_motion_spec_name_reads_preview_spec_when_preview_flag_set():
+    assert motion_spec_name("long-form", True) == "long-form.preview.motion.json"
+
+
+# --------------------------------------------------------------------------- #
+# LOW (audit follow-up): the printed report must state its own provenance — whether --preview was
+# set and which spec file backed it — so a pasted report can be trusted as final-vs-preview
+# evidence. This does not touch tolerance or exit-code logic (asserted unchanged below too).
+# --------------------------------------------------------------------------- #
+def _build_video_dir(preview):
+    import json
+    import os
+    import tempfile
+    d = tempfile.mkdtemp()
+    motion_dir = os.path.join(d, "assets", "motion")
+    os.makedirs(motion_dir)
+    vo_name = "vo.breath.wav"
+    _write_speech_wav(os.path.join(d, "assets", vo_name), [(1.0, 1.7)])
+    spec = {"sentenceBoundaries": [{"final_word": "one.", "final_s": 0.6, "next_word": "Two",
+                                    "next_s": 1.65, "target_s": 0.65}],
+            "audio": vo_name}
+    name = "long-form.preview.motion.json" if preview else "long-form.motion.json"
+    with open(os.path.join(motion_dir, name), "w", encoding="utf-8") as f:
+        json.dump(spec, f)
+    return d, os.path.join(motion_dir, name)
+
+
+def _run_main_capturing(args):
+    """Runs `main()` with `check_sentence_gaps` stubbed to a fixed clean-pass result, so this
+    exercises the banner/provenance printing on every machine regardless of whether ffmpeg is on
+    PATH — the actual acoustic measurement is already covered (and ffmpeg-gated) by the tests
+    above; this one only needs main() to reach its print statements."""
+    import contextlib
+    import io
+    import sys
+    import audio_checker
+
+    old_argv = sys.argv
+    old_fn = audio_checker.check_sentence_gaps
+    sys.argv = ["audio_checker.py"] + args
+    audio_checker.check_sentence_gaps = lambda audio, bounds, tol_s=0.10: {
+        "ok": True, "warnings": [],
+        "rows": [{"final_s": 0.6, "final_word": "one.", "next_word": "Two",
+                  "measured_gap_s": 1.0, "target_s": 0.65}],
+        "measured": {"boundaries": 1, "below": 0, "mean_gap_s": 1.0, "min_gap_s": 1.0},
+    }
+    buf = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(buf):
+            try:
+                audio_checker.main()
+                code = 0
+            except SystemExit as e:
+                code = e.code
+    finally:
+        sys.argv = old_argv
+        audio_checker.check_sentence_gaps = old_fn
+    return code, buf.getvalue()
+
+
+def test_main_banner_states_preview_and_spec_path():
+    d, spec_path = _build_video_dir(preview=True)
+    code, out = _run_main_capturing([d, "--preview"])
+    assert "[PREVIEW]" in out, out
+    assert spec_path in out, out
+    assert code == 0, (code, out)
+
+
+def test_main_banner_final_run_has_no_preview_tag_but_states_spec():
+    d, spec_path = _build_video_dir(preview=False)
+    code, out = _run_main_capturing([d])
+    assert "[PREVIEW]" not in out, out
+    assert spec_path in out, out
+    assert code == 0, (code, out)
+
+
 print("running")
 test_clean_render_passes(); test_missing_sfx_warns(); test_missing_music_warns()
 test_loudness_off_target_warns(); test_true_peak_over_warns(); test_loudnorm_soft_failed_warns()
@@ -162,4 +247,8 @@ test_sentence_gap_verifier_passes_when_gaps_meet_target()
 test_sentence_gap_verifier_flags_short_boundary_with_timestamp()
 test_sentence_gap_verifier_skips_cleanly_without_inputs()
 test_check_audio_wires_sentence_gap_verifier()
+test_motion_spec_name_reads_final_by_default()
+test_motion_spec_name_reads_preview_spec_when_preview_flag_set()
+test_main_banner_states_preview_and_spec_path()
+test_main_banner_final_run_has_no_preview_tag_but_states_spec()
 print("PASS")

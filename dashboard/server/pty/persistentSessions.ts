@@ -66,6 +66,24 @@ export type AttachResult = { ok: true } | { ok: false; reason: 'not-found' | 'no
 /** Typed close outcome — `not-found`/`not-owner` map to a REST 404 (never leaking another owner's ids). */
 export type CloseResult = { ok: true } | { ok: false; reason: 'not-found' | 'not-owner' };
 
+/**
+ * A server-side, NON-EXCLUSIVE output tap on one session (added for run-roster work-order delivery).
+ *
+ * Why this is not `attach`: a sink is single and evictable by design — the browser terminal owns it, and
+ * a second attach displaces the first. A server component that must READ a session's output for the whole
+ * run (the roster's completion-marker watcher) can therefore never use a sink without fighting the UI for
+ * it. An observer is additive: it receives every chunk the ring receives, it is never evicted by an
+ * attach, and it can never send input (that stays `write`, which is owner-checked).
+ */
+export type SessionObserver = (chunk: string) => void;
+
+/**
+ * Paired "this session is gone" notification for an observer — fired when the shell exits OR the session
+ * is explicitly closed, exactly once, before the observer set is dropped. Without it a server component
+ * awaiting output (the roster waiting for a completion marker) would wait forever on a dead shell.
+ */
+export type SessionObserverGone = () => void;
+
 /** The owner-bound registry surface. A single instance is shared by the WS route, the REST endpoints,
  *  and the shutdown drain. */
 export interface PersistentSessionRegistry {
@@ -80,6 +98,14 @@ export interface PersistentSessionRegistry {
   /** Clear the live sink (buffering continues). `sink` guards against a stale close racing a newer
    *  attach: only the still-current sink is cleared. */
   detach(sessionId: string, sink?: SessionSink): void;
+  /**
+   * Install a non-evicting, owner-checked output tap; returns its unsubscribe. Unknown/foreign/dead
+   * sessions yield a no-op unsubscribe rather than a throw, so a caller racing a shell exit is safe.
+   * Observers never receive replay of the existing ring — a watcher installed at create time (the
+   * roster's use) has seen every byte anyway, and replaying scrollback into a marker scanner would
+   * re-fire completions.
+   */
+  observe(owner: string, sessionId: string, observer: SessionObserver, onGone?: SessionObserverGone): () => void;
   /** Kill the shell (host.stop) and forget it. */
   close(owner: string, sessionId: string): CloseResult;
   /** Forward raw stdin to the shell. Owner-checked; a no-op for unknown/foreign/dead sessions. */
@@ -111,6 +137,8 @@ interface SessionEntry {
   chunks: string[];
   bytes: number;
   sink: SessionSink | null;
+  /** Non-exclusive server-side taps (see {@link SessionObserver}); independent of `sink`. */
+  observers: Set<{ observer: SessionObserver; onGone?: SessionObserverGone }>;
   exited: boolean;
   disposed: boolean;
 }
@@ -132,6 +160,16 @@ export function createPersistentSessionRegistry(deps: RegistryDeps = {}): Persis
     }
   };
 
+  /** Fire every observer's paired gone-notification exactly once, then drop the tap set. */
+  const notifyGone = (entry: SessionEntry): void => {
+    const taps = [...entry.observers];
+    entry.observers.clear();
+    for (const tap of taps) {
+      if (!tap.onGone) continue;
+      try { tap.onGone(); } catch { /* a watcher's cleanup must never break session teardown */ }
+    }
+  };
+
   return {
     create(owner, host, openRequest) {
       const session = host.open(openRequest);
@@ -144,16 +182,22 @@ export function createPersistentSessionRegistry(deps: RegistryDeps = {}): Persis
         chunks: [],
         bytes: 0,
         sink: null,
+        observers: new Set(),
         exited: false,
         disposed: false,
       };
       sessions.set(entry.sessionId, entry);
 
-      // ONE data listener for the session's whole life: ALWAYS buffer, then forward live if attached.
+      // ONE data listener for the session's whole life: ALWAYS buffer, then forward live if attached,
+      // then fan out to every server-side observer. An observer that throws is contained — a watcher
+      // bug must never break the terminal's byte pump.
       session.handle.onData((chunk: string) => {
         pushChunk(entry, chunk);
         const sink = entry.sink;
         if (sink && !sink.closed()) sink.send(chunk);
+        for (const tap of entry.observers) {
+          try { tap.observer(chunk); } catch { /* observer failures never propagate into the pump */ }
+        }
       });
 
       // Shell exit: mark, notify the attached sink so the route can close its socket, and forget it.
@@ -163,6 +207,7 @@ export function createPersistentSessionRegistry(deps: RegistryDeps = {}): Persis
         entry.exited = true;
         const sink = entry.sink;
         entry.sink = null;
+        notifyGone(entry);
         sessions.delete(entry.sessionId);
         if (sink && !sink.closed() && sink.onExit) sink.onExit(info);
       });
@@ -211,12 +256,28 @@ export function createPersistentSessionRegistry(deps: RegistryDeps = {}): Persis
       if (sink === undefined || entry.sink === sink) entry.sink = null;
     },
 
+    observe(owner, sessionId, observer, onGone) {
+      const entry = sessions.get(sessionId);
+      // A tap on an unknown/foreign/dead session is inert AND immediately reported gone, so a caller that
+      // raced a shell exit settles instead of waiting on output that can never arrive.
+      if (!entry || entry.disposed || entry.exited || entry.owner !== owner) {
+        if (onGone) { try { onGone(); } catch { /* contain */ } }
+        return () => {};
+      }
+      const tap = { observer, ...(onGone ? { onGone } : {}) };
+      entry.observers.add(tap);
+      return () => {
+        entry.observers.delete(tap);
+      };
+    },
+
     close(owner, sessionId) {
       const entry = sessions.get(sessionId);
       if (!entry) return { ok: false, reason: 'not-found' };
       if (entry.owner !== owner) return { ok: false, reason: 'not-owner' };
       entry.disposed = true; // guard the onExit that host.stop's kill may fire
       entry.sink = null;
+      notifyGone(entry);
       sessions.delete(sessionId);
       try {
         entry.host.stop(sessionId); // kills the shell's whole process group
@@ -262,7 +323,10 @@ export function createPersistentSessionRegistry(deps: RegistryDeps = {}): Persis
     },
 
     clear() {
-      for (const entry of sessions.values()) entry.disposed = true;
+      for (const entry of sessions.values()) {
+        entry.disposed = true;
+        notifyGone(entry);
+      }
       sessions.clear();
     },
   };

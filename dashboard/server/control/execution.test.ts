@@ -1385,6 +1385,230 @@ describe('AutomaticExecutionEngine', () => {
     expect(fake.executionOrder).toEqual([]);
   });
 
+  it('never lets an unrelated gate approval satisfy a declared spend authorization', async () => {
+    const store = createStore();
+    const plain = stage('plain');
+    plain.humanGates = [{ id: 'g1-script', kind: 'approval', prompt: 'Approve the script.' }];
+    const spending = stage('spending', ['plain']);
+    spending.humanGates = [{ id: 'g2-plan', kind: 'approval', prompt: 'Approve the plan.', spendAuthorization: true }];
+    const plan = proposal([plain, spending]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
+
+    const approve = (title: string, key: string) => {
+      const detail = store.getRun('operator', run.runRef);
+      if (!detail.ok) throw new Error(detail.detail);
+      const request = detail.value.humanRequests.find((candidate) => candidate.title === title);
+      if (!request) throw new Error(`missing human request ${title}`);
+      expect(store.respondHumanRequest('operator', request.requestRef, {
+        expectedRevision: request.revision, decision: 'approved', idempotencyKey: key, response: 'Approved.',
+      }).ok).toBe(true);
+    };
+
+    // Pass 1: the first stage's own gate opens; nothing has run.
+    expect((await engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan })).state).toBe('waiting-human');
+    expect(fake.executionOrder).toEqual([]);
+
+    // Approving g1 releases ONLY its own stage. The spending stage then opens its own gate and stays
+    // parked: an approval recorded on another stage's gate is not this stage's spend authorization.
+    approve('automatic:gate:plain:g1-script', 'approve-g1');
+    expect((await engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan })).state).toBe('waiting-human');
+    expect(fake.executionOrder).toEqual(['plain']);
+    const parked = store.getRun('operator', run.runRef);
+    if (!parked.ok) throw new Error(parked.detail);
+    expect(parked.value.humanRequests.map((request) => [request.title, request.state])).toEqual([
+      ['automatic:gate:plain:g1-script', 'resolved'],
+      ['automatic:gate:spending:g2-plan', 'open'],
+    ]);
+    expect(parked.value.stages.find((item) => item.stageId === 'spending')?.state).toBe('waiting-human');
+
+    // Only the spend gate's OWN recorded approval releases it — and it then clears policy rather than
+    // hitting the hard spend refuse.
+    approve('automatic:gate:spending:g2-plan', 'approve-g2');
+    const completed = await engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
+    expect(completed.state).toBe('succeeded');
+    expect(fake.executionOrder).toEqual(['plain', 'spending']);
+  });
+
+  it('parks a declared spend stage for its own approval and never refuses it outright', async () => {
+    const store = createStore();
+    const spending = stage('spending');
+    spending.humanGates = [{ id: 'g2-plan', kind: 'approval', prompt: 'Approve the plan.', spendAuthorization: true }];
+    const plan = proposal([spending]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
+
+    const first = await engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
+    expect(first.state).toBe('waiting-human');
+    expect(fake.executionOrder).toEqual([]);
+    const detail = store.getRun('operator', run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    // Approvable, not a governance-refusal: the declared gate is the surface, not a dead end.
+    expect(detail.value.humanRequests).toMatchObject([{ kind: 'approval', title: 'automatic:gate:spending:g2-plan', state: 'open' }]);
+    // A merely-responded decision is not an approval, so the spend stage must stay parked.
+    const request = detail.value.humanRequests[0];
+    expect(store.respondHumanRequest('operator', request.requestRef, {
+      expectedRevision: request.revision, decision: 'responded', idempotencyKey: 'text-only', response: 'Seems fine.',
+    }).ok).toBe(true);
+    expect((await engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan })).state).toBe('waiting-human');
+    expect(fake.executionOrder).toEqual([]);
+  });
+
+  // G4: the declared publication gate is the ONLY thing that can release a T3 `publish:` stage. Before
+  // it existed such a stage recomputed `t3-content-bound-approval-required` on every pass and re-parked
+  // forever, which is what made the gated pipeline's publish-private step unreachable.
+  describe('declared publication (content-bound T3) gate', () => {
+    function publishFixture(options: { declared: boolean }) {
+      const store = createStore();
+      const upstream = stage('verify-cut');
+      const publish = stage('publish-private', ['verify-cut']);
+      publish.action = 'publish:private-upload';
+      publish.riskTier = 'T3';
+      publish.workOrder = 'Upload the finished cut as private. Never flip it public.';
+      publish.artifacts = [];
+      publish.checkpoints = [];
+      publish.humanGates = [{
+        id: 'g4-publish-private',
+        kind: 'approval',
+        prompt: 'GATE 4 — approve the private upload.',
+        ...(options.declared ? { publicationAuthorization: true } : {}),
+      }];
+      const plan = proposal([upstream, publish]);
+      const run = createApprovedRun(store, plan);
+      const executed: string[] = [];
+      const fake = fakes({
+        worker: {
+          async execute(input) {
+            executed.push(input.action);
+            return {
+              state: 'succeeded', summary: `${input.action} done`,
+              usage: { inputTokens: 1, outputTokens: 1, costUsdMicros: 0 }, artifacts: [], checkpoints: [],
+            };
+          },
+        },
+      });
+      fake.worktrees.inspect = async () => ({ changed: [] });
+      const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
+      const approve = (title: string, key: string) => {
+        const detail = store.getRun('operator', run.runRef);
+        if (!detail.ok) throw new Error(detail.detail);
+        const request = detail.value.humanRequests.find((candidate) => candidate.title === title);
+        if (!request) throw new Error(`missing human request ${title}`);
+        expect(store.respondHumanRequest('operator', request.requestRef, {
+          expectedRevision: request.revision, decision: 'approved', idempotencyKey: key, response: 'Approved.',
+        }).ok).toBe(true);
+        return request;
+      };
+      const drive = () => engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
+      return { store, plan, run, executed, approve, drive };
+    }
+
+    it('releases the publish stage on its own recorded approval, and shows the work order at decision time', async () => {
+      const { store, run, executed, approve, drive } = publishFixture({ declared: true });
+
+      // Pass 1: upstream runs, the publish stage parks on its declared gate with nothing executed.
+      expect((await drive()).state).toBe('waiting-human');
+      expect(executed).toEqual(['test:verify-cut']);
+      const parked = store.getRun('operator', run.runRef);
+      if (!parked.ok) throw new Error(parked.detail);
+      const gate = parked.value.humanRequests.find((request) => request.title === 'automatic:gate:publish-private:g4-publish-private');
+      expect(gate).toMatchObject({ kind: 'approval', state: 'open' });
+      // The standing constraint on releasing a publication boundary: the approver must SEE the prose.
+      expect(gate?.prompt).toContain('GATE 4 — approve the private upload.');
+      expect(gate?.prompt).toContain('Upload the finished cut as private.');
+      expect(gate?.prompt).toContain("stage 'publish-private'");
+      expect(gate?.prompt).toContain('T3');
+
+      // The approval recorded against that gate IS the content-bound T3 approval, so the stage releases.
+      approve('automatic:gate:publish-private:g4-publish-private', 'approve-g4');
+      const completed = await drive();
+      expect(completed.state).toBe('succeeded');
+      expect(executed).toEqual(['test:verify-cut', 'publish:private-upload']);
+    });
+
+    it('never releases a T3 publish stage whose gate does NOT declare publication authorization', async () => {
+      const { store, run, executed, approve, drive } = publishFixture({ declared: false });
+
+      expect((await drive()).state).toBe('waiting-human');
+      approve('automatic:gate:publish-private:g4-publish-private', 'approve-plain-gate');
+
+      // A plain approval clears the gate itself and then hits the untouched restricted-intent /
+      // T3 boundaries: the stage re-parks on every pass and the publish action never runs.
+      expect((await drive()).state).toBe('waiting-human');
+      expect((await drive()).state).toBe('waiting-human');
+      expect(executed).toEqual(['test:verify-cut']);
+      const parked = store.getRun('operator', run.runRef);
+      if (!parked.ok) throw new Error(parked.detail);
+      expect(parked.value.humanRequests.map((request) => request.title)).toContain(
+        'automatic:policy:publish-private:external-publication-intent-requires-human-approval',
+      );
+      // A gate without the flag carries only its authored prompt — no work order is disclosed.
+      const plain = parked.value.humanRequests.find((request) => request.title === 'automatic:gate:publish-private:g4-publish-private');
+      expect(plain?.prompt).toBe('GATE 4 — approve the private upload.');
+    });
+
+    it('never lets another stage\'s approval authorize a declared publication gate', async () => {
+      // Stage-scoped, exactly like the spend gate: the release is keyed to the title of THIS stage's own
+      // gate, so an approval recorded anywhere else leaves the publishing stage parked.
+      const store = createStore();
+      const script = stage('script');
+      script.humanGates = [{ id: 'g1-script', kind: 'approval', prompt: 'Approve the script.' }];
+      const publish = stage('publish-private', ['script']);
+      publish.action = 'publish:private-upload';
+      publish.riskTier = 'T3';
+      publish.artifacts = []; publish.checkpoints = [];
+      publish.humanGates = [{ id: 'g4-publish-private', kind: 'approval', prompt: 'Approve the upload.', publicationAuthorization: true }];
+      const plan = proposal([script, publish]);
+      const run = createApprovedRun(store, plan);
+      const executed: string[] = [];
+      const fake = fakes({
+        worker: {
+          async execute(input) {
+            executed.push(input.action);
+            return {
+              state: 'succeeded', summary: 'done', usage: { inputTokens: 0, outputTokens: 0, costUsdMicros: 0 },
+              artifacts: [], checkpoints: [],
+            };
+          },
+        },
+      });
+      fake.worktrees.inspect = async () => ({ changed: [] });
+      const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
+      const approve = (title: string, key: string) => {
+        const detail = store.getRun('operator', run.runRef);
+        if (!detail.ok) throw new Error(detail.detail);
+        const request = detail.value.humanRequests.find((candidate) => candidate.title === title);
+        if (!request) throw new Error(`missing human request ${title}`);
+        expect(store.respondHumanRequest('operator', request.requestRef, {
+          expectedRevision: request.revision, decision: 'approved', idempotencyKey: key, response: 'Approved.',
+        }).ok).toBe(true);
+      };
+      const drive = () => engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
+
+      expect((await drive()).state).toBe('waiting-human');
+      expect(executed).toEqual([]);
+
+      // Approving the SCRIPT gate releases only the script stage; the publish stage opens its own gate
+      // and publishes nothing.
+      approve('automatic:gate:script:g1-script', 'approve-g1');
+      expect((await drive()).state).toBe('waiting-human');
+      expect(executed).toEqual(['test:script']);
+      const parked = store.getRun('operator', run.runRef);
+      if (!parked.ok) throw new Error(parked.detail);
+      expect(parked.value.humanRequests.map((request) => [request.title, request.state])).toEqual([
+        ['automatic:gate:script:g1-script', 'resolved'],
+        ['automatic:gate:publish-private:g4-publish-private', 'open'],
+      ]);
+
+      // Only its OWN recorded approval releases it.
+      approve('automatic:gate:publish-private:g4-publish-private', 'approve-g4');
+      expect((await drive()).state).toBe('succeeded');
+      expect(executed).toEqual(['test:script', 'publish:private-upload']);
+    });
+  });
+
   it('contains adapter exceptions durably instead of leaving a running attempt wedged', async () => {
     const store = createStore();
     const plan = proposal([stage('adapter-failure')]);

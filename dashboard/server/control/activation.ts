@@ -1,12 +1,24 @@
 /**
- * Wave A activation — the env-gated assembly of the governed automatic executor and its injection point
- * into the surface context.
+ * Activation — the assembly of the governed automatic executor and its injection point into the surface
+ * context, behind a RUNTIME UNLOCK LATCH.
  *
- * CORE INERT INVARIANT (design "Authorization boundary", plan D3): unless
- * `DASHBOARD_EXECUTION_ACTIVATED === '1'`, `buildActivatedExecution` returns `null` BEFORE touching any
- * construction factory. Nothing is imported eagerly that spawns; nothing is `new`-ed at module load. With
- * the gate off the daemon behaves byte-for-byte as today: no broker, no engine, no `claude` subprocess
- * reachable. The live flip is Daniel's alone.
+ * CORE INERT INVARIANT (design "Authorization boundary", plan D3), unchanged in shape: unless the daemon
+ * is explicitly authorized, `buildActivatedExecution` returns `null` BEFORE touching any construction
+ * factory. Nothing is imported eagerly that spawns; nothing is `new`-ed at module load. Locked, the
+ * daemon behaves byte-for-byte as an unactivated one: no broker, no engine, no roster, no `claude`
+ * subprocess reachable.
+ *
+ * WHAT CHANGED (FYT gated-pipeline Task 4): there are now TWO authorizations, and the daemon boots with
+ * neither unless the environment says otherwise.
+ *   1. `DASHBOARD_EXECUTION_ACTIVATED === '1'` — demoted to a HEADLESS/TESTING OVERRIDE. It skips the
+ *      latch entirely (the daemon comes up already unlocked) and exists for hermetic tests and headless
+ *      operation. It is not how a human operator turns execution on.
+ *   2. An {@link ExecutionUnlockGrant} — minted ONLY by {@link createExecutionLatch}'s `unlock`, which the
+ *      unlock route calls after a WebAuthn passkey assertion verifies. The grant is unforgeable by
+ *      construction (a module-private brand): a shape-matching object from anywhere else fails
+ *      `isExecutionUnlockGrant`, so no route, store value, or JSON body can conjure one.
+ * State stays unlocked until the daemon restarts (natural re-lock: the grant and the wiring live only in
+ * memory) or an operator calls Lock, which drops the wiring and retires every roster session.
  *
  * When the gate is on this wires, behind the gate, the already-built, already-reviewed control-plane
  * pieces into one `AutomaticExecutionEngine`:
@@ -50,6 +62,10 @@ import {
   createWorkerCancellationRegistry,
 } from './managedExecution.ts';
 import { settleFleetLedgerForRun } from './queueBridge.ts';
+import { createRosterSessionManager, createRosterWorkerAdapter, type RosterSessionManager } from './rosterSessions.ts';
+import { loadExecutionProfiles } from './environment.ts';
+import type { PtyHost } from '../pty/host.ts';
+import type { PersistentSessionRegistry } from '../pty/persistentSessions.ts';
 import { brandInternalServiceCaller } from '../auth/session.ts';
 import type { InternalServiceCaller } from '../auth/session.ts';
 
@@ -103,9 +119,38 @@ const DEFAULT_BUDGET: ExecutionBudget = {
 
 const FULL_COMMIT = /^[a-f0-9]{40}$/;
 
-/** The whole gate. Reads exactly one variable; any value other than the literal '1' means OFF. */
+/**
+ * The HEADLESS/TESTING OVERRIDE. Reads exactly one variable; any value other than the literal '1' means
+ * OFF, and OFF is now the normal production posture — an operator unlocks execution with a passkey
+ * (`createExecutionLatch`), not with an environment variable. When it IS '1' the latch comes up already
+ * unlocked, which is what hermetic tests and headless runs rely on.
+ */
 export function isExecutionActivated(env: Record<string, string | undefined> = process.env): boolean {
   return env.DASHBOARD_EXECUTION_ACTIVATED === '1';
+}
+
+/** Module-private brand: only code in this file can produce a value that satisfies the type. */
+const EXECUTION_UNLOCK_BRAND: unique symbol = Symbol('kb.execution-unlock-grant');
+
+/**
+ * Proof that a human passkey assertion authorized execution wiring to be constructed. Unforgeable: the
+ * brand symbol is module-private and never exported, so a JSON body, a store value, or another module's
+ * literal can never satisfy {@link isExecutionUnlockGrant}.
+ */
+export interface ExecutionUnlockGrant {
+  readonly [EXECUTION_UNLOCK_BRAND]: true;
+  readonly subject: string;
+  readonly unlockedAt: number;
+}
+
+function mintExecutionUnlockGrant(subject: string, unlockedAt: number): ExecutionUnlockGrant {
+  return { [EXECUTION_UNLOCK_BRAND]: true, subject, unlockedAt };
+}
+
+/** True only for a grant this module minted. */
+export function isExecutionUnlockGrant(value: unknown): value is ExecutionUnlockGrant {
+  return typeof value === 'object' && value !== null
+    && (value as Record<symbol, unknown>)[EXECUTION_UNLOCK_BRAND] === true;
 }
 
 export interface ActivationEngine {
@@ -116,6 +161,8 @@ export interface ActivationEngine {
 
 export interface ActivatedExecution {
   controlBroker: ManagedSessionBroker;
+  /** Present when roster delivery is wired: the canvas/state endpoint and Lock reach the roster here. */
+  rosterSessions?: RosterSessionManager;
   runAutomatic: (input: ExecuteRunInput) => Promise<ExecutionOutcome>;
   cancelAutomatic: (input: CancelRunInput) => Promise<CancellationOutcome>;
   containManagerStart?: (input: ContainManagerStartInput) => Promise<void>;
@@ -144,6 +191,11 @@ export interface ActivationDeps {
   createManagers: typeof createBrokerManagerAdapter;
   createCancellation: typeof createBrokerCancellationController;
   createEngine(options: AutomaticExecutionOptions): ActivationEngine;
+  /** The run-roster pty session manager. Constructed only behind the gate, like every other factory. */
+  createRoster: typeof createRosterSessionManager;
+  /** Wraps the headless worker adapter so roster runs deliver into pty sessions instead of spawning. */
+  createRosterWorkers: typeof createRosterWorkerAdapter;
+  loadProfiles: typeof loadExecutionProfiles;
   /**
    * The terminal-run observation seam (T6 wire-up): settle the fleet cost ledger for a run once it is
    * terminal. Default is the real `settleFleetLedgerForRun`. Wrapped around `runAutomatic` below so it
@@ -153,8 +205,21 @@ export interface ActivationDeps {
 }
 
 export interface BuildActivatedExecutionOptions {
-  /** Gate source. Defaults to `process.env`. */
+  /** Headless/testing override source. Defaults to `process.env`. */
   env?: Record<string, string | undefined>;
+  /**
+   * A passkey unlock grant. Supplying a valid one authorizes construction with the env override absent —
+   * this is the operator path. Anything that is not a grant this module minted is ignored, so the gate
+   * fails closed on a forged value rather than opening on a truthy one.
+   */
+  unlockGrant?: unknown;
+  /**
+   * The shared pty substrate. When BOTH are supplied the engine's worker adapter delivers stage work
+   * orders into per-run roster sessions (the FYT gated-pipeline substrate); when either is absent the
+   * engine keeps the proven headless worker path with no roster constructed at all.
+   */
+  ptyHost?: PtyHost;
+  ptySessions?: PersistentSessionRegistry;
   /** The app-local durable control-plane store the surface already resolved. */
   controlStore: ControlPlaneStore;
   /** Canonical ops worktree — used for policy load, worktree provisioning, and canonical integration. */
@@ -212,6 +277,9 @@ function defaultDeps(): ActivationDeps {
     createManagers: createBrokerManagerAdapter,
     createCancellation: createBrokerCancellationController,
     createEngine: (options) => new AutomaticExecutionEngine(options),
+    createRoster: createRosterSessionManager,
+    createRosterWorkers: createRosterWorkerAdapter,
+    loadProfiles: loadExecutionProfiles,
     settleLedgerForRun: settleFleetLedgerForRun,
   };
 }
@@ -238,12 +306,13 @@ export function createProjectPolicyResolver(
 }
 
 /**
- * Returns the executor injection triple when the gate is on, or `null` when it is off. The gate is
- * checked FIRST: on the off path this function touches no factory, resolves no policy, and shells no git.
+ * Returns the executor injection triple when execution is authorized, or `null` when it is not. The gate
+ * is checked FIRST: on the locked path this function touches no factory, resolves no policy, shells no
+ * git, and spawns no terminal.
  */
 export function buildActivatedExecution(options: BuildActivatedExecutionOptions): ActivatedExecution | null {
   const env = options.env ?? process.env;
-  if (!isExecutionActivated(env)) return null;
+  if (!isExecutionActivated(env) && !isExecutionUnlockGrant(options.unlockGrant)) return null;
 
   const deps = { ...defaultDeps(), ...options.deps };
   const subject = options.subject ?? DASHBOARD_EXECUTOR_SUBJECT;
@@ -306,7 +375,7 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
   });
 
   const registry = deps.createRegistry();
-  const workers = deps.createWorkers({
+  const headlessWorkers = deps.createWorkers({
     resolveToolPolicy: deps.createToolPolicyResolver(),
     registerCancellation: registry.register,
     deregisterCancellation: registry.clear,
@@ -315,6 +384,35 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
     // dormant future-proofing; the seam is wired for a CLI that honors them.)
     repoRoot,
   });
+  // Run-roster substrate. Constructed ONLY behind the gate and ONLY when the daemon shared its pty stack:
+  // one interactive session per distinct agent id, work orders delivered into them, everything else (gate
+  // boundaries, spend gate, dependency release, policy, accounting) still decided upstream by the engine.
+  const rosterSessions = options.ptyHost && options.ptySessions
+    ? deps.createRoster({
+        store: options.controlStore,
+        repoRoot,
+        stateRoot,
+        host: options.ptyHost,
+        registry: options.ptySessions,
+        assignedAgents,
+        resolveProfiles: () => deps.loadProfiles(repoRoot),
+        // The SAME server-owned tool cap the headless workers run under, so a roster session's scoped
+        // per-run permission settings can never grant a tool the workflow profile tables withhold.
+        // A profile that does not resolve refuses here exactly as it does there; the roster turns that
+        // refusal into "no permission rules" rather than a wider grant.
+        resolveWorkflowTools: (workflowProfileId) => {
+          try {
+            return deps.createToolPolicyResolver()(workflowProfileId).allowedTools;
+          } catch {
+            return [];
+          }
+        },
+      })
+    : null;
+  const workers = rosterSessions
+    ? deps.createRosterWorkers({ sessions: rosterSessions, fallback: headlessWorkers })
+    : headlessWorkers;
+
   const managers = deps.createManagers({ broker });
   const cancellation = deps.createCancellation({ broker, registry });
 
@@ -357,8 +455,18 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
     if (scope && !runSparsePaths.has(input.runRef)) {
       runSparsePaths.set(input.runRef, { owner, paths: [...(scope.read ?? []), ...(scope.write ?? [])] });
     }
+    // Roster lifecycle rides the SAME entry point as execution, so launch and every resume (including the
+    // one after a daemon restart, which no pty child survives) converge on one idempotent spawn call, and
+    // a terminal run retires its terminals exactly once. A roster failure must not silently execute the
+    // run headlessly: an assignment that no longer verifies is a refusal, and it propagates.
+    if (rosterSessions && input.proposal.stages.some((stage) => stage.assignment)) {
+      rosterSessions.ensureRoster({ subject: input.subject, runRef: input.runRef, proposal: input.proposal });
+    }
     try {
       const outcome = await engine.runToBoundary(input);
+      if (rosterSessions && ['succeeded', 'failed', 'stopped'].includes(outcome.state)) {
+        rosterSessions.retire(input.runRef, `run ${outcome.state}`);
+      }
       try {
         await settleLedgerForRun(
           { controlStore: options.controlStore, repoRoot },
@@ -378,8 +486,15 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
 
   return {
     controlBroker: broker,
+    ...(rosterSessions ? { rosterSessions } : {}),
     runAutomatic,
-    cancelAutomatic: (input) => engine.cancelRun(input),
+    cancelAutomatic: async (input) => {
+      const outcome = await engine.cancelRun(input);
+      // An operator stop retires the run's terminals with it; leaving six live Claude REPLs behind a
+      // stopped run is exactly the orphan the lease law forbids.
+      if (rosterSessions) rosterSessions.retire(input.runRef, 'run cancelled');
+      return outcome;
+    },
     verifyCanonicalResult: async (input) => (await results.lookup({
       operationKey: canonicalResultOperationKey(input.runRef, input.stageId),
       subject: input.subject,
@@ -389,5 +504,112 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
     ...(engine.containManagerStart
       ? { containManagerStart: (input: ContainManagerStartInput) => engine.containManagerStart!(input) }
       : {}),
+  };
+}
+
+/** What the lock/unlock routes and the UI see. Never carries the grant or any wiring reference. */
+export interface ExecutionLatchState {
+  state: 'locked' | 'unlocked';
+  /** How it was unlocked: the passkey route, or the headless/testing env override. */
+  source: 'passkey' | 'env-override' | null;
+  unlockedAt: string | null;
+  unlockedBy: string | null;
+}
+
+export interface ExecutionLatch {
+  snapshot(): ExecutionLatchState;
+  /** The live wiring, or `null` while locked. Never constructs anything. */
+  current(): ActivatedExecution | null;
+  /**
+   * Construct the execution wiring under a freshly-verified passkey assertion. Idempotent: a second
+   * unlock while already unlocked returns the same wiring and does not rebuild it.
+   */
+  unlock(input: { subject: string }): { ok: true; state: ExecutionLatchState } | { ok: false; reason: string };
+  /** Drop the wiring, retire every roster session, and return to the boot posture. Idempotent. */
+  lock(input: { subject: string }): ExecutionLatchState;
+}
+
+export interface ExecutionLatchOptions {
+  /** Build inputs the latch holds until an unlock actually happens. */
+  buildOptions: Omit<BuildActivatedExecutionOptions, 'unlockGrant'>;
+  /** Injectable for tests; defaults to the real builder. */
+  build?: typeof buildActivatedExecution;
+  env?: Record<string, string | undefined>;
+  now?: () => number;
+  /** Called on every transition so the surface context can bind/unbind the executor fields in place. */
+  onChange?: (execution: ActivatedExecution | null, state: ExecutionLatchState) => void;
+}
+
+const LOCKED_STATE: ExecutionLatchState = { state: 'locked', source: null, unlockedAt: null, unlockedBy: null };
+
+/**
+ * The runtime unlock latch.
+ *
+ * Boot posture is LOCKED unless the headless/testing override is set, in which case the latch comes up
+ * unlocked with `source: 'env-override'` and the daemon behaves exactly as it did before this existed.
+ * From locked, the ONLY way to construct execution wiring is `unlock`, which the passkey-gated route
+ * calls after `verifyAssertion` returns `verified: true`; the grant it mints cannot be produced anywhere
+ * else. `lock` drops the wiring and retires every roster terminal; a daemon restart does the same for
+ * free, which is why nothing about the unlocked state is persisted.
+ */
+export function createExecutionLatch(options: ExecutionLatchOptions): ExecutionLatch {
+  const build = options.build ?? buildActivatedExecution;
+  const env = options.env ?? process.env;
+  const now = options.now ?? Date.now;
+  let execution: ActivatedExecution | null = null;
+  let state: ExecutionLatchState = LOCKED_STATE;
+
+  const apply = (next: ActivatedExecution | null, nextState: ExecutionLatchState): void => {
+    execution = next;
+    state = nextState;
+    options.onChange?.(next, nextState);
+  };
+
+  const construct = (subject: string, source: 'passkey' | 'env-override'): { ok: true; state: ExecutionLatchState } | { ok: false; reason: string } => {
+    const at = now();
+    const built = build({ ...options.buildOptions, env, unlockGrant: mintExecutionUnlockGrant(subject, at) });
+    if (!built) return { ok: false, reason: 'execution-wiring-unavailable' };
+    apply(built, {
+      state: 'unlocked',
+      source,
+      unlockedAt: new Date(at).toISOString(),
+      unlockedBy: subject,
+    });
+    return { ok: true, state };
+  };
+
+  // The env override is applied at construction so an overridden daemon is unlocked before the first
+  // request, preserving the pre-latch behaviour byte for byte.
+  if (isExecutionActivated(env)) construct(DASHBOARD_EXECUTOR_SUBJECT, 'env-override');
+
+  return {
+    snapshot: () => state,
+    current: () => execution,
+    unlock(input) {
+      if (execution) return { ok: true, state };
+      if (!SAFE_PROJECT.test(input.subject)) return { ok: false, reason: 'unsafe-unlock-subject' };
+      try {
+        return construct(input.subject, 'passkey');
+      } catch (error) {
+        // A construction failure must leave the daemon LOCKED, never half-wired.
+        apply(null, LOCKED_STATE);
+        return { ok: false, reason: error instanceof Error ? error.message : 'execution wiring could not be constructed' };
+      }
+    },
+    lock() {
+      if (!execution) return state;
+      try {
+        execution.rosterSessions?.retireAll('execution locked');
+      } catch {
+        /* a roster that cannot be reaped must not block the lock; the pty host drain still owns the children */
+      }
+      try {
+        execution.controlBroker.drain();
+      } catch {
+        /* best-effort: locking is a fail-safe direction */
+      }
+      apply(null, LOCKED_STATE);
+      return state;
+    },
   };
 }

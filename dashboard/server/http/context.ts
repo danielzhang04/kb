@@ -31,6 +31,10 @@ import type {
   ExecutionOutcome,
 } from '../control/execution.ts';
 import type { RunControlTransactions } from '../control/runTransactions.ts';
+import type { ExecutionLatch } from '../control/activation.ts';
+import type { RosterSessionManager } from '../control/rosterSessions.ts';
+import type { PtyHost } from '../pty/host.ts';
+import type { PersistentSessionRegistry } from '../pty/persistentSessions.ts';
 import type { DefinitionAmendmentStore } from '../workflows/amendmentStore.ts';
 import type { activateManagedRootCards } from '../write/workflowRun.ts';
 
@@ -88,6 +92,19 @@ export interface SurfaceContext {
   controlStore: ControlPlaneStore;
   /** Optional gated daemon-owned broker. Production remains inactive until its separate approval gate. */
   controlBroker?: ManagedSessionBroker;
+  /**
+   * The runtime execution unlock latch. The daemon boots LOCKED (no wiring constructed) and the
+   * passkey-gated unlock route asks this to construct it, which rebinds the executor fields below IN
+   * PLACE on this same context object — so every route that already checks `ctx.runAutomatic` observes
+   * the current posture without a second lookup path. Absent only when a test injects the executor.
+   */
+  executionLatch?: ExecutionLatch;
+  /** The live run-roster manager while unlocked; the roster-state endpoint reads it. */
+  rosterSessions?: RosterSessionManager;
+  /** The daemon's single node-pty host and persistent session registry, shared with `/api/pty` so the
+   *  canvas attaches to the very sessions the roster spawned. */
+  ptyHost?: PtyHost;
+  ptySessions?: PersistentSessionRegistry;
   /** Optional server-owned automatic executor; never supplied by the browser. */
   runAutomatic?: (input: ExecuteRunInput) => Promise<ExecutionOutcome>;
   /** Optional executor-owned cancellation boundary for Manager and Worker processes. */

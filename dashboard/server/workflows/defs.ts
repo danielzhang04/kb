@@ -30,6 +30,12 @@ const MAX_WORK_ORDER_CHARS = 64 * 1024;
 const MAX_DESCRIPTION_CHARS = 64 * 1024;
 const MAX_GATE_PROMPT_CHARS = 2_000;
 const MAX_REVIEW_CRITERIA = 16;
+/** Bound mirrors proposal.ts MAX_ARTIFACTS so a def can never compile to an over-budget stage. */
+const MAX_STAGE_ARTIFACTS = 32;
+/** Bound mirrors the proposal validator's artifact-description limit. */
+const MAX_ARTIFACT_DESCRIPTION_CHARS = 1_000;
+/** Bound mirrors proposal.ts MAX_HUMAN_GATES so a def can never compile to an over-budget stage. */
+const MAX_STAGE_HUMAN_GATES = 16;
 /** Read-scope list bound — mirrors proposal.ts MAX_LIST_ITEMS (64) so a def can never compile to an
  * over-budget `scope.read` the proposal validator would reject. */
 const MAX_READ_SCOPE_ITEMS = 64;
@@ -136,6 +142,50 @@ export interface WorkflowStageDef {
   workflowProfile?: string;
   review?: WorkflowReviewDef;
   completionGate?: WorkflowCompletionGateDef;
+  /**
+   * Declared human gates that BLOCK this stage. `execution.ts#stageBoundary` evaluates a stage's
+   * gates BEFORE any attempt is prepared, so a gate declared here halts the stage it is written on
+   * until a human resolves it — declare a gate on the stage that must not run, never on the stage
+   * whose output is being judged. Omitted (not `[]`) when the stage declares none, so existing
+   * definitions hash and compile byte-identically.
+   */
+  humanGates?: WorkflowHumanGateDef[];
+  /**
+   * The load-bearing files this stage must actually leave on disk. These are VERIFIED server-side before
+   * a completion is accepted (`rosterSessions.ts#deliver`), which is the only thing standing between "the
+   * agent printed DONE" and "the stage succeeded": with no declared artifacts the verification loop
+   * iterates an empty list and a bare marker with nothing on disk is accepted, so the run advances to the
+   * next gate asking a human to approve an artifact that does not exist.
+   *
+   * Paths are repo-relative, may carry `<parameter>` placeholders (substituted by
+   * `instantiateWorkflowDef`), and must sit inside the stage's own `target` tree — a stage cannot promise
+   * a file it has no write scope for. Omitted (not `[]`) when a stage declares none, so existing
+   * definitions hash and compile byte-identically.
+   */
+  artifacts?: WorkflowArtifactDef[];
+}
+
+/**
+ * Declaration-side declared artifact. `id` is the run-visible handle, `path` the file the server checks
+ * for, `description` the operator-facing note about what it is.
+ */
+export interface WorkflowArtifactDef {
+  id: string;
+  path: string;
+  description: string;
+}
+
+/**
+ * Declaration-side human gate. `spendAuthorization` and `publicationAuthorization` are each admissible
+ * only on an `approval` gate: they say WHICH recorded human decision authorizes their own stage's paid
+ * generation / T3 publication, and a non-approval response can never stand in for either.
+ */
+export interface WorkflowHumanGateDef {
+  id: string;
+  kind: 'approval' | 'input' | 'review';
+  prompt: string;
+  spendAuthorization?: boolean;
+  publicationAuthorization?: boolean;
 }
 
 export interface WorkflowReviewCriterionDef { id: string; description: string; }
@@ -169,6 +219,12 @@ export interface WorkflowDef {
   manager?: WorkflowManagerAssignment;
   /** Explicit launch-time path-segment inputs. Only these placeholders are substituted. */
   parameters?: string[];
+  /**
+   * The VALUES a launch substituted, set only by `instantiateWorkflowDef` (never parsed from the file).
+   * The compiler carries them into the proposal as structured data so a run's identity keeps its channel /
+   * slug / slice instead of leaving them recoverable only from substituted prose.
+   */
+  launchParameters?: Record<string, string>;
   /**
    * Optional declared read roots beyond the def's own `orgs/<project>` tree. Validated against the
    * closed `SHAREABLE_READ_ROOTS` allowlist. Empty when the frontmatter omits `readScope`, which
@@ -237,6 +293,139 @@ function validateAgentProfileAssignment(
   return { ok: true, value: { agentId, profileId } };
 }
 
+/**
+ * Validate a stage's optional `humanGates` list: a closed mapping per entry, a bounded prompt, and a
+ * `kind` from the declaration-side enum. Cross-stage id uniqueness is enforced once in
+ * `parseWorkflowDef` (a gate id is the run-visible handle a human approves; two stages sharing one id
+ * would make an approval ambiguous). `spendAuthorization` is admissible ONLY on an approval gate:
+ * an `input`/`review` response is not an approval, and must never read as authorizing spend.
+ */
+function validateHumanGates(
+  raw: unknown,
+  label: string,
+): { ok: true; value: WorkflowHumanGateDef[] } | { ok: false; detail: string } {
+  if (!Array.isArray(raw)) return { ok: false, detail: `${label} must be a list of gate mappings` };
+  if (raw.length === 0 || raw.length > MAX_STAGE_HUMAN_GATES) {
+    return { ok: false, detail: `${label} must contain 1-${MAX_STAGE_HUMAN_GATES} gates` };
+  }
+  const allowed = new Set(['id', 'kind', 'prompt', 'spendAuthorization', 'publicationAuthorization']);
+  const kinds = new Set(['approval', 'input', 'review']);
+  const value: WorkflowHumanGateDef[] = [];
+  const seen = new Set<string>();
+  for (let index = 0; index < raw.length; index += 1) {
+    const entry = raw[index];
+    const itemLabel = `${label}[${index}]`;
+    if (!isRecord(entry)) return { ok: false, detail: `${itemLabel} must be a mapping` };
+    const unknownKey = Object.keys(entry).find((key) => !allowed.has(key));
+    if (unknownKey) return { ok: false, detail: `${itemLabel} has unknown field '${unknownKey}'` };
+    const id = asString(entry.id);
+    if (id === null || !SAFE_ID_RE.test(id)) {
+      return { ok: false, detail: `${itemLabel}.id must be a safe identifier of 1-${MAX_ID_CHARS} characters` };
+    }
+    if (seen.has(id)) return { ok: false, detail: `${label} must not contain the duplicate gate id '${id}'` };
+    seen.add(id);
+    const kind = asString(entry.kind);
+    if (kind === null || !kinds.has(kind)) {
+      return { ok: false, detail: `${itemLabel}.kind must be approval, input, or review` };
+    }
+    const prompt = asString(entry.prompt);
+    if (prompt === null || prompt.trim() === '' || prompt.length > MAX_GATE_PROMPT_CHARS || prompt.includes('\0')) {
+      return { ok: false, detail: `${itemLabel}.prompt must be a non-empty string of at most ${MAX_GATE_PROMPT_CHARS} characters` };
+    }
+    let spendAuthorization: boolean | undefined;
+    if (hasOwn(entry, 'spendAuthorization')) {
+      if (typeof entry.spendAuthorization !== 'boolean') {
+        return { ok: false, detail: `${itemLabel}.spendAuthorization must be a boolean when present` };
+      }
+      if (entry.spendAuthorization && kind !== 'approval') {
+        return { ok: false, detail: `${itemLabel}.spendAuthorization requires kind 'approval'` };
+      }
+      spendAuthorization = entry.spendAuthorization;
+    }
+    let publicationAuthorization: boolean | undefined;
+    if (hasOwn(entry, 'publicationAuthorization')) {
+      if (typeof entry.publicationAuthorization !== 'boolean') {
+        return { ok: false, detail: `${itemLabel}.publicationAuthorization must be a boolean when present` };
+      }
+      if (entry.publicationAuthorization && kind !== 'approval') {
+        return { ok: false, detail: `${itemLabel}.publicationAuthorization requires kind 'approval'` };
+      }
+      publicationAuthorization = entry.publicationAuthorization;
+    }
+    value.push({
+      id,
+      kind: kind as WorkflowHumanGateDef['kind'],
+      prompt,
+      ...(spendAuthorization === undefined ? {} : { spendAuthorization }),
+      ...(publicationAuthorization === undefined ? {} : { publicationAuthorization }),
+    });
+  }
+  return { ok: true, value };
+}
+
+/**
+ * A `<parameter>` placeholder inside a declared path. `instantiateWorkflowDef` substitutes these at
+ * launch; until then the path cannot pass `isSafeRepoRelativePath` (`<` and `>` are not safe segment
+ * characters), so validation checks the placeholder-substituted form.
+ */
+const PATH_PLACEHOLDER_RE = /<([A-Za-z0-9][A-Za-z0-9._-]{0,63})>/g;
+
+/** Every `<parameter>` name appearing in `value`, in order of appearance. */
+export function pathPlaceholders(value: string): string[] {
+  return [...value.matchAll(PATH_PLACEHOLDER_RE)].map((match) => match[1]);
+}
+
+/**
+ * Validate a stage's optional `artifacts` list. Each entry is a closed mapping; each path is checked in
+ * its placeholder-substituted form against the SAME `isSafeRepoRelativePath` validator the compiled
+ * `ProposalArtifact.path` passes through, and must sit inside the stage's own `target` tree. Containment
+ * is what keeps a declared artifact honest: a stage may only promise files in the tree its write scope
+ * is derived from (compile.ts builds `scope.write` from `target`), so it can never claim a file it has
+ * no authority to write.
+ */
+function validateArtifacts(
+  raw: unknown,
+  label: string,
+  target: string,
+): { ok: true; value: WorkflowArtifactDef[] } | { ok: false; detail: string } {
+  if (!Array.isArray(raw)) return { ok: false, detail: `${label} must be a list of artifact mappings` };
+  if (raw.length === 0 || raw.length > MAX_STAGE_ARTIFACTS) {
+    return { ok: false, detail: `${label} must contain 1-${MAX_STAGE_ARTIFACTS} artifacts` };
+  }
+  const allowed = new Set(['id', 'path', 'description']);
+  const value: WorkflowArtifactDef[] = [];
+  const seenIds = new Set<string>();
+  const seenPaths = new Set<string>();
+  for (let index = 0; index < raw.length; index += 1) {
+    const entry = raw[index];
+    const itemLabel = `${label}[${index}]`;
+    if (!isRecord(entry)) return { ok: false, detail: `${itemLabel} must be a mapping` };
+    const unknownKey = Object.keys(entry).find((key) => !allowed.has(key));
+    if (unknownKey) return { ok: false, detail: `${itemLabel} has unknown field '${unknownKey}'` };
+    const id = asString(entry.id);
+    if (id === null || !SAFE_ID_RE.test(id)) {
+      return { ok: false, detail: `${itemLabel}.id must be a safe identifier of 1-${MAX_ID_CHARS} characters` };
+    }
+    if (seenIds.has(id)) return { ok: false, detail: `${label} must not contain the duplicate artifact id '${id}'` };
+    seenIds.add(id);
+    const path = asString(entry.path);
+    if (path === null || !isSafeRepoRelativePath(path.replace(PATH_PLACEHOLDER_RE, 'x'))) {
+      return { ok: false, detail: `${itemLabel}.path must be a canonical safe repo-relative path (parameter placeholders allowed)` };
+    }
+    if (seenPaths.has(path)) return { ok: false, detail: `${label} must not contain the duplicate artifact path '${path}'` };
+    seenPaths.add(path);
+    if (path !== target && !path.startsWith(`${target}/`)) {
+      return { ok: false, detail: `${itemLabel}.path must sit inside this stage's own target tree '${target}/'` };
+    }
+    const description = asString(entry.description);
+    if (description === null || description.trim() === '' || description.length > MAX_ARTIFACT_DESCRIPTION_CHARS || description.includes('\0')) {
+      return { ok: false, detail: `${itemLabel}.description must be a non-empty string of at most ${MAX_ARTIFACT_DESCRIPTION_CHARS} characters` };
+    }
+    value.push({ id, path, description });
+  }
+  return { ok: true, value };
+}
+
 function validateStage(
   raw: unknown,
   index: number,
@@ -246,7 +435,7 @@ function validateStage(
 ): { ok: true; value: WorkflowStageDef } | { ok: false; detail: string } {
   const label = `stages[${index}]`;
   if (!isRecord(raw)) return { ok: false, detail: `${label} must be a mapping` };
-  const allowed = new Set(['id', 'title', 'action', 'target', 'workOrder', 'dependsOn', 'riskTier', 'governedBy', 'agentId', 'profileId', 'workflowProfile', 'review', 'completionGate']);
+  const allowed = new Set(['id', 'title', 'action', 'target', 'workOrder', 'dependsOn', 'riskTier', 'governedBy', 'agentId', 'profileId', 'workflowProfile', 'review', 'completionGate', 'humanGates', 'artifacts']);
   const unknownKey = Object.keys(raw).find((key) => !allowed.has(key));
   if (unknownKey) return { ok: false, detail: `${label} has unknown field '${unknownKey}'` };
 
@@ -399,6 +588,18 @@ function validateStage(
     }
     completionGate = { id: gateId, kind: 'approval', prompt, requiresReview: 'pass' };
   }
+  let humanGates: WorkflowHumanGateDef[] | undefined;
+  if (hasOwn(raw, 'humanGates')) {
+    const validated = validateHumanGates(raw.humanGates, `${label}.humanGates`);
+    if (!validated.ok) return validated;
+    humanGates = validated.value;
+  }
+  let artifacts: WorkflowArtifactDef[] | undefined;
+  if (hasOwn(raw, 'artifacts')) {
+    const validated = validateArtifacts(raw.artifacts, `${label}.artifacts`, target);
+    if (!validated.ok) return validated;
+    artifacts = validated.value;
+  }
   return {
     ok: true,
     value: {
@@ -416,6 +617,8 @@ function validateStage(
       ...(workflowProfile ? { workflowProfile } : {}),
       ...(review ? { review } : {}),
       ...(completionGate ? { completionGate } : {}),
+      ...(humanGates ? { humanGates } : {}),
+      ...(artifacts ? { artifacts } : {}),
     },
   };
 }
@@ -484,11 +687,22 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
   }
   const stages: WorkflowStageDef[] = [];
   const ids = new Set<string>();
+  // A human gate id is the run-visible handle a person approves. Uniqueness is enforced across the
+  // WHOLE workflow, not per stage: two stages sharing a gate id would make "g2 is approved"
+  // ambiguous about which stage it released — and a spend gate must never be ambiguous.
+  const gateIds = new Set<string>();
   for (let index = 0; index < rawStages.length; index += 1) {
     const stage = validateStage(rawStages[index], index, description, project, options.knownProfiles);
     if (!stage.ok) return stage;
     if (ids.has(stage.value.id)) return { ok: false, detail: `duplicate stage id '${stage.value.id}'` };
     ids.add(stage.value.id);
+    // A completion gate is a human gate the operator answers in the same Inbox, under the same
+    // `automatic:gate:<stageId>:<gateId>` title shape, so it shares the one id namespace: leaving it out
+    // of this set let a completionGate id collide with a humanGates id and make an approval ambiguous.
+    for (const gate of [...(stage.value.humanGates ?? []), ...(stage.value.completionGate ? [stage.value.completionGate] : [])]) {
+      if (gateIds.has(gate.id)) return { ok: false, detail: `duplicate human gate id '${gate.id}'` };
+      gateIds.add(gate.id);
+    }
     stages.push(stage.value);
   }
 
@@ -504,6 +718,19 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
     return { ok: false, detail: 'parameters must be an array of safe identifiers' };
   }
   if (new Set(parameters).size !== parameters.length) return { ok: false, detail: 'parameters must not contain duplicates' };
+  // A placeholder in a declared artifact path that is NOT a launch parameter would survive substitution
+  // as a literal `<name>`, which no file on disk can ever be — the stage would report done, the server
+  // would look for a path containing `<`, and the run would park at every stage. Refuse it here, where
+  // the message can name the offender, instead of at proposal validation.
+  const declaredParameters = new Set(parameters as string[]);
+  for (const stage of stages) {
+    for (const artifact of stage.artifacts ?? []) {
+      const unknown = pathPlaceholders(artifact.path).find((name) => !declaredParameters.has(name));
+      if (unknown) {
+        return { ok: false, detail: `stage '${stage.id}' artifact '${artifact.id}' uses undeclared parameter '<${unknown}>'` };
+      }
+    }
+  }
   const reviewStageIds = new Set(stages.filter((stage) => stage.review !== undefined).map((stage) => stage.id));
   const reviewSubjects = new Set<string>();
   for (const stage of stages) {
@@ -554,8 +781,33 @@ export function instantiateWorkflowDef(def: WorkflowDef, input: Record<string, s
       && !/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(deviceBase);
   };
   for (const key of expected) if (!isSafeSegment(input[key])) return { ok: false, detail: `parameter '${key}' must be a safe path segment` };
-  const sourceFields = [def.description, ...def.stages.flatMap((stage) => [stage.workOrder, stage.target])];
+  const sourceFields = [
+    def.description,
+    ...def.stages.flatMap((stage) => [
+      stage.workOrder,
+      stage.target,
+      // Declared artifact paths count as USE: a parameter that only scopes an output path is still used.
+      ...(stage.artifacts ?? []).map((artifact) => artifact.path),
+    ]),
+  ];
   for (const key of expected) if (!sourceFields.some((value) => value.includes(`<${key}>`))) return { ok: false, detail: `parameter '${key}' is declared but not used by the workflow` };
   const replace = (value: string) => expected.reduce((next, key) => next.replaceAll(`<${key}>`, input[key]), value);
-  return { ok: true, value: { ...def, description: replace(def.description), stages: def.stages.map((stage) => ({ ...stage, workOrder: replace(stage.workOrder), target: replace(stage.target) })) } };
+  return {
+    ok: true,
+    value: {
+      ...def,
+      description: replace(def.description),
+      // Artifact paths are substituted with the same replacer as targets and work orders: an unsubstituted
+      // `<slug>` in a declared path is a path no file can ever have, so the stage would park forever.
+      stages: def.stages.map((stage) => ({
+        ...stage,
+        workOrder: replace(stage.workOrder),
+        target: replace(stage.target),
+        ...(stage.artifacts ? { artifacts: stage.artifacts.map((artifact) => ({ ...artifact, path: replace(artifact.path) })) } : {}),
+      })),
+      // Emitted only when the def actually declares parameters, so a parameterless definition compiles to
+      // the byte-identical proposal it did before this field existed.
+      ...(expected.length === 0 ? {} : { launchParameters: Object.fromEntries(expected.map((key) => [key, input[key]])) }),
+    },
+  };
 }

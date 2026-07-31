@@ -1,11 +1,14 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   isExecutionActivated,
+  isExecutionUnlockGrant,
   buildActivatedExecution,
+  createExecutionLatch,
   createProjectPolicyResolver,
   DASHBOARD_EXECUTOR_SUBJECT,
   type ActivationDeps,
   type BuildActivatedExecutionOptions,
+  type ExecutionLatchState,
 } from './activation.ts';
 
 describe('isExecutionActivated (the whole gate)', () => {
@@ -49,6 +52,16 @@ function spyDeps(): ActivationDeps {
     createManagers: vi.fn().mockReturnValue({ ensure: vi.fn() }) as never,
     createCancellation: vi.fn().mockReturnValue({ cancelManager: vi.fn(), cancelWorker: vi.fn() }) as never,
     createEngine: vi.fn().mockReturnValue(engine),
+    createRoster: vi.fn().mockReturnValue({
+      ensureRoster: vi.fn().mockReturnValue({ runRef: 'run-1', spawned: [], existing: [] }),
+      hasRoster: vi.fn().mockReturnValue(false),
+      deliver: vi.fn(),
+      retire: vi.fn().mockReturnValue([]),
+      retireAll: vi.fn().mockReturnValue([]),
+      state: vi.fn().mockReturnValue([]),
+    }) as never,
+    createRosterWorkers: vi.fn().mockReturnValue({ execute: vi.fn() }) as never,
+    loadProfiles: vi.fn().mockReturnValue([]) as never,
     settleLedgerForRun: vi.fn().mockReturnValue({ settled: true, emitted: 1, blocked: false }) as never,
   };
 }
@@ -286,5 +299,174 @@ describe('buildActivatedExecution — gate ON', () => {
     const deps = spyDeps();
     buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
     expect(deps.resolveBaseCommit).toHaveBeenCalledWith('/repo');
+  });
+});
+
+/**
+ * The runtime unlock latch. Boot posture is LOCKED: nothing is constructed until a verified passkey
+ * assertion asks for it, or the headless/testing env override is set.
+ */
+describe('createExecutionLatch (runtime unlock)', () => {
+  function latchHarness(env: Record<string, string | undefined> = {}) {
+    const deps = spyDeps();
+    const build = vi.fn(buildActivatedExecution);
+    const changes: Array<{ execution: unknown; state: ExecutionLatchState }> = [];
+    const latch = createExecutionLatch({
+      build: build as unknown as typeof buildActivatedExecution,
+      env,
+      now: () => 1_700_000_000_000,
+      buildOptions: { controlStore: {} as never, repoRoot: '/repo', stateRoot: '/state', deps },
+      onChange: (execution, state) => changes.push({ execution, state }),
+    });
+    return { deps, build, latch, changes };
+  }
+
+  it('boots LOCKED and constructs nothing (the core inert invariant, now runtime-scoped)', () => {
+    const { deps, build, latch, changes } = latchHarness();
+    expect(latch.snapshot()).toEqual({ state: 'locked', source: null, unlockedAt: null, unlockedBy: null });
+    expect(latch.current()).toBeNull();
+    expect(build).not.toHaveBeenCalled();
+    expect(changes).toEqual([]);
+    for (const [name, fn] of Object.entries(deps)) {
+      expect(fn as ReturnType<typeof vi.fn>, `factory ${name} must not be called while locked`).not.toHaveBeenCalled();
+    }
+  });
+
+  it('unlock constructs the wiring, is idempotent, and reports who unlocked it', () => {
+    const { deps, latch, changes } = latchHarness();
+    const first = latch.unlock({ subject: 'operator' });
+    expect(first.ok).toBe(true);
+    expect(latch.snapshot()).toEqual({
+      state: 'unlocked', source: 'passkey',
+      unlockedAt: new Date(1_700_000_000_000).toISOString(), unlockedBy: 'operator',
+    });
+    expect(latch.current()).not.toBeNull();
+    expect(deps.createEngine).toHaveBeenCalledTimes(1);
+    expect(changes).toHaveLength(1);
+
+    const wiring = latch.current();
+    expect(latch.unlock({ subject: 'operator' }).ok).toBe(true);
+    expect(deps.createEngine).toHaveBeenCalledTimes(1); // not rebuilt
+    expect(latch.current()).toBe(wiring);
+  });
+
+  it('lock drops the wiring, retires every roster session, and can be re-unlocked', () => {
+    const { deps, latch, changes } = latchHarness();
+    latch.unlock({ subject: 'operator' });
+    const roster = (deps.createRoster as ReturnType<typeof vi.fn>).mock.results[0]?.value;
+    expect(latch.lock({ subject: 'operator' })).toEqual({ state: 'locked', source: null, unlockedAt: null, unlockedBy: null });
+    expect(latch.current()).toBeNull();
+    // Nothing constructed stays reachable, and roster terminals are reaped rather than orphaned.
+    expect(changes.at(-1)?.execution).toBeNull();
+    if (roster) expect(roster.retireAll).toHaveBeenCalledWith('execution locked');
+    // A locked latch locks idempotently, then unlocks again on a fresh assertion.
+    expect(latch.lock({ subject: 'operator' }).state).toBe('locked');
+    expect(latch.unlock({ subject: 'operator' }).ok).toBe(true);
+    expect(deps.createEngine).toHaveBeenCalledTimes(2);
+  });
+
+  it('the env override unlocks at construction (headless/testing posture) and is reported as such', () => {
+    const { deps, latch } = latchHarness({ DASHBOARD_EXECUTION_ACTIVATED: '1' });
+    expect(latch.snapshot()).toMatchObject({ state: 'unlocked', source: 'env-override', unlockedBy: DASHBOARD_EXECUTOR_SUBJECT });
+    expect(latch.current()).not.toBeNull();
+    expect(deps.createEngine).toHaveBeenCalledTimes(1);
+    // Lock still works against an env-overridden daemon; a restart re-applies the override.
+    expect(latch.lock({ subject: 'operator' }).state).toBe('locked');
+  });
+
+  it('refuses an unsafe unlock subject and leaves the daemon locked when construction throws', () => {
+    const { latch } = latchHarness();
+    expect(latch.unlock({ subject: '../../etc' })).toEqual({ ok: false, reason: 'unsafe-unlock-subject' });
+    expect(latch.current()).toBeNull();
+
+    const deps = spyDeps();
+    (deps.resolveBaseCommit as ReturnType<typeof vi.fn>).mockImplementation(() => { throw new Error('git is unavailable'); });
+    const failing = createExecutionLatch({
+      env: {}, buildOptions: { controlStore: {} as never, repoRoot: '/repo', stateRoot: '/state', deps },
+    });
+    const attempt = failing.unlock({ subject: 'operator' });
+    expect(attempt).toEqual({ ok: false, reason: 'git is unavailable' });
+    expect(failing.snapshot().state).toBe('locked');
+    expect(failing.current()).toBeNull();
+  });
+});
+
+describe('buildActivatedExecution — unlock grants and the roster substrate', () => {
+  it('constructs with a latch-minted grant and NOTHING with a forged one', () => {
+    const forged = spyDeps();
+    expect(buildActivatedExecution({
+      ...baseOptions(forged, {}),
+      unlockGrant: { subject: 'operator', unlockedAt: 1, 'kb.execution-unlock-grant': true },
+    })).toBeNull();
+    for (const [name, fn] of Object.entries(forged)) {
+      expect(fn as ReturnType<typeof vi.fn>, `factory ${name} must not run for a forged grant`).not.toHaveBeenCalled();
+    }
+    expect(isExecutionUnlockGrant({ subject: 'operator' })).toBe(false);
+    expect(isExecutionUnlockGrant(null)).toBe(false);
+
+    // Only the latch can produce an accepted grant; observe it through the latch's own construction.
+    const real = spyDeps();
+    const latch = createExecutionLatch({
+      env: {}, buildOptions: { controlStore: {} as never, repoRoot: '/repo', stateRoot: '/state', deps: real },
+    });
+    expect(latch.unlock({ subject: 'operator' }).ok).toBe(true);
+    expect(real.createEngine).toHaveBeenCalledTimes(1);
+  });
+
+  it('wires roster delivery only when the daemon shares its pty stack, and keeps the headless path otherwise', () => {
+    const without = spyDeps();
+    const headlessOnly = buildActivatedExecution(baseOptions(without, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
+    expect(without.createRoster).not.toHaveBeenCalled();
+    expect(without.createRosterWorkers).not.toHaveBeenCalled();
+    expect(headlessOnly?.rosterSessions).toBeUndefined();
+    const headlessEngine = (without.createEngine as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(headlessEngine.workers).toBe((without.createWorkers as ReturnType<typeof vi.fn>).mock.results[0].value);
+
+    const withPty = spyDeps();
+    const built = buildActivatedExecution({
+      ...baseOptions(withPty, { DASHBOARD_EXECUTION_ACTIVATED: '1' }),
+      ptyHost: { open: vi.fn(), stop: vi.fn(), stopAll: vi.fn(), sessions: () => [] } as never,
+      ptySessions: {} as never,
+    });
+    expect(withPty.createRoster).toHaveBeenCalledTimes(1);
+    expect(built?.rosterSessions).toBeDefined();
+    const rosterEngine = (withPty.createEngine as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    // The engine drives the ROSTER adapter, which falls back to the headless one per run.
+    expect(rosterEngine.workers).toBe((withPty.createRosterWorkers as ReturnType<typeof vi.fn>).mock.results[0].value);
+    expect((withPty.createRosterWorkers as ReturnType<typeof vi.fn>).mock.calls[0][0].fallback)
+      .toBe((withPty.createWorkers as ReturnType<typeof vi.fn>).mock.results[0].value);
+  });
+
+  it('ensures the roster before the boundary drive and retires it when the run goes terminal', async () => {
+    const deps = spyDeps();
+    const built = buildActivatedExecution({
+      ...baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }),
+      ptyHost: { open: vi.fn(), stop: vi.fn(), stopAll: vi.fn(), sessions: () => [] } as never,
+      ptySessions: {} as never,
+    });
+    const roster = (deps.createRoster as ReturnType<typeof vi.fn>).mock.results[0].value;
+    const engine = (deps.createEngine as ReturnType<typeof vi.fn>).mock.results[0].value;
+    const proposal = { project: 'faceless-youtube', stages: [{ id: 'idea', assignment: { agentId: 'fyt-story' } }] };
+    await built?.runAutomatic({ subject: 'operator', runRef: 'run-7', proposal } as never);
+    expect(roster.ensureRoster).toHaveBeenCalledWith({ subject: 'operator', runRef: 'run-7', proposal });
+    expect(roster.ensureRoster.mock.invocationCallOrder[0]).toBeLessThan(engine.runToBoundary.mock.invocationCallOrder[0]);
+    // The fake engine reports succeeded, so the terminals are retired with the run.
+    expect(roster.retire).toHaveBeenCalledWith('run-7', 'run succeeded');
+
+    // A cancellation retires them too — a stopped run must never leave live agent REPLs behind.
+    await built?.cancelAutomatic({ subject: 'operator', runRef: 'run-7', idempotencyKey: 'k', reason: 'stop' } as never);
+    expect(roster.retire).toHaveBeenCalledWith('run-7', 'run cancelled');
+  });
+
+  it('leaves a run WITHOUT assigned stages entirely on the headless path (no roster spawn)', async () => {
+    const deps = spyDeps();
+    const built = buildActivatedExecution({
+      ...baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }),
+      ptyHost: { open: vi.fn(), stop: vi.fn(), stopAll: vi.fn(), sessions: () => [] } as never,
+      ptySessions: {} as never,
+    });
+    const roster = (deps.createRoster as ReturnType<typeof vi.fn>).mock.results[0].value;
+    await built?.runAutomatic({ subject: 'operator', runRef: 'run-8', proposal: { stages: [{ id: 'brief' }] } } as never);
+    expect(roster.ensureRoster).not.toHaveBeenCalled();
   });
 });

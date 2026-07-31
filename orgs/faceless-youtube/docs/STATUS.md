@@ -28,6 +28,53 @@ defect that will recur until fixed.
   diff comes next, followed by the zero-spend Poyais calibration; paid voice/image work, full render,
   publication, and queue transitions remain separately gated.
 
+## Gated multi-agent pipeline (dashboard-orchestrated) — BUILT, NOT YET RUN (2026-07-30)
+
+`video-run` now compiles to a **13-stage executable DAG across 6 real agents**, replacing the prior
+100%-display, 0%-executable definition: `fyt-runner` (conductor, manager-profile), `fyt-story`
+(idea→research→script→shorts→metadata), `fyt-visuals` (shots→motion→images), `fyt-audio-render`
+(narration→audio-plan→render), `fyt-publish` (publish-private), and `fyt-checker` (cross-cutting
+fresh-context gate service — judge-gate, image-review, render-verify, compliance, **and** the two
+staging→root merge nodes) — all five non-runner agents worker-profile. **6 human gates**, not 5:
+G0 idea-pick, G1 script, G2 visual-plan (spend authorization), G3 image-board, `g3b-narration-cost`
+(spend authorization, added because G2 alone left the ElevenLabs call authorized only by DAG
+reachability), G4 publish-private (a net-new `publicationAuthorization` gate axis the approved
+design never named — required for G4 to be approvable at all rather than a permanent refuse).
+Gates are born at the stage boundary they block, never pre-registered at launch. Full stage/gate
+table: `orgs/faceless-youtube/workflows/video-run.md`. Full as-built-vs-designed deviation catalog,
+with reasoning, is at `docs/specs/2026-07-30-fyt-gated-pipeline-design.md` §As-built deviations. Its
+two flagged items are both **RESOLVED, 2026-07-30**: the `publicationAuthorization` axis is RATIFIED
+as-built (no code change); fyt-checker executing the two merge nodes is also **RATIFIED as-built**
+after a first ruling toward the spec's original "runner merges" reading collided with
+`compile.ts#resolveAssignment`'s role check (an agent's own default profile must already carry the
+role a given assignment requires, and `fyt-runner`'s manager-role default can't satisfy that AND its
+separate manager assignment on the same definition at once) and no unblocking mechanism cleared that
+without a blast radius beyond these two stages. Daniel's final ruling: accept the arrangement as
+built — `fyt-checker` executes `shots-merge`/`audio-plan-merge` as a verification act, `fyt-runner`
+governs them, and the spec's original "runner merges" line is superseded by the role system. Code is
+unchanged (`shots-merge`/`audio-plan-merge` remain `governedBy: fyt-runner` / `agentId: fyt-checker`)
+— see the spec's #3 for the full argument and `knowledge/decisions.md`'s 2026-07-30 entries.
+
+- **Proven, on a live daemon with an isolated state root:** inert boot; the execution-locked launch
+  refusal; launch compiling to a runnable workflow; roster spawn of six real pty sessions; G0's
+  structural halt; the spend gate staying shut; retire; the canvas rendering with its Inbox
+  deep-link.
+- **NOT yet proven at time of writing:** the completion-marker round-trip through a real
+  interactive Claude terminal, and expand-to-interact on a live session. A run is in flight to
+  establish both — pending, no result claimed here yet.
+- **Owed:** Daniel's PR review and merge (PR #102, unmerged); the maiden run itself (fresh idea →
+  full script → 2-minute slice → G0–G4/G3b live-fired in order → publish-private). Real
+  image/voiceover spend (G2/`g3b`) and the private upload (G4) are human authorizations no agent can
+  self-grant.
+- **Test state:** `dashboard/` suite 207 files / 2336 passed / 0 failed with `tsc` clean; 158
+  Python tests across the three touched skills (`visual-prompt-writer`, `image-generation`,
+  `render-builder`).
+- **KNOWN BUG:** `canonicalResultIntegrator.ts` still runs an unguarded `git push origin ops`
+  behind `createResults`. The `appendAudit` guard (`2fdb2ca`, see `decisions.md` 2026-07-30) closed
+  the same coordination-write-off-`ops` incident class on the audit-ledger path only — this second
+  path is NOT guarded. Do not point `DASHBOARD_REPO_ROOT` at a live work-branch worktree until it
+  is; the incident that motivated the first guard is fully reproducible on this one.
+
 ## Channel & infrastructure
 
 - **Channel (committed 2026-07-02):** `channels/the-second-take/` — finance/economics explainer, niche

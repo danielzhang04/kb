@@ -19,7 +19,7 @@ const ORIGIN = 'http://localhost:5317';
 const proposal: PlanProposal = {
   schema: 'kb.plan-proposal/v1', proposalId: 'control-route', project: 'kb-ops', title: 'Control route',
   summary: 'Import and review an immutable proposal.',
-  manager: { runtime: 'claude', model: 'claude-opus-4-8', requiredSkills: [] },
+  manager: { runtime: 'claude', model: 'claude-opus-5', requiredSkills: [] },
   scope: { read: ['dashboard'], write: ['dashboard'] },
   governanceRefs: ['CLAUDE.md', 'governance/agent-rules.md', 'governance/risk-tiers.md', 'orgs/kb-ops/contract.md'],
   stages: [{
@@ -37,7 +37,7 @@ const proposal: PlanProposal = {
 
 function model(value: PlanProposal = proposal): TimelineModel {
   return { turns: [{
-    index: 0, model: 'claude-opus-4-8', timestamp: null, usage: null,
+    index: 0, model: 'claude-opus-5', timestamp: null, usage: null,
     steps: [{ kind: 'text', text: `Proposal follows.\n\n\`\`\`kb.plan-proposal/v1\n${JSON.stringify(value)}\n\`\`\`` }],
   }] };
 }
@@ -532,7 +532,7 @@ describe('control proposal routes', () => {
         ...proposal.manager,
         assignment: {
           agentId: 'forged-manager', declarationPath: 'agents/forged-manager.md', declarationHash: 'a'.repeat(64),
-          profileId: 'manager:claude:claude-opus-4-8', runtime: 'claude', model: 'claude-opus-4-8',
+          profileId: 'manager:claude:claude-opus-5', runtime: 'claude', model: 'claude-opus-5',
         },
       },
     };
@@ -607,33 +607,56 @@ describe('control proposal routes', () => {
     }
   });
 
-  it('commits a Human Request response before releasing the exact launch into canonical publication', async () => {
-    const gatedProposal: PlanProposal = {
-      ...proposal,
-      proposalId: 'control-route-gated',
-      stages: proposal.stages.map((stage, index) => index === 0 ? {
-        ...stage,
-        humanGates: [{ id: 'review-before-publication', kind: 'approval', prompt: 'Approve the synthetic publication.' }],
-      } : stage),
+  /**
+   * ENTRY-GATE LAUNCH FIXTURES.
+   *
+   * A launch-shaped proposal whose runtime/model pairs exist in the SERVER-OWNED registry this suite
+   * really compiles against (`governance/model-routing.yaml`), so the launch compiler resolves live
+   * profiles instead of refusing the manager. `uploadGates` decides whether the T3 upload stage declares
+   * its own content-bound publication authorization — the one difference between a launchable run and the
+   * original fail-closed park.
+   */
+  function launchProposal(proposalId: string, uploadGates: PlanProposal['stages'][number]['humanGates']): PlanProposal {
+    return {
+      schema: 'kb.plan-proposal/v1', proposalId, project: 'kb-ops', title: 'Gated control launch',
+      summary: 'A gated two-stage run ending in a private upload.',
+      manager: { runtime: 'claude', model: 'claude-opus-5', requiredSkills: [] },
+      scope: { read: ['dashboard'], write: ['dashboard/server/control'] },
+      governanceRefs: ['CLAUDE.md', 'governance/agent-rules.md', 'governance/risk-tiers.md', 'orgs/kb-ops/contract.md'],
+      stages: [
+        {
+          id: 'build', title: 'Build', action: 'build:asset', target: 'dashboard/server/control',
+          workOrder: 'Build the asset.', riskTier: 'T2', dependsOn: [],
+          worker: { runtime: 'codex', model: 'gpt-5.6-sol' }, requiredSkills: [],
+          scope: { read: ['dashboard'], write: ['dashboard/server/control'] }, artifacts: [], checkpoints: [],
+          humanGates: [{ id: 'g1-plan', kind: 'approval', prompt: 'Approve the plan.' }],
+        },
+        {
+          id: 'upload', title: 'Upload', action: 'publish:private-upload', target: 'dashboard/server/control',
+          workOrder: 'Upload the finished asset as private.', riskTier: 'T3', dependsOn: ['build'],
+          worker: { runtime: 'codex', model: 'gpt-5.6-sol' }, requiredSkills: [],
+          scope: { read: ['dashboard'], write: ['dashboard/server/control'] }, artifacts: [], checkpoints: [],
+          humanGates: uploadGates,
+        },
+      ],
     };
-    const workspace = composerStore.create('operator', 'Gated control');
-    const lease = composerStore.acquireWriter('operator', workspace.composerRef);
-    if (!lease.ok) throw new Error('lease failed');
-    const begun = composerStore.beginTurn('operator', workspace.composerRef, lease.lease, 'Compile the gated plan.');
-    if (!begun.ok) throw new Error('turn failed');
-    composerStore.updateTurn('operator', workspace.composerRef, lease.lease, begun.workspace.turnId, {
-      state: 'complete', model: model(gatedProposal), endedAt: new Date().toISOString(),
+  }
+
+  async function approvedLaunchRevision(snapshot: PlanProposal, idempotencySuffix: string) {
+    const stored = controlStore.createProposalRevision('operator', {
+      sourceComposerRef: `launch-${idempotencySuffix}`, sourceTurnId: `turn-${idempotencySuffix}`, title: snapshot.title,
+      snapshot: snapshot as unknown as import('./types.ts').JsonObject,
     });
-    composerStore.releaseWriter('operator', workspace.composerRef, lease.lease);
-    const imported = await app.inject({
-      method: 'POST', url: '/api/control/proposals/import', headers: headers(token),
-      payload: { composerRef: workspace.composerRef, turnId: begun.workspace.turnId },
+    if (!stored.ok) throw new Error(stored.detail);
+    const approved = controlStore.decideProposal('operator', stored.value.proposalRef, 1, {
+      expectedHash: stored.value.hash, expectedApprovalRevision: 0, decision: 'approved',
+      idempotencyKey: `approve-${idempotencySuffix}`,
     });
-    const revision = imported.json().value as { proposalRef: string; revision: number; hash: string };
-    await app.inject({
-      method: 'POST', url: `/api/control/proposals/${revision.proposalRef}/revisions/1/decision`, headers: headers(token),
-      payload: { expectedHash: revision.hash, expectedApprovalRevision: 0, decision: 'approved', idempotencyKey: 'approve-gated' },
-    });
+    if (!approved.ok) throw new Error(approved.detail);
+    return stored.value;
+  }
+
+  async function launchSurface() {
     const opsGit = (_repoRoot: string, args: string[]): string => {
       if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
       if (args.join(' ') === 'rev-parse HEAD') return 'b'.repeat(40);
@@ -659,30 +682,77 @@ describe('control proposal routes', () => {
       runPreamble: () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }),
     }));
     await launchApp.ready();
+    return launchApp;
+  }
+
+  it('launches a gated T3 run without minting one gate boundary, so nothing at launch can authorize it', async () => {
+    // The upload declares its OWN publication-authorization gate, so the T3 wait is releasable at that
+    // stage's entry boundary and the run is launchable. Every gate — including the one that authorizes the
+    // upload — must still be absent from the Inbox until `execution.ts#stageBoundary` reaches its stage.
+    const revision = await approvedLaunchRevision(launchProposal('control-route-entry-gate', [
+      { id: 'g4-publish', kind: 'approval', prompt: 'Approve the private upload.', publicationAuthorization: true },
+    ]), 'entry-gate');
+    const launchApp = await launchSurface();
     try {
       const url = `/api/control/proposals/${revision.proposalRef}/revisions/1/launch`;
       const payload = { expectedHash: revision.hash, idempotencyKey: `launch:${revision.hash}` };
-      const gated = await launchApp.inject({ method: 'POST', url, headers: headers(token), payload });
-      expect(gated.statusCode, gated.body).toBe(202);
-      let detail = controlStore.getRun('operator', gated.json().runRef as string);
+      const launched = await launchApp.inject({ method: 'POST', url, headers: headers(token), payload });
+      expect(launched.statusCode, launched.body).toBe(202);
+      expect(launched.json()).toMatchObject({ ok: true, waitingHuman: true, activationGated: true });
+      const detail = controlStore.getRun('operator', launched.json().runRef as string);
       if (!detail.ok) throw new Error(detail.detail);
-      expect(detail.value.run.publicationState).toBe('waiting-human');
+      // Runnable and published: the T3 stage is in the card DAG, so the roster has something to run.
+      expect(detail.value.run.publicationState).toBe('published');
+      expect(detail.value.stages.map((stage) => [stage.stageId, stage.canonicalCardRef !== null]))
+        .toEqual([['build', true], ['upload', true]]);
+      // The ONLY boundary is the post-publication runtime-activation refusal. No gate, no governance
+      // refusal for the T3 stage, and — decisively — nothing of kind `approval`: a launch-time approval
+      // that could authorize spend or publication does not exist to be given.
+      expect(detail.value.humanRequests.map((request) => [request.kind, request.title])).toEqual([
+        ['governance-refusal', 'Automatic execution activation is gated'],
+      ]);
+      // Neither the bare gate id (what launch used to mint) nor the stage-scoped title the engine matches
+      // (`stableHumanTitle('gate', stageId, gateId)` = `automatic:gate:<stageId>:<gateId>`) exists yet.
+      for (const title of ['g1-plan', 'g4-publish', 'automatic:gate:build:g1-plan', 'automatic:gate:upload:g4-publish']) {
+        expect(detail.value.humanRequests.some((request) => request.title === title)).toBe(false);
+      }
+    } finally { await launchApp.close(); }
+  });
+
+  it('keeps a T3 stage with no publication gate parked at launch, publishing no cards on any replay', async () => {
+    // The pre-existing fail-closed guarantee for every other workflow in the repo: nothing names the human
+    // decision that would release this upload, so the run parks before a single card is written and no
+    // response can release it.
+    const revision = await approvedLaunchRevision(launchProposal('control-route-ungated-t3', []), 'ungated-t3');
+    const launchApp = await launchSurface();
+    try {
+      const url = `/api/control/proposals/${revision.proposalRef}/revisions/1/launch`;
+      const payload = { expectedHash: revision.hash, idempotencyKey: `launch:${revision.hash}` };
+      const parked = await launchApp.inject({ method: 'POST', url, headers: headers(token), payload });
+      expect(parked.statusCode, parked.body).toBe(202);
+      expect(parked.json()).toMatchObject({ ok: true, waitingHuman: true });
+      expect(parked.json().activationGated).toBeUndefined();
+      expect(parked.json().cards).toBeUndefined();
+      const runRef = parked.json().runRef as string;
+      let detail = controlStore.getRun('operator', runRef);
+      if (!detail.ok) throw new Error(detail.detail);
+      expect(detail.value.run).toMatchObject({ publicationState: 'waiting-human', state: 'waiting-human' });
       expect(detail.value.stages.every((stage) => stage.canonicalCardRef === null)).toBe(true);
+      expect(detail.value.humanRequests.map((request) => [request.kind, request.title, request.prompt])).toEqual([
+        ['governance-refusal', 'Governance review: upload', 't3-content-bound-approval-required'],
+      ]);
+      // Responding to a governance refusal never releases canonical publication: a plan amendment does.
       const request = detail.value.humanRequests[0];
-      const responded = await launchApp.inject({
+      await launchApp.inject({
         method: 'POST', url: `/api/control/human-requests/${request.requestRef}/respond`, headers: headers(token),
-        payload: { expectedRevision: request.revision, decision: 'approved', idempotencyKey: 'accept-gated' },
+        payload: { expectedRevision: request.revision, decision: 'approved', idempotencyKey: 'accept-refusal' },
       });
-      expect(responded.statusCode, responded.body).toBe(200);
-      const released = await launchApp.inject({ method: 'POST', url, headers: headers(token), payload });
-      expect(released.statusCode, released.body).toBe(202);
-      expect(released.json()).toMatchObject({ activationGated: true, waitingHuman: true });
-      detail = controlStore.getRun('operator', gated.json().runRef as string);
-      expect(detail.ok && detail.value.run).toMatchObject({ publicationState: 'published', state: 'waiting-human' });
-      expect(detail.ok && detail.value.humanRequests).toEqual(expect.arrayContaining([
-        expect.objectContaining({ state: 'resolved', response: expect.objectContaining({ decision: 'approved' }) }),
-        expect.objectContaining({ state: 'open', title: 'Automatic execution activation is gated' }),
-      ]));
+      const replayed = await launchApp.inject({ method: 'POST', url, headers: headers(token), payload });
+      expect(replayed.statusCode, replayed.body).toBe(200);
+      expect(replayed.json()).toMatchObject({ ok: true, runRef, replayed: true, waitingHuman: true });
+      detail = controlStore.getRun('operator', runRef);
+      expect(detail.ok && detail.value.run.publicationState).toBe('waiting-human');
+      expect(detail.ok && detail.value.stages.every((stage) => stage.canonicalCardRef === null)).toBe(true);
     } finally { await launchApp.close(); }
   });
 
@@ -713,7 +783,7 @@ describe('control proposal routes', () => {
     });
     expect(broker.start({
       runRef: running.value.runRef, sessionRef: running.value.managerSessionRef, role: 'manager',
-      profileId: 'manager:claude:claude-opus-4-8', approvedPrompt: 'approved',
+      profileId: 'manager:claude:claude-opus-5', approvedPrompt: 'approved',
     })).toMatchObject({ ok: true, started: true });
     const managerApp = Fastify();
     registerWriteSurface(managerApp, makeSurfaceContext({
@@ -752,7 +822,7 @@ describe('control proposal routes', () => {
   it('keeps an unassigned stage reroutable in a mixed assigned workflow and creates durable successor lineage', async () => {
     const managerAssignment = {
       agentId: 'assigned-manager', declarationPath: 'agents/assigned-manager.md', declarationHash: 'a'.repeat(64),
-      profileId: 'manager:claude:claude-opus-4-8', runtime: 'claude' as const, model: 'claude-opus-4-8',
+      profileId: 'manager:claude:claude-opus-5', runtime: 'claude' as const, model: 'claude-opus-5',
     };
     const workerAssignment = {
       agentId: 'assigned-worker', declarationPath: 'agents/assigned-worker.md', declarationHash: 'b'.repeat(64),
@@ -886,7 +956,7 @@ describe('control proposal routes', () => {
   it('refuses mismatched assigned Manager successors before audit/store mutation, then permits the exact immutable route', async () => {
     const managerAssignment = {
       agentId: 'assigned-manager', declarationPath: 'agents/assigned-manager.md', declarationHash: 'd'.repeat(64),
-      profileId: 'manager:claude:claude-opus-4-8', runtime: 'claude' as const, model: 'claude-opus-4-8',
+      profileId: 'manager:claude:claude-opus-5', runtime: 'claude' as const, model: 'claude-opus-5',
     };
     const assigned = { ...proposal, manager: { ...proposal.manager, assignment: managerAssignment } };
     const stored = controlStore.createProposalRevision('operator', {
@@ -1517,7 +1587,7 @@ describe('control proposal routes', () => {
   it('accepts stored assigned snapshots through publication reconciliation and activation validation', async () => {
     const managerAssignment = {
       agentId: 'assigned-manager', declarationPath: 'agents/assigned-manager.md', declarationHash: 'e'.repeat(64),
-      profileId: 'manager:claude:claude-opus-4-8', runtime: 'claude' as const, model: 'claude-opus-4-8',
+      profileId: 'manager:claude:claude-opus-5', runtime: 'claude' as const, model: 'claude-opus-5',
     };
     const workerAssignment = {
       agentId: 'assigned-worker', declarationPath: 'agents/assigned-worker.md', declarationHash: 'f'.repeat(64),
@@ -1653,5 +1723,246 @@ describe('control proposal routes', () => {
         ok: true, value: { state: 'open', response: null },
       });
     } finally { await auditFailApp.close(); }
+  });
+});
+
+/**
+ * The runtime execution latch routes. The daemon boots LOCKED, so a launch refusal must be distinct
+ * enough for the UI to raise an unlock prompt, unlock must require a fresh purpose-bound passkey
+ * assertion (a session bearer alone is never enough), and Lock must be reachable with the session only.
+ */
+describe('control execution latch routes', () => {
+  const TEST_WEBAUTHN = () => ({ rpID: 'localhost', rpName: 'test', origin: ORIGIN });
+
+  function fakeLatch(initial: 'locked' | 'unlocked') {
+    let state = initial === 'locked'
+      ? { state: 'locked' as const, source: null, unlockedAt: null, unlockedBy: null }
+      : { state: 'unlocked' as const, source: 'passkey' as const, unlockedAt: '2026-07-30T00:00:00.000Z', unlockedBy: 'operator' };
+    const unlock = vi.fn(() => ({ ok: true as const, state }));
+    const lock = vi.fn(() => {
+      state = { state: 'locked' as const, source: null, unlockedAt: null, unlockedBy: null };
+      return state;
+    });
+    return {
+      latch: {
+        snapshot: () => state,
+        current: () => null,
+        unlock,
+        lock,
+      },
+      unlock,
+      lock,
+    };
+  }
+
+  function buildApp(overrides: Record<string, unknown> = {}) {
+    const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `latch-${++n}`; })() });
+    const audit: Array<Record<string, unknown>> = [];
+    const app = Fastify();
+    const ctx = makeSurfaceContext({
+      repoRoot: fileURLToPath(new URL('../../../', import.meta.url)),
+      sessionConfig: SESSION,
+      allowedOrigins: [ORIGIN],
+      controlStore: store,
+      webAuthnConfig: TEST_WEBAUTHN,
+      credentials: () => [],
+      appendAudit: (_root: string, event: Record<string, unknown>) => {
+        audit.push(event);
+        return { ts: '2026-07-30T00:00:00.000Z', action: String(event.action) } as never;
+      },
+      opsGit: () => ({ stdout: '', stderr: '', exitCode: 0 }),
+      ...overrides,
+    } as never);
+    registerWriteSurface(app, ctx);
+    return { app, ctx, store, audit, token: mintSession('operator', SESSION).token };
+  }
+
+  /** Seed one approved run in the store so a route reaches its execution-posture check. */
+  function seedRun(store: ReturnType<typeof createInMemoryControlPlaneStore>, key: string): string {
+    const created = store.createProposalRevision('operator', {
+      sourceComposerRef: 'composer-1', sourceTurnId: 'video-run', title: `Run ${key}`,
+      snapshot: proposal as unknown as JsonObject,
+    });
+    if (!created.ok) throw new Error(created.detail);
+    if (!store.decideProposal('operator', created.value.proposalRef, 1, {
+      expectedHash: created.value.hash, expectedApprovalRevision: 0, decision: 'approved', idempotencyKey: `${key}-approve`,
+    }).ok) throw new Error('approval failed');
+    const run = store.createRun('operator', {
+      title: `Run ${key}`, proposalRef: created.value.proposalRef, proposalRevision: 1,
+      expectedProposalHash: created.value.hash, managerRuntime: 'claude', managerModel: 'claude-fable-5',
+      idempotencyKey: `${key}-launch`,
+      stages: proposal.stages.map((item) => ({ stageId: item.id, title: item.title, dependsOn: item.dependsOn })),
+    });
+    if (!run.ok) throw new Error(run.detail);
+    return run.value.run.runRef;
+  }
+
+  it('boots LOCKED and reports the posture with the unlock route to call', async () => {
+    const { app, token } = buildApp();
+    try {
+      const posture = await app.inject({ method: 'GET', url: '/api/control/execution', headers: headers(token) });
+      expect(posture.statusCode).toBe(200);
+      expect(posture.json()).toMatchObject({
+        execution: { state: 'locked', source: null, unlockRoute: '/api/control/execution/unlock' },
+      });
+      // Unauthenticated callers learn nothing about the posture.
+      const anonymous = await app.inject({ method: 'GET', url: '/api/control/execution', headers: { origin: ORIGIN, host: 'localhost:5317' } });
+      expect(anonymous.statusCode).toBe(401);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('refuses a launch/activate while locked with the distinct unlock-prompt refusal', async () => {
+    const { app, token, store } = buildApp();
+    try {
+      const runRef = seedRun(store, 'locked-activate');
+      const activate = await app.inject({
+        method: 'POST', url: `/api/control/runs/${runRef}/activate`, headers: headers(token),
+        payload: { idempotencyKey: 'k', expectedRunVersion: 1, expectedManagerGeneration: 1 },
+      });
+      expect(activate.statusCode).toBe(409);
+      expect(activate.json()).toMatchObject({
+        error: 'execution-locked',
+        execution: { state: 'locked', unlockRoute: '/api/control/execution/unlock' },
+      });
+      const stop = await app.inject({
+        method: 'POST', url: `/api/control/runs/${runRef}/manager/stop`, headers: headers(token),
+        payload: { idempotencyKey: 'k', expectedRunVersion: 1, expectedManagerGeneration: 1 },
+      });
+      expect(stop.statusCode).toBe(409);
+      expect(stop.json()).toMatchObject({ error: 'execution-locked' });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('issues a PURPOSE-BOUND unlock ceremony and refuses a sign-in ceremony at the unlock route', async () => {
+    const { app, token } = buildApp();
+    try {
+      const options = await app.inject({
+        method: 'POST', url: '/api/control/execution/unlock/options', headers: headers(token), payload: {},
+      });
+      expect(options.statusCode).toBe(200);
+      const body = options.json() as { ceremonyId: string; options: { challenge: string; userVerification: string } };
+      expect(typeof body.ceremonyId).toBe('string');
+      // The authenticator signs over "unlock execution for THIS operator", not a bare login nonce.
+      const preimage = Buffer.from(body.options.challenge, 'base64url').toString('utf8');
+      expect(preimage.startsWith('kb.execution-unlock:operator:')).toBe(true);
+      expect(body.options.userVerification).toBe('required');
+
+      // A LOGIN ceremony cannot be redeemed at the unlock route even though it is fresh and single-use.
+      const login = await app.inject({ method: 'POST', url: '/api/auth/assert/options', headers: headers(token), payload: {} });
+      const loginCeremony = (login.json() as { ceremonyId: string }).ceremonyId;
+      const crossed = await app.inject({
+        method: 'POST', url: '/api/control/execution/unlock', headers: headers(token),
+        payload: { ceremonyId: loginCeremony, response: { id: 'cred-1' } },
+      });
+      expect(crossed.statusCode).toBe(400);
+      expect(crossed.json()).toMatchObject({ error: 'bad-ceremony' });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('never unlocks without a verified assertion: no credential, unknown ceremony, or replay all fail closed', async () => {
+    const { latch, unlock } = fakeLatch('locked');
+    const { app, token } = buildApp({ executionLatch: latch });
+    try {
+      // Unknown ceremony → refused before any credential lookup.
+      const unknown = await app.inject({
+        method: 'POST', url: '/api/control/execution/unlock', headers: headers(token),
+        payload: { ceremonyId: 'never-issued', response: { id: 'cred-1' } },
+      });
+      expect(unknown.statusCode).toBe(400);
+
+      // Real ceremony, but the credential store is fail-closed empty (the pre-passkey reality).
+      const options = await app.inject({
+        method: 'POST', url: '/api/control/execution/unlock/options', headers: headers(token), payload: {},
+      });
+      const ceremonyId = (options.json() as { ceremonyId: string }).ceremonyId;
+      const attempt = await app.inject({
+        method: 'POST', url: '/api/control/execution/unlock', headers: headers(token),
+        payload: { ceremonyId, response: { id: 'cred-1' } },
+      });
+      expect(attempt.statusCode).toBe(401);
+      expect(attempt.json()).toMatchObject({ error: 'unauthenticated' });
+
+      // The same ceremony cannot be replayed (single-use), and the latch was never asked to unlock.
+      const replay = await app.inject({
+        method: 'POST', url: '/api/control/execution/unlock', headers: headers(token),
+        payload: { ceremonyId, response: { id: 'cred-1' } },
+      });
+      expect(replay.statusCode).toBe(400);
+      expect(unlock).not.toHaveBeenCalled();
+      expect(latch.snapshot().state).toBe('locked');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('locks on request, audits the transition, and reports the new posture', async () => {
+    const { latch, lock } = fakeLatch('unlocked');
+    const { app, token, audit } = buildApp({ executionLatch: latch });
+    try {
+      const before = await app.inject({ method: 'GET', url: '/api/control/execution', headers: headers(token) });
+      expect(before.json()).toMatchObject({ execution: { state: 'unlocked', source: 'passkey', unlockedBy: 'operator' } });
+
+      const locked = await app.inject({ method: 'POST', url: '/api/control/execution/lock', headers: headers(token), payload: {} });
+      expect(locked.statusCode).toBe(200);
+      expect(locked.json()).toMatchObject({ ok: true, execution: { state: 'locked' } });
+      expect(lock).toHaveBeenCalledWith({ subject: 'operator' });
+      expect(audit.map((row) => row.action)).toContain('control-execution-lock-authorize');
+
+      // Session required, like every other control write.
+      const anonymous = await app.inject({
+        method: 'POST', url: '/api/control/execution/lock', headers: { origin: ORIGIN, host: 'localhost:5317' }, payload: {},
+      });
+      expect(anonymous.statusCode).toBe(401);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('serves roster state and the execution posture on the run detail the canvas reads', async () => {
+    const roster = [{ agentId: 'fyt-visuals', sessionId: 'pty-roster-2', status: 'blocked', activity: 'blocked: g2 awaiting approval', waitingOn: ['g2-visual-plan'] }];
+    const { latch } = fakeLatch('unlocked');
+    const { app, token, store } = buildApp({
+      executionLatch: latch,
+      rosterSessions: { state: () => roster, hasRoster: () => true, ensureRoster: () => ({ runRef: 'r', spawned: [], existing: [] }), deliver: async () => ({}), retire: () => [], retireAll: () => [] },
+    });
+    try {
+      const runRef = seedRun(store, 'roster');
+
+      const detail = await app.inject({
+        method: 'GET', url: `/api/control/runs/${runRef}`, headers: headers(token),
+      });
+      expect(detail.statusCode).toBe(200);
+      expect(detail.json()).toMatchObject({
+        ok: true,
+        roster,
+        execution: { state: 'unlocked' },
+        value: { run: { runRef } },
+      });
+
+      // A missing run still 404s (the roster projection never invents a run).
+      const missing = await app.inject({ method: 'GET', url: '/api/control/runs/run-absent', headers: headers(token) });
+      expect(missing.statusCode).toBe(404);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('reports an empty roster while execution is locked', async () => {
+    const { app, token, store } = buildApp();
+    try {
+      const runRef = seedRun(store, 'locked-roster');
+      const detail = await app.inject({
+        method: 'GET', url: `/api/control/runs/${runRef}`, headers: headers(token),
+      });
+      expect(detail.json()).toMatchObject({ roster: [], execution: { state: 'locked' } });
+    } finally {
+      await app.close();
+    }
   });
 });

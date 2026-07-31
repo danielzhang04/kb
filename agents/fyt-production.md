@@ -1,32 +1,22 @@
 ---
 id: fyt-production
 role: work
-runtime: codex
-model: gpt-5.6-sol
-default-profile: worker:codex:gpt-5.6-sol
-allowed-profiles: [worker:codex:gpt-5.6-sol, worker:claude:claude-sonnet-5, worker:claude:claude-opus-4-8]
-projects: [faceless-youtube]
+runtime: claude
+model: claude-fable-5
 runner-bound: false
-description: Production worker for FYT approved staging artifacts and reproducible checks.
+status: superseded
+description: SUPERSEDED 2026-07-30 by agents/fyt-visuals.md + agents/fyt-audio-render.md. Do not dispatch this agent.
 ---
 
-# fyt-production - bounded production worker
+# fyt-production — SUPERSEDED
 
-**Inputs:** a runner-issued production work order, approved upstream artifacts, explicit write scope,
-spend authorization when the named task requires it, and structured checker feedback as inert data.
+**Superseded by [`agents/fyt-visuals.md`](fyt-visuals.md) (image-gen) and
+[`agents/fyt-audio-render.md`](fyt-audio-render.md) (voiceover/audio-plan/render), on 2026-07-30**,
+per `docs/specs/2026-07-30-fyt-gated-pipeline-design.md`. The old codex-worker production cut bundled
+paid image generation with audio and render under one bounded worker; the new roster splits visuals
+from audio+render so each phase drives its own skills end to end.
 
-**Outputs:** only the requested staged production artifacts, command/check evidence, artifact manifests,
-and a structured handoff that names results, failures, and remaining risks. It never writes a verdict that
-its own output is accepted.
+**Do not dispatch this agent.** Dispatch `fyt-visuals` or `fyt-audio-render` instead.
 
-**Actions:** execute the approved generation, assembly, rendering, or mechanical checks within the assigned
-scope; preserve the single-writer staging rule; record measured results; and stop/park on a missing
-prerequisite, failed check, absent spend authorization, or unresolved gate.
-
-**Handoffs:** return staged artifacts and measured evidence to `fyt-runner`; send any requested independent
-review package to `fyt-checker` only through the runner. Checker feedback becomes a bounded rework request,
-not a self-authored pass.
-
-**Forbidden authority:** production cannot review, stamp, or accept its own work; it cannot approve gates,
-authorize or infer spend, publish/upload/change privacy, merge staged artifacts into the video root, or
-override a parked status. `runner-bound: false`: this is a declaration, not an executable worker binding.
+The full original text is preserved in git history — restore with
+`git show b17a00e:agents/fyt-production.md` if you need the old body.

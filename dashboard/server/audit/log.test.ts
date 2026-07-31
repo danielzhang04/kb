@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { execFileSync } from 'node:child_process';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -21,7 +22,25 @@ afterEach(async () => {
     const dir = tmpDirs.pop()!;
     await rm(dir, { recursive: true, force: true });
   }
+  vi.restoreAllMocks();
 });
+
+/**
+ * Build a REAL, minimal git repo at a fresh scratch dir, checked out on `branch` — the branch-guard
+ * tests exercise the real `git symbolic-ref` read (per this repo's convention of controlling test state
+ * via real fixtures, not a fake resolver seam), while every MUTATING call (pull/add/commit/push) still
+ * goes through the injected {@link OpsGitRunner} fake, so no test ever touches the network.
+ */
+function initRepo(dir: string, branch: string): void {
+  execFileSync('git', ['init', '-q', '-b', branch], { cwd: dir });
+  execFileSync('git', ['-c', 'user.email=test@example.com', '-c', 'user.name=test', 'commit', '-q', '--allow-empty', '-m', 'init'], { cwd: dir });
+}
+
+/** Detach HEAD at the repo's current commit — `symbolic-ref` fails on a detached HEAD (no branch name). */
+function detachHead(dir: string): void {
+  const sha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir }).toString().trim();
+  execFileSync('git', ['checkout', '-q', sha], { cwd: dir });
+}
 
 /** A recording git runner; each call is captured as its argv (after `git`). Never rejects. */
 function recorder(): { runner: OpsGitRunner; calls: string[][] } {
@@ -123,6 +142,7 @@ describe('commitAuditToOps (injectable git-runner, hermetic)', () => {
 describe('appendAudit (append + commit, end-to-end)', () => {
   it('appends exactly one local row, then commits on ops via pull-rebase-push, retrying on a rejected push', async () => {
     const repo = await scratch();
+    initRepo(repo, 'ops');
     const calls: string[][] = [];
     let pushes = 0;
     const runner: OpsGitRunner = (_repoRoot, args) => {
@@ -151,6 +171,7 @@ describe('appendAudit (append + commit, end-to-end)', () => {
 
   it('never invokes git before the row has already been appended to disk', async () => {
     const repo = await scratch();
+    initRepo(repo, 'ops');
     const order: string[] = [];
     const runner: OpsGitRunner = (_repoRoot, args) => {
       order.push(args[0]);
@@ -167,6 +188,7 @@ describe('appendAudit (append + commit, end-to-end)', () => {
 describe('audit coverage', () => {
   it('every consequential action produces exactly one audit row', async () => {
     const repo = await scratch();
+    initRepo(repo, 'ops');
     const { runner } = recorder();
     const actions: AuditEvent[] = [
       { action: 'approve', cardId: 'card-1' },
@@ -190,6 +212,7 @@ describe('audit coverage', () => {
 
   it('a rejected-then-retried push still yields exactly one row for that action', async () => {
     const repo = await scratch();
+    initRepo(repo, 'ops');
     let pushes = 0;
     const runner: OpsGitRunner = (_repoRoot, args) => {
       if (args[0] === 'push') {
@@ -204,5 +227,113 @@ describe('audit coverage', () => {
     const rows = await readLedger(repo);
     const matches = rows.filter((r) => r.action === 'approve' && r.cardId === 'card-retry');
     expect(matches).toHaveLength(1);
+  });
+});
+
+// The 2026-07-30 incident: `appendAudit` ran `pull --rebase --autostash origin ops` against a repo root
+// checked out on a FEATURE branch, starting a 549-step interactive rebase that jammed mid-rebase. These
+// tests prove the structural fix — every non-"ops" outcome takes the local-only path and the injected
+// (mutating) git runner is invoked ZERO times, using real repos/branches per this repo's test convention
+// rather than a fake branch-resolver seam.
+describe('appendAudit — coordination-write branch guard (fail closed on anything but "ops")', () => {
+  it('an ops repo root still takes the full git path (asserted against the injected git runner)', async () => {
+    const repo = await scratch();
+    initRepo(repo, 'ops');
+    const { runner, calls } = recorder();
+
+    const row = await appendAudit(repo, { action: 'approve', cardId: 'card-ops' }, { runGit: runner });
+
+    const verbs = calls.map((c) => c.slice(0, 2).join(' '));
+    expect(verbs).toEqual(['diff --cached', 'pull --rebase', 'add --', 'commit -m', 'push origin']);
+    expect(row.synced).toBe(true);
+  });
+
+  it('a feature-branch repo root takes local-only: appends the row and never invokes the git runner', async () => {
+    const repo = await scratch();
+    initRepo(repo, 'claude/fyt-pipeline-boss');
+    const { runner, calls } = recorder();
+
+    const row = await appendAudit(repo, { action: 'approve', cardId: 'card-feature' }, { runGit: runner });
+
+    // The load-bearing assertion: the mutating git runner was never called, not even once.
+    expect(calls).toHaveLength(0);
+    expect(row.synced).toBe(false);
+    const rows = await readLedger(repo);
+    expect(rows.filter((r) => r.cardId === 'card-feature')).toHaveLength(1);
+  });
+
+  it('a detached HEAD takes local-only and never invokes the git runner', async () => {
+    const repo = await scratch();
+    initRepo(repo, 'ops');
+    detachHead(repo);
+    const { runner, calls } = recorder();
+
+    const row = await appendAudit(repo, { action: 'approve', cardId: 'card-detached' }, { runGit: runner });
+
+    expect(calls).toHaveLength(0);
+    expect(row.synced).toBe(false);
+  });
+
+  it('a non-git directory takes local-only and never invokes the git runner', async () => {
+    const repo = await scratch(); // deliberately never `git init`-ed
+    const { runner, calls } = recorder();
+
+    const row = await appendAudit(repo, { action: 'approve', cardId: 'card-nongit' }, { runGit: runner });
+
+    expect(calls).toHaveLength(0);
+    expect(row.synced).toBe(false);
+  });
+
+  it('the branch resolution itself failing (repo root does not exist) takes local-only', async () => {
+    // A path that was never created: the git child fails to spawn (ENOENT-shaped), a distinct failure
+    // mode from "exists but isn't a repo" and from "detached" — resolveCheckedOutBranch must collapse
+    // this to null too.
+    const repo = join(tmpdir(), `audit-log-missing-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    const { runner, calls } = recorder();
+
+    const row = await appendAudit(repo, { action: 'approve', cardId: 'card-missing' }, { runGit: runner });
+
+    expect(calls).toHaveLength(0);
+    expect(row.synced).toBe(false);
+    // The local append still succeeded despite the repo root not existing beforehand (appendAuditRowLocal
+    // creates it via mkdirSync recursive) — losing the row is worse than skipping the push.
+    tmpDirs.push(repo);
+    const rows = await readLedger(repo);
+    expect(rows.filter((r) => r.cardId === 'card-missing')).toHaveLength(1);
+  });
+
+  it('logs one loud, greppable warning naming the branch and repo root on every local-only path', async () => {
+    const repo = await scratch();
+    initRepo(repo, 'claude/some-other-branch');
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await appendAudit(repo, { action: 'approve' }, { runGit: recorder().runner });
+
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    const message = errorSpy.mock.calls[0]?.[0] as string;
+    expect(message).toMatch(/AUDIT-GIT-GUARD/);
+    expect(message).toContain(repo);
+    expect(message).toContain('claude/some-other-branch');
+    expect(message).toMatch(/SKIPPED/);
+  });
+
+  it('the row written on the local-only path is byte-identical (module content) to the row the git path would have appended', async () => {
+    const gitRepo = await scratch();
+    initRepo(gitRepo, 'ops');
+    const localRepo = await scratch();
+    initRepo(localRepo, 'claude/not-ops');
+    const event: AuditEvent = { action: 'approve', cardId: 'card-parity', owner: 'operator-1', result: 'ok', detail: { foo: 'bar' } };
+    const fixedNow = () => new Date('2026-07-30T00:00:00Z');
+
+    await appendAudit(gitRepo, event, { runGit: recorder().runner, now: fixedNow });
+    await appendAudit(localRepo, event, { runGit: recorder().runner, now: fixedNow });
+
+    const gitRows = await readLedger(gitRepo);
+    const localRows = await readLedger(localRepo);
+    // Same event, same clock -> the persisted row is identical whichever path ran. Neither ledger row
+    // carries a `synced` key (that field only ever lives on the return value, never on disk).
+    expect(gitRows[0]).toEqual(localRows[0]);
+    expect(gitRows[0]).toEqual({ ts: fixedNow().toISOString(), ...event });
+    expect(Object.keys(gitRows[0] as object)).not.toContain('synced');
   });
 });

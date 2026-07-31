@@ -12,6 +12,7 @@ import {
   MANAGED_ROOT_ACTIVATION_SCRIPT,
   validateWorkflowRunRequest,
   WORKFLOW_CARD_OP_SCRIPT,
+  workflowCardId,
 } from './workflowRun.ts';
 import type { WorkflowRunDeps, WorkflowRunRequest } from './workflowRun.ts';
 import type { PyRunner } from './launch.ts';
@@ -95,14 +96,68 @@ describe('workflow-run v1 schema', async () => {
   });
 
   it('refuses T3 because T3 must enter the approvals path', async () => {
-    const parsed = validateWorkflowRunRequest({
-      ...request,
-      stages: [{ ...request.stages[0], riskTier: 'T3' }],
-    });
-    expect(parsed).toEqual({
+    const t3 = { ...request, stages: [{ ...request.stages[0], riskTier: 'T3' }] };
+    const refusal = {
       ok: false,
       detail: 'stages[0].riskTier must be T1 or T2; T3 requires the approvals path',
+    };
+    expect(validateWorkflowRunRequest(t3)).toEqual(refusal);
+    // The admission must be opted INTO. Absent, empty, and falsy option objects all keep the refusal, so a
+    // caller that never reasoned about T3 cannot publish a T3 card by accident.
+    expect(validateWorkflowRunRequest(t3, {})).toEqual(refusal);
+    expect(validateWorkflowRunRequest(t3, { admitApprovalBoundT3: false })).toEqual(refusal);
+    expect(validateWorkflowRunRequest(t3, { admitApprovalBoundT3: undefined })).toEqual(refusal);
+  });
+
+  it('admits an approval-bound T3 stage only on the managed approvals path', async () => {
+    // The approvals path is the ONLY caller that sets this: control/launch.ts, after
+    // compileApprovedProposal bound the stage to an exact approved revision AND to the stage's own
+    // declared publication-authorization gate. The card still publishes blocked, and the upload is still
+    // held by that gate at the stage's entry boundary.
+    const t3 = { ...request, stages: [{ ...request.stages[0], riskTier: 'T3' as const }] };
+    const admitted = validateWorkflowRunRequest(t3, { admitApprovalBoundT3: true });
+    expect(admitted).toMatchObject({ ok: true });
+    expect(admitted.ok && admitted.value.stages[0].riskTier).toBe('T3');
+    // Malformed and out-of-namespace tiers stay refused even on the approvals path.
+    for (const riskTier of ['T4', 't3', 'T3 ', '', null, 3]) {
+      expect(validateWorkflowRunRequest(
+        { ...request, stages: [{ ...request.stages[0], riskTier }] },
+        { admitApprovalBoundT3: true },
+      )).toMatchObject({ ok: false });
+    }
+  });
+
+  it('carries the managed T3 admission through launchWorkflowRun and refuses it unmanaged', async () => {
+    const t3 = { ...request, stages: [{ ...request.stages[0], riskTier: 'T3' as const }] };
+    const cardId = workflowCardId('wf-test-0001', 'research');
+    const runPy = vi.fn(() => ({
+      exitCode: 0,
+      stdout: JSON.stringify({
+        runId: 'wf-test-0001',
+        cards: [{ stageId: 'research', cardId, state: 'blocked', cardPath: `queue/inbox/${cardId}.md` }],
+      }),
+      stderr: '',
+    }));
+    expect(await launchWorkflowRun(t3, session(), deps(runPy, { publishBlocked: true, admitApprovalBoundT3: true })))
+      .toMatchObject({ ok: true });
+    // Card-publication mode alone does NOT confer T3 admission: admitApprovalBoundT3 is a hard opt-in, so a
+    // future managed-mode caller cannot inherit the right to admit an upload stage by turning publication off.
+    const publishBlockedOnly = vi.fn(() => ({ exitCode: 0, stdout: '{}', stderr: '' }));
+    expect(await launchWorkflowRun(t3, session(), deps(publishBlockedOnly, { publishBlocked: true }))).toMatchObject({
+      ok: false,
+      reason: 'invalid-workflow',
+      detail: 'stages[0].riskTier must be T1 or T2; T3 requires the approvals path',
     });
+    expect(publishBlockedOnly).not.toHaveBeenCalled();
+    // Without managed mode — the shape every non-approvals caller has — the same request is refused before
+    // any card operation runs.
+    const unmanaged = vi.fn(() => ({ exitCode: 0, stdout: '{}', stderr: '' }));
+    expect(await launchWorkflowRun(t3, session(), deps(unmanaged))).toMatchObject({
+      ok: false,
+      reason: 'invalid-workflow',
+      detail: 'stages[0].riskTier must be T1 or T2; T3 requires the approvals path',
+    });
+    expect(unmanaged).not.toHaveBeenCalled();
   });
 });
 

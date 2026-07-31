@@ -110,10 +110,12 @@ reverts to the engine's five-finger prior, while the frame carries the four-digi
 16:9` on every scene/plate gen — forget it and the scene generates portrait, silently mis-framed. A **CUTOUT is the
 opposite**: wide squashes the object, so cutouts use `2:3` (or `4:3`/`3:2` for a naturally wide object); `forge.py
 cutout` HARD-ERRORS on width/height ≥ 1.5 unless `--allow-wide`. **Resolution is the other engine dial:** `forge.py`
-requests `imageSize: 2K` and takes `--image-size 1K|2K|4K` (or per-batch-item `image_size`). Leaving it unset — the
-state of every gen before 2026-07-29 — takes the engine default **1K**, which is *below* the 1920×1080 delivery frame,
-so full scenes were upscaled at render and the crop battery zoomed into interpolated pixels. **4K is the top tier at
-~6× the 1K price**, so it is a per-run spend call raised at the Pass-1 gate, never a silent default.
+requests `imageSize: 2K` and takes `--image-size 1K|2K|4K` (or per-batch-item `image_size`) as a **CEILING** — a
+per-item `image_size` above it hard-errors. Leaving it unset — the state of every gen before 2026-07-29 — takes the
+engine default **1K**, which is *below* the 1920×1080 delivery frame, so full scenes were upscaled at render and the
+crop battery zoomed into interpolated pixels. **Pricing: 1K and 2K are the SAME price** ($0.134/image, 1120 output
+tokens), so the 2K default is spend-**neutral**, not an up-spend. **4K is a real up-spend at $0.24/image (~1.8× the
+1K/2K price)**, so it stays a per-run spend call raised at the Pass-1 gate, never a silent default.
 
 **Scope.** Generate stills only for `source: ai-gen` or the generated half of `hybrid`;
 `chart|screencap|stock|archival` belong to other pipelines — skip and record `skipped: source=<x>`. Ignore motion and

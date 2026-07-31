@@ -116,7 +116,14 @@ export function buildApp(): FastifyInstance {
   // env is credential-filtered, but the shell currently runs as the dashboard daemon's OS user; the retired
   // cross-user host/Factor-C path is a future hardening milestone, not an active control.
   {
-    const ptyCtx = makePtyRouteContext({ sessionConfig: surfaceCtx.sessionConfig });
+    // ONE pty host + session registry for the whole daemon, resolved on the surface context: browser
+    // terminals and run-roster agent terminals live in the same registry, so the canvas can attach to a
+    // roster session by id and the concurrency cap counts both.
+    const ptyCtx = makePtyRouteContext({
+      sessionConfig: surfaceCtx.sessionConfig,
+      ...(surfaceCtx.ptyHost ? { ptyHost: surfaceCtx.ptyHost } : {}),
+      ...(surfaceCtx.ptySessions ? { registry: surfaceCtx.ptySessions } : {}),
+    });
     app.register(async (scope) => {
       await registerPtyRoute(scope, ptyCtx);
       originPlugin(scope, { allowedOrigins: ptyCtx.allowedOrigins ?? [] });

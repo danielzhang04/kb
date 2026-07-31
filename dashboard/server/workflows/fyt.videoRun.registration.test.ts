@@ -1,6 +1,10 @@
 /**
  * Read-only FYT registration acceptance.  This deliberately exercises the checked-out definition
  * through the public registry route; it never launches a run or invokes a workflow worker.
+ *
+ * It is the acceptance test for the gate-machinery task: the checked-out `video-run.md` must parse,
+ * compile, bind all six roster agents, and expose gates G0-G4 at the spec's positions with exactly
+ * one of them carrying the run's spend authorization.
  */
 import Fastify from 'fastify';
 import { fileURLToPath } from 'node:url';
@@ -16,26 +20,71 @@ import { registerWorkflows } from './routes.ts';
 const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url));
 const SESSION_SECRET = Buffer.from('fyt-registration-test-secret-32bytes');
 const STAGE_IDS = [
-  'idea', 'research', 'script', 'judge-gate', 'shorts', 'metadata', 'shots', 'motion',
-  'images', 'image-review', 'voiceover', 'audio-plan', 'render', 'verify',
+  'idea', 'story', 'judge-gate', 'packaging', 'visual-plan', 'shots-merge', 'images', 'image-review',
+  'audio', 'audio-plan-merge', 'render', 'verify', 'publish-private',
 ];
+/**
+ * Every stage is executable — a declared agent id plus the worker execution profile it binds through —
+ * INCLUDING the two runner-governed staging→root merge nodes, which resolve to `fyt-checker`. `fyt-runner`
+ * owns those writes' place in the run under the single-writer law (see `GOVERNANCE.stages` below), but it
+ * is declared with a MANAGER default execution profile, and `compile.ts#resolveAssignment` requires a
+ * stage's agent to have a WORKER one, so this workflow's manager cannot also be one of its stage workers.
+ * The merge is a verification act — re-linting a plan neither merge node authored — which is exactly the
+ * shape `fyt-checker` already owns everywhere else in this DAG, so assigning it there strengthens
+ * author-never-grades rather than bending it. See video-run.md's single-writer section for the ruling.
+ */
+const ASSIGNMENTS: Record<string, string> = {
+  idea: 'fyt-story',
+  story: 'fyt-story',
+  'judge-gate': 'fyt-checker',
+  packaging: 'fyt-story',
+  'visual-plan': 'fyt-visuals',
+  'shots-merge': 'fyt-checker',
+  images: 'fyt-visuals',
+  'image-review': 'fyt-checker',
+  audio: 'fyt-audio-render',
+  'audio-plan-merge': 'fyt-checker',
+  render: 'fyt-audio-render',
+  verify: 'fyt-checker',
+  'publish-private': 'fyt-publish',
+};
+const UNBOUND_STAGE_IDS: string[] = [];
+const WORKER_PROFILE = 'worker:claude:claude-fable-5';
+/**
+ * Gate placement. `execution.ts#stageBoundary` evaluates a stage's declared gates BEFORE preparing
+ * any attempt for it, so a gate is declared on the stage it must hold back — the stage AFTER the work
+ * being judged. This map is the acceptance statement of that decision.
+ */
+const GATES: Record<string, string[]> = {
+  story: ['g0-idea-pick'],
+  packaging: ['g1-script'],
+  images: ['g2-visual-plan'],
+  // `audio` declares TWO: the shot-board approval that releases it, and the recorded cost authorization
+  // for the paid narration call it makes. `stageBoundary` raises a stage's gates one at a time and holds
+  // the stage until every one is recorded approved.
+  audio: ['g3-image-board', 'g3b-narration-cost'],
+  'publish-private': ['g4-publish-private'],
+};
+/** Every gate that IS a recorded cost authorization — one per paid stage, and only on paid stages. */
+const SPEND_GATES = ['images:g2-visual-plan', 'audio:g3b-narration-cost'];
 const GOVERNANCE = {
   workflow: 'fyt-runner',
   stages: {
-    idea: 'fyt-preproduction',
-    research: 'fyt-preproduction',
-    script: 'fyt-preproduction',
+    idea: 'fyt-story',
+    story: 'fyt-story',
     'judge-gate': 'fyt-checker',
-    shorts: 'fyt-preproduction',
-    metadata: 'fyt-preproduction',
-    shots: 'fyt-preproduction',
-    motion: 'fyt-preproduction',
-    images: 'fyt-production',
-    'image-review': 'fyt-runner',
-    voiceover: 'fyt-production',
-    'audio-plan': 'fyt-production',
-    render: 'fyt-production',
+    packaging: 'fyt-story',
+    'visual-plan': 'fyt-visuals',
+    // The two merge nodes are governed by the conductor, which sequences and gates around them, even
+    // though `fyt-checker` is the identity that actually writes the video root (see ASSIGNMENTS above).
+    'shots-merge': 'fyt-runner',
+    images: 'fyt-visuals',
+    'image-review': 'fyt-checker',
+    audio: 'fyt-audio-render',
+    'audio-plan-merge': 'fyt-runner',
+    render: 'fyt-audio-render',
     verify: 'fyt-checker',
+    'publish-private': 'fyt-publish',
   },
 } as const;
 
@@ -55,20 +104,18 @@ function makeApp() {
 }
 
 describe('checked-out FYT video-run registry acceptance', () => {
-  it('parses the four checked-out FYT declarations as declared-only, not runner-bound', () => {
+  it('parses the six checked-out roster declarations as runner-bound, and the two superseded ones as not', () => {
     const declarations = readDeclaredAgents(REPO_ROOT);
-    expect(['fyt-runner', 'fyt-preproduction', 'fyt-production', 'fyt-checker'].map((id) => {
-      const declaration = declarations.get(id);
-      return { id, runnerBound: declaration?.runnerBound };
-    })).toEqual([
-      { id: 'fyt-runner', runnerBound: false },
-      { id: 'fyt-preproduction', runnerBound: false },
-      { id: 'fyt-production', runnerBound: false },
-      { id: 'fyt-checker', runnerBound: false },
-    ]);
+    const roster = ['fyt-runner', 'fyt-story', 'fyt-visuals', 'fyt-audio-render', 'fyt-publish', 'fyt-checker'];
+    expect(roster.map((id) => ({ id, runnerBound: declarations.get(id)?.runnerBound }))).toEqual(
+      roster.map((id) => ({ id, runnerBound: true })),
+    );
+    // The old role-cut agents are tombstoned, not deleted: they must stay parsable and unbindable.
+    expect(['fyt-preproduction', 'fyt-production'].map((id) => ({ id, runnerBound: declarations.get(id)?.runnerBound })))
+      .toEqual([{ id: 'fyt-preproduction', runnerBound: false }, { id: 'fyt-production', runnerBound: false }]);
   });
 
-  it('discovers the actual definition as valid, launchable, generic, and presently unassigned', async () => {
+  it('discovers the actual definition as valid, launchable, and executable on the six-agent roster', async () => {
     const app = makeApp();
     await app.ready();
     try {
@@ -84,45 +131,89 @@ describe('checked-out FYT video-run registry acceptance', () => {
         profile: 'producer',
         governedBy: GOVERNANCE.workflow,
         governanceProblems: [],
-        stageCount: 14,
-        parameters: ['channel', 'slug'],
-        manager: null,
+        stageCount: STAGE_IDS.length,
+        parameters: ['channel', 'slug', 'slice'],
+        manager: { agentId: 'fyt-runner', profileId: 'manager:claude:claude-fable-5' },
         pendingAmendment: null,
       });
-      expect((item?.stages as Array<Record<string, unknown>>).map((stage) => stage.id)).toEqual(STAGE_IDS);
-      expect(Object.fromEntries((item?.stages as Array<Record<string, unknown>>).map((stage) => [stage.id, stage.governedBy]))).toEqual(GOVERNANCE.stages);
-      expect((item?.stages as Array<Record<string, unknown>>).every((stage) => stage.declaredAssignment === null)).toBe(true);
+      const listedStages = item?.stages as Array<Record<string, unknown>>;
+      expect(listedStages.map((stage) => stage.id)).toEqual(STAGE_IDS);
+      // `governedBy` is retained for display continuity only; `declaredAssignment` is what executes.
+      expect(Object.fromEntries(listedStages.map((stage) => [stage.id, stage.governedBy]))).toEqual(GOVERNANCE.stages);
+      expect(Object.fromEntries(listedStages.map((stage) => [stage.id, stage.declaredAssignment]))).toEqual(
+        Object.fromEntries(STAGE_IDS.map((id) => [
+          id,
+          // `null` is what the route emits for a stage with no authored binding. Every stage in this
+          // definition has one, including both merge nodes (bound to `fyt-checker`), so `UNBOUND_STAGE_IDS`
+          // is empty and this branch is exercised by no stage today.
+          ASSIGNMENTS[id] ? { agentId: ASSIGNMENTS[id], profileId: WORKER_PROFILE } : null,
+        ])),
+      );
+      expect(listedStages.filter((stage) => stage.declaredAssignment === null).map((stage) => stage.id))
+        .toEqual(UNBOUND_STAGE_IDS);
+      // A single chain: no path routes around a gate, so every stage downstream of an unapproved gate
+      // is structurally unreachable rather than merely discouraged.
+      expect(Object.fromEntries(listedStages.map((stage) => [stage.id, stage.dependsOn]))).toEqual(
+        Object.fromEntries(STAGE_IDS.map((id, index) => [id, index === 0 ? [] : [STAGE_IDS[index - 1]]])),
+      );
 
       const detail = await app.inject({ method: 'GET', url: '/api/workflows/video-run' });
       expect(detail.statusCode).toBe(200);
       const body = detail.json() as {
-        definition: { profile: string; governedBy?: string; parameters: string[]; manager?: unknown; stages: Array<{ id: string; governedBy?: string; agentId?: unknown; profileId?: unknown }> };
-        compiled: { ok: boolean; manager: Record<string, unknown>; stages: Array<Record<string, unknown>> };
-        assignmentOptions: { manager: { options: unknown[]; unavailable: string | null }; stages: Record<string, { options: unknown[]; unavailable: string | null }> };
+        definition: {
+          profile: string; governedBy?: string; parameters: string[];
+          manager?: { agentId: string; profileId: string };
+          stages: Array<{ id: string; governedBy?: string; agentId?: string; profileId?: string; humanGates?: unknown }>;
+        };
+        compiled: {
+          ok: boolean; manager: Record<string, unknown>;
+          stages: Array<{ id: string; assignment?: Record<string, unknown>; humanGates: Array<Record<string, unknown>> }>;
+        };
       };
-      // This is the generic `producer` path: it is compiler-launchable without an authored immutable
-      // binding, not an assertion that a real runner has been activated.
-      expect(body.definition).toMatchObject({ profile: 'producer', governedBy: GOVERNANCE.workflow, parameters: ['channel', 'slug'] });
-      expect(body.definition.manager).toBeUndefined();
-      expect(body.definition.stages).toHaveLength(14);
-      expect(Object.fromEntries(body.definition.stages.map((stage) => [stage.id, stage.governedBy]))).toEqual(GOVERNANCE.stages);
-      expect(body.definition.stages.every((stage) => stage.agentId === undefined && stage.profileId === undefined)).toBe(true);
-      expect(body.compiled.ok).toBe(true);
-      expect(body.compiled).not.toHaveProperty('governedBy');
-      expect(body.compiled.manager.assignment).toBeUndefined();
-      expect(body.compiled.stages).toHaveLength(14);
-      expect(body.compiled.stages.every((stage) => !Object.hasOwn(stage, 'governedBy'))).toBe(true);
-      expect(body.compiled.stages.every((stage) => stage.assignment === undefined)).toBe(true);
-      expect(body.assignmentOptions.manager).toEqual({
-        options: [],
-        unavailable: 'Human binding required: no runner-bound declared agent is eligible for this workflow assignment.',
+      expect(body.definition).toMatchObject({
+        profile: 'producer', governedBy: GOVERNANCE.workflow, parameters: ['channel', 'slug', 'slice'],
+        manager: { agentId: 'fyt-runner', profileId: 'manager:claude:claude-fable-5' },
       });
-      expect(Object.values(body.assignmentOptions.stages)).toEqual(
-        STAGE_IDS.map(() => ({
-          options: [],
-          unavailable: 'Human binding required: no runner-bound declared agent is eligible for this workflow assignment.',
-        })),
+      expect(body.definition.stages).toHaveLength(STAGE_IDS.length);
+      expect(body.compiled.ok).toBe(true);
+      expect(body.compiled.stages).toHaveLength(STAGE_IDS.length);
+      expect(body.compiled.manager).toMatchObject({
+        runtime: 'claude', model: 'claude-fable-5',
+        assignment: { agentId: 'fyt-runner', profileId: 'manager:claude:claude-fable-5' },
+      });
+      // Every stage resolves to an immutable declaration binding, on Fable 5, through a worker profile —
+      // including the two merge nodes, both bound to `fyt-checker` (see the ASSIGNMENTS note).
+      expect(body.compiled.stages.map((stage) => [stage.id, stage.assignment?.agentId, stage.assignment?.profileId])).toEqual(
+        STAGE_IDS.map((id) => (ASSIGNMENTS[id] ? [id, ASSIGNMENTS[id], WORKER_PROFILE] : [id, undefined, undefined])),
       );
+      expect(body.compiled.stages.filter((stage) => stage.assignment)
+        .every((stage) => stage.assignment?.model === 'claude-fable-5')).toBe(true);
+      expect(body.compiled.stages.filter((stage) => !stage.assignment).map((stage) => stage.id))
+        .toEqual(UNBOUND_STAGE_IDS);
+
+      // The gates: at the spec's positions, all approval-kind, all threaded through the compiler
+      // (a hardcoded `humanGates: []` would make every one of these assertions fail).
+      expect(Object.fromEntries(
+        body.compiled.stages.filter((stage) => stage.humanGates.length > 0).map((stage) => [stage.id, stage.humanGates]),
+      )).toEqual(Object.fromEntries(Object.entries(GATES).map(([stageId, gateIds]) => [stageId, gateIds.map((gateId) => expect.objectContaining({
+        id: gateId, kind: 'approval', prompt: expect.any(String),
+      }))])));
+      expect(body.compiled.stages.filter((stage) => stage.humanGates.length > 0).map((stage) => stage.id))
+        .toEqual(STAGE_IDS.filter((id) => id in GATES));
+
+      // EVERY paid stage carries its own recorded cost authorization, and only paid stages do. G2 is the
+      // one human decision; `audio` restates it as `g3b-narration-cost` because the control plane
+      // authorizes cost PER STAGE, so a targeted single-stage re-run of narration would otherwise call a
+      // paid API with no authorization recorded against the stage that called it. Approving G0/G1/G3/G4
+      // must still never read as a cost authorization.
+      const spendGates = body.compiled.stages.flatMap((stage) => stage.humanGates
+        .filter((gate) => gate.spendAuthorization === true)
+        .map((gate) => `${stage.id}:${gate.id}`));
+      expect(spendGates).toEqual(SPEND_GATES);
+      const spendGateIds = new Set(SPEND_GATES.map((entry) => entry.split(':')[1]));
+      expect(body.compiled.stages.flatMap((stage) => stage.humanGates)
+        .filter((gate) => !spendGateIds.has(gate.id as string))
+        .every((gate) => gate.spendAuthorization === undefined)).toBe(true);
     } finally {
       await app.close();
     }
