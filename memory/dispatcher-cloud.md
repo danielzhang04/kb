@@ -246,3 +246,20 @@
 - Pending human items unchanged (engagement-fold bridge, PR #41, fyt-writer-grammar-slim branch,
   Poyais GATE 3, Atlas V2 go/no-go, budget-gate 6a5e482a, delivery-gate flip 6a5c7274). Nothing
   new broke. DIRECT-PUSH expected; PR fallback if branch-restricted.
+
+## 2026-07-31 nightly-review (dispatcher-cloud, opus-4-8)
+- Ran clean: preamble OK, pyyaml OK, sync_skills --check clean. Card 6a6c3cb8-f0d1ec65
+  self-executed (cloud carve-out), dashboards regenerated, cost row logged (subscription 0.0).
+- NEW daemon-dir drift this run (first non-clean sync_daemon_dirs in several nights): the
+  2026-07-31 fyt gated-pipeline merge to main (PR #106) was NOT mirrored to ops. 9 files:
+  4 main-only (agents/fyt-audio-render|publish|story|visuals.md) + 5 content-differs
+  (agents/fyt-checker|preproduction|production|runner.md, orgs/faceless-youtube/workflows/
+  video-run.md). Filed FRESH wake-me card 6a6c3d8e-08b1da38 (different content from the standing
+  6a605ebb, which covers only the missing-script issue) rather than dedupe — the drifted file set
+  changed entirely since 2026-07-22 (self-lint-report.md drift is now reconciled/gone). Lesson:
+  when drift returns after a merge to main, file the current file list even if a stale drift card
+  exists; the desktop --sync needs today's list, not 2026-07-22's.
+- sync_daemon_dirs.py still absent on ops; ran the main copy again (`git show origin/main:...`).
+- Recurring strays unchanged: same 4 done-in-inbox nightly cards + the halted iter-smoke card
+  6a6bc3dd in working/ (~12h, terminal-state halted, not yet >48h). Both outside the carve-out
+  allow-list — reported, not fixed.
