@@ -392,3 +392,20 @@ Daniel's standing gates (V2a build go, contract clause, archiver Qs, cadences, o
 - REMAINS: PR #104 merge (Daniel); humanizer promotion gate 3-4 (Daniel); optional ST-013 length bounce; ST-013 continues at shorts/metadata/visuals when ordered.
 - ADDENDUM (review wave): adversarial opus review of the reconcile build found 4 real MEDIUMs the builder's own green suite missed (pid-reuse pins orphans alive; concurrent sweeps double-publish; sweep stalls on dead origin; load-bearing flag asserted by no test) — builder self-test green is never review-clean. SendMessage-resume of the ORIGINAL builder for the fix wave was cheap and precise (mutation-checked fixes, 85/85). PR #104 final: c3277c7, READY. PowerShell 5.1 lesson repeated itself: quotes inside here-strings break git -m / gh --body — use -F/--body-file always.
 - HAZARD LESSON (2026-07-30 late, Daniel caught it): rev-list==0 is NECESSARY but not SUFFICIENT to delete a local branch — a fully-merged ref can still be a live parallel terminal's checked-out seat. Dirty files you did not create ARE the tell that the shared checkout hosts a live session: then do NOT switch its branch and do NOT delete its ref; cut new branches in a worktree instead. Restored: branch recreated at same sha, checkout switched back, no commits lost (verified boss-post-104 clean of foreign commits).
+
+## 2026-07-31 — FYT pipeline shipped; two process lessons
+
+- **Verify a PR's REMOTE head == local branch HEAD before calling it merge-ready.** #102 merged a stale tip
+  (`a64cc43`); the 17 real commits were committed in the worktree but never pushed, so they missed `main`.
+  Caught only by `git rev-list --count origin/main..<branch>` during hygiene, BEFORE deleting the worktree that
+  held the only copy. Recovery: the local stack was a clean linear continuation of the merged base, so push +
+  fresh PR (#106) merged 0-conflict. NEVER delete a branch/worktree until its commits are confirmed in
+  `origin/main`. Judge "merged" only by rev-list==0 after fetch --prune, never the GitHub MERGED badge alone.
+- **A daemon "working stage X" record is NOT proof a turn ran.** Verify the terminal's `~/.claude/projects/
+  <slug>/*.jsonl` transcript is GROWING (a live turn writes continuously); absence of a post-boot `user` entry
+  proves the order was never submitted. I reported a run "actively working" off the status record while it had
+  been silent 36 min — Daniel doubted it, correctly.
+- **Read the delivery/handler code before theorizing a root cause.** I named the cause wrong twice (onboarding
+  splash; large-paste) before reading `deliver()` + `defaultDeliveryLine`. Reproduce faithfully, capture ground
+  truth, let evidence pick the fix. Durable answer to a recurring "wrote bytes but no effect" class = OUTCOME-
+  VERIFIED action (verify the effect, retry, else park loudly), never another fixed-delay guess.

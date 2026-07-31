@@ -1,9 +1,15 @@
 # faceless-youtube — STATE
 
-_Updated: 2026-07-29 (scripting doctrine arc closed; note: a richer 2026-07-19 STATE.md exists on
+_Updated: 2026-07-31 (gated pipeline shipped to main; note: a richer 2026-07-19 STATE.md exists on
 branch claude/faceless-live-import — reconcile to this one at merge, this is newer)_
 
 ## Now
+- **Gated multi-agent pipeline SHIPPED to `main` (2026-07-31):** 13 stages / 6 agents / 6 gates, plus the
+  four roster-terminal delivery fixes (auto permission mode, freshness-gated readiness, two-write submit,
+  outcome-verified submit). Merged via PR #106 (`6c359ca`) after #102 merged a stale tip. Suite 2361 passed,
+  tsc clean, adversarial review SHIP-WITH-NITS. **Only open item: the full end-to-end run (Facts 4 & 5 harness
+  + maiden video), DEFERRED for the Aug 1 9pm weekly-cap reset** (Fable-5 subscription was ~84%). Resume via
+  `handoffs/2026-07-31-fyt-pipeline-shipped.md`.
 - **Scripting doctrine arc COMPLETE (2026-07-29):** bricks round-4 script ACCEPTED (first accepted
   script, 4 rounds), then a blind-generation experiment (two uncontaminated pipeline samples vs the
   accepted ideal, 36 lenses) drove a doctrine-hardening wave: heat inversion, named story shapes
