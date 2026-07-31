@@ -152,6 +152,29 @@ const REPL_POLL_MAX_MS = 5_000;
  */
 const SUBMIT_ENTER_DELAY_MS = 500;
 /**
+ * OUTCOME-VERIFIED SUBMISSION (2026-07-30). The Enter at {@link SUBMIT_ENTER_DELAY_MS} is a WRITE, not a
+ * proof: a bytes-written Enter has been observed FOUR times to leave no turn started — a paste-folded CR, an
+ * open modal, a mistimed type into a splash, or an at/over-cap interactive block can each swallow it, and the
+ * stage then reads "working" until the 40-min marker deadline with nothing ever delivered. So after the
+ * Enter, delivery now POLLS the terminal's own output for POSITIVE evidence a turn engaged before it trusts
+ * the write, and re-submits (re-typing the line only if it is no longer on screen) up to {@link
+ * SUBMIT_VERIFY_RETRIES} times; if no turn ever engages it PARKS LOUDLY (never a false "working").
+ *
+ * THE SIGNAL, chosen off a live faithful pty capture (claude.exe 2.1.220): a started turn transitions the
+ * frame from the idle prompt to a BUSY frame within ~1-1.5s — the spinner footer ({@link BUSY_MARKERS}:
+ * `esc to interrupt` / `(Ns ·` / `[↑↓] N tokens`), fresh (last chunk < {@link STALE_BUSY_QUIET_MS} ago). The
+ * composer ECHO of the typed line carries no busy marker, so it never false-positives; a non-submitting
+ * Enter leaves an idle {@link READY_MARKERS} frame still holding the un-submitted line. A turn that finished
+ * so fast its marker already settled the delivery counts as engaged too (the pending is gone).
+ */
+const SUBMIT_VERIFY_RETRIES = 3;
+/** Per-attempt window to observe a turn engage. A real turn paints a matchable busy footer within ~1.5s. */
+const SUBMIT_VERIFY_WINDOW_MS = 4_000;
+/** Poll cadence inside a verify window. Injected `sleep` drives it, so the suite never waits on a real timer. */
+const SUBMIT_VERIFY_POLL_MS = 300;
+/** Named, greppable settle reason for a delivery whose Enter never started a turn across every retry. */
+export const DELIVERY_NOT_ENGAGED_REASON = 'roster-delivery-not-engaged';
+/**
  * Rolling window of terminal output kept for readiness detection, separate from the marker buffer (which
  * is consumed line-by-line and reset per delivery). Small on purpose: an interactive REPL redraws its
  * whole frame continuously and `stripTerminalControl` cannot collapse those redraws, so only the tail is
@@ -608,6 +631,30 @@ export function detectReplReadinessFresh(tail: string, quietMs: number): ReplRea
   const base = classifyFrame(tail, false);
   if (base.state === 'busy' && quietMs >= STALE_BUSY_QUIET_MS) return classifyFrame(tail, true);
   return base;
+}
+
+/**
+ * POSITIVE proof a submitted order actually STARTED A TURN — the outcome check {@link SUBMIT_VERIFY_RETRIES}
+ * keys on. True iff the current frame is a LIVE busy frame: a {@link BUSY_MARKERS} spinner footer that is
+ * FRESH (the terminal painted within {@link STALE_BUSY_QUIET_MS}, i.e. a turn is repainting its counter right
+ * now, not a frozen dead-spinner tail). The idle prompt, a modal, a splash, and the mere composer echo of the
+ * typed line all return false — none of them carry a busy marker. PURE: `quietMs` is passed in (no clock
+ * read), so a submit-verify unit test needs no pty.
+ */
+export function detectTurnEngaged(tail: string, quietMs: number): boolean {
+  if (quietMs >= STALE_BUSY_QUIET_MS) return false;
+  return classifyFrame(tail, false).state === 'busy';
+}
+
+/**
+ * Whether the delivery line is still sitting on screen (space-insensitively, because a redrawing REPL
+ * positions the composed line with cursor moves that {@link stripTerminalControl} cannot turn back into
+ * spaces). Used only to decide a retry's shape: if the line is gone the retry re-TYPES it, otherwise the
+ * retry just re-sends Enter. The stage id is the stable, unique fragment of {@link defaultDeliveryLine}.
+ */
+function frameHasDeliveryLine(tail: string, stageId: string): boolean {
+  const compact = currentFrame(tail).replace(/\s+/g, '').toLowerCase();
+  return compact.includes(`forstage${stageId.replace(/\s+/g, '').toLowerCase()}`);
 }
 
 /**
@@ -1587,7 +1634,51 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
           record(run.subject, input.runRef, agentId, summary, 'interrupted', input.stageRef);
           return { state: 'waiting-human', summary, usage: zeroUsage(), artifacts: [], checkpoints: [] };
         }
-        record(run.subject, input.runRef, agentId, `working stage ${input.stageId}`, 'pending', input.stageRef);
+        // OUTCOME-VERIFY THE SUBMISSION. Bytes written is not a turn started — see {@link
+        // SUBMIT_VERIFY_RETRIES}. Poll for positive evidence the turn engaged (a fresh busy spinner frame,
+        // or the delivery already settled by a fast marker), re-submitting up to SUBMIT_VERIFY_RETRIES —
+        // re-typing the line only when it has left the composer, otherwise just re-sending Enter. If no turn
+        // ever engages, PARK LOUDLY as a named human wait; NEVER record a "working" that reads as running
+        // while nothing was delivered and then dies at the 40-min marker deadline.
+        let engaged = false;
+        for (let attempt = 0; attempt <= SUBMIT_VERIFY_RETRIES; attempt += 1) {
+          const windowEnd = now() + SUBMIT_VERIFY_WINDOW_MS;
+          for (;;) {
+            if (entry.pending !== pending) { engaged = true; break; } // a marker/exit already settled us.
+            // A STARTED turn paints a fresh busy spinner — captured live off a real pty: the frame flips
+            // from the idle prompt to the interrupt-hint/elapsed/token footer within ~1-1.5s of the Enter,
+            // and stays busy while the turn runs. The readiness gate above guarantees the terminal was idle
+            // before we typed, so this busy is OUR turn. (A submitted order keeps its prompt TEXT visible on
+            // screen as the user message, so "the order line is gone" is NOT a usable engagement signal —
+            // proven live: it made a genuinely-running turn read as not-engaged.)
+            if (detectTurnEngaged(entry.screen, now() - entry.lastChunkAt)) { engaged = true; break; }
+            if (now() >= windowEnd) break;
+            await sleep(Math.min(SUBMIT_VERIFY_POLL_MS, Math.max(0, windowEnd - now())));
+          }
+          if (engaged || entry.pending !== pending) break;
+          if (attempt === SUBMIT_VERIFY_RETRIES) break;
+          // Re-submit. A missing line means the prior Enter cleared it WITHOUT starting a turn (submitted-
+          // then-errored, or typed into a transient state) — re-type before Enter; a present line is still
+          // sitting unsubmitted (a folded CR, or a block that has since cleared), so just re-send Enter.
+          if (!frameHasDeliveryLine(entry.screen, input.stageId)) {
+            if (!options.registry.write(entry.owner, entry.sessionId, deliveryLine({ orderPath, stageId: input.stageId }))) break;
+            await sleep(SUBMIT_ENTER_DELAY_MS);
+            if (entry.pending !== pending) { engaged = true; break; }
+          }
+          if (!options.registry.write(entry.owner, entry.sessionId, '\r')) break;
+        }
+        if (!engaged && entry.pending === pending) {
+          clearTimeout(timer);
+          entry.pending = null;
+          const summary = `work order was written into session ${entry.sessionId} but no turn engaged after `
+            + `${SUBMIT_VERIFY_RETRIES} submit retries (${DELIVERY_NOT_ENGAGED_REASON}) — open the ${agentId} `
+            + 'terminal to see whether it is blocked (an open prompt, a usage limit), clear it, then re-run the stage';
+          record(run.subject, input.runRef, agentId, summary, 'waiting', input.stageRef);
+          return { state: 'waiting-human', summary: summary.slice(0, MAX_SUMMARY_CHARS), usage: zeroUsage(), artifacts: [], checkpoints: [] };
+        }
+        if (entry.pending === pending) {
+          record(run.subject, input.runRef, agentId, `working stage ${input.stageId}`, 'pending', input.stageRef);
+        }
       }
       const result = await settled;
       if (result.state === 'succeeded') {

@@ -22,6 +22,7 @@ import {
   createRosterWorkerAdapter,
   detectReplReadiness,
   detectReplReadinessFresh,
+  detectTurnEngaged,
   STALE_BUSY_QUIET_MS,
   matchCompletionMarker,
   projectRosterState,
@@ -31,6 +32,7 @@ import {
   rosterAgentTools,
   stripTerminalControl,
   DELIVERY_NOT_READY_REASON,
+  DELIVERY_NOT_ENGAGED_REASON,
   DELIVERY_TIMEOUT_REASON,
   type RosterFileSystem,
   type RosterSessionManager,
@@ -284,6 +286,15 @@ function fakeFs(existing: string[] = [], seed: { directories?: string[]; content
  * the acceptance-modal/onboarding frames that swallowed a work order were exactly non-empty and menu-free.
  */
 const IDLE_FRAME = '╭───╮\r\n│ >  │\r\n╰───╯\r\n  ⏵⏵ auto mode on (shift+tab to cycle)\r\n';
+
+/**
+ * A LIVE running-turn frame — the spinner footer the CLI paints while a turn is in flight (captured shape:
+ * the interrupt hint + elapsed-seconds counter + in-flight token counter, all {@link BUSY_MARKERS}). This
+ * is the POSITIVE evidence the outcome-verified submit (2026-07-30) requires before it records "working": a
+ * delivered order must be OBSERVED to start a turn, never merely written. Emitted after a delivery to stand
+ * the engaged turn a real terminal would show.
+ */
+const BUSY_FRAME = '✻ Working… ❯ esc to interrupt (2s · thinking) ↓ 40 tokens\r\n';
 
 function harness(options: {
   plan?: PlanProposal;
@@ -557,6 +568,9 @@ describe('gated work-order delivery', () => {
     resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
 
     const pending = sessions.deliver(deliverInput(store, runRef, plan, 'story'));
+    // The submitted order starts a turn — the outcome-verified submit records "working" only once it sees
+    // that running-turn frame, so stand it up the way a real terminal would before the marker lands.
+    host.emit(sessionId, BUSY_FRAME);
     const orderPath = `/state/control/roster/${runRef}/fyt-story/orders/story.md`;
     const order = fs.files.get(orderPath);
     expect(order).toBeDefined();
@@ -743,6 +757,9 @@ describe('gated work-order delivery', () => {
       succeedStage(store, runRef, 'idea');
       resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
       const pending = sessions.deliver(deliverInput(store, runRef, plan, 'story'));
+      // The turn engaged (submit is outcome-verified) but then goes silent without ever printing the
+      // marker — the exact case the marker deadline exists for. Stand the running turn, then never complete.
+      host.emit(sessionId, BUSY_FRAME);
       // Chatter that is not the marker changes nothing, however much of it there is.
       host.emit(sessionId, 'PS C:\\Users\\danie> working on it...\r\n');
       await vi.advanceTimersByTimeAsync(4 * 60_000);
@@ -783,6 +800,77 @@ describe('gated work-order delivery', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('OUTCOME-VERIFY: a first Enter that does not start a turn is RETRIED, then records working once it engages', async () => {
+    // The submit is now outcome-verified: a written Enter that leaves the order sitting UNSUBMITTED in the
+    // composer (a folded CR, an at-cap block that later clears) is caught and re-submitted. This drives the
+    // REAL deliver() path — the first Enter does not engage (the frame stays an idle prompt still holding
+    // the order line), and only after a SECOND Enter does the terminal show a running turn.
+    let sessionId = '';
+    let live: ReturnType<typeof fakeHost> | null = null;
+    const { plan, store, sessions, runRef, host } = harness({
+      onSleep: () => {
+        if (!live || !sessionId) return;
+        const enters = (live.writes.get(sessionId) ?? []).filter((chunk) => chunk === '\r').length;
+        // The order line sits UNSUBMITTED in the composer after the first Enter (idle prompt + footer, and
+        // the order text still on screen). Only after a retry Enter (the 2nd standalone \r) does a turn run.
+        live.emit(sessionId, enters >= 2
+          ? BUSY_FRAME
+          : '❯ Work order for stage story: read /state/control/roster/orders/story.md and execute it now\r\n  ⏵⏵ auto mode on (shift+tab to cycle)\r\n');
+      },
+    });
+    live = host;
+    sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    sessionId = sessionIdFor(sessions, runRef, 'fyt-story');
+    succeedStage(store, runRef, 'idea');
+    resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
+
+    const pending = sessions.deliver(deliverInput(store, runRef, plan, 'story'));
+    // "working" is recorded ONLY after the retry makes a turn actually engage — never on the first write.
+    await vi.waitFor(() => {
+      const story = sessions.state('operator', runRef).find((row) => row.agentId === 'fyt-story');
+      expect(story).toMatchObject({ status: 'active', activity: 'working stage story' });
+    });
+    // The recovery is real: it took more than one Enter (the first did not start a turn, the retry did).
+    const enters = (host.writes.get(sessionId) ?? []).filter((chunk) => chunk === '\r').length;
+    expect(enters).toBeGreaterThanOrEqual(2);
+    sessions.retire(runRef, 'cleanup');
+    await pending;
+  });
+
+  it('OUTCOME-VERIFY: a submit that NEVER engages parks LOUDLY after K retries — never a false working', async () => {
+    // The class this closes: a keystroke written but no turn started. When every retry Enter still leaves an
+    // idle prompt (no running turn ever appears), delivery must PARK as a named human wait — and must NEVER
+    // have recorded a "working" that would read as running while nothing was delivered until the 40-min timer.
+    let sessionId = '';
+    let live: ReturnType<typeof fakeHost> | null = null;
+    const { plan, store, sessions, runRef, host } = harness({
+      // The terminal stays at an idle prompt holding the un-submitted order line, forever — no turn ever runs.
+      onSleep: () => {
+        if (live && sessionId) {
+          live.emit(sessionId, '❯ Work order for stage story: read /state/control/roster/orders/story.md and execute it now\r\n  ⏵⏵ auto mode on (shift+tab to cycle)\r\n');
+        }
+      },
+    });
+    live = host;
+    sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    sessionId = sessionIdFor(sessions, runRef, 'fyt-story');
+    succeedStage(store, runRef, 'idea');
+    resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
+
+    const result = await sessions.deliver(deliverInput(store, runRef, plan, 'story'));
+
+    expect(result.state).toBe('waiting-human');
+    expect(result.summary).toContain(DELIVERY_NOT_ENGAGED_REASON);
+    expect(result.summary).toContain('no turn engaged');
+    // It really retried: the initial Enter plus SUBMIT_VERIFY_RETRIES re-sends = more than one standalone \r.
+    const enters = (host.writes.get(sessionId) ?? []).filter((chunk) => chunk === '\r').length;
+    expect(enters).toBeGreaterThan(1);
+    // The load-bearing invariant: NO false "working" was ever recorded, and the agent is not shown active.
+    const events = store.listEvents('operator', runRef, 0, 200);
+    expect(events.ok && events.value.some((event) => (event.summary ?? '').includes('working stage story'))).toBe(false);
+    expect(sessions.state('operator', runRef).find((row) => row.agentId === 'fyt-story')?.status).not.toBe('active');
   });
 
   it('holds the SPEND gate: the images stage is undeliverable until G2 is approved', async () => {
@@ -941,13 +1029,16 @@ describe('roster state projection (the canvas contract)', () => {
   });
 
   it('reports an agent as active while its work order is outstanding', async () => {
-    const { plan, store, sessions, runRef } = harness();
+    const { plan, store, sessions, runRef, host } = harness();
     sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    const sessionId = sessionIdFor(sessions, runRef, 'fyt-story');
     succeedStage(store, runRef, 'idea');
     resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
     const pending = sessions.deliver(deliverInput(store, runRef, plan, 'story'));
-    // The 'working stage story' activity is recorded once the order is SUBMITTED (after the two-write
-    // deliver), a tick after deliver() yields — await it rather than reading synchronously mid-delivery.
+    // The order starts a turn; the outcome-verified submit records "working" only after it observes that.
+    host.emit(sessionId, BUSY_FRAME);
+    // The 'working stage story' activity is recorded once the order is SUBMITTED and its turn is verified
+    // engaged — a tick after deliver() yields — so await it rather than reading synchronously mid-delivery.
     await vi.waitFor(() => {
       const story = sessions.state('operator', runRef).find((row) => row.agentId === 'fyt-story');
       expect(story).toMatchObject({ status: 'active', activity: 'working stage story' });
@@ -1459,6 +1550,19 @@ describe('roster REPL-readiness gate', () => {
       .toMatchObject({ state: 'silent', marker: 'no REPL input prompt on screen yet' });
   });
 
+  it('detectTurnEngaged: a FRESH busy spinner is engaged; idle prompt, composer echo, and a stale spinner are not', () => {
+    // The positive signal the outcome-verified submit keys on: a running turn paints the spinner footer, and
+    // it is FRESH (the terminal repainted within STALE_BUSY_QUIET_MS). Captured shape of a live turn.
+    const runningTurn = '✻ Working… ❯ esc to interrupt (2s · thinking) ↓ 40 tokens';
+    expect(detectTurnEngaged(runningTurn, 300)).toBe(true);
+    // Stale: the same tail frozen after the turn ended (quiet >= threshold) is NOT a running turn.
+    expect(detectTurnEngaged(runningTurn, STALE_BUSY_QUIET_MS)).toBe(false);
+    // The idle prompt is not a turn — this is exactly the frame a non-submitting Enter leaves behind.
+    expect(detectTurnEngaged('╭───╮\n│ >  │\n╰───╯\n  ⏵⏵ auto mode on (shift+tab to cycle)', 100)).toBe(false);
+    // The mere COMPOSER ECHO of the typed order carries no busy marker, so it can never false-positive.
+    expect(detectTurnEngaged('❯ Work order for stage story: read /state/.../orders/story.md and execute it now\n  ⏵⏵ auto mode on (shift+tab to cycle)', 0)).toBe(false);
+  });
+
   it('never types a work order into an open permission menu, and parks with a named reason', async () => {
     const { plan, store, sessions, runRef, host, fs } = harness({ replReadyTimeoutMs: 60_000 });
     sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
@@ -1487,9 +1591,16 @@ describe('roster REPL-readiness gate', () => {
     const item = harness({
       replReadyTimeoutMs: 60_000,
       onSleep: (elapsed) => {
+        if (!liveHost || !sessionId) return;
+        // Once the order line has been typed, the submit's outcome-verify is polling for a running turn:
+        // the REPL now paints the spinner footer, which is the positive evidence it engaged.
+        if ((liveHost.writes.get(sessionId) ?? []).some((chunk) => chunk.includes('story.md'))) {
+          liveHost.emit(sessionId, BUSY_FRAME);
+          return;
+        }
         // The operator answers the menu after the second poll and the REPL redraws past it — which is
         // what actually clears a menu from the current frame: real content scrolling it out, not blanks.
-        if (elapsed >= 700 && liveHost && sessionId) {
+        if (elapsed >= 700) {
           const redraw = Array.from({ length: 30 }, (_, index) => `read binding.md line ${index}`).join('\r\n');
           // The REPL redraws its idle prompt AND its mode-cycler footer over the answered menu — the footer
           // is the positive evidence the readiness gate now requires.
@@ -1567,8 +1678,16 @@ describe('roster REPL-readiness gate', () => {
     const item = harness({
       coldTerminals: true,
       replReadyTimeoutMs: 60_000,
-      // The REPL finishes booting between polls: silence is a RETRY, not a park.
-      onSleep: (elapsed) => { if (elapsed >= 250 && liveHost && sessionId) liveHost.emit(sessionId, IDLE_FRAME); },
+      // The REPL finishes booting between polls (silence is a RETRY, not a park); then, once the order is
+      // typed, the submit's outcome-verify polls for a running turn — the terminal paints the spinner footer.
+      onSleep: (elapsed) => {
+        if (!liveHost || !sessionId) return;
+        if ((liveHost.writes.get(sessionId) ?? []).some((chunk) => chunk.includes('story.md'))) {
+          liveHost.emit(sessionId, BUSY_FRAME);
+          return;
+        }
+        if (elapsed >= 250) liveHost.emit(sessionId, IDLE_FRAME);
+      },
     });
     liveHost = item.host;
     item.sessions.ensureRoster({ subject: 'operator', runRef: item.runRef, proposal: item.plan });
