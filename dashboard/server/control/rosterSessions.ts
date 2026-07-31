@@ -456,6 +456,23 @@ export function stripTerminalControl(chunk: string): string {
 }
 
 /**
+ * Reconstruct terminal output for the bounded readiness frame, where cursor-positioning sequences must
+ * disappear instead of becoming line boundaries or spaces. The marker scan needs CUP/HVP-painted rows
+ * split into searchable lines, but the frame classifier was calibrated on the pre-054e8ab glued stream:
+ * making every repaint fragment a line floods its 20-line window and pushed the READY footer out in run 3.
+ */
+function stripForScreenWindow(chunk: string): string {
+  /* eslint-disable no-control-regex */
+  return chunk
+    .replace(/\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g, '')
+    .replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, '')
+    .replace(/\u001b[@-Z\\-_]/g, '')
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')
+    .replace(/\r/g, '\n');
+  /* eslint-enable no-control-regex */
+}
+
+/**
  * A modal prompt is on screen: the REPL is NOT accepting a line of input, it is waiting for a keystroke
  * against a menu. Typing a work order here does not queue it — the characters are consumed by the menu's
  * own key handling and the order is silently destroyed. That is the observed defect: a delivery line
@@ -1363,19 +1380,20 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
   };
 
   const scan = (entry: RosterSessionEntry, chunk: string): void => {
-    const stripped = stripTerminalControl(chunk);
+    const scanStripped = stripTerminalControl(chunk);
+    const screenStripped = stripForScreenWindow(chunk);
     // The readiness window accumulates ALWAYS — idle output is exactly what the delivery gate reads.
-    entry.screen = (entry.screen + stripped).slice(-SCREEN_WINDOW_CHARS);
+    entry.screen = (entry.screen + screenStripped).slice(-SCREEN_WINDOW_CHARS);
     // Stamp the arrival: the freshness gate uses the quiet-since-last-chunk duration to distinguish a live
     // turn (spinner heartbeat) from a finished one whose spinner tail is merely frozen in the window.
     entry.lastChunkAt = now();
     const pending = entry.pending;
     if (!pending) {
       // Keep the window bounded even while idle so a chatty session cannot grow memory.
-      entry.buffer = (entry.buffer + stripped).slice(-SCAN_WINDOW_CHARS);
+      entry.buffer = (entry.buffer + scanStripped).slice(-SCAN_WINDOW_CHARS);
       return;
     }
-    entry.buffer = (entry.buffer + stripped).slice(-SCAN_WINDOW_CHARS);
+    entry.buffer = (entry.buffer + scanStripped).slice(-SCAN_WINDOW_CHARS);
     const lines = entry.buffer.split('\n');
     // Keep the trailing partial line for the next chunk; a marker is only acted on once complete.
     entry.buffer = lines.pop() ?? '';

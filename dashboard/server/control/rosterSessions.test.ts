@@ -297,6 +297,9 @@ const IDLE_FRAME = '╭───╮\r\n│ >  │\r\n╰───╯\r\n  ⏵⏵
  */
 const BUSY_FRAME = '✻ Working… ❯ esc to interrupt (2s · thinking) ↓ 40 tokens\r\n';
 
+const LIVE_CAPTURE_MARKER_TOKEN = '56ce2c3254c75fdacfc1255a2f1bccf0';
+const LIVE_CAPTURE_MARKER_RAW = '[mpass was skipped and every\u001b[29;3Hsource is marked evergreen-verify, noted in the file header for the researcher.\u001b[K\u001b[30;3H-\u001b[1CHuman gate g0-idea-pick now blocks the next stage; no self-advancement.\u001b[K\u001b[31;6H\u001b[K\u001b[32;3HFYT-STAGE-DONE idea 56ce2c3254c75fdacfc1255a2f1bccf0 5 ranked deep-path\u001b[1Cidea\u001b[1Cbriefs\u001b[1Cwritten\u001b[1Cto\u001b[33;3Hchannel';
+
 function harness(options: {
   plan?: PlanProposal;
   existingPaths?: string[];
@@ -360,7 +363,10 @@ function harness(options: {
       return result;
     },
   };
-  return { plan, store, runRef, registry, host, fs, sessions: spawned, resolve, sleeps };
+  return {
+    plan, store, runRef, registry, host, fs, sessions: spawned, resolve, sleeps,
+    advanceClock: (ms: number) => { clock += ms; },
+  };
 }
 
 function stageOf(plan: PlanProposal, stageId: string): ProposalStage {
@@ -1167,8 +1173,7 @@ describe('completion marker recognition', () => {
   });
 
   it('reconstructs cursor-positioned marker rows and CUF word gaps from the live PTY capture', () => {
-    const raw = '[mpass was skipped and every\u001b[29;3Hsource is marked evergreen-verify, noted in the file header for the researcher.\u001b[K\u001b[30;3H-\u001b[1CHuman gate g0-idea-pick now blocks the next stage; no self-advancement.\u001b[K\u001b[31;6H\u001b[K\u001b[32;3HFYT-STAGE-DONE idea 56ce2c3254c75fdacfc1255a2f1bccf0 5 ranked deep-path\u001b[1Cidea\u001b[1Cbriefs\u001b[1Cwritten\u001b[1Cto\u001b[33;3Hchannel';
-    const markers = stripTerminalControl(raw)
+    const markers = stripTerminalControl(LIVE_CAPTURE_MARKER_RAW)
       .split('\n')
       .map((line) => matchCompletionMarker(line))
       .filter((marker) => marker !== null);
@@ -1177,7 +1182,7 @@ describe('completion marker recognition', () => {
     expect(markers[0]).toMatchObject({
       verdict: 'DONE',
       stageId: 'idea',
-      token: '56ce2c3254c75fdacfc1255a2f1bccf0',
+      token: LIVE_CAPTURE_MARKER_TOKEN,
     });
     expect(markers[0]?.summary).toMatch(/^5 ranked deep-path idea briefs written to/);
   });
@@ -1602,6 +1607,52 @@ describe('roster REPL-readiness gate', () => {
       + '\n\u273b (2s \u00b7 thinking)';
     expect(detectReplReadinessFresh(frozenSplashBusy, 10_000))
       .toMatchObject({ state: 'silent', marker: 'no REPL input prompt on screen yet' });
+  });
+
+  it('keeps an idle REPL ready through a CUP repaint flood and still scans the live-capture marker', async () => {
+    const repaintFlood = Array.from(
+      { length: 32 },
+      (_, index) => `\u001b[${38 + (index % 3)};3H${index % 10}\u001b[?25h`,
+    ).join('');
+    const rawTail = `${IDLE_FRAME}${repaintFlood}`;
+
+    // The marker reconstruction deliberately turns every CUP into a line. More than 20 one-cell repaints
+    // therefore push the READY footer out of currentFrame, pinning the run-3 failure this split repairs.
+    expect(detectReplReadinessFresh(stripTerminalControl(rawTail), STALE_BUSY_QUIET_MS))
+      .toMatchObject({ state: 'silent', marker: 'no REPL input prompt on screen yet' });
+
+    const { plan, store, sessions, runRef, host, fs, advanceClock } = harness({ coldTerminals: true });
+    sessions.ensureRoster({ subject: 'operator', runRef, proposal: plan });
+    const sessionId = sessionIdFor(sessions, runRef, 'fyt-story');
+    succeedStage(store, runRef, 'idea');
+    resolveGate(store, runRef, 'story', 'g0-idea-pick', 'approved');
+    host.emit(sessionId, rawTail);
+    advanceClock(STALE_BUSY_QUIET_MS);
+
+    // scan feeds this same chunk through the private screen reconstruction, and deliver's synchronous
+    // detectReplReadinessFresh fast path at quietMs=2000 proves that stream still sees the footer as READY.
+    const pending = sessions.deliver(deliverInput(store, runRef, plan, 'story'));
+    const orderPath = `/state/control/roster/${runRef}/fyt-story/orders/story.md`;
+    const order = fs.files.get(orderPath) ?? '';
+    expect(order).not.toBe('');
+    const token = /completion token: ([0-9a-f]{32})/.exec(order)?.[1] as string;
+
+    host.emit(sessionId, BUSY_FRAME);
+    await vi.waitFor(() => {
+      expect(sessions.state('operator', runRef).find((row) => row.agentId === 'fyt-story'))
+        .toMatchObject({ status: 'active', activity: 'working stage story' });
+    });
+
+    // The other half of scan still uses stripTerminalControl: the real cursor-painted capture must resolve
+    // the pending delivery end-to-end, including its CUP row boundary and CUF word gaps.
+    host.emit(
+      sessionId,
+      LIVE_CAPTURE_MARKER_RAW.replace(`idea ${LIVE_CAPTURE_MARKER_TOKEN}`, `story ${token}`),
+    );
+    await expect(pending).resolves.toMatchObject({
+      state: 'succeeded',
+      summary: expect.stringMatching(/^5 ranked deep-path idea briefs written to/),
+    });
   });
 
   it('detectTurnEngaged: a FRESH busy spinner is engaged; idle prompt, composer echo, and a stale spinner are not', () => {
