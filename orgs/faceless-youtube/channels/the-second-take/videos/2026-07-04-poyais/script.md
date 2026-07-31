@@ -1,7 +1,7 @@
 # The Prince Who Sold a Country That Didn't Exist
 
 - **Source idea:** ST-009
-- **Target length:** 12-15 min · **Estimated runtime:** 9:24 (1,411 words ÷ 150 wpm; ≈8:04 at the locked voice's measured ~175 wpm pace, plus pauses)
+- **Target length:** 7:30-9:30 · **Estimated runtime:** 9:24 (1,411 words ÷ 150 wpm; ≈8:04 at the locked voice's measured ~175 wpm pace, plus pauses)
 - **Voice:** Miles (`vSjOBQp24DUB2COr2xI9`) · eleven_v3 · stability 0.25
 - **Status:** GOLD: hand-locked line by line with the human, and the canonical voice + accuracy benchmark that `long-form-writer` is built to reproduce. Leashed to `research.md`.
 - **Register:** casual-friend storytelling, not a literary essayist; topic-gravity dial hot on the con and the market absurdity, comedy off on the deaths; third-person, one narrator, no quotes, zero em/en dashes.

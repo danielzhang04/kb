@@ -82,18 +82,28 @@ def parse_target_band(header_lines):
         return None
     m = MMSS_BAND.search(line)
     if m:
-        floor_s = int(m.group(1)) * 60 + int(m.group(2))
-        ceiling_s = int(m.group(3)) * 60 + int(m.group(4))
+        floor_seconds = int(m.group(2))
+        ceiling_seconds = int(m.group(4))
+        if floor_seconds > 59 or ceiling_seconds > 59:
+            return None
+        floor_s = int(m.group(1)) * 60 + floor_seconds
+        ceiling_s = int(m.group(3)) * 60 + ceiling_seconds
+        if floor_s > ceiling_s:
+            return None
         return floor_s, ceiling_s, m.group(0)
     m = PLAIN_MIN_TO_BAND.search(line)
     if m:
         floor_s = int(m.group(1)) * 60
         ceiling_s = int(m.group(2)) * 60
+        if floor_s > ceiling_s:
+            return None
         return floor_s, ceiling_s, m.group(0)
     m = PLAIN_MIN_HYPHEN_BAND.search(line)
     if m:
         floor_s = int(m.group(1)) * 60
         ceiling_s = int(m.group(2)) * 60
+        if floor_s > ceiling_s:
+            return None
         return floor_s, ceiling_s, m.group(0)
     return None
 
@@ -172,7 +182,22 @@ def main(path, wpm=150, wpm_given=False):
         # present but unfilled (TBD / blank / not MM:SS)
         hard.append((0, "unfilled header runtime", runtime_line.strip()))
 
+    target_length_line = next(
+        (
+            (i + 1, ln)
+            for i, ln in enumerate(header)
+            if TARGET_LENGTH_LINE.search(ln)
+        ),
+        None,
+    )
     target_band = parse_target_band(header)
+    if target_length_line is not None and target_band is None:
+        lineno, line = target_length_line
+        soft.append((
+            lineno,
+            "Target length present but unparsable — hard band not enforced",
+            line.strip(),
+        ))
 
     vo_words = 0
     one_sentence_paragraphs = []   # line numbers of standalone one-sentence VO paragraphs

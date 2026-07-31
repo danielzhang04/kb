@@ -139,7 +139,7 @@ between each pair are the stages that produce the artifact the next gate reads.
 ```
 preamble (mechanical)
   → [segment-a: idea → research → script]
-  → HARD lint: lint_script.py clean
+  → HARD lint (must exit clean): py -3 .claude/skills/long-form-writer/scripts/lint_script.py <video_dir>/script.md --wpm <measured VO wpm from the channel's dna.md>
   → GATE 1 — SCRIPT (Daniel): approve the script before anything heavyweight
   → judge-gate (mechanical, fresh-eyes): ACCEPT
   → SPEND AUTHORIZATION (card): images + voiceover authorized before either fires
@@ -161,7 +161,8 @@ For each gate: **who holds it · what artifact it reads · what unblocks it · w
 
 ### GATE 1 — SCRIPT (human: Daniel)
 - **Holds it:** Daniel. This is a taste/content gate; the machine converges, the human owns feel.
-- **Reads:** `<video_dir>/script.md`, after `lint_script.py` is clean and the runtime line is present.
+- **Reads:** `<video_dir>/script.md`, after `lint_script.py` is clean with `--wpm` set from the
+  channel's `dna.md` `Measured VO wpm` line and the runtime line is present.
 - **Unblocks:** Daniel says go. Nothing heavyweight (no spend, no image/voice gen) starts before this.
   A run mandate may proxy the *idea pick* but not this approval unless it explicitly says so.
 - **Parked:** script exists but is not approved → the run holds here; log it as a human-owed review in
@@ -315,12 +316,15 @@ Each stage is one skill invocation. Commands, reads/writes, and reality-check nu
 
 ### 3. script — `long-form-writer` → **feeds GATE 1**
 - **Writes:** `<video_dir>/script.md`.
-- **Gate/lint:** `py -3 .claude/skills/long-form-writer/scripts/lint_script.py <video_dir>/script.md`
-  — flags em/en dashes and prints the exact `Estimated runtime: MM:SS` string to paste into the script.
-- **Done:** lint clean; the runtime line is present and derived from real word count ÷ 150.
+- **Gate/lint:** `py -3 .claude/skills/long-form-writer/scripts/lint_script.py <video_dir>/script.md --wpm <measured VO wpm from the channel's dna.md>`
+  — flags em/en dashes, hard-checks the target band at the measured rate, and prints the exact
+  `Estimated runtime: MM:SS` string to paste into the script.
+- **Done:** lint clean; the runtime line is present and derived from real word count ÷ the channel's
+  measured VO wpm from `dna.md`.
 - **Reality check from fyt-run-001:** 1,703 VO words linted to an 11:21 estimate; measured VO came in at
-  **10:14.6**. Real pace on this voice is ~166 wpm, not 150. Treat the lint estimate as an upper bound;
-  never let downstream stages budget off it — see stage 10.
+  **10:14.6**. Real pace on that voice was ~166 wpm, not the 150 fallback. That mismatch is why this
+  stage must pass the channel's measured rate; the real VO manifest remains the downstream timing
+  source of truth — see stage 10.
 
 ### 4. judge-gate — `proxy-judge`
 - **Writes:** `<video_dir>/judge-verdict.md`. **Gate:** ACCEPT (see the gate spine). fyt-run-001:

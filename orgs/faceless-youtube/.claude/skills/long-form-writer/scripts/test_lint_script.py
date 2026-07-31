@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Focused coverage for the long-form script lint's deterministic Step rules."""
+"""Focused coverage for the long-form lint's deterministic Step and runtime-band rules."""
 import contextlib
 import importlib.util
 import io
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -145,6 +147,15 @@ class LintScriptTests(unittest.TestCase):
                 floor_s, ceiling_s, _ = result
                 self.assertEqual((floor_s, ceiling_s), expected)
 
+    def test_real_legacy_one_line_header_parses_target_band(self):
+        line = (
+            "- **Target length:** 12-15 min · **Estimated runtime:** "
+            "9:24 (1,411 words ÷ 150 wpm)"
+        )
+        floor_s, ceiling_s, band_text = lint_script.parse_target_band([line])
+        self.assertEqual((floor_s, ceiling_s), (720, 900))
+        self.assertEqual(band_text, "12-15 min")
+
     def test_no_parsable_band_stays_advisory_only(self):
         # No 'Target length:' line at all: current behavior preserved even with
         # --wpm given and a word count that would blow any plausible band.
@@ -154,6 +165,54 @@ class LintScriptTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertNotIn("runtime outside hard band", output)
         self.assertIn("VO word count: 5", output)
+
+    def test_unparsable_band_present_adds_advisory_without_failing(self):
+        code, output = self.run_lint(
+            script_with_band("about eight minutes", words_line(5)),
+            wpm=171,
+            wpm_given=True,
+        )
+        self.assertEqual(code, 0)
+        self.assertIn(
+            "Target length present but unparsable — hard band not enforced",
+            output,
+        )
+        self.assertNotIn("runtime outside hard band", output)
+
+    def test_reversed_band_is_unparsable_and_advisory_only(self):
+        for band in ("9:30-7:30", "10-8 min", "10 to 8 min"):
+            with self.subTest(band=band):
+                self.assertIsNone(
+                    lint_script.parse_target_band([f"Target length: {band}"])
+                )
+                code, output = self.run_lint(
+                    script_with_band(band, words_line(5)),
+                    wpm=171,
+                    wpm_given=True,
+                )
+                self.assertEqual(code, 0)
+                self.assertIn(
+                    "Target length present but unparsable — hard band not enforced",
+                    output,
+                )
+                self.assertNotIn("runtime outside hard band", output)
+
+    def test_mmss_seconds_over_59_are_unparsable(self):
+        for band in ("7:60-9:30", "7:30-9:99"):
+            with self.subTest(band=band):
+                self.assertIsNone(
+                    lint_script.parse_target_band([f"Target length: {band}"])
+                )
+                code, output = self.run_lint(
+                    script_with_band(band, words_line(5)),
+                    wpm=171,
+                    wpm_given=True,
+                )
+                self.assertEqual(code, 0)
+                self.assertIn(
+                    "Target length present but unparsable — hard band not enforced",
+                    output,
+                )
 
     def test_band_present_but_wpm_not_given_stays_advisory_only(self):
         # A parsable band with --wpm NOT given (wpm_given=False, the plain `python
@@ -220,6 +279,31 @@ class LintScriptTests(unittest.TestCase):
         )
         self.assertEqual(code, 1)
         self.assertIn("cut 1w (need 570w or fewer) for 9:30", output)
+
+    def test_main_accepts_spaced_wpm_and_rejects_equals_form(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "script.md"
+            path.write_text(script(words_line(5)), encoding="utf-8")
+
+            accepted = subprocess.run(
+                [sys.executable, "-X", "utf8", str(LINT_PATH), str(path), "--wpm", "171"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                check=False,
+            )
+            self.assertEqual(accepted.returncode, 0, accepted.stdout + accepted.stderr)
+            self.assertIn("5 words ÷ 171 wpm", accepted.stdout)
+
+            rejected = subprocess.run(
+                [sys.executable, "-X", "utf8", str(LINT_PATH), str(path), "--wpm=171"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                check=False,
+            )
+            self.assertEqual(rejected.returncode, 2)
+            self.assertIn("usage:", rejected.stdout)
 
 
 if __name__ == "__main__":

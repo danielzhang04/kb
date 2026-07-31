@@ -1,7 +1,7 @@
 # The Richest Country on Earth Ran on Bird Poop
 
 - **Source idea:** ST-008
-- **Target length:** ~10 min center of gravity · **Estimated runtime:** 8:40 (1,299 words ÷ 150 wpm)
+- **Target length:** 7:30-9:30 · **Estimated runtime:** 8:40 (1,299 words ÷ 150 wpm)
 - **Voice:** Miles (`vSjOBQp24DUB2COr2xI9`) · eleven_v3 · stability 0.25
 - **Status:** scripted · Leashed to `research.md`
 - **Register:** casual-friend storytelling; topic-gravity dial hot on the absurdity (bird-poop economy, a skyscraper, the flop musical), comedy OFF on the human cost (the strip-mined island, the health crisis, renting the country out); third-person, one narrator, no quotes, zero em/en dashes.

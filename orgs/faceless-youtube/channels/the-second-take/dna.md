@@ -66,12 +66,14 @@ long_form: staged       # writers-room: outline → section drafts → accuracy/
 
 ## Voice & style
 
-- **Voice ID (locked):** vSjOBQp24DUB2COr2xI9  *(ElevenLabs library voice **"Miles"**; locked 2026-07-06,
+- **Superseded Miles-era voice rationale (not current):** vSjOBQp24DUB2COr2xI9  *(ElevenLabs library
+  voice **"Miles"**; locked 2026-07-06,
   replacing Jake. In-gate register (~148 Hz, D3), brighter/younger, run **Creative-leaning at stability 0.20**
   for pitch-life. Chosen by ear over Jake after a short-pause + stability A/B; the low stability was
   validated by a **consistency proof** — two independent rolls of the same passage landed on identical F0
-  (148.1 Hz) and a different passage held within 4 Hz, ~175 gross wpm, ~18% pause — so the run-to-run
-  variance is human-bounded even without seed-locking. Full rationale: `voice-lab/voice-lab.md`.)*
+  (148.1 Hz) and a different passage held within 4 Hz, ~175 gross wpm (the superseded Miles-era
+  figure, not Chris's current measured rate), ~18% pause — so the run-to-run variance is human-bounded
+  even without seed-locking. Full rationale: `voice-lab/voice-lab.md`.)*
 - **Tone (locked — storytelling-first, witty):** storytelling-first and genuinely *fun*; witty, fast,
   deadpan, hyper-literate; unimpressed by hype. **Narrator-I and generic audience-facing `you` are allowed.**
   Dramatized beats default to the narrator's reported speech.
@@ -111,6 +113,8 @@ long_form: staged       # writers-room: outline → section drafts → accuracy/
   visuals. Rules in §1d-V; full grammar in `storytelling-grammar.md`.
 
 ### Voiceover config (machine-read by the `voiceover` skill)
+Measured VO wpm: 171
+
 ```yaml
 voice_id: iP95p4xoKVk53GoZ742B   # LOCKED 2026-07-30 (Daniel ear gate) — ElevenLabs premade "Chris"
                                  # (Charming, Down-to-Earth). Replaces Miles (vSjOBQp24DUB2COr2xI9; locked

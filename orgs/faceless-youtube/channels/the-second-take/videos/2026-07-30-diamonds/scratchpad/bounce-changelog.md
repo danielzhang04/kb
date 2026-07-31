@@ -3,7 +3,7 @@
 - Added the 2004 De Beers Centenary guilty-plea beat after the 2000 stockpile-strategy turn, including the criminal fine and admitted worldwide list-price agreements for certain industrial diamond products. [F-20] [F-21]
 - Added the separate scope-boundary beat immediately after the plea so the case stays confined to industrial products from 1991 and 1992, never consumer gemstones or engagement rings. [F-20] [F-21]
 - Added the continued wholesale-and-retail lab-grown price decline inside the modern lab-grown turn, including the acceleration during the second half of 2024. [F-25]
-- Added the 2018 lab-grown discount baseline immediately before the existing 2024 discount reveal, while keeping the chemical-identity distinction explicit. [F-22] [F-24]
+- Added the about-20-percent 2018 lab-grown discount baseline immediately before the existing 2024 discount reveal, while keeping the chemical-identity distinction explicit. [F-22] [F-24]
 - Added the average lab-grown size change and price change as separate beats after the existing discount beat, keeping one spoken figure in each beat. [F-26]
 
 ## Re-verify fixes
@@ -26,3 +26,14 @@
 - Collapsed the industrial-only plea scope to the wrong-case-file line plus one flat sentence, deleting the later restatements. [F-20] [F-21]
 - Deleted the wholesale-and-retail counter echo and kept the single reported 2024 price-fall and second-half acceleration sentence. [F-25]
 - Folded the two Axios blocks into one size-up then price-down sequence, with one figure for each direction and the price fact last. [F-26]
+
+## Margin re-extend + review fixes
+
+- Rebuilt the CSO mechanism as full selection and calendar beats: boxes went to about 125 chosen sightholders, allocations arrived ten times yearly, and the scheduled sales controlled annual rough supply. [F-11] [F-12] [Q-04]
+- Rebuilt the buyer-of-last-resort and late-1990s squeeze as separate action and consequence beats, ending on De Beers holding the accumulated rough-gem inventory. [F-13] [F-16]
+- Rebuilt the resale mechanism as two doors, retail markup on the way in and a trade-buyer quote on the way out, without adding a universal resale percentage. [F-18] [F-19]
+- Added the rough-cache supply-chain beat between the CSO calendar and stockpile action, placing supply control where rough stones entered the trade. [F-11] [F-12] [Q-04]
+- Expanded the 2000 turn into its two documented actions, selling stockpiles and moving into retail, while keeping the historic model distinct from current practice. [F-17]
+- Recast De Beers Centenary as a company sharing the De Beers name in a separate industrial-products case, without asserting corporate structure. [F-20] [F-21]
+- Corrected Ayer's strategy to strengthening the diamond engagement-ring tradition into a psychological necessity. [F-09]
+- Anchored the approximate 20-percent lab-grown discount to 2018. [F-24]

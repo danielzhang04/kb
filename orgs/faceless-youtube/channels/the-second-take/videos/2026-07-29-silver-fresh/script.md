@@ -1,7 +1,7 @@
 # Script: How Two Brothers Bought Up Half the World's Silver
 
 - **Source idea:** ST-012
-- **Target length:** 8-10 min
+- **Target length:** 7:30-9:30
 - **Voice:** Miles (vSjOBQp24DUB2COr2xI9)
 - **Estimated runtime:** 7:56
 
