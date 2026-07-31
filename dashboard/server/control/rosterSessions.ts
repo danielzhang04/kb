@@ -433,12 +433,20 @@ const defaultFileSystem: RosterFileSystem = {
   removeDir: (path) => { rmSync(path, { recursive: true, force: true }); },
 };
 
-/** Drop ANSI/OSC control sequences and bare carriage returns so marker scanning sees plain lines. */
+/**
+ * Drop ANSI/OSC control sequences and bare carriage returns so marker scanning sees plain lines.
+ * CUP/HVP becomes a line boundary and CUF one space before the CSI catch-all: `scan` can then split painted
+ * rows, while `entry.screen`'s non-empty-line frame classifier/freshness gate is unchanged and
+ * `frameHasDeliveryLine` is already whitespace-insensitive. A renderer-wrapped quote can therefore reach a
+ * line start (as it already could after `\r\n`); the per-delivery stage id and token in `scan` remain the guard.
+ */
 export function stripTerminalControl(chunk: string): string {
   /* eslint-disable no-control-regex */
   return chunk
     // OSC (window title etc.), then CSI (colour/cursor), then any other two-byte escape.
     .replace(/\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g, '')
+    .replace(/\u001b\[[0-9;?]*[ -/]*[Hf]/g, '\n')
+    .replace(/\u001b\[[0-9;]*[ -/]*C/g, ' ')
     .replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, '')
     .replace(/\u001b[@-Z\\-_]/g, '')
     // Remaining C0/DEL noise, keeping the tab and newlines the line scanner needs.
@@ -653,7 +661,7 @@ export function detectTurnEngaged(tail: string, quietMs: number): boolean {
 
 /**
  * Whether the delivery line is still sitting on screen (space-insensitively, because a redrawing REPL
- * positions the composed line with cursor moves that {@link stripTerminalControl} cannot turn back into
+ * positions the composed line with cursor moves that {@link stripTerminalControl} can only approximate as
  * spaces). Used only to decide a retry's shape: if the line is gone the retry re-TYPES it, otherwise the
  * retry just re-sends Enter. The stage id is the stable, unique fragment of {@link defaultDeliveryLine}.
  */

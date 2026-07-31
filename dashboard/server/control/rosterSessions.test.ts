@@ -1165,6 +1165,33 @@ describe('completion marker recognition', () => {
     expect(matchCompletionMarker(`FYT-STAGE-DONE story ${TOKEN}   trailing summary  `)?.summary.trim())
       .toBe('trailing summary');
   });
+
+  it('reconstructs cursor-positioned marker rows and CUF word gaps from the live PTY capture', () => {
+    const raw = '[mpass was skipped and every\u001b[29;3Hsource is marked evergreen-verify, noted in the file header for the researcher.\u001b[K\u001b[30;3H-\u001b[1CHuman gate g0-idea-pick now blocks the next stage; no self-advancement.\u001b[K\u001b[31;6H\u001b[K\u001b[32;3HFYT-STAGE-DONE idea 56ce2c3254c75fdacfc1255a2f1bccf0 5 ranked deep-path\u001b[1Cidea\u001b[1Cbriefs\u001b[1Cwritten\u001b[1Cto\u001b[33;3Hchannel';
+    const markers = stripTerminalControl(raw)
+      .split('\n')
+      .map((line) => matchCompletionMarker(line))
+      .filter((marker) => marker !== null);
+
+    expect(markers).toHaveLength(1);
+    expect(markers[0]).toMatchObject({
+      verdict: 'DONE',
+      stageId: 'idea',
+      token: '56ce2c3254c75fdacfc1255a2f1bccf0',
+    });
+    expect(markers[0]?.summary).toMatch(/^5 ranked deep-path idea briefs written to/);
+  });
+
+  it('replaces CUF with one word gap', () => {
+    expect(stripTerminalControl('A\u001b[1CB')).toBe('A B');
+    expect(stripTerminalControl('A\u001b[2;4fB')).toBe('A\nB');
+  });
+
+  it('keeps anchoring when no cursor-position boundary precedes a quoted marker', () => {
+    // CUP can put renderer-wrapped quoted text at a line start, as \r\n wrapping already could. That is
+    // why scan also requires this delivery's stage id and token; absent a boundary, prose still cannot match.
+    expect(matchCompletionMarker(`prose then FYT-STAGE-DONE idea ${'b'.repeat(32)} x`)).toBeNull();
+  });
 });
 
 describe('roster helpers', () => {
