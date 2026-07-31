@@ -409,3 +409,29 @@ Daniel's standing gates (V2a build go, contract clause, archiver Qs, cadences, o
   splash; large-paste) before reading `deliver()` + `defaultDeliveryLine`. Reproduce faithfully, capture ground
   truth, let evidence pick the fix. Durable answer to a recurring "wrote bytes but no effect" class = OUTCOME-
   VERIFIED action (verify the effect, retry, else park loudly), never another fixed-delay guess.
+
+## 2026-07-30 — bricks-fresh fix-wave (design → implement → dogfood → price)
+
+- **A validator that shares the generator's data source shares its blind spot.** forge's seeding-law
+  check read the same channel-registry cast list the generator did, so video-local leads got zero
+  seeds AND zero violations. Only the paid dogfood caught it. Rule: validation must draw from the
+  union of every source the real run will use; and always dogfood the smallest real slice before a
+  wave — ours cost $0.92 and caught the one bug that would have silently wasted the $24 wave.
+- **Seeds leak everything they depict; attribution language must scope every seed.** The crowd
+  exemplar (minted in Poyais dress) leaked period costume into 1980s scenes; the fix is stating what
+  each seed contributes (rig simplification ONLY, dress from scene prose) — the same
+  keep-X-from-here pattern as cast seeding. Check every exemplar/reference seed for unscoped traits.
+- **A nickname is not a costume.** qt-wiles "Dr. Fix-It" got a literal stethoscope+white-coat design
+  and an entire authored costume-metaphor arc on top. Canonical review against the real-world
+  referent belongs at mint time; a wrong canonical propagates through every seed downstream.
+- **Spend authorization is Daniel-minted, never relayed.** The fyt-runner correctly refused a spend
+  order carried in an agent message; the permission classifier also blocks the boss from minting a
+  spend card itself. Get Daniel's approval in his own words FIRST and quote it verbatim in the
+  executor's brief — or have him mint the card.
+- **Derive counts from the artifact, not the design's guess.** fix-design said "~5-8 places" need
+  plates; forge-derived truth was 73 (33 recurring). Price gates must come from running the real
+  batch machinery at $0, never from the design doc's estimate.
+- **Daniel's framing corrections this arc:** no new asset systems when a recipe just needs to move
+  ("the seeding logic should be exactly how our current logic is" — the two-step moves WHERE it runs,
+  changes nothing about WHAT runs); full runs are the default the engine is built for, repair scope
+  is an explicit opt-in flag; recycling passed shots is per-video judgment, never silent default.
