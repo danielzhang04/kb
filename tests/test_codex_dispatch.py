@@ -45,9 +45,9 @@ def _main_env(monkeypatch, tmp_path, result="ok", rc=0, timed_out=None):
     timeout_flag = (rc == 124) if timed_out is None else timed_out
 
     def fake_spawn(prompt_text, model, effort, cwd, sandbox, out_file, log_file,
-                   follow_up=None, timeout=None):
+                   follow_up=None, timeout=None, marker=None):
         seen.update(model=model, effort=effort, cwd=cwd, sandbox=sandbox,
-                    follow_up=follow_up, timeout=timeout)
+                    follow_up=follow_up, timeout=timeout, marker=marker)
         log_file.write_text("", encoding="utf-8")
         if rc == 0:
             out_file.write_text(result, encoding="utf-8")
@@ -307,6 +307,8 @@ def test_spawn_builds_exact_command(tmp_path, monkeypatch):
     assert "--output-last-message" in seen["cmd"] and str(out) in seen["cmd"]
     assert "-s" in seen["cmd"] and "workspace-write" in seen["cmd"]
     assert "-c" in seen["cmd"] and "model_reasoning_effort=xhigh" in seen["cmd"]
+    # exec mode cannot serve approval prompts: unpinned, every file_change fails
+    assert "approval_policy=never" in seen["cmd"]
     assert seen["input"] == b"do the thing"
     assert seen["timeout"] == codex_dispatch.DEFAULT_TIMEOUT
 
@@ -571,6 +573,8 @@ def test_spawn_follow_up_builds_resume_command(tmp_path, monkeypatch):
     assert seen["cmd"][:5] == ["codex.cmd", "exec", "resume", "019f-abc", "-"]
     assert "--json" in seen["cmd"] and "--output-last-message" in seen["cmd"]
     assert "--model" not in seen["cmd"]
+    # resume re-reads config.toml, so the exec-mode approval pin is needed here too
+    assert "approval_policy=never" in seen["cmd"]
     # resume restores the session's own cwd/sandbox and REJECTS these (live-verified):
     assert "--cd" not in seen["cmd"] and "-s" not in seen["cmd"]
 

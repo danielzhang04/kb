@@ -1,0 +1,22 @@
+# Taste critic — ST-013 draft
+
+1. **“For most of the twentieth century, one diamond system controlled more than 80 percent of the world's rough-diamond supply.”** · line 8 · flaw #5 (still life / unnamed mystery in the hook) · The opener is a market-summary with an unnamed “system,” so it withholds De Beers where a named actor doing the controlling would give the hook a person and a handle immediately. · Name De Beers in sentence one and put it in the active slot: “For most of the twentieth century, De Beers controlled more than 80 percent of the world's rough-diamond supply.”
+
+2. **“A geological material had picked up a social rule, a spending rule, and an exit rule. You needed the ring, the ring needed to cost enough to look serious, and selling it made the whole gesture feel less serious. Nobody changed the crystal. They changed the consequences of saying no.”** · line 26 · flaw #2 (concept-prose) · This names an abstract framework instead of giving the listener an event, and “changed the consequences of saying no” sounds written rather than spoken. · Cut the block and let the concrete question at line 28 turn directly to what De Beers did with supply, or reduce the bridge to: “The ads made the ring feel necessary. Then De Beers had to control how many stones reached the trade.”
+
+3. **“Put the two halves together and the machine was beautiful. Advertising told customers a diamond was necessary and forever. Distribution decided how many rough stones reached the trade. One side made people want the product, and the other side made sure the market never looked like a clearance aisle. Hallmark with a vault.”** · line 34 · flaw #6 (grandeur / summary button) · The block re-summarizes a mechanism the last six blocks have already staged, then exits on an authorial verdict rather than a new fact or action. · Keep at most one plain bridge and move straight into the crowded-vault turn: “By the late 1990s, though, that vault was getting crowded.”
+
+4. **“Historical keystone markup added 100 percent to the diamond and setting, so the checkout price included a whole retail machine the second buyer wasn't paying for.”** · line 40 · flaw #10 (jargon) · “Keystone markup” is retail jargon that stops the listener before the following plain explanation can do its job. · Say the plain fact: “Jewellers had roughly doubled the price of the diamond and setting, so the checkout price included a whole retail machine the second buyer wasn't paying for.”
+
+5. **“From 2020 to 2024, the average lab-grown diamond in industry data fell from almost 3,900 dollars to about 2,700 dollars. Over the same stretch, the average size rose from 1.2 carats to 1.9.”** · line 48 · flaw #9 (detail-budget overrun) · Five figures in one beat turn the delivery into industry data, especially after line 46 has already landed the cheaper-and-bigger reversal. · Cut this repeat, or fold one rounded size fact into line 46 and keep the Costco capper.
+
+6. **“So De Beers changed its stockpile strategy, lab-made stones got bigger and cheaper, and the engagement ring stayed exactly where the campaign wanted it: out of the resale case. The salary benchmark gave you a number to spend. Forever made sure you never asked what number you could get back. Pretty convenient.”** · line 52 · flaw #14 (lesson / essay close) · The close restates the thesis and asks the viewer to share its judgment instead of settling on one brisk factual callback or last laugh. · Cut the explanatory salary/Forever recap and close on the resale-case callback, e.g. “De Beers opened the vault. The engagement ring stayed out of the resale case.”
+
+## Quotation-mark advisories
+
+- **Line 22, “A Diamond Is Forever.” — earns its place.** It is the four-word slogan the whole story turns on, and reporting it verbatim is much cleaner than paraphrasing it.
+- **Line 24, “How else could two months' salary last forever?” — earns its place.** The exact line concretely shows how the campaign welded the spending benchmark to the “forever” pitch; it rides the fact rather than interrupting it.
+
+## Clean stretches
+
+No clipped one-liner monotone, audible sourcing hedge, visible payoff-plant/orphaned callback, viewer-staging, or two-block flat stretch found. Lines 28–32 stage the supply-control mechanism with compact, concrete pulls, and the resale beat at lines 38–42 keeps the narrator in the story rather than turning into a court reporter.

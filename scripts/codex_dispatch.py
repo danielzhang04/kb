@@ -29,6 +29,9 @@ STATE_ROOT = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "kb-codex-
 WRITER = "codex-direct"
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 DEFAULT_TIMEOUT = 2700  # 45 min — past this a dispatch is hung, not thinking
+DEFAULT_MODEL = "codex"  # applied post-parse: --model absent must stay distinguishable
+ORPHAN_SLACK = 600  # grace past a marker's own timeout before its dispatch is presumed dead
+SWEEP_BUDGET = 60  # seconds — the sweep serves a dead leg; the live dispatch comes first
 
 
 def codex_bin() -> str:
@@ -36,6 +39,32 @@ def codex_bin() -> str:
     if not exe:
         raise SystemExit("codex CLI not on PATH")
     return exe
+
+
+def marker_path(dispatch_id: str) -> Path:
+    return STATE_ROOT / "pending" / f"{dispatch_id}.json"
+
+
+def write_marker(path: Path, marker: dict) -> None:
+    """The in-flight trace of one dispatch, written BEFORE codex is spawned and
+    deleted only once a durable record exists. A marker that outlives its
+    dispatch process is an orphan by definition — the next dispatch's sweep is
+    what turns it into a card."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(marker, indent=1), encoding="utf-8")
+
+
+def update_marker(path: Path | None, **fields) -> None:
+    """Merge fields into an existing marker. Best-effort in every part: the
+    marker serves the record, and must never be able to fail a live worker."""
+    if not path:
+        return
+    try:
+        marker = json.loads(Path(path).read_text(encoding="utf-8"))
+        marker.update(fields)
+        Path(path).write_text(json.dumps(marker, indent=1), encoding="utf-8")
+    except (OSError, ValueError) as err:
+        print(f"pending marker {path} not updated: {err}", file=sys.stderr)
 
 
 def billing_guard(env: dict, login_check: bool = True) -> list[str]:
@@ -68,7 +97,7 @@ def resolve_model(repo_root: Path, model_arg: str) -> str:
 
 def spawn(prompt_text: str, model: str | None, effort: str | None, cwd: Path,
           sandbox: str, out_file: Path, log_file: Path, follow_up: str | None = None,
-          timeout: int = DEFAULT_TIMEOUT) -> tuple[int, bool]:
+          timeout: int = DEFAULT_TIMEOUT, marker: Path | None = None) -> tuple[int, bool]:
     """Run one codex exec; returns (exit code, timed_out). The flag is the ONLY
     timeout signal — a worker may genuinely exit 124 (coreutils convention)."""
     if follow_up:
@@ -84,10 +113,19 @@ def spawn(prompt_text: str, model: str | None, effort: str | None, cwd: Path,
     else:
         cmd = [codex_bin(), "exec", "-", "--model", model, "--json",
                "--output-last-message", str(out_file), "--cd", str(cwd), "-s", sandbox]
+    # exec mode cannot serve approval prompts (live-proven 2026-07-30: the user
+    # config's `approval_policy = "untrusted"` made every file_change fail with
+    # "file change approval is not supported in exec mode"). Pin approvals off
+    # for dispatch; the sandbox stays the enforcement boundary. Applied on both
+    # paths — a resumed session re-reads config.toml, so resume needs it too.
+    cmd += ["-c", "approval_policy=never"]
     if effort:
         cmd += ["-c", f"model_reasoning_effort={effort}"]
     with open(log_file, "wb") as log:
         proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=log, stderr=log)
+        # The worker tree's own pid: a human killing a survivor needs it, but the
+        # sweep probes the DISPATCH pid — a codex child outlives a killed parent.
+        update_marker(marker, codex_pid=proc.pid)
         try:
             proc.communicate(input=prompt_text.encode("utf-8"), timeout=timeout)
         except subprocess.TimeoutExpired:
@@ -127,6 +165,35 @@ def parse_thread_id(log_file: Path) -> str | None:
     return None
 
 
+def load_threads() -> dict:
+    """{thread_id: concrete model} — what each resumable session actually ran on.
+    A missing or corrupt map is empty, never fatal: it rebuilds from later
+    dispatches, and an unknown session just falls back to the default tier."""
+    try:
+        threads = json.loads((STATE_ROOT / "threads.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return threads if isinstance(threads, dict) else {}
+
+
+def remember_thread(thread_id: str | None, model: str) -> None:
+    """Record a session's model so `--follow-up` without `--model` resumes on the
+    SAME model (Agent-tool semantics) instead of the default tier."""
+    if not thread_id:
+        return
+    threads = load_threads()
+    if threads.get(thread_id) == model:
+        return
+    threads[thread_id] = model
+    try:
+        (STATE_ROOT / "threads.json").parent.mkdir(parents=True, exist_ok=True)
+        (STATE_ROOT / "threads.json").write_text(json.dumps(threads, indent=1),
+                                                 encoding="utf-8")
+    except OSError as err:
+        print(f"session model map not written: {err} — a later --follow-up on "
+              f"{thread_id} will need an explicit --model", file=sys.stderr)
+
+
 def _inert(text: str) -> str:
     """Escape headings in embedded text: a `## Result` inside a brief or answer
     must never masquerade as one of the card's own sections. Matched as LAXLY as
@@ -152,6 +219,26 @@ def walk_state(card: cards.Card) -> None:
         card.meta["state"] = nxt
 
 
+def _record(project: str, label: str, target: str, prompt_text: str, result_text: str,
+            session_id: str, model: str, rc: int | None, log_file: Path | None):
+    """Card + cost row for one dispatch leg, whatever ended it. Shared by the
+    normal post-exit path and the orphan sweep so a killed leg lands the same
+    shape as a finished one — the cost row's keys must match exactly, since the
+    day's first row fixes the ledger header."""
+    body = (f"## Work order\n\n{_inert(prompt_text.strip())}\n\n"
+            f"## Result\n\n{_inert(result_text.strip())}\n")
+    card = cards.new_card(project, label, target, "T1",
+                          body=body, **{"execution-controller": "terminal"})
+    cards.claim(card, "codex-worker")
+    cards.stamp_session(card, session_id)
+    cards.stamp_routing(card, "codex", model)
+    card.meta["workflow"] = parse_thread_id(log_file) if log_file else None
+    walk_state(card)
+    record = {"usd": 0.0, "billing": "subscription", "model": model,
+              "card_id": card.meta["id"], "codex_exit": rc}
+    return card, record
+
+
 def build_record(args, cwd: Path, dispatch_id: str, model: str, rc: int,
                  prompt_text: str, result_text: str, log_file: Path):
     """The audit card + cost row for one finished dispatch. Post-hoc record —
@@ -159,19 +246,48 @@ def build_record(args, cwd: Path, dispatch_id: str, model: str, rc: int,
     worker ACTUALLY ran in (a --worktree run is not the caller's repo root); a
     RESUMED session runs in its own recorded cwd, which this process does not
     know, so its target names the session rather than lying about a directory."""
-    body = (f"## Work order\n\n{_inert(prompt_text.strip())}\n\n"
-            f"## Result\n\n{_inert(result_text.strip())}\n")
     target = f"resumed-session:{args.follow_up}" if args.follow_up else str(cwd)
-    card = cards.new_card(args.project, args.label, target, "T1",
-                          body=body, **{"execution-controller": "terminal"})
-    cards.claim(card, "codex-worker")
-    cards.stamp_session(card, os.environ.get("CLAUDE_SESSION_ID", dispatch_id))
-    cards.stamp_routing(card, "codex", model)
-    card.meta["workflow"] = parse_thread_id(log_file)
-    walk_state(card)
-    record = {"usd": 0.0, "billing": "subscription", "model": model,
-              "card_id": card.meta["id"], "codex_exit": rc}
-    return card, record
+    return _record(args.project, args.label, target, prompt_text, result_text,
+                   os.environ.get("CLAUDE_SESSION_ID", dispatch_id), model, rc, log_file)
+
+
+def log_tail(log_file, count: int = 5) -> list[str]:
+    """Last non-empty lines of a dispatch's JSONL. A log that is missing,
+    truncated or unreadable yields nothing — an orphan record must survive the
+    absence of the very thing it is describing."""
+    try:
+        text = Path(log_file).read_text(encoding="utf-8", errors="replace")
+    except (OSError, TypeError):
+        return []
+    return [line for line in text.splitlines() if line.strip()][-count:]
+
+
+def orphan_result(marker: dict, tail: list[str]) -> str:
+    """Result text for a swept orphan. Opens with the same `FAILED:` prefix as
+    every other failure record, so one grep still finds them all."""
+    head = ("FAILED: orphaned — dispatch parent died before completion "
+            f"(model {marker.get('model') or 'unknown'}, "
+            f"started {marker.get('started_utc') or 'unknown'}, "
+            f"log {marker.get('log_file') or 'unknown'})")
+    return f"{head}\n\nLast log lines:\n\n" + ("\n".join(tail) if tail else "(none)") + "\n"
+
+
+def build_orphan_record(marker: dict):
+    """The record a killed dispatch could not write for itself, rebuilt from its
+    pending marker. The exit code is left EMPTY, not 124 or 1: this process never
+    observed the worker exit and must not invent a code for it."""
+    try:
+        prompt_text = Path(marker["prompt_file"]).read_text(encoding="utf-8")
+    except (OSError, KeyError, TypeError):  # scratchpad briefs are routinely swept
+        prompt_text = f"(prompt file {marker.get('prompt_file')} no longer readable)"
+    log_file = Path(marker["log_file"]) if marker.get("log_file") else None
+    target = (f"resumed-session:{marker['follow_up']}" if marker.get("follow_up")
+              else str(marker.get("cwd") or "unknown"))
+    return _record(marker.get("project") or "kb-ops",
+                   marker.get("label") or "codex-dispatch", target, prompt_text,
+                   orphan_result(marker, log_tail(log_file)),
+                   marker.get("session") or marker.get("dispatch_id") or cards.new_id(),
+                   marker.get("model") or "unknown", None, log_file)
 
 
 def publish_ops(repo_root: Path, card: cards.Card, record: dict):
@@ -239,6 +355,112 @@ def _spool_note(card: cards.Card, why: str) -> str:
     return f"FAILED ({why}) — card spooled at {dest}; re-publish it manually"
 
 
+def pid_alive(pid: int) -> bool:
+    """Dependency-free liveness probe (tasklist; no psutil). An unrunnable or
+    unparsable probe answers ALIVE — a sweep that cannot see must never
+    manufacture an orphan card for a dispatch that is still working."""
+    try:
+        probe = subprocess.run(["tasklist", "/FI", f"PID eq {int(pid)}", "/FO", "CSV", "/NH"],
+                               capture_output=True, text=True, timeout=30)
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return True
+    if probe.returncode != 0:
+        return True
+    for line in probe.stdout.splitlines():  # "image.exe","1234","Console","1","9,000 K"
+        fields = [f.strip('" ') for f in line.split('","')]
+        if len(fields) > 1 and fields[1] == str(int(pid)):
+            return True
+    return False
+
+
+def is_orphan(marker: dict, now: float, alive=None) -> bool:
+    """Did this marker outlive its dispatch? A live dispatch pid is proof it did
+    not — including a PARALLEL dispatch's, which is why a live pid means skip.
+    But a pid is only believed inside the leg's own lifetime: Windows recycles
+    pids (a reboot hands 4242 to something else), and pid_alive deliberately
+    fails safe to alive, so an unbounded pid branch would pin an orphan
+    'running' forever. Past the leg's own timeout plus slack no dispatch can
+    still be in flight, and age overrides the probe.
+
+    The pidless branch covers corrupt or partially-written markers — every
+    marker this script writes carries a pid — and is the same age test."""
+    stale = (now - float(marker.get("started") or 0)
+             > (marker.get("timeout") or DEFAULT_TIMEOUT) + ORPHAN_SLACK)
+    pid = marker.get("pid")
+    if pid and not stale:
+        return not (alive or pid_alive)(pid)
+    return stale
+
+
+def _claim(path: Path, now: float) -> Path | None:
+    """Take exclusive ownership of a marker by RENAMING it. Two dispatches
+    sweeping at once both see the file, but only one rename off a given source
+    can succeed — the loser gets OSError and skips, so an orphan is published
+    once, not twice. None means someone else won it.
+
+    The claim keeps exactly one `.sweeping-<pid>-<t>` segment however often it
+    is re-claimed, so a claim abandoned by a sweeper that itself died is picked
+    up by a later one (`_claimed_recently` holds it until then)."""
+    base = path.name.split(".sweeping-", 1)[0]
+    try:
+        return path.rename(path.with_name(f"{base}.sweeping-{os.getpid()}-{int(now)}.json"))
+    except OSError:
+        return None
+
+
+def _claimed_recently(path: Path, now: float) -> bool:
+    """Is this claim still someone's? A publish takes as long as git takes, so a
+    claim is left alone until it has gone quiet for the same slack an orphan
+    gets. Only then may another sweeper conclude its owner died mid-publish."""
+    if ".sweeping-" not in path.name:
+        return False
+    try:
+        return now - path.stat().st_mtime <= ORPHAN_SLACK
+    except OSError:
+        return True  # vanished or unreadable: not ours to take
+
+
+def sweep_pending(repo_root: Path, now: float | None = None, alive=None,
+                  publish=None, clock=None) -> list[str]:
+    """Publish the record every orphaned dispatch owes, at the START of the next
+    dispatch. Best-effort throughout: this runs for a leg nobody is waiting on,
+    and must never fail or delay the dispatch that triggered it — hence the
+    SWEEP_BUDGET wall clock, past which the remaining markers simply wait for
+    the next dispatch. A claim is deleted only once publish_ops RETURNS —
+    pushed or spooled, both durable; a raised publish leaves the claim on disk
+    for a later sweep."""
+    publish, alive, clock = publish or publish_ops, alive or pid_alive, clock or time.time
+    now = clock() if now is None else now
+    deadline = clock() + SWEEP_BUDGET
+    swept = []
+    for path in sorted((STATE_ROOT / "pending").glob("*.json")):
+        if clock() >= deadline:
+            print(f"orphan sweep hit its {SWEEP_BUDGET}s budget — remaining markers "
+                  "wait for the next dispatch", file=sys.stderr)
+            break
+        if _claimed_recently(path, now):  # another sweeper is publishing it
+            continue
+        claimed = None
+        try:
+            marker = json.loads(path.read_text(encoding="utf-8"))
+            # decided BEFORE the claim: a live dispatch's marker must never be
+            # renamed out from under the process that owns it
+            if not isinstance(marker, dict) or not is_orphan(marker, now, alive):
+                continue
+            claimed = _claim(path, now)
+            if claimed is None:
+                continue
+            card, record = build_orphan_record(marker)
+            publish(repo_root, card, record)
+        except Exception as err:
+            print(f"orphan sweep left {(claimed or path).name} pending: "
+                  f"{type(err).__name__}: {err}", file=sys.stderr)
+            continue
+        claimed.unlink(missing_ok=True)
+        swept.append(card.meta["id"])
+    return swept
+
+
 def _positive_seconds(value: str) -> int:
     """`--timeout 0` (or negative) times every dispatch out instantly."""
     seconds = int(value)
@@ -252,7 +474,9 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--prompt-file", required=True)
-    ap.add_argument("--model", default="codex")
+    ap.add_argument("--model", default=None,
+                    help=f"default {DEFAULT_MODEL}; on --follow-up, defaults to the "
+                         "model that session already ran on")
     ap.add_argument("--effort", choices=EFFORTS, default=None)
     ap.add_argument("--cwd", default=None)
     ap.add_argument("--sandbox", choices=("read-only", "workspace-write"),
@@ -291,15 +515,32 @@ def main(argv: list[str] | None = None) -> int:
     if problems:
         print("DISPATCH REFUSED: " + "; ".join(problems))
         return 2
+    # A resumed session does not carry its own model, so an unpinned --follow-up
+    # silently drops to the default tier. Pin it from what the session actually
+    # ran on; an explicit --model always wins (and re-pins the map below).
+    wanted = args.model
+    if args.follow_up and not wanted:
+        wanted = load_threads().get(args.follow_up)
+        if not wanted:
+            print(f"no recorded model for session {args.follow_up} (dispatched before "
+                  f"the session map existed?) — resuming on the {DEFAULT_MODEL} default; "
+                  "pass --model to pin it", file=sys.stderr)
     try:
-        model = resolve_model(repo_root, args.model)
+        model = resolve_model(repo_root, wanted or DEFAULT_MODEL)
     except routing.RoutingError as err:
         print(f"DISPATCH REFUSED: {err}")
         return 2
 
     dispatch_id = cards.new_id()
-    for sub in ("spool", "logs", "worktrees"):
+    for sub in ("spool", "logs", "worktrees", "pending"):
         (STATE_ROOT / sub).mkdir(parents=True, exist_ok=True)
+    try:  # a dead parent's record is owed by the NEXT dispatch, and only by it
+        swept = sweep_pending(repo_root)
+        if swept:
+            print(f"orphan sweep published {len(swept)} record(s) for dead dispatches: "
+                  + ", ".join(swept), file=sys.stderr)
+    except Exception as err:
+        print(f"orphan sweep skipped: {type(err).__name__}: {err}", file=sys.stderr)
     prompt_text = Path(args.prompt_file).read_text(encoding="utf-8")
 
     cwd = Path(args.cwd) if args.cwd else repo_root
@@ -308,17 +549,26 @@ def main(argv: list[str] | None = None) -> int:
         subprocess.run(["git", "worktree", "add", "--detach", str(cwd)],
                        cwd=repo_root, check=True)
 
-    spool_path = STATE_ROOT / "spool" / f"{dispatch_id}.json"
-    started = time.time()
-    spool_path.write_text(json.dumps({
-        "id": dispatch_id, "model": model, "effort": args.effort,
-        "prompt_file": str(args.prompt_file), "cwd": str(cwd),
-        "started": started}, indent=1), encoding="utf-8")
-
     out_file = STATE_ROOT / "logs" / f"{dispatch_id}.last.md"
     log_file = STATE_ROOT / "logs" / f"{dispatch_id}.jsonl"
+    started = time.time()
+    pending = marker_path(dispatch_id)
+    # Written BEFORE the spawn: from here until a durable record exists, this
+    # marker is the only thing that knows a leg is in flight. `pid` is THIS
+    # process — the one whose death orphans the leg.
+    write_marker(pending, {
+        "dispatch_id": dispatch_id, "pid": os.getpid(), "model": model,
+        "effort": args.effort, "cwd": str(cwd), "sandbox": sandbox,
+        "prompt_file": str(args.prompt_file), "log_file": str(log_file),
+        "out_file": str(out_file), "follow_up": args.follow_up,
+        "project": args.project, "label": args.label, "timeout": args.timeout,
+        "session": os.environ.get("CLAUDE_SESSION_ID", dispatch_id),
+        "started": started,
+        "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(started))})
+
     rc, timed_out = spawn(prompt_text, model, args.effort, cwd, sandbox, out_file,
-                          log_file, follow_up=args.follow_up, timeout=args.timeout)
+                          log_file, follow_up=args.follow_up, timeout=args.timeout,
+                          marker=pending)
     if timed_out:  # never rc == 124: a worker may genuinely exit with that code
         result_text = f"FAILED: timeout after {args.timeout}s; JSONL log: {log_file}"
     elif rc == 0 and out_file.exists():
@@ -328,21 +578,27 @@ def main(argv: list[str] | None = None) -> int:
 
     card, record = build_record(args, cwd, dispatch_id, model, rc,
                                 prompt_text, result_text, log_file)
+    thread_id = card.meta.get("workflow")
+    # so an unpinned --follow-up keeps this model; a resume whose log never named
+    # the thread is still the session the caller asked to resume
+    remember_thread(thread_id or args.follow_up, model)
     # stdout is the ONLY channel the answer reaches the caller on: print it
     # BEFORE the audit publish, which is best-effort and may raise.
     print(result_text)
+    recorded = False
     try:
         published, publish_note = publish_ops(repo_root, card, record)
+        recorded = True  # returned at all = pushed OR spooled; both are durable
     except Exception as err:
         published = False
         try:
             publish_note = _spool_note(card, f"publish raised {type(err).__name__}: {err}")
+            recorded = True
         except Exception:
             publish_note = f"FAILED (publish raised {type(err).__name__}; unspooled)"
-    if published:
-        spool_path.unlink(missing_ok=True)
+    if recorded:  # the marker's whole job is done the moment a record exists
+        pending.unlink(missing_ok=True)
 
-    thread_id = card.meta.get("workflow")
     print(f"\n--- codex-dispatch card {card.meta['id']} | model {model} | "
           f"exit {rc} | {time.time() - started:.0f}s | ops publish: {publish_note}"
           + (f" | worktree: {cwd} (yours to sweep)" if args.worktree else "")
