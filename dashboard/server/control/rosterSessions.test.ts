@@ -22,6 +22,7 @@ import {
   createRosterWorkerAdapter,
   detectReplReadiness,
   detectReplReadinessFresh,
+  detectReplReadinessSettled,
   detectTurnEngaged,
   STALE_BUSY_QUIET_MS,
   matchCompletionMarker,
@@ -330,6 +331,7 @@ function harness(options: {
   // A fake clock the injected backoff sleep advances, so readiness polling is deterministic and the
   // suite never waits on a real timer.
   let clock = 0;
+  let sleepElapsed = 0;
   const sleeps: number[] = [];
   const sessions = createRosterSessionManager({
     store,
@@ -342,7 +344,12 @@ function harness(options: {
     fs,
     mintToken: () => `${(token += 1)}`.padStart(32, '0').replace(/[^0-9a-f]/g, '0'),
     now: () => clock,
-    sleep: async (ms) => { sleeps.push(ms); clock += ms; options.onSleep?.(clock); },
+    sleep: async (ms) => {
+      sleeps.push(ms);
+      clock += ms;
+      sleepElapsed += ms;
+      options.onSleep?.(sleepElapsed);
+    },
     resolveWorkflowTools: options.workflowTools ?? (() => ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep']),
     ...(options.deliveryTimeoutMs === undefined ? {} : { deliveryTimeoutMs: options.deliveryTimeoutMs }),
     ...(options.replReadyTimeoutMs === undefined ? {} : { replReadyTimeoutMs: options.replReadyTimeoutMs }),
@@ -359,6 +366,7 @@ function harness(options: {
         for (const row of sessions.state(input.subject, input.runRef)) {
           if (row.sessionId) host.emit(row.sessionId, IDLE_FRAME);
         }
+        clock += STALE_BUSY_QUIET_MS;
       }
       return result;
     },
@@ -1609,6 +1617,19 @@ describe('roster REPL-readiness gate', () => {
       .toMatchObject({ state: 'silent', marker: 'no REPL input prompt on screen yet' });
   });
 
+  it('requires a settled ready frame for delivery while preserving stale-busy reclassification', () => {
+    expect(detectReplReadinessSettled(IDLE_FRAME, 0))
+      .toMatchObject({ state: 'settling', marker: expect.stringContaining('still painting') });
+    expect(detectReplReadinessSettled(IDLE_FRAME, STALE_BUSY_QUIET_MS)).toEqual({ state: 'ready' });
+
+    // With no idle footer underneath it, a stale busy-only frame reclassifies to `silent`, exactly as the
+    // existing freshness gate does; the delivery-only helper must not invent readiness from quiescence.
+    const staleBusyOnly = '\u273b Embellishing\u2026 (2s \u00b7 thinking)';
+    const freshResult = detectReplReadinessFresh(staleBusyOnly, STALE_BUSY_QUIET_MS);
+    expect(freshResult).toMatchObject({ state: 'silent', marker: 'no REPL input prompt on screen yet' });
+    expect(detectReplReadinessSettled(staleBusyOnly, STALE_BUSY_QUIET_MS)).toEqual(freshResult);
+  });
+
   it('keeps an idle REPL ready through a CUP repaint flood and still scans the live-capture marker', async () => {
     const repaintFlood = Array.from(
       { length: 32 },
@@ -1629,8 +1650,8 @@ describe('roster REPL-readiness gate', () => {
     host.emit(sessionId, rawTail);
     advanceClock(STALE_BUSY_QUIET_MS);
 
-    // scan feeds this same chunk through the private screen reconstruction, and deliver's synchronous
-    // detectReplReadinessFresh fast path at quietMs=2000 proves that stream still sees the footer as READY.
+    // scan feeds this same chunk through the private screen reconstruction, and delivery's settled fast
+    // path at quietMs=2000 proves that stream still sees the footer as READY.
     const pending = sessions.deliver(deliverInput(store, runRef, plan, 'story'));
     const orderPath = `/state/control/roster/${runRef}/fyt-story/orders/story.md`;
     const order = fs.files.get(orderPath) ?? '';
@@ -1693,6 +1714,9 @@ describe('roster REPL-readiness gate', () => {
   it('waits with backoff and delivers once the menu is answered', async () => {
     let sessionId = '';
     let liveHost: ReturnType<typeof fakeHost> | null = null;
+    let emittedIdle = false;
+    let lastReadinessElapsed = 0;
+    const readinessSleeps: number[] = [];
     const item = harness({
       replReadyTimeoutMs: 60_000,
       onSleep: (elapsed) => {
@@ -1703,9 +1727,12 @@ describe('roster REPL-readiness gate', () => {
           liveHost.emit(sessionId, BUSY_FRAME);
           return;
         }
+        readinessSleeps.push(elapsed - lastReadinessElapsed);
+        lastReadinessElapsed = elapsed;
         // The operator answers the menu after the second poll and the REPL redraws past it — which is
         // what actually clears a menu from the current frame: real content scrolling it out, not blanks.
-        if (elapsed >= 700) {
+        if (elapsed >= 700 && !emittedIdle) {
+          emittedIdle = true;
           const redraw = Array.from({ length: 30 }, (_, index) => `read binding.md line ${index}`).join('\r\n');
           // The REPL redraws its idle prompt AND its mode-cycler footer over the answered menu — the footer
           // is the positive evidence the readiness gate now requires.
@@ -1725,9 +1752,59 @@ describe('roster REPL-readiness gate', () => {
     await vi.waitFor(() => { expect(item.fs.files.has(orderPath)).toBe(true); });
     expect(item.sleeps.length).toBeGreaterThan(1);
     // Backoff, not a busy-loop: each wait is at least as long as the one before it.
-    expect(item.sleeps.every((ms, index) => index === 0 || ms >= item.sleeps[index - 1])).toBe(true);
+    expect(readinessSleeps.every((ms, index) => index === 0 || ms >= readinessSleeps[index - 1])).toBe(true);
     expect(item.host.writes.get(sessionId)?.some((chunk) => chunk.includes('read '))).toBe(true);
     item.host.emit(sessionId, `FYT-STAGE-DONE story ${'0'.repeat(31)}1 delivered after the menu cleared\r\n`);
+    await expect(pending).resolves.toMatchObject({ state: 'succeeded' });
+  });
+
+  it('does not type into a fresh ready boot frame and delivers only after the same terminal settles idle', async () => {
+    let sessionId = '';
+    let liveHost: ReturnType<typeof fakeHost> | null = null;
+    let writesBeforeDelivery = 0;
+    let emittedBusy = false;
+    let emittedIdle = false;
+    const item = harness({
+      coldTerminals: true,
+      replReadyTimeoutMs: 60_000,
+      onSleep: (elapsed) => {
+        if (!liveHost || !sessionId) return;
+        const writes = liveHost.writes.get(sessionId) ?? [];
+        if (writes.some((chunk) => chunk.includes('story.md'))) {
+          liveHost.emit(sessionId, BUSY_FRAME);
+          return;
+        }
+        // Until the idle repaint has itself stayed quiet for the threshold, the launch line is the only
+        // byte allowed in the pty. The footer-only spin-up frame must not receive the order.
+        expect(writes).toHaveLength(writesBeforeDelivery);
+        if (elapsed >= 250 && !emittedBusy) {
+          emittedBusy = true;
+          liveHost.emit(sessionId, BUSY_FRAME);
+        } else if (elapsed >= 750 && !emittedIdle) {
+          emittedIdle = true;
+          liveHost.emit(sessionId, IDLE_FRAME);
+        }
+      },
+    });
+    liveHost = item.host;
+    item.sessions.ensureRoster({ subject: 'operator', runRef: item.runRef, proposal: item.plan });
+    sessionId = sessionIdFor(item.sessions, item.runRef, 'fyt-story');
+    succeedStage(item.store, item.runRef, 'idea');
+    resolveGate(item.store, item.runRef, 'story', 'g0-idea-pick', 'approved');
+    item.host.emit(sessionId, IDLE_FRAME);
+    writesBeforeDelivery = item.host.writes.get(sessionId)?.length ?? 0;
+
+    const pending = item.sessions.deliver(deliverInput(item.store, item.runRef, item.plan, 'story'));
+    expect(emittedBusy).toBe(true);
+    expect(item.host.writes.get(sessionId)).toHaveLength(writesBeforeDelivery);
+
+    const orderPath = `/state/control/roster/${item.runRef}/fyt-story/orders/story.md`;
+    await vi.waitFor(() => { expect(item.fs.files.has(orderPath)).toBe(true); });
+    expect(emittedIdle).toBe(true);
+    expect(item.sleeps.reduce((total, ms) => total + ms, 0)).toBeGreaterThanOrEqual(
+      STALE_BUSY_QUIET_MS,
+    );
+    item.host.emit(sessionId, `FYT-STAGE-DONE story ${'0'.repeat(31)}1 delivered after the boot turn settled\r\n`);
     await expect(pending).resolves.toMatchObject({ state: 'succeeded' });
   });
 
@@ -1780,6 +1857,7 @@ describe('roster REPL-readiness gate', () => {
   it('delivers as soon as a cold terminal produces its first output', async () => {
     let sessionId = '';
     let liveHost: ReturnType<typeof fakeHost> | null = null;
+    let emittedIdle = false;
     const item = harness({
       coldTerminals: true,
       replReadyTimeoutMs: 60_000,
@@ -1791,7 +1869,10 @@ describe('roster REPL-readiness gate', () => {
           liveHost.emit(sessionId, BUSY_FRAME);
           return;
         }
-        if (elapsed >= 250) liveHost.emit(sessionId, IDLE_FRAME);
+        if (elapsed >= 250 && !emittedIdle) {
+          emittedIdle = true;
+          liveHost.emit(sessionId, IDLE_FRAME);
+        }
       },
     });
     liveHost = item.host;

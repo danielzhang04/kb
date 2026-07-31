@@ -559,6 +559,8 @@ export type ReplReadiness =
   | { state: 'ready' }
   | { state: 'modal'; marker: string }
   | { state: 'busy'; marker: string }
+  /** An idle marker is visible, but the frame has not yet stayed quiet long enough for delivery. */
+  | { state: 'settling'; marker: string }
   /** Nothing has come back from this terminal at all — see {@link detectReplReadiness}. */
   | { state: 'silent'; marker: string };
 
@@ -661,6 +663,26 @@ export function detectReplReadinessFresh(tail: string, quietMs: number): ReplRea
   const base = classifyFrame(tail, false);
   if (base.state === 'busy' && quietMs >= STALE_BUSY_QUIET_MS) return classifyFrame(tail, true);
   return base;
+}
+
+/**
+ * Delivery-only readiness: the REPL must both classify `ready` AND have held that frame quietly for
+ * {@link STALE_BUSY_QUIET_MS}. The stronger pre-type guarantee — "the terminal was idle before we typed" —
+ * is what makes a FRESH busy frame inside the submit-verification window evidence that OUR order engaged.
+ * A ready footer is rendered on every in-REPL frame, including while a boot initial-prompt turn is only
+ * starting to paint; typing in that gap can queue the order into somebody else's turn, whose fresh busy
+ * frame then becomes a false engagement signal. Such a ready-but-fresh frame reports `settling`, so delivery
+ * keeps polling and can name the real condition if its readiness budget expires.
+ *
+ * Non-ready frames retain {@link detectReplReadinessFresh}'s result exactly, including its stale-busy
+ * reclassification. PURE: `quietMs` is supplied by the caller.
+ */
+export function detectReplReadinessSettled(tail: string, quietMs: number): ReplReadiness {
+  const readiness = detectReplReadinessFresh(tail, quietMs);
+  if (readiness.state === 'ready' && quietMs < STALE_BUSY_QUIET_MS) {
+    return { state: 'settling', marker: 'REPL input prompt is visible but the screen is still painting' };
+  }
+  return readiness;
 }
 
 /**
@@ -1366,15 +1388,14 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
   const waitForRepl = async (entry: RosterSessionEntry, budgetMs: number): Promise<ReplReadiness> => {
     const started = now();
     let delay = REPL_POLL_MIN_MS;
-    // Freshness-gated: a `busy` frame whose spinner tail is merely frozen (idle terminal gone silent for
-    // >= STALE_BUSY_QUIET_MS) re-classifies to its underlying idle state, so a finished turn no longer
-    // parks delivery. See {@link detectReplReadinessFresh}.
-    let readiness = detectReplReadinessFresh(entry.screen, now() - entry.lastChunkAt);
+    // Settled delivery gate: stale busy still re-classifies through detectReplReadinessFresh, but even a
+    // visible idle footer must stay quiet for the threshold before it is safe to type into.
+    let readiness = detectReplReadinessSettled(entry.screen, now() - entry.lastChunkAt);
     while (readiness.state !== 'ready') {
       if (now() - started >= budgetMs) return readiness;
       await sleep(Math.min(delay, Math.max(0, budgetMs - (now() - started))));
       delay = Math.min(REPL_POLL_MAX_MS, delay * 2);
-      readiness = detectReplReadinessFresh(entry.screen, now() - entry.lastChunkAt);
+      readiness = detectReplReadinessSettled(entry.screen, now() - entry.lastChunkAt);
     }
     return readiness;
   };
@@ -1604,20 +1625,23 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
       // with nothing delivered and nothing to report. A terminal is written into only when its own output
       // stream says it is at a plain REPL prompt — not in a modal menu and not mid-turn.
       //
-      // The fast path costs nothing: `detectReplReadinessFresh` over an idle frame returns `ready` and the
-      // code below runs synchronously exactly as before. Only a blocked terminal suspends, and it does so
-      // under a bound that never exceeds this delivery's own marker deadline.
+      // The fast path costs nothing once an idle frame has been quiet for the settle threshold. A fresh
+      // ready footer still polls: it may belong to the spin-up gap of the boot binding turn, and only a
+      // settled pre-type screen makes submit verification's later fresh-busy signal attributable to OUR
+      // order. Every wait remains bounded by this delivery's own marker deadline.
       const readinessBudget = Math.min(
         timeoutMs,
         Math.max(MIN_REPL_READY_TIMEOUT_MS, options.replReadyTimeoutMs ?? DEFAULT_REPL_READY_TIMEOUT_MS),
       );
-      let readiness = detectReplReadinessFresh(entry.screen, now() - entry.lastChunkAt);
+      let readiness = detectReplReadinessSettled(entry.screen, now() - entry.lastChunkAt);
       if (readiness.state !== 'ready') readiness = await waitForRepl(entry, readinessBudget);
       if (readiness.state !== 'ready') {
         // NOTHING was authored and NOTHING was typed: no order file, no token, no bytes into the pty.
         // This settles as a named human wait, never as a hang and never as a silent success.
         const detail = readiness.state === 'modal'
           ? `an interactive prompt is open ("${readiness.marker}")`
+          : readiness.state === 'settling'
+            ? 'a REPL prompt is visible, but the screen never stayed quiet long enough to prove it was idle'
           : readiness.state === 'silent'
             ? readiness.marker === 'no output yet'
               ? 'it has produced no output at all — the REPL may never have come up'
