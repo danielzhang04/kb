@@ -12,7 +12,8 @@ license: MIT
 compatibility: any-agent
 source: humanizer-plugin@2.8.2 (~/.claude/plugins/cache/humanizer)
 imported: "2026-07-30"
-provenance-tier: imported
+provenance-tier: curated
+promoted: "2026-07-30 (Daniel, after import gates 1-2: scan_skill 0 findings, CI validators clean)"
 allowed-tools:
   - Read
   - Write
