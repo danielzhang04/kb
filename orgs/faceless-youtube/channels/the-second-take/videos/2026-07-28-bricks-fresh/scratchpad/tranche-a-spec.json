@@ -1,0 +1,572 @@
+[
+  {
+    "name": "fig-miniscribe-rep--action-powerstance--expr-smug",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
+      "channels/the-second-take/visual-kit/refs/base/action-powerstance.png"
+    ],
+    "delta": "The FIRST image is `miniscribe-rep`'s character canonical \u2014 identity, head tone, hair and the pinned costume come from THIS image ONLY. The SECOND image is the `expr-smug` expression reference \u2014 copy ONLY its eye/brow/mouth shape onto `miniscribe-rep`'s face; ignore its head tone, hairline and identity. The THIRD image is the `action-powerstance` pose reference \u2014 copy ONLY its body pose, hands and limb placement onto `miniscribe-rep`; ignore its head tone, face and costume. The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `miniscribe-rep` (action-powerstance / expr-smug)"
+  },
+  {
+    "name": "L26",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "`miniscribe-rep`, the company personified \u2014 a stocky figure with a flat warm-tan head tone, short dark side-parted hair, a boxy tan blazer over a brown open-collar shirt, and one small drive-shaped enamel badge pinned at the lapel \u2014 stands `action-powerstance`, `expr-smug`, at the head of an assembly line and turned three-quarters to the lens so his face reads. The line is a clean pale-green conveyor running left to right across the frame behind him through a bright plant floor with a row of four finished steel-grey drives spaced along the belt, pale-green machine housings and a rack of empty parts trays behind, and tall factory windows along the far wall showing flat pale sky. Palette is pale plant green, steel grey and warm tan. Wide view at chest height square to the belt so the figure anchors the left third with the belt running across behind him; depth reads plant apron foreground, figure and belt mid-ground, machine housings, windows and sky background, filled edge to edge. Every machine housing and parts tray is blank and unlettered.\n\nPLACEMENT. The FIRST image is `miniscribe-rep`, already posed, lit and fully resolved as a complete figure \u2014 carry identity, costume, hair, head tone, body pose, hands and facial expression from it EXACTLY. Every description of that figure above is ALREADY satisfied by that image: do not re-draw, re-pose or re-dress it.\n\nStage the figure into the scene exactly as written above, every named element of it present, at true human scale measured against the conveyor; feet in firm contact with the ground plane with a contact shadow beneath matching the scene's own light direction; correctly occluded by whatever stands in front of it; re-lit to the scene's own light and palette.",
+    "seed": [
+      "_staging/fig-miniscribe-rep--action-powerstance--expr-smug.png"
+    ],
+    "figures": null,
+    "stage_role": "base",
+    "assets_omitted": null,
+    "why": "`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-powerstance--expr-smug GENERATE; scale anchor = the conveyor; PLACE-FIRST (mints this place's plate)",
+    "plate": true
+  },
+  {
+    "name": "L27",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "The same plant floor, same locked framing: `miniscribe-rep` (`action-powerstance`, `expr-smug`) at the head of the pale-green conveyor with its row of four steel-grey drives, machine housings and empty parts trays behind, factory windows along the far wall, pale plant green and steel grey against warm tan, every machine housing and parts tray blank and unlettered. Only this changes: the flat pale sky in the far windows is now filled by a saw-toothed snow-capped mountain range standing close behind the glass, its cold blue-white peaks running the whole width of the wall; everything else exactly as established.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+      "_staging/L26.png",
+      "channels/the-second-take/visual-kit/refs/base/action-powerstance.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-smug.png"
+    ],
+    "figures": null,
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "why": "`miniscribe-rep` delta -> canonical + parent"
+  },
+  {
+    "name": "fig-terry-johnson--hold-one-hand--expr-delighted",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/terry-johnson/terry-johnson.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
+      "channels/the-second-take/visual-kit/refs/base/hold-one-hand.png"
+    ],
+    "delta": "The FIRST image is `terry-johnson`'s character canonical \u2014 identity, head tone, hair and the pinned costume come from THIS image ONLY. The SECOND image is the `expr-delighted` expression reference \u2014 copy ONLY its eye/brow/mouth shape onto `terry-johnson`'s face; ignore its head tone, hairline and identity. The THIRD image is the `hold-one-hand` pose reference \u2014 copy ONLY its body pose, hands and limb placement onto `terry-johnson`; ignore its head tone, face and costume. The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `terry-johnson` (hold-one-hand / expr-delighted)"
+  },
+  {
+    "name": "L28",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "`miniscribe-rep` (`action-powerstance`, `expr-smug`) and `terry-johnson` (`hold-one-hand`, `expr-delighted`) share the head of a pale-green conveyor on a bright MiniScribe plant floor, with a finished steel-grey drive held at chest height between the conveyor's row of four drives. Pale-green machine housings, empty parts trays, and far windows filled by a saw-toothed snow-capped range complete the room. Palette is pale plant green, steel grey, and warm tan. Wide view at chest height square to the belt; depth reads plant apron foreground, the two figures and belt mid-ground, housings and windows background. Every machine housing and parts tray is blank and unlettered.\n\nPLACEMENT. The FIRST 2 images are `miniscribe-rep`, `terry-johnson`, already posed, lit and fully resolved as a complete figure \u2014 carry identity, costume, hair, head tone, body pose, hands and facial expression from them EXACTLY. Every description of those figures above is ALREADY satisfied by those images: do not re-draw, re-pose or re-dress them.\n\nStage the figures into the scene exactly as written above, every named element of it present, at true human scale measured against the conveyor; feet in firm contact with the ground plane with a contact shadow beneath matching the scene's own light direction; correctly occluded by whatever stands in front of them; re-lit to the scene's own light and palette.",
+    "seed": [
+      "_staging/fig-miniscribe-rep--action-powerstance--expr-smug.png",
+      "_staging/fig-terry-johnson--hold-one-hand--expr-delighted.png"
+    ],
+    "figures": null,
+    "stage_role": "base",
+    "assets_omitted": null,
+    "why": "`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-powerstance--expr-smug shared; `terry-johnson` STEP-1 fig-terry-johnson--hold-one-hand--expr-delighted GENERATE; scale anchor = the conveyor; PLACE-FIRST (mints this place's plate)",
+    "plate": true
+  },
+  {
+    "name": "L49",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "A cramped failing restaurant dining room holds peeling maroon wallpaper, a stack of unpaid bills fanned on the till, three chairs upturned on tables, and one flickering ceiling bulb. A small crowd of restaurant staff in late-1980s chef whites clusters at the pass around one covered dish, with a boom microphone dipping into frame above them. Palette is faded maroon, stainless steel, and harsh studio-white light. Wide framing at counter height keeps the dish central while the staff remain crowd scale; depth reads pass foreground, staff mid-ground, upturned tables background. Every wall and menu board is blank and unlettered.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "base",
+    "assets_omitted": null,
+    "why": "PLACE-FIRST (mints this place's plate)",
+    "plate": true
+  },
+  {
+    "name": "L50",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "The same cramped dining room, same locked framing: the small crowd of late-1980s restaurant staff at the pass, the covered dish, and the boom microphone. Only this changes: the room is split down the middle, with the near half still peeling maroon and chairs upturned while the far half is bright with fresh paint and set tables, one hard seam joining old wall to new; everything else exactly as established.",
+    "seed": [
+      "_staging/L49.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "why": "no cast \u2014 the scene composes from the place"
+  },
+  {
+    "name": "fig-qt-wiles--action-powerstance--expr-deadpan",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+      "channels/the-second-take/visual-kit/refs/base/action-powerstance.png"
+    ],
+    "delta": "The FIRST image is `qt-wiles`'s character canonical \u2014 identity, head tone, hair and the pinned costume come from THIS image ONLY. The SECOND image is the `expr-deadpan` expression reference \u2014 copy ONLY its eye/brow/mouth shape onto `qt-wiles`'s face; ignore its head tone, hairline and identity. The THIRD image is the `action-powerstance` pose reference \u2014 copy ONLY its body pose, hands and limb placement onto `qt-wiles`; ignore its head tone, face and costume. The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `qt-wiles` (action-powerstance / expr-deadpan)"
+  },
+  {
+    "name": "L60",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "`qt-wiles` (`expr-deadpan`, `action-powerstance`) stands at the head of a long conference table in a bare MiniScribe boardroom, squarely inside one harsh interrogation-style lamp's cone of light hung low above him, the room's edges falling to deep shadow beyond the table. `brick-foreman` (`sit`, `expr-worried`) sits tense at the near end, along with several more seated figures down the table's length, the lamplight reaching just far enough to catch their faces too. Palette is near-black shadow and one harsh white cone. Wide flat framing at table height so the lit table reads as one bright line down a dark room; depth reads table foreground, seated figures mid-ground, Wiles lit at the head, background falling to shadow. Every wall is blank and unlettered.\n\nPLACEMENT. The FIRST 2 images are `qt-wiles`, `brick-foreman`, already posed, lit and fully resolved as a complete figure \u2014 carry identity, costume, hair, head tone, body pose, hands and facial expression from them EXACTLY. Every description of those figures above is ALREADY satisfied by those images: do not re-draw, re-pose or re-dress them.\n\nStage the figures into the scene exactly as written above, every named element of it present, at true human scale measured against the table; feet in firm contact with the ground plane with a contact shadow beneath matching the scene's own light direction; correctly occluded by whatever stands in front of them; re-lit to the scene's own light and palette.",
+    "seed": [
+      "_staging/fig-qt-wiles--action-powerstance--expr-deadpan.png",
+      "channels/the-second-take/visual-kit/_staging/fig-brick-foreman--sit--expr-worried.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "base",
+    "assets_omitted": null,
+    "why": "`qt-wiles` STEP-1 fig-qt-wiles--action-powerstance--expr-deadpan GENERATE; `brick-foreman` STEP-1 fig-brick-foreman--sit--expr-worried REUSED; scale anchor = the table; PLACE-FIRST (mints this place's plate)",
+    "plate": true
+  },
+  {
+    "name": "L61",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "The same shadowed boardroom, same locked framing: `qt-wiles` at the table's head under the harsh lamp cone, `brick-foreman` and the seated crowd tense down the table. Only this changes: a plain concentric archery target now hangs mounted on the dark wall directly behind Wiles, its rings barely visible in the gloom; everything else exactly as established.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
+      "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
+      "_staging/L60.png"
+    ],
+    "figures": null,
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "why": "`qt-wiles` delta -> canonical + parent; `brick-foreman` delta -> canonical + parent"
+  },
+  {
+    "name": "fig-qt-wiles--action-offering--expr-smug",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
+      "channels/the-second-take/visual-kit/refs/base/action-offering.png"
+    ],
+    "delta": "The FIRST image is `qt-wiles`'s character canonical \u2014 identity, head tone, hair and the pinned costume come from THIS image ONLY. The SECOND image is the `expr-smug` expression reference \u2014 copy ONLY its eye/brow/mouth shape onto `qt-wiles`'s face; ignore its head tone, hairline and identity. The THIRD image is the `action-offering` pose reference \u2014 copy ONLY its body pose, hands and limb placement onto `qt-wiles`; ignore its head tone, face and costume. The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `qt-wiles` (action-offering / expr-smug)"
+  },
+  {
+    "name": "fig-brick-foreman--hold-both-hands--expr-delighted",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
+      "channels/the-second-take/visual-kit/refs/base/hold-both-hands.png"
+    ],
+    "delta": "The FIRST image is `brick-foreman`'s character canonical \u2014 identity, head tone, hair and the pinned costume come from THIS image ONLY. The SECOND image is the `expr-delighted` expression reference \u2014 copy ONLY its eye/brow/mouth shape onto `brick-foreman`'s face; ignore its head tone, hairline and identity. The THIRD image is the `hold-both-hands` pose reference \u2014 copy ONLY its body pose, hands and limb placement onto `brick-foreman`; ignore its head tone, face and costume. The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `brick-foreman` (hold-both-hands / expr-delighted)"
+  },
+  {
+    "name": "L62",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "`qt-wiles`, in his steel-grey three-piece suit with gold tie clip, (`action-offering`, `expr-smug`) faces `brick-foreman` (`hold-both-hands`, `expr-delighted`) across the near end of a long MiniScribe boardroom table. A fat envelope of banknotes rests between them, while a seated crowd of late-1980s office workers ranks down the table beneath one harsh lamp cone. Palette is near-black shadow and hard white light. Wide framing at table height makes the envelope the centre of the line; depth reads table foreground, the two named figures and crowd mid-ground, deep shadow background. Every wall is blank and unlettered.\n\nPLACEMENT. The FIRST 2 images are `qt-wiles`, `brick-foreman`, already posed, lit and fully resolved as a complete figure \u2014 carry identity, costume, hair, head tone, body pose, hands and facial expression from them EXACTLY. Every description of those figures above is ALREADY satisfied by those images: do not re-draw, re-pose or re-dress them.\n\nStage the figures into the scene exactly as written above, every named element of it present, at true human scale measured against the table; feet in firm contact with the ground plane with a contact shadow beneath matching the scene's own light direction; correctly occluded by whatever stands in front of them; re-lit to the scene's own light and palette.",
+    "seed": [
+      "_staging/fig-qt-wiles--action-offering--expr-smug.png",
+      "_staging/fig-brick-foreman--hold-both-hands--expr-delighted.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "base",
+    "assets_omitted": null,
+    "why": "`qt-wiles` STEP-1 fig-qt-wiles--action-offering--expr-smug GENERATE; `brick-foreman` STEP-1 fig-brick-foreman--hold-both-hands--expr-delighted GENERATE; scale anchor = the table; PLACE-FIRST (mints this place's plate)",
+    "plate": true
+  },
+  {
+    "name": "fig-qt-wiles--point-at-thing--expr-smug",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
+      "channels/the-second-take/visual-kit/refs/base/point-at-thing.png"
+    ],
+    "delta": "The FIRST image is `qt-wiles`'s character canonical \u2014 identity, head tone, hair and the pinned costume come from THIS image ONLY. The SECOND image is the `expr-smug` expression reference \u2014 copy ONLY its eye/brow/mouth shape onto `qt-wiles`'s face; ignore its head tone, hairline and identity. The THIRD image is the `point-at-thing` pose reference \u2014 copy ONLY its body pose, hands and limb placement onto `qt-wiles`; ignore its head tone, face and costume. The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `qt-wiles` (point-at-thing / expr-smug)"
+  },
+  {
+    "name": "L66",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "`qt-wiles`, in his steel-grey three-piece suit with gold tie clip, (`point-at-thing`, `expr-smug`) occupies the head of a shadowed MiniScribe boardroom table under one harsh lamp cone. A crowd of late-1980s office workers fills the table's far ranks; two small crowd-scale managers stand at the near side with their chairs pushed back. Palette is near-black shadow and hard white light. Wide framing at table height makes Wiles's accusation and the two managers read on one line; depth reads table foreground, crowd mid-ground, Wiles background.\n\nPLACEMENT. The FIRST image is `qt-wiles`, already posed, lit and fully resolved as a complete figure \u2014 carry identity, costume, hair, head tone, body pose, hands and facial expression from it EXACTLY. Every description of that figure above is ALREADY satisfied by that image: do not re-draw, re-pose or re-dress it.\n\nStage the figure into the scene exactly as written above, every named element of it present, at true human scale measured against the table; feet in firm contact with the ground plane with a contact shadow beneath matching the scene's own light direction; correctly occluded by whatever stands in front of it; re-lit to the scene's own light and palette.",
+    "seed": [
+      "_staging/fig-qt-wiles--point-at-thing--expr-smug.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "base",
+    "assets_omitted": null,
+    "why": "`qt-wiles` STEP-1 fig-qt-wiles--point-at-thing--expr-smug GENERATE; scale anchor = the table; PLACE-FIRST (mints this place's plate)",
+    "plate": true
+  },
+  {
+    "name": "L67",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "A shadowed MiniScribe boardroom opens onto its corridor door. Two small crowd-scale office workers in late-1980s shirtsleeves carry plain cardboard boxes through the doorway while a seated crowd remains ranked at the conference table behind them. One harsh lamp cone cuts across the near table, with the corridor falling to shadow beyond the open door. Palette is near-black, hard white light, and cardboard tan. Wide framing at table height makes the open door and departing workers the payload; depth reads table foreground, crowd mid-ground, doorway background.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "base",
+    "assets_omitted": null,
+    "why": "PLACE-FIRST (mints this place's plate)",
+    "plate": true
+  },
+  {
+    "name": "fig-qt-wiles--action-armscrossed--expr-smug",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
+      "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png"
+    ],
+    "delta": "The FIRST image is `qt-wiles`'s character canonical \u2014 identity, head tone, hair and the pinned costume come from THIS image ONLY. The SECOND image is the `expr-smug` expression reference \u2014 copy ONLY its eye/brow/mouth shape onto `qt-wiles`'s face; ignore its head tone, hairline and identity. The THIRD image is the `action-armscrossed` pose reference \u2014 copy ONLY its body pose, hands and limb placement onto `qt-wiles`; ignore its head tone, face and costume. The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `qt-wiles` (action-armscrossed / expr-smug)"
+  },
+  {
+    "name": "L68",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "`qt-wiles`, in his steel-grey three-piece suit with gold tie clip, (`action-armscrossed`, `expr-smug`) commands the head of a shadowed MiniScribe boardroom table. The boardroom door is shut and a seated crowd of late-1980s office workers ranks down the table beneath one harsh lamp cone. Palette is near-black shadow and hard white light. Wide framing at table height makes Wiles the dominant vertical at the head of the room; depth reads table foreground, crowd mid-ground, Wiles and closed door background.\n\nPLACEMENT. The FIRST image is `qt-wiles`, already posed, lit and fully resolved as a complete figure \u2014 carry identity, costume, hair, head tone, body pose, hands and facial expression from it EXACTLY. Every description of that figure above is ALREADY satisfied by that image: do not re-draw, re-pose or re-dress it.\n\nStage the figure into the scene exactly as written above, every named element of it present, at true human scale measured against the table; feet in firm contact with the ground plane with a contact shadow beneath matching the scene's own light direction; correctly occluded by whatever stands in front of it; re-lit to the scene's own light and palette.",
+    "seed": [
+      "_staging/fig-qt-wiles--action-armscrossed--expr-smug.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "base",
+    "assets_omitted": null,
+    "why": "`qt-wiles` STEP-1 fig-qt-wiles--action-armscrossed--expr-smug GENERATE; scale anchor = the table; PLACE-FIRST (mints this place's plate)",
+    "plate": true
+  },
+  {
+    "name": "L78",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "A clean, deliberately crude marker diagram fills the frame: a simple hand-drawn shelf icon on the left connects by one arrow to a simple hand-drawn ledger-page icon on the right, a tally mark stroke sitting on the arrow itself. Plain cream card background, the whole diagram inked in the same dark warm brown-black as every outline. Palette is cream and ink-brown only, no colour. Straight-on flat framing with the diagram centred and generous card air around it \u2014 the tally stroke on the arrow the whole picture.",
+    "seed": [],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "why": "PLACE-FIRST (mints this place's plate)",
+    "plate": true
+  },
+  {
+    "name": "fig-brick-foreman--action-shrug--expr-smug",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
+      "channels/the-second-take/visual-kit/refs/base/action-shrug.png"
+    ],
+    "delta": "The FIRST image is `brick-foreman`'s character canonical \u2014 identity, head tone, hair and the pinned costume come from THIS image ONLY. The SECOND image is the `expr-smug` expression reference \u2014 copy ONLY its eye/brow/mouth shape onto `brick-foreman`'s face; ignore its head tone, hairline and identity. The THIRD image is the `action-shrug` pose reference \u2014 copy ONLY its body pose, hands and limb placement onto `brick-foreman`; ignore its head tone, face and costume. The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `brick-foreman` (action-shrug / expr-smug)"
+  },
+  {
+    "name": "L91",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "`brick-foreman` (`action-shrug`, `expr-smug`) is beside the closed cabinet, directed toward an unseen listener. The corridor and chopping block sit distant behind him. Palette holds concrete grey and steel. Tight three-quarter medium at chest height centres the reaction.\n\nPLACEMENT. The FIRST image is `brick-foreman`, already posed, lit and fully resolved as a complete figure \u2014 carry identity, costume, hair, head tone, body pose, hands and facial expression from it EXACTLY. Every description of that figure above is ALREADY satisfied by that image: do not re-draw, re-pose or re-dress it.\n\nStage the figure into the scene exactly as written above, every named element of it present, at true human scale measured against the cabinet; feet in firm contact with the ground plane with a contact shadow beneath matching the scene's own light direction; correctly occluded by whatever stands in front of it; re-lit to the scene's own light and palette.",
+    "seed": [
+      "_staging/fig-brick-foreman--action-shrug--expr-smug.png"
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "why": "`brick-foreman` STEP-1 fig-brick-foreman--action-shrug--expr-smug GENERATE; scale anchor = the cabinet; PLACE-FIRST (mints this place's plate)",
+    "plate": true
+  },
+  {
+    "name": "L100",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "A small crowd of late-1980s MiniScribe managers gathers at a fluorescent office table around one bare sheet of paper, their heads close together at crowd scale. A cold coffee cup and a scatter of pens sit at the table's edge. Palette is fluorescent white and grey steel. Wide framing at table height keeps the paper central; depth reads paper foreground, manager crowd mid-ground, office background.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "base",
+    "assets_omitted": null,
+    "why": "PLACE-FIRST (mints this place's plate)",
+    "plate": true
+  },
+  {
+    "name": "L101",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "The same fluorescent office table, same locked framing: the small crowd of late-1980s managers, the cold coffee, and the bare paper. Only this changes: one solid red clay brick now rests at the paper's centre, with the crowd gathered around it; everything else exactly as established.",
+    "seed": [
+      "_staging/L100.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "why": "no cast \u2014 the scene composes from the place"
+  },
+  {
+    "name": "L107",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "A small crowd of late-1980s warehouse workers in shirtsleeves gathers at a long packing bench in a rented warehouse, all kept at crowd scale. Three open cartons run along the bench, each with one red clay brick already seated in a drive-shaped foam recess. Bare bulbs hang above corrugated walls. Palette is terracotta red, corrugated tan, and cold bulb light. Wide side-on framing at bench height fills the frame with the carton row; depth reads bench foreground, worker crowd mid-ground, corrugated wall background.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "base",
+    "assets_omitted": null,
+    "why": "PLACE-FIRST (mints this place's plate)",
+    "plate": true
+  },
+  {
+    "name": "L108",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "The same packing bench, same locked framing: the row of three open brick cartons, the small crowd of late-1980s warehouse workers, and the bare bulbs. Only this changes: a small handheld stamp now rests on the nearest carton's closed flap, leaving one plain dark serial-style mark; everything else exactly as established.",
+    "seed": [
+      "_staging/L107.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "why": "no cast \u2014 the scene composes from the place"
+  },
+  {
+    "name": "L109",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "The same packing bench, same locked framing: the row of open brick cartons, the small crowd of late-1980s warehouse workers, and the stamp on the nearest flap. Only this changes: one genuine boxed hard drive now sits at the end of the row, its flap carrying the identical plain dark mark and matching the brick cartons beside it; everything else exactly as established.",
+    "seed": [
+      "_staging/L108.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "why": "no cast \u2014 the scene composes from the place"
+  },
+  {
+    "name": "L160",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "A small new-management team in late-1980s business suits stands at the open door of a dim MiniScribe records office, all kept at crowd scale, with one lit lantern casting light into rows of filing cabinets. A small desk calendar on the near cabinet is lettered '1989'. Palette is lantern amber against deep office shadow. Wide framing at doorway height centres the lantern glow; depth reads doorway foreground, management crowd mid-ground, dark filing cabinets background.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "base",
+    "assets_omitted": null,
+    "why": "PLACE-FIRST (mints this place's plate)",
+    "plate": true
+  },
+  {
+    "name": "L161",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "The same dim records office, same locked framing: the small new-management crowd in late-1980s business suits, the lantern, the '1989' calendar, and the filing cabinets. Only this changes: the lantern's light reaches an empty desk chair pushed back at the room's centre, plainly vacant; everything else exactly as established.",
+    "seed": [
+      "_staging/L160.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "why": "no cast \u2014 the scene composes from the place"
+  },
+  {
+    "name": "L162",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "The same dim records office, same locked framing: the small new-management crowd in late-1980s business suits, the empty desk chair, and the '1989' calendar. Only this changes: the lantern is raised toward the rows of filing cabinets ahead of the crowd; everything else exactly as established.",
+    "seed": [
+      "_staging/L161.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "why": "no cast \u2014 the scene composes from the place"
+  },
+  {
+    "name": "fig-hq-banker--action-recoil--expr-fear",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/hq-banker/hq-banker.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-fear.png",
+      "channels/the-second-take/visual-kit/refs/base/action-recoil.png"
+    ],
+    "delta": "The FIRST image is `hq-banker`'s character canonical \u2014 identity, head tone, hair and the pinned costume come from THIS image ONLY. The SECOND image is the `expr-fear` expression reference \u2014 copy ONLY its eye/brow/mouth shape onto `hq-banker`'s face; ignore its head tone, hairline and identity. The THIRD image is the `action-recoil` pose reference \u2014 copy ONLY its body pose, hands and limb placement onto `hq-banker`; ignore its head tone, face and costume. The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `hq-banker` (action-recoil / expr-fear)"
+  },
+  {
+    "name": "L183",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "`hq-banker`, `expr-fear`, `action-recoil`, stands in the same dark courtroom, caught in a second, smaller wash of the same alarm-red light falling from above. His chocolate-brown pinstripe suit and gold watch chain still clear in the red wash. Deep courtroom shadow around him. Palette is alarm red against near-black and chocolate brown.\n\nPLACEMENT. The FIRST image is `hq-banker`, already posed, lit and fully resolved as a complete figure \u2014 carry identity, costume, hair, head tone, body pose, hands and facial expression from it EXACTLY. Every description of that figure above is ALREADY satisfied by that image: do not re-draw, re-pose or re-dress it.\n\nStage the figure into the scene exactly as written above, every named element of it present, at true human scale measured against the other elements named in the scene above; feet in firm contact with the ground plane with a contact shadow beneath matching the scene's own light direction; correctly occluded by whatever stands in front of it; re-lit to the scene's own light and palette.",
+    "seed": [
+      "_staging/fig-hq-banker--action-recoil--expr-fear.png"
+    ],
+    "figures": null,
+    "stage_role": "base",
+    "assets_omitted": null,
+    "why": "`hq-banker` STEP-1 fig-hq-banker--action-recoil--expr-fear GENERATE; scale anchor = the other elements named in the scene above; PLACE-FIRST (mints this place's plate)",
+    "plate": true
+  },
+  {
+    "name": "L184",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "The same dark courtroom, same locked framing: `hq-banker` (`expr-fear`) in the red wash. Only this changes: beside him, small and pale, a faint ghostly outline of the same high-rise office doorway from his first appearance hangs superimposed in the dark air, `qt-wiles`'s silhouette just visible stepping through it once more; everything else exactly as established.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/hq-banker/hq-banker.png",
+      "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
+      "_staging/L183.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-fear.png"
+    ],
+    "figures": null,
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "why": "`hq-banker` delta -> canonical + parent; `qt-wiles` delta -> canonical + parent"
+  },
+  {
+    "name": "L190",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "A plain conference table stands with three separate stacks of banknotes set out in a row, each a different height, side by side at its centre. Cool office light, palette of banknote green and pale table wood. Wide flat framing at table height with the three stacks filling the frame's centre; depth reads table foreground, the three stacks mid-ground, plain wall background. A single card propped in front of the row is lettered '128 MILLION'.",
+    "seed": [],
+    "figures": null,
+    "stage_role": "base",
+    "assets_omitted": null,
+    "why": "PLACE-FIRST (mints this place's plate)",
+    "plate": true
+  },
+  {
+    "name": "fig-hq-banker--action-offering--expr-deadpan",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/hq-banker/hq-banker.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+      "channels/the-second-take/visual-kit/refs/base/action-offering.png"
+    ],
+    "delta": "The FIRST image is `hq-banker`'s character canonical \u2014 identity, head tone, hair and the pinned costume come from THIS image ONLY. The SECOND image is the `expr-deadpan` expression reference \u2014 copy ONLY its eye/brow/mouth shape onto `hq-banker`'s face; ignore its head tone, hairline and identity. The THIRD image is the `action-offering` pose reference \u2014 copy ONLY its body pose, hands and limb placement onto `hq-banker`; ignore its head tone, face and costume. The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `hq-banker` (action-offering / expr-deadpan)"
+  },
+  {
+    "name": "fig-auditor-rep--hold-paper-by-sides--expr-skeptical",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-skeptical.png",
+      "channels/the-second-take/visual-kit/refs/base/hold-paper-by-sides.png"
+    ],
+    "delta": "The FIRST image is `auditor-rep`'s character canonical \u2014 identity, head tone, hair and the pinned costume come from THIS image ONLY. The SECOND image is the `expr-skeptical` expression reference \u2014 copy ONLY its eye/brow/mouth shape onto `auditor-rep`'s face; ignore its head tone, hairline and identity. The THIRD image is the `hold-paper-by-sides` pose reference \u2014 copy ONLY its body pose, hands and limb placement onto `auditor-rep`; ignore its head tone, face and costume. The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `auditor-rep` (hold-paper-by-sides / expr-skeptical)"
+  },
+  {
+    "name": "L191",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "`hq-banker` (`action-offering`, `expr-deadpan`) occupies the second position behind a conference table's three separate stacks of banknotes. `auditor-rep` (`hold-paper-by-sides`, `expr-skeptical`) occupies the third position beside a plain settlement page. A small crowd of suited late-1980s executives gathers behind the first stack. A card propped before the row is lettered '128 MILLION'. Cool office light and a palette of banknote green and pale table wood. Wide framing at table height keeps all three stacks legible; depth reads table foreground, named payers and executive crowd mid-ground, plain wall background.\n\nPLACEMENT. The FIRST 2 images are `hq-banker`, `auditor-rep`, already posed, lit and fully resolved as a complete figure \u2014 carry identity, costume, hair, head tone, body pose, hands and facial expression from them EXACTLY. Every description of those figures above is ALREADY satisfied by those images: do not re-draw, re-pose or re-dress them.\n\nStage the figures into the scene exactly as written above, every named element of it present, at true human scale measured against the table; feet in firm contact with the ground plane with a contact shadow beneath matching the scene's own light direction; correctly occluded by whatever stands in front of them; re-lit to the scene's own light and palette.",
+    "seed": [
+      "_staging/fig-hq-banker--action-offering--expr-deadpan.png",
+      "_staging/fig-auditor-rep--hold-paper-by-sides--expr-skeptical.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "base",
+    "assets_omitted": null,
+    "why": "`hq-banker` STEP-1 fig-hq-banker--action-offering--expr-deadpan GENERATE; `auditor-rep` STEP-1 fig-auditor-rep--hold-paper-by-sides--expr-skeptical GENERATE; scale anchor = the table; PLACE-FIRST (mints this place's plate)",
+    "plate": true
+  },
+  {
+    "name": "L205",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "A plain prison-cell wall stands bare but for three simple tally-mark scratches ruled evenly down it, each mark identical, nothing else on the wall. Cold institutional light, palette of pale grey and shadow. Straight-on tight framing at wall height, the three marks filling the frame's centre.",
+    "seed": [],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "why": "PLACE-FIRST (mints this place's plate)",
+    "plate": true
+  },
+  {
+    "name": "L215",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "A single drive carton stands open on a plain packing bench, its lid flap folded back exactly as at its first reveal, one solid clay brick in dense red #d7402b nested in its drive-shaped moulded foam recess, the coarse pressed clay face catching the light. The bench and room around it stand otherwise bare and deserted. Cold grey-green industrial light on the bench, the brick the only warm mass in the frame. Tight straight-on medium close at bench height with the open carton filling the middle third \u2014 the brick itself, alone, the whole picture and the video's closing image.",
+    "seed": [],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "why": "PLACE-FIRST (mints this place's plate)",
+    "plate": true
+  }
+]
