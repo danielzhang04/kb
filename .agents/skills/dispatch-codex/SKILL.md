@@ -43,23 +43,36 @@ Each footer names the worker's session id — the SendMessage equivalent, worker
 py -3 "$(git rev-parse --show-toplevel)/scripts/codex_dispatch.py" --prompt-file <followup.md> --follow-up <thread-id> --model <tier>
 ```
 
-Repeat the footer's `--model <tier>` — a follow-up does NOT keep the session's own model, the
-script re-pins it every turn; omit it and a `codex-deep` session silently drops back to the
-`codex` default tier (terra), not its own model. `--sandbox`/`--cwd`/`--worktree` are refused on a
+`--model` is optional on a follow-up: codex does NOT carry a resumed session's model, so the
+script re-pins it every turn from the model that session actually ran on (`threads.json` under
+`%LOCALAPPDATA%\kb-codex-dispatch\`). Explicit `--model` still wins and re-pins the map. Only
+sessions dispatched after 2026-07-30 are in the map — for an older thread id the script warns and
+falls back to the `codex` default tier (terra), so pass `--model` there.
+`--sandbox`/`--cwd`/`--worktree` are refused on a
 follow-up; follow up before you sweep a `--worktree` (a follow-up into a removed one resumes into
 a deleted dir). Each turn writes its own card, linked by the shared `workflow: <thread-id>` field.
 To stop a worker: stopping the background shell task orphans the codex child (no job object) —
-find the python parent's pid and `taskkill /PID <pid> /T /F` (the `/T` kills the tree). Either way
-the spool trace under `%LOCALAPPDATA%\kb-codex-dispatch\spool\` is the only record; no card is
-published.
+find the python parent's pid and `taskkill /PID <pid> /T /F` (the `/T` kills the tree).
+A leg whose dispatch parent dies (session restart, crash, taskkill) gets a `done` card whose
+Result starts `FAILED: orphaned` — published by the NEXT dispatch's startup sweep, not by the dead
+leg. Until a next dispatch runs, its JSONL log and its pending marker under
+`%LOCALAPPDATA%\kb-codex-dispatch\pending\` are the only records.
+To check whether a worker is still alive, read that marker (`pid` = the dispatch parent,
+`codex_pid` = the worker tree) plus the JSONL log's mtime — NEVER match on the `codex.exe`
+process name, the Codex desktop app collides with it.
 
 ## Rules
 
 - Parallel dispatches are fine — each is its own process, card, and notification.
 - Default cwd is the repo root with `workspace-write` (writes anywhere under `--cwd`, incl.
-  `governance/` — scope it down for untrusted briefs); `--sandbox read-only` for research (no
-  network — web-research briefs degrade silently, don't dispatch); `--worktree` when the task
-  writes broadly or another writer shares the tree.
+  `governance/` — scope it down for untrusted briefs); `--sandbox read-only` for research;
+  `--worktree` when the task writes broadly or another writer shares the tree.
+- The sandbox's `network_access=false` is SHELL-level only: codex's native web search still works
+  in a worker (live-proven). Assume any dispatched brief can reach the internet — scope untrusted
+  ones down with `--cwd` or `--worktree`.
+- Claude PLUGIN skills are unreachable from a codex worker (`~/.claude` is deny-listed); kb keeps
+  shared copies under `skills/imported/` (humanizer lives there). kb repo skills work as-is for
+  both runtimes.
 - Refuses on: STOP file, `ANTHROPIC_API_KEY` set (preamble gate), `OPENAI_API_KEY`/`CODEX_API_KEY`
   in env, stale codex login, unknown model. Fix the cause; never work around a refusal.
 - Failed runs still land as a `done` card, Result starting `FAILED: ...` (footer names the

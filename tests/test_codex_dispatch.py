@@ -45,9 +45,9 @@ def _main_env(monkeypatch, tmp_path, result="ok", rc=0, timed_out=None):
     timeout_flag = (rc == 124) if timed_out is None else timed_out
 
     def fake_spawn(prompt_text, model, effort, cwd, sandbox, out_file, log_file,
-                   follow_up=None, timeout=None):
+                   follow_up=None, timeout=None, marker=None):
         seen.update(model=model, effort=effort, cwd=cwd, sandbox=sandbox,
-                    follow_up=follow_up, timeout=timeout)
+                    follow_up=follow_up, timeout=timeout, marker=marker)
         log_file.write_text("", encoding="utf-8")
         if rc == 0:
             out_file.write_text(result, encoding="utf-8")
