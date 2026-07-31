@@ -45,13 +45,28 @@ weekly-cap reset.
 | `dashboard/server/control/rosterSessions.ts` | DONE | in main; auto mode + freshness gate + two-write + outcome-verified submit |
 | `dashboard/server/control/rosterSessions.test.ts` | DONE | in main; retry-recovers, never-engages-parks, pure classifiers |
 | whole `orgs/faceless-youtube/` pipeline | DONE | 13 stages / 6 agents / 6 gates, in main |
-| the dry-check harness | REUSABLE | at `…/161e0c0f-…/scratchpad/dry-check/run-dry-check.mjs` (operand worktree was pruned; re-setup a detached worktree at the NEW main `6c359ca`) |
+| the dry-check harness | READY (prepped 2026-07-31) | at `…/161e0c0f-…/scratchpad/dry-check/run-dry-check.mjs`; operand worktree RECREATED at its pinned path `…/161e0c0f-…/scratchpad/dry-check-repo` detached @ `6c359ca`, `dashboard/node_modules` junctioned from `C:/Users/danie/kb/dashboard/node_modules`, server-module imports verified resolving |
 
-### Exact Next Step
-After **Aug 1 9pm** (weekly cap reset): set up a fresh detached throwaway worktree at `origin/main` (now
-`6c359ca`+), point the dry-check harness at it, run it, and close Facts 4 & 5 (fyt-story transcript grows +
-`brief.md` round-trips + DAG halts at G0). Then propose the maiden run to Daniel (his spend/publish gates).
-Do NOT point any test daemon's `DASHBOARD_REPO_ROOT` at a live work-branch worktree.
+### Exact Next Step (prep DONE 2026-07-31 — run is turnkey)
+After **Aug 1 9pm** (weekly cap reset), from `…/161e0c0f-…/scratchpad/dry-check/`:
+
+    node .\run-dry-check.mjs --fresh --slug dry-check-2026-08-01
+
+Preconditions (codex drift-audit verified, card 6a6c2973-5a13a31b on ops): port 4519 free;
+**`DASHBOARD_EXECUTION_ACTIVATED` must be UNSET in the launching shell** (proc.mjs spreads
+`process.env` into the daemon child and activation.ts:129 treats `"1"` as activated — would fail
+Fact 1's locked-state assertion); node_modules junction intact; claude CLI cap reset. `--fresh` is
+REQUIRED (wipes stale `state/` from the failed 07-30 run; without it only `proceed-to-retire.flag`
+self-resets). No `--repo-root`/`--state-root`/`--port` args — defaults are correct and server
+imports are hard-pinned to the sibling `dry-check-repo`. Audit found NO API drift harness↔`6c359ca`
+(all four delivery fixes compatible; fakes cover every git/py/audit/queue seam; new delivery-fix
+writes are contained under `DASHBOARD_STATE_ROOT`).
+
+Pass = Facts 4 & 5 close: fyt-story transcript GROWS + `brief.md` round-trips + DAG halts at G0. If
+it stalls, read the `roster-delivery-not-engaged` park reason. Then propose the maiden run to Daniel
+(his spend/publish gates). Do NOT point any test daemon's `DASHBOARD_REPO_ROOT` at a live
+work-branch worktree. Boss task list this arc: worktree `kb-worktrees/boss-fyt-run`
+(`claude/fyt-full-run`).
 
 ### Load list
 - `handoffs/2026-07-31-fyt-pipeline-shipped.md` (this file)
