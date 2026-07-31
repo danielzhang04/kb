@@ -249,10 +249,10 @@ function fakeHost(): FakeHost {
 }
 
 /**
- * Recording filesystem. `stat`/`hashFile` replace the old `exists`, because `existsSync` was true for a
- * DIRECTORY named `shots.json` and for a 0-byte file — both of which satisfied a declared artifact.
- * `putDir` and a 0-byte `put` let a test stand exactly those two things where an artifact belongs. The
- * reparse seam models a Windows junction/symlink without touching the host filesystem.
+ * Recording rooted filesystem. `inspectArtifact` models a handle-bound regular-file probe: directories,
+ * links, and 0-byte leaves cannot satisfy a declared artifact. `putDir` and a 0-byte `put` let a test
+ * stand exactly those two things where an artifact belongs. The reparse seam models a Windows
+ * junction/symlink without touching the host filesystem.
  */
 function fakeFs(existing: string[] = [], seed: { directories?: string[]; contents?: Record<string, string> } = {}): RosterFileSystem & {
   files: Map<string, string>;
@@ -260,7 +260,7 @@ function fakeFs(existing: string[] = [], seed: { directories?: string[]; content
   removed: string[];
   removedFiles: string[];
   operations: string[];
-  /** Every `hashFile` call, in order — the cost assertion (a big artifact must not be hashed twice). */
+  /** Every handle-bound artifact hash, in order — a big artifact must not be hashed twice. */
   hashed: string[];
   /** Write real bytes at a path, the way a stage producing its artifact would. */
   put(path: string, contents: string): void;
@@ -276,6 +276,16 @@ function fakeFs(existing: string[] = [], seed: { directories?: string[]; content
   const operations: string[] = [];
   const hashed: string[] = [];
   const links = new Set<string>();
+  const control = (parts: readonly string[]): string => norm(`/state/control/roster/${parts.join('/')}`);
+  const repo = (parts: readonly string[]): string => norm(`/repo/${parts.join('/')}`);
+  const assertNoLink = (path: string): void => {
+    const pieces = path.split('/').filter(Boolean);
+    let current = path.startsWith('/') ? '' : pieces.shift() ?? '';
+    for (const piece of pieces) {
+      current = current === '' ? `/${piece}` : `${current}/${piece}`;
+      if (links.has(current)) throw new Error('reparse point');
+    }
+  };
   const directories = new Set((seed.directories ?? []).map((path) => norm(path)));
   for (const path of existing) files.set(norm(path), `seed:${norm(path)}`);
   for (const [path, value] of Object.entries(seed.contents ?? {})) files.set(norm(path), value);
@@ -286,58 +296,47 @@ function fakeFs(existing: string[] = [], seed: { directories?: string[]; content
     removedFiles,
     operations,
     hashed,
-    ensureDir(path) { dirs.push(path); },
-    readFile(path) { return files.get(norm(path)) ?? null; },
-    writeFile(path, contents) {
-      operations.push(`write:${norm(path)}`);
-      files.set(norm(path), contents);
+    ensureControlDir(path) { dirs.push(control(path)); },
+    readControlFile(path) {
+      const key = control(path);
+      assertNoLink(key);
+      return files.get(key) ?? null;
     },
-    removeFile(path) {
-      const key = norm(path);
+    writeControlFile(path, contents) {
+      const key = control(path);
+      assertNoLink(key);
+      operations.push(`write:${key}`);
+      files.set(key, contents);
+    },
+    removeControlFile(path) {
+      const key = control(path);
+      assertNoLink(key);
       removedFiles.push(key);
       operations.push(`remove:${key}`);
       files.delete(key);
     },
-    stat(path) {
-      const key = norm(path);
-      if (links.has(key)) return { regularFile: false, size: Buffer.byteLength(files.get(key) ?? '', 'utf8'), linked: true };
-      if (directories.has(key)) return { regularFile: false, size: 0 };
+    removeEmptyControlDir(path) {
+      const key = control(path);
+      assertNoLink(key);
+      removed.push(key);
+    },
+    readRepoFile(path) {
+      const key = repo(path);
+      assertNoLink(key);
+      return files.get(key) ?? null;
+    },
+    inspectArtifact(path, hashMode) {
+      const key = repo(path);
+      assertNoLink(key);
+      if (directories.has(key)) throw new Error('artifact is a directory');
       const value = files.get(key);
-      return value === undefined ? null : { regularFile: true, size: Buffer.byteLength(value, 'utf8') };
+      if (value === undefined) return null;
+      const size = Buffer.byteLength(value, 'utf8');
+      const includeHash = hashMode === 'always' || (typeof hashMode === 'number' && size === hashMode);
+      if (includeHash) hashed.push(key);
+      return { size, sha256: includeHash ? createHash('sha256').update(value).digest('hex') : null, identity: `fake:${key}` };
     },
-    hashFile(path) {
-      const key = norm(path);
-      hashed.push(key);
-      return createHash('sha256').update(files.get(key) ?? '').digest('hex');
-    },
-    artifactPath(repoRoot, path) {
-      const root = norm(repoRoot).replace(/\/+$/, '');
-      const key = norm(`${root}/${path}`);
-      if (!key.startsWith(`${root}/`)) return null;
-      const components = key.split('/').filter(Boolean);
-      let current = key.startsWith('/') ? '' : components.shift() ?? '';
-      for (const component of components) {
-        current = current === '' ? `/${component}` : `${current}/${component}`;
-        if (links.has(current)) return null;
-      }
-      return key;
-    },
-    controlPath(path) {
-      const key = norm(path);
-      const components = key.split('/').filter(Boolean);
-      let current = key.startsWith('/') ? '' : components.shift() ?? '';
-      for (const component of components) {
-        current = current === '' ? `/${component}` : `${current}/${component}`;
-        if (links.has(current)) throw new Error(`roster control path contains a link/reparse point: ${current}`);
-      }
-      if (links.has(key)) throw new Error(`roster control path contains a link/reparse point: ${key}`);
-      return key;
-    },
-    removeDir(path) {
-      const prefix = `${norm(path)}/`;
-      removed.push(norm(path));
-      for (const key of [...files.keys()]) if (key.startsWith(prefix)) files.delete(key);
-    },
+    displayControlPath(path) { return control(path); },
     put(path, contents) { files.set(norm(path), contents); },
     putDir(path) { directories.add(norm(path)); },
     putLink(path, contents = 'linked target bytes') { const key = norm(path); links.add(key); files.set(key, contents); },
@@ -1055,7 +1054,7 @@ describe('gated work-order delivery', () => {
     const directory = await artifactHarness({ seed: { directories: [`/repo/${SCRIPT_PATH}`] } });
     const directoryResult = await directory.complete();
     expect(directoryResult.state).toBe('waiting-human');
-    expect(directoryResult.summary).toContain(`${SCRIPT_PATH} (not a regular file)`);
+    expect(directoryResult.summary).toContain(`${SCRIPT_PATH} (unsafe filesystem object)`);
   });
 
   it('rejects a symlink/reparse artifact even when its target is nonempty and the artifact was absent at snapshot', async () => {
@@ -1065,7 +1064,7 @@ describe('gated work-order delivery', () => {
     run.fs.putLink(`/repo/${SCRIPT_PATH}`, 'outside target with nonempty bytes');
     const result = await run.complete();
     expect(result.state).toBe('waiting-human');
-    expect(result.summary).toContain(`${SCRIPT_PATH} (link or reparse point)`);
+    expect(result.summary).toContain(`${SCRIPT_PATH} (link or reparse point,`);
   });
 
   it('rechecks every artifact parent at completion, parking a post-snapshot junction without hashing its target', async () => {
@@ -1075,7 +1074,7 @@ describe('gated work-order delivery', () => {
     run.fs.putLink('/repo/orgs/faceless-youtube/channels/x/videos', 'outside target with nonempty bytes');
     const result = await run.complete();
     expect(result.state).toBe('waiting-human');
-    expect(result.summary).toContain(`${SCRIPT_PATH} (link or reparse point)`);
+    expect(result.summary).toContain(`${SCRIPT_PATH} (link or reparse point,`);
     expect(run.fs.hashed).toEqual([]);
   });
 

@@ -44,11 +44,11 @@
  *
  * Strip-only floor: no TS enums, parameter properties, or namespaces. ESM with `.ts` specifiers.
  */
-import { createHash, randomBytes } from 'node:crypto';
-import { closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { basename, dirname, isAbsolute, join, parse, relative, resolve } from 'node:path';
+import { randomBytes } from 'node:crypto';
+import { join } from 'node:path';
 import type { PtyHost } from '../pty/host.ts';
 import type { PersistentSessionRegistry } from '../pty/persistentSessions.ts';
+import { openNoReparseFileTree, type NoReparseFileInfo, type NoReparseHashMode } from '../win32/noReparseFiles.ts';
 import type { AssignedAgentResolver, ResolvedAssignedAgent } from './agentAssignmentResolver.ts';
 import type { ExecutionProfile } from './policy.ts';
 import { createWorkflowToolPolicyResolver } from './claudeWorkerAdapter.ts';
@@ -171,45 +171,26 @@ export interface RosterEnsureResult {
   existing: string[];
 }
 
-/** What one declared artifact path is on disk. `null` from `stat` means "nothing there at all". */
-export interface RosterFileStat {
-  /**
-   * True ONLY for a regular file. `existsSync` — the check this replaced — was also true for a DIRECTORY
-   * named `shots.json`, so a stage could satisfy a declared artifact by creating a folder with its name.
-   */
-  regularFile: boolean;
-  size: number;
-  /** True for a symlink or Windows reparse point; these are never accepted as artifacts. */
-  linked?: boolean;
-}
+/** Injectable rooted filesystem seam — tests never touch a real disk. */
+export type RosterPath = readonly string[];
 
-/** Injectable filesystem seam — tests never touch a real disk. */
 export interface RosterFileSystem {
-  ensureDir(path: string): void;
+  /** Create a trusted control subdirectory, resolving every component below the roster root. */
+  ensureControlDir(path: RosterPath): void;
   /** UTF-8 file contents, or `null` when the path cannot be read. */
-  readFile(path: string): string | null;
-  writeFile(path: string, contents: string): void;
+  readControlFile(path: RosterPath): string | null;
+  /** Bounded UTF-8 write through one verified control-file handle. */
+  writeControlFile(path: RosterPath, contents: string): void;
   /** Delete one file if it exists. */
-  removeFile(path: string): void;
-  /** Regular-file-ness and size for one absolute path; `null` when the path does not exist. */
-  stat(path: string): RosterFileStat | null;
-  /**
-   * sha256 of one absolute file's bytes. Called at most ONCE per artifact per delivery phase, and on the
-   * verification side only when the size is unchanged and a content comparison is therefore unavoidable.
-   */
-  hashFile(path: string): string;
-  /**
-   * Canonicalize one file beneath the server-owned roster channel, refusing links/reparse points in every
-   * existing component. The returned path has a verified canonical parent; optional for hermetic seams.
-   */
-  controlPath?(path: string): string;
-  /** Resolve one declared artifact only when it remains canonically beneath `repoRoot`, without links. */
-  artifactPath?(repoRoot: string, path: string): string | null;
-  /**
-   * Recursive delete of a retired run's roster directory. Optional so an implementation that cannot
-   * delete simply keeps the files — never so a caller can silently skip the cleanup.
-   */
-  removeDir?(path: string): void;
+  removeControlFile(path: RosterPath): void;
+  /** Handle-bound regular-file inspection; `null` only when the final leaf is absent. */
+  inspectArtifact(path: RosterPath, hashMode: NoReparseHashMode): NoReparseFileInfo | null;
+  /** Read the bounded project `.mcp.json` beneath the verified canonical repo root. */
+  readRepoFile(path: RosterPath): string | null;
+  /** Render only; returned paths are for agent prompts and settings, never server I/O. */
+  displayControlPath(path: RosterPath): string;
+  /** Remove one empty trusted control directory. Never recursive. */
+  removeEmptyControlDir(path: RosterPath): void;
 }
 
 /**
@@ -219,12 +200,11 @@ export interface RosterFileSystem {
 interface ArtifactSnapshot {
   /** The declared repo-relative path, as written in the work order. */
   path: string;
-  absolute: string;
   /**
-   * True when the declared path is not a safe repo-relative path. Such a stage can never be verified, so
-   * it can never succeed — recorded here rather than thrown so the run parks with a named reason.
+   * Unsafe source observed at snapshot time. The path and filesystem cases are deliberately distinct:
+   * an unsafe filesystem object is not a malformed work-order declaration.
    */
-  unsafe: boolean;
+  unsafe: 'path' | 'filesystem' | null;
   /**
    * The pre-existing content baseline, or `null` when there was nothing usable there (absent, a
    * directory, or a 0-byte file). `null` means any real file the stage writes counts as new work.
@@ -324,11 +304,16 @@ interface RosterSessionEntry {
   sessionId: string;
   owner: string;
   model: string;
+  /** Rooted control directory; display strings below are never used for server I/O. */
+  controlDir: string[];
   bindingPath: string;
   settingsPath: string;
   /** Fresh server-minted capability proving this particular terminal completed its binding turn. */
   bootToken: string;
   readyPath: string;
+  readyFile: string[];
+  /** Every finite control file this session can leave behind, for handle-safe retirement cleanup. */
+  stageIds: string[];
   /** Cached only on this entry; a replacement session must prove a new ready sentinel. */
   bootReady: boolean;
   /**
@@ -380,159 +365,21 @@ interface RosterRunEntry {
   activity: Map<string, string>;
 }
 
-/**
- * Chunk size for {@link defaultFileSystem}'s hash. Streaming in bounded chunks rather than
- * `readFileSync` keeps memory flat over the biggest declared artifact in this pipeline (`final.mp4`,
- * hundreds of MB), which a whole-file read would pull into the daemon's heap.
- */
-const HASH_CHUNK_BYTES = 1024 * 1024;
-
-/**
- * Resolve a path component-by-component without ever traversing a symlink or Windows reparse point.
- * `lstat` is intentional: `stat` follows the very link this control channel must reject. Existing
- * components are checked before a recursive mkdir/delete/read/write touches them; a canonical parent is
- * returned only after that check, so lexical containment alone is never the safety claim.
- */
-function sameCanonicalPath(left: string, right: string): boolean {
-  const normalize = (value: string): string => value.replace(/\\/g, '/').replace(/\/+$/, '');
-  const normalizedLeft = normalize(left);
-  const normalizedRight = normalize(right);
-  return process.platform === 'win32'
-    ? normalizedLeft.toLowerCase() === normalizedRight.toLowerCase()
-    : normalizedLeft === normalizedRight;
+function createRosterFileSystem(stateRoot: string, repoRoot: string): RosterFileSystem {
+  if (process.platform !== 'win32') throw new RosterSessionError('secure roster filesystem requires Windows native handles');
+  const control = openNoReparseFileTree(join(stateRoot, 'control', 'roster'), { createRoot: true });
+  const repo = openNoReparseFileTree(repoRoot, { createRoot: false });
+  return {
+    ensureControlDir: (path) => control.ensureDir(path),
+    readControlFile: (path) => control.readUtf8(path),
+    writeControlFile: (path, contents) => control.writeUtf8(path, contents),
+    removeControlFile: (path) => control.deleteFileIfPresent(path),
+    removeEmptyControlDir: (path) => control.deleteEmptyDirIfPresent(path),
+    readRepoFile: (path) => repo.readUtf8(path, 64 * 1024),
+    inspectArtifact: (path, hashMode) => repo.inspectRegularFile(path, hashMode),
+    displayControlPath: (path) => control.displayPath(path),
+  };
 }
-
-function verifiedControlPath(path: string): string {
-  const absolute = resolve(path);
-  const root = parse(absolute).root;
-  const parts = relative(root, absolute).split(/[\\/]/).filter(Boolean);
-  let current = root;
-  for (const part of parts) {
-    current = join(current, part);
-    try {
-      const stats = lstatSync(current);
-      // On Windows, Node reports directory junctions/reparse links through lstat's symbolic-link bit.
-      // Never follow one merely because its lexical spelling still begins with the roster root.
-      if (stats.isSymbolicLink()) throw new RosterSessionError(`roster control path contains a link/reparse point: ${current}`);
-      // Defensive for reparse forms a platform reports as directories: canonical resolution must still be
-      // exactly this component, never an external target reached through a junction.
-      if (!sameCanonicalPath(realpathSync(current), current)) {
-        throw new RosterSessionError(`roster control path resolves through a reparse point: ${current}`);
-      }
-    } catch (error) {
-      if (error instanceof RosterSessionError) throw error;
-      break; // The missing suffix will be created by the caller's verified parent operation.
-    }
-  }
-  const parent = dirname(absolute);
-  try {
-    const canonicalParent = realpathSync(parent);
-    return join(canonicalParent, basename(absolute));
-  } catch {
-    // A caller that needs the parent (all roster writes do) creates it through `ensureDir` first.
-    return absolute;
-  }
-}
-
-/** Make one directory one component at a time, checking every existing/new component without following it. */
-function ensureVerifiedControlDir(path: string): void {
-  const absolute = resolve(path);
-  const root = parse(absolute).root;
-  const parts = relative(root, absolute).split(/[\\/]/).filter(Boolean);
-  let current = root;
-  for (const part of parts) {
-    current = join(current, part);
-    try {
-      const stats = lstatSync(current);
-      if (stats.isSymbolicLink() || !stats.isDirectory()) {
-        throw new RosterSessionError(`roster control directory is not a real directory: ${current}`);
-      }
-      if (!sameCanonicalPath(realpathSync(current), current)) {
-        throw new RosterSessionError(`roster control directory resolves through a reparse point: ${current}`);
-      }
-    } catch (error) {
-      if (error instanceof RosterSessionError) throw error;
-      mkdirSync(current);
-      const created = lstatSync(current);
-      if (created.isSymbolicLink() || !created.isDirectory()) {
-        throw new RosterSessionError(`roster control directory could not be safely created: ${current}`);
-      }
-      if (!sameCanonicalPath(realpathSync(current), current)) {
-        throw new RosterSessionError(`roster control directory resolves through a reparse point: ${current}`);
-      }
-    }
-  }
-}
-
-/** Canonically constrain an artifact, refusing both link components and a final link/reparse file. */
-function verifiedArtifactPath(repoRoot: string, declared: string): string | null {
-  try {
-    const root = realpathSync(repoRoot);
-    const candidate = resolve(root, declared);
-    const inside = relative(root, candidate);
-    if (inside === '' || inside.startsWith('..') || isAbsolute(inside)) return null;
-    // Unlike the control path, artifact parents are not created by the server. Every existing component is
-    // lstat-checked; a missing suffix is a legitimate "artifact absent" baseline.
-    const parts = inside.split(/[\\/]/).filter(Boolean);
-    let current = root;
-    for (const part of parts) {
-      current = join(current, part);
-      try {
-        const stats = lstatSync(current);
-        if (stats.isSymbolicLink()) return null;
-        if (!sameCanonicalPath(realpathSync(current), current)) return null;
-      } catch {
-        break;
-      }
-    }
-    return candidate;
-  } catch {
-    return null;
-  }
-}
-
-const defaultFileSystem: RosterFileSystem = {
-  ensureDir: (path) => { ensureVerifiedControlDir(path); },
-  readFile: (path) => {
-    try { return readFileSync(path, 'utf8'); } catch { return null; }
-  },
-  writeFile: (path, contents) => { writeFileSync(path, contents, { encoding: 'utf8' }); },
-  removeFile: (path) => { rmSync(path, { force: true }); },
-  stat: (path) => {
-    try {
-      const stats = lstatSync(path);
-      return { regularFile: stats.isFile() && !stats.isSymbolicLink(), size: stats.size, linked: stats.isSymbolicLink() };
-    } catch {
-      return null;
-    }
-  },
-  hashFile: (path) => {
-    const hash = createHash('sha256');
-    const before = lstatSync(path);
-    if (before.isSymbolicLink() || !before.isFile()) throw new RosterSessionError(`declared artifact is not a regular no-link file: ${path}`);
-    // O_NOFOLLOW is honored on platforms that support it; the lstat/fstat identity check remains the
-    // portable fallback, so a symlink swap cannot turn a hash read into an arbitrary-target read.
-    const fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
-    try {
-      const opened = fstatSync(fd);
-      if (!opened.isFile() || (before.ino !== 0 && opened.ino !== before.ino) || (before.dev !== 0 && opened.dev !== before.dev)) {
-        throw new RosterSessionError(`declared artifact changed while opening: ${path}`);
-      }
-      const buffer = Buffer.allocUnsafe(HASH_CHUNK_BYTES);
-      for (;;) {
-        const read = readSync(fd, buffer, 0, HASH_CHUNK_BYTES, null);
-        if (read <= 0) break;
-        hash.update(buffer.subarray(0, read));
-      }
-    } finally {
-      closeSync(fd);
-    }
-    return hash.digest('hex');
-  },
-  controlPath: (path) => verifiedControlPath(path),
-  artifactPath: (repoRoot, path) => verifiedArtifactPath(repoRoot, path),
-  removeDir: (path) => { rmSync(verifiedControlPath(path), { recursive: true, force: true }); },
-};
 
 /** Drop ANSI/OSC control sequences and bare carriage returns from terminal text. */
 export function stripTerminalControl(chunk: string): string {
@@ -1138,8 +985,8 @@ export function buildRosterPermissionSettings(input: RosterPermissionInput): Ros
  * Project MCP servers are disabled rather than approved: roster stages must not silently gain MCP
  * execution, and disabling every declared server prevents Claude Code's first-seen project trust dialog.
  */
-function disabledProjectMcpjsonServers(fs: RosterFileSystem, repoRoot: string): string[] {
-  const raw = fs.readFile(join(repoRoot, '.mcp.json'));
+function disabledProjectMcpjsonServers(fs: RosterFileSystem): string[] {
+  const raw = fs.readRepoFile(['.mcp.json']);
   if (raw === null) return [];
   try {
     const parsed: unknown = JSON.parse(raw);
@@ -1348,7 +1195,7 @@ const defaultSleep = (ms: number): Promise<void> => new Promise((resolve) => {
 
 /** Create the run-roster session manager. Nothing spawns until `ensureRoster` is called. */
 export function createRosterSessionManager(options: RosterSessionsOptions): RosterSessionManager {
-  const fs = options.fs ?? defaultFileSystem;
+  const fs = options.fs ?? createRosterFileSystem(options.stateRoot, options.repoRoot);
   const now = options.now ?? Date.now;
   const mintToken = options.mintToken ?? (() => randomBytes(16).toString('hex'));
   const cols = options.cols ?? DEFAULT_COLS;
@@ -1366,9 +1213,13 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
    */
   const recoveredActivity = new Map<string, { cursor: number; lines: Map<string, string> }>();
 
-  const runDir = (runRef: string): string => join(options.stateRoot, 'control', 'roster', runRef);
-  /** The real filesystem re-canonicalizes this on every channel operation; fake seams preserve its shape. */
-  const controlPath = (path: string): string => fs.controlPath ? fs.controlPath(path) : path;
+  const controlPath = (runRef: string, ...parts: string[]): string[] => [runRef, ...parts];
+  const displayControlPath = (path: RosterPath): string => fs.displayControlPath(path);
+  const artifactPath = (declared: string): string[] | null => {
+    if (!isSafeRepoRelativePath(declared)) return null;
+    const parts = declared.split('/');
+    return parts.length > 0 && parts.every((part) => part !== '' && part !== '.' && part !== '..') ? parts : null;
+  };
 
   const record = (subject: string, runRef: string, agentId: string, activity: string, status: 'pending' | 'success' | 'failure' | 'waiting' | 'interrupted', stageRef?: string): void => {
     const entry = runs.get(runRef);
@@ -1535,20 +1386,22 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
   const inspectCompletionStatus = (
     entry: RosterSessionEntry,
     pending: PendingDelivery,
-    statusPath: string,
+    statusPath: RosterPath,
   ): boolean => {
     if (entry.pending !== pending) return true;
     let raw: string | null;
     try {
-      raw = fs.readFile(controlPath(statusPath));
+      raw = fs.readControlFile(statusPath);
     } catch (error) {
       const summary = `delivery abandoned: completion channel is unsafe (${error instanceof Error ? error.message : 'unknown control-path error'})`;
       resolvePending(entry, { state: 'waiting-human', summary: summary.slice(0, MAX_SUMMARY_CHARS), usage: zeroUsage(), artifacts: [], checkpoints: [] });
       return true;
     }
-    // Known limitation accepted by Daniel (2026-07-31): cooperative same-user agents can read a sibling
-    // bearer token/status path and forge a zero-artifact or gate-stage receipt. Artifact stages still need
-    // server-side delta/link verification below; authenticated IPC/OS isolation was rejected for this fleet.
+    // Known limitation accepted by Daniel (2026-07-31): a cooperative same-user sibling can read this
+    // bearer token/status path and forge a receipt. For an artifact stage it can also create or change the
+    // declared ordinary in-repo artifact. The delta/link checks below still reject receipt-only, stale,
+    // unchanged, unsafe, and external-reparse artifacts; they cannot attribute the surviving change to a
+    // particular writer. Authenticated IPC/OS isolation was explicitly rejected for this fleet.
     const status = parseCompletionStatus(raw, pending.token);
     if (!status) return false;
     const summary = safeSummary(
@@ -1568,7 +1421,7 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
   const pollCompletionStatus = (
     entry: RosterSessionEntry,
     pending: PendingDelivery,
-    statusPath: string,
+    statusPath: RosterPath,
     live: () => boolean,
     settleLivenessLoss: () => void,
   ): void => {
@@ -1594,21 +1447,17 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
    */
   const snapshotDeclaredArtifacts = (proposalStage: ProposalStage): ArtifactSnapshot[] =>
     proposalStage.artifacts.map((artifact) => {
-      if (!isSafeRepoRelativePath(artifact.path)) {
-        return { path: artifact.path, absolute: '', unsafe: true, before: null };
+      const path = artifactPath(artifact.path);
+      if (path === null) return { path: artifact.path, unsafe: 'path', before: null };
+      try {
+        // An inherited nonempty artifact is hashed during THIS handle-bound probe, never by a later pathname open.
+        const file = fs.inspectArtifact(path, 'always');
+        if (file === null || file.size === 0) return { path: artifact.path, unsafe: null, before: null };
+        if (file.sha256 === null) return { path: artifact.path, unsafe: 'filesystem', before: null };
+        return { path: artifact.path, unsafe: null, before: { size: file.size, hash: file.sha256 } };
+      } catch {
+        return { path: artifact.path, unsafe: 'filesystem', before: null };
       }
-      const absolute = fs.artifactPath ? fs.artifactPath(options.repoRoot, artifact.path) : join(options.repoRoot, artifact.path);
-      if (absolute === null) {
-        return { path: artifact.path, absolute: '', unsafe: true, before: null };
-      }
-      const stat = fs.stat(absolute);
-      const usable = stat !== null && stat.regularFile && !stat.linked && stat.size > 0;
-      return {
-        path: artifact.path,
-        absolute,
-        unsafe: false,
-        before: usable ? { size: stat.size, hash: fs.hashFile(absolute) } : null,
-      };
     });
 
   /**
@@ -1634,29 +1483,29 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
   const unsatisfiedArtifacts = (snapshots: readonly ArtifactSnapshot[]): string[] => {
     const problems: string[] = [];
     for (const snapshot of snapshots) {
-      if (snapshot.unsafe) {
+      if (snapshot.unsafe === 'path') {
         problems.push(`${snapshot.path} (not a safe repo-relative path)`);
         continue;
       }
-      // Re-resolve from the declared path at completion. The artifact may have been absent at the
-      // delivery snapshot, so a parent component can become a junction after that snapshot; reading
-      // `snapshot.absolute` directly would then follow a path the server never verified for this phase.
-      const completedPath = fs.artifactPath
-        ? fs.artifactPath(options.repoRoot, snapshot.path)
-        : join(options.repoRoot, snapshot.path);
-      if (completedPath === null || !sameCanonicalPath(completedPath, snapshot.absolute)) {
-        problems.push(`${snapshot.path} (link or reparse point)`);
+      if (snapshot.unsafe === 'filesystem') {
+        problems.push(`${snapshot.path} (unsafe filesystem object)`);
         continue;
       }
-      const after = fs.stat(completedPath);
+      const path = artifactPath(snapshot.path);
+      if (path === null) {
+        problems.push(`${snapshot.path} (not a safe repo-relative path)`);
+        continue;
+      }
+      let after: NoReparseFileInfo | null;
+      try {
+        // When the inherited size is unchanged, this very same opened handle is also hashed for comparison.
+        after = fs.inspectArtifact(path, snapshot.before === null ? 'never' : snapshot.before.size);
+      } catch {
+        problems.push(`${snapshot.path} (link or reparse point, hardlink, directory, or unsafe file)`);
+        continue;
+      }
       if (after === null) {
         problems.push(`${snapshot.path} (missing)`);
-        continue;
-      }
-      // Both of these satisfied the old `existsSync`: a directory wearing the artifact's name, and a
-      // 0-byte file.
-      if (!after.regularFile || after.linked) {
-        problems.push(`${snapshot.path} (${after.linked ? 'link or reparse point' : 'not a regular file'})`);
         continue;
       }
       if (after.size === 0) {
@@ -1667,7 +1516,7 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
       // Size is the cheap discriminator, so the big artifacts (`final.mp4`) are hashed on the
       // verification side ONLY when their size did not move and the bytes must actually be compared.
       if (after.size !== snapshot.before.size) continue;
-      if (fs.hashFile(completedPath) !== snapshot.before.hash) continue;
+      if (after.sha256 !== snapshot.before.hash) continue;
       problems.push(`${snapshot.path} (byte-identical to the file already there when the order was delivered)`);
     }
     return problems;
@@ -1741,7 +1590,7 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
     for (;;) {
       if (!live()) return 'gone';
       try {
-        if (bootReady(fs.readFile(controlPath(entry.readyPath)), entry.bootToken)) {
+        if (bootReady(fs.readControlFile(entry.readyFile), entry.bootToken)) {
           entry.bootReady = true;
           return 'ready';
         }
@@ -1751,7 +1600,7 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
       if (now() - started >= budgetMs) {
         // One final synchronous read closes the write-at-deadline boundary without granting a stale token.
         try {
-          if (bootReady(fs.readFile(controlPath(entry.readyPath)), entry.bootToken)) {
+          if (bootReady(fs.readControlFile(entry.readyFile), entry.bootToken)) {
             entry.bootReady = true;
             return 'ready';
           }
@@ -1799,41 +1648,48 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
     verified: ResolvedAssignedAgent,
     proposal: PlanProposal,
   ): RosterSessionEntry => {
-    const agentDir = join(runDir(runRef), agentId);
-    fs.ensureDir(join(agentDir, 'orders'));
-    fs.ensureDir(join(agentDir, 'status'));
-    const bindingPath = controlPath(join(agentDir, 'binding.md'));
-    const readyPath = controlPath(join(agentDir, 'ready.json'));
+    const controlDir = controlPath(runRef, agentId);
+    const ordersDir = [...controlDir, 'orders'];
+    const statusDir = [...controlDir, 'status'];
+    const bindingFile = [...controlDir, 'binding.md'];
+    const readyFile = [...controlDir, 'ready.json'];
+    fs.ensureControlDir(ordersDir);
+    fs.ensureControlDir(statusDir);
+    const bindingPath = displayControlPath(bindingFile);
+    const readyPath = displayControlPath(readyFile);
     const bootToken = mintToken();
     if (!/^[a-f0-9]{32}$/.test(bootToken)) throw new RosterSessionError('roster boot token is malformed');
     // Stale readiness is as unsafe as stale completion: clear it before the launch exposes a new token.
-    fs.removeFile(readyPath);
-    fs.writeFile(bindingPath, bindingMarkdown({
+    fs.removeControlFile(readyFile);
+    fs.writeControlFile(bindingFile, bindingMarkdown({
       runRef, agentId, verified, project: run.project, parameters: run.parameters, workDir: run.workDir,
       readyPath, bootToken,
     }));
     // THE SCOPED PER-RUN PERMISSIONS. Written BEFORE the launch line is typed, from the compiled
     // proposal's own declared scope and the server-owned tool cap — never a blanket flag, never a
     // pre-trusted path, never anything outside `scope.read ∪ scope.write` plus this agent's own order/status
-    // channels. It lives inside the roster run directory, so `retireRun`'s `removeDir` is already its
-    // cleanup: the grant cannot outlive the run it was minted for.
+    // channels. It lives inside the roster run directory and retirement removes only its finite,
+    // server-authored leaves, so the grant cannot outlive the run it was minted for.
     const scope = rosterAgentScope(proposal, agentId);
-    const settingsPath = controlPath(join(agentDir, 'settings.json'));
-    const statusPaths = proposal.stages
+    const settingsFile = [...controlDir, 'settings.json'];
+    const settingsPath = displayControlPath(settingsFile);
+    const stageIds = proposal.stages
       .filter((stage) => stage.assignment?.agentId === agentId)
-      .map((stage) => join(agentDir, 'status', `${stage.id}.json`));
-    fs.writeFile(settingsPath, buildRosterPermissionSettings({
+      .map((stage) => stage.id);
+    const statusPaths = stageIds.map((stageId) => displayControlPath([...statusDir, `${stageId}.json`]));
+    fs.writeControlFile(settingsFile, buildRosterPermissionSettings({
       repoRoot: options.repoRoot,
-      agentDir,
+      agentDir: displayControlPath(controlDir),
       statusPaths,
       readyPath,
       read: scope.read,
       write: scope.write,
       tools: rosterAgentTools(proposal, agentId, resolveWorkflowTools),
-      disabledMcpjsonServers: disabledProjectMcpjsonServers(fs, options.repoRoot),
+      disabledMcpjsonServers: disabledProjectMcpjsonServers(fs),
     }).json);
-    const mcpConfigPath = controlPath(join(agentDir, 'mcp.json'));
-    fs.writeFile(mcpConfigPath, `${JSON.stringify({ mcpServers: {} }, null, 2)}\n`);
+    const mcpConfigFile = [...controlDir, 'mcp.json'];
+    const mcpConfigPath = displayControlPath(mcpConfigFile);
+    fs.writeControlFile(mcpConfigFile, `${JSON.stringify({ mcpServers: {} }, null, 2)}\n`);
     const created = options.registry.create(run.owner, options.host, {
       requestId: '', cwd: run.workDir, cols, rows,
     });
@@ -1842,10 +1698,13 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
       sessionId: created.sessionId,
       owner: run.owner,
       model: verified.assignment.model,
+      controlDir,
       bindingPath,
       settingsPath,
       bootToken,
       readyPath,
+      readyFile,
+      stageIds,
       bootReady: false,
       screen: '',
       lastSemanticAt: now(),
@@ -1876,7 +1735,8 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
     const run = runs.get(runRef);
     if (!run) return [];
     const retired: string[] = [];
-    for (const entry of run.sessions.values()) {
+    const entries = [...run.sessions.values()];
+    for (const entry of entries) {
       settlePending(run, runRef, entry, `delivery abandoned: roster retired (${reason})`);
       entry.unobserve();
       // Graceful stop first (the REPL exits cleanly and flushes), then reap the process group.
@@ -1888,27 +1748,26 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
     run.sessions.clear();
     runs.delete(runRef);
     recoveredActivity.delete(runRef);
-    // Order files and binding contexts carry this run's completion tokens in plaintext. A retired
-    // roster's tokens are already dead (every pending delivery settled above, every session closed), so
-    // keeping the directory is a needless durable copy of them. A resume re-authors both from the
-    // immutable proposal, so nothing here is load-bearing state.
-    //
-    // TODO(roster-boot-sweep): this is the ONLY thing that deletes a roster directory, and it runs only
-    // on a graceful path — `retireAll` from daemon shutdown (`http/surface.ts`) and from an operator
-    // `lock()` (`activation.ts`). A SIGKILL or power loss therefore leaves `<stateRoot>/control/roster/
-    // <runRef>/<agentId>/{settings.json,binding.md,orders/*.md}` on disk indefinitely, tokens included.
-    // The close is a boot sweep of roster dirs with no live run, which needs three things this file does
-    // not have yet: (1) a `listDirs(path): string[]` member on {@link RosterFileSystem} (real impl:
-    // `readdirSync(path, { withFileTypes: true })`, absent dir → `[]`), so tests keep their disk-free
-    // seam; (2) a call in `createRosterSessionManager` — NOT unconditional: `runs` is empty at
-    // construction, so a naive sweep would delete a LIVE run's order channel if the manager is ever
-    // reconstructed while another instance holds sessions (`activateExecution` is re-entrant across an
-    // unlock). Gate it on the store: sweep a `<runRef>` only when `store.getRun` says the run is in a
-    // terminal state or is unknown. (3) One test per branch. Deliberately NOT done in this pass: the
-    // orphan itself is inert (a settings file is only read by a process launched with `--settings` at
-    // that exact path, and `scan` matches only the LIVE `pending.token`), and getting (2) wrong loses a
-    // running roster's orders — a strictly worse failure than the leak it closes.
-    try { fs.removeDir?.(runDir(runRef)); } catch { /* a locked file must never block the reap */ }
+    // Order files and binding contexts carry tokens in plaintext. Their tokens are dead after the
+    // settles above, so remove the finite, server-authored leaves through rooted handles. Deliberately
+    // never recurse: an unexpected file or a busy directory remains for an operator rather than making
+    // cleanup traverse an attacker-controlled namespace.
+    try {
+      // Delete only finite server-authored leaves, then empty directories by handle. Unknown content is retained.
+      for (const entry of entries) {
+        for (const name of ['binding.md', 'settings.json', 'mcp.json', 'ready.json']) {
+          fs.removeControlFile([...entry.controlDir, name]);
+        }
+        for (const stageId of entry.stageIds) {
+          fs.removeControlFile([...entry.controlDir, 'orders', `${stageId}.md`]);
+          fs.removeControlFile([...entry.controlDir, 'status', `${stageId}.json`]);
+        }
+        fs.removeEmptyControlDir([...entry.controlDir, 'orders']);
+        fs.removeEmptyControlDir([...entry.controlDir, 'status']);
+        fs.removeEmptyControlDir(entry.controlDir);
+      }
+      fs.removeEmptyControlDir([runRef]);
+    } catch { /* a locked or unexpectedly populated path must never block the reap */ }
     return retired;
   };
 
@@ -2112,8 +1971,10 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
       } catch {
         return settleLeaseError('declared-artifact snapshot could not be safely captured');
       }
-      const orderPath = join(runDir(input.runRef), agentId, 'orders', `${input.stageId}.md`);
-      const statusPath = join(runDir(input.runRef), agentId, 'status', `${input.stageId}.json`);
+      const orderFile = [...entry.controlDir, 'orders', `${input.stageId}.md`];
+      const statusFile = [...entry.controlDir, 'status', `${input.stageId}.json`];
+      const orderPath = displayControlPath(orderFile);
+      const statusPath = displayControlPath(statusFile);
       // Hashing a large inherited artifact is synchronous. Drain once so PTY output queued during that
       // snapshot can update the screen, then re-check immediately before the first delivery write.
       try {
@@ -2130,18 +1991,16 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
 
       try {
         if (!live()) return settleLivenessLoss('before preparing the order channel');
-        fs.ensureDir(join(runDir(input.runRef), agentId, 'orders'));
+        fs.ensureControlDir([...entry.controlDir, 'orders']);
         if (!live()) return settleLivenessLoss('while preparing the order channel');
-        fs.ensureDir(join(runDir(input.runRef), agentId, 'status'));
+        fs.ensureControlDir([...entry.controlDir, 'status']);
         // Snapshot-and-clear: a prior attempt's status can never satisfy this delivery.
-        const safeStatusPath = controlPath(statusPath);
         if (!live()) return settleLivenessLoss('before clearing the completion channel');
-        fs.removeFile(safeStatusPath);
-        const safeOrderPath = controlPath(orderPath);
+        fs.removeControlFile(statusFile);
         if (!live()) return settleLivenessLoss('before writing the order channel');
-        fs.writeFile(safeOrderPath, orderMarkdown({
+        fs.writeControlFile(orderFile, orderMarkdown({
           runRef: input.runRef, stageId: input.stageId, attemptRef: input.attemptRef, token,
-          statusPath: safeStatusPath, proposalStage: input.proposalStage, parameters: run.parameters, workDir: run.workDir,
+          statusPath, proposalStage: input.proposalStage, parameters: run.parameters, workDir: run.workDir,
         }));
       } catch (error) {
         if (entry.pending === pending) {
@@ -2162,7 +2021,7 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
         }
         // A receipt written immediately before the timer tick must win over timeout even if its scheduled
         // poll was registered later than this deadline callback.
-        if (inspectCompletionStatus(entry, pending, statusPath)) return;
+        if (inspectCompletionStatus(entry, pending, statusFile)) return;
         const summary = `delivery abandoned: stage ${input.stageId} wrote no completion status within `
           + `${Math.round(timeoutMs / 60_000)} min (${DELIVERY_TIMEOUT_REASON}) — open the ${agentId} `
           + 'terminal to see what it is doing, then re-run the stage';
@@ -2205,7 +2064,7 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
         }
         // Completion polling starts after the first successful Enter, not after a busy repaint. A fast valid
         // receipt is therefore accepted even when the terminal returns idle before any spinner is observed.
-        pollCompletionStatus(entry, pending, statusPath, live, () => { void settleLivenessLoss('while polling the completion channel'); });
+        pollCompletionStatus(entry, pending, statusFile, live, () => { void settleLivenessLoss('while polling the completion channel'); });
         // OUTCOME-VERIFY THE SUBMISSION. Bytes written is not a turn started — see {@link
         // SUBMIT_VERIFY_RETRIES}. Poll for positive evidence the turn engaged (a busy transition decoded
         // after this delivery's Enter), re-submitting up to SUBMIT_VERIFY_RETRIES —
