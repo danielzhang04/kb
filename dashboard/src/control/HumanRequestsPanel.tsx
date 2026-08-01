@@ -4,6 +4,7 @@ import {
   activateRun,
   getRun,
   listRuns,
+  recoverAuthorized20260731ExecutionLock,
   resolveReviewCompletionGate,
   respondToHumanRequest,
   resumeRunAfterHumanResponse,
@@ -19,7 +20,13 @@ function requestKey(request: HumanRequestDto, decision: HumanRequestDecision): s
   return `human:${request.requestRef}:${request.revision}:${decision}`;
 }
 
-type OpenRequest = { request: HumanRequestDto; completionGate: boolean };
+type LegacyRecoveryBinding = {
+  expectedRunVersion: number;
+  expectedManagerGeneration: number;
+  expectedRequestRevision: number;
+  idempotencyKey: string;
+};
+type OpenRequest = { request: HumanRequestDto; completionGate: boolean; legacyRecovery: LegacyRecoveryBinding | null };
 type ResumeBinding = Pick<RunDetailDto['run'], 'runRef' | 'version' | 'managerGeneration' | 'proposalHash'>;
 type StrandedRun = { run: RunMetadataDto; resumeBinding: ResumeBinding | null };
 
@@ -56,7 +63,26 @@ export function HumanRequestsPanel({
     const details = await Promise.all(active.map((run) => getRun(run.runRef, activeToken, fetchImpl)));
     setRequests(details.flatMap((detail: RunDetailDto) => detail.humanRequests
       .filter((request) => request.state === 'open')
-      .map((request) => ({ request, completionGate: detail.reviewReceipts?.some((receipt) => receipt.completionRequestRef === request.requestRef) ?? false }))));
+      .map((request) => {
+        const exactLegacyMarker = detail.run.runRef === 'run-0aa72053-b9d7-41fa-a034-19871b66d214'
+          && detail.run.publicationState === 'published' && detail.run.state === 'waiting-human'
+          && detail.run.version === 4 && detail.run.managerGeneration === 1
+          && request.requestRef === 'request-86d0fc5f-797b-483c-a706-96a45e6f4d6e'
+          && request.runRef === detail.run.runRef && request.stageRef === null
+          && request.kind === 'governance-refusal' && request.revision === 1 && request.response === null
+          && request.title === 'Automatic execution activation is gated'
+          && request.prompt === 'Canonical cards are published, but the daemon Broker/execution adapters are not activated. Complete the separate runtime approval before release.';
+        return {
+          request,
+          completionGate: detail.reviewReceipts?.some((receipt) => receipt.completionRequestRef === request.requestRef) ?? false,
+          legacyRecovery: exactLegacyMarker ? {
+            expectedRunVersion: detail.run.version,
+            expectedManagerGeneration: detail.run.managerGeneration,
+            expectedRequestRevision: request.revision,
+            idempotencyKey: `legacy-execution-lock-recovery:${detail.run.runRef}:${request.requestRef}:r${request.revision}`,
+          } : null,
+        };
+      })));
     const detailByRun = new Map(details.map((detail) => [detail.run.runRef, detail]));
     setStrandedRuns(runs
       .filter((run) => run.state === 'waiting-human' && run.openHumanRequestCount === 0)
@@ -114,6 +140,16 @@ export function HumanRequestsPanel({
       .finally(() => setBusy(false));
   };
 
+  const recoverLegacyBoundary = (binding: LegacyRecoveryBinding): void => {
+    if (!token || busy) return;
+    setBusy(true);
+    setError(null);
+    void recoverAuthorized20260731ExecutionLock(binding, token, fetchImpl)
+      .then(() => refresh(token))
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Legacy boundary recovery was refused.'))
+      .finally(() => setBusy(false));
+  };
+
   return (
     <section className="control-inbox-requests mc-panel" aria-label="Managed Human Requests">
       <header className="control-managed-runs__head">
@@ -139,25 +175,35 @@ export function HumanRequestsPanel({
           <p className="control-help mc-mono" data-testid={`inspect-run-${run.runRef}`}>run {run.runRef}</p>
         </article>
       ))}
-      {requests.map(({ request, completionGate }) => (
+      {requests.map(({ request, completionGate, legacyRecovery }) => (
         <article key={request.requestRef} className="control-request" data-review-completion-gate={completionGate || undefined}>
           <p className="control-eyebrow">{request.kind} · revision {request.revision} · run {request.runRef}</p>
           <h3>{completionGate ? `Review completion gate: ${request.title}` : request.title}</h3>
           <p>{request.prompt}</p>
-          <label htmlFor={`inbox-response-${request.requestRef}`}>Response</label>
-          <textarea
-            id={`inbox-response-${request.requestRef}`}
-            value={responses[request.requestRef] ?? ''}
-            onChange={(event) => setResponses((current) => ({ ...current, [request.requestRef]: event.target.value }))}
-            disabled={busy}
-          />
-          <div className="control-actions">
-            {decisionsForHumanRequest(request.kind).map((decision) => (
-              <button key={decision} type="button" className={decision === 'approved' ? 'mc-btn mc-btn--primary' : 'mc-btn'} disabled={busy} onClick={() => respond({ request, completionGate }, decision)}>
-                {decision === 'changes-requested' ? 'Request changes' : decision[0].toUpperCase() + decision.slice(1)}
+          {legacyRecovery ? (
+            <div className="control-actions">
+              <button type="button" className="mc-btn mc-btn--primary" disabled={busy} onClick={() => recoverLegacyBoundary(legacyRecovery)}>
+                Repair execution-lock boundary
               </button>
-            ))}
-          </div>
+            </div>
+          ) : (
+            <>
+              <label htmlFor={`inbox-response-${request.requestRef}`}>Response</label>
+              <textarea
+                id={`inbox-response-${request.requestRef}`}
+                value={responses[request.requestRef] ?? ''}
+                onChange={(event) => setResponses((current) => ({ ...current, [request.requestRef]: event.target.value }))}
+                disabled={busy}
+              />
+              <div className="control-actions">
+                {decisionsForHumanRequest(request.kind).map((decision) => (
+                  <button key={decision} type="button" className={decision === 'approved' ? 'mc-btn mc-btn--primary' : 'mc-btn'} disabled={busy} onClick={() => respond({ request, completionGate, legacyRecovery: null }, decision)}>
+                    {decision === 'changes-requested' ? 'Request changes' : decision[0].toUpperCase() + decision.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </article>
       ))}
     </section>

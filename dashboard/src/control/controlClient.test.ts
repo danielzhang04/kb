@@ -10,6 +10,7 @@ import {
   listRunEvents,
   parseExecutionPosture,
   quarantineRuns,
+  recoverAuthorized20260731ExecutionLock,
   rerouteManagedStage,
   resolveReviewCompletionGate,
   respondToHumanRequest,
@@ -387,6 +388,26 @@ describe('control client run and retention writes', () => {
       expectedRunVersion: 5,
       expectedManagerGeneration: 1,
       idempotencyKey: `activate:run-1:5:${'a'.repeat(64)}:1`,
+    });
+  });
+
+  it('posts the exact authorized legacy execution-lock recovery CAS to its non-generic route', async () => {
+    const fetchImpl = recordedFetch({ ok: true, value: { request: {} } });
+    await recoverAuthorized20260731ExecutionLock({
+      expectedRunVersion: 4,
+      expectedManagerGeneration: 1,
+      expectedRequestRevision: 1,
+      idempotencyKey: 'authorized-repair',
+    }, 'bearer', fetchImpl);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      '/api/control/recovery/2026-07-31/execution-lock',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(requestBody(fetchImpl as unknown as ReturnType<typeof vi.fn>)).toEqual({
+      expectedRunVersion: 4,
+      expectedManagerGeneration: 1,
+      expectedRequestRevision: 1,
+      idempotencyKey: 'authorized-repair',
     });
   });
 

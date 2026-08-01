@@ -241,6 +241,10 @@ interface StoredHumanRequest extends HumanRequest {
   operationKey?: string | null;
   operationFingerprint?: string | null;
   resolutionOperationFingerprint?: string | null;
+  /** Private, one-off repair idempotency. Deliberately separate from the request's creation key. */
+  legacyRecoveryOperationKey?: string | null;
+  legacyRecoveryOperationFingerprint?: string | null;
+  legacyRecoveryEventCursor?: number | null;
 }
 
 interface StoredEvent extends OperationalEvent {
@@ -506,6 +510,22 @@ export interface RespondHumanRequestInput {
   response?: string | null;
 }
 
+export interface RecoverAuthorized20260731ExecutionLockInput {
+  expectedRunVersion: number;
+  expectedManagerGeneration: number;
+  expectedRequestRevision: number;
+  idempotencyKey: string;
+}
+
+export interface RecoverAuthorized20260731ExecutionLockResult {
+  request: HumanRequest;
+  event: OperationalEvent;
+}
+
+export type RecoverAuthorized20260731ExecutionLockPreflight =
+  | { disposition: 'eligible'; result: null }
+  | { disposition: 'replay'; result: RecoverAuthorized20260731ExecutionLockResult };
+
 export interface CreateManagerSuccessorInput {
   expectedManagerGeneration: number;
   runtime: string;
@@ -667,6 +687,15 @@ export interface ControlPlaneStore extends BrokerStoreBackend {
   ): ControlResult<HumanRequest[]>;
   reviseHumanRequest(subject: string, requestRef: string, expectedRevision: number, title: string, prompt: string): ControlResult<HumanRequest>;
   respondHumanRequest(subject: string, requestRef: string, input: RespondHumanRequestInput): ControlResult<HumanRequest>;
+  /** Daniel-authorized, exact-run repair for the 2026-07-31 execution-lock launch defect. */
+  preflightAuthorized20260731ExecutionLock(
+    subject: string,
+    input: RecoverAuthorized20260731ExecutionLockInput,
+  ): ControlResult<RecoverAuthorized20260731ExecutionLockPreflight>;
+  recoverAuthorized20260731ExecutionLock(
+    subject: string,
+    input: RecoverAuthorized20260731ExecutionLockInput,
+  ): ControlResult<RecoverAuthorized20260731ExecutionLockResult>;
 
   appendEvent(subject: string, runRef: string, input: OperationalEventInput): ControlResult<OperationalEvent>;
   listEvents(subject: string, runRef: string, afterCursor?: number, limit?: number): ControlResult<OperationalEvent[]>;
@@ -1034,6 +1063,9 @@ function publicRequest(value: StoredHumanRequest): HumanRequest {
     operationKey: _operationKey,
     operationFingerprint: _operationFingerprint,
     resolutionOperationFingerprint: _resolutionOperationFingerprint,
+    legacyRecoveryOperationKey: _legacyRecoveryOperationKey,
+    legacyRecoveryOperationFingerprint: _legacyRecoveryOperationFingerprint,
+    legacyRecoveryEventCursor: _legacyRecoveryEventCursor,
     ...request
   } = value;
   return clone(request);
@@ -1168,6 +1200,208 @@ function validRunActivationInput(input: RunActivationInput): boolean {
     && Number.isSafeInteger(input.expectedManagerGeneration) && input.expectedManagerGeneration >= 1;
 }
 
+export const AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF = 'run-0aa72053-b9d7-41fa-a034-19871b66d214';
+export const AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF = 'request-86d0fc5f-797b-483c-a706-96a45e6f4d6e';
+export const AUTHORIZED_20260731_EXECUTION_LOCK_TITLE = 'Automatic execution activation is gated';
+export const AUTHORIZED_20260731_EXECUTION_LOCK_OLD_PROMPT = 'Canonical cards are published, but the daemon Broker/execution adapters are not activated. Complete the separate runtime approval before release.';
+export const AUTHORIZED_20260731_EXECUTION_LOCK_NEW_PROMPT = 'Canonical cards are published. Unlock execution with your passkey, mark this intervention responded, then resume this same run.';
+
+const AUTHORIZED_20260731_STAGE_STATES = new Map<string, StageState>([
+  ['idea', 'ready'],
+  ['story', 'blocked'],
+  ['judge-gate', 'blocked'],
+  ['packaging', 'blocked'],
+  ['visual-plan', 'blocked'],
+  ['shots-merge', 'blocked'],
+  ['slice-contract', 'blocked'],
+  ['images', 'blocked'],
+  ['image-review', 'blocked'],
+  ['audio', 'blocked'],
+  ['audio-plan-merge', 'blocked'],
+  ['render', 'blocked'],
+  ['verify', 'blocked'],
+]);
+const AUTHORIZED_20260731_SOL_STAGES = new Set([
+  'judge-gate', 'shots-merge', 'slice-contract', 'image-review', 'audio-plan-merge', 'verify',
+]);
+
+function authorized20260731RecoveryFingerprint(input: RecoverAuthorized20260731ExecutionLockInput): string {
+  return sha256(canonicalJson({
+    runRef: AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF,
+    requestRef: AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF,
+    expectedRunVersion: input.expectedRunVersion,
+    expectedManagerGeneration: input.expectedManagerGeneration,
+    expectedRequestRevision: input.expectedRequestRevision,
+    kind: 'intervention',
+    title: AUTHORIZED_20260731_EXECUTION_LOCK_TITLE,
+    prompt: AUTHORIZED_20260731_EXECUTION_LOCK_NEW_PROMPT,
+  }));
+}
+
+function validateAuthorized20260731RecoveryDurability(
+  humanRequests: readonly StoredHumanRequest[],
+  events: readonly StoredEvent[],
+): void {
+  const recoveryCursors = new Set<number>();
+  const expectedFingerprint = authorized20260731RecoveryFingerprint({
+    expectedRunVersion: 4, expectedManagerGeneration: 1, expectedRequestRevision: 1, idempotencyKey: 'validation-only',
+  });
+  for (const request of humanRequests) {
+    const fields = [
+      request.legacyRecoveryOperationKey,
+      request.legacyRecoveryOperationFingerprint,
+      request.legacyRecoveryEventCursor,
+    ];
+    if (fields.every((value) => value == null)) continue;
+    if (fields.some((value) => value == null)
+      || request.requestRef !== AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF
+      || request.runRef !== AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF
+      || request.operationKey != null || request.operationFingerprint != null
+      || !validNonEmpty(request.legacyRecoveryOperationKey, MAX_SHORT_TEXT)
+      || request.legacyRecoveryOperationFingerprint !== expectedFingerprint
+      || !Number.isSafeInteger(request.legacyRecoveryEventCursor) || (request.legacyRecoveryEventCursor ?? 0) < 1
+      || recoveryCursors.has(request.legacyRecoveryEventCursor as number)
+      || request.kind !== 'intervention' || request.revision !== 2
+      || request.title !== AUTHORIZED_20260731_EXECUTION_LOCK_TITLE
+      || request.prompt !== AUTHORIZED_20260731_EXECUTION_LOCK_NEW_PROMPT) {
+      throw new Error('invalid control-plane authorized legacy recovery receipt');
+    }
+    const event = events.find((candidate) => candidate.subject === request.subject
+      && candidate.runRef === request.runRef && candidate.cursor === request.legacyRecoveryEventCursor);
+    if (!event || event.kind !== 'governance' || event.source !== 'human' || event.status !== 'success'
+      || event.stageRef !== null || event.attemptRef !== null || event.sessionRef !== null
+      || event.summary !== 'authorized 2026-07-31 execution-lock boundary reclassified to intervention'
+      || event.command !== null || event.toolName !== null || event.path !== null
+      || event.diff !== null || event.checkpoint !== null) {
+      throw new Error('invalid control-plane authorized legacy recovery event');
+    }
+    recoveryCursors.add(request.legacyRecoveryEventCursor as number);
+  }
+}
+
+function exactAuthorized20260731NeverStartedState(
+  document: StoreDocument,
+  subject: string,
+  run: StoredRun,
+  request: StoredHumanRequest,
+  input: RecoverAuthorized20260731ExecutionLockInput,
+): boolean {
+  if (run.runRef !== AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF
+    || request.requestRef !== AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF
+    || request.runRef !== run.runRef
+    || run.publicationState !== 'published' || run.state !== 'waiting-human'
+    || input.expectedRunVersion !== 4 || input.expectedManagerGeneration !== 1 || input.expectedRequestRevision !== 1
+    || run.version !== input.expectedRunVersion || run.managerGeneration !== input.expectedManagerGeneration
+    || (run.activationReceipts ?? []).length !== 0
+    || request.stageRef !== null || request.kind !== 'governance-refusal'
+    || request.revision !== input.expectedRequestRevision || request.state !== 'open' || request.response !== null
+    || request.title !== AUTHORIZED_20260731_EXECUTION_LOCK_TITLE
+    || request.prompt !== AUTHORIZED_20260731_EXECUTION_LOCK_OLD_PROMPT
+    || request.operationKey != null || request.operationFingerprint != null
+    || request.resolutionOperationFingerprint != null
+    || request.legacyRecoveryOperationKey != null || request.legacyRecoveryOperationFingerprint != null
+    || request.legacyRecoveryEventCursor != null) return false;
+
+  const requests = document.humanRequests.filter((item) => item.subject === subject && item.runRef === run.runRef);
+  if (requests.length !== 1 || requests[0] !== request) return false;
+
+  const stages = document.stages.filter((item) => item.subject === subject && item.runRef === run.runRef);
+  if (stages.length !== AUTHORIZED_20260731_STAGE_STATES.size
+    || new Set(stages.map((stage) => stage.canonicalCardRef)).size !== stages.length
+    || stages.some((stage) => AUTHORIZED_20260731_STAGE_STATES.get(stage.stageId) !== stage.state || stage.version !== 3
+      || stage.canonicalCardRef === null || stage.currentAttemptRef === null
+      || stage.currentGeneration !== 1 || stage.currentGenerationRef !== null || stage.acceptedGenerationRef !== null)) return false;
+
+  const attempts = document.attempts.filter((item) => item.subject === subject && item.runRef === run.runRef);
+  if (attempts.length !== stages.length || attempts.some((attempt) => {
+    const stage = stages.find((candidate) => candidate.stageRef === attempt.stageRef);
+    const expectedModel = stage && AUTHORIZED_20260731_SOL_STAGES.has(stage.stageId) ? 'gpt-5.6-sol' : 'gpt-5.6-terra';
+    return !stage || stage.currentAttemptRef !== attempt.attemptRef || attempt.state !== 'queued' || attempt.version !== 2
+      || attempt.generation !== 1 || attempt.runtime !== 'codex' || attempt.model !== expectedModel
+      || attempt.managedSessionRef === null || attempt.predecessorAttemptRef !== null
+      || attempt.reviewSubjectGenerationRef !== null || attempt.reviewSubjectResultHash !== null
+      || attempt.reviewSubjectCanonicalCommit !== null || attempt.logicalGeneration !== null
+      || attempt.baseGenerationRef !== null || attempt.baseCommit !== null;
+  })) return false;
+
+  const sessions = document.sessions.filter((item) => item.subject === subject && item.runRef === run.runRef);
+  const managers = sessions.filter((session) => session.role === 'manager');
+  const workers = sessions.filter((session) => session.role === 'worker');
+  if (sessions.length !== 14 || managers.length !== 1 || workers.length !== attempts.length) return false;
+  const manager = managers[0];
+  if (!manager || manager.sessionRef !== run.managerSessionRef || manager.generation !== run.managerGeneration
+    || manager.runtime !== 'codex' || manager.model !== 'gpt-5.6-sol' || manager.version !== 1
+    || manager.stageRef !== null || manager.attemptRef !== null || manager.predecessorSessionRef !== null) return false;
+  if (sessions.some((session) => session.state !== 'pending' || session.operationKey != null || session.operationFingerprint != null
+    || session.brokerProfileId != null || session.brokerApprovedPromptHash != null || session.brokerStopRequested === true
+    || (session.brokerSteering ?? []).length !== 0 || (session.brokerReceipts ?? []).length !== 0)) return false;
+  if (workers.some((session) => {
+    const attempt = attempts.find((candidate) => candidate.attemptRef === session.attemptRef);
+    return !attempt || session.stageRef !== attempt.stageRef || attempt.managedSessionRef !== session.sessionRef
+      || session.runtime !== attempt.runtime || session.model !== attempt.model || session.version !== 1
+      || session.generation !== 1 || session.predecessorSessionRef !== null;
+  })) return false;
+
+  const matchesRun = <T extends { subject: string; runRef: string }>(item: T): boolean =>
+    item.subject === subject && item.runRef === run.runRef;
+  if (document.stageGenerations.some(matchesRun) || document.reviewLoops.some(matchesRun)
+    || document.reviewReceipts.some(matchesRun) || document.generationSupersessions.some(matchesRun)) return false;
+
+  const events = document.events.filter(matchesRun);
+  return events.length === 1 && events[0]?.kind === 'governance' && events[0].source === 'system'
+    && events[0].stageRef === null && events[0].attemptRef === null && events[0].sessionRef === null
+    && events[0].status === 'waiting'
+    && events[0].summary === 'canonical run published; runtime activation remains gated'
+    && events[0].command === null && events[0].toolName === null && events[0].path === null
+    && events[0].diff === null && events[0].checkpoint === null;
+}
+
+function classifyAuthorized20260731ExecutionLock(
+  document: StoreDocument,
+  subject: string,
+  input: RecoverAuthorized20260731ExecutionLockInput,
+): ControlResult<RecoverAuthorized20260731ExecutionLockPreflight> {
+  if (!validNonEmpty(input.idempotencyKey, MAX_SHORT_TEXT)
+    || input.expectedRunVersion !== 4 || input.expectedManagerGeneration !== 1 || input.expectedRequestRevision !== 1) {
+    return fail('invalid', 'the exact authorized run, manager, and request CAS plus idempotencyKey are required');
+  }
+  const run = document.runs.find((item) => item.subject === subject
+    && item.runRef === AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF);
+  const request = document.humanRequests.find((item) => item.subject === subject
+    && item.requestRef === AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF);
+  if (!run || !request) return fail('not-found', 'the authorized legacy execution-lock boundary was not found');
+  const fingerprint = authorized20260731RecoveryFingerprint(input);
+  const recoveryFields = [
+    request.legacyRecoveryOperationKey,
+    request.legacyRecoveryOperationFingerprint,
+    request.legacyRecoveryEventCursor,
+  ];
+  if (recoveryFields.some((value) => value != null)) {
+    if (recoveryFields.some((value) => value == null)
+      || request.legacyRecoveryOperationKey !== input.idempotencyKey
+      || request.legacyRecoveryOperationFingerprint !== fingerprint) {
+      return fail('idempotency-conflict', 'legacy recovery idempotencyKey was reused with different content');
+    }
+    const event = document.events.find((item) => item.subject === subject && item.runRef === run.runRef
+      && item.cursor === request.legacyRecoveryEventCursor);
+    if (request.kind !== 'intervention' || request.revision !== 2
+      || request.title !== AUTHORIZED_20260731_EXECUTION_LOCK_TITLE
+      || request.prompt !== AUTHORIZED_20260731_EXECUTION_LOCK_NEW_PROMPT
+      || !event || event.kind !== 'governance' || event.source !== 'human' || event.status !== 'success'
+      || event.summary !== 'authorized 2026-07-31 execution-lock boundary reclassified to intervention') {
+      return fail('conflict', 'the recovered legacy execution-lock receipt is inconsistent');
+    }
+    return ok({
+      disposition: 'replay',
+      result: { request: publicRequest(request), event: publicEvent(event) },
+    });
+  }
+  if (!exactAuthorized20260731NeverStartedState(document, subject, run, request, input)) {
+    return fail('conflict', 'the authorized legacy execution-lock run no longer matches its never-started signature');
+  }
+  return ok({ disposition: 'eligible', result: null });
+}
+
 function latestPendingActivationReceipt(run: StoredRun): StoredRunActivationReceipt | undefined {
   const receipts = run.activationReceipts ?? [];
   for (let index = receipts.length - 1; index >= 0; index -= 1) {
@@ -1286,8 +1520,10 @@ function assertDocument(document: unknown): asserts document is StoreDocument {
   for (const run of candidate.runs ?? []) {
     assertActivationReceipts(run);
   }
+  validateAuthorized20260731RecoveryDurability(candidate.humanRequests ?? [], candidate.events ?? []);
   for (const bundle of candidate.quarantine ?? []) {
     assertActivationReceipts(bundle.run);
+    validateAuthorized20260731RecoveryDurability(bundle.humanRequests, bundle.events);
   }
 }
 
@@ -1433,6 +1669,9 @@ function migrateReviewCollections(document: StoreDocument): boolean {
   }
   for (const request of [...document.humanRequests, ...document.quarantine.flatMap((bundle) => bundle.humanRequests)]) {
     if (request.resolutionOperationFingerprint === undefined) { request.resolutionOperationFingerprint = null; changed = true; }
+    if (request.legacyRecoveryOperationKey === undefined) { request.legacyRecoveryOperationKey = null; changed = true; }
+    if (request.legacyRecoveryOperationFingerprint === undefined) { request.legacyRecoveryOperationFingerprint = null; changed = true; }
+    if (request.legacyRecoveryEventCursor === undefined) { request.legacyRecoveryEventCursor = null; changed = true; }
   }
   return changed;
 }
@@ -2015,6 +2254,10 @@ function normalizeCrash(document: StoreDocument, stamp: string): boolean {
   }
   if (materializeLegacyReviewLoops(document.stages, document.attempts, document.reviewLoops, stamp)) changed = true;
   validateReviewDurability(document.stages, document.attempts, document.sessions, document.stageGenerations, document.generationSupersessions, document.reviewLoops, document.reviewReceipts, document.humanRequests);
+  validateAuthorized20260731RecoveryDurability(document.humanRequests, document.events);
+  for (const bundle of document.quarantine) {
+    validateAuthorized20260731RecoveryDurability(bundle.humanRequests, bundle.events);
+  }
   return changed;
 }
 
@@ -4159,6 +4402,9 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       if (document.reviewReceipts.some((receipt) => receipt.completionRequestRef === requestRef || receipt.interventionRequestRef === requestRef)) {
         return fail('invalid', 'review-linked Human Requests are resolved only by the review gate resolver');
       }
+      if (request.legacyRecoveryOperationKey != null) {
+        return fail('invalid', 'the authorized legacy recovery receipt is immutable');
+      }
       if (request.revision !== expectedRevision) return fail('conflict', 'Human Request revision changed');
       if (request.state !== 'open' || request.response) return fail('conflict', 'resolved Human Requests are immutable');
       if (!validNonEmpty(title, MAX_TITLE) || !validNonEmpty(prompt, MAX_LONG_TEXT)) return fail('invalid', 'Human Request title and prompt are required');
@@ -4168,6 +4414,55 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       request.updatedAt = stamp();
       commit(document);
       return ok(publicRequest(request));
+    },
+
+    preflightAuthorized20260731ExecutionLock(subject, input) {
+      return classifyAuthorized20260731ExecutionLock(load(), subject, input);
+    },
+
+    recoverAuthorized20260731ExecutionLock(subject, input) {
+      const document = load();
+      const classified = classifyAuthorized20260731ExecutionLock(document, subject, input);
+      if (!classified.ok) return classified;
+      if (classified.value.disposition === 'replay') return ok(classified.value.result, true);
+      const run = findRun(document, subject, AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF);
+      const request = document.humanRequests.find((item) => item.subject === subject
+        && item.requestRef === AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF);
+      if (!run || !request) return fail('conflict', 'the eligible legacy execution-lock boundary disappeared');
+      if (document.events.filter((item) => item.subject === subject && item.runRef === run.runRef).length >= maxEvents) {
+        return fail('limit', 'run has reached the operational event limit');
+      }
+      const recoveredAt = stamp();
+      const event: StoredEvent = {
+        subject,
+        cursor: document.nextEventCursor,
+        runRef: run.runRef,
+        kind: 'governance',
+        source: 'human',
+        stageRef: null,
+        attemptRef: null,
+        sessionRef: null,
+        status: 'success',
+        summary: 'authorized 2026-07-31 execution-lock boundary reclassified to intervention',
+        command: null,
+        toolName: null,
+        path: null,
+        diff: null,
+        checkpoint: null,
+        createdAt: recoveredAt,
+      };
+      request.kind = 'intervention';
+      request.title = AUTHORIZED_20260731_EXECUTION_LOCK_TITLE;
+      request.prompt = AUTHORIZED_20260731_EXECUTION_LOCK_NEW_PROMPT;
+      request.revision += 1;
+      request.updatedAt = recoveredAt;
+      request.legacyRecoveryOperationKey = input.idempotencyKey;
+      request.legacyRecoveryOperationFingerprint = authorized20260731RecoveryFingerprint(input);
+      request.legacyRecoveryEventCursor = event.cursor;
+      document.nextEventCursor += 1;
+      document.events.push(event);
+      commit(document);
+      return ok({ request: publicRequest(request), event: publicEvent(event) });
     },
 
     respondHumanRequest(subject, requestRef, input) {

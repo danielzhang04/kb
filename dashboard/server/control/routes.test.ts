@@ -2052,4 +2052,195 @@ describe('control execution latch routes', () => {
       await app.close();
     }
   });
+
+  it('audits then invokes only the exact legacy reclassification under same-subject passkey wiring', async () => {
+    const order: string[] = [];
+    const runAutomatic = vi.fn();
+    const cancelAutomatic = vi.fn();
+    const containManagerStart = vi.fn();
+    const verifyCanonicalResult = vi.fn();
+    const broker = { drain: vi.fn() };
+    const roster = { retireAll: vi.fn() };
+    const execution = {
+      controlBroker: broker,
+      rosterSessions: roster,
+      runAutomatic,
+      cancelAutomatic,
+      containManagerStart,
+      verifyCanonicalResult,
+    };
+    const latch = {
+      snapshot: () => ({ state: 'unlocked' as const, source: 'passkey' as const, unlockedAt: '2026-08-01T02:30:00.000Z', unlockedBy: 'operator' }),
+      current: () => execution,
+      unlock: vi.fn(), lock: vi.fn(),
+    };
+    const activateManagedRoots = vi.fn();
+    const { app, token, store, audit } = buildApp({
+      executionLatch: latch, controlBroker: broker, rosterSessions: roster,
+      runAutomatic, cancelAutomatic, containManagerStart, verifyCanonicalResult, activateManagedRoots,
+      appendAudit: (_root: string, event: Record<string, unknown>) => {
+        order.push('audit');
+        audit.push(event);
+        return { ts: '2026-08-01T02:31:00.000Z', action: String(event.action) } as never;
+      },
+    });
+    let recoveredState = false;
+    const recoveryResult = {
+      request: {
+        requestRef: 'request-86d0fc5f-797b-483c-a706-96a45e6f4d6e',
+        runRef: 'run-0aa72053-b9d7-41fa-a034-19871b66d214', stageRef: null,
+        kind: 'intervention', revision: 2, state: 'open',
+        title: 'Automatic execution activation is gated',
+        prompt: 'Canonical cards are published. Unlock execution with your passkey, mark this intervention responded, then resume this same run.',
+        response: null, createdAt: '2026-08-01T02:04:04.762Z', updatedAt: '2026-08-01T02:31:00.000Z',
+      },
+      event: { cursor: 2 },
+    };
+    const preflight = vi.spyOn(store, 'preflightAuthorized20260731ExecutionLock').mockImplementation(() => ({
+      ok: true,
+      value: recoveredState
+        ? { disposition: 'replay', result: recoveryResult }
+        : { disposition: 'eligible', result: null },
+    } as never));
+    const recover = vi.spyOn(store, 'recoverAuthorized20260731ExecutionLock').mockImplementation(() => {
+      order.push('store');
+      recoveredState = true;
+      return { ok: true, value: recoveryResult } as never;
+    });
+    try {
+      const stale = await app.inject({
+        method: 'POST', url: '/api/control/recovery/2026-07-31/execution-lock', headers: headers(token),
+        payload: { expectedRunVersion: 5, expectedManagerGeneration: 1, expectedRequestRevision: 1, idempotencyKey: 'stale-repair' },
+      });
+      expect(stale.statusCode).toBe(409);
+      expect(order).toEqual([]);
+      expect(recover).not.toHaveBeenCalled();
+      const response = await app.inject({
+        method: 'POST', url: '/api/control/recovery/2026-07-31/execution-lock', headers: headers(token),
+        payload: { expectedRunVersion: 4, expectedManagerGeneration: 1, expectedRequestRevision: 1, idempotencyKey: 'authorized-repair' },
+      });
+      expect(response.statusCode, response.body).toBe(200);
+      expect(order).toEqual(['audit', 'store']);
+      expect(audit.at(-1)).toMatchObject({
+        action: 'control-legacy-execution-lock-reclassify-authorize', riskTier: 'T3',
+        target: 'request-86d0fc5f-797b-483c-a706-96a45e6f4d6e',
+        detail: { runRef: 'run-0aa72053-b9d7-41fa-a034-19871b66d214' },
+      });
+      expect(recover).toHaveBeenCalledWith('operator', {
+        expectedRunVersion: 4, expectedManagerGeneration: 1, expectedRequestRevision: 1, idempotencyKey: 'authorized-repair',
+      });
+      expect(runAutomatic).not.toHaveBeenCalled();
+      expect(cancelAutomatic).not.toHaveBeenCalled();
+      expect(activateManagedRoots).not.toHaveBeenCalled();
+      const lostResponseReplay = await app.inject({
+        method: 'POST', url: '/api/control/recovery/2026-07-31/execution-lock', headers: headers(token),
+        payload: { expectedRunVersion: 4, expectedManagerGeneration: 1, expectedRequestRevision: 1, idempotencyKey: 'authorized-repair' },
+      });
+      expect(lostResponseReplay.statusCode, lostResponseReplay.body).toBe(200);
+      expect(lostResponseReplay.json()).toMatchObject({ ok: true, replayed: true });
+      expect(audit.filter((row) => row.action === 'control-legacy-execution-lock-reclassify-authorize')).toHaveLength(1);
+      expect(recover).toHaveBeenCalledTimes(1);
+      expect(preflight).toHaveBeenCalledTimes(3);
+    } finally { await app.close(); }
+  });
+
+  it('fails closed before store mutation when latch, wiring, or T3 audit is not exact', async () => {
+    const body = { expectedRunVersion: 4, expectedManagerGeneration: 1, expectedRequestRevision: 1, idempotencyKey: 'authorized-repair' };
+    const locked = buildApp();
+    vi.spyOn(locked.store, 'preflightAuthorized20260731ExecutionLock').mockReturnValue({
+      ok: true, value: { disposition: 'eligible', result: null },
+    } as never);
+    const lockedRecover = vi.spyOn(locked.store, 'recoverAuthorized20260731ExecutionLock');
+    try {
+      const response = await locked.app.inject({
+        method: 'POST', url: '/api/control/recovery/2026-07-31/execution-lock', headers: headers(locked.token), payload: body,
+      });
+      expect(response.statusCode).toBe(409);
+      expect(lockedRecover).not.toHaveBeenCalled();
+      expect(locked.audit).toHaveLength(0);
+    } finally { await locked.app.close(); }
+
+    const broker = { drain: vi.fn() };
+    const roster = { retireAll: vi.fn() };
+    const exactRun = vi.fn();
+    const execution = {
+      controlBroker: broker, rosterSessions: roster, runAutomatic: exactRun,
+      cancelAutomatic: vi.fn(), verifyCanonicalResult: vi.fn(),
+    };
+    const latch = {
+      snapshot: () => ({ state: 'unlocked' as const, source: 'passkey' as const, unlockedAt: 'now', unlockedBy: 'operator' }),
+      current: () => execution, unlock: vi.fn(), lock: vi.fn(),
+    };
+    const mismatched = buildApp({
+      executionLatch: latch, controlBroker: broker, rosterSessions: roster, runAutomatic: vi.fn(),
+      cancelAutomatic: execution.cancelAutomatic, verifyCanonicalResult: execution.verifyCanonicalResult,
+    });
+    vi.spyOn(mismatched.store, 'preflightAuthorized20260731ExecutionLock').mockReturnValue({
+      ok: true, value: { disposition: 'eligible', result: null },
+    } as never);
+    const mismatchRecover = vi.spyOn(mismatched.store, 'recoverAuthorized20260731ExecutionLock');
+    try {
+      const response = await mismatched.app.inject({
+        method: 'POST', url: '/api/control/recovery/2026-07-31/execution-lock', headers: headers(mismatched.token), payload: body,
+      });
+      expect(response.statusCode).toBe(409);
+      expect(mismatchRecover).not.toHaveBeenCalled();
+      expect(mismatched.audit).toHaveLength(0);
+    } finally { await mismatched.app.close(); }
+
+    const noRosterExecution = {
+      controlBroker: broker, runAutomatic: exactRun,
+      cancelAutomatic: execution.cancelAutomatic, verifyCanonicalResult: execution.verifyCanonicalResult,
+    };
+    const noRosterLatch = { ...latch, current: () => noRosterExecution };
+    const absentRoster = buildApp({
+      executionLatch: noRosterLatch, controlBroker: broker, runAutomatic: exactRun,
+      cancelAutomatic: execution.cancelAutomatic, verifyCanonicalResult: execution.verifyCanonicalResult,
+    });
+    vi.spyOn(absentRoster.store, 'preflightAuthorized20260731ExecutionLock').mockReturnValue({
+      ok: true, value: { disposition: 'eligible', result: null },
+    } as never);
+    const absentRosterRecover = vi.spyOn(absentRoster.store, 'recoverAuthorized20260731ExecutionLock');
+    try {
+      const response = await absentRoster.app.inject({
+        method: 'POST', url: '/api/control/recovery/2026-07-31/execution-lock', headers: headers(absentRoster.token), payload: body,
+      });
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toMatchObject({ error: 'legacy-recovery-execution-not-passkey-bound' });
+      expect(absentRosterRecover).not.toHaveBeenCalled();
+      expect(absentRoster.audit).toHaveLength(0);
+    } finally { await absentRoster.app.close(); }
+
+    const auditFailure = buildApp({
+      executionLatch: latch, controlBroker: broker, rosterSessions: roster, runAutomatic: exactRun,
+      cancelAutomatic: execution.cancelAutomatic, verifyCanonicalResult: execution.verifyCanonicalResult,
+      appendAudit: () => { throw new Error('audit unavailable'); },
+    });
+    vi.spyOn(auditFailure.store, 'preflightAuthorized20260731ExecutionLock').mockReturnValue({
+      ok: true, value: { disposition: 'eligible', result: null },
+    } as never);
+    const auditRecover = vi.spyOn(auditFailure.store, 'recoverAuthorized20260731ExecutionLock');
+    try {
+      const response = await auditFailure.app.inject({
+        method: 'POST', url: '/api/control/recovery/2026-07-31/execution-lock', headers: headers(auditFailure.token), payload: body,
+      });
+      expect(response.statusCode).toBe(500);
+      expect(response.json()).toMatchObject({ error: 'legacy-recovery-audit-required' });
+      expect(auditRecover).not.toHaveBeenCalled();
+    } finally { await auditFailure.app.close(); }
+
+    const ineligible = buildApp();
+    vi.spyOn(ineligible.store, 'preflightAuthorized20260731ExecutionLock').mockReturnValue({
+      ok: false, reason: 'conflict', detail: 'progressed state',
+    });
+    const ineligibleRecover = vi.spyOn(ineligible.store, 'recoverAuthorized20260731ExecutionLock');
+    try {
+      const response = await ineligible.app.inject({
+        method: 'POST', url: '/api/control/recovery/2026-07-31/execution-lock', headers: headers(ineligible.token), payload: body,
+      });
+      expect(response.statusCode).toBe(409);
+      expect(ineligibleRecover).not.toHaveBeenCalled();
+      expect(ineligible.audit.filter((row) => row.action === 'control-legacy-execution-lock-reclassify-authorize')).toHaveLength(0);
+    } finally { await ineligible.app.close(); }
+  });
 });

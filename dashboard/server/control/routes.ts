@@ -21,7 +21,12 @@ import {
 import { compileApprovedProposal } from './compiler.ts';
 import { loadExecutionProfiles, loadPolicyEnvironment, loadRuntimeSkillRegistry } from './environment.ts';
 import type { ControlResult, JsonObject, ProposalDecision, Run } from './types.ts';
-import type { RunActivationPhase } from './store.ts';
+import {
+  AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF,
+  AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF,
+  type RunActivationPhase,
+} from './store.ts';
+import type { ActivatedExecution } from './activation.ts';
 import { withControlDeadline } from './runTransactions.ts';
 import { reconcileCanonicalPublication } from './publication.ts';
 import { classifyActionRisk, evaluateExecutionPolicy } from './policy.ts';
@@ -79,6 +84,21 @@ function executionLockedRefusal(ctx: SurfaceContext): { error: string; detail: s
     detail: 'execution is locked; unlock it with your passkey before launching a run',
     execution: executionPosture(ctx),
   };
+}
+
+/** Exact passkey grant + in-place wiring identity required by the one authorized historical repair. */
+function authorizedLegacyRecoveryExecution(ctx: SurfaceContext, sub: string): ActivatedExecution | null {
+  const latch = ctx.executionLatch;
+  const snapshot = latch?.snapshot();
+  const current = latch?.current() ?? null;
+  if (!latch || !current || snapshot?.state !== 'unlocked' || snapshot.source !== 'passkey'
+    || snapshot.unlockedBy !== sub || ctx.controlBroker !== current.controlBroker
+    || ctx.runAutomatic !== current.runAutomatic || ctx.cancelAutomatic !== current.cancelAutomatic
+    || ctx.containManagerStart !== current.containManagerStart
+    || ctx.verifyCanonicalResult !== current.verifyCanonicalResult
+    || !ctx.rosterSessions || !current.rosterSessions
+    || ctx.rosterSessions !== current.rosterSessions) return null;
+  return current;
 }
 
 class CompletedRootProvenanceError extends Error {}
@@ -338,6 +358,60 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     }
     latch.lock({ subject: sub });
     return reply.send({ ok: true, execution: executionPosture(ctx) });
+  });
+
+  // One Daniel-authorized repair for one already-published, provably-never-started FYT run. This route
+  // only reclassifies the exact poisoned boundary. It cannot respond, activate, publish, or execute.
+  scope.post('/api/control/recovery/2026-07-31/execution-lock', { preHandler }, async (req, reply) => {
+    const sub = subject(req);
+    if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
+    const body = record(req.body);
+    const input = {
+      expectedRunVersion: integer(body.expectedRunVersion),
+      expectedManagerGeneration: integer(body.expectedManagerGeneration),
+      expectedRequestRevision: integer(body.expectedRequestRevision),
+      idempotencyKey: string(body.idempotencyKey),
+    };
+    if (input.expectedRunVersion !== 4 || input.expectedManagerGeneration !== 1 || input.expectedRequestRevision !== 1) {
+      return reply.code(409).send({ error: 'legacy-recovery-cas-mismatch' });
+    }
+    return ctx.runControlTransactions.run(sub, AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF, async () => {
+      const preflight = ctx.controlStore.preflightAuthorized20260731ExecutionLock(sub, input);
+      if (!preflight.ok) return sendResult(reply, preflight);
+      if (preflight.value.disposition === 'replay') {
+        return reply.send({ ok: true, value: preflight.value.result, replayed: true });
+      }
+      const beforeAudit = authorizedLegacyRecoveryExecution(ctx, sub);
+      if (!beforeAudit) return reply.code(409).send({ error: 'legacy-recovery-execution-not-passkey-bound' });
+      try {
+        await auditFn(ctx)(ctx.repoRoot, {
+          action: 'control-legacy-execution-lock-reclassify-authorize',
+          owner: sub,
+          target: AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF,
+          riskTier: 'T3',
+          result: 'authorized:governance-refusal-to-intervention',
+          detail: {
+            runRef: AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF,
+            requestRef: AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF,
+            expectedRunVersion: input.expectedRunVersion,
+            expectedManagerGeneration: input.expectedManagerGeneration,
+            expectedRequestRevision: input.expectedRequestRevision,
+          },
+        }, { runGit: ctx.opsGit, now: ctx.now });
+      } catch {
+        return reply.code(500).send({ error: 'legacy-recovery-audit-required' });
+      }
+      const afterAudit = authorizedLegacyRecoveryExecution(ctx, sub);
+      if (!afterAudit || afterAudit !== beforeAudit) {
+        return reply.code(409).send({ error: 'legacy-recovery-execution-changed-after-audit' });
+      }
+      const rechecked = ctx.controlStore.preflightAuthorized20260731ExecutionLock(sub, input);
+      if (!rechecked.ok) return sendResult(reply, rechecked);
+      if (rechecked.value.disposition === 'replay') {
+        return reply.send({ ok: true, value: rechecked.value.result, replayed: true });
+      }
+      return sendResult(reply, ctx.controlStore.recoverAuthorized20260731ExecutionLock(sub, input));
+    });
   });
 
   scope.get('/api/control/runs', { preHandler }, async (req, reply) => {

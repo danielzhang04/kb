@@ -801,6 +801,22 @@ export function respondToHumanRequest(
   ).then((body) => body.value);
 }
 
+/** One-off, server-constrained repair for the authorized 2026-07-31 execution-lock boundary. */
+export function recoverAuthorized20260731ExecutionLock(
+  input: {
+    expectedRunVersion: number;
+    expectedManagerGeneration: number;
+    expectedRequestRevision: number;
+    idempotencyKey: string;
+  },
+  token: string,
+  fetchImpl?: FetchLike,
+): Promise<HumanRequestDto> {
+  return write<{ ok: true; value: { request: HumanRequestDto } }>(
+    '/api/control/recovery/2026-07-31/execution-lock', input, token, fetchImpl,
+  ).then((body) => body.value.request);
+}
+
 /** Resolve a server-bound review completion gate; never use the generic request endpoint for it. */
 export function resolveReviewCompletionGate(
   requestRef: string,

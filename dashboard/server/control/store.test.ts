@@ -4,6 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   ControlStoreLimitError,
+  AUTHORIZED_20260731_EXECUTION_LOCK_NEW_PROMPT,
+  AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF,
+  AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF,
   MAX_HUMAN_REQUESTS_PER_RUN,
   createFileControlPlaneStore,
   createInMemoryControlPlaneStore,
@@ -37,6 +40,140 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
+describe('authorized 2026-07-31 execution-lock recovery', () => {
+  const recoveryInput = {
+    expectedRunVersion: 4,
+    expectedManagerGeneration: 1,
+    expectedRequestRevision: 1,
+    idempotencyKey: 'authorized-legacy-execution-lock-recovery',
+  };
+
+  it('atomically reclassifies only the exact never-started request and survives restart replay', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-legacy-recovery-'));
+    roots.push(root);
+    const store = createFileControlPlaneStore(root, authorizedLegacyOptions());
+    seedAuthorizedLegacyExecutionLock(store);
+    const normalized = createFileControlPlaneStore(root);
+    const normalizedDocument = JSON.parse(readFileSync(join(root, 'control', 'control-plane.json'), 'utf8')) as {
+      humanRequests: Array<Record<string, unknown>>;
+    };
+    expect(normalizedDocument.humanRequests[0]).toMatchObject({
+      legacyRecoveryOperationKey: null,
+      legacyRecoveryOperationFingerprint: null,
+      legacyRecoveryEventCursor: null,
+    });
+    expect(normalized.preflightAuthorized20260731ExecutionLock('operator', recoveryInput)).toMatchObject({
+      ok: true, value: { disposition: 'eligible', result: null },
+    });
+    const recovered = normalized.recoverAuthorized20260731ExecutionLock('operator', recoveryInput);
+    expect(recovered).toMatchObject({
+      ok: true,
+      value: {
+        request: {
+          requestRef: AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF,
+          runRef: AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF,
+          kind: 'intervention', revision: 2, state: 'open', response: null,
+          prompt: AUTHORIZED_20260731_EXECUTION_LOCK_NEW_PROMPT,
+        },
+        event: { kind: 'governance', source: 'human', status: 'success' },
+      },
+    });
+    expect(JSON.stringify(recovered)).not.toContain('legacyRecoveryOperation');
+    const restarted = createFileControlPlaneStore(root);
+    expect(restarted.preflightAuthorized20260731ExecutionLock('operator', recoveryInput)).toMatchObject({
+      ok: true, value: { disposition: 'replay', result: { request: { state: 'open' } } },
+    });
+    expect(restarted.reviseHumanRequest(
+      'operator', AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF, 2,
+      'Changed', 'Changed',
+    )).toMatchObject({ ok: false, reason: 'invalid' });
+    const responded = restarted.respondHumanRequest('operator', AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF, {
+      expectedRevision: 2, decision: 'responded', idempotencyKey: 'respond-after-recovery',
+    });
+    expect(responded).toMatchObject({ ok: true, value: { state: 'resolved', response: { decision: 'responded' } } });
+    expect(restarted.recoverAuthorized20260731ExecutionLock('operator', recoveryInput)).toMatchObject({
+      ok: true, replayed: true, value: {
+        request: { revision: 2, kind: 'intervention', state: 'resolved', response: { decision: 'responded' } },
+      },
+    });
+    expect(restarted.listEvents('operator', AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF)).toMatchObject({
+      ok: true, value: [
+        expect.objectContaining({ summary: 'canonical run published; runtime activation remains gated' }),
+        expect.objectContaining({ summary: 'authorized 2026-07-31 execution-lock boundary reclassified to intervention' }),
+      ],
+    });
+  });
+
+  it('refuses marker drift and a progressed attempt without changing the request', () => {
+    const markerStore = createInMemoryControlPlaneStore(authorizedLegacyOptions());
+    const marker = seedAuthorizedLegacyExecutionLock(markerStore);
+    const revised = markerStore.reviseHumanRequest(
+      'operator', marker.request.requestRef, marker.request.revision,
+      marker.request.title, `${marker.request.prompt} drift`,
+    );
+    if (!revised.ok) throw new Error(revised.detail);
+    expect(markerStore.preflightAuthorized20260731ExecutionLock('operator', recoveryInput)).toMatchObject({ ok: false, reason: 'conflict' });
+    expect(markerStore.recoverAuthorized20260731ExecutionLock('operator', recoveryInput)).toMatchObject({ ok: false, reason: 'conflict' });
+    expect(markerStore.getHumanRequest('operator', marker.request.requestRef)).toMatchObject({
+      ok: true, value: { kind: 'governance-refusal', revision: 2, state: 'open' },
+    });
+
+    const progressedStore = createInMemoryControlPlaneStore(authorizedLegacyOptions());
+    const progressed = seedAuthorizedLegacyExecutionLock(progressedStore);
+    const firstAttempt = progressed.detail.attempts[0];
+    if (!firstAttempt) throw new Error('expected attempt');
+    const starting = progressedStore.transitionAttempt('operator', firstAttempt.attemptRef, firstAttempt.version, 'starting');
+    if (!starting.ok) throw new Error(starting.detail);
+    expect(progressedStore.preflightAuthorized20260731ExecutionLock('operator', recoveryInput)).toMatchObject({ ok: false, reason: 'conflict' });
+    expect(progressedStore.recoverAuthorized20260731ExecutionLock('operator', recoveryInput)).toMatchObject({ ok: false, reason: 'conflict' });
+    expect(progressedStore.getHumanRequest('operator', progressed.request.requestRef)).toMatchObject({
+      ok: true, value: { kind: 'governance-refusal', revision: 1, state: 'open' },
+    });
+  });
+
+  it('rejects incoherent private recovery receipts in active and quarantined documents', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-legacy-recovery-validation-'));
+    roots.push(root);
+    const store = createFileControlPlaneStore(root, authorizedLegacyOptions());
+    seedAuthorizedLegacyExecutionLock(store);
+    const recovered = store.recoverAuthorized20260731ExecutionLock('operator', recoveryInput);
+    if (!recovered.ok) throw new Error(recovered.detail);
+    const path = join(root, 'control', 'control-plane.json');
+    const original = JSON.parse(readFileSync(path, 'utf8')) as Record<string, any>;
+
+    const partial = structuredClone(original);
+    partial.humanRequests[0].legacyRecoveryOperationFingerprint = null;
+    writeFileSync(path, `${JSON.stringify(partial)}\n`, 'utf8');
+    expect(() => createFileControlPlaneStore(root)).toThrow(/authorized legacy recovery receipt/);
+
+    const wrongCursor = structuredClone(original);
+    wrongCursor.humanRequests[0].legacyRecoveryEventCursor = 999;
+    writeFileSync(path, `${JSON.stringify(wrongCursor)}\n`, 'utf8');
+    expect(() => createFileControlPlaneStore(root)).toThrow(/authorized legacy recovery event/);
+
+    const quarantined = structuredClone(original);
+    const run = quarantined.runs[0];
+    const runRef = run.runRef;
+    quarantined.quarantine = [{
+      subject: 'operator', quarantinedAt: '2026-08-01T03:00:00.000Z', run,
+      stages: quarantined.stages.filter((item: Record<string, unknown>) => item.runRef === runRef),
+      attempts: quarantined.attempts.filter((item: Record<string, unknown>) => item.runRef === runRef),
+      sessions: quarantined.sessions.filter((item: Record<string, unknown>) => item.runRef === runRef),
+      humanRequests: quarantined.humanRequests.filter((item: Record<string, unknown>) => item.runRef === runRef),
+      events: quarantined.events.filter((item: Record<string, unknown>) => item.runRef === runRef),
+      stageGenerations: [], reviewLoops: [], reviewReceipts: [], generationSupersessions: [],
+    }];
+    for (const field of ['runs', 'stages', 'attempts', 'sessions', 'humanRequests', 'events', 'stageGenerations', 'reviewLoops', 'reviewReceipts', 'generationSupersessions']) {
+      quarantined[field] = (quarantined[field] as Array<Record<string, unknown>>).filter((item) => item.runRef !== runRef);
+    }
+    writeFileSync(path, `${JSON.stringify(quarantined)}\n`, 'utf8');
+    expect(() => createFileControlPlaneStore(root)).not.toThrow();
+    quarantined.quarantine[0].humanRequests[0].legacyRecoveryEventCursor = null;
+    writeFileSync(path, `${JSON.stringify(quarantined)}\n`, 'utf8');
+    expect(() => createFileControlPlaneStore(root)).toThrow(/authorized legacy recovery receipt/);
+  });
+});
+
 function deterministicOptions() {
   let id = 0;
   let second = 0;
@@ -44,6 +181,77 @@ function deterministicOptions() {
     newId: () => String(++id),
     now: () => new Date(Date.UTC(2026, 6, 18, 12, 0, second++)),
   };
+}
+
+const LEGACY_STAGE_IDS = [
+  'idea', 'story', 'judge-gate', 'packaging', 'visual-plan', 'shots-merge', 'slice-contract',
+  'images', 'image-review', 'audio', 'audio-plan-merge', 'render', 'verify',
+] as const;
+const LEGACY_SOL_STAGES = new Set(['judge-gate', 'shots-merge', 'slice-contract', 'image-review', 'audio-plan-merge', 'verify']);
+
+function authorizedLegacyOptions() {
+  let id = 0;
+  return {
+    newId: () => {
+      id += 1;
+      if (id === 2) return AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF.slice('run-'.length);
+      if (id === 43) return AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF.slice('request-'.length);
+      return `legacy-${id}`;
+    },
+    now: () => new Date(Date.UTC(2026, 7, 1, 2, 4, id)),
+  };
+}
+
+function seedAuthorizedLegacyExecutionLock(store: ControlPlaneStore) {
+  const stageSpecs = LEGACY_STAGE_IDS.map((stageId, index) => ({
+    id: stageId,
+    title: stageId,
+    dependsOn: index === 0 ? [] : [LEGACY_STAGE_IDS[index - 1]],
+  }));
+  const proposal = createApprovedProposal(store, 'operator', {
+    schema: 'kb.plan-proposal/v1', title: 'Validate one all-Codex faceless-video opening slice', manager: {}, stages: stageSpecs,
+  });
+  const created = store.createRun('operator', {
+    title: 'Validate one all-Codex faceless-video opening slice', proposalRef: proposal.proposalRef,
+    proposalRevision: proposal.revision, expectedProposalHash: proposal.hash,
+    managerRuntime: 'codex', managerModel: 'gpt-5.6-sol', idempotencyKey: 'legacy-launch',
+    stages: stageSpecs.map((stage) => ({ stageId: stage.id, title: stage.title, dependsOn: stage.dependsOn })),
+  });
+  if (!created.ok) throw new Error(created.detail);
+  expect(created.value.run.runRef).toBe(AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF);
+  const publishing = store.transitionPublication('operator', created.value.run.runRef, created.value.run.version, 'publishing');
+  if (!publishing.ok) throw new Error(publishing.detail);
+  const published = store.transitionPublication('operator', created.value.run.runRef, publishing.value.version, 'published');
+  if (!published.ok) throw new Error(published.detail);
+  const waiting = store.transitionRun('operator', created.value.run.runRef, published.value.version, 'waiting-human');
+  if (!waiting.ok) throw new Error(waiting.detail);
+  let detail = store.getRun('operator', created.value.run.runRef);
+  if (!detail.ok) throw new Error(detail.detail);
+  for (const stage of detail.value.stages) {
+    const linked = store.linkStageCard('operator', stage.stageRef, stage.version, `wf-${stage.stageId}`);
+    if (!linked.ok) throw new Error(linked.detail);
+    const attempt = store.createAttempt('operator', stage.stageRef, {
+      expectedStageVersion: linked.value.version,
+      runtime: 'codex',
+      model: LEGACY_SOL_STAGES.has(stage.stageId) ? 'gpt-5.6-sol' : 'gpt-5.6-terra',
+    });
+    if (!attempt.ok) throw new Error(attempt.detail);
+    const session = store.createWorkerSession('operator', attempt.value.attemptRef, { expectedAttemptVersion: attempt.value.version });
+    if (!session.ok) throw new Error(session.detail);
+  }
+  const request = store.createHumanRequest('operator', created.value.run.runRef, {
+    kind: 'governance-refusal', stageRef: null, title: 'Automatic execution activation is gated',
+    prompt: 'Canonical cards are published, but the daemon Broker/execution adapters are not activated. Complete the separate runtime approval before release.',
+  });
+  if (!request.ok) throw new Error(request.detail);
+  expect(request.value.requestRef).toBe(AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF);
+  const event = store.appendEvent('operator', created.value.run.runRef, {
+    kind: 'governance', source: 'system', status: 'waiting', summary: 'canonical run published; runtime activation remains gated',
+  });
+  if (!event.ok) throw new Error(event.detail);
+  detail = store.getRun('operator', created.value.run.runRef);
+  if (!detail.ok) throw new Error(detail.detail);
+  return { detail: detail.value, request: request.value };
 }
 
 function createApprovedProposal(
