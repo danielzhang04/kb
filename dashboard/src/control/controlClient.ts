@@ -6,6 +6,9 @@
  * public protocol. Governed mutations always carry an exact hash/version and an idempotency key.
  */
 import { invalidateSessionOnGovernedAuthFailure } from '../lib/authClient';
+import type { PublicKeyCredentialRequestOptionsJSON } from '@simplewebauthn/browser';
+import { performAssertion, realWebAuthnBrowser } from '../lib/webauthnClient';
+import type { WebAuthnBrowserLike } from '../lib/webauthnClient';
 
 export type FetchLike = typeof fetch;
 export type JsonPrimitive = string | number | boolean | null;
@@ -325,9 +328,139 @@ export class ControlApiError extends Error {
   }
 }
 
+export interface ExecutionPostureDto {
+  state: 'locked' | 'unlocked' | 'injected';
+  source: 'passkey' | 'env-override' | null;
+  unlockedAt: string | null;
+  unlockedBy: string | null;
+  unlockRoute?: string;
+}
+
+export function parseExecutionPosture(value: unknown): ExecutionPostureDto | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const item = value as Record<string, unknown>;
+  const allowed = new Set(['state', 'source', 'unlockedAt', 'unlockedBy', 'unlockRoute']);
+  if (Object.keys(item).some((key) => !allowed.has(key))) return null;
+  if (item.state !== 'locked' && item.state !== 'unlocked' && item.state !== 'injected') return null;
+  if (item.state === 'locked') {
+    if (item.source !== null || item.unlockedAt !== null || item.unlockedBy !== null) return null;
+    if (item.unlockRoute !== undefined && item.unlockRoute !== '/api/control/execution/unlock') return null;
+    return {
+      state: 'locked', source: null, unlockedAt: null, unlockedBy: null,
+      ...(item.unlockRoute === '/api/control/execution/unlock' ? { unlockRoute: item.unlockRoute } : {}),
+    };
+  }
+  if (item.state === 'injected') {
+    // This is the server's no-latch posture: execution was injected directly and has no unlock event.
+    if (item.source !== null || item.unlockedAt !== null || item.unlockedBy !== null || item.unlockRoute !== undefined) {
+      return null;
+    }
+    return { state: 'injected', source: null, unlockedAt: null, unlockedBy: null };
+  }
+  if (item.source !== 'passkey' && item.source !== 'env-override') return null;
+  if (typeof item.unlockedAt !== 'string') return null;
+  const unlockedAtMs = Date.parse(item.unlockedAt);
+  if (!Number.isFinite(unlockedAtMs) || new Date(unlockedAtMs).toISOString() !== item.unlockedAt) return null;
+  if (typeof item.unlockedBy !== 'string' || item.unlockedBy.trim().length === 0) return null;
+  if (item.unlockRoute !== undefined) return null;
+  return {
+    state: 'unlocked', source: item.source, unlockedAt: item.unlockedAt, unlockedBy: item.unlockedBy,
+  };
+}
+
+/** Read the daemon execution latch. A dashboard login is necessary, but never implies this is unlocked. */
+export async function getExecutionPosture(token: string, fetchImpl?: FetchLike): Promise<ExecutionPostureDto> {
+  const body = await read<{ execution?: unknown }>('/api/control/execution', token, fetchImpl);
+  const posture = parseExecutionPosture(body.execution);
+  if (!posture) throw new Error('execution state response was invalid');
+  return posture;
+}
+
+export interface UnlockExecutionDeps {
+  fetchImpl?: FetchLike;
+  browser?: WebAuthnBrowserLike;
+}
+
+/**
+ * Run the dedicated execution-unlock ceremony. This intentionally does not call `signIn`: the server
+ * challenge is purpose-bound to `kb.execution-unlock`, and the existing bearer only authenticates who
+ * is asking. A 200 response is accepted only when the server confirms a passkey-sourced unlock.
+ */
+export async function unlockExecution(token: string, deps: UnlockExecutionDeps = {}): Promise<ExecutionPostureDto> {
+  const optionsBody = await write<{ ceremonyId?: unknown; options?: unknown }>(
+    '/api/control/execution/unlock/options', {}, token, deps.fetchImpl,
+  );
+  if (
+    typeof optionsBody.ceremonyId !== 'string'
+    || optionsBody.ceremonyId.trim().length === 0
+    || !optionsBody.options
+    || typeof optionsBody.options !== 'object'
+    || Array.isArray(optionsBody.options)
+    || Object.keys(optionsBody.options).length === 0
+  ) {
+    throw new Error('execution unlock options response was invalid');
+  }
+  const response = await performAssertion(
+    optionsBody.options as PublicKeyCredentialRequestOptionsJSON,
+    deps.browser ?? realWebAuthnBrowser,
+  );
+  const unlockedBody = await request<{ ok?: unknown; execution?: unknown }>(
+    '/api/control/execution/unlock',
+    { method: 'POST', body: JSON.stringify({ ceremonyId: optionsBody.ceremonyId, response }) },
+    { token, fetchImpl: deps.fetchImpl, preserveSessionOnAuthFailure: isExecutionAssertionRefusal },
+  );
+  const posture = parseExecutionPosture(unlockedBody.execution);
+  if (unlockedBody.ok !== true || posture?.state !== 'unlocked' || posture.source !== 'passkey') {
+    throw new Error('execution unlock response was not passkey-authorized');
+  }
+  return posture;
+}
+
+/** Stable operator copy for the explicit execution ceremony; raw server details never reach the panel. */
+export function executionUnlockErrorMessage(error: unknown): string {
+  const detail = error && typeof error === 'object'
+    ? [
+        'name' in error && typeof error.name === 'string' ? error.name : '',
+        'message' in error && typeof error.message === 'string' ? error.message : '',
+      ].filter(Boolean).join(': ')
+    : '';
+  if (/cancel|abort|notallowederror/i.test(detail)) {
+    return 'Execution unlock was cancelled. Execution remains locked.';
+  }
+  if (/not supported|webauthn.+unavailable/i.test(detail)) {
+    return 'This browser cannot use the execution passkey. Open this dashboard in a WebAuthn-capable browser.';
+  }
+  if (/not passkey-authorized|response was invalid|options response was invalid/i.test(detail)) {
+    return 'The server did not confirm a passkey-authorized unlock. Execution remains locked.';
+  }
+  if (/401|credential|unauthenticated/i.test(detail)) {
+    return 'The execution passkey was refused. Use the enrolled passkey and try again.';
+  }
+  if (/503|unconfigured/i.test(detail)) {
+    return 'Execution passkeys are not configured on this dashboard server.';
+  }
+  return 'Execution unlock failed. Execution remains locked; retry or check the dashboard server logs.';
+}
+
 interface RequestOptions {
   token?: string;
   fetchImpl?: FetchLike;
+  /** Exact protocol classifier for a second-factor refusal that is not a bearer failure. */
+  preserveSessionOnAuthFailure?: (status: number, body: Record<string, unknown>) => boolean;
+}
+
+/**
+ * The unlock handler and the bearer pre-handler both use HTTP 401. Preserve a valid bearer only for
+ * the stable assertion-refusal envelopes emitted after the pre-handler has passed. Everything
+ * else, including `expired`, `bad-signature`, `malformed`, and `missing session token`, flows through
+ * the shared session invalidator. Deliberately exact: arbitrary verifier prose never grants an
+ * exception to invalidation.
+ */
+function isExecutionAssertionRefusal(status: number, body: Record<string, unknown>): boolean {
+  if (status !== 401 || body.error !== 'unauthenticated' || typeof body.reason !== 'string') return false;
+  return body.reason === 'no registered credential for this assertion'
+    || body.reason === 'assertion failed'
+    || body.reason === 'assertion not verified';
 }
 
 async function request<T>(path: string, init: RequestInit, options: RequestOptions = {}): Promise<T> {
@@ -337,8 +470,24 @@ async function request<T>(path: string, init: RequestInit, options: RequestOptio
   if (init.body !== undefined) headers.set('content-type', 'application/json');
   if (options.token) headers.set('authorization', `Bearer ${options.token}`);
   const response = await fetchImpl(path, { ...init, headers });
-  await invalidateSessionOnGovernedAuthFailure(response);
+  // Only a 401 needs a preserved body for the shared invalidator. Successful and unrelated refusal
+  // responses are consumed once and never cloned (some fetch shims intentionally cannot clone them).
+  let authFailureResponse: Response | null = null;
+  if (response.status === 401) {
+    try {
+      authFailureResponse = typeof response.clone === 'function' ? response.clone() : response;
+    } catch {
+      // A broken fetch shim must not replace the endpoint's real 401 with a clone exception.
+    }
+  }
   const body = await response.json().catch(() => ({})) as T & { reason?: unknown; detail?: unknown; error?: unknown };
+  const bodyRecord = body && typeof body === 'object' && !Array.isArray(body)
+    ? body as Record<string, unknown>
+    : {};
+  const preserveSession = options.preserveSessionOnAuthFailure?.(response.status, bodyRecord) === true;
+  if (!preserveSession && authFailureResponse) {
+    await invalidateSessionOnGovernedAuthFailure(authFailureResponse);
+  }
   if (!response.ok) {
     const reason = [body.detail, body.reason, body.error].find((value): value is string => typeof value === 'string') ?? '';
     throw new ControlApiError(response.status, reason);

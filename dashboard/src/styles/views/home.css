@@ -303,3 +303,35 @@ textarea.v-home__input {
     transition: none;
   }
 }
+.v-home__execution {
+  display: grid;
+  gap: 8px;
+}
+
+.v-home__execution-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.v-home__execution-state,
+.v-home__execution-help,
+.v-home__execution-error {
+  margin: 4px 0 0;
+}
+
+.v-home__execution-state {
+  font-weight: 600;
+}
+
+.v-home__execution-help {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.v-home__execution-error {
+  color: var(--danger, #b44b43);
+  font-size: 12px;
+}

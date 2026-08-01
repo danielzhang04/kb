@@ -11,6 +11,8 @@ import { Home } from './Home';
 import type { PlaneAIndex } from '../../server/planeA/indexer';
 import type { ParsedCard } from '../../server/planeA/cards';
 import type { AgentRosterEntry } from '../../server/agents/roster';
+import type { ExecutionUnlockClient } from '../control/ExecutionUnlock';
+import type { ExecutionPostureDto } from '../control/controlClient';
 
 /** Build a full roster entry with sane defaults, overriding only the fields a test cares about. */
 function rosterEntry(over: Partial<AgentRosterEntry> & { id: string }): AgentRosterEntry {
@@ -49,6 +51,27 @@ const ROUTING = {
   audit: { mismatches: [], overrides: [] },
   overrides: [],
 };
+
+const LOCKED_EXECUTION: ExecutionPostureDto = {
+  state: 'locked',
+  source: null,
+  unlockedAt: null,
+  unlockedBy: null,
+};
+
+const PASSKEY_EXECUTION: ExecutionPostureDto = {
+  state: 'unlocked',
+  source: 'passkey',
+  unlockedAt: '2026-07-31T12:00:00.000Z',
+  unlockedBy: 'operator',
+};
+
+function executionClient(posture: ExecutionPostureDto): ExecutionUnlockClient {
+  return {
+    getPosture: vi.fn(async () => posture),
+    unlock: vi.fn(async () => PASSKEY_EXECUTION),
+  };
+}
 
 function card(id: string, owner: string | null, state: string, tier = 'T1'): ParsedCard {
   return {
@@ -232,9 +255,46 @@ describe('Home view — launch surface', () => {
     expect(screen.getByLabelText('Launch card')).toBeTruthy();
   });
 
-  it('enables Launch when a sessionToken is supplied', () => {
-    render(<Home snapshot={SNAPSHOT} sessionToken="fake-session-token" />);
-    expect((screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement).disabled).toBe(false);
+  it('keeps Launch disabled until execution is explicitly unlocked with a passkey', async () => {
+    const client = executionClient(LOCKED_EXECUTION);
+    const view = render(<Home snapshot={SNAPSHOT} sessionToken="fake-session-token" executionClient={client} />);
+
+    const launch = screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement;
+    const unlock = await screen.findByRole('button', { name: 'Unlock execution' });
+    expect(launch.disabled).toBe(true);
+
+    fireEvent.submit(screen.getByLabelText('Launch card'));
+    expect(screen.getByTestId('launch-status').textContent).toMatch(/sign in with your passkey/i);
+    expect(vi.mocked(globalThis.fetch).mock.calls.some(([url]) => url === '/api/write/launch')).toBe(false);
+
+    fireEvent.click(unlock);
+    await waitFor(() => expect(launch.disabled).toBe(false));
+    expect(client.unlock).toHaveBeenCalledWith('fake-session-token');
+
+    // An unlock belongs to the bearer that completed it. A replacement session must fail closed while
+    // its own posture is loading; it cannot inherit the prior session's local ready state.
+    view.rerender(<Home snapshot={SNAPSHOT} sessionToken="replacement-token" executionClient={client} />);
+    expect(launch.disabled).toBe(true);
+  });
+
+  it('never releases the launch token for a malformed passkey posture', async () => {
+    const malformed = {
+      ...PASSKEY_EXECUTION,
+      unlockedAt: '1',
+    } as ExecutionPostureDto;
+    render(
+      <Home
+        snapshot={SNAPSHOT}
+        sessionToken="fake-session-token"
+        executionClient={executionClient(malformed)}
+      />,
+    );
+
+    expect(await screen.findByRole('alert')).toHaveProperty(
+      'textContent',
+      'Execution state could not be loaded. Execution remains unavailable.',
+    );
+    expect((screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('POSTs a launch request with a bearer token, and never calls fetch on a signed-out submit', () => {
@@ -279,7 +339,13 @@ describe('Home view — launch surface', () => {
       }),
     );
 
-    render(<Home snapshot={SNAPSHOT} sessionToken="fake-session-token" />);
+    render(
+      <Home
+        snapshot={SNAPSHOT}
+        sessionToken="fake-session-token"
+        executionClient={executionClient(PASSKEY_EXECUTION)}
+      />,
+    );
 
     const ownerSelect = screen.getByLabelText('Owner') as HTMLSelectElement;
     // The live roster populates the closed set: declared agents ∪ registered default_workers.
@@ -290,6 +356,10 @@ describe('Home view — launch surface', () => {
     expect(within(ownerSelect).getByRole('option', { name: 'codex-worker' })).toBeTruthy();
     // …but a non-declared, non-default_worker card owner does NOT.
     expect(within(ownerSelect).queryByRole('option', { name: 'codex-a' })).toBeNull();
+
+    await waitFor(() => {
+      expect((screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement).disabled).toBe(false);
+    });
 
     fireEvent.change(screen.getByLabelText('Project'), { target: { value: 'kb' } });
     fireEvent.change(ownerSelect, { target: { value: 'claude-m1' } });
