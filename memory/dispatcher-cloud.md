@@ -263,3 +263,26 @@
 - Recurring strays unchanged: same 4 done-in-inbox nightly cards + the halted iter-smoke card
   6a6bc3dd in working/ (~12h, terminal-state halted, not yet >48h). Both outside the carve-out
   allow-list — reported, not fixed.
+
+## 2026-08-01 (Sat — nightly-review + weekly-audit)
+- Clean bootstrap: preamble OK, pyyaml OK, sync_skills --check clean. Both dispatched cards
+  self-executed and pushed on ops. nightly-review (6a6d8ce3-05ec933a) → dashboards regenerated;
+  weekly-audit (6a6d8ce3-389fce18, Saturday cadence) → findings card 6a6d8e1e-ed8c8bdf.
+- KEY FINDING (weekly-audit): the DESKTOP SCHEDULER is down. All three desktop cadences produced
+  nothing this week (grades-reconcile weekly, daemon-dirs-sync daily, self-lint-report daily);
+  no desktop/codex-worker dispatch rows since 2026-07-22. This is the ROOT CAUSE of the nightly
+  daemon-dir drift churn: daemon-dirs-sync (daily desktop) is the cadence meant to auto-reconcile
+  main→ops, so with it dark the drift never clears and every nightly re-reports it.
+- DEDUP LESSON (corrects the 07-31 entry's instinct): tonight's sync_daemon_dirs --check was
+  BYTE-IDENTICAL to the 07-31 report (same 9 fyt files). The drift is UNCHANGED, still awaiting
+  the desktop --sync, and already tracked by 6a6c3d8e (drift) + 6a605ebb (missing script). So I did
+  NOT file a third wake-me — a duplicate would be pure noise. Rule: file a fresh drift wake-me only
+  when the drifted file SET changes; when --check is identical to an open card's, reference it and
+  move on. (07-31 was right to file because the file set had changed since 07-22; tonight is not.)
+- Grades↔activity reconciliation: both empty for the audit window (0/0 rows 07-22..08-01, last rows
+  07-21). Nothing to reconcile, no orphans. The 12 codex cards done + 28 cost rows on 07-31 are the
+  codex execution path (cost-logged only, not inspector-graded) — expected absence, not a discrepancy.
+- Strays unchanged: 4 done-in-inbox nightly cards + halted iter-smoke 6a6bc3dd in working/. Both
+  outside the nightly-review carve-out allow-list — reported in the audit card (P2/P3), not fixed.
+- Push path: DIRECT-PUSH (see run summary). Surfaced the desktop-scheduler finding to Daniel via the
+  run's wake/notification channel since it's the actionable systemic issue this week.
