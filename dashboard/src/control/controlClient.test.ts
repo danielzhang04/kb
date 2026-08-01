@@ -390,6 +390,24 @@ describe('control client run and retention writes', () => {
     });
   });
 
+  it('keeps a durable Human Request response successful when the exact execution latch remains locked', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(response({ ok: true, value: {
+        run: {
+          runRef: 'run-1', proposalRef: 'proposal-1', proposalRevision: 1, proposalHash: 'a'.repeat(64),
+          publicationState: 'published', state: 'waiting-human', version: 5, managerGeneration: 1,
+        },
+        humanRequests: [{ kind: 'intervention', state: 'resolved', response: { decision: 'responded' } }],
+      } }))
+      .mockResolvedValueOnce(response({
+        error: 'execution-locked',
+        detail: 'execution is locked; unlock it with your passkey before launching a run',
+      }, 409)) as unknown as FetchLike;
+
+    await expect(resumeRunAfterHumanResponse('run-1', 'bearer', fetchImpl)).resolves.toBeUndefined();
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
   it('strictly activates one existing run and surfaces an inactive runtime', async () => {
     const fetchImpl = vi.fn()
       .mockResolvedValueOnce(response({ error: 'automatic-runtime-not-activated' }, 409)) as unknown as FetchLike;
@@ -400,6 +418,7 @@ describe('control client run and retention writes', () => {
       managerGeneration: 1,
       proposalHash: 'proof',
     }, 'bearer', fetchImpl)).rejects.toMatchObject({
+      code: 'automatic-runtime-not-activated',
       reason: 'automatic-runtime-not-activated',
       status: 409,
     });

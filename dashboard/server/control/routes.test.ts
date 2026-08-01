@@ -545,7 +545,7 @@ describe('control proposal routes', () => {
     expect(controlStore.listProposalRevisions('operator', stored.value.proposalRef)).toHaveLength(1);
   });
 
-  it('publishes a deterministic two-stage canonical DAG once and stops at the inactive runtime gate', async () => {
+  it('parks one published DAG at the locked runtime boundary, then resumes that exact run after unlock wiring', async () => {
     const imported = await app.inject({
       method: 'POST', url: '/api/control/proposals/import', headers: headers(token), payload: { composerRef, turnId },
     });
@@ -561,8 +561,10 @@ describe('control proposal routes', () => {
       if (args.join(' ') === 'rev-parse HEAD') return 'a'.repeat(40);
       return '';
     };
+    const publishCalls: Array<{ runId: string; managed: boolean; stages: Array<{ id: string; dependsOn: string[] }> }> = [];
     const runPy = (_repoRoot: string, _code: string, jsonArg: string) => {
       const payload = JSON.parse(jsonArg) as { runId: string; managed: boolean; stages: Array<{ id: string; dependsOn: string[] }> };
+      publishCalls.push(payload);
       return {
         exitCode: 0,
         stdout: JSON.stringify({
@@ -576,6 +578,12 @@ describe('control proposal routes', () => {
         stderr: '',
       };
     };
+    const lockedLatch = {
+      snapshot: () => ({ state: 'locked' as const, source: null, unlockedAt: null, unlockedBy: null }),
+      current: () => null,
+      unlock: vi.fn(),
+      lock: vi.fn(),
+    };
     const launchApp = Fastify();
     registerWriteSurface(launchApp, makeSurfaceContext({
       repoRoot: fileURLToPath(new URL('../../..', import.meta.url)),
@@ -583,6 +591,7 @@ describe('control proposal routes', () => {
       appendAudit: (_root, event) => ({ ts: new Date().toISOString(), ...event }),
       appendAuditLocal: (_root, event) => ({ ts: new Date().toISOString(), ...event }),
       runPreamble: () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }), opsGit, runPy,
+      executionLatch: lockedLatch as never,
     }));
     await launchApp.ready();
     try {
@@ -600,8 +609,86 @@ describe('control proposal routes', () => {
         ['report', workflowCardId(launched.json().runRef as string, 'report'), 'blocked'],
       ]);
       expect(run.ok && run.value.humanRequests).toEqual([
-        expect.objectContaining({ kind: 'governance-refusal', title: 'Automatic execution activation is gated' }),
+        expect.objectContaining({ kind: 'intervention', title: 'Automatic execution activation is gated', state: 'open' }),
       ]);
+      expect(publishCalls).toHaveLength(1);
+
+      if (!run.ok) throw new Error(run.detail);
+      const boundary = run.value.humanRequests[0];
+      const responded = await launchApp.inject({
+        method: 'POST', url: `/api/control/human-requests/${boundary.requestRef}/respond`, headers: headers(token),
+        payload: {
+          expectedRevision: boundary.revision,
+          decision: 'responded',
+          idempotencyKey: `respond:${boundary.requestRef}:${boundary.revision}`,
+          response: 'Execution unlock will be completed separately.',
+        },
+      });
+      expect(responded.statusCode, responded.body).toBe(200);
+      expect(responded.json()).toMatchObject({ ok: true, value: { state: 'resolved', response: { decision: 'responded' } } });
+
+      const ready = controlStore.getRun('operator', run.value.run.runRef);
+      if (!ready.ok) throw new Error(ready.detail);
+      const activationPayload = {
+        expectedRunVersion: ready.value.run.version,
+        expectedManagerGeneration: ready.value.run.managerGeneration,
+        idempotencyKey: `activate:${ready.value.run.runRef}:${ready.value.run.version}:${ready.value.run.proposalHash}:${ready.value.run.managerGeneration}`,
+      };
+      const stillLocked = await launchApp.inject({
+        method: 'POST', url: `/api/control/runs/${ready.value.run.runRef}/activate`, headers: headers(token),
+        payload: activationPayload,
+      });
+      expect(stillLocked.statusCode, stillLocked.body).toBe(409);
+      expect(stillLocked.json()).toMatchObject({
+        error: 'execution-locked',
+        execution: { state: 'locked', source: null, unlockRoute: '/api/control/execution/unlock' },
+      });
+      expect(controlStore.getRunActivationReceipt('operator', ready.value.run.runRef, activationPayload))
+        .toMatchObject({ ok: true, value: null });
+      expect(controlStore.getRun('operator', ready.value.run.runRef)).toMatchObject({
+        ok: true,
+        value: { run: { state: 'waiting-human', version: ready.value.run.version } },
+      });
+
+      // Simulate the post-passkey context wiring without touching a daemon or real latch. Activation must
+      // resume this exact published run and these exact cards; it must not call the launch publisher again.
+      const wired = await activatedApp();
+      try {
+        const activated = await wired.activated.inject({
+          method: 'POST', url: `/api/control/runs/${ready.value.run.runRef}/activate`, headers: headers(token),
+          payload: activationPayload,
+        });
+        expect(activated.statusCode, activated.body).toBe(202);
+        expect(wired.runAutomatic).toHaveBeenCalledTimes(1);
+        expect(wired.runAutomatic).toHaveBeenCalledWith(expect.objectContaining({ runRef: ready.value.run.runRef }));
+        expect(wired.activateManagedRoots).toHaveBeenCalledTimes(1);
+        expect(wired.activateManagedRoots).toHaveBeenCalledWith(expect.objectContaining({
+          runRef: ready.value.run.runRef,
+          cardRefs: [workflowCardId(ready.value.run.runRef, 'verify')],
+        }));
+      } finally {
+        await wired.activated.close();
+      }
+
+      const replayed = await launchApp.inject({
+        method: 'POST',
+        url: `/api/control/proposals/${revision.proposalRef}/revisions/${revision.revision}/launch`,
+        headers: headers(token), payload: { expectedHash: revision.hash, idempotencyKey: `launch:${revision.hash}` },
+      });
+      expect(replayed.statusCode, replayed.body).toBe(200);
+      expect(replayed.json()).toMatchObject({ ok: true, runRef: ready.value.run.runRef, replayed: true });
+      expect(publishCalls).toHaveLength(1);
+      const resumed = controlStore.getRun('operator', ready.value.run.runRef);
+      expect(resumed).toMatchObject({
+        ok: true,
+        value: {
+          run: { runRef: ready.value.run.runRef, state: 'running', publicationState: 'published' },
+          stages: [
+            { stageId: 'verify', canonicalCardRef: workflowCardId(ready.value.run.runRef, 'verify') },
+            { stageId: 'report', canonicalCardRef: workflowCardId(ready.value.run.runRef, 'report') },
+          ],
+        },
+      });
     } finally {
       await launchApp.close();
     }
@@ -705,11 +792,11 @@ describe('control proposal routes', () => {
       expect(detail.value.run.publicationState).toBe('published');
       expect(detail.value.stages.map((stage) => [stage.stageId, stage.canonicalCardRef !== null]))
         .toEqual([['build', true], ['upload', true]]);
-      // The ONLY boundary is the post-publication runtime-activation refusal. No gate, no governance
-      // refusal for the T3 stage, and — decisively — nothing of kind `approval`: a launch-time approval
-      // that could authorize spend or publication does not exist to be given.
+      // The ONLY boundary is the post-publication runtime intervention. No gate, no governance refusal
+      // for the T3 stage, and — decisively — nothing of kind `approval`: this operational acknowledgement
+      // cannot authorize spend or publication; the separate passkey latch still controls activation.
       expect(detail.value.humanRequests.map((request) => [request.kind, request.title])).toEqual([
-        ['governance-refusal', 'Automatic execution activation is gated'],
+        ['intervention', 'Automatic execution activation is gated'],
       ]);
       // Neither the bare gate id (what launch used to mint) nor the stage-scoped title the engine matches
       // (`stableHumanTitle('gate', stageId, gateId)` = `automatic:gate:<stageId>:<gateId>`) exists yet.

@@ -323,6 +323,8 @@ export class ControlApiError extends Error {
   constructor(
     readonly status: number,
     readonly reason: string,
+    /** Stable server error discriminator; unlike `reason`, this never prefers human-readable detail. */
+    readonly code: string = reason,
   ) {
     super(reason ? `control request refused: ${status} (${reason})` : `control request refused: ${status}`);
   }
@@ -489,8 +491,9 @@ async function request<T>(path: string, init: RequestInit, options: RequestOptio
     await invalidateSessionOnGovernedAuthFailure(authFailureResponse);
   }
   if (!response.ok) {
+    const code = typeof body.error === 'string' ? body.error : '';
     const reason = [body.detail, body.reason, body.error].find((value): value is string => typeof value === 'string') ?? '';
-    throw new ControlApiError(response.status, reason);
+    throw new ControlApiError(response.status, reason, code);
   }
   return body;
 }
@@ -665,7 +668,8 @@ export async function resumeRunAfterHumanResponse(
     } catch (error) {
       // The Human Request response is already durable. An intentionally inactive daemon runtime is
       // still a successful response flow; activation remains visibly gated on the refreshed run.
-      if (error instanceof ControlApiError && error.reason === 'automatic-runtime-not-activated') return;
+      if (error instanceof ControlApiError
+        && (error.code === 'automatic-runtime-not-activated' || error.code === 'execution-locked')) return;
       throw error;
     }
   }

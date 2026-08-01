@@ -314,8 +314,12 @@ export async function executeApprovedLaunch(
         const waiting = ctx.controlStore.transitionRun(sub, runRef, published.value.version, 'waiting-human');
         if (!waiting.ok) throw new Error(waiting.detail);
         ctx.controlStore.createHumanRequest(sub, runRef, {
-          kind: 'governance-refusal', title: 'Automatic execution activation is gated',
-          prompt: 'Canonical cards are published, but the daemon Broker/execution adapters are not activated. Complete the separate runtime approval before release.',
+          // Runtime wiring is an operationally recoverable boundary, not a verdict that the approved
+          // plan violates governance. The passkey latch still independently prevents `/activate` while
+          // locked; resolving this intervention only records that the operator is ready to retry the
+          // already-published run after execution has been unlocked.
+          kind: 'intervention', title: 'Automatic execution activation is gated',
+          prompt: 'Canonical cards are published. Unlock execution with your passkey, mark this intervention responded, then resume this same run.',
         });
         ctx.controlStore.appendEvent(sub, runRef, {
           kind: 'governance', source: 'system', status: 'waiting', summary: 'canonical run published; runtime activation remains gated',

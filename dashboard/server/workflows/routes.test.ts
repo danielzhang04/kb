@@ -189,13 +189,15 @@ describe('workflow definition routes', () => {
     expect(body.waitingHuman).toBe(true);
     expect(body.cards).toHaveLength(1);
 
-    // The run is durably projected: published, waiting on the runtime-activation human gate.
+    // The run is durably projected: published, waiting on a recoverable runtime intervention.
     const run = controlStore.getRun('operator', body.runRef);
     expect(run.ok).toBe(true);
     if (!run.ok) return;
     expect(run.value.run.publicationState).toBe('published');
     expect(run.value.run.state).toBe('waiting-human');
-    expect(run.value.humanRequests.some((request) => request.title === 'Automatic execution activation is gated')).toBe(true);
+    expect(run.value.humanRequests).toContainEqual(expect.objectContaining({
+      kind: 'intervention', title: 'Automatic execution activation is gated', state: 'open',
+    }));
   });
 
   it('records the canonical audit action names plus the policy snapshot', async () => {
