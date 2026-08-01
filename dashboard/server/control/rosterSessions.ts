@@ -45,7 +45,7 @@
  *
  * Strip-only floor: no TS enums, parameter properties, or namespaces. ESM with `.ts` specifiers.
  */
-import { execFileSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { PtyHost } from '../pty/host.ts';
@@ -442,7 +442,7 @@ function rosterGitEnvironment(): NodeJS.ProcessEnv {
 }
 
 /** Reject Git status shapes that could conceal a rename, deletion, conflict, or path traversal. */
-function parseCodexWorkspaceStatus(raw: Buffer): string[] {
+export function parseCodexWorkspaceStatus(raw: Buffer): string[] {
   const records = raw.toString('utf8').split('\0');
   if (records.at(-1) === '') records.pop();
   const paths: string[] = [];
@@ -455,13 +455,44 @@ function parseCodexWorkspaceStatus(raw: Buffer): string[] {
     // Only ordinary tracked modifications/additions and untracked regular outputs can be promoted.
     // Renames, deletions, conflicts, type changes and submodules have a second path or no regular-file
     // promotion semantics, so fail closed before any later integrator sees them.
-    if (!(status === '??' || [...status].every((value) => value === ' ' || value === 'M' || value === 'A'))
+    if (!(status === '??' || (status !== 'AA'
+      && [...status].every((value) => value === ' ' || value === 'M' || value === 'A')))
       || !isSafeRepoRelativePath(path) || paths.includes(path)) {
       throw new RosterSessionError('Codex workspace contains an unsupported changed path');
     }
     paths.push(path);
   }
   return paths.sort();
+}
+
+/** Bounded, path-free evidence for a rejected Git status. Never include filenames or Git stderr. */
+function codexWorkspaceStatusDiagnostic(raw: Buffer, filenameTooLong: boolean): string {
+  const records = raw.toString('utf8').split('\0').filter(Boolean);
+  const counts = new Map<string, number>();
+  const classify = (record: string): string => {
+    if (record.length < 2) return 'invalid';
+    const status = record.slice(0, 2);
+    if (status === '??') return 'untracked';
+    if (status === '!!') return 'ignored';
+    if (status === 'AA' || status === 'DD' || status.includes('U')) return 'conflict';
+    if (status.includes('D')) return 'deleted';
+    if (status.includes('R') || status.includes('C')) return 'rename-copy';
+    if (status.includes('T')) return 'type-change';
+    if ([...status].every((value) => value === ' ' || value === 'M' || value === 'A')) {
+      return status.includes('A') ? 'added' : 'modified';
+    }
+    return 'other';
+  };
+  for (const record of records) {
+    const statusClass = classify(record);
+    counts.set(statusClass, (counts.get(statusClass) ?? 0) + 1);
+  }
+  const classes = [...counts.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .slice(0, 8)
+    .map(([statusClass, count]) => `${statusClass}:${count}`)
+    .join(',') || 'none';
+  return `records=${records.length}; classes=${classes}; filename-too-long=${filenameTooLong ? 'yes' : 'no'}`;
 }
 
 /**
@@ -490,31 +521,47 @@ function openCodexAttemptWorkspace(input: { worktreePath: string; project: strin
   // the attempt root, while rootTree handles every result artifact relative to the repository root.
   openNoReparseFileTree(projectRoot, { createRoot: false });
   const rootTree = openNoReparseFileTree(root, { createRoot: false });
-  const git = (args: readonly string[]): Buffer => {
-    try {
-      return execFileSync('git', [
-        '-c', 'protocol.allow=never', '--no-optional-locks', ...args,
-      ], {
-        cwd: root,
-        encoding: 'buffer',
-        windowsHide: true,
-        env: rosterGitEnvironment(),
-        maxBuffer: MAX_CODEX_WORKSPACE_STATUS_BYTES,
-      });
-    } catch {
-      throw new RosterSessionError('Codex attempt workspace Git inspection failed');
+  // Mirror the worktree adapter's long-path posture. Provisioning can materialize tracked paths beyond
+  // MAX_PATH; inspecting that same tree without this flag makes Git report false M/D records on Windows.
+  const git = (args: readonly string[]): { stdout: Buffer; filenameTooLong: boolean } => {
+    const result = spawnSync('git', [
+      '-c', 'protocol.allow=never', '-c', 'core.longpaths=true', '--no-optional-locks', ...args,
+    ], {
+      cwd: root,
+      encoding: 'buffer',
+      windowsHide: true,
+      env: rosterGitEnvironment(),
+      maxBuffer: MAX_CODEX_WORKSPACE_STATUS_BYTES,
+    });
+    const stderr = Buffer.isBuffer(result.stderr) ? result.stderr.toString('utf8') : '';
+    const filenameTooLong = /filename too long/i.test(stderr);
+    if (result.error || result.status !== 0 || !Buffer.isBuffer(result.stdout)) {
+      throw new RosterSessionError(
+        `Codex attempt workspace Git inspection failed (filename-too-long=${filenameTooLong ? 'yes' : 'no'})`,
+      );
     }
+    return { stdout: result.stdout, filenameTooLong };
   };
   return {
     revision() {
-      const revision = git(['rev-parse', 'HEAD']).toString('utf8').trim();
+      const revision = git(['rev-parse', 'HEAD']).stdout.toString('utf8').trim();
       if (!GIT_COMMIT.test(revision)) throw new RosterSessionError('Codex attempt workspace revision is not immutable');
       return revision;
     },
     changedPaths() {
-      return parseCodexWorkspaceStatus(git([
+      const status = git([
         'status', '--porcelain=v1', '-z', '--untracked-files=all', '--ignore-submodules=all',
-      ]));
+      ]);
+      const diagnostic = codexWorkspaceStatusDiagnostic(status.stdout, status.filenameTooLong);
+      if (status.filenameTooLong) {
+        throw new RosterSessionError(`Codex workspace Git status could not inspect long paths (${diagnostic})`);
+      }
+      try {
+        return parseCodexWorkspaceStatus(status.stdout);
+      } catch (error) {
+        if (error instanceof RosterSessionError) throw new RosterSessionError(`${error.message} (${diagnostic})`);
+        throw error;
+      }
     },
     inspectArtifact(path, hashMode) {
       return rootTree.inspectRegularFile(path, hashMode);

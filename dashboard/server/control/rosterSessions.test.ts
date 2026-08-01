@@ -1,13 +1,17 @@
 /**
  * Hermetic tests for the run-roster pty sessions and gated work-order delivery.
  *
- * Nothing real is touched: a fake `PtyHost` (recording every byte written into each session, and able to
- * emit output) drives the REAL persistent session registry, the control store is the in-memory one, and
- * the filesystem is a recording map. The load-bearing test is the STRUCTURAL HALT: with a gate
- * unapproved, the session's input transcript must contain no work order at all.
+ * Nothing outside a throwaway temp fixture is touched: a fake `PtyHost` (recording every byte written into
+ * each session, and able to emit output) drives the REAL persistent session registry, the control store is
+ * the in-memory one, and the control filesystem is a recording map. One Windows regression creates a real
+ * temp Git sparse worktree to exercise long-path status. The load-bearing test is the STRUCTURAL HALT: with
+ * a gate unapproved, the session's input transcript must contain no work order at all.
  */
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { HostOpenRequest, PtyHandle, PtyHost, PtySession } from '../pty/host.ts';
 import { createPersistentSessionRegistry } from '../pty/persistentSessions.ts';
@@ -16,6 +20,7 @@ import type { JsonObject, RunDetail } from './types.ts';
 import type { PlanProposal, ProposalStage, ResolvedAgentAssignment } from './proposal.ts';
 import type { ExecutionProfile } from './policy.ts';
 import type { AssignedAgentResolver } from './agentAssignmentResolver.ts';
+import { createGitWorktreeAdapter } from './adapters.ts';
 import {
   buildRosterPermissionSettings,
   createRosterSessionManager,
@@ -26,6 +31,7 @@ import {
   detectReplReadinessSettled,
   detectTurnEngaged,
   nextBusySemanticState,
+  parseCodexWorkspaceStatus,
   STALE_BUSY_QUIET_MS,
   projectRosterState,
   resolveRosterWorkDir,
@@ -423,6 +429,8 @@ function harness(options: {
   autoBootReady?: boolean;
   /** Hermetic server-side view of an isolated Codex attempt workspace. */
   openCodexWorkspace?: NonNullable<Parameters<typeof createRosterSessionManager>[0]['openCodexWorkspace']>;
+  /** Exercise the production Windows/Git workspace opener instead of the default hermetic fake. */
+  useDefaultCodexWorkspace?: boolean;
   /** When false, host.stop requests a kill but the test must emit the process exit acknowledgement. */
   confirmExitOnStop?: boolean;
   /** Codex-only post-receipt process exit deadline. */
@@ -474,11 +482,17 @@ function harness(options: {
       }
     },
     resolveWorkflowTools: options.workflowTools ?? (() => ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep']),
-    openCodexWorkspace: options.openCodexWorkspace ?? (() => ({
-      revision: () => 'b'.repeat(40),
-      changedPaths: () => [],
-      inspectArtifact: fs.inspectArtifact,
-    })),
+    ...(options.openCodexWorkspace
+      ? { openCodexWorkspace: options.openCodexWorkspace }
+      : options.useDefaultCodexWorkspace
+        ? {}
+        : {
+            openCodexWorkspace: () => ({
+              revision: () => 'b'.repeat(40),
+              changedPaths: () => [],
+              inspectArtifact: fs.inspectArtifact,
+            }),
+          }),
     ...(options.codexExitTimeoutMs === undefined ? {} : { codexExitTimeoutMs: options.codexExitTimeoutMs }),
     ...(options.deliveryTimeoutMs === undefined ? {} : { deliveryTimeoutMs: options.deliveryTimeoutMs }),
     ...(options.replReadyTimeoutMs === undefined ? {} : { replReadyTimeoutMs: options.replReadyTimeoutMs }),
@@ -708,6 +722,98 @@ describe('roster spawn lifecycle', () => {
     // Receipt read -> terminal reaped before engine inspection/canonical promotion can begin.
     expect(item.sessions.state('operator', item.runRef).find((row) => row.agentId === 'fyt-story')?.sessionId).toBeNull();
   });
+
+  it.skipIf(process.platform !== 'win32')(
+    'keeps the production pre-delivery Git status clean in a live-depth sparse Windows worktree',
+    async () => {
+      const root = mkdtempSync(join(tmpdir(), 'roster-longpaths-'));
+      const repoRoot = join(root, 'repo');
+      const worktreeRoot = join(root, 'state-padding-for-live-depth', 'control', 'worktrees');
+      const runSegment = `run-${'a'.repeat(36)}`;
+      const attemptSegment = `attempt-${'b'.repeat(36)}`;
+      const worktreePath = join(worktreeRoot, runSegment, attemptSegment);
+      const longRepoPath = [
+        'orgs', 'faceless-youtube', 'channels', 'the-second-take', 'videos',
+        '2026-07-31-codex-thin-slice', 'assets', '_review',
+        'deep-regression-fixture', `${'tracked-long-name-'.repeat(6)}.md`,
+      ].join('/');
+      const git = (args: string[]): string => execFileSync('git', [
+        '-c', 'protocol.allow=never', '-c', 'core.longpaths=true', '-c', 'core.hooksPath=',
+        '-c', 'commit.gpgsign=false', ...args,
+      ], { cwd: repoRoot, encoding: 'utf8', windowsHide: true }).trim();
+      let adapter: ReturnType<typeof createGitWorktreeAdapter> | null = null;
+      try {
+        mkdirSync(dirname(join(repoRoot, ...longRepoPath.split('/'))), { recursive: true });
+        writeFileSync(join(repoRoot, ...longRepoPath.split('/')), 'tracked\r\n');
+        git(['init', '-q']);
+        git(['add', '--', longRepoPath]);
+        git(['-c', 'user.name=roster-longpaths-test', '-c', 'user.email=roster-longpaths-test@agents.local',
+          'commit', '-q', '-m', 'test: deep sparse workspace']);
+        const baseCommit = git(['rev-parse', 'HEAD']);
+        adapter = createGitWorktreeAdapter({
+          repoRoot,
+          worktreeRoot,
+          baseCommit,
+          sparseReadScope: true,
+        });
+        await adapter.ensure({
+          operationKey: 'worktree:longpaths-regression',
+          runRef: runSegment,
+          path: worktreePath,
+          sparsePaths: ['orgs/faceless-youtube'],
+        });
+        expect(worktreePath.length).toBeGreaterThanOrEqual(160);
+        expect(join(worktreePath, ...longRepoPath.split('/')).length).toBeGreaterThan(260);
+
+        // Prove the fixture still reproduces the live Windows failure without disclosing any raw path.
+        const withoutLongpaths = spawnSync('git', [
+          '-c', 'protocol.allow=never', '-c', 'core.longpaths=false', '--no-optional-locks',
+          'status', '--porcelain=v1', '-z', '--untracked-files=all', '--ignore-submodules=all',
+        ], { cwd: worktreePath, encoding: 'buffer', windowsHide: true });
+        expect(withoutLongpaths.status).toBe(0);
+        expect(Buffer.isBuffer(withoutLongpaths.stdout) ? withoutLongpaths.stdout.length : 0).toBeGreaterThan(0);
+        expect(Buffer.isBuffer(withoutLongpaths.stderr)
+          ? /filename too long/i.test(withoutLongpaths.stderr.toString('utf8'))
+          : false).toBe(true);
+
+        let item: ReturnType<typeof harness> | null = null;
+        let primed = false;
+        item = harness({
+          plan: codexProposalFixture(),
+          useDefaultCodexWorkspace: true,
+          onSleep: () => {
+            if (!item) return;
+            const sessionId = [...item.host.writes.keys()].at(-1);
+            if (!sessionId) return;
+            if (!primed) {
+              primed = true;
+              writeBootReady(item.fs, item.runRef);
+              item.host.emit(sessionId, `OpenAI Codex\r\n\u203a Ask Codex to do anything\r\n`);
+              item.advanceClock(STALE_BUSY_QUIET_MS);
+              return;
+            }
+            if ((item.host.writes.get(sessionId) ?? []).some((chunk) => chunk === '\r')) {
+              item.host.emit(sessionId, '\u273b Working\u2026 esc to interrupt\r\n');
+            }
+          },
+        });
+        item.sessions.ensureRoster({ subject: 'operator', runRef: item.runRef, proposal: item.plan });
+        const pending = item.sessions.deliver({
+          ...deliverInput(item.store, item.runRef, item.plan, 'idea'),
+          worktreePath,
+        });
+        await vi.waitFor(() => { expect(item?.host.opened).toHaveLength(1); });
+        await writeCompletionStatus(item.fs, item.runRef, 'idea', 'DONE', 'deep sparse status clean');
+        await expect(pending).resolves.toMatchObject({ state: 'succeeded' });
+      } finally {
+        if (adapter) {
+          await adapter.remove({ operationKey: 'worktree-remove:longpaths-regression', runRef: runSegment, path: worktreePath });
+        }
+        rmSync(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+      }
+    },
+    30_000,
+  );
 
   it('refuses to spawn an agent whose declaration no longer verifies', () => {
     const { plan, store, runRef, registry, host, fs } = harness();
@@ -1728,6 +1834,28 @@ describe('roster state projection (the canvas contract)', () => {
 });
 
 describe('roster helpers', () => {
+  it('rejects porcelain add/add conflicts without weakening ordinary M/A and untracked states', () => {
+    const ordinary = Buffer.from([
+      ' M orgs/faceless-youtube/unstaged.md',
+      'M  orgs/faceless-youtube/staged.md',
+      'MM orgs/faceless-youtube/staged-and-unstaged.md',
+      'A  orgs/faceless-youtube/added.md',
+      'AM orgs/faceless-youtube/added-then-modified.md',
+      '?? orgs/faceless-youtube/untracked.md',
+      '',
+    ].join('\0'));
+    expect(parseCodexWorkspaceStatus(ordinary)).toEqual([
+      'orgs/faceless-youtube/added-then-modified.md',
+      'orgs/faceless-youtube/added.md',
+      'orgs/faceless-youtube/staged-and-unstaged.md',
+      'orgs/faceless-youtube/staged.md',
+      'orgs/faceless-youtube/unstaged.md',
+      'orgs/faceless-youtube/untracked.md',
+    ]);
+    expect(() => parseCodexWorkspaceStatus(Buffer.from('AA orgs/faceless-youtube/conflicted.md\0')))
+      .toThrow('unsupported changed path');
+  });
+
   /**
    * The work directory is PINNED to `orgs/<project>` — the root every work order's org-relative paths
    * (`channels/<channel>/videos/<slug>/brief.md`) are written against.

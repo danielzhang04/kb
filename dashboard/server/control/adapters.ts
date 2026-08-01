@@ -228,7 +228,8 @@ function parseStatus(output: Buffer, maxChangedFiles: number): string[] {
     const status = record.slice(0, 2);
     const path = record.slice(3);
     // The canonical result DTO cannot safely represent removals, renames, conflicts, type changes, or submodules.
-    if (!(status === '??' || [...status].every((value) => value === ' ' || value === 'M' || value === 'A'))) {
+    if (!(status === '??' || (status !== 'AA'
+      && [...status].every((value) => value === ' ' || value === 'M' || value === 'A')))) {
       throw new ExecutionAdapterError(`unsupported changed-file status '${status}'`);
     }
     if (!isSafeRepoRelativePath(path)) throw new ExecutionAdapterError('git returned an unsafe changed-file path');
