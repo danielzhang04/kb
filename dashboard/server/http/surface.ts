@@ -37,9 +37,12 @@ import { createFileDefinitionAmendmentStore } from '../workflows/amendmentStore.
 import { registerControlRoutes } from '../control/routes.ts';
 import { buildActivatedExecution, createExecutionLatch } from '../control/activation.ts';
 import { createPtyHost } from '../pty/host.ts';
+import type { PtyHost } from '../pty/host.ts';
 import { createPersistentSessionRegistry } from '../pty/persistentSessions.ts';
 import { RunControlTransactions } from '../control/runTransactions.ts';
 import { DEFAULT_MANAGER_START_ACK_TIMEOUT_MS } from '../control/execution.ts';
+import { assertFleetRunnable, defaultPreambleRunner } from '../write/preambleGate.ts';
+import type { PreambleRunner } from '../write/preambleGate.ts';
 
 /** dashboard/server/http/surface.ts -> ../../../ is the repo root. Overridable via env / tests. */
 export function resolveRepoRoot(): string {
@@ -59,6 +62,39 @@ export function resolveDurableRepoRoot(): string {
 export interface SurfaceActivationSeam {
   build?: typeof buildActivatedExecution;
   env?: Record<string, string | undefined>;
+}
+
+/** Stable, detail-free refusal shared by browser and roster PTY opens at the host boundary. */
+export const PTY_OPEN_FLEET_FROZEN = 'pty open refused: fleet-frozen';
+
+/**
+ * Put the fleet preamble on the shared host itself, not only on one HTTP route. The browser route may
+ * deliberately check twice; the second check closes the gap for roster/session-registry callers that
+ * reach `PtyHost.open` without traversing that route. Construction stays inert: no preamble runs and no
+ * shell opens until `open` is actually invoked.
+ */
+function fleetGatedPtyHost(host: PtyHost, repoRoot: string, runPreamble: PreambleRunner): PtyHost {
+  return {
+    open(request) {
+      try {
+        if (!assertFleetRunnable(repoRoot, runPreamble).ok) throw new Error(PTY_OPEN_FLEET_FROZEN);
+      } catch {
+        // Preamble stdout/stderr can name environment or credential problems. Never surface those details
+        // through a PTY spawn error, audit row, WebSocket close reason, or roster activity message.
+        throw new Error(PTY_OPEN_FLEET_FROZEN);
+      }
+      return host.open(request);
+    },
+    stop(sessionId) {
+      return host.stop(sessionId);
+    },
+    stopAll() {
+      host.stopAll();
+    },
+    sessions() {
+      return host.sessions();
+    },
+  };
 }
 
 /** Build a full {@link SurfaceContext}, filling every field not supplied in `overrides` with its real
@@ -84,7 +120,12 @@ export function makeSurfaceContext(
   const build = activation.build ?? buildActivatedExecution;
   // The daemon's single pty stack, shared by `/api/pty` (browser terminals) and the run roster, so a
   // roster session IS an attachable terminal. Constructing a host spawns nothing; only `open` does.
-  const ptyHost = overrides.ptyHost ?? createPtyHost({ shell: 'powershell.exe' });
+  const underlyingPtyHost = overrides.ptyHost ?? createPtyHost({ shell: 'powershell.exe' });
+  const ptyHost = fleetGatedPtyHost(
+    underlyingPtyHost,
+    repoRoot,
+    overrides.runPreamble ?? defaultPreambleRunner,
+  );
   const ptySessions = overrides.ptySessions ?? createPersistentSessionRegistry();
   const definitionAmendmentStore = overrides.definitionAmendmentStore ?? createFileDefinitionAmendmentStore(stateRoot);
   const ctx: SurfaceContext = {

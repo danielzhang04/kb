@@ -16,13 +16,14 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import Fastify from 'fastify';
 import type { FastifyInstance } from 'fastify';
-import { makeSurfaceContext, registerWriteSurface } from './surface.ts';
+import { makeSurfaceContext, PTY_OPEN_FLEET_FROZEN, registerWriteSurface } from './surface.ts';
 import type { SurfaceContext } from './context.ts';
 import { mintSession } from '../auth/session.ts';
 import type { AuditEvent, AuditRow } from '../audit/log.ts';
 import type { GitRunner } from '../write/branch.ts';
 import type { PyRunner } from '../write/launch.ts';
 import type { PreambleRunner } from '../write/preambleGate.ts';
+import type { HostOpenRequest, PtyHost, PtySession } from '../pty/host.ts';
 
 const REPO_A = fileURLToPath(new URL('../__fixtures__/repo-a/', import.meta.url));
 const SECRET = Buffer.from('u2-surface-test-secret-0123456789');
@@ -64,6 +65,22 @@ const noRunnerSignal: NonNullable<SurfaceContext['triggerRunner']> = (owner) => 
   status: 'triggered', owner, task: 'test-runner',
 });
 const frozenPreamble: PreambleRunner = () => ({ exitCode: 1, stdout: 'PREAMBLE FAIL: STOP file present — fleet frozen', stderr: '' });
+
+function recordingPtyHost(): {
+  host: PtyHost;
+  open: ReturnType<typeof vi.fn>;
+  stop: ReturnType<typeof vi.fn>;
+  stopAll: ReturnType<typeof vi.fn>;
+  sessions: ReturnType<typeof vi.fn>;
+  session: PtySession;
+} {
+  const session = { sessionId: 'pty-surface-test', handle: {} } as PtySession;
+  const open = vi.fn((_request: HostOpenRequest) => session);
+  const stop = vi.fn((_sessionId: string) => true);
+  const stopAll = vi.fn();
+  const sessions = vi.fn(() => [session.sessionId]);
+  return { host: { open, stop, stopAll, sessions }, open, stop, stopAll, sessions, session };
+}
 
 function buildApp(overrides: Partial<SurfaceContext> = {}): { app: FastifyInstance; ctx: SurfaceContext } {
   const app = Fastify({ logger: false });
@@ -778,8 +795,9 @@ describe('surface — Wave-A executor activation wiring (env-gated, default OFF)
   it('gate set ⇒ the three executor fields are populated from the builder result', () => {
     const triple = activatedTriple();
     const build = vi.fn().mockReturnValue(triple);
+    const underlying = recordingPtyHost();
     const ctx = makeSurfaceContext(
-      { repoRoot: REPO_A, sessionConfig, allowedOrigins: [GOOD_ORIGIN] },
+      { repoRoot: REPO_A, sessionConfig, allowedOrigins: [GOOD_ORIGIN], ptyHost: underlying.host },
       { build: build as never, env: { DASHBOARD_EXECUTION_ACTIVATED: '1' } },
     );
     expect(build).toHaveBeenCalledTimes(1);
@@ -787,7 +805,9 @@ describe('surface — Wave-A executor activation wiring (env-gated, default OFF)
     expect(build).toHaveBeenCalledWith(expect.objectContaining({
       env: { DASHBOARD_EXECUTION_ACTIVATED: '1' },
       repoRoot: REPO_A,
+      ptyHost: ctx.ptyHost,
     }));
+    expect(ctx.ptyHost).not.toBe(underlying.host);
     expect(ctx.controlBroker).toBe(triple.controlBroker);
     expect(ctx.runAutomatic).toBe(triple.runAutomatic);
     expect(ctx.cancelAutomatic).toBe(triple.cancelAutomatic);
@@ -807,6 +827,68 @@ describe('surface — Wave-A executor activation wiring (env-gated, default OFF)
     expect(ctx.runAutomatic).toBeUndefined();
     expect(ctx.cancelAutomatic).toBeUndefined();
     expect(ctx.containManagerStart).toBeUndefined();
+  });
+});
+
+describe('surface — shared PTY host fleet gate', () => {
+  const request: HostOpenRequest = { requestId: 'req-1', cwd: REPO_A, cols: 80, rows: 24 };
+
+  it('fails closed before the underlying open and redacts all preamble failure details', () => {
+    const underlying = recordingPtyHost();
+    const sensitive = 'credential=provider-secret-value';
+    const runPreamble = vi.fn((_repoRoot: string) => ({
+      exitCode: 1,
+      stdout: `PREAMBLE FAIL: STOP present; ${sensitive}`,
+      stderr: `stderr ${sensitive}`,
+    }));
+    const ctx = makeSurfaceContext({
+      repoRoot: REPO_A,
+      sessionConfig,
+      allowedOrigins: [GOOD_ORIGIN],
+      ptyHost: underlying.host,
+      runPreamble,
+    });
+
+    expect(runPreamble).not.toHaveBeenCalled();
+    let thrown: Error | null = null;
+    try {
+      ctx.ptyHost?.open(request);
+    } catch (error) {
+      thrown = error as Error;
+    }
+
+    expect(runPreamble).toHaveBeenCalledTimes(1);
+    expect(runPreamble).toHaveBeenCalledWith(REPO_A);
+    expect(underlying.open).not.toHaveBeenCalled();
+    expect(thrown?.message).toBe(PTY_OPEN_FLEET_FROZEN);
+    expect(thrown?.message).not.toContain('STOP');
+    expect(thrown?.message).not.toContain(sensitive);
+  });
+
+  it('delegates exactly one passing open and preserves every lifecycle method', () => {
+    const underlying = recordingPtyHost();
+    const runPreamble = vi.fn((_repoRoot: string) => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }));
+    const ctx = makeSurfaceContext({
+      repoRoot: REPO_A,
+      sessionConfig,
+      allowedOrigins: [GOOD_ORIGIN],
+      ptyHost: underlying.host,
+      runPreamble,
+    });
+    const host = ctx.ptyHost as PtyHost;
+
+    expect(host.open(request)).toBe(underlying.session);
+    expect(runPreamble).toHaveBeenCalledOnce();
+    expect(runPreamble).toHaveBeenCalledWith(REPO_A);
+    expect(underlying.open).toHaveBeenCalledOnce();
+    expect(underlying.open).toHaveBeenCalledWith(request);
+
+    expect(host.stop('pty-surface-test')).toBe(true);
+    host.stopAll();
+    expect(host.sessions()).toEqual(['pty-surface-test']);
+    expect(underlying.stop).toHaveBeenCalledWith('pty-surface-test');
+    expect(underlying.stopAll).toHaveBeenCalledOnce();
+    expect(underlying.sessions).toHaveBeenCalledOnce();
   });
 });
 
